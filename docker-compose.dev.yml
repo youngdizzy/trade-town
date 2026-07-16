@@ -1,0 +1,44 @@
+# Development configuration with hot reload for both frontend and backend.
+# Run with: docker compose -f docker-compose.dev.yml up --build
+#
+# Frontend and backend ports are published directly to the host (5173,
+# 8000) and source directories are bind-mounted so edits on the host are
+# picked up immediately, instead of going through the production nginx.
+services:
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    command: ["uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    environment:
+      DATABASE_URL: sqlite:///./data/tradetown.db
+      CORS_ORIGINS: http://localhost:5173,http://localhost:4173
+      TICK_INTERVAL_SECONDS: ${TICK_INTERVAL_SECONDS:-2.0}
+      GAME_MINUTES_PER_TICK: ${GAME_MINUTES_PER_TICK:-5}
+      PERSIST_INTERVAL_TICKS: ${PERSIST_INTERVAL_TICKS:-15}
+      HOST: 0.0.0.0
+      PORT: 8000
+    volumes:
+      - ./backend/app:/app/app
+      - tradetown-dev-data:/app/data
+    ports:
+      - "8000:8000"
+
+  frontend:
+    build:
+      context: .
+      dockerfile: frontend/Dockerfile
+      target: dev
+    environment:
+      VITE_BACKEND_PROXY_TARGET: http://backend:8000
+    volumes:
+      - ./frontend/src:/repo/frontend/src
+      - ./frontend/index.html:/repo/frontend/index.html
+      - ./assets/cute-fantasy-rpg:/repo/assets/cute-fantasy-rpg
+    ports:
+      - "5173:5173"
+    depends_on:
+      - backend
+
+volumes:
+  tradetown-dev-data:
