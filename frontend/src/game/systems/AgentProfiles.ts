@@ -43,6 +43,14 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
     homeLocation: "brain-room",
     tint: 0x8fe3b0,
   },
+  scribe: {
+    id: "scribe",
+    name: "Scribe",
+    occupation: "Company Historian",
+    personality: "Meticulous. Quiet. Writes everything down.",
+    homeLocation: "brain-room",
+    tint: 0xe0c68c,
+  },
 };
 
 export const LOCATION_TO_SCENE: Record<AgentLocation, SceneId> = {

@@ -1,9 +1,7 @@
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { TimeManager } from "@/game/systems/TimeManager";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
-import type { AgentId } from "@/types";
-
-const AGENT_ORDER: AgentId[] = ["scout", "atlas", "echo", "nova"];
+import { AGENT_IDS } from "@/types";
 
 export function TopStatusBar() {
   const { time, agents, meeting, netConnected, currentScene } = useGameStore();
@@ -20,7 +18,7 @@ export function TopStatusBar() {
 
       {agents && (
         <div className="pointer-events-auto flex items-center gap-3 rounded bg-panel/80 px-3 py-1.5 shadow-pixel">
-          {AGENT_ORDER.map((id) => {
+          {AGENT_IDS.map((id) => {
             const profile = AGENT_PROFILES[id];
             const agent = agents[id];
             return (

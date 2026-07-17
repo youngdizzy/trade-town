@@ -13,6 +13,7 @@ export function BottomToolbar() {
       <div className="pointer-events-auto flex items-center gap-2 rounded bg-panel/90 px-3 py-2 shadow-pixel">
         <ToolbarButton label="Save" onClick={() => void SaveManager.save()} />
         <ToolbarButton label="Load" onClick={() => void SaveManager.load()} />
+        <ToolbarButton label="Memory" onClick={() => EventBus.emit("ui:companyMemory", { open: true })} />
         <ToolbarButton label="Settings" onClick={() => EventBus.emit("ui:settings", { open: true })} />
         <ToolbarButton label={paused ? "Resume" : "Pause"} onClick={() => GameManager.getInstance()?.togglePause()} />
         <SaveStatusIndicator status={save.status} error={save.error} />

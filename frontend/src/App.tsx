@@ -7,6 +7,7 @@ import { PauseMenu } from "@/ui/components/PauseMenu";
 import { DebugOverlay } from "@/ui/components/DebugOverlay";
 import { BrainRoomHud } from "@/ui/components/BrainRoomHud";
 import { Newspaper } from "@/ui/components/Newspaper";
+import { CompanyMemory } from "@/ui/components/CompanyMemory";
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
       <BrainRoomHud />
       <DialogueBox />
       <Newspaper />
+      <CompanyMemory />
       <BottomToolbar />
       <PauseMenu />
       <SettingsMenu />

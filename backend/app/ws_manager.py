@@ -24,6 +24,12 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         # categories back out of the window. Send the whole (already
         # small) list instead.
         "news": [n.model_dump(by_alias=True) for n in state.news],
+        "research": [r.model_dump(by_alias=True) for r in state.research],
+        "watchlist": [w.model_dump(by_alias=True) for w in state.watchlist],
+        # Already capped at MAX_MEMORY_RECORDS / MAX_MEETING_MINUTES in
+        # nexus.py — same reasoning as `news` above, send as-is.
+        "memory": [m.model_dump(by_alias=True) for m in state.memory],
+        "meetingMinutes": [m.model_dump(by_alias=True) for m in state.meeting_minutes],
     }
 
 

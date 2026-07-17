@@ -13,18 +13,22 @@ export class Whiteboard {
   private unsubscribe: () => void;
 
   constructor(scene: Phaser.Scene, x: number, y: number, private boardId: string) {
-    scene.add.rectangle(x, y, 72, 44, 0xf4e6c9).setStrokeStyle(2, 0x241c14).setDepth(3);
+    // Sized for up to two short wrapped lines of body text (see nexus.py's
+    // _truncate() — server text is capped to fit this, not the other way
+    // around, since Phaser's wordWrap only wraps width, not box height).
+    scene.add.rectangle(x, y, 92, 58, 0xf4e6c9).setStrokeStyle(2, 0x241c14).setDepth(3);
     scene.add
-      .text(x, y - 26, "WHITEBOARD", { fontFamily: "monospace", fontSize: "6px", color: "#f4e6c9", backgroundColor: "#241c14" })
+      .text(x, y - 33, "WHITEBOARD", { fontFamily: "monospace", fontSize: "6px", color: "#f4e6c9", backgroundColor: "#241c14" })
       .setOrigin(0.5)
       .setDepth(3);
     this.text = scene.add
       .text(x, y, NexusManager.getWhiteboard(boardId), {
         fontFamily: "monospace",
-        fontSize: "7px",
+        fontSize: "6px",
+        lineSpacing: 3,
         color: "#241c14",
         align: "center",
-        wordWrap: { width: 64 },
+        wordWrap: { width: 82 },
       })
       .setOrigin(0.5)
       .setDepth(4);

@@ -60,10 +60,11 @@ mypy app/
    `ScoutOfficeScene`) and a matching key in NEXUS's
    `_update_whiteboards()`.
 
-## Adding a fifth agent
+## Adding a new agent
 
-The agent system is already generalized past a fixed count — adding one
-means touching data, not architecture:
+The agent system is already generalized past a fixed count — Scribe (v0.3)
+was added this way on top of v0.2's four, with zero Phaser scene changes.
+Adding another means touching data, not architecture:
 
 1. Add an `AgentId` union member in `frontend/src/types.ts` and
    `backend/app/schemas.py` (`AGENT_IDS`/`AgentId`).
@@ -78,11 +79,39 @@ means touching data, not architecture:
 4. Add personality-flavored dialogue lines in `DialogueManager.ts`'s
    `AGENT_TASK_LINES[id]`, keyed by the task strings used in that
    schedule, plus a greeting in `AGENT_GREETINGS[id]`.
-5. That's it — `NPCManager`, `NexusManager`, `RoomScene`/`AgentNPC`,
-   `TopStatusBar`, `BrainRoomHud`, and the save schema all iterate
-   `AGENT_IDS`/`Record<AgentId, ...>` rather than hardcoding a count, so a
-   new id shows up everywhere automatically once the four steps above are
-   done.
+5. If the agent should research (see below) rather than just record/manage
+   like Scribe, add it to `RESEARCHER_IDS` in `backend/app/research.py`
+   and give it a line template in `discussion.py`'s `_ROLE_LINES` and a
+   title template in `research.py`'s `_RESEARCH_TITLE_BY_AGENT`.
+6. That's it for presence/dialogue/schedule — `NPCManager`, `NexusManager`,
+   `RoomScene`/`AgentNPC`, `TopStatusBar`, `BrainRoomHud`, and the save
+   schema all iterate `AGENT_IDS`/`Record<AgentId, ...>` rather than
+   hardcoding a count, so a new id shows up everywhere automatically once
+   the steps above are done.
+
+## Adding a symbol to the watchlist
+
+Edit `SEED_SYMBOLS` in `backend/app/watchlist.py` — each entry is
+`(ticker, display name, ResearchCategory)`. The research queue
+(`research.py`) rotates agents through this same list, so a new symbol
+starts getting researched automatically; no other file needs to change.
+
+## Adding a real `MarketDataProvider`
+
+v0.3 ships only `MockMarketDataProvider` (`backend/app/market_data.py`) —
+a local seeded random walk, no network calls. To wire in a real vendor
+(Polygon, Finnhub, Alpha Vantage, Yahoo Finance, Schwab, ...):
+
+1. Implement the `MarketDataProvider` ABC (`get_quote`, and optionally
+   override `get_quotes` if the vendor has a real batch endpoint — the
+   default implementation just loops `get_quote` per symbol).
+2. Register it in `_select_provider()`, gated on an env var (following the
+   existing `MARKET_DATA_PROVIDER` pattern) so the mock stays the default
+   when no API key is configured — never make a real provider load
+   unconditionally.
+3. Nothing else changes: `watchlist.tick_watchlist()` only ever calls
+   `provider.get_quotes()`, so every consumer downstream (Brain Room HUD,
+   newspaper, whiteboards) keeps working unmodified.
 
 ## Environment variables
 

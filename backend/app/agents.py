@@ -53,6 +53,14 @@ AGENT_PROFILES: dict[AgentId, AgentProfile] = {
         home_location="brain-room",
         tint=0x8FE3B0,
     ),
+    "scribe": AgentProfile(
+        id="scribe",
+        name="Scribe",
+        occupation="Company Historian",
+        personality="Meticulous. Quiet. Writes everything down.",
+        home_location="brain-room",
+        tint=0xE0C68C,
+    ),
 }
 
 

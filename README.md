@@ -1,20 +1,38 @@
-# TradeTown — v0.2
+# TradeTown — v0.3
 
 TradeTown is a pixel-art AI investment company simulation. You play the
-CEO, walking around a small headquarters while a team of four AI employees —
-Scout, Atlas, Echo, and Nova — work their schedules, hold meetings, take
-breaks, and log discoveries live, in the background, whether or not you're
-watching. Think Stardew Valley's overworld crossed with a Bloomberg
-terminal's sense of "the market never sleeps."
+CEO, walking around a small headquarters while a team of five AI employees —
+Scout, Atlas, Echo, Nova, and Scribe — research the market, hold meetings,
+take breaks, and log everything to a searchable company memory, live, in
+the background, whether or not you're watching. Think Stardew Valley's
+overworld crossed with a Bloomberg terminal's sense of "the market never
+sleeps."
 
-This is **version 0.2**: four employees with distinct personalities and
-daily routines, five rooms (Scout Office, CEO Office, Brain Room "Mission
-Control", Meeting Room, Break Room), a reusable Task system, a NEXUS
-orchestrator that assigns tasks and calls occasional meetings, whiteboards
-and a newspaper stand that update live from company events, and an extended
-save/load system. See [`docs/Architecture.md`](docs/Architecture.md) for
-what's deliberately deferred to a future version, and
-[`CHANGELOG.md`](CHANGELOG.md) for what changed since v0.1.
+This is **version 0.3**: a fifth employee (Scribe, the company historian),
+a rotating research queue across a watchlist of market symbols, a
+swappable market-data-provider layer (mock data in this version — see
+"Market intelligence" below), meetings that now produce real discussion
+transcripts and minutes, a searchable Company Memory log, and an upgraded
+Brain Room / newspaper / whiteboards surfacing all of it. **TradeTown does
+not place trades in this version** — it researches, discusses, and
+records; see [`docs/Architecture.md`](docs/Architecture.md) for the exact
+boundary and what's deliberately deferred to a future version, and
+[`CHANGELOG.md`](CHANGELOG.md) / [`docs/VersionHistory.md`](docs/VersionHistory.md)
+for what changed since v0.2.
+
+## Market intelligence (and what it isn't)
+
+Every agent (except Scribe) always has one research topic "in progress"
+from an 8-symbol watchlist (stocks, ETFs, an index, gold, Bitcoin, a
+sector, and a macro proxy), with a confidence score that climbs over time
+until it completes and rotates to a new topic. Prices come from a mock
+market-data provider — a local, seeded random walk, not a live feed — behind
+a `MarketDataProvider` interface designed so a real adapter (Polygon,
+Finnhub, Alpha Vantage, Yahoo Finance, Schwab, ...) can be dropped in later
+without touching anything that consumes it. **No real market API is called
+and no trade is ever placed** — completed research above a confidence
+threshold gets logged as a "future trade candidate," a note for a human to
+consider later, not an executed action.
 
 ## Quick start (Docker — recommended)
 
@@ -28,8 +46,8 @@ required. The stack is:
 - **frontend**: an nginx container serving the built React/Phaser app and
   reverse-proxying `/api` and `/ws` to the backend.
 - **backend**: FastAPI + SQLite, running a background simulation loop
-  (NEXUS) that keeps all four agents' schedules, tasks, meetings, and the
-  game clock ticking.
+  (NEXUS) that keeps all five agents' schedules, tasks, research, meetings,
+  and the game clock ticking.
 
 To change the host port, copy `.env.example` to `.env` and set `HTTP_PORT`.
 
@@ -84,8 +102,10 @@ docs/                      Architecture, folder structure, developer guide
 ## Documentation
 
 - [`docs/Architecture.md`](docs/Architecture.md) — systems, data flow, why things are built this way
+- [`docs/API.md`](docs/API.md) — REST/WebSocket wire format
 - [`docs/FolderStructure.md`](docs/FolderStructure.md) — annotated directory tree
 - [`docs/DeveloperGuide.md`](docs/DeveloperGuide.md) — day-to-day dev workflow, adding a scene/NPC/asset, deployment
+- [`docs/VersionHistory.md`](docs/VersionHistory.md) — version-by-version scope and roadmap
 - [`CHANGELOG.md`](CHANGELOG.md) — what changed each version
 
 ## Asset license
@@ -98,8 +118,10 @@ appropriately licensed or original art first.
 
 ## Status
 
-Version 0.2 is feature-complete per the milestone checklist (see
-`docs/Architecture.md#version-02-scope`). Development stops here until the
-next milestone is scoped. **Note:** the save format changed in v0.2 (see
-`CHANGELOG.md`) — a v0.1 save will not load; the backend detects the
-mismatch and starts fresh rather than crashing.
+Version 0.3 is feature-complete per the milestone checklist (see
+`docs/Architecture.md#version-03-scope`). Development stops here until the
+next milestone is scoped — v0.3 explicitly does not implement paper
+trading, brokerage connections, or live trading of any kind. **Note:** the
+save format changed again in v0.3 (see `CHANGELOG.md`) — a v0.1 or v0.2
+save will not load; the backend detects the mismatch and starts fresh
+rather than crashing.

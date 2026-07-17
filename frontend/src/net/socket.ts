@@ -1,4 +1,4 @@
-import type { AgentId, AgentState, MeetingState, NewsItem, Task, TimeState } from "@/types";
+import type { AgentId, AgentState, MeetingMinutes, MeetingState, MemoryRecord, NewsItem, ResearchItem, Task, TimeState, WatchlistEntry } from "@/types";
 import { EventBus } from "@/game/systems/EventBus";
 import { TimeManager } from "@/game/systems/TimeManager";
 import { NPCManager } from "@/game/systems/NPCManager";
@@ -13,6 +13,10 @@ type ServerMessage =
       whiteboards: Record<string, string>;
       meeting: MeetingState;
       news: NewsItem[];
+      research: ResearchItem[];
+      watchlist: WatchlistEntry[];
+      memory: MemoryRecord[];
+      meetingMinutes: MeetingMinutes[];
     }
   | { type: "pong" };
 
@@ -74,6 +78,10 @@ export class GameSocket {
             whiteboards: msg.whiteboards,
             meeting: msg.meeting,
             news: msg.news,
+            research: msg.research,
+            watchlist: msg.watchlist,
+            memory: msg.memory,
+            meetingMinutes: msg.meetingMinutes,
           });
         }
       } catch (err) {

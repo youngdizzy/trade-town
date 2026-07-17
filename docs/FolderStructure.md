@@ -28,7 +28,7 @@ tradetown/
 │       │   ├── systems/           GameManager, SceneManager, NPCManager, NexusManager,
 │       │   │                      AgentProfiles, DialogueManager, SaveManager, AssetLoader,
 │       │   │                      InputManager, CameraManager, EventBus, TimeManager,
-│       │   │                      SettingsManager, Schedule, TileWorld
+│       │   │                      SettingsManager, Schedule, TileWorld, UpcomingEvents
 │       │   ├── entities/          AnimatedActor (base), PlayerController, AgentNPC, Whiteboard
 │       │   └── scenes/            BootScene, PreloadScene, MainMenuScene, LobbyScene,
 │       │                          RoomScene (base), ScoutOfficeScene, CeoOfficeScene,
@@ -40,7 +40,7 @@ tradetown/
 │       │   └── gameStore.ts       EventBus → React bridge (useSyncExternalStore)
 │       └── ui/
 │           ├── components/        GameCanvas, TopStatusBar, BottomToolbar, DialogueBox,
-│           │                      SettingsMenu, PauseMenu, BrainRoomHud, Newspaper
+│           │                      SettingsMenu, PauseMenu, BrainRoomHud, Newspaper, CompanyMemory
 │           └── hooks/useGameStore.ts
 │
 ├── backend/
@@ -54,7 +54,13 @@ tradetown/
 │       ├── schemas.py             Pydantic models mirroring frontend/src/types.ts
 │       ├── agents.py              Per-agent profile data (name/occupation/personality/home/tint)
 │       ├── schedule.py            Every agent's authoritative daily routine
-│       ├── nexus.py               NEXUS: task assignment, meetings, breaks, whiteboards, news
+│       ├── market_data.py         MarketDataProvider interface + MockMarketDataProvider
+│       ├── watchlist.py           WatchlistManager: tracked symbols, price refresh
+│       ├── research.py            ResearchManager: rotating per-agent research queue
+│       ├── discussion.py          DiscussionManager: meeting discussion transcripts
+│       ├── memory.py              CompanyMemory: capped, categorized, searchable log
+│       ├── scribe.py              ScribeManager: research/meetings -> CompanyMemory + minutes
+│       ├── nexus.py               NEXUS: ties every manager above together each tick
 │       ├── state.py               In-memory authoritative GameState + tick() (delegates to nexus.py)
 │       ├── sim.py                 Background tick/broadcast/persist loop
 │       ├── ws_manager.py          WebSocket connection registry + broadcast (build_state_message)
@@ -70,8 +76,10 @@ tradetown/
 │
 ├── docs/
 │   ├── Architecture.md
+│   ├── API.md                     REST/WebSocket wire format
 │   ├── FolderStructure.md         (this file)
-│   └── DeveloperGuide.md
+│   ├── DeveloperGuide.md
+│   └── VersionHistory.md          Version-by-version scope and roadmap
 │
 ├── docker-compose.yml              Production: single published port via nginx, healthchecks, log rotation
 ├── docker-compose.dev.yml          Development: hot reload, both ports published

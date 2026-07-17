@@ -2,9 +2,11 @@
 
 Responsibilities (per the v0.2 brief): register agents, assign tasks, track
 progress, drive the office whiteboards, and call meetings / break-room
-visits. NEXUS does not trade and does not connect to markets — every
-"discovery" and market headline here is generated placeholder flavor text,
-clearly not real data (see MARKET_HEADLINES).
+visits. v0.3 layers real-looking market intelligence on top (research
+queue, watchlist, meeting discussions/minutes, company memory) without
+executing any trade or calling a real market API — see app/market_data.py,
+app/research.py, and docs/Architecture.md "Research & market intelligence
+(v0.3)" for that boundary.
 
 Design note: meetings and break-room visits are both implemented as the
 same mechanism — a temporary `AgentOverride` on an agent's location that
@@ -19,7 +21,11 @@ import random
 from datetime import datetime, timezone
 
 from app.agents import AGENT_PROFILES, LOCATION_TO_SCENE, all_agent_ids
+from app.discussion import generate_discussion
+from app.market_data import market_data_provider
+from app.research import default_research, tick_research
 from app.schedule import block_for_hour
+from app.scribe import build_minutes, record_meeting, record_research_completions
 from app.schemas import (
     AgentId,
     AgentOverride,
@@ -27,14 +33,21 @@ from app.schemas import (
     EntityTransform,
     GameSaveState,
     MemoryEntry,
+    MemoryRecord,
+    MeetingMinutes,
     MeetingState,
     NewsItem,
+    ResearchItem,
     Task,
+    TaskCategory,
+    TaskPriority,
     TimeState,
 )
+from app.watchlist import default_watchlist, tick_watchlist
 
 MAX_MEMORY = 50
 MAX_TASKS = 60
+MAX_MEETING_MINUTES = 20
 # Per-category, not a single shared cap: discovery news fires far more
 # often than market/company news (it's tied to every task-changing event
 # across four agents, vs. a flat per-tick roll for market headlines), so a
@@ -54,15 +67,6 @@ BREAK_ENERGY_BONUS = 20
 
 RESTFUL_LOCATIONS = {"lobby", "break-room"}
 
-DISCOVERY_LINES = [
-    "flagged an unusual volume spike worth a second look",
-    "found a pattern that held up across three timeframes",
-    "cross-referenced two data sources and turned up a discrepancy",
-    "spotted a correlation nobody had logged before",
-    "finished a backtest that beat the benchmark",
-    "caught an outlier the rest of the team had missed",
-]
-
 MARKET_HEADLINES = [
     "Markets drift sideways in a quiet overnight session",
     "Analysts split on next move as volume thins",
@@ -71,9 +75,112 @@ MARKET_HEADLINES = [
     "Traders await fresh catalysts amid a slow news cycle",
 ]
 
+# Keyword -> category, checked in order against the lowercased task label.
+# Falls back to _DEFAULT_CATEGORY_BY_AGENT when nothing matches. This is a
+# classification convenience over the existing free-text schedule labels
+# (see schedule.py) rather than a second source of truth — the labels
+# themselves are still what's shown to the player.
+_TASK_CATEGORY_KEYWORDS: list[tuple[str, TaskCategory]] = [
+    ("market news", "news_scan"),
+    ("overnight charts", "news_scan"),
+    ("after-hours signals", "news_scan"),
+    ("technical patterns", "chart_analysis"),
+    ("monitor feeds", "chart_analysis"),
+    ("momentum indicators", "chart_analysis"),
+    ("cross-checking scout's notes", "watchlist_update"),
+    ("cross-referencing the archive", "watchlist_update"),
+    ("research memo", "documentation"),
+    ("logging research updates", "documentation"),
+    ("filing yesterday's minutes", "documentation"),
+    ("indexing", "documentation"),
+    ("archiving", "documentation"),
+    ("quarterly reports", "research"),
+    ("research findings", "research"),
+    ("overnight filings", "research"),
+    ("archived reports", "research"),
+    ("overnight logs", "research"),
+    ("strategy", "review"),
+    ("agent performance", "review"),
+    ("decisions", "review"),
+    ("priorities", "review"),
+    ("reviewing the day", "review"),
+    ("standing by", "review"),
+    ("overnight positions", "review"),
+]
+
+_DEFAULT_CATEGORY_BY_AGENT: dict[AgentId, TaskCategory] = {
+    "scout": "news_scan",
+    "atlas": "review",
+    "echo": "chart_analysis",
+    "nova": "research",
+    "scribe": "documentation",
+}
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _truncate(text: str, max_len: int) -> str:
+    """The in-world whiteboard prop is a small fixed-size rectangle (see
+    Whiteboard.ts) — long research titles/summaries need a hard cap or
+    they overflow it, since Phaser's wordWrap only wraps width, not the
+    box height."""
+    return text if len(text) <= max_len else text[: max_len - 1].rstrip() + "…"
+
+
+def _task_category(agent_id: AgentId, task_label: str, override_reason: str | None) -> TaskCategory:
+    if override_reason == "meeting":
+        return "meeting"
+    label = task_label.lower()
+    for needle, category in _TASK_CATEGORY_KEYWORDS:
+        if needle in label:
+            return category
+    return _DEFAULT_CATEGORY_BY_AGENT.get(agent_id, "documentation")
+
+
+def _task_priority(agent_id: AgentId, location: str) -> TaskPriority:
+    if location in RESTFUL_LOCATIONS or location == "meeting-room":
+        return "low" if location != "meeting-room" else "high"
+    return "high" if agent_id == "atlas" else "normal"
+
+
+def _override_task_label(reason: str) -> str:
+    return "In a meeting" if reason == "meeting" else "Taking a break"
+
+
+def _replace_working_task(
+    tasks: list[Task],
+    agent_id: AgentId,
+    category: TaskCategory,
+    priority: TaskPriority,
+    description: str,
+    now: str,
+    day: int,
+    hour: int,
+    minute: int,
+) -> None:
+    """Marks the agent's previous in-flight task completed and starts a
+    new one. Shared by _tick_agent (schedule-driven task changes) and
+    _maybe_call_meeting (a meeting starting is also a task change) so the
+    "complete the old one, start the new one" bookkeeping lives in one
+    place."""
+    for existing in tasks:
+        if existing.owner == agent_id and existing.status == "working":
+            existing.status = "completed"
+            existing.completed_at = now
+    tasks.append(
+        Task(
+            id=f"task-{agent_id}-{day}-{hour}-{minute}",
+            owner=agent_id,
+            category=category,
+            priority=priority,
+            description=description,
+            status="working",
+            createdAt=now,
+            completedAt=None,
+        )
+    )
 
 
 def _default_agent_state(agent_id: AgentId) -> AgentState:
@@ -105,25 +212,14 @@ def register_agents(state: GameSaveState) -> GameSaveState:
     return state.model_copy(update={"agents": agents}) if changed else state
 
 
-def _task_priority(agent_id: AgentId, location: str) -> str:
-    if location in RESTFUL_LOCATIONS or location == "meeting-room":
-        return "low" if location != "meeting-room" else "high"
-    return "high" if agent_id == "atlas" else "normal"
-
-
-def _override_task_label(reason: str) -> str:
-    return "In a meeting" if reason == "meeting" else "Taking a break"
-
-
 def _tick_agent(
     agent_id: AgentId,
     agent: AgentState,
     new_time: TimeState,
     minutes: int,
     tasks: list[Task],
-    news: list[NewsItem],
 ) -> AgentState:
-    profile = AGENT_PROFILES[agent_id]
+    override_reason: str | None = None
 
     if agent.override is not None:
         remaining = agent.override.remaining_minutes - minutes
@@ -136,6 +232,7 @@ def _tick_agent(
         else:
             location = agent.override.location
             task_label = _override_task_label(agent.override.reason)
+            override_reason = agent.override.reason
             energy = agent.energy
             override = agent.override.model_copy(update={"remaining_minutes": remaining})
     else:
@@ -147,6 +244,7 @@ def _tick_agent(
         if energy < BREAK_ENERGY_THRESHOLD and random.random() < BREAK_CHANCE_PER_TICK:
             override = AgentOverride(location="break-room", reason="break", remainingMinutes=BREAK_DURATION_MINUTES)
             location, task_label = override.location, _override_task_label(override.reason)
+            override_reason = "break"
 
     energy_delta = 3 if location in RESTFUL_LOCATIONS else -1.5
     energy = min(100.0, max(5.0, energy + energy_delta))
@@ -159,32 +257,9 @@ def _tick_agent(
             *agent.memory,
             MemoryEntry(id=f"{agent_id}-{new_time.day}-{new_time.hour}-{new_time.minute}", summary=f"Started: {task_label}", day=new_time.day, hour=new_time.hour),
         ][-MAX_MEMORY:]
-
-        for existing in tasks:
-            if existing.owner == agent_id and existing.status == "working":
-                existing.status = "completed"
-                existing.completed_at = _now_iso()
-        tasks.append(
-            Task(
-                id=f"task-{agent_id}-{new_time.day}-{new_time.hour}-{new_time.minute}",
-                owner=agent_id,
-                priority=_task_priority(agent_id, location),  # type: ignore[arg-type]
-                description=task_label,
-                status="working",
-                createdAt=_now_iso(),
-                completedAt=None,
-            )
-        )
-
-        if location not in RESTFUL_LOCATIONS and location != "meeting-room" and random.random() < 0.2:
-            news.append(
-                NewsItem(
-                    id=f"news-{agent_id}-{new_time.day}-{new_time.hour}-{new_time.minute}",
-                    headline=f"{profile.name} {random.choice(DISCOVERY_LINES)}.",
-                    category="discovery",
-                    timestamp=_now_iso(),
-                )
-            )
+        now = _now_iso()
+        category = _task_category(agent_id, task_label, override_reason)
+        _replace_working_task(tasks, agent_id, category, _task_priority(agent_id, location), task_label, now, new_time.day, new_time.hour, new_time.minute)
 
     return agent.model_copy(
         update={
@@ -199,10 +274,24 @@ def _tick_agent(
     )
 
 
-def _maybe_call_meeting(agents: dict[AgentId, AgentState], meeting: MeetingState, new_time: TimeState, news: list[NewsItem]) -> tuple[dict[AgentId, AgentState], MeetingState]:
+def _maybe_call_meeting(
+    agents: dict[AgentId, AgentState],
+    meeting: MeetingState,
+    research: list[ResearchItem],
+    new_time: TimeState,
+    news: list[NewsItem],
+    tasks: list[Task],
+    memory: list[MemoryRecord],
+    meeting_minutes: list[MeetingMinutes],
+) -> tuple[dict[AgentId, AgentState], MeetingState]:
     if meeting.active:
         still_meeting = [aid for aid in meeting.participants if (override := agents[aid].override) is not None and override.reason == "meeting"]
         if not still_meeting:
+            minutes = build_minutes(meeting.participants, meeting.discussion, research, new_time)
+            meeting_minutes.append(minutes)
+            if len(meeting_minutes) > MAX_MEETING_MINUTES:
+                del meeting_minutes[: len(meeting_minutes) - MAX_MEETING_MINUTES]
+            record_meeting(memory, minutes)
             news.append(
                 NewsItem(
                     id=f"news-meeting-end-{new_time.day}-{new_time.hour}-{new_time.minute}",
@@ -211,7 +300,7 @@ def _maybe_call_meeting(agents: dict[AgentId, AgentState], meeting: MeetingState
                     timestamp=_now_iso(),
                 )
             )
-            return agents, MeetingState(active=False, participants=[])
+            return agents, MeetingState(active=False, participants=[], discussion=[])
         return agents, meeting
 
     if random.random() >= MEETING_CHANCE_PER_TICK:
@@ -222,6 +311,7 @@ def _maybe_call_meeting(agents: dict[AgentId, AgentState], meeting: MeetingState
         return agents, meeting
 
     attendees = available if len(available) <= 4 else random.sample(available, k=random.randint(MEETING_MIN_ATTENDEES, len(available)))
+    now = _now_iso()
     updated = dict(agents)
     for aid in attendees:
         updated[aid] = agents[aid].model_copy(
@@ -232,6 +322,9 @@ def _maybe_call_meeting(agents: dict[AgentId, AgentState], meeting: MeetingState
                 "transform": agents[aid].transform.model_copy(update={"scene": "MeetingRoomScene"}),
             }
         )
+        _replace_working_task(tasks, aid, "meeting", "high", "In a meeting", now, new_time.day, new_time.hour, new_time.minute)
+
+    discussion = generate_discussion(list(attendees), research, new_time.day, new_time.hour, new_time.minute)
     news.append(
         NewsItem(
             id=f"news-meeting-start-{new_time.day}-{new_time.hour}-{new_time.minute}",
@@ -240,7 +333,7 @@ def _maybe_call_meeting(agents: dict[AgentId, AgentState], meeting: MeetingState
             timestamp=_now_iso(),
         )
     )
-    return updated, MeetingState(active=True, participants=list(attendees))
+    return updated, MeetingState(active=True, participants=list(attendees), discussion=discussion)
 
 
 def _trim_news(news: list[NewsItem]) -> list[NewsItem]:
@@ -258,12 +351,25 @@ def _trim_news(news: list[NewsItem]) -> list[NewsItem]:
     return keep
 
 
-def _update_whiteboards(agents: dict[AgentId, AgentState], meeting: MeetingState) -> dict[str, str]:
+def _update_whiteboards(agents: dict[AgentId, AgentState], meeting: MeetingState, research: list[ResearchItem]) -> dict[str, str]:
     working = sum(1 for a in agents.values() if a.location not in RESTFUL_LOCATIONS)
+    active_by_agent = {item.assigned_agent: item for item in research if item.status == "in_progress"}
+    latest_discovery = next((item.summary for item in research if item.status == "completed"), "No discoveries logged yet.")
+
+    def board_text(agent_id: AgentId) -> str:
+        item = active_by_agent.get(agent_id)
+        if item is None:
+            return _truncate(agents[agent_id].current_task, 26)
+        # Two short lines, not three — the in-world whiteboard prop is a
+        # small fixed-size rectangle (see Whiteboard.ts), and this text is
+        # only the at-a-glance summary anyway; the full title/confidence
+        # detail already lives in the Brain Room HUD's Research Queue.
+        return f"{_truncate(item.title, 26)}\n{item.priority.capitalize()} priority · {item.confidence:.0f}%"
+
     return {
-        "scout-office": agents["scout"].current_task,
-        "meeting-room": "Meeting in progress" if meeting.active else agents["atlas"].current_task,
-        "ceo-office": f"{working} of {len(agents)} agents actively working",
+        "scout-office": board_text("scout"),
+        "meeting-room": "Meeting in progress" if meeting.active else board_text("atlas"),
+        "ceo-office": f"{working}/{len(agents)} agents working\n{_truncate(latest_discovery, 30)}",
     }
 
 
@@ -271,9 +377,28 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     state = register_agents(state)
     tasks = list(state.tasks)
     news = list(state.news)
+    memory = list(state.memory)
+    meeting_minutes = list(state.meeting_minutes)
+    research = state.research or default_research()
+    watchlist = state.watchlist or default_watchlist()
 
-    agents = {aid: _tick_agent(aid, agent, new_time, minutes, tasks, news) for aid, agent in state.agents.items()}
-    agents, meeting = _maybe_call_meeting(agents, state.meeting, new_time, news)
+    agents = {aid: _tick_agent(aid, agent, new_time, minutes, tasks) for aid, agent in state.agents.items()}
+
+    research, completed = tick_research(research)
+    record_research_completions(memory, completed)
+    for item in completed:
+        news.append(
+            NewsItem(
+                id=f"news-research-{item.id}",
+                headline=f"{AGENT_PROFILES[item.assigned_agent].name} completed research on {item.symbol}: {item.summary}",
+                category="discovery",
+                timestamp=_now_iso(),
+            )
+        )
+
+    watchlist = tick_watchlist(watchlist, research, market_data_provider)
+
+    agents, meeting = _maybe_call_meeting(agents, state.meeting, research, new_time, news, tasks, memory, meeting_minutes)
 
     if random.random() < 0.04:
         news.append(
@@ -287,12 +412,24 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
 
     return state.model_copy(
         update={
+            # NOTE: model_copy(update=...) writes directly into the model's
+            # __dict__ and does NOT resolve field aliases (unlike normal
+            # construction/validation) — every key here must be the actual
+            # Python field name, not its camelCase wire alias, or the
+            # update silently no-ops (the field keeps its old value, no
+            # error). "meeting_minutes" and "updated_at" below previously
+            # used their aliases ("meetingMinutes"/"updatedAt") and never
+            # actually updated as a result.
             "time": new_time,
             "agents": agents,
             "tasks": tasks[-MAX_TASKS:],
             "news": _trim_news(news),
+            "research": research,
+            "watchlist": watchlist,
+            "memory": memory,
+            "meeting_minutes": meeting_minutes,
             "meeting": meeting,
-            "whiteboards": _update_whiteboards(agents, meeting),
-            "updatedAt": _now_iso(),
+            "whiteboards": _update_whiteboards(agents, meeting, research),
+            "updated_at": _now_iso(),
         }
     )

@@ -1,4 +1,16 @@
-import type { AgentId, AgentState, MeetingState, NewsItem, SettingsState, Task, TimeState } from "@/types";
+import type {
+  AgentId,
+  AgentState,
+  MeetingMinutes,
+  MeetingState,
+  MemoryRecord,
+  NewsItem,
+  ResearchItem,
+  SettingsState,
+  Task,
+  TimeState,
+  WatchlistEntry,
+} from "@/types";
 import { EventBus } from "@/game/systems/EventBus";
 import { NPCManager } from "@/game/systems/NPCManager";
 import { NexusManager } from "@/game/systems/NexusManager";
@@ -23,11 +35,16 @@ export interface GameUiState {
   whiteboards: Record<string, string>;
   meeting: MeetingState;
   news: NewsItem[];
+  research: ResearchItem[];
+  watchlist: WatchlistEntry[];
+  memory: MemoryRecord[];
+  meetingMinutes: MeetingMinutes[];
   settings: SettingsState;
   dialogue: DialogueUiState;
   paused: boolean;
   settingsOpen: boolean;
   newspaperOpen: boolean;
+  companyMemoryOpen: boolean;
   netConnected: boolean;
   save: SaveUiState;
   currentScene: string;
@@ -47,13 +64,18 @@ class GameStore {
     agents: null,
     tasks: [],
     whiteboards: {},
-    meeting: { active: false, participants: [] },
+    meeting: { active: false, participants: [], discussion: [] },
     news: [],
+    research: [],
+    watchlist: [],
+    memory: [],
+    meetingMinutes: [],
     settings: { musicVolume: 0.5, sfxVolume: 0.7, autosaveIntervalSec: 60, showFps: false },
     dialogue: { open: false, speaker: "", lines: [], index: 0 },
     paused: false,
     settingsOpen: false,
     newspaperOpen: false,
+    companyMemoryOpen: false,
     netConnected: false,
     save: { status: "idle", lastSavedAt: null, error: null },
     currentScene: "MainMenuScene",
@@ -68,6 +90,7 @@ class GameStore {
     EventBus.on("ui:pause", ({ paused }) => this.set({ paused }));
     EventBus.on("ui:settings", ({ open }) => this.set({ settingsOpen: open }));
     EventBus.on("ui:newspaper", ({ open }) => this.set({ newspaperOpen: open }));
+    EventBus.on("ui:companyMemory", ({ open }) => this.set({ companyMemoryOpen: open }));
     EventBus.on("net:status", ({ connected }) => this.set({ netConnected: connected }));
     EventBus.on("scene:ready", ({ scene }) => this.set({ currentScene: scene }));
 
@@ -78,8 +101,12 @@ class GameStore {
     EventBus.on("task:completed", () => this.set({ tasks: NexusManager.getTasks() }));
     EventBus.on("whiteboard:updated", ({ boardId, text }) => this.set({ whiteboards: { ...this.state.whiteboards, [boardId]: text } }));
     EventBus.on("meeting:started", (meeting) => this.set({ meeting }));
-    EventBus.on("meeting:ended", () => this.set({ meeting: { active: false, participants: [] } }));
+    EventBus.on("meeting:ended", () => this.set({ meeting: { active: false, participants: [], discussion: [] } }));
+    EventBus.on("meeting:minutesRecorded", () => this.set({ meetingMinutes: NexusManager.getMeetingMinutes() }));
     EventBus.on("news:updated", (news) => this.set({ news }));
+    EventBus.on("research:updated", (research) => this.set({ research }));
+    EventBus.on("watchlist:updated", (watchlist) => this.set({ watchlist }));
+    EventBus.on("memory:updated", (memory) => this.set({ memory }));
 
     EventBus.on("save:started", () => this.set({ save: { status: "saving", lastSavedAt: this.state.save.lastSavedAt, error: null } }));
     EventBus.on("save:completed", ({ at }) => this.set({ save: { status: "saved", lastSavedAt: at, error: null } }));

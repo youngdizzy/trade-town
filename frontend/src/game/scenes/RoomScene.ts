@@ -3,6 +3,7 @@ import type { AgentId, AgentLocation, SceneId } from "@/types";
 import { AGENT_IDS } from "@/types";
 import { PlayerController } from "@/game/entities/PlayerController";
 import { AgentNPC } from "@/game/entities/AgentNPC";
+import { Whiteboard } from "@/game/entities/Whiteboard";
 import { CameraManager } from "@/game/systems/CameraManager";
 import { SceneManager, type SceneTransitionData } from "@/game/systems/SceneManager";
 import { createGroundLayer, createPerimeterWalls, createZone } from "@/game/systems/TileWorld";
@@ -45,6 +46,7 @@ export abstract class RoomScene extends Phaser.Scene {
   protected doorZone!: Phaser.GameObjects.Zone;
   protected walls!: Phaser.Physics.Arcade.StaticGroup;
   protected agents = new Map<AgentId, AgentNPC>();
+  private whiteboards: Whiteboard[] = [];
   private widthPx = 0;
   private heightPx = 0;
 
@@ -175,6 +177,13 @@ export abstract class RoomScene extends Phaser.Scene {
   shutdown(): void {
     for (const agent of this.agents.values()) agent.destroy();
     this.agents.clear();
+    for (const board of this.whiteboards) board.destroy();
+    this.whiteboards = [];
+  }
+
+  /** Adds a whiteboard prop and registers it for automatic cleanup on shutdown — subclasses don't need their own shutdown() override just to destroy one. */
+  protected addWhiteboard(x: number, y: number, boardId: string): void {
+    this.whiteboards.push(new Whiteboard(this, x, y, boardId));
   }
 
   private nearestAgent(radius = 28): AgentNPC | null {

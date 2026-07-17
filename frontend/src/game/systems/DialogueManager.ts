@@ -48,6 +48,14 @@ const AGENT_TASK_LINES: Record<AgentId, Record<string, string[]>> = {
     "Reading overnight filings": ["A few overnight filings came in. Reading through them now."],
     "Reviewing archived reports": ["Going back through the archive for context on this one."],
   },
+  scribe: {
+    "Reviewing overnight logs": ["Reading through what happened while you were away. Nothing missed."],
+    "Filing yesterday's minutes": ["Filing yesterday's meeting minutes. Everyone's on the record."],
+    "Logging research updates": ["Writing up the latest research as it comes in."],
+    "Cross-referencing the archive": ["Cross-referencing this against the archive for consistency."],
+    "Indexing the day's discoveries": ["Indexing today's discoveries so they're easy to find later."],
+    "Archiving overnight records": ["Archiving the overnight records. The log never sleeps."],
+  },
 };
 
 /** Shared fallback lines for override-driven tasks (meetings/breaks), independent of agent personality. */
@@ -68,6 +76,7 @@ const AGENT_GREETINGS: Record<AgentId, string[]> = {
   atlas: ["Boss.", "Good to see you.", "What's on your mind?"],
   echo: ["Oh, hey!", "Check this chart out — actually, what's up?", "Perfect timing."],
   nova: ["Hi there.", "One second... okay, hi.", "Good timing, I just finished a section."],
+  scribe: ["Everything's on the record.", "Ah, boss. I was just writing you in.", "One moment — let me finish this line."],
 };
 
 export interface DialogueSession {

@@ -1,5 +1,4 @@
 import { RoomScene } from "./RoomScene";
-import { Whiteboard } from "@/game/entities/Whiteboard";
 import type { AgentLocation, SceneId } from "@/types";
 
 /** Scout's primary workspace. Scout is present here whenever his schedule places him at "scout-office". */
@@ -11,8 +10,6 @@ export class ScoutOfficeScene extends RoomScene {
   protected roomLabel = "Scout's Office";
   protected agentLocation: AgentLocation | null = "scout-office";
 
-  private whiteboard: Whiteboard | null = null;
-
   constructor() {
     super("ScoutOfficeScene");
   }
@@ -20,12 +17,6 @@ export class ScoutOfficeScene extends RoomScene {
   protected onBuild(widthPx: number, heightPx: number): void {
     this.add.rectangle(widthPx / 2, heightPx / 2, widthPx, heightPx, 0x4caf6a, 0.08).setDepth(1);
     this.add.image(widthPx - 32, 32, "outdoor-decoration/chest").setScale(1.5).setDepth(2);
-    this.whiteboard = new Whiteboard(this, 40, 32, "scout-office");
-  }
-
-  shutdown(): void {
-    super.shutdown();
-    this.whiteboard?.destroy();
-    this.whiteboard = null;
+    this.addWhiteboard(40, 32, "scout-office");
   }
 }

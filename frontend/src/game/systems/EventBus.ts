@@ -4,12 +4,16 @@ import type {
   AgentState,
   DialogueHistoryEntry,
   GameSaveState,
+  MeetingMinutes,
   MeetingState,
+  MemoryRecord,
   NewsItem,
+  ResearchItem,
   SceneId,
   SettingsState,
   Task,
   TimeState,
+  WatchlistEntry,
 } from "@/types";
 
 /** Every event the game emits, keyed by name, with its payload type. */
@@ -39,7 +43,13 @@ export interface GameEvents {
   "whiteboard:updated": { boardId: string; text: string };
   "meeting:started": MeetingState;
   "meeting:ended": undefined;
+  "meeting:minutesRecorded": MeetingMinutes;
   "news:updated": NewsItem[];
+  "research:updated": ResearchItem[];
+  "research:completed": ResearchItem;
+  "watchlist:updated": WatchlistEntry[];
+  "memory:updated": MemoryRecord[];
+  "ui:companyMemory": { open: boolean };
 }
 
 type Handler<K extends keyof GameEvents> = (payload: GameEvents[K]) => void;

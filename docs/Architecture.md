@@ -2,18 +2,18 @@
 
 ## Overview
 
-TradeTown v0.2 is a client/server game:
+TradeTown v0.3 is a client/server game:
 
 - **Frontend** (`frontend/`): a React app that mounts a single Phaser 3
   game instance into a `<div>`. Phaser owns the world (tilemaps, player,
   agents, camera, collision); React owns the HUD/menus and reads game state
   through a small pub/sub bridge rather than reaching into Phaser directly.
 - **Backend** (`backend/`): a FastAPI service that is the **authoritative**
-  simulation of all four agents — NEXUS (`backend/app/nexus.py`) advances
-  every agent's schedule, task, mood, energy, meetings, and breaks in a
-  background asyncio loop even if no browser is connected, and pushes the
-  result to connected clients over a WebSocket. It also persists the save
-  to SQLite.
+  simulation of all five agents — NEXUS (`backend/app/nexus.py`) advances
+  every agent's schedule, task, mood, energy, meetings, breaks, and (new in
+  v0.3) research progress in a background asyncio loop even if no browser
+  is connected, and pushes the result to connected clients over a
+  WebSocket. It also persists the save to SQLite.
 
 ```
 ┌─────────────────────────┐        WebSocket (/ws)         ┌──────────────────────────┐
@@ -57,12 +57,13 @@ client last reported on save.
 | `CameraManager` | Consistent camera-follow (lerp, deadzone, zoom) across every scene. |
 | `InputManager` | Normalizes WASD/arrows/E/Esc into a movement vector + discrete actions. One instance per scene. |
 | `TimeManager` | Mirrors the server's clock; local fallback ticker when offline. |
-| `AgentProfiles` | Static per-agent metadata (name, occupation, personality blurb, home location, sprite tint) for all four agents — mirrors `backend/app/agents.py`. |
+| `AgentProfiles` | Static per-agent metadata (name, occupation, personality blurb, home location, sprite tint) for all five agents — mirrors `backend/app/agents.py`. |
 | `NPCManager` | Registry of every agent's live state (`AgentState`), keyed by `AgentId`. Applies server pushes; offline fallback. |
-| `NexusManager` | Frontend mirror of NEXUS's shared state — tasks, whiteboards, meeting, news. Diffs previous vs. new server pushes to emit discrete `task:*`/`whiteboard:*`/`meeting:*`/`news:updated` events rather than just handing scenes a raw blob. |
+| `NexusManager` | Frontend mirror of NEXUS's shared state — tasks, whiteboards, meeting, news, and (v0.3) research, watchlist, memory, meeting minutes. Diffs previous vs. new server pushes to emit discrete `task:*`/`whiteboard:*`/`meeting:*`/`news:updated`/`research:*`/`watchlist:updated`/`memory:updated` events rather than just handing scenes a raw blob. |
+| `UpcomingEvents` | Computes each agent's next deterministic schedule-block transition from `Schedule.ts` (meetings are excluded — NEXUS calls those at random, so there's nothing genuine to predict). Shared by `BrainRoomHud` and `Newspaper` so both "Upcoming Events" sections agree instead of each re-deriving it. |
 | `DialogueManager` | Per-agent, per-task flavor lines plus mood/override fallbacks; opens the React `DialogueBox` and records dialogue history. |
 | `SettingsManager` | localStorage-backed user preferences. |
-| `SaveManager` | Builds a full state snapshot (player/settings/dialogue **and** a copy of the current agents/tasks/whiteboards/meeting/news for instant restore), POSTs it to the backend (with a localStorage backup), autosave interval. |
+| `SaveManager` | Builds a full state snapshot (player/settings/dialogue **and** a copy of the current agents/tasks/whiteboards/meeting/news/research/watchlist/memory/meetingMinutes for instant restore), POSTs it to the backend (with a localStorage backup), autosave interval. |
 | `TileWorld` | Small helpers for building a Phaser tilemap ground layer / perimeter walls / interaction zones from a manifest asset — used by every scene so tilemap setup isn't duplicated per room. |
 
 React state (`frontend/src/state/gameStore.ts`) is a minimal
@@ -121,11 +122,16 @@ dialogue always fully owns the key while it's open.
 directional Player.png-style sheet (idle/walk × 4 directions) —
 `PlayerController` (input-driven) and `AgentNPC` (schedule/wander-driven)
 both extend it so animation/direction handling isn't duplicated. `AgentNPC`
-is parameterized by `AgentId` and used for all four agents (Scout, Atlas,
-Echo, Nova) — the only per-agent differences are sprite tint/name (from
-`AgentProfiles`) and which room the current server state spawns it into.
+is parameterized by `AgentId` and used for all five agents (Scout, Atlas,
+Echo, Nova, and — new in v0.3 — Scribe, the company historian) — the only
+per-agent differences are sprite tint/name (from `AgentProfiles`) and which
+room the current server state spawns it into. Adding Scribe required zero
+scene code: it's just a fifth entry in `AGENT_IDS` with a home location
+like everyone else — see "Adding a fifth agent" in `DeveloperGuide.md` for
+the general pattern.
+
 Each agent wanders gently within its current room. Rooms like Brain Room
-and Meeting Room can legitimately hold all four agents at once (that's the
+and Meeting Room can legitimately hold all five agents at once (that's the
 intended "Mission Control"/meeting design), and their sprites sit closer
 together than a name tag is wide; rather than fight that with
 ever-increasing spacing, `RoomScene.update()` shows **at most one** name
@@ -166,14 +172,20 @@ file alone.
 
 | Module | Responsibility |
 |---|---|
-| `state.py` | The single in-memory `GameState` (async-lock guarded) and its `tick()` method — advances the clock and delegates all per-agent/task/meeting logic to `nexus.tick()`. |
+| `state.py` | The single in-memory `GameState` (async-lock guarded) and its `tick()` method — advances the clock and delegates all per-agent/task/meeting/research logic to `nexus.tick()`. |
 | `agents.py` | Static per-agent profile data (name, occupation, personality, home location, tint) and the `AgentLocation` → `SceneId` mapping — the single source of truth mirrored by `frontend/src/game/systems/AgentProfiles.ts`. |
 | `schedule.py` | Every agent's daily routine (authoritative copy; `frontend/src/game/systems/Schedule.ts` is the offline mirror). A schedule block only describes an agent's *default* behavior — meetings and breaks are event-driven overrides NEXUS layers on top, not schedule entries. |
-| `nexus.py` | NEXUS: the orchestrator. Per tick, for each agent: resolves any active override (meeting/break) or falls back to the schedule block for the current hour, updates mood/energy, and creates/completes `Task`s when the schedule-driven task label changes (task lifecycle piggybacks on the same "did the block change" check schedule-following already needed, rather than a parallel system). Separately: occasionally calls a meeting (`_maybe_call_meeting`) or sends a low-energy agent on a break, both implemented as the *same* `AgentOverride` mechanism (`location` + `reason` + `remainingMinutes`) rather than two bespoke state machines. Also regenerates the whiteboard text for each office and appends "discovery" news items when an agent completes a notable task. NEXUS explicitly does **not** trade or connect to any market data source yet — `MARKET_STATUS`-flavored text is deliberately placeholder copy, wired for a future version to replace. |
+| `market_data.py` | The `MarketDataProvider` interface and the v0.3 `MockMarketDataProvider` implementation. See "Research & market intelligence (v0.3)" below. |
+| `watchlist.py` | `WatchlistManager` — the tracked-symbol list, refreshed from `market_data.py` every tick. |
+| `research.py` | `ResearchManager` — the rotating research queue (one active item per research-capable agent). |
+| `discussion.py` | `DiscussionManager` — generates a meeting's discussion transcript from participants' current research focus when a meeting starts. |
+| `memory.py` | `CompanyMemory` — the capped, categorized, searchable long-term log every other v0.3 manager appends to. |
+| `scribe.py` | `ScribeManager` — turns research completions and meeting transcripts into `CompanyMemory` records and `MeetingMinutes`; Scribe (the agent) has no simulation logic of its own beyond its schedule, this module *is* "the historian recording everything." |
+| `nexus.py` | NEXUS: the orchestrator, tying every manager above together each tick. Per agent: resolves any active override (meeting/break) or falls back to the schedule block for the current hour, updates mood/energy, and creates/completes `Task`s when the schedule-driven task label changes (task lifecycle piggybacks on the same "did the block change" check schedule-following already needed, rather than a parallel system). Separately: advances the research queue, refreshes watchlist prices, occasionally calls a meeting (`_maybe_call_meeting`) or sends a low-energy agent on a break — meetings and breaks are both the *same* `AgentOverride` mechanism (`location` + `reason` + `remainingMinutes`) rather than two bespoke state machines. Also regenerates the whiteboard text for each office. |
 | `sim.py` | The background loop: sleep → tick → broadcast over WebSocket → periodically persist to SQLite. |
 | `ws_manager.py` | Tracks connected WebSocket clients; `build_state_message()` is the single place that shapes an outbound `GameSaveState` into the broadcast JSON, shared by both the sim loop and a client's initial `/ws` snapshot so the two never drift out of sync. |
-| `persistence.py` | Reads/writes the single save row (`slot="default"`) as a JSON blob. Guards `GameSaveState.model_validate_json()` with a `try`/`except ValidationError` — an old-schema (v0.1) save fails validation and is treated as "no save" (fresh state, logged as a warning) rather than crashing the app on startup. |
-| `routers/save.py` | `GET /api/load`, `POST /api/save` — merges client-owned fields (player, settings, dialogue) onto server-owned fields (agents, tasks, whiteboards, meeting, news, time). |
+| `persistence.py` | Reads/writes the single save row (`slot="default"`) as a JSON blob. Guards `GameSaveState.model_validate_json()` with a `try`/`except ValidationError` — an old-schema save fails validation and is treated as "no save" (fresh state, logged as a warning) rather than crashing the app on startup. |
+| `routers/save.py` | `GET /api/load`, `POST /api/save` — merges client-owned fields (player, settings, dialogue) onto server-owned fields (agents, tasks, whiteboards, meeting, news, research, watchlist, memory, meetingMinutes, time). |
 | `routers/ws.py` | `/ws` — sends the current snapshot on connect, then just watches for disconnects (the sim loop drives all outbound messages). |
 
 SQLite is deliberately a single JSON-blob row rather than a fully
@@ -216,11 +228,18 @@ connection-string change, not a rewrite (see "Future-ready" below).
   restored.
 - **Whiteboards**: keyed by room id (`"scout-office"`, `"meeting-room"`,
   `"ceo-office"`), regenerated by `_update_whiteboards()` every tick from
-  current agent/task/company state and pushed as plain strings. The
+  current agent/task/research state and pushed as plain strings. The
   frontend's `Whiteboard` entity is a dumb renderer — it just subscribes to
   `whiteboard:updated` filtered by its own `boardId` and displays whatever
   text arrives, so a future room only needs a new whiteboard key on the
-  backend to get one.
+  backend to get one. The in-world prop is a small fixed-size rectangle
+  (`Whiteboard.ts`), and Phaser's `wordWrap` only wraps by width, not
+  height — a v0.3 whiteboard showing a full research title plus priority
+  plus confidence on three lines overflowed the board badly before
+  `_truncate()` (nexus.py) capped each line's length server-side and the
+  board itself was enlarged to comfortably fit two short lines. If a
+  future board needs more content than two ~26-character lines, grow the
+  board *and* the cap together rather than just one.
 - **News** (`NewsItem`): `category` is `"company"` | `"discovery"` |
   `"market"`. `discovery` items are generated by NEXUS when an agent
   completes a task; `market` items are drawn from a fixed placeholder
@@ -238,6 +257,92 @@ connection-string change, not a rewrite (see "Future-ready" below).
   as-is; re-slicing it again there (e.g. to a flat "last 10") would
   silently undo the per-category balance the same way, which is exactly
   what shipped briefly and had to be fixed in both places at once.
+
+## Research & market intelligence (v0.3)
+
+TradeTown v0.3 gives every agent except Scribe a rotating research focus
+and puts the results in front of the player (Brain Room HUD, newspaper,
+whiteboards, Company Memory). None of it is real market data and none of
+it places a trade — see the "STOP CONDITION" the v0.3 brief was built
+against.
+
+- **`MarketDataProvider`** (`market_data.py`): an `ABC` with `get_quote`/
+  `get_quotes`. The only implementation shipped is `MockMarketDataProvider`
+  — a per-symbol seeded random walk, no network calls. `_select_provider()`
+  reads `MARKET_DATA_PROVIDER` from the environment; any value other than
+  `"mock"` (or unset) logs a warning and falls back to mock, since no real
+  adapter exists yet and this repo holds no API keys. **To add a real
+  provider later**: implement the interface (wrap that vendor's HTTP
+  client), register it in `_select_provider()`, done — `watchlist.py` only
+  ever calls `get_quotes()`, so nothing downstream changes.
+- **Watchlist** (`watchlist.py` / `WatchlistEntry`): a fixed 8-symbol seed
+  list (`SEED_SYMBOLS`), one per `ResearchCategory` in the brief (stock,
+  ETF, index, economy, gold, bitcoin, company, sector). Prices refresh
+  from the configured provider every tick; `status`/`researchProgress`/
+  `assignedAgent` are synced from whichever `ResearchItem` (if any)
+  currently targets that symbol.
+- **Research queue** (`research.py` / `ResearchItem`): every
+  research-capable agent (`scout`, `atlas`, `echo`, `nova` — not `scribe`,
+  who records rather than researches) always has exactly one item
+  `"in_progress"`. Confidence climbs by a random amount each tick; on
+  reaching 100 the item is marked `"completed"`, the agent immediately
+  rotates onto a new symbol (preferring one nobody else is currently on),
+  and `tick_research()` returns the just-completed item in a separate list
+  so the caller can react without this module needing to know about
+  news/memory schemas. Completed history is capped per agent
+  (`MAX_RESEARCH_HISTORY_PER_AGENT`) so the queue stays bounded instead of
+  growing forever.
+- **Discussion & minutes** (`discussion.py`, `scribe.py` /
+  `MeetingMinutes`): when `_maybe_call_meeting()` starts a meeting,
+  `generate_discussion()` builds one templated line per attendee from
+  their *current* research focus (Scout reports news, Echo comments on
+  technicals, Nova on fundamentals, Atlas summarizes/decides, Scribe notes
+  it for the record) and stores it on `MeetingState.discussion`. Lines are
+  templated, not model-generated — the brief is explicit that placeholder
+  text is fine here, what matters is that the discussion is driven by real
+  research state. When the meeting ends, `scribe.build_minutes()` turns
+  that transcript plus the participant list into a `MeetingMinutes`
+  record, and `scribe.record_meeting()` logs it into `CompanyMemory`. Note
+  `build_minutes()` only cites each participant's **current** (`
+  in_progress`) research item, not their full history on that agent —
+  research also holds completed items, and citing all of them would claim
+  the meeting covered everything an attendee has ever researched instead
+  of what was actually discussed that time.
+- **CompanyMemory** (`memory.py` / `MemoryRecord`): a single capped,
+  categorized log (`research` / `meeting` / `whiteboard` / `event` /
+  `discussion` / `discovery` / `future_trade`) that every other v0.3
+  manager appends to via `record()` rather than constructing
+  `MemoryRecord`s itself, so the id format and the `MAX_MEMORY_RECORDS`
+  cap live in exactly one place. `search()` filters an in-memory list by
+  category/substring; the frontend's `CompanyMemory.tsx` viewer currently
+  filters the already-WS-synced list client-side rather than round-
+  tripping a query, so `search()` mostly documents the filter contract a
+  future REST search endpoint would reuse.
+- **"Future trade" flags**: when a completed research item's confidence
+  crosses `FUTURE_TRADE_CONFIDENCE_THRESHOLD` (85%), `scribe.py` logs a
+  `future_trade`-category memory record explicitly stating no trade was
+  placed. This is the entire "future trades" surface in v0.3 — a
+  human-readable flag for later, not a queued or simulated order.
+
+### Gotcha: `model_copy(update=...)` uses field names, not wire aliases
+
+Every `CamelModel` field with a camelCase wire alias (e.g.
+`meeting_minutes` aliased to `"meetingMinutes"`) is constructed and
+*validated* with either name, because `populate_by_name=True`. But
+`BaseModel.model_copy(update={...})` bypasses validation entirely and
+writes straight into the model's `__dict__` — which is keyed by the
+Python field name, never the alias. Passing the alias as an update key
+doesn't raise; it silently creates an unused phantom entry and the real
+field keeps its old value forever. This shipped briefly in `nexus.tick()`
+(`"meetingMinutes"` and `"updatedAt"` instead of `"meeting_minutes"` and
+`"updated_at"`) and meant meeting minutes/memory records from a completed
+meeting never actually got attached to the returned state, despite every
+manager function along the way executing correctly — the bug was invisible
+in unit-style testing of each function and only showed up as "meetings
+start and end but nothing is ever recorded" under an end-to-end soak test.
+**Always use the Python field name in a `model_copy(update=...)` dict,
+never the alias**, regardless of what key format `model_dump(by_alias=True)`
+or the constructor accepts elsewhere in the same file.
 
 ## Asset pipeline
 
@@ -333,12 +438,39 @@ not a model call), combat/enemies (still discovered/manifest-registered,
 still unused), broker API integration, Postgres/Redis, multiplayer, and
 any monetization.
 
+## Version 0.3 scope
+
+Built on top of v0.2 without touching its stable systems more than
+necessary: a fifth agent (Scribe, the company historian — home location
+Brain Room, no new room required), the `MarketDataProvider` interface +
+mock adapter, a `Watchlist` of 8 seed symbols, a rotating `ResearchItem`
+queue with per-agent confidence, meeting discussions/minutes recorded by
+Scribe, a searchable `CompanyMemory` log with a dedicated viewer
+(`CompanyMemory.tsx`, opened from the toolbar), an upgraded Brain Room HUD
+(Market Clock, Research Queue, Watchlist, Upcoming Events, animated
+confidence/progress bars), an upgraded newspaper (Research Updates, Agent
+Activity, Upcoming Events sections), richer whiteboard text, extended
+`Task` categories (`research`/`review`/`meeting`/`watchlist_update`/
+`news_scan`/`chart_analysis`/`documentation`), and an extended save schema
+covering research/watchlist/memory/meetingMinutes.
+
+Explicitly **not** in v0.3 (per the brief's STOP CONDITION, not oversight):
+paper trading, brokerage connections, live trading of any kind, or a real
+market data API call (`MockMarketDataProvider` is the only implementation
+shipped — see "Research & market intelligence (v0.3)" above for the
+adapter pattern a future version would use to add one). "Future trade"
+flags are a logged note for a human, never a queued or simulated order.
+
 ## Save format compatibility
 
-The save schema's `version` field changed from `"0.1"` to `"0.2"`, and the
-shape changed non-trivially (`scout: ScoutState` → `agents: Record<AgentId,
-AgentState>`, plus new `tasks`/`whiteboards`/`meeting`/`news` top-level
-fields). A v0.1 save will fail Pydantic validation on load;
-`persistence.py` catches that specific failure, logs a warning, and starts
-a fresh v0.2 default state rather than crashing — there is no migration
-path from v0.1 saves, by design, since v0.1 was never a public release.
+The save schema's `version` field has changed with every version so far —
+`"0.1"` → `"0.2"` → `"0.3"` — and the shape changed non-trivially each
+time (`0.1→0.2`: `scout: ScoutState` → `agents: Record<AgentId,
+AgentState>`, plus new `tasks`/`whiteboards`/`meeting`/`news` fields;
+`0.2→0.3`: `AgentId` gained `"scribe"`, `Task` gained `category`,
+`MeetingState` gained `discussion`, and `research`/`watchlist`/`memory`/
+`meetingMinutes` were added). An older save fails Pydantic validation on
+load; `persistence.py` catches that failure, logs a warning, and starts a
+fresh default state for the current version rather than crashing — there
+is no migration path between versions, by design, since none of v0.1/v0.2/
+v0.3 was a public release.

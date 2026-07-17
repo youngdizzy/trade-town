@@ -1,19 +1,26 @@
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
-import type { AgentId } from "@/types";
+import { upcomingEvents } from "@/game/systems/UpcomingEvents";
+import type { AgentId, TimeState } from "@/types";
 
-const AGENT_ORDER: AgentId[] = ["scout", "atlas", "echo", "nova"];
+const AGENT_ORDER: AgentId[] = ["scout", "atlas", "echo", "nova", "scribe"];
+const RESEARCHER_ORDER: AgentId[] = ["scout", "atlas", "echo", "nova"];
+
+function formatClock(time: TimeState): string {
+  return `Day ${time.day} · ${String(time.hour).padStart(2, "0")}:${String(time.minute).padStart(2, "0")}`;
+}
 
 /**
- * The Brain Room's "Mission Control" readouts — Company Status, Agent
- * Status, Current Tasks, a placeholder Market Status, and Recent
- * Discoveries. Rendered as a React overlay (not in-world Phaser text) so
- * it stays legible regardless of the room's camera zoom; the holographic
- * core and monitor props in BrainRoomScene are the "physical" centerpiece,
- * this panel is the actual readable dashboard.
+ * The Brain Room's "Mission Control" readouts. Rendered as a React
+ * overlay (not in-world Phaser text) so it stays legible regardless of
+ * the room's camera zoom; the holographic core and monitor props in
+ * BrainRoomScene are the "physical" centerpiece, this panel is the actual
+ * readable dashboard. All progress/confidence bars use a CSS transition
+ * on width so they visibly animate as values change tick to tick, rather
+ * than snapping.
  */
 export function BrainRoomHud() {
-  const { currentScene, agents, tasks, news } = useGameStore();
+  const { currentScene, agents, tasks, news, research, watchlist, time } = useGameStore();
   if (currentScene !== "BrainRoomScene" || !agents) return null;
 
   const working = AGENT_ORDER.filter((id) => !["lobby", "break-room"].includes(agents[id].location)).length;
@@ -23,9 +30,18 @@ export function BrainRoomHud() {
   const recentTasks = [...tasks].reverse().slice(0, 6);
   const discoveries = news.filter((n) => n.category === "discovery").slice(-4).reverse();
   const marketHeadlines = news.filter((n) => n.category === "market").slice(-3).reverse();
+  const activeResearch = RESEARCHER_ORDER.map((id) => research.find((r) => r.assignedAgent === id && r.status === "in_progress")).filter(
+    (item): item is NonNullable<typeof item> => item != null,
+  );
+
+  const upcoming = upcomingEvents(AGENT_ORDER, time);
 
   return (
     <div className="pointer-events-none absolute right-3 top-16 bottom-24 w-72 overflow-y-auto rounded border border-[#60d1ff]/40 bg-panel/90 p-3 font-pixel text-[10px] text-parchment shadow-pixel">
+      <Section title="Market Clock">
+        <div className="text-gold">{formatClock(time)}</div>
+      </Section>
+
       <Section title="Company Status">
         <div>{working} of {AGENT_ORDER.length} agents actively working</div>
         <div>Average mood: {avgMood} · Average energy: {avgEnergy}</div>
@@ -46,6 +62,38 @@ export function BrainRoomHud() {
             </div>
           );
         })}
+      </Section>
+
+      <Section title="Research Queue">
+        {activeResearch.length === 0 && <div className="opacity-50">No active research.</div>}
+        {activeResearch.map((item) => (
+          <div key={item.id} className="mb-2">
+            <div className="flex items-center justify-between gap-1.5">
+              <span className="truncate text-gold">{AGENT_PROFILES[item.assignedAgent].name}: {item.title}</span>
+              <span className="shrink-0 opacity-70">{Math.round(item.confidence)}%</span>
+            </div>
+            <ConfidenceBar value={item.confidence} />
+          </div>
+        ))}
+      </Section>
+
+      <Section title="Watchlist">
+        {watchlist.length === 0 && <div className="opacity-50">No symbols tracked yet.</div>}
+        {watchlist.map((entry) => (
+          <div key={entry.symbol} className="mb-2">
+            <div className="flex items-center justify-between gap-1.5">
+              <span className="text-gold">{entry.symbol}</span>
+              <span className={entry.dailyChangePct >= 0 ? "text-bullish" : "text-bearish"}>
+                ${entry.lastPrice.toFixed(2)} ({entry.dailyChangePct >= 0 ? "+" : ""}{entry.dailyChangePct.toFixed(2)}%)
+              </span>
+            </div>
+            <div className="flex items-center justify-between gap-1.5 opacity-70">
+              <span className="truncate">{entry.name}</span>
+              <span>{entry.assignedAgent ? AGENT_PROFILES[entry.assignedAgent].name : "—"}</span>
+            </div>
+            <ConfidenceBar value={entry.researchProgress} />
+          </div>
+        ))}
       </Section>
 
       <Section title="Current Tasks">
@@ -70,6 +118,15 @@ export function BrainRoomHud() {
         ))}
       </Section>
 
+      <Section title="Upcoming Events">
+        {upcoming.length === 0 && <div className="opacity-50">Nothing scheduled.</div>}
+        {upcoming.map((event) => (
+          <div key={event.agentId} className="mb-1 opacity-80">
+            {AGENT_PROFILES[event.agentId].name} → {event.location.replace("-", " ")} at {String(event.atHour).padStart(2, "0")}:00 ({event.task})
+          </div>
+        ))}
+      </Section>
+
       <Section title="Market Status">
         <div className="mb-1 opacity-50">Placeholder — not connected to a live feed.</div>
         {marketHeadlines.length === 0 && <div className="opacity-50">No headlines yet.</div>}
@@ -88,6 +145,14 @@ export function BrainRoomHud() {
           </div>
         ))}
       </Section>
+    </div>
+  );
+}
+
+function ConfidenceBar({ value }: { value: number }) {
+  return (
+    <div className="mt-0.5 h-1 w-full overflow-hidden rounded-full bg-ink/40">
+      <div className="h-full rounded-full bg-[#60d1ff] transition-all duration-500 ease-out" style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
     </div>
   );
 }

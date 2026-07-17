@@ -3,6 +3,121 @@
 All notable changes to TradeTown are documented here. Versions are
 development milestones, not semver releases.
 
+## v0.3
+
+### Added
+
+- **Scribe, a fifth agent** (Company Historian: meticulous, quiet, writes
+  everything down) — home room Brain Room, own daily schedule, and the
+  first agent that doesn't research; it records. Added with zero Phaser
+  scene changes, validating the v0.2 architectural investment in
+  `AGENT_IDS`-driven iteration (see `docs/DeveloperGuide.md`'s "Adding a
+  new agent").
+- **`MarketDataProvider` interface** (`backend/app/market_data.py`) — an
+  `ABC` with `get_quote`/`get_quotes`, a shipped `MockMarketDataProvider`
+  (seeded-hash starting price + per-call random walk, no network calls),
+  and a `_select_provider()` registration point gated by the
+  `MARKET_DATA_PROVIDER` env var. No real vendor is wired in v0.3 by
+  design — see "Adding a real `MarketDataProvider`" in
+  `docs/DeveloperGuide.md`.
+- **Watchlist system** (`backend/app/watchlist.py`) — eight seeded symbols
+  spanning every `ResearchCategory` (stock/etf/index/economy/gold/
+  bitcoin/company/sector: AAPL, MSFT, SPY, QQQ, GLD, BTC-USD, XLF, DXY).
+  Each entry tracks ticker, name, last price, daily change %, status,
+  research progress, and assigned agent, kept in sync with the research
+  queue every tick.
+- **Rotating research queue** (`backend/app/research.py`) — one active
+  research item per research-capable agent (Scout/Echo/Atlas/Nova) plus a
+  capped per-agent completed history, each with title, symbol, category,
+  priority, status, assigned agent, summary, confidence (0–100), and
+  timestamps. Confidence climbs each tick until the item completes.
+- **Discussion & meeting minutes** — meetings now generate a real
+  discussion transcript (`backend/app/discussion.py`, per-role templated
+  lines keyed off each participant's current research topic) and, on
+  meeting end, Scribe produces `MeetingMinutes` (`backend/app/scribe.py`)
+  summarizing attendees and topics discussed. `MeetingState` gained a
+  `discussion` field rather than a parallel state machine.
+- **`CompanyMemory`** (`backend/app/memory.py`) — a capped (200), searchable,
+  categorized log (research / meeting / whiteboard / event / discussion /
+  discovery / future_trade) that every other new system writes into via
+  `record()`. A new `CompanyMemory` React modal (search box + category
+  filter chips) surfaces it, opened from a new "Memory" button in the
+  bottom toolbar.
+- **"Future trade candidate" flag** — when a completed research item's
+  confidence crosses `FUTURE_TRADE_CONFIDENCE_THRESHOLD` (85), Scribe logs
+  a `future_trade` memory record. This is a logged note for a human to
+  consider later, never a queued or simulated order — v0.3 does not trade.
+- **Brain Room HUD rebuilt** — Market Clock, Research Queue (one row per
+  researching agent), Watchlist table, Upcoming Events, and animated
+  confidence/progress bars (CSS width-transition, not a static number),
+  alongside the existing Company/Agent Status panels.
+- **Newspaper rebuilt** into five sections — Company News, Research
+  Updates (sorted by most recently updated), Agent Activity, Market
+  Headlines (placeholder pending a real provider), and Upcoming Events —
+  replacing v0.2's three-section layout.
+- **`UpcomingEvents` shared module** (`frontend/src/game/systems/
+  UpcomingEvents.ts`) — extracts "next schedule transition per agent"
+  logic that both `BrainRoomHud` and `Newspaper` need, avoiding a second
+  copy of the same computation.
+- **`Task` categories** — tasks now carry a `category` (research / review
+  / meeting / watchlist_update / news_scan / chart_analysis /
+  documentation), inferred from the task label/agent via keyword
+  matching in `nexus.py`.
+- **Extended save schema** (`version: "0.3"`): `research`, `watchlist`,
+  `memory`, and `meetingMinutes` are now persisted and round-tripped
+  through save/load alongside every v0.2 field.
+- **`docs/API.md`** and **`docs/VersionHistory.md`** created; `docs/
+  Architecture.md` gained a full "Research & market intelligence (v0.3)"
+  section and an explicit "Version 0.3 scope" (not-in-scope) section.
+
+### Changed
+
+- `nexus.py`'s `tick()` rewritten to orchestrate the new managers each
+  tick: tick agents → `tick_research()` → record completions into memory
+  → `tick_watchlist()` → maybe call a meeting (now discussion- and
+  minutes-aware) → roll market news.
+- Whiteboards now show Current Assignment / Latest Discovery / Priority /
+  Completion % (2-line truncated format) instead of v0.2's single status
+  line.
+- Duplicated "complete old working task, start new one" logic (previously
+  inlined separately for normal task rotation and for meeting attendance)
+  consolidated into a shared `_replace_working_task()` helper in
+  `nexus.py`.
+- The old random `DISCOVERY_LINES` news generator was removed; discovery
+  news is now driven directly by real research completions instead of an
+  independent random roll.
+
+### Fixed
+
+- **Scribe missing from the top status bar**: `TopStatusBar.tsx` had its
+  own locally hardcoded `AGENT_ORDER` array that was never updated when
+  Scribe was added elsewhere. Fixed by removing the local array and
+  importing the shared `AGENT_IDS` constant instead, eliminating this
+  whole class of "forgot to add the new agent here" bug at its root.
+- **`meetingMinutes`/`updatedAt` silently never updated**: `nexus.py`'s
+  final `state.model_copy(update={...})` call used the wire aliases
+  (`"meetingMinutes"`, `"updatedAt"`) instead of the actual Python field
+  names (`"meeting_minutes"`, `"updated_at"`). Pydantic v2's `model_copy`
+  writes directly into `__dict__` by field name, bypassing alias
+  resolution entirely — the keys were silently absorbed as no-ops rather
+  than raising an error. Found via direct WS-protocol soak testing
+  (meeting cycles confirmed complete, but `meetingMinutes` stayed empty).
+  Fixed by using the correct field names; documented as a standing
+  "Gotcha" in `docs/Architecture.md` so it isn't reintroduced by a future
+  `model_copy` call.
+- **Meeting minutes over-citing an attendee's entire research history**:
+  `build_minutes()`'s topic collection wasn't filtered by
+  `status == "in_progress"`, so it cited every research item an attendee
+  had ever touched instead of just their current focus. Fixed by adding
+  the status filter.
+- **Whiteboard text overflowing the board sprite**: the new 2-line
+  enriched whiteboard text overflowed the small fixed-size board prop.
+  Fixed with a coordinated two-sided change: shortened/truncated text
+  server-side (`nexus.py`'s `_truncate()`) and an enlarged, smaller-font
+  board with `lineSpacing` and wider `wordWrap` client-side
+  (`Whiteboard.ts`) — Phaser's `wordWrap` only wraps by width, not by box
+  height, so either fix alone was insufficient.
+
 ## v0.2
 
 ### Added

@@ -1,5 +1,4 @@
 import { RoomScene } from "./RoomScene";
-import { Whiteboard } from "@/game/entities/Whiteboard";
 import type { AgentId, AgentLocation, SceneId } from "@/types";
 
 /**
@@ -16,8 +15,6 @@ export class MeetingRoomScene extends RoomScene {
   protected roomLabel = "Meeting Room";
   protected agentLocation: AgentLocation | null = "meeting-room";
 
-  private whiteboard: Whiteboard | null = null;
-
   constructor() {
     super("MeetingRoomScene");
   }
@@ -25,7 +22,7 @@ export class MeetingRoomScene extends RoomScene {
   protected onBuild(widthPx: number, heightPx: number): void {
     this.add.rectangle(widthPx / 2, heightPx / 2, widthPx, heightPx, 0xffd166, 0.06).setDepth(1);
     this.buildTable(widthPx / 2, heightPx / 2 + 10);
-    this.whiteboard = new Whiteboard(this, widthPx / 2, 30, "meeting-room");
+    this.addWhiteboard(widthPx / 2, 30, "meeting-room");
   }
 
   private buildTable(cx: number, cy: number): void {
@@ -58,11 +55,5 @@ export class MeetingRoomScene extends RoomScene {
     ];
     const seat = seats[index % seats.length]!;
     return { x: seat[0], y: seat[1] };
-  }
-
-  shutdown(): void {
-    super.shutdown();
-    this.whiteboard?.destroy();
-    this.whiteboard = null;
   }
 }
