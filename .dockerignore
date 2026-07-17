@@ -1,0 +1,33 @@
+# Applies to the frontend build (context: repo root — see frontend/Dockerfile).
+# Keeps local dev artifacts out of the build context so `docker compose build`
+# from a working directory that has been `npm install`'d / `pip install`'d
+# locally can't accidentally shadow what the Dockerfile installs fresh
+# inside the image (e.g. host node_modules overwriting a container's own
+# `npm ci` output via a later `COPY frontend ./`).
+
+.git
+**/.DS_Store
+**/*.log
+.env
+.env.*
+!**/.env.example
+
+# Frontend
+**/node_modules
+frontend/dist
+frontend/public/assets
+frontend/src/assets/manifest.generated.json
+**/*.tsbuildinfo
+
+# Backend
+**/.venv
+**/__pycache__
+**/*.pyc
+**/.pytest_cache
+**/.mypy_cache
+**/.ruff_cache
+backend/data/*.db
+backend/data/*.db-journal
+
+# Leftover sandbox test artifacts, never part of a real build
+*.sandboxtest

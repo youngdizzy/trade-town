@@ -76,11 +76,17 @@ env-driven.
 ## Deploying to a fresh Ubuntu VPS
 
 ```bash
-# On the VPS:
-sudo apt-get update && sudo apt-get install -y docker.io docker-compose-plugin
+# On the VPS (Ubuntu 24.04, e.g. a DigitalOcean Droplet):
 git clone <your-repo-url> tradetown && cd tradetown
+sudo bash deploy/setup-droplet.sh
+# Installs Docker Engine + the Compose plugin via Docker's official apt repo
+# (Ubuntu's own docker.io/docker-compose-v2 packages tend to lag behind and
+# aren't as reliable for this). It does NOT touch the firewall.
+
 cp .env.example .env
-# Edit .env — e.g. set HTTP_PORT=8080 if you'll front it with host nginx (see below)
+# Every variable in .env.example has a working default — this step is
+# optional unless you want to change the port or simulation pacing.
+# e.g. set HTTP_PORT=8080 if you'll front it with host nginx (see below)
 docker compose up -d --build
 ```
 

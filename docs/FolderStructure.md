@@ -42,7 +42,8 @@ tradetown/
 │           └── hooks/useGameStore.ts
 │
 ├── backend/
-│   ├── Dockerfile
+│   ├── Dockerfile                  Runs as a non-root "app" user; reads HOST/PORT from env
+│   ├── .dockerignore                Excludes .venv/__pycache__/data/*.db from the build context
 │   ├── requirements.txt, requirements-dev.txt
 │   ├── .env.example
 │   └── app/
@@ -60,15 +61,17 @@ tradetown/
 │           └── ws.py              WS /ws
 │
 ├── deploy/
-│   └── nginx/tradetown.conf.example   Example HOST-level nginx vhost for a VPS (TLS termination)
+│   ├── setup-droplet.sh                Bootstraps Docker + Compose on a fresh Ubuntu 24.04 Droplet
+│   └── nginx/tradetown.conf.example    Example HOST-level nginx vhost for a VPS (TLS termination)
 │
 ├── docs/
 │   ├── Architecture.md
 │   ├── FolderStructure.md         (this file)
 │   └── DeveloperGuide.md
 │
-├── docker-compose.yml              Production: single published port via nginx
+├── docker-compose.yml              Production: single published port via nginx, healthchecks, log rotation
 ├── docker-compose.dev.yml          Development: hot reload, both ports published
+├── .dockerignore                    Excludes node_modules/dist/etc. from the frontend's build context
 ├── .env.example                    Root-level compose variable overrides
 └── README.md
 ```

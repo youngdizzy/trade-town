@@ -117,6 +117,49 @@ in game code ever references a file path — everything goes through
 with zero code changes; only *animating* it requires an entry in
 `animation-config.json`.
 
+## Production hardening notes
+
+A few deployment details that are easy to get subtly wrong, documented
+here so they don't get "fixed" back into a broken state later:
+
+- **The backend must stay single-process.** `GameState` (`backend/app/state.py`)
+  is an in-memory singleton, and `sim.py` runs one background tick loop.
+  Adding `--workers N` to the backend's uvicorn command (or otherwise
+  running multiple backend replicas) would give each process its own
+  disconnected copy of the simulation and let their SQLite writes race —
+  don't do that without first moving shared state into the database or a
+  shared store.
+- **`backend/Dockerfile` runs as a non-root `app` user.** The `chown` on
+  `/app/data` happens *before* `USER app` and *before* the `VOLUME`
+  declaration, which matters — a named volume created on first run inherits
+  the image's permissions at that path, so getting the order right is what
+  makes the mounted volume writable by a non-root process instead of
+  root-owned.
+- **`frontend/deploy/nginx.conf`'s `proxy_pass` targets go through a `set
+  $backend ...` variable**, not a literal `http://backend:8000/api/`. This
+  is required for nginx to re-resolve the `backend` hostname periodically
+  (via the `resolver 127.0.0.11` directive, Docker's embedded DNS) instead
+  of caching it for the life of the nginx process — otherwise recreating
+  the backend container (any `docker compose up -d --build` that changes
+  it) can leave nginx pointing at a stale, now-dead IP. The tradeoff:
+  nginx's usual "replace the location prefix with the proxy_pass path"
+  rewriting only happens for *literal* proxy_pass targets, not variable
+  ones — with a variable, the original request URI is passed through
+  unmodified instead. That happens to be exactly what's wanted here (the
+  backend's own routes already expect the `/api/` prefix), but it's a real
+  nginx gotcha worth knowing about before "simplifying" this back to a
+  literal URL.
+- **`.dockerignore` (repo root) and `backend/.dockerignore` matter more than
+  they look.** `frontend/Dockerfile`'s builder stage does `COPY frontend ./`
+  *after* running `npm ci`, specifically so Docker's layer cache can reuse
+  the `npm ci` step when only source files change. If a local
+  `frontend/node_modules` exists on whatever machine runs `docker build`
+  (e.g. a dev checkout that's had `npm install` run locally) and isn't
+  excluded, that `COPY` would silently overwrite the image's freshly
+  installed `node_modules` with the host's — usually version-inconsistent,
+  sometimes architecture-inconsistent. The `.dockerignore` files are what
+  prevent that class of "works on my machine, breaks in Docker" bug.
+
 ## Version 0.1 scope
 
 Built: main menu, HQ lobby + 3 interior rooms, camera-follow smooth

@@ -1,0 +1,12 @@
+# Applies to the backend build (context: ./backend — see backend/Dockerfile).
+.venv
+**/__pycache__
+**/*.pyc
+.pytest_cache
+.mypy_cache
+.ruff_cache
+data/*.db
+data/*.db-journal
+.env
+.git
+*.sandboxtest
