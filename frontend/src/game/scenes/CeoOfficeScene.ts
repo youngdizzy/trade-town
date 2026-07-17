@@ -17,6 +17,6 @@ export class CeoOfficeScene extends RoomScene {
   protected onBuild(widthPx: number, heightPx: number): void {
     this.add.rectangle(widthPx / 2, heightPx / 2, widthPx, heightPx, 0xd9a441, 0.08).setDepth(1);
     this.add.image(widthPx / 2, 40, "outdoor-decoration/chest").setScale(1.5).setDepth(2);
-    this.addWhiteboard(widthPx - 40, 32, "ceo-office");
+    this.addWhiteboard(widthPx - 55, 42, "ceo-office");
   }
 }

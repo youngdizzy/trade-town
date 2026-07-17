@@ -344,6 +344,21 @@ start and end but nothing is ever recorded" under an end-to-end soak test.
 never the alias**, regardless of what key format `model_dump(by_alias=True)`
 or the constructor accepts elsewhere in the same file.
 
+This exact bug recurred once, in a different function, before it was
+fully stamped out: `_tick_agent()`'s and `_maybe_call_meeting()`'s
+`AgentState.model_copy(update={"currentTask": ...})` calls both used the
+alias instead of `current_task`, so every agent's task text froze
+forever at whatever `_default_agent_state()` set it to, while `location`
+(no alias, so unaffected) kept updating normally right next to it in the
+same dict — invisible unless you're actually reading the task text, since
+the location alone still looked correct. Caught by walking into a room
+and noticing an agent's location and task belonged to two different
+schedule blocks. When adding a new `model_copy(update=...)` call
+anywhere in this codebase, grep `backend/app/schemas.py` for
+`Field(alias=` and check every key in the update dict against that list
+first — there are enough aliased fields by now that guessing wrong is
+the likely outcome, not the exception.
+
 ## Asset pipeline
 
 `scripts/generate-assets.mjs` walks `assets/cute-fantasy-rpg/` (the single

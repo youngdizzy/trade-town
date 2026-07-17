@@ -72,6 +72,16 @@ development milestones, not semver releases.
 
 ### Changed
 
+- **Agents made visually and behaviorally distinct.** Every agent shares
+  the same sprite sheet (the asset pack only ships one), so tint alone
+  wasn't enough to tell them apart at a glance in a crowded room. Each
+  agent now also gets an always-visible badge glyph above its head
+  (unlike the name tag, never proximity-gated: 🔍 Scout, ♟ Atlas, 📈 Echo,
+  📚 Nova, 📜 Scribe), a wider tint spread (Scribe moved off a
+  near-duplicate of Atlas's gold onto a distinct rose), and its own
+  wander radius / idle-pause chance drawn from its personality blurb
+  (`AgentProfiles.ts`/`AgentNPC.ts`) — Atlas and Scribe barely move,
+  Scout roams widely and rarely idles.
 - `nexus.py`'s `tick()` rewritten to orchestrate the new managers each
   tick: tick agents → `tick_research()` → record completions into memory
   → `tick_watchlist()` → maybe call a meeting (now discussion- and
@@ -117,6 +127,45 @@ development milestones, not semver releases.
   board with `lineSpacing` and wider `wordWrap` client-side
   (`Whiteboard.ts`) — Phaser's `wordWrap` only wraps by width, not by box
   height, so either fix alone was insufficient.
+
+### Fixed (found via a live gameplay walkthrough after the initial v0.3 build)
+
+- **`currentTask` silently frozen forever, for every agent**: the same
+  `model_copy(update=...)` alias bug as the `meetingMinutes` fix above,
+  in a different call site — `_tick_agent()`'s and `_maybe_call_meeting()`'s
+  return values both used `"currentTask"` (the wire alias) instead of
+  `current_task` (the real field name), so every agent's task text froze
+  at whatever `_default_agent_state()` set it to on the very first tick,
+  forever, while `location` kept updating normally on the correct
+  schedule. Found by walking into the Brain Room and noticing an agent's
+  displayed location and task text belonged to two different schedule
+  blocks — confirmed with a raw WebSocket probe showing Atlas stuck on
+  "Reviewing overnight strategy" through 2.5 hours of sim time and
+  several break/meeting cycles while its location cycled correctly.
+- **Duplicate task ids / React key collision**: an agent's meeting
+  override ending and a brand-new meeting starting could both call
+  `_replace_working_task()` for that same agent within one tick,
+  producing two `Task` objects with an identical
+  `task-{agent}-{day}-{hour}-{minute}` id. Fixed by disambiguating with a
+  numeric suffix on collision.
+- **Newspaper and Company Memory could both be open at once**: neither
+  modal's close action touched the other's open flag, so opening one
+  while the other was already open (or open-but-unnoticed) left it stuck
+  open underneath, invisible once the topmost one closed. Opening either
+  now closes the other (`gameStore.ts`).
+- **`NPCManager.loadAgents()` torn-map reads**: it fired one
+  `"agent:updated"` event per agent inside its update loop, so a listener
+  reacting mid-loop (`gameStore`'s agents snapshot) could see a map where
+  only some agents reflected the new tick and the rest were still stale.
+  The whole map now updates before a single event fires.
+- **Whiteboards clipping the room's own wall**: the v0.3 overflow fix
+  enlarged every board from 72×44 to 92×58 world px but nobody moved the
+  three rooms' placement coordinates to match, so the boards in Scout
+  Office and CEO Office now overflowed 6px past the room's side wall
+  (clipping the board itself, not just its text) and all three boards'
+  "WHITEBOARD" title label sat a few px above the room's top wall.
+  Re-positioned all three placements with enough clearance for the
+  larger board size.
 
 ## v0.2
 

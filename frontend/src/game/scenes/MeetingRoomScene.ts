@@ -22,7 +22,7 @@ export class MeetingRoomScene extends RoomScene {
   protected onBuild(widthPx: number, heightPx: number): void {
     this.add.rectangle(widthPx / 2, heightPx / 2, widthPx, heightPx, 0xffd166, 0.06).setDepth(1);
     this.buildTable(widthPx / 2, heightPx / 2 + 10);
-    this.addWhiteboard(widthPx / 2, 30, "meeting-room");
+    this.addWhiteboard(widthPx / 2, 38, "meeting-room");
   }
 
   private buildTable(cx: number, cy: number): void {

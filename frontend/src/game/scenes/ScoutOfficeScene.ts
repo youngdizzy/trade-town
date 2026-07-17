@@ -17,6 +17,6 @@ export class ScoutOfficeScene extends RoomScene {
   protected onBuild(widthPx: number, heightPx: number): void {
     this.add.rectangle(widthPx / 2, heightPx / 2, widthPx, heightPx, 0x4caf6a, 0.08).setDepth(1);
     this.add.image(widthPx - 32, 32, "outdoor-decoration/chest").setScale(1.5).setDepth(2);
-    this.addWhiteboard(40, 32, "scout-office");
+    this.addWhiteboard(55, 42, "scout-office");
   }
 }
