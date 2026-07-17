@@ -62,8 +62,13 @@ export abstract class RoomScene extends Phaser.Scene {
       })
       .setOrigin(0.5);
 
+    // Screen-space (not world-space) so it stays visible even in small rooms
+    // where the "cover" zoom (see CameraManager) lets the camera scroll
+    // beyond the room's own height — a world-anchored label at the top of
+    // the room would otherwise scroll out of view whenever the player is
+    // near the bottom of a room shorter than the viewport.
     this.add
-      .text(this.widthPx / 2, 10, this.roomLabel, {
+      .text(this.cameras.main.width / 2, 10, this.roomLabel, {
         fontFamily: "monospace",
         fontSize: "10px",
         color: "#d9a441",
@@ -71,7 +76,7 @@ export abstract class RoomScene extends Phaser.Scene {
         padding: { x: 6, y: 2 },
       })
       .setOrigin(0.5, 0)
-      .setScrollFactor(1)
+      .setScrollFactor(0)
       .setDepth(30);
 
     CameraManager.follow(this, this.player.sprite, { x: 0, y: 0, width: this.widthPx, height: this.heightPx });

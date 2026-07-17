@@ -125,8 +125,17 @@ export class LobbyScene extends Phaser.Scene {
       body.setOffset((tree.displayWidth * 0.5) / 2, tree.displayHeight * 0.6);
     }
 
-    this.add.image(TILE_SIZE * 3, HEIGHT_PX - TILE_SIZE * 2, "outdoor-decoration/fences").setScale(1.2).setDepth(2);
-    this.add.image(WIDTH_PX - TILE_SIZE * 3, HEIGHT_PX - TILE_SIZE * 2, "outdoor-decoration/chest").setScale(1.3).setDepth(2);
+    const fence = this.add.image(TILE_SIZE * 3, HEIGHT_PX - TILE_SIZE * 2, "outdoor-decoration/fences").setScale(1.2).setDepth(2);
+    this.obstacles.add(fence);
+    const fenceBody = fence.body as Phaser.Physics.Arcade.StaticBody;
+    fenceBody.setSize(fence.displayWidth * 0.85, fence.displayHeight * 0.5);
+    fenceBody.setOffset(fence.displayWidth * 0.075, fence.displayHeight * 0.4);
+
+    const chest = this.add.image(WIDTH_PX - TILE_SIZE * 3, HEIGHT_PX - TILE_SIZE * 2, "outdoor-decoration/chest").setScale(1.3).setDepth(2);
+    this.obstacles.add(chest);
+    const chestBody = chest.body as Phaser.Physics.Arcade.StaticBody;
+    chestBody.setSize(chest.displayWidth * 0.8, chest.displayHeight * 0.7);
+    chestBody.setOffset(chest.displayWidth * 0.1, chest.displayHeight * 0.25);
   }
 
   private buildBuildings(): void {

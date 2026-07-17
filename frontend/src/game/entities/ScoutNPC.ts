@@ -1,10 +1,11 @@
 import Phaser from "phaser";
-import { AnimatedActor } from "./AnimatedActor";
+import { AnimatedActor, screenGapToWorld } from "./AnimatedActor";
 import type { Direction } from "@/types";
 
 const WANDER_RADIUS = 40;
 const WANDER_INTERVAL_MS = 3500;
 const ARRIVE_THRESHOLD = 4;
+const SPEECH_BUBBLE_SCREEN_GAP_PX = 95;
 
 /**
  * Scout, TradeTown's one AI research employee. Wanders gently within his
@@ -69,7 +70,7 @@ export class ScoutNPC extends AnimatedActor {
       this.playAnim(false);
     }
     this.syncNameTag();
-    this.speechBubble?.setPosition(this.sprite.x, this.sprite.y - 38);
+    this.speechBubble?.setPosition(this.sprite.x, this.sprite.y - screenGapToWorld(this.scene, SPEECH_BUBBLE_SCREEN_GAP_PX));
   }
 
   isNear(x: number, y: number, radius = 28): boolean {
@@ -79,7 +80,7 @@ export class ScoutNPC extends AnimatedActor {
   showSpeechBubble(text: string, durationMs = 2500): void {
     this.speechBubble?.destroy();
     this.speechBubble = this.scene.add
-      .text(this.sprite.x, this.sprite.y - 38, text, {
+      .text(this.sprite.x, this.sprite.y - screenGapToWorld(this.scene, SPEECH_BUBBLE_SCREEN_GAP_PX), text, {
         fontFamily: "monospace",
         fontSize: "9px",
         color: "#241c14",

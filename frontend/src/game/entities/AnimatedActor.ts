@@ -5,6 +5,21 @@ import { AssetLoader } from "@/game/systems/AssetLoader";
 const SPEED = 90;
 
 /**
+ * Target on-screen gap (in pixels) between a character and its name tag.
+ * Rooms use very different camera zoom levels (see CameraManager's
+ * cover-fit zoom — a small room can need 2-3x the base zoom to fill the
+ * viewport), so a fixed *world-space* offset would look fine in one room
+ * and wildly detached in another. Dividing by the current zoom keeps the
+ * gap visually consistent everywhere.
+ */
+const NAME_TAG_SCREEN_GAP_PX = 55;
+
+/** Converts a desired on-screen pixel gap into the world-space offset that produces it at the scene's current camera zoom. */
+export function screenGapToWorld(scene: Phaser.Scene, screenPx: number): number {
+  return screenPx / scene.cameras.main.zoom;
+}
+
+/**
  * Base class for any character rendered from the Player.png-style
  * directional sheet (idle/walk x 4 directions). Both PlayerController and
  * ScoutNPC extend this so direction/animation handling isn't duplicated.
@@ -26,7 +41,7 @@ export class AnimatedActor {
     this.sprite.setCollideWorldBounds(true);
 
     this.nameTag = scene.add
-      .text(x, y - 22, label, {
+      .text(x, y - screenGapToWorld(scene, NAME_TAG_SCREEN_GAP_PX), label, {
         fontFamily: "monospace",
         fontSize: "10px",
         color: "#f4e6c9",
@@ -50,7 +65,8 @@ export class AnimatedActor {
   }
 
   syncNameTag(): void {
-    this.nameTag.setPosition(this.sprite.x, this.sprite.y - 22);
+    const gap = screenGapToWorld(this.scene, NAME_TAG_SCREEN_GAP_PX);
+    this.nameTag.setPosition(this.sprite.x, this.sprite.y - gap);
   }
 
   destroy(): void {
