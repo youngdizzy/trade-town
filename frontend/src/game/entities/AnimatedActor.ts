@@ -15,7 +15,7 @@ const SPEED = 90;
 const NAME_TAG_SCREEN_GAP_PX = 55;
 
 /** Converts a desired on-screen pixel gap into the world-space offset that produces it at the scene's current camera zoom. */
-function screenGapToWorld(scene: Phaser.Scene, screenPx: number): number {
+export function screenGapToWorld(scene: Phaser.Scene, screenPx: number): number {
   return screenPx / scene.cameras.main.zoom;
 }
 

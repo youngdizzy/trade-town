@@ -42,10 +42,26 @@ export class NPCManager {
     EventBus.emit("agent:updated", { id, state });
   }
 
+  /**
+   * Applies a full agent-roster snapshot (WS tick or a loaded save) as one
+   * atomic update. Previously this called setAgent() per agent, firing one
+   * "agent:updated" event per id — gameStore's listener re-reads the whole
+   * map on every fire (see gameStore.ts), so a mid-loop event exposed a
+   * torn snapshot where only some agents reflected the new tick and the
+   * rest were still last tick's values. Caught via a real gameplay
+   * screenshot showing an agent's location and current-task text from two
+   * different schedule blocks at once. The Map is now fully updated before
+   * a single event fires, so every listener always sees a consistent
+   * snapshot.
+   */
   static loadAgents(states: Record<AgentId, AgentState>): void {
+    let last: { id: AgentId; state: AgentState } | null = null;
     for (const id of AGENT_IDS) {
-      if (states[id]) this.setAgent(id, states[id]);
+      if (!states[id]) continue;
+      this.agents.set(id, states[id]);
+      last = { id, state: states[id] };
     }
+    if (last) EventBus.emit("agent:updated", last);
   }
 
   /** Applies an authoritative snapshot pushed from the backend over WebSocket. */

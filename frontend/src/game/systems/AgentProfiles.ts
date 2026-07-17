@@ -7,9 +7,21 @@ export interface AgentProfile {
   personality: string;
   homeLocation: AgentLocation;
   tint: number;
+  /** Small always-visible glyph rendered above the NPC's head — lets you
+   *  tell agents apart at a glance in rooms where several cluster together
+   *  (Brain Room, Meeting Room), without waiting for the proximity-gated
+   *  name tag. Frontend-only, no backend equivalent. */
+  badge: string;
+  /** Max wander distance (px) from home spawn, and the chance (0-1) of
+   *  pausing instead of picking a new wander target — both drawn from the
+   *  agent's personality blurb so idle movement itself reads as
+   *  distinct per agent, not just color. See AgentNPC.pickNewTarget(). */
+  wanderRadius: number;
+  idlePauseChance: number;
 }
 
-/** Static roster — mirrors backend/app/agents.py. Keep tints/homes in sync. */
+/** Static roster — mirrors backend/app/agents.py. Keep tints/homes in sync
+ *  (badge/wanderRadius/idlePauseChance are cosmetic/frontend-only). */
 export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
   scout: {
     id: "scout",
@@ -18,6 +30,9 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
     personality: "Curious. Always exploring.",
     homeLocation: "scout-office",
     tint: 0xbfe3ff,
+    badge: "\u{1F50D}",
+    wanderRadius: 60,
+    idlePauseChance: 0.15,
   },
   atlas: {
     id: "atlas",
@@ -26,6 +41,9 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
     personality: "Calm. Strategic. Rarely speaks. Makes decisions.",
     homeLocation: "meeting-room",
     tint: 0xffd166,
+    badge: "♟",
+    wanderRadius: 18,
+    idlePauseChance: 0.7,
   },
   echo: {
     id: "echo",
@@ -34,6 +52,9 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
     personality: "Loves charts. Frequently studies monitors.",
     homeLocation: "brain-room",
     tint: 0xb388ff,
+    badge: "\u{1F4C8}",
+    wanderRadius: 30,
+    idlePauseChance: 0.5,
   },
   nova: {
     id: "nova",
@@ -42,6 +63,9 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
     personality: "Reads books. Studies reports.",
     homeLocation: "brain-room",
     tint: 0x8fe3b0,
+    badge: "\u{1F4DA}",
+    wanderRadius: 25,
+    idlePauseChance: 0.55,
   },
   scribe: {
     id: "scribe",
@@ -49,7 +73,10 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
     occupation: "Company Historian",
     personality: "Meticulous. Quiet. Writes everything down.",
     homeLocation: "brain-room",
-    tint: 0xe0c68c,
+    tint: 0xd98fb3,
+    badge: "\u{1F4DC}",
+    wanderRadius: 15,
+    idlePauseChance: 0.75,
   },
 };
 

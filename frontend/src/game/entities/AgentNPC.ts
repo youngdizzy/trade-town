@@ -1,11 +1,11 @@
 import Phaser from "phaser";
-import { AnimatedActor } from "./AnimatedActor";
+import { AnimatedActor, screenGapToWorld } from "./AnimatedActor";
 import type { AgentId, Direction } from "@/types";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 
-const WANDER_RADIUS = 40;
 const WANDER_INTERVAL_MS = 3500;
 const ARRIVE_THRESHOLD = 4;
+const BADGE_SCREEN_GAP_PX = 26;
 
 /**
  * One AI employee's in-scene visual representation: wanders gently within
@@ -26,9 +26,20 @@ const ARRIVE_THRESHOLD = 4;
  * full React `DialogueBox` (owned by `DialogueManager`) — there is no
  * separate in-world speech bubble, to avoid two overlapping text UIs
  * firing off the same interact press.
+ *
+ * Every agent shares the same sprite sheet (the asset pack only ships
+ * one), so tint alone was not enough to tell agents apart at a glance in
+ * a crowded room. Each agent also gets an always-visible badge glyph
+ * above its head (unlike the name tag, never proximity-gated) and its own
+ * wander radius/idle-pause chance drawn from `AgentProfile` — Atlas
+ * barely moves, Scout roams widely, etc. — so identity reads through
+ * behavior too, not just color.
  */
 export class AgentNPC extends AnimatedActor {
   readonly agentId: AgentId;
+  private readonly badge: Phaser.GameObjects.Text;
+  private readonly wanderRadius: number;
+  private readonly idlePauseChance: number;
   private homeX: number;
   private homeY: number;
   private target: { x: number; y: number } | null = null;
@@ -38,11 +49,20 @@ export class AgentNPC extends AnimatedActor {
     const profile = AGENT_PROFILES[agentId];
     super(scene, x, y, "player/player", profile.name);
     this.agentId = agentId;
+    this.wanderRadius = profile.wanderRadius;
+    this.idlePauseChance = profile.idlePauseChance;
     this.sprite.setTint(profile.tint);
     this.homeX = x;
     this.homeY = y;
     this.sprite.play("player/player::idle-down");
     this.nameTag.setVisible(false);
+
+    this.badge = scene.add
+      .text(x, y - screenGapToWorld(scene, BADGE_SCREEN_GAP_PX), profile.badge, {
+        fontSize: "14px",
+      })
+      .setOrigin(0.5, 1)
+      .setDepth(20);
 
     this.wanderTimer = scene.time.addEvent({
       delay: WANDER_INTERVAL_MS,
@@ -53,12 +73,12 @@ export class AgentNPC extends AnimatedActor {
   }
 
   private pickNewTarget(): void {
-    if (Math.random() < 0.4) {
+    if (Math.random() < this.idlePauseChance) {
       this.target = null; // Pause and idle sometimes instead of always wandering.
       return;
     }
     const angle = Math.random() * Math.PI * 2;
-    const radius = Math.random() * WANDER_RADIUS;
+    const radius = Math.random() * this.wanderRadius;
     this.target = {
       x: this.homeX + Math.cos(angle) * radius,
       y: this.homeY + Math.sin(angle) * radius,
@@ -86,6 +106,7 @@ export class AgentNPC extends AnimatedActor {
       this.playAnim(false);
     }
     this.syncNameTag();
+    this.badge.setPosition(this.sprite.x, this.sprite.y - screenGapToWorld(this.scene, BADGE_SCREEN_GAP_PX));
   }
 
   isNear(x: number, y: number, radius = 28): boolean {
@@ -94,6 +115,7 @@ export class AgentNPC extends AnimatedActor {
 
   override destroy(): void {
     this.wanderTimer.destroy();
+    this.badge.destroy();
     super.destroy();
   }
 }

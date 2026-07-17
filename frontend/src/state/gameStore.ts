@@ -89,8 +89,14 @@ class GameStore {
     EventBus.on("settings:changed", (settings) => this.set({ settings }));
     EventBus.on("ui:pause", ({ paused }) => this.set({ paused }));
     EventBus.on("ui:settings", ({ open }) => this.set({ settingsOpen: open }));
-    EventBus.on("ui:newspaper", ({ open }) => this.set({ newspaperOpen: open }));
-    EventBus.on("ui:companyMemory", ({ open }) => this.set({ companyMemoryOpen: open }));
+    // Newspaper and Company Memory are both full-screen world-interaction
+    // overlays with independent open/close events and no shared owner, so
+    // nothing previously stopped both being open at once — closing
+    // whichever one was on top (it renders last, so it's visually on top;
+    // see App.tsx) would silently reveal the other one still open
+    // underneath. Opening either now closes the other.
+    EventBus.on("ui:newspaper", ({ open }) => this.set({ newspaperOpen: open, companyMemoryOpen: open ? false : this.state.companyMemoryOpen }));
+    EventBus.on("ui:companyMemory", ({ open }) => this.set({ companyMemoryOpen: open, newspaperOpen: open ? false : this.state.newspaperOpen }));
     EventBus.on("net:status", ({ connected }) => this.set({ netConnected: connected }));
     EventBus.on("scene:ready", ({ scene }) => this.set({ currentScene: scene }));
 

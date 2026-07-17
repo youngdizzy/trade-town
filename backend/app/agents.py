@@ -59,7 +59,7 @@ AGENT_PROFILES: dict[AgentId, AgentProfile] = {
         occupation="Company Historian",
         personality="Meticulous. Quiet. Writes everything down.",
         home_location="brain-room",
-        tint=0xE0C68C,
+        tint=0xD98FB3,
     ),
 }
 

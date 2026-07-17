@@ -164,14 +164,29 @@ def _replace_working_task(
     new one. Shared by _tick_agent (schedule-driven task changes) and
     _maybe_call_meeting (a meeting starting is also a task change) so the
     "complete the old one, start the new one" bookkeeping lives in one
-    place."""
+    place.
+
+    An agent's override can end (schedule-driven task change via
+    _tick_agent) and that same agent can be drawn into a brand-new meeting
+    (_maybe_call_meeting) within the same tick — both call this function
+    for the same agent/day/hour/minute, which would otherwise produce two
+    Task objects with an identical id (a real bug: React keys collided on
+    e.g. "task-scribe-1-17-20"). Disambiguate with a numeric suffix on
+    collision rather than changing the id format for the common case."""
     for existing in tasks:
         if existing.owner == agent_id and existing.status == "working":
             existing.status = "completed"
             existing.completed_at = now
+    base_id = f"task-{agent_id}-{day}-{hour}-{minute}"
+    existing_ids = {t.id for t in tasks}
+    task_id = base_id
+    suffix = 2
+    while task_id in existing_ids:
+        task_id = f"{base_id}-{suffix}"
+        suffix += 1
     tasks.append(
         Task(
-            id=f"task-{agent_id}-{day}-{hour}-{minute}",
+            id=task_id,
             owner=agent_id,
             category=category,
             priority=priority,
@@ -265,7 +280,13 @@ def _tick_agent(
         update={
             "transform": agent.transform.model_copy(update={"scene": LOCATION_TO_SCENE[location]}),
             "location": location,
-            "currentTask": task_label,
+            # "current_task", not the "currentTask" wire alias — model_copy(update=...)
+            # does not resolve aliases (see the Gotcha note at the bottom of this file).
+            # Using the alias here silently froze every agent's currentTask at whatever
+            # _default_agent_state() set it to, forever, while location kept updating
+            # normally — caught via a raw WS probe showing Atlas stuck on "Reviewing
+            # overnight strategy" through location changes across break/meeting cycles.
+            "current_task": task_label,
             "mood": mood,
             "energy": energy,
             "memory": memory,
@@ -318,7 +339,7 @@ def _maybe_call_meeting(
             update={
                 "override": AgentOverride(location="meeting-room", reason="meeting", remainingMinutes=MEETING_DURATION_MINUTES),
                 "location": "meeting-room",
-                "currentTask": "In a meeting",
+                "current_task": "In a meeting",  # field name, not the "currentTask" alias — see Gotcha note.
                 "transform": agents[aid].transform.model_copy(update={"scene": "MeetingRoomScene"}),
             }
         )
