@@ -87,6 +87,27 @@ development milestones, not semver releases.
   starting a new dialogue are now mutually exclusive, and `RoomScene`
   ignores E entirely while a dialogue is already open (the dialogue UI's
   own key handling owns the press instead).
+- **Overlapping name tags when two agents cluster near each other**:
+  distance-to-player tag visibility alone wasn't enough — Brain Room
+  regularly holds all four agents at once, and two of them standing near
+  *each other* (not just near the player) could both pass the radius
+  check and show overlapping tags simultaneously (e.g. "EchoNova"). Tag
+  visibility is now decided once per frame by `RoomScene`, which shows at
+  most one tag — whichever agent is nearest the player — instead of each
+  `AgentNPC` deciding independently.
+- **Market Status/newspaper "Market Headlines" went permanently empty
+  after enough play time**: two independent caps on the shared `news`
+  list both trimmed strictly by recency across *all* categories combined.
+  Discovery news fires far more often than market or company news (it's
+  tied to every task-changing event across four agents, not a flat
+  per-tick roll), so within roughly a day of game time discovery news
+  crowded every market headline out of both the persisted list
+  (`nexus.py`, `MAX_NEWS` → per-category `MAX_NEWS_PER_CATEGORY` via a new
+  `_trim_news()`) and, independently, the WS broadcast shaping
+  (`ws_manager.py`'s `build_state_message()` re-sliced to a flat "last
+  10" on top of that). Fixed both: the persisted list now keeps the most
+  recent items *per category*, and the broadcast sends that
+  already-bounded list as-is instead of re-truncating it.
 - **Duplicate/overlapping interact UI**: the old single-Scout interact
   handler opened both a full `DialogueBox` conversation and a separate
   in-world floating speech bubble showing the same first line — visually

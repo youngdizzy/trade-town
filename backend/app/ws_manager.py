@@ -17,7 +17,13 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         "tasks": [t.model_dump(by_alias=True) for t in state.tasks[-20:]],
         "whiteboards": state.whiteboards,
         "meeting": state.meeting.model_dump(by_alias=True),
-        "news": [n.model_dump(by_alias=True) for n in state.news[-10:]],
+        # state.news is already bounded per-category by nexus._trim_news()
+        # (see MAX_NEWS_PER_CATEGORY) — re-slicing to a flat "last 10" here
+        # would undo that balance, since discovery news fires far more
+        # often than market/company news and would crowd the rarer
+        # categories back out of the window. Send the whole (already
+        # small) list instead.
+        "news": [n.model_dump(by_alias=True) for n in state.news],
     }
 
 

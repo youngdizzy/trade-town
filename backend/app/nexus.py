@@ -35,7 +35,13 @@ from app.schemas import (
 
 MAX_MEMORY = 50
 MAX_TASKS = 60
-MAX_NEWS = 25
+# Per-category, not a single shared cap: discovery news fires far more
+# often than market/company news (it's tied to every task-changing event
+# across four agents, vs. a flat per-tick roll for market headlines), so a
+# single shared cap would eventually let discovery evict every market
+# headline during normal play, leaving the Market Status panel
+# permanently empty. See _trim_news().
+MAX_NEWS_PER_CATEGORY = 8
 
 MEETING_CHANCE_PER_TICK = 0.03
 MEETING_DURATION_MINUTES = 20
@@ -237,6 +243,21 @@ def _maybe_call_meeting(agents: dict[AgentId, AgentState], meeting: MeetingState
     return updated, MeetingState(active=True, participants=list(attendees))
 
 
+def _trim_news(news: list[NewsItem]) -> list[NewsItem]:
+    """Keep the most recent MAX_NEWS_PER_CATEGORY items per category
+    instead of one global cap on the combined list, so a burst of
+    discovery news can't evict every market/company headline. Relative
+    chronological order is preserved."""
+    counts: dict[str, int] = {}
+    keep: list[NewsItem] = []
+    for item in reversed(news):
+        counts[item.category] = counts.get(item.category, 0) + 1
+        if counts[item.category] <= MAX_NEWS_PER_CATEGORY:
+            keep.append(item)
+    keep.reverse()
+    return keep
+
+
 def _update_whiteboards(agents: dict[AgentId, AgentState], meeting: MeetingState) -> dict[str, str]:
     working = sum(1 for a in agents.values() if a.location not in RESTFUL_LOCATIONS)
     return {
@@ -269,7 +290,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "time": new_time,
             "agents": agents,
             "tasks": tasks[-MAX_TASKS:],
-            "news": news[-MAX_NEWS:],
+            "news": _trim_news(news),
             "meeting": meeting,
             "whiteboards": _update_whiteboards(agents, meeting),
             "updatedAt": _now_iso(),

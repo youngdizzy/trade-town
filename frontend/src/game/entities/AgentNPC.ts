@@ -6,25 +6,26 @@ import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 const WANDER_RADIUS = 40;
 const WANDER_INTERVAL_MS = 3500;
 const ARRIVE_THRESHOLD = 4;
-/**
- * Rooms like Brain Room and Meeting Room can legitimately hold all four
- * agents at once (that's the "Mission Control"/meeting design intent), but
- * their sprites sit closer together than a name tag is wide. Rather than
- * fight that with ever-increasing spacing, tags only show up close — the
- * same convention as Stardew-style top-down games — so a crowded room
- * reads as a crowd instead of a wall of overlapping text.
- */
-const NAME_TAG_VISIBLE_RADIUS = 32;
 
 /**
  * One AI employee's in-scene visual representation: wanders gently within
- * whatever room it's currently spawned in and shows a name tag when the
- * player is nearby (interacting opens the full DialogueBox, owned by
- * DialogueManager, rather than an in-world bubble). Task/mood/energy/
- * location are all owned by NPCManager (server-authoritative via NEXUS);
- * this class only handles rendering and idle wander movement. Used for all
- * four agents — the only per-agent differences are the id (for tint/label
+ * whatever room it's currently spawned in. Task/mood/energy/location are
+ * all owned by NPCManager (server-authoritative via NEXUS); this class
+ * only handles rendering and idle wander movement. Used for all four
+ * agents — the only per-agent differences are the id (for tint/label
  * lookup) and where the scene spawns it.
+ *
+ * Name tag visibility is *not* decided here — see RoomScene, which shows
+ * at most one tag at a time (whichever agent is nearest the player).
+ * Rooms like Brain Room and Meeting Room can legitimately hold all four
+ * agents at once (that's the "Mission Control"/meeting design intent),
+ * and their sprites sit closer together than a name tag is wide; if every
+ * agent within some radius of the player showed its own tag independently,
+ * two agents that are merely near *each other* (not just near the player)
+ * would still produce overlapping, unreadable text. Interacting opens the
+ * full React `DialogueBox` (owned by `DialogueManager`) — there is no
+ * separate in-world speech bubble, to avoid two overlapping text UIs
+ * firing off the same interact press.
  */
 export class AgentNPC extends AnimatedActor {
   readonly agentId: AgentId;
@@ -64,7 +65,7 @@ export class AgentNPC extends AnimatedActor {
     };
   }
 
-  update(playerX: number, playerY: number): void {
+  update(): void {
     if (this.target) {
       const dx = this.target.x - this.sprite.x;
       const dy = this.target.y - this.sprite.y;
@@ -85,7 +86,6 @@ export class AgentNPC extends AnimatedActor {
       this.playAnim(false);
     }
     this.syncNameTag();
-    this.nameTag.setVisible(this.isNear(playerX, playerY, NAME_TAG_VISIBLE_RADIUS));
   }
 
   isNear(x: number, y: number, radius = 28): boolean {

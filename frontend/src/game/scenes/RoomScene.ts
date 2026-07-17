@@ -15,6 +15,16 @@ import { gameStore } from "@/state/gameStore";
 const TILE_SIZE = 16;
 
 /**
+ * How close the player must be to an agent before its name tag shows.
+ * Only the single *nearest* agent within this radius ever shows a tag (see
+ * the tag-visibility block in `update()`) — rooms like Brain Room can
+ * legitimately hold all four agents clustered together, and two agents
+ * that are near each other (not just near the player) would otherwise
+ * both light up their tags and produce overlapping, unreadable text.
+ */
+const NAME_TAG_RADIUS = 36;
+
+/**
  * Shared base for every enterable interior room (Scout Office, CEO Office,
  * Brain Room, Meeting Room, Break Room). Handles the floor, perimeter
  * walls, player spawn, camera, pause key, the door back to the Lobby, and
@@ -100,7 +110,12 @@ export abstract class RoomScene extends Phaser.Scene {
 
   update(): void {
     this.player.update();
-    for (const agent of this.agents.values()) agent.update(this.player.x, this.player.y);
+    for (const agent of this.agents.values()) agent.update();
+
+    const nearestForTag = this.nearestAgent(NAME_TAG_RADIUS);
+    for (const agent of this.agents.values()) {
+      agent.nameTag.setVisible(agent === nearestForTag);
+    }
 
     GameManager.getInstance()?.setPlayerTransform({
       scene: this.sceneKey,
