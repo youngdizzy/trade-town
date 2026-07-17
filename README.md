@@ -1,15 +1,20 @@
-# TradeTown — v0.1
+# TradeTown — v0.2
 
 TradeTown is a pixel-art AI investment company simulation. You play the
-CEO, walking around a small headquarters while an AI research employee
-(Scout) works his schedule — scanning market news, back-testing strategies,
-and reviewing positions — live, in the background, whether or not you're
+CEO, walking around a small headquarters while a team of four AI employees —
+Scout, Atlas, Echo, and Nova — work their schedules, hold meetings, take
+breaks, and log discoveries live, in the background, whether or not you're
 watching. Think Stardew Valley's overworld crossed with a Bloomberg
 terminal's sense of "the market never sleeps."
 
-This is **version 0.1**: one employee (Scout), four rooms, a save/load
-system, and a live backend simulation. See [`docs/Architecture.md`](docs/Architecture.md)
-for what's deliberately deferred to a future version.
+This is **version 0.2**: four employees with distinct personalities and
+daily routines, five rooms (Scout Office, CEO Office, Brain Room "Mission
+Control", Meeting Room, Break Room), a reusable Task system, a NEXUS
+orchestrator that assigns tasks and calls occasional meetings, whiteboards
+and a newspaper stand that update live from company events, and an extended
+save/load system. See [`docs/Architecture.md`](docs/Architecture.md) for
+what's deliberately deferred to a future version, and
+[`CHANGELOG.md`](CHANGELOG.md) for what changed since v0.1.
 
 ## Quick start (Docker — recommended)
 
@@ -22,8 +27,9 @@ required. The stack is:
 
 - **frontend**: an nginx container serving the built React/Phaser app and
   reverse-proxying `/api` and `/ws` to the backend.
-- **backend**: FastAPI + SQLite, running a background simulation loop that
-  keeps Scout's schedule and the game clock ticking.
+- **backend**: FastAPI + SQLite, running a background simulation loop
+  (NEXUS) that keeps all four agents' schedules, tasks, meetings, and the
+  game clock ticking.
 
 To change the host port, copy `.env.example` to `.env` and set `HTTP_PORT`.
 
@@ -58,7 +64,7 @@ The frontend's Vite dev server proxies `/api` and `/ws` to
 ## Controls
 
 - **WASD / Arrow keys** — move
-- **E** — interact (enter a building, talk to Scout, exit a room)
+- **E** — interact (enter a building, talk to an agent, read the newspaper, exit a room)
 - **Esc** — pause
 
 ## Project layout
@@ -80,6 +86,7 @@ docs/                      Architecture, folder structure, developer guide
 - [`docs/Architecture.md`](docs/Architecture.md) — systems, data flow, why things are built this way
 - [`docs/FolderStructure.md`](docs/FolderStructure.md) — annotated directory tree
 - [`docs/DeveloperGuide.md`](docs/DeveloperGuide.md) — day-to-day dev workflow, adding a scene/NPC/asset, deployment
+- [`CHANGELOG.md`](CHANGELOG.md) — what changed each version
 
 ## Asset license
 
@@ -91,6 +98,8 @@ appropriately licensed or original art first.
 
 ## Status
 
-Version 0.1 is feature-complete per the milestone checklist (see
-`docs/Architecture.md#version-01-scope`). Development stops here until the
-next milestone is scoped.
+Version 0.2 is feature-complete per the milestone checklist (see
+`docs/Architecture.md#version-02-scope`). Development stops here until the
+next milestone is scoped. **Note:** the save format changed in v0.2 (see
+`CHANGELOG.md`) — a v0.1 save will not load; the backend detects the
+mismatch and starts fresh rather than crashing.

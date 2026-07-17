@@ -13,9 +13,9 @@ router = APIRouter(prefix="/api", tags=["save"])
 
 @router.get("/load", response_model=GameSaveState)
 async def load_game() -> GameSaveState:
-    """Returns the current authoritative game state (server-tracked Scout/time,
-    plus the last-known player position/settings/dialogue). There is always a
-    valid state to return — a fresh deployment simply returns sensible defaults."""
+    """Returns the current authoritative game state (server-tracked agents/tasks/
+    time, plus the last-known player position/settings/dialogue). There is always
+    a valid state to return — a fresh deployment simply returns sensible defaults."""
     return await game_state.snapshot()
 
 

@@ -5,6 +5,8 @@ import { DialogueBox } from "@/ui/components/DialogueBox";
 import { SettingsMenu } from "@/ui/components/SettingsMenu";
 import { PauseMenu } from "@/ui/components/PauseMenu";
 import { DebugOverlay } from "@/ui/components/DebugOverlay";
+import { BrainRoomHud } from "@/ui/components/BrainRoomHud";
+import { Newspaper } from "@/ui/components/Newspaper";
 
 export default function App() {
   return (
@@ -12,7 +14,9 @@ export default function App() {
       <GameCanvas />
       <TopStatusBar />
       <DebugOverlay />
+      <BrainRoomHud />
       <DialogueBox />
+      <Newspaper />
       <BottomToolbar />
       <PauseMenu />
       <SettingsMenu />

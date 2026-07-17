@@ -1,41 +1,56 @@
-import type { ScoutState, TimeState } from "@/types";
+import type { AgentId, AgentState, TimeState } from "@/types";
+import { AGENT_IDS } from "@/types";
+import { AGENT_PROFILES, LOCATION_TO_SCENE } from "./AgentProfiles";
 import { scheduleBlockForHour } from "./Schedule";
 import { EventBus } from "./EventBus";
 
-const DEFAULT_SCOUT: ScoutState = {
-  transform: { scene: "ScoutOfficeScene", x: 128, y: 96, facing: "down" },
-  location: "scout-office",
-  currentTask: "Scanning market news",
-  mood: 65,
-  energy: 80,
-  memory: [],
-};
+function defaultAgentState(id: AgentId): AgentState {
+  const profile = AGENT_PROFILES[id];
+  const block = scheduleBlockForHour(id, 8);
+  return {
+    transform: { scene: LOCATION_TO_SCENE[profile.homeLocation], x: 100, y: 80, facing: "down" },
+    location: profile.homeLocation,
+    currentTask: block.task,
+    mood: 65,
+    energy: 80,
+    memory: [],
+    override: null,
+  };
+}
 
 /**
- * Registry of NPC simulation state. Only Scout exists in v0.1, but the API
- * is keyed by npc id so adding a second employee later doesn't require
- * restructuring this manager.
+ * Registry of NPC simulation state, keyed by agent id. Backend NEXUS is
+ * authoritative; this mirrors whatever it last broadcast and falls back to
+ * a local per-agent schedule simulation while offline.
  */
 export class NPCManager {
-  private static npcs = new Map<string, ScoutState>([["scout", DEFAULT_SCOUT]]);
+  private static agents = new Map<AgentId, AgentState>(AGENT_IDS.map((id) => [id, defaultAgentState(id)]));
   private static offlineTickHandle: number | null = null;
 
-  static getScout(): ScoutState {
-    return this.npcs.get("scout")!;
+  static getAgent(id: AgentId): AgentState {
+    return this.agents.get(id)!;
   }
 
-  static setScout(state: ScoutState): void {
-    this.npcs.set("scout", state);
-    EventBus.emit("scout:updated", state);
+  static getAllAgents(): Record<AgentId, AgentState> {
+    const result = {} as Record<AgentId, AgentState>;
+    for (const id of AGENT_IDS) result[id] = this.agents.get(id)!;
+    return result;
   }
 
-  static loadScout(state: ScoutState): void {
-    this.setScout(state);
+  static setAgent(id: AgentId, state: AgentState): void {
+    this.agents.set(id, state);
+    EventBus.emit("agent:updated", { id, state });
+  }
+
+  static loadAgents(states: Record<AgentId, AgentState>): void {
+    for (const id of AGENT_IDS) {
+      if (states[id]) this.setAgent(id, states[id]);
+    }
   }
 
   /** Applies an authoritative snapshot pushed from the backend over WebSocket. */
-  static applyServerUpdate(state: ScoutState): void {
-    this.setScout(state);
+  static applyServerUpdate(states: Record<AgentId, AgentState>): void {
+    this.loadAgents(states);
   }
 
   /** Local simulation fallback used only while disconnected from the backend. */
@@ -43,16 +58,19 @@ export class NPCManager {
     if (this.offlineTickHandle !== null) return;
     this.offlineTickHandle = window.setInterval(() => {
       const time = getTime();
-      const block = scheduleBlockForHour(time.hour);
-      const current = this.getScout();
-      const next: ScoutState = {
-        ...current,
-        location: block.location,
-        currentTask: block.task,
-        energy: Math.max(10, Math.min(100, current.energy + (block.task === "Resting" ? 4 : -1))),
-        mood: Math.max(10, Math.min(100, current.mood + (Math.random() > 0.5 ? 1 : -1))),
-      };
-      this.setScout(next);
+      for (const id of AGENT_IDS) {
+        const block = scheduleBlockForHour(id, time.hour);
+        const current = this.getAgent(id);
+        const next: AgentState = {
+          ...current,
+          location: block.location,
+          currentTask: block.task,
+          transform: { ...current.transform, scene: LOCATION_TO_SCENE[block.location] },
+          energy: Math.max(10, Math.min(100, current.energy + (block.task === "Resting" ? 4 : -1))),
+          mood: Math.max(10, Math.min(100, current.mood + (Math.random() > 0.5 ? 1 : -1))),
+        };
+        this.setAgent(id, next);
+      }
     }, 5000);
   }
 

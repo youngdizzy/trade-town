@@ -1,8 +1,12 @@
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { TimeManager } from "@/game/systems/TimeManager";
+import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
+import type { AgentId } from "@/types";
+
+const AGENT_ORDER: AgentId[] = ["scout", "atlas", "echo", "nova"];
 
 export function TopStatusBar() {
-  const { time, scout, netConnected, currentScene } = useGameStore();
+  const { time, agents, meeting, netConnected, currentScene } = useGameStore();
   const inGame = currentScene !== "MainMenuScene";
   if (!inGame) return null;
 
@@ -11,16 +15,25 @@ export function TopStatusBar() {
       <div className="pointer-events-auto flex items-center gap-3 rounded bg-panel/80 px-3 py-1.5 shadow-pixel">
         <span className="text-gold">TradeTown HQ</span>
         <span className="opacity-70">{TimeManager.formatClock(time)}</span>
+        {meeting.active && <span className="rounded bg-gold/20 px-1.5 py-0.5 text-gold">Meeting in progress</span>}
       </div>
 
-      {scout && (
-        <div className="pointer-events-auto flex items-center gap-4 rounded bg-panel/80 px-3 py-1.5 shadow-pixel">
-          <span className="text-gold">Scout</span>
-          <StatBar label="Mood" value={scout.mood} color="bg-bullish" />
-          <StatBar label="Energy" value={scout.energy} color="bg-gold" />
-          <span className="max-w-[220px] truncate opacity-80" title={scout.currentTask}>
-            {scout.currentTask}
-          </span>
+      {agents && (
+        <div className="pointer-events-auto flex items-center gap-3 rounded bg-panel/80 px-3 py-1.5 shadow-pixel">
+          {AGENT_ORDER.map((id) => {
+            const profile = AGENT_PROFILES[id];
+            const agent = agents[id];
+            return (
+              <div
+                key={id}
+                className="flex items-center gap-1.5"
+                title={`${profile.name} (${profile.occupation}) — ${agent.currentTask}\nMood ${Math.round(agent.mood)} · Energy ${Math.round(agent.energy)}`}
+              >
+                <span className="h-2.5 w-2.5 rounded-full border border-black/40" style={{ backgroundColor: `#${profile.tint.toString(16).padStart(6, "0")}` }} />
+                <span className="hidden opacity-80 sm:inline">{profile.name}</span>
+              </div>
+            );
+          })}
         </div>
       )}
 
@@ -30,17 +43,6 @@ export function TopStatusBar() {
           title={netConnected ? "Connected to backend" : "Offline (local simulation)"}
         />
         <span className="opacity-70">{netConnected ? "Live" : "Offline"}</span>
-      </div>
-    </div>
-  );
-}
-
-function StatBar({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div className="flex items-center gap-1.5" title={`${label}: ${Math.round(value)}`}>
-      <span className="opacity-60">{label}</span>
-      <div className="h-2 w-16 overflow-hidden rounded-sm bg-ink">
-        <div className={`h-full ${color}`} style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
       </div>
     </div>
   );

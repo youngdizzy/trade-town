@@ -5,15 +5,14 @@
     "kind": "spritesheet",
     "frameWidth": 32,
     "frameHeight": 32,
+    "_comment": "This sheet only has 6 real movement rows (0-5) — verified by visually inspecting every row/frame (see docs/Architecture.md 'Sprite sheet notes'). Rows 6-8 are attack/action poses (sword frames) and row 9 is a faint/death pose, not walk cycles. There is no dedicated right-facing row: right movement is idle-left/walk-left played with the sprite horizontally flipped (see AnimatedActor.playAnim).",
     "animations": {
       "idle-down": { "row": 0, "frameCount": 6, "frameRate": 4, "repeat": -1 },
       "walk-down": { "row": 1, "frameCount": 6, "frameRate": 8, "repeat": -1 },
       "idle-up": { "row": 2, "frameCount": 6, "frameRate": 4, "repeat": -1 },
-      "walk-up": { "row": 3, "frameCount": 6, "frameRate": 8, "repeat": -1 },
-      "idle-left": { "row": 4, "frameCount": 6, "frameRate": 4, "repeat": -1 },
-      "walk-left": { "row": 5, "frameCount": 6, "frameRate": 8, "repeat": -1 },
-      "idle-right": { "row": 6, "frameCount": 6, "frameRate": 4, "repeat": -1 },
-      "walk-right": { "row": 7, "frameCount": 6, "frameRate": 8, "repeat": -1 }
+      "idle-left": { "row": 3, "frameCount": 6, "frameRate": 4, "repeat": -1 },
+      "walk-left": { "row": 4, "frameCount": 6, "frameRate": 8, "repeat": -1 },
+      "walk-up": { "row": 5, "frameCount": 6, "frameRate": 8, "repeat": -1 }
     }
   },
 

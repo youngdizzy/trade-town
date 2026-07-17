@@ -52,9 +52,17 @@ export class AnimatedActor {
       .setDepth(20);
   }
 
+  /**
+   * This sheet has no dedicated right-facing row (see animation-config.json)
+   * — right movement reuses the left-facing animation with the sprite
+   * mirrored horizontally, which is the standard Phaser approach for
+   * asset packs that only ship one side direction.
+   */
   protected playAnim(moving: boolean): void {
     const state = moving ? "walk" : "idle";
-    const key = AssetLoader.animKey(this.assetId, `${state}-${this.facing}`);
+    const animFacing = this.facing === "right" ? "left" : this.facing;
+    this.sprite.setFlipX(this.facing === "right");
+    const key = AssetLoader.animKey(this.assetId, `${state}-${animFacing}`);
     if (this.scene.anims.exists(key) && this.sprite.anims.currentAnim?.key !== key) {
       this.sprite.play(key, true);
     }

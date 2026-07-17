@@ -25,12 +25,14 @@ tradetown/
 │       │   ├── animation-config.json     Hand-authored frame/animation metadata
 │       │   └── manifest.generated.json   Generated — do not edit by hand
 │       ├── game/
-│       │   ├── systems/           GameManager, SceneManager, NPCManager, DialogueManager,
-│       │   │                      SaveManager, AssetLoader, InputManager, CameraManager,
-│       │   │                      EventBus, TimeManager, SettingsManager, Schedule, TileWorld
-│       │   ├── entities/          AnimatedActor (base), PlayerController, ScoutNPC
+│       │   ├── systems/           GameManager, SceneManager, NPCManager, NexusManager,
+│       │   │                      AgentProfiles, DialogueManager, SaveManager, AssetLoader,
+│       │   │                      InputManager, CameraManager, EventBus, TimeManager,
+│       │   │                      SettingsManager, Schedule, TileWorld
+│       │   ├── entities/          AnimatedActor (base), PlayerController, AgentNPC, Whiteboard
 │       │   └── scenes/            BootScene, PreloadScene, MainMenuScene, LobbyScene,
-│       │                          RoomScene (base), ScoutOfficeScene, CeoOfficeScene, BrainRoomScene
+│       │                          RoomScene (base), ScoutOfficeScene, CeoOfficeScene,
+│       │                          BrainRoomScene, MeetingRoomScene, BreakRoomScene
 │       ├── net/
 │       │   ├── api.ts             REST client (save/load/health)
 │       │   └── socket.ts          WebSocket client with reconnect + offline fallback wiring
@@ -38,7 +40,7 @@ tradetown/
 │       │   └── gameStore.ts       EventBus → React bridge (useSyncExternalStore)
 │       └── ui/
 │           ├── components/        GameCanvas, TopStatusBar, BottomToolbar, DialogueBox,
-│           │                      SettingsMenu, PauseMenu
+│           │                      SettingsMenu, PauseMenu, BrainRoomHud, Newspaper
 │           └── hooks/useGameStore.ts
 │
 ├── backend/
@@ -50,10 +52,12 @@ tradetown/
 │       ├── main.py                FastAPI app, lifespan (DB init, load save, start sim loop)
 │       ├── config.py              Env-var-driven settings
 │       ├── schemas.py             Pydantic models mirroring frontend/src/types.ts
-│       ├── schedule.py            Scout's authoritative daily routine
-│       ├── state.py               In-memory authoritative GameState + tick()
+│       ├── agents.py              Per-agent profile data (name/occupation/personality/home/tint)
+│       ├── schedule.py            Every agent's authoritative daily routine
+│       ├── nexus.py               NEXUS: task assignment, meetings, breaks, whiteboards, news
+│       ├── state.py               In-memory authoritative GameState + tick() (delegates to nexus.py)
 │       ├── sim.py                 Background tick/broadcast/persist loop
-│       ├── ws_manager.py          WebSocket connection registry + broadcast
+│       ├── ws_manager.py          WebSocket connection registry + broadcast (build_state_message)
 │       ├── db.py, models.py, persistence.py   SQLAlchemy engine/models/save read-write
 │       └── routers/
 │           ├── health.py          GET /api/health

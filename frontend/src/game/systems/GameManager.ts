@@ -7,6 +7,8 @@ import { LobbyScene } from "@/game/scenes/LobbyScene";
 import { ScoutOfficeScene } from "@/game/scenes/ScoutOfficeScene";
 import { CeoOfficeScene } from "@/game/scenes/CeoOfficeScene";
 import { BrainRoomScene } from "@/game/scenes/BrainRoomScene";
+import { MeetingRoomScene } from "@/game/scenes/MeetingRoomScene";
+import { BreakRoomScene } from "@/game/scenes/BreakRoomScene";
 import { EventBus } from "./EventBus";
 
 const DEFAULT_PLAYER_TRANSFORM: EntityTransform = {
@@ -45,7 +47,17 @@ export class GameManager {
         width: "100%",
         height: "100%",
       },
-      scene: [BootScene, PreloadScene, MainMenuScene, LobbyScene, ScoutOfficeScene, CeoOfficeScene, BrainRoomScene],
+      scene: [
+        BootScene,
+        PreloadScene,
+        MainMenuScene,
+        LobbyScene,
+        ScoutOfficeScene,
+        CeoOfficeScene,
+        BrainRoomScene,
+        MeetingRoomScene,
+        BreakRoomScene,
+      ],
     });
   }
 

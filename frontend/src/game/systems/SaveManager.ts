@@ -3,6 +3,7 @@ import { api } from "@/net/api";
 import { EventBus } from "./EventBus";
 import { GameManager } from "./GameManager";
 import { NPCManager } from "./NPCManager";
+import { NexusManager } from "./NexusManager";
 import { TimeManager } from "./TimeManager";
 import { SettingsManager } from "./SettingsManager";
 import { dialogueManager } from "./DialogueManager";
@@ -21,9 +22,13 @@ export class SaveManager {
   static buildSnapshot(): GameSaveState {
     const game = GameManager.getInstance();
     return {
-      version: "0.1",
+      version: "0.2",
       player: game?.playerTransform ?? { scene: "LobbyScene", x: 160, y: 160, facing: "down" },
-      scout: NPCManager.getScout(),
+      agents: NPCManager.getAllAgents(),
+      tasks: NexusManager.getTasks(),
+      whiteboards: NexusManager.getAllWhiteboards(),
+      meeting: NexusManager.getMeeting(),
+      news: NexusManager.getNews(),
       time: TimeManager.current,
       settings: SettingsManager.current,
       dialogueHistory: dialogueManager.getHistory(),
@@ -60,7 +65,8 @@ export class SaveManager {
   }
 
   static applyState(state: GameSaveState): void {
-    NPCManager.loadScout(state.scout);
+    NPCManager.loadAgents(state.agents);
+    NexusManager.loadFromSave(state);
     TimeManager.setFromServer(state.time);
     SettingsManager.update(state.settings);
     dialogueManager.loadHistory(state.dialogueHistory);

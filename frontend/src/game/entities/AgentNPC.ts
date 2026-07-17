@@ -1,32 +1,47 @@
 import Phaser from "phaser";
-import { AnimatedActor, screenGapToWorld } from "./AnimatedActor";
-import type { Direction } from "@/types";
+import { AnimatedActor } from "./AnimatedActor";
+import type { AgentId, Direction } from "@/types";
+import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 
 const WANDER_RADIUS = 40;
 const WANDER_INTERVAL_MS = 3500;
 const ARRIVE_THRESHOLD = 4;
-const SPEECH_BUBBLE_SCREEN_GAP_PX = 95;
+/**
+ * Rooms like Brain Room and Meeting Room can legitimately hold all four
+ * agents at once (that's the "Mission Control"/meeting design intent), but
+ * their sprites sit closer together than a name tag is wide. Rather than
+ * fight that with ever-increasing spacing, tags only show up close — the
+ * same convention as Stardew-style top-down games — so a crowded room
+ * reads as a crowd instead of a wall of overlapping text.
+ */
+const NAME_TAG_VISIBLE_RADIUS = 32;
 
 /**
- * Scout, TradeTown's one AI research employee. Wanders gently within his
- * current room so the office feels alive, exposes a speech bubble on
- * interact, and always shows a name tag. His task/mood/energy are owned by
- * NPCManager (server-authoritative); this class is purely the in-scene
- * visual representation plus idle wander movement.
+ * One AI employee's in-scene visual representation: wanders gently within
+ * whatever room it's currently spawned in and shows a name tag when the
+ * player is nearby (interacting opens the full DialogueBox, owned by
+ * DialogueManager, rather than an in-world bubble). Task/mood/energy/
+ * location are all owned by NPCManager (server-authoritative via NEXUS);
+ * this class only handles rendering and idle wander movement. Used for all
+ * four agents — the only per-agent differences are the id (for tint/label
+ * lookup) and where the scene spawns it.
  */
-export class ScoutNPC extends AnimatedActor {
+export class AgentNPC extends AnimatedActor {
+  readonly agentId: AgentId;
   private homeX: number;
   private homeY: number;
   private target: { x: number; y: number } | null = null;
   private wanderTimer: Phaser.Time.TimerEvent;
-  private speechBubble: Phaser.GameObjects.Text | null = null;
 
-  constructor(scene: Phaser.Scene, x: number, y: number) {
-    super(scene, x, y, "player/player", "Scout");
-    this.sprite.setTint(0xbfe3ff);
+  constructor(scene: Phaser.Scene, x: number, y: number, agentId: AgentId) {
+    const profile = AGENT_PROFILES[agentId];
+    super(scene, x, y, "player/player", profile.name);
+    this.agentId = agentId;
+    this.sprite.setTint(profile.tint);
     this.homeX = x;
     this.homeY = y;
     this.sprite.play("player/player::idle-down");
+    this.nameTag.setVisible(false);
 
     this.wanderTimer = scene.time.addEvent({
       delay: WANDER_INTERVAL_MS,
@@ -49,7 +64,7 @@ export class ScoutNPC extends AnimatedActor {
     };
   }
 
-  update(): void {
+  update(playerX: number, playerY: number): void {
     if (this.target) {
       const dx = this.target.x - this.sprite.x;
       const dy = this.target.y - this.sprite.y;
@@ -70,35 +85,15 @@ export class ScoutNPC extends AnimatedActor {
       this.playAnim(false);
     }
     this.syncNameTag();
-    this.speechBubble?.setPosition(this.sprite.x, this.sprite.y - screenGapToWorld(this.scene, SPEECH_BUBBLE_SCREEN_GAP_PX));
+    this.nameTag.setVisible(this.isNear(playerX, playerY, NAME_TAG_VISIBLE_RADIUS));
   }
 
   isNear(x: number, y: number, radius = 28): boolean {
     return Phaser.Math.Distance.Between(this.sprite.x, this.sprite.y, x, y) <= radius;
   }
 
-  showSpeechBubble(text: string, durationMs = 2500): void {
-    this.speechBubble?.destroy();
-    this.speechBubble = this.scene.add
-      .text(this.sprite.x, this.sprite.y - screenGapToWorld(this.scene, SPEECH_BUBBLE_SCREEN_GAP_PX), text, {
-        fontFamily: "monospace",
-        fontSize: "9px",
-        color: "#241c14",
-        backgroundColor: "#f4e6c9",
-        padding: { x: 4, y: 3 },
-        wordWrap: { width: 120 },
-      })
-      .setOrigin(0.5, 1)
-      .setDepth(25);
-    this.scene.time.delayedCall(durationMs, () => {
-      this.speechBubble?.destroy();
-      this.speechBubble = null;
-    });
-  }
-
   override destroy(): void {
     this.wanderTimer.destroy();
-    this.speechBubble?.destroy();
     super.destroy();
   }
 }

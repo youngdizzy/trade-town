@@ -5,6 +5,21 @@ from typing import Any
 
 from fastapi import WebSocket
 
+from app.schemas import GameSaveState
+
+
+def build_state_message(state: GameSaveState) -> dict[str, Any]:
+    """Shared WS payload shape used both for the initial snapshot on connect and every sim tick."""
+    return {
+        "type": "state",
+        "time": state.time.model_dump(by_alias=True),
+        "agents": {aid: agent.model_dump(by_alias=True) for aid, agent in state.agents.items()},
+        "tasks": [t.model_dump(by_alias=True) for t in state.tasks[-20:]],
+        "whiteboards": state.whiteboards,
+        "meeting": state.meeting.model_dump(by_alias=True),
+        "news": [n.model_dump(by_alias=True) for n in state.news[-10:]],
+    }
+
 
 class ConnectionManager:
     def __init__(self) -> None:

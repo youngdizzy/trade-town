@@ -1,7 +1,8 @@
 import Phaser from "phaser";
-import type { ScoutLocation, SceneId } from "@/types";
+import type { AgentId, AgentLocation, SceneId } from "@/types";
+import { AGENT_IDS } from "@/types";
 import { PlayerController } from "@/game/entities/PlayerController";
-import { ScoutNPC } from "@/game/entities/ScoutNPC";
+import { AgentNPC } from "@/game/entities/AgentNPC";
 import { CameraManager } from "@/game/systems/CameraManager";
 import { SceneManager, type SceneTransitionData } from "@/game/systems/SceneManager";
 import { createGroundLayer, createPerimeterWalls, createZone } from "@/game/systems/TileWorld";
@@ -9,13 +10,15 @@ import { EventBus } from "@/game/systems/EventBus";
 import { GameManager } from "@/game/systems/GameManager";
 import { NPCManager } from "@/game/systems/NPCManager";
 import { dialogueManager } from "@/game/systems/DialogueManager";
+import { gameStore } from "@/state/gameStore";
 
 const TILE_SIZE = 16;
 
 /**
  * Shared base for every enterable interior room (Scout Office, CEO Office,
- * Brain Room). Handles the floor, perimeter walls, player spawn, camera,
- * pause key, the door back to the Lobby, and Scout's presence/dialogue —
+ * Brain Room, Meeting Room, Break Room). Handles the floor, perimeter
+ * walls, player spawn, camera, pause key, the door back to the Lobby, and
+ * agent presence/dialogue for however many agents call this room home —
  * subclasses only declare their layout constants and add flavor via the
  * onBuild/onUpdate hooks.
  */
@@ -25,13 +28,13 @@ export abstract class RoomScene extends Phaser.Scene {
   protected abstract heightTiles: number;
   protected abstract floorAsset: string;
   protected abstract roomLabel: string;
-  /** Which schedule location this room represents, or null if Scout never appears here. */
-  protected abstract scoutLocation: ScoutLocation | null;
+  /** Which location this room represents; any agent currently at this location is spawned here. Null if agents never appear here. */
+  protected abstract agentLocation: AgentLocation | null;
 
   protected player!: PlayerController;
   protected doorZone!: Phaser.GameObjects.Zone;
   protected walls!: Phaser.Physics.Arcade.StaticGroup;
-  protected scout: ScoutNPC | null = null;
+  protected agents = new Map<AgentId, AgentNPC>();
   private widthPx = 0;
   private heightPx = 0;
 
@@ -89,14 +92,15 @@ export abstract class RoomScene extends Phaser.Scene {
       facing: "down",
     });
 
-    this.refreshScoutPresence();
+    this.refreshAgentPresence();
     this.onBuild(this.widthPx, this.heightPx);
     EventBus.emit("scene:ready", { scene: this.sceneKey });
+    EventBus.emit("room:entered", { scene: this.sceneKey });
   }
 
   update(): void {
     this.player.update();
-    this.scout?.update();
+    for (const agent of this.agents.values()) agent.update(this.player.x, this.player.y);
 
     GameManager.getInstance()?.setPlayerTransform({
       scene: this.sceneKey,
@@ -109,18 +113,39 @@ export abstract class RoomScene extends Phaser.Scene {
       GameManager.getInstance()?.togglePause();
     }
 
-    if (this.scout && this.player.interactPressed && this.scout.isNear(this.player.x, this.player.y)) {
-      const session = dialogueManager.startScoutConversation(NPCManager.getScout());
-      this.scout.showSpeechBubble(session.lines[0] ?? "...");
-    }
-
-    this.refreshScoutPresence();
+    // Phaser's JustDown() consumes the "just pressed" state on read, so it
+    // must be read exactly once per frame — read it into a local here
+    // rather than calling the interactPressed getter again below, or the
+    // second call would always see it as already-consumed and never fire.
+    // DialogueBox also listens for E on the window to advance/close an open
+    // conversation, independently of this Phaser key — while a dialogue is
+    // showing, this scene must ignore E entirely so the same press can't
+    // simultaneously start a new conversation or leave the room out from
+    // under an open dialogue box.
+    const dialogueOpen = gameStore.getSnapshot().dialogue.open;
+    const interacted = this.player.interactPressed && !dialogueOpen;
 
     const nearDoor = Phaser.Geom.Intersects.RectangleToRectangle(
       this.player.sprite.getBounds(),
       this.doorZone.getBounds(),
     );
-    if (nearDoor && this.player.interactPressed) {
+
+    // Mutually exclusive: if the player is close enough to overlap both the
+    // door zone and an agent's interact radius at once (rooms are small),
+    // exiting takes priority. Firing both off the same press would open a
+    // dialogue in the very frame the scene tears down, leaving a React
+    // dialogue box stuck on screen with nothing left to close it.
+    if (interacted && !nearDoor) {
+      const nearest = this.nearestAgent();
+      if (nearest) {
+        dialogueManager.startConversation(nearest.agentId, NPCManager.getAgent(nearest.agentId));
+      }
+    }
+
+    this.refreshAgentPresence();
+
+    if (nearDoor && interacted) {
+      EventBus.emit("room:left", { scene: this.sceneKey });
       SceneManager.goTo(this, "LobbyScene", {
         spawnX: this.registry.get("lobbyReturnX") ?? 160,
         spawnY: this.registry.get("lobbyReturnY") ?? 220,
@@ -133,32 +158,62 @@ export abstract class RoomScene extends Phaser.Scene {
   }
 
   shutdown(): void {
-    this.scout?.destroy();
-    this.scout = null;
+    for (const agent of this.agents.values()) agent.destroy();
+    this.agents.clear();
   }
 
-  /** Spawns/despawns Scout to match his server-driven schedule location. */
-  private refreshScoutPresence(): void {
-    if (!this.scoutLocation) return;
-    const shouldBePresent = NPCManager.getScout().location === this.scoutLocation;
-    if (shouldBePresent && !this.scout) {
-      const spawn = this.getScoutSpawnPoint(this.widthPx, this.heightPx);
-      this.scout = new ScoutNPC(this, spawn.x, spawn.y);
-      this.physics.add.collider(this.player.sprite, this.scout.sprite);
-    } else if (!shouldBePresent && this.scout) {
-      this.scout.destroy();
-      this.scout = null;
+  private nearestAgent(radius = 28): AgentNPC | null {
+    let closest: AgentNPC | null = null;
+    let closestDist = Infinity;
+    for (const agent of this.agents.values()) {
+      if (!agent.isNear(this.player.x, this.player.y, radius)) continue;
+      const dist = Phaser.Math.Distance.Between(this.player.x, this.player.y, agent.x, agent.y);
+      if (dist < closestDist) {
+        closest = agent;
+        closestDist = dist;
+      }
+    }
+    return closest;
+  }
+
+  /** Spawns/despawns agents to match their server-driven schedule location. */
+  private refreshAgentPresence(): void {
+    if (!this.agentLocation) return;
+    const present = AGENT_IDS.filter((id) => NPCManager.getAgent(id).location === this.agentLocation);
+
+    for (const id of present) {
+      if (this.agents.has(id)) continue;
+      const index = present.indexOf(id);
+      const spawn = this.getAgentSpawnPoint(id, index, present.length, this.widthPx, this.heightPx);
+      const npc = new AgentNPC(this, spawn.x, spawn.y, id);
+      this.agents.set(id, npc);
+      this.physics.add.collider(this.player.sprite, npc.sprite);
+    }
+
+    for (const [id, npc] of this.agents) {
+      if (!present.includes(id)) {
+        npc.destroy();
+        this.agents.delete(id);
+      }
     }
   }
 
-  /** Override to customize where Scout spawns in a given room. Defaults to room center. */
-  protected getScoutSpawnPoint(widthPx: number, heightPx: number): { x: number; y: number } {
-    return { x: widthPx / 2, y: heightPx / 2 - 10 };
+  /** Override to customize where agents spawn in a given room. Defaults to spreading them evenly around room center. */
+  protected getAgentSpawnPoint(
+    _agentId: AgentId,
+    index: number,
+    total: number,
+    widthPx: number,
+    heightPx: number,
+  ): { x: number; y: number } {
+    const spacing = 32;
+    const offset = (index - (total - 1) / 2) * spacing;
+    return { x: widthPx / 2 + offset, y: heightPx / 2 - 10 };
   }
 
   /** Hook for subclasses to add props, decoration, etc. after the base room is built. */
   protected onBuild(_widthPx: number, _heightPx: number): void {}
 
-  /** Hook for subclasses to run per-frame logic beyond the shared player/scout/door handling. */
+  /** Hook for subclasses to run per-frame logic beyond the shared player/agent/door handling. */
   protected onUpdate(): void {}
 }

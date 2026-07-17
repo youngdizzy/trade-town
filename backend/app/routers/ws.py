@@ -6,7 +6,7 @@ import logging
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
 
 from app.state import game_state
-from app.ws_manager import ws_manager
+from app.ws_manager import build_state_message, ws_manager
 
 logger = logging.getLogger("tradetown.ws")
 router = APIRouter()
@@ -17,17 +17,9 @@ async def websocket_endpoint(websocket: WebSocket) -> None:
     await ws_manager.connect(websocket)
     try:
         state = await game_state.snapshot()
-        await websocket.send_text(
-            json.dumps(
-                {
-                    "type": "state",
-                    "time": state.time.model_dump(by_alias=True),
-                    "scout": state.scout.model_dump(by_alias=True),
-                }
-            )
-        )
+        await websocket.send_text(json.dumps(build_state_message(state)))
         while True:
-            # Clients don't need to send anything in v0.1; this just detects disconnects.
+            # Clients don't need to send anything; this just detects disconnects.
             await websocket.receive_text()
     except WebSocketDisconnect:
         pass

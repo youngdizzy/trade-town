@@ -1,13 +1,26 @@
 import Phaser from "phaser";
-import type { DialogueHistoryEntry, GameSaveState, ScoutState, SettingsState, TimeState } from "@/types";
+import type {
+  AgentId,
+  AgentState,
+  DialogueHistoryEntry,
+  GameSaveState,
+  MeetingState,
+  NewsItem,
+  SceneId,
+  SettingsState,
+  Task,
+  TimeState,
+} from "@/types";
 
 /** Every event the game emits, keyed by name, with its payload type. */
 export interface GameEvents {
   "scene:ready": { scene: string };
   "scene:transition": { to: string };
   "player:move": { x: number; y: number };
-  "scout:updated": ScoutState;
-  "scout:interact": { scoutTransform: ScoutState["transform"] };
+  "room:entered": { scene: SceneId };
+  "room:left": { scene: SceneId };
+  "agent:updated": { id: AgentId; state: AgentState };
+  "agent:interact": { id: AgentId; transform: AgentState["transform"] };
   "dialogue:open": { lines: string[]; speaker: string };
   "dialogue:line": DialogueHistoryEntry;
   "dialogue:close": undefined;
@@ -19,7 +32,14 @@ export interface GameEvents {
   "load:completed": GameSaveState;
   "ui:pause": { paused: boolean };
   "ui:settings": { open: boolean };
+  "ui:newspaper": { open: boolean };
   "net:status": { connected: boolean };
+  "task:assigned": Task;
+  "task:completed": Task;
+  "whiteboard:updated": { boardId: string; text: string };
+  "meeting:started": MeetingState;
+  "meeting:ended": undefined;
+  "news:updated": NewsItem[];
 }
 
 type Handler<K extends keyof GameEvents> = (payload: GameEvents[K]) => void;

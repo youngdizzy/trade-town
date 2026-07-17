@@ -1,10 +1,19 @@
-import type { ScoutState, TimeState } from "@/types";
+import type { AgentId, AgentState, MeetingState, NewsItem, Task, TimeState } from "@/types";
 import { EventBus } from "@/game/systems/EventBus";
 import { TimeManager } from "@/game/systems/TimeManager";
 import { NPCManager } from "@/game/systems/NPCManager";
+import { NexusManager } from "@/game/systems/NexusManager";
 
 type ServerMessage =
-  | { type: "state"; time: TimeState; scout: ScoutState }
+  | {
+      type: "state";
+      time: TimeState;
+      agents: Record<AgentId, AgentState>;
+      tasks: Task[];
+      whiteboards: Record<string, string>;
+      meeting: MeetingState;
+      news: NewsItem[];
+    }
   | { type: "pong" };
 
 function resolveWsUrl(): string {
@@ -59,7 +68,13 @@ export class GameSocket {
         const msg = JSON.parse(event.data as string) as ServerMessage;
         if (msg.type === "state") {
           TimeManager.setFromServer(msg.time);
-          NPCManager.applyServerUpdate(msg.scout);
+          NPCManager.applyServerUpdate(msg.agents);
+          NexusManager.applyServerUpdate({
+            tasks: msg.tasks,
+            whiteboards: msg.whiteboards,
+            meeting: msg.meeting,
+            news: msg.news,
+          });
         }
       } catch (err) {
         console.warn("[GameSocket] Failed to parse message", err);

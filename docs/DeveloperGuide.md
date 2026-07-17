@@ -44,27 +44,45 @@ mypy app/
 
 1. Create `frontend/src/game/scenes/YourRoomScene.ts` extending `RoomScene`.
 2. Set the required fields: `sceneKey`, `widthTiles`, `heightTiles`,
-   `floorAsset`, `roomLabel`, `scoutLocation` (or `null` if Scout never
-   visits). Override `onBuild()`/`onUpdate()` for room-specific decoration.
+   `floorAsset`, `roomLabel`, `agentLocation` (an `AgentLocation`, or `null`
+   if no agent ever visits). Override `onBuild()`/`onUpdate()` for
+   room-specific decoration, and `getAgentSpawnPoint()` if the default
+   even-spread-around-center layout isn't right for this room (see
+   `MeetingRoomScene`'s fixed seats for an example).
 3. Register the scene class in `GameManager`'s `scene: [...]` array.
 4. Add a `SceneId` union member in `frontend/src/types.ts` and the matching
-   `Literal` in `backend/app/schemas.py`.
+   `Literal` in `backend/app/schemas.py`, plus an `AgentLocation` member
+   (both files) if agents can be scheduled there, and a
+   `LOCATION_TO_SCENE` entry in `AgentProfiles.ts` / `agents.py`.
 5. If the room should be reachable from the Lobby, add a `DoorDef` entry in
    `LobbyScene.ts`'s `DOORS` array.
+6. If the room should have a whiteboard, add a `Whiteboard` instance (see
+   `ScoutOfficeScene`) and a matching key in NEXUS's
+   `_update_whiteboards()`.
 
-## Adding a second NPC
+## Adding a fifth agent
 
-v0.1 intentionally has only Scout, but the seams are there:
+The agent system is already generalized past a fixed count — adding one
+means touching data, not architecture:
 
-1. Extend `ScoutLocation`-style types into a more general `NpcLocation`
-   union, or key locations per-NPC.
-2. `NPCManager` already stores NPCs in a `Map<string, ScoutState>` — add a
-   second key instead of restructuring.
-3. Give the new NPC its own schedule (`Schedule.ts` / `schedule.py`) and
-   dialogue lines (`DialogueManager.ts`).
-4. On the backend, `GameState` currently has a single `scout: ScoutState`
-   field — generalize it to a dict of NPCs keyed by id, and update
-   `sim.py`'s tick to iterate all of them.
+1. Add an `AgentId` union member in `frontend/src/types.ts` and
+   `backend/app/schemas.py` (`AGENT_IDS`/`AgentId`).
+2. Add an `AgentProfile` entry (name, occupation, personality, home
+   location, sprite tint) in both `frontend/src/game/systems/
+   AgentProfiles.ts` and `backend/app/agents.py` — keep them in sync, the
+   backend copy is authoritative but the frontend needs its own for the
+   offline fallback and rendering.
+3. Give the new agent a daily schedule in both `Schedule.ts` and
+   `schedule.py` (`AGENT_SCHEDULES[id]`, a list of `ScheduleBlock`s
+   covering all 24 hours).
+4. Add personality-flavored dialogue lines in `DialogueManager.ts`'s
+   `AGENT_TASK_LINES[id]`, keyed by the task strings used in that
+   schedule, plus a greeting in `AGENT_GREETINGS[id]`.
+5. That's it — `NPCManager`, `NexusManager`, `RoomScene`/`AgentNPC`,
+   `TopStatusBar`, `BrainRoomHud`, and the save schema all iterate
+   `AGENT_IDS`/`Record<AgentId, ...>` rather than hardcoding a count, so a
+   new id shows up everywhere automatically once the four steps above are
+   done.
 
 ## Environment variables
 

@@ -12,7 +12,7 @@ export class PlayerController extends AnimatedActor {
     super(scene, x, y, "player/player", "You");
     this.facing = facing;
     this.input = new InputManager(scene);
-    this.sprite.play(`player/player::idle-${this.facing}`);
+    this.playAnim(false);
   }
 
   update(): void {

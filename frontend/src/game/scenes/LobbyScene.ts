@@ -8,7 +8,7 @@ import { EventBus } from "@/game/systems/EventBus";
 import { GameManager } from "@/game/systems/GameManager";
 
 const TILE_SIZE = 16;
-const WIDTH_TILES = 30;
+const WIDTH_TILES = 72;
 const HEIGHT_TILES = 20;
 const WIDTH_PX = WIDTH_TILES * TILE_SIZE;
 const HEIGHT_PX = HEIGHT_TILES * TILE_SIZE;
@@ -22,16 +22,21 @@ interface DoorDef {
 }
 
 const DOORS: DoorDef[] = [
-  { target: "ScoutOfficeScene", label: "Scout Office", x: WIDTH_PX * 0.25, y: 96, tint: 0x9be7b0 },
-  { target: "CeoOfficeScene", label: "CEO Office", x: WIDTH_PX * 0.5, y: 96, tint: 0xffe08a },
-  { target: "BrainRoomScene", label: "Brain Room", x: WIDTH_PX * 0.75, y: 96, tint: 0xc9a3ff },
+  { target: "ScoutOfficeScene", label: "Scout Office", x: (WIDTH_PX * 1) / 6, y: 96, tint: 0x9be7b0 },
+  { target: "CeoOfficeScene", label: "CEO Office", x: (WIDTH_PX * 2) / 6, y: 96, tint: 0xffe08a },
+  { target: "BrainRoomScene", label: "Brain Room", x: (WIDTH_PX * 3) / 6, y: 96, tint: 0xc9a3ff },
+  { target: "MeetingRoomScene", label: "Meeting Room", x: (WIDTH_PX * 4) / 6, y: 96, tint: 0xffb4a8 },
+  { target: "BreakRoomScene", label: "Break Room", x: (WIDTH_PX * 5) / 6, y: 96, tint: 0xffd9a0 },
 ];
 
-/** The HQ courtyard. Camera-followed player, three enterable buildings, ambient decoration. */
+const NEWSPAPER_STAND = { x: WIDTH_PX / 2 + TILE_SIZE * 5, y: HEIGHT_PX - TILE_SIZE * 3 };
+
+/** The HQ courtyard. Camera-followed player, five enterable buildings, a newspaper stand, ambient decoration. */
 export class LobbyScene extends Phaser.Scene {
   private player!: PlayerController;
   private doors: { zone: Phaser.GameObjects.Zone; def: DoorDef }[] = [];
   private obstacles!: Phaser.Physics.Arcade.StaticGroup;
+  private newspaperZone!: Phaser.GameObjects.Zone;
 
   constructor() {
     super("LobbyScene");
@@ -52,6 +57,7 @@ export class LobbyScene extends Phaser.Scene {
     this.buildPond();
     this.buildDecor();
     this.buildBuildings();
+    this.buildNewspaperStand();
 
     const spawnX = data?.spawnX ?? WIDTH_PX / 2;
     const spawnY = data?.spawnY ?? HEIGHT_PX * 0.75;
@@ -63,6 +69,7 @@ export class LobbyScene extends Phaser.Scene {
 
     GameManager.getInstance()?.setPlayerTransform({ scene: "LobbyScene", x: spawnX, y: spawnY, facing: "down" });
     EventBus.emit("scene:ready", { scene: "LobbyScene" });
+    EventBus.emit("room:entered", { scene: "LobbyScene" });
   }
 
   update(): void {
@@ -83,9 +90,17 @@ export class LobbyScene extends Phaser.Scene {
       if (near && this.player.interactPressed) {
         this.registry.set("lobbyReturnX", def.x);
         this.registry.set("lobbyReturnY", def.y + TILE_SIZE * 2);
+        EventBus.emit("room:left", { scene: "LobbyScene" });
         // No spawnX/spawnY: the target room falls back to its own default spawn point (near its exit door).
         SceneManager.goTo(this, def.target, { fromScene: "LobbyScene" });
         return;
+      }
+    }
+
+    if (this.player.interactPressed) {
+      const nearPaper = Phaser.Geom.Intersects.RectangleToRectangle(this.player.sprite.getBounds(), this.newspaperZone.getBounds());
+      if (nearPaper) {
+        EventBus.emit("ui:newspaper", { open: true });
       }
     }
   }
@@ -96,7 +111,7 @@ export class LobbyScene extends Phaser.Scene {
     if (!tileset) return;
     const layer = map.createBlankLayer("path", tileset, 0, 0);
     if (!layer) return;
-    // A horizontal walkway connecting the three doors, plus a vertical spine down to the spawn point.
+    // A horizontal walkway connecting all five doors, plus a vertical spine down to the spawn point.
     const rowTile = 7;
     for (let x = 4; x < WIDTH_TILES - 4; x++) layer.putTileAt(0, x, rowTile);
     const centerCol = Math.floor(WIDTH_TILES / 2);
@@ -110,12 +125,18 @@ export class LobbyScene extends Phaser.Scene {
     const layer = map.createBlankLayer("pond", tileset, 0, 0);
     if (!layer) return;
     layer.fill(0);
-    layer.setPosition(WIDTH_PX - TILE_SIZE * 6, HEIGHT_PX - TILE_SIZE * 5);
+    layer.setPosition(TILE_SIZE * 4, HEIGHT_PX - TILE_SIZE * 5);
   }
 
   private buildDecor(): void {
     const trees: [number, number][] = [
-      [24, 40], [WIDTH_PX - 32, 48], [32, HEIGHT_PX - 48], [WIDTH_PX - 40, HEIGHT_PX - 64], [16, HEIGHT_PX / 2],
+      [24, 40],
+      [WIDTH_PX - 32, 48],
+      [32, HEIGHT_PX - 48],
+      [WIDTH_PX - 40, HEIGHT_PX - 64],
+      [16, HEIGHT_PX / 2],
+      [WIDTH_PX / 2 - TILE_SIZE * 8, HEIGHT_PX - 40],
+      [WIDTH_PX / 2 + TILE_SIZE * 10, HEIGHT_PX - 48],
     ];
     for (const [x, y] of trees) {
       const tree = this.add.image(x, y, "outdoor-decoration/oak-tree").setScale(1.4).setDepth(2);
@@ -173,5 +194,28 @@ export class LobbyScene extends Phaser.Scene {
       const zone = createZone(this, def.x, def.y + TILE_SIZE, TILE_SIZE * 2, TILE_SIZE);
       this.doors.push({ zone, def });
     }
+  }
+
+  private buildNewspaperStand(): void {
+    const { x, y } = NEWSPAPER_STAND;
+    this.add.rectangle(x, y, 6, 22, 0x5c3b20).setDepth(2); // post
+    const board = this.add.rectangle(x, y - 16, 22, 16, 0xf4e6c9).setStrokeStyle(1, 0x241c14).setDepth(3);
+    this.obstacles.add(board);
+    const boardBody = board.body as Phaser.Physics.Arcade.StaticBody;
+    boardBody.setSize(22, 16);
+    for (let i = 0; i < 3; i++) {
+      this.add.rectangle(x, y - 21 + i * 3, 16, 1, 0x241c14, 0.6).setDepth(4);
+    }
+    this.add
+      .text(x, y + 14, "TradeTown Daily\n[E] Read", {
+        fontFamily: "monospace",
+        fontSize: "7px",
+        color: "#d9a441",
+        align: "center",
+      })
+      .setOrigin(0.5, 0)
+      .setDepth(4);
+
+    this.newspaperZone = createZone(this, x, y + TILE_SIZE, TILE_SIZE * 1.5, TILE_SIZE);
   }
 }
