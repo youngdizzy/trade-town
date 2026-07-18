@@ -1,27 +1,32 @@
-# TradeTown — v0.5
+# TradeTown — v0.6
 
 TradeTown is a pixel-art AI investment company simulation. You play the
-CEO, walking around a small headquarters while a team of six AI employees —
-Scout, Atlas, Echo, Nova, Scribe, and Coach — research the market, run
-strategy simulations, place paper trades, hold meetings, take breaks, and
-log everything to a searchable company memory, live, in the background,
-whether or not you're watching. Think Stardew Valley's overworld crossed
-with a Bloomberg terminal's sense of "the market never sleeps."
+CEO, walking around a small headquarters while a team of nine AI employees —
+Scout, Atlas, Echo, Nova, Scribe, Coach, Sentinel, Pulse, and Guardian —
+research the market, vote on trade candidates, run strategy simulations,
+place paper trades, hold meetings, take breaks, and log everything to a
+searchable company memory, live, in the background, whether or not you're
+watching. Think Stardew Valley's overworld crossed with a Bloomberg
+terminal's sense of "the market never sleeps."
 
-This is **version 0.5 — Intelligence Evolution**: a sixth employee (Coach,
-who reviews the team's paper trades and research and files weekly/monthly
-performance reports — see the Coach Dashboard), a Simulation Lab running
-placeholder strategy backtests, a Paper Trading engine with a fully
-simulated portfolio, a Hall of Fame celebrating the company's best
-records, a Learning System that turns every closed paper trade into a
-lesson or mistake in Company Memory, and a seven-metric Company Score
-shown in the Brain Room. **TradeTown still does not connect to a real
-brokerage or execute real trades in this version** — every position,
-order, and dollar in the Paper Trading engine is simulated; see
+This is **version 0.6 — Paper Trading Operations**: three new employees
+(Sentinel — Risk Management, Pulse — Market Scanner, Guardian — Portfolio
+Protection) and a new Trading Floor room. Every high-confidence research
+completion is now voted on by the four researchers plus Sentinel and
+Guardian, with Atlas's ruling producing a permanent, explainable
+`TradeDecision`; approved trades place an order through a new order-book
+PaperBroker (market/limit/stop/take-profit/stop-loss) instead of opening
+a position directly. A configurable Risk Engine backs Sentinel's
+trade-approval gate and Guardian's exposure/concentration watch; a Market
+Scanner backs Pulse's continuous gap/breakout/volume-spike/volatility
+scan; a Trading Journal stamps every closed trade with a coach review and
+lessons learned. **TradeTown still does not connect to a real brokerage
+or execute real trades in this version** — every position, order, and
+dollar in the Paper Trading engine is simulated; see
 [`docs/Architecture.md`](docs/Architecture.md) for the exact boundary and
 what's deliberately deferred to a future version, and
 [`CHANGELOG.md`](CHANGELOG.md) / [`docs/VersionHistory.md`](docs/VersionHistory.md)
-for what changed since v0.4.
+for what changed since v0.5.
 
 ## Market intelligence (and what it isn't)
 
@@ -49,8 +54,9 @@ required. The stack is:
 - **frontend**: an nginx container serving the built React/Phaser app and
   reverse-proxying `/api` and `/ws` to the backend.
 - **backend**: FastAPI + SQLite, running a background simulation loop
-  (NEXUS) that keeps all six agents' schedules, tasks, research, paper
-  trading, simulations, coaching reports, and the game clock ticking.
+  (NEXUS) that keeps all nine agents' schedules, tasks, research, paper
+  trading (voting, risk checks, order fills, scanner alerts), simulations,
+  coaching reports, and the game clock ticking.
 
 To change the host port, copy `.env.example` to `.env` and set `HTTP_PORT`.
 
@@ -121,10 +127,10 @@ appropriately licensed or original art first.
 
 ## Status
 
-Version 0.5 is feature-complete per the milestone checklist (see
-`docs/Architecture.md#version-05-scope`). Development stops here until the
-next milestone is scoped — v0.5 explicitly does not implement live
+Version 0.6 is feature-complete per the milestone checklist (see
+`docs/Architecture.md#version-06-scope`). Development stops here until the
+next milestone is scoped — v0.6 explicitly does not implement live
 brokerage connections or real trade execution of any kind; Paper Trading
-is entirely simulated. **Note:** the save format changed again in v0.5
-(see `CHANGELOG.md`) — a pre-v0.5 save will not load; the backend detects
+is entirely simulated. **Note:** the save format changed again in v0.6
+(see `CHANGELOG.md`) — a pre-v0.6 save will not load; the backend detects
 the mismatch and starts fresh rather than crashing.

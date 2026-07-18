@@ -75,6 +75,36 @@ export const AGENT_SCHEDULES: Record<AgentId, ScheduleBlock[]> = {
     { startHour: 22, endHour: 24, location: "performance-center", task: "Drafting recommendations" },
     { startHour: 0, endHour: 6, location: "performance-center", task: "Standing by" },
   ],
+  sentinel: [
+    { startHour: 6, endHour: 9, location: "trading-floor", task: "Reviewing overnight risk exposure" },
+    { startHour: 9, endHour: 12, location: "trading-floor", task: "Monitoring position sizing" },
+    { startHour: 12, endHour: 13, location: "break-room", task: "Resting" },
+    { startHour: 13, endHour: 17, location: "trading-floor", task: "Evaluating trade candidates" },
+    { startHour: 17, endHour: 19, location: "performance-center", task: "Cross-checking risk against Coach's reports" },
+    { startHour: 19, endHour: 22, location: "trading-floor", task: "Setting tomorrow's risk limits" },
+    { startHour: 22, endHour: 24, location: "trading-floor", task: "Auditing the day's approvals" },
+    { startHour: 0, endHour: 6, location: "trading-floor", task: "Standing watch" },
+  ],
+  pulse: [
+    { startHour: 6, endHour: 9, location: "trading-floor", task: "Scanning premarket movers" },
+    { startHour: 9, endHour: 12, location: "trading-floor", task: "Watching for breakouts" },
+    { startHour: 12, endHour: 13, location: "break-room", task: "Resting" },
+    { startHour: 13, endHour: 17, location: "trading-floor", task: "Tracking volume spikes" },
+    { startHour: 17, endHour: 19, location: "brain-room", task: "Cross-referencing research with scanner alerts" },
+    { startHour: 19, endHour: 22, location: "trading-floor", task: "Scanning after-hours activity" },
+    { startHour: 22, endHour: 24, location: "trading-floor", task: "Compiling the day's alerts" },
+    { startHour: 0, endHour: 6, location: "trading-floor", task: "Monitoring overnight volatility" },
+  ],
+  guardian: [
+    { startHour: 6, endHour: 9, location: "trading-floor", task: "Checking overnight portfolio exposure" },
+    { startHour: 9, endHour: 12, location: "trading-floor", task: "Monitoring concentration risk" },
+    { startHour: 12, endHour: 13, location: "break-room", task: "Resting" },
+    { startHour: 13, endHour: 17, location: "trading-floor", task: "Watching drawdown levels" },
+    { startHour: 17, endHour: 19, location: "performance-center", task: "Reviewing portfolio performance" },
+    { startHour: 19, endHour: 22, location: "trading-floor", task: "Recommending risk reductions" },
+    { startHour: 22, endHour: 24, location: "trading-floor", task: "Filing the day's exposure report" },
+    { startHour: 0, endHour: 6, location: "trading-floor", task: "Standing watch over the book" },
+  ],
 };
 
 export function scheduleBlockForHour(agentId: AgentId, hour: number): ScheduleBlock {

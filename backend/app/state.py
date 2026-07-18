@@ -27,7 +27,6 @@ def _now_iso() -> str:
 
 def default_state() -> GameSaveState:
     return GameSaveState(
-        version="0.5",
         player=EntityTransform(scene="LobbyScene", x=160, y=220, facing="down"),
         agents=nexus.default_agents(),
         tasks=[],

@@ -12,6 +12,7 @@ import { BreakRoomScene } from "@/game/scenes/BreakRoomScene";
 import { SimulationLabScene } from "@/game/scenes/SimulationLabScene";
 import { HallOfFameScene } from "@/game/scenes/HallOfFameScene";
 import { PerformanceCenterScene } from "@/game/scenes/PerformanceCenterScene";
+import { TradingFloorScene } from "@/game/scenes/TradingFloorScene";
 import { EventBus } from "./EventBus";
 
 const DEFAULT_PLAYER_TRANSFORM: EntityTransform = {
@@ -63,6 +64,7 @@ export class GameManager {
         SimulationLabScene,
         HallOfFameScene,
         PerformanceCenterScene,
+        TradingFloorScene,
       ],
     });
   }

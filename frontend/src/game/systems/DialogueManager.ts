@@ -65,6 +65,33 @@ const AGENT_TASK_LINES: Record<AgentId, Record<string, string[]>> = {
     "Drafting recommendations": ["Drafting a couple of recommendations for the team. Nothing harsh, just honest."],
     "Standing by": ["Standing by. Always happy to talk through a trade after the fact."],
   },
+  sentinel: {
+    "Reviewing overnight risk exposure": ["Checking what the book looked like while nobody was watching. Clean so far."],
+    "Monitoring position sizing": ["Every open position gets measured against the limits. No exceptions."],
+    "Evaluating trade candidates": ["A candidate just came through voting. I'll say no if the sizing's off."],
+    "Cross-checking risk against Coach's reports": ["Comparing my numbers against Coach's review. We usually agree."],
+    "Setting tomorrow's risk limits": ["Tightening a limit for tomorrow. Today taught us something."],
+    "Auditing the day's approvals": ["Going back through everything I approved today. Show your work."],
+    "Standing watch": ["Someone has to say no. Might as well be me."],
+  },
+  pulse: {
+    "Scanning premarket movers": ["Premarket's already moving. I've got eyes on four symbols."],
+    "Watching for breakouts": ["Watching for a real breakout, not just noise. Volume tells the story."],
+    "Tracking volume spikes": ["Something just spiked. Checking if it's real or a fluke."],
+    "Cross-referencing research with scanner alerts": ["Lining up my alerts against what research already flagged."],
+    "Scanning after-hours activity": ["After-hours is thin, but thin doesn't mean nothing's happening."],
+    "Compiling the day's alerts": ["Wrapping today's alerts into a summary for the morning."],
+    "Monitoring overnight volatility": ["Volatility never fully sleeps. Neither do I, apparently."],
+  },
+  guardian: {
+    "Checking overnight portfolio exposure": ["Exposure held steady overnight. Nothing to flag yet."],
+    "Monitoring concentration risk": ["One symbol's creeping up as a share of the book. Watching it."],
+    "Watching drawdown levels": ["Drawdown's within bounds, but I don't like getting close to the line."],
+    "Reviewing portfolio performance": ["Reviewing how the portfolio's actually performing against the risk we took."],
+    "Recommending risk reductions": ["I recommended trimming a position today. Sentinel agreed."],
+    "Filing the day's exposure report": ["Filing today's exposure report. Everything's accounted for."],
+    "Standing watch over the book": ["Someone has to watch the whole book, not just one trade at a time."],
+  },
 };
 
 /** Shared fallback lines for override-driven tasks (meetings/breaks), independent of agent personality. */
@@ -87,6 +114,9 @@ const AGENT_GREETINGS: Record<AgentId, string[]> = {
   nova: ["Hi there.", "One second... okay, hi.", "Good timing, I just finished a section."],
   scribe: ["Everything's on the record.", "Ah, boss. I was just writing you in.", "One moment — let me finish this line."],
   coach: ["Got a minute for a quick review?", "Hey, boss — good timing.", "Let's talk performance."],
+  sentinel: ["Boss.", "Before you ask — yes, I already checked.", "What's the risk question this time?"],
+  pulse: ["Boss! Good, you're here.", "Four alerts since you last checked in.", "Hey — you're just in time."],
+  guardian: ["Checking in on exposure?", "Boss. The book's in good shape.", "Good timing — I just finished a pass."],
 };
 
 export interface DialogueSession {

@@ -41,6 +41,16 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         "coachReports": [c.model_dump(by_alias=True) for c in state.coach_reports],
         "companyScore": state.company_score.model_dump(by_alias=True),
         "performanceSnapshots": [p.model_dump(by_alias=True) for p in state.performance_snapshots],
+        # v0.6 — riskLimits is a single live config object (not a log);
+        # riskWarnings reflects Guardian's *current* standing watch,
+        # refreshed every tick, not an accumulating history — see
+        # nexus.py's tick(). scannerAlerts/decisions are already capped/
+        # append-only in their own managers, sent as-is like the other
+        # pre-bounded lists above.
+        "riskLimits": state.risk_limits.model_dump(by_alias=True),
+        "riskWarnings": [w.model_dump(by_alias=True) for w in state.risk_warnings],
+        "scannerAlerts": [a.model_dump(by_alias=True) for a in state.scanner_alerts],
+        "decisions": [d.model_dump(by_alias=True) for d in state.decisions],
     }
 
 

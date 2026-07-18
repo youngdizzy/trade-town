@@ -2,16 +2,19 @@
 
 **Status:** Canonical. This document is the permanent personnel file for
 every AI employee TradeTown has, or will have. It is split into two
-parts: **Current Roster** (six agents, live in the shipped v0.5 code —
+parts: **Current Roster** (nine agents, live in the shipped v0.6 code —
 every field below is traceable to a real class, schema, or data file) and
 **Planned Roster** (nine agents named in the v0.4 brief, plus one
-additional support role, none of which exist in code yet — every field
-below is a design intention, explicitly marked as such, scoped to the
-`ROADMAP.md` version that would introduce it). Coach was originally in
-the Planned Roster when this document was written (v0.4); it shipped in
-v0.5 with meaningfully different scope than planned — see its entry in
-Part 1, and the callout at the top of Part 2 for what that changes for
-the still-planned agents below it.
+additional support role, none of which exist in code yet in the scope
+originally sketched for them — every field below is a design intention,
+explicitly marked as such, scoped to the `ROADMAP.md` version that would
+introduce it). Coach was originally in the Planned Roster when this
+document was written (v0.4); it shipped in v0.5 with meaningfully
+different scope than planned. Sentinel, Pulse, and Guardian shipped in
+v0.6 — Sentinel is new to this document, while Pulse and Guardian reuse
+names this document had already speculatively assigned to different
+roles (see each entry in Part 1, and the callouts at the top of Part 2
+for what that changes for the still-planned agents below it).
 
 Adding any planned agent to the real roster follows the exact checklist
 in `docs/DeveloperGuide.md`'s "Adding a new agent" section: an `AgentId`
@@ -23,7 +26,7 @@ checklist, not a new mechanism.
 
 ---
 
-# Part 1 — Current Roster (v0.1–v0.5, shipped)
+# Part 1 — Current Roster (v0.1–v0.6, shipped)
 
 ## Scout
 
@@ -41,7 +44,7 @@ checklist, not a new mechanism.
 | **Dialogue Style** | Short, task-anchored lines keyed by the exact schedule task string, e.g. `"Scanning market news"` → a Scout-flavored one-liner (`DialogueManager.ts`'s `AGENT_TASK_LINES.scout`). |
 | **Mood System** | Standard shared model: `mood`/`energy` floats 0–100, mood drifts ±2 to +2.5 per tick, energy costs 1.5/tick while working and gains 3/tick in restful locations (`nexus.py`'s `_tick_agent`, `RESTFUL_LOCATIONS`). Scout has no bespoke mood logic. |
 | **Memory Usage** | Standard `MemoryEntry` log capped at `MAX_MEMORY` most-recent entries per agent, one entry per task change ("Started: ..."). Scout also owns whichever `ResearchItem` is currently assigned to it in the rotating queue (one active item, capped history — see `research.py`). |
-| **Future Upgrades** | Real news-API integration behind `MarketDataProvider` (no version committed); a "breadth vs. depth" dial once Strategy Marketplace (v0.6) lets the player weight research priorities. |
+| **Future Upgrades** | Real news-API integration behind `MarketDataProvider` (no version committed); a "breadth vs. depth" dial once Strategy Marketplace (v0.7) lets the player weight research priorities. |
 
 ## Atlas
 
@@ -133,6 +136,60 @@ checklist, not a new mechanism.
 | **Memory Usage** | Reads `CompanyMemory` for scoring inputs; does not write to it directly — `scribe.py`'s `record_coach_report()` is the one that logs each `CoachReport` into Company Memory under the `coach_review` category, preserving Scribe's sole-writer invariant from v0.3. |
 | **Future Upgrades** | Model-generated recommendation text in place of the current templated phrasing — the architecture (a `CoachReport` slot for `recommendations`/`commonMistakes`) was deliberately built so a future version could swap the template call for a real model call, the same pattern already noted for `discussion.py`. |
 
+## Sentinel
+
+| | |
+|---|---|
+| **Role** | Risk Management |
+| **Department** | Risk Management |
+| **Responsibilities** | The hard trade-approval gate for every candidate the Decision Voting pipeline evaluates — `risk_engine.evaluate_sentinel_risk()` checks (in order) portfolio equity, drawdown against `RiskLimits.maxDrawdownPct`, open-position count against `maxOpenPositions`, and proposed position size against `maxPositionPct`. Sentinel's vote in `voting.py` is `risk_too_high` whenever any check fails, `buy` otherwise — and a `risk_too_high` vote is an absolute veto in `decision.decide_trade()`, regardless of how the four researchers voted. |
+| **Decision Authority** | The most direct veto power of any agent — can single-handedly block a trade Atlas would otherwise approve. Never opens, sizes, or closes a position itself; `risk_engine.py` is pure evaluation with zero side effects. |
+| **Strengths** | Unambiguous — every check is a hard threshold against `RiskLimits`, not a judgment call, so Sentinel's reasoning is always traceable to one specific configured number. |
+| **Weaknesses** | Entirely reactive to whatever `RiskLimits` are currently configured — Sentinel can't recognize a risk the limits don't already model. |
+| **Personality** | *"Unflinching. Says no more often than yes, and never apologizes for it."* (`agents.py`) |
+| **Daily Schedule** | 06:00 Trading Floor ("Reviewing overnight risk exposure") → 09:00 Trading Floor ("Monitoring position sizing") → 12:00 Break Room ("Resting") → 13:00 Trading Floor ("Evaluating trade candidates") → 17:00 Performance Center ("Cross-checking risk against Coach's reports") → 19:00 Trading Floor ("Setting tomorrow's risk limits") → 22:00 Trading Floor ("Auditing the day's approvals") through 06:00 ("Standing watch"). `AGENT_SCHEDULES["sentinel"]`. |
+| **Office** | Trading Floor (home location `trading-floor`, a new v0.6 room). |
+| **Dialogue Style** | Short, procedural, tied to its current schedule block (`AGENT_TASK_LINES.sentinel`). |
+| **Mood System** | Standard shared model (see Scout) — no exception carved out, same reasoning as Coach's entry above. |
+| **Memory Usage** | Never writes directly; `scribe.record_decision()` and `scribe.record_order_placed()` log Sentinel's votes and gate outcomes into Company Memory as part of the wider `decision`/`order` records, preserving Scribe's sole-writer invariant. |
+| **Future Upgrades** | Confidence-vs-outcome calibration per agent and historical risk-warning trend tracking are scoped for a later "Risk Calibration & Analytics" milestone — see `ROADMAP.md`. |
+
+## Pulse
+
+| | |
+|---|---|
+| **Role** | Market Scanner |
+| **Department** | Market Scanner |
+| **Responsibilities** | Continuously scans the watchlist for gap ups/downs, breakouts, volume spikes, and high volatility (`scanner.tick_scanner()`), producing `ScannerAlert` records surfaced in the Brain Room HUD, the newspaper, and the Trading Floor's status lights. Detection is threshold-based against the current quote only — see `scanner.py`'s module docstring on why true rolling-window breakout detection needs a real historical `MarketDataProvider` that doesn't exist yet. |
+| **Decision Authority** | None over trades — Pulse only detects and alerts, the same "reads, never writes to the ledger" boundary every non-Atlas agent respects. Votes in the Decision Voting pipeline as one of the four researcher agents' peers is *not* part of Pulse's role — only Sentinel and Guardian have dedicated votes; Pulse's contribution is upstream, via alerts, not a vote of its own. |
+| **Strengths** | Highest tick-to-tick alert volume of any agent — the one agent whose entire job is reacting to the current tick's data, not accumulating a slow-building research thread. |
+| **Weaknesses** | Noisy by design — `ALERT_CHANCE_PER_TICK` and per-type thresholds mean not every flagged symbol turns into anything, giving Coach and the player something real to calibrate against, matching this document's original speculative-Pulse design intent even though the shipped role is different (see the note in Part 2 below). |
+| **Personality** | *"Restless. Always watching every ticker at once."* (`agents.py`) |
+| **Daily Schedule** | 06:00 Trading Floor ("Scanning premarket movers") → 09:00 Trading Floor ("Watching for breakouts") → 12:00 Break Room ("Resting") → 13:00 Trading Floor ("Tracking volume spikes") → 17:00 Brain Room ("Cross-referencing research with scanner alerts") → 19:00 Trading Floor ("Scanning after-hours activity") → 22:00 Trading Floor ("Compiling the day's alerts") through 06:00 ("Monitoring overnight volatility"). `AGENT_SCHEDULES["pulse"]`. |
+| **Office** | Trading Floor (home location `trading-floor`, a new v0.6 room). |
+| **Dialogue Style** | Short, exclamatory-leaning lines tied to its current schedule block (`AGENT_TASK_LINES.pulse`). |
+| **Mood System** | Standard shared model (see Scout) — no exception carved out. |
+| **Memory Usage** | Never writes directly; `scribe.record_scanner_alert()` logs every new alert into Company Memory under the `alert` category. |
+| **Future Upgrades** | A real historical `MarketDataProvider` would let Pulse do true rolling-window breakout/volatility detection instead of current-quote-threshold-only — see `ROADMAP.md`'s v0.7 candidates. |
+
+## Guardian
+
+| | |
+|---|---|
+| **Role** | Portfolio Protection |
+| **Department** | Portfolio Protection |
+| **Responsibilities** | The softer, standing-watch counterpart to Sentinel's hard gate — `risk_engine.evaluate_guardian_exposure()` checks a candidate symbol's concentration against `RiskLimits.maxSectorConcentrationPct` (per-symbol, not per-sector — TradeTown has no real sector taxonomy, see `risk_engine.py`'s docstring), and `monitor_portfolio()` runs every tick independent of any candidate, watching portfolio-wide drawdown and per-symbol concentration. Guardian's vote in `voting.py` is `position_too_large` whenever the exposure check fails — also an absolute veto in `decision.decide_trade()`. |
+| **Decision Authority** | Veto power equal to Sentinel's, but scoped to concentration/exposure rather than position sizing/drawdown/open-count. Never modifies the portfolio directly. |
+| **Strengths** | The only agent whose watch is entirely portfolio-wide rather than single-candidate — `monitor_portfolio()`'s warnings exist even when nobody is proposing a new trade. |
+| **Weaknesses** | Like Sentinel, bounded by whatever `RiskLimits.maxSectorConcentrationPct` is currently configured, and by the per-symbol concentration proxy standing in for a real sector taxonomy that doesn't exist yet. |
+| **Personality** | *"Steady and watchful. Speaks up the moment exposure looks lopsided."* (`agents.py`) |
+| **Daily Schedule** | 06:00 Trading Floor ("Checking overnight portfolio exposure") → 09:00 Trading Floor ("Monitoring concentration risk") → 12:00 Break Room ("Resting") → 13:00 Trading Floor ("Watching drawdown levels") → 17:00 Performance Center ("Reviewing portfolio performance") → 19:00 Trading Floor ("Recommending risk reductions") → 22:00 Trading Floor ("Filing the day's exposure report") through 06:00 ("Standing watch over the book"). `AGENT_SCHEDULES["guardian"]`. |
+| **Office** | Trading Floor (home location `trading-floor`, a new v0.6 room). |
+| **Dialogue Style** | Measured, watchful lines tied to its current schedule block (`AGENT_TASK_LINES.guardian`). |
+| **Mood System** | Standard shared model (see Scout) — no exception carved out; note this shipped Guardian is a different role than the speculative Part 2 "Guardian" this document originally sketched (see the note below), which imagined a mood-exempt, fixed-post presence. |
+| **Memory Usage** | Never writes directly; `scribe.record_decision()` logs Guardian's votes as part of the wider `decision` record. |
+| **Future Upgrades** | A real sector taxonomy would let Guardian's concentration checks become genuinely sector-aware rather than symbol-aware — see `ROADMAP.md`'s v0.7 candidates. |
+
 ---
 
 # Part 2 — Planned Roster (not yet implemented)
@@ -152,10 +209,19 @@ four researcher agents (`RESEARCHER_IDS`), and the Paper Trading engine
 dedicated bookkeeper agent. Quant/Oracle/Lab/Ledger below remain
 speculative — plausible future specializations if the roster ever needs
 dedicated owners for those systems, not agents any currently-planned
-version commits to introducing. Version numbers below have been updated
-to match `ROADMAP.md`'s current numbering (Strategy Marketplace is now
-v0.6, Risk Engine is now v0.7) but the roster content itself is
-unchanged from when it was written.
+version commits to introducing.
+
+**Note on what v0.6 actually shipped:** the v0.6 brief introduced three
+real agents named Sentinel, Pulse, and Guardian (see Part 1 above) — but
+their shipped scopes only partially match what this document had already
+speculatively sketched under the names Pulse and Guardian below (see the
+"name reused" annotations on each), and Sentinel didn't exist as a
+planned name at all before v0.6. Watchtower's planned scope also
+partially overlaps what Sentinel/Guardian actually cover — see the note
+on Watchtower below. Version numbers below have been updated to match
+`ROADMAP.md`'s current numbering (Strategy Marketplace is now v0.7, Risk
+Calibration & Analytics is now v0.8) but the roster content itself is
+otherwise unchanged from when it was written.
 
 ## Quant
 *(Planned — speculative; Simulation Lab shipped in v0.5 without it, see note above)*
@@ -176,8 +242,13 @@ unchanged from when it was written.
 | **Memory Usage** *(planned)* | Writes backtest results to `CompanyMemory`'s `simulation` category (shipped v0.5, currently written by `scribe.record_simulation_result()` on Simulation Lab completions, not by a dedicated agent). |
 | **Future Upgrades** *(planned)* | Direct hand-off of validated backtests to Ledger/Atlas for Paper Trading (shipped v0.5) consideration. |
 
-## Pulse
-*(Planned — near-term data agent, no version committed)*
+## Pulse *(name reused for a different, shipped role in v0.6 — see Part 1)*
+*(Planned — near-term data agent, no version committed. **Superseded:**
+v0.6 shipped an agent named Pulse, but as Market Scanner — continuous
+gap/breakout/volume-spike/volatility detection across the watchlist, not
+the sentiment-tracking role sketched below. The entry below is kept for
+its design-intent history, not as a description of what exists in the
+codebase today.)*
 
 | | |
 |---|---|
@@ -231,10 +302,15 @@ unchanged from when it was written.
 | **Dialogue Style** *(planned)* | Scenario-branch phrasing, never a flat statement. |
 | **Mood System** *(planned)* | Standard model. |
 | **Memory Usage** *(planned)* | Writes scenario summaries to `CompanyMemory`, likely under the same new category as Quant's backtests. |
-| **Future Upgrades** *(planned)* | Feeding Risk Engine (v0.7) directly — Oracle's scenario spread is the natural input to a risk-of-loss estimate. |
+| **Future Upgrades** *(planned)* | Feeding the Risk Engine (shipped v0.6, `risk_engine.py`) directly — Oracle's scenario spread is the natural input to a risk-of-loss estimate. |
 
-## Guardian
-*(Planned — introduced alongside Risk Engine, v0.7, or earlier as an infra role)*
+## Guardian *(name reused for a different, shipped role in v0.6 — see Part 1)*
+*(Planned — introduced alongside Risk Engine, v0.7, or earlier as an infra
+role. **Superseded:** v0.6 shipped an agent named Guardian, but as
+Portfolio Protection — exposure/concentration/drawdown monitoring, not
+the security/data-integrity/compliance role sketched below. The entry
+below is kept for its design-intent history, not as a description of
+what exists in the codebase today.)*
 
 | | |
 |---|---|
@@ -269,10 +345,16 @@ unchanged from when it was written.
 | **Dialogue Style** *(planned)* | Punchy, pitch-like. |
 | **Mood System** *(planned)* | High energy cost, matching constant movement. |
 | **Memory Usage** *(planned)* | Proposed-symbol log, a new `MemoryCategory`. |
-| **Future Upgrades** *(planned)* | Direct integration with Strategy Marketplace (v0.6) — Hunter's proposals as one input to shareable strategy configs. |
+| **Future Upgrades** *(planned)* | Direct integration with Strategy Marketplace (v0.7) — Hunter's proposals as one input to shareable strategy configs. |
 
 ## Watchtower
-*(Planned — introduced alongside Risk Engine, v0.7)*
+*(Planned — introduced alongside Risk Engine, v0.7. **Note:** v0.6's Risk
+Engine shipped without a dedicated Watchtower agent — Sentinel's
+`risk_engine.evaluate_sentinel_risk()` and Guardian's
+`monitor_portfolio()` cover the trade-approval and standing-watch halves
+of what Watchtower was speculatively scoped to do, but Watchtower's
+broader "whole-company anomaly monitoring, not just risk" scope below
+remains unshipped and unclaimed by any current agent name.)*
 
 | | |
 |---|---|
@@ -288,7 +370,7 @@ unchanged from when it was written.
 | **Dialogue Style** *(planned)* | Alert-formatted: what, where, since when. |
 | **Mood System** *(planned)* | Possibly the first agent with a mood tied to *system* health rather than personal energy — a genuinely new mechanic if built. |
 | **Memory Usage** *(planned)* | Writes to a new "event"/anomaly category (the existing `event` `MemoryCategory` value in `schemas.py` already anticipates this). |
-| **Future Upgrades** *(planned)* | Natural pairing with Guardian for v0.7's Risk Engine HUD panel. |
+| **Future Upgrades** *(planned)* | Natural pairing with Guardian for the Risk Management section of the Brain Room HUD (shipped v0.6). |
 
 ## Lab
 *(Planned — speculative; the Simulation Lab room shipped in v0.5 without a dedicated operator agent, see note above)*

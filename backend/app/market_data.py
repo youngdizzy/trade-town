@@ -29,6 +29,10 @@ class Quote:
     symbol: str
     price: float
     change_pct: float
+    # Added in v0.6 for app/scanner.py's volume-spike detection — a real
+    # provider naturally exposes this alongside price; the mock below
+    # synthesizes a plausible value since there's no real feed.
+    volume: float = 0.0
 
 
 class MarketDataProvider(ABC):
@@ -45,12 +49,21 @@ class MarketDataProvider(ABC):
         return {symbol: self.get_quote(symbol) for symbol in symbols}
 
 
+NORMAL_VOLUME_RANGE = (100_000.0, 800_000.0)
+VOLUME_SPIKE_CHANCE = 0.08
+VOLUME_SPIKE_MULTIPLIER_RANGE = (3.0, 6.0)
+
+
 class MockMarketDataProvider(MarketDataProvider):
     """Deterministic-seeded random walk, no network calls. Each symbol
     starts from a price derived from its own hash (so the starting point
     for a given symbol is stable across process restarts) and drifts by a
     small percentage on every call, so a live-watched watchlist sees
-    prices move without ever hitting the network."""
+    prices move without ever hitting the network. Volume is a plain
+    random baseline that occasionally spikes (VOLUME_SPIKE_CHANCE),
+    biased slightly toward spiking alongside a larger price move so
+    app/scanner.py's volume-spike and breakout signals correlate the way
+    a real market's would, without needing real trade-tape data."""
 
     def __init__(self) -> None:
         self._prices: dict[str, float] = {}
@@ -65,7 +78,13 @@ class MockMarketDataProvider(MarketDataProvider):
         change_pct = random.uniform(-1.5, 1.5)
         price = max(0.5, previous * (1 + change_pct / 100))
         self._prices[symbol] = price
-        return Quote(symbol=symbol, price=round(price, 2), change_pct=round(change_pct, 2))
+
+        volume = random.uniform(*NORMAL_VOLUME_RANGE)
+        spike_chance = VOLUME_SPIKE_CHANCE * (2.0 if abs(change_pct) > 1.0 else 1.0)
+        if random.random() < spike_chance:
+            volume *= random.uniform(*VOLUME_SPIKE_MULTIPLIER_RANGE)
+
+        return Quote(symbol=symbol, price=round(price, 2), change_pct=round(change_pct, 2), volume=round(volume, 0))
 
 
 def _select_provider() -> MarketDataProvider:

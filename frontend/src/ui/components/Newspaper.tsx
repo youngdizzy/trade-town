@@ -6,9 +6,17 @@ import type { AgentId } from "@/types";
 
 const AGENT_ORDER: AgentId[] = ["scout", "atlas", "echo", "nova", "scribe"];
 
-/** The Lobby newspaper stand's "TradeTown Daily" — company news, research updates, agent activity, and placeholder market headlines. */
+function companyRatingLabel(overall: number): string {
+  if (overall >= 85) return "A — Excellent";
+  if (overall >= 70) return "B — Strong";
+  if (overall >= 55) return "C — Steady";
+  if (overall >= 40) return "D — Needs Work";
+  return "F — Struggling";
+}
+
+/** The Lobby newspaper stand's "TradeTown Daily" — company news, research updates, agent activity, paper trading results, and placeholder market headlines. */
 export function Newspaper() {
-  const { newspaperOpen, news, research, tasks, time } = useGameStore();
+  const { newspaperOpen, news, research, tasks, time, paperPortfolio, coachReports, scannerAlerts, companyScore } = useGameStore();
   if (!newspaperOpen) return null;
 
   const close = () => EventBus.emit("ui:newspaper", { open: false });
@@ -20,6 +28,14 @@ export function Newspaper() {
     .slice(0, 5);
   const agentActivity = [...tasks].reverse().slice(0, 5);
   const events = upcomingEvents(AGENT_ORDER, time, 5);
+
+  // "Today's trades" — most recently closed trades, the same recency-slice
+  // idiom every other section here uses (see companyNews/researchUpdates
+  // above) rather than a strict calendar-day filter.
+  const todaysTrades = [...paperPortfolio.tradeHistory].reverse().slice(0, 5);
+  const topOpportunities = [...research].sort((a, b) => b.confidence - a.confidence).slice(0, 3);
+  const latestCoachReport = coachReports[coachReports.length - 1] ?? null;
+  const recentAlerts = [...scannerAlerts].slice(-5).reverse();
 
   return (
     <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/60 font-pixel text-[11px]">
@@ -56,6 +72,75 @@ export function Newspaper() {
               </li>
             ))}
           </ul>
+        </NewsSection>
+
+        <NewsSection title="Today's Trades">
+          {todaysTrades.length === 0 && <p className="opacity-50">No trades closed yet.</p>}
+          <ul className="space-y-1.5">
+            {todaysTrades.map((trade) => (
+              <li key={trade.id}>
+                {trade.symbol}: {trade.pnl >= 0 ? "+" : ""}
+                {trade.pnl.toFixed(2)} ({trade.pnlPct.toFixed(1)}%) — {trade.reason}
+              </li>
+            ))}
+          </ul>
+        </NewsSection>
+
+        <NewsSection title="Top Opportunities">
+          {topOpportunities.length === 0 && <p className="opacity-50">Nothing flagged yet.</p>}
+          <ul className="space-y-1.5">
+            {topOpportunities.map((item) => (
+              <li key={item.id}>
+                {AGENT_PROFILES[item.assignedAgent].name}: {item.title} — {Math.round(item.confidence)}% confidence
+              </li>
+            ))}
+          </ul>
+        </NewsSection>
+
+        <NewsSection title="Performance">
+          <p>
+            Cash ${paperPortfolio.cashBalance.toFixed(0)} · Total P&amp;L {paperPortfolio.totalPnl >= 0 ? "+" : ""}
+            {paperPortfolio.totalPnl.toFixed(2)} ({paperPortfolio.totalPnlPct.toFixed(1)}%)
+          </p>
+          <p>
+            {paperPortfolio.winCount}W / {paperPortfolio.lossCount}L — simulated, no real capital
+          </p>
+        </NewsSection>
+
+        <NewsSection title="Coach's Review">
+          {latestCoachReport === null && <p className="opacity-50">No Coach report yet — check back this evening.</p>}
+          {latestCoachReport !== null && (
+            <>
+              <p className="mb-1.5">
+                {latestCoachReport.period} score: {Math.round(latestCoachReport.companyScore)}/100 · win rate {Math.round(latestCoachReport.winRate)}%
+              </p>
+              <ul className="space-y-1.5">
+                {latestCoachReport.recommendations.map((rec, i) => (
+                  // Recommendations are freeform strings with no stable id of
+                  // their own (see backend/app/coach.py) — index is safe here
+                  // since the whole list is replaced wholesale each report.
+                  <li key={i}>{rec}</li>
+                ))}
+              </ul>
+            </>
+          )}
+        </NewsSection>
+
+        <NewsSection title="Scanner Alerts">
+          {recentAlerts.length === 0 && <p className="opacity-50">Pulse hasn't flagged anything yet.</p>}
+          <ul className="space-y-1.5">
+            {recentAlerts.map((alert) => (
+              <li key={alert.id}>
+                {alert.symbol}: {alert.message}
+              </li>
+            ))}
+          </ul>
+        </NewsSection>
+
+        <NewsSection title="Company Rating">
+          <p>
+            {Math.round(companyScore.overall)}/100 — {companyRatingLabel(companyScore.overall)}
+          </p>
         </NewsSection>
 
         <NewsSection title="Market Headlines (placeholder)">

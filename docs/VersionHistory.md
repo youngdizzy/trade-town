@@ -87,9 +87,41 @@ execution of a single real trade. Every `PaperOrder`, `PaperPosition`,
 and `PaperTrade` is simulated bookkeeping only — see `portfolio.py`'s
 module docstring for the enforcement boundary.
 
-## What's next for v0.6 (not started, not scoped)
+## v0.6 — Paper Trading Operations
 
-These are candidate directions surfaced by v0.5's design, not commitments
+Three more agents (Sentinel — Risk Management, Pulse — Market Scanner,
+Guardian — Portfolio Protection), TradeTown's ninth Lobby door: the
+Trading Floor, home to all three. The v0.5 paper-trading engine's
+opening logic moved behind a full Decision Voting pipeline
+(`voting.py` + `decision.py`): every high-confidence completed research
+item is now voted on by the four researcher agents plus Sentinel and
+Guardian, with a permanent, explainable `TradeDecision` record (research/
+technical/fundamental/risk summaries, supporting/opposing agents, final
+reasoning) stored for every candidate — approved or not. Approved trades
+route through a new order-book `PaperBroker` (`broker.py`, market/limit/
+stop/take-profit/stop-loss orders, one tick of fill latency) instead of
+opening a position directly. A configurable `RiskEngine`
+(`risk_engine.py`) backs Sentinel's hard trade-approval gate and
+Guardian's softer exposure/concentration watch; a `ScannerManager`
+(`scanner.py`) backs Pulse's continuous gap/breakout/volume-spike/
+volatility scan across the watchlist. A `TradeJournal` (`journal.py`)
+stamps every closed trade with a coach review and lessons learned,
+closing a v0.5 gap where those two schema fields existed but nothing
+populated them. The v0.5 closing logic (mark-to-market, hold-duration-
+based random-roll close) is unchanged — only how a position gets opened
+moved. Brain Room HUD and the newspaper both gained sections surfacing
+all of this (Open Positions, Pending Orders, Risk Management, Votes,
+Scanner Alerts, Company Rating).
+
+**Explicitly not in v0.6** (per the brief's STOP CONDITION): live
+brokerage support, a connection to Charles Schwab or any other broker, or
+execution of a single real trade — the same boundary every version
+before it has held. Every `PaperOrder`, `PaperPosition`, and `PaperTrade`
+is simulated bookkeeping only.
+
+## What's next for v0.7 (not started, not scoped)
+
+These are candidate directions surfaced by v0.6's design, not commitments
 — nothing below has been designed, and per every version's stop
 condition, work stops at the end of its own brief:
 
@@ -98,12 +130,20 @@ condition, work stops at the end of its own brief:
   next step is one real vendor (Polygon, Finnhub, Alpha Vantage, Yahoo
   Finance, or Schwab) behind an API key, still with a mock fallback when
   no key is configured. This would also let `simulation.py` replace its
-  placeholder backtest metrics with real historical-data-driven ones.
-- **Model-generated meeting discussion and coach commentary.** Both
-  `discussion.py` and `coach.py`'s recommendation text are templated
-  flavor text tied to real state; the architecture was deliberately built
-  so a future version could swap the template call for a real model call
-  without touching the surrounding state machines.
+  placeholder backtest metrics with real historical-data-driven ones, and
+  let `scanner.py` do true rolling-window breakout detection instead of
+  its current current-quote-threshold-only approach.
+- **Model-generated meeting discussion, coach commentary, and vote
+  reasoning.** `discussion.py`, `coach.py`'s recommendations, and
+  `voting.py`'s per-agent reasons are all templated flavor text tied to
+  real state; the architecture was deliberately built so a future version
+  could swap the template call for a real model call without touching the
+  surrounding state machines.
+- **A real sector taxonomy.** v0.6's "sector concentration" risk check is
+  a per-symbol concentration proxy (see `risk_engine.py`'s module
+  docstring) since `ResearchCategory` isn't a real sector system — a
+  future version could add one and make Guardian's concentration checks
+  sector-aware rather than symbol-aware.
 - **A `CompanyMemory` REST search endpoint.** `memory.search()` /
   `knowledge.search_knowledge()` already implement the filter contract;
   neither is wired to a route yet, since the frontend currently filters
@@ -116,4 +156,12 @@ condition, work stops at the end of its own brief:
 - **Real broker paper-trading APIs** (e.g. a sandbox/paper endpoint from
   a real brokerage), once there's a real market data connection — still
   simulated money, but against real historical fills instead of
-  placeholder math. Explicitly not live trading.
+  placeholder math. `broker.py` is already shaped for this (see its
+  module docstring), but no such adapter exists or is wired in v0.6.
+  Explicitly not live trading.
+- **Tighter order/position/decision traceability.** v0.6 links a closed
+  trade back to the `TradeDecision` that approved it via a best-effort
+  "most recent matching-symbol decision" lookup (see `nexus.py`'s
+  `_journal_closed_trades()`), since neither `PaperOrder` nor
+  `PaperPosition` carries an explicit decision/order id through the full
+  chain. A future version could add those fields for exact attribution.

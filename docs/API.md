@@ -68,13 +68,13 @@ perspective and exists purely to detect disconnects
       "memory": [{ "id": "scout-1-8-0", "summary": "Started: Scanning market news", "day": 1, "hour": 8 }],
       "override": null // or { "location": "meeting-room", "reason": "meeting", "remainingMinutes": 20 }
     }
-    // ...atlas, echo, nova, scribe, coach
+    // ...atlas, echo, nova, scribe, coach, sentinel, pulse, guardian
   },
   "tasks": [
     {
       "id": "task-scout-1-9-0",
       "owner": "scout",
-      "category": "news_scan", // research | review | meeting | watchlist_update | news_scan | chart_analysis | documentation | coaching | simulation | paper_trading | analytics
+      "category": "news_scan", // research | review | meeting | watchlist_update | news_scan | chart_analysis | documentation | coaching | simulation | paper_trading | analytics | risk_management | market_scanning | voting | trading
       "priority": "normal",    // low | normal | high
       "description": "Scanning market news",
       "status": "working",     // pending | working | completed | failed
@@ -124,7 +124,8 @@ perspective and exists purely to detect disconnects
   "memory": [
     { "id": "memory-research-...", "category": "research", "title": "...", "body": "...", "timestamp": "..." }
     // categories: research | meeting | whiteboard | event | discussion | discovery | future_trade |
-    //             lesson | mistake | strategy | coach_review | simulation | paper_trade
+    //             lesson | mistake | strategy | coach_review | simulation | paper_trade |
+    //             alert | vote | decision | order
   ],
   "meetingMinutes": [
     {
@@ -141,9 +142,13 @@ perspective and exists purely to detect disconnects
     "positions": [
       { "id": "pos-...", "symbol": "AAPL", "side": "buy", "quantity": 10.6, "entryPrice": 471.87, "currentPrice": 478.2, "unrealizedPnl": 67.1, "unrealizedPnlPct": 1.3, "openedBy": "scout", "confidence": 88.0, "openedAt": "...", "openedSimMinutes": 1560 }
     ],
-    "orders": [],
+    "orders": [
+      { "id": "order-...", "symbol": "SPY", "side": "buy", "orderType": "market", "quantity": 9.4, "price": 207.27, "status": "open", "placedBy": "atlas", "reason": "...", "confidence": 92.0, "linkedPositionId": null, "filledPrice": null, "filledAt": null, "createdAt": "..." }
+      // orderType: market | limit | stop | take_profit | stop_loss
+      // status: open | filled | closed | cancelled
+    ],
     "tradeHistory": [
-      { "id": "trade-...", "symbol": "DXY", "side": "buy", "quantity": 41.4, "entryPrice": 120.54, "exitPrice": 122.05, "pnl": 55.55, "pnlPct": 1.3, "durationMinutes": 135, "confidence": 100.0, "reason": "...", "marketConditions": "...", "supportingAgents": ["nova"], "opposingAgents": [], "coachReview": null, "lessonsLearned": null, "openedAt": "...", "closedAt": "..." }
+      { "id": "trade-...", "symbol": "DXY", "side": "buy", "quantity": 41.4, "entryPrice": 120.54, "exitPrice": 122.05, "pnl": 55.55, "pnlPct": 1.3, "durationMinutes": 135, "confidence": 100.0, "reason": "...", "marketConditions": "...", "supportingAgents": ["nova"], "opposingAgents": [], "coachReview": "...", "lessonsLearned": "...", "decisionId": "decision-...", "screenshot": "Chart snapshot unavailable — TradeTown has no chart-rendering pipeline.", "openedAt": "...", "closedAt": "..." }
     ],
     "totalPnl": 55.55, "totalPnlPct": 0.06, "winCount": 6, "lossCount": 4
   },
@@ -176,12 +181,41 @@ perspective and exists purely to detect disconnects
   },
   "performanceSnapshots": [
     { "period": "daily", "returnPct": 1.2, "winRate": 60.0, "maxDrawdownPct": 4.1, "sharpeRatio": 0.29, "sortinoRatio": 0.34, "avgHoldingMinutes": 210.0, "researchAccuracy": 71.0, "confidenceAccuracy": 68.0, "computedAt": "..." }
+  ],
+  "riskLimits": {
+    "maxPositionPct": 10.0, "maxDailyLossPct": 5.0, "maxDrawdownPct": 20.0,
+    "maxOpenPositions": 8, "maxSectorConcentrationPct": 30.0, "riskPerTradePct": 2.0
+  },
+  "riskWarnings": [
+    // Guardian's *current* standing watch — refreshed every tick from
+    // scratch (see risk_engine.monitor_portfolio()), not an accumulating
+    // log. Empty when the portfolio is within all configured limits.
+    { "id": "guardian-concentration-AAPL-...", "symbol": "AAPL", "severity": "warning", "message": "AAPL is 34.2% of the portfolio — above the 30% concentration limit.", "createdAt": "..." }
+    // severity: info | warning | critical
+  ],
+  "scannerAlerts": [
+    { "id": "alert-BTC-USD-volume_spike-...", "symbol": "BTC-USD", "alertType": "volume_spike", "message": "BTC-USD volume spiked well above its normal range with no clear price move yet.", "detectedBy": "pulse", "createdAt": "..." }
+    // alertType: gap_up | gap_down | breakout | volume_spike | high_volatility
+  ],
+  "decisions": [
+    {
+      "id": "decision-research-echo-AAPL-...", "symbol": "AAPL", "outcome": "trade", // trade | no_trade
+      "votes": [
+        { "agentId": "scout", "choice": "sell", "reason": "..." },
+        { "agentId": "sentinel", "choice": "buy", "reason": "AAPL is within configured risk limits." }
+        // choice: buy | sell | hold | risk_too_high | position_too_large
+      ],
+      "researchSummary": "...", "technicalSummary": "...", "fundamentalSummary": "...", "riskSummary": "...",
+      "supportingAgents": ["atlas", "echo", "nova"], "opposingAgents": ["scout"],
+      "confidence": 100.0, "finalReasoning": "3 of 5 votes in favor — Atlas approves the trade on AAPL.",
+      "orderId": "order-research-echo-AAPL-...", "createdAt": "..."
+    }
   ]
 }
 ```
 
 `GET /api/load` returns this same set of fields plus `version` (currently
-`"0.5"`), `player` (`EntityTransform`), `settings` (`SettingsState`),
+`"0.6"`), `player` (`EntityTransform`), `settings` (`SettingsState`),
 `dialogueHistory` (`DialogueHistoryEntry[]`), and `updatedAt`.
 
 ### Bounding / trimming
@@ -202,6 +236,10 @@ never needs to trim anything itself:
 | `hallOfFame` | last 40 | `MAX_HALL_OF_FAME` |
 | `coachReports` | last 20 | `MAX_COACH_REPORTS` |
 | `performanceSnapshots` | last 60 | `MAX_PERFORMANCE_SNAPSHOTS` |
+| `paperPortfolio.orders` | last 40 resolved (`MAX_ORDER_LOG`) + all currently open | order history, not full lifetime log |
+| `riskWarnings` | uncapped, but replaced wholesale every tick | current standing watch, not a log — see `risk_engine.monitor_portfolio()` |
+| `scannerAlerts` | last 30 (`MAX_ALERTS`) | rolling alert feed |
+| `decisions` | uncapped | the v0.6 brief's Explainable AI requirement is "store every report permanently" |
 
 ### Provider configuration
 

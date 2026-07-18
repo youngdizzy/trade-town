@@ -82,6 +82,36 @@ AGENT_SCHEDULES: dict[AgentId, list[ScheduleBlock]] = {
         ScheduleBlock(22, 24, "performance-center", "Drafting recommendations"),
         ScheduleBlock(0, 6, "performance-center", "Standing by"),
     ],
+    "sentinel": [
+        ScheduleBlock(6, 9, "trading-floor", "Reviewing overnight risk exposure"),
+        ScheduleBlock(9, 12, "trading-floor", "Monitoring position sizing"),
+        ScheduleBlock(12, 13, "break-room", "Resting"),
+        ScheduleBlock(13, 17, "trading-floor", "Evaluating trade candidates"),
+        ScheduleBlock(17, 19, "performance-center", "Cross-checking risk against Coach's reports"),
+        ScheduleBlock(19, 22, "trading-floor", "Setting tomorrow's risk limits"),
+        ScheduleBlock(22, 24, "trading-floor", "Auditing the day's approvals"),
+        ScheduleBlock(0, 6, "trading-floor", "Standing watch"),
+    ],
+    "pulse": [
+        ScheduleBlock(6, 9, "trading-floor", "Scanning premarket movers"),
+        ScheduleBlock(9, 12, "trading-floor", "Watching for breakouts"),
+        ScheduleBlock(12, 13, "break-room", "Resting"),
+        ScheduleBlock(13, 17, "trading-floor", "Tracking volume spikes"),
+        ScheduleBlock(17, 19, "brain-room", "Cross-referencing research with scanner alerts"),
+        ScheduleBlock(19, 22, "trading-floor", "Scanning after-hours activity"),
+        ScheduleBlock(22, 24, "trading-floor", "Compiling the day's alerts"),
+        ScheduleBlock(0, 6, "trading-floor", "Monitoring overnight volatility"),
+    ],
+    "guardian": [
+        ScheduleBlock(6, 9, "trading-floor", "Checking overnight portfolio exposure"),
+        ScheduleBlock(9, 12, "trading-floor", "Monitoring concentration risk"),
+        ScheduleBlock(12, 13, "break-room", "Resting"),
+        ScheduleBlock(13, 17, "trading-floor", "Watching drawdown levels"),
+        ScheduleBlock(17, 19, "performance-center", "Reviewing portfolio performance"),
+        ScheduleBlock(19, 22, "trading-floor", "Recommending risk reductions"),
+        ScheduleBlock(22, 24, "trading-floor", "Filing the day's exposure report"),
+        ScheduleBlock(0, 6, "trading-floor", "Standing watch over the book"),
+    ],
 }
 
 

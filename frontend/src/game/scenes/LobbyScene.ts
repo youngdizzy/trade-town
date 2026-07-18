@@ -22,14 +22,15 @@ interface DoorDef {
 }
 
 const DOORS: DoorDef[] = [
-  { target: "ScoutOfficeScene", label: "Scout Office", x: (WIDTH_PX * 1) / 9, y: 96, tint: 0x9be7b0 },
-  { target: "CeoOfficeScene", label: "CEO Office", x: (WIDTH_PX * 2) / 9, y: 96, tint: 0xffe08a },
-  { target: "BrainRoomScene", label: "Brain Room", x: (WIDTH_PX * 3) / 9, y: 96, tint: 0xc9a3ff },
-  { target: "MeetingRoomScene", label: "Meeting Room", x: (WIDTH_PX * 4) / 9, y: 96, tint: 0xffb4a8 },
-  { target: "BreakRoomScene", label: "Break Room", x: (WIDTH_PX * 5) / 9, y: 96, tint: 0xffd9a0 },
-  { target: "SimulationLabScene", label: "Simulation Lab", x: (WIDTH_PX * 6) / 9, y: 96, tint: 0x60d1ff },
-  { target: "HallOfFameScene", label: "Hall of Fame", x: (WIDTH_PX * 7) / 9, y: 96, tint: 0xd9a441 },
-  { target: "PerformanceCenterScene", label: "Performance Center", x: (WIDTH_PX * 8) / 9, y: 96, tint: 0xff8c61 },
+  { target: "ScoutOfficeScene", label: "Scout Office", x: (WIDTH_PX * 1) / 10, y: 96, tint: 0x9be7b0 },
+  { target: "CeoOfficeScene", label: "CEO Office", x: (WIDTH_PX * 2) / 10, y: 96, tint: 0xffe08a },
+  { target: "BrainRoomScene", label: "Brain Room", x: (WIDTH_PX * 3) / 10, y: 96, tint: 0xc9a3ff },
+  { target: "MeetingRoomScene", label: "Meeting Room", x: (WIDTH_PX * 4) / 10, y: 96, tint: 0xffb4a8 },
+  { target: "BreakRoomScene", label: "Break Room", x: (WIDTH_PX * 5) / 10, y: 96, tint: 0xffd9a0 },
+  { target: "SimulationLabScene", label: "Simulation Lab", x: (WIDTH_PX * 6) / 10, y: 96, tint: 0x60d1ff },
+  { target: "HallOfFameScene", label: "Hall of Fame", x: (WIDTH_PX * 7) / 10, y: 96, tint: 0xd9a441 },
+  { target: "PerformanceCenterScene", label: "Performance Center", x: (WIDTH_PX * 8) / 10, y: 96, tint: 0xff8c61 },
+  { target: "TradingFloorScene", label: "Trading Floor", x: (WIDTH_PX * 9) / 10, y: 96, tint: 0x5ce1ff },
 ];
 
 const NEWSPAPER_STAND = { x: WIDTH_PX / 2 + TILE_SIZE * 5, y: HEIGHT_PX - TILE_SIZE * 3 };

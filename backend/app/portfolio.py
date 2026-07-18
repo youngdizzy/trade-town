@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.schemas import AgentId, OrderSide, PaperPortfolio, PaperPosition, PaperTrade
+from app.schemas import AgentId, OrderSide, PaperPortfolio, PaperPosition, PaperTrade, TimeState
 
 STARTING_BALANCE = 100_000.0
 MAX_TRADE_HISTORY = 50
@@ -26,6 +26,15 @@ MIN_POSITION_SIZE = 100.0
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def sim_minutes(time: TimeState) -> int:
+    """Simulated-clock minutes-since-epoch — hold/expiry durations across
+    the paper-trading system (app/paper_trading.py, app/broker.py) are
+    tracked against TradeTown's in-game clock, not wall-clock time, the
+    same way research confidence advances by tick count rather than
+    elapsed real time (see app/research.py)."""
+    return time.day * 1440 + time.hour * 60 + time.minute
 
 
 def default_portfolio() -> PaperPortfolio:
@@ -52,14 +61,21 @@ def open_position(
     confidence: float,
     opened_sim_minutes: int,
     side: OrderSide = "buy",
+    quantity: float | None = None,
 ) -> PaperPortfolio:
     """Commits POSITION_SIZE_FRACTION of current cash to a new position at
-    `price`. No-ops (returns the portfolio unchanged) if cash is too low
+    `price`, unless the caller already knows the exact size it wants (see
+    app/broker.py, which sizes fills via app/risk_engine.py's
+    recommended_quantity() instead of this module's flat-fraction
+    default). No-ops (returns the portfolio unchanged) if cash is too low
     to open a meaningful position, rather than opening a zero-size one."""
-    budget = max(portfolio.cash_balance * POSITION_SIZE_FRACTION, 0.0)
-    if budget < MIN_POSITION_SIZE or price <= 0:
+    if quantity is None:
+        budget = max(portfolio.cash_balance * POSITION_SIZE_FRACTION, 0.0)
+        if budget < MIN_POSITION_SIZE or price <= 0:
+            return portfolio
+        quantity = round(budget / price, 4)
+    elif quantity <= 0 or price <= 0 or quantity * price > portfolio.cash_balance:
         return portfolio
-    quantity = round(budget / price, 4)
     cost = quantity * price
     position = PaperPosition(
         id=position_id,

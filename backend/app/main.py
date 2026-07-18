@@ -41,7 +41,7 @@ async def lifespan(app: FastAPI):
         pass
 
 
-app = FastAPI(title="TradeTown API", version="0.5.0", lifespan=lifespan)
+app = FastAPI(title="TradeTown API", version="0.6.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

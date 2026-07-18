@@ -75,15 +75,19 @@ and managerial, not competitive:
    reflecting their current task. There is nothing to fail at here — the
    player cannot break an agent's schedule by talking to it.
 3. **Read.** The Brain Room HUD, the whiteboards, TradeTown Daily (the
-   newspaper), Company Memory, and — new in v0.5 — the Coach Dashboard
-   and the Simulation Lab/Hall of Fame/Performance Center room readouts
-   are all *read* surfaces, not *control* surfaces. The player's role
-   stays a visitor with backstage access, not a manager giving orders:
-   Coach (v0.5) evaluates the company autonomously and the player reads
-   its reports, but never tells Coach what to evaluate or approves an
-   individual paper trade before it opens — that boundary was originally
-   drafted as something v0.5 might soften; it didn't, and the player
-   still directs nothing at the level of an individual trade.
+   newspaper), Company Memory, the Coach Dashboard, the Simulation
+   Lab/Hall of Fame/Performance Center room readouts, and — new in v0.6 —
+   the Trading Floor's live ticker/Central Command display are all *read*
+   surfaces, not *control* surfaces. The player's role stays a visitor
+   with backstage access, not a manager giving orders: Coach evaluates
+   the company autonomously and the player reads its reports, and v0.6's
+   Decision Voting pipeline is entirely agent-to-agent — the player
+   watches Scout/Atlas/Echo/Nova vote and Sentinel/Guardian gate the
+   outcome, but never casts a vote, sets `RiskLimits`, or approves an
+   individual paper trade before it opens. That boundary was originally
+   drafted as something v0.5 might soften; it didn't, v0.6 extended the
+   same boundary to a whole new decision pipeline, and the player still
+   directs nothing at the level of an individual trade.
 4. **Return.** Because the simulation keeps advancing offline (persisted
    to SQLite every `PERSIST_INTERVAL_TICKS`), coming back later always
    shows a company that kept working without you — new research
@@ -154,18 +158,22 @@ now watching it grade its own performance.
 ## Long-Term Vision
 
 By v1.0, TradeTown should be a company you could plausibly work at:
-agents research, discuss, and flag ideas; a Coach agent (v0.5) helps the
-*player* get better at evaluating those ideas; a Simulation Lab (v0.6)
-lets flagged candidates be replayed against historical data with zero
-real risk; Paper Trading (v0.7) lets the player practice execution
-without money; a Risk Engine (v0.9) makes the company's own risk posture
-visible and manageable; and only at v1.0, with all of that scaffolding
-in place and explicitly re-authorized, does a real (optional,
-opt-in, sandboxed) brokerage connection become possible. Every step
-between here and there is designed to be useful and complete *on its
-own* even if the project stopped at that version — see `ROADMAP.md` for
-why each milestone is scoped as a standalone deliverable, not a
-partial feature.
+agents research, discuss, and flag ideas; a Coach agent (shipped v0.5)
+helps the *player* get better at evaluating those ideas; a Simulation Lab
+(shipped v0.5) lets flagged candidates be replayed against placeholder
+backtest data with zero real risk; Paper Trading (shipped v0.5, with
+order-book execution and a full Decision Voting/Risk Engine/Market
+Scanner pipeline added in v0.6) lets the player watch the company
+practice execution without money; a Strategy Marketplace (v0.7) lets the
+player curate which ideas the company prioritizes; Risk Calibration &
+Analytics (v0.8) rounds out the company's own risk posture with
+confidence-vs-outcome calibration and historical trend tracking; and
+only at v1.0, with all of that scaffolding in place and explicitly
+re-authorized, does a real (optional, opt-in, sandboxed) brokerage
+connection become possible. Every step between here and there is
+designed to be useful and complete *on its own* even if the project
+stopped at that version — see `ROADMAP.md` for why each milestone is
+scoped as a standalone deliverable, not a partial feature.
 
 Past v1.0 (see `ROADMAP.md`'s v1.x/v2.0 entries), the vision widens from
 "one company" to "a genre": user-authored agents, a strategy

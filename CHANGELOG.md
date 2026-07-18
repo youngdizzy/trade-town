@@ -3,6 +3,82 @@
 All notable changes to TradeTown are documented here. Versions are
 development milestones, not semver releases.
 
+## v0.6
+
+### Added
+
+- **Trading Floor room** (`frontend/src/game/scenes/TradingFloorScene.ts`) —
+  the ninth Lobby door. Large trading desks, wall monitors, a live market
+  ticker bound to the watchlist, a Central Command display bound to the
+  live paper portfolio, individual desks for Sentinel/Pulse/Guardian,
+  a conference table, server cabinets, and status lights that reflect
+  Guardian's standing risk watch.
+- **Three new agents**: Sentinel (Risk Management), Pulse (Market
+  Scanner), Guardian (Portfolio Protection) — profiles, schedules, and
+  dialogue in both backend (`backend/app/agents.py`, `schedule.py`) and
+  frontend (`AgentProfiles.ts`, `Schedule.ts`, `DialogueManager.ts`).
+  TradeTown now has nine agents total.
+- **Order-book paper trading engine** (`backend/app/broker.py`) —
+  PaperBroker: market/limit/stop/take-profit/stop-loss orders go through
+  an explicit `open → filled/cancelled` lifecycle (`place_order()` /
+  `tick_broker()`), one tick of latency between placement and the
+  earliest possible fill, same as every other NEXUS system. Completely
+  simulated — no brokerage SDK, no API key, no real order-execution path
+  — but shaped so a real adapter (Schwab/IBKR/Alpaca) could later
+  implement the same two calls, mirroring `market_data.py`'s provider
+  pattern.
+- **RiskEngine** (`backend/app/risk_engine.py`) — Sentinel's configurable
+  trade-approval gate (position size, portfolio drawdown, open-position
+  count) and Guardian's exposure/concentration monitor, both backing
+  votes in the new decision pipeline. `RiskLimits` are configurable and
+  persisted; Sentinel/Guardian can reject a trade outright.
+- **ScannerManager** (`backend/app/scanner.py`) — Pulse's continuous
+  market scan across the watchlist (stocks, ETFs, indexes, gold,
+  bitcoin), flagging gap ups/downs, breakouts, volume spikes, and high
+  volatility as `ScannerAlert` records.
+- **VotingManager + DecisionEngine** (`backend/app/voting.py`,
+  `backend/app/decision.py`) — every high-confidence completed research
+  item becomes a trade candidate voted on by the four researcher agents
+  plus Sentinel and Guardian; Atlas's `decide_trade()` produces a
+  permanent, explainable `TradeDecision` (research/technical/
+  fundamental/risk summaries, supporting/opposing agents, confidence,
+  final reasoning). Any Sentinel "risk too high" or Guardian "position
+  too large" vote is an absolute veto, regardless of researcher votes.
+- **TradeJournal** (`backend/app/journal.py`) — stamps every closed
+  trade with a coach review, lessons learned, a link back to the
+  decision that approved it, and a placeholder screenshot field. Also
+  closes a v0.5 gap: `PaperTrade.coach_review`/`.lessons_learned`
+  existed in the schema since v0.5 but nothing had ever populated them.
+- **Brain Room HUD expansion** — Open Positions, Pending Orders, Risk
+  Management (score/limits/warnings), Latest Decision & Votes, and
+  Scanner Alerts sections, alongside everything v0.3–v0.5 already showed.
+- **TradeTown Daily expansion** — Today's Trades, Top Opportunities,
+  Performance, Coach's Review, Scanner Alerts, and Company Rating
+  sections added to the newspaper.
+- **Save system** — `GameSaveState` gained `riskLimits`, `riskWarnings`,
+  `scannerAlerts`, and `decisions`; save version bumped to `"0.6"`.
+  Orders and trades gained order-type/fill/decision-link fields. Old
+  saves are not migrated — see `backend/app/persistence.py`'s existing
+  "start fresh on schema mismatch" policy, unchanged since v0.1.
+
+### Design notes / intentional simplifications
+
+- TradeTown has no real sector taxonomy, so "sector concentration" risk
+  checks are implemented as per-symbol concentration of portfolio equity
+  instead — see `risk_engine.py`'s module docstring.
+- `scanner.py`'s "breakout" detection is threshold-based against the
+  current quote only (no persisted rolling price history yet) — a true
+  multi-period range breakout needs a real historical
+  `MarketDataProvider`, which doesn't exist yet (same boundary
+  `watchlist.py` already documents for v0.3).
+- `decision.py`'s technical/fundamental summaries explicitly state that
+  no dedicated technical/fundamental analysis pass exists, rather than
+  fabricating analysis that was never run.
+
+**No live brokerage connections. No real money. Every "trade" is a row
+in `GameSaveState.paper_portfolio`, nothing more — see
+`docs/DESIGN_BIBLE.md`'s "What TradeTown Is NOT."**
+
 ## v0.5
 
 ### Added

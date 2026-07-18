@@ -89,6 +89,39 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
     wanderRadius: 22,
     idlePauseChance: 0.4,
   },
+  sentinel: {
+    id: "sentinel",
+    name: "Sentinel",
+    occupation: "Risk Management",
+    personality: "Unflinching. Says no more often than yes, and never apologizes for it.",
+    homeLocation: "trading-floor",
+    tint: 0xff5c5c,
+    badge: "\u{1F6E1}",
+    wanderRadius: 20,
+    idlePauseChance: 0.6,
+  },
+  pulse: {
+    id: "pulse",
+    name: "Pulse",
+    occupation: "Market Scanner",
+    personality: "Restless. Always watching every ticker at once.",
+    homeLocation: "trading-floor",
+    tint: 0x5ce1ff,
+    badge: "\u{1F4E1}",
+    wanderRadius: 45,
+    idlePauseChance: 0.1,
+  },
+  guardian: {
+    id: "guardian",
+    name: "Guardian",
+    occupation: "Portfolio Protection",
+    personality: "Steady and watchful. Speaks up the moment exposure looks lopsided.",
+    homeLocation: "trading-floor",
+    tint: 0x4a90d9,
+    badge: "\u{1F6E1}\u{FE0F}",
+    wanderRadius: 25,
+    idlePauseChance: 0.5,
+  },
 };
 
 export const LOCATION_TO_SCENE: Record<AgentLocation, SceneId> = {
@@ -100,4 +133,5 @@ export const LOCATION_TO_SCENE: Record<AgentLocation, SceneId> = {
   "simulation-lab": "SimulationLabScene",
   "hall-of-fame": "HallOfFameScene",
   "performance-center": "PerformanceCenterScene",
+  "trading-floor": "TradingFloorScene",
 };

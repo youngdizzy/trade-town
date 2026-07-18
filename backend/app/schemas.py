@@ -18,6 +18,17 @@ BacktestSession / SimulationResult), a Hall of Fame, a CompanyScore, and
 periodic CoachReports / PerformanceSnapshots. Every trade in this system
 is simulated — see app/paper_trading.py's module docstring for the exact
 boundary. Nothing in v0.5 connects to a real brokerage.
+
+v0.6 adds three more agents (Sentinel/Risk Management, Pulse/Market
+Scanner, Guardian/Portfolio Protection) and turns v0.5's threshold-only
+paper trading into a full order book: PaperOrder gains order types
+(market/limit/stop/take_profit/stop_loss); every trade candidate is now
+voted on by the relevant agents (AgentVote) before Atlas's DecisionEngine
+approves or rejects it, producing a permanent, explainable TradeDecision
+report; RiskLimits/RiskWarning back Sentinel's ability to reject a trade;
+ScannerAlert is Pulse's continuous watchlist-scanning output. Still
+entirely simulated — see app/broker.py's module docstring for the same
+boundary restated for v0.6's order book.
 """
 from __future__ import annotations
 
@@ -37,10 +48,11 @@ SceneId = Literal[
     "SimulationLabScene",
     "HallOfFameScene",
     "PerformanceCenterScene",
+    "TradingFloorScene",
 ]
 
-AgentId = Literal["scout", "atlas", "echo", "nova", "scribe", "coach"]
-AGENT_IDS: tuple[AgentId, ...] = ("scout", "atlas", "echo", "nova", "scribe", "coach")
+AgentId = Literal["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian"]
+AGENT_IDS: tuple[AgentId, ...] = ("scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian")
 
 # Every room an agent's schedule (or a meeting/break override) can place them in.
 AgentLocation = Literal[
@@ -52,6 +64,7 @@ AgentLocation = Literal[
     "simulation-lab",
     "hall-of-fame",
     "performance-center",
+    "trading-floor",
 ]
 
 TaskStatus = Literal["pending", "working", "completed", "failed"]
@@ -68,6 +81,10 @@ TaskCategory = Literal[
     "simulation",
     "paper_trading",
     "analytics",
+    "risk_management",
+    "market_scanning",
+    "voting",
+    "trading",
 ]
 NewsCategory = Literal["company", "discovery", "market"]
 
@@ -91,6 +108,10 @@ MemoryCategory = Literal[
     "coach_review",
     "simulation",
     "paper_trade",
+    "alert",
+    "vote",
+    "decision",
+    "order",
 ]
 
 # --- v0.5: paper trading, simulation, coaching, and scoring ---------------
@@ -109,6 +130,13 @@ HallOfFameCategory = Literal[
 ]
 PerformancePeriod = Literal["daily", "weekly", "monthly", "all_time"]
 ReportPeriod = Literal["weekly", "monthly"]
+
+# --- v0.6: paper broker order book, risk, scanning, and voting ------------
+OrderType = Literal["market", "limit", "stop", "take_profit", "stop_loss"]
+AlertType = Literal["gap_up", "gap_down", "breakout", "volume_spike", "high_volatility"]
+AlertSeverity = Literal["info", "warning", "critical"]
+VoteChoice = Literal["buy", "sell", "hold", "risk_too_high", "position_too_large"]
+DecisionOutcome = Literal["trade", "no_trade"]
 
 
 class CamelModel(BaseModel):
@@ -258,18 +286,30 @@ class MemoryRecord(CamelModel):
 
 class PaperOrder(CamelModel):
     """A paper order — simulated only, never sent to a real brokerage.
-    See app/paper_trading.py's module docstring for the enforcement
-    boundary."""
+    See app/broker.py's module docstring for the enforcement boundary.
+
+    `price` means different things per `order_type`: ignored (fills at
+    the current quote) for "market"; the limit/target price for "limit"
+    and "take_profit" (buy fills at-or-below, sell fills at-or-above);
+    the trigger price for "stop" and "stop_loss" (buy fills at-or-above,
+    sell fills at-or-below) — see app/broker.py's `_fill_price()`.
+    `linked_position_id` is set for a "take_profit"/"stop_loss" order
+    attached to an existing open position (an exit order); unset for an
+    entry order that will open a new position once filled."""
 
     id: str
     symbol: str
     side: OrderSide
+    order_type: OrderType = Field(default="market", alias="orderType")
     quantity: float
     price: float
     status: OrderStatus
     placed_by: AgentId = Field(alias="placedBy")
     reason: str
     confidence: float
+    linked_position_id: str | None = Field(default=None, alias="linkedPositionId")
+    filled_price: float | None = Field(default=None, alias="filledPrice")
+    filled_at: str | None = Field(default=None, alias="filledAt")
     created_at: str = Field(alias="createdAt")
 
 
@@ -317,6 +357,11 @@ class PaperTrade(CamelModel):
     opposing_agents: list[AgentId] = Field(default_factory=list, alias="opposingAgents")
     coach_review: str | None = Field(default=None, alias="coachReview")
     lessons_learned: str | None = Field(default=None, alias="lessonsLearned")
+    # v0.6 Trading Journal fields — see app/journal.py. `screenshot` is
+    # always a fixed placeholder string, never a real captured image;
+    # TradeTown has no chart-rendering pipeline to capture from.
+    decision_id: str | None = Field(default=None, alias="decisionId")
+    screenshot: str | None = None
     opened_at: str = Field(alias="openedAt")
     closed_at: str = Field(alias="closedAt")
 
@@ -445,8 +490,74 @@ class PerformanceSnapshot(CamelModel):
     computed_at: str = Field(alias="computedAt")
 
 
+class RiskLimits(CamelModel):
+    """Sentinel's configurable risk boundaries (v0.6 brief, Risk Engine).
+    Defaults are conservative but arbitrary — there's no real capital or
+    regulatory requirement behind them, they exist purely to give Sentinel
+    something concrete to check a trade candidate against."""
+
+    max_position_pct: float = Field(default=10.0, alias="maxPositionPct")
+    max_daily_loss_pct: float = Field(default=5.0, alias="maxDailyLossPct")
+    max_drawdown_pct: float = Field(default=20.0, alias="maxDrawdownPct")
+    max_open_positions: int = Field(default=8, alias="maxOpenPositions")
+    max_sector_concentration_pct: float = Field(default=30.0, alias="maxSectorConcentrationPct")
+    risk_per_trade_pct: float = Field(default=2.0, alias="riskPerTradePct")
+
+
+class RiskWarning(CamelModel):
+    id: str
+    symbol: str
+    severity: AlertSeverity
+    message: str
+    created_at: str = Field(alias="createdAt")
+
+
+class ScannerAlert(CamelModel):
+    """Pulse's output — see app/scanner.py. `detected_by` is always
+    "pulse" today; the field exists so a future version could let other
+    agents flag alerts too without a schema change."""
+
+    id: str
+    symbol: str
+    alert_type: AlertType = Field(alias="alertType")
+    message: str
+    detected_by: AgentId = Field(alias="detectedBy")
+    created_at: str = Field(alias="createdAt")
+
+
+class AgentVote(CamelModel):
+    """One agent's stance on a trade candidate — see app/voting.py."""
+
+    agent_id: AgentId = Field(alias="agentId")
+    choice: VoteChoice
+    reason: str
+
+
+class TradeDecision(CamelModel):
+    """The permanent, explainable-AI record of one trade candidate's
+    outcome (v0.6 brief, Decision Voting + Explainable AI) — see
+    app/decision.py. Stored forever (capped, like every other list here)
+    so a past "why did/didn't we trade this" question always has an
+    answer."""
+
+    id: str
+    symbol: str
+    outcome: DecisionOutcome
+    votes: list[AgentVote] = Field(default_factory=list)
+    research_summary: str = Field(alias="researchSummary")
+    technical_summary: str = Field(alias="technicalSummary")
+    fundamental_summary: str = Field(alias="fundamentalSummary")
+    risk_summary: str = Field(alias="riskSummary")
+    supporting_agents: list[AgentId] = Field(default_factory=list, alias="supportingAgents")
+    opposing_agents: list[AgentId] = Field(default_factory=list, alias="opposingAgents")
+    confidence: float
+    final_reasoning: str = Field(alias="finalReasoning")
+    order_id: str | None = Field(default=None, alias="orderId")
+    created_at: str = Field(alias="createdAt")
+
+
 class GameSaveState(CamelModel):
-    version: Literal["0.5"] = "0.5"
+    version: Literal["0.6"] = "0.6"
     player: EntityTransform
     agents: dict[AgentId, AgentState]
     tasks: list[Task] = Field(default_factory=list)
@@ -465,6 +576,10 @@ class GameSaveState(CamelModel):
     coach_reports: list[CoachReport] = Field(default_factory=list, alias="coachReports")
     company_score: CompanyScore = Field(alias="companyScore")
     performance_snapshots: list[PerformanceSnapshot] = Field(default_factory=list, alias="performanceSnapshots")
+    risk_limits: RiskLimits = Field(default_factory=RiskLimits, alias="riskLimits")
+    risk_warnings: list[RiskWarning] = Field(default_factory=list, alias="riskWarnings")
+    scanner_alerts: list[ScannerAlert] = Field(default_factory=list, alias="scannerAlerts")
+    decisions: list[TradeDecision] = Field(default_factory=list)
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(default_factory=list, alias="dialogueHistory")

@@ -22,22 +22,31 @@ from datetime import datetime, timezone
 
 from app.agents import AGENT_PROFILES, LOCATION_TO_SCENE, all_agent_ids
 from app.analytics import compute_performance_snapshot, confidence_accuracy, record_snapshot
+from app.broker import place_order, tick_broker
 from app.coach import generate_report as generate_coach_report
 from app.coach import record_report as record_coach_report_entry
 from app.company_score import compute_company_score
+from app.decision import decide_trade
 from app.discussion import generate_discussion
 from app.hall_of_fame import evaluate_hall_of_fame
+from app.journal import stamp_journal_entry
 from app.market_data import market_data_provider
 from app.paper_trading import tick_paper_trading
 from app.research import RESEARCHER_IDS, default_research, tick_research
+from app.risk_engine import evaluate_guardian_exposure, evaluate_sentinel_risk, monitor_portfolio, recommended_quantity
+from app.scanner import tick_scanner
 from app.schedule import block_for_hour
 from app.scribe import (
+    FUTURE_TRADE_CONFIDENCE_THRESHOLD,
     build_minutes,
     record_coach_report,
+    record_decision,
     record_hall_of_fame_entry,
     record_meeting,
+    record_order_placed,
     record_paper_trade,
     record_research_completions,
+    record_scanner_alert,
     record_simulation_result,
 )
 from app.schemas import (
@@ -52,13 +61,18 @@ from app.schemas import (
     MeetingMinutes,
     MeetingState,
     NewsItem,
+    PaperPortfolio,
+    PaperTrade,
     ResearchItem,
+    RiskLimits,
     Task,
     TaskCategory,
     TaskPriority,
     TimeState,
+    TradeDecision,
 )
 from app.simulation import default_strategies, tick_simulation_lab
+from app.voting import collect_votes
 from app.watchlist import default_watchlist, tick_watchlist
 
 MAX_MEMORY = 50
@@ -136,6 +150,25 @@ _TASK_CATEGORY_KEYWORDS: list[tuple[str, TaskCategory]] = [
     ("performance review", "coaching"),
     ("drafting recommendations", "coaching"),
     ("observing research", "review"),
+    ("risk exposure", "risk_management"),
+    ("position sizing", "risk_management"),
+    ("trade candidates", "voting"),
+    ("risk limits", "risk_management"),
+    ("day's approvals", "voting"),
+    ("standing watch", "risk_management"),
+    ("premarket movers", "market_scanning"),
+    ("breakouts", "market_scanning"),
+    ("volume spikes", "market_scanning"),
+    ("scanner alerts", "market_scanning"),
+    ("after-hours activity", "market_scanning"),
+    ("day's alerts", "market_scanning"),
+    ("overnight volatility", "market_scanning"),
+    ("portfolio exposure", "risk_management"),
+    ("concentration risk", "risk_management"),
+    ("drawdown levels", "risk_management"),
+    ("reviewing portfolio performance", "analytics"),
+    ("risk reductions", "risk_management"),
+    ("exposure report", "risk_management"),
 ]
 
 _DEFAULT_CATEGORY_BY_AGENT: dict[AgentId, TaskCategory] = {
@@ -145,6 +178,9 @@ _DEFAULT_CATEGORY_BY_AGENT: dict[AgentId, TaskCategory] = {
     "nova": "research",
     "scribe": "documentation",
     "coach": "coaching",
+    "sentinel": "risk_management",
+    "pulse": "market_scanning",
+    "guardian": "risk_management",
 }
 
 
@@ -403,6 +439,94 @@ def _trim_news(news: list[NewsItem]) -> list[NewsItem]:
     return keep
 
 
+def _evaluate_trade_candidates(
+    portfolio: PaperPortfolio,
+    completed_research: list[ResearchItem],
+    prices: dict[str, float],
+    risk_limits: RiskLimits,
+) -> tuple[PaperPortfolio, list[TradeDecision]]:
+    """The v0.6 Decision Voting pipeline: every research item that just
+    crossed FUTURE_TRADE_CONFIDENCE_THRESHOLD becomes a trade candidate,
+    voted on by the four researcher agents plus Sentinel and Guardian
+    (app/voting.py), then ruled on by Atlas (app/decision.py). An
+    approved candidate places a market order (app/broker.py) — it does
+    not open a position directly; that only happens once the order fills
+    on a future tick, same one-tick latency every order has."""
+    decisions: list[TradeDecision] = []
+    for item in completed_research:
+        if item.confidence < FUTURE_TRADE_CONFIDENCE_THRESHOLD or not item.symbol:
+            continue
+        price = prices.get(item.symbol)
+        if price is None or price <= 0:
+            continue
+        quantity = recommended_quantity(risk_limits, portfolio, price)
+        if quantity <= 0:
+            continue
+
+        sentinel_warning = evaluate_sentinel_risk(risk_limits, portfolio, symbol=item.symbol, proposed_value=quantity * price)
+        guardian_warning = evaluate_guardian_exposure(risk_limits, portfolio, symbol=item.symbol)
+        votes = collect_votes(
+            symbol=item.symbol,
+            confidence=item.confidence,
+            originating_agent=item.assigned_agent,
+            researcher_ids=RESEARCHER_IDS,
+            sentinel_warning=sentinel_warning,
+            guardian_warning=guardian_warning,
+        )
+        risk_summary = (
+            sentinel_warning.message
+            if sentinel_warning
+            else guardian_warning.message
+            if guardian_warning
+            else f"{item.symbol} is within all of Sentinel's and Guardian's configured risk limits."
+        )
+        decision = decide_trade(decision_id=f"decision-{item.id}", item=item, votes=votes, risk_summary=risk_summary)
+
+        if decision.outcome == "trade":
+            order_id = f"order-{item.id}"
+            portfolio = place_order(
+                portfolio,
+                order_id=order_id,
+                symbol=item.symbol,
+                side="buy",
+                order_type="market",
+                quantity=quantity,
+                price=price,
+                placed_by="atlas",
+                reason=decision.final_reasoning,
+                confidence=item.confidence,
+            )
+            decision = decision.model_copy(update={"order_id": order_id})
+
+        decisions.append(decision)
+
+    return portfolio, decisions
+
+
+def _journal_closed_trades(portfolio: PaperPortfolio, trades: list[PaperTrade], decisions: list[TradeDecision]) -> tuple[PaperPortfolio, list[PaperTrade]]:
+    """Stamps every trade that closed this tick with its TradeJournal
+    fields (app/journal.py) and writes the stamped version back into
+    trade_history — close_position() (app/portfolio.py) already appended
+    the unstamped trade there, so this replaces it in place rather than
+    appending a second copy. `decision_id` is attributed by best-effort
+    match: the most recent "trade" decision for the same symbol, since
+    neither PaperOrder nor PaperPosition carries a decision id through to
+    the eventual PaperTrade."""
+    if not trades:
+        return portfolio, []
+
+    stamped_by_id: dict[str, PaperTrade] = {}
+    stamped: list[PaperTrade] = []
+    for trade in trades:
+        decision_id = next((d.id for d in reversed(decisions) if d.symbol == trade.symbol and d.outcome == "trade"), None)
+        journaled = stamp_journal_entry(trade, decision_id=decision_id)
+        stamped_by_id[trade.id] = journaled
+        stamped.append(journaled)
+
+    history = [stamped_by_id.get(t.id, t) for t in portfolio.trade_history]
+    return portfolio.model_copy(update={"trade_history": history}), stamped
+
+
 def _update_whiteboards(agents: dict[AgentId, AgentState], meeting: MeetingState, research: list[ResearchItem]) -> dict[str, str]:
     working = sum(1 for a in agents.values() if a.location not in RESTFUL_LOCATIONS)
     active_by_agent = {item.assigned_agent: item for item in research if item.status == "in_progress"}
@@ -440,6 +564,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     hall_of_fame = list(state.hall_of_fame)
     coach_reports = list(state.coach_reports)
     performance_snapshots = list(state.performance_snapshots)
+    risk_limits = state.risk_limits
+    scanner_alerts = list(state.scanner_alerts)
+    decisions = list(state.decisions)
 
     agents = {aid: _tick_agent(aid, agent, new_time, minutes, tasks) for aid, agent in state.agents.items()}
 
@@ -456,13 +583,63 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         )
 
     watchlist = tick_watchlist(watchlist, research, market_data_provider)
+    prices = {w.symbol: w.last_price for w in watchlist}
+
+    # --- v0.6: Pulse's market scanner --------------------------------------
+    # Runs off this tick's freshest watchlist prices, same as everything
+    # else below. Every alert is memory-worthy; only the sharper moves
+    # (gaps/breakouts) are worth a news headline too.
+    scanner_alerts, new_scanner_alerts = tick_scanner(scanner_alerts, watchlist, market_data_provider)
+    for alert in new_scanner_alerts:
+        record_scanner_alert(memory, alert)
+        if alert.alert_type in ("gap_up", "gap_down", "breakout"):
+            news.append(
+                NewsItem(
+                    id=f"news-alert-{alert.id}",
+                    headline=f"Pulse: {alert.message}",
+                    category="market",
+                    timestamp=_now_iso(),
+                )
+            )
+
+    # --- v0.6: PaperBroker fills orders placed on earlier ticks -----------
+    # Runs before this tick's own decision/order-placement step below, so
+    # a market order approved this tick is guaranteed one full tick of
+    # latency before it can fill (see app/broker.py's place_order()).
+    paper_portfolio, broker_closed_trades = tick_broker(paper_portfolio, prices, new_time)
+
+    # --- v0.6: Guardian's standing risk watch ------------------------------
+    # Reflects the current portfolio, not an accumulating log — refreshed
+    # every tick like company_score already is below.
+    risk_warnings = monitor_portfolio(risk_limits, paper_portfolio)
+
+    # --- v0.6: Decision Voting on this tick's freshly completed research --
+    # Every high-confidence completion is a trade candidate; approved
+    # candidates place an order (not a position — see app/broker.py).
+    paper_portfolio, new_decisions = _evaluate_trade_candidates(paper_portfolio, completed, prices, risk_limits)
+    for decision in new_decisions:
+        record_decision(memory, decision)
+        if decision.order_id is not None:
+            order = next((o for o in paper_portfolio.orders if o.id == decision.order_id), None)
+            if order is not None:
+                record_order_placed(memory, order)
+        news.append(
+            NewsItem(
+                id=f"news-decision-{decision.id}",
+                headline=f"Atlas's decision on {decision.symbol}: {'TRADE APPROVED' if decision.outcome == 'trade' else 'NO TRADE'} — {decision.final_reasoning}",
+                category="company",
+                timestamp=_now_iso(),
+            )
+        )
+    decisions = [*decisions, *new_decisions]
 
     # --- v0.5: paper trading + simulation lab -----------------------------
     # Both run after research/watchlist so they see this tick's freshest
     # confidence/price data, and before the meeting call so a just-closed
     # trade or completed simulation can be discussed in a meeting the same
     # tick it happens (matching how research completions already work).
-    paper_portfolio, closed_trades = tick_paper_trading(paper_portfolio, completed, watchlist, all_agent_ids(), new_time)
+    paper_portfolio, closed_trades = tick_paper_trading(paper_portfolio, watchlist, all_agent_ids(), new_time)
+    paper_portfolio, closed_trades = _journal_closed_trades(paper_portfolio, [*broker_closed_trades, *closed_trades], decisions)
     for trade in closed_trades:
         record_paper_trade(memory, trade)
         outcome = "gained" if trade.pnl > 0 else "lost"
@@ -570,6 +747,10 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "coach_reports": coach_reports,
             "company_score": company_score,
             "performance_snapshots": performance_snapshots,
+            "risk_limits": risk_limits,
+            "risk_warnings": risk_warnings,
+            "scanner_alerts": scanner_alerts,
+            "decisions": decisions,
             "whiteboards": _update_whiteboards(agents, meeting, research),
             "updated_at": _now_iso(),
         }

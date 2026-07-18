@@ -12,10 +12,14 @@ import type {
   PaperPortfolio,
   PerformanceSnapshot,
   ResearchItem,
+  RiskLimits,
+  RiskWarning,
+  ScannerAlert,
   SimulationResult,
   Strategy,
   Task,
   TimeState,
+  TradeDecision,
   WatchlistEntry,
 } from "@/types";
 import { EventBus } from "@/game/systems/EventBus";
@@ -44,6 +48,10 @@ type ServerMessage =
       coachReports: CoachReport[];
       companyScore: CompanyScore;
       performanceSnapshots: PerformanceSnapshot[];
+      riskLimits: RiskLimits;
+      riskWarnings: RiskWarning[];
+      scannerAlerts: ScannerAlert[];
+      decisions: TradeDecision[];
     }
   | { type: "pong" };
 
@@ -117,6 +125,10 @@ export class GameSocket {
             coachReports: msg.coachReports,
             companyScore: msg.companyScore,
             performanceSnapshots: msg.performanceSnapshots,
+            riskLimits: msg.riskLimits,
+            riskWarnings: msg.riskWarnings,
+            scannerAlerts: msg.scannerAlerts,
+            decisions: msg.decisions,
           });
         }
       } catch (err) {

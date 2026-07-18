@@ -2,16 +2,17 @@
 
 ## Overview
 
-TradeTown v0.5 is a client/server game:
+TradeTown v0.6 is a client/server game:
 
 - **Frontend** (`frontend/`): a React app that mounts a single Phaser 3
   game instance into a `<div>`. Phaser owns the world (tilemaps, player,
   agents, camera, collision); React owns the HUD/menus and reads game state
   through a small pub/sub bridge rather than reaching into Phaser directly.
 - **Backend** (`backend/`): a FastAPI service that is the **authoritative**
-  simulation of all six agents — NEXUS (`backend/app/nexus.py`) advances
+  simulation of all nine agents — NEXUS (`backend/app/nexus.py`) advances
   every agent's schedule, task, mood, energy, meetings, breaks, research
-  progress, and (new in v0.5) paper trading, simulations, and coaching in a
+  progress, paper trading, simulations, coaching, and (new in v0.6)
+  market scanning, risk evaluation, decision voting, and order fills in a
   background asyncio loop even if no browser is connected, and pushes the
   result to connected clients over a WebSocket. It also persists the save
   to SQLite.
@@ -58,9 +59,9 @@ client last reported on save.
 | `CameraManager` | Consistent camera-follow (lerp, deadzone, zoom) across every scene. |
 | `InputManager` | Normalizes WASD/arrows/E/Esc into a movement vector + discrete actions. One instance per scene. |
 | `TimeManager` | Mirrors the server's clock; local fallback ticker when offline. |
-| `AgentProfiles` | Static per-agent metadata (name, occupation, personality blurb, home location, sprite tint) for all six agents — mirrors `backend/app/agents.py`. |
+| `AgentProfiles` | Static per-agent metadata (name, occupation, personality blurb, home location, sprite tint) for all nine agents — mirrors `backend/app/agents.py`. |
 | `NPCManager` | Registry of every agent's live state (`AgentState`), keyed by `AgentId`. Applies server pushes; offline fallback. |
-| `NexusManager` | Frontend mirror of NEXUS's shared state — tasks, whiteboards, meeting, news, research, watchlist, memory, meeting minutes, and (v0.5) paper portfolio, strategies, backtest sessions, simulation results, hall of fame, coach reports, company score, performance snapshots. Diffs previous vs. new server pushes to emit discrete `task:*`/`whiteboard:*`/`meeting:*`/`news:updated`/`research:*`/`watchlist:updated`/`memory:updated`/`portfolio:updated`/`simulation:*`/`hallOfFame:*`/`coach:*`/`companyScore:updated` events rather than just handing scenes a raw blob. |
+| `NexusManager` | Frontend mirror of NEXUS's shared state — tasks, whiteboards, meeting, news, research, watchlist, memory, meeting minutes, (v0.5) paper portfolio, strategies, backtest sessions, simulation results, hall of fame, coach reports, company score, performance snapshots, and (v0.6) risk limits, risk warnings, scanner alerts, trade decisions. Diffs previous vs. new server pushes to emit discrete `task:*`/`whiteboard:*`/`meeting:*`/`news:updated`/`research:*`/`watchlist:updated`/`memory:updated`/`portfolio:updated`/`simulation:*`/`hallOfFame:*`/`coach:*`/`companyScore:updated`/`riskLimits:updated`/`riskWarnings:updated`/`scannerAlerts:updated`/`scanner:alertDetected`/`decisions:updated`/`decision:made` events rather than just handing scenes a raw blob. |
 | `UpcomingEvents` | Computes each agent's next deterministic schedule-block transition from `Schedule.ts` (meetings are excluded — NEXUS calls those at random, so there's nothing genuine to predict). Shared by `BrainRoomHud` and `Newspaper` so both "Upcoming Events" sections agree instead of each re-deriving it. |
 | `DialogueManager` | Per-agent, per-task flavor lines plus mood/override fallbacks; opens the React `DialogueBox` and records dialogue history. |
 | `SettingsManager` | localStorage-backed user preferences. |
@@ -76,29 +77,32 @@ library, since the UI's needs here are "mirror a handful of events."
 
 - `BootScene` → `PreloadScene` (loads every manifest asset, builds
   animations) → `MainMenuScene`.
-- `LobbyScene`: the HQ courtyard. Eight buildings (Scout Office, CEO Office,
-  Brain Room, Meeting Room, Break Room, and — new in v0.5 — Simulation Lab,
-  Hall of Fame, Performance Center), each an interactable door, plus a
-  "TradeTown Daily" newspaper stand that opens the React `Newspaper` modal.
+- `LobbyScene`: the HQ courtyard. Nine buildings (Scout Office, CEO Office,
+  Brain Room, Meeting Room, Break Room, Simulation Lab, Hall of Fame,
+  Performance Center, and — new in v0.6 — Trading Floor), each an
+  interactable door, plus a "TradeTown Daily" newspaper stand that opens
+  the React `Newspaper` modal.
 - `RoomScene` (abstract base): shared floor/walls/door/camera/agent-presence
   logic for every interior. Each concrete scene (`ScoutOfficeScene`,
   `CeoOfficeScene`, `BrainRoomScene`, `MeetingRoomScene`, `BreakRoomScene`,
-  `SimulationLabScene`, `HallOfFameScene`, `PerformanceCenterScene`) just
-  declares its size, floor tile, room label, and which `AgentLocation` (if
-  any) places agents there — the base class spawns/despawns *however many*
-  agents currently match that location (via `refreshAgentPresence`),
-  spreading them with an overridable `getAgentSpawnPoint` hook so a
-  room-specific layout (e.g. Meeting Room's fixed seats around the table,
-  or the three v0.5 rooms keeping agents clear of their central
-  console/scoreboard/plaque prop) can replace the default even-spread.
-  `BrainRoomScene` additionally builds the "Mission Control" holographic
-  market core and monitor desks as procedural Phaser graphics/tweens (no
-  new art assets — see "Use only supplied assets" below). The three v0.5
-  rooms use `RoomScene.addLiveText()` — a small helper that renders a
-  Phaser text prop and keeps it in sync with a live `EventBus` event, the
-  in-world equivalent of the React HUD's reactive readouts — for their
-  simulation queue, hall of fame plaque, and company scoreboard, and
-  register themselves for automatic cleanup on `shutdown()` the same way
+  `SimulationLabScene`, `HallOfFameScene`, `PerformanceCenterScene`,
+  `TradingFloorScene`) just declares its size, floor tile, room label,
+  and which `AgentLocation` (if any) places agents there — the base class
+  spawns/despawns *however many* agents currently match that location
+  (via `refreshAgentPresence`), spreading them with an overridable
+  `getAgentSpawnPoint` hook so a room-specific layout (e.g. Meeting
+  Room's fixed seats around the table, or the v0.5/v0.6 rooms keeping
+  agents clear of their central console/scoreboard/plaque/command-display
+  prop) can replace the default even-spread. `BrainRoomScene`
+  additionally builds the "Mission Control" holographic market core and
+  monitor desks as procedural Phaser graphics/tweens (no new art assets —
+  see "Use only supplied assets" below). The v0.5/v0.6 rooms use
+  `RoomScene.addLiveText()` — a small helper that renders a Phaser text
+  prop and keeps it in sync with a live `EventBus` event, the in-world
+  equivalent of the React HUD's reactive readouts — for their
+  simulation queue, hall of fame plaque, company scoreboard, and (v0.6)
+  Trading Floor's market ticker/Central Command display, and register
+  themselves for automatic cleanup on `shutdown()` the same way
   `addWhiteboard()` already did.
 
 ### Door and dialogue input — read `interactPressed` exactly once per frame
@@ -132,7 +136,7 @@ dialogue always fully owns the key while it's open.
 directional Player.png-style sheet (idle/walk × 4 directions) —
 `PlayerController` (input-driven) and `AgentNPC` (schedule/wander-driven)
 both extend it so animation/direction handling isn't duplicated. `AgentNPC`
-is parameterized by `AgentId` and used for all six agents (Scout, Atlas,
+is parameterized by `AgentId` and used for all nine agents (Scout, Atlas,
 Echo, Nova, Scribe, and — new in v0.5 — Coach, Performance & Improvement)
 — the only per-agent differences are sprite tint/name (from
 `AgentProfiles`) and which room the current server state spawns it into.
@@ -141,7 +145,7 @@ Adding Coach required zero scene code: it's just a sixth entry in
 agent" in `DeveloperGuide.md` for the general pattern.
 
 Each agent wanders gently within its current room. Rooms like Brain Room
-and Meeting Room can legitimately hold all six agents at once (that's the
+and Meeting Room can legitimately hold all nine agents at once (that's the
 intended "Mission Control"/meeting design), and their sprites sit closer
 together than a name tag is wide; rather than fight that with
 ever-increasing spacing, `RoomScene.update()` shows **at most one** name
@@ -414,6 +418,94 @@ CONDITION" the v0.5 brief was built against.
   combination once regardless of backend restart timing, which a
   diff-against-previous-tick approach couldn't guarantee.
 
+## Paper trading operations (v0.6)
+
+v0.6 keeps v0.5's mark-to-market/hold-duration closing logic in
+`paper_trading.py` exactly as it shipped, but moves *opening* a position
+behind a full decision pipeline. Nothing below connects to a real
+brokerage — see each module's own docstring for the enforcement
+boundary, same convention as every earlier version.
+
+- **Order of operations, per tick** (`nexus.py`'s `tick()`): Pulse's
+  scanner runs first off the freshest watchlist prices
+  (`scanner.tick_scanner()`); then `broker.tick_broker()` fills any
+  orders placed on *earlier* ticks (guaranteeing at least one tick of
+  latency between an order being placed and it being eligible to fill);
+  then Guardian's standing risk watch refreshes
+  (`risk_engine.monitor_portfolio()`); then this tick's freshly completed
+  research items become trade candidates
+  (`nexus._evaluate_trade_candidates()`); then v0.5's hold-duration
+  closing logic runs (`paper_trading.tick_paper_trading()`); then every
+  trade that closed this tick (from either the broker or the
+  hold-duration closer) gets journal-stamped
+  (`nexus._journal_closed_trades()`).
+- **Decision Voting** (`voting.py` + `decision.py`): a trade candidate
+  collects one vote from each of the four researcher agents (templated
+  from their own research confidence — the same "deterministic but
+  varied" convention `discussion.py` uses for meeting dialogue) plus
+  Sentinel's and Guardian's votes, which are directly derived from
+  `risk_engine.py`'s evaluation rather than invented in `voting.py`.
+  `decision.decide_trade()` is the only place that turns a vote set into
+  an outcome: any Sentinel `risk_too_high` or Guardian
+  `position_too_large` vote is an absolute veto regardless of researcher
+  votes; absent a veto, a simple majority of `buy` votes approves. Every
+  candidate — approved or not — produces a permanent `TradeDecision`
+  (research/technical/fundamental/risk summaries, supporting/opposing
+  agents, confidence, final reasoning), satisfying the "Explainable AI"
+  requirement without a second, parallel report format.
+- **RiskEngine** (`risk_engine.py`): pure evaluation, no side effects.
+  `evaluate_sentinel_risk()` is the hard trade-approval gate (equity ≤ 0,
+  drawdown past `maxDrawdownPct`, open-position count past
+  `maxOpenPositions`, or position size past `maxPositionPct` — checked in
+  that order, first violation wins). `evaluate_guardian_exposure()` is
+  the softer per-candidate concentration check; `monitor_portfolio()` is
+  Guardian's every-tick standing watch, independent of any new candidate.
+  TradeTown has no real sector taxonomy (`ResearchCategory` isn't one),
+  so "sector concentration" is implemented as per-symbol concentration of
+  portfolio equity — an intentional, documented simplification, not a
+  missed requirement.
+- **PaperBroker** (`broker.py`): owns the order book.
+  `place_order()` appends an `open` `PaperOrder`; `tick_broker()`
+  evaluates every open order against current watchlist prices and fills
+  it if its trigger condition is met. `market` fills at the current
+  quote; `limit`/`take_profit` share one fill direction (buy at-or-below,
+  sell at-or-above the target); `stop`/`stop_loss` share the opposite
+  direction (buy at-or-above, sell at-or-below the trigger) — unified
+  into one `_fill_price()` rather than four near-duplicate branches. An
+  order with a `linkedPositionId` is an exit order against an existing
+  position (closes it via `portfolio.close_position()`); one without is
+  an entry order that opens a new position on fill
+  (`portfolio.open_position()`, now accepting an explicit `quantity` so
+  the broker can size from `risk_engine.recommended_quantity()` instead
+  of `portfolio.py`'s v0.5 flat-fraction default).
+- **ScannerManager** (`scanner.py`): reads quotes from the same
+  `MarketDataProvider` watchlist uses, classifies each symbol against
+  gap up/down, breakout (a large move plus a volume spike in the same
+  tick), volume spike, and high-volatility thresholds, and rolls a
+  per-tick chance to alert so a symbol sitting past a threshold doesn't
+  spam an alert every single tick. Detection is threshold-based against
+  the current quote only — no rolling price history is persisted yet, so
+  "breakout" here isn't a true multi-period range breakout; see the
+  module docstring and `docs/VersionHistory.md`'s v0.7 candidates.
+- **TradeJournal** (`journal.py`): stamps a closed `PaperTrade` with
+  `coachReview`/`lessonsLearned` (reusing `knowledge.derive_lesson()`'s
+  exact judgment rather than writing a second, possibly-diverging
+  version), a best-effort `decisionId` (most recent `trade`-outcome
+  `TradeDecision` for the same symbol — neither `PaperOrder` nor
+  `PaperPosition` carries a decision id through to the eventual trade,
+  so this is attribution by recency, not a guaranteed exact link), and a
+  fixed `screenshot` placeholder string (TradeTown has no
+  chart-rendering pipeline to capture a real one from). This also closes
+  a v0.5 gap: `coachReview`/`lessonsLearned` existed in the schema since
+  v0.5 but nothing had ever populated them before v0.6.
+- **Trading Floor** (`frontend/src/game/scenes/TradingFloorScene.ts`):
+  home to Sentinel, Pulse, and Guardian. Its market ticker and Central
+  Command display read live off `NexusManager` the same way the Brain
+  Room's holographic core and Performance Center's scoreboard already
+  do — in-world text for at-a-glance state, the Brain Room HUD React
+  overlay for full detail — rather than duplicating the HUD's detail
+  in-world.
+
 ### Gotcha: `model_copy(update=...)` uses field names, not wire aliases
 
 Every `CamelModel` field with a camelCase wire alias (e.g.
@@ -596,20 +688,51 @@ other broker, or execution of a single real trade. Every `PaperOrder`,
 "Paper trading, simulation & coaching (v0.5)" above for the enforcement
 boundary.
 
+## Version 0.6 scope
+
+Built on top of v0.5 without touching its stable systems more than
+necessary: three new agents (Sentinel, Pulse, Guardian — home location
+Trading Floor, a new room), the Decision Voting pipeline (`voting.py` +
+`decision.py`), the Risk Engine (`risk_engine.py`), the Market Scanner
+(`scanner.py`), the order-book PaperBroker (`broker.py`), the Trading
+Journal (`journal.py`), an expanded Brain Room HUD (Open Positions,
+Pending Orders, Risk Management, Latest Decision & Votes, Scanner Alerts
+sections), an expanded newspaper (Today's Trades, Top Opportunities,
+Performance, Coach's Review, Scanner Alerts, Company Rating sections), a
+nine-door Lobby, and an extended save schema covering
+riskLimits/riskWarnings/scannerAlerts/decisions plus new fields on
+`PaperOrder` (orderType/linkedPositionId/filledPrice/filledAt) and
+`PaperTrade` (decisionId/screenshot). v0.5's paper-trading *closing*
+logic (`paper_trading.py`) is unchanged — only *opening* a position moved
+behind the new voting/risk/broker pipeline; see "Paper trading operations
+(v0.6)" above for the exact per-tick order of operations.
+
+Explicitly **not** in v0.6 (per the brief's STOP CONDITION, not
+oversight): live brokerage support, a connection to Charles Schwab or any
+other broker, or execution of a single real trade. Every `PaperOrder`,
+`PaperPosition`, and `PaperTrade` is simulated bookkeeping only —
+`broker.py`'s module docstring is explicit that no brokerage SDK import
+exists anywhere in this codebase, though its `place_order()`/
+`tick_broker()` shape is deliberately adapter-friendly for a future
+version.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing
-version so far — `"0.1"` → `"0.2"` → `"0.3"` → `"0.5"` (v0.4 made no code
-changes, so the schema stayed `"0.3"` through it) — and the shape changed
-non-trivially each time (`0.1→0.2`: `scout: ScoutState` → `agents:
-Record<AgentId, AgentState>`, plus new `tasks`/`whiteboards`/`meeting`/
-`news` fields; `0.2→0.3`: `AgentId` gained `"scribe"`, `Task` gained
-`category`, `MeetingState` gained `discussion`, and `research`/
+version so far — `"0.1"` → `"0.2"` → `"0.3"` → `"0.5"` → `"0.6"` (v0.4
+made no code changes, so the schema stayed `"0.3"` through it) — and the
+shape changed non-trivially each time (`0.1→0.2`: `scout: ScoutState` →
+`agents: Record<AgentId, AgentState>`, plus new `tasks`/`whiteboards`/
+`meeting`/`news` fields; `0.2→0.3`: `AgentId` gained `"scribe"`, `Task`
+gained `category`, `MeetingState` gained `discussion`, and `research`/
 `watchlist`/`memory`/`meetingMinutes` were added; `0.3→0.5`: `AgentId`
 gained `"coach"`, and `paperPortfolio`/`strategies`/`backtestSessions`/
 `simulationResults`/`hallOfFame`/`coachReports`/`companyScore`/
-`performanceSnapshots` were added). An older save fails Pydantic
-validation on load; `persistence.py` catches that failure, logs a
-warning, and starts a fresh default state for the current version rather
-than crashing — there is no migration path between versions, by design,
-since none of v0.1 through v0.5 was a public release.
+`performanceSnapshots` were added; `0.5→0.6`: `AgentId` gained
+`"sentinel"`/`"pulse"`/`"guardian"`, and `riskLimits`/`riskWarnings`/
+`scannerAlerts`/`decisions` were added, plus new fields on `PaperOrder`
+and `PaperTrade` — see "Version 0.6 scope" above). An older save fails
+Pydantic validation on load; `persistence.py` catches that failure, logs
+a warning, and starts a fresh default state for the current version
+rather than crashing — there is no migration path between versions, by
+design, since none of v0.1 through v0.6 was a public release.

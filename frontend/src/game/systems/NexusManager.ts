@@ -10,9 +10,13 @@ import type {
   PaperPortfolio,
   PerformanceSnapshot,
   ResearchItem,
+  RiskLimits,
+  RiskWarning,
+  ScannerAlert,
   SimulationResult,
   Strategy,
   Task,
+  TradeDecision,
   WatchlistEntry,
 } from "@/types";
 import { EventBus } from "./EventBus";
@@ -34,6 +38,10 @@ interface NexusSnapshot {
   coachReports: CoachReport[];
   companyScore: CompanyScore;
   performanceSnapshots: PerformanceSnapshot[];
+  riskLimits: RiskLimits;
+  riskWarnings: RiskWarning[];
+  scannerAlerts: ScannerAlert[];
+  decisions: TradeDecision[];
 }
 
 /**
@@ -81,6 +89,17 @@ export class NexusManager {
     updatedAt: new Date().toISOString(),
   };
   private static performanceSnapshots: PerformanceSnapshot[] = [];
+  private static riskLimits: RiskLimits = {
+    maxPositionPct: 10,
+    maxDailyLossPct: 5,
+    maxDrawdownPct: 20,
+    maxOpenPositions: 8,
+    maxSectorConcentrationPct: 30,
+    riskPerTradePct: 2,
+  };
+  private static riskWarnings: RiskWarning[] = [];
+  private static scannerAlerts: ScannerAlert[] = [];
+  private static decisions: TradeDecision[] = [];
 
   static getTasks(): Task[] {
     return this.tasks;
@@ -148,6 +167,22 @@ export class NexusManager {
 
   static getPerformanceSnapshots(): PerformanceSnapshot[] {
     return this.performanceSnapshots;
+  }
+
+  static getRiskLimits(): RiskLimits {
+    return this.riskLimits;
+  }
+
+  static getRiskWarnings(): RiskWarning[] {
+    return this.riskWarnings;
+  }
+
+  static getScannerAlerts(): ScannerAlert[] {
+    return this.scannerAlerts;
+  }
+
+  static getDecisions(): TradeDecision[] {
+    return this.decisions;
   }
 
   static applyServerUpdate(update: NexusSnapshot): void {
@@ -228,6 +263,26 @@ export class NexusManager {
 
     if (update.performanceSnapshots !== this.performanceSnapshots) EventBus.emit("performanceSnapshots:updated", update.performanceSnapshots);
     this.performanceSnapshots = update.performanceSnapshots;
+
+    if (update.riskLimits !== this.riskLimits) EventBus.emit("riskLimits:updated", update.riskLimits);
+    this.riskLimits = update.riskLimits;
+
+    if (update.riskWarnings !== this.riskWarnings) EventBus.emit("riskWarnings:updated", update.riskWarnings);
+    this.riskWarnings = update.riskWarnings;
+
+    if (update.scannerAlerts.length !== this.scannerAlerts.length) {
+      const newest = update.scannerAlerts[update.scannerAlerts.length - 1];
+      if (newest) EventBus.emit("scanner:alertDetected", newest);
+      EventBus.emit("scannerAlerts:updated", update.scannerAlerts);
+    }
+    this.scannerAlerts = update.scannerAlerts;
+
+    if (update.decisions.length !== this.decisions.length) {
+      const newest = update.decisions[update.decisions.length - 1];
+      if (newest) EventBus.emit("decision:made", newest);
+      EventBus.emit("decisions:updated", update.decisions);
+    }
+    this.decisions = update.decisions;
   }
 
   static loadFromSave(save: NexusSnapshot): void {
@@ -247,5 +302,9 @@ export class NexusManager {
     this.coachReports = save.coachReports;
     this.companyScore = save.companyScore;
     this.performanceSnapshots = save.performanceSnapshots;
+    this.riskLimits = save.riskLimits;
+    this.riskWarnings = save.riskWarnings;
+    this.scannerAlerts = save.scannerAlerts;
+    this.decisions = save.decisions;
   }
 }

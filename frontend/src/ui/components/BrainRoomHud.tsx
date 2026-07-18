@@ -3,7 +3,7 @@ import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { upcomingEvents } from "@/game/systems/UpcomingEvents";
 import type { AgentId, TimeState } from "@/types";
 
-const AGENT_ORDER: AgentId[] = ["scout", "atlas", "echo", "nova", "scribe", "coach"];
+const AGENT_ORDER: AgentId[] = ["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian"];
 const RESEARCHER_ORDER: AgentId[] = ["scout", "atlas", "echo", "nova"];
 
 function formatClock(time: TimeState): string {
@@ -20,8 +20,24 @@ function formatClock(time: TimeState): string {
  * than snapping.
  */
 export function BrainRoomHud() {
-  const { currentScene, agents, tasks, news, research, watchlist, time, companyScore, backtestSessions, paperPortfolio, coachReports, memory } =
-    useGameStore();
+  const {
+    currentScene,
+    agents,
+    tasks,
+    news,
+    research,
+    watchlist,
+    time,
+    companyScore,
+    backtestSessions,
+    paperPortfolio,
+    coachReports,
+    memory,
+    riskLimits,
+    riskWarnings,
+    scannerAlerts,
+    decisions,
+  } = useGameStore();
   if (currentScene !== "BrainRoomScene" || !agents) return null;
 
   const working = AGENT_ORDER.filter((id) => !["lobby", "break-room"].includes(agents[id].location)).length;
@@ -39,6 +55,12 @@ export function BrainRoomHud() {
   const activeSessions = backtestSessions.filter((s) => s.status !== "completed").slice(0, 4);
   const latestReport = coachReports[coachReports.length - 1] ?? null;
   const knowledgeEntries = memory.filter((m) => m.category === "lesson" || m.category === "mistake" || m.category === "strategy").slice(-4).reverse();
+
+  const openPositions = paperPortfolio.positions.slice(0, 6);
+  const pendingOrders = paperPortfolio.orders.filter((o) => o.status === "open").slice(0, 6);
+  const latestDecision = decisions[decisions.length - 1] ?? null;
+  const recentAlerts = [...scannerAlerts].slice(-4).reverse();
+  const worstWarning = riskWarnings.some((w) => w.severity === "critical") ? "critical" : riskWarnings.some((w) => w.severity === "warning") ? "warning" : null;
 
   return (
     <div className="pointer-events-none absolute right-3 top-16 bottom-24 w-72 overflow-y-auto rounded border border-[#60d1ff]/40 bg-panel/90 p-3 font-pixel text-[10px] text-parchment shadow-pixel">
@@ -82,6 +104,81 @@ export function BrainRoomHud() {
         <div className="opacity-70">
           {paperPortfolio.positions.length} open · {paperPortfolio.winCount}W / {paperPortfolio.lossCount}L — simulated, no real capital
         </div>
+      </Section>
+
+      <Section title="Open Positions">
+        {openPositions.length === 0 && <div className="opacity-50">No open positions.</div>}
+        {openPositions.map((p) => (
+          <div key={p.id} className="mb-1 flex items-center justify-between gap-1.5">
+            <span className="text-gold">{p.symbol}</span>
+            <span className="opacity-70">
+              {p.quantity.toFixed(2)} @ ${p.entryPrice.toFixed(2)}
+            </span>
+            <span className={p.unrealizedPnl >= 0 ? "text-bullish" : "text-bearish"}>
+              {p.unrealizedPnl >= 0 ? "+" : ""}
+              {p.unrealizedPnlPct.toFixed(1)}%
+            </span>
+          </div>
+        ))}
+      </Section>
+
+      <Section title="Pending Orders">
+        {pendingOrders.length === 0 && <div className="opacity-50">No pending orders.</div>}
+        {pendingOrders.map((o) => (
+          <div key={o.id} className="mb-1">
+            <div className="flex items-center justify-between gap-1.5">
+              <span className="text-gold">{o.symbol}</span>
+              <span className="opacity-70">{o.side} · {o.orderType.replace("_", " ")}</span>
+            </div>
+            <div className="opacity-60">{o.quantity.toFixed(2)} @ ${o.price.toFixed(2)} — {AGENT_PROFILES[o.placedBy].name}</div>
+          </div>
+        ))}
+      </Section>
+
+      <Section title="Risk Management">
+        <div className="flex items-center justify-between gap-1.5">
+          <span>Risk score</span>
+          <span className="text-gold">{Math.round(companyScore.riskManagement)}/100</span>
+        </div>
+        <div className="opacity-70">
+          Max position {riskLimits.maxPositionPct.toFixed(0)}% · Max drawdown {riskLimits.maxDrawdownPct.toFixed(0)}% · Max open {riskLimits.maxOpenPositions}
+        </div>
+        {worstWarning === null && <div className="mt-1 opacity-50">No active risk warnings.</div>}
+        {riskWarnings.slice(0, 4).map((w) => (
+          <div key={w.id} className={`mt-1 ${w.severity === "critical" ? "text-bearish" : "text-gold"}`}>
+            [{w.severity}] {w.message}
+          </div>
+        ))}
+      </Section>
+
+      <Section title="Latest Decision & Votes">
+        {latestDecision === null && <div className="opacity-50">No trade decisions yet.</div>}
+        {latestDecision !== null && (
+          <div>
+            <div className="flex items-center justify-between gap-1.5">
+              <span className="text-gold">{latestDecision.symbol}</span>
+              <span className={latestDecision.outcome === "trade" ? "text-bullish" : "text-bearish"}>
+                {latestDecision.outcome === "trade" ? "TRADE" : "NO TRADE"}
+              </span>
+            </div>
+            <div className="mb-1 opacity-70">{latestDecision.finalReasoning}</div>
+            {latestDecision.votes.map((v) => (
+              <div key={v.agentId} className="flex items-center justify-between gap-1.5 opacity-80">
+                <span>{AGENT_PROFILES[v.agentId].name}</span>
+                <span className={v.choice === "buy" ? "text-bullish" : v.choice === "sell" ? "text-bearish" : "opacity-70"}>{v.choice.replace(/_/g, " ")}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Section>
+
+      <Section title="Scanner Alerts">
+        {recentAlerts.length === 0 && <div className="opacity-50">Pulse hasn't flagged anything yet.</div>}
+        {recentAlerts.map((a) => (
+          <div key={a.id} className="mb-1 opacity-80">
+            <span className="text-gold">{a.symbol}</span> — {a.message}
+          </div>
+        ))}
       </Section>
 
       <Section title="Simulation Queue">

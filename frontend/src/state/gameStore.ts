@@ -12,11 +12,15 @@ import type {
   PaperPortfolio,
   PerformanceSnapshot,
   ResearchItem,
+  RiskLimits,
+  RiskWarning,
+  ScannerAlert,
   SettingsState,
   SimulationResult,
   Strategy,
   Task,
   TimeState,
+  TradeDecision,
   WatchlistEntry,
 } from "@/types";
 import { EventBus } from "@/game/systems/EventBus";
@@ -55,6 +59,10 @@ export interface GameUiState {
   coachReports: CoachReport[];
   companyScore: CompanyScore;
   performanceSnapshots: PerformanceSnapshot[];
+  riskLimits: RiskLimits;
+  riskWarnings: RiskWarning[];
+  scannerAlerts: ScannerAlert[];
+  decisions: TradeDecision[];
   settings: SettingsState;
   dialogue: DialogueUiState;
   paused: boolean;
@@ -115,6 +123,17 @@ class GameStore {
       updatedAt: new Date().toISOString(),
     },
     performanceSnapshots: [],
+    riskLimits: {
+      maxPositionPct: 10,
+      maxDailyLossPct: 5,
+      maxDrawdownPct: 20,
+      maxOpenPositions: 8,
+      maxSectorConcentrationPct: 30,
+      riskPerTradePct: 2,
+    },
+    riskWarnings: [],
+    scannerAlerts: [],
+    decisions: [],
     settings: { musicVolume: 0.5, sfxVolume: 0.7, autosaveIntervalSec: 60, showFps: false },
     dialogue: { open: false, speaker: "", lines: [], index: 0 },
     paused: false,
@@ -173,6 +192,10 @@ class GameStore {
     EventBus.on("coachReports:updated", (coachReports) => this.set({ coachReports }));
     EventBus.on("companyScore:updated", (companyScore) => this.set({ companyScore }));
     EventBus.on("performanceSnapshots:updated", (performanceSnapshots) => this.set({ performanceSnapshots }));
+    EventBus.on("riskLimits:updated", (riskLimits) => this.set({ riskLimits }));
+    EventBus.on("riskWarnings:updated", (riskWarnings) => this.set({ riskWarnings }));
+    EventBus.on("scannerAlerts:updated", (scannerAlerts) => this.set({ scannerAlerts }));
+    EventBus.on("decisions:updated", (decisions) => this.set({ decisions }));
 
     EventBus.on("save:started", () => this.set({ save: { status: "saving", lastSavedAt: this.state.save.lastSavedAt, error: null } }));
     EventBus.on("save:completed", ({ at }) => this.set({ save: { status: "saved", lastSavedAt: at, error: null } }));

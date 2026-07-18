@@ -1,22 +1,31 @@
-"""PaperTradingManager — decides *when* to open and close a simulated
-position; app/portfolio.py owns the ledger arithmetic once told what to
-do.
+"""PaperTradingManager — decides *when* to close a simulated position;
+app/portfolio.py owns the ledger arithmetic once told what to do.
+
+Through v0.5 this module also decided *when to open* a position, straight
+from a high-confidence completed research item. v0.6 moves that decision
+behind a vote: every trade candidate now goes through app/voting.py +
+app/decision.py + app/risk_engine.py before app/broker.py places an
+order, and positions open when that order fills (see
+app/broker.py's tick_broker()) rather than being opened directly here.
+This module keeps its mark-to-market and hold-duration-based closing
+logic exactly as v0.5 shipped it — that gameplay behavior (positions
+mark live, close after a random roll once past a minimum hold) is
+unchanged, only *how a position gets opened in the first place* moved.
 
 This module — and everything downstream of it — never connects to a real
 brokerage. There is no brokerage SDK import anywhere in this file, no API
 key it could use even if there were, and no code path that reaches a real
 order-execution endpoint. Every "trade" here is a row in
 GameSaveState.paper_portfolio, nothing more. This boundary is intentional
-and permanent for TradeTown v0.5 — see docs/DESIGN_BIBLE.md's "What
-TradeTown Is NOT" and the v0.5 brief's own stop condition.
+and permanent for TradeTown — see docs/DESIGN_BIBLE.md's "What TradeTown
+Is NOT" and every version's own stop condition.
 """
 from __future__ import annotations
 
 import random
 
-from app.portfolio import close_position, mark_to_market, open_position
-from app.scribe import FUTURE_TRADE_CONFIDENCE_THRESHOLD
-from app.schemas import AgentId, PaperPortfolio, PaperTrade, ResearchItem, TimeState, WatchlistEntry
+from app.portfolio import close_position, mark_to_market, sim_minutes
+from app.schemas import AgentId, PaperPortfolio, PaperTrade, TimeState, WatchlistEntry
 
 MIN_HOLD_MINUTES = 120
 MAX_HOLD_MINUTES = 720
@@ -27,45 +36,20 @@ MAX_HOLD_MINUTES = 720
 CLOSE_CHANCE_PER_TICK = 0.12
 
 
-def _sim_minutes(time: TimeState) -> int:
-    return time.day * 1440 + time.hour * 60 + time.minute
-
-
 def tick_paper_trading(
     portfolio: PaperPortfolio,
-    completed_research: list[ResearchItem],
     watchlist: list[WatchlistEntry],
     all_agent_ids: tuple[AgentId, ...],
     new_time: TimeState,
 ) -> tuple[PaperPortfolio, list[PaperTrade]]:
-    """One tick of paper-trading orchestration: open positions for
-    freshly-flagged high-confidence candidates, mark every open position
-    to market, then roll closes for positions that have cleared their
+    """One tick of paper-trading upkeep: mark every open position to
+    market, then roll closes for positions that have cleared their
     minimum hold. Returns the updated portfolio and the trades (if any)
     that closed this tick, so the caller (nexus.tick()) can hand them to
-    Scribe/Coach for logging."""
-    now_minutes = _sim_minutes(new_time)
+    Scribe/Coach for logging. Opening a position is app/broker.py's job
+    now — see this module's docstring."""
+    now_minutes = sim_minutes(new_time)
     prices = {w.symbol: w.last_price for w in watchlist}
-
-    held_symbols = {p.symbol for p in portfolio.positions}
-    for item in completed_research:
-        if item.confidence < FUTURE_TRADE_CONFIDENCE_THRESHOLD or not item.symbol:
-            continue
-        if item.symbol in held_symbols:
-            continue
-        price = prices.get(item.symbol)
-        if price is None:
-            continue
-        portfolio = open_position(
-            portfolio,
-            position_id=f"pos-{item.id}",
-            symbol=item.symbol,
-            price=price,
-            opened_by=item.assigned_agent,
-            confidence=item.confidence,
-            opened_sim_minutes=now_minutes,
-        )
-        held_symbols.add(item.symbol)
 
     portfolio = mark_to_market(portfolio, prices)
 

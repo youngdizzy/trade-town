@@ -17,10 +17,13 @@ from app.schemas import (
     HallOfFameEntry,
     MemoryRecord,
     MeetingMinutes,
+    PaperOrder,
     PaperTrade,
     ResearchItem,
+    ScannerAlert,
     SimulationResult,
     TimeState,
+    TradeDecision,
 )
 
 # Crossing this confidence on completion also logs a "future trade"
@@ -115,3 +118,27 @@ def record_coach_report(memory: list[MemoryRecord], report: CoachReport) -> None
 
 def record_hall_of_fame_entry(memory: list[MemoryRecord], entry: HallOfFameEntry) -> None:
     record(memory, "event", f"Hall of Fame: {entry.title}", entry.description)
+
+
+def record_scanner_alert(memory: list[MemoryRecord], alert: ScannerAlert) -> None:
+    record(memory, "alert", f"Scanner alert: {alert.symbol}", alert.message)
+
+
+def record_decision(memory: list[MemoryRecord], decision: TradeDecision) -> None:
+    outcome = "approved a trade on" if decision.outcome == "trade" else "held off on"
+    record(
+        memory,
+        "decision",
+        f"Decision: {decision.symbol}",
+        f"Atlas {outcome} {decision.symbol} at {decision.confidence:.0f}% confidence. {decision.final_reasoning}",
+    )
+
+
+def record_order_placed(memory: list[MemoryRecord], order: PaperOrder) -> None:
+    record(
+        memory,
+        "order",
+        f"Order placed: {order.symbol}",
+        f"{AGENT_PROFILES[order.placed_by].name} placed a {order.order_type} {order.side} order for "
+        f"{order.quantity:.2f} {order.symbol} — {order.reason}",
+    )

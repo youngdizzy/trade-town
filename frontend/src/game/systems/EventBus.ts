@@ -15,12 +15,16 @@ import type {
   PaperPortfolio,
   PerformanceSnapshot,
   ResearchItem,
+  RiskLimits,
+  RiskWarning,
+  ScannerAlert,
   SceneId,
   SettingsState,
   SimulationResult,
   Strategy,
   Task,
   TimeState,
+  TradeDecision,
   WatchlistEntry,
 } from "@/types";
 
@@ -69,6 +73,12 @@ export interface GameEvents {
   "companyScore:updated": CompanyScore;
   "performanceSnapshots:updated": PerformanceSnapshot[];
   "ui:coachDashboard": { open: boolean };
+  "riskLimits:updated": RiskLimits;
+  "riskWarnings:updated": RiskWarning[];
+  "scannerAlerts:updated": ScannerAlert[];
+  "scanner:alertDetected": ScannerAlert;
+  "decisions:updated": TradeDecision[];
+  "decision:made": TradeDecision;
 }
 
 type Handler<K extends keyof GameEvents> = (payload: GameEvents[K]) => void;

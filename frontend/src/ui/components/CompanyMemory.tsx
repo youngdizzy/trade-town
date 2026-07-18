@@ -17,6 +17,10 @@ const CATEGORY_LABEL: Record<MemoryCategory, string> = {
   coach_review: "Coach Review",
   simulation: "Simulation",
   paper_trade: "Paper Trade",
+  alert: "Scanner Alert",
+  vote: "Vote",
+  decision: "Decision",
+  order: "Order",
 };
 
 const CATEGORIES: MemoryCategory[] = [
@@ -33,6 +37,10 @@ const CATEGORIES: MemoryCategory[] = [
   "coach_review",
   "simulation",
   "paper_trade",
+  "alert",
+  "vote",
+  "decision",
+  "order",
 ];
 
 /**

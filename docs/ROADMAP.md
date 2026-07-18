@@ -99,7 +99,47 @@ no live brokerage support, no connection to any real broker, no
 execution of a single real trade — every `PaperOrder`/`PaperPosition`/
 `PaperTrade` is simulated bookkeeping only.
 
-## Version 0.6 — Strategy Marketplace
+## Version 0.6 — Paper Trading Operations
+**Status: Completed**
+
+> **Note on scope drift:** this document originally planned v0.6 as a
+> Strategy Marketplace and v0.7 as a standalone Risk Engine. The v0.6
+> brief that actually started this version pulled the Risk Engine
+> forward (plus a full Market Scanner, order-book PaperBroker, Decision
+> Voting, Explainable AI, and Trading Journal) into one release, and did
+> not include the Strategy Marketplace — per this document's own rule,
+> the brief supersedes the plan below it. Strategy Marketplace is
+> deferred to a later version (see below). What's documented here for
+> v0.6 is what actually shipped; see `docs/VersionHistory.md` for the
+> authoritative feature list.
+
+Three new agents (Sentinel — Risk Management, Pulse — Market Scanner,
+Guardian — Portfolio Protection) and a ninth Lobby door, the Trading
+Floor. v0.5's Paper Trading engine's *opening* logic moved behind a full
+Decision Voting pipeline: every high-confidence completed research item
+is voted on by the four researchers plus Sentinel and Guardian, and
+Atlas's ruling produces a permanent, explainable `TradeDecision` —
+whether the trade is approved or not. Approved trades place an order
+through a new order-book `PaperBroker` (market/limit/stop/take-profit/
+stop-loss, one tick of fill latency) instead of opening a position
+directly. A configurable `RiskEngine` backs Sentinel's hard
+trade-approval gate and Guardian's exposure/concentration watch — the
+"company-wide risk posture visible and manageable" goal originally
+scoped for v0.7, delivered here instead. A `ScannerManager` backs
+Pulse's continuous gap/breakout/volume-spike/volatility scan. A
+`TradeJournal` stamps every closed trade with a coach review and
+lessons learned. v0.5's closing logic (mark-to-market, hold-duration
+random-roll close) is unchanged.
+
+**Depends on:** v0.5's Paper Trading (`portfolio.py`, needed a ledger to
+place orders and compute risk against) and `MarketDataProvider` adapter
+pattern (shipped, extended with a `volume` field for the scanner).
+**Stop condition:** no live brokerage support, no connection to any real
+broker, no execution of a single real trade — every `PaperOrder`/
+`PaperPosition`/`PaperTrade` is simulated bookkeeping only, and
+`PaperBroker` deliberately has no brokerage SDK import anywhere in it.
+
+## Version 0.7 — Strategy Marketplace
 **Scope (planned):** Player-authored or player-curated research
 strategies (which symbols to prioritize, which research categories to
 weight) become shareable, importable configurations — not code, not
@@ -118,40 +158,43 @@ shareable strategy configs. **Stop condition:** strategies configure
 cannot inject arbitrary code or bypass the one-active-item-per-agent
 model.
 
-## Version 0.7 — Risk Engine
-**Scope (planned):** A company-wide risk posture becomes visible and
-manageable beyond v0.5's single risk-score number — position
-concentration across the paper portfolio, confidence-vs-outcome
-calibration per agent (building on `coach.py`'s `AgentScore.
-confidenceCalibration`, already computed per report), and a
-dedicated risk-focused HUD panel. This is the last version before v1.0
-and exists specifically to make the company's own fallibility legible
-before any real-money question is even on the table.
+## Version 0.8 — Risk Calibration & Analytics
+**Scope (planned):** The pieces of the original "Risk Engine" milestone
+v0.6 didn't cover: confidence-vs-outcome calibration per agent (building
+on `coach.py`'s `AgentScore.confidenceCalibration`, already computed
+per report), historical risk-warning trend tracking (v0.6's
+`riskWarnings` reflects only the *current* tick — see `nexus.py`'s
+`tick()`), and true rolling-window breakout/volatility detection for
+`scanner.py` once a real historical `MarketDataProvider` exists. This is
+the last version before v1.0.
 
-**Depends on:** v0.5's Paper Trading (needs a ledger to compute risk
-against) and Company Score (`riskManagement` metric, shipped as a
-single number this version would break out further). **Stop condition:**
-risk is measured and displayed, never auto-hedged or auto-corrected
-without the player.
+**Depends on:** v0.6's `RiskEngine`/`ScannerManager` (shipped) and
+Company Score (`riskManagement` metric). **Stop condition:** risk is
+measured and displayed, never auto-hedged or auto-corrected without the
+player.
 
 ## Version 1.0 — Live Brokerage Support (re-authorization required)
 **Scope (planned, gated):** The earliest point at which a real,
 optional, explicitly opt-in brokerage connection becomes possible,
 building on the `MarketDataProvider` adapter pattern for market data and
-a parallel, separately-designed execution adapter for order placement.
-This milestone does **not** ship a live connection by default — it ships
-the *capability*, behind a deliberate, separately-scoped authorization
-that must restate and re-affirm every boundary in `DESIGN_BIBLE.md`
-before any order-placing code is written. Everything from v0.5–v0.7
-(Coach, Simulation Lab, Paper Trading, Hall of Fame, Strategy
-Marketplace, Risk Engine) exists specifically so this version has real
-scaffolding to build on instead of starting from zero trust.
+`PaperBroker`'s `place_order()`/`tick_broker()` shape (already
+documented as intended to support a real adapter later — see
+`broker.py`'s module docstring) for order placement. This milestone
+does **not** ship a live connection by default — it ships the
+*capability*, behind a deliberate, separately-scoped authorization that
+must restate and re-affirm every boundary in `DESIGN_BIBLE.md` before
+any order-placing code is written. Everything from v0.5–v0.8 (Coach,
+Simulation Lab, Paper Trading, Hall of Fame, Trading Floor, Risk Engine,
+Market Scanner, Decision Voting, Strategy Marketplace, Risk Calibration)
+exists specifically so this version has real scaffolding to build on
+instead of starting from zero trust.
 
-**Depends on:** v0.5 (Paper Trading, for the execution UX and ledger
-model), v0.7 (Risk Engine, for pre-trade risk checks). **Stop condition:**
-this document does not pre-authorize brokerage code — that authorization
-is a separate, explicit decision made at v1.0's own kickoff, not implied
-by this roadmap entry existing.
+**Depends on:** v0.5's Paper Trading (execution UX and ledger model),
+v0.6's `RiskEngine`/`PaperBroker` (pre-trade risk checks and the
+order-book shape a real adapter would slot into), v0.8 (Risk
+Calibration). **Stop condition:** this document does not pre-authorize
+brokerage code — that authorization is a separate, explicit decision
+made at v1.0's own kickoff, not implied by this roadmap entry existing.
 
 ---
 

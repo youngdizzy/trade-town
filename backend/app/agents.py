@@ -69,6 +69,30 @@ AGENT_PROFILES: dict[AgentId, AgentProfile] = {
         home_location="performance-center",
         tint=0xFF8C61,
     ),
+    "sentinel": AgentProfile(
+        id="sentinel",
+        name="Sentinel",
+        occupation="Risk Management",
+        personality="Unflinching. Says no more often than yes, and never apologizes for it.",
+        home_location="trading-floor",
+        tint=0xFF5C5C,
+    ),
+    "pulse": AgentProfile(
+        id="pulse",
+        name="Pulse",
+        occupation="Market Scanner",
+        personality="Restless. Always watching every ticker at once.",
+        home_location="trading-floor",
+        tint=0x5CE1FF,
+    ),
+    "guardian": AgentProfile(
+        id="guardian",
+        name="Guardian",
+        occupation="Portfolio Protection",
+        personality="Steady and watchful. Speaks up the moment exposure looks lopsided.",
+        home_location="trading-floor",
+        tint=0x4A90D9,
+    ),
 }
 
 
@@ -85,4 +109,5 @@ LOCATION_TO_SCENE: dict[AgentLocation, SceneId] = {
     "simulation-lab": "SimulationLabScene",
     "hall-of-fame": "HallOfFameScene",
     "performance-center": "PerformanceCenterScene",
+    "trading-floor": "TradingFloorScene",
 }

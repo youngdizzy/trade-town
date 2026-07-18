@@ -13,10 +13,11 @@ export type SceneId =
   | "BreakRoomScene"
   | "SimulationLabScene"
   | "HallOfFameScene"
-  | "PerformanceCenterScene";
+  | "PerformanceCenterScene"
+  | "TradingFloorScene";
 
-export type AgentId = "scout" | "atlas" | "echo" | "nova" | "scribe" | "coach";
-export const AGENT_IDS: readonly AgentId[] = ["scout", "atlas", "echo", "nova", "scribe", "coach"];
+export type AgentId = "scout" | "atlas" | "echo" | "nova" | "scribe" | "coach" | "sentinel" | "pulse" | "guardian";
+export const AGENT_IDS: readonly AgentId[] = ["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian"];
 
 /** Every room an agent's schedule (or a meeting/break override) can place them in. */
 export type AgentLocation =
@@ -27,7 +28,8 @@ export type AgentLocation =
   | "lobby"
   | "simulation-lab"
   | "hall-of-fame"
-  | "performance-center";
+  | "performance-center"
+  | "trading-floor";
 
 export type TaskStatus = "pending" | "working" | "completed" | "failed";
 export type TaskPriority = "low" | "normal" | "high";
@@ -42,7 +44,11 @@ export type TaskCategory =
   | "coaching"
   | "simulation"
   | "paper_trading"
-  | "analytics";
+  | "analytics"
+  | "risk_management"
+  | "market_scanning"
+  | "voting"
+  | "trading";
 export type NewsCategory = "company" | "discovery" | "market";
 
 /** The eight research topics named in the v0.3 brief. */
@@ -61,10 +67,19 @@ export type MemoryCategory =
   | "strategy"
   | "coach_review"
   | "simulation"
-  | "paper_trade";
+  | "paper_trade"
+  | "alert"
+  | "vote"
+  | "decision"
+  | "order";
 
 export type OrderSide = "buy" | "sell";
-export type OrderStatus = "open" | "filled" | "closed";
+export type OrderStatus = "open" | "filled" | "closed" | "cancelled";
+export type OrderType = "market" | "limit" | "stop" | "take_profit" | "stop_loss";
+export type AlertType = "gap_up" | "gap_down" | "breakout" | "volume_spike" | "high_volatility";
+export type AlertSeverity = "info" | "warning" | "critical";
+export type VoteChoice = "buy" | "sell" | "hold" | "risk_too_high" | "position_too_large";
+export type DecisionOutcome = "trade" | "no_trade";
 export type SimulationStatus = "queued" | "running" | "completed";
 export type HallOfFameCategory =
   | "best_research"
@@ -194,17 +209,24 @@ export interface MemoryRecord {
   timestamp: string;
 }
 
-/** A paper order — simulated only, never sent to a real brokerage. */
+/** A paper order — simulated only, never sent to a real brokerage. `price` means
+ * different things per `orderType`: ignored for "market"; the limit/target price
+ * for "limit"/"take_profit"; the trigger price for "stop"/"stop_loss".
+ * `linkedPositionId` is set for an exit order attached to an existing position. */
 export interface PaperOrder {
   id: string;
   symbol: string;
   side: OrderSide;
+  orderType: OrderType;
   quantity: number;
   price: number;
   status: OrderStatus;
   placedBy: AgentId;
   reason: string;
   confidence: number;
+  linkedPositionId: string | null;
+  filledPrice: number | null;
+  filledAt: string | null;
   createdAt: string;
 }
 
@@ -242,6 +264,11 @@ export interface PaperTrade {
   opposingAgents: AgentId[];
   coachReview: string | null;
   lessonsLearned: string | null;
+  /** Links back to the TradeDecision that approved the order behind this trade —
+   * best-effort attribution, not always resolvable (see backend/app/nexus.py). */
+  decisionId: string | null;
+  /** Always a fixed placeholder — TradeTown has no chart-rendering pipeline. */
+  screenshot: string | null;
   openedAt: string;
   closedAt: string;
 }
@@ -356,6 +383,60 @@ export interface PerformanceSnapshot {
   computedAt: string;
 }
 
+/** Sentinel's configurable risk boundaries (v0.6 brief, Risk Engine). */
+export interface RiskLimits {
+  maxPositionPct: number;
+  maxDailyLossPct: number;
+  maxDrawdownPct: number;
+  maxOpenPositions: number;
+  maxSectorConcentrationPct: number;
+  riskPerTradePct: number;
+}
+
+export interface RiskWarning {
+  id: string;
+  symbol: string;
+  severity: AlertSeverity;
+  message: string;
+  createdAt: string;
+}
+
+/** Pulse's output — see backend/app/scanner.py. */
+export interface ScannerAlert {
+  id: string;
+  symbol: string;
+  alertType: AlertType;
+  message: string;
+  detectedBy: AgentId;
+  createdAt: string;
+}
+
+/** One agent's stance on a trade candidate — see backend/app/voting.py. */
+export interface AgentVote {
+  agentId: AgentId;
+  choice: VoteChoice;
+  reason: string;
+}
+
+/** The permanent, explainable-AI record of one trade candidate's outcome
+ * (v0.6 brief, Decision Voting + Explainable AI) — see backend/app/decision.py. */
+export interface TradeDecision {
+  id: string;
+  symbol: string;
+  outcome: DecisionOutcome;
+  votes: AgentVote[];
+  researchSummary: string;
+  technicalSummary: string;
+  fundamentalSummary: string;
+  riskSummary: string;
+  supportingAgents: AgentId[];
+  opposingAgents: AgentId[];
+  confidence: number;
+  finalReasoning: string;
+  orderId: string | null;
+  createdAt: string;
+}
+
 export interface TimeState {
   day: number;
   hour: number; // 0-23
@@ -370,7 +451,7 @@ export interface SettingsState {
 }
 
 export interface GameSaveState {
-  version: "0.5";
+  version: "0.6";
   player: EntityTransform;
   agents: Record<AgentId, AgentState>;
   tasks: Task[];
@@ -389,6 +470,10 @@ export interface GameSaveState {
   coachReports: CoachReport[];
   companyScore: CompanyScore;
   performanceSnapshots: PerformanceSnapshot[];
+  riskLimits: RiskLimits;
+  riskWarnings: RiskWarning[];
+  scannerAlerts: ScannerAlert[];
+  decisions: TradeDecision[];
   time: TimeState;
   settings: SettingsState;
   dialogueHistory: DialogueHistoryEntry[];
