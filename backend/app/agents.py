@@ -61,6 +61,14 @@ AGENT_PROFILES: dict[AgentId, AgentProfile] = {
         home_location="brain-room",
         tint=0xD98FB3,
     ),
+    "coach": AgentProfile(
+        id="coach",
+        name="Coach",
+        occupation="Performance & Improvement",
+        personality="Encouraging but exacting. Asks more questions than it answers.",
+        home_location="performance-center",
+        tint=0xFF8C61,
+    ),
 }
 
 
@@ -74,4 +82,7 @@ LOCATION_TO_SCENE: dict[AgentLocation, SceneId] = {
     "meeting-room": "MeetingRoomScene",
     "break-room": "BreakRoomScene",
     "lobby": "LobbyScene",
+    "simulation-lab": "SimulationLabScene",
+    "hall-of-fame": "HallOfFameScene",
+    "performance-center": "PerformanceCenterScene",
 }

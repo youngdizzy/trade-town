@@ -1,4 +1,23 @@
-import type { AgentId, AgentState, MeetingMinutes, MeetingState, MemoryRecord, NewsItem, ResearchItem, Task, TimeState, WatchlistEntry } from "@/types";
+import type {
+  AgentId,
+  AgentState,
+  BacktestSession,
+  CoachReport,
+  CompanyScore,
+  HallOfFameEntry,
+  MeetingMinutes,
+  MeetingState,
+  MemoryRecord,
+  NewsItem,
+  PaperPortfolio,
+  PerformanceSnapshot,
+  ResearchItem,
+  SimulationResult,
+  Strategy,
+  Task,
+  TimeState,
+  WatchlistEntry,
+} from "@/types";
 import { EventBus } from "@/game/systems/EventBus";
 import { TimeManager } from "@/game/systems/TimeManager";
 import { NPCManager } from "@/game/systems/NPCManager";
@@ -17,6 +36,14 @@ type ServerMessage =
       watchlist: WatchlistEntry[];
       memory: MemoryRecord[];
       meetingMinutes: MeetingMinutes[];
+      paperPortfolio: PaperPortfolio;
+      strategies: Strategy[];
+      backtestSessions: BacktestSession[];
+      simulationResults: SimulationResult[];
+      hallOfFame: HallOfFameEntry[];
+      coachReports: CoachReport[];
+      companyScore: CompanyScore;
+      performanceSnapshots: PerformanceSnapshot[];
     }
   | { type: "pong" };
 
@@ -82,6 +109,14 @@ export class GameSocket {
             watchlist: msg.watchlist,
             memory: msg.memory,
             meetingMinutes: msg.meetingMinutes,
+            paperPortfolio: msg.paperPortfolio,
+            strategies: msg.strategies,
+            backtestSessions: msg.backtestSessions,
+            simulationResults: msg.simulationResults,
+            hallOfFame: msg.hallOfFame,
+            coachReports: msg.coachReports,
+            companyScore: msg.companyScore,
+            performanceSnapshots: msg.performanceSnapshots,
           });
         }
       } catch (err) {

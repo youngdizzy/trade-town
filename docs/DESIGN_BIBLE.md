@@ -75,11 +75,15 @@ and managerial, not competitive:
    reflecting their current task. There is nothing to fail at here — the
    player cannot break an agent's schedule by talking to it.
 3. **Read.** The Brain Room HUD, the whiteboards, TradeTown Daily (the
-   newspaper), and Company Memory are all *read* surfaces, not *control*
-   surfaces (v0.3 and earlier). The player's role so far is closer to a
-   visitor with backstage access than a manager giving orders — that
-   changes starting with Coach (v0.5, see `ROADMAP.md`), but even then
-   the player directs *quality*, not individual trades.
+   newspaper), Company Memory, and — new in v0.5 — the Coach Dashboard
+   and the Simulation Lab/Hall of Fame/Performance Center room readouts
+   are all *read* surfaces, not *control* surfaces. The player's role
+   stays a visitor with backstage access, not a manager giving orders:
+   Coach (v0.5) evaluates the company autonomously and the player reads
+   its reports, but never tells Coach what to evaluate or approves an
+   individual paper trade before it opens — that boundary was originally
+   drafted as something v0.5 might soften; it didn't, and the player
+   still directs nothing at the level of an individual trade.
 4. **Return.** Because the simulation keeps advancing offline (persisted
    to SQLite every `PERSIST_INTERVAL_TICKS`), coming back later always
    shows a company that kept working without you — new research
@@ -87,11 +91,15 @@ and managerial, not competitive:
    loop's payoff is the same one a good idle/management sim gives: "what
    did they get done while I was away."
 
-This loop deliberately has no economy, no currency, no score, and no
-combat. It is closer to *Powerwash Simulator*'s "watch the tile get
-clean" satisfaction than to a trading game's win/loss cycle — the
-satisfaction is watching a system you understand produce legible,
-incremental progress.
+This loop deliberately has no *real* economy, no real currency, and no
+combat — v0.5's Paper Portfolio and Company Score introduce a simulated
+score/economy (a fake $100,000 balance, a 0–100 company rating) purely so
+the company's research quality has something legible to be measured
+against, never as a player-facing win/loss cycle to optimize. It is
+closer to *Powerwash Simulator*'s "watch the tile get clean" satisfaction
+than to a trading game's win/loss cycle — the satisfaction is watching a
+system you understand produce legible, incremental progress, including
+now watching it grade its own performance.
 
 ## What TradeTown Is
 
@@ -112,13 +120,19 @@ incremental progress.
 
 ## What TradeTown Is NOT
 
-- **Not a trading platform.** No version of TradeTown through v0.9
-  executes, queues, or simulates order execution against real capital.
-  "Future trade candidate" flags (`memory.py`'s `FUTURE_TRADE_CONFIDENCE_THRESHOLD`)
-  are logged notes for a *human* to consider later — never an
-  autonomous action. This restriction is re-stated in every version's
-  own brief on purpose; see `FUTURE_ARCHITECTURE.md` for how Paper
-  Trading (v0.7) is scoped to still respect it.
+- **Not a trading platform.** No version of TradeTown through v0.7
+  executes or queues order execution against **real capital**, and no
+  version connects to a real brokerage. v0.5's Paper Trading engine
+  (`portfolio.py`, `paper_trading.py`) does autonomously open and close
+  *simulated* positions from high-confidence research completions — an
+  autonomous action, but against a fake $100,000 balance that never
+  touches a real account. "Future trade candidate" flags
+  (`memory.py`'s `FUTURE_TRADE_CONFIDENCE_THRESHOLD`) predate and still
+  coexist with this: they remain a logged note for a *human* to
+  consider, the same threshold Paper Trading also reads to decide when
+  to open a simulated position. This restriction is re-stated in every
+  version's own brief on purpose; see `FUTURE_ARCHITECTURE.md` for how
+  live brokerage support (v1.0) is scoped to still respect it.
 - **Not a brokerage client.** No API keys for Schwab, Alpaca, IBKR, or
   any brokerage exist in this codebase, and none will until a version's
   brief explicitly authorizes it (currently targeted no earlier than
@@ -228,8 +242,10 @@ this pillar.
 A panel that needs a scrollbar to show its most important line has
 failed. Every list in the game is bounded server-side before it's ever
 sent (see `docs/API.md`'s "Bounding / trimming" table — tasks, news,
-research, memory, and meeting minutes are all capped) specifically so
-the client never has to decide what to hide. *Evidence:* the per-category
+research, memory, meeting minutes, paper trade history, simulation
+results, hall of fame entries, coach reports, and performance snapshots
+are all capped) specifically so the client never has to decide what to
+hide. *Evidence:* the per-category
 news cap (`MAX_NEWS_PER_CATEGORY`) exists because a single flat cap let
 frequent discovery news crowd out rare market headlines — a clutter bug,
 fixed as a clutter bug.
@@ -241,9 +257,13 @@ Every subsystem is a manager with one job, connected through the
 (backend) — never a god object. `MarketDataProvider` is an `ABC` swapped
 via one registration point specifically so a real vendor can be added
 without touching `watchlist.py`, `research.py`, or any UI
-component. *Evidence:* Scribe (a fifth agent, v0.3) was added with *zero*
-Phaser scene changes, because every consumer already iterated `AGENT_IDS`
-instead of a hardcoded roster.
+component. *Evidence:* Scribe (a fifth agent, v0.3) and Coach (a sixth,
+v0.5) were both added with *zero* Phaser scene changes, because every
+consumer already iterated `AGENT_IDS` instead of a hardcoded roster; v0.5
+also kept its eight new "Manager" services (Coach/Simulation/Paper
+Trading/Portfolio/Analytics/Hall of Fame/Performance/Knowledge) as plain
+function modules rather than classes, matching the pattern `research.py`
+and `watchlist.py` already established.
 
 ### 6. Transparency Over Automation
 

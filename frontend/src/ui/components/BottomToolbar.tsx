@@ -14,6 +14,7 @@ export function BottomToolbar() {
         <ToolbarButton label="Save" onClick={() => void SaveManager.save()} />
         <ToolbarButton label="Load" onClick={() => void SaveManager.load()} />
         <ToolbarButton label="Memory" onClick={() => EventBus.emit("ui:companyMemory", { open: true })} />
+        <ToolbarButton label="Coach" onClick={() => EventBus.emit("ui:coachDashboard", { open: true })} />
         <ToolbarButton label="Settings" onClick={() => EventBus.emit("ui:settings", { open: true })} />
         <ToolbarButton label={paused ? "Resume" : "Pause"} onClick={() => GameManager.getInstance()?.togglePause()} />
         <SaveStatusIndicator status={save.status} error={save.error} />

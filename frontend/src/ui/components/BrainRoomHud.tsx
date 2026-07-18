@@ -3,7 +3,7 @@ import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { upcomingEvents } from "@/game/systems/UpcomingEvents";
 import type { AgentId, TimeState } from "@/types";
 
-const AGENT_ORDER: AgentId[] = ["scout", "atlas", "echo", "nova", "scribe"];
+const AGENT_ORDER: AgentId[] = ["scout", "atlas", "echo", "nova", "scribe", "coach"];
 const RESEARCHER_ORDER: AgentId[] = ["scout", "atlas", "echo", "nova"];
 
 function formatClock(time: TimeState): string {
@@ -20,7 +20,8 @@ function formatClock(time: TimeState): string {
  * than snapping.
  */
 export function BrainRoomHud() {
-  const { currentScene, agents, tasks, news, research, watchlist, time } = useGameStore();
+  const { currentScene, agents, tasks, news, research, watchlist, time, companyScore, backtestSessions, paperPortfolio, coachReports, memory } =
+    useGameStore();
   if (currentScene !== "BrainRoomScene" || !agents) return null;
 
   const working = AGENT_ORDER.filter((id) => !["lobby", "break-room"].includes(agents[id].location)).length;
@@ -35,6 +36,9 @@ export function BrainRoomHud() {
   );
 
   const upcoming = upcomingEvents(AGENT_ORDER, time);
+  const activeSessions = backtestSessions.filter((s) => s.status !== "completed").slice(0, 4);
+  const latestReport = coachReports[coachReports.length - 1] ?? null;
+  const knowledgeEntries = memory.filter((m) => m.category === "lesson" || m.category === "mistake" || m.category === "strategy").slice(-4).reverse();
 
   return (
     <div className="pointer-events-none absolute right-3 top-16 bottom-24 w-72 overflow-y-auto rounded border border-[#60d1ff]/40 bg-panel/90 p-3 font-pixel text-[10px] text-parchment shadow-pixel">
@@ -45,6 +49,75 @@ export function BrainRoomHud() {
       <Section title="Company Status">
         <div>{working} of {AGENT_ORDER.length} agents actively working</div>
         <div>Average mood: {avgMood} · Average energy: {avgEnergy}</div>
+      </Section>
+
+      <Section title="Company Rating">
+        <div className="flex items-center justify-between gap-1.5">
+          <span className="text-gold">Overall</span>
+          <span>{Math.round(companyScore.overall)}/100</span>
+        </div>
+        <ConfidenceBar value={companyScore.overall} />
+        <div className="mt-1.5 grid grid-cols-2 gap-x-2 gap-y-0.5 opacity-80">
+          <div>Research {Math.round(companyScore.researchQuality)}</div>
+          <div>Decisions {Math.round(companyScore.decisionQuality)}</div>
+          <div>Risk {Math.round(companyScore.riskManagement)}</div>
+          <div>Paper P&amp;L {Math.round(companyScore.paperTradingPerformance)}</div>
+          <div>Teamwork {Math.round(companyScore.teamCoordination)}</div>
+          <div>Simulation {Math.round(companyScore.simulationSuccess)}</div>
+        </div>
+      </Section>
+
+      <Section title="Paper Portfolio">
+        <div className="flex items-center justify-between gap-1.5">
+          <span>Cash</span>
+          <span className="text-gold">${paperPortfolio.cashBalance.toFixed(0)}</span>
+        </div>
+        <div className="flex items-center justify-between gap-1.5">
+          <span>Total P&amp;L</span>
+          <span className={paperPortfolio.totalPnl >= 0 ? "text-bullish" : "text-bearish"}>
+            {paperPortfolio.totalPnl >= 0 ? "+" : ""}
+            {paperPortfolio.totalPnl.toFixed(2)} ({paperPortfolio.totalPnlPct.toFixed(1)}%)
+          </span>
+        </div>
+        <div className="opacity-70">
+          {paperPortfolio.positions.length} open · {paperPortfolio.winCount}W / {paperPortfolio.lossCount}L — simulated, no real capital
+        </div>
+      </Section>
+
+      <Section title="Simulation Queue">
+        {activeSessions.length === 0 && <div className="opacity-50">No simulations running.</div>}
+        {activeSessions.map((s) => (
+          <div key={s.id} className="mb-1.5">
+            <div className="flex items-center justify-between gap-1.5">
+              <span className="truncate text-gold">{s.strategyName} · {s.symbol}</span>
+              <span className="shrink-0 opacity-70">{Math.round(s.progress)}%</span>
+            </div>
+            <ConfidenceBar value={s.progress} />
+          </div>
+        ))}
+      </Section>
+
+      <Section title="Agent Performance">
+        {latestReport === null && <div className="opacity-50">No Coach report yet — check back this evening.</div>}
+        {latestReport !== null &&
+          latestReport.agentRankings.slice(0, 5).map((score) => (
+            <div key={score.agentId} className="mb-1 flex items-center justify-between gap-1.5">
+              <span className="text-gold">{AGENT_PROFILES[score.agentId].name}</span>
+              <span className="opacity-70">
+                score {Math.round(score.score)} · acc {Math.round(score.researchAccuracy)}%
+              </span>
+            </div>
+          ))}
+      </Section>
+
+      <Section title="Learning Progress">
+        <div className="mb-1 opacity-70">Knowledge growth: {Math.round(companyScore.knowledgeGrowth)}/100</div>
+        {knowledgeEntries.length === 0 && <div className="opacity-50">No lessons logged yet.</div>}
+        {knowledgeEntries.map((entry) => (
+          <div key={entry.id} className="mb-1 opacity-80">
+            <span className={entry.category === "mistake" ? "text-bearish" : "text-bullish"}>[{entry.category}]</span> {entry.title}
+          </div>
+        ))}
       </Section>
 
       <Section title="Agent Status">

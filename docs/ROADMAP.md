@@ -52,104 +52,87 @@ distinct and fixed several bugs found through live gameplay testing
 placement clipping — see `CHANGELOG.md`). See `docs/VersionHistory.md`.
 
 ## Version 0.4 — Architecture Foundation
-**Status: In progress (this milestone)**
+**Status: Completed**
 
-No gameplay, no new systems, no trading. This version produces the
+No gameplay, no new systems, no trading. This version produced the
 design and architecture documents every future version is built against
 — the twelve documents in `docs/` alongside this roadmap
 (`DESIGN_BIBLE.md`, `AI_AGENT_BIBLE.md`, `UI_UX_BIBLE.md`,
 `COMPANY_LORE.md`, `NEXUS_ARCHITECTURE.md`, `PROJECT_STRUCTURE.md`,
 `CODING_STANDARDS.md`, `TASK_BACKLOG.md`, `KNOWN_LIMITATIONS.md`,
 `FUTURE_ARCHITECTURE.md`, `ARCHITECTURE_REVIEW.md`) plus this file. v0.3
-continues to run exactly as it did before this version started — nothing
-in `backend/` or `frontend/src/` changes as part of v0.4.
-
-**Explicitly not in v0.4:** any new gameplay system, any change to
-NEXUS's tick behavior, any new agent, any trading or brokerage code of
-any kind.
+continued to run exactly as it did before this version — nothing in
+`backend/` or `frontend/src/` changed as part of v0.4.
 
 ---
 
-## Version 0.5 — Coach
-**Scope (planned):** The player's first real interaction beyond
-"walk and read." Coach is a new agent whose job is the player, not the
-market — it reviews the flagged "future trade candidate" records already
-being logged in `CompanyMemory` (see `scribe.py`'s
-`FUTURE_TRADE_CONFIDENCE_THRESHOLD`) and helps the player reason about
-which ones held up, using only information the company already
-generated. No new market logic; Coach is a UI/dialogue/pedagogy feature
-built entirely on existing `CompanyMemory` data. See
-`FUTURE_ARCHITECTURE.md` for exactly how Coach attaches to NEXUS without
-a rewrite.
+## Version 0.5 — Intelligence Evolution
+**Status: Completed**
 
-**Depends on:** v0.3's `CompanyMemory` and `future_trade` records
-(shipped). **Stop condition:** Coach explains and asks questions; Coach
-never scores, ranks, or recommends an action.
+> **Note on scope drift:** this document originally planned v0.5 as a
+> narrow "Coach explains, never scores" release, with Simulation Lab
+> (v0.6), Paper Trading (v0.7), and Hall of Fame (part of v0.8) as
+> separate later milestones. The v0.5 brief that actually started this
+> version combined all of them into one release — per this document's
+> own rule ("the brief for each version ... is the final word on what
+> ships"), the brief supersedes the plan below it. What's documented
+> here for v0.5 is what actually shipped; the old v0.6/v0.7 sections
+> that predicted this content are removed rather than kept as stale
+> duplicates. See `docs/VersionHistory.md` for the authoritative
+> feature list.
 
-## Version 0.6 — Simulation Lab
-**Scope (planned):** A sandboxed replay environment where a flagged
-research candidate can be tested against historical price data with zero
-real risk and zero real money — "what would have happened" as a pure
-data exercise. Requires a second `MarketDataProvider` implementation
-capable of serving historical (not live) series through the same
-interface (`backend/app/market_data.py`), and a new Simulation Lab room
-in the HQ. Results are logged to `CompanyMemory` like any other research
-artifact.
+Coach (a sixth agent, Performance & Improvement) reviews completed
+research and closed paper trades and — unlike the original plan above —
+does score, rank, and recommend, filing weekly/monthly `CoachReport`s
+surfaced in a new Coach Dashboard. A Simulation Lab room runs
+placeholder strategy backtests (`simulation.py`). A Paper Trading engine
+(`portfolio.py`, `paper_trading.py`) opens and closes fully simulated
+positions from high-confidence research completions — the first version
+to spend the "future trade candidate" flags introduced in v0.3. A Hall
+of Fame room celebrates the company's best records. A Learning System
+turns every closed paper trade into a `lesson`/`mistake` Company Memory
+record. A seven-metric Company Score is shown in the Brain Room.
 
-**Depends on:** v0.3's `MarketDataProvider` adapter pattern (shipped),
-v0.5's Coach (for reviewing simulation results, planned). **Stop
-condition:** the Lab never executes a real order and never connects to
-a live feed — historical data only.
+**Depends on:** v0.3's `CompanyMemory`/`future_trade` records and
+`MarketDataProvider` adapter pattern (both shipped). **Stop condition:**
+no live brokerage support, no connection to any real broker, no
+execution of a single real trade — every `PaperOrder`/`PaperPosition`/
+`PaperTrade` is simulated bookkeeping only.
 
-## Version 0.7 — Paper Trading
-**Scope (planned):** The first version where the company can "place" a
-trade — against a simulated, zero-stakes paper ledger, not a real
-brokerage account. This is the version that finally spends the "future
-trade candidate" flags introduced in v0.3: Atlas can convert a
-high-confidence candidate into a paper position, and the company tracks
-simulated P&L. Still zero real money, zero brokerage connection.
-
-**Depends on:** v0.6's Simulation Lab (candidates should be
-lab-tested before paper execution), v0.5's Coach (for reviewing paper
-trade outcomes). **Stop condition:** no real capital, no real brokerage
-API, ever — this is a ledger of pretend numbers, clearly labeled as such
-everywhere it appears in the UI.
-
-## Version 0.8 — Strategy Marketplace
+## Version 0.6 — Strategy Marketplace
 **Scope (planned):** Player-authored or player-curated research
 strategies (which symbols to prioritize, which research categories to
 weight) become shareable, importable configurations — not code, not
 plugins with arbitrary execution, just structured priority data
 consumed by `research.py`'s existing rotation logic. This is the
 first version where TradeTown's simulation becomes partially
-player-authored rather than purely observed.
+player-authored rather than purely observed. v0.5's `Strategy` model
+(currently agent-authored, used by the Simulation Lab) is the natural
+extension point — a player-curated strategy would be a new `Strategy`
+row like any agent-authored one, not a parallel data model.
 
-**Depends on:** v0.3's `research.py` rotation logic (shipped), a save-file schema
-extension for shareable strategy configs. **Stop condition:** strategies
-configure *priority and emphasis* within the existing research pipeline;
-they cannot inject arbitrary code or bypass the one-active-item-per-agent
+**Depends on:** v0.3's `research.py` rotation logic (shipped), v0.5's
+`Strategy`/Simulation Lab (shipped), a save-file schema extension for
+shareable strategy configs. **Stop condition:** strategies configure
+*priority and emphasis* within the existing research pipeline; they
+cannot inject arbitrary code or bypass the one-active-item-per-agent
 model.
 
-Also planned for this milestone: **Hall of Fame**, a read-only ranked
-view over `CompanyMemory` and (once v0.7 exists) Ledger's paper P&L
-records — celebrating the best-calibrated agents and highest-conviction
-research calls. It shares this milestone's "surface what's already
-recorded, don't generate new state" spirit closely enough to ship
-alongside it, though it could equally ship as its own point release if
-v0.8 grows too large. See `FUTURE_ARCHITECTURE.md` for exactly how it
-attaches to existing data with no new write path.
-
-## Version 0.9 — Risk Engine
+## Version 0.7 — Risk Engine
 **Scope (planned):** A company-wide risk posture becomes visible and
-manageable — position concentration (across the paper ledger from v0.7),
-confidence-vs-outcome calibration per agent, and a new risk-focused HUD
-panel. This is the last version before v1.0 and exists specifically to
-make the company's own fallibility legible before any real-money
-question is even on the table.
+manageable beyond v0.5's single risk-score number — position
+concentration across the paper portfolio, confidence-vs-outcome
+calibration per agent (building on `coach.py`'s `AgentScore.
+confidenceCalibration`, already computed per report), and a
+dedicated risk-focused HUD panel. This is the last version before v1.0
+and exists specifically to make the company's own fallibility legible
+before any real-money question is even on the table.
 
-**Depends on:** v0.7's Paper Trading (needs a ledger to compute risk
-against). **Stop condition:** risk is measured and displayed, never
-auto-hedged or auto-corrected without the player.
+**Depends on:** v0.5's Paper Trading (needs a ledger to compute risk
+against) and Company Score (`riskManagement` metric, shipped as a
+single number this version would break out further). **Stop condition:**
+risk is measured and displayed, never auto-hedged or auto-corrected
+without the player.
 
 ## Version 1.0 — Live Brokerage Support (re-authorization required)
 **Scope (planned, gated):** The earliest point at which a real,
@@ -159,13 +142,13 @@ a parallel, separately-designed execution adapter for order placement.
 This milestone does **not** ship a live connection by default — it ships
 the *capability*, behind a deliberate, separately-scoped authorization
 that must restate and re-affirm every boundary in `DESIGN_BIBLE.md`
-before any order-placing code is written. Everything from v0.5–v0.9
-(Coach, Simulation Lab, Paper Trading, Strategy Marketplace, Risk Engine)
-exists specifically so this version has real scaffolding to build on
-instead of starting from zero trust.
+before any order-placing code is written. Everything from v0.5–v0.7
+(Coach, Simulation Lab, Paper Trading, Hall of Fame, Strategy
+Marketplace, Risk Engine) exists specifically so this version has real
+scaffolding to build on instead of starting from zero trust.
 
-**Depends on:** v0.7 (Paper Trading, for the execution UX and ledger
-model), v0.9 (Risk Engine, for pre-trade risk checks). **Stop condition:**
+**Depends on:** v0.5 (Paper Trading, for the execution UX and ledger
+model), v0.7 (Risk Engine, for pre-trade risk checks). **Stop condition:**
 this document does not pre-authorize brokerage code — that authorization
 is a separate, explicit decision made at v1.0's own kickoff, not implied
 by this roadmap entry existing.

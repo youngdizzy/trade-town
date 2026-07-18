@@ -63,8 +63,9 @@ mypy app/
 ## Adding a new agent
 
 The agent system is already generalized past a fixed count — Scribe (v0.3)
-was added this way on top of v0.2's four, with zero Phaser scene changes.
-Adding another means touching data, not architecture:
+and Coach (v0.5) were both added this way on top of the previous roster,
+each with zero Phaser scene changes. Adding another means touching data,
+not architecture:
 
 1. Add an `AgentId` union member in `frontend/src/types.ts` and
    `backend/app/schemas.py` (`AGENT_IDS`/`AgentId`).
@@ -98,9 +99,12 @@ starts getting researched automatically; no other file needs to change.
 
 ## Adding a real `MarketDataProvider`
 
-v0.3 ships only `MockMarketDataProvider` (`backend/app/market_data.py`) —
-a local seeded random walk, no network calls. To wire in a real vendor
-(Polygon, Finnhub, Alpha Vantage, Yahoo Finance, Schwab, ...):
+As of v0.5, only `MockMarketDataProvider` (`backend/app/market_data.py`)
+ships — a local seeded random walk, no network calls. `simulation.py`'s
+placeholder backtest metrics have the same limitation (see
+`docs/Architecture.md`'s "Paper trading, simulation & coaching (v0.5)"
+section). To wire in a real vendor (Polygon, Finnhub, Alpha Vantage,
+Yahoo Finance, Schwab, ...):
 
 1. Implement the `MarketDataProvider` ABC (`get_quote`, and optionally
    override `get_quotes` if the vendor has a real batch endpoint — the

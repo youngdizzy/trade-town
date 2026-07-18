@@ -78,6 +78,17 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
     wanderRadius: 15,
     idlePauseChance: 0.75,
   },
+  coach: {
+    id: "coach",
+    name: "Coach",
+    occupation: "Performance & Improvement",
+    personality: "Encouraging but exacting. Asks more questions than it answers.",
+    homeLocation: "performance-center",
+    tint: 0xff8c61,
+    badge: "\u{1F3C6}",
+    wanderRadius: 22,
+    idlePauseChance: 0.4,
+  },
 };
 
 export const LOCATION_TO_SCENE: Record<AgentLocation, SceneId> = {
@@ -86,4 +97,7 @@ export const LOCATION_TO_SCENE: Record<AgentLocation, SceneId> = {
   "meeting-room": "MeetingRoomScene",
   "break-room": "BreakRoomScene",
   lobby: "LobbyScene",
+  "simulation-lab": "SimulationLabScene",
+  "hall-of-fame": "HallOfFameScene",
+  "performance-center": "PerformanceCenterScene",
 };

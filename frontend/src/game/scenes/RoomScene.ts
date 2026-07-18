@@ -7,7 +7,7 @@ import { Whiteboard } from "@/game/entities/Whiteboard";
 import { CameraManager } from "@/game/systems/CameraManager";
 import { SceneManager, type SceneTransitionData } from "@/game/systems/SceneManager";
 import { createGroundLayer, createPerimeterWalls, createZone } from "@/game/systems/TileWorld";
-import { EventBus } from "@/game/systems/EventBus";
+import { EventBus, type GameEvents } from "@/game/systems/EventBus";
 import { GameManager } from "@/game/systems/GameManager";
 import { NPCManager } from "@/game/systems/NPCManager";
 import { dialogueManager } from "@/game/systems/DialogueManager";
@@ -47,6 +47,7 @@ export abstract class RoomScene extends Phaser.Scene {
   protected walls!: Phaser.Physics.Arcade.StaticGroup;
   protected agents = new Map<AgentId, AgentNPC>();
   private whiteboards: Whiteboard[] = [];
+  private liveTexts: { text: Phaser.GameObjects.Text; unsubscribe: () => void }[] = [];
   private widthPx = 0;
   private heightPx = 0;
 
@@ -179,11 +180,31 @@ export abstract class RoomScene extends Phaser.Scene {
     this.agents.clear();
     for (const board of this.whiteboards) board.destroy();
     this.whiteboards = [];
+    for (const { text, unsubscribe } of this.liveTexts) {
+      unsubscribe();
+      text.destroy();
+    }
+    this.liveTexts = [];
   }
 
   /** Adds a whiteboard prop and registers it for automatic cleanup on shutdown — subclasses don't need their own shutdown() override just to destroy one. */
   protected addWhiteboard(x: number, y: number, boardId: string): void {
     this.whiteboards.push(new Whiteboard(this, x, y, boardId));
+  }
+
+  /** Adds a Phaser text prop that keeps itself in sync with a live EventBus event — the in-world equivalent of the React HUD's reactive readouts — and registers it for automatic cleanup on shutdown, same as addWhiteboard(). */
+  protected addLiveText<K extends keyof GameEvents>(
+    event: K,
+    x: number,
+    y: number,
+    style: Phaser.Types.GameObjects.Text.TextStyle,
+    format: (payload: GameEvents[K]) => string,
+    initial: GameEvents[K],
+  ): Phaser.GameObjects.Text {
+    const text = this.add.text(x, y, format(initial), style).setOrigin(0.5).setDepth(4);
+    const unsubscribe = EventBus.on(event, (payload) => text.setText(format(payload)));
+    this.liveTexts.push({ text, unsubscribe });
+    return text;
   }
 
   private nearestAgent(radius = 28): AgentNPC | null {

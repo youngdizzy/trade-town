@@ -1,4 +1,20 @@
-import type { MeetingMinutes, MeetingState, MemoryRecord, NewsItem, ResearchItem, Task, WatchlistEntry } from "@/types";
+import type {
+  BacktestSession,
+  CoachReport,
+  CompanyScore,
+  HallOfFameEntry,
+  MeetingMinutes,
+  MeetingState,
+  MemoryRecord,
+  NewsItem,
+  PaperPortfolio,
+  PerformanceSnapshot,
+  ResearchItem,
+  SimulationResult,
+  Strategy,
+  Task,
+  WatchlistEntry,
+} from "@/types";
 import { EventBus } from "./EventBus";
 
 interface NexusSnapshot {
@@ -10,6 +26,14 @@ interface NexusSnapshot {
   watchlist: WatchlistEntry[];
   memory: MemoryRecord[];
   meetingMinutes: MeetingMinutes[];
+  paperPortfolio: PaperPortfolio;
+  strategies: Strategy[];
+  backtestSessions: BacktestSession[];
+  simulationResults: SimulationResult[];
+  hallOfFame: HallOfFameEntry[];
+  coachReports: CoachReport[];
+  companyScore: CompanyScore;
+  performanceSnapshots: PerformanceSnapshot[];
 }
 
 /**
@@ -29,6 +53,34 @@ export class NexusManager {
   private static watchlist: WatchlistEntry[] = [];
   private static memory: MemoryRecord[] = [];
   private static meetingMinutes: MeetingMinutes[] = [];
+  private static paperPortfolio: PaperPortfolio = {
+    cashBalance: 100_000,
+    startingBalance: 100_000,
+    positions: [],
+    orders: [],
+    tradeHistory: [],
+    totalPnl: 0,
+    totalPnlPct: 0,
+    winCount: 0,
+    lossCount: 0,
+  };
+  private static strategies: Strategy[] = [];
+  private static backtestSessions: BacktestSession[] = [];
+  private static simulationResults: SimulationResult[] = [];
+  private static hallOfFame: HallOfFameEntry[] = [];
+  private static coachReports: CoachReport[] = [];
+  private static companyScore: CompanyScore = {
+    overall: 50,
+    researchQuality: 50,
+    decisionQuality: 50,
+    riskManagement: 50,
+    paperTradingPerformance: 50,
+    teamCoordination: 50,
+    knowledgeGrowth: 0,
+    simulationSuccess: 50,
+    updatedAt: new Date().toISOString(),
+  };
+  private static performanceSnapshots: PerformanceSnapshot[] = [];
 
   static getTasks(): Task[] {
     return this.tasks;
@@ -64,6 +116,38 @@ export class NexusManager {
 
   static getMeetingMinutes(): MeetingMinutes[] {
     return this.meetingMinutes;
+  }
+
+  static getPaperPortfolio(): PaperPortfolio {
+    return this.paperPortfolio;
+  }
+
+  static getStrategies(): Strategy[] {
+    return this.strategies;
+  }
+
+  static getBacktestSessions(): BacktestSession[] {
+    return this.backtestSessions;
+  }
+
+  static getSimulationResults(): SimulationResult[] {
+    return this.simulationResults;
+  }
+
+  static getHallOfFame(): HallOfFameEntry[] {
+    return this.hallOfFame;
+  }
+
+  static getCoachReports(): CoachReport[] {
+    return this.coachReports;
+  }
+
+  static getCompanyScore(): CompanyScore {
+    return this.companyScore;
+  }
+
+  static getPerformanceSnapshots(): PerformanceSnapshot[] {
+    return this.performanceSnapshots;
   }
 
   static applyServerUpdate(update: NexusSnapshot): void {
@@ -106,6 +190,44 @@ export class NexusManager {
       if (newest) EventBus.emit("meeting:minutesRecorded", newest);
     }
     this.meetingMinutes = update.meetingMinutes;
+
+    if (update.paperPortfolio !== this.paperPortfolio) EventBus.emit("portfolio:updated", update.paperPortfolio);
+    this.paperPortfolio = update.paperPortfolio;
+
+    if (update.strategies !== this.strategies) EventBus.emit("strategies:updated", update.strategies);
+    this.strategies = update.strategies;
+
+    if (update.simulationResults.length !== this.simulationResults.length) {
+      const newest = update.simulationResults[update.simulationResults.length - 1];
+      if (newest) EventBus.emit("simulation:completed", newest);
+    }
+    if (update.backtestSessions !== this.backtestSessions || update.simulationResults !== this.simulationResults) {
+      EventBus.emit("simulation:updated", { sessions: update.backtestSessions, results: update.simulationResults });
+    }
+    this.backtestSessions = update.backtestSessions;
+    this.simulationResults = update.simulationResults;
+
+    if (update.hallOfFame.length !== this.hallOfFame.length) {
+      const newest = update.hallOfFame[update.hallOfFame.length - 1];
+      if (newest) EventBus.emit("hallOfFame:entryAdded", newest);
+      EventBus.emit("hallOfFame:updated", update.hallOfFame);
+    }
+    this.hallOfFame = update.hallOfFame;
+
+    if (update.coachReports.length !== this.coachReports.length) {
+      const newest = update.coachReports[update.coachReports.length - 1];
+      this.coachReports = update.coachReports;
+      if (newest) EventBus.emit("coach:reportReceived", newest);
+      EventBus.emit("coachReports:updated", update.coachReports);
+    } else {
+      this.coachReports = update.coachReports;
+    }
+
+    if (update.companyScore !== this.companyScore) EventBus.emit("companyScore:updated", update.companyScore);
+    this.companyScore = update.companyScore;
+
+    if (update.performanceSnapshots !== this.performanceSnapshots) EventBus.emit("performanceSnapshots:updated", update.performanceSnapshots);
+    this.performanceSnapshots = update.performanceSnapshots;
   }
 
   static loadFromSave(save: NexusSnapshot): void {
@@ -117,5 +239,13 @@ export class NexusManager {
     this.watchlist = save.watchlist;
     this.memory = save.memory;
     this.meetingMinutes = save.meetingMinutes;
+    this.paperPortfolio = save.paperPortfolio;
+    this.strategies = save.strategies;
+    this.backtestSessions = save.backtestSessions;
+    this.simulationResults = save.simulationResults;
+    this.hallOfFame = save.hallOfFame;
+    this.coachReports = save.coachReports;
+    this.companyScore = save.companyScore;
+    this.performanceSnapshots = save.performanceSnapshots;
   }
 }

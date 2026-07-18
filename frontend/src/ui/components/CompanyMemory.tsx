@@ -11,9 +11,29 @@ const CATEGORY_LABEL: Record<MemoryCategory, string> = {
   discussion: "Discussion",
   discovery: "Discovery",
   future_trade: "Future Trade",
+  lesson: "Lesson",
+  mistake: "Mistake",
+  strategy: "Strategy",
+  coach_review: "Coach Review",
+  simulation: "Simulation",
+  paper_trade: "Paper Trade",
 };
 
-const CATEGORIES: MemoryCategory[] = ["research", "discovery", "meeting", "discussion", "whiteboard", "event", "future_trade"];
+const CATEGORIES: MemoryCategory[] = [
+  "research",
+  "discovery",
+  "meeting",
+  "discussion",
+  "whiteboard",
+  "event",
+  "future_trade",
+  "lesson",
+  "mistake",
+  "strategy",
+  "coach_review",
+  "simulation",
+  "paper_trade",
+];
 
 /**
  * TradeTown's long-term company memory — a searchable log of everything

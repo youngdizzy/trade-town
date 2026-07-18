@@ -3,6 +3,98 @@
 All notable changes to TradeTown are documented here. Versions are
 development milestones, not semver releases.
 
+## v0.5
+
+### Added
+
+- **Coach, a sixth agent** (Performance & Improvement: encouraging but
+  exacting, asks more questions than it answers) — home room Performance
+  Center, own daily schedule split across the Performance Center/Brain
+  Room/Simulation Lab, and the first agent whose job is evaluation, not
+  research or record-keeping. Coach never places or closes a trade — see
+  `backend/app/coach.py`'s module docstring.
+- **Paper Trading engine** (`backend/app/portfolio.py`,
+  `backend/app/paper_trading.py`) — a fully simulated $100,000 starting
+  account. High-confidence completed research (≥85%, the same threshold
+  that already flagged "future trade candidates" in v0.3) can open a
+  `PaperPosition`; positions mark-to-market every tick and close after a
+  minimum simulated hold, producing a `PaperTrade` with PnL, duration,
+  and supporting/opposing agents. Hold duration is tracked against
+  TradeTown's in-game clock (`opened_sim_minutes`), not wall-clock time —
+  consistent with how research confidence already advances by tick count.
+  **No real brokerage is connected and no real capital is ever at risk.**
+- **Simulation Lab** (`backend/app/simulation.py`) — a new room where
+  agent-authored `Strategy` objects queue, run, and complete as
+  `BacktestSession` → `SimulationResult`, using explicitly placeholder
+  backtest math (see the module docstring — no real historical
+  `MarketDataProvider` exists yet). Structured so a real historical
+  provider, Monte Carlo variant, or parameter optimizer can be added later
+  as new functions without changing the queueing/progress/archiving
+  pipeline.
+- **Hall of Fame** (`backend/app/hall_of_fame.py`) — a new room
+  celebrating best research, best strategy, best simulation, lowest
+  drawdown, longest winning streak, highest confidence accuracy, best
+  monthly performance, and top agent. Entries are evaluated every tick and
+  filed only when a new record is actually set (before/after length
+  diffing), then logged to Company Memory.
+- **Learning System** (`backend/app/knowledge.py`) — every closed paper
+  trade is fed to `derive_lesson()`, producing a `lesson` (on a win) or
+  `mistake` (on a loss) Company Memory record with the trade's reason,
+  market conditions, confidence, and PnL — TradeTown's training-data
+  record for the Coach's mistake/recommendation analysis.
+- **Company Score** (`backend/app/company_score.py`) — a seven-metric
+  rating (Research Quality, Decision Quality, Risk Management, Paper
+  Trading Performance, Team Coordination, Knowledge Growth, Simulation
+  Success) recomputed every tick and shown in an expanded Brain Room HUD
+  and the Performance Center's in-world scoreboard.
+- **Coach reports and Coach Dashboard** — weekly (every 7th day) and
+  monthly (every 30th day) `CoachReport`s generated at the evening review
+  (20:00), covering agent rankings, research/confidence accuracy, win/loss
+  rate, risk score, common mistakes, and recommendations. A new
+  `CoachDashboard.tsx` React modal (opened from a new "Coach" toolbar
+  button) surfaces the latest weekly/monthly report and the live overall
+  company score.
+- **Performance analytics** (`backend/app/analytics.py`) — daily,
+  weekly, monthly, and all-time `PerformanceSnapshot`s (return %, win
+  rate, max drawdown, placeholder Sharpe/Sortino, average holding time,
+  research accuracy, confidence accuracy), recorded on their respective
+  cadences.
+- **Three new rooms** — Simulation Lab, Hall of Fame, and Performance
+  Center — each with a distinct floor tile, procedural props (server
+  racks, trophy cases, a scoreboard), and a live in-world text readout
+  synced to the same WebSocket state driving the React HUD. The Lobby
+  widened from five doors to eight to fit them.
+- **Company Memory gained six new categories** — `lesson`, `mistake`,
+  `strategy`, `coach_review`, `simulation`, `paper_trade` — all
+  searchable/filterable in the existing `CompanyMemory` viewer alongside
+  v0.3's seven categories.
+- **Extended save schema** (`version: "0.5"`): `paperPortfolio`,
+  `strategies`, `backtestSessions`, `simulationResults`, `hallOfFame`,
+  `coachReports`, `companyScore`, and `performanceSnapshots` are now
+  persisted and round-tripped through save/load alongside every v0.3
+  field.
+
+### Changed
+
+- **Backend "manager" modules stay function modules, not classes** — the
+  v0.5 brief names eight services (CoachManager, SimulationManager,
+  PaperTradingManager, PortfolioManager, AnalyticsManager,
+  HallOfFameManager, PerformanceManager, KnowledgeManager); all eight are
+  implemented as plain function modules (`coach.py`, `simulation.py`,
+  `paper_trading.py`, `portfolio.py`, `analytics.py`, `hall_of_fame.py`,
+  `company_score.py`, `knowledge.py`) naming their conceptual role in the
+  module docstring, matching the established `research.py`/`watchlist.py`
+  precedent (see `docs/CODING_STANDARDS.md`).
+- **Scribe extended, not bypassed** — `scribe.py` remains CompanyMemory's
+  sole writer; it gained `record_paper_trade`, `record_simulation_result`,
+  `record_coach_report`, and `record_hall_of_fame_entry` rather than
+  letting the four new modules call `memory.record()` directly.
+
+## v0.4
+
+Documentation only — see `docs/VersionHistory.md`'s "v0.4 — Design &
+Architecture Foundation" entry. No application code changed.
+
 ## v0.3
 
 ### Added

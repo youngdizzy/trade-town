@@ -2,18 +2,19 @@
 
 ## Overview
 
-TradeTown v0.3 is a client/server game:
+TradeTown v0.5 is a client/server game:
 
 - **Frontend** (`frontend/`): a React app that mounts a single Phaser 3
   game instance into a `<div>`. Phaser owns the world (tilemaps, player,
   agents, camera, collision); React owns the HUD/menus and reads game state
   through a small pub/sub bridge rather than reaching into Phaser directly.
 - **Backend** (`backend/`): a FastAPI service that is the **authoritative**
-  simulation of all five agents — NEXUS (`backend/app/nexus.py`) advances
-  every agent's schedule, task, mood, energy, meetings, breaks, and (new in
-  v0.3) research progress in a background asyncio loop even if no browser
-  is connected, and pushes the result to connected clients over a
-  WebSocket. It also persists the save to SQLite.
+  simulation of all six agents — NEXUS (`backend/app/nexus.py`) advances
+  every agent's schedule, task, mood, energy, meetings, breaks, research
+  progress, and (new in v0.5) paper trading, simulations, and coaching in a
+  background asyncio loop even if no browser is connected, and pushes the
+  result to connected clients over a WebSocket. It also persists the save
+  to SQLite.
 
 ```
 ┌─────────────────────────┐        WebSocket (/ws)         ┌──────────────────────────┐
@@ -57,13 +58,13 @@ client last reported on save.
 | `CameraManager` | Consistent camera-follow (lerp, deadzone, zoom) across every scene. |
 | `InputManager` | Normalizes WASD/arrows/E/Esc into a movement vector + discrete actions. One instance per scene. |
 | `TimeManager` | Mirrors the server's clock; local fallback ticker when offline. |
-| `AgentProfiles` | Static per-agent metadata (name, occupation, personality blurb, home location, sprite tint) for all five agents — mirrors `backend/app/agents.py`. |
+| `AgentProfiles` | Static per-agent metadata (name, occupation, personality blurb, home location, sprite tint) for all six agents — mirrors `backend/app/agents.py`. |
 | `NPCManager` | Registry of every agent's live state (`AgentState`), keyed by `AgentId`. Applies server pushes; offline fallback. |
-| `NexusManager` | Frontend mirror of NEXUS's shared state — tasks, whiteboards, meeting, news, and (v0.3) research, watchlist, memory, meeting minutes. Diffs previous vs. new server pushes to emit discrete `task:*`/`whiteboard:*`/`meeting:*`/`news:updated`/`research:*`/`watchlist:updated`/`memory:updated` events rather than just handing scenes a raw blob. |
+| `NexusManager` | Frontend mirror of NEXUS's shared state — tasks, whiteboards, meeting, news, research, watchlist, memory, meeting minutes, and (v0.5) paper portfolio, strategies, backtest sessions, simulation results, hall of fame, coach reports, company score, performance snapshots. Diffs previous vs. new server pushes to emit discrete `task:*`/`whiteboard:*`/`meeting:*`/`news:updated`/`research:*`/`watchlist:updated`/`memory:updated`/`portfolio:updated`/`simulation:*`/`hallOfFame:*`/`coach:*`/`companyScore:updated` events rather than just handing scenes a raw blob. |
 | `UpcomingEvents` | Computes each agent's next deterministic schedule-block transition from `Schedule.ts` (meetings are excluded — NEXUS calls those at random, so there's nothing genuine to predict). Shared by `BrainRoomHud` and `Newspaper` so both "Upcoming Events" sections agree instead of each re-deriving it. |
 | `DialogueManager` | Per-agent, per-task flavor lines plus mood/override fallbacks; opens the React `DialogueBox` and records dialogue history. |
 | `SettingsManager` | localStorage-backed user preferences. |
-| `SaveManager` | Builds a full state snapshot (player/settings/dialogue **and** a copy of the current agents/tasks/whiteboards/meeting/news/research/watchlist/memory/meetingMinutes for instant restore), POSTs it to the backend (with a localStorage backup), autosave interval. |
+| `SaveManager` | Builds a full state snapshot (player/settings/dialogue **and** a copy of the current agents/tasks/whiteboards/meeting/news/research/watchlist/memory/meetingMinutes/paperPortfolio/strategies/backtestSessions/simulationResults/hallOfFame/coachReports/companyScore/performanceSnapshots for instant restore), POSTs it to the backend (with a localStorage backup), autosave interval. |
 | `TileWorld` | Small helpers for building a Phaser tilemap ground layer / perimeter walls / interaction zones from a manifest asset — used by every scene so tilemap setup isn't duplicated per room. |
 
 React state (`frontend/src/state/gameStore.ts`) is a minimal
@@ -75,21 +76,30 @@ library, since the UI's needs here are "mirror a handful of events."
 
 - `BootScene` → `PreloadScene` (loads every manifest asset, builds
   animations) → `MainMenuScene`.
-- `LobbyScene`: the HQ courtyard. Five buildings (Scout Office, CEO Office,
-  Brain Room, Meeting Room, Break Room), each an interactable door, plus a
+- `LobbyScene`: the HQ courtyard. Eight buildings (Scout Office, CEO Office,
+  Brain Room, Meeting Room, Break Room, and — new in v0.5 — Simulation Lab,
+  Hall of Fame, Performance Center), each an interactable door, plus a
   "TradeTown Daily" newspaper stand that opens the React `Newspaper` modal.
 - `RoomScene` (abstract base): shared floor/walls/door/camera/agent-presence
   logic for every interior. Each concrete scene (`ScoutOfficeScene`,
-  `CeoOfficeScene`, `BrainRoomScene`, `MeetingRoomScene`, `BreakRoomScene`)
-  just declares its size, floor tile, room label, and which
-  `AgentLocation` (if any) places agents there — the base class spawns/
-  despawns *however many* agents currently match that location (via
-  `refreshAgentPresence`), spreading them with an overridable
-  `getAgentSpawnPoint` hook so a room-specific layout (e.g. Meeting Room's
-  fixed seats around the table) can replace the default even-spread.
+  `CeoOfficeScene`, `BrainRoomScene`, `MeetingRoomScene`, `BreakRoomScene`,
+  `SimulationLabScene`, `HallOfFameScene`, `PerformanceCenterScene`) just
+  declares its size, floor tile, room label, and which `AgentLocation` (if
+  any) places agents there — the base class spawns/despawns *however many*
+  agents currently match that location (via `refreshAgentPresence`),
+  spreading them with an overridable `getAgentSpawnPoint` hook so a
+  room-specific layout (e.g. Meeting Room's fixed seats around the table,
+  or the three v0.5 rooms keeping agents clear of their central
+  console/scoreboard/plaque prop) can replace the default even-spread.
   `BrainRoomScene` additionally builds the "Mission Control" holographic
   market core and monitor desks as procedural Phaser graphics/tweens (no
-  new art assets — see "Use only supplied assets" below).
+  new art assets — see "Use only supplied assets" below). The three v0.5
+  rooms use `RoomScene.addLiveText()` — a small helper that renders a
+  Phaser text prop and keeps it in sync with a live `EventBus` event, the
+  in-world equivalent of the React HUD's reactive readouts — for their
+  simulation queue, hall of fame plaque, and company scoreboard, and
+  register themselves for automatic cleanup on `shutdown()` the same way
+  `addWhiteboard()` already did.
 
 ### Door and dialogue input — read `interactPressed` exactly once per frame
 
@@ -122,16 +132,16 @@ dialogue always fully owns the key while it's open.
 directional Player.png-style sheet (idle/walk × 4 directions) —
 `PlayerController` (input-driven) and `AgentNPC` (schedule/wander-driven)
 both extend it so animation/direction handling isn't duplicated. `AgentNPC`
-is parameterized by `AgentId` and used for all five agents (Scout, Atlas,
-Echo, Nova, and — new in v0.3 — Scribe, the company historian) — the only
-per-agent differences are sprite tint/name (from `AgentProfiles`) and which
-room the current server state spawns it into. Adding Scribe required zero
-scene code: it's just a fifth entry in `AGENT_IDS` with a home location
-like everyone else — see "Adding a fifth agent" in `DeveloperGuide.md` for
-the general pattern.
+is parameterized by `AgentId` and used for all six agents (Scout, Atlas,
+Echo, Nova, Scribe, and — new in v0.5 — Coach, Performance & Improvement)
+— the only per-agent differences are sprite tint/name (from
+`AgentProfiles`) and which room the current server state spawns it into.
+Adding Coach required zero scene code: it's just a sixth entry in
+`AGENT_IDS` with a home location like everyone else — see "Adding a new
+agent" in `DeveloperGuide.md` for the general pattern.
 
 Each agent wanders gently within its current room. Rooms like Brain Room
-and Meeting Room can legitimately hold all five agents at once (that's the
+and Meeting Room can legitimately hold all six agents at once (that's the
 intended "Mission Control"/meeting design), and their sprites sit closer
 together than a name tag is wide; rather than fight that with
 ever-increasing spacing, `RoomScene.update()` shows **at most one** name
@@ -180,12 +190,20 @@ file alone.
 | `research.py` | `ResearchManager` — the rotating research queue (one active item per research-capable agent). |
 | `discussion.py` | `DiscussionManager` — generates a meeting's discussion transcript from participants' current research focus when a meeting starts. |
 | `memory.py` | `CompanyMemory` — the capped, categorized, searchable long-term log every other v0.3 manager appends to. |
-| `scribe.py` | `ScribeManager` — turns research completions and meeting transcripts into `CompanyMemory` records and `MeetingMinutes`; Scribe (the agent) has no simulation logic of its own beyond its schedule, this module *is* "the historian recording everything." |
-| `nexus.py` | NEXUS: the orchestrator, tying every manager above together each tick. Per agent: resolves any active override (meeting/break) or falls back to the schedule block for the current hour, updates mood/energy, and creates/completes `Task`s when the schedule-driven task label changes (task lifecycle piggybacks on the same "did the block change" check schedule-following already needed, rather than a parallel system). Separately: advances the research queue, refreshes watchlist prices, occasionally calls a meeting (`_maybe_call_meeting`) or sends a low-energy agent on a break — meetings and breaks are both the *same* `AgentOverride` mechanism (`location` + `reason` + `remainingMinutes`) rather than two bespoke state machines. Also regenerates the whiteboard text for each office. |
+| `scribe.py` | `ScribeManager` — turns research completions, meeting transcripts, and (v0.5) closed paper trades, simulation results, coach reports, and Hall of Fame entries into `CompanyMemory` records and `MeetingMinutes`; the sole writer of `CompanyMemory`, so every new v0.5 module hands Scribe the record instead of calling `memory.record()` directly. |
+| `portfolio.py` | `PortfolioManager` — pure paper-portfolio bookkeeping: open/mark-to-market/close a `PaperPosition`, capped trade history. Entirely simulated; no brokerage SDK import exists anywhere in this module. |
+| `paper_trading.py` | `PaperTradingManager` — decides when to open a position (from high-confidence completed research) and when to close one (past a minimum simulated hold, on a per-tick chance roll). Hold duration is tracked in simulated-clock minutes (`opened_sim_minutes`), not wall-clock time. |
+| `simulation.py` | `SimulationManager` + `StrategyRunner` — the Simulation Lab's engine: queues `BacktestSession`s against seeded `Strategy` objects, advances progress each tick, and archives completed runs as `SimulationResult`s with explicitly placeholder backtest metrics (see the module docstring). |
+| `analytics.py` | `AnalyticsManager` — shared metric helpers (`research_accuracy`, `win_rate`, `confidence_accuracy`, `average_confidence`) reused by `coach.py` and `company_score.py` so there's exactly one "win rate" formula, plus daily/weekly/monthly/all-time `PerformanceSnapshot` recording. |
+| `company_score.py` | `PerformanceManager` — computes the seven-metric `CompanyScore` (Research Quality, Decision Quality, Risk Management, Paper Trading Performance, Team Coordination, Knowledge Growth, Simulation Success) every tick. |
+| `coach.py` | `CoachManager` — Coach's reporting logic: builds a `CoachReport` (agent rankings, common mistakes, recommendations) on the weekly/monthly cadence. Coach only ever evaluates; nothing in this module places or closes a trade. |
+| `hall_of_fame.py` | `HallOfFameManager` — evaluates completed research/simulations/trades/coach reports each tick and appends a `HallOfFameEntry` only when a genuinely new record is set (before/after length diffing on the caller's side). |
+| `knowledge.py` | `KnowledgeManager` — derives a `lesson` (win) or `mistake` (loss) from a closed `PaperTrade`, and implements the searchable-knowledge filter contract (`search_knowledge()`) that Company Memory's six new v0.5 categories are queried through. |
+| `nexus.py` | NEXUS: the orchestrator, tying every manager above together each tick. Per agent: resolves any active override (meeting/break) or falls back to the schedule block for the current hour, updates mood/energy, and creates/completes `Task`s when the schedule-driven task label changes (task lifecycle piggybacks on the same "did the block change" check schedule-following already needed, rather than a parallel system). Separately: advances the research queue, refreshes watchlist prices, ticks paper trading and the Simulation Lab, recomputes the company score, occasionally calls a meeting (`_maybe_call_meeting`) or sends a low-energy agent on a break — meetings and breaks are both the *same* `AgentOverride` mechanism (`location` + `reason` + `remainingMinutes`) rather than two bespoke state machines. On the evening/weekly/monthly/daily cadences, generates Coach reports, records performance snapshots, and evaluates the Hall of Fame. Also regenerates the whiteboard text for each office. |
 | `sim.py` | The background loop: sleep → tick → broadcast over WebSocket → periodically persist to SQLite. |
 | `ws_manager.py` | Tracks connected WebSocket clients; `build_state_message()` is the single place that shapes an outbound `GameSaveState` into the broadcast JSON, shared by both the sim loop and a client's initial `/ws` snapshot so the two never drift out of sync. |
 | `persistence.py` | Reads/writes the single save row (`slot="default"`) as a JSON blob. Guards `GameSaveState.model_validate_json()` with a `try`/`except ValidationError` — an old-schema save fails validation and is treated as "no save" (fresh state, logged as a warning) rather than crashing the app on startup. |
-| `routers/save.py` | `GET /api/load`, `POST /api/save` — merges client-owned fields (player, settings, dialogue) onto server-owned fields (agents, tasks, whiteboards, meeting, news, research, watchlist, memory, meetingMinutes, time). |
+| `routers/save.py` | `GET /api/load`, `POST /api/save` — merges client-owned fields (player, settings, dialogue) onto server-owned fields (agents, tasks, whiteboards, meeting, news, research, watchlist, memory, meetingMinutes, paperPortfolio, strategies, backtestSessions, simulationResults, hallOfFame, coachReports, companyScore, performanceSnapshots, time). |
 | `routers/ws.py` | `/ws` — sends the current snapshot on connect, then just watches for disconnects (the sim loop drives all outbound messages). |
 
 SQLite is deliberately a single JSON-blob row rather than a fully
@@ -323,6 +341,78 @@ against.
   `future_trade`-category memory record explicitly stating no trade was
   placed. This is the entire "future trades" surface in v0.3 — a
   human-readable flag for later, not a queued or simulated order.
+
+## Paper trading, simulation & coaching (v0.5)
+
+TradeTown v0.5 adds a fully simulated trading loop on top of v0.3's
+research pipeline, plus a Coach agent that evaluates it. None of it
+connects to a real brokerage or places a real trade — see the "STOP
+CONDITION" the v0.5 brief was built against.
+
+- **Paper Trading** (`portfolio.py` + `paper_trading.py`): a single
+  `PaperPortfolio` starts at $100,000. When a research item completes
+  above `FUTURE_TRADE_CONFIDENCE_THRESHOLD` (the same 85% threshold that
+  already flagged "future trade candidates" in v0.3), `paper_trading.py`
+  may open a `PaperPosition` sized as a fraction of cash. Positions
+  mark-to-market every tick from the watchlist's current price; after a
+  minimum simulated hold (`MIN_HOLD_MINUTES`, tracked via
+  `opened_sim_minutes` — the same sim-time-not-wall-clock convention
+  research confidence already uses), a per-tick chance roll closes the
+  position into a `PaperTrade` with PnL, duration, and supporting/opposing
+  agents. `portfolio.py`'s module docstring is explicit: no brokerage SDK
+  import exists anywhere in this codebase.
+- **Simulation Lab** (`simulation.py`): four seed `Strategy` objects
+  (one per researcher agent) can be queued into a `BacktestSession`
+  against a random watchlist symbol, advance through `queued` → `running`
+  → `completed`, and archive as a `SimulationResult`. The backtest metrics
+  are explicitly placeholder math (see the module's docstring) — v0.5 has
+  no real historical `MarketDataProvider`, only the live-quote mock from
+  v0.3. The module is structured so a real historical provider, a Monte
+  Carlo variant (many placeholder runs per session), or a parameter
+  optimizer can all be added later as new functions that still produce a
+  `SimulationResult`, without touching the queueing/progress/archiving
+  pipeline — see `docs/FUTURE_ARCHITECTURE.md`.
+- **Learning System** (`knowledge.py`): every closed `PaperTrade` is fed
+  to `derive_lesson()`, which returns a `(category, title, body)` tuple —
+  `lesson` on a win, `mistake` on a loss — that `scribe.py` records into
+  Company Memory. This is TradeTown's training-data record: reason, market
+  conditions, confidence, entry/exit, PnL, duration, and supporting/
+  opposing agents all live on the one `PaperTrade` model, so nothing
+  downstream needs a second "trade history" shape.
+- **Company Score** (`company_score.py`): a mean of six sub-scores
+  (research quality via `analytics.research_accuracy()`, decision
+  quality, risk management from portfolio drawdown/concentration, paper
+  trading performance, team coordination from average agent mood,
+  knowledge growth from lesson/mistake/strategy memory counts) plus
+  simulation success (average win rate of the last 10 results), recomputed
+  every tick. All new scoring functions default to `50.0` — the neutral
+  midpoint — rather than `0.0` when there's no data yet, so a fresh
+  company doesn't look like it's failing on day one.
+- **Coach** (`coach.py`): builds a `CoachReport` — company score, agent
+  rankings (via `AgentScore`, one row per researcher, sorted by score
+  descending), research/confidence accuracy, win/loss rate, risk score,
+  common mistakes, and recommendations — on a weekly (every 7th day) and
+  monthly (every 30th day) cadence, both triggered at the 20:00 evening
+  review. Coach only ever evaluates; `coach.py` never calls into
+  `portfolio.py` or `paper_trading.py` to place or close anything.
+- **Hall of Fame** (`hall_of_fame.py`): every tick, `evaluate_hall_of_fame()`
+  checks eight categories (best research, best strategy, best simulation,
+  lowest drawdown, longest winning streak, highest confidence accuracy,
+  best monthly performance — monthly reports only, weekly reports skip
+  this one — and top agent) and appends a `HallOfFameEntry` only when the
+  new value actually beats the previous best (`_maybe_file()`'s
+  append-only, before/after-length-diffing pattern — `nexus.py` uses the
+  same trick to know which entries are new *this* tick, so it only logs
+  what actually changed to Company Memory rather than re-logging the
+  entire archive every tick).
+- **Restart-safe daily/weekly/monthly triggers**: `nexus.py` checks
+  `new_time.hour == 20 and new_time.minute == 0` for the evening review,
+  `new_time.day % 7 == 0` for weekly, and `% 30 == 0` for monthly —
+  stateless checks against the current tick's time rather than diffing
+  against the previous tick. `GAME_MINUTES_PER_TICK` always divides 60
+  evenly, so every day passes through exactly that hour/minute
+  combination once regardless of backend restart timing, which a
+  diff-against-previous-tick approach couldn't guarantee.
 
 ### Gotcha: `model_copy(update=...)` uses field names, not wire aliases
 
@@ -476,16 +566,50 @@ shipped — see "Research & market intelligence (v0.3)" above for the
 adapter pattern a future version would use to add one). "Future trade"
 flags are a logged note for a human, never a queued or simulated order.
 
+## Version 0.4 scope
+
+Documentation only — see `docs/VersionHistory.md`'s "v0.4 — Design &
+Architecture Foundation" entry. No application code changed; v0.3
+continued running exactly as it did before this version, and the save
+schema's `version` field stayed `"0.3"`.
+
+## Version 0.5 scope
+
+Built on top of v0.3 (v0.4 made no code changes) without touching its
+stable systems more than necessary: a sixth agent (Coach — home location
+Performance Center, a new room), the Paper Trading engine (`portfolio.py`
++ `paper_trading.py`), the Simulation Lab (`simulation.py`, a new room),
+Company Score (`company_score.py`), Coach reports and the Coach Dashboard
+(`coach.py`), the Hall of Fame (`hall_of_fame.py`, a new room), the
+Learning System (`knowledge.py`), performance analytics
+(`analytics.py`), six new Company Memory categories, an expanded Brain
+Room HUD (Company Rating, Paper Portfolio, Simulation Queue, Agent
+Performance, Learning Progress sections), an eight-door Lobby, and an
+extended save schema covering paperPortfolio/strategies/
+backtestSessions/simulationResults/hallOfFame/coachReports/companyScore/
+performanceSnapshots.
+
+Explicitly **not** in v0.5 (per the brief's STOP CONDITION, not
+oversight): live brokerage support, a connection to Charles Schwab or any
+other broker, or execution of a single real trade. Every `PaperOrder`,
+`PaperPosition`, and `PaperTrade` is simulated bookkeeping only — see
+"Paper trading, simulation & coaching (v0.5)" above for the enforcement
+boundary.
+
 ## Save format compatibility
 
-The save schema's `version` field has changed with every version so far —
-`"0.1"` → `"0.2"` → `"0.3"` — and the shape changed non-trivially each
-time (`0.1→0.2`: `scout: ScoutState` → `agents: Record<AgentId,
-AgentState>`, plus new `tasks`/`whiteboards`/`meeting`/`news` fields;
-`0.2→0.3`: `AgentId` gained `"scribe"`, `Task` gained `category`,
-`MeetingState` gained `discussion`, and `research`/`watchlist`/`memory`/
-`meetingMinutes` were added). An older save fails Pydantic validation on
-load; `persistence.py` catches that failure, logs a warning, and starts a
-fresh default state for the current version rather than crashing — there
-is no migration path between versions, by design, since none of v0.1/v0.2/
-v0.3 was a public release.
+The save schema's `version` field has changed with every code-bearing
+version so far — `"0.1"` → `"0.2"` → `"0.3"` → `"0.5"` (v0.4 made no code
+changes, so the schema stayed `"0.3"` through it) — and the shape changed
+non-trivially each time (`0.1→0.2`: `scout: ScoutState` → `agents:
+Record<AgentId, AgentState>`, plus new `tasks`/`whiteboards`/`meeting`/
+`news` fields; `0.2→0.3`: `AgentId` gained `"scribe"`, `Task` gained
+`category`, `MeetingState` gained `discussion`, and `research`/
+`watchlist`/`memory`/`meetingMinutes` were added; `0.3→0.5`: `AgentId`
+gained `"coach"`, and `paperPortfolio`/`strategies`/`backtestSessions`/
+`simulationResults`/`hallOfFame`/`coachReports`/`companyScore`/
+`performanceSnapshots` were added). An older save fails Pydantic
+validation on load; `persistence.py` catches that failure, logs a
+warning, and starts a fresh default state for the current version rather
+than crashing — there is no migration path between versions, by design,
+since none of v0.1 through v0.5 was a public release.

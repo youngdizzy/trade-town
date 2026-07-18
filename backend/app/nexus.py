@@ -21,15 +21,30 @@ import random
 from datetime import datetime, timezone
 
 from app.agents import AGENT_PROFILES, LOCATION_TO_SCENE, all_agent_ids
+from app.analytics import compute_performance_snapshot, confidence_accuracy, record_snapshot
+from app.coach import generate_report as generate_coach_report
+from app.coach import record_report as record_coach_report_entry
+from app.company_score import compute_company_score
 from app.discussion import generate_discussion
+from app.hall_of_fame import evaluate_hall_of_fame
 from app.market_data import market_data_provider
-from app.research import default_research, tick_research
+from app.paper_trading import tick_paper_trading
+from app.research import RESEARCHER_IDS, default_research, tick_research
 from app.schedule import block_for_hour
-from app.scribe import build_minutes, record_meeting, record_research_completions
+from app.scribe import (
+    build_minutes,
+    record_coach_report,
+    record_hall_of_fame_entry,
+    record_meeting,
+    record_paper_trade,
+    record_research_completions,
+    record_simulation_result,
+)
 from app.schemas import (
     AgentId,
     AgentOverride,
     AgentState,
+    CoachReport,
     EntityTransform,
     GameSaveState,
     MemoryEntry,
@@ -43,6 +58,7 @@ from app.schemas import (
     TaskPriority,
     TimeState,
 )
+from app.simulation import default_strategies, tick_simulation_lab
 from app.watchlist import default_watchlist, tick_watchlist
 
 MAX_MEMORY = 50
@@ -66,6 +82,14 @@ BREAK_DURATION_MINUTES = 15
 BREAK_ENERGY_BONUS = 20
 
 RESTFUL_LOCATIONS = {"lobby", "break-room"}
+
+# Evening review / weekly / monthly cadences (v0.5 brief, Feature 7).
+# GAME_MINUTES_PER_TICK always divides 60 evenly (default 5), so every
+# in-game day passes through hour==20, minute==0 exactly once — a simpler,
+# more restart-safe trigger than diffing against the previous tick's time.
+EVENING_REVIEW_HOUR = 20
+WEEKLY_INTERVAL_DAYS = 7
+MONTHLY_INTERVAL_DAYS = 30
 
 MARKET_HEADLINES = [
     "Markets drift sideways in a quiet overnight session",
@@ -106,6 +130,12 @@ _TASK_CATEGORY_KEYWORDS: list[tuple[str, TaskCategory]] = [
     ("reviewing the day", "review"),
     ("standing by", "review"),
     ("overnight positions", "review"),
+    ("paper trades", "paper_trading"),
+    ("confidence calibration", "analytics"),
+    ("simulation results", "simulation"),
+    ("performance review", "coaching"),
+    ("drafting recommendations", "coaching"),
+    ("observing research", "review"),
 ]
 
 _DEFAULT_CATEGORY_BY_AGENT: dict[AgentId, TaskCategory] = {
@@ -114,6 +144,7 @@ _DEFAULT_CATEGORY_BY_AGENT: dict[AgentId, TaskCategory] = {
     "echo": "chart_analysis",
     "nova": "research",
     "scribe": "documentation",
+    "coach": "coaching",
 }
 
 
@@ -402,6 +433,13 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     meeting_minutes = list(state.meeting_minutes)
     research = state.research or default_research()
     watchlist = state.watchlist or default_watchlist()
+    paper_portfolio = state.paper_portfolio
+    strategies = state.strategies or default_strategies()
+    backtest_sessions = list(state.backtest_sessions)
+    simulation_results = list(state.simulation_results)
+    hall_of_fame = list(state.hall_of_fame)
+    coach_reports = list(state.coach_reports)
+    performance_snapshots = list(state.performance_snapshots)
 
     agents = {aid: _tick_agent(aid, agent, new_time, minutes, tasks) for aid, agent in state.agents.items()}
 
@@ -419,6 +457,38 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
 
     watchlist = tick_watchlist(watchlist, research, market_data_provider)
 
+    # --- v0.5: paper trading + simulation lab -----------------------------
+    # Both run after research/watchlist so they see this tick's freshest
+    # confidence/price data, and before the meeting call so a just-closed
+    # trade or completed simulation can be discussed in a meeting the same
+    # tick it happens (matching how research completions already work).
+    paper_portfolio, closed_trades = tick_paper_trading(paper_portfolio, completed, watchlist, all_agent_ids(), new_time)
+    for trade in closed_trades:
+        record_paper_trade(memory, trade)
+        outcome = "gained" if trade.pnl > 0 else "lost"
+        news.append(
+            NewsItem(
+                id=f"news-trade-{trade.id}",
+                headline=f"Paper trade closed: {trade.symbol} {outcome} {abs(trade.pnl_pct):.1f}% (simulated — no real capital involved).",
+                category="company",
+                timestamp=_now_iso(),
+            )
+        )
+
+    backtest_sessions, simulation_results, newly_completed_sims = tick_simulation_lab(
+        backtest_sessions, simulation_results, strategies, watchlist, RESEARCHER_IDS, new_time
+    )
+    for result in newly_completed_sims:
+        record_simulation_result(memory, result)
+        news.append(
+            NewsItem(
+                id=f"news-sim-{result.id}",
+                headline=f"Simulation complete: \"{result.strategy_name}\" on {result.symbol} returned {result.total_return_pct:+.1f}% (simulated).",
+                category="discovery",
+                timestamp=_now_iso(),
+            )
+        )
+
     agents, meeting = _maybe_call_meeting(agents, state.meeting, research, new_time, news, tasks, memory, meeting_minutes)
 
     if random.random() < 0.04:
@@ -431,6 +501,45 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             )
         )
 
+    # --- v0.5: coaching, scoring, and performance analytics ---------------
+    # Company score is cheap to recompute and feeds the Brain Room HUD's
+    # live-updating readout, so it's refreshed every tick like mood/energy
+    # already are — not just on the evening/weekly/monthly cadences below.
+    company_score = compute_company_score(research, paper_portfolio, memory, simulation_results, [a.mood for a in agents.values()])
+
+    is_evening = new_time.hour == EVENING_REVIEW_HOUR and new_time.minute == 0
+    is_midnight = new_time.hour == 0 and new_time.minute == 0
+    latest_report: CoachReport | None = None
+
+    if is_evening and new_time.day % WEEKLY_INTERVAL_DAYS == 0:
+        latest_report = generate_coach_report("weekly", research, paper_portfolio, company_score, RESEARCHER_IDS, new_time)
+        coach_reports = record_coach_report_entry(coach_reports, latest_report)
+        record_coach_report(memory, latest_report)
+        performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("weekly", paper_portfolio, research))
+
+    if is_evening and new_time.day % MONTHLY_INTERVAL_DAYS == 0:
+        latest_report = generate_coach_report("monthly", research, paper_portfolio, company_score, RESEARCHER_IDS, new_time)
+        coach_reports = record_coach_report_entry(coach_reports, latest_report)
+        record_coach_report(memory, latest_report)
+        performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("monthly", paper_portfolio, research))
+
+    if is_midnight:
+        performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("daily", paper_portfolio, research))
+        performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("all_time", paper_portfolio, research))
+
+    hof_before = len(hall_of_fame)
+    hall_of_fame = evaluate_hall_of_fame(
+        hall_of_fame,
+        completed_research=completed,
+        completed_simulations=newly_completed_sims,
+        all_trades=paper_portfolio.trade_history,
+        coach_report=latest_report,
+        confidence_accuracy_value=confidence_accuracy(paper_portfolio.trade_history) if paper_portfolio.trade_history else None,
+        new_time=new_time,
+    )
+    for entry in hall_of_fame[hof_before:]:
+        record_hall_of_fame_entry(memory, entry)
+
     return state.model_copy(
         update={
             # NOTE: model_copy(update=...) writes directly into the model's
@@ -440,7 +549,10 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             # update silently no-ops (the field keeps its old value, no
             # error). "meeting_minutes" and "updated_at" below previously
             # used their aliases ("meetingMinutes"/"updatedAt") and never
-            # actually updated as a result.
+            # actually updated as a result — the same class of bug bit
+            # "current_task" once more after that (see docs/Architecture.md's
+            # Gotcha section), so every v0.5 key below was checked against
+            # schemas.py's real field names before being added here.
             "time": new_time,
             "agents": agents,
             "tasks": tasks[-MAX_TASKS:],
@@ -450,6 +562,14 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "memory": memory,
             "meeting_minutes": meeting_minutes,
             "meeting": meeting,
+            "paper_portfolio": paper_portfolio,
+            "strategies": strategies,
+            "backtest_sessions": backtest_sessions,
+            "simulation_results": simulation_results,
+            "hall_of_fame": hall_of_fame,
+            "coach_reports": coach_reports,
+            "company_score": company_score,
+            "performance_snapshots": performance_snapshots,
             "whiteboards": _update_whiteboards(agents, meeting, research),
             "updated_at": _now_iso(),
         }

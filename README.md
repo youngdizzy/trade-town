@@ -1,24 +1,27 @@
-# TradeTown — v0.3
+# TradeTown — v0.5
 
 TradeTown is a pixel-art AI investment company simulation. You play the
-CEO, walking around a small headquarters while a team of five AI employees —
-Scout, Atlas, Echo, Nova, and Scribe — research the market, hold meetings,
-take breaks, and log everything to a searchable company memory, live, in
-the background, whether or not you're watching. Think Stardew Valley's
-overworld crossed with a Bloomberg terminal's sense of "the market never
-sleeps."
+CEO, walking around a small headquarters while a team of six AI employees —
+Scout, Atlas, Echo, Nova, Scribe, and Coach — research the market, run
+strategy simulations, place paper trades, hold meetings, take breaks, and
+log everything to a searchable company memory, live, in the background,
+whether or not you're watching. Think Stardew Valley's overworld crossed
+with a Bloomberg terminal's sense of "the market never sleeps."
 
-This is **version 0.3**: a fifth employee (Scribe, the company historian),
-a rotating research queue across a watchlist of market symbols, a
-swappable market-data-provider layer (mock data in this version — see
-"Market intelligence" below), meetings that now produce real discussion
-transcripts and minutes, a searchable Company Memory log, and an upgraded
-Brain Room / newspaper / whiteboards surfacing all of it. **TradeTown does
-not place trades in this version** — it researches, discusses, and
-records; see [`docs/Architecture.md`](docs/Architecture.md) for the exact
-boundary and what's deliberately deferred to a future version, and
+This is **version 0.5 — Intelligence Evolution**: a sixth employee (Coach,
+who reviews the team's paper trades and research and files weekly/monthly
+performance reports — see the Coach Dashboard), a Simulation Lab running
+placeholder strategy backtests, a Paper Trading engine with a fully
+simulated portfolio, a Hall of Fame celebrating the company's best
+records, a Learning System that turns every closed paper trade into a
+lesson or mistake in Company Memory, and a seven-metric Company Score
+shown in the Brain Room. **TradeTown still does not connect to a real
+brokerage or execute real trades in this version** — every position,
+order, and dollar in the Paper Trading engine is simulated; see
+[`docs/Architecture.md`](docs/Architecture.md) for the exact boundary and
+what's deliberately deferred to a future version, and
 [`CHANGELOG.md`](CHANGELOG.md) / [`docs/VersionHistory.md`](docs/VersionHistory.md)
-for what changed since v0.2.
+for what changed since v0.4.
 
 ## Market intelligence (and what it isn't)
 
@@ -46,8 +49,8 @@ required. The stack is:
 - **frontend**: an nginx container serving the built React/Phaser app and
   reverse-proxying `/api` and `/ws` to the backend.
 - **backend**: FastAPI + SQLite, running a background simulation loop
-  (NEXUS) that keeps all five agents' schedules, tasks, research, meetings,
-  and the game clock ticking.
+  (NEXUS) that keeps all six agents' schedules, tasks, research, paper
+  trading, simulations, coaching reports, and the game clock ticking.
 
 To change the host port, copy `.env.example` to `.env` and set `HTTP_PORT`.
 
@@ -118,10 +121,10 @@ appropriately licensed or original art first.
 
 ## Status
 
-Version 0.3 is feature-complete per the milestone checklist (see
-`docs/Architecture.md#version-03-scope`). Development stops here until the
-next milestone is scoped — v0.3 explicitly does not implement paper
-trading, brokerage connections, or live trading of any kind. **Note:** the
-save format changed again in v0.3 (see `CHANGELOG.md`) — a v0.1 or v0.2
-save will not load; the backend detects the mismatch and starts fresh
-rather than crashing.
+Version 0.5 is feature-complete per the milestone checklist (see
+`docs/Architecture.md#version-05-scope`). Development stops here until the
+next milestone is scoped — v0.5 explicitly does not implement live
+brokerage connections or real trade execution of any kind; Paper Trading
+is entirely simulated. **Note:** the save format changed again in v0.5
+(see `CHANGELOG.md`) — a pre-v0.5 save will not load; the backend detects
+the mismatch and starts fresh rather than crashing.

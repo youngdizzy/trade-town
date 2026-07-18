@@ -1,12 +1,20 @@
 import type {
   AgentId,
   AgentState,
+  BacktestSession,
+  CoachReport,
+  CompanyScore,
+  HallOfFameEntry,
   MeetingMinutes,
   MeetingState,
   MemoryRecord,
   NewsItem,
+  PaperPortfolio,
+  PerformanceSnapshot,
   ResearchItem,
   SettingsState,
+  SimulationResult,
+  Strategy,
   Task,
   TimeState,
   WatchlistEntry,
@@ -39,12 +47,21 @@ export interface GameUiState {
   watchlist: WatchlistEntry[];
   memory: MemoryRecord[];
   meetingMinutes: MeetingMinutes[];
+  paperPortfolio: PaperPortfolio;
+  strategies: Strategy[];
+  backtestSessions: BacktestSession[];
+  simulationResults: SimulationResult[];
+  hallOfFame: HallOfFameEntry[];
+  coachReports: CoachReport[];
+  companyScore: CompanyScore;
+  performanceSnapshots: PerformanceSnapshot[];
   settings: SettingsState;
   dialogue: DialogueUiState;
   paused: boolean;
   settingsOpen: boolean;
   newspaperOpen: boolean;
   companyMemoryOpen: boolean;
+  coachDashboardOpen: boolean;
   netConnected: boolean;
   save: SaveUiState;
   currentScene: string;
@@ -70,12 +87,41 @@ class GameStore {
     watchlist: [],
     memory: [],
     meetingMinutes: [],
+    paperPortfolio: {
+      cashBalance: 100_000,
+      startingBalance: 100_000,
+      positions: [],
+      orders: [],
+      tradeHistory: [],
+      totalPnl: 0,
+      totalPnlPct: 0,
+      winCount: 0,
+      lossCount: 0,
+    },
+    strategies: [],
+    backtestSessions: [],
+    simulationResults: [],
+    hallOfFame: [],
+    coachReports: [],
+    companyScore: {
+      overall: 50,
+      researchQuality: 50,
+      decisionQuality: 50,
+      riskManagement: 50,
+      paperTradingPerformance: 50,
+      teamCoordination: 50,
+      knowledgeGrowth: 0,
+      simulationSuccess: 50,
+      updatedAt: new Date().toISOString(),
+    },
+    performanceSnapshots: [],
     settings: { musicVolume: 0.5, sfxVolume: 0.7, autosaveIntervalSec: 60, showFps: false },
     dialogue: { open: false, speaker: "", lines: [], index: 0 },
     paused: false,
     settingsOpen: false,
     newspaperOpen: false,
     companyMemoryOpen: false,
+    coachDashboardOpen: false,
     netConnected: false,
     save: { status: "idle", lastSavedAt: null, error: null },
     currentScene: "MainMenuScene",
@@ -95,8 +141,15 @@ class GameStore {
     // whichever one was on top (it renders last, so it's visually on top;
     // see App.tsx) would silently reveal the other one still open
     // underneath. Opening either now closes the other.
-    EventBus.on("ui:newspaper", ({ open }) => this.set({ newspaperOpen: open, companyMemoryOpen: open ? false : this.state.companyMemoryOpen }));
-    EventBus.on("ui:companyMemory", ({ open }) => this.set({ companyMemoryOpen: open, newspaperOpen: open ? false : this.state.newspaperOpen }));
+    EventBus.on("ui:newspaper", ({ open }) =>
+      this.set({ newspaperOpen: open, companyMemoryOpen: open ? false : this.state.companyMemoryOpen, coachDashboardOpen: open ? false : this.state.coachDashboardOpen }),
+    );
+    EventBus.on("ui:companyMemory", ({ open }) =>
+      this.set({ companyMemoryOpen: open, newspaperOpen: open ? false : this.state.newspaperOpen, coachDashboardOpen: open ? false : this.state.coachDashboardOpen }),
+    );
+    EventBus.on("ui:coachDashboard", ({ open }) =>
+      this.set({ coachDashboardOpen: open, newspaperOpen: open ? false : this.state.newspaperOpen, companyMemoryOpen: open ? false : this.state.companyMemoryOpen }),
+    );
     EventBus.on("net:status", ({ connected }) => this.set({ netConnected: connected }));
     EventBus.on("scene:ready", ({ scene }) => this.set({ currentScene: scene }));
 
@@ -113,6 +166,13 @@ class GameStore {
     EventBus.on("research:updated", (research) => this.set({ research }));
     EventBus.on("watchlist:updated", (watchlist) => this.set({ watchlist }));
     EventBus.on("memory:updated", (memory) => this.set({ memory }));
+    EventBus.on("portfolio:updated", (paperPortfolio) => this.set({ paperPortfolio }));
+    EventBus.on("strategies:updated", (strategies) => this.set({ strategies }));
+    EventBus.on("simulation:updated", ({ sessions, results }) => this.set({ backtestSessions: sessions, simulationResults: results }));
+    EventBus.on("hallOfFame:updated", (hallOfFame) => this.set({ hallOfFame }));
+    EventBus.on("coachReports:updated", (coachReports) => this.set({ coachReports }));
+    EventBus.on("companyScore:updated", (companyScore) => this.set({ companyScore }));
+    EventBus.on("performanceSnapshots:updated", (performanceSnapshots) => this.set({ performanceSnapshots }));
 
     EventBus.on("save:started", () => this.set({ save: { status: "saving", lastSavedAt: this.state.save.lastSavedAt, error: null } }));
     EventBus.on("save:completed", ({ at }) => this.set({ save: { status: "saved", lastSavedAt: at, error: null } }));

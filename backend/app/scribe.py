@@ -8,8 +8,20 @@ the historical record" glue, called from app/nexus.py's tick.
 from __future__ import annotations
 
 from app.agents import AGENT_PROFILES
+from app.knowledge import derive_lesson
 from app.memory import record
-from app.schemas import AgentId, DiscussionMessage, MemoryRecord, MeetingMinutes, ResearchItem, TimeState
+from app.schemas import (
+    AgentId,
+    CoachReport,
+    DiscussionMessage,
+    HallOfFameEntry,
+    MemoryRecord,
+    MeetingMinutes,
+    PaperTrade,
+    ResearchItem,
+    SimulationResult,
+    TimeState,
+)
 
 # Crossing this confidence on completion also logs a "future trade"
 # candidate note — a flag for a human to consider later, not a trade.
@@ -58,3 +70,48 @@ def record_meeting(memory: list[MemoryRecord], minutes: MeetingMinutes) -> None:
     if minutes.discussion:
         transcript = " / ".join(f"{AGENT_PROFILES[m.speaker].name}: {m.line}" for m in minutes.discussion)
         record(memory, "discussion", f"Discussion — {when}", transcript)
+
+
+def record_paper_trade(memory: list[MemoryRecord], trade: PaperTrade) -> None:
+    """Logs a closed paper trade's outcome, then hands it to
+    app/knowledge.py to derive a lesson/mistake record from the same
+    trade — see the v0.5 brief's Feature 5 (Learning System) and Feature
+    9 (searchable knowledge)."""
+    outcome = "gained" if trade.pnl > 0 else "lost"
+    record(
+        memory,
+        "paper_trade",
+        f"Paper trade closed: {trade.symbol}",
+        f"{trade.symbol} {outcome} {abs(trade.pnl_pct):.1f}% ({trade.pnl:+.2f} simulated) over a "
+        f"{trade.duration_minutes}-minute hold. {trade.reason}. No real capital was involved.",
+    )
+    category, title, body = derive_lesson(trade)
+    record(memory, category, title, body)
+
+
+def record_simulation_result(memory: list[MemoryRecord], result: SimulationResult) -> None:
+    record(
+        memory,
+        "simulation",
+        f"Simulation complete: {result.strategy_name}",
+        f"{AGENT_PROFILES[result.run_by].name} ran \"{result.strategy_name}\" on {result.symbol}: "
+        f"{result.total_return_pct:+.1f}% return, {result.win_rate:.0f}% win rate, "
+        f"{result.max_drawdown_pct:.1f}% max drawdown across {result.trade_count} simulated trades. "
+        "Historical placeholder data — no real backtest data source is connected yet.",
+    )
+
+
+def record_coach_report(memory: list[MemoryRecord], report: CoachReport) -> None:
+    top = f"{AGENT_PROFILES[report.agent_rankings[0].agent_id].name}" if report.agent_rankings else "no ranked agent yet"
+    record(
+        memory,
+        "coach_review",
+        f"Coach's {report.period} report",
+        f"Company score {report.company_score:.1f}/100. Win rate {report.win_rate:.0f}%, research accuracy "
+        f"{report.research_accuracy:.0f}%, risk score {report.risk_score:.0f}/100. Top agent this period: {top}. "
+        f"{' '.join(report.recommendations)}",
+    )
+
+
+def record_hall_of_fame_entry(memory: list[MemoryRecord], entry: HallOfFameEntry) -> None:
+    record(memory, "event", f"Hall of Fame: {entry.title}", entry.description)

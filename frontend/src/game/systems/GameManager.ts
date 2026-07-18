@@ -9,6 +9,9 @@ import { CeoOfficeScene } from "@/game/scenes/CeoOfficeScene";
 import { BrainRoomScene } from "@/game/scenes/BrainRoomScene";
 import { MeetingRoomScene } from "@/game/scenes/MeetingRoomScene";
 import { BreakRoomScene } from "@/game/scenes/BreakRoomScene";
+import { SimulationLabScene } from "@/game/scenes/SimulationLabScene";
+import { HallOfFameScene } from "@/game/scenes/HallOfFameScene";
+import { PerformanceCenterScene } from "@/game/scenes/PerformanceCenterScene";
 import { EventBus } from "./EventBus";
 
 const DEFAULT_PLAYER_TRANSFORM: EntityTransform = {
@@ -57,6 +60,9 @@ export class GameManager {
         BrainRoomScene,
         MeetingRoomScene,
         BreakRoomScene,
+        SimulationLabScene,
+        HallOfFameScene,
+        PerformanceCenterScene,
       ],
     });
   }

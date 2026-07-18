@@ -2,15 +2,23 @@ import Phaser from "phaser";
 import type {
   AgentId,
   AgentState,
+  BacktestSession,
+  CoachReport,
+  CompanyScore,
   DialogueHistoryEntry,
   GameSaveState,
+  HallOfFameEntry,
   MeetingMinutes,
   MeetingState,
   MemoryRecord,
   NewsItem,
+  PaperPortfolio,
+  PerformanceSnapshot,
   ResearchItem,
   SceneId,
   SettingsState,
+  SimulationResult,
+  Strategy,
   Task,
   TimeState,
   WatchlistEntry,
@@ -50,6 +58,17 @@ export interface GameEvents {
   "watchlist:updated": WatchlistEntry[];
   "memory:updated": MemoryRecord[];
   "ui:companyMemory": { open: boolean };
+  "portfolio:updated": PaperPortfolio;
+  "strategies:updated": Strategy[];
+  "simulation:updated": { sessions: BacktestSession[]; results: SimulationResult[] };
+  "simulation:completed": SimulationResult;
+  "hallOfFame:updated": HallOfFameEntry[];
+  "hallOfFame:entryAdded": HallOfFameEntry;
+  "coach:reportReceived": CoachReport;
+  "coachReports:updated": CoachReport[];
+  "companyScore:updated": CompanyScore;
+  "performanceSnapshots:updated": PerformanceSnapshot[];
+  "ui:coachDashboard": { open: boolean };
 }
 
 type Handler<K extends keyof GameEvents> = (payload: GameEvents[K]) => void;

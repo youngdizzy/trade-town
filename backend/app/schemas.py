@@ -10,6 +10,14 @@ meeting Discussions/Minutes, and a searchable CompanyMemory log. None of
 this executes trades or calls a real market data API — see
 docs/Architecture.md "Research & market intelligence (v0.3)" and
 app/market_data.py for the mock-data boundary.
+
+v0.5 adds a sixth agent (Coach, Performance & Improvement) and a full
+paper-trading/learning layer: a PaperPortfolio (fake balance, positions,
+orders, closed-trade history), a Simulation Lab (Strategy /
+BacktestSession / SimulationResult), a Hall of Fame, a CompanyScore, and
+periodic CoachReports / PerformanceSnapshots. Every trade in this system
+is simulated — see app/paper_trading.py's module docstring for the exact
+boundary. Nothing in v0.5 connects to a real brokerage.
 """
 from __future__ import annotations
 
@@ -26,17 +34,41 @@ SceneId = Literal[
     "BrainRoomScene",
     "MeetingRoomScene",
     "BreakRoomScene",
+    "SimulationLabScene",
+    "HallOfFameScene",
+    "PerformanceCenterScene",
 ]
 
-AgentId = Literal["scout", "atlas", "echo", "nova", "scribe"]
-AGENT_IDS: tuple[AgentId, ...] = ("scout", "atlas", "echo", "nova", "scribe")
+AgentId = Literal["scout", "atlas", "echo", "nova", "scribe", "coach"]
+AGENT_IDS: tuple[AgentId, ...] = ("scout", "atlas", "echo", "nova", "scribe", "coach")
 
 # Every room an agent's schedule (or a meeting/break override) can place them in.
-AgentLocation = Literal["scout-office", "brain-room", "meeting-room", "break-room", "lobby"]
+AgentLocation = Literal[
+    "scout-office",
+    "brain-room",
+    "meeting-room",
+    "break-room",
+    "lobby",
+    "simulation-lab",
+    "hall-of-fame",
+    "performance-center",
+]
 
 TaskStatus = Literal["pending", "working", "completed", "failed"]
 TaskPriority = Literal["low", "normal", "high"]
-TaskCategory = Literal["research", "review", "meeting", "watchlist_update", "news_scan", "chart_analysis", "documentation"]
+TaskCategory = Literal[
+    "research",
+    "review",
+    "meeting",
+    "watchlist_update",
+    "news_scan",
+    "chart_analysis",
+    "documentation",
+    "coaching",
+    "simulation",
+    "paper_trading",
+    "analytics",
+]
 NewsCategory = Literal["company", "discovery", "market"]
 
 # The eight research topics named in the v0.3 brief. "stock"/"company" both
@@ -45,7 +77,38 @@ NewsCategory = Literal["company", "discovery", "market"]
 # lists them separately, even though in practice most seed items use "stock".
 ResearchCategory = Literal["stock", "etf", "index", "economy", "gold", "bitcoin", "company", "sector"]
 ResearchStatus = Literal["queued", "in_progress", "completed"]
-MemoryCategory = Literal["research", "meeting", "whiteboard", "event", "discussion", "discovery", "future_trade"]
+MemoryCategory = Literal[
+    "research",
+    "meeting",
+    "whiteboard",
+    "event",
+    "discussion",
+    "discovery",
+    "future_trade",
+    "lesson",
+    "mistake",
+    "strategy",
+    "coach_review",
+    "simulation",
+    "paper_trade",
+]
+
+# --- v0.5: paper trading, simulation, coaching, and scoring ---------------
+OrderSide = Literal["buy", "sell"]
+OrderStatus = Literal["open", "filled", "closed", "cancelled"]
+SimulationStatus = Literal["queued", "running", "completed", "failed"]
+HallOfFameCategory = Literal[
+    "best_strategy",
+    "best_simulation",
+    "best_research",
+    "top_agent",
+    "best_month",
+    "winning_streak",
+    "lowest_drawdown",
+    "highest_confidence_accuracy",
+]
+PerformancePeriod = Literal["daily", "weekly", "monthly", "all_time"]
+ReportPeriod = Literal["weekly", "monthly"]
 
 
 class CamelModel(BaseModel):
@@ -193,8 +256,197 @@ class MemoryRecord(CamelModel):
     timestamp: str
 
 
+class PaperOrder(CamelModel):
+    """A paper order — simulated only, never sent to a real brokerage.
+    See app/paper_trading.py's module docstring for the enforcement
+    boundary."""
+
+    id: str
+    symbol: str
+    side: OrderSide
+    quantity: float
+    price: float
+    status: OrderStatus
+    placed_by: AgentId = Field(alias="placedBy")
+    reason: str
+    confidence: float
+    created_at: str = Field(alias="createdAt")
+
+
+class PaperPosition(CamelModel):
+    id: str
+    symbol: str
+    side: OrderSide
+    quantity: float
+    entry_price: float = Field(alias="entryPrice")
+    current_price: float = Field(alias="currentPrice")
+    unrealized_pnl: float = Field(alias="unrealizedPnl")
+    unrealized_pnl_pct: float = Field(alias="unrealizedPnlPct")
+    opened_by: AgentId = Field(alias="openedBy")
+    confidence: float
+    opened_at: str = Field(alias="openedAt")
+    # Simulated-clock minutes-since-epoch (day*1440 + hour*60 + minute) at
+    # open time — hold duration is tracked against TradeTown's in-game
+    # clock, not real wall-clock time, the same way research confidence
+    # advances by tick count rather than elapsed real time (see
+    # app/research.py). `opened_at` above is still a real ISO timestamp,
+    # kept only for audit/display, same as every other *_at field.
+    opened_sim_minutes: int = Field(alias="openedSimMinutes")
+
+
+class PaperTrade(CamelModel):
+    """One closed paper position — a fully realized round trip. This is
+    the Learning System's "training data" record (see the v0.5 brief's
+    Feature 5): everything Coach and app/knowledge.py need to derive a
+    lesson from a completed trade lives on this one model, so nothing
+    downstream needs a second, parallel "trade history" shape."""
+
+    id: str
+    symbol: str
+    side: OrderSide
+    quantity: float
+    entry_price: float = Field(alias="entryPrice")
+    exit_price: float = Field(alias="exitPrice")
+    pnl: float
+    pnl_pct: float = Field(alias="pnlPct")
+    duration_minutes: int = Field(alias="durationMinutes")
+    confidence: float
+    reason: str
+    market_conditions: str = Field(alias="marketConditions")
+    supporting_agents: list[AgentId] = Field(default_factory=list, alias="supportingAgents")
+    opposing_agents: list[AgentId] = Field(default_factory=list, alias="opposingAgents")
+    coach_review: str | None = Field(default=None, alias="coachReview")
+    lessons_learned: str | None = Field(default=None, alias="lessonsLearned")
+    opened_at: str = Field(alias="openedAt")
+    closed_at: str = Field(alias="closedAt")
+
+
+class PaperPortfolio(CamelModel):
+    """The company's one simulated trading account. Starting balance and
+    every position/order/trade in it are fictional — see
+    app/portfolio.py."""
+
+    cash_balance: float = Field(alias="cashBalance")
+    starting_balance: float = Field(alias="startingBalance")
+    positions: list[PaperPosition] = Field(default_factory=list)
+    orders: list[PaperOrder] = Field(default_factory=list)
+    trade_history: list[PaperTrade] = Field(default_factory=list, alias="tradeHistory")
+    total_pnl: float = Field(alias="totalPnl")
+    total_pnl_pct: float = Field(alias="totalPnlPct")
+    win_count: int = Field(alias="winCount")
+    loss_count: int = Field(alias="lossCount")
+
+
+class Strategy(CamelModel):
+    id: str
+    name: str
+    description: str
+    created_by: AgentId = Field(alias="createdBy")
+    focus_category: ResearchCategory = Field(alias="focusCategory")
+    created_at: str = Field(alias="createdAt")
+
+
+class BacktestSession(CamelModel):
+    """A strategy simulation in flight — queued or actively running in
+    the Simulation Lab. Moves into a SimulationResult once complete (see
+    app/simulation.py's tick_simulation_lab())."""
+
+    id: str
+    strategy_id: str = Field(alias="strategyId")
+    strategy_name: str = Field(alias="strategyName")
+    symbol: str
+    status: SimulationStatus
+    progress: float
+    run_by: AgentId = Field(alias="runBy")
+    queued_at: str = Field(alias="queuedAt")
+    started_at: str | None = Field(default=None, alias="startedAt")
+
+
+class SimulationResult(CamelModel):
+    """sharpe_ratio/sortino_ratio are explicitly placeholder formulas
+    (see app/simulation.py) — real risk-adjusted-return math needs a
+    real historical data source, which v0.5 does not have (see
+    app/market_data.py)."""
+
+    id: str
+    strategy_id: str = Field(alias="strategyId")
+    strategy_name: str = Field(alias="strategyName")
+    symbol: str
+    total_return_pct: float = Field(alias="totalReturnPct")
+    win_rate: float = Field(alias="winRate")
+    max_drawdown_pct: float = Field(alias="maxDrawdownPct")
+    sharpe_ratio: float = Field(alias="sharpeRatio")
+    sortino_ratio: float = Field(alias="sortinoRatio")
+    trade_count: int = Field(alias="tradeCount")
+    run_by: AgentId = Field(alias="runBy")
+    completed_at: str = Field(alias="completedAt")
+
+
+class HallOfFameEntry(CamelModel):
+    id: str
+    category: HallOfFameCategory
+    title: str
+    description: str
+    agent_id: AgentId | None = Field(default=None, alias="agentId")
+    value: float
+    achieved_at: str = Field(alias="achievedAt")
+
+
+class AgentScore(CamelModel):
+    """One agent's row in Coach's rankings (v0.5 brief, Feature 1)."""
+
+    agent_id: AgentId = Field(alias="agentId")
+    score: float
+    research_accuracy: float = Field(alias="researchAccuracy")
+    confidence_calibration: float = Field(alias="confidenceCalibration")
+
+
+class CoachReport(CamelModel):
+    id: str
+    period: ReportPeriod
+    company_score: float = Field(alias="companyScore")
+    agent_rankings: list[AgentScore] = Field(default_factory=list, alias="agentRankings")
+    research_accuracy: float = Field(alias="researchAccuracy")
+    win_rate: float = Field(alias="winRate")
+    loss_rate: float = Field(alias="lossRate")
+    average_confidence: float = Field(alias="averageConfidence")
+    risk_score: float = Field(alias="riskScore")
+    common_mistakes: list[str] = Field(default_factory=list, alias="commonMistakes")
+    recommendations: list[str] = Field(default_factory=list)
+    created_at: str = Field(alias="createdAt")
+
+
+class CompanyScore(CamelModel):
+    """The seven-metric company rating shown in the Brain Room (v0.5
+    brief, Feature 6). `overall` is a simple mean of the other six —
+    see app/company_score.py for the exact, documented formula."""
+
+    overall: float
+    research_quality: float = Field(alias="researchQuality")
+    decision_quality: float = Field(alias="decisionQuality")
+    risk_management: float = Field(alias="riskManagement")
+    paper_trading_performance: float = Field(alias="paperTradingPerformance")
+    team_coordination: float = Field(alias="teamCoordination")
+    knowledge_growth: float = Field(alias="knowledgeGrowth")
+    simulation_success: float = Field(alias="simulationSuccess")
+    updated_at: str = Field(alias="updatedAt")
+
+
+class PerformanceSnapshot(CamelModel):
+    period: PerformancePeriod
+    return_pct: float = Field(alias="returnPct")
+    win_rate: float = Field(alias="winRate")
+    max_drawdown_pct: float = Field(alias="maxDrawdownPct")
+    sharpe_ratio: float = Field(alias="sharpeRatio")
+    sortino_ratio: float = Field(alias="sortinoRatio")
+    avg_holding_minutes: float = Field(alias="avgHoldingMinutes")
+    research_accuracy: float = Field(alias="researchAccuracy")
+    confidence_accuracy: float = Field(alias="confidenceAccuracy")
+    computed_at: str = Field(alias="computedAt")
+
+
 class GameSaveState(CamelModel):
-    version: Literal["0.3"] = "0.3"
+    version: Literal["0.5"] = "0.5"
     player: EntityTransform
     agents: dict[AgentId, AgentState]
     tasks: list[Task] = Field(default_factory=list)
@@ -205,6 +457,14 @@ class GameSaveState(CamelModel):
     watchlist: list[WatchlistEntry] = Field(default_factory=list)
     memory: list[MemoryRecord] = Field(default_factory=list)
     meeting_minutes: list[MeetingMinutes] = Field(default_factory=list, alias="meetingMinutes")
+    paper_portfolio: PaperPortfolio = Field(alias="paperPortfolio")
+    strategies: list[Strategy] = Field(default_factory=list)
+    backtest_sessions: list[BacktestSession] = Field(default_factory=list, alias="backtestSessions")
+    simulation_results: list[SimulationResult] = Field(default_factory=list, alias="simulationResults")
+    hall_of_fame: list[HallOfFameEntry] = Field(default_factory=list, alias="hallOfFame")
+    coach_reports: list[CoachReport] = Field(default_factory=list, alias="coachReports")
+    company_score: CompanyScore = Field(alias="companyScore")
+    performance_snapshots: list[PerformanceSnapshot] = Field(default_factory=list, alias="performanceSnapshots")
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(default_factory=list, alias="dialogueHistory")

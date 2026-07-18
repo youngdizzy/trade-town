@@ -31,9 +31,11 @@ over the WebSocket, with the client's own `player`/`settings`/
 `dialogueHistory` filled in). Only those three client-owned fields are
 actually persisted from the payload — every other field
 (`agents`/`tasks`/`whiteboards`/`meeting`/`news`/`research`/`watchlist`/
-`memory`/`meetingMinutes`/`time`) stays server-authoritative and is
-overwritten with whatever NEXUS currently has, regardless of what the
-client sent (see `GameState.apply_client_save()`).
+`memory`/`meetingMinutes`/`paperPortfolio`/`strategies`/
+`backtestSessions`/`simulationResults`/`hallOfFame`/`coachReports`/
+`companyScore`/`performanceSnapshots`/`time`) stays server-authoritative
+and is overwritten with whatever NEXUS currently has, regardless of what
+the client sent (see `GameState.apply_client_save()`).
 
 Response:
 
@@ -66,13 +68,13 @@ perspective and exists purely to detect disconnects
       "memory": [{ "id": "scout-1-8-0", "summary": "Started: Scanning market news", "day": 1, "hour": 8 }],
       "override": null // or { "location": "meeting-room", "reason": "meeting", "remainingMinutes": 20 }
     }
-    // ...atlas, echo, nova, scribe
+    // ...atlas, echo, nova, scribe, coach
   },
   "tasks": [
     {
       "id": "task-scout-1-9-0",
       "owner": "scout",
-      "category": "news_scan", // research | review | meeting | watchlist_update | news_scan | chart_analysis | documentation
+      "category": "news_scan", // research | review | meeting | watchlist_update | news_scan | chart_analysis | documentation | coaching | simulation | paper_trading | analytics
       "priority": "normal",    // low | normal | high
       "description": "Scanning market news",
       "status": "working",     // pending | working | completed | failed
@@ -121,7 +123,8 @@ perspective and exists purely to detect disconnects
   ],
   "memory": [
     { "id": "memory-research-...", "category": "research", "title": "...", "body": "...", "timestamp": "..." }
-    // categories: research | meeting | whiteboard | event | discussion | discovery | future_trade
+    // categories: research | meeting | whiteboard | event | discussion | discovery | future_trade |
+    //             lesson | mistake | strategy | coach_review | simulation | paper_trade
   ],
   "meetingMinutes": [
     {
@@ -131,12 +134,54 @@ perspective and exists purely to detect disconnects
       "summary": "2 attended: Scout, Echo. Discussed AAPL, MSFT.",
       "discussion": [{ "id", "speaker": "scout", "line": "...", "timestamp": "..." }]
     }
+  ],
+  "paperPortfolio": {
+    "cashBalance": 98815.64,
+    "startingBalance": 100000.0,
+    "positions": [
+      { "id": "pos-...", "symbol": "AAPL", "side": "buy", "quantity": 10.6, "entryPrice": 471.87, "currentPrice": 478.2, "unrealizedPnl": 67.1, "unrealizedPnlPct": 1.3, "openedBy": "scout", "confidence": 88.0, "openedAt": "...", "openedSimMinutes": 1560 }
+    ],
+    "orders": [],
+    "tradeHistory": [
+      { "id": "trade-...", "symbol": "DXY", "side": "buy", "quantity": 41.4, "entryPrice": 120.54, "exitPrice": 122.05, "pnl": 55.55, "pnlPct": 1.3, "durationMinutes": 135, "confidence": 100.0, "reason": "...", "marketConditions": "...", "supportingAgents": ["nova"], "opposingAgents": [], "coachReview": null, "lessonsLearned": null, "openedAt": "...", "closedAt": "..." }
+    ],
+    "totalPnl": 55.55, "totalPnlPct": 0.06, "winCount": 6, "lossCount": 4
+  },
+  "strategies": [
+    { "id": "strategy-momentum", "name": "Momentum Breakout", "description": "...", "createdBy": "echo", "focusCategory": "stock", "createdAt": "..." }
+  ],
+  "backtestSessions": [
+    { "id": "sim-...", "strategyId": "strategy-momentum", "strategyName": "Momentum Breakout", "symbol": "AAPL", "status": "running", "progress": 42.0, "runBy": "scout", "queuedAt": "...", "startedAt": "..." }
+  ],
+  "simulationResults": [
+    { "id": "result-...", "strategyId": "strategy-value", "strategyName": "Value Fundamentals", "symbol": "MSFT", "totalReturnPct": 28.6, "winRate": 61.0, "maxDrawdownPct": 9.4, "sharpeRatio": 3.04, "sortinoRatio": 3.52, "tradeCount": 34, "runBy": "nova", "completedAt": "..." }
+  ],
+  "hallOfFame": [
+    { "id": "hof-...", "category": "winning_streak", "title": "5-trade winning streak", "description": "...", "agentId": null, "value": 5.0, "achievedAt": "..." }
+  ],
+  "coachReports": [
+    {
+      "id": "report-...", "period": "weekly", "companyScore": 66.2,
+      "agentRankings": [{ "agentId": "nova", "score": 78.5, "researchAccuracy": 82.0, "confidenceCalibration": 74.0 }],
+      "researchAccuracy": 71.0, "winRate": 60.0, "lossRate": 40.0, "averageConfidence": 68.5, "riskScore": 82.0,
+      "commonMistakes": ["Held past the profit target on 2 trades"],
+      "recommendations": ["Tighten exit discipline on momentum trades"],
+      "createdAt": "..."
+    }
+  ],
+  "companyScore": {
+    "overall": 66.2, "researchQuality": 71.0, "decisionQuality": 60.0, "riskManagement": 82.0,
+    "paperTradingPerformance": 52.0, "teamCoordination": 74.0, "knowledgeGrowth": 24.0, "simulationSuccess": 58.0,
+    "updatedAt": "..."
+  },
+  "performanceSnapshots": [
+    { "period": "daily", "returnPct": 1.2, "winRate": 60.0, "maxDrawdownPct": 4.1, "sharpeRatio": 0.29, "sortinoRatio": 0.34, "avgHoldingMinutes": 210.0, "researchAccuracy": 71.0, "confidenceAccuracy": 68.0, "computedAt": "..." }
   ]
 }
 ```
 
 `GET /api/load` returns this same set of fields plus `version` (currently
-`"0.3"`), `player` (`EntityTransform`), `settings` (`SettingsState`),
+`"0.5"`), `player` (`EntityTransform`), `settings` (`SettingsState`),
 `dialogueHistory` (`DialogueHistoryEntry[]`), and `updatedAt`.
 
 ### Bounding / trimming
@@ -151,10 +196,18 @@ never needs to trim anything itself:
 | `research` | 1 active + last 24 completed **per agent** | one active item per research-capable agent by design; history is a rolling window |
 | `memory` | last 200 total | `CompanyMemory`'s cap across all categories |
 | `meetingMinutes` | last 20 | one per completed meeting |
+| `paperPortfolio.tradeHistory` | last 50 | `MAX_TRADE_HISTORY` — recent-trades feed, not full lifetime history |
+| `backtestSessions` | uncapped, but at most 2 concurrent (`MAX_CONCURRENT_SESSIONS`) | queued/running sessions clear into `simulationResults` on completion |
+| `simulationResults` | last 30 | `MAX_SIMULATION_RESULTS` |
+| `hallOfFame` | last 40 | `MAX_HALL_OF_FAME` |
+| `coachReports` | last 20 | `MAX_COACH_REPORTS` |
+| `performanceSnapshots` | last 60 | `MAX_PERFORMANCE_SNAPSHOTS` |
 
 ### Provider configuration
 
 `MARKET_DATA_PROVIDER` (env var, default `mock`) selects the watchlist's
-price source. Only `mock` is implemented in v0.3 — see
+price source. Only `mock` is implemented as of v0.5 — see
 `docs/Architecture.md`'s "Research & market intelligence (v0.3)" section
-for the adapter pattern to add a real one.
+for the adapter pattern to add a real one; `simulation.py`'s placeholder
+backtest math (see "Paper trading, simulation & coaching (v0.5)") would
+also switch to a real historical data source through the same interface.

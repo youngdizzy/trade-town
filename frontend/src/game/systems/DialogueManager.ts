@@ -56,6 +56,15 @@ const AGENT_TASK_LINES: Record<AgentId, Record<string, string[]>> = {
     "Indexing the day's discoveries": ["Indexing today's discoveries so they're easy to find later."],
     "Archiving overnight records": ["Archiving the overnight records. The log never sleeps."],
   },
+  coach: {
+    "Reviewing yesterday's paper trades": ["Going through yesterday's paper trades — a couple worth discussing at the review."],
+    "Observing research in progress": ["Sitting in on research this morning. Just watching, not interrupting."],
+    "Analyzing confidence calibration": ["Checking whether confidence scores actually track outcomes. It's close, not perfect."],
+    "Reviewing simulation results": ["The Simulation Lab's latest run is in. Promising, but I want more data."],
+    "Evening performance review": ["Wrapping up today's performance review. Nothing that surprises me."],
+    "Drafting recommendations": ["Drafting a couple of recommendations for the team. Nothing harsh, just honest."],
+    "Standing by": ["Standing by. Always happy to talk through a trade after the fact."],
+  },
 };
 
 /** Shared fallback lines for override-driven tasks (meetings/breaks), independent of agent personality. */
@@ -77,6 +86,7 @@ const AGENT_GREETINGS: Record<AgentId, string[]> = {
   echo: ["Oh, hey!", "Check this chart out — actually, what's up?", "Perfect timing."],
   nova: ["Hi there.", "One second... okay, hi.", "Good timing, I just finished a section."],
   scribe: ["Everything's on the record.", "Ah, boss. I was just writing you in.", "One moment — let me finish this line."],
+  coach: ["Got a minute for a quick review?", "Hey, boss — good timing.", "Let's talk performance."],
 };
 
 export interface DialogueSession {

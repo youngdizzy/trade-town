@@ -2,12 +2,16 @@
 
 **Status:** Canonical. This document is the permanent personnel file for
 every AI employee TradeTown has, or will have. It is split into two
-parts: **Current Roster** (five agents, live in the shipped v0.3 code —
+parts: **Current Roster** (six agents, live in the shipped v0.5 code —
 every field below is traceable to a real class, schema, or data file) and
-**Planned Roster** (ten agents named in the v0.4 brief, plus one
+**Planned Roster** (nine agents named in the v0.4 brief, plus one
 additional support role, none of which exist in code yet — every field
 below is a design intention, explicitly marked as such, scoped to the
-`ROADMAP.md` version that would introduce it).
+`ROADMAP.md` version that would introduce it). Coach was originally in
+the Planned Roster when this document was written (v0.4); it shipped in
+v0.5 with meaningfully different scope than planned — see its entry in
+Part 1, and the callout at the top of Part 2 for what that changes for
+the still-planned agents below it.
 
 Adding any planned agent to the real roster follows the exact checklist
 in `docs/DeveloperGuide.md`'s "Adding a new agent" section: an `AgentId`
@@ -19,7 +23,7 @@ checklist, not a new mechanism.
 
 ---
 
-# Part 1 — Current Roster (v0.1–v0.3, shipped)
+# Part 1 — Current Roster (v0.1–v0.5, shipped)
 
 ## Scout
 
@@ -37,7 +41,7 @@ checklist, not a new mechanism.
 | **Dialogue Style** | Short, task-anchored lines keyed by the exact schedule task string, e.g. `"Scanning market news"` → a Scout-flavored one-liner (`DialogueManager.ts`'s `AGENT_TASK_LINES.scout`). |
 | **Mood System** | Standard shared model: `mood`/`energy` floats 0–100, mood drifts ±2 to +2.5 per tick, energy costs 1.5/tick while working and gains 3/tick in restful locations (`nexus.py`'s `_tick_agent`, `RESTFUL_LOCATIONS`). Scout has no bespoke mood logic. |
 | **Memory Usage** | Standard `MemoryEntry` log capped at `MAX_MEMORY` most-recent entries per agent, one entry per task change ("Started: ..."). Scout also owns whichever `ResearchItem` is currently assigned to it in the rotating queue (one active item, capped history — see `research.py`). |
-| **Future Upgrades** | Real news-API integration behind `MarketDataProvider` (post-v0.3, no version committed); a "breadth vs. depth" dial once Strategy Marketplace (v0.8) lets the player weight research priorities. |
+| **Future Upgrades** | Real news-API integration behind `MarketDataProvider` (no version committed); a "breadth vs. depth" dial once Strategy Marketplace (v0.6) lets the player weight research priorities. |
 
 ## Atlas
 
@@ -53,9 +57,9 @@ checklist, not a new mechanism.
 | **Daily Schedule** | 06:00 Meeting Room ("Reviewing overnight strategy") → 09:00 Brain Room ("Assessing agent performance") → 12:00 Break Room ("Resting") → 13:00 Meeting Room ("Weighing strategic options") → 16:00 Brain Room ("Finalizing decisions") → 19:00 Meeting Room ("Planning tomorrow's priorities") → 22:00 Meeting Room ("Reviewing the day") through 06:00 ("Standing by"). `AGENT_SCHEDULES["atlas"]`. |
 | **Office** | Meeting Room (the only agent whose home location is Meeting Room rather than an office). |
 | **Dialogue Style** | Sparse by design — matches the "rarely speaks" personality trait; `AGENT_TASK_LINES.atlas` lines are shorter and more declarative than Scout's. |
-| **Mood System** | Standard shared model (see Scout). No bespoke logic yet — a planned v0.5+ direction is letting Atlas's mood reflect the *outcome* of the company's flagged candidates once Coach exists to track outcomes. |
+| **Mood System** | Standard shared model (see Scout). No bespoke logic yet — Coach now exists (v0.5) and tracks outcomes via `CoachReport`, but letting Atlas's mood actually reflect those outcomes remains an unbuilt future direction, not something v0.5 wired up. |
 | **Memory Usage** | Standard `MemoryEntry` log + one active `ResearchItem`. Atlas is also the agent whose completed research most often crosses `FUTURE_TRADE_CONFIDENCE_THRESHOLD` in soak testing, purely because "strategic exposure" research titles read as higher-conviction language — not a hard rule in the code. |
-| **Future Upgrades** | Formal "call a meeting" authority once agents gain any self-direction; a visible link between Atlas's `future_trade` flags and Coach's review queue (v0.5). |
+| **Future Upgrades** | Formal "call a meeting" authority once agents gain any self-direction; Coach (shipped v0.5) evaluates the company in aggregate rather than per-flag, so a visible per-candidate link between Atlas's `future_trade` flags and a specific Coach verdict remains a future direction, not something the shipped `CoachReport` shape provides today. |
 
 ## Echo
 
@@ -111,6 +115,24 @@ checklist, not a new mechanism.
 | **Memory Usage** | Scribe doesn't just *use* `CompanyMemory` — it's the sole writer. Every `record()` call into `backend/app/memory.py` traces back to a Scribe-attributed action (`record_research_completions`, `record_meeting`), even though the data itself came from other agents. |
 | **Future Upgrades** | A dedicated Scribe "desk" search UI beyond the current `CompanyMemory` modal filter chips; a REST search endpoint (`memory.search()` already implements the filter contract, unrouted — see `docs/API.md`). |
 
+## Coach
+
+| | |
+|---|---|
+| **Role** | Performance & Improvement |
+| **Department** | Performance & Improvement (a department with a headcount of one) |
+| **Responsibilities** | Reviews completed research and closed paper trades and files a `CoachReport` on a weekly (every 7th day) and monthly (every 30th day) cadence, both generated at the 20:00 evening review (`coach.py`'s `generate_report()`) — company score, per-agent rankings, research/confidence accuracy, win/loss rate, risk score, common mistakes, and recommendations. Diverges from this document's original v0.4-era plan in one load-bearing way: Coach was drafted as "asks questions, never issues verdicts," but the v0.5 brief that actually shipped it explicitly wanted scored rankings and recommendations, so it does score and rank. What didn't change: Coach still never places, closes, or approves a trade — `coach.py`'s module docstring states this as the enforcement boundary. |
+| **Decision Authority** | Computes `AgentScore` rankings (sorted by score descending) and a risk score — a real judgment surface, unlike Scribe's fixed threshold check, though still template-driven rather than model-generated (see "Future Upgrades" below and `docs/FUTURE_ARCHITECTURE.md`). Zero authority over the market or the Paper Trading engine itself. |
+| **Strengths** | The only agent whose job is evaluating the whole company's output rather than producing more of it. |
+| **Weaknesses** | Entirely dependent on what the researcher agents and the Paper Trading engine have already produced — Coach reviews outcomes, it doesn't generate new research or place trades to evaluate. |
+| **Personality** | *"Encouraging but exacting. Asks more questions than it answers."* (`agents.py`) |
+| **Daily Schedule** | 06:00 Performance Center ("Reviewing yesterday's paper trades") → 09:00 Brain Room ("Observing research in progress") → 12:00 Break Room ("Resting") → 13:00 Performance Center ("Analyzing confidence calibration") → 17:00 Simulation Lab ("Reviewing simulation results") → 19:00 Performance Center ("Evening performance review") → 22:00 Performance Center ("Drafting recommendations") through 06:00 ("Standing by"). `AGENT_SCHEDULES["coach"]`. |
+| **Office** | Performance Center (home location `performance-center`, a new v0.5 room) — its in-world scoreboard mirrors the same `CompanyScore` shown in the Coach Dashboard React modal. |
+| **Dialogue Style** | Reflective, evaluative lines tied to its current schedule block (`AGENT_TASK_LINES.coach`) — not the question-first Socratic style originally planned; dialogue is a statement about what Coach is doing, matching every other agent's pattern, not a genuinely new shape. |
+| **Mood System** | Standard shared model (see Scout) — not exempt, contrary to the original plan; Coach has ordinary `mood`/`energy` like every other agent, since `NPCManager`/`nexus.py` treat all `AGENT_IDS` uniformly and carving out an exception would have meant a parallel code path for one agent. |
+| **Memory Usage** | Reads `CompanyMemory` for scoring inputs; does not write to it directly — `scribe.py`'s `record_coach_report()` is the one that logs each `CoachReport` into Company Memory under the `coach_review` category, preserving Scribe's sole-writer invariant from v0.3. |
+| **Future Upgrades** | Model-generated recommendation text in place of the current templated phrasing — the architecture (a `CoachReport` slot for `recommendations`/`commonMistakes`) was deliberately built so a future version could swap the template call for a real model call, the same pattern already noted for `discussion.py`. |
+
 ---
 
 # Part 2 — Planned Roster (not yet implemented)
@@ -120,43 +142,39 @@ version. None has an `AgentId`, `AgentProfile`, schedule, or dialogue
 lines in the current codebase. Fields marked *(planned)* describe intent,
 not shipped behavior.
 
-## Coach
-*(Planned — introduced v0.5)*
-
-| | |
-|---|---|
-| **Role** | Player mentor |
-| **Department** | Player Development (a department with a headcount of one, and the only agent whose primary "client" is the player, not the market) |
-| **Responsibilities** *(planned)* | Reviews `future_trade`-flagged `CompanyMemory` records with the player, asking questions rather than issuing verdicts — see `DESIGN_BIBLE.md`'s Core Gameplay Loop, where Coach is explicitly the version that gives the player their first real interaction beyond walk-and-read. |
-| **Decision Authority** *(planned)* | None over the market. Coach's only "decision" is which flagged record to surface next for review. |
-| **Strengths** *(planned)* | The only agent designed around dialogue *with* the player rather than dialogue *about* the market. |
-| **Weaknesses** *(planned)* | Entirely dependent on what Scribe has already recorded — Coach reviews history, it doesn't generate new research. |
-| **Personality** *(planned)* | Socratic, patient, asks more than it tells — deliberately the opposite register from Atlas's terseness. |
-| **Daily Schedule** *(planned)* | Likely home in a new or repurposed room reachable from the Lobby; exact blocks scoped at v0.5 kickoff. |
-| **Office** *(planned)* | Undetermined — candidates are a new "Coach's Office" room or a repurposed corner of the Meeting Room. |
-| **Dialogue Style** *(planned)* | Question-first: "Nova flagged this at 91% confidence — what made you agree, or not?" — a genuinely new dialogue shape, since every current agent's `AGENT_TASK_LINES` are statements, not questions. |
-| **Mood System** *(planned)* | Likely exempt from the standard mood/energy model — Coach doesn't "work" on a schedule the way researchers do; reacts to player engagement instead. |
-| **Memory Usage** *(planned)* | Reads `CompanyMemory`; does not write to it in v0.5's planned scope. |
-| **Future Upgrades** *(planned)* | Eventually surfaces player-specific calibration ("you tend to agree with Atlas more than the outcomes justify") once enough paper-trade outcomes (v0.7+) exist to grade against. |
+**Note on what v0.5 actually shipped:** this document originally planned
+the Simulation Lab and Paper Trading systems (Quant, Oracle, Lab, and
+Ledger below) as the reason to introduce four new dedicated agents. The
+v0.5 brief that actually shipped both systems didn't add any of them —
+the Simulation Lab's `Strategy` objects are authored by the existing
+four researcher agents (`RESEARCHER_IDS`), and the Paper Trading engine
+(`portfolio.py`, `paper_trading.py`) is fully automated with no
+dedicated bookkeeper agent. Quant/Oracle/Lab/Ledger below remain
+speculative — plausible future specializations if the roster ever needs
+dedicated owners for those systems, not agents any currently-planned
+version commits to introducing. Version numbers below have been updated
+to match `ROADMAP.md`'s current numbering (Strategy Marketplace is now
+v0.6, Risk Engine is now v0.7) but the roster content itself is
+unchanged from when it was written.
 
 ## Quant
-*(Planned — introduced v0.6, Simulation Lab)*
+*(Planned — speculative; Simulation Lab shipped in v0.5 without it, see note above)*
 
 | | |
 |---|---|
 | **Role** | Quantitative Modeler |
 | **Department** | Research — Quantitative |
-| **Responsibilities** *(planned)* | Builds and runs the backtest models the Simulation Lab (v0.6) executes against historical data served through a second `MarketDataProvider` implementation. |
+| **Responsibilities** *(planned)* | Builds and runs the backtest models the Simulation Lab (shipped v0.5, `simulation.py` — currently placeholder math, see `docs/Architecture.md`) would execute against real historical data served through a second `MarketDataProvider` implementation, once one exists. |
 | **Decision Authority** *(planned)* | Selects which historical windows and parameters a backtest runs with; never touches live/paper positions. |
 | **Strengths** *(planned)* | Rigor — the only agent whose output is a reproducible number (a backtest result), not a narrative summary. |
 | **Weaknesses** *(planned)* | Overfitting risk is a deliberate, visible weakness to dramatize — Quant's confidence in a backtested model should sometimes read as *too* high, a teaching moment for Coach to pick up on. |
 | **Personality** *(planned)* | Precise, slightly pedantic, uncomfortable with qualitative claims. |
-| **Daily Schedule** *(planned)* | Home in the new Simulation Lab room (v0.6); schedule scoped at kickoff. |
+| **Daily Schedule** *(planned)* | Home in the Simulation Lab room (shipped v0.5, currently only Coach's schedule visits it); schedule scoped if Quant is ever built. |
 | **Office** *(planned)* | Simulation Lab. |
 | **Dialogue Style** *(planned)* | Numeric, hedged ("87% in-sample, untested out-of-sample"). |
 | **Mood System** *(planned)* | Standard model likely reused; energy cost tied to backtest compute "load" as flavor. |
-| **Memory Usage** *(planned)* | Writes backtest results to `CompanyMemory` under a new category (extending `MemoryCategory` in `schemas.py`). |
-| **Future Upgrades** *(planned)* | Direct hand-off of validated backtests to Ledger/Atlas for Paper Trading (v0.7) consideration. |
+| **Memory Usage** *(planned)* | Writes backtest results to `CompanyMemory`'s `simulation` category (shipped v0.5, currently written by `scribe.record_simulation_result()` on Simulation Lab completions, not by a dedicated agent). |
+| **Future Upgrades** *(planned)* | Direct hand-off of validated backtests to Ledger/Atlas for Paper Trading (shipped v0.5) consideration. |
 
 ## Pulse
 *(Planned — near-term data agent, no version committed)*
@@ -197,7 +215,7 @@ not shipped behavior.
 | **Future Upgrades** *(planned)* | Cross-referencing Nova's fundamentals with macro headwinds/tailwinds — a genuinely new discussion-generation template in `discussion.py`. |
 
 ## Oracle
-*(Planned — introduced alongside or after v0.6, Simulation Lab)*
+*(Planned — speculative; would build on the Simulation Lab, shipped v0.5 without it, see note above)*
 
 | | |
 |---|---|
@@ -213,17 +231,17 @@ not shipped behavior.
 | **Dialogue Style** *(planned)* | Scenario-branch phrasing, never a flat statement. |
 | **Mood System** *(planned)* | Standard model. |
 | **Memory Usage** *(planned)* | Writes scenario summaries to `CompanyMemory`, likely under the same new category as Quant's backtests. |
-| **Future Upgrades** *(planned)* | Feeding Risk Engine (v0.9) directly — Oracle's scenario spread is the natural input to a risk-of-loss estimate. |
+| **Future Upgrades** *(planned)* | Feeding Risk Engine (v0.7) directly — Oracle's scenario spread is the natural input to a risk-of-loss estimate. |
 
 ## Guardian
-*(Planned — introduced alongside Risk Engine, v0.9, or earlier as an infra role)*
+*(Planned — introduced alongside Risk Engine, v0.7, or earlier as an infra role)*
 
 | | |
 |---|---|
 | **Role** | Security & Data Integrity |
 | **Department** | Operations / Infrastructure |
-| **Responsibilities** *(planned)* | The in-universe face of TradeTown's own operational safeguards — data integrity checks on `CompanyMemory`, and (once real trading scaffolding exists in v0.7+) the agent whose "job" is enforcing the "not a trading platform" boundary from `DESIGN_BIBLE.md` inside the fiction itself, not just in code comments. |
-| **Decision Authority** *(planned)* | The most authority of any planned agent by design: Guardian is the in-fiction reason paper trades (v0.7) can never silently become real ones — a narrative embodiment of a hard technical boundary. |
+| **Responsibilities** *(planned)* | The in-universe face of TradeTown's own operational safeguards — data integrity checks on `CompanyMemory`, and (real trading scaffolding already exists as of v0.5) the agent whose "job" is enforcing the "not a trading platform" boundary from `DESIGN_BIBLE.md` inside the fiction itself, not just in code comments. |
+| **Decision Authority** *(planned)* | The most authority of any planned agent by design: Guardian is the in-fiction reason paper trades (shipped v0.5, `portfolio.py`) can never silently become real ones — a narrative embodiment of a hard technical boundary. |
 | **Strengths** *(planned)* | Uncompromising — the one agent whose "weakness" (below) is a feature, not a bug. |
 | **Weaknesses** *(planned)* | Deliberately inflexible; Guardian should never be the agent players root for narratively "unlocking" past — that would undermine the boundary it represents. |
 | **Personality** *(planned)* | Formal, procedural, quotes policy. |
@@ -251,10 +269,10 @@ not shipped behavior.
 | **Dialogue Style** *(planned)* | Punchy, pitch-like. |
 | **Mood System** *(planned)* | High energy cost, matching constant movement. |
 | **Memory Usage** *(planned)* | Proposed-symbol log, a new `MemoryCategory`. |
-| **Future Upgrades** *(planned)* | Direct integration with Strategy Marketplace (v0.8) — Hunter's proposals as one input to shareable strategy configs. |
+| **Future Upgrades** *(planned)* | Direct integration with Strategy Marketplace (v0.6) — Hunter's proposals as one input to shareable strategy configs. |
 
 ## Watchtower
-*(Planned — introduced alongside Risk Engine, v0.9)*
+*(Planned — introduced alongside Risk Engine, v0.7)*
 
 | | |
 |---|---|
@@ -270,10 +288,10 @@ not shipped behavior.
 | **Dialogue Style** *(planned)* | Alert-formatted: what, where, since when. |
 | **Mood System** *(planned)* | Possibly the first agent with a mood tied to *system* health rather than personal energy — a genuinely new mechanic if built. |
 | **Memory Usage** *(planned)* | Writes to a new "event"/anomaly category (the existing `event` `MemoryCategory` value in `schemas.py` already anticipates this). |
-| **Future Upgrades** *(planned)* | Natural pairing with Guardian for v0.9's Risk Engine HUD panel. |
+| **Future Upgrades** *(planned)* | Natural pairing with Guardian for v0.7's Risk Engine HUD panel. |
 
 ## Lab
-*(Planned — introduced v0.6, Simulation Lab — the room's "operator")*
+*(Planned — speculative; the Simulation Lab room shipped in v0.5 without a dedicated operator agent, see note above)*
 
 | | |
 |---|---|
@@ -292,18 +310,18 @@ not shipped behavior.
 | **Future Upgrades** *(planned)* | Could absorb Quant and Oracle's scheduling entirely if the Lab's headcount needs trimming for pacing reasons — flagged here as an explicit design option, not a commitment. |
 
 ## Ledger
-*(Planned additional support role — introduced v0.7, Paper Trading)*
+*(Planned additional support role — speculative; Paper Trading shipped in v0.5 without a dedicated bookkeeper agent, see note above)*
 
 | | |
 |---|---|
 | **Role** | Paper Trading Bookkeeper |
 | **Department** | Operations / Finance |
-| **Responsibilities** *(planned)* | The one role none of the ten named agents obviously own: maintaining the paper-trading ledger itself once v0.7 ships — position entries, simulated P&L, and the audit trail Guardian would check. Added here because a "professional AI investment company" (this document's explicit brief) does not function without someone who owns the books, and Scribe's existing role (general company historian) is deliberately kept distinct from Ledger's (financial record-keeping specifically) so v0.7 doesn't overload Scribe's scope. |
-| **Decision Authority** *(planned)* | Records only; never initiates a paper trade — that's downstream of Atlas + Coach + Guardian's sign-off, whatever that pipeline ends up being at v0.7 kickoff. |
+| **Responsibilities** *(planned)* | The one role none of the currently-shipped six agents obviously own: maintaining the paper-trading ledger itself — position entries, simulated P&L, and the audit trail Guardian would check. As shipped in v0.5, `portfolio.py` performs this bookkeeping as plain functions with no agent attribution at all; Ledger remains a plausible future personification of that module if the roster ever needs one, added here because a "professional AI investment company" (this document's explicit brief) arguably benefits from someone who owns the books narratively, and Scribe's existing role (general company historian) is deliberately kept distinct from Ledger's (financial record-keeping specifically) to avoid overloading Scribe's scope. |
+| **Decision Authority** *(planned)* | Records only; never initiates a paper trade — in the shipped v0.5 system, `paper_trading.py` opens positions automatically from high-confidence research, with no per-trade sign-off from any agent, Coach included. |
 | **Strengths** *(planned)* | Precision, auditability. |
 | **Weaknesses** *(planned)* | Entirely reactive — Ledger only exists once there's something to record. |
 | **Personality** *(planned)* | Exacting, numbers-first, the financial mirror of Scribe's archival personality. |
-| **Daily Schedule** *(planned)* | Likely Meeting Room or a new "Finance" nook, scoped at v0.7 kickoff. |
+| **Daily Schedule** *(planned)* | Likely Meeting Room or a new "Finance" nook, if Ledger is ever built. |
 | **Office** *(planned)* | Undetermined. |
 | **Dialogue Style** *(planned)* | Ledger-line phrasing: date, symbol, size, result. |
 | **Mood System** *(planned)* | Standard model. |

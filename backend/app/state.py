@@ -11,8 +11,11 @@ import asyncio
 from datetime import datetime, timezone
 
 from app import nexus
+from app.company_score import compute_company_score
+from app.portfolio import default_portfolio
 from app.research import default_research
 from app.schemas import EntityTransform, GameSaveState, MeetingState, SettingsState, TimeState
+from app.simulation import default_strategies
 from app.watchlist import default_watchlist
 
 MAX_DIALOGUE_HISTORY = 200
@@ -24,7 +27,7 @@ def _now_iso() -> str:
 
 def default_state() -> GameSaveState:
     return GameSaveState(
-        version="0.3",
+        version="0.5",
         player=EntityTransform(scene="LobbyScene", x=160, y=220, facing="down"),
         agents=nexus.default_agents(),
         tasks=[],
@@ -38,6 +41,14 @@ def default_state() -> GameSaveState:
         time=TimeState(day=1, hour=8, minute=0),
         settings=SettingsState(musicVolume=0.5, sfxVolume=0.7, autosaveIntervalSec=60, showFps=False),
         dialogueHistory=[],
+        paperPortfolio=default_portfolio(),
+        strategies=default_strategies(),
+        backtestSessions=[],
+        simulationResults=[],
+        hallOfFame=[],
+        coachReports=[],
+        companyScore=compute_company_score([], default_portfolio(), [], [], []),
+        performanceSnapshots=[],
         updatedAt=_now_iso(),
     )
 

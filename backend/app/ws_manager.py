@@ -30,6 +30,17 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         # nexus.py — same reasoning as `news` above, send as-is.
         "memory": [m.model_dump(by_alias=True) for m in state.memory],
         "meetingMinutes": [m.model_dump(by_alias=True) for m in state.meeting_minutes],
+        # v0.5 — already capped in their respective managers (portfolio.py's
+        # MAX_TRADE_HISTORY, simulation.py's MAX_SIMULATION_RESULTS, etc.),
+        # send as-is like the other pre-bounded lists above.
+        "paperPortfolio": state.paper_portfolio.model_dump(by_alias=True),
+        "strategies": [s.model_dump(by_alias=True) for s in state.strategies],
+        "backtestSessions": [b.model_dump(by_alias=True) for b in state.backtest_sessions],
+        "simulationResults": [r.model_dump(by_alias=True) for r in state.simulation_results],
+        "hallOfFame": [h.model_dump(by_alias=True) for h in state.hall_of_fame],
+        "coachReports": [c.model_dump(by_alias=True) for c in state.coach_reports],
+        "companyScore": state.company_score.model_dump(by_alias=True),
+        "performanceSnapshots": [p.model_dump(by_alias=True) for p in state.performance_snapshots],
     }
 
 

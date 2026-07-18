@@ -46,9 +46,50 @@ trading, brokerage connections, live trading of any kind, or a real
 market data API call. "Future trade" flags are a logged note for a human
 to consider, never a queued or simulated order.
 
-## What's next for v0.4 (not started, not scoped)
+## v0.4 — Design & Architecture Foundation
 
-These are candidate directions surfaced by v0.3's design, not commitments
+Documentation only — **zero code changes**. Twelve planning documents
+(`DESIGN_BIBLE.md`, `ROADMAP.md`, `AI_AGENT_BIBLE.md`, `UI_UX_BIBLE.md`,
+`COMPANY_LORE.md`, `NEXUS_ARCHITECTURE.md`, `PROJECT_STRUCTURE.md`,
+`CODING_STANDARDS.md`, `TASK_BACKLOG.md`, `KNOWN_LIMITATIONS.md`,
+`FUTURE_ARCHITECTURE.md`, and a final `ARCHITECTURE_REVIEW.md` scoring the
+codebase across nine dimensions) capturing the v0.3 codebase's design
+intent, coding conventions, and a scored backlog of 268 candidate future
+tasks. Explicitly forbade starting v0.5 or touching any trading feature —
+v0.3 continued to run exactly as it did before this version.
+
+## v0.5 — Intelligence Evolution
+
+A sixth agent (Coach, Performance & Improvement) who reviews completed
+research and closed paper trades and files weekly/monthly reports
+(`coach.py`, `CoachDashboard.tsx`); a Simulation Lab (`simulation.py`) —
+a new room where strategies queue, run, and complete with placeholder
+backtest metrics (see `simulation.py`'s module docstring — no real
+historical data source exists yet); a Paper Trading engine
+(`portfolio.py`, `paper_trading.py`) with a fully simulated $100,000
+starting account, opening/closing positions from high-confidence research
+completions; a Hall of Fame room celebrating the company's best research,
+strategies, simulations, streaks, and monthly performance
+(`hall_of_fame.py`); a Learning System (`knowledge.py`) that derives a
+`lesson` or `mistake` Company Memory record from every closed paper
+trade; a seven-metric Company Score (`company_score.py`) — Research
+Quality, Decision Quality, Risk Management, Paper Trading Performance,
+Team Coordination, Knowledge Growth, Simulation Success — shown in an
+expanded Brain Room HUD; and daily/weekly/monthly/all-time performance
+snapshots (`analytics.py`). Company Memory gained six new searchable
+categories (`lesson`, `mistake`, `strategy`, `coach_review`, `simulation`,
+`paper_trade`). The Lobby widened from five doors to eight to fit the
+three new rooms (Simulation Lab, Hall of Fame, Performance Center).
+
+**Explicitly not in v0.5** (per the brief's STOP CONDITION): live
+brokerage support, a connection to Charles Schwab or any other broker, or
+execution of a single real trade. Every `PaperOrder`, `PaperPosition`,
+and `PaperTrade` is simulated bookkeeping only — see `portfolio.py`'s
+module docstring for the enforcement boundary.
+
+## What's next for v0.6 (not started, not scoped)
+
+These are candidate directions surfaced by v0.5's design, not commitments
 — nothing below has been designed, and per every version's stop
 condition, work stops at the end of its own brief:
 
@@ -56,18 +97,23 @@ condition, work stops at the end of its own brief:
   implementation are already in place (`market_data.py`); the natural
   next step is one real vendor (Polygon, Finnhub, Alpha Vantage, Yahoo
   Finance, or Schwab) behind an API key, still with a mock fallback when
-  no key is configured.
-- **Model-generated meeting discussion.** v0.3's discussion lines are
-  templated flavor text tied to real research state (see
-  `discussion.py`); the architecture (participants + their current
-  research focus + a transcript slot on `MeetingState`) was deliberately
-  built so a future version could swap the template call for a real model
-  call without touching the meeting start/end state machine.
-- **A `CompanyMemory` REST search endpoint.** `memory.search()` already
-  implements the filter contract; it's just not wired to a route yet,
-  since the frontend currently filters the WS-synced list client-side.
-- **Paper trading**, once there's a real market data connection and a
-  clear UX for "propose a trade" vs. "execute a trade" — deliberately
-  out of scope for both v0.3 and this list's priority ordering; the
-  "future trade candidate" flag exists specifically so this can build on
-  real flagged candidates later rather than starting from nothing.
+  no key is configured. This would also let `simulation.py` replace its
+  placeholder backtest metrics with real historical-data-driven ones.
+- **Model-generated meeting discussion and coach commentary.** Both
+  `discussion.py` and `coach.py`'s recommendation text are templated
+  flavor text tied to real state; the architecture was deliberately built
+  so a future version could swap the template call for a real model call
+  without touching the surrounding state machines.
+- **A `CompanyMemory` REST search endpoint.** `memory.search()` /
+  `knowledge.search_knowledge()` already implement the filter contract;
+  neither is wired to a route yet, since the frontend currently filters
+  the WS-synced list client-side.
+- **Monte Carlo simulation and parameter optimization.** `simulation.py`
+  is deliberately structured so these can be added as new functions that
+  still produce a `SimulationResult` — no other part of the pipeline
+  (queueing, progress, archiving) needs to change. See
+  `docs/FUTURE_ARCHITECTURE.md`.
+- **Real broker paper-trading APIs** (e.g. a sandbox/paper endpoint from
+  a real brokerage), once there's a real market data connection — still
+  simulated money, but against real historical fills instead of
+  placeholder math. Explicitly not live trading.

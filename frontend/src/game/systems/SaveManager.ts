@@ -22,7 +22,7 @@ export class SaveManager {
   static buildSnapshot(): GameSaveState {
     const game = GameManager.getInstance();
     return {
-      version: "0.3",
+      version: "0.5",
       player: game?.playerTransform ?? { scene: "LobbyScene", x: 160, y: 160, facing: "down" },
       agents: NPCManager.getAllAgents(),
       tasks: NexusManager.getTasks(),
@@ -33,6 +33,14 @@ export class SaveManager {
       watchlist: NexusManager.getWatchlist(),
       memory: NexusManager.getMemory(),
       meetingMinutes: NexusManager.getMeetingMinutes(),
+      paperPortfolio: NexusManager.getPaperPortfolio(),
+      strategies: NexusManager.getStrategies(),
+      backtestSessions: NexusManager.getBacktestSessions(),
+      simulationResults: NexusManager.getSimulationResults(),
+      hallOfFame: NexusManager.getHallOfFame(),
+      coachReports: NexusManager.getCoachReports(),
+      companyScore: NexusManager.getCompanyScore(),
+      performanceSnapshots: NexusManager.getPerformanceSnapshots(),
       time: TimeManager.current,
       settings: SettingsManager.current,
       dialogueHistory: dialogueManager.getHistory(),

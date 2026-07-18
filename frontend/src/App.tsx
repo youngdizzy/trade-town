@@ -8,6 +8,7 @@ import { DebugOverlay } from "@/ui/components/DebugOverlay";
 import { BrainRoomHud } from "@/ui/components/BrainRoomHud";
 import { Newspaper } from "@/ui/components/Newspaper";
 import { CompanyMemory } from "@/ui/components/CompanyMemory";
+import { CoachDashboard } from "@/ui/components/CoachDashboard";
 
 export default function App() {
   return (
@@ -19,6 +20,7 @@ export default function App() {
       <DialogueBox />
       <Newspaper />
       <CompanyMemory />
+      <CoachDashboard />
       <BottomToolbar />
       <PauseMenu />
       <SettingsMenu />
