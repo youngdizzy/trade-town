@@ -4,9 +4,9 @@ import type { AgentId, AgentLocation, CompanyScore, SceneId } from "@/types";
 
 const SCORE_STYLE = {
   fontFamily: "monospace",
-  fontSize: "6px",
-  lineSpacing: 3,
-  color: "#ff8c61",
+  fontSize: "8px",
+  lineSpacing: 4,
+  color: "#ffb08a",
   align: "left" as const,
 };
 
@@ -55,14 +55,14 @@ export class PerformanceCenterScene extends RoomScene {
 
   private buildScoreboard(widthPx: number, heightPx: number): void {
     const cx = widthPx / 2;
-    const cy = heightPx / 2 - 4;
-    this.add.rectangle(cx, cy, 130, 100, 0x0b0b12).setStrokeStyle(2, 0xff8c61, 0.8).setDepth(2);
+    const cy = heightPx / 2 - 8;
+    this.add.rectangle(cx, cy, 150, 104, 0x0b0b12).setStrokeStyle(2, 0xff8c61, 0.8).setDepth(2);
     this.add
-      .text(cx, cy - 42, "COMPANY SCOREBOARD", { fontFamily: "monospace", fontSize: "6px", color: "#f4e6c9" })
+      .text(cx, cy - 40, "COMPANY SCOREBOARD", { fontFamily: "monospace", fontSize: "8px", color: "#f4e6c9", resolution: 4 })
       .setOrigin(0.5)
       .setDepth(3);
-    this.addLiveText("companyScore:updated", cx, cy - 30, { ...SCORE_STYLE, align: "center" }, formatOverall, NexusManager.getCompanyScore());
-    this.addLiveText("companyScore:updated", cx - 24, cy + 8, SCORE_STYLE, formatScore, NexusManager.getCompanyScore());
+    this.addLiveText("companyScore:updated", cx, cy - 26, { ...SCORE_STYLE, align: "center" }, formatOverall, NexusManager.getCompanyScore());
+    this.addLiveText("companyScore:updated", cx - 28, cy + 10, SCORE_STYLE, formatScore, NexusManager.getCompanyScore());
   }
 
   private buildDesk(widthPx: number, heightPx: number): void {

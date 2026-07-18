@@ -201,7 +201,13 @@ export abstract class RoomScene extends Phaser.Scene {
     format: (payload: GameEvents[K]) => string,
     initial: GameEvents[K],
   ): Phaser.GameObjects.Text {
-    const text = this.add.text(x, y, format(initial), style).setOrigin(0.5).setDepth(4);
+    // Rooms this small get zoomed well past CameraManager's BASE_ZOOM to
+    // cover the viewport (e.g. a 240×160px room under a 1280×800 viewport
+    // zooms to ~5.3x) — text rendered into its canvas at 1x resolution
+    // then scaled up that much by the camera comes out visibly blurry.
+    // `resolution` renders the text texture at higher pixel density up
+    // front so the zoom scales a sharp source instead of a blurry one.
+    const text = this.add.text(x, y, format(initial), { resolution: 4, ...style }).setOrigin(0.5).setDepth(4);
     const unsubscribe = EventBus.on(event, (payload) => text.setText(format(payload)));
     this.liveTexts.push({ text, unsubscribe });
     return text;
