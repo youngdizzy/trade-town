@@ -57,17 +57,24 @@ const DOORS: DoorDef[] = [
   { target: "PerformanceCenterScene", label: "Performance Center", x: (WIDTH_PX * 7) / 8, y: FRONT_ROW_Y, asset: "props/buildings/barn-base-red", targetWidth: 165 },
 ];
 
-const NEWSPAPER_STAND = { x: WIDTH_PX / 2 + TILE_SIZE * 6, y: 224 };
-const POND = { x: TILE_SIZE * 3, y: 224 };
+// The town square sits dead center — horizontally at the map's midpoint
+// (where the spawn spine already runs), vertically in the open band
+// between the back row's doorsteps (~y160) and the front row's road
+// (~y352). A cobblestone plaza (see buildTownSquare()) fills this
+// rectangle; the pond sits in the middle of it, like a fountain.
+const PLAZA_CENTER = { x: WIDTH_PX / 2, y: 264 };
+const PLAZA_COLS: [number, number] = [WIDTH_TILES / 2 - 6, WIDTH_TILES / 2 + 6]; // 12 tiles wide
+const PLAZA_ROWS: [number, number] = [13, 20]; // 8 tiles tall — clear of both rows' roads
 
-// Plaza seating, in the open band between the front-row buildings' floating
-// labels (~y150-230) and their doorsteps (~y400) — and away from every
-// door's x column so a bench never sits under a name label.
+const NEWSPAPER_STAND = { x: PLAZA_COLS[1] * TILE_SIZE + TILE_SIZE * 6, y: PLAZA_CENTER.y };
+const POND = { x: PLAZA_CENTER.x - TILE_SIZE * 2, y: PLAZA_CENTER.y - TILE_SIZE * 1.5 };
+
+// Benches flanking the pond on all four corners, inside the plaza.
 const BENCH_SPOTS: [number, number][] = [
-  [WIDTH_PX * 0.3, 250],
-  [WIDTH_PX * 0.7, 250],
-  [WIDTH_PX * 0.3, 300],
-  [WIDTH_PX * 0.7, 300],
+  [POND.x - 50, POND.y + 8],
+  [POND.x + TILE_SIZE * 4 + 50, POND.y + 8],
+  [POND.x - 50, POND.y + TILE_SIZE * 3 - 8],
+  [POND.x + TILE_SIZE * 4 + 50, POND.y + TILE_SIZE * 3 - 8],
 ];
 
 // Two lampposts per row, at the plaza-facing midpoints between doors (never
@@ -120,6 +127,7 @@ export class LobbyScene extends Phaser.Scene {
     });
 
     this.buildPath();
+    this.buildTownSquare();
     this.buildPond();
     this.buildDecor();
     this.buildBuildings();
@@ -204,6 +212,28 @@ export class LobbyScene extends Phaser.Scene {
       const baseTile = Math.floor((def.y + 64) / TILE_SIZE);
       for (let y = rowTile + 1; y < baseTile; y++) layer.putTileAt(0, doorCol, y);
     }
+  }
+
+  /**
+   * A cobblestone town square at the map's dead center, replacing the
+   * stretch of dirt spine that used to run straight through — a real town
+   * has a paved center, not just a corridor. Drawn on its own layer after
+   * buildPath() so it overlaps/widens the spine's center section rather
+   * than requiring the spine to route around it; the pond (built right
+   * after this) then sits in the middle of the square like a fountain.
+   */
+  private buildTownSquare(): void {
+    const [colStart, colEnd] = PLAZA_COLS;
+    const [rowStart, rowEnd] = PLAZA_ROWS;
+    const cols = colEnd - colStart;
+    const rows = rowEnd - rowStart;
+    const map = this.make.tilemap({ tileWidth: TILE_SIZE, tileHeight: TILE_SIZE, width: cols, height: rows });
+    const tileset = map.addTilesetImage("tilesets/cobble-path", "tilesets/cobble-path", TILE_SIZE, TILE_SIZE, 0, 0);
+    if (!tileset) return;
+    const layer = map.createBlankLayer("town-square", tileset, 0, 0);
+    if (!layer) return;
+    layer.fill(0);
+    layer.setPosition(colStart * TILE_SIZE, rowStart * TILE_SIZE);
   }
 
   private buildPond(): void {
@@ -300,7 +330,9 @@ export class LobbyScene extends Phaser.Scene {
     ];
     for (const [x, y] of sprigSpots) this.addDecor(x, y, DECOR_LEAF_SPRIG, 1.2);
 
-    this.addDecor(POND.x + TILE_SIZE * 3, POND.y - TILE_SIZE * 2, DECOR_STUMP);
+    // Clear of the town square's cobblestone (see buildTownSquare()) — this
+    // is grass decor, not a plaza fixture.
+    this.addDecor(POND.x + TILE_SIZE * 3, POND.y - TILE_SIZE * 4, DECOR_STUMP);
     this.addDecor(WIDTH_PX - TILE_SIZE * 5, 200, DECOR_STUMP);
   }
 

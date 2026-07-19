@@ -41,17 +41,27 @@ development milestones, not semver releases.
   cropped a clean single frame (`chicken-idle`) rather than render the
   raw sheet.
 
-### Lobby redesign: paths, pond, and street furniture
+### Lobby redesign: a real town square, paths, and street furniture
 
+- **The pond moved to the map's dead center** and gained a cobblestone
+  town square around it — previously it sat off in a corner near the
+  spawn point, more like leftover decoration than a town's actual
+  center. The square is a genuinely new path texture (`tilesets/cobble-path`,
+  hand-picked from a 3x5 blob-autotile sheet after checking every cell
+  for stray dirt-background pixels — most cells in that kind of sheet
+  are edge/corner transition pieces, not a plain repeatable tile), not a
+  recolor of the existing dirt path, so the town center reads as
+  distinct from the roads leading to it.
 - **Paths now lead to every building's door**, not just past it — a
   short spur connects the road to each doorstep, closing the 2-tile gap
   between the road and the building's base.
 - **The pond** gained a small wooden dock (cropped from the bridge-wood
   sheet), two ducks, and more flowers ringing the shore, alongside the
   lilypads/cattails already added.
-- **Benches and flickering lampposts** furnish the plaza between the two
-  building rows — the lamppost is a genuine 6-frame animation (a
-  flickering flame), not a static prop.
+- **Benches flank the pond on all four corners** of the town square, and
+  flickering lampposts furnish the plaza between the two building rows
+  — the lamppost is a genuine 6-frame animation (a flickering flame),
+  not a static prop.
 - **Two new tree varieties** (spruce, fruit) join the oaks near the
   plaza, each a middle frame cropped from a 3-frame growth-stage sheet.
 - Fixed a real bug found along the way: `generate-assets.mjs`'s `public/`

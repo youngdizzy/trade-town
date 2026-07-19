@@ -182,6 +182,7 @@
   "tilesets/farmland-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
   "tilesets/path-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
   "tilesets/water-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
+  "tilesets/cobble-path": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16, "_comment": "Cute Fantasy premium pack — one fully-covered cell (row1,col1) hand-picked from a 3x5 blob-autotile sheet (Cobble_Road_1.png) after checking every cell for stray dirt-background pixels; most cells in that sheet are edge/corner transition pieces, not a plain repeatable tile." },
 
   "props/outdoor-decor-free": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
   "props/fences": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
