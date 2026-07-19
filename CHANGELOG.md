@@ -152,6 +152,16 @@ market stalls — rather than TradeTown's original evenly-spaced rows.
   front-row buildings (which sit inside the plaza's own vertical span at
   y=336) can't — moved Hall of Fame, Trading Floor, and the extra tree
   spots clear once this was caught in a live screenshot pass.
+- **The dirt path didn't land** — reverted `tilesets/dirt-path` back to
+  the grey square-tile pattern from two rounds ago
+  (`tilesets/cobblestone-grey`, the same cell used previously as
+  `tilesets/wood-floor`, now under a name matching how it actually
+  reads).
+- **The pond, dock, and boat are ~2 tiles wider** — `POND_SCALE` bumped
+  from 3.6 to 4.27; every pond-relative decor offset (lilypads, cattails,
+  dock, boat, ducks, flowers, the four corner benches) scaled by the
+  same ratio rather than hand-tuned individually, to keep the same
+  relative layout at the larger size.
 
 ### Nine distinct agent character sprites
 

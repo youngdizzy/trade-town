@@ -104,18 +104,22 @@ const NEWSPAPER_STAND = { x: PLAZA_COLS[1] * TILE_SIZE + TILE_SIZE * 3, y: PLAZA
 
 // The pond is a single pre-composed graphic (props/pond-curved, an organic
 // jagged-bank shape), not a rectangle of water tiles — see buildPond(). It's
-// centered on the plaza and scaled up from its native 48x48.
+// centered on the plaza and scaled up from its native 48x48. Bumped from
+// 3.6 to 4.27 (roughly +2 tiles of display width) at the user's request;
+// every pond-relative offset below (bench spots, dock/boat/duck/flower
+// positions in buildPondDecor()) scaled by the same 4.27/3.6 ratio to keep
+// the same relative layout rather than being copy-pasted then hand-tuned.
 const POND_CENTER = PLAZA_CENTER;
-const POND_SCALE = 3.6;
+const POND_SCALE = 4.27;
 
 // Benches flanking the pond on all four corners, inside the plaza —
-// outside the pond's jagged bank (rough radius ~86px at this scale) but
+// outside the pond's jagged bank (rough radius ~102px at this scale) but
 // inside the plaza's own edges (half-width 144px, half-height 96px).
 const BENCH_SPOTS: [number, number][] = [
-  [POND_CENTER.x - 115, POND_CENTER.y - 70],
-  [POND_CENTER.x + 115, POND_CENTER.y - 70],
-  [POND_CENTER.x - 115, POND_CENTER.y + 70],
-  [POND_CENTER.x + 115, POND_CENTER.y + 70],
+  [POND_CENTER.x - 136, POND_CENTER.y - 83],
+  [POND_CENTER.x + 136, POND_CENTER.y - 83],
+  [POND_CENTER.x - 136, POND_CENTER.y + 83],
+  [POND_CENTER.x + 136, POND_CENTER.y + 83],
 ];
 
 // Two lampposts flanking the square's east/west entrances, just outside
@@ -260,14 +264,16 @@ export class LobbyScene extends Phaser.Scene {
   }
 
   /**
-   * The road network — a flat warm-tan dirt path (tilesets/dirt-path, the
-   * same tile the town square uses), matching a reference screenshot's
-   * town-square look. One walkway per row plus a vertical spine connecting
-   * the spawn point up through both rows and into the square.
+   * The road network — a cool grey square-tile pattern that reads as
+   * cobblestone (tilesets/cobblestone-grey, the same tile the town square
+   * uses), cropped from a user-supplied reference sheet. Replaced a
+   * warm-tan dirt path the user tried and didn't like. One walkway per
+   * row plus a vertical spine connecting the spawn point up through both
+   * rows and into the square.
    */
   private buildPath(): void {
     const map = this.make.tilemap({ tileWidth: TILE_SIZE, tileHeight: TILE_SIZE, width: WIDTH_TILES, height: HEIGHT_TILES });
-    const tileset = map.addTilesetImage("tilesets/dirt-path", "tilesets/dirt-path", TILE_SIZE, TILE_SIZE, 0, 0);
+    const tileset = map.addTilesetImage("tilesets/cobblestone-grey", "tilesets/cobblestone-grey", TILE_SIZE, TILE_SIZE, 0, 0);
     if (!tileset) return;
     const layer = map.createBlankLayer("path", tileset, 0, 0);
     if (!layer) return;
@@ -321,7 +327,7 @@ export class LobbyScene extends Phaser.Scene {
     const cols = colEnd - colStart;
     const rows = rowEnd - rowStart;
     const map = this.make.tilemap({ tileWidth: TILE_SIZE, tileHeight: TILE_SIZE, width: cols, height: rows });
-    const tileset = map.addTilesetImage("tilesets/dirt-path", "tilesets/dirt-path", TILE_SIZE, TILE_SIZE, 0, 0);
+    const tileset = map.addTilesetImage("tilesets/cobblestone-grey", "tilesets/cobblestone-grey", TILE_SIZE, TILE_SIZE, 0, 0);
     if (!tileset) return;
     const layer = map.createBlankLayer("town-square", tileset, 0, 0);
     if (!layer) return;
@@ -452,33 +458,33 @@ export class LobbyScene extends Phaser.Scene {
     const cy = POND_CENTER.y;
 
     // Lilypads sit inside the water; cattails and grass just outside the
-    // jagged bank (the scaled pond graphic's rough radius is ~86px at
-    // POND_SCALE 3.6 — every offset here is 2x what it was before the
-    // pond doubled in size, to keep the same relative layout).
-    playAnim(cx - 24, cy - 12, "animations/lillypad-green-anim", "bob", 1);
-    playAnim(cx + 20, cy + 16, "animations/lillypad-green-anim", "bob", 1);
-    playAnim(cx - 80, cy - 8, "animations/cattail-anim", "sway", 2);
-    playAnim(cx + 80, cy + 12, "animations/cattail-anim", "sway", 2);
-    playAnim(cx, cy - 84, "animations/grass-sway-anim", "sway", 2);
+    // jagged bank (the scaled pond graphic's rough radius is ~102px at
+    // POND_SCALE 4.27 — every offset here scaled by the same 4.27/3.6
+    // ratio as POND_SCALE itself, to keep the same relative layout).
+    playAnim(cx - 28, cy - 14, "animations/lillypad-green-anim", "bob", 1);
+    playAnim(cx + 24, cy + 19, "animations/lillypad-green-anim", "bob", 1);
+    playAnim(cx - 95, cy - 9, "animations/cattail-anim", "sway", 2);
+    playAnim(cx + 95, cy + 14, "animations/cattail-anim", "sway", 2);
+    playAnim(cx, cy - 92, "animations/grass-sway-anim", "sway", 2);
 
     // Dock — cropped from the bridge-wood sheet, left unrotated (its
     // native portrait shape already reads as a ramp) so it runs from the
     // south bank down into the water like a boat launch, matching a
     // reference screenshot's pond, rather than jutting out sideways.
-    this.add.image(cx, cy + 80, "props/dock").setScale(1.4).setDepth(1);
+    this.add.image(cx, cy + 95, "props/dock").setScale(1.66).setDepth(1);
 
     // A small rowboat resting in the water just off the end of the dock.
-    this.add.image(cx + 25, cy + 48, "props/boat").setScale(1.1).setDepth(1);
+    this.add.image(cx + 30, cy + 57, "props/boat").setScale(1.3).setDepth(1);
 
     // Two ducks — one bobbing on the water, one preening on the bank.
-    this.add.image(cx - 44, cy + 36, "characters/animals/duck/duck-idle").setScale(1.2).setDepth(1);
-    this.add.image(cx + 28, cy - 44, "characters/animals/duck/duck-idle").setScale(1.2).setFlipX(true).setDepth(2);
+    this.add.image(cx - 52, cy + 43, "characters/animals/duck/duck-idle").setScale(1.2).setDepth(1);
+    this.add.image(cx + 33, cy - 52, "characters/animals/duck/duck-idle").setScale(1.2).setFlipX(true).setDepth(2);
 
     // Flowers ringing the shore, using the same decor tileset as the
     // building flower beds.
-    this.addDecor(cx - 8, cy - 100, DECOR_FLOWER_WHITE, 1.1);
-    this.addDecor(cx + 88, cy + 76, DECOR_FLOWER_YELLOW, 1.1);
-    this.addDecor(cx - 92, cy + 68, DECOR_FLOWER_RED, 1.1);
+    this.addDecor(cx - 10, cy - 119, DECOR_FLOWER_WHITE, 1.1);
+    this.addDecor(cx + 104, cy + 90, DECOR_FLOWER_YELLOW, 1.1);
+    this.addDecor(cx - 109, cy + 81, DECOR_FLOWER_RED, 1.1);
   }
 
   /** A previously-unused free-pack asset put to real use: one ambient chicken grazing near the Barn, not a placeholder — see chicken-idle's note in animation-config.json for why it's a cropped frame rather than the raw sheet. */

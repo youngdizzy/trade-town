@@ -182,7 +182,7 @@
   "tilesets/farmland-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
   "tilesets/path-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
   "tilesets/water-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
-  "tilesets/dirt-path": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16, "_comment": "Cute Fantasy premium pack — FarmLand_Tile.png's col4/row3 cell, a flat warm-tan interior tile with a faint speckle mark. Superseded tilesets/wood-floor when the user asked to match a reference screenshot's dirt-path town square; confirmed to tile with zero seams before use." },
+  "tilesets/cobblestone-grey": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16, "_comment": "User-picked cell (col 1, row 5) from an uploaded Wood_Floor_Tiles.png reference sheet — a cool grey square-tile pattern that reads as cobblestone. Same cell used once before as tilesets/wood-floor, then swapped out for a dirt path to match a different reference screenshot; brought back at the user's request when the dirt path 'didn't look nice.' Confirmed to tile with zero seams before use." },
 
   "props/outdoor-decor-free": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
   "props/fences": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
