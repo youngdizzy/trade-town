@@ -81,6 +81,17 @@ development milestones, not semver releases.
 - **Paths now lead to every building's door**, not just past it — a
   short spur connects the road to each doorstep, closing the 2-tile gap
   between the road and the building's base.
+- **Fixed three spurs that missed the actual door** — they'd been
+  computed from each building sprite's horizontal bounding-box center,
+  which lines up with the door for most of these buildings but not all:
+  Blacksmith_House_Blue's canvas is a house-plus-forge assembly with the
+  door well left of the bbox midpoint (the spur landed on the forge/
+  anvil instead), and Fisherman_House_Base_Blue/Shed_Base_Red both have
+  a door a few pixels left of center. Measured each door's true offset
+  directly from its source PNG and added a `doorOffsetX` correction
+  (Scout Office, Brain Room, Break Room) used by the path spur, the
+  door's interact zone, and its flanking flowers alike, rather than
+  patching only the visual symptom.
 - **The pond** gained a small wooden dock (cropped from the bridge-wood
   sheet), two ducks, and more flowers ringing the shore, alongside the
   lilypads/cattails already added.

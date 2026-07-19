@@ -37,6 +37,18 @@ interface DoorDef {
    * resulting height lands in a similar ~120-190px band instead.
    */
   targetWidth: number;
+  /**
+   * Native (unscaled) pixel offset of the door's true center from the
+   * source art's canvas center — most of these buildings have the door
+   * dead center, but a few don't (Blacksmith_House_Blue's canvas is a
+   * house-plus-forge assembly with the door well left of the bounding
+   * box's midpoint; Fisherman_House_Base_Blue/Shed_Base_Red both have a
+   * door a few pixels left of center). Measured directly from each
+   * source PNG. Anything meant to line up with the actual door (the path
+   * spur, the interact zone, flanking flowers) should go through
+   * doorWorldX() rather than def.x when this is set.
+   */
+  doorOffsetX?: number;
 }
 
 // Two staggered rows rather than one straight line — the back row holds the
@@ -46,11 +58,11 @@ interface DoorDef {
 // Fantasy premium pack's Unique_Buildings set (or a named house variant),
 // not the same sprite re-tinted nine times.
 const DOORS: DoorDef[] = [
-  { target: "ScoutOfficeScene", label: "Scout Office", x: (WIDTH_PX * 1) / 6, y: BACK_ROW_Y, asset: "props/buildings/fisherman-house-base-blue", targetWidth: 150 },
-  { target: "BrainRoomScene", label: "Brain Room", x: (WIDTH_PX * 2) / 6, y: BACK_ROW_Y, asset: "props/buildings/blacksmith-house-blue", targetWidth: 150 },
+  { target: "ScoutOfficeScene", label: "Scout Office", x: (WIDTH_PX * 1) / 6, y: BACK_ROW_Y, asset: "props/buildings/fisherman-house-base-blue", targetWidth: 150, doorOffsetX: -9 },
+  { target: "BrainRoomScene", label: "Brain Room", x: (WIDTH_PX * 2) / 6, y: BACK_ROW_Y, asset: "props/buildings/blacksmith-house-blue", targetWidth: 150, doorOffsetX: -43 },
   { target: "CeoOfficeScene", label: "CEO Office", x: (WIDTH_PX * 3) / 6, y: BACK_ROW_Y, asset: "props/buildings/inn-black", targetWidth: 170 },
   { target: "MeetingRoomScene", label: "Meeting Room", x: (WIDTH_PX * 4) / 6, y: BACK_ROW_Y, asset: "props/buildings/church-red-front", targetWidth: 150 },
-  { target: "BreakRoomScene", label: "Break Room", x: (WIDTH_PX * 5) / 6, y: BACK_ROW_Y, asset: "props/buildings/shed-base-red", targetWidth: 150 },
+  { target: "BreakRoomScene", label: "Break Room", x: (WIDTH_PX * 5) / 6, y: BACK_ROW_Y, asset: "props/buildings/shed-base-red", targetWidth: 150, doorOffsetX: -9 },
   { target: "SimulationLabScene", label: "Simulation Lab", x: (WIDTH_PX * 1) / 8, y: FRONT_ROW_Y, asset: "props/buildings/greenhouse-wood-front", targetWidth: 130 },
   // windmill.png's source file turned out to be the tower and the sail
   // assembly side by side, not pre-composited — the sails rendered as a
@@ -227,11 +239,24 @@ export class LobbyScene extends Phaser.Scene {
     // that otherwise reads as "the road passes by" rather than "the road
     // leads to the door."
     for (const def of DOORS) {
-      const doorCol = Math.round(def.x / TILE_SIZE);
+      const doorCol = Math.round(this.doorWorldX(def) / TILE_SIZE);
       const rowTile = def.y === BACK_ROW_Y ? backRowTile : frontRowTile;
       const baseTile = Math.floor((def.y + 64) / TILE_SIZE);
       for (let y = rowTile + 1; y < baseTile; y++) layer.putTileAt(0, doorCol, y);
     }
+  }
+
+  /**
+   * The world-x of a building's actual door, correcting for doorOffsetX
+   * on buildings whose door isn't centered in the source art (see
+   * DoorDef.doorOffsetX). Scaled by the same targetWidth/native-width
+   * ratio buildBuildings() uses to place the sprite itself, so the
+   * correction stays accurate regardless of each building's scale.
+   */
+  private doorWorldX(def: DoorDef): number {
+    if (!def.doorOffsetX) return def.x;
+    const nativeWidth = this.textures.get(def.asset).getSourceImage().width;
+    return def.x + (def.doorOffsetX * def.targetWidth) / nativeWidth;
   }
 
   /**
@@ -338,8 +363,9 @@ export class LobbyScene extends Phaser.Scene {
     const flowerVariants = [DECOR_FLOWER_WHITE, DECOR_FLOWER_RED, DECOR_FLOWER_YELLOW];
     DOORS.forEach((def, i) => {
       const variant = flowerVariants[i % flowerVariants.length]!;
-      this.addDecor(def.x - 26, def.y + TILE_SIZE * 4.6, variant);
-      this.addDecor(def.x + 26, def.y + TILE_SIZE * 4.6, variant);
+      const doorX = this.doorWorldX(def);
+      this.addDecor(doorX - 26, def.y + TILE_SIZE * 4.6, variant);
+      this.addDecor(doorX + 26, def.y + TILE_SIZE * 4.6, variant);
     });
 
     // First two nudged clear of the now-much-larger town square (x:720-1008,
@@ -487,7 +513,7 @@ export class LobbyScene extends Phaser.Scene {
         .setOrigin(0.5)
         .setDepth(4);
 
-      const zone = createZone(this, def.x, def.y + TILE_SIZE, TILE_SIZE * 2, TILE_SIZE);
+      const zone = createZone(this, this.doorWorldX(def), def.y + TILE_SIZE, TILE_SIZE * 2, TILE_SIZE);
       this.doors.push({ zone, def });
     }
   }
