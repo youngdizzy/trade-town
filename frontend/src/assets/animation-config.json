@@ -73,6 +73,16 @@
   "outdoor-decoration/oak-tree": { "kind": "static" },
   "outdoor-decoration/oak-tree-small": { "kind": "static" },
 
+  "outdoor-decoration/buildings/fisherman-house-base-blue": { "kind": "static" },
+  "outdoor-decoration/buildings/blacksmith-house-blue": { "kind": "static" },
+  "outdoor-decoration/buildings/inn-black": { "kind": "static" },
+  "outdoor-decoration/buildings/church-red-front": { "kind": "static", "_comment": "Cropped from Church_Red.png's 4-frame sheet (Cute Fantasy premium pack) — one 112x144 frame with the door and unlit windows, matching the daytime look of every other building." },
+  "outdoor-decoration/buildings/shed-base-red": { "kind": "static" },
+  "outdoor-decoration/buildings/greenhouse-wood-front": { "kind": "static", "_comment": "Cropped from GreenHouse_Wood.png's 4-frame sheet (Cute Fantasy premium pack) — the front-facing frame with a visible door." },
+  "outdoor-decoration/buildings/windmill": { "kind": "static" },
+  "outdoor-decoration/buildings/house-5-limestone-base-blue": { "kind": "static" },
+  "outdoor-decoration/buildings/barn-base-red": { "kind": "static" },
+
   "animals/chicken/chicken": { "kind": "static" },
   "animals/cow/cow": { "kind": "static" },
   "animals/pig/pig": { "kind": "static" },

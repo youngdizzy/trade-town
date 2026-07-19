@@ -119,11 +119,23 @@ docs/                      Architecture, folder structure, developer guide
 
 ## Asset license
 
-The art in `assets/cute-fantasy-rpg/` ("Cute Fantasy Free") is used under
-its **non-commercial** free license — see `assets/cute-fantasy-rpg/read_me.txt`.
-It may be modified but not redistributed or resold, even modified. If
-TradeTown is ever shipped commercially, this pack must be replaced with
-appropriately licensed or original art first.
+The art in `assets/cute-fantasy-rpg/` comes from two versions of the same
+"Cute Fantasy" pack, each under its own license:
+
+- Everything **except** `Outdoor decoration/Buildings/` is from the
+  **free** version, used under its **non-commercial** license — see
+  `assets/cute-fantasy-rpg/read_me.txt`. May be modified but not
+  redistributed or resold.
+- `Outdoor decoration/Buildings/` (the nine Lobby building sprites) is
+  from the **premium** version, whose license permits commercial use —
+  see `assets/cute-fantasy-rpg/Outdoor decoration/Buildings/LICENSE_NOTE.txt`.
+
+Both forbid redistribution or resale of the assets themselves, even
+modified. Since the free-pack files are non-commercial, TradeTown as a
+whole is bound by the stricter of the two: if it's ever shipped
+commercially, every free-pack file must be replaced with appropriately
+licensed or original art first (the premium-sourced buildings would not
+need replacing).
 
 ## Status
 

@@ -9,31 +9,55 @@ import { GameManager } from "@/game/systems/GameManager";
 
 const TILE_SIZE = 16;
 const WIDTH_TILES = 108;
-const HEIGHT_TILES = 20;
+const HEIGHT_TILES = 32;
 const WIDTH_PX = WIDTH_TILES * TILE_SIZE;
 const HEIGHT_PX = HEIGHT_TILES * TILE_SIZE;
+
+const BACK_ROW_Y = 96;
+const FRONT_ROW_Y = 336;
 
 interface DoorDef {
   target: SceneId;
   label: string;
   x: number;
   y: number;
-  tint: number;
+  /** Manifest asset id for this building's sprite — see the Buildings/ folder. */
+  asset: string;
+  /**
+   * Every building is scaled to this display width regardless of its native
+   * art size, so a much bigger source sprite (the Inn) doesn't overlap its
+   * neighbors. These are tuned per building rather than one shared constant
+   * — the source sprites have very different native aspect ratios (the
+   * greenhouse is narrow and tall, the limestone mansion is short and wide),
+   * so scaling every building to the same width would leave the narrow ones
+   * comically tall (a first pass at a flat 190px front-row width scaled the
+   * greenhouse to 253px tall, floating its label far above the actual roof
+   * — see buildBuildings()'s topEdge comment). Chosen so every building's
+   * resulting height lands in a similar ~120-190px band instead.
+   */
+  targetWidth: number;
 }
 
+// Two staggered rows rather than one straight line — the back row holds the
+// original six-room roster's buildings, the front row the v0.5/v0.6 rooms,
+// offset horizontally so the courtyard reads as a small village rather than
+// a row of shopfronts. Every building is a distinct piece from the Cute
+// Fantasy premium pack's Unique_Buildings set (or a named house variant),
+// not the same sprite re-tinted nine times.
 const DOORS: DoorDef[] = [
-  { target: "ScoutOfficeScene", label: "Scout Office", x: (WIDTH_PX * 1) / 10, y: 96, tint: 0x9be7b0 },
-  { target: "CeoOfficeScene", label: "CEO Office", x: (WIDTH_PX * 2) / 10, y: 96, tint: 0xffe08a },
-  { target: "BrainRoomScene", label: "Brain Room", x: (WIDTH_PX * 3) / 10, y: 96, tint: 0xc9a3ff },
-  { target: "MeetingRoomScene", label: "Meeting Room", x: (WIDTH_PX * 4) / 10, y: 96, tint: 0xffb4a8 },
-  { target: "BreakRoomScene", label: "Break Room", x: (WIDTH_PX * 5) / 10, y: 96, tint: 0xffd9a0 },
-  { target: "SimulationLabScene", label: "Simulation Lab", x: (WIDTH_PX * 6) / 10, y: 96, tint: 0x60d1ff },
-  { target: "HallOfFameScene", label: "Hall of Fame", x: (WIDTH_PX * 7) / 10, y: 96, tint: 0xd9a441 },
-  { target: "PerformanceCenterScene", label: "Performance Center", x: (WIDTH_PX * 8) / 10, y: 96, tint: 0xff8c61 },
-  { target: "TradingFloorScene", label: "Trading Floor", x: (WIDTH_PX * 9) / 10, y: 96, tint: 0x5ce1ff },
+  { target: "ScoutOfficeScene", label: "Scout Office", x: (WIDTH_PX * 1) / 6, y: BACK_ROW_Y, asset: "outdoor-decoration/buildings/fisherman-house-base-blue", targetWidth: 150 },
+  { target: "BrainRoomScene", label: "Brain Room", x: (WIDTH_PX * 2) / 6, y: BACK_ROW_Y, asset: "outdoor-decoration/buildings/blacksmith-house-blue", targetWidth: 150 },
+  { target: "CeoOfficeScene", label: "CEO Office", x: (WIDTH_PX * 3) / 6, y: BACK_ROW_Y, asset: "outdoor-decoration/buildings/inn-black", targetWidth: 170 },
+  { target: "MeetingRoomScene", label: "Meeting Room", x: (WIDTH_PX * 4) / 6, y: BACK_ROW_Y, asset: "outdoor-decoration/buildings/church-red-front", targetWidth: 150 },
+  { target: "BreakRoomScene", label: "Break Room", x: (WIDTH_PX * 5) / 6, y: BACK_ROW_Y, asset: "outdoor-decoration/buildings/shed-base-red", targetWidth: 150 },
+  { target: "SimulationLabScene", label: "Simulation Lab", x: (WIDTH_PX * 1) / 8, y: FRONT_ROW_Y, asset: "outdoor-decoration/buildings/greenhouse-wood-front", targetWidth: 130 },
+  { target: "HallOfFameScene", label: "Hall of Fame", x: (WIDTH_PX * 3) / 8, y: FRONT_ROW_Y, asset: "outdoor-decoration/buildings/windmill", targetWidth: 175 },
+  { target: "TradingFloorScene", label: "Trading Floor", x: (WIDTH_PX * 5) / 8, y: FRONT_ROW_Y, asset: "outdoor-decoration/buildings/house-5-limestone-base-blue", targetWidth: 190 },
+  { target: "PerformanceCenterScene", label: "Performance Center", x: (WIDTH_PX * 7) / 8, y: FRONT_ROW_Y, asset: "outdoor-decoration/buildings/barn-base-red", targetWidth: 165 },
 ];
 
-const NEWSPAPER_STAND = { x: WIDTH_PX / 2 + TILE_SIZE * 5, y: HEIGHT_PX - TILE_SIZE * 3 };
+const NEWSPAPER_STAND = { x: WIDTH_PX / 2 + TILE_SIZE * 6, y: 224 };
+const POND = { x: TILE_SIZE * 3, y: 224 };
 
 // Frame indices into the 7-column "outdoor-decoration/outdoor-decor-free"
 // tileset (16x16 cells) — picked by visually inspecting the sheet, not
@@ -46,7 +70,7 @@ const DECOR_FLOWER_RED = 56;
 const DECOR_FLOWER_YELLOW = 57;
 const DECOR_STUMP = 14;
 
-/** The HQ courtyard. Camera-followed player, five enterable buildings, a newspaper stand, ambient decoration. */
+/** The HQ courtyard: two staggered rows of distinct buildings around a central plaza (pond + newspaper stand), camera-followed player, ambient decoration. */
 export class LobbyScene extends Phaser.Scene {
   private player!: PlayerController;
   private doors: { zone: Phaser.GameObjects.Zone; def: DoorDef }[] = [];
@@ -76,7 +100,7 @@ export class LobbyScene extends Phaser.Scene {
     this.buildNewspaperStand();
 
     const spawnX = data?.spawnX ?? WIDTH_PX / 2;
-    const spawnY = data?.spawnY ?? HEIGHT_PX * 0.75;
+    const spawnY = data?.spawnY ?? HEIGHT_PX - TILE_SIZE * 4;
     this.player = new PlayerController(this, spawnX, spawnY);
     this.physics.add.collider(this.player.sprite, this.obstacles);
 
@@ -127,11 +151,16 @@ export class LobbyScene extends Phaser.Scene {
     if (!tileset) return;
     const layer = map.createBlankLayer("path", tileset, 0, 0);
     if (!layer) return;
-    // A horizontal walkway connecting all five doors, plus a vertical spine down to the spawn point.
-    const rowTile = 7;
-    for (let x = 4; x < WIDTH_TILES - 4; x++) layer.putTileAt(0, x, rowTile);
+    // One walkway per row (back row doors, front row doors), plus a vertical
+    // spine connecting the spawn point up through both rows.
+    const backRowTile = (BACK_ROW_Y + TILE_SIZE) / TILE_SIZE;
+    const frontRowTile = (FRONT_ROW_Y + TILE_SIZE) / TILE_SIZE;
+    for (let x = 4; x < WIDTH_TILES - 4; x++) {
+      layer.putTileAt(0, x, backRowTile);
+      layer.putTileAt(0, x, frontRowTile);
+    }
     const centerCol = Math.floor(WIDTH_TILES / 2);
-    for (let y = rowTile; y < HEIGHT_TILES - 2; y++) layer.putTileAt(0, centerCol, y);
+    for (let y = backRowTile; y < HEIGHT_TILES - 2; y++) layer.putTileAt(0, centerCol, y);
   }
 
   private buildPond(): void {
@@ -141,18 +170,17 @@ export class LobbyScene extends Phaser.Scene {
     const layer = map.createBlankLayer("pond", tileset, 0, 0);
     if (!layer) return;
     layer.fill(0);
-    layer.setPosition(TILE_SIZE * 4, HEIGHT_PX - TILE_SIZE * 5);
+    layer.setPosition(POND.x, POND.y);
   }
 
   private buildDecor(): void {
     const trees: [number, number][] = [
       [24, 40],
-      [WIDTH_PX - 32, 48],
-      [32, HEIGHT_PX - 48],
-      [WIDTH_PX - 40, HEIGHT_PX - 64],
-      [16, HEIGHT_PX / 2],
-      [WIDTH_PX / 2 - TILE_SIZE * 8, HEIGHT_PX - 40],
-      [WIDTH_PX / 2 + TILE_SIZE * 10, HEIGHT_PX - 48],
+      [WIDTH_PX - 32, 40],
+      [24, HEIGHT_PX / 2],
+      [WIDTH_PX - 32, HEIGHT_PX / 2],
+      [24, HEIGHT_PX - 40],
+      [WIDTH_PX - 32, HEIGHT_PX - 40],
     ];
     for (const [x, y] of trees) {
       const tree = this.add.image(x, y, "outdoor-decoration/oak-tree").setScale(1.4).setDepth(2);
@@ -162,13 +190,13 @@ export class LobbyScene extends Phaser.Scene {
       body.setOffset((tree.displayWidth * 0.5) / 2, tree.displayHeight * 0.6);
     }
 
-    const fence = this.add.image(TILE_SIZE * 3, HEIGHT_PX - TILE_SIZE * 2, "outdoor-decoration/fences").setScale(1.2).setDepth(2);
+    const fence = this.add.image(TILE_SIZE * 4, HEIGHT_PX - TILE_SIZE * 3, "outdoor-decoration/fences").setScale(1.2).setDepth(2);
     this.obstacles.add(fence);
     const fenceBody = fence.body as Phaser.Physics.Arcade.StaticBody;
     fenceBody.setSize(fence.displayWidth * 0.85, fence.displayHeight * 0.5);
     fenceBody.setOffset(fence.displayWidth * 0.075, fence.displayHeight * 0.4);
 
-    const chest = this.add.image(WIDTH_PX - TILE_SIZE * 3, HEIGHT_PX - TILE_SIZE * 2, "outdoor-decoration/chest").setScale(1.3).setDepth(2);
+    const chest = this.add.image(WIDTH_PX - TILE_SIZE * 4, HEIGHT_PX - TILE_SIZE * 3, "outdoor-decoration/chest").setScale(1.3).setDepth(2);
     this.obstacles.add(chest);
     const chestBody = chest.body as Phaser.Physics.Arcade.StaticBody;
     chestBody.setSize(chest.displayWidth * 0.8, chest.displayHeight * 0.7);
@@ -193,13 +221,13 @@ export class LobbyScene extends Phaser.Scene {
     this.add.image(x, y, "outdoor-decoration/outdoor-decor-free", this.decorFrame(index)).setScale(scale).setDepth(2);
   }
 
-  /** Flower beds flanking each building's entrance and a scatter of leaf sprigs/stumps elsewhere — ground-level texture so the courtyard doesn't read as flat grass. Walk-over only, no collision, same as the tree canopy overhang. */
+  /** Flower beds flanking each building's entrance and a scatter of leaf sprigs/stumps in the plaza — ground-level texture so the courtyard doesn't read as flat grass. Walk-over only, no collision, same as the tree canopy overhang. */
   private buildLandscaping(): void {
-    // Building sprites are 96x128 at 1.5x scale, centered TILE_SIZE*2 above
-    // def.y — their bottom edge lands at def.y + 64. Flowers need to sit
-    // below that (not just below the door's interact zone) or the house's
-    // own depth-3 artwork draws over them regardless of the transparent
-    // areas in the source PNG, since Phaser depth-sorts whole sprites, not
+    // Every building is scaled and positioned so its bottom edge lands at
+    // def.y + 64 regardless of its native art size (see buildBuildings()).
+    // Flowers need to sit below that — not just below the door's interact
+    // zone — or the house's own depth-3 artwork draws over them despite
+    // being on lower depth, since Phaser depth-sorts whole sprites, not
     // per-pixel against lower-depth objects under their bounding box.
     const flowerVariants = [DECOR_FLOWER_WHITE, DECOR_FLOWER_RED, DECOR_FLOWER_YELLOW];
     DOORS.forEach((def, i) => {
@@ -209,38 +237,51 @@ export class LobbyScene extends Phaser.Scene {
     });
 
     const sprigSpots: [number, number][] = [
-      [WIDTH_PX * 0.15, HEIGHT_PX * 0.55],
-      [WIDTH_PX * 0.35, HEIGHT_PX * 0.62],
-      [WIDTH_PX * 0.6, HEIGHT_PX * 0.58],
-      [WIDTH_PX * 0.75, HEIGHT_PX * 0.5],
-      [WIDTH_PX * 0.46, HEIGHT_PX * 0.85],
-      [WIDTH_PX * 0.28, HEIGHT_PX * 0.4],
+      [WIDTH_PX * 0.42, 200],
+      [WIDTH_PX * 0.58, 250],
+      [WIDTH_PX * 0.5, 160],
+      [TILE_SIZE * 7, HEIGHT_PX - TILE_SIZE * 5],
+      [WIDTH_PX - TILE_SIZE * 7, HEIGHT_PX - TILE_SIZE * 5],
+      [WIDTH_PX * 0.5, HEIGHT_PX - TILE_SIZE * 5],
     ];
     for (const [x, y] of sprigSpots) this.addDecor(x, y, DECOR_LEAF_SPRIG, 1.2);
 
-    this.addDecor(TILE_SIZE * 8, HEIGHT_PX - TILE_SIZE * 6, DECOR_STUMP);
-    this.addDecor(WIDTH_PX - TILE_SIZE * 9, HEIGHT_PX - TILE_SIZE * 7, DECOR_STUMP);
+    this.addDecor(POND.x + TILE_SIZE * 3, POND.y - TILE_SIZE * 2, DECOR_STUMP);
+    this.addDecor(WIDTH_PX - TILE_SIZE * 5, 200, DECOR_STUMP);
   }
 
   private buildBuildings(): void {
     for (const def of DOORS) {
-      const building = this.add.image(def.x, def.y - TILE_SIZE * 2, "outdoor-decoration/house-1-wood-base-blue");
-      building.setScale(1.5).setTint(def.tint).setDepth(3);
+      const building = this.add.image(def.x, def.y, def.asset).setDepth(3);
+      const scale = def.targetWidth / building.width;
+      building.setScale(scale);
+      // Every building's bottom edge lands on the same baseline (def.y + 64)
+      // regardless of its native art size, so buildings of very different
+      // heights (a windmill tower vs. a low shed) still sit on the same
+      // "ground line" instead of floating at different depths.
+      building.setY(def.y + 64 - building.displayHeight / 2);
       this.obstacles.add(building);
-      // Collision only covers the roof/walls (top half of the sprite) so the
-      // doorway at the bottom — and the interact zone in front of it — stays walkable.
+
+      // Collision covers the upper-middle mass of the sprite (not the full
+      // footprint) so the doorway — and the interact zone in front of it —
+      // stays walkable regardless of exactly how each building's art is
+      // laid out within its canvas.
       const body = building.body as Phaser.Physics.Arcade.StaticBody;
-      body.setSize(building.displayWidth * 0.8, building.displayHeight * 0.5);
-      body.setOffset(building.displayWidth * 0.1, building.displayHeight * 0.05);
+      body.setSize(building.displayWidth * 0.7, building.displayHeight * 0.45);
+      body.setOffset(building.displayWidth * 0.15, building.displayHeight * 0.05);
       body.updateCenter();
+
+      const topEdge = def.y + 64 - building.displayHeight;
 
       // Both labels float above the roof rather than one sitting on the
       // door artwork — "[E] Enter" used to overlap the house's own painted
       // door, which read as cluttered up close; stacking it just above the
       // name label keeps both legible against the sky instead of the busy
-      // building sprite underneath.
+      // building sprite underneath. Positioned relative to each building's
+      // own computed roofline (topEdge) rather than a fixed offset, since
+      // buildings now vary a lot in height.
       this.add
-        .text(def.x, def.y - TILE_SIZE * 4.6, "[E] Enter", {
+        .text(def.x, topEdge - 24, "[E] Enter", {
           fontFamily: "monospace",
           fontSize: "8px",
           color: "#d9a441",
@@ -251,7 +292,7 @@ export class LobbyScene extends Phaser.Scene {
         .setDepth(4);
 
       this.add
-        .text(def.x, def.y - TILE_SIZE * 3.6, def.label, {
+        .text(def.x, topEdge - 10, def.label, {
           fontFamily: "monospace",
           fontSize: "9px",
           color: "#f4e6c9",
