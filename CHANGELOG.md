@@ -43,29 +43,40 @@ development milestones, not semver releases.
 
 ### Lobby redesign: a real town square, paths, and street furniture
 
-- **The pond moved to the map's dead center** and gained a cobblestone
-  town square around it — previously it sat off in a corner near the
-  spawn point, more like leftover decoration than a town's actual
-  center.
-- **Every road in town is now cobblestone** (`tilesets/cobble-path`,
-  hand-picked from a 3x5 blob-autotile sheet after checking every cell
-  for stray dirt-background pixels — most cells in that kind of sheet
-  are edge/corner transition pieces, not a plain repeatable tile), not
-  the flat single-color dirt tile used before, so the whole road network
-  reads as new, not just the square at its center.
-- **The pond is bigger and actually curved** — swapped the old
+- **The pond moved to the map's dead center** and the town square around
+  it now fills the entire gap between the two building rows (18x12
+  tiles) — previously it sat off in a corner near the spawn point, more
+  like leftover decoration than a town's actual center.
+- **The whole road network — square included — is paved in
+  `tilesets/farmland-tile`**, a warm packed-dirt texture already proven
+  to tile cleanly (it's also the CEO Office/Meeting Room floor), not the
+  flat single-color path tile used before. An earlier pass here tried
+  cobblestone (hand-picked from a 3x5 blob-autotile sheet) for the
+  square alone, leaving the roads leading to it still the old flat
+  tile — replaced outright rather than kept as a second material, so
+  the whole town reads as one consistent, new surface.
+- **The pond is 2x bigger and actually curved** — swapped the old
   rectangle of flat water tiles for `props/pond-curved`, a single
   pre-composed 48x48 organic pond graphic discovered inside
   `tilesets/water-tile`'s source sheet (that sheet turns out to be a
   ready-made pond/island illustration, not a repeating tile; its opaque
   corner pixels are the exact same green as the grass tile, so it drops
-  onto the ground with no visible seam), scaled up 1.8x.
+  onto the ground with no visible seam), scaled up 3.6x. Every piece of
+  pond decor (lilypads, cattails, dock, ducks, flowers) and the four
+  corner benches scaled up to match.
 - Removed a decorative fence that read as a random jumble in the
   bottom-left corner — `props/fences` turned out to be a 4-piece
   tileset (post/rail/lattice/post) meant to be sliced into individual
   tiles and assembled, not a single sprite; rendering the whole sheet as
   one image (an earlier pass here did exactly that) shows all four
   disconnected pieces crammed together.
+- **Fixed the Hall of Fame windmill's sails, which weren't mounted on
+  the tower** — `Windmill.png`'s source file turned out to be the tower
+  and the sail assembly side by side, not pre-composited; rendering it
+  whole showed the sails as a disconnected chunk floating next to the
+  building instead of on it. Recomposited at the asset level (sails
+  layered onto the tower at their shared native Y-coordinate, then
+  trimmed) rather than worked around in scene code.
 - **Paths now lead to every building's door**, not just past it — a
   short spur connects the road to each doorstep, closing the 2-tile gap
   between the road and the building's base.
@@ -73,9 +84,9 @@ development milestones, not semver releases.
   sheet), two ducks, and more flowers ringing the shore, alongside the
   lilypads/cattails already added.
 - **Benches flank the pond on all four corners** of the town square, and
-  flickering lampposts furnish the plaza between the two building rows
-  — the lamppost is a genuine 6-frame animation (a flickering flame),
-  not a static prop.
+  flickering lampposts stand at its east/west entrances — the lamppost
+  is a genuine 6-frame animation (a flickering flame), not a static
+  prop.
 - **Two new tree varieties** (spruce, fruit) join the oaks near the
   plaza, each a middle frame cropped from a 3-frame growth-stage sheet.
 - Fixed a real bug found along the way: `generate-assets.mjs`'s `public/`

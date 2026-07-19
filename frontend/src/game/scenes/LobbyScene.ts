@@ -52,44 +52,54 @@ const DOORS: DoorDef[] = [
   { target: "MeetingRoomScene", label: "Meeting Room", x: (WIDTH_PX * 4) / 6, y: BACK_ROW_Y, asset: "props/buildings/church-red-front", targetWidth: 150 },
   { target: "BreakRoomScene", label: "Break Room", x: (WIDTH_PX * 5) / 6, y: BACK_ROW_Y, asset: "props/buildings/shed-base-red", targetWidth: 150 },
   { target: "SimulationLabScene", label: "Simulation Lab", x: (WIDTH_PX * 1) / 8, y: FRONT_ROW_Y, asset: "props/buildings/greenhouse-wood-front", targetWidth: 130 },
-  { target: "HallOfFameScene", label: "Hall of Fame", x: (WIDTH_PX * 3) / 8, y: FRONT_ROW_Y, asset: "props/buildings/windmill", targetWidth: 175 },
+  // windmill.png's source file turned out to be the tower and the sail
+  // assembly side by side, not pre-composited — the sails rendered as a
+  // disconnected chunk floating next to the tower instead of mounted on
+  // it. Fixed at the asset level: recomposited (sails layered onto the
+  // tower at their shared native Y-coordinate, then trimmed to content).
+  // New native size is 54x111 (was 128x112), hence the much narrower
+  // targetWidth here than its neighbors.
+  { target: "HallOfFameScene", label: "Hall of Fame", x: (WIDTH_PX * 3) / 8, y: FRONT_ROW_Y, asset: "props/buildings/windmill", targetWidth: 78 },
   { target: "TradingFloorScene", label: "Trading Floor", x: (WIDTH_PX * 5) / 8, y: FRONT_ROW_Y, asset: "props/buildings/house-5-limestone-base-blue", targetWidth: 190 },
   { target: "PerformanceCenterScene", label: "Performance Center", x: (WIDTH_PX * 7) / 8, y: FRONT_ROW_Y, asset: "props/buildings/barn-base-red", targetWidth: 165 },
 ];
 
-// The town square sits dead center — horizontally at the map's midpoint
-// (where the spawn spine already runs), vertically in the open band
-// between the back row's doorsteps (~y160) and the front row's road
-// (~y352). A cobblestone plaza (see buildTownSquare()) fills this
-// rectangle; the pond sits in the middle of it, like a fountain.
-const PLAZA_CENTER = { x: WIDTH_PX / 2, y: 264 };
-const PLAZA_COLS: [number, number] = [WIDTH_TILES / 2 - 6, WIDTH_TILES / 2 + 6]; // 12 tiles wide
-const PLAZA_ROWS: [number, number] = [13, 20]; // 8 tiles tall — clear of both rows' roads
+// The town square sits dead center, filling the entire open gap between
+// the back row's building baseline (tile row 10, y160 — see
+// buildBuildings()) and the front row's road (tile row 22, y352) — the
+// plaza's top and bottom edges land exactly on those, no leftover grass
+// strip. 18 tiles wide, comfortably clear of the nearest doors on either
+// row (Brain Room/Meeting Room on the back row, Hall of Fame/Trading
+// Floor on the front) with room to spare.
+const PLAZA_COLS: [number, number] = [WIDTH_TILES / 2 - 9, WIDTH_TILES / 2 + 9]; // 18 tiles wide
+const PLAZA_ROWS: [number, number] = [10, 22]; // 12 tiles tall, y160-352
+const PLAZA_CENTER = { x: WIDTH_PX / 2, y: (((PLAZA_ROWS[0] + PLAZA_ROWS[1]) / 2) * TILE_SIZE) };
 
-const NEWSPAPER_STAND = { x: PLAZA_COLS[1] * TILE_SIZE + TILE_SIZE * 6, y: PLAZA_CENTER.y };
+const NEWSPAPER_STAND = { x: PLAZA_COLS[1] * TILE_SIZE + TILE_SIZE * 3, y: PLAZA_CENTER.y };
 
 // The pond is a single pre-composed graphic (props/pond-curved, an organic
 // jagged-bank shape), not a rectangle of water tiles — see buildPond(). It's
 // centered on the plaza and scaled up from its native 48x48.
 const POND_CENTER = PLAZA_CENTER;
-const POND_SCALE = 1.8;
+const POND_SCALE = 3.6;
 
-// Benches flanking the pond on all four corners, inside the plaza.
+// Benches flanking the pond on all four corners, inside the plaza —
+// outside the pond's jagged bank (rough radius ~86px at this scale) but
+// inside the plaza's own edges (half-width 144px, half-height 96px).
 const BENCH_SPOTS: [number, number][] = [
-  [POND_CENTER.x - 75, POND_CENTER.y - 45],
-  [POND_CENTER.x + 75, POND_CENTER.y - 45],
-  [POND_CENTER.x - 75, POND_CENTER.y + 45],
-  [POND_CENTER.x + 75, POND_CENTER.y + 45],
+  [POND_CENTER.x - 115, POND_CENTER.y - 70],
+  [POND_CENTER.x + 115, POND_CENTER.y - 70],
+  [POND_CENTER.x - 115, POND_CENTER.y + 70],
+  [POND_CENTER.x + 115, POND_CENTER.y + 70],
 ];
 
-// Two lampposts per row, at the plaza-facing midpoints between doors (never
-// on a door's own x column, and never on the road's y — a lamppost sitting
-// on the walkway tile would block the path it's supposed to light).
+// Two lampposts flanking the square's east/west entrances, just outside
+// its paved edge (see buildTownSquare()) — not mid-gap between the two
+// rows like before, since the enlarged square now leaves no such gap on
+// the front-row side.
 const LAMPPOST_SPOTS: [number, number][] = [
-  [WIDTH_PX * 0.25, 145], // back row: between the road (ends y128) and the building base (y160)
-  [WIDTH_PX * 0.75, 145],
-  [WIDTH_PX * 0.25, 340], // front row: between the plaza and the road (starts y352)
-  [WIDTH_PX * 0.75, 340],
+  [PLAZA_COLS[0] * TILE_SIZE - 24, PLAZA_CENTER.y],
+  [PLAZA_COLS[1] * TILE_SIZE + 24, PLAZA_CENTER.y],
 ];
 
 // Extra tree variety near the plaza, on top of buildDecor()'s six corner oaks.
@@ -190,14 +200,16 @@ export class LobbyScene extends Phaser.Scene {
   }
 
   /**
-   * The road network — cobblestone throughout (tilesets/cobble-path, the
-   * same tile the town square uses), not the flat single-color dirt tile
-   * this used before. One walkway per row plus a vertical spine
-   * connecting the spawn point up through both rows and into the square.
+   * The road network — packed dirt (tilesets/farmland-tile, the same
+   * tile the town square uses), not the old flat single-color path tile.
+   * Already proven to tile cleanly since it's also used as the CEO
+   * Office/Meeting Room floor texture. One walkway per row plus a
+   * vertical spine connecting the spawn point up through both rows and
+   * into the square.
    */
   private buildPath(): void {
     const map = this.make.tilemap({ tileWidth: TILE_SIZE, tileHeight: TILE_SIZE, width: WIDTH_TILES, height: HEIGHT_TILES });
-    const tileset = map.addTilesetImage("tilesets/cobble-path", "tilesets/cobble-path", TILE_SIZE, TILE_SIZE, 0, 0);
+    const tileset = map.addTilesetImage("tilesets/farmland-tile", "tilesets/farmland-tile", TILE_SIZE, TILE_SIZE, 0, 0);
     if (!tileset) return;
     const layer = map.createBlankLayer("path", tileset, 0, 0);
     if (!layer) return;
@@ -238,7 +250,7 @@ export class LobbyScene extends Phaser.Scene {
     const cols = colEnd - colStart;
     const rows = rowEnd - rowStart;
     const map = this.make.tilemap({ tileWidth: TILE_SIZE, tileHeight: TILE_SIZE, width: cols, height: rows });
-    const tileset = map.addTilesetImage("tilesets/cobble-path", "tilesets/cobble-path", TILE_SIZE, TILE_SIZE, 0, 0);
+    const tileset = map.addTilesetImage("tilesets/farmland-tile", "tilesets/farmland-tile", TILE_SIZE, TILE_SIZE, 0, 0);
     if (!tileset) return;
     const layer = map.createBlankLayer("town-square", tileset, 0, 0);
     if (!layer) return;
@@ -331,19 +343,21 @@ export class LobbyScene extends Phaser.Scene {
       this.addDecor(def.x + 26, def.y + TILE_SIZE * 4.6, variant);
     });
 
+    // First two nudged clear of the now-much-larger town square (x:720-1008,
+    // y:160-352) — this is grass decor, not a plaza fixture.
     const sprigSpots: [number, number][] = [
-      [WIDTH_PX * 0.42, 200],
-      [WIDTH_PX * 0.58, 250],
-      [WIDTH_PX * 0.5, 160],
+      [PLAZA_COLS[0] * TILE_SIZE - 20, 200],
+      [PLAZA_COLS[1] * TILE_SIZE + 20, 250],
+      [WIDTH_PX * 0.5, 148],
       [TILE_SIZE * 7, HEIGHT_PX - TILE_SIZE * 5],
       [WIDTH_PX - TILE_SIZE * 7, HEIGHT_PX - TILE_SIZE * 5],
       [WIDTH_PX * 0.5, HEIGHT_PX - TILE_SIZE * 5],
     ];
     for (const [x, y] of sprigSpots) this.addDecor(x, y, DECOR_LEAF_SPRIG, 1.2);
 
-    // Clear of the town square's cobblestone (see buildTownSquare()) — this
-    // is grass decor, not a plaza fixture.
-    this.addDecor(POND_CENTER.x + TILE_SIZE * 3, POND_CENTER.y - TILE_SIZE * 5, DECOR_STUMP);
+    // Clear of the town square's paving (see buildTownSquare()) — this is
+    // grass decor, not a plaza fixture.
+    this.addDecor(WIDTH_PX * 0.5 - 220, PLAZA_ROWS[0] * TILE_SIZE - 20, DECOR_STUMP);
     this.addDecor(WIDTH_PX - TILE_SIZE * 5, 200, DECOR_STUMP);
   }
 
@@ -366,26 +380,28 @@ export class LobbyScene extends Phaser.Scene {
     const cy = POND_CENTER.y;
 
     // Lilypads sit inside the water; cattails and grass just outside the
-    // jagged bank (the scaled pond graphic's rough radius is ~38px).
-    playAnim(cx - 12, cy - 6, "animations/lillypad-green-anim", "bob", 1);
-    playAnim(cx + 10, cy + 8, "animations/lillypad-green-anim", "bob", 1);
-    playAnim(cx - 40, cy - 4, "animations/cattail-anim", "sway", 2);
-    playAnim(cx + 40, cy + 6, "animations/cattail-anim", "sway", 2);
-    playAnim(cx, cy - 42, "animations/grass-sway-anim", "sway", 2);
+    // jagged bank (the scaled pond graphic's rough radius is ~86px at
+    // POND_SCALE 3.6 — every offset here is 2x what it was before the
+    // pond doubled in size, to keep the same relative layout).
+    playAnim(cx - 24, cy - 12, "animations/lillypad-green-anim", "bob", 1);
+    playAnim(cx + 20, cy + 16, "animations/lillypad-green-anim", "bob", 1);
+    playAnim(cx - 80, cy - 8, "animations/cattail-anim", "sway", 2);
+    playAnim(cx + 80, cy + 12, "animations/cattail-anim", "sway", 2);
+    playAnim(cx, cy - 84, "animations/grass-sway-anim", "sway", 2);
 
     // Dock — cropped from the bridge-wood sheet, rotated to jut out from
     // the east bank into the water rather than span a gap.
-    this.add.image(cx + 34, cy + 20, "props/dock").setAngle(90).setScale(1.1).setDepth(1);
+    this.add.image(cx + 68, cy + 40, "props/dock").setAngle(90).setScale(1.6).setDepth(1);
 
     // Two ducks — one bobbing on the water, one preening on the bank.
-    this.add.image(cx - 22, cy + 18, "characters/animals/duck/duck-idle").setScale(0.85).setDepth(1);
-    this.add.image(cx + 14, cy - 22, "characters/animals/duck/duck-idle").setScale(0.85).setFlipX(true).setDepth(2);
+    this.add.image(cx - 44, cy + 36, "characters/animals/duck/duck-idle").setScale(1.2).setDepth(1);
+    this.add.image(cx + 28, cy - 44, "characters/animals/duck/duck-idle").setScale(1.2).setFlipX(true).setDepth(2);
 
     // Flowers ringing the shore, using the same decor tileset as the
     // building flower beds.
-    this.addDecor(cx - 4, cy - 50, DECOR_FLOWER_WHITE, 1.1);
-    this.addDecor(cx + 44, cy + 38, DECOR_FLOWER_YELLOW, 1.1);
-    this.addDecor(cx - 46, cy + 34, DECOR_FLOWER_RED, 1.1);
+    this.addDecor(cx - 8, cy - 100, DECOR_FLOWER_WHITE, 1.1);
+    this.addDecor(cx + 88, cy + 76, DECOR_FLOWER_YELLOW, 1.1);
+    this.addDecor(cx - 92, cy + 68, DECOR_FLOWER_RED, 1.1);
   }
 
   /** A previously-unused free-pack asset put to real use: one ambient chicken grazing near the Barn, not a placeholder — see chicken-idle's note in animation-config.json for why it's a cropped frame rather than the raw sheet. */
