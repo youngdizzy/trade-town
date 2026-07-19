@@ -47,15 +47,16 @@ development milestones, not semver releases.
   it now fills the entire gap between the two building rows (18x12
   tiles) — previously it sat off in a corner near the spawn point, more
   like leftover decoration than a town's actual center.
-- **The whole road network — square included — is paved in
-  `tilesets/wood-floor`**, a cool blue-grey square-tile pattern the user
-  hand-picked from an uploaded reference sheet. Went through two other
-  materials first: a hand-picked cobblestone cell (for the square alone,
-  leaving the roads still on the old flat tile) and then
-  `tilesets/farmland-tile` (a packed-dirt texture applied uniformly to
-  both roads and square) before landing here — replaced outright each
-  time rather than kept as a second material, so the whole town reads as
-  one consistent surface. Confirmed to tile with zero seams before use.
+- **The whole road network — square included — went through three
+  materials** before settling: a hand-picked cobblestone cell (square
+  only, roads still on the old flat tile), `tilesets/farmland-tile`
+  (packed-dirt, applied uniformly), then `tilesets/wood-floor`, a
+  blue-grey square-tile pattern the user hand-picked from an uploaded
+  reference sheet — replaced outright each time rather than kept as a
+  second material, so the whole town reads as one consistent surface.
+  Itself later superseded by `tilesets/dirt-path` — see the courtyard
+  redesign section below. Every candidate confirmed to tile with zero
+  seams before use.
 - **The pond is 2x bigger and actually curved** — swapped the old
   rectangle of flat water tiles for `props/pond-curved`, a single
   pre-composed 48x48 organic pond graphic discovered inside
@@ -106,6 +107,51 @@ development milestones, not semver releases.
   earlier folder reorg, since the sync only copied additively and never
   pruned; confirmed the fix (wipe-then-copy, from the prior changelog
   entry) is holding at the correct count through this round of changes.
+
+### Courtyard redesign, round two: hedges, fountain, market stalls, and a denser village cluster
+
+Matched a reference screenshot of a similarly-themed HQ-town layout —
+dense building cluster, hedge-lined courtyard, dirt path, fountain,
+market stalls — rather than TradeTown's original evenly-spaced rows.
+
+- **All nine buildings pulled in toward the map's center third**, rather
+  than spread edge-to-edge across the full 1728px width (back row span
+  went from 67% of the map width to 46%, front row from 75% to 49%).
+  CEO Office anchors the back row at dead center, the same "hero
+  building facing the square" role the reference's Command Center
+  plays. Freed up roughly 400px of park margin on both sides that used
+  to be empty grass past the corner trees — now home to the fountains
+  and extra tree variety (see below).
+- **The road network is paved in `tilesets/dirt-path`**, a flat
+  warm-tan tile with a faint speckle mark, cropped from the premium
+  pack's `FarmLand_Tile.png` (a clean interior cell of an otherwise
+  blob-shaped autotile sheet) — superseding `tilesets/wood-floor` to
+  match the reference's dirt-path square.
+- **A low hedge wall borders the square's east/west edges**
+  (`props/hedge-tiles`, a 4x4 premium-pack sheet), with a 2-tile gateway
+  at each existing lamppost rather than the hedge running straight
+  through them. Walk-blocking like the benches and lampposts, not
+  decoration you phase through.
+- **Two fountains flank the courtyard** in the newly-freed park margin —
+  a flat stone basin on one side, a taller spouting tier on the other
+  (both frames of one `props/fountain` sheet).
+- **Two market stalls (red/blue striped awnings)** sit outside Trading
+  Floor's entrance, echoing the reference's stall row outside its
+  Armory.
+- **The pond's dock is now a proper ramp, not a sideways plank** — the
+  same `props/dock` graphic, previously rotated 90° to jut off the east
+  bank, now sits unrotated on the south bank (its native portrait shape
+  already reads as a ramp) running from shore down into the water, with
+  a small rowboat (`props/boat`) resting just off its end.
+- Caught and fixed a placement bug from the rearrange itself: Hall of
+  Fame and Trading Floor's first-pass positions landed almost exactly on
+  the new hedge/lamppost line, and the spruce tree's original ±260
+  symmetric offset landed inside Hall of Fame's new footprint, half-
+  hiding it behind the roof. Both back-row buildings (which sit above
+  the plaza's top edge) tolerate x-overlap with the plaza fine, but
+  front-row buildings (which sit inside the plaza's own vertical span at
+  y=336) can't — moved Hall of Fame, Trading Floor, and the extra tree
+  spots clear once this was caught in a live screenshot pass.
 
 ### Nine distinct agent character sprites
 

@@ -51,19 +51,25 @@ interface DoorDef {
   doorOffsetX?: number;
 }
 
-// Two staggered rows rather than one straight line — the back row holds the
-// original six-room roster's buildings, the front row the v0.5/v0.6 rooms,
-// offset horizontally so the courtyard reads as a small village rather than
-// a row of shopfronts. Every building is a distinct piece from the Cute
-// Fantasy premium pack's Unique_Buildings set (or a named house variant),
-// not the same sprite re-tinted nine times.
+// Two staggered rows, clustered toward the map's center third rather than
+// spread edge-to-edge — a reference screenshot of a similar HQ-town layout
+// (dense building cluster, hedge-lined courtyard, park margins) called for
+// a tighter village footprint than the original evenly-spaced rows. CEO
+// Office anchors the back row at dead center, the same "hero building
+// facing the square" role the reference's Command Center plays; every
+// other position is spaced out symmetrically from there with enough gap
+// for each building's targetWidth. The ~400px margins this frees up on
+// both sides (unused before) now hold the hedge/fountain/market-stall
+// accents — see buildHedges()/buildCourtyardAccents(). Every building is a
+// distinct piece from the Cute Fantasy premium pack's Unique_Buildings set
+// (or a named house variant), not the same sprite re-tinted nine times.
 const DOORS: DoorDef[] = [
-  { target: "ScoutOfficeScene", label: "Scout Office", x: (WIDTH_PX * 1) / 6, y: BACK_ROW_Y, asset: "props/buildings/fisherman-house-base-blue", targetWidth: 150, doorOffsetX: -9 },
-  { target: "BrainRoomScene", label: "Brain Room", x: (WIDTH_PX * 2) / 6, y: BACK_ROW_Y, asset: "props/buildings/blacksmith-house-blue", targetWidth: 150, doorOffsetX: -43 },
-  { target: "CeoOfficeScene", label: "CEO Office", x: (WIDTH_PX * 3) / 6, y: BACK_ROW_Y, asset: "props/buildings/inn-black", targetWidth: 170 },
-  { target: "MeetingRoomScene", label: "Meeting Room", x: (WIDTH_PX * 4) / 6, y: BACK_ROW_Y, asset: "props/buildings/church-red-front", targetWidth: 150 },
-  { target: "BreakRoomScene", label: "Break Room", x: (WIDTH_PX * 5) / 6, y: BACK_ROW_Y, asset: "props/buildings/shed-base-red", targetWidth: 150, doorOffsetX: -9 },
-  { target: "SimulationLabScene", label: "Simulation Lab", x: (WIDTH_PX * 1) / 8, y: FRONT_ROW_Y, asset: "props/buildings/greenhouse-wood-front", targetWidth: 130 },
+  { target: "ScoutOfficeScene", label: "Scout Office", x: 464, y: BACK_ROW_Y, asset: "props/buildings/fisherman-house-base-blue", targetWidth: 150, doorOffsetX: -9 },
+  { target: "BrainRoomScene", label: "Brain Room", x: 664, y: BACK_ROW_Y, asset: "props/buildings/blacksmith-house-blue", targetWidth: 150, doorOffsetX: -43 },
+  { target: "CeoOfficeScene", label: "CEO Office", x: WIDTH_PX / 2, y: BACK_ROW_Y, asset: "props/buildings/inn-black", targetWidth: 170 },
+  { target: "MeetingRoomScene", label: "Meeting Room", x: 1064, y: BACK_ROW_Y, asset: "props/buildings/church-red-front", targetWidth: 150 },
+  { target: "BreakRoomScene", label: "Break Room", x: 1264, y: BACK_ROW_Y, asset: "props/buildings/shed-base-red", targetWidth: 150, doorOffsetX: -9 },
+  { target: "SimulationLabScene", label: "Simulation Lab", x: 330, y: FRONT_ROW_Y, asset: "props/buildings/greenhouse-wood-front", targetWidth: 130 },
   // windmill.png's source file turned out to be the tower and the sail
   // assembly side by side, not pre-composited — the sails rendered as a
   // disconnected chunk floating next to the tower instead of mounted on
@@ -71,9 +77,16 @@ const DOORS: DoorDef[] = [
   // tower at their shared native Y-coordinate, then trimmed to content).
   // New native size is 54x111 (was 128x112), hence the much narrower
   // targetWidth here than its neighbors.
-  { target: "HallOfFameScene", label: "Hall of Fame", x: (WIDTH_PX * 3) / 8, y: FRONT_ROW_Y, asset: "props/buildings/windmill", targetWidth: 78 },
-  { target: "TradingFloorScene", label: "Trading Floor", x: (WIDTH_PX * 5) / 8, y: FRONT_ROW_Y, asset: "props/buildings/house-5-limestone-base-blue", targetWidth: 190 },
-  { target: "PerformanceCenterScene", label: "Performance Center", x: (WIDTH_PX * 7) / 8, y: FRONT_ROW_Y, asset: "props/buildings/barn-base-red", targetWidth: 165 },
+  // Hall of Fame and Trading Floor sit at y=336, inside the plaza's own
+  // vertical span (160-352) by design — but that means, unlike the back
+  // row, they can visually collide with the hedge/lamppost pair flanking
+  // the plaza's east/west edges if placed too close. Kept clear of both
+  // (lamppost sits at PLAZA_COLS[0]*16-24 / PLAZA_COLS[1]*16+24 = 696/1032)
+  // with a comfortable margin, rather than hugging the square like the
+  // first pass here did.
+  { target: "HallOfFameScene", label: "Hall of Fame", x: 580, y: FRONT_ROW_Y, asset: "props/buildings/windmill", targetWidth: 78 },
+  { target: "TradingFloorScene", label: "Trading Floor", x: 1180, y: FRONT_ROW_Y, asset: "props/buildings/house-5-limestone-base-blue", targetWidth: 190 },
+  { target: "PerformanceCenterScene", label: "Performance Center", x: 1430, y: FRONT_ROW_Y, asset: "props/buildings/barn-base-red", targetWidth: 165 },
 ];
 
 // The town square sits dead center, filling the entire open gap between
@@ -114,10 +127,43 @@ const LAMPPOST_SPOTS: [number, number][] = [
   [PLAZA_COLS[1] * TILE_SIZE + 24, PLAZA_CENTER.y],
 ];
 
-// Extra tree variety near the plaza, on top of buildDecor()'s six corner oaks.
+// Extra tree variety near the plaza, on top of buildDecor()'s six corner
+// oaks. Kept clear of Hall of Fame (x:541-619) and Trading Floor
+// (x:1085-1275) — the original symmetric ±260 offsets landed inside Hall
+// of Fame's footprint once the front row's buildings moved closer to the
+// plaza (see DOORS' comment), half-hiding the spruce tree behind its roof.
 const EXTRA_TREE_SPOTS: [number, number, string][] = [
-  [WIDTH_PX * 0.5 - 260, 250, "props/small-spruce-tree"],
-  [WIDTH_PX * 0.5 + 260, 250, "props/small-fruit-tree"],
+  [500, 250, "props/small-spruce-tree"],
+  [1310, 250, "props/small-fruit-tree"],
+];
+
+// A low hedge border tracing the square's east/west edges — see
+// buildHedges(). props/hedge-tiles' narrow column-0 pieces: frame 0 = top
+// cap, 4 = fill, 12 = bottom cap (see animation-config.json). Two rows are
+// skipped at the plaza's vertical midpoint on each side, leaving a gateway
+// where the existing lamppost already marks the entrance rather than
+// having the hedge run straight through it.
+const HEDGE_CAP_TOP = 0;
+const HEDGE_FILL = 4;
+const HEDGE_CAP_BOTTOM = 12;
+const HEDGE_GATE_ROWS = [5, 6];
+
+// Fountains flanking the courtyard out in the park margin the tighter
+// building cluster freed up (see DOORS' comment) — a flat stone basin on
+// one side, the taller spouting tier on the other (props/fountain frames
+// 0/1), echoing a reference screenshot's courtyard fountain.
+const FOUNTAIN_SPOTS: [number, number, number][] = [
+  [200, 150, 1],
+  [WIDTH_PX - 200, 150, 0],
+];
+
+// Market stalls south of Trading Floor's entrance — echoes the reference
+// screenshot's stall row outside its Armory building. props/market-stalls
+// frames are 4 color variants (red/green/blue/orange).
+const TRADING_FLOOR_DOOR = DOORS.find((d) => d.target === "TradingFloorScene")!;
+const MARKET_STALL_SPOTS: [number, number, number][] = [
+  [TRADING_FLOOR_DOOR.x - 55, TRADING_FLOOR_DOOR.y + 90, 0],
+  [TRADING_FLOOR_DOOR.x - 5, TRADING_FLOOR_DOOR.y + 90, 2],
 ];
 
 // Frame indices into the 7-column "props/outdoor-decor-free"
@@ -163,6 +209,8 @@ export class LobbyScene extends Phaser.Scene {
     this.buildAmbientAnimals();
     this.buildBenches();
     this.buildLampposts();
+    this.buildHedges();
+    this.buildCourtyardAccents();
     this.buildNewspaperStand();
 
     const spawnX = data?.spawnX ?? WIDTH_PX / 2;
@@ -212,15 +260,14 @@ export class LobbyScene extends Phaser.Scene {
   }
 
   /**
-   * The road network — a cool blue-grey square-tile pattern
-   * (tilesets/wood-floor, the same tile the town square uses), cropped
-   * from a user-supplied reference sheet and confirmed to tile with zero
-   * seams. One walkway per row plus a vertical spine connecting the
-   * spawn point up through both rows and into the square.
+   * The road network — a flat warm-tan dirt path (tilesets/dirt-path, the
+   * same tile the town square uses), matching a reference screenshot's
+   * town-square look. One walkway per row plus a vertical spine connecting
+   * the spawn point up through both rows and into the square.
    */
   private buildPath(): void {
     const map = this.make.tilemap({ tileWidth: TILE_SIZE, tileHeight: TILE_SIZE, width: WIDTH_TILES, height: HEIGHT_TILES });
-    const tileset = map.addTilesetImage("tilesets/wood-floor", "tilesets/wood-floor", TILE_SIZE, TILE_SIZE, 0, 0);
+    const tileset = map.addTilesetImage("tilesets/dirt-path", "tilesets/dirt-path", TILE_SIZE, TILE_SIZE, 0, 0);
     if (!tileset) return;
     const layer = map.createBlankLayer("path", tileset, 0, 0);
     if (!layer) return;
@@ -274,7 +321,7 @@ export class LobbyScene extends Phaser.Scene {
     const cols = colEnd - colStart;
     const rows = rowEnd - rowStart;
     const map = this.make.tilemap({ tileWidth: TILE_SIZE, tileHeight: TILE_SIZE, width: cols, height: rows });
-    const tileset = map.addTilesetImage("tilesets/wood-floor", "tilesets/wood-floor", TILE_SIZE, TILE_SIZE, 0, 0);
+    const tileset = map.addTilesetImage("tilesets/dirt-path", "tilesets/dirt-path", TILE_SIZE, TILE_SIZE, 0, 0);
     if (!tileset) return;
     const layer = map.createBlankLayer("town-square", tileset, 0, 0);
     if (!layer) return;
@@ -389,13 +436,13 @@ export class LobbyScene extends Phaser.Scene {
   /**
    * Animated pond life from the Cute Fantasy premium pack — lilypads
    * bobbing mid-water, cattails and a grass tuft swaying at the bank, a
-   * small wooden dock jutting off the east edge, two ducks, and flowers
-   * ringing the shore. All positioned relative to POND_CENTER now that
-   * the pond itself is a single scaled image rather than a tile
+   * south-bank dock ramp with a rowboat resting off its end, two ducks,
+   * and flowers ringing the shore. All positioned relative to POND_CENTER
+   * now that the pond itself is a single scaled image rather than a tile
    * rectangle. Walk-over only, no collision — the pond graphic itself
-   * has none either (pre-existing; out of scope here), so a dock or duck
-   * standing partly "in" the water doesn't block anything that wasn't
-   * already walkable.
+   * has none either (pre-existing; out of scope here), so the dock, boat,
+   * or a duck standing partly "in" the water doesn't block anything that
+   * wasn't already walkable.
    */
   private buildPondDecor(): void {
     const playAnim = (x: number, y: number, assetId: string, animName: string, depth: number): void => {
@@ -414,9 +461,14 @@ export class LobbyScene extends Phaser.Scene {
     playAnim(cx + 80, cy + 12, "animations/cattail-anim", "sway", 2);
     playAnim(cx, cy - 84, "animations/grass-sway-anim", "sway", 2);
 
-    // Dock — cropped from the bridge-wood sheet, rotated to jut out from
-    // the east bank into the water rather than span a gap.
-    this.add.image(cx + 68, cy + 40, "props/dock").setAngle(90).setScale(1.6).setDepth(1);
+    // Dock — cropped from the bridge-wood sheet, left unrotated (its
+    // native portrait shape already reads as a ramp) so it runs from the
+    // south bank down into the water like a boat launch, matching a
+    // reference screenshot's pond, rather than jutting out sideways.
+    this.add.image(cx, cy + 80, "props/dock").setScale(1.4).setDepth(1);
+
+    // A small rowboat resting in the water just off the end of the dock.
+    this.add.image(cx + 25, cy + 48, "props/boat").setScale(1.1).setDepth(1);
 
     // Two ducks — one bobbing on the water, one preening on the bank.
     this.add.image(cx - 44, cy + 36, "characters/animals/duck/duck-idle").setScale(1.2).setDepth(1);
@@ -458,6 +510,62 @@ export class LobbyScene extends Phaser.Scene {
       const body = lamp.body as Phaser.Physics.Arcade.StaticBody;
       body.setSize(lamp.displayWidth * 0.3, lamp.displayHeight * 0.2);
       body.setOffset(lamp.displayWidth * 0.35, lamp.displayHeight * 0.75);
+    }
+  }
+
+  /**
+   * A low hedge wall along the square's east/west edges, with a 2-tile
+   * gateway at each lamppost so the border doesn't just run straight
+   * through them. Walk-blocking, like a real garden hedge — a thin
+   * collision box per tile rather than one for the whole run, so the
+   * gateway gap is actually walkable and not blocked by a neighboring
+   * tile's oversized body.
+   */
+  private buildHedges(): void {
+    const [colStart, colEnd] = PLAZA_COLS;
+    const [rowStart, rowEnd] = PLAZA_ROWS;
+    const rows = rowEnd - rowStart;
+    const xs = [colStart * TILE_SIZE - TILE_SIZE / 2, colEnd * TILE_SIZE + TILE_SIZE / 2];
+    for (const x of xs) {
+      for (let i = 0; i < rows; i++) {
+        if (HEDGE_GATE_ROWS.includes(i)) continue;
+        const beforeGate = i === HEDGE_GATE_ROWS[0]! - 1;
+        const afterGate = i === HEDGE_GATE_ROWS[HEDGE_GATE_ROWS.length - 1]! + 1;
+        let frame = HEDGE_FILL;
+        if (i === 0 || afterGate) frame = HEDGE_CAP_TOP;
+        else if (i === rows - 1 || beforeGate) frame = HEDGE_CAP_BOTTOM;
+
+        const y = rowStart * TILE_SIZE + i * TILE_SIZE + TILE_SIZE / 2;
+        const hedge = this.add.image(x, y, "props/hedge-tiles", frame).setDepth(2);
+        this.obstacles.add(hedge);
+        const body = hedge.body as Phaser.Physics.Arcade.StaticBody;
+        body.setSize(hedge.displayWidth * 0.8, hedge.displayHeight * 0.8);
+        body.setOffset(hedge.displayWidth * 0.1, hedge.displayHeight * 0.1);
+      }
+    }
+  }
+
+  /**
+   * Fountains in the park margin the tighter building cluster freed up,
+   * and a couple of market stalls outside Trading Floor — courtyard
+   * accents echoing a reference screenshot's HQ-town layout. Both are
+   * solid props like the benches, not walk-through decor.
+   */
+  private buildCourtyardAccents(): void {
+    for (const [x, y, frame] of FOUNTAIN_SPOTS) {
+      const fountain = this.add.image(x, y, "props/fountain", frame).setDepth(2);
+      this.obstacles.add(fountain);
+      const body = fountain.body as Phaser.Physics.Arcade.StaticBody;
+      body.setSize(fountain.displayWidth * 0.75, fountain.displayHeight * 0.5);
+      body.setOffset(fountain.displayWidth * 0.125, fountain.displayHeight * 0.4);
+    }
+
+    for (const [x, y, frame] of MARKET_STALL_SPOTS) {
+      const stall = this.add.image(x, y, "props/market-stalls", frame).setDepth(2);
+      this.obstacles.add(stall);
+      const body = stall.body as Phaser.Physics.Arcade.StaticBody;
+      body.setSize(stall.displayWidth * 0.85, stall.displayHeight * 0.4);
+      body.setOffset(stall.displayWidth * 0.075, stall.displayHeight * 0.5);
     }
   }
 

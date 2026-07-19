@@ -180,9 +180,9 @@
   "tilesets/beach-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
   "tilesets/cliff-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
   "tilesets/farmland-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
-  "tilesets/wood-floor": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16, "_comment": "User-picked cell (col 1, row 5) from an uploaded Wood_Floor_Tiles.png reference sheet — a cool blue-grey square-tile pattern. Confirmed to tile with zero seams before use." },
   "tilesets/path-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
   "tilesets/water-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
+  "tilesets/dirt-path": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16, "_comment": "Cute Fantasy premium pack — FarmLand_Tile.png's col4/row3 cell, a flat warm-tan interior tile with a faint speckle mark. Superseded tilesets/wood-floor when the user asked to match a reference screenshot's dirt-path town square; confirmed to tile with zero seams before use." },
 
   "props/outdoor-decor-free": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
   "props/fences": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
@@ -197,6 +197,10 @@
   "props/small-fruit-tree": { "kind": "static", "_comment": "Middle frame cropped from a 3-frame sheet, same reasoning as small-spruce-tree." },
   "props/dock": { "kind": "static", "_comment": "Cropped from bridge-wood.png's middle bridge segment — used as a small pond dock, not a river crossing." },
   "props/bench": { "kind": "static" },
+  "props/hedge-tiles": { "kind": "spritesheet", "frameWidth": 16, "frameHeight": 16, "_comment": "Cute Fantasy premium pack, 4x4 grid (16 frames, row-major). Col 0 is a narrow vertical hedge column (frame 0 = top cap, 4/8 = fill, 12 = bottom cap); cols 1-3 are full-width hedge block variants with the same cap/fill/fill/cap pattern. Col-0 pieces are used unrotated for vertical hedge runs and rotated 90° for horizontal ones." },
+  "props/fountain": { "kind": "spritesheet", "frameWidth": 32, "frameHeight": 40, "_comment": "Cute Fantasy premium pack. Frame 0 is a flat stone basin pool, frame 1 a tiered spouting fountain — clean 40px split confirmed against the source sheet's transparent gap." },
+  "props/market-stalls": { "kind": "spritesheet", "frameWidth": 48, "frameHeight": 48, "_comment": "Cute Fantasy premium pack, 4 color variants (red/green/blue/orange striped awnings) frame-indexed 0-3." },
+  "props/boat": { "kind": "static", "_comment": "Small rowboat sitting in shallow water — floats near the pond dock." },
 
   "props/buildings/fisherman-house-base-blue": { "kind": "static" },
   "props/buildings/blacksmith-house-blue": { "kind": "static" },
