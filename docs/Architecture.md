@@ -163,7 +163,7 @@ off the same interact press.
 
 ## Sprite sheet notes
 
-`Player.png` (`assets/cute-fantasy-rpg/Player/`) only has **6 real
+`Player.png` (`assets/cute-fantasy-rpg/characters/player/`) only has **6 real
 movement rows** (0–5: idle-down, walk-down, idle-up, idle-left, walk-left,
 walk-up), verified by pixel-level inspection of every row. Rows 6–8 are
 attack/action poses (sword frames) and row 9 is a faint/death pose — not
@@ -173,7 +173,7 @@ are produced by playing the `-left` animation with the sprite horizontally
 flipped (`AnimatedActor.playAnim()` maps `facing === "right"` to the
 `-left` animation key and calls `sprite.setFlipX(true)`), which is the
 standard Phaser approach for asset packs that only ship one side
-direction. `frontend/src/assets/animation-config.json`'s `player/player`
+direction. `frontend/src/assets/animation-config.json`'s `characters/player/player`
 entry documents the same thing inline. An earlier, incorrect 8-row mapping
 (with fabricated `idle-right`/`walk-right` entries pointing at the
 attack-pose rows) shipped briefly and produced a visible glitch — a sword
@@ -544,17 +544,32 @@ the likely outcome, not the exception.
 ## Asset pipeline
 
 `scripts/generate-assets.mjs` walks `assets/cute-fantasy-rpg/` (the single
-source of truth for art), copies every PNG into `frontend/public/assets/`,
-reads each file's real dimensions from its PNG header, and writes
+source of truth for art), wipes and rebuilds a mirror of it under
+`frontend/public/assets/` (a full re-sync, not an additive copy — a
+renamed or removed source file doesn't leave an orphaned stale copy
+behind), reads each file's real dimensions from its PNG header, and writes
 `frontend/src/assets/manifest.generated.json`. Frame-layout metadata that
 can't be inferred from pixel data (which row is "walk-down", tile grid
 size, …) lives in the hand-authored
 `frontend/src/assets/animation-config.json` and is merged in by id. Nothing
 in game code ever references a file path — everything goes through
-`AssetLoader.get(id)`. Adding a new sprite to the pack and re-running
-`npm run assets:sync` (wired into `predev`/`prebuild`) makes it available
-with zero code changes; only *animating* it requires an entry in
-`animation-config.json`.
+`AssetLoader.get(id)`, where the id mirrors the source folder path (e.g.
+`props/buildings/windmill`, `characters/player/player`). Adding a new
+sprite to the pack and re-running `npm run assets:sync` (wired into
+`predev`/`prebuild`) makes it available with zero code changes; only
+*animating* it requires an entry in `animation-config.json`.
+
+Art is organized into five top-level folders, each mapped to a manifest
+category by `categoryFromRelPath()`: `tilesets/` (ground tile sheets),
+`characters/{player,enemies,animals}/` (anything with a movement/pose
+sheet), `props/` (static world objects, including `buildings/`),
+`animations/` (small looping decorative sprites — pond life, swaying
+grass), and `ui/` (icon sheets, currently staged for future use rather
+than drawn anywhere). Curated deliberately, not dumped wholesale — the
+premium Cute Fantasy pack ships hundreds of files (mounts, crops, cave
+tiles, weather effects, …) that don't fit TradeTown's office-simulation
+setting; only pieces that are actually used or clearly reusable get
+imported, keeping the served bundle from bloating with dead weight.
 
 ## Production hardening notes
 

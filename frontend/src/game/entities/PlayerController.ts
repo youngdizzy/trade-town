@@ -9,7 +9,7 @@ export class PlayerController extends AnimatedActor {
   private input: InputManager;
 
   constructor(scene: Phaser.Scene, x: number, y: number, facing: Direction = "down") {
-    super(scene, x, y, "player/player", "You");
+    super(scene, x, y, "characters/player/player", "You");
     this.facing = facing;
     this.input = new InputManager(scene);
     this.playAnim(false);

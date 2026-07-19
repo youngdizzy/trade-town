@@ -41,7 +41,7 @@ export class SimulationLabScene extends RoomScene {
   protected sceneKey: SceneId = "SimulationLabScene";
   protected widthTiles = 17;
   protected heightTiles = 11;
-  protected floorAsset = "tiles/cliff-tile";
+  protected floorAsset = "tilesets/cliff-tile";
   protected roomLabel = "Simulation Lab";
   protected agentLocation: AgentLocation | null = "simulation-lab";
 

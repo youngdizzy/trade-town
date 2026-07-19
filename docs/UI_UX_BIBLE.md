@@ -89,12 +89,12 @@ between the two today; see `KNOWN_LIMITATIONS.md`).
   stays crisp at any zoom level. Any new Phaser game instance or texture
   must inherit this setting, never override it locally.
 - **No new art assets without a licensing check.** The pack's license
-  terms live in `assets/cute-fantasy-rpg/read_me.txt`, and `README.md`
+  terms live in `assets/cute-fantasy-rpg/read_me.txt` (free pack) and `PREMIUM_PACK_LICENSE.txt` (premium pack), and `README.md`
   carries a license note. A new visual need should first be satisfied by
   recoloring/retinting an existing asset (see NPC tint/badge strategy
   below) before adding new art.
 - **Tint + badge, not new sprites, for character variety.** Every agent
-  and the player share the exact same `player/player` sprite sheet
+  and the player share the exact same `characters/player/player` sprite sheet
   (`AgentNPC.ts`). Distinctness comes from `sprite.setTint(profile.tint)`
   plus a small always-visible emoji/glyph badge rendered above the head
   (`AgentProfiles.ts`'s `badge` field) — chosen specifically because the

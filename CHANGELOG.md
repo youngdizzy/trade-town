@@ -3,6 +3,44 @@
 All notable changes to TradeTown are documented here. Versions are
 development milestones, not semver releases.
 
+## Unreleased
+
+### Changed
+
+- **Asset pipeline reorganization** — `assets/cute-fantasy-rpg/` restructured
+  from pack-native folders (`Tiles/`, `Player/`, `Enemies/`, `Animals/`,
+  `Outdoor decoration/`) into five purpose-named folders: `tilesets/`,
+  `characters/{player,enemies,animals}/`, `props/` (incl. `buildings/`),
+  `animations/`, and `ui/`. `scripts/generate-assets.mjs`'s categorization
+  and every asset id referenced in scene/entity code were updated to match
+  (`tiles/grass-middle` → `tilesets/grass-middle`, `player/player` →
+  `characters/player/player`, `outdoor-decoration/buildings/*` →
+  `props/buildings/*`, etc.) — see `docs/Architecture.md#asset-pipeline`.
+- **`generate-assets.mjs` now does a true sync**, wiping
+  `frontend/public/assets/` before re-copying instead of copying
+  additively — a renamed or removed source file no longer leaves a stale
+  orphaned copy served alongside the current one.
+- Consolidated the premium-pack license note (previously nested inside
+  `Outdoor decoration/Buildings/`) into a single root-level
+  `assets/cute-fantasy-rpg/PREMIUM_PACK_LICENSE.txt` covering all
+  premium-sourced files.
+
+### Added
+
+- **Curated premium-pack imports**: `animations/` (lilypad, cattail, and
+  grass-sway sprites, now animated around the Lobby's pond) and `ui/`
+  (two icon sheets, staged for future in-game UI use, not yet drawn
+  anywhere). Deliberately curated, not a wholesale import — the premium
+  pack ships hundreds of files (mounts, crops, cave tiles, weather
+  effects, …) outside TradeTown's office-simulation setting.
+- **One ambient chicken** near the Lobby's Barn (Performance Center) —
+  the free pack's animal sprites had been discovered and manifest-
+  registered since v0.1 but never actually rendered anywhere. Caught in
+  the process: `characters/animals/chicken/chicken.png` is a 2x2 grid of
+  4 poses, not a single sprite as its `"kind": "static"` entry assumed —
+  cropped a clean single frame (`chicken-idle`) rather than render the
+  raw sheet.
+
 ## v0.6
 
 ### Added

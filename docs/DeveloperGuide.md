@@ -27,17 +27,32 @@ mypy app/
 
 ## Adding a new sprite/tile to the pack
 
-1. Drop the `.png` anywhere under `assets/cute-fantasy-rpg/`.
+1. Drop the `.png` into the folder under `assets/cute-fantasy-rpg/` that
+   matches what it is: `tilesets/` (ground tile sheets), `characters/player/`,
+   `characters/enemies/`, or `characters/animals/<name>/` (anything with a
+   movement/pose sheet), `props/` (static world objects — buildings go in
+   `props/buildings/`), `animations/` (small looping decorative sprites),
+   or `ui/` (icon sheets).
 2. Run `npm run assets:sync` (from `frontend/`) — it's discovered automatically,
-   copied into `frontend/public/assets/`, and given an id in
-   `manifest.generated.json` based on its path (e.g.
-   `Outdoor decoration/Well.png` → `outdoor-decoration/well`).
-3. If it's a directional character sheet or needs specific animation rows,
-   add an entry to `frontend/src/assets/animation-config.json` keyed by that
-   same id (see the existing `player/player` entry for the shape). Static
+   the `frontend/public/assets/` mirror is wiped and rebuilt from scratch
+   (so a rename never leaves a stale orphaned copy behind), and it's given
+   an id in `manifest.generated.json` based on its path (e.g.
+   `props/Well.png` → `props/well`).
+3. If it's a directional character sheet, or a spritesheet that needs
+   specific animation rows, add an entry to
+   `frontend/src/assets/animation-config.json` keyed by that same id (see
+   the existing `characters/player/player` entry for the shape). Static
    images and single-tile ground tiles need no entry — they default to
    `"kind": "static"`.
-4. Reference it from game code via `AssetLoader.get("your/asset/id")` —
+4. **Before wiring a multi-frame sheet into a scene, look at it first** —
+   several packs ship pose/variant grids that read as a single static image
+   at a glance (e.g. `characters/animals/chicken/chicken.png` is a 2x2 grid
+   of 4 poses, not one sprite). Crop the frame you actually want into its
+   own PNG (see `characters/animals/chicken/Chicken_Idle.png` or
+   `props/buildings/Church_Red_Front.png` for examples) rather than
+   rendering the raw sheet — it'll otherwise show every frame crammed into
+   one image.
+5. Reference it from game code via `AssetLoader.get("your/asset/id")` —
    never hardcode a path.
 
 ## Adding a new interior room

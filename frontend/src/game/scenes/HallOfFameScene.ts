@@ -28,7 +28,7 @@ export class HallOfFameScene extends RoomScene {
   protected sceneKey: SceneId = "HallOfFameScene";
   protected widthTiles = 17;
   protected heightTiles = 11;
-  protected floorAsset = "tiles/path-tile";
+  protected floorAsset = "tilesets/path-tile";
   protected roomLabel = "Hall of Fame";
   protected agentLocation: AgentLocation | null = "hall-of-fame";
 

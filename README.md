@@ -117,25 +117,34 @@ docs/                      Architecture, folder structure, developer guide
 - [`docs/VersionHistory.md`](docs/VersionHistory.md) — version-by-version scope and roadmap
 - [`CHANGELOG.md`](CHANGELOG.md) — what changed each version
 
-## Asset license
+## Assets
 
-The art in `assets/cute-fantasy-rpg/` comes from two versions of the same
-"Cute Fantasy" pack, each under its own license:
+Art is organized under `assets/cute-fantasy-rpg/` into five folders —
+`tilesets/`, `characters/` (`player/`, `enemies/`, `animals/`), `props/`
+(including `buildings/`), `animations/`, and `ui/` — discovered
+automatically by `scripts/generate-assets.mjs` into a generated manifest;
+see [`docs/Architecture.md`](docs/Architecture.md#asset-pipeline) for how
+the pipeline works and [`docs/DeveloperGuide.md`](docs/DeveloperGuide.md)
+for how to add a new sprite.
 
-- Everything **except** `Outdoor decoration/Buildings/` is from the
-  **free** version, used under its **non-commercial** license — see
-  `assets/cute-fantasy-rpg/read_me.txt`. May be modified but not
+The art comes from two versions of the same "Cute Fantasy" pack, each
+under its own license:
+
+- Everything **except** `props/buildings/`, `animations/`, and `ui/` is
+  from the **free** version, used under its **non-commercial** license —
+  see `assets/cute-fantasy-rpg/read_me.txt`. May be modified but not
   redistributed or resold.
-- `Outdoor decoration/Buildings/` (the nine Lobby building sprites) is
-  from the **premium** version, whose license permits commercial use —
-  see `assets/cute-fantasy-rpg/Outdoor decoration/Buildings/LICENSE_NOTE.txt`.
+- `props/buildings/` (the nine Lobby building sprites), `animations/`
+  (pond decor), and `ui/` (icon sheets) are from the **premium** version,
+  whose license permits commercial use — see
+  `assets/cute-fantasy-rpg/PREMIUM_PACK_LICENSE.txt`.
 
 Both forbid redistribution or resale of the assets themselves, even
 modified. Since the free-pack files are non-commercial, TradeTown as a
 whole is bound by the stricter of the two: if it's ever shipped
 commercially, every free-pack file must be replaced with appropriately
-licensed or original art first (the premium-sourced buildings would not
-need replacing).
+licensed or original art first (the premium-sourced files would not need
+replacing).
 
 ## Status
 

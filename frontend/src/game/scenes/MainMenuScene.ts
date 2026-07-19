@@ -14,7 +14,7 @@ export class MainMenuScene extends Phaser.Scene {
     this.cameras.main.setZoom(1);
     CameraManager.fadeIn(this);
 
-    this.add.image(width / 2, height * 0.32, "outdoor-decoration/house-1-wood-base-blue").setScale(3).setAlpha(0.35);
+    this.add.image(width / 2, height * 0.32, "props/house-1-wood-base-blue").setScale(3).setAlpha(0.35);
 
     this.add
       .text(width / 2, height * 0.28, "TradeTown", {

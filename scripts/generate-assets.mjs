@@ -14,7 +14,7 @@
  *
  * Run via `npm run assets:sync` (also wired into predev/prebuild).
  */
-import { readdirSync, statSync, mkdirSync, copyFileSync, readFileSync, writeFileSync, existsSync } from "node:fs";
+import { readdirSync, statSync, mkdirSync, copyFileSync, readFileSync, writeFileSync, existsSync, rmSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -62,12 +62,19 @@ function walk(dir, base = "") {
 }
 
 function categoryFromRelPath(relPath) {
-  const top = relPath.split(path.sep)[0].toLowerCase();
-  if (top === "tiles") return "tile";
-  if (top === "player") return "player";
-  if (top === "enemies") return "enemy";
-  if (top === "animals") return "animal";
-  if (top.startsWith("outdoor")) return "decoration";
+  const segs = relPath.split(path.sep).map((s) => s.toLowerCase());
+  const top = segs[0];
+  if (top === "tilesets") return "tileset";
+  if (top === "characters") {
+    const sub = segs[1];
+    if (sub === "player") return "player";
+    if (sub === "enemies") return "enemy";
+    if (sub === "animals") return "animal";
+    return "character";
+  }
+  if (top === "props") return "prop";
+  if (top === "animations") return "animation";
+  if (top === "ui") return "ui";
   return "misc";
 }
 
@@ -78,6 +85,11 @@ function main() {
   }
 
   const relFiles = walk(SOURCE_DIR).sort();
+
+  // Wipe and recreate the mirror rather than copying on top of it — otherwise
+  // a renamed or removed source file (e.g. a folder reorganization) leaves a
+  // stale orphaned copy behind forever, silently bloating the served bundle.
+  if (existsSync(PUBLIC_DEST_DIR)) rmSync(PUBLIC_DEST_DIR, { recursive: true, force: true });
   mkdirSync(PUBLIC_DEST_DIR, { recursive: true });
   mkdirSync(path.dirname(MANIFEST_OUT), { recursive: true });
 

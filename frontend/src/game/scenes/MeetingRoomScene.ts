@@ -11,7 +11,7 @@ export class MeetingRoomScene extends RoomScene {
   protected sceneKey: SceneId = "MeetingRoomScene";
   protected widthTiles = 15;
   protected heightTiles = 11;
-  protected floorAsset = "tiles/farmland-tile";
+  protected floorAsset = "tilesets/farmland-tile";
   protected roomLabel = "Meeting Room";
   protected agentLocation: AgentLocation | null = "meeting-room";
 

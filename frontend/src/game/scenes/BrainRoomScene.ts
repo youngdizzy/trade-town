@@ -14,7 +14,7 @@ export class BrainRoomScene extends RoomScene {
   protected sceneKey: SceneId = "BrainRoomScene";
   protected widthTiles = 18;
   protected heightTiles = 12;
-  protected floorAsset = "tiles/water-middle";
+  protected floorAsset = "tilesets/water-middle";
   protected agentLocation: AgentLocation | null = "brain-room";
   protected roomLabel = "Brain Room";
 

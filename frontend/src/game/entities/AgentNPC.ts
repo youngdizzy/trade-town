@@ -47,7 +47,7 @@ export class AgentNPC extends AnimatedActor {
 
   constructor(scene: Phaser.Scene, x: number, y: number, agentId: AgentId) {
     const profile = AGENT_PROFILES[agentId];
-    super(scene, x, y, "player/player", profile.name);
+    super(scene, x, y, "characters/player/player", profile.name);
     this.agentId = agentId;
     this.wanderRadius = profile.wanderRadius;
     this.idlePauseChance = profile.idlePauseChance;

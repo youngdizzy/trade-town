@@ -109,7 +109,7 @@ and what's it allowed to touch," this is the document.
 
 | File | Purpose |
 |---|---|
-| `AnimatedActor.ts` | Base class for anything rendered from the shared `player/player` directional sheet — sprite, name tag, direction/animation handling. Both `PlayerController` and `AgentNPC` extend it. |
+| `AnimatedActor.ts` | Base class for anything rendered from the shared `characters/player/player` directional sheet — sprite, name tag, direction/animation handling. Both `PlayerController` and `AgentNPC` extend it. |
 | `PlayerController.ts` | The human player's own movement/input handling, extending `AnimatedActor`. |
 | `AgentNPC.ts` | One AI employee's in-scene rendering and idle-wander movement, extending `AnimatedActor`. Per-agent wander radius, idle-pause chance, tint, and an always-visible badge glyph come from `AgentProfiles.ts`. Task/mood/energy/location themselves are owned by `NPCManager`, not this class. |
 | `Whiteboard.ts` | A reusable office prop that renders and auto-updates its text whenever `NexusManager` reports a `whiteboard:updated` event for its `boardId`. |

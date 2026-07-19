@@ -1,0 +1,26 @@
+The files below are sourced from the Cute Fantasy PREMIUM pack
+(kenmi-art.itch.io/cute-fantasy-rpg), not the free version used by every
+other file under cute-fantasy-rpg/ (see read_me.txt for that license).
+
+  props/buildings/*.png
+      Fisherman_House, Blacksmith_House, Inn, Church, Shed, GreenHouse,
+      Windmill, Barn, House_5_Limestone. Church_Red_Front.png and
+      GreenHouse_Wood_Front.png are single frames cropped from that pack's
+      multi-frame building sheets.
+
+  animations/*.png
+      Lillypad_Green_Anim, Cattail_Anim, Grass_Sway_Anim — animated pond
+      and grass decor used around the Lobby's pond.
+
+  ui/*.png
+      Resources_Icons_Outline, Tool_Icons_Outline — icon sheets staged for
+      future in-game UI use.
+
+License - Premium Version (as stated by the pack's own read_me.txt)
+   - You can use these assets in any commercial or non-commercial projects.
+   - You can modify the assets.
+   - You can not redistribute or resale, even if modified.
+
+This is more permissive than the free pack's license (read_me.txt,
+non-commercial only) — see README.md's "Asset license" section for how
+the two licenses apply to this repository.

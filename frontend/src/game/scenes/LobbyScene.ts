@@ -6,6 +6,7 @@ import { SceneManager, type SceneTransitionData } from "@/game/systems/SceneMana
 import { createGroundLayer, createZone } from "@/game/systems/TileWorld";
 import { EventBus } from "@/game/systems/EventBus";
 import { GameManager } from "@/game/systems/GameManager";
+import { AssetLoader } from "@/game/systems/AssetLoader";
 
 const TILE_SIZE = 16;
 const WIDTH_TILES = 108;
@@ -45,21 +46,21 @@ interface DoorDef {
 // Fantasy premium pack's Unique_Buildings set (or a named house variant),
 // not the same sprite re-tinted nine times.
 const DOORS: DoorDef[] = [
-  { target: "ScoutOfficeScene", label: "Scout Office", x: (WIDTH_PX * 1) / 6, y: BACK_ROW_Y, asset: "outdoor-decoration/buildings/fisherman-house-base-blue", targetWidth: 150 },
-  { target: "BrainRoomScene", label: "Brain Room", x: (WIDTH_PX * 2) / 6, y: BACK_ROW_Y, asset: "outdoor-decoration/buildings/blacksmith-house-blue", targetWidth: 150 },
-  { target: "CeoOfficeScene", label: "CEO Office", x: (WIDTH_PX * 3) / 6, y: BACK_ROW_Y, asset: "outdoor-decoration/buildings/inn-black", targetWidth: 170 },
-  { target: "MeetingRoomScene", label: "Meeting Room", x: (WIDTH_PX * 4) / 6, y: BACK_ROW_Y, asset: "outdoor-decoration/buildings/church-red-front", targetWidth: 150 },
-  { target: "BreakRoomScene", label: "Break Room", x: (WIDTH_PX * 5) / 6, y: BACK_ROW_Y, asset: "outdoor-decoration/buildings/shed-base-red", targetWidth: 150 },
-  { target: "SimulationLabScene", label: "Simulation Lab", x: (WIDTH_PX * 1) / 8, y: FRONT_ROW_Y, asset: "outdoor-decoration/buildings/greenhouse-wood-front", targetWidth: 130 },
-  { target: "HallOfFameScene", label: "Hall of Fame", x: (WIDTH_PX * 3) / 8, y: FRONT_ROW_Y, asset: "outdoor-decoration/buildings/windmill", targetWidth: 175 },
-  { target: "TradingFloorScene", label: "Trading Floor", x: (WIDTH_PX * 5) / 8, y: FRONT_ROW_Y, asset: "outdoor-decoration/buildings/house-5-limestone-base-blue", targetWidth: 190 },
-  { target: "PerformanceCenterScene", label: "Performance Center", x: (WIDTH_PX * 7) / 8, y: FRONT_ROW_Y, asset: "outdoor-decoration/buildings/barn-base-red", targetWidth: 165 },
+  { target: "ScoutOfficeScene", label: "Scout Office", x: (WIDTH_PX * 1) / 6, y: BACK_ROW_Y, asset: "props/buildings/fisherman-house-base-blue", targetWidth: 150 },
+  { target: "BrainRoomScene", label: "Brain Room", x: (WIDTH_PX * 2) / 6, y: BACK_ROW_Y, asset: "props/buildings/blacksmith-house-blue", targetWidth: 150 },
+  { target: "CeoOfficeScene", label: "CEO Office", x: (WIDTH_PX * 3) / 6, y: BACK_ROW_Y, asset: "props/buildings/inn-black", targetWidth: 170 },
+  { target: "MeetingRoomScene", label: "Meeting Room", x: (WIDTH_PX * 4) / 6, y: BACK_ROW_Y, asset: "props/buildings/church-red-front", targetWidth: 150 },
+  { target: "BreakRoomScene", label: "Break Room", x: (WIDTH_PX * 5) / 6, y: BACK_ROW_Y, asset: "props/buildings/shed-base-red", targetWidth: 150 },
+  { target: "SimulationLabScene", label: "Simulation Lab", x: (WIDTH_PX * 1) / 8, y: FRONT_ROW_Y, asset: "props/buildings/greenhouse-wood-front", targetWidth: 130 },
+  { target: "HallOfFameScene", label: "Hall of Fame", x: (WIDTH_PX * 3) / 8, y: FRONT_ROW_Y, asset: "props/buildings/windmill", targetWidth: 175 },
+  { target: "TradingFloorScene", label: "Trading Floor", x: (WIDTH_PX * 5) / 8, y: FRONT_ROW_Y, asset: "props/buildings/house-5-limestone-base-blue", targetWidth: 190 },
+  { target: "PerformanceCenterScene", label: "Performance Center", x: (WIDTH_PX * 7) / 8, y: FRONT_ROW_Y, asset: "props/buildings/barn-base-red", targetWidth: 165 },
 ];
 
 const NEWSPAPER_STAND = { x: WIDTH_PX / 2 + TILE_SIZE * 6, y: 224 };
 const POND = { x: TILE_SIZE * 3, y: 224 };
 
-// Frame indices into the 7-column "outdoor-decoration/outdoor-decor-free"
+// Frame indices into the 7-column "props/outdoor-decor-free"
 // tileset (16x16 cells) — picked by visually inspecting the sheet, not
 // guessed, since most of it is farming/mining decor that doesn't read well
 // out of context. These four are the only cells that render as clean,
@@ -86,7 +87,7 @@ export class LobbyScene extends Phaser.Scene {
     this.obstacles = this.physics.add.staticGroup();
 
     createGroundLayer(this, {
-      tileAssetId: "tiles/grass-middle",
+      tileAssetId: "tilesets/grass-middle",
       tileSize: TILE_SIZE,
       widthTiles: WIDTH_TILES,
       heightTiles: HEIGHT_TILES,
@@ -97,6 +98,8 @@ export class LobbyScene extends Phaser.Scene {
     this.buildDecor();
     this.buildBuildings();
     this.buildLandscaping();
+    this.buildPondDecor();
+    this.buildAmbientAnimals();
     this.buildNewspaperStand();
 
     const spawnX = data?.spawnX ?? WIDTH_PX / 2;
@@ -147,7 +150,7 @@ export class LobbyScene extends Phaser.Scene {
 
   private buildPath(): void {
     const map = this.make.tilemap({ tileWidth: TILE_SIZE, tileHeight: TILE_SIZE, width: WIDTH_TILES, height: HEIGHT_TILES });
-    const tileset = map.addTilesetImage("tiles/path-middle", "tiles/path-middle", TILE_SIZE, TILE_SIZE, 0, 0);
+    const tileset = map.addTilesetImage("tilesets/path-middle", "tilesets/path-middle", TILE_SIZE, TILE_SIZE, 0, 0);
     if (!tileset) return;
     const layer = map.createBlankLayer("path", tileset, 0, 0);
     if (!layer) return;
@@ -165,7 +168,7 @@ export class LobbyScene extends Phaser.Scene {
 
   private buildPond(): void {
     const map = this.make.tilemap({ tileWidth: TILE_SIZE, tileHeight: TILE_SIZE, width: 4, height: 3 });
-    const tileset = map.addTilesetImage("tiles/water-middle", "tiles/water-middle", TILE_SIZE, TILE_SIZE, 0, 0);
+    const tileset = map.addTilesetImage("tilesets/water-middle", "tilesets/water-middle", TILE_SIZE, TILE_SIZE, 0, 0);
     if (!tileset) return;
     const layer = map.createBlankLayer("pond", tileset, 0, 0);
     if (!layer) return;
@@ -183,20 +186,20 @@ export class LobbyScene extends Phaser.Scene {
       [WIDTH_PX - 32, HEIGHT_PX - 40],
     ];
     for (const [x, y] of trees) {
-      const tree = this.add.image(x, y, "outdoor-decoration/oak-tree").setScale(1.4).setDepth(2);
+      const tree = this.add.image(x, y, "props/oak-tree").setScale(1.4).setDepth(2);
       this.obstacles.add(tree);
       const body = tree.body as Phaser.Physics.Arcade.StaticBody;
       body.setSize(tree.displayWidth * 0.5, tree.displayHeight * 0.3);
       body.setOffset((tree.displayWidth * 0.5) / 2, tree.displayHeight * 0.6);
     }
 
-    const fence = this.add.image(TILE_SIZE * 4, HEIGHT_PX - TILE_SIZE * 3, "outdoor-decoration/fences").setScale(1.2).setDepth(2);
+    const fence = this.add.image(TILE_SIZE * 4, HEIGHT_PX - TILE_SIZE * 3, "props/fences").setScale(1.2).setDepth(2);
     this.obstacles.add(fence);
     const fenceBody = fence.body as Phaser.Physics.Arcade.StaticBody;
     fenceBody.setSize(fence.displayWidth * 0.85, fence.displayHeight * 0.5);
     fenceBody.setOffset(fence.displayWidth * 0.075, fence.displayHeight * 0.4);
 
-    const chest = this.add.image(WIDTH_PX - TILE_SIZE * 4, HEIGHT_PX - TILE_SIZE * 3, "outdoor-decoration/chest").setScale(1.3).setDepth(2);
+    const chest = this.add.image(WIDTH_PX - TILE_SIZE * 4, HEIGHT_PX - TILE_SIZE * 3, "props/chest").setScale(1.3).setDepth(2);
     this.obstacles.add(chest);
     const chestBody = chest.body as Phaser.Physics.Arcade.StaticBody;
     chestBody.setSize(chest.displayWidth * 0.8, chest.displayHeight * 0.7);
@@ -205,7 +208,7 @@ export class LobbyScene extends Phaser.Scene {
 
   /** Registers (once) and returns the Phaser frame name for one 16x16 cell of the decor tileset. */
   private decorFrame(index: number): string {
-    const key = "outdoor-decoration/outdoor-decor-free";
+    const key = "props/outdoor-decor-free";
     const frameKey = `decor-${index}`;
     const texture = this.textures.get(key);
     if (!texture.has(frameKey)) {
@@ -218,7 +221,7 @@ export class LobbyScene extends Phaser.Scene {
   }
 
   private addDecor(x: number, y: number, index: number, scale = 1.4): void {
-    this.add.image(x, y, "outdoor-decoration/outdoor-decor-free", this.decorFrame(index)).setScale(scale).setDepth(2);
+    this.add.image(x, y, "props/outdoor-decor-free", this.decorFrame(index)).setScale(scale).setDepth(2);
   }
 
   /** Flower beds flanking each building's entrance and a scatter of leaf sprigs/stumps in the plaza — ground-level texture so the courtyard doesn't read as flat grass. Walk-over only, no collision, same as the tree canopy overhang. */
@@ -248,6 +251,27 @@ export class LobbyScene extends Phaser.Scene {
 
     this.addDecor(POND.x + TILE_SIZE * 3, POND.y - TILE_SIZE * 2, DECOR_STUMP);
     this.addDecor(WIDTH_PX - TILE_SIZE * 5, 200, DECOR_STUMP);
+  }
+
+  /** Animated pond life from the Cute Fantasy premium pack — lilypads bobbing mid-water, cattails and a grass tuft swaying at the bank. Walk-over only, no collision, same as the flower beds. */
+  private buildPondDecor(): void {
+    const playAnim = (x: number, y: number, assetId: string, animName: string, depth: number): void => {
+      this.add.sprite(x, y, assetId).setDepth(depth).play(AssetLoader.animKey(assetId, animName));
+    };
+
+    // Pond spans POND.x..POND.x+64, POND.y..POND.y+48 (4x3 tiles) — lilypads
+    // sit inside that rectangle, cattails just outside its left/right edges.
+    playAnim(POND.x + TILE_SIZE * 1.4, POND.y + TILE_SIZE * 1, "animations/lillypad-green-anim", "bob", 1);
+    playAnim(POND.x + TILE_SIZE * 2.6, POND.y + TILE_SIZE * 1.8, "animations/lillypad-green-anim", "bob", 1);
+    playAnim(POND.x - 8, POND.y + TILE_SIZE * 1, "animations/cattail-anim", "sway", 2);
+    playAnim(POND.x + TILE_SIZE * 4 + 8, POND.y + TILE_SIZE * 1.5, "animations/cattail-anim", "sway", 2);
+    playAnim(POND.x + TILE_SIZE * 1.5, POND.y - TILE_SIZE * 0.8, "animations/grass-sway-anim", "sway", 2);
+  }
+
+  /** A previously-unused free-pack asset put to real use: one ambient chicken grazing near the Barn, not a placeholder — see chicken-idle's note in animation-config.json for why it's a cropped frame rather than the raw sheet. */
+  private buildAmbientAnimals(): void {
+    const barn = DOORS.find((d) => d.target === "PerformanceCenterScene")!;
+    this.add.image(barn.x + 46, barn.y + 76, "characters/animals/chicken/chicken-idle").setScale(1.1).setDepth(2);
   }
 
   private buildBuildings(): void {

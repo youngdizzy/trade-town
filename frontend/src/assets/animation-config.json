@@ -1,7 +1,7 @@
 {
-  "_comment": "Hand-authored metadata that cannot be inferred automatically from pixel data alone (animation rows, tile grid size). Keyed by generated asset id. Merged onto the auto-discovered manifest entry by scripts/generate-assets.mjs. Frame layout was determined by visual inspection of the Cute Fantasy Free pack sprite sheets.",
+  "_comment": "Hand-authored metadata that cannot be inferred automatically from pixel data alone (animation rows, tile grid size). Keyed by generated asset id. Merged onto the auto-discovered manifest entry by scripts/generate-assets.mjs. Frame layout was determined by visual inspection of the Cute Fantasy sprite sheets. Asset ids mirror the folder layout under assets/cute-fantasy-rpg/: tilesets/, characters/{player,enemies,animals}/, props/{buildings/}, animations/, ui/.",
 
-  "player/player": {
+  "characters/player/player": {
     "kind": "spritesheet",
     "frameWidth": 32,
     "frameHeight": 32,
@@ -16,7 +16,7 @@
     }
   },
 
-  "player/player-actions": {
+  "characters/player/player-actions": {
     "kind": "spritesheet",
     "frameWidth": 32,
     "frameHeight": 32,
@@ -28,7 +28,7 @@
     }
   },
 
-  "enemies/skeleton": {
+  "characters/enemies/skeleton": {
     "kind": "spritesheet",
     "frameWidth": 32,
     "frameHeight": 32,
@@ -44,7 +44,7 @@
     }
   },
 
-  "enemies/slime-green": {
+  "characters/enemies/slime-green": {
     "kind": "spritesheet",
     "frameWidth": 32,
     "frameHeight": 32,
@@ -55,36 +55,62 @@
     }
   },
 
-  "tiles/grass-middle": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
-  "tiles/path-middle": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
-  "tiles/water-middle": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
-  "tiles/beach-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
-  "tiles/cliff-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
-  "tiles/farmland-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
-  "tiles/path-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
-  "tiles/water-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
+  "tilesets/grass-middle": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
+  "tilesets/path-middle": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
+  "tilesets/water-middle": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
+  "tilesets/beach-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
+  "tilesets/cliff-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
+  "tilesets/farmland-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
+  "tilesets/path-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
+  "tilesets/water-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
 
-  "outdoor-decoration/outdoor-decor-free": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
-  "outdoor-decoration/fences": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
+  "props/outdoor-decor-free": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
+  "props/fences": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
 
-  "outdoor-decoration/bridge-wood": { "kind": "static" },
-  "outdoor-decoration/chest": { "kind": "static" },
-  "outdoor-decoration/house-1-wood-base-blue": { "kind": "static" },
-  "outdoor-decoration/oak-tree": { "kind": "static" },
-  "outdoor-decoration/oak-tree-small": { "kind": "static" },
+  "props/bridge-wood": { "kind": "static" },
+  "props/chest": { "kind": "static" },
+  "props/house-1-wood-base-blue": { "kind": "static" },
+  "props/oak-tree": { "kind": "static" },
+  "props/oak-tree-small": { "kind": "static" },
 
-  "outdoor-decoration/buildings/fisherman-house-base-blue": { "kind": "static" },
-  "outdoor-decoration/buildings/blacksmith-house-blue": { "kind": "static" },
-  "outdoor-decoration/buildings/inn-black": { "kind": "static" },
-  "outdoor-decoration/buildings/church-red-front": { "kind": "static", "_comment": "Cropped from Church_Red.png's 4-frame sheet (Cute Fantasy premium pack) — one 112x144 frame with the door and unlit windows, matching the daytime look of every other building." },
-  "outdoor-decoration/buildings/shed-base-red": { "kind": "static" },
-  "outdoor-decoration/buildings/greenhouse-wood-front": { "kind": "static", "_comment": "Cropped from GreenHouse_Wood.png's 4-frame sheet (Cute Fantasy premium pack) — the front-facing frame with a visible door." },
-  "outdoor-decoration/buildings/windmill": { "kind": "static" },
-  "outdoor-decoration/buildings/house-5-limestone-base-blue": { "kind": "static" },
-  "outdoor-decoration/buildings/barn-base-red": { "kind": "static" },
+  "props/buildings/fisherman-house-base-blue": { "kind": "static" },
+  "props/buildings/blacksmith-house-blue": { "kind": "static" },
+  "props/buildings/inn-black": { "kind": "static" },
+  "props/buildings/church-red-front": { "kind": "static", "_comment": "Cropped from Church_Red.png's 4-frame sheet (Cute Fantasy premium pack) — one 112x144 frame with the door and unlit windows, matching the daytime look of every other building." },
+  "props/buildings/shed-base-red": { "kind": "static" },
+  "props/buildings/greenhouse-wood-front": { "kind": "static", "_comment": "Cropped from GreenHouse_Wood.png's 4-frame sheet (Cute Fantasy premium pack) — the front-facing frame with a visible door." },
+  "props/buildings/windmill": { "kind": "static" },
+  "props/buildings/house-5-limestone-base-blue": { "kind": "static" },
+  "props/buildings/barn-base-red": { "kind": "static" },
 
-  "animals/chicken/chicken": { "kind": "static" },
-  "animals/cow/cow": { "kind": "static" },
-  "animals/pig/pig": { "kind": "static" },
-  "animals/sheep/sheep": { "kind": "static" }
+  "animations/lillypad-green-anim": {
+    "kind": "spritesheet",
+    "frameWidth": 16,
+    "frameHeight": 16,
+    "_comment": "Cute Fantasy premium pack, 8-frame horizontal strip — a lilypad gently bobbing on the water.",
+    "animations": { "bob": { "row": 0, "frameCount": 8, "frameRate": 5, "repeat": -1 } }
+  },
+  "animations/cattail-anim": {
+    "kind": "spritesheet",
+    "frameWidth": 16,
+    "frameHeight": 16,
+    "_comment": "Cute Fantasy premium pack, 8-frame horizontal strip — reeds swaying at the pond's edge.",
+    "animations": { "sway": { "row": 0, "frameCount": 8, "frameRate": 5, "repeat": -1 } }
+  },
+  "animations/grass-sway-anim": {
+    "kind": "spritesheet",
+    "frameWidth": 16,
+    "frameHeight": 16,
+    "_comment": "Cute Fantasy premium pack, 8-frame horizontal strip — a grass tuft swaying in the breeze.",
+    "animations": { "sway": { "row": 0, "frameCount": 8, "frameRate": 5, "repeat": -1 } }
+  },
+
+  "ui/resources-icons-outline": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16, "_comment": "Cute Fantasy premium pack, 6x6 grid of resource icons. Staged for future in-game UI use, not yet drawn anywhere." },
+  "ui/tool-icons-outline": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16, "_comment": "Cute Fantasy premium pack, 10x1 strip of tool icons. Staged for future in-game UI use, not yet drawn anywhere." },
+
+  "characters/animals/chicken/chicken": { "kind": "static", "_comment": "This file is actually a 2x2 grid of 4 poses, not a single sprite — confirmed by visual inspection when first wiring an animal into a scene. Use chicken-idle (cropped single frame) instead of this one for in-world rendering." },
+  "characters/animals/chicken/chicken-idle": { "kind": "static", "_comment": "Top-left frame cropped from chicken.png's 2x2 pose grid." },
+  "characters/animals/cow/cow": { "kind": "static" },
+  "characters/animals/pig/pig": { "kind": "static" },
+  "characters/animals/sheep/sheep": { "kind": "static" }
 }

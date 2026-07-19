@@ -46,7 +46,7 @@ export class TradingFloorScene extends RoomScene {
   protected sceneKey: SceneId = "TradingFloorScene";
   protected widthTiles = 22;
   protected heightTiles = 15;
-  protected floorAsset = "tiles/water-tile";
+  protected floorAsset = "tilesets/water-tile";
   protected roomLabel = "Trading Floor";
   protected agentLocation: AgentLocation | null = "trading-floor";
 

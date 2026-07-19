@@ -4,11 +4,19 @@
 tradetown/
 ├── assets/
 │   └── cute-fantasy-rpg/          Source art — single source of truth (see root README license note)
-│       ├── Player/                Player.png (idle/walk sheet), Player_Actions.png
-│       ├── Animals/, Enemies/     Discovered + manifest-registered; unused in v0.1 gameplay
-│       ├── Outdoor decoration/    Buildings, trees, fences, chest
-│       ├── Tiles/                 Ground tiles (grass/path/water/beach/cliff/farmland)
-│       └── read_me.txt            Pack's original license terms
+│       ├── tilesets/              Ground tiles (grass/path/water/beach/cliff/farmland)
+│       ├── characters/
+│       │   ├── player/            Player.png (idle/walk sheet), Player_Actions.png
+│       │   ├── enemies/           Discovered + manifest-registered; unused in gameplay (no combat system)
+│       │   └── animals/           chicken/cow/pig/sheep; chicken-idle is a cropped single-pose frame
+│       │                          (see animation-config.json — the raw sheet is a 2x2 pose grid, not one sprite)
+│       ├── props/
+│       │   ├── buildings/         The nine Lobby buildings (premium pack — see PREMIUM_PACK_LICENSE.txt)
+│       │   └── ...                Trees, fences, chest, bridge, the decor tileset
+│       ├── animations/            Animated pond/grass decor (premium pack) — lilypad, cattail, grass sway
+│       ├── ui/                    Icon sheets (premium pack), staged for future in-game UI use
+│       ├── read_me.txt            Free-pack license terms
+│       └── PREMIUM_PACK_LICENSE.txt  License terms for the premium-pack files (buildings/animations/ui)
 │
 ├── scripts/
 │   └── generate-assets.mjs        Discovers assets/, copies into frontend/public/, writes the manifest

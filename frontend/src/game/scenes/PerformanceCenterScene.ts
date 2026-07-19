@@ -48,7 +48,7 @@ export class PerformanceCenterScene extends RoomScene {
   protected sceneKey: SceneId = "PerformanceCenterScene";
   protected widthTiles = 15;
   protected heightTiles = 13;
-  protected floorAsset = "tiles/water-tile";
+  protected floorAsset = "tilesets/water-tile";
   protected roomLabel = "Performance Center";
   protected agentLocation: AgentLocation | null = "performance-center";
 

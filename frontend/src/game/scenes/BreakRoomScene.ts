@@ -11,7 +11,7 @@ export class BreakRoomScene extends RoomScene {
   protected sceneKey: SceneId = "BreakRoomScene";
   protected widthTiles = 12;
   protected heightTiles = 9;
-  protected floorAsset = "tiles/beach-tile";
+  protected floorAsset = "tilesets/beach-tile";
   protected roomLabel = "Break Room";
   protected agentLocation: AgentLocation | null = "break-room";
 
@@ -40,6 +40,6 @@ export class BreakRoomScene extends RoomScene {
       this.add.circle(tx + dx, ty + dy, 5, 0x4a3624).setDepth(2);
     }
 
-    this.add.image(24, heightPx - 24, "outdoor-decoration/chest").setScale(1.2).setDepth(2);
+    this.add.image(24, heightPx - 24, "props/chest").setScale(1.2).setDepth(2);
   }
 }
