@@ -46,12 +46,26 @@ development milestones, not semver releases.
 - **The pond moved to the map's dead center** and gained a cobblestone
   town square around it — previously it sat off in a corner near the
   spawn point, more like leftover decoration than a town's actual
-  center. The square is a genuinely new path texture (`tilesets/cobble-path`,
+  center.
+- **Every road in town is now cobblestone** (`tilesets/cobble-path`,
   hand-picked from a 3x5 blob-autotile sheet after checking every cell
   for stray dirt-background pixels — most cells in that kind of sheet
-  are edge/corner transition pieces, not a plain repeatable tile), not a
-  recolor of the existing dirt path, so the town center reads as
-  distinct from the roads leading to it.
+  are edge/corner transition pieces, not a plain repeatable tile), not
+  the flat single-color dirt tile used before, so the whole road network
+  reads as new, not just the square at its center.
+- **The pond is bigger and actually curved** — swapped the old
+  rectangle of flat water tiles for `props/pond-curved`, a single
+  pre-composed 48x48 organic pond graphic discovered inside
+  `tilesets/water-tile`'s source sheet (that sheet turns out to be a
+  ready-made pond/island illustration, not a repeating tile; its opaque
+  corner pixels are the exact same green as the grass tile, so it drops
+  onto the ground with no visible seam), scaled up 1.8x.
+- Removed a decorative fence that read as a random jumble in the
+  bottom-left corner — `props/fences` turned out to be a 4-piece
+  tileset (post/rail/lattice/post) meant to be sliced into individual
+  tiles and assembled, not a single sprite; rendering the whole sheet as
+  one image (an earlier pass here did exactly that) shows all four
+  disconnected pieces crammed together.
 - **Paths now lead to every building's door**, not just past it — a
   short spur connects the road to each doorstep, closing the 2-tile gap
   between the road and the building's base.

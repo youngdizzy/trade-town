@@ -67,14 +67,19 @@ const PLAZA_COLS: [number, number] = [WIDTH_TILES / 2 - 6, WIDTH_TILES / 2 + 6];
 const PLAZA_ROWS: [number, number] = [13, 20]; // 8 tiles tall — clear of both rows' roads
 
 const NEWSPAPER_STAND = { x: PLAZA_COLS[1] * TILE_SIZE + TILE_SIZE * 6, y: PLAZA_CENTER.y };
-const POND = { x: PLAZA_CENTER.x - TILE_SIZE * 2, y: PLAZA_CENTER.y - TILE_SIZE * 1.5 };
+
+// The pond is a single pre-composed graphic (props/pond-curved, an organic
+// jagged-bank shape), not a rectangle of water tiles — see buildPond(). It's
+// centered on the plaza and scaled up from its native 48x48.
+const POND_CENTER = PLAZA_CENTER;
+const POND_SCALE = 1.8;
 
 // Benches flanking the pond on all four corners, inside the plaza.
 const BENCH_SPOTS: [number, number][] = [
-  [POND.x - 50, POND.y + 8],
-  [POND.x + TILE_SIZE * 4 + 50, POND.y + 8],
-  [POND.x - 50, POND.y + TILE_SIZE * 3 - 8],
-  [POND.x + TILE_SIZE * 4 + 50, POND.y + TILE_SIZE * 3 - 8],
+  [POND_CENTER.x - 75, POND_CENTER.y - 45],
+  [POND_CENTER.x + 75, POND_CENTER.y - 45],
+  [POND_CENTER.x - 75, POND_CENTER.y + 45],
+  [POND_CENTER.x + 75, POND_CENTER.y + 45],
 ];
 
 // Two lampposts per row, at the plaza-facing midpoints between doors (never
@@ -184,14 +189,18 @@ export class LobbyScene extends Phaser.Scene {
     }
   }
 
+  /**
+   * The road network — cobblestone throughout (tilesets/cobble-path, the
+   * same tile the town square uses), not the flat single-color dirt tile
+   * this used before. One walkway per row plus a vertical spine
+   * connecting the spawn point up through both rows and into the square.
+   */
   private buildPath(): void {
     const map = this.make.tilemap({ tileWidth: TILE_SIZE, tileHeight: TILE_SIZE, width: WIDTH_TILES, height: HEIGHT_TILES });
-    const tileset = map.addTilesetImage("tilesets/path-middle", "tilesets/path-middle", TILE_SIZE, TILE_SIZE, 0, 0);
+    const tileset = map.addTilesetImage("tilesets/cobble-path", "tilesets/cobble-path", TILE_SIZE, TILE_SIZE, 0, 0);
     if (!tileset) return;
     const layer = map.createBlankLayer("path", tileset, 0, 0);
     if (!layer) return;
-    // One walkway per row (back row doors, front row doors), plus a vertical
-    // spine connecting the spawn point up through both rows.
     const backRowTile = (BACK_ROW_Y + TILE_SIZE) / TILE_SIZE;
     const frontRowTile = (FRONT_ROW_Y + TILE_SIZE) / TILE_SIZE;
     for (let x = 4; x < WIDTH_TILES - 4; x++) {
@@ -215,12 +224,13 @@ export class LobbyScene extends Phaser.Scene {
   }
 
   /**
-   * A cobblestone town square at the map's dead center, replacing the
-   * stretch of dirt spine that used to run straight through — a real town
-   * has a paved center, not just a corridor. Drawn on its own layer after
-   * buildPath() so it overlaps/widens the spine's center section rather
-   * than requiring the spine to route around it; the pond (built right
-   * after this) then sits in the middle of the square like a fountain.
+   * Widens the road into an actual town square at the map's dead center —
+   * without this, the crossroads there would just be a 1-tile-wide
+   * intersection instead of a plaza big enough to hold a pond and
+   * benches. Drawn on its own layer after buildPath() so it overlaps and
+   * widens that section rather than requiring the road to route around
+   * it; the pond (built right after this) then sits in the middle like a
+   * fountain.
    */
   private buildTownSquare(): void {
     const [colStart, colEnd] = PLAZA_COLS;
@@ -236,14 +246,14 @@ export class LobbyScene extends Phaser.Scene {
     layer.setPosition(colStart * TILE_SIZE, rowStart * TILE_SIZE);
   }
 
+  /**
+   * A single pre-composed pond graphic rather than a rectangle of water
+   * tiles — props/pond-curved is a 48x48 organic jagged-bank shape (see
+   * animation-config.json), scaled up, so the pond reads as a real curved
+   * pond instead of a flat rectangle of water color.
+   */
   private buildPond(): void {
-    const map = this.make.tilemap({ tileWidth: TILE_SIZE, tileHeight: TILE_SIZE, width: 4, height: 3 });
-    const tileset = map.addTilesetImage("tilesets/water-middle", "tilesets/water-middle", TILE_SIZE, TILE_SIZE, 0, 0);
-    if (!tileset) return;
-    const layer = map.createBlankLayer("pond", tileset, 0, 0);
-    if (!layer) return;
-    layer.fill(0);
-    layer.setPosition(POND.x, POND.y);
+    this.add.image(POND_CENTER.x, POND_CENTER.y, "props/pond-curved").setScale(POND_SCALE).setDepth(1);
   }
 
   private buildDecor(): void {
@@ -274,11 +284,12 @@ export class LobbyScene extends Phaser.Scene {
       body.setOffset((tree.displayWidth * 0.5) / 2, tree.displayHeight * 0.7);
     }
 
-    const fence = this.add.image(TILE_SIZE * 4, HEIGHT_PX - TILE_SIZE * 3, "props/fences").setScale(1.2).setDepth(2);
-    this.obstacles.add(fence);
-    const fenceBody = fence.body as Phaser.Physics.Arcade.StaticBody;
-    fenceBody.setSize(fence.displayWidth * 0.85, fence.displayHeight * 0.5);
-    fenceBody.setOffset(fence.displayWidth * 0.075, fence.displayHeight * 0.4);
+    // Note: props/fences is a 4-piece tileset (post/rail/lattice/post), not
+    // a single sprite — drawing it whole (as an earlier pass here did)
+    // shows all four disconnected pieces crammed together, which reads as
+    // a random jumble rather than a fence. Left out rather than shipped
+    // looking broken; a real fence line would need each piece placed and
+    // sliced individually, same as props/outdoor-decor-free's decorFrame().
 
     const chest = this.add.image(WIDTH_PX - TILE_SIZE * 4, HEIGHT_PX - TILE_SIZE * 3, "props/chest").setScale(1.3).setDepth(2);
     this.obstacles.add(chest);
@@ -332,7 +343,7 @@ export class LobbyScene extends Phaser.Scene {
 
     // Clear of the town square's cobblestone (see buildTownSquare()) — this
     // is grass decor, not a plaza fixture.
-    this.addDecor(POND.x + TILE_SIZE * 3, POND.y - TILE_SIZE * 4, DECOR_STUMP);
+    this.addDecor(POND_CENTER.x + TILE_SIZE * 3, POND_CENTER.y - TILE_SIZE * 5, DECOR_STUMP);
     this.addDecor(WIDTH_PX - TILE_SIZE * 5, 200, DECOR_STUMP);
   }
 
@@ -340,37 +351,41 @@ export class LobbyScene extends Phaser.Scene {
    * Animated pond life from the Cute Fantasy premium pack — lilypads
    * bobbing mid-water, cattails and a grass tuft swaying at the bank, a
    * small wooden dock jutting off the east edge, two ducks, and flowers
-   * ringing the shore. Walk-over only, no collision, same as the flower
-   * beds — the pond tilemap itself has no collision either (pre-existing;
-   * out of scope here), so a dock or duck standing partly "in" the water
-   * doesn't block anything that wasn't already walkable.
+   * ringing the shore. All positioned relative to POND_CENTER now that
+   * the pond itself is a single scaled image rather than a tile
+   * rectangle. Walk-over only, no collision — the pond graphic itself
+   * has none either (pre-existing; out of scope here), so a dock or duck
+   * standing partly "in" the water doesn't block anything that wasn't
+   * already walkable.
    */
   private buildPondDecor(): void {
     const playAnim = (x: number, y: number, assetId: string, animName: string, depth: number): void => {
       this.add.sprite(x, y, assetId).setDepth(depth).play(AssetLoader.animKey(assetId, animName));
     };
+    const cx = POND_CENTER.x;
+    const cy = POND_CENTER.y;
 
-    // Pond spans POND.x..POND.x+64, POND.y..POND.y+48 (4x3 tiles) — lilypads
-    // sit inside that rectangle, cattails just outside its left/right edges.
-    playAnim(POND.x + TILE_SIZE * 1.4, POND.y + TILE_SIZE * 1, "animations/lillypad-green-anim", "bob", 1);
-    playAnim(POND.x + TILE_SIZE * 2.6, POND.y + TILE_SIZE * 1.8, "animations/lillypad-green-anim", "bob", 1);
-    playAnim(POND.x - 8, POND.y + TILE_SIZE * 1, "animations/cattail-anim", "sway", 2);
-    playAnim(POND.x + TILE_SIZE * 4 + 8, POND.y + TILE_SIZE * 1.5, "animations/cattail-anim", "sway", 2);
-    playAnim(POND.x + TILE_SIZE * 1.5, POND.y - TILE_SIZE * 0.8, "animations/grass-sway-anim", "sway", 2);
+    // Lilypads sit inside the water; cattails and grass just outside the
+    // jagged bank (the scaled pond graphic's rough radius is ~38px).
+    playAnim(cx - 12, cy - 6, "animations/lillypad-green-anim", "bob", 1);
+    playAnim(cx + 10, cy + 8, "animations/lillypad-green-anim", "bob", 1);
+    playAnim(cx - 40, cy - 4, "animations/cattail-anim", "sway", 2);
+    playAnim(cx + 40, cy + 6, "animations/cattail-anim", "sway", 2);
+    playAnim(cx, cy - 42, "animations/grass-sway-anim", "sway", 2);
 
     // Dock — cropped from the bridge-wood sheet, rotated to jut out from
     // the east bank into the water rather than span a gap.
-    this.add.image(POND.x + TILE_SIZE * 4 + 6, POND.y + TILE_SIZE * 2, "props/dock").setAngle(90).setScale(1.1).setDepth(1);
+    this.add.image(cx + 34, cy + 20, "props/dock").setAngle(90).setScale(1.1).setDepth(1);
 
     // Two ducks — one bobbing on the water, one preening on the bank.
-    this.add.image(POND.x + TILE_SIZE * 1, POND.y + TILE_SIZE * 2.3, "characters/animals/duck/duck-idle").setScale(0.85).setDepth(1);
-    this.add.image(POND.x + TILE_SIZE * 3.5, POND.y + TILE_SIZE * 3.4, "characters/animals/duck/duck-idle").setScale(0.85).setFlipX(true).setDepth(2);
+    this.add.image(cx - 22, cy + 18, "characters/animals/duck/duck-idle").setScale(0.85).setDepth(1);
+    this.add.image(cx + 14, cy - 22, "characters/animals/duck/duck-idle").setScale(0.85).setFlipX(true).setDepth(2);
 
     // Flowers ringing the shore, using the same decor tileset as the
     // building flower beds.
-    this.addDecor(POND.x + TILE_SIZE * 0.5, POND.y - TILE_SIZE * 0.5, DECOR_FLOWER_WHITE, 1.1);
-    this.addDecor(POND.x + TILE_SIZE * 2, POND.y + TILE_SIZE * 3.6, DECOR_FLOWER_YELLOW, 1.1);
-    this.addDecor(POND.x - TILE_SIZE * 0.5, POND.y + TILE_SIZE * 2.5, DECOR_FLOWER_RED, 1.1);
+    this.addDecor(cx - 4, cy - 50, DECOR_FLOWER_WHITE, 1.1);
+    this.addDecor(cx + 44, cy + 38, DECOR_FLOWER_YELLOW, 1.1);
+    this.addDecor(cx - 46, cy + 34, DECOR_FLOWER_RED, 1.1);
   }
 
   /** A previously-unused free-pack asset put to real use: one ambient chicken grazing near the Barn, not a placeholder — see chicken-idle's note in animation-config.json for why it's a cropped frame rather than the raw sheet. */

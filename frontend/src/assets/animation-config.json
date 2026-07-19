@@ -192,6 +192,7 @@
   "props/house-1-wood-base-blue": { "kind": "static" },
   "props/oak-tree": { "kind": "static" },
   "props/oak-tree-small": { "kind": "static" },
+  "props/pond-curved": { "kind": "static", "_comment": "Cute Fantasy premium pack — the top-left 48x48 blob cropped from tilesets/water-tile's source sheet (Water_Tile.png). That sheet turns out to be a pre-composed organic pond graphic, not a repeating tile: its opaque corner pixels are the exact same green as tilesets/grass-middle, so it drops onto the ground layer with no visible seam." },
   "props/small-spruce-tree": { "kind": "static", "_comment": "Middle frame cropped from a 3-frame sheet (frame 0 was a young sapling stage, frames 1-2 were mature-tree sway variants)." },
   "props/small-fruit-tree": { "kind": "static", "_comment": "Middle frame cropped from a 3-frame sheet, same reasoning as small-spruce-tree." },
   "props/dock": { "kind": "static", "_comment": "Cropped from bridge-wood.png's middle bridge segment — used as a small pond dock, not a river crossing." },
