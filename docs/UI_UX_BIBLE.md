@@ -93,14 +93,24 @@ between the two today; see `KNOWN_LIMITATIONS.md`).
   carries a license note. A new visual need should first be satisfied by
   recoloring/retinting an existing asset (see NPC tint/badge strategy
   below) before adding new art.
-- **Tint + badge, not new sprites, for character variety.** Every agent
-  and the player share the exact same `characters/player/player` sprite sheet
-  (`AgentNPC.ts`). Distinctness comes from `sprite.setTint(profile.tint)`
-  plus a small always-visible emoji/glyph badge rendered above the head
-  (`AgentProfiles.ts`'s `badge` field) — chosen specifically because the
-  asset pack ships no second humanoid sheet. This is the standing pattern
-  for any *new* character-like entity, including every planned agent in
-  `AI_AGENT_BIBLE.md`.
+- **Palette-swapped sprite + badge for character variety.** The player
+  uses `characters/player/player`; each of the nine agents uses its own
+  `characters/player/player-<id>` — a palette-swapped copy with
+  hair/shirt/pants hue-shifted to that agent's identity color (generated
+  by a one-off PIL script, not hand-drawn; see
+  animation-config.json's `_comment_agent_variants`). This replaced an
+  earlier `sprite.setTint(profile.tint)`-only approach, which washed the
+  *whole* sprite one color instead of reading as different clothes. Each
+  agent also keeps a small always-visible emoji/glyph badge above its head
+  (`AgentProfiles.ts`'s `badge` field) for shape-based identification at a
+  glance. Giving the premium pack's modular character rig (separate
+  Player_Base/Hair/Chest/Legs layers) a try first, but its animation-row
+  layout didn't match this project's verified convention and reverse-
+  engineering it reliably wasn't feasible without risking a broken walk
+  cycle — the palette-swap approach reuses the *already-verified* frame
+  layout, so there's no risk of a broken animation. This is the standing
+  pattern for any *new* character-like entity, including every planned
+  agent in `AI_AGENT_BIBLE.md`.
 - **Right-facing movement mirrors the left-facing animation** rather
   than using a dedicated row, because the sheet only ships one horizontal
   direction (`AnimatedActor.ts`'s `playAnim()`, documented in

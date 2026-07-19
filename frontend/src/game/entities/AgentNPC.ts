@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { AnimatedActor, screenGapToWorld } from "./AnimatedActor";
 import type { AgentId, Direction } from "@/types";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
+import { AssetLoader } from "@/game/systems/AssetLoader";
 
 const WANDER_INTERVAL_MS = 3500;
 const ARRIVE_THRESHOLD = 4;
@@ -27,13 +28,16 @@ const BADGE_SCREEN_GAP_PX = 26;
  * separate in-world speech bubble, to avoid two overlapping text UIs
  * firing off the same interact press.
  *
- * Every agent shares the same sprite sheet (the asset pack only ships
- * one), so tint alone was not enough to tell agents apart at a glance in
- * a crowded room. Each agent also gets an always-visible badge glyph
- * above its head (unlike the name tag, never proximity-gated) and its own
- * wander radius/idle-pause chance drawn from `AgentProfile` — Atlas
- * barely moves, Scout roams widely, etc. — so identity reads through
- * behavior too, not just color.
+ * Each agent renders from its own palette-swapped sprite sheet (see
+ * AgentProfile.spriteId and animation-config.json's
+ * "_comment_agent_variants") instead of one shared sheet plus a whole-
+ * image tint, so distinct hair/clothes colors — not just a color wash —
+ * are what makes an agent recognizable at a glance in a crowded room.
+ * Each agent also gets an always-visible badge glyph above its head
+ * (unlike the name tag, never proximity-gated) and its own wander
+ * radius/idle-pause chance drawn from `AgentProfile` — Atlas barely
+ * moves, Scout roams widely, etc. — so identity reads through behavior
+ * too, not just appearance.
  */
 export class AgentNPC extends AnimatedActor {
   readonly agentId: AgentId;
@@ -47,14 +51,13 @@ export class AgentNPC extends AnimatedActor {
 
   constructor(scene: Phaser.Scene, x: number, y: number, agentId: AgentId) {
     const profile = AGENT_PROFILES[agentId];
-    super(scene, x, y, "characters/player/player", profile.name);
+    super(scene, x, y, profile.spriteId, profile.name);
     this.agentId = agentId;
     this.wanderRadius = profile.wanderRadius;
     this.idlePauseChance = profile.idlePauseChance;
-    this.sprite.setTint(profile.tint);
     this.homeX = x;
     this.homeY = y;
-    this.sprite.play("player/player::idle-down");
+    this.sprite.play(AssetLoader.animKey(profile.spriteId, "idle-down"));
     this.nameTag.setVisible(false);
 
     this.badge = scene.add

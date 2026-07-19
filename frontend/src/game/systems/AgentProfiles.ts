@@ -7,6 +7,12 @@ export interface AgentProfile {
   personality: string;
   homeLocation: AgentLocation;
   tint: number;
+  /** Manifest asset id for this agent's sprite sheet — a palette-swapped
+   *  variant of characters/player/player.png (see animation-config.json's
+   *  "_comment_agent_variants") with hair/shirt/pants recolored to match
+   *  this agent's identity. Not the player's own sheet; PlayerController
+   *  still uses characters/player/player directly. */
+  spriteId: string;
   /** Small always-visible glyph rendered above the NPC's head — lets you
    *  tell agents apart at a glance in rooms where several cluster together
    *  (Brain Room, Meeting Room), without waiting for the proximity-gated
@@ -30,6 +36,7 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
     personality: "Curious. Always exploring.",
     homeLocation: "scout-office",
     tint: 0xbfe3ff,
+    spriteId: "characters/player/player-scout",
     badge: "\u{1F50D}",
     wanderRadius: 60,
     idlePauseChance: 0.15,
@@ -41,6 +48,7 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
     personality: "Calm. Strategic. Rarely speaks. Makes decisions.",
     homeLocation: "meeting-room",
     tint: 0xffd166,
+    spriteId: "characters/player/player-atlas",
     badge: "♟",
     wanderRadius: 18,
     idlePauseChance: 0.7,
@@ -52,6 +60,7 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
     personality: "Loves charts. Frequently studies monitors.",
     homeLocation: "brain-room",
     tint: 0xb388ff,
+    spriteId: "characters/player/player-echo",
     badge: "\u{1F4C8}",
     wanderRadius: 30,
     idlePauseChance: 0.5,
@@ -63,6 +72,7 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
     personality: "Reads books. Studies reports.",
     homeLocation: "brain-room",
     tint: 0x8fe3b0,
+    spriteId: "characters/player/player-nova",
     badge: "\u{1F4DA}",
     wanderRadius: 25,
     idlePauseChance: 0.55,
@@ -74,6 +84,7 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
     personality: "Meticulous. Quiet. Writes everything down.",
     homeLocation: "brain-room",
     tint: 0xd98fb3,
+    spriteId: "characters/player/player-scribe",
     badge: "\u{1F4DC}",
     wanderRadius: 15,
     idlePauseChance: 0.75,
@@ -85,6 +96,7 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
     personality: "Encouraging but exacting. Asks more questions than it answers.",
     homeLocation: "performance-center",
     tint: 0xff8c61,
+    spriteId: "characters/player/player-coach",
     badge: "\u{1F3C6}",
     wanderRadius: 22,
     idlePauseChance: 0.4,
@@ -96,6 +108,7 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
     personality: "Unflinching. Says no more often than yes, and never apologizes for it.",
     homeLocation: "trading-floor",
     tint: 0xff5c5c,
+    spriteId: "characters/player/player-sentinel",
     badge: "\u{1F6E1}",
     wanderRadius: 20,
     idlePauseChance: 0.6,
@@ -107,6 +120,7 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
     personality: "Restless. Always watching every ticker at once.",
     homeLocation: "trading-floor",
     tint: 0x5ce1ff,
+    spriteId: "characters/player/player-pulse",
     badge: "\u{1F4E1}",
     wanderRadius: 45,
     idlePauseChance: 0.1,
@@ -118,6 +132,7 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
     personality: "Steady and watchful. Speaks up the moment exposure looks lopsided.",
     homeLocation: "trading-floor",
     tint: 0x4a90d9,
+    spriteId: "characters/player/player-guardian",
     badge: "\u{1F6E1}\u{FE0F}",
     wanderRadius: 25,
     idlePauseChance: 0.5,

@@ -6,14 +6,19 @@ tradetown/
 │   └── cute-fantasy-rpg/          Source art — single source of truth (see root README license note)
 │       ├── tilesets/              Ground tiles (grass/path/water/beach/cliff/farmland)
 │       ├── characters/
-│       │   ├── player/            Player.png (idle/walk sheet), Player_Actions.png
+│       │   ├── player/            Player.png (idle/walk sheet), Player_Actions.png, and nine
+│       │   │                      Player_<Agent>.png palette swaps (one per AI employee — see
+│       │   │                      animation-config.json's _comment_agent_variants)
 │       │   ├── enemies/           Discovered + manifest-registered; unused in gameplay (no combat system)
-│       │   └── animals/           chicken/cow/pig/sheep; chicken-idle is a cropped single-pose frame
-│       │                          (see animation-config.json — the raw sheet is a 2x2 pose grid, not one sprite)
+│       │   └── animals/           chicken/cow/pig/sheep/duck; chicken-idle and duck-idle are cropped
+│       │                          single-pose frames (see animation-config.json — the raw sheets are
+│       │                          pose/animation grids, not single sprites)
 │       ├── props/
 │       │   ├── buildings/         The nine Lobby buildings (premium pack — see PREMIUM_PACK_LICENSE.txt)
-│       │   └── ...                Trees, fences, chest, bridge, the decor tileset
-│       ├── animations/            Animated pond/grass decor (premium pack) — lilypad, cattail, grass sway
+│       │   └── ...                Trees (oak/spruce/fruit), fences, chest, bridge, dock, bench,
+│       │                          the decor tileset
+│       ├── animations/            Animated decor (premium pack) — lilypad, cattail, grass sway,
+│       │                          a flickering lamppost
 │       ├── ui/                    Icon sheets (premium pack), staged for future in-game UI use
 │       ├── read_me.txt            Free-pack license terms
 │       └── PREMIUM_PACK_LICENSE.txt  License terms for the premium-pack files (buildings/animations/ui)

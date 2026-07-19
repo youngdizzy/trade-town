@@ -60,6 +60,32 @@ const DOORS: DoorDef[] = [
 const NEWSPAPER_STAND = { x: WIDTH_PX / 2 + TILE_SIZE * 6, y: 224 };
 const POND = { x: TILE_SIZE * 3, y: 224 };
 
+// Plaza seating, in the open band between the front-row buildings' floating
+// labels (~y150-230) and their doorsteps (~y400) — and away from every
+// door's x column so a bench never sits under a name label.
+const BENCH_SPOTS: [number, number][] = [
+  [WIDTH_PX * 0.3, 250],
+  [WIDTH_PX * 0.7, 250],
+  [WIDTH_PX * 0.3, 300],
+  [WIDTH_PX * 0.7, 300],
+];
+
+// Two lampposts per row, at the plaza-facing midpoints between doors (never
+// on a door's own x column, and never on the road's y — a lamppost sitting
+// on the walkway tile would block the path it's supposed to light).
+const LAMPPOST_SPOTS: [number, number][] = [
+  [WIDTH_PX * 0.25, 145], // back row: between the road (ends y128) and the building base (y160)
+  [WIDTH_PX * 0.75, 145],
+  [WIDTH_PX * 0.25, 340], // front row: between the plaza and the road (starts y352)
+  [WIDTH_PX * 0.75, 340],
+];
+
+// Extra tree variety near the plaza, on top of buildDecor()'s six corner oaks.
+const EXTRA_TREE_SPOTS: [number, number, string][] = [
+  [WIDTH_PX * 0.5 - 260, 250, "props/small-spruce-tree"],
+  [WIDTH_PX * 0.5 + 260, 250, "props/small-fruit-tree"],
+];
+
 // Frame indices into the 7-column "props/outdoor-decor-free"
 // tileset (16x16 cells) — picked by visually inspecting the sheet, not
 // guessed, since most of it is farming/mining decor that doesn't read well
@@ -100,6 +126,8 @@ export class LobbyScene extends Phaser.Scene {
     this.buildLandscaping();
     this.buildPondDecor();
     this.buildAmbientAnimals();
+    this.buildBenches();
+    this.buildLampposts();
     this.buildNewspaperStand();
 
     const spawnX = data?.spawnX ?? WIDTH_PX / 2;
@@ -164,6 +192,18 @@ export class LobbyScene extends Phaser.Scene {
     }
     const centerCol = Math.floor(WIDTH_TILES / 2);
     for (let y = backRowTile; y < HEIGHT_TILES - 2; y++) layer.putTileAt(0, centerCol, y);
+
+    // A short spur straight from the road to each building's doorstep — the
+    // road already runs at def.y+16 (one tile below the row) and every
+    // building's base sits at def.y+64 (see buildBuildings()), a 2-tile gap
+    // that otherwise reads as "the road passes by" rather than "the road
+    // leads to the door."
+    for (const def of DOORS) {
+      const doorCol = Math.round(def.x / TILE_SIZE);
+      const rowTile = def.y === BACK_ROW_Y ? backRowTile : frontRowTile;
+      const baseTile = Math.floor((def.y + 64) / TILE_SIZE);
+      for (let y = rowTile + 1; y < baseTile; y++) layer.putTileAt(0, doorCol, y);
+    }
   }
 
   private buildPond(): void {
@@ -191,6 +231,17 @@ export class LobbyScene extends Phaser.Scene {
       const body = tree.body as Phaser.Physics.Arcade.StaticBody;
       body.setSize(tree.displayWidth * 0.5, tree.displayHeight * 0.3);
       body.setOffset((tree.displayWidth * 0.5) / 2, tree.displayHeight * 0.6);
+    }
+
+    // A couple of non-oak trees near the plaza for variety, from the Cute
+    // Fantasy premium pack — a spruce and a fruit tree, each the middle
+    // frame cropped from a 3-frame sheet (see animation-config.json).
+    for (const [x, y, asset] of EXTRA_TREE_SPOTS) {
+      const tree = this.add.image(x, y, asset).setScale(1.6).setDepth(2);
+      this.obstacles.add(tree);
+      const body = tree.body as Phaser.Physics.Arcade.StaticBody;
+      body.setSize(tree.displayWidth * 0.5, tree.displayHeight * 0.25);
+      body.setOffset((tree.displayWidth * 0.5) / 2, tree.displayHeight * 0.7);
     }
 
     const fence = this.add.image(TILE_SIZE * 4, HEIGHT_PX - TILE_SIZE * 3, "props/fences").setScale(1.2).setDepth(2);
@@ -253,7 +304,15 @@ export class LobbyScene extends Phaser.Scene {
     this.addDecor(WIDTH_PX - TILE_SIZE * 5, 200, DECOR_STUMP);
   }
 
-  /** Animated pond life from the Cute Fantasy premium pack — lilypads bobbing mid-water, cattails and a grass tuft swaying at the bank. Walk-over only, no collision, same as the flower beds. */
+  /**
+   * Animated pond life from the Cute Fantasy premium pack — lilypads
+   * bobbing mid-water, cattails and a grass tuft swaying at the bank, a
+   * small wooden dock jutting off the east edge, two ducks, and flowers
+   * ringing the shore. Walk-over only, no collision, same as the flower
+   * beds — the pond tilemap itself has no collision either (pre-existing;
+   * out of scope here), so a dock or duck standing partly "in" the water
+   * doesn't block anything that wasn't already walkable.
+   */
   private buildPondDecor(): void {
     const playAnim = (x: number, y: number, assetId: string, animName: string, depth: number): void => {
       this.add.sprite(x, y, assetId).setDepth(depth).play(AssetLoader.animKey(assetId, animName));
@@ -266,12 +325,52 @@ export class LobbyScene extends Phaser.Scene {
     playAnim(POND.x - 8, POND.y + TILE_SIZE * 1, "animations/cattail-anim", "sway", 2);
     playAnim(POND.x + TILE_SIZE * 4 + 8, POND.y + TILE_SIZE * 1.5, "animations/cattail-anim", "sway", 2);
     playAnim(POND.x + TILE_SIZE * 1.5, POND.y - TILE_SIZE * 0.8, "animations/grass-sway-anim", "sway", 2);
+
+    // Dock — cropped from the bridge-wood sheet, rotated to jut out from
+    // the east bank into the water rather than span a gap.
+    this.add.image(POND.x + TILE_SIZE * 4 + 6, POND.y + TILE_SIZE * 2, "props/dock").setAngle(90).setScale(1.1).setDepth(1);
+
+    // Two ducks — one bobbing on the water, one preening on the bank.
+    this.add.image(POND.x + TILE_SIZE * 1, POND.y + TILE_SIZE * 2.3, "characters/animals/duck/duck-idle").setScale(0.85).setDepth(1);
+    this.add.image(POND.x + TILE_SIZE * 3.5, POND.y + TILE_SIZE * 3.4, "characters/animals/duck/duck-idle").setScale(0.85).setFlipX(true).setDepth(2);
+
+    // Flowers ringing the shore, using the same decor tileset as the
+    // building flower beds.
+    this.addDecor(POND.x + TILE_SIZE * 0.5, POND.y - TILE_SIZE * 0.5, DECOR_FLOWER_WHITE, 1.1);
+    this.addDecor(POND.x + TILE_SIZE * 2, POND.y + TILE_SIZE * 3.6, DECOR_FLOWER_YELLOW, 1.1);
+    this.addDecor(POND.x - TILE_SIZE * 0.5, POND.y + TILE_SIZE * 2.5, DECOR_FLOWER_RED, 1.1);
   }
 
   /** A previously-unused free-pack asset put to real use: one ambient chicken grazing near the Barn, not a placeholder — see chicken-idle's note in animation-config.json for why it's a cropped frame rather than the raw sheet. */
   private buildAmbientAnimals(): void {
     const barn = DOORS.find((d) => d.target === "PerformanceCenterScene")!;
     this.add.image(barn.x + 46, barn.y + 76, "characters/animals/chicken/chicken-idle").setScale(1.1).setDepth(2);
+  }
+
+  /** Plaza seating — walk-blocking, like the trees and fence, since a bench is a solid object you'd otherwise phase through. */
+  private buildBenches(): void {
+    for (const [x, y] of BENCH_SPOTS) {
+      const bench = this.add.image(x, y, "props/bench").setScale(1.3).setDepth(2);
+      this.obstacles.add(bench);
+      const body = bench.body as Phaser.Physics.Arcade.StaticBody;
+      body.setSize(bench.displayWidth * 0.85, bench.displayHeight * 0.5);
+      body.setOffset(bench.displayWidth * 0.075, bench.displayHeight * 0.4);
+    }
+  }
+
+  /** Lampposts flanking both path rows, each with a gently flickering flame. Thin obstacle — you can't walk through the post. */
+  private buildLampposts(): void {
+    for (const [x, y] of LAMPPOST_SPOTS) {
+      const lamp = this.add
+        .sprite(x, y, "animations/lamppost-glow-anim")
+        .setScale(0.85)
+        .setDepth(2)
+        .play(AssetLoader.animKey("animations/lamppost-glow-anim", "flicker"));
+      this.obstacles.add(lamp);
+      const body = lamp.body as Phaser.Physics.Arcade.StaticBody;
+      body.setSize(lamp.displayWidth * 0.3, lamp.displayHeight * 0.2);
+      body.setOffset(lamp.displayWidth * 0.35, lamp.displayHeight * 0.75);
+    }
   }
 
   private buildBuildings(): void {

@@ -41,6 +41,43 @@ development milestones, not semver releases.
   cropped a clean single frame (`chicken-idle`) rather than render the
   raw sheet.
 
+### Lobby redesign: paths, pond, and street furniture
+
+- **Paths now lead to every building's door**, not just past it — a
+  short spur connects the road to each doorstep, closing the 2-tile gap
+  between the road and the building's base.
+- **The pond** gained a small wooden dock (cropped from the bridge-wood
+  sheet), two ducks, and more flowers ringing the shore, alongside the
+  lilypads/cattails already added.
+- **Benches and flickering lampposts** furnish the plaza between the two
+  building rows — the lamppost is a genuine 6-frame animation (a
+  flickering flame), not a static prop.
+- **Two new tree varieties** (spruce, fruit) join the oaks near the
+  plaza, each a middle frame cropped from a 3-frame growth-stage sheet.
+- Fixed a real bug found along the way: `generate-assets.mjs`'s `public/`
+  mirror had gone stale (70 files served for 38 current ones) after the
+  earlier folder reorg, since the sync only copied additively and never
+  pruned; confirmed the fix (wipe-then-copy, from the prior changelog
+  entry) is holding at the correct count through this round of changes.
+
+### Nine distinct agent character sprites
+
+- Each of the nine AI employees now renders from its own
+  `characters/player/player-<id>` sheet — hair, shirt, and pants
+  hue-shifted to that agent's existing identity color (the same color
+  used for its HUD dot) — instead of the player's shared sheet washed
+  with a single `sprite.setTint()`. Investigated using the premium pack's
+  modular character rig (separate Player_Base/Hair/Chest/Legs layers)
+  first, but its ~112-row animation layout didn't match this project's
+  verified 6-row convention and reverse-engineering it reliably wasn't
+  feasible without risking a broken walk cycle; palette-swapping the
+  already-verified sheet instead carries zero animation risk.
+- Fixed a latent bug found while touching this code:
+  `AgentNPC`'s constructor called `sprite.play("player/player::idle-down")`
+  — a hardcoded pre-reorg animation key that the folder-reorg's string
+  rename had missed because it wasn't wrapped in matching quotes. It
+  silently no-opped since the key no longer existed in the manifest.
+
 ## v0.6
 
 ### Added
