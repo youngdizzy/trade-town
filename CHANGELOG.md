@@ -48,13 +48,14 @@ development milestones, not semver releases.
   tiles) — previously it sat off in a corner near the spawn point, more
   like leftover decoration than a town's actual center.
 - **The whole road network — square included — is paved in
-  `tilesets/farmland-tile`**, a warm packed-dirt texture already proven
-  to tile cleanly (it's also the CEO Office/Meeting Room floor), not the
-  flat single-color path tile used before. An earlier pass here tried
-  cobblestone (hand-picked from a 3x5 blob-autotile sheet) for the
-  square alone, leaving the roads leading to it still the old flat
-  tile — replaced outright rather than kept as a second material, so
-  the whole town reads as one consistent, new surface.
+  `tilesets/wood-floor`**, a cool blue-grey square-tile pattern the user
+  hand-picked from an uploaded reference sheet. Went through two other
+  materials first: a hand-picked cobblestone cell (for the square alone,
+  leaving the roads still on the old flat tile) and then
+  `tilesets/farmland-tile` (a packed-dirt texture applied uniformly to
+  both roads and square) before landing here — replaced outright each
+  time rather than kept as a second material, so the whole town reads as
+  one consistent surface. Confirmed to tile with zero seams before use.
 - **The pond is 2x bigger and actually curved** — swapped the old
   rectangle of flat water tiles for `props/pond-curved`, a single
   pre-composed 48x48 organic pond graphic discovered inside

@@ -180,6 +180,7 @@
   "tilesets/beach-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
   "tilesets/cliff-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
   "tilesets/farmland-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
+  "tilesets/wood-floor": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16, "_comment": "User-picked cell (col 1, row 5) from an uploaded Wood_Floor_Tiles.png reference sheet — a cool blue-grey square-tile pattern. Confirmed to tile with zero seams before use." },
   "tilesets/path-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
   "tilesets/water-tile": { "kind": "tileset", "tileWidth": 16, "tileHeight": 16 },
 

@@ -200,16 +200,15 @@ export class LobbyScene extends Phaser.Scene {
   }
 
   /**
-   * The road network — packed dirt (tilesets/farmland-tile, the same
-   * tile the town square uses), not the old flat single-color path tile.
-   * Already proven to tile cleanly since it's also used as the CEO
-   * Office/Meeting Room floor texture. One walkway per row plus a
-   * vertical spine connecting the spawn point up through both rows and
-   * into the square.
+   * The road network — a cool blue-grey square-tile pattern
+   * (tilesets/wood-floor, the same tile the town square uses), cropped
+   * from a user-supplied reference sheet and confirmed to tile with zero
+   * seams. One walkway per row plus a vertical spine connecting the
+   * spawn point up through both rows and into the square.
    */
   private buildPath(): void {
     const map = this.make.tilemap({ tileWidth: TILE_SIZE, tileHeight: TILE_SIZE, width: WIDTH_TILES, height: HEIGHT_TILES });
-    const tileset = map.addTilesetImage("tilesets/farmland-tile", "tilesets/farmland-tile", TILE_SIZE, TILE_SIZE, 0, 0);
+    const tileset = map.addTilesetImage("tilesets/wood-floor", "tilesets/wood-floor", TILE_SIZE, TILE_SIZE, 0, 0);
     if (!tileset) return;
     const layer = map.createBlankLayer("path", tileset, 0, 0);
     if (!layer) return;
@@ -250,7 +249,7 @@ export class LobbyScene extends Phaser.Scene {
     const cols = colEnd - colStart;
     const rows = rowEnd - rowStart;
     const map = this.make.tilemap({ tileWidth: TILE_SIZE, tileHeight: TILE_SIZE, width: cols, height: rows });
-    const tileset = map.addTilesetImage("tilesets/farmland-tile", "tilesets/farmland-tile", TILE_SIZE, TILE_SIZE, 0, 0);
+    const tileset = map.addTilesetImage("tilesets/wood-floor", "tilesets/wood-floor", TILE_SIZE, TILE_SIZE, 0, 0);
     if (!tileset) return;
     const layer = map.createBlankLayer("town-square", tileset, 0, 0);
     if (!layer) return;
