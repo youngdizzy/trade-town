@@ -175,6 +175,11 @@ market stalls — rather than TradeTown's original evenly-spaced rows.
   decor right past the actual shoreline. Repositioned by checking each
   candidate spot against the source PNG's actual pixels rather than
   computed radii.
+- Nudged the dock and the water-bobbing duck up one tile (16px) at the
+  user's request, moving both a bit further from the south shore and
+  deeper into open water — reconfirmed against the source pixels that
+  both still land correctly (dock's north end further into water, its
+  south end still past the bank on grass) before shipping.
 
 ### Nine distinct agent character sprites
 

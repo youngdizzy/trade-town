@@ -479,7 +479,7 @@ export class LobbyScene extends Phaser.Scene {
     // earlier pass here just scaled the pre-widening offset by the same
     // ratio as POND_SCALE and ended up placing the whole dock on dry grass
     // south of the bank instead.
-    this.add.image(cx, cy + 51, "props/dock").setScale(1.3).setDepth(1);
+    this.add.image(cx, cy + 35, "props/dock").setScale(1.3).setDepth(1);
 
     // A small rowboat resting in the water off the dock's water-side end
     // (checked against the source pixels, same reasoning as the dock).
@@ -489,7 +489,7 @@ export class LobbyScene extends Phaser.Scene {
     // pixels — the scaled-up offset from the pond-widening pass had
     // drifted onto the bank), one preening on the bank as originally
     // designed.
-    this.add.image(cx - 43, cy + 21, "characters/animals/duck/duck-idle").setScale(1.2).setDepth(1);
+    this.add.image(cx - 43, cy + 5, "characters/animals/duck/duck-idle").setScale(1.2).setDepth(1);
     this.add.image(cx + 33, cy - 52, "characters/animals/duck/duck-idle").setScale(1.2).setFlipX(true).setDepth(2);
 
     // Flowers ringing the shore, using the same decor tileset as the
