@@ -180,6 +180,10 @@ market stalls — rather than TradeTown's original evenly-spaced rows.
   deeper into open water — reconfirmed against the source pixels that
   both still land correctly (dock's north end further into water, its
   south end still past the bank on grass) before shipping.
+- Moved the boat up a tile and the east duck down a tile, at the user's
+  request. The east duck was originally the one "preening on the bank"
+  rather than swimming (see above) — moving it south by a tile put it
+  past the bank into water too, so both ducks now bob on the pond.
 
 ### Nine distinct agent character sprites
 

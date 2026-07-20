@@ -483,14 +483,14 @@ export class LobbyScene extends Phaser.Scene {
 
     // A small rowboat resting in the water off the dock's water-side end
     // (checked against the source pixels, same reasoning as the dock).
-    this.add.image(cx + 25, cy + 5, "props/boat").setScale(1.15).setDepth(1);
+    this.add.image(cx + 25, cy - 11, "props/boat").setScale(1.15).setDepth(1);
 
-    // Two ducks — one bobbing on the water (checked against the source
-    // pixels — the scaled-up offset from the pond-widening pass had
-    // drifted onto the bank), one preening on the bank as originally
-    // designed.
+    // Two ducks bobbing on the water (both checked against the source
+    // pixels). The east duck was originally meant to be preening on the
+    // bank rather than swimming, but nudging it a tile south at the
+    // user's request moved it past the bank into water too.
     this.add.image(cx - 43, cy + 5, "characters/animals/duck/duck-idle").setScale(1.2).setDepth(1);
-    this.add.image(cx + 33, cy - 52, "characters/animals/duck/duck-idle").setScale(1.2).setFlipX(true).setDepth(2);
+    this.add.image(cx + 33, cy - 36, "characters/animals/duck/duck-idle").setScale(1.2).setFlipX(true).setDepth(2);
 
     // Flowers ringing the shore, using the same decor tileset as the
     // building flower beds.
