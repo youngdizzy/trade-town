@@ -162,6 +162,19 @@ market stalls — rather than TradeTown's original evenly-spaced rows.
   dock, boat, ducks, flowers, the four corner benches) scaled by the
   same ratio rather than hand-tuned individually, to keep the same
   relative layout at the larger size.
+- **Fixed two real bugs the proportional-scaling approach above
+  introduced**, both caught from a live screenshot: benches (scaled
+  outward to keep clear of the bigger pond) ended up overlapping the
+  hedge on the plaza's other side instead — reverted them to their
+  original, already-clear offsets, since the wider pond needed no help
+  there. The dock, boat, and the water-bobbing duck all landed on dry
+  bank/grass instead of water — `props/pond-curved`'s water region turns
+  out to be asymmetric within its own canvas (extends 11-15px from
+  center depending on direction, well short of the ~19px the bank's
+  jagged spikes reach), so a single scale-up ratio pushed water-bound
+  decor right past the actual shoreline. Repositioned by checking each
+  candidate spot against the source PNG's actual pixels rather than
+  computed radii.
 
 ### Nine distinct agent character sprites
 

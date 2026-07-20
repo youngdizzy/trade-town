@@ -105,21 +105,22 @@ const NEWSPAPER_STAND = { x: PLAZA_COLS[1] * TILE_SIZE + TILE_SIZE * 3, y: PLAZA
 // The pond is a single pre-composed graphic (props/pond-curved, an organic
 // jagged-bank shape), not a rectangle of water tiles — see buildPond(). It's
 // centered on the plaza and scaled up from its native 48x48. Bumped from
-// 3.6 to 4.27 (roughly +2 tiles of display width) at the user's request;
-// every pond-relative offset below (bench spots, dock/boat/duck/flower
-// positions in buildPondDecor()) scaled by the same 4.27/3.6 ratio to keep
-// the same relative layout rather than being copy-pasted then hand-tuned.
+// 3.6 to 4.27 (roughly +2 tiles of display width) at the user's request.
 const POND_CENTER = PLAZA_CENTER;
 const POND_SCALE = 4.27;
 
-// Benches flanking the pond on all four corners, inside the plaza —
-// outside the pond's jagged bank (rough radius ~102px at this scale) but
-// inside the plaza's own edges (half-width 144px, half-height 96px).
+// Benches flanking the pond on all four corners, inside the plaza — outside
+// the pond's jagged bank (its outermost spikes reach ~81px from center at
+// this scale) but clear of the hedge lining the plaza's own edges (at
+// PLAZA_COLS[0]*16-8 / PLAZA_COLS[1]*16+8, only ~152px from POND_CENTER.x —
+// an earlier pass scaled these offsets up along with the pond itself and
+// pushed them into the hedge; reverted to the original, already-clear
+// values instead, since the pond's widening left plenty of room without it).
 const BENCH_SPOTS: [number, number][] = [
-  [POND_CENTER.x - 136, POND_CENTER.y - 83],
-  [POND_CENTER.x + 136, POND_CENTER.y - 83],
-  [POND_CENTER.x - 136, POND_CENTER.y + 83],
-  [POND_CENTER.x + 136, POND_CENTER.y + 83],
+  [POND_CENTER.x - 115, POND_CENTER.y - 70],
+  [POND_CENTER.x + 115, POND_CENTER.y - 70],
+  [POND_CENTER.x - 115, POND_CENTER.y + 70],
+  [POND_CENTER.x + 115, POND_CENTER.y + 70],
 ];
 
 // Two lampposts flanking the square's east/west entrances, just outside
@@ -458,9 +459,12 @@ export class LobbyScene extends Phaser.Scene {
     const cy = POND_CENTER.y;
 
     // Lilypads sit inside the water; cattails and grass just outside the
-    // jagged bank (the scaled pond graphic's rough radius is ~102px at
-    // POND_SCALE 4.27 — every offset here scaled by the same 4.27/3.6
-    // ratio as POND_SCALE itself, to keep the same relative layout).
+    // jagged bank. The pond's water is irregular, not circular — its
+    // native PNG shows the water region off-center within the 48x48
+    // canvas (extends 11-15px from center depending on direction) inside
+    // a bank ring reaching out to ~19px at its jagged widest — so these
+    // offsets were checked against the actual source pixels (which color
+    // sits under each point) rather than assumed from a single "radius."
     playAnim(cx - 28, cy - 14, "animations/lillypad-green-anim", "bob", 1);
     playAnim(cx + 24, cy + 19, "animations/lillypad-green-anim", "bob", 1);
     playAnim(cx - 95, cy - 9, "animations/cattail-anim", "sway", 2);
@@ -469,15 +473,23 @@ export class LobbyScene extends Phaser.Scene {
 
     // Dock — cropped from the bridge-wood sheet, left unrotated (its
     // native portrait shape already reads as a ramp) so it runs from the
-    // south bank down into the water like a boat launch, matching a
-    // reference screenshot's pond, rather than jutting out sideways.
-    this.add.image(cx, cy + 95, "props/dock").setScale(1.66).setDepth(1);
+    // south bank down into the water like a boat launch. Scale and offset
+    // checked against the pond's actual water pixels: the north (top) end
+    // lands solidly in water, the south end past the bank on grass — an
+    // earlier pass here just scaled the pre-widening offset by the same
+    // ratio as POND_SCALE and ended up placing the whole dock on dry grass
+    // south of the bank instead.
+    this.add.image(cx, cy + 51, "props/dock").setScale(1.3).setDepth(1);
 
-    // A small rowboat resting in the water just off the end of the dock.
-    this.add.image(cx + 30, cy + 57, "props/boat").setScale(1.3).setDepth(1);
+    // A small rowboat resting in the water off the dock's water-side end
+    // (checked against the source pixels, same reasoning as the dock).
+    this.add.image(cx + 25, cy + 5, "props/boat").setScale(1.15).setDepth(1);
 
-    // Two ducks — one bobbing on the water, one preening on the bank.
-    this.add.image(cx - 52, cy + 43, "characters/animals/duck/duck-idle").setScale(1.2).setDepth(1);
+    // Two ducks — one bobbing on the water (checked against the source
+    // pixels — the scaled-up offset from the pond-widening pass had
+    // drifted onto the bank), one preening on the bank as originally
+    // designed.
+    this.add.image(cx - 43, cy + 21, "characters/animals/duck/duck-idle").setScale(1.2).setDepth(1);
     this.add.image(cx + 33, cy - 52, "characters/animals/duck/duck-idle").setScale(1.2).setFlipX(true).setDepth(2);
 
     // Flowers ringing the shore, using the same decor tileset as the
