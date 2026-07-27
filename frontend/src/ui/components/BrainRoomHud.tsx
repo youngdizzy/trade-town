@@ -1,4 +1,6 @@
 import { useGameStore } from "@/ui/hooks/useGameStore";
+import { useCloseOnEscape } from "@/ui/hooks/useCloseOnEscape";
+import { EventBus } from "@/game/systems/EventBus";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { upcomingEvents } from "@/game/systems/UpcomingEvents";
 import type { AgentId, TimeState } from "@/types";
@@ -18,10 +20,18 @@ function formatClock(time: TimeState): string {
  * readable dashboard. All progress/confidence bars use a CSS transition
  * on width so they visibly animate as values change tick to tick, rather
  * than snapping.
+ *
+ * Shows automatically (ambient, no close button) while physically standing
+ * in Brain Room, same as always — but can also be pulled up from anywhere
+ * via the toolbar's "Dashboard" button (ui:brainRoomHud), same pattern as
+ * Newspaper/Company Memory/Coach Dashboard, since the numbers here are
+ * genuinely company-wide, not something that should require a walk back to
+ * one specific room to check.
  */
 export function BrainRoomHud() {
   const {
     currentScene,
+    brainRoomHudOpen,
     agents,
     tasks,
     news,
@@ -38,7 +48,10 @@ export function BrainRoomHud() {
     scannerAlerts,
     decisions,
   } = useGameStore();
-  if (currentScene !== "BrainRoomScene" || !agents) return null;
+  const close = () => EventBus.emit("ui:brainRoomHud", { open: false });
+  useCloseOnEscape(brainRoomHudOpen, close);
+  const ambient = currentScene === "BrainRoomScene";
+  if ((!ambient && !brainRoomHudOpen) || !agents) return null;
 
   const working = AGENT_ORDER.filter((id) => !["lobby", "break-room"].includes(agents[id].location)).length;
   const avgMood = Math.round(AGENT_ORDER.reduce((sum, id) => sum + agents[id].mood, 0) / AGENT_ORDER.length);
@@ -63,7 +76,20 @@ export function BrainRoomHud() {
   const worstWarning = riskWarnings.some((w) => w.severity === "critical") ? "critical" : riskWarnings.some((w) => w.severity === "warning") ? "warning" : null;
 
   return (
-    <div className="pointer-events-none absolute right-3 top-16 bottom-24 w-72 overflow-y-auto rounded border border-[#60d1ff]/40 bg-panel/90 p-3 font-pixel text-[10px] text-parchment shadow-pixel">
+    <div
+      className={`absolute right-3 top-16 bottom-24 w-72 overflow-y-auto rounded border border-[#60d1ff]/40 bg-panel/90 p-3 font-pixel text-[10px] text-parchment shadow-pixel ${
+        brainRoomHudOpen ? "pointer-events-auto" : "pointer-events-none"
+      }`}
+    >
+      {brainRoomHudOpen && (
+        <button
+          type="button"
+          onClick={close}
+          className="sticky top-0 float-right -mt-1 -mr-1 rounded bg-panelLight px-2 py-0.5 text-parchment shadow-pixel transition-colors hover:bg-gold hover:text-ink"
+        >
+          Close
+        </button>
+      )}
       <Section title="Market Clock">
         <div className="text-gold">{formatClock(time)}</div>
       </Section>

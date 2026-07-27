@@ -46,8 +46,20 @@ export abstract class RoomScene extends Phaser.Scene {
   protected doorZone!: Phaser.GameObjects.Zone;
   protected walls!: Phaser.Physics.Arcade.StaticGroup;
   protected agents = new Map<AgentId, AgentNPC>();
+  /**
+   * Agents only ever collided against the player, never each other — in a
+   * room that hosts several at once (Brain Room, Meeting Room), nothing
+   * stopped two or more from wandering into the same spot and clustering.
+   * Each overlapping agent is still individually solid against the
+   * player, so a cluster could box the player in from multiple directions
+   * with no gap to walk through, which reads as "stuck near an NPC."
+   * Membership here makes agents solid against each other too, so Arcade
+   * physics naturally keeps them spaced apart instead of piling up.
+   */
+  private agentsGroup!: Phaser.Physics.Arcade.Group;
   private whiteboards: Whiteboard[] = [];
   private liveTexts: { text: Phaser.GameObjects.Text; unsubscribe: () => void }[] = [];
+  private dialogueWasOpen = false;
   private widthPx = 0;
   private heightPx = 0;
 
@@ -68,6 +80,10 @@ export abstract class RoomScene extends Phaser.Scene {
     const spawnY = data?.spawnY ?? this.heightPx - TILE_SIZE * 2;
     this.player = new PlayerController(this, spawnX, spawnY);
     this.physics.add.collider(this.player.sprite, this.walls);
+
+    this.agentsGroup = this.physics.add.group();
+    this.physics.add.collider(this.agentsGroup, this.agentsGroup);
+    this.physics.add.collider(this.agentsGroup, this.walls);
 
     this.doorZone = createZone(this, this.widthPx / 2, this.heightPx - TILE_SIZE / 2, TILE_SIZE * 2, TILE_SIZE);
     this.add
@@ -145,7 +161,19 @@ export abstract class RoomScene extends Phaser.Scene {
     // simultaneously start a new conversation or leave the room out from
     // under an open dialogue box.
     const dialogueOpen = gameStore.getSnapshot().dialogue.open;
-    const interacted = this.player.interactPressed && !dialogueOpen;
+    // The E press that closes the *last* line of dialogue is the same
+    // physical keypress DialogueBox's own window listener consumes to
+    // close it — Phaser's interact key still reads as freshly "just
+    // pressed" on this scene's very next update() regardless, since the
+    // two listeners race on one native keydown event with no guaranteed
+    // order. Rather than trust that race to resolve cleanly, explicitly
+    // skip interaction on the exact frame dialogue.open flips from true to
+    // false, so a residual "just pressed" flag can never immediately
+    // re-open a new conversation with the same agent (or, near a door,
+    // walk the player out of the room) right as they finish talking.
+    const dialogueJustClosed = this.dialogueWasOpen && !dialogueOpen;
+    this.dialogueWasOpen = dialogueOpen;
+    const interacted = this.player.interactPressed && !dialogueOpen && !dialogueJustClosed;
 
     const nearDoor = Phaser.Geom.Intersects.RectangleToRectangle(
       this.player.sprite.getBounds(),
@@ -243,6 +271,7 @@ export abstract class RoomScene extends Phaser.Scene {
       const npc = new AgentNPC(this, spawn.x, spawn.y, id);
       this.agents.set(id, npc);
       this.physics.add.collider(this.player.sprite, npc.sprite);
+      this.agentsGroup.add(npc.sprite);
     }
 
     for (const [id, npc] of this.agents) {

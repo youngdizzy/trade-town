@@ -74,6 +74,7 @@ export interface GameEvents {
   "companyScore:updated": CompanyScore;
   "performanceSnapshots:updated": PerformanceSnapshot[];
   "ui:coachDashboard": { open: boolean };
+  "ui:brainRoomHud": { open: boolean };
   "riskLimits:updated": RiskLimits;
   "riskWarnings:updated": RiskWarning[];
   "scannerAlerts:updated": ScannerAlert[];

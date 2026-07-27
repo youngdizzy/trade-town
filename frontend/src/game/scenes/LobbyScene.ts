@@ -9,13 +9,37 @@ import { GameManager } from "@/game/systems/GameManager";
 import { AssetLoader } from "@/game/systems/AssetLoader";
 
 const TILE_SIZE = 16;
-const WIDTH_TILES = 108;
-const HEIGHT_TILES = 32;
+// +2 tiles of width, split evenly as a +1-tile shift on every door/decor X
+// position below (see LEFT_SHIFT) — requested after some building name
+// labels turned out unreadable (see TOP_MARGIN below; the width bump was
+// asked for alongside it and has no downside, so it's included too).
+const WIDTH_TILES = 110;
+// +5 tiles taller, all of it added as TOP_MARGIN above the back row — see
+// TOP_MARGIN's own comment for why 5 tiles specifically.
+const HEIGHT_TILES = 37;
 const WIDTH_PX = WIDTH_TILES * TILE_SIZE;
 const HEIGHT_PX = HEIGHT_TILES * TILE_SIZE;
 
-const BACK_ROW_Y = 96;
-const FRONT_ROW_Y = 336;
+/**
+ * Extra headroom above the back row. Each building's name label floats at
+ * `topEdge - 24` (see buildBuildings()), and `topEdge` is
+ * `BACK_ROW_Y + 64 - displayHeight` — for the tallest back-row buildings
+ * (the church at ~193px tall) that put the label as far as -57px, above
+ * the map's own y=0 top edge. Camera bounds start at y=0 (see create()'s
+ * physics.world.setBounds and CameraManager.follow's bounds), so a
+ * negative label position isn't just off-screen, it's permanently
+ * unreachable by scrolling — the label can never be seen, regardless of
+ * viewport size. 80px (5 tiles) clears the worst case (the church) with a
+ * comfortable margin; a flat +32px (2 tiles) was tried first but still
+ * left the church's label at -25 and two other buildings' labels
+ * negative or flush with the very top edge.
+ */
+const TOP_MARGIN = TILE_SIZE * 5;
+/** Half of the +2-tile width bump, applied to every previously-absolute door/decor X position below so the layout stays centered on the wider map. */
+const LEFT_SHIFT = TILE_SIZE;
+
+const BACK_ROW_Y = 96 + TOP_MARGIN;
+const FRONT_ROW_Y = 336 + TOP_MARGIN;
 
 interface DoorDef {
   target: SceneId;
@@ -64,12 +88,12 @@ interface DoorDef {
 // distinct piece from the Cute Fantasy premium pack's Unique_Buildings set
 // (or a named house variant), not the same sprite re-tinted nine times.
 const DOORS: DoorDef[] = [
-  { target: "ScoutOfficeScene", label: "Scout Office", x: 464, y: BACK_ROW_Y, asset: "props/buildings/fisherman-house-base-blue", targetWidth: 150, doorOffsetX: -9 },
-  { target: "BrainRoomScene", label: "Brain Room", x: 664, y: BACK_ROW_Y, asset: "props/buildings/blacksmith-house-blue", targetWidth: 150, doorOffsetX: -43 },
+  { target: "ScoutOfficeScene", label: "Scout Office", x: 464 + LEFT_SHIFT, y: BACK_ROW_Y, asset: "props/buildings/fisherman-house-base-blue", targetWidth: 150, doorOffsetX: -9 },
+  { target: "BrainRoomScene", label: "Brain Room", x: 664 + LEFT_SHIFT, y: BACK_ROW_Y, asset: "props/buildings/blacksmith-house-blue", targetWidth: 150, doorOffsetX: -43 },
   { target: "CeoOfficeScene", label: "CEO Office", x: WIDTH_PX / 2, y: BACK_ROW_Y, asset: "props/buildings/inn-black", targetWidth: 170 },
-  { target: "MeetingRoomScene", label: "Meeting Room", x: 1064, y: BACK_ROW_Y, asset: "props/buildings/church-red-front", targetWidth: 150 },
-  { target: "BreakRoomScene", label: "Break Room", x: 1264, y: BACK_ROW_Y, asset: "props/buildings/shed-base-red", targetWidth: 150, doorOffsetX: -9 },
-  { target: "SimulationLabScene", label: "Simulation Lab", x: 330, y: FRONT_ROW_Y, asset: "props/buildings/greenhouse-wood-front", targetWidth: 130 },
+  { target: "MeetingRoomScene", label: "Meeting Room", x: 1064 + LEFT_SHIFT, y: BACK_ROW_Y, asset: "props/buildings/church-red-front", targetWidth: 150 },
+  { target: "BreakRoomScene", label: "Break Room", x: 1264 + LEFT_SHIFT, y: BACK_ROW_Y, asset: "props/buildings/shed-base-red", targetWidth: 150, doorOffsetX: -9 },
+  { target: "SimulationLabScene", label: "Simulation Lab", x: 330 + LEFT_SHIFT, y: FRONT_ROW_Y, asset: "props/buildings/greenhouse-wood-front", targetWidth: 130 },
   // windmill.png's source file turned out to be the tower and the sail
   // assembly side by side, not pre-composited — the sails rendered as a
   // disconnected chunk floating next to the tower instead of mounted on
@@ -84,9 +108,9 @@ const DOORS: DoorDef[] = [
   // (lamppost sits at PLAZA_COLS[0]*16-24 / PLAZA_COLS[1]*16+24 = 696/1032)
   // with a comfortable margin, rather than hugging the square like the
   // first pass here did.
-  { target: "HallOfFameScene", label: "Hall of Fame", x: 580, y: FRONT_ROW_Y, asset: "props/buildings/windmill", targetWidth: 78 },
-  { target: "TradingFloorScene", label: "Trading Floor", x: 1180, y: FRONT_ROW_Y, asset: "props/buildings/house-5-limestone-base-blue", targetWidth: 190 },
-  { target: "PerformanceCenterScene", label: "Performance Center", x: 1430, y: FRONT_ROW_Y, asset: "props/buildings/barn-base-red", targetWidth: 165 },
+  { target: "HallOfFameScene", label: "Hall of Fame", x: 580 + LEFT_SHIFT, y: FRONT_ROW_Y, asset: "props/buildings/windmill", targetWidth: 78 },
+  { target: "TradingFloorScene", label: "Trading Floor", x: 1180 + LEFT_SHIFT, y: FRONT_ROW_Y, asset: "props/buildings/house-5-limestone-base-blue", targetWidth: 190 },
+  { target: "PerformanceCenterScene", label: "Performance Center", x: 1430 + LEFT_SHIFT, y: FRONT_ROW_Y, asset: "props/buildings/barn-base-red", targetWidth: 165 },
 ];
 
 // The town square sits dead center, filling the entire open gap between
@@ -97,7 +121,9 @@ const DOORS: DoorDef[] = [
 // row (Brain Room/Meeting Room on the back row, Hall of Fame/Trading
 // Floor on the front) with room to spare.
 const PLAZA_COLS: [number, number] = [WIDTH_TILES / 2 - 9, WIDTH_TILES / 2 + 9]; // 18 tiles wide
-const PLAZA_ROWS: [number, number] = [10, 22]; // 12 tiles tall, y160-352
+// Derived from BACK_ROW_Y/FRONT_ROW_Y (rather than hardcoded) so the plaza
+// automatically stays pinned to the road rows if TOP_MARGIN ever changes.
+const PLAZA_ROWS: [number, number] = [(BACK_ROW_Y + 64) / TILE_SIZE, (FRONT_ROW_Y + 16) / TILE_SIZE]; // 12 tiles tall
 const PLAZA_CENTER = { x: WIDTH_PX / 2, y: (((PLAZA_ROWS[0] + PLAZA_ROWS[1]) / 2) * TILE_SIZE) };
 
 const NEWSPAPER_STAND = { x: PLAZA_COLS[1] * TILE_SIZE + TILE_SIZE * 3, y: PLAZA_CENTER.y };
@@ -138,8 +164,8 @@ const LAMPPOST_SPOTS: [number, number][] = [
 // of Fame's footprint once the front row's buildings moved closer to the
 // plaza (see DOORS' comment), half-hiding the spruce tree behind its roof.
 const EXTRA_TREE_SPOTS: [number, number, string][] = [
-  [500, 250, "props/small-spruce-tree"],
-  [1310, 250, "props/small-fruit-tree"],
+  [500 + LEFT_SHIFT, 250 + TOP_MARGIN, "props/small-spruce-tree"],
+  [1310 + LEFT_SHIFT, 250 + TOP_MARGIN, "props/small-fruit-tree"],
 ];
 
 // A low hedge border tracing the square's east/west edges — see
@@ -158,8 +184,8 @@ const HEDGE_GATE_ROWS = [5, 6];
 // one side, the taller spouting tier on the other (props/fountain frames
 // 0/1), echoing a reference screenshot's courtyard fountain.
 const FOUNTAIN_SPOTS: [number, number, number][] = [
-  [200, 150, 1],
-  [WIDTH_PX - 200, 150, 0],
+  [200, 150 + TOP_MARGIN, 1],
+  [WIDTH_PX - 200, 150 + TOP_MARGIN, 0],
 ];
 
 // Market stalls south of Trading Floor's entrance — echoes the reference
@@ -427,9 +453,9 @@ export class LobbyScene extends Phaser.Scene {
     // First two nudged clear of the now-much-larger town square (x:720-1008,
     // y:160-352) — this is grass decor, not a plaza fixture.
     const sprigSpots: [number, number][] = [
-      [PLAZA_COLS[0] * TILE_SIZE - 20, 200],
-      [PLAZA_COLS[1] * TILE_SIZE + 20, 250],
-      [WIDTH_PX * 0.5, 148],
+      [PLAZA_COLS[0] * TILE_SIZE - 20, 200 + TOP_MARGIN],
+      [PLAZA_COLS[1] * TILE_SIZE + 20, 250 + TOP_MARGIN],
+      [WIDTH_PX * 0.5, 148 + TOP_MARGIN],
       [TILE_SIZE * 7, HEIGHT_PX - TILE_SIZE * 5],
       [WIDTH_PX - TILE_SIZE * 7, HEIGHT_PX - TILE_SIZE * 5],
       [WIDTH_PX * 0.5, HEIGHT_PX - TILE_SIZE * 5],
@@ -439,7 +465,7 @@ export class LobbyScene extends Phaser.Scene {
     // Clear of the town square's paving (see buildTownSquare()) — this is
     // grass decor, not a plaza fixture.
     this.addDecor(WIDTH_PX * 0.5 - 220, PLAZA_ROWS[0] * TILE_SIZE - 20, DECOR_STUMP);
-    this.addDecor(WIDTH_PX - TILE_SIZE * 5, 200, DECOR_STUMP);
+    this.addDecor(WIDTH_PX - TILE_SIZE * 5, 200 + TOP_MARGIN, DECOR_STUMP);
   }
 
   /**

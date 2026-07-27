@@ -5,8 +5,42 @@ development milestones, not semver releases.
 
 ## Unreleased
 
+### Added
+
+- **The Brain Room "Mission Control" dashboard can now be opened from
+  anywhere**, not just while physically standing in Brain Room — a new
+  "Dashboard" button in the bottom toolbar (`ui:brainRoomHud`) opens it as
+  a proper closable menu (Escape or a Close button, pauses the world like
+  Newspaper/Company Memory/Coach Dashboard). Walking into Brain Room still
+  shows it ambiently exactly as before, with no close button and no world
+  pause — the two modes share one component, distinguished by whether it
+  was opened via the toggle or is merely visible because of the current
+  scene.
+
 ### Fixed
 
+- **Several back-row building name labels were completely unreadable** —
+  Scout Office, Meeting Room, Break Room, and (right at the edge) CEO
+  Office all had their floating name label positioned above the map's own
+  y=0 top edge (`topEdge - 24` going negative for any building taller
+  than ~136px — the church is ~193px). Camera bounds start at y=0, so a
+  negative label position isn't just off-screen, it's permanently
+  unreachable by scrolling, regardless of viewport or zoom. Added 5 tiles
+  of headroom above the back row (`TOP_MARGIN`) so even the tallest
+  building's label clears the top edge with margin, plus the requested +2
+  tiles of width (`LEFT_SHIFT`, split evenly) — the map is now 110×37
+  tiles (was 108×32). `PLAZA_ROWS` is now derived from `BACK_ROW_Y`/
+  `FRONT_ROW_Y` instead of hardcoded, so the plaza/pond/hedge/lampposts
+  all stay correctly pinned to the road rows automatically.
+- **NPCs could box the player in with no way out** — agent NPCs only ever
+  collided against the player, never against each other, so in a room
+  hosting several at once (Brain Room, Meeting Room) they could wander
+  into overlapping clusters; each overlapping agent was still
+  individually solid against the player, and multiple overlapping solid
+  bodies from different directions could trap the player with no gap to
+  walk through. All agents now share an Arcade physics group that
+  collides with itself (and the room's walls), so they naturally keep
+  their distance instead of piling up.
 - **Closing a dialogue with "E" could immediately re-open a new
   conversation with the same NPC (or, near a door, exit the room)** —
   `DialogueBox`'s own window keydown handler and the room scene's Phaser
@@ -16,9 +50,14 @@ development milestones, not semver releases.
   `nearestAgent()`/`startConversation()` (or the door-exit check) since
   the player is typically still standing right next to the agent they
   were just talking to. This read as the game refusing to let you stop
-  talking to an NPC. `GameManager` now resets the active scene's keyboard
-  state on `dialogue:close`, the same pattern already used for the
-  overlay/pause-menu fix below.
+  talking to an NPC. `GameManager` resetting the active scene's keyboard
+  on `dialogue:close` (same pattern as the overlay/pause-menu fix below)
+  helped but wasn't fully reliable — the two listeners race on one native
+  keydown event with no guaranteed order, so occasionally the reset lost
+  the race. `RoomScene` now also tracks whether dialogue was open on the
+  *previous* frame and explicitly skips interaction on the exact frame it
+  flips closed, which doesn't depend on that race resolving cleanly at
+  all — verified with a scripted repro across multiple runs.
 - **Some room-specific text rendered blurrier than its neighbors** —
   Brain Room's "MARKET CORE" label, Hall of Fame's "LATEST INDUCTEE"
   header, the Whiteboard prop's header/body text, every room's "Exit"

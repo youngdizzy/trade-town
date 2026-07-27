@@ -70,6 +70,7 @@ export interface GameUiState {
   newspaperOpen: boolean;
   companyMemoryOpen: boolean;
   coachDashboardOpen: boolean;
+  brainRoomHudOpen: boolean;
   netConnected: boolean;
   save: SaveUiState;
   currentScene: string;
@@ -141,6 +142,7 @@ class GameStore {
     newspaperOpen: false,
     companyMemoryOpen: false,
     coachDashboardOpen: false,
+    brainRoomHudOpen: false,
     netConnected: false,
     save: { status: "idle", lastSavedAt: null, error: null },
     currentScene: "MainMenuScene",
@@ -154,7 +156,9 @@ class GameStore {
     EventBus.on("settings:changed", (settings) => this.set({ settings }));
     EventBus.on("ui:pause", ({ paused }) => this.set({ paused }));
     EventBus.on("ui:settings", ({ open }) => this.set({ settingsOpen: open }));
-    // Newspaper, Company Memory, and Coach Dashboard are all full-screen
+    // Newspaper, Company Memory, Coach Dashboard, and the Brain Room HUD
+    // (openable from anywhere as a menu, not just while standing in Brain
+    // Room — see BrainRoomHud.tsx) are all full-screen or panel
     // world-interaction overlays with independent open/close events and no
     // shared owner, so nothing previously stopped more than one being open
     // at once — closing whichever was on top (it renders last, so it's
@@ -164,20 +168,20 @@ class GameStore {
     // of them is open — without that, the player kept moving (invisibly,
     // since the overlay hides the world) behind a panel that only a mouse
     // click could close, which read as the game being stuck.
-    const setOverlay = (patch: Partial<Pick<GameUiState, "newspaperOpen" | "companyMemoryOpen" | "coachDashboardOpen">>): void => {
+    const OVERLAY_KEYS = ["newspaperOpen", "companyMemoryOpen", "coachDashboardOpen", "brainRoomHudOpen"] as const;
+    const setOverlay = (key: (typeof OVERLAY_KEYS)[number], open: boolean): void => {
+      const patch = Object.fromEntries(OVERLAY_KEYS.map((k) => [k, k === key ? open : open ? false : this.state[k]])) as Record<
+        (typeof OVERLAY_KEYS)[number],
+        boolean
+      >;
       this.set(patch);
-      const anyOpen = this.state.newspaperOpen || this.state.companyMemoryOpen || this.state.coachDashboardOpen;
+      const anyOpen = OVERLAY_KEYS.some((k) => this.state[k]);
       EventBus.emit("world:overlayOpen", { open: anyOpen });
     };
-    EventBus.on("ui:newspaper", ({ open }) =>
-      setOverlay({ newspaperOpen: open, companyMemoryOpen: open ? false : this.state.companyMemoryOpen, coachDashboardOpen: open ? false : this.state.coachDashboardOpen }),
-    );
-    EventBus.on("ui:companyMemory", ({ open }) =>
-      setOverlay({ companyMemoryOpen: open, newspaperOpen: open ? false : this.state.newspaperOpen, coachDashboardOpen: open ? false : this.state.coachDashboardOpen }),
-    );
-    EventBus.on("ui:coachDashboard", ({ open }) =>
-      setOverlay({ coachDashboardOpen: open, newspaperOpen: open ? false : this.state.newspaperOpen, companyMemoryOpen: open ? false : this.state.companyMemoryOpen }),
-    );
+    EventBus.on("ui:newspaper", ({ open }) => setOverlay("newspaperOpen", open));
+    EventBus.on("ui:companyMemory", ({ open }) => setOverlay("companyMemoryOpen", open));
+    EventBus.on("ui:coachDashboard", ({ open }) => setOverlay("coachDashboardOpen", open));
+    EventBus.on("ui:brainRoomHud", ({ open }) => setOverlay("brainRoomHudOpen", open));
     EventBus.on("net:status", ({ connected }) => this.set({ netConnected: connected }));
     EventBus.on("scene:ready", ({ scene }) => this.set({ currentScene: scene }));
 
