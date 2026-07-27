@@ -1,4 +1,5 @@
 import type {
+  AgentEnergy,
   AgentId,
   AgentState,
   BacktestSession,
@@ -52,6 +53,7 @@ type ServerMessage =
       riskWarnings: RiskWarning[];
       scannerAlerts: ScannerAlert[];
       decisions: TradeDecision[];
+      agentEnergy: AgentEnergy;
     }
   | { type: "pong" };
 
@@ -129,6 +131,7 @@ export class GameSocket {
             riskWarnings: msg.riskWarnings,
             scannerAlerts: msg.scannerAlerts,
             decisions: msg.decisions,
+            agentEnergy: msg.agentEnergy,
           });
         }
       } catch (err) {

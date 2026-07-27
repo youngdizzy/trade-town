@@ -1,5 +1,6 @@
 import Phaser from "phaser";
 import type {
+  AgentEnergy,
   AgentId,
   AgentState,
   BacktestSession,
@@ -82,6 +83,7 @@ export interface GameEvents {
   "scanner:alertDetected": ScannerAlert;
   "decisions:updated": TradeDecision[];
   "decision:made": TradeDecision;
+  "agentEnergy:updated": AgentEnergy;
 }
 
 type Handler<K extends keyof GameEvents> = (payload: GameEvents[K]) => void;

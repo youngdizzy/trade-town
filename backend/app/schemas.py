@@ -288,6 +288,23 @@ class Candle(CamelModel):
     data_status: DataStatus = Field(alias="dataStatus")
 
 
+class AgentEnergy(CamelModel):
+    """Player-spendable operational capacity (v0.6.2 Phase 6) — a company-
+    wide pool the player earns (passive regen; the Signal Calibration
+    mini-game in Phase 7 tops it up further) and spends to unlock deeper
+    analysis actions. Deliberately NOT the same field as AgentState.energy
+    (each agent's own fatigue/rest level, unrelated concept, unrelated
+    number) — see app/agent_energy.py's docstring for the full "what does
+    spending this actually do" mapping. Every action it unlocks has a
+    real effect on real data (boosts a real ResearchItem's confidence,
+    queues a real backtest, adds a real watchlist symbol) — never just a
+    number going up for its own sake."""
+
+    current: float
+    cap: float
+    updated_at: str = Field(alias="updatedAt")
+
+
 class MeetingMinutes(CamelModel):
     id: str
     day: int
@@ -629,6 +646,7 @@ class GameSaveState(CamelModel):
     risk_warnings: list[RiskWarning] = Field(default_factory=list, alias="riskWarnings")
     scanner_alerts: list[ScannerAlert] = Field(default_factory=list, alias="scannerAlerts")
     decisions: list[TradeDecision] = Field(default_factory=list)
+    agent_energy: AgentEnergy = Field(alias="agentEnergy")
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(default_factory=list, alias="dialogueHistory")

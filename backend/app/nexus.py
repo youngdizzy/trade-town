@@ -20,6 +20,7 @@ from __future__ import annotations
 import random
 from datetime import datetime, timezone
 
+from app.agent_energy import RESEARCH_BOOST_AMOUNT, regen_daily, spend
 from app.agents import AGENT_PROFILES, LOCATION_TO_SCENE, all_agent_ids
 from app.analytics import compute_performance_snapshot, confidence_accuracy, record_snapshot
 from app.broker import place_order, tick_broker
@@ -71,9 +72,9 @@ from app.schemas import (
     TimeState,
     TradeDecision,
 )
-from app.simulation import default_strategies, tick_simulation_lab
+from app.simulation import default_strategies, queue_backtest_now, tick_simulation_lab
 from app.voting import collect_votes
-from app.watchlist import default_watchlist, tick_watchlist
+from app.watchlist import add_symbol_to_watchlist, default_watchlist, tick_watchlist
 
 MAX_MEMORY = 50
 MAX_TASKS = 60
@@ -592,6 +593,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     risk_limits = state.risk_limits
     scanner_alerts = list(state.scanner_alerts)
     decisions = list(state.decisions)
+    agent_energy = state.agent_energy
 
     agents = {aid: _tick_agent(aid, agent, new_time, minutes, tasks) for aid, agent in state.agents.items()}
 
@@ -730,6 +732,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("monthly", paper_portfolio, research, new_time))
 
     if is_midnight:
+        agent_energy = regen_daily(agent_energy)
         performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("daily", paper_portfolio, research, new_time))
         performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("all_time", paper_portfolio, research, new_time))
 
@@ -780,7 +783,44 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "risk_warnings": risk_warnings,
             "scanner_alerts": scanner_alerts,
             "decisions": decisions,
+            "agent_energy": agent_energy,
             "whiteboards": _update_whiteboards(agents, meeting, research),
             "updated_at": _now_iso(),
         }
     )
+
+
+def apply_energy_action(state: GameSaveState, action: str, research_id: str | None) -> tuple[GameSaveState, str | None]:
+    """One Agent Energy spend (v0.6.2 Phase 6 — see app/agent_energy.py's
+    ACTION_COSTS) applied atomically: either the energy is spent AND the
+    real effect happens, or neither does. Returns (new_state, error) —
+    error is None on success. Called from app/routers/energy.py under
+    game_state's lock, same as tick()."""
+    energy = spend(state.agent_energy, action)
+    if energy is None:
+        return state, f"Insufficient Agent Energy for {action!r}, or that action doesn't exist."
+
+    if action == "research_boost":
+        if research_id is None:
+            return state, "research_boost requires a researchId."
+        target = next((r for r in state.research if r.id == research_id and r.status == "in_progress"), None)
+        if target is None:
+            return state, "That research item isn't currently in progress (already completed, or an unknown id)."
+        boosted = target.model_copy(update={"confidence": min(100.0, target.confidence + RESEARCH_BOOST_AMOUNT), "updated_at": _now_iso()})
+        research = [boosted if r.id == research_id else r for r in state.research]
+        return state.model_copy(update={"research": research, "agent_energy": energy}), None
+
+    if action == "extra_simulation":
+        sessions = queue_backtest_now(list(state.backtest_sessions), state.strategies, state.watchlist, RESEARCHER_IDS, state.time)
+        if sessions is None:
+            return state, "The Simulation Lab is already running at capacity — try again once a session finishes."
+        return state.model_copy(update={"backtest_sessions": sessions, "agent_energy": energy}), None
+
+    if action == "watch_symbol":
+        result = add_symbol_to_watchlist(state.watchlist, market_data_provider)
+        if result is None:
+            return state, "Every available symbol is already being monitored."
+        watchlist, _symbol = result
+        return state.model_copy(update={"watchlist": watchlist, "agent_energy": energy}), None
+
+    return state, f"Unknown action {action!r}."

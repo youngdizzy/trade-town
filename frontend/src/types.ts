@@ -211,6 +211,15 @@ export interface Candle {
   dataStatus: DataStatus;
 }
 
+// v0.6.2 Agent Energy — a company-wide spendable resource distinct from
+// AgentState.energy (each agent's individual fatigue/rest level). Spent on
+// research_boost / extra_simulation / watch_symbol via POST /api/energy/spend.
+export interface AgentEnergy {
+  current: number;
+  cap: number;
+  updatedAt: string;
+}
+
 export interface MeetingMinutes {
   id: string;
   day: number;
@@ -498,6 +507,7 @@ export interface GameSaveState {
   riskWarnings: RiskWarning[];
   scannerAlerts: ScannerAlert[];
   decisions: TradeDecision[];
+  agentEnergy: AgentEnergy;
   time: TimeState;
   settings: SettingsState;
   dialogueHistory: DialogueHistoryEntry[];

@@ -30,6 +30,41 @@ def default_watchlist() -> list[WatchlistEntry]:
     ]
 
 
+# A separate pool from SEED_SYMBOLS, only ever added to the watchlist via
+# the Agent Energy "watch_symbol" spend (see app/agent_energy.py and
+# app/nexus.py's apply_energy_action) — "monitoring additional assets"
+# beyond the default eight. Genuinely monitored: tick_watchlist() below
+# refreshes price/change for every symbol on the list, seed or added,
+# every tick, the same way. Known, honestly-labeled gap: research.py's
+# researcher rotation (_next_symbol) only ever picks from SEED_SYMBOLS, so
+# an added symbol gets real live price tracking but never an assigned
+# researcher — extending that rotation pool is a v0.7 item, not something
+# this action pretends to already do.
+EXTRA_SYMBOL_POOL: list[tuple[str, str, str]] = [
+    ("AMZN", "Amazon.com Inc.", "company"),
+    ("GOOGL", "Alphabet Inc.", "company"),
+    ("TSLA", "Tesla Inc.", "company"),
+    ("NVDA", "NVIDIA Corp.", "company"),
+    ("SLV", "iShares Silver Trust", "gold"),
+    ("USO", "United States Oil Fund", "sector"),
+]
+
+
+def add_symbol_to_watchlist(watchlist: list[WatchlistEntry], provider: MarketDataProvider) -> tuple[list[WatchlistEntry], str] | None:
+    """Returns (new_watchlist, symbol_added) or None if every symbol in the
+    pool is already being monitored."""
+    already = {entry.symbol for entry in watchlist}
+    candidates = [s for s in EXTRA_SYMBOL_POOL if s[0] not in already]
+    if not candidates:
+        return None
+    symbol, name, _category = candidates[0]
+    quote = provider.get_quote(symbol)
+    entry = WatchlistEntry(
+        symbol=symbol, name=name, lastPrice=quote.price, dailyChangePct=quote.change_pct, status="queued", researchProgress=0.0, assignedAgent=None
+    )
+    return [*watchlist, entry], symbol
+
+
 def tick_watchlist(watchlist: list[WatchlistEntry], research: list[ResearchItem], provider: MarketDataProvider) -> list[WatchlistEntry]:
     """Refreshes prices from the market data provider and syncs each
     entry's status/progress/assignedAgent from whichever ResearchItem (if

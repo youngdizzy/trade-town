@@ -1,4 +1,5 @@
 import type {
+  AgentEnergy,
   AgentId,
   AgentState,
   BacktestSession,
@@ -63,6 +64,7 @@ export interface GameUiState {
   riskWarnings: RiskWarning[];
   scannerAlerts: ScannerAlert[];
   decisions: TradeDecision[];
+  agentEnergy: AgentEnergy;
   settings: SettingsState;
   dialogue: DialogueUiState;
   paused: boolean;
@@ -137,6 +139,7 @@ class GameStore {
     riskWarnings: [],
     scannerAlerts: [],
     decisions: [],
+    agentEnergy: { current: 100, cap: 100, updatedAt: new Date().toISOString() },
     settings: { musicVolume: 0.5, sfxVolume: 0.7, autosaveIntervalSec: 60, showFps: false },
     dialogue: { open: false, speaker: "", lines: [], index: 0 },
     paused: false,
@@ -223,6 +226,7 @@ class GameStore {
     EventBus.on("riskWarnings:updated", (riskWarnings) => this.set({ riskWarnings }));
     EventBus.on("scannerAlerts:updated", (scannerAlerts) => this.set({ scannerAlerts }));
     EventBus.on("decisions:updated", (decisions) => this.set({ decisions }));
+    EventBus.on("agentEnergy:updated", (agentEnergy) => this.set({ agentEnergy }));
 
     EventBus.on("save:started", () => this.set({ save: { status: "saving", lastSavedAt: this.state.save.lastSavedAt, error: null } }));
     EventBus.on("save:completed", ({ at }) => this.set({ save: { status: "saved", lastSavedAt: at, error: null } }));

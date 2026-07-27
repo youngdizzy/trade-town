@@ -1,4 +1,5 @@
 import type {
+  AgentEnergy,
   BacktestSession,
   CoachReport,
   CompanyScore,
@@ -42,6 +43,7 @@ interface NexusSnapshot {
   riskWarnings: RiskWarning[];
   scannerAlerts: ScannerAlert[];
   decisions: TradeDecision[];
+  agentEnergy: AgentEnergy;
 }
 
 /**
@@ -100,6 +102,7 @@ export class NexusManager {
   private static riskWarnings: RiskWarning[] = [];
   private static scannerAlerts: ScannerAlert[] = [];
   private static decisions: TradeDecision[] = [];
+  private static agentEnergy: AgentEnergy = { current: 100, cap: 100, updatedAt: new Date().toISOString() };
 
   static getTasks(): Task[] {
     return this.tasks;
@@ -183,6 +186,18 @@ export class NexusManager {
 
   static getDecisions(): TradeDecision[] {
     return this.decisions;
+  }
+
+  static getAgentEnergy(): AgentEnergy {
+    return this.agentEnergy;
+  }
+
+  /** Applies the result of a direct POST /api/energy/spend call immediately,
+   * instead of waiting up to ~2s for the next sim-tick WS broadcast to catch
+   * up — keeps the meter (and the next save snapshot) in sync right away. */
+  static setAgentEnergy(agentEnergy: AgentEnergy): void {
+    this.agentEnergy = agentEnergy;
+    EventBus.emit("agentEnergy:updated", agentEnergy);
   }
 
   static applyServerUpdate(update: NexusSnapshot): void {
@@ -283,6 +298,9 @@ export class NexusManager {
       EventBus.emit("decisions:updated", update.decisions);
     }
     this.decisions = update.decisions;
+
+    if (update.agentEnergy !== this.agentEnergy) EventBus.emit("agentEnergy:updated", update.agentEnergy);
+    this.agentEnergy = update.agentEnergy;
   }
 
   static loadFromSave(save: NexusSnapshot): void {
@@ -306,5 +324,6 @@ export class NexusManager {
     this.riskWarnings = save.riskWarnings;
     this.scannerAlerts = save.scannerAlerts;
     this.decisions = save.decisions;
+    this.agentEnergy = save.agentEnergy;
   }
 }

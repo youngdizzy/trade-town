@@ -11,6 +11,7 @@ import asyncio
 from datetime import datetime, timezone
 
 from app import nexus
+from app.agent_energy import default_agent_energy
 from app.company_score import compute_company_score
 from app.portfolio import default_portfolio
 from app.research import default_research
@@ -48,6 +49,7 @@ def default_state() -> GameSaveState:
         coachReports=[],
         companyScore=compute_company_score([], default_portfolio(), [], [], []),
         performanceSnapshots=[],
+        agentEnergy=default_agent_energy(),
         updatedAt=_now_iso(),
     )
 
@@ -81,6 +83,13 @@ class GameState:
     async def snapshot(self) -> GameSaveState:
         async with self.lock:
             return self.data
+
+    async def spend_agent_energy(self, action: str, research_id: str | None) -> tuple[GameSaveState, str | None]:
+        """One Agent Energy spend, applied atomically under the same lock
+        tick() uses. Returns (state, error) — error is None on success."""
+        async with self.lock:
+            self.data, error = nexus.apply_energy_action(self.data, action, research_id)
+            return self.data, error
 
     async def tick(self, minutes: int) -> GameSaveState:
         """Advance the game clock and run one NEXUS orchestration step. Called by the sim loop."""

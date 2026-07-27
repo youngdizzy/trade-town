@@ -45,6 +45,7 @@ export class SaveManager {
       riskWarnings: NexusManager.getRiskWarnings(),
       scannerAlerts: NexusManager.getScannerAlerts(),
       decisions: NexusManager.getDecisions(),
+      agentEnergy: NexusManager.getAgentEnergy(),
       time: TimeManager.current,
       settings: SettingsManager.current,
       dialogueHistory: dialogueManager.getHistory(),

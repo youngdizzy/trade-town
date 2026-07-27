@@ -54,18 +54,23 @@ def default_strategies() -> list[Strategy]:
     ]
 
 
-def _maybe_queue_backtest(
+def queue_backtest_now(
     sessions: list[BacktestSession],
     strategies: list[Strategy],
     watchlist: list[WatchlistEntry],
     runner_pool: tuple[AgentId, ...],
     new_time: TimeState,
-) -> list[BacktestSession]:
+) -> list[BacktestSession] | None:
+    """Queues one session unconditionally (no QUEUE_CHANCE_PER_TICK roll) —
+    used both by the normal per-tick chance below and by the Agent Energy
+    "extra_simulation" spend (app/routers/energy.py), which needs a real,
+    immediate effect rather than a chance of one. Returns None if the lab
+    is already at capacity or there's nothing to run yet, so callers (the
+    energy spend endpoint especially) can tell the difference between "ran"
+    and "nothing happened" instead of silently no-oping."""
     active = [s for s in sessions if s.status in ("queued", "running")]
     if len(active) >= MAX_CONCURRENT_SESSIONS or not strategies or not watchlist:
-        return sessions
-    if random.random() >= QUEUE_CHANCE_PER_TICK:
-        return sessions
+        return None
     strategy = random.choice(strategies)
     symbol = random.choice(watchlist).symbol
     session = BacktestSession(
@@ -79,6 +84,18 @@ def _maybe_queue_backtest(
         queuedAt=_now_iso(),
     )
     return [*sessions, session]
+
+
+def _maybe_queue_backtest(
+    sessions: list[BacktestSession],
+    strategies: list[Strategy],
+    watchlist: list[WatchlistEntry],
+    runner_pool: tuple[AgentId, ...],
+    new_time: TimeState,
+) -> list[BacktestSession]:
+    if random.random() >= QUEUE_CHANCE_PER_TICK:
+        return sessions
+    return queue_backtest_now(sessions, strategies, watchlist, runner_pool, new_time) or sessions
 
 
 def _run_strategy_step(sessions: list[BacktestSession]) -> list[BacktestSession]:

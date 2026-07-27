@@ -193,4 +193,35 @@ test.describe("Global Command Center", () => {
     const after = await chartCanvas.screenshot();
     expect(Buffer.compare(before, after)).not.toBe(0); // switching timeframe actually redraws different data
   });
+
+  test("Agent Energy widget spends real energy for a real effect (watch_symbol) via POST /api/energy/spend", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await page.getByRole("button", { name: /EXPAND/ }).click();
+    const widget = page.getByTestId("agent-energy-widget");
+    await expect(widget).toBeVisible();
+
+    const readEnergy = async () => {
+      const text = await widget.getByText(/^\d+ \/ \d+$/).innerText();
+      return Number(text.split(" / ")[0]);
+    };
+    const before = await readEnergy();
+
+    const watchButton = widget.getByRole("button", { name: /Watch New Symbol/ });
+    await expect(watchButton).toBeEnabled();
+    await watchButton.click();
+
+    // The action either succeeds (energy drops by exactly the real cost) or
+    // the extra-symbol pool is already exhausted from an earlier test run
+    // against the same long-lived dev backend, in which case the button
+    // must honestly report the real 400 error instead of pretending to spend.
+    await expect(async () => {
+      const after = await readEnergy();
+      const errorVisible = await widget.getByText(/already being monitored/i).isVisible().catch(() => false);
+      expect(after === before - 10 || errorVisible).toBe(true);
+    }).toPass({ timeout: 5000 });
+  });
 });

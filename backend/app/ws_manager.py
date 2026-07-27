@@ -51,6 +51,7 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         "riskWarnings": [w.model_dump(by_alias=True) for w in state.risk_warnings],
         "scannerAlerts": [a.model_dump(by_alias=True) for a in state.scanner_alerts],
         "decisions": [d.model_dump(by_alias=True) for d in state.decisions],
+        "agentEnergy": state.agent_energy.model_dump(by_alias=True),
     }
 
 

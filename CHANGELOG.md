@@ -7,6 +7,56 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.6.2 Phase 6: Agent Energy** — a new company-wide spendable resource,
+  deliberately distinct from each individual `AgentState.energy` (that
+  field is unchanged and still means agent fatigue/rest — this is a
+  separate top-level `agentEnergy: {current, cap, updatedAt}` on
+  `GameSaveState`, never overloaded onto the existing field). Regenerates
+  +20 on the existing daily (`is_midnight`) tick flag, the same trigger
+  already used for performance snapshots — not a real-time timer, so
+  there's no way to grind it by waiting in real life.
+  - Every spend action has one real, verifiable effect on real game
+    state — per the brief, energy must never "magically make an AI agent
+    more intelligent" as a blanket effect. `app/agent_energy.py` defines
+    the three actions and their costs: `research_boost` (15⚡, +25
+    confidence — capped at 100 — to one specific in-progress
+    `ResearchItem` the player picks, not every item at once),
+    `extra_simulation` (20⚡, immediately queues one real
+    `BacktestSession` via a new public `queue_backtest_now()`, extracted
+    from `simulation.py`'s existing random-chance `_maybe_queue_backtest`
+    so both paths share one implementation), `watch_symbol` (10⚡, adds
+    one real `WatchlistEntry` with a real live quote from a new
+    `EXTRA_SYMBOL_POOL` in `watchlist.py` — AMZN/GOOGL/TSLA/NVDA/SLV/USO
+    — honestly documented as not getting automatic researcher assignment,
+    since `research.py`'s rotation is hardcoded to the original 8 seed
+    symbols).
+  - `nexus.py`'s new `apply_energy_action()` is atomic: a spend either
+    deducts the cost **and** applies the real effect, or does neither —
+    verified by a dedicated test that an unaffordable/invalid spend
+    leaves both the energy total and the target state (research
+    confidence, backtest sessions, watchlist) completely unchanged.
+  - New `POST /api/energy/spend` endpoint (`{action, researchId?}` →
+    `{agentEnergy}`, 400 on insufficient energy or an invalid action/
+    target) persists the save immediately, the same "a spend is a
+    meaningful event" reasoning already applied elsewhere.
+  - Frontend: `AgentEnergyWidget.tsx` on the Command Center's Overview
+    tab — a meter, a research-item picker for `research_boost`, and the
+    other two one-click actions, all wired through the full
+    WS-broadcast → `NexusManager` → `gameStore` pipeline (adding
+    `agentEnergy` to `ws_manager.py`'s `build_state_message()`,
+    `socket.ts`'s `ServerMessage`, and every other layer that already
+    explicitly enumerates each `GameSaveState` field) plus a direct
+    `NexusManager.setAgentEnergy()` path so a successful spend updates
+    the UI immediately instead of waiting up to ~2s for the next sim
+    tick's broadcast to catch up.
+  - Tests: 11 new backend tests (`test_agent_energy.py`) covering regen/
+    cap/afford/spend and all three real-effect actions' success and
+    rejection paths; 1 new Playwright test exercising a real
+    `POST /api/energy/spend` call end-to-end through the UI. Full
+    backend (mypy/ruff/pytest) and frontend (tsc/eslint/build/Playwright,
+    9/9 passing) verification, plus a live save/load/WS round-trip
+    confirming `agentEnergy` persists and broadcasts correctly.
+
 - **v0.6.2 Phase 5: The Market Observatory** — a real, walkable 10th
   building in the Lobby (`MarketObservatoryScene.ts`), not a second
   disconnected Command Center. Reuses `RoomScene`'s entirely generic

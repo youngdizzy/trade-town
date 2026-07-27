@@ -4,6 +4,7 @@ import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { computeNoTradeStats, formatPct, latestDecision, marketRegimeHeuristic, riskLevel, voteDirection } from "../lib/derive";
 import { DataRow, EmptyState, Glass, Meter, RiskDot, TerminalLabel } from "../ui";
 import { MarketChartPanel } from "../MarketChartPanel";
+import { AgentEnergyWidget } from "../AgentEnergyWidget";
 import type { Tab } from "../FullCommandCenter";
 
 /** The landing tab — the small set of numbers most likely to change what the operator does next, pulled from every other panel's real data. */
@@ -77,6 +78,10 @@ export function OverviewPanel({ onInspect, onNavigate }: { onInspect: (d: TradeD
           </>
         )}
       </Glass>
+
+      <div className="lg:col-span-3">
+        <AgentEnergyWidget />
+      </div>
 
       <div className="lg:col-span-3">
         <MarketChartPanel />
