@@ -14,7 +14,8 @@ export type SceneId =
   | "SimulationLabScene"
   | "HallOfFameScene"
   | "PerformanceCenterScene"
-  | "TradingFloorScene";
+  | "TradingFloorScene"
+  | "MarketObservatoryScene";
 
 export type AgentId = "scout" | "atlas" | "echo" | "nova" | "scribe" | "coach" | "sentinel" | "pulse" | "guardian";
 export const AGENT_IDS: readonly AgentId[] = ["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian"];

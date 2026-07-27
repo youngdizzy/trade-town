@@ -6,6 +6,7 @@ import { SettingsMenu } from "@/ui/components/SettingsMenu";
 import { PauseMenu } from "@/ui/components/PauseMenu";
 import { DebugOverlay } from "@/ui/components/DebugOverlay";
 import { BrainRoomHud } from "@/ui/components/BrainRoomHud";
+import { MarketObservatoryHud } from "@/ui/components/MarketObservatoryHud";
 import { Newspaper } from "@/ui/components/Newspaper";
 import { CompanyMemory } from "@/ui/components/CompanyMemory";
 import { CoachDashboard } from "@/ui/components/CoachDashboard";
@@ -18,6 +19,7 @@ export default function App() {
       <TopStatusBar />
       <DebugOverlay />
       <BrainRoomHud />
+      <MarketObservatoryHud />
       <DialogueBox />
       <Newspaper />
       <CompanyMemory />

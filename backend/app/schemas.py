@@ -49,6 +49,7 @@ SceneId = Literal[
     "HallOfFameScene",
     "PerformanceCenterScene",
     "TradingFloorScene",
+    "MarketObservatoryScene",
 ]
 
 AgentId = Literal["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian"]

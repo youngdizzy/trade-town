@@ -111,6 +111,16 @@ const DOORS: DoorDef[] = [
   { target: "HallOfFameScene", label: "Hall of Fame", x: 580 + LEFT_SHIFT, y: FRONT_ROW_Y, asset: "props/buildings/windmill", targetWidth: 78 },
   { target: "TradingFloorScene", label: "Trading Floor", x: 1180 + LEFT_SHIFT, y: FRONT_ROW_Y, asset: "props/buildings/house-5-limestone-base-blue", targetWidth: 190 },
   { target: "PerformanceCenterScene", label: "Performance Center", x: 1430 + LEFT_SHIFT, y: FRONT_ROW_Y, asset: "props/buildings/barn-base-red", targetWidth: 165 },
+  // Reuses the church silhouette (already Meeting Room's back-row asset —
+  // the fantasy-village pack has no dedicated observatory/tower sprite,
+  // and this project only uses the supplied asset pack, see
+  // BrainRoomScene's own note on that rule) at a smaller scale, well
+  // clear of both PerformanceCenter's right edge (~1528px) and the road
+  // layer's right boundary (WIDTH_TILES-4 = 1696px — see buildPath()).
+  // buildBuildings() adds a cyan glow ring on top of this one door only,
+  // so it still reads as "the futuristic tech hidden inside the old-world
+  // architecture" rather than a plain duplicate of Meeting Room.
+  { target: "MarketObservatoryScene", label: "Market Observatory", x: 1630, y: FRONT_ROW_Y, asset: "props/buildings/church-red-front", targetWidth: 90 },
 ];
 
 // The town square sits dead center, filling the entire open gap between
@@ -643,6 +653,18 @@ export class LobbyScene extends Phaser.Scene {
       body.updateCenter();
 
       const topEdge = def.y + 64 - building.displayHeight;
+
+      // The fantasy-village asset pack has no dedicated observatory/tower
+      // sprite (see this door's own comment in DOORS above) — a small
+      // pulsing cyan ring at the roofline is the cheapest honest way to
+      // hint "advanced tech inside" without claiming a purpose-built
+      // sprite that doesn't exist, and without leaving the Market
+      // Observatory looking identical to Meeting Room just because they
+      // share a base silhouette.
+      if (def.target === "MarketObservatoryScene") {
+        const glow = this.add.circle(def.x, topEdge + building.displayHeight * 0.18, 5, 0x4fd8ff, 0.85).setDepth(4);
+        this.tweens.add({ targets: glow, scale: { from: 0.8, to: 1.6 }, alpha: { from: 0.85, to: 0.1 }, duration: 1400, repeat: -1, ease: "Sine.easeOut" });
+      }
 
       // Both labels float above the roof rather than one sitting on the
       // door artwork — "[E] Enter" used to overlap the house's own painted

@@ -7,6 +7,50 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.6.2 Phase 5: The Market Observatory** — a real, walkable 10th
+  building in the Lobby (`MarketObservatoryScene.ts`), not a second
+  disconnected Command Center. Reuses `RoomScene`'s entirely generic
+  door/spur/label/collision machinery (the same base class every other
+  room already extends) — adding one `DoorDef` entry to `LobbyScene.ts`'s
+  `DOORS` array was sufficient for the door, road spur, and name label to
+  appear correctly with zero changes to the shared building/road-drawing
+  code. Placed at x:1630 on the front row, safely clear of both
+  PerformanceCenter's right edge (~1528px) and the road layer's own right
+  boundary (1696px), so none of the Lobby's existing hand-tuned
+  building/hedge/pond spacing needed to move.
+  - The fantasy-village asset pack has no dedicated observatory/tower
+    sprite, so the building reuses the church silhouette (Meeting Room's
+    asset) at a smaller scale, with a small pulsing cyan glow ring added
+    on top of this one door only — "the futuristic tech hidden inside
+    the old-world architecture," not a fabricated purpose-built sprite.
+  - `agentLocation: null` (same pattern as `CeoOfficeScene`) — no agent
+    is scheduled to visit, so none appear; inventing agent presence here
+    would be exactly the fake activity the v0.6.2 brief warns against.
+  - `MarketObservatoryHud.tsx` — an ambient React overlay (shows
+    automatically while physically standing in the room, same pattern as
+    `BrainRoomHud`'s ambient mode, no toolbar toggle) with a large
+    central `CandlestickChart` (symbol picker, real OHLC data via the
+    same `/api/market/candles` endpoint the Command Center uses) and five
+    stations, every one backed by a real, already-existing data source
+    rather than an invented "technical/fundamental/macro/news/sentiment"
+    feed that doesn't exist in this backend: Technical (the same
+    `marketRegimeHeuristic` + a decision's real `technicalSummary`),
+    News/Events (the real `news` list), Macro (research items in the
+    economy/gold/bitcoin/index categories), Risk (the real `riskLevel`/
+    `riskWarnings`), Strategy (real `strategies`/`backtestSessions`).
+    "Both must use the same underlying market data and analysis systems"
+    — this shares `lib/derive.ts` and `CandlestickChart` directly with
+    the Command Center rather than reimplementing either.
+  - `SceneId` gained `"MarketObservatoryScene"` in **both**
+    `frontend/src/types.ts` and `backend/app/schemas.py` — the two must
+    stay in sync (see `types.ts`'s own header comment) since a save
+    written while standing in an unrecognized scene would otherwise fail
+    validation and hit the v0.6.2 Phase 1 migration path unnecessarily.
+  - Tests: 3 new Playwright tests, including one that physically walks
+    the player through the real door (not scene-injection) to prove the
+    collision/spur placement is actually correct, not just visually
+    plausible.
+
 - **v0.6.2 Phases 2-4: Market Data Abstraction + candlestick charts,
   wired into the existing Command Center.** No duplicate Command Center
   was created — this extends the one v0.6.1 already built.
