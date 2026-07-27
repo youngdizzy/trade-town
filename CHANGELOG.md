@@ -7,6 +7,27 @@ development milestones, not semver releases.
 
 ### Fixed
 
+- **Closing a dialogue with "E" could immediately re-open a new
+  conversation with the same NPC (or, near a door, exit the room)** —
+  `DialogueBox`'s own window keydown handler and the room scene's Phaser
+  interact key both listen to the same physical keypress; closing the
+  final line of dialogue with E left the scene's key reading as freshly
+  "just pressed" on its very next `update()`, immediately re-triggering
+  `nearestAgent()`/`startConversation()` (or the door-exit check) since
+  the player is typically still standing right next to the agent they
+  were just talking to. This read as the game refusing to let you stop
+  talking to an NPC. `GameManager` now resets the active scene's keyboard
+  state on `dialogue:close`, the same pattern already used for the
+  overlay/pause-menu fix below.
+- **Some room-specific text rendered blurrier than its neighbors** —
+  Brain Room's "MARKET CORE" label, Hall of Fame's "LATEST INDUCTEE"
+  header, the Whiteboard prop's header/body text, every room's "Exit"
+  label, and both the player/agent name tags and agent mood badges were
+  all missing the `resolution: 4` treatment that `RoomScene.addLiveText()`
+  already used for its own text — small rooms zoom well past the base
+  camera zoom to cover the viewport, so a 1x-resolution text texture
+  scaled up that much reads visibly blurrier than the crisp HUD text
+  sitting right next to it in the same room.
 - **Opening the newspaper (or Company Memory / Coach Dashboard) made the
   game feel stuck** — these full-screen overlays only had a mouse-click
   "Close" button (no keyboard close, unlike the existing `DialogueBox`)

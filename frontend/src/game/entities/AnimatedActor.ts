@@ -47,6 +47,7 @@ export class AnimatedActor {
         color: "#f4e6c9",
         backgroundColor: "#241c14cc",
         padding: { x: 4, y: 2 },
+        resolution: 4,
       })
       .setOrigin(0.5, 1)
       .setDepth(20);

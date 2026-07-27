@@ -18,7 +18,7 @@ export class Whiteboard {
     // around, since Phaser's wordWrap only wraps width, not box height).
     scene.add.rectangle(x, y, 92, 58, 0xf4e6c9).setStrokeStyle(2, 0x241c14).setDepth(3);
     scene.add
-      .text(x, y - 33, "WHITEBOARD", { fontFamily: "monospace", fontSize: "6px", color: "#f4e6c9", backgroundColor: "#241c14" })
+      .text(x, y - 33, "WHITEBOARD", { fontFamily: "monospace", fontSize: "6px", color: "#f4e6c9", backgroundColor: "#241c14", resolution: 4 })
       .setOrigin(0.5)
       .setDepth(3);
     this.text = scene.add
@@ -29,6 +29,7 @@ export class Whiteboard {
         color: "#241c14",
         align: "center",
         wordWrap: { width: 82 },
+        resolution: 4,
       })
       .setOrigin(0.5)
       .setDepth(4);

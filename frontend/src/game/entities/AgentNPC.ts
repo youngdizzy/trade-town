@@ -63,6 +63,7 @@ export class AgentNPC extends AnimatedActor {
     this.badge = scene.add
       .text(x, y - screenGapToWorld(scene, BADGE_SCREEN_GAP_PX), profile.badge, {
         fontSize: "14px",
+        resolution: 4,
       })
       .setOrigin(0.5, 1)
       .setDepth(20);

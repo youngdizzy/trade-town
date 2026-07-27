@@ -75,6 +75,7 @@ export abstract class RoomScene extends Phaser.Scene {
         fontFamily: "monospace",
         fontSize: "8px",
         color: "#f4e6c9",
+        resolution: 4,
       })
       .setOrigin(0.5);
 

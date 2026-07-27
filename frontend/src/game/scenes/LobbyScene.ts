@@ -632,6 +632,7 @@ export class LobbyScene extends Phaser.Scene {
           color: "#d9a441",
           backgroundColor: "#241c14aa",
           padding: { x: 4, y: 1 },
+          resolution: 4,
         })
         .setOrigin(0.5)
         .setDepth(4);
@@ -643,6 +644,7 @@ export class LobbyScene extends Phaser.Scene {
           color: "#f4e6c9",
           backgroundColor: "#241c14aa",
           padding: { x: 4, y: 2 },
+          resolution: 4,
         })
         .setOrigin(0.5)
         .setDepth(4);
@@ -668,6 +670,7 @@ export class LobbyScene extends Phaser.Scene {
         fontSize: "7px",
         color: "#d9a441",
         align: "center",
+        resolution: 4,
       })
       .setOrigin(0.5, 0)
       .setDepth(4);

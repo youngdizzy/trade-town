@@ -71,7 +71,7 @@ export class HallOfFameScene extends RoomScene {
     const py = heightPx / 2 + 4;
     this.add.rectangle(px, py, 78, 40, 0xf4e6c9).setStrokeStyle(2, 0x241c14).setDepth(2);
     this.add
-      .text(px, py - 16, "LATEST INDUCTEE", { fontFamily: "monospace", fontSize: "6px", color: "#8a6a1a" })
+      .text(px, py - 16, "LATEST INDUCTEE", { fontFamily: "monospace", fontSize: "6px", color: "#8a6a1a", resolution: 4 })
       .setOrigin(0.5)
       .setDepth(3);
     this.addLiveText("hallOfFame:updated", px, py + 2, PLAQUE_STYLE, formatHallOfFame, NexusManager.getHallOfFame());

@@ -74,7 +74,7 @@ export class BrainRoomScene extends RoomScene {
     this.tweens.add({ targets: core, alpha: { from: 0.55, to: 1 }, scale: { from: 0.9, to: 1.1 }, duration: 900, yoyo: true, repeat: -1 });
 
     this.add
-      .text(cx, cy + 30, "MARKET CORE", { fontFamily: "monospace", fontSize: "7px", color: "#b388ff" })
+      .text(cx, cy + 30, "MARKET CORE", { fontFamily: "monospace", fontSize: "7px", color: "#b388ff", resolution: 4 })
       .setOrigin(0.5)
       .setDepth(5);
   }

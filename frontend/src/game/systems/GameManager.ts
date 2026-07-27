@@ -50,6 +50,16 @@ export class GameManager {
       if (this.worldActive) this.resetSceneKeys();
     });
 
+    // Closing a dialogue with "E" (DialogueBox's own window keydown handler,
+    // same pattern as the overlays above) races the *same* keypress against
+    // Phaser's interact key on the scene: DialogueBox advances/closes first,
+    // but the scene's own key still reads as freshly "just pressed" on its
+    // next update() — without a reset, that stray press immediately re-opens
+    // a new conversation with whichever agent is nearest (or, if the player
+    // happens to be by the door, exits the room), which reads as the game
+    // refusing to let you stop talking to an NPC.
+    EventBus.on("dialogue:close", () => this.resetSceneKeys());
+
     this.game = new Phaser.Game({
       type: Phaser.AUTO,
       parent,
