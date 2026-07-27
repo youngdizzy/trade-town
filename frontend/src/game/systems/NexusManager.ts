@@ -50,6 +50,7 @@ interface NexusSnapshot {
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
   education: EducationProgress;
+  viewedTradeNotificationIds: string[];
 }
 
 /**
@@ -112,6 +113,7 @@ export class NexusManager {
   private static signalCalibration: SignalCalibrationState = { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 };
   private static playerVsAi: PlayerVsAiState = { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 };
   private static education: EducationProgress = { viewedLessonIds: [], completedLessonIds: [], quizAttempts: 0, correctQuizAttempts: 0 };
+  private static viewedTradeNotificationIds: string[] = [];
 
   static getTasks(): Task[] {
     return this.tasks;
@@ -243,6 +245,17 @@ export class NexusManager {
     EventBus.emit("education:updated", education);
   }
 
+  static getViewedTradeNotificationIds(): string[] {
+    return this.viewedTradeNotificationIds;
+  }
+
+  /** Applies the result of a direct POST /api/trades/ack call
+   * immediately, the same reasoning as setEducation above. */
+  static setViewedTradeNotificationIds(ids: string[]): void {
+    this.viewedTradeNotificationIds = ids;
+    EventBus.emit("tradeNotifications:updated", ids);
+  }
+
   static applyServerUpdate(update: NexusSnapshot): void {
     for (const task of update.tasks) {
       const previous = this.tasks.find((t) => t.id === task.id);
@@ -353,6 +366,9 @@ export class NexusManager {
 
     if (update.education !== this.education) EventBus.emit("education:updated", update.education);
     this.education = update.education;
+
+    if (update.viewedTradeNotificationIds !== this.viewedTradeNotificationIds) EventBus.emit("tradeNotifications:updated", update.viewedTradeNotificationIds);
+    this.viewedTradeNotificationIds = update.viewedTradeNotificationIds;
   }
 
   static loadFromSave(save: NexusSnapshot): void {
@@ -380,5 +396,6 @@ export class NexusManager {
     this.signalCalibration = save.signalCalibration;
     this.playerVsAi = save.playerVsAi;
     this.education = save.education;
+    this.viewedTradeNotificationIds = save.viewedTradeNotificationIds;
   }
 }

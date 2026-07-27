@@ -71,6 +71,7 @@ export interface GameUiState {
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
   education: EducationProgress;
+  viewedTradeNotificationIds: string[];
   settings: SettingsState;
   dialogue: DialogueUiState;
   paused: boolean;
@@ -149,6 +150,7 @@ class GameStore {
     signalCalibration: { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 },
     playerVsAi: { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 },
     education: { viewedLessonIds: [], completedLessonIds: [], quizAttempts: 0, correctQuizAttempts: 0 },
+    viewedTradeNotificationIds: [],
     settings: { musicVolume: 0.5, sfxVolume: 0.7, autosaveIntervalSec: 60, showFps: false },
     dialogue: { open: false, speaker: "", lines: [], index: 0 },
     paused: false,
@@ -239,6 +241,7 @@ class GameStore {
     EventBus.on("signalCalibration:updated", (signalCalibration) => this.set({ signalCalibration }));
     EventBus.on("playerVsAi:updated", (playerVsAi) => this.set({ playerVsAi }));
     EventBus.on("education:updated", (education) => this.set({ education }));
+    EventBus.on("tradeNotifications:updated", (viewedTradeNotificationIds) => this.set({ viewedTradeNotificationIds }));
 
     EventBus.on("save:started", () => this.set({ save: { status: "saving", lastSavedAt: this.state.save.lastSavedAt, error: null } }));
     EventBus.on("save:completed", ({ at }) => this.set({ save: { status: "saved", lastSavedAt: at, error: null } }));

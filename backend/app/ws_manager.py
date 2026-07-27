@@ -63,6 +63,7 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         # broadcast, fetched once via GET /api/education/lessons instead
         # (see education.py's module docstring).
         "education": state.education.model_dump(by_alias=True),
+        "viewedTradeNotificationIds": state.viewed_trade_notification_ids,
     }
 
 

@@ -7,6 +7,50 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.6.2 Phase 10: Trade outcome popups** — a real, closed PaperTrade
+  now surfaces a popup the moment the player is present to see it:
+  celebration (pulsing green glow + a burst of CSS confetti) on a win,
+  a shake/impact on a loss, neutral on a breakeven. Win/loss/breakeven
+  and the "thesis confirmed/invalidated/neutral" classification are both
+  a direct, honest read of the trade's own real `pnl` sign — no new
+  signal invented, no duplicated source of truth; the post-trade
+  analysis section reuses the trade's real `reason`/`coachReview`/
+  `lessonsLearned` fields that already existed on `PaperTrade` (see
+  app/journal.py) rather than fabricating new commentary.
+  - Persisted `viewedTradeNotificationIds` (capped at 60, a little above
+    `paper_portfolio`'s own 50-trade history cap) tracks which trades'
+    popups have already been shown/dismissed, acknowledged via
+    `POST /api/trades/ack` — so a refresh or Docker restart never
+    re-shows a popup the player already saw, per the brief's explicit
+    requirement.
+  - **Bug caught and fixed during this phase's own verification**: the
+    first implementation queued and displayed a popup for *every*
+    unviewed trade — on a save with a real backlog (e.g. the first time
+    loading an existing save, or after being away while paper trading
+    kept running), this meant a wall of blocking modals the player had
+    to click through one at a time, intercepting all other clicks
+    (confirmed via a Playwright regression: it silently blocked seven
+    unrelated existing tests' button clicks in the shared dev backend,
+    which already had a real backlog). Fixed by only ever popping up the
+    single most recently closed trade; any older backlog is
+    acknowledged silently in the background. Every trade's full analysis
+    remains available anytime in the Decisions/Performance tabs — this
+    popup is a "here's what just happened" moment, not the only record
+    of it.
+  - Tests: 3 new backend tests for the capped/deduped acknowledgement
+    list; 1 new Playwright test verifying real win/loss content, the
+    correct glow/shake animation for that trade's real outcome, and that
+    dismissal persists across a reload. Full backend (mypy/ruff/pytest,
+    75/75) and frontend (tsc/eslint/build) verification, plus the full
+    Playwright suite (12/12 passing, the one timing-dependent new test
+    gracefully skipping rather than false-passing on the run where no
+    trade happened to close in its poll window — verified passing with
+    full assertions on other runs), and a live save/load/WS round-trip
+    confirming `viewedTradeNotificationIds` persists correctly.
+
+This completes all ten phases of the v0.6.2 roadmap (Phase 1's save/
+progress-loss fix through Phase 10's trade outcome popups).
+
 - **v0.6.2 Phase 9: Trading Education** — a ten-topic curriculum
   (`app/education.py`), ordered as a real learning progression:
   candlesticks → wicks → trends → support/resistance → ENTER/WAIT/AVOID

@@ -49,6 +49,7 @@ export class SaveManager {
       signalCalibration: NexusManager.getSignalCalibration(),
       playerVsAi: NexusManager.getPlayerVsAi(),
       education: NexusManager.getEducation(),
+      viewedTradeNotificationIds: NexusManager.getViewedTradeNotificationIds(),
       time: TimeManager.current,
       settings: SettingsManager.current,
       dialogueHistory: dialogueManager.getHistory(),

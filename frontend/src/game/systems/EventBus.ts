@@ -90,6 +90,7 @@ export interface GameEvents {
   "signalCalibration:updated": SignalCalibrationState;
   "playerVsAi:updated": PlayerVsAiState;
   "education:updated": EducationProgress;
+  "tradeNotifications:updated": string[];
 }
 
 type Handler<K extends keyof GameEvents> = (payload: GameEvents[K]) => void;

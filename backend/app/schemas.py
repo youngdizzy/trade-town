@@ -813,6 +813,13 @@ class GameSaveState(CamelModel):
     signal_calibration: SignalCalibrationState = Field(default_factory=SignalCalibrationState, alias="signalCalibration")
     player_vs_ai: PlayerVsAiState = Field(default_factory=PlayerVsAiState, alias="playerVsAi")
     education: EducationProgress = Field(default_factory=EducationProgress)
+    # v0.6.2 Phase 10: which PaperTrade ids have already had their trade
+    # outcome popup shown/dismissed — see app/routers/trades.py. Persisted
+    # so a refresh or Docker restart never re-shows a popup for a trade
+    # the player already saw. Real progress, not regenerable — capped like
+    # every other list here (see portfolio.py's own MAX_TRADE_HISTORY,
+    # which this tracks against).
+    viewed_trade_notification_ids: list[str] = Field(default_factory=list, alias="viewedTradeNotificationIds")
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(default_factory=list, alias="dialogueHistory")

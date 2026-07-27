@@ -44,6 +44,31 @@ export default {
         "cmd-amber": "0 0 1px rgba(255,180,67,0.8), 0 0 16px rgba(255,180,67,0.25)",
         "cmd-red": "0 0 1px rgba(255,77,94,0.8), 0 0 16px rgba(255,77,94,0.3)",
       },
+      // v0.6.2 Phase 10 trade outcome popup — a win pulses its glow and
+      // drops confetti, a loss shakes once on entry, a breakeven gets
+      // neither (see TradeOutcomePopup.tsx).
+      keyframes: {
+        "cmd-shake": {
+          "0%, 100%": { transform: "translateX(0)" },
+          "20%": { transform: "translateX(-8px)" },
+          "40%": { transform: "translateX(7px)" },
+          "60%": { transform: "translateX(-5px)" },
+          "80%": { transform: "translateX(3px)" },
+        },
+        "cmd-glow-pulse": {
+          "0%, 100%": { boxShadow: "0 0 1px rgba(60,226,138,0.8), 0 0 16px rgba(60,226,138,0.25)" },
+          "50%": { boxShadow: "0 0 2px rgba(60,226,138,1), 0 0 36px rgba(60,226,138,0.55)" },
+        },
+        "cmd-confetti-fall": {
+          "0%": { transform: "translateY(-10px) rotate(0deg)", opacity: "1" },
+          "100%": { transform: "translateY(160px) rotate(340deg)", opacity: "0" },
+        },
+      },
+      animation: {
+        "cmd-shake": "cmd-shake 0.5s ease-in-out",
+        "cmd-glow-pulse": "cmd-glow-pulse 1.6s ease-in-out infinite",
+        "cmd-confetti-fall": "cmd-confetti-fall 1.4s ease-in forwards",
+      },
     },
   },
   plugins: [],

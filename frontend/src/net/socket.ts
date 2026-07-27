@@ -60,6 +60,7 @@ type ServerMessage =
       signalCalibration: SignalCalibrationState;
       playerVsAi: PlayerVsAiState;
       education: EducationProgress;
+      viewedTradeNotificationIds: string[];
     }
   | { type: "pong" };
 
@@ -141,6 +142,7 @@ export class GameSocket {
             signalCalibration: msg.signalCalibration,
             playerVsAi: msg.playerVsAi,
             education: msg.education,
+            viewedTradeNotificationIds: msg.viewedTradeNotificationIds,
           });
         }
       } catch (err) {

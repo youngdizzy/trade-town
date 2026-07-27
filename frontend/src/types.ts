@@ -619,6 +619,7 @@ export interface GameSaveState {
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
   education: EducationProgress;
+  viewedTradeNotificationIds: string[];
   time: TimeState;
   settings: SettingsState;
   dialogueHistory: DialogueHistoryEntry[];

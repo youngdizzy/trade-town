@@ -71,4 +71,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ lessonId, selectedIndex }),
     }),
+  ackTradeNotification: (tradeId: string) =>
+    request<{ viewedTradeNotificationIds: string[] }>("/trades/ack", {
+      method: "POST",
+      body: JSON.stringify({ tradeId }),
+    }),
 };

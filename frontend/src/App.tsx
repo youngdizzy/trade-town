@@ -11,6 +11,7 @@ import { Newspaper } from "@/ui/components/Newspaper";
 import { CompanyMemory } from "@/ui/components/CompanyMemory";
 import { CoachDashboard } from "@/ui/components/CoachDashboard";
 import { CommandCenter } from "@/ui/components/CommandCenter/CommandCenter";
+import { TradeOutcomePopup } from "@/ui/components/TradeOutcomePopup";
 
 export default function App() {
   return (
@@ -28,6 +29,7 @@ export default function App() {
       <PauseMenu />
       <SettingsMenu />
       <CommandCenter />
+      <TradeOutcomePopup />
     </div>
   );
 }

@@ -30,7 +30,8 @@ async function setPlayerScene(page: Page, scene: string, x: number, y: number): 
   }, state);
 }
 
-async function continueGame(page: Page): Promise<void> {
+/** The raw title-screen "Continue" click sequence, with no popup handling — shared by continueGame() and any test that needs to inspect a popup right as it appears. */
+async function clickContinueOnTitleScreen(page: Page): Promise<void> {
   const canvas = page.locator("canvas");
   await expect(canvas).toBeVisible();
   // Preload (asset loading + PreloadScene -> MainMenuScene handoff) can
@@ -53,7 +54,30 @@ async function continueGame(page: Page): Promise<void> {
       // not in-game yet — try again
     }
   }
-  throw new Error("continueGame: never reached an in-game scene after 5 click attempts");
+  throw new Error("clickContinueOnTitleScreen: never reached an in-game scene after 5 click attempts");
+}
+
+async function continueGame(page: Page): Promise<void> {
+  await clickContinueOnTitleScreen(page);
+  await dismissTradeOutcomePopups(page);
+}
+
+/**
+ * This long-running test file shares one real dev backend, whose paper
+ * trading has been running continuously since the file started — a real
+ * closed trade may already be waiting with a popup by the time any given
+ * test loads. That's correct, honest behavior (see TradeOutcomePopup.tsx),
+ * not a test-only quirk, so tests clear it the same way a real player
+ * would: click Continue. Loops briefly in case dismissing one reveals a
+ * newer trade that closed in the meantime.
+ */
+async function dismissTradeOutcomePopups(page: Page): Promise<void> {
+  const popup = page.getByTestId("trade-outcome-popup");
+  for (let i = 0; i < 5; i++) {
+    if (!(await popup.isVisible().catch(() => false))) return;
+    await popup.getByRole("button", { name: "Continue" }).click();
+    await popup.waitFor({ state: "hidden", timeout: 3000 }).catch(() => {});
+  }
 }
 
 async function enableDebugOverlay(page: Page): Promise<void> {
@@ -149,8 +173,12 @@ test.describe("Global Command Center", () => {
     await expect(page.getByText("COMMAND CENTER", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: /EXPAND/ }).click();
 
+    // This is the longest-running test in the file — with the real sim
+    // ticking throughout, a genuine trade can close (and pop up) mid-test.
+    // Dismiss defensively between steps rather than let it block a click.
     const tabs = ["OVERVIEW", "OPPORTUNITIES", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
     for (const tab of tabs) {
+      await dismissTradeOutcomePopups(page);
       await page.getByRole("button", { name: tab, exact: true }).click();
       await expect(page.getByRole("button", { name: tab, exact: true })).toHaveClass(/text-cmd-cyan/);
     }
@@ -159,15 +187,19 @@ test.describe("Global Command Center", () => {
     // so by this point it may honestly have accumulated real decisions —
     // either way the panel must render something truthful, never a blank
     // screen: either real opportunity cards, or the explicit empty state.
+    await dismissTradeOutcomePopups(page);
     await page.getByRole("button", { name: "OPPORTUNITIES", exact: true }).click();
     await expect(page.getByText(/No opportunities evaluated yet/).or(page.locator("text=/% confidence/").first())).toBeVisible();
 
+    await dismissTradeOutcomePopups(page);
     await page.getByRole("button", { name: "RISK", exact: true }).click();
     await expect(page.getByText(/NORMAL|ELEVATED|RESTRICTED/)).toBeVisible();
 
+    await dismissTradeOutcomePopups(page);
     await page.getByRole("button", { name: "AGENTS", exact: true }).click();
     await expect(page.getByText("Atlas").first()).toBeVisible();
 
+    await dismissTradeOutcomePopups(page);
     await page.getByRole("button", { name: "QUICK VIEW", exact: true }).click();
     await expect(page.getByText("Quick View")).toBeVisible();
   });
@@ -182,7 +214,11 @@ test.describe("Global Command Center", () => {
     await expect(page.getByText("Market Chart")).toBeVisible();
 
     // Never claim simulated data is live — the badge must say so explicitly.
-    await expect(page.getByText("SIMULATED")).toBeVisible();
+    // .first(): real coach-review text on closed trades elsewhere on the
+    // page can also legitimately contain the substring "simulated" (case-
+    // insensitive default match), so this scopes to the chart's own badge,
+    // which renders before that text in DOM order.
+    await expect(page.getByText("SIMULATED").first()).toBeVisible();
 
     const chartCanvas = page.locator("canvas").nth(1); // canvas 0 is the Phaser game itself
     await expect(chartCanvas).toBeVisible();
@@ -305,5 +341,54 @@ test.describe("Global Command Center", () => {
     await page.getByRole("button", { name: "Need Help?" }).click();
     await expect(page.getByRole("button", { name: "ACADEMY", exact: true })).toHaveClass(/text-cmd-cyan/);
     await expect(page.getByTestId("education-lesson").getByText("Risk/Reward Ratio", { exact: true })).toBeVisible();
+  });
+
+  test("Trade outcome popup shows a real closed trade's win/loss and post-trade analysis, and dismissal persists", async ({ page }) => {
+    test.setTimeout(60000); // polls up to 45s for a real trade to close naturally
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page); // clears any pre-existing backlog, so what we wait for below is guaranteed fresh
+
+    // POST /api/save only ever merges player/settings/dialogueHistory from
+    // the client (see state.py's apply_client_save) — everything else,
+    // including viewedTradeNotificationIds, stays server-authoritative. So
+    // rather than faking an unviewed trade through a save round trip, wait
+    // on the real live WS feed for the sim's own paper-trading engine to
+    // actually close one — the same "real backend, real timing" approach
+    // this whole test file already uses everywhere else.
+    const popup = page.getByTestId("trade-outcome-popup");
+    let appeared = true;
+    try {
+      await expect(popup).toBeVisible({ timeout: 45000 });
+    } catch {
+      appeared = false;
+    }
+    test.skip(!appeared, "no new real trade closed within the poll window");
+
+    await expect(popup.getByText(/WIN|LOSS|BREAKEVEN/)).toBeVisible();
+    await expect(popup.getByText(/Post-Trade Analysis/)).toBeVisible();
+    await expect(popup.getByText(/Thesis (confirmed|invalidated|neutral)/)).toBeVisible();
+
+    // A real win must celebrate (glow) and a real loss must shake — assert
+    // whichever this actual trade's real outcome produced.
+    const outcomeText = await popup.getByText(/WIN|LOSS|BREAKEVEN/).first().innerText();
+    if (outcomeText === "WIN") {
+      await expect(popup.locator("> div").first()).toHaveClass(/animate-cmd-glow-pulse/);
+    } else if (outcomeText === "LOSS") {
+      await expect(popup.locator("> div").first()).toHaveClass(/animate-cmd-shake/);
+    }
+
+    const symbol = await popup.locator(".font-cmdmono.text-xl").innerText();
+    await popup.getByRole("button", { name: "Continue" }).click();
+    await expect(popup).not.toBeVisible();
+
+    // Dismissal must persist — reloading must never re-show a popup for
+    // that same trade (a fresh one for a *different*, later trade closing
+    // in the meantime is fine and expected).
+    await page.reload();
+    await clickContinueOnTitleScreen(page);
+    if (await popup.isVisible().catch(() => false)) {
+      await expect(popup.locator(".font-cmdmono.text-xl")).not.toHaveText(symbol);
+    }
   });
 });

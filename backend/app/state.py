@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 
-from app import education, nexus, player_vs_ai, signal_calibration
+from app import education, nexus, player_vs_ai, signal_calibration, trade_notifications
 from app.agent_energy import default_agent_energy
 from app.company_score import compute_company_score
 from app.market_data import market_data_provider
@@ -65,6 +65,7 @@ def default_state() -> GameSaveState:
         signalCalibration=SignalCalibrationState(),
         playerVsAi=PlayerVsAiState(),
         education=education.default_education_progress(),
+        viewedTradeNotificationIds=[],
         updatedAt=_now_iso(),
     )
 
@@ -157,6 +158,15 @@ class GameState:
             new_progress, correct, correct_index, correct_option = result
             self.data = self.data.model_copy(update={"education": new_progress})
             return new_progress, correct, correct_index, correct_option
+
+    async def ack_trade_notification(self, trade_id: str) -> list[str]:
+        """Marks one real closed trade's outcome popup as shown/dismissed
+        — persisted so it never re-shows after a refresh or restart."""
+        async with self.lock:
+            updated = trade_notifications.mark_viewed(self.data.viewed_trade_notification_ids, trade_id)
+            if updated is not self.data.viewed_trade_notification_ids:
+                self.data = self.data.model_copy(update={"viewed_trade_notification_ids": updated})
+            return self.data.viewed_trade_notification_ids
 
     async def tick(self, minutes: int) -> GameSaveState:
         """Advance the game clock and run one NEXUS orchestration step. Called by the sim loop."""
