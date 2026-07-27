@@ -331,7 +331,11 @@ class PaperPosition(CamelModel):
     # advances by tick count rather than elapsed real time (see
     # app/research.py). `opened_at` above is still a real ISO timestamp,
     # kept only for audit/display, same as every other *_at field.
-    opened_sim_minutes: int = Field(alias="openedSimMinutes")
+    # Defaults to 0 (not required) so a save from before this field existed
+    # (pre-v0.6.1) still validates during load — see persistence.py's
+    # migration path, which relies on every field added after the initial
+    # release having a safe default.
+    opened_sim_minutes: int = Field(default=0, alias="openedSimMinutes")
 
 
 class PaperTrade(CamelModel):
@@ -376,8 +380,11 @@ class PaperTrade(CamelModel):
     # field — real time and sim time both exist on this record because
     # they answer different questions (when did this happen in the real
     # world vs. where does it fall on the game's own calendar).
-    opened_sim_minutes: int = Field(alias="openedSimMinutes")
-    closed_sim_minutes: int = Field(alias="closedSimMinutes")
+    # Both default to 0 (not required) so a closed-trade record saved
+    # before this field existed (pre-v0.6.1) still validates during load —
+    # see persistence.py's migration path.
+    opened_sim_minutes: int = Field(default=0, alias="openedSimMinutes")
+    closed_sim_minutes: int = Field(default=0, alias="closedSimMinutes")
 
 
 class PaperPortfolio(CamelModel):

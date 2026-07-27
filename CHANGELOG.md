@@ -5,6 +5,61 @@ development milestones, not semver releases.
 
 ## Unreleased
 
+### Fixed
+
+- **v0.6.2 Phase 1: fixed the actual cause of reported game-progress loss
+  after code updates.** Root cause: `persistence.py`'s `load_save()`
+  treated *any* Pydantic validation failure — which is exactly what
+  happens when a stored save predates a newly-added field, i.e. after
+  every single past schema change (v0.2's agents, v0.3's research, v0.5's
+  trading, v0.6's risk/decisions, v0.6.1's two new `PaperTrade` fields) —
+  as "no save exists yet." `main.py`'s startup then read that `None` as a
+  fresh deployment and immediately overwrote the real save with a
+  brand-new default state. This was never a Docker-volume problem — the
+  named `tradetown-data` volume was always configured correctly and
+  genuinely survives container recreation (verified below) — it was a
+  pure application-level bug that fired on every version upgrade.
+  - `load_save()` now attempts a real migration before ever giving up:
+    it deep-merges the old save's raw dict onto a fresh default state
+    (`_deep_merge_defaults` in `persistence.py`), filling in exactly the
+    fields a newer schema added while preserving every real value the
+    old save had (agents, portfolio, decisions, research, memory, time,
+    player position — everything), then re-validates. Only if that still
+    fails does it fall back to a fresh state — and even then, the raw
+    unrecoverable payload is backed up to a new `save_backups` table
+    first, never silently deleted.
+  - New `SaveBackup` model/table: every `persist_save()` call also writes
+    a rolling "periodic" backup (capped at 20 per slot, oldest pruned),
+    and any raw payload that fails to load/migrate gets a permanent
+    `pre_fresh_fallback` backup that's never pruned.
+  - `app/db.py`'s `init_db()` now reconciles columns on already-existing
+    tables (`ALTER TABLE ... ADD COLUMN`) — `Base.metadata.create_all()`
+    alone only creates brand-new tables, so a column added to an
+    *existing* table (like the new `SaveGame.schema_version`) would
+    otherwise break every query against a database created by an older
+    version of the app.
+  - The sim loop (`app/sim.py`) now persists immediately when an in-game
+    day rolls over or a trade closes, on top of the existing ~30s
+    periodic cadence — narrowing the data-loss window for the events a
+    player would actually notice losing, without turning into a
+    save-every-tick storm for routine agent mood/energy drift.
+  - The two `PaperTrade`/`PaperPosition` fields added in v0.6.1
+    (`openedSimMinutes`/`closedSimMinutes`) now default to `0` instead of
+    being required — required-with-no-default is exactly the pattern
+    that makes an old save fail validation, so this is the retroactive
+    fix for the one concrete incompatibility introduced last version, and
+    the documented pattern (see the fields' own comments) for every
+    field added to a list-item model from now on.
+  - Validated two ways: 6 new `pytest` tests (`test_persistence.py`)
+    against a real temp SQLite database — round-trip, migration of an
+    old-shaped save, corrupted-JSON backup, backup-count capping, and the
+    ALTER TABLE column migration — and a real end-to-end Docker
+    verification: built the backend image, ran it against a named
+    volume, progressed the game, then stopped+removed the container,
+    rebuilt the image again, and started a brand-new container against
+    the same volume — the in-game day/hour and player's room both
+    survived exactly as expected.
+
 ### Added
 
 - **v0.6.1: Global Command Center** — a futuristic cyber-trading-terminal
