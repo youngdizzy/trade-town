@@ -14,6 +14,7 @@ import type {
   RiskLimits,
   RiskWarning,
   ScannerAlert,
+  SignalCalibrationState,
   SimulationResult,
   Strategy,
   Task,
@@ -44,6 +45,7 @@ interface NexusSnapshot {
   scannerAlerts: ScannerAlert[];
   decisions: TradeDecision[];
   agentEnergy: AgentEnergy;
+  signalCalibration: SignalCalibrationState;
 }
 
 /**
@@ -103,6 +105,7 @@ export class NexusManager {
   private static scannerAlerts: ScannerAlert[] = [];
   private static decisions: TradeDecision[] = [];
   private static agentEnergy: AgentEnergy = { current: 100, cap: 100, updatedAt: new Date().toISOString() };
+  private static signalCalibration: SignalCalibrationState = { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 };
 
   static getTasks(): Task[] {
     return this.tasks;
@@ -198,6 +201,18 @@ export class NexusManager {
   static setAgentEnergy(agentEnergy: AgentEnergy): void {
     this.agentEnergy = agentEnergy;
     EventBus.emit("agentEnergy:updated", agentEnergy);
+  }
+
+  static getSignalCalibration(): SignalCalibrationState {
+    return this.signalCalibration;
+  }
+
+  /** Applies the result of a direct POST /api/calibration/submit call
+   * immediately, the same reasoning as setAgentEnergy above (grading also
+   * updates agentEnergy on a correct answer — call setAgentEnergy too). */
+  static setSignalCalibration(signalCalibration: SignalCalibrationState): void {
+    this.signalCalibration = signalCalibration;
+    EventBus.emit("signalCalibration:updated", signalCalibration);
   }
 
   static applyServerUpdate(update: NexusSnapshot): void {
@@ -301,6 +316,9 @@ export class NexusManager {
 
     if (update.agentEnergy !== this.agentEnergy) EventBus.emit("agentEnergy:updated", update.agentEnergy);
     this.agentEnergy = update.agentEnergy;
+
+    if (update.signalCalibration !== this.signalCalibration) EventBus.emit("signalCalibration:updated", update.signalCalibration);
+    this.signalCalibration = update.signalCalibration;
   }
 
   static loadFromSave(save: NexusSnapshot): void {
@@ -325,5 +343,6 @@ export class NexusManager {
     this.scannerAlerts = save.scannerAlerts;
     this.decisions = save.decisions;
     this.agentEnergy = save.agentEnergy;
+    this.signalCalibration = save.signalCalibration;
   }
 }

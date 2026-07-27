@@ -1,4 +1,4 @@
-import type { AgentEnergy, Candle, GameSaveState } from "@/types";
+import type { AgentEnergy, Candle, GameSaveState, SignalCalibrationState, SignalChallenge, SignalChoice } from "@/types";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
@@ -36,5 +36,11 @@ export const api = {
     request<{ agentEnergy: AgentEnergy }>("/energy/spend", {
       method: "POST",
       body: JSON.stringify({ action, researchId: researchId ?? null }),
+    }),
+  getCalibrationChallenge: (level: number) => request<SignalChallenge>(`/calibration/challenge?level=${level}`),
+  submitCalibrationChoice: (challengeId: string, choice: SignalChoice) =>
+    request<{ signalCalibration: SignalCalibrationState; agentEnergy: AgentEnergy }>("/calibration/submit", {
+      method: "POST",
+      body: JSON.stringify({ challengeId, choice }),
     }),
 };

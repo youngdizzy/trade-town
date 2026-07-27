@@ -140,7 +140,7 @@ test.describe("Global Command Center", () => {
     expect(moved.x).not.toBe(frozen.x);
   });
 
-  test("expands to the Full Command Center and renders all 8 tabs with graceful empty states", async ({ page }) => {
+  test("expands to the Full Command Center and renders all 9 tabs with graceful empty states", async ({ page }) => {
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);
     await continueGame(page);
@@ -149,7 +149,7 @@ test.describe("Global Command Center", () => {
     await expect(page.getByText("COMMAND CENTER", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: /EXPAND/ }).click();
 
-    const tabs = ["OVERVIEW", "OPPORTUNITIES", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "PERFORMANCE", "LOGS"];
+    const tabs = ["OVERVIEW", "OPPORTUNITIES", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "TRAINING", "PERFORMANCE", "LOGS"];
     for (const tab of tabs) {
       await page.getByRole("button", { name: tab, exact: true }).click();
       await expect(page.getByRole("button", { name: tab, exact: true })).toHaveClass(/text-cmd-cyan/);
@@ -223,5 +223,31 @@ test.describe("Global Command Center", () => {
       const errorVisible = await widget.getByText(/already being monitored/i).isVisible().catch(() => false);
       expect(after === before - 10 || errorVisible).toBe(true);
     }).toPass({ timeout: 5000 });
+  });
+
+  test("Signal Calibration mini-game grades a real round via POST /api/calibration/submit", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await page.getByRole("button", { name: "TRAINING", exact: true }).click();
+
+    const round = page.getByTestId("calibration-round");
+    await expect(round).toBeVisible();
+    await round.getByRole("button", { name: "Start Round" }).click();
+
+    // A real symbol, a real chart, and the plain-English factor readouts
+    // for level 1 — never a blank/fabricated round.
+    await expect(round.locator("canvas")).toBeVisible();
+    await expect(round.getByText(/Recent trend:/)).toBeVisible();
+
+    await round.getByRole("button", { name: "ENTER", exact: true }).click();
+
+    // Grading always reveals the rubric's disciplined answer and why —
+    // either CORRECT or MISSED, never silence.
+    await expect(round.getByText(/CORRECT|MISSED/)).toBeVisible({ timeout: 5000 });
+    await expect(round.getByText(/Disciplined answer:/)).toBeVisible();
   });
 });

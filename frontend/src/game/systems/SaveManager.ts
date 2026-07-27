@@ -46,6 +46,7 @@ export class SaveManager {
       scannerAlerts: NexusManager.getScannerAlerts(),
       decisions: NexusManager.getDecisions(),
       agentEnergy: NexusManager.getAgentEnergy(),
+      signalCalibration: NexusManager.getSignalCalibration(),
       time: TimeManager.current,
       settings: SettingsManager.current,
       dialogueHistory: dialogueManager.getHistory(),

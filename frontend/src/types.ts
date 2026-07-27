@@ -220,6 +220,41 @@ export interface AgentEnergy {
   updatedAt: string;
 }
 
+// v0.6.2 Signal Calibration mini-game — see backend/app/signal_calibration.py.
+// SignalChallenge is never part of GameSaveState (regenerable practice
+// content); only SignalCalibrationState (progress) is persisted.
+export type SignalChoice = "enter" | "wait" | "avoid";
+
+export interface SignalChallenge {
+  id: string;
+  level: number;
+  symbol: string;
+  timeframe: string;
+  candles: Candle[];
+  prompt: string;
+  factors: string[];
+  createdAt: string;
+}
+
+export interface SignalCalibrationAttempt {
+  id: string;
+  level: number;
+  symbol: string;
+  choice: SignalChoice;
+  correctChoice: SignalChoice;
+  correct: boolean;
+  energyAwarded: number;
+  rubricNotes: string;
+  createdAt: string;
+}
+
+export interface SignalCalibrationState {
+  unlockedLevel: number;
+  attempts: SignalCalibrationAttempt[];
+  correctCount: number;
+  totalCount: number;
+}
+
 export interface MeetingMinutes {
   id: string;
   day: number;
@@ -508,6 +543,7 @@ export interface GameSaveState {
   scannerAlerts: ScannerAlert[];
   decisions: TradeDecision[];
   agentEnergy: AgentEnergy;
+  signalCalibration: SignalCalibrationState;
   time: TimeState;
   settings: SettingsState;
   dialogueHistory: DialogueHistoryEntry[];

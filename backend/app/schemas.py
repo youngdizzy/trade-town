@@ -305,6 +305,64 @@ class AgentEnergy(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+SignalChoice = Literal["enter", "wait", "avoid"]
+
+
+class SignalChallenge(CamelModel):
+    """A generated Signal Calibration round (v0.6.2 Phase 7) — see
+    app/signal_calibration.py. Never part of GameSaveState: it's
+    regenerable practice content built fresh from real live candles/risk/
+    research data, not game progress. Held server-side in an in-memory
+    pending-challenge store between GET .../challenge and POST .../submit
+    (the same "transient, not save data" treatment market_data.py's
+    candles already get), not persisted or broadcast over the WS."""
+
+    id: str
+    level: int
+    symbol: str
+    timeframe: str
+    candles: list[Candle]
+    prompt: str
+    # Plain-English readouts of the real signals this level reveals (e.g.
+    # "Recent trend: +2.3% over the sample", "Active HIGH risk warning on
+    # AAPL") — never an invented feed; see _factors() in
+    # signal_calibration.py for exactly what backs each line.
+    factors: list[str]
+    created_at: str = Field(alias="createdAt")
+
+
+class SignalCalibrationAttempt(CamelModel):
+    """One graded Signal Calibration round. `correct_choice` is a
+    deterministic function of the real trend/volatility/risk/research
+    signals available at challenge time (see
+    signal_calibration._disciplined_choice) — never of what price did
+    next — so grading rewards reading the same information a real trader
+    had, not predicting the future."""
+
+    id: str
+    level: int
+    symbol: str
+    choice: SignalChoice
+    correct_choice: SignalChoice = Field(alias="correctChoice")
+    correct: bool
+    energy_awarded: float = Field(alias="energyAwarded")
+    rubric_notes: str = Field(alias="rubricNotes")
+    created_at: str = Field(alias="createdAt")
+
+
+class SignalCalibrationState(CamelModel):
+    """Persisted Signal Calibration progress — real progression, unlike
+    the SignalChallenge itself. `unlocked_level` only advances after a
+    streak of correct answers at the current level (see
+    signal_calibration.UNLOCK_STREAK), so it can't be inflated by
+    grinding easy attempts at a level already mastered."""
+
+    unlocked_level: int = Field(default=1, alias="unlockedLevel")
+    attempts: list[SignalCalibrationAttempt] = Field(default_factory=list)
+    correct_count: int = Field(default=0, alias="correctCount")
+    total_count: int = Field(default=0, alias="totalCount")
+
+
 class MeetingMinutes(CamelModel):
     id: str
     day: int
@@ -647,6 +705,7 @@ class GameSaveState(CamelModel):
     scanner_alerts: list[ScannerAlert] = Field(default_factory=list, alias="scannerAlerts")
     decisions: list[TradeDecision] = Field(default_factory=list)
     agent_energy: AgentEnergy = Field(alias="agentEnergy")
+    signal_calibration: SignalCalibrationState = Field(default_factory=SignalCalibrationState, alias="signalCalibration")
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(default_factory=list, alias="dialogueHistory")

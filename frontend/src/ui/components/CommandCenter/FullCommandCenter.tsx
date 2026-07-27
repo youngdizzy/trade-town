@@ -11,9 +11,10 @@ import { AgentsPanel } from "./panels/AgentsPanel";
 import { ResearchPanel } from "./panels/ResearchPanel";
 import { PerformancePanel } from "./panels/PerformancePanel";
 import { LogsPanel } from "./panels/LogsPanel";
+import { CalibrationPanel } from "./panels/CalibrationPanel";
 import { DecisionDetail } from "./DecisionDetail";
 
-const TABS = ["OVERVIEW", "OPPORTUNITIES", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "PERFORMANCE", "LOGS"] as const;
+const TABS = ["OVERVIEW", "OPPORTUNITIES", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "TRAINING", "PERFORMANCE", "LOGS"] as const;
 type Tab = (typeof TABS)[number];
 
 export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => void; onClose: () => void }) {
@@ -77,6 +78,7 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
         {tab === "RISK" && <RiskPanel />}
         {tab === "AGENTS" && <AgentsPanel />}
         {tab === "RESEARCH" && <ResearchPanel />}
+        {tab === "TRAINING" && <CalibrationPanel />}
         {tab === "PERFORMANCE" && <PerformancePanel />}
         {tab === "LOGS" && <LogsPanel />}
       </div>

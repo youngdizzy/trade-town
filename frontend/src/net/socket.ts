@@ -16,6 +16,7 @@ import type {
   RiskLimits,
   RiskWarning,
   ScannerAlert,
+  SignalCalibrationState,
   SimulationResult,
   Strategy,
   Task,
@@ -54,6 +55,7 @@ type ServerMessage =
       scannerAlerts: ScannerAlert[];
       decisions: TradeDecision[];
       agentEnergy: AgentEnergy;
+      signalCalibration: SignalCalibrationState;
     }
   | { type: "pong" };
 
@@ -132,6 +134,7 @@ export class GameSocket {
             scannerAlerts: msg.scannerAlerts,
             decisions: msg.decisions,
             agentEnergy: msg.agentEnergy,
+            signalCalibration: msg.signalCalibration,
           });
         }
       } catch (err) {

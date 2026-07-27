@@ -10,12 +10,12 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 
-from app import nexus
+from app import nexus, signal_calibration
 from app.agent_energy import default_agent_energy
 from app.company_score import compute_company_score
 from app.portfolio import default_portfolio
 from app.research import default_research
-from app.schemas import EntityTransform, GameSaveState, MeetingState, SettingsState, TimeState
+from app.schemas import EntityTransform, GameSaveState, MeetingState, SettingsState, SignalCalibrationState, SignalChoice, TimeState
 from app.simulation import default_strategies
 from app.watchlist import default_watchlist
 
@@ -50,6 +50,7 @@ def default_state() -> GameSaveState:
         companyScore=compute_company_score([], default_portfolio(), [], [], []),
         performanceSnapshots=[],
         agentEnergy=default_agent_energy(),
+        signalCalibration=SignalCalibrationState(),
         updatedAt=_now_iso(),
     )
 
@@ -89,6 +90,18 @@ class GameState:
         tick() uses. Returns (state, error) — error is None on success."""
         async with self.lock:
             self.data, error = nexus.apply_energy_action(self.data, action, research_id)
+            return self.data, error
+
+    async def submit_signal_calibration(self, challenge_id: str, choice: SignalChoice) -> tuple[GameSaveState, str | None]:
+        """Grades a pending Signal Calibration challenge under the same
+        lock every other state mutation uses, so a submit can never race a
+        concurrent tick()/save. Returns (state, error)."""
+        async with self.lock:
+            new_calibration, new_energy, error = signal_calibration.grade_submission(
+                self.data.signal_calibration, self.data.agent_energy, challenge_id, choice
+            )
+            if error is None:
+                self.data = self.data.model_copy(update={"signal_calibration": new_calibration, "agent_energy": new_energy})
             return self.data, error
 
     async def tick(self, minutes: int) -> GameSaveState:

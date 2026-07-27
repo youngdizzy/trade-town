@@ -52,6 +52,10 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         "scannerAlerts": [a.model_dump(by_alias=True) for a in state.scanner_alerts],
         "decisions": [d.model_dump(by_alias=True) for d in state.decisions],
         "agentEnergy": state.agent_energy.model_dump(by_alias=True),
+        # Progress only (unlockedLevel/attempts/counts) — the pending
+        # SignalChallenge itself is transient and never broadcast (see
+        # signal_calibration.py's module docstring).
+        "signalCalibration": state.signal_calibration.model_dump(by_alias=True),
     }
 
 

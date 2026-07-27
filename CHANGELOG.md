@@ -7,6 +7,57 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.6.2 Phase 7: Signal Calibration mini-game** — a five-level ENTER/
+  WAIT/AVOID practice game (`app/signal_calibration.py`), reachable from
+  a new "TRAINING" tab in the Full Command Center. Grading is a fixed,
+  transparent rubric computed from signals genuinely visible *at
+  challenge time* — the sampled candles' own trend and average bar
+  range, any currently-active real `RiskWarning` on that symbol, and its
+  real in-progress `ResearchItem` confidence — never from what price did
+  next. Grading on future price would reward lucky guessing on a random
+  walk; a fixed function of already-visible signals instead rewards
+  actually reading them, per the brief's "reward disciplined decisions
+  based on information available at the time, not lucky guessing."
+  - Level 1 reads trend alone; level 2 weighs the move against its own
+    volatility (risk/reward); level 3 requires recognizing a genuine
+    trending regime vs. a ranging one (WAIT is the textbook-correct
+    answer in a range, regardless of direction — the same "WAIT can be
+    correct" principle the brief calls for); level 4 injects a real
+    active risk warning that must override an otherwise-positive
+    technical read into caution, preferring a watchlist symbol that
+    actually has one rather than fabricating a conflict; level 5
+    combines trend, volatility, risk, and research confidence into one
+    weighted score.
+  - A correct answer pays real Agent Energy (5/8/12/16/20 by level, via
+    a new `agent_energy.award()`), capped at 100 like regen. `Unlocked
+    level` only advances after 3 *consecutive* correct answers at the
+    current level (`UNLOCK_STREAK`) — a miss resets the streak, so
+    grinding easy wrong answers in between can't slip the level up.
+  - `SignalChallenge` (the generated round) is deliberately **not**
+    part of `GameSaveState` — regenerable practice content, not game
+    progress, the same "don't persist regenerable data" principle as
+    the 413 fix. It's held in a transient in-process dict between
+    `GET /api/calibration/challenge` and `POST /api/calibration/submit`,
+    the same treatment `market_data.py`'s candles already get. Only the
+    graded `SignalCalibrationAttempt` history (capped at 100) and
+    `unlockedLevel`/`correctCount`/`totalCount` are persisted, as
+    genuine progress.
+  - Frontend: `CalibrationPanel.tsx` — level picker (locked levels
+    greyed out), a real candlestick chart per round (reusing
+    `CandlestickChart`, the same component the Command Center and
+    Market Observatory already share), the level-gated factor readouts,
+    three answer buttons, and an immediate reveal of the rubric's
+    disciplined answer plus its plain-English reasoning after grading.
+  - Tests: 18 new backend tests (rubric correctness per level, the
+    conflicting-evidence override, the unlock-streak logic including a
+    miss resetting it, the pending-challenge-consumed-once guarantee,
+    and that the client-facing `SignalChallenge` shape never leaks the
+    answer); 1 new Playwright test exercising a real graded round
+    end-to-end. Full backend (mypy/ruff/pytest, 51/51) and frontend
+    (tsc/eslint/build/Playwright, 10/10) verification, plus a live
+    save/load/WS round-trip confirming `signalCalibration` persists
+    correctly.
+
 - **v0.6.2 Phase 6: Agent Energy** — a new company-wide spendable resource,
   deliberately distinct from each individual `AgentState.energy` (that
   field is unchanged and still means agent fatigue/rest — this is a

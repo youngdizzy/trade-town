@@ -21,6 +21,7 @@ import type {
   ScannerAlert,
   SceneId,
   SettingsState,
+  SignalCalibrationState,
   SimulationResult,
   Strategy,
   Task,
@@ -84,6 +85,7 @@ export interface GameEvents {
   "decisions:updated": TradeDecision[];
   "decision:made": TradeDecision;
   "agentEnergy:updated": AgentEnergy;
+  "signalCalibration:updated": SignalCalibrationState;
 }
 
 type Handler<K extends keyof GameEvents> = (payload: GameEvents[K]) => void;

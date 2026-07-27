@@ -75,3 +75,14 @@ def spend(energy: AgentEnergy, action: str) -> AgentEnergy | None:
     if cost is None or energy.current < cost:
         return None
     return energy.model_copy(update={"current": energy.current - cost, "updated_at": _now_iso()})
+
+
+def award(energy: AgentEnergy, amount: float) -> AgentEnergy:
+    """The one non-spend way energy increases outside daily regen — a
+    correct Signal Calibration round (app/signal_calibration.py) pays out
+    real energy the same way a real trader's disciplined read of a setup
+    would be worth something, capped at the same `cap` regen respects."""
+    current = min(energy.cap, energy.current + amount)
+    if current == energy.current:
+        return energy
+    return energy.model_copy(update={"current": current, "updated_at": _now_iso()})
