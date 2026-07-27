@@ -10,12 +10,23 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 
-from app import nexus, signal_calibration
+from app import nexus, player_vs_ai, signal_calibration
 from app.agent_energy import default_agent_energy
 from app.company_score import compute_company_score
+from app.market_data import market_data_provider
 from app.portfolio import default_portfolio
 from app.research import default_research
-from app.schemas import EntityTransform, GameSaveState, MeetingState, SettingsState, SignalCalibrationState, SignalChoice, TimeState
+from app.schemas import (
+    EntityTransform,
+    GameSaveState,
+    MeetingState,
+    PlayerVsAiPrompt,
+    PlayerVsAiState,
+    SettingsState,
+    SignalCalibrationState,
+    SignalChoice,
+    TimeState,
+)
 from app.simulation import default_strategies
 from app.watchlist import default_watchlist
 
@@ -51,6 +62,7 @@ def default_state() -> GameSaveState:
         performanceSnapshots=[],
         agentEnergy=default_agent_energy(),
         signalCalibration=SignalCalibrationState(),
+        playerVsAi=PlayerVsAiState(),
         updatedAt=_now_iso(),
     )
 
@@ -102,6 +114,30 @@ class GameState:
             )
             if error is None:
                 self.data = self.data.model_copy(update={"signal_calibration": new_calibration, "agent_energy": new_energy})
+            return self.data, error
+
+    async def generate_player_vs_ai_prompt(self) -> tuple[PlayerVsAiPrompt | None, str | None]:
+        """Read-only aside from the transient pending-prompt store (see
+        player_vs_ai.py) — still taken under the lock so it reads a
+        consistent snapshot of decisions/trade history/research rather
+        than one torn by a concurrent tick()."""
+        async with self.lock:
+            used_decision_ids = {r.decision_id for r in self.data.player_vs_ai.rounds}
+            try:
+                prompt = player_vs_ai.generate_prompt(
+                    self.data.decisions, self.data.paper_portfolio.trade_history, self.data.research, market_data_provider, used_decision_ids
+                )
+                return prompt, None
+            except ValueError as exc:
+                return None, str(exc)
+
+    async def submit_player_vs_ai(self, prompt_id: str, choice: SignalChoice) -> tuple[GameSaveState, str | None]:
+        """Grades a pending Player vs AI round under the same lock every
+        other state mutation uses. Returns (state, error)."""
+        async with self.lock:
+            new_player_vs_ai, error = player_vs_ai.grade_submission(self.data.player_vs_ai, prompt_id, choice)
+            if error is None:
+                self.data = self.data.model_copy(update={"player_vs_ai": new_player_vs_ai})
             return self.data, error
 
     async def tick(self, minutes: int) -> GameSaveState:

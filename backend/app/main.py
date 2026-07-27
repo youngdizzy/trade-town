@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db import init_db
 from app.persistence import load_save, persist_save
-from app.routers import calibration, energy, health, market, save, ws
+from app.routers import calibration, energy, health, market, player_vs_ai, save, ws
 from app.sim import run_sim_loop
 from app.state import game_state
 
@@ -57,3 +57,4 @@ app.include_router(ws.router)
 app.include_router(market.router)
 app.include_router(energy.router)
 app.include_router(calibration.router)
+app.include_router(player_vs_ai.router)

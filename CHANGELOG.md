@@ -7,6 +7,49 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.6.2 Phase 8: Player vs AI** — the player calls ENTER/WAIT/AVOID on
+  a real past trade candidate *before* the AI's actual call is revealed
+  (`app/player_vs_ai.py`), reachable from a new "PVAI" tab. Both are then
+  graded against the same real, already-realized P&L — never assuming
+  the AI is right: a losing AI trade shows up as the AI being wrong,
+  exactly like it would for the player (verified with a dedicated test).
+  - Only decisions that led to a trade whose real outcome has already
+    closed are eligible — a "no_trade" decision has no realized P&L to
+    grade against (we genuinely don't know what would have happened),
+    and an open position's outcome isn't final yet, so neither is
+    offered. This keeps every round's grading unambiguous and honest
+    rather than a guess dressed up as data.
+  - The pre-reveal prompt shows only what a human analyst would have had
+    available — the real `researchSummary`/`technicalSummary`/
+    `riskSummary`/`confidence` from the underlying `TradeDecision` —
+    deliberately omitting `votes`/`outcome`/`finalReasoning`/`orderId`,
+    which would spoil the AI's actual answer.
+  - Tracks performance by regime and by setup, per the brief: `regime`
+    (trending_up/trending_down/ranging) reuses the exact same trend/
+    volatility computation Signal Calibration's level 3 uses — refactored
+    out of `signal_calibration.py` into shared `market_data.trend_pct()`/
+    `volatility_pct()` functions so both features read "trend" the same
+    way instead of rolling two slightly different definitions; `setup` is
+    the symbol's real research category. Both breakdowns are computed
+    client-side from the persisted round history (`PlayerVsAiPanel.tsx`)
+    rather than as a second, derivable-and-therefore-redundant persisted
+    aggregate — the same "don't persist regenerable data" principle as
+    the 413 fix, just applied to a derived view instead of raw data.
+  - `PlayerVsAiPrompt` (the pending round) is transient — never part of
+    `GameSaveState`, held server-side between
+    `GET /api/player-vs-ai/prompt` and `POST /api/player-vs-ai/submit`,
+    the same treatment Signal Calibration's challenges get. Only the
+    graded `PlayerVsAiRound` history (capped at 100) and aggregate
+    correct-counts persist, as real progress.
+  - Tests: 12 new backend tests (eligibility rules, the "wait" and
+    "avoid" choices grading identically against a loser, a losing AI
+    trade correctly marked wrong, the pending-prompt-consumed-once
+    guarantee, the client-facing prompt never leaking the ground-truth
+    fields); 1 new Playwright test exercising a real graded round
+    end-to-end. Full backend (mypy/ruff/pytest, 63/63) and frontend
+    (tsc/eslint/build/Playwright, 11/11) verification, plus a live
+    save/load/WS round-trip confirming `playerVsAi` persists correctly.
+
 - **v0.6.2 Phase 7: Signal Calibration mini-game** — a five-level ENTER/
   WAIT/AVOID practice game (`app/signal_calibration.py`), reachable from
   a new "TRAINING" tab in the Full Command Center. Grading is a fixed,

@@ -680,6 +680,66 @@ class TradeDecision(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
+# v0.6.2 Phase 8: Player vs AI. "regime" reuses the same trend/volatility
+# read as Signal Calibration's level 3 (see market_data.trend_pct/
+# volatility_pct) — a real, already-tested computation, not an invented
+# second taxonomy. Only decisions that led to a trade with a real,
+# already-closed outcome are eligible (see app/player_vs_ai.py) — that
+# keeps grading unambiguous and honest, never assuming what an
+# unrealized or never-placed trade "would have" done.
+MarketRegime = Literal["trending_up", "trending_down", "ranging"]
+
+
+class PlayerVsAiPrompt(CamelModel):
+    """A pending Player vs AI round, shown before the AI's real call is
+    revealed. Deliberately omits `votes`/`outcome`/`finalReasoning`/
+    `orderId` from the underlying TradeDecision — including any of those
+    would spoil the AI's actual answer. Includes only the same research/
+    technical/risk summaries and confidence a human analyst would have
+    had available before deciding. Never part of GameSaveState — see
+    player_vs_ai.py's module docstring."""
+
+    id: str
+    decision_id: str = Field(alias="decisionId")
+    symbol: str
+    category: ResearchCategory
+    research_summary: str = Field(alias="researchSummary")
+    technical_summary: str = Field(alias="technicalSummary")
+    risk_summary: str = Field(alias="riskSummary")
+    confidence: float
+    regime: MarketRegime
+    created_at: str = Field(alias="createdAt")
+
+
+class PlayerVsAiRound(CamelModel):
+    """One graded round. `ai_choice` is always "enter" today — only
+    decisions that led to a trade are eligible (see player_vs_ai.py) — the
+    field stays generic for when "no_trade" decisions become gradeable
+    too. `ground_truth_choice`/`ai_correct` are both derived from the
+    linked trade's real realized P&L, never a guess about what an
+    unrealized position might have done."""
+
+    id: str
+    decision_id: str = Field(alias="decisionId")
+    symbol: str
+    category: ResearchCategory
+    regime: MarketRegime
+    player_choice: SignalChoice = Field(alias="playerChoice")
+    ai_choice: SignalChoice = Field(alias="aiChoice")
+    realized_pnl_pct: float = Field(alias="realizedPnlPct")
+    ground_truth_choice: SignalChoice = Field(alias="groundTruthChoice")
+    player_correct: bool = Field(alias="playerCorrect")
+    ai_correct: bool = Field(alias="aiCorrect")
+    created_at: str = Field(alias="createdAt")
+
+
+class PlayerVsAiState(CamelModel):
+    rounds: list[PlayerVsAiRound] = Field(default_factory=list)
+    player_correct_count: int = Field(default=0, alias="playerCorrectCount")
+    ai_correct_count: int = Field(default=0, alias="aiCorrectCount")
+    total_count: int = Field(default=0, alias="totalCount")
+
+
 class GameSaveState(CamelModel):
     version: Literal["0.6"] = "0.6"
     player: EntityTransform
@@ -706,6 +766,7 @@ class GameSaveState(CamelModel):
     decisions: list[TradeDecision] = Field(default_factory=list)
     agent_energy: AgentEnergy = Field(alias="agentEnergy")
     signal_calibration: SignalCalibrationState = Field(default_factory=SignalCalibrationState, alias="signalCalibration")
+    player_vs_ai: PlayerVsAiState = Field(default_factory=PlayerVsAiState, alias="playerVsAi")
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(default_factory=list, alias="dialogueHistory")

@@ -65,6 +65,26 @@ class Candle:
     data_status: DataStatus
 
 
+def trend_pct(candles: list[Candle]) -> float:
+    """% change from the sample's first close to its last — a real,
+    unambiguous technical signal shared by both app/signal_calibration.py
+    and app/player_vs_ai.py so they read "trend" the same way rather
+    than each rolling a slightly different definition."""
+    if len(candles) < 2 or candles[0].close == 0:
+        return 0.0
+    return (candles[-1].close - candles[0].close) / candles[0].close * 100
+
+
+def volatility_pct(candles: list[Candle]) -> float:
+    """Average per-bar (high-low) range as a % of close — a simple, real
+    stand-in for realized volatility, computed only from the visible
+    sample. Shared by signal_calibration.py and player_vs_ai.py."""
+    if not candles:
+        return 0.0
+    ranges = [(c.high - c.low) / c.close * 100 for c in candles if c.close]
+    return sum(ranges) / len(ranges) if ranges else 0.0
+
+
 class MarketDataProvider(ABC):
     """Adapter interface. A real implementation (Polygon, Finnhub, Alpha
     Vantage, Yahoo Finance, Charles Schwab, ...) would wrap that vendor's

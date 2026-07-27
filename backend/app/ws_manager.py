@@ -56,6 +56,9 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         # SignalChallenge itself is transient and never broadcast (see
         # signal_calibration.py's module docstring).
         "signalCalibration": state.signal_calibration.model_dump(by_alias=True),
+        # Progress only — the pending PlayerVsAiPrompt itself is transient
+        # and never broadcast (see player_vs_ai.py's module docstring).
+        "playerVsAi": state.player_vs_ai.model_dump(by_alias=True),
     }
 
 

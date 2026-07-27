@@ -14,6 +14,7 @@ import type {
   PerformanceSnapshot,
   ResearchItem,
   RiskLimits,
+  PlayerVsAiState,
   RiskWarning,
   ScannerAlert,
   SettingsState,
@@ -67,6 +68,7 @@ export interface GameUiState {
   decisions: TradeDecision[];
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
+  playerVsAi: PlayerVsAiState;
   settings: SettingsState;
   dialogue: DialogueUiState;
   paused: boolean;
@@ -143,6 +145,7 @@ class GameStore {
     decisions: [],
     agentEnergy: { current: 100, cap: 100, updatedAt: new Date().toISOString() },
     signalCalibration: { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 },
+    playerVsAi: { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 },
     settings: { musicVolume: 0.5, sfxVolume: 0.7, autosaveIntervalSec: 60, showFps: false },
     dialogue: { open: false, speaker: "", lines: [], index: 0 },
     paused: false,
@@ -231,6 +234,7 @@ class GameStore {
     EventBus.on("decisions:updated", (decisions) => this.set({ decisions }));
     EventBus.on("agentEnergy:updated", (agentEnergy) => this.set({ agentEnergy }));
     EventBus.on("signalCalibration:updated", (signalCalibration) => this.set({ signalCalibration }));
+    EventBus.on("playerVsAi:updated", (playerVsAi) => this.set({ playerVsAi }));
 
     EventBus.on("save:started", () => this.set({ save: { status: "saving", lastSavedAt: this.state.save.lastSavedAt, error: null } }));
     EventBus.on("save:completed", ({ at }) => this.set({ save: { status: "saved", lastSavedAt: at, error: null } }));

@@ -255,6 +255,46 @@ export interface SignalCalibrationState {
   totalCount: number;
 }
 
+// v0.6.2 Player vs AI — see backend/app/player_vs_ai.py. Only decisions
+// that led to a trade with a real, already-closed outcome are eligible,
+// so grading is always against a real realized P&L, never a guess.
+export type MarketRegime = "trending_up" | "trending_down" | "ranging";
+
+export interface PlayerVsAiPrompt {
+  id: string;
+  decisionId: string;
+  symbol: string;
+  category: ResearchCategory;
+  researchSummary: string;
+  technicalSummary: string;
+  riskSummary: string;
+  confidence: number;
+  regime: MarketRegime;
+  createdAt: string;
+}
+
+export interface PlayerVsAiRound {
+  id: string;
+  decisionId: string;
+  symbol: string;
+  category: ResearchCategory;
+  regime: MarketRegime;
+  playerChoice: SignalChoice;
+  aiChoice: SignalChoice;
+  realizedPnlPct: number;
+  groundTruthChoice: SignalChoice;
+  playerCorrect: boolean;
+  aiCorrect: boolean;
+  createdAt: string;
+}
+
+export interface PlayerVsAiState {
+  rounds: PlayerVsAiRound[];
+  playerCorrectCount: number;
+  aiCorrectCount: number;
+  totalCount: number;
+}
+
 export interface MeetingMinutes {
   id: string;
   day: number;
@@ -544,6 +584,7 @@ export interface GameSaveState {
   decisions: TradeDecision[];
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
+  playerVsAi: PlayerVsAiState;
   time: TimeState;
   settings: SettingsState;
   dialogueHistory: DialogueHistoryEntry[];

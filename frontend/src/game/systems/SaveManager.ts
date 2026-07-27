@@ -47,6 +47,7 @@ export class SaveManager {
       decisions: NexusManager.getDecisions(),
       agentEnergy: NexusManager.getAgentEnergy(),
       signalCalibration: NexusManager.getSignalCalibration(),
+      playerVsAi: NexusManager.getPlayerVsAi(),
       time: TimeManager.current,
       settings: SettingsManager.current,
       dialogueHistory: dialogueManager.getHistory(),

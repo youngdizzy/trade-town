@@ -140,7 +140,7 @@ test.describe("Global Command Center", () => {
     expect(moved.x).not.toBe(frozen.x);
   });
 
-  test("expands to the Full Command Center and renders all 9 tabs with graceful empty states", async ({ page }) => {
+  test("expands to the Full Command Center and renders all 10 tabs with graceful empty states", async ({ page }) => {
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);
     await continueGame(page);
@@ -149,7 +149,7 @@ test.describe("Global Command Center", () => {
     await expect(page.getByText("COMMAND CENTER", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: /EXPAND/ }).click();
 
-    const tabs = ["OVERVIEW", "OPPORTUNITIES", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "TRAINING", "PERFORMANCE", "LOGS"];
+    const tabs = ["OVERVIEW", "OPPORTUNITIES", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "TRAINING", "PVAI", "PERFORMANCE", "LOGS"];
     for (const tab of tabs) {
       await page.getByRole("button", { name: tab, exact: true }).click();
       await expect(page.getByRole("button", { name: tab, exact: true })).toHaveClass(/text-cmd-cyan/);
@@ -249,5 +249,33 @@ test.describe("Global Command Center", () => {
     // either CORRECT or MISSED, never silence.
     await expect(round.getByText(/CORRECT|MISSED/)).toBeVisible({ timeout: 5000 });
     await expect(round.getByText(/Disciplined answer:/)).toBeVisible();
+  });
+
+  test("Player vs AI grades a real round against an already-closed AI trade via POST /api/player-vs-ai/submit", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await page.getByRole("button", { name: "PVAI", exact: true }).click();
+
+    const round = page.getByTestId("player-vs-ai-round");
+    await expect(round).toBeVisible();
+    await round.getByRole("button", { name: "Start Round" }).click();
+
+    // The backend's dev save has accumulated real closed trades over this
+    // whole test file's run, so a round should be offered — but if it
+    // genuinely isn't (a fresh backend with no closed trades yet), the
+    // panel must say so honestly rather than fabricate a round.
+    const noRoundsMessage = round.getByText(/No resolved AI trades/i);
+    const enterButton = round.getByRole("button", { name: "ENTER", exact: true });
+    await expect(noRoundsMessage.or(enterButton)).toBeVisible({ timeout: 5000 });
+
+    if (await enterButton.isVisible()) {
+      await enterButton.click();
+      await expect(round.getByText(/CORRECT|MISSED/).first()).toBeVisible({ timeout: 5000 });
+      await expect(round.getByText(/real realized result/)).toBeVisible();
+    }
   });
 });

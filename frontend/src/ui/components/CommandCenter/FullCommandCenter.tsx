@@ -12,9 +12,10 @@ import { ResearchPanel } from "./panels/ResearchPanel";
 import { PerformancePanel } from "./panels/PerformancePanel";
 import { LogsPanel } from "./panels/LogsPanel";
 import { CalibrationPanel } from "./panels/CalibrationPanel";
+import { PlayerVsAiPanel } from "./panels/PlayerVsAiPanel";
 import { DecisionDetail } from "./DecisionDetail";
 
-const TABS = ["OVERVIEW", "OPPORTUNITIES", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "TRAINING", "PERFORMANCE", "LOGS"] as const;
+const TABS = ["OVERVIEW", "OPPORTUNITIES", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "TRAINING", "PVAI", "PERFORMANCE", "LOGS"] as const;
 type Tab = (typeof TABS)[number];
 
 export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => void; onClose: () => void }) {
@@ -79,6 +80,7 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
         {tab === "AGENTS" && <AgentsPanel />}
         {tab === "RESEARCH" && <ResearchPanel />}
         {tab === "TRAINING" && <CalibrationPanel />}
+        {tab === "PVAI" && <PlayerVsAiPanel />}
         {tab === "PERFORMANCE" && <PerformancePanel />}
         {tab === "LOGS" && <LogsPanel />}
       </div>

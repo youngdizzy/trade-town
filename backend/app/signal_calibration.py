@@ -24,8 +24,9 @@ import random
 from datetime import datetime, timezone
 
 from app.agent_energy import award as award_energy
-from app.market_data import Candle as ProviderCandle
 from app.market_data import MarketDataProvider
+from app.market_data import trend_pct as _trend_pct
+from app.market_data import volatility_pct as _volatility_pct
 from app.schemas import (
     AgentEnergy,
     Candle,
@@ -61,24 +62,6 @@ _pending: dict[str, tuple[SignalChallenge, SignalChoice, str]] = {}
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
-
-
-def _trend_pct(candles: list[ProviderCandle]) -> float:
-    """% change from the sample's first close to its last — the one
-    unambiguous technical signal every level uses."""
-    if len(candles) < 2 or candles[0].close == 0:
-        return 0.0
-    return (candles[-1].close - candles[0].close) / candles[0].close * 100
-
-
-def _volatility_pct(candles: list[ProviderCandle]) -> float:
-    """Average per-bar (high-low) range as a % of close — a simple, real
-    stand-in for realized volatility, computed only from the visible
-    sample (never from bars the player can't see)."""
-    if not candles:
-        return 0.0
-    ranges = [(c.high - c.low) / c.close * 100 for c in candles if c.close]
-    return sum(ranges) / len(ranges) if ranges else 0.0
 
 
 def _active_warning(symbol: str, risk_warnings: list[RiskWarning]) -> RiskWarning | None:

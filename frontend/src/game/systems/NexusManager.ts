@@ -12,6 +12,7 @@ import type {
   PerformanceSnapshot,
   ResearchItem,
   RiskLimits,
+  PlayerVsAiState,
   RiskWarning,
   ScannerAlert,
   SignalCalibrationState,
@@ -46,6 +47,7 @@ interface NexusSnapshot {
   decisions: TradeDecision[];
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
+  playerVsAi: PlayerVsAiState;
 }
 
 /**
@@ -106,6 +108,7 @@ export class NexusManager {
   private static decisions: TradeDecision[] = [];
   private static agentEnergy: AgentEnergy = { current: 100, cap: 100, updatedAt: new Date().toISOString() };
   private static signalCalibration: SignalCalibrationState = { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 };
+  private static playerVsAi: PlayerVsAiState = { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 };
 
   static getTasks(): Task[] {
     return this.tasks;
@@ -215,6 +218,17 @@ export class NexusManager {
     EventBus.emit("signalCalibration:updated", signalCalibration);
   }
 
+  static getPlayerVsAi(): PlayerVsAiState {
+    return this.playerVsAi;
+  }
+
+  /** Applies the result of a direct POST /api/player-vs-ai/submit call
+   * immediately, the same reasoning as setSignalCalibration above. */
+  static setPlayerVsAi(playerVsAi: PlayerVsAiState): void {
+    this.playerVsAi = playerVsAi;
+    EventBus.emit("playerVsAi:updated", playerVsAi);
+  }
+
   static applyServerUpdate(update: NexusSnapshot): void {
     for (const task of update.tasks) {
       const previous = this.tasks.find((t) => t.id === task.id);
@@ -319,6 +333,9 @@ export class NexusManager {
 
     if (update.signalCalibration !== this.signalCalibration) EventBus.emit("signalCalibration:updated", update.signalCalibration);
     this.signalCalibration = update.signalCalibration;
+
+    if (update.playerVsAi !== this.playerVsAi) EventBus.emit("playerVsAi:updated", update.playerVsAi);
+    this.playerVsAi = update.playerVsAi;
   }
 
   static loadFromSave(save: NexusSnapshot): void {
@@ -344,5 +361,6 @@ export class NexusManager {
     this.decisions = save.decisions;
     this.agentEnergy = save.agentEnergy;
     this.signalCalibration = save.signalCalibration;
+    this.playerVsAi = save.playerVsAi;
   }
 }
