@@ -7,6 +7,46 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.6.2 Phase 9: Trading Education** — a ten-topic curriculum
+  (`app/education.py`), ordered as a real learning progression:
+  candlesticks → wicks → trends → support/resistance → ENTER/WAIT/AVOID
+  → stop loss → take profit → risk/reward → position sizing → why NO
+  TRADE can be correct. Reachable from a new "ACADEMY" Command Center
+  tab, plus contextual "Need Help?" buttons on the RISK panel (→
+  Risk/Reward Ratio) and the Signal Calibration TRAINING panel (→
+  ENTER/WAIT/AVOID) that jump straight to the relevant lesson.
+  - Scope note: this is a Command Center tab, not a new physical Lobby
+    building — Signal Calibration and Player vs AI (Phases 7-8) are
+    both Command-Center-based too, so this stays consistent with that
+    precedent rather than adding a fourth "and now also walk to a new
+    room" pattern for what's fundamentally reference material, not a
+    live simulation to observe in place (unlike the Market Observatory,
+    which earns its physical room by showing the live chart).
+  - Each lesson has all four required parts: a simple explanation, a
+    "visual example" note that points at TradeTown's own real, already-
+    running systems (the live Overview chart, the real Decisions tab,
+    Signal Calibration's own real regime/risk-reward reads, Sentinel's
+    real position-sizing formula) rather than a fabricated screenshot, an
+    optional deeper explanation, and a practice quiz.
+  - Lesson content is static curriculum text — fine and honest, since
+    "what a wick means" isn't game data to derive or fabricate, it's
+    teaching material. Where a lesson maps onto a real TradeTown
+    mechanic (stop loss/take profit order types, position sizing's
+    risk-per-trade formula, real logged NO TRADE decisions), it says so
+    explicitly and points at the real system instead of inventing a
+    parallel example.
+  - Quiz grading is server-side: `GET /api/education/lessons` never
+    ships the correct-answer index, only `POST /api/education/quiz`
+    reveals it, verified by a dedicated test.
+  - Tests: 9 new backend tests (curriculum ordering/shape, the answer
+    key never leaking through the public lesson shape, correct/incorrect
+    grading, no duplicate completions); 1 new Playwright test completing
+    a real lesson quiz and confirming RISK's "Need Help?" jumps straight
+    into the right lesson. Full backend (mypy/ruff/pytest, 72/72) and
+    frontend (tsc/eslint/build/Playwright, 12/12) verification, plus a
+    live save/load/WS round-trip confirming `education` progress
+    persists correctly.
+
 - **v0.6.2 Phase 8: Player vs AI** — the player calls ENTER/WAIT/AVOID on
   a real past trade candidate *before* the AI's actual call is revealed
   (`app/player_vs_ai.py`), reachable from a new "PVAI" tab. Both are then

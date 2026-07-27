@@ -12,6 +12,7 @@ import type {
   PerformanceSnapshot,
   ResearchItem,
   RiskLimits,
+  EducationProgress,
   PlayerVsAiState,
   RiskWarning,
   ScannerAlert,
@@ -48,6 +49,7 @@ interface NexusSnapshot {
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
+  education: EducationProgress;
 }
 
 /**
@@ -109,6 +111,7 @@ export class NexusManager {
   private static agentEnergy: AgentEnergy = { current: 100, cap: 100, updatedAt: new Date().toISOString() };
   private static signalCalibration: SignalCalibrationState = { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 };
   private static playerVsAi: PlayerVsAiState = { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 };
+  private static education: EducationProgress = { viewedLessonIds: [], completedLessonIds: [], quizAttempts: 0, correctQuizAttempts: 0 };
 
   static getTasks(): Task[] {
     return this.tasks;
@@ -229,6 +232,17 @@ export class NexusManager {
     EventBus.emit("playerVsAi:updated", playerVsAi);
   }
 
+  static getEducation(): EducationProgress {
+    return this.education;
+  }
+
+  /** Applies the result of a direct POST /api/education/view or
+   * .../quiz call immediately, the same reasoning as setPlayerVsAi above. */
+  static setEducation(education: EducationProgress): void {
+    this.education = education;
+    EventBus.emit("education:updated", education);
+  }
+
   static applyServerUpdate(update: NexusSnapshot): void {
     for (const task of update.tasks) {
       const previous = this.tasks.find((t) => t.id === task.id);
@@ -336,6 +350,9 @@ export class NexusManager {
 
     if (update.playerVsAi !== this.playerVsAi) EventBus.emit("playerVsAi:updated", update.playerVsAi);
     this.playerVsAi = update.playerVsAi;
+
+    if (update.education !== this.education) EventBus.emit("education:updated", update.education);
+    this.education = update.education;
   }
 
   static loadFromSave(save: NexusSnapshot): void {
@@ -362,5 +379,6 @@ export class NexusManager {
     this.agentEnergy = save.agentEnergy;
     this.signalCalibration = save.signalCalibration;
     this.playerVsAi = save.playerVsAi;
+    this.education = save.education;
   }
 }

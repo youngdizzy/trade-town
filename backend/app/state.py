@@ -10,13 +10,14 @@ from __future__ import annotations
 import asyncio
 from datetime import datetime, timezone
 
-from app import nexus, player_vs_ai, signal_calibration
+from app import education, nexus, player_vs_ai, signal_calibration
 from app.agent_energy import default_agent_energy
 from app.company_score import compute_company_score
 from app.market_data import market_data_provider
 from app.portfolio import default_portfolio
 from app.research import default_research
 from app.schemas import (
+    EducationProgress,
     EntityTransform,
     GameSaveState,
     MeetingState,
@@ -63,6 +64,7 @@ def default_state() -> GameSaveState:
         agentEnergy=default_agent_energy(),
         signalCalibration=SignalCalibrationState(),
         playerVsAi=PlayerVsAiState(),
+        education=education.default_education_progress(),
         updatedAt=_now_iso(),
     )
 
@@ -139,6 +141,22 @@ class GameState:
             if error is None:
                 self.data = self.data.model_copy(update={"player_vs_ai": new_player_vs_ai})
             return self.data, error
+
+    async def mark_lesson_viewed(self, lesson_id: str) -> EducationProgress:
+        async with self.lock:
+            new_progress = education.mark_viewed(self.data.education, lesson_id)
+            if new_progress is not self.data.education:
+                self.data = self.data.model_copy(update={"education": new_progress})
+            return self.data.education
+
+    async def submit_education_quiz(self, lesson_id: str, selected_index: int) -> tuple[EducationProgress, bool, int, str] | None:
+        async with self.lock:
+            result = education.grade_quiz(self.data.education, lesson_id, selected_index)
+            if result is None:
+                return None
+            new_progress, correct, correct_index, correct_option = result
+            self.data = self.data.model_copy(update={"education": new_progress})
+            return new_progress, correct, correct_index, correct_option
 
     async def tick(self, minutes: int) -> GameSaveState:
         """Advance the game clock and run one NEXUS orchestration step. Called by the sim loop."""

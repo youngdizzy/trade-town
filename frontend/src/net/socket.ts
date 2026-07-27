@@ -13,6 +13,7 @@ import type {
   PaperPortfolio,
   PerformanceSnapshot,
   ResearchItem,
+  EducationProgress,
   PlayerVsAiState,
   RiskLimits,
   RiskWarning,
@@ -58,6 +59,7 @@ type ServerMessage =
       agentEnergy: AgentEnergy;
       signalCalibration: SignalCalibrationState;
       playerVsAi: PlayerVsAiState;
+      education: EducationProgress;
     }
   | { type: "pong" };
 
@@ -138,6 +140,7 @@ export class GameSocket {
             agentEnergy: msg.agentEnergy,
             signalCalibration: msg.signalCalibration,
             playerVsAi: msg.playerVsAi,
+            education: msg.education,
           });
         }
       } catch (err) {

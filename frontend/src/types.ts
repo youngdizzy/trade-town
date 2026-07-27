@@ -295,6 +295,39 @@ export interface PlayerVsAiState {
   totalCount: number;
 }
 
+// v0.6.2 Trading Education — see backend/app/education.py. EducationLesson
+// is static curriculum content, fetched once (never part of GameSaveState
+// or the WS broadcast); only EducationProgress persists as real progress.
+export type EducationTopic =
+  | "candlesticks"
+  | "wicks"
+  | "trends"
+  | "support_resistance"
+  | "enter_wait_avoid"
+  | "stop_loss"
+  | "take_profit"
+  | "risk_reward"
+  | "position_sizing"
+  | "no_trade_ok";
+
+export interface EducationLesson {
+  id: EducationTopic;
+  order: number;
+  title: string;
+  simpleExplanation: string;
+  visualExampleNote: string;
+  deeperExplanation: string;
+  quizQuestion: string;
+  quizOptions: string[];
+}
+
+export interface EducationProgress {
+  viewedLessonIds: string[];
+  completedLessonIds: string[];
+  quizAttempts: number;
+  correctQuizAttempts: number;
+}
+
 export interface MeetingMinutes {
   id: string;
   day: number;
@@ -585,6 +618,7 @@ export interface GameSaveState {
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
+  education: EducationProgress;
   time: TimeState;
   settings: SettingsState;
   dialogueHistory: DialogueHistoryEntry[];

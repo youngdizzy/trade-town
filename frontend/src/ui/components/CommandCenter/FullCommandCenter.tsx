@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
-import type { TradeDecision } from "@/types";
+import type { EducationTopic, TradeDecision } from "@/types";
 import { aiStatus, riskLevel } from "./lib/derive";
 import { RiskDot, StatusPill } from "./ui";
 import { OverviewPanel } from "./panels/OverviewPanel";
@@ -13,15 +13,22 @@ import { PerformancePanel } from "./panels/PerformancePanel";
 import { LogsPanel } from "./panels/LogsPanel";
 import { CalibrationPanel } from "./panels/CalibrationPanel";
 import { PlayerVsAiPanel } from "./panels/PlayerVsAiPanel";
+import { EducationPanel } from "./panels/EducationPanel";
 import { DecisionDetail } from "./DecisionDetail";
 
-const TABS = ["OVERVIEW", "OPPORTUNITIES", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "TRAINING", "PVAI", "PERFORMANCE", "LOGS"] as const;
+const TABS = ["OVERVIEW", "OPPORTUNITIES", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"] as const;
 type Tab = (typeof TABS)[number];
 
 export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => void; onClose: () => void }) {
   const { time, riskWarnings, research, agents } = useGameStore();
   const [tab, setTab] = useState<Tab>("OVERVIEW");
   const [inspecting, setInspecting] = useState<TradeDecision | null>(null);
+  const [helpLessonId, setHelpLessonId] = useState<EducationTopic | null>(null);
+
+  const needHelp = (lessonId: EducationTopic) => {
+    setHelpLessonId(lessonId);
+    setTab("ACADEMY");
+  };
 
   const level = riskLevel(riskWarnings);
   const status = aiStatus(riskWarnings, research, agents);
@@ -76,11 +83,12 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
         {tab === "OVERVIEW" && <OverviewPanel onInspect={setInspecting} onNavigate={setTab} />}
         {tab === "OPPORTUNITIES" && <OpportunitiesPanel onInspect={setInspecting} />}
         {tab === "DECISIONS" && <DecisionsPanel onInspect={setInspecting} />}
-        {tab === "RISK" && <RiskPanel />}
+        {tab === "RISK" && <RiskPanel onNeedHelp={needHelp} />}
         {tab === "AGENTS" && <AgentsPanel />}
         {tab === "RESEARCH" && <ResearchPanel />}
-        {tab === "TRAINING" && <CalibrationPanel />}
+        {tab === "TRAINING" && <CalibrationPanel onNeedHelp={needHelp} />}
         {tab === "PVAI" && <PlayerVsAiPanel />}
+        {tab === "ACADEMY" && <EducationPanel openLessonId={helpLessonId} />}
         {tab === "PERFORMANCE" && <PerformancePanel />}
         {tab === "LOGS" && <LogsPanel />}
       </div>

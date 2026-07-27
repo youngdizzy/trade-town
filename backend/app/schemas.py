@@ -740,6 +740,51 @@ class PlayerVsAiState(CamelModel):
     total_count: int = Field(default=0, alias="totalCount")
 
 
+# v0.6.2 Phase 9: Trading Education. Ten topics, ordered as a real
+# learning progression per the brief — see app/education.py for the
+# actual curriculum text and quiz answer keys. `quiz_options` is the
+# public shape (no answer key); grading happens server-side.
+EducationTopic = Literal[
+    "candlesticks",
+    "wicks",
+    "trends",
+    "support_resistance",
+    "enter_wait_avoid",
+    "stop_loss",
+    "take_profit",
+    "risk_reward",
+    "position_sizing",
+    "no_trade_ok",
+]
+
+
+class EducationLesson(CamelModel):
+    """One lesson's public content — what GET /api/education/lessons
+    returns. Deliberately excludes the quiz's correct-answer index;
+    grading happens server-side via POST /api/education/quiz so the
+    answer never ships to the client."""
+
+    id: EducationTopic
+    order: int
+    title: str
+    simple_explanation: str = Field(alias="simpleExplanation")
+    visual_example_note: str = Field(alias="visualExampleNote")
+    deeper_explanation: str = Field(alias="deeperExplanation")
+    quiz_question: str = Field(alias="quizQuestion")
+    quiz_options: list[str] = Field(alias="quizOptions")
+
+
+class EducationProgress(CamelModel):
+    """Persisted — real progress through the curriculum, distinct from
+    the lesson content itself (which is static and never part of the
+    save; see education.py)."""
+
+    viewed_lesson_ids: list[str] = Field(default_factory=list, alias="viewedLessonIds")
+    completed_lesson_ids: list[str] = Field(default_factory=list, alias="completedLessonIds")
+    quiz_attempts: int = Field(default=0, alias="quizAttempts")
+    correct_quiz_attempts: int = Field(default=0, alias="correctQuizAttempts")
+
+
 class GameSaveState(CamelModel):
     version: Literal["0.6"] = "0.6"
     player: EntityTransform
@@ -767,6 +812,7 @@ class GameSaveState(CamelModel):
     agent_energy: AgentEnergy = Field(alias="agentEnergy")
     signal_calibration: SignalCalibrationState = Field(default_factory=SignalCalibrationState, alias="signalCalibration")
     player_vs_ai: PlayerVsAiState = Field(default_factory=PlayerVsAiState, alias="playerVsAi")
+    education: EducationProgress = Field(default_factory=EducationProgress)
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(default_factory=list, alias="dialogueHistory")

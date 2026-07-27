@@ -1,4 +1,5 @@
 import { useGameStore } from "@/ui/hooks/useGameStore";
+import type { EducationTopic } from "@/types";
 import { RISK_LEVEL_LABEL, formatPct, riskLevel, riskTextClass } from "../lib/derive";
 import { DataRow, EmptyState, Glass, RiskDot, TerminalLabel } from "../ui";
 
@@ -17,7 +18,7 @@ const RISK_BANNER = {
  * system really is refusing new trades right now, not just a cosmetic
  * label.
  */
-export function RiskPanel() {
+export function RiskPanel({ onNeedHelp }: { onNeedHelp?: (lessonId: EducationTopic) => void } = {}) {
   const { riskWarnings, riskLimits, paperPortfolio, companyScore } = useGameStore();
   const level = riskLevel(riskWarnings);
 
@@ -28,9 +29,20 @@ export function RiskPanel() {
   return (
     <div className="space-y-3">
       <Glass className={`border p-4 ${RISK_BANNER[level]}`}>
-        <div className="flex items-center gap-2">
-          <RiskDot level={level} className="h-3 w-3" />
-          <span className={`font-cmdmono text-xl tracking-wider ${riskTextClass(level)}`}>{RISK_LEVEL_LABEL[level]}</span>
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <RiskDot level={level} className="h-3 w-3" />
+            <span className={`font-cmdmono text-xl tracking-wider ${riskTextClass(level)}`}>{RISK_LEVEL_LABEL[level]}</span>
+          </div>
+          {onNeedHelp && (
+            <button
+              type="button"
+              onClick={() => onNeedHelp("risk_reward")}
+              className="rounded-sm border border-cmd-border px-2 py-1 text-[9px] uppercase tracking-wide text-cmd-textDim hover:border-cmd-cyan/50 hover:text-cmd-cyan"
+            >
+              Need Help?
+            </button>
+          )}
         </div>
         <div className="mt-1 text-cmd-textDim">
           {level === "red" && "A hard-reject condition is active — new trade candidates are being blocked (see decision.py's veto rule)."}

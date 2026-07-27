@@ -59,6 +59,10 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         # Progress only — the pending PlayerVsAiPrompt itself is transient
         # and never broadcast (see player_vs_ai.py's module docstring).
         "playerVsAi": state.player_vs_ai.model_dump(by_alias=True),
+        # Progress only — the static lesson curriculum itself is never
+        # broadcast, fetched once via GET /api/education/lessons instead
+        # (see education.py's module docstring).
+        "education": state.education.model_dump(by_alias=True),
     }
 
 

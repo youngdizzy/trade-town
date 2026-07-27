@@ -1,4 +1,15 @@
-import type { AgentEnergy, Candle, GameSaveState, PlayerVsAiPrompt, PlayerVsAiState, SignalCalibrationState, SignalChallenge, SignalChoice } from "@/types";
+import type {
+  AgentEnergy,
+  Candle,
+  EducationLesson,
+  EducationProgress,
+  GameSaveState,
+  PlayerVsAiPrompt,
+  PlayerVsAiState,
+  SignalCalibrationState,
+  SignalChallenge,
+  SignalChoice,
+} from "@/types";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
@@ -48,5 +59,16 @@ export const api = {
     request<{ playerVsAi: PlayerVsAiState }>("/player-vs-ai/submit", {
       method: "POST",
       body: JSON.stringify({ promptId, choice }),
+    }),
+  getLessons: () => request<EducationLesson[]>("/education/lessons"),
+  markLessonViewed: (lessonId: string) =>
+    request<{ education: EducationProgress }>("/education/view", {
+      method: "POST",
+      body: JSON.stringify({ lessonId }),
+    }),
+  submitQuiz: (lessonId: string, selectedIndex: number) =>
+    request<{ correct: boolean; correctIndex: number; correctOption: string; education: EducationProgress }>("/education/quiz", {
+      method: "POST",
+      body: JSON.stringify({ lessonId, selectedIndex }),
     }),
 };

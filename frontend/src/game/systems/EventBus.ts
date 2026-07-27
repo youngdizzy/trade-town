@@ -17,6 +17,7 @@ import type {
   PerformanceSnapshot,
   ResearchItem,
   RiskLimits,
+  EducationProgress,
   PlayerVsAiState,
   RiskWarning,
   ScannerAlert,
@@ -88,6 +89,7 @@ export interface GameEvents {
   "agentEnergy:updated": AgentEnergy;
   "signalCalibration:updated": SignalCalibrationState;
   "playerVsAi:updated": PlayerVsAiState;
+  "education:updated": EducationProgress;
 }
 
 type Handler<K extends keyof GameEvents> = (payload: GameEvents[K]) => void;

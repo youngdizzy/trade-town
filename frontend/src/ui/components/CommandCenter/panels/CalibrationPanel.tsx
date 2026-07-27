@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
-import type { SignalChallenge, SignalChoice } from "@/types";
+import type { EducationTopic, SignalChallenge, SignalChoice } from "@/types";
 import { api } from "@/net/api";
 import { NexusManager } from "@/game/systems/NexusManager";
 import { CandlestickChart } from "../CandlestickChart";
@@ -29,7 +29,7 @@ interface Result {
  * never against what price did next, so a correct answer always means
  * "read the same information a real trader had," not "got lucky."
  */
-export function CalibrationPanel() {
+export function CalibrationPanel({ onNeedHelp }: { onNeedHelp?: (lessonId: EducationTopic) => void } = {}) {
   const { signalCalibration } = useGameStore();
   const [level, setLevel] = useState(signalCalibration.unlockedLevel);
   const [challenge, setChallenge] = useState<SignalChallenge | null>(null);
@@ -112,14 +112,25 @@ export function CalibrationPanel() {
       <Glass className="p-3">
         <div className="mb-1.5 flex items-center justify-between">
           <TerminalLabel>{LEVEL_NAMES[effectiveLevel]}</TerminalLabel>
-          <button
-            type="button"
-            onClick={() => void newChallenge()}
-            disabled={loading}
-            className="rounded-sm border border-cmd-border px-2 py-1 text-cmd-textDim hover:enabled:text-cmd-cyan hover:enabled:border-cmd-cyan/50 disabled:opacity-40"
-          >
-            {loading ? "…" : challenge ? "New Round" : "Start Round"}
-          </button>
+          <div className="flex items-center gap-2">
+            {onNeedHelp && (
+              <button
+                type="button"
+                onClick={() => onNeedHelp("enter_wait_avoid")}
+                className="rounded-sm border border-cmd-border px-2 py-1 text-[9px] uppercase tracking-wide text-cmd-textDim hover:border-cmd-cyan/50 hover:text-cmd-cyan"
+              >
+                Need Help?
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => void newChallenge()}
+              disabled={loading}
+              className="rounded-sm border border-cmd-border px-2 py-1 text-cmd-textDim hover:enabled:text-cmd-cyan hover:enabled:border-cmd-cyan/50 disabled:opacity-40"
+            >
+              {loading ? "…" : challenge ? "New Round" : "Start Round"}
+            </button>
+          </div>
         </div>
 
         {error && <div className="mb-2 text-[9px] text-cmd-red">{error}</div>}

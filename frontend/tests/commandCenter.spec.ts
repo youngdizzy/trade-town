@@ -140,7 +140,7 @@ test.describe("Global Command Center", () => {
     expect(moved.x).not.toBe(frozen.x);
   });
 
-  test("expands to the Full Command Center and renders all 10 tabs with graceful empty states", async ({ page }) => {
+  test("expands to the Full Command Center and renders all 11 tabs with graceful empty states", async ({ page }) => {
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);
     await continueGame(page);
@@ -149,7 +149,7 @@ test.describe("Global Command Center", () => {
     await expect(page.getByText("COMMAND CENTER", { exact: true })).toBeVisible();
     await page.getByRole("button", { name: /EXPAND/ }).click();
 
-    const tabs = ["OVERVIEW", "OPPORTUNITIES", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "TRAINING", "PVAI", "PERFORMANCE", "LOGS"];
+    const tabs = ["OVERVIEW", "OPPORTUNITIES", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
     for (const tab of tabs) {
       await page.getByRole("button", { name: tab, exact: true }).click();
       await expect(page.getByRole("button", { name: tab, exact: true })).toHaveClass(/text-cmd-cyan/);
@@ -277,5 +277,33 @@ test.describe("Global Command Center", () => {
       await expect(round.getByText(/CORRECT|MISSED/).first()).toBeVisible({ timeout: 5000 });
       await expect(round.getByText(/real realized result/)).toBeVisible();
     }
+  });
+
+  test("Trading Academy: completes a real lesson quiz, and RISK's Need Help jumps straight to a lesson", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await page.getByRole("button", { name: "ACADEMY", exact: true }).click();
+
+    const lessonPane = page.getByTestId("education-lesson");
+    await expect(lessonPane).toBeVisible();
+    await page.getByRole("button", { name: /1\. Reading a Candlestick/ }).click();
+    await expect(lessonPane.getByText(/Practice Challenge/)).toBeVisible();
+
+    // Answer the quiz and submit — grading is server-side against a real
+    // fixed answer key (see backend/app/education.py), so either outcome
+    // (CORRECT or NOT QUITE) must render honestly, never silently accept.
+    await lessonPane.getByText("It closed higher than it opened").click();
+    await lessonPane.getByRole("button", { name: "Submit Answer" }).click();
+    await expect(lessonPane.getByText(/CORRECT|NOT QUITE/)).toBeVisible({ timeout: 5000 });
+
+    // RISK panel's "Need Help?" must jump straight into a real lesson.
+    await page.getByRole("button", { name: "RISK", exact: true }).click();
+    await page.getByRole("button", { name: "Need Help?" }).click();
+    await expect(page.getByRole("button", { name: "ACADEMY", exact: true })).toHaveClass(/text-cmd-cyan/);
+    await expect(page.getByTestId("education-lesson").getByText("Risk/Reward Ratio", { exact: true })).toBeVisible();
   });
 });
