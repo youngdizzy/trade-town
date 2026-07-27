@@ -113,12 +113,6 @@ export abstract class RoomScene extends Phaser.Scene {
 
   update(): void {
     this.player.update();
-    for (const agent of this.agents.values()) agent.update();
-
-    const nearestForTag = this.nearestAgent(NAME_TAG_RADIUS);
-    for (const agent of this.agents.values()) {
-      agent.nameTag.setVisible(agent === nearestForTag);
-    }
 
     GameManager.getInstance()?.setPlayerTransform({
       scene: this.sceneKey,
@@ -129,6 +123,15 @@ export abstract class RoomScene extends Phaser.Scene {
 
     if (this.player.pausePressed) {
       GameManager.getInstance()?.togglePause();
+    }
+
+    if (!(GameManager.getInstance()?.worldActive ?? true)) return;
+
+    for (const agent of this.agents.values()) agent.update();
+
+    const nearestForTag = this.nearestAgent(NAME_TAG_RADIUS);
+    for (const agent of this.agents.values()) {
+      agent.nameTag.setVisible(agent === nearestForTag);
     }
 
     // Phaser's JustDown() consumes the "just pressed" state on read, so it

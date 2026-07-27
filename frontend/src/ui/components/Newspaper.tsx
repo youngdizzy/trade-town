@@ -1,4 +1,5 @@
 import { useGameStore } from "@/ui/hooks/useGameStore";
+import { useCloseOnEscape } from "@/ui/hooks/useCloseOnEscape";
 import { EventBus } from "@/game/systems/EventBus";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { upcomingEvents } from "@/game/systems/UpcomingEvents";
@@ -17,9 +18,9 @@ function companyRatingLabel(overall: number): string {
 /** The Lobby newspaper stand's "TradeTown Daily" — company news, research updates, agent activity, paper trading results, and placeholder market headlines. */
 export function Newspaper() {
   const { newspaperOpen, news, research, tasks, time, paperPortfolio, coachReports, scannerAlerts, companyScore } = useGameStore();
-  if (!newspaperOpen) return null;
-
   const close = () => EventBus.emit("ui:newspaper", { open: false });
+  useCloseOnEscape(newspaperOpen, close);
+  if (!newspaperOpen) return null;
 
   const companyNews = news.filter((n) => n.category === "company").slice(-5).reverse();
   const marketHeadlines = news.filter((n) => n.category === "market").slice(-5).reverse();

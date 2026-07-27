@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
+import { useCloseOnEscape } from "@/ui/hooks/useCloseOnEscape";
 import { EventBus } from "@/game/systems/EventBus";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import type { CoachReport, ReportPeriod } from "@/types";
@@ -14,9 +15,9 @@ import type { CoachReport, ReportPeriod } from "@/types";
 export function CoachDashboard() {
   const { coachDashboardOpen, coachReports, companyScore, paperPortfolio } = useGameStore();
   const [period, setPeriod] = useState<ReportPeriod>("weekly");
-  if (!coachDashboardOpen) return null;
-
   const close = () => EventBus.emit("ui:coachDashboard", { open: false });
+  useCloseOnEscape(coachDashboardOpen, close);
+  if (!coachDashboardOpen) return null;
   const report = latestReportFor(coachReports, period);
 
   return (

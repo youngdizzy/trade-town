@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
+import { useCloseOnEscape } from "@/ui/hooks/useCloseOnEscape";
 import { EventBus } from "@/game/systems/EventBus";
 import type { MemoryCategory } from "@/types";
 
@@ -54,9 +55,9 @@ export function CompanyMemory() {
   const { companyMemoryOpen, memory } = useGameStore();
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState<MemoryCategory | null>(null);
-  if (!companyMemoryOpen) return null;
-
   const close = () => EventBus.emit("ui:companyMemory", { open: false });
+  useCloseOnEscape(companyMemoryOpen, close);
+  if (!companyMemoryOpen) return null;
 
   const needle = query.trim().toLowerCase();
   const filtered = [...memory]

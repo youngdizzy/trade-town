@@ -244,6 +244,8 @@ export class LobbyScene extends Phaser.Scene {
       GameManager.getInstance()?.togglePause();
     }
 
+    if (!(GameManager.getInstance()?.worldActive ?? true)) return;
+
     for (const { zone, def } of this.doors) {
       const near = Phaser.Geom.Intersects.RectangleToRectangle(this.player.sprite.getBounds(), zone.getBounds());
       if (near && this.player.interactPressed) {
@@ -534,31 +536,37 @@ export class LobbyScene extends Phaser.Scene {
   /**
    * A low hedge wall along the square's east/west edges, with a 2-tile
    * gateway at each lamppost so the border doesn't just run straight
-   * through them. Walk-blocking, like a real garden hedge — a thin
-   * collision box per tile rather than one for the whole run, so the
-   * gateway gap is actually walkable and not blocked by a neighboring
-   * tile's oversized body.
+   * through them. Walk-blocking, like a real garden hedge — but
+   * collision is one merged body per contiguous run (above/below the
+   * gateway), not one per 16x16 tile. A wall built from many abutting
+   * separate Arcade static bodies is a known way to make a moving body
+   * catch/snag at the seams between them when sliding diagonally past —
+   * a single tall rectangle per run has no seams to catch on. Visuals
+   * are still placed per-tile so the cap/fill pixel art reads correctly.
    */
   private buildHedges(): void {
     const [colStart, colEnd] = PLAZA_COLS;
     const [rowStart, rowEnd] = PLAZA_ROWS;
     const rows = rowEnd - rowStart;
     const xs = [colStart * TILE_SIZE - TILE_SIZE / 2, colEnd * TILE_SIZE + TILE_SIZE / 2];
+    const runs: [number, number][] = [
+      [0, HEDGE_GATE_ROWS[0]! - 1],
+      [HEDGE_GATE_ROWS[HEDGE_GATE_ROWS.length - 1]! + 1, rows - 1],
+    ];
     for (const x of xs) {
-      for (let i = 0; i < rows; i++) {
-        if (HEDGE_GATE_ROWS.includes(i)) continue;
-        const beforeGate = i === HEDGE_GATE_ROWS[0]! - 1;
-        const afterGate = i === HEDGE_GATE_ROWS[HEDGE_GATE_ROWS.length - 1]! + 1;
-        let frame = HEDGE_FILL;
-        if (i === 0 || afterGate) frame = HEDGE_CAP_TOP;
-        else if (i === rows - 1 || beforeGate) frame = HEDGE_CAP_BOTTOM;
+      for (const [startRow, endRow] of runs) {
+        for (let i = startRow; i <= endRow; i++) {
+          let frame = HEDGE_FILL;
+          if (i === startRow) frame = HEDGE_CAP_TOP;
+          else if (i === endRow) frame = HEDGE_CAP_BOTTOM;
+          const y = rowStart * TILE_SIZE + i * TILE_SIZE + TILE_SIZE / 2;
+          this.add.image(x, y, "props/hedge-tiles", frame).setDepth(2);
+        }
 
-        const y = rowStart * TILE_SIZE + i * TILE_SIZE + TILE_SIZE / 2;
-        const hedge = this.add.image(x, y, "props/hedge-tiles", frame).setDepth(2);
-        this.obstacles.add(hedge);
-        const body = hedge.body as Phaser.Physics.Arcade.StaticBody;
-        body.setSize(hedge.displayWidth * 0.8, hedge.displayHeight * 0.8);
-        body.setOffset(hedge.displayWidth * 0.1, hedge.displayHeight * 0.1);
+        const runTiles = endRow - startRow + 1;
+        const runCenterY = rowStart * TILE_SIZE + ((startRow + endRow + 1) / 2) * TILE_SIZE;
+        const collider = this.add.rectangle(x, runCenterY, TILE_SIZE * 0.8, runTiles * TILE_SIZE * 0.9, 0x000000, 0);
+        this.obstacles.add(collider);
       }
     }
   }

@@ -49,6 +49,7 @@ export interface GameEvents {
   "ui:pause": { paused: boolean };
   "ui:settings": { open: boolean };
   "ui:newspaper": { open: boolean };
+  "world:overlayOpen": { open: boolean };
   "net:status": { connected: boolean };
   "task:assigned": Task;
   "task:completed": Task;

@@ -154,20 +154,29 @@ class GameStore {
     EventBus.on("settings:changed", (settings) => this.set({ settings }));
     EventBus.on("ui:pause", ({ paused }) => this.set({ paused }));
     EventBus.on("ui:settings", ({ open }) => this.set({ settingsOpen: open }));
-    // Newspaper and Company Memory are both full-screen world-interaction
-    // overlays with independent open/close events and no shared owner, so
-    // nothing previously stopped both being open at once — closing
-    // whichever one was on top (it renders last, so it's visually on top;
-    // see App.tsx) would silently reveal the other one still open
-    // underneath. Opening either now closes the other.
+    // Newspaper, Company Memory, and Coach Dashboard are all full-screen
+    // world-interaction overlays with independent open/close events and no
+    // shared owner, so nothing previously stopped more than one being open
+    // at once — closing whichever was on top (it renders last, so it's
+    // visually on top; see App.tsx) would silently reveal another one
+    // still open underneath. Opening any of them now closes the others,
+    // and setOverlay also pauses the running scene for as long as any one
+    // of them is open — without that, the player kept moving (invisibly,
+    // since the overlay hides the world) behind a panel that only a mouse
+    // click could close, which read as the game being stuck.
+    const setOverlay = (patch: Partial<Pick<GameUiState, "newspaperOpen" | "companyMemoryOpen" | "coachDashboardOpen">>): void => {
+      this.set(patch);
+      const anyOpen = this.state.newspaperOpen || this.state.companyMemoryOpen || this.state.coachDashboardOpen;
+      EventBus.emit("world:overlayOpen", { open: anyOpen });
+    };
     EventBus.on("ui:newspaper", ({ open }) =>
-      this.set({ newspaperOpen: open, companyMemoryOpen: open ? false : this.state.companyMemoryOpen, coachDashboardOpen: open ? false : this.state.coachDashboardOpen }),
+      setOverlay({ newspaperOpen: open, companyMemoryOpen: open ? false : this.state.companyMemoryOpen, coachDashboardOpen: open ? false : this.state.coachDashboardOpen }),
     );
     EventBus.on("ui:companyMemory", ({ open }) =>
-      this.set({ companyMemoryOpen: open, newspaperOpen: open ? false : this.state.newspaperOpen, coachDashboardOpen: open ? false : this.state.coachDashboardOpen }),
+      setOverlay({ companyMemoryOpen: open, newspaperOpen: open ? false : this.state.newspaperOpen, coachDashboardOpen: open ? false : this.state.coachDashboardOpen }),
     );
     EventBus.on("ui:coachDashboard", ({ open }) =>
-      this.set({ coachDashboardOpen: open, newspaperOpen: open ? false : this.state.newspaperOpen, companyMemoryOpen: open ? false : this.state.companyMemoryOpen }),
+      setOverlay({ coachDashboardOpen: open, newspaperOpen: open ? false : this.state.newspaperOpen, companyMemoryOpen: open ? false : this.state.companyMemoryOpen }),
     );
     EventBus.on("net:status", ({ connected }) => this.set({ netConnected: connected }));
     EventBus.on("scene:ready", ({ scene }) => this.set({ currentScene: scene }));

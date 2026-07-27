@@ -5,6 +5,42 @@ development milestones, not semver releases.
 
 ## Unreleased
 
+### Fixed
+
+- **Opening the newspaper (or Company Memory / Coach Dashboard) made the
+  game feel stuck** — these full-screen overlays only had a mouse-click
+  "Close" button (no keyboard close, unlike the existing `DialogueBox`)
+  and didn't pause the world, so the player kept invisibly moving behind
+  the panel while it was open. Added a shared `useCloseOnEscape` hook (all
+  three panels now close on Escape) and a new `world:overlayOpen` event
+  that a `GameManager.worldActive` flag tracks; `LobbyScene` and
+  `RoomScene` now skip movement/interaction processing entirely while any
+  overlay (or the pause menu) is open, rather than just hiding the world
+  while it silently keeps simulating underneath.
+- **The ESC pause menu's Resume never actually resumed** — a pre-existing
+  bug independent of the above: `togglePause()` used
+  `game.scene.getScenes(true)` to find the scene to resume, but that
+  filters to *currently active* (`RUNNING`) scenes — a scene that was just
+  paused no longer satisfies that, so the resume loop always iterated zero
+  scenes and input stayed frozen after un-pausing. Superseded by the same
+  `worldActive` flag above, which doesn't depend on Phaser's scene-pause
+  state machine at all.
+- **Held movement/pause keys could re-trigger themselves across an
+  overlay transition** — Phaser's `Key.JustDown()` is a read-and-consume
+  flag set by the raw keydown event regardless of whether anything is
+  currently reading it; without an explicit reset, closing the newspaper
+  with Escape could leave the scene's own pause key "still just-pressed"
+  the instant the world reactivated, immediately popping the pause menu.
+  `GameManager` now calls `resetKeys()` on the active scene's keyboard
+  whenever `worldActive` transitions back to true.
+- **Hedge collision could snag while walking diagonally past it** — the
+  hedge wall was built from one 16x16 static Arcade body per tile;
+  abutting separate bodies are a known source of a moving body catching
+  at the seams between them. `buildHedges()` now still places one visual
+  tile per cell (so the cap/fill pixel art reads correctly) but registers
+  a single merged collision rectangle per contiguous hedge run instead —
+  no internal seams left to catch on.
+
 ### Changed
 
 - **Asset pipeline reorganization** — `assets/cute-fantasy-rpg/` restructured

@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import { AnimatedActor } from "./AnimatedActor";
 import { InputManager } from "@/game/systems/InputManager";
 import { EventBus } from "@/game/systems/EventBus";
+import { GameManager } from "@/game/systems/GameManager";
 import type { Direction } from "@/types";
 
 /** The player-controlled CEO character: smooth WASD/arrow movement, camera target, save-position source. */
@@ -16,7 +17,10 @@ export class PlayerController extends AnimatedActor {
   }
 
   update(): void {
-    const move = this.input.getMoveVector();
+    const worldActive = GameManager.getInstance()?.worldActive ?? true;
+    const move = worldActive
+      ? this.input.getMoveVector()
+      : { x: 0, y: 0, direction: null, moving: false };
     this.setVelocityForDirection(move.x, move.y);
     if (move.direction) this.facing = move.direction;
     this.playAnim(move.moving);

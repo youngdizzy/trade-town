@@ -34,8 +34,22 @@ export class GameManager {
   readonly game: Phaser.Game;
   playerTransform: EntityTransform = { ...DEFAULT_PLAYER_TRANSFORM };
   paused = false;
+  private overlayOpen = false;
 
   private constructor(parent: HTMLElement) {
+    // Full-screen React overlays (Newspaper, Company Memory, Coach
+    // Dashboard) draw over the whole canvas but don't otherwise touch the
+    // running scene — without this, the player keeps moving (invisibly,
+    // since the overlay hides the world) while one is open, and since
+    // none of them have a keyboard close (mouse-only "Close" button),
+    // that reads as the game being stuck. `worldActive` below is
+    // independent of `paused`/`ui:pause` (the ESC pause menu) so opening
+    // the newspaper doesn't also pop up the Pause Menu.
+    EventBus.on("world:overlayOpen", ({ open }) => {
+      this.overlayOpen = open;
+      if (this.worldActive) this.resetSceneKeys();
+    });
+
     this.game = new Phaser.Game({
       type: Phaser.AUTO,
       parent,
@@ -99,11 +113,40 @@ export class GameManager {
 
   togglePause(): void {
     this.paused = !this.paused;
-    const active = this.game.scene.getScenes(true);
-    for (const scene of active) {
-      if (this.paused) scene.scene.pause();
-      else scene.scene.resume();
-    }
+    if (this.worldActive) this.resetSceneKeys();
     EventBus.emit("ui:pause", { paused: this.paused });
+  }
+
+  /**
+   * Whether gameplay scenes should process movement/interaction this
+   * frame — false while the ESC pause menu or any full-screen overlay
+   * (Newspaper, Company Memory, Coach Dashboard) is open. LobbyScene and
+   * RoomScene both check this at the top of `update()` and bail out
+   * early rather than this class calling Phaser's own `scene.pause()` /
+   * `.resume()`: those are QUEUED operations (applied on the SceneManager's
+   * *next* update, not immediately — see ScenePlugin.pause()'s own
+   * doc comment), and the original pause-menu code called
+   * `game.scene.getScenes(true)` to find the scene to resume — `getScenes`'s
+   * `isActive` filter means "status === RUNNING", which a just-paused scene
+   * no longer satisfies, so that loop always iterated zero scenes and the
+   * scene never actually resumed via ESC. This flag-based approach doesn't
+   * depend on Phaser's scene-state machine at all, so it can't have that
+   * class of bug.
+   */
+  get worldActive(): boolean {
+    return !this.paused && !this.overlayOpen;
+  }
+
+  /**
+   * Phaser's Key.JustDown flag is set by the raw browser keydown
+   * regardless of whether anything is reading it, and only clears the
+   * first time something calls JustDown() on it — which the gameplay
+   * scenes don't do while worldActive is false (see above). Without this,
+   * closing an overlay with Escape would leave the scene's own ESC key
+   * "still just-pressed" the instant the world reactivates, immediately
+   * re-triggering the pause menu; held movement keys have the same issue.
+   */
+  private resetSceneKeys(): void {
+    this.game.scene.getScene(this.playerTransform.scene as SceneId)?.input.keyboard?.resetKeys();
   }
 }
