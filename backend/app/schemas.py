@@ -364,6 +364,20 @@ class PaperTrade(CamelModel):
     screenshot: str | None = None
     opened_at: str = Field(alias="openedAt")
     closed_at: str = Field(alias="closedAt")
+    # Simulated-clock minutes-since-epoch (day*1440 + hour*60 + minute), the
+    # same convention PaperPosition.opened_sim_minutes uses (see its own
+    # comment above) — added in v0.6.1 so the Command Center's monthly P&L
+    # view can bucket closed trades into TradeTown's in-game calendar
+    # rather than real wall-clock time. `closed_sim_minutes` is always
+    # `opened_sim_minutes + duration_minutes` (app/portfolio.py's
+    # close_position() derives it exactly that way, no separate clock
+    # read needed). `opened_at`/`closed_at` above remain real ISO
+    # timestamps, kept only for audit/display, same as every other *_at
+    # field — real time and sim time both exist on this record because
+    # they answer different questions (when did this happen in the real
+    # world vs. where does it fall on the game's own calendar).
+    opened_sim_minutes: int = Field(alias="openedSimMinutes")
+    closed_sim_minutes: int = Field(alias="closedSimMinutes")
 
 
 class PaperPortfolio(CamelModel):

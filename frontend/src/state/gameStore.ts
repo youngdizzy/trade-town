@@ -71,6 +71,8 @@ export interface GameUiState {
   companyMemoryOpen: boolean;
   coachDashboardOpen: boolean;
   brainRoomHudOpen: boolean;
+  commandCenterOpen: boolean;
+  commandCenterMode: "quick" | "full";
   netConnected: boolean;
   save: SaveUiState;
   currentScene: string;
@@ -143,6 +145,8 @@ class GameStore {
     companyMemoryOpen: false,
     coachDashboardOpen: false,
     brainRoomHudOpen: false,
+    commandCenterOpen: false,
+    commandCenterMode: "quick",
     netConnected: false,
     save: { status: "idle", lastSavedAt: null, error: null },
     currentScene: "MainMenuScene",
@@ -168,13 +172,13 @@ class GameStore {
     // of them is open — without that, the player kept moving (invisibly,
     // since the overlay hides the world) behind a panel that only a mouse
     // click could close, which read as the game being stuck.
-    const OVERLAY_KEYS = ["newspaperOpen", "companyMemoryOpen", "coachDashboardOpen", "brainRoomHudOpen"] as const;
-    const setOverlay = (key: (typeof OVERLAY_KEYS)[number], open: boolean): void => {
+    const OVERLAY_KEYS = ["newspaperOpen", "companyMemoryOpen", "coachDashboardOpen", "brainRoomHudOpen", "commandCenterOpen"] as const;
+    const setOverlay = (key: (typeof OVERLAY_KEYS)[number], open: boolean, extra?: Partial<GameUiState>): void => {
       const patch = Object.fromEntries(OVERLAY_KEYS.map((k) => [k, k === key ? open : open ? false : this.state[k]])) as Record<
         (typeof OVERLAY_KEYS)[number],
         boolean
       >;
-      this.set(patch);
+      this.set({ ...patch, ...extra });
       const anyOpen = OVERLAY_KEYS.some((k) => this.state[k]);
       EventBus.emit("world:overlayOpen", { open: anyOpen });
     };
@@ -182,6 +186,16 @@ class GameStore {
     EventBus.on("ui:companyMemory", ({ open }) => setOverlay("companyMemoryOpen", open));
     EventBus.on("ui:coachDashboard", ({ open }) => setOverlay("coachDashboardOpen", open));
     EventBus.on("ui:brainRoomHud", ({ open }) => setOverlay("brainRoomHudOpen", open));
+    // Global Command Center (v0.6.1) — openable from anywhere via Tab or
+    // the persistent corner button, in either "quick" (a fast-glance
+    // status card) or "full" (tabbed terminal) mode. Mode is carried as
+    // extra state alongside the same open/close + mutual-exclusion +
+    // world-pause mechanism every other overlay already uses, rather than
+    // a second event — expanding from Quick to Full re-fires this same
+    // event with open:true again, just with a different mode.
+    EventBus.on("ui:commandCenter", ({ open, mode }) =>
+      setOverlay("commandCenterOpen", open, open ? { commandCenterMode: mode ?? this.state.commandCenterMode } : undefined),
+    );
     EventBus.on("net:status", ({ connected }) => this.set({ netConnected: connected }));
     EventBus.on("scene:ready", ({ scene }) => this.set({ currentScene: scene }));
 

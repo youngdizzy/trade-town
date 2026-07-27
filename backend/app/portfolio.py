@@ -157,6 +157,8 @@ def close_position(
         opposingAgents=opposing_agents,
         openedAt=match.opened_at,
         closedAt=_now_iso(),
+        openedSimMinutes=match.opened_sim_minutes,
+        closedSimMinutes=match.opened_sim_minutes + duration_minutes,
     )
     history = [*portfolio.trade_history, trade]
     if len(history) > MAX_TRADE_HISTORY:

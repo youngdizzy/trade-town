@@ -75,6 +75,7 @@ export interface GameEvents {
   "performanceSnapshots:updated": PerformanceSnapshot[];
   "ui:coachDashboard": { open: boolean };
   "ui:brainRoomHud": { open: boolean };
+  "ui:commandCenter": { open: boolean; mode?: "quick" | "full" };
   "riskLimits:updated": RiskLimits;
   "riskWarnings:updated": RiskWarning[];
   "scannerAlerts:updated": ScannerAlert[];

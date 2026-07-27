@@ -16,6 +16,7 @@ export function BottomToolbar() {
         <ToolbarButton label="Memory" onClick={() => EventBus.emit("ui:companyMemory", { open: true })} />
         <ToolbarButton label="Coach" onClick={() => EventBus.emit("ui:coachDashboard", { open: true })} />
         <ToolbarButton label="Dashboard" onClick={() => EventBus.emit("ui:brainRoomHud", { open: true })} />
+        <ToolbarButton label="Command ⌁" onClick={() => EventBus.emit("ui:commandCenter", { open: true, mode: "quick" })} />
         <ToolbarButton label="Settings" onClick={() => EventBus.emit("ui:settings", { open: true })} />
         <ToolbarButton label={paused ? "Resume" : "Pause"} onClick={() => GameManager.getInstance()?.togglePause()} />
         <SaveStatusIndicator status={save.status} error={save.error} />

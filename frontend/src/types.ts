@@ -271,6 +271,9 @@ export interface PaperTrade {
   screenshot: string | null;
   openedAt: string;
   closedAt: string;
+  /** Simulated-clock minutes-since-epoch (day*1440 + hour*60 + minute) — same convention as PaperPosition.openedSimMinutes. `closedSimMinutes` is always `openedSimMinutes + durationMinutes`. Added in v0.6.1 so monthly P&L can bucket by TradeTown's in-game calendar instead of real wall-clock time (openedAt/closedAt above remain real timestamps, kept only for audit/display). */
+  openedSimMinutes: number;
+  closedSimMinutes: number;
 }
 
 /** The company's one simulated trading account — entirely fictional. */

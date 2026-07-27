@@ -9,6 +9,7 @@ import { BrainRoomHud } from "@/ui/components/BrainRoomHud";
 import { Newspaper } from "@/ui/components/Newspaper";
 import { CompanyMemory } from "@/ui/components/CompanyMemory";
 import { CoachDashboard } from "@/ui/components/CoachDashboard";
+import { CommandCenter } from "@/ui/components/CommandCenter/CommandCenter";
 
 export default function App() {
   return (
@@ -24,6 +25,7 @@ export default function App() {
       <BottomToolbar />
       <PauseMenu />
       <SettingsMenu />
+      <CommandCenter />
     </div>
   );
 }

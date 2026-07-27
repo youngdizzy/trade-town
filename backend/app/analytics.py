@@ -20,7 +20,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.schemas import PaperPortfolio, PaperTrade, PerformancePeriod, PerformanceSnapshot, ResearchItem
+from app.schemas import PaperPortfolio, PaperTrade, PerformancePeriod, PerformanceSnapshot, ResearchItem, TimeState
 
 MAX_PERFORMANCE_SNAPSHOTS = 60
 
@@ -61,24 +61,59 @@ def average_confidence(research: list[ResearchItem]) -> float:
     return sum(r.confidence for r in active) / len(active)
 
 
-def compute_performance_snapshot(period: PerformancePeriod, portfolio: PaperPortfolio, research: list[ResearchItem]) -> PerformanceSnapshot:
-    """Note: `period` labels *which cadence triggered this computation*
-    (daily/weekly/monthly/all_time — see nexus.py's boundary checks), not
-    a filtered time window — every snapshot is computed over the full
-    current trade history. Filtering trades to an exact calendar window
-    would need each PaperTrade to carry its closing sim-day, which v0.5
-    doesn't track (see docs/KNOWN_LIMITATIONS.md)."""
-    trades = portfolio.trade_history
+def _period_start_sim_minutes(period: PerformancePeriod, now: TimeState) -> int | None:
+    """The in-game-clock minute a period began at, aligned to day
+    boundaries on TradeTown's own Day-N calendar (see app/portfolio.py's
+    sim_minutes() for the same day*1440+hour*60+minute convention).
+    `None` means "no lower bound" — all_time is meant to stay genuinely
+    cumulative, not windowed."""
+    if period == "all_time":
+        return None
+    if period == "daily":
+        start_day = now.day
+    elif period == "weekly":
+        start_day = now.day - ((now.day - 1) % 7)
+    else:  # monthly — 30-day blocks; TradeTown's clock has no real month/year, just an incrementing Day N
+        start_day = now.day - ((now.day - 1) % 30)
+    return start_day * 1440
+
+
+def compute_performance_snapshot(period: PerformancePeriod, portfolio: PaperPortfolio, research: list[ResearchItem], now: TimeState) -> PerformanceSnapshot:
+    """`period` genuinely filters `portfolio.trade_history` to the matching
+    in-game calendar window via PaperTrade.closed_sim_minutes (added in
+    v0.6.1 for the Command Center's monthly P&L view — see that field's
+    own docstring in app/schemas.py). Earlier versions computed the same
+    all-time totals under all four period labels, which is exactly the
+    "cumulative P&L disguised as monthly" failure mode the Command Center
+    was built to avoid. `returnPct` for a windowed period is relative to the account's
+    equity *at the start of that period* (starting_balance plus every
+    trade closed before it), not the global starting_balance, so a
+    profitable month 3 doesn't get diluted by a rough month 1."""
+    start_minutes = _period_start_sim_minutes(period, now)
+    all_trades = portfolio.trade_history
+    trades = all_trades if start_minutes is None else [t for t in all_trades if t.closed_sim_minutes >= start_minutes]
+
+    if start_minutes is None:
+        win_count, loss_count = portfolio.win_count, portfolio.loss_count
+        return_pct = portfolio.total_pnl_pct
+    else:
+        win_count = sum(1 for t in trades if t.pnl > 0)
+        loss_count = sum(1 for t in trades if t.pnl <= 0)
+        trades_before = [t for t in all_trades if t.closed_sim_minutes < start_minutes]
+        baseline = portfolio.starting_balance + sum(t.pnl for t in trades_before)
+        period_pnl = sum(t.pnl for t in trades)
+        return_pct = (period_pnl / baseline * 100) if baseline else 0.0
+
     losing_pcts = [t.pnl_pct for t in trades if t.pnl_pct < 0]
     max_drawdown_pct = abs(min([0.0, *losing_pcts]))
-    sharpe_ratio = round(portfolio.total_pnl_pct / max(max_drawdown_pct, 1.0), 2)
+    sharpe_ratio = round(return_pct / max(max_drawdown_pct, 1.0), 2)
     sortino_ratio = round(sharpe_ratio * 1.1, 2)
     avg_holding_minutes = sum(t.duration_minutes for t in trades) / len(trades) if trades else 0.0
 
     return PerformanceSnapshot(
         period=period,
-        returnPct=portfolio.total_pnl_pct,
-        winRate=win_rate(portfolio.win_count, portfolio.loss_count),
+        returnPct=return_pct,
+        winRate=win_rate(win_count, loss_count),
         maxDrawdownPct=max_drawdown_pct,
         sharpeRatio=sharpe_ratio,
         sortinoRatio=sortino_ratio,

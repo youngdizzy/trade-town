@@ -7,6 +7,76 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.6.1: Global Command Center** — a futuristic cyber-trading-terminal
+  overlay, openable from anywhere in the game (any room, mid-walk, inside
+  Brain Room) via Tab or the new "Command ⌁" toolbar button, deliberately
+  contrasting with the cute-fantasy-RPG world outside it. Built entirely
+  as a new React layer over the existing `world:overlayOpen`/
+  `GameManager.worldActive` mechanism every other menu already uses (see
+  `gameStore.ts`'s `setOverlay`) — opening it never touches the running
+  Phaser scene, so player position/room/agent state are preserved for
+  free and the world behind it is provably inert (the scene's own
+  `update()` skips input processing while any overlay is open), not just
+  visually dimmed. Escape closes it via the same `useCloseOnEscape` hook
+  every other overlay uses.
+  - **Two modes**: **Quick View** (account value, this month's P&L,
+    market regime, top opportunity, risk alerts, TRADE/NO TRADE/WAITING
+    recommendation) and the **Full Command Center** — an 8-tab terminal
+    (Overview, Opportunities, Decisions, Risk, Agents, Research,
+    Performance, Logs) reachable from Quick View's "Expand" button.
+  - **Trade Decision Analysis drill-down** (`DecisionDetail.tsx`) —
+    clicking any opportunity/decision opens "why does the AI want this
+    trade?": Trade Thesis, Bull Case / Bear Case (the real per-agent
+    votes split by `TradeDecision.supportingAgents`/`opposingAgents`),
+    Market Context, Confidence, Trade Plan (the linked `PaperOrder` when
+    still in the order log, or an honest explanation when it's aged out
+    — see below), Invalidation (`riskSummary`), and a Final Decision of
+    APPROVED or REJECTED (no fabricated "REDUCED" state — nothing in the
+    backend distinguishes a reduced-size trade from a normal one).
+  - **Risk Panel** — a GREEN/YELLOW/RED banner (`riskLevel()` in
+    `lib/derive.ts`) derived from real `RiskWarning.severity` values;
+    RED only ever appears when a hard-reject vote is actually blocking
+    new trades (`decision.py`'s veto rule), never as a cosmetic label.
+  - **Agents Panel** — all 9 agents' real location/task/mood/energy/
+    latest research/latest task, with an explicit "no fabricated
+    activity" design rule: an idle agent reads as idle.
+  - **Every number is either a real field read off the wire, a
+    standard documented derivation from real records (profit factor,
+    expectancy, a market-regime heuristic over real `dailyChangePct`
+    figures), or an explicitly-labeled "not tracked yet" gap** — see
+    `lib/derive.ts`'s file-level comment. TradeTown's backend has no
+    entry/stop/take-profit *plans*, no rejection-category breakdown, and
+    no performance-by-strategy/regime; rather than fabricate these, the
+    UI reuses what's real (e.g. per-symbol concentration instead of a
+    non-existent sector taxonomy) and says so in-panel where a gap
+    exists, per the "do not fabricate" requirement.
+  - New `cmd-*` Tailwind color palette + `font-cmdmono` token set, kept
+    entirely separate from the existing fantasy-RPG `parchment/ink/gold`
+    tokens so the two visual languages never bleed into one element.
+- **v0.6.1: Honest simulated-month company P&L** — the Command Center's
+  Quick View and new Performance panel report **this simulated month's**
+  P&L (realized vs. unrealized kept separate, monthly return, monthly max
+  drawdown, win rate, profit factor, week-1..4 breakdown, previous-month
+  comparison), not TradeTown's raw all-time cumulative total relabeled as
+  "today." This required a real backend fix, not just a frontend label
+  change:
+  - `compute_performance_snapshot()` (`analytics.py`) previously computed
+    the exact same all-time total for every period ("daily"/"weekly"/
+    "monthly"/"all_time" all read identically) — its own docstring
+    admitted the missing per-trade day field made real period filtering
+    impossible. Fixed by adding `openedSimMinutes`/`closedSimMinutes` to
+    `PaperTrade` (stamped in `portfolio.py`'s `close_position()`, derived
+    from data the caller already had — no new clock read) and rewriting
+    the function to genuinely filter `trade_history` by simulated-clock
+    period, computing period-relative return against equity at the
+    period's start rather than always returning the all-time total.
+  - Deliberately uses "Simulated Month N" / "Sim Day N" labels rather
+    than fabricating a real calendar month name (e.g. "JULY 2026") —
+    TradeTown's `TimeState` is a pure incrementing Day-N counter with no
+    real date, so a fake month name would be fabricated data.
+  - `frontend/src/ui/components/CommandCenter/lib/financials.ts` mirrors
+    the exact same 30-day month-boundary math client-side, so frontend
+    and backend never disagree about where a "month" starts.
 - **The Brain Room "Mission Control" dashboard can now be opened from
   anywhere**, not just while physically standing in Brain Room — a new
   "Dashboard" button in the bottom toolbar (`ui:brainRoomHud`) opens it as

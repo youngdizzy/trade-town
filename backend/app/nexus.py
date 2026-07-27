@@ -692,17 +692,17 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         latest_report = generate_coach_report("weekly", research, paper_portfolio, company_score, RESEARCHER_IDS, new_time)
         coach_reports = record_coach_report_entry(coach_reports, latest_report)
         record_coach_report(memory, latest_report)
-        performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("weekly", paper_portfolio, research))
+        performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("weekly", paper_portfolio, research, new_time))
 
     if is_evening and new_time.day % MONTHLY_INTERVAL_DAYS == 0:
         latest_report = generate_coach_report("monthly", research, paper_portfolio, company_score, RESEARCHER_IDS, new_time)
         coach_reports = record_coach_report_entry(coach_reports, latest_report)
         record_coach_report(memory, latest_report)
-        performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("monthly", paper_portfolio, research))
+        performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("monthly", paper_portfolio, research, new_time))
 
     if is_midnight:
-        performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("daily", paper_portfolio, research))
-        performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("all_time", paper_portfolio, research))
+        performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("daily", paper_portfolio, research, new_time))
+        performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("all_time", paper_portfolio, research, new_time))
 
     hof_before = len(hall_of_fame)
     hall_of_fame = evaluate_hall_of_fame(
