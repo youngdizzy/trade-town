@@ -138,6 +138,15 @@ AlertSeverity = Literal["info", "warning", "critical"]
 VoteChoice = Literal["buy", "sell", "hold", "risk_too_high", "position_too_large"]
 DecisionOutcome = Literal["trade", "no_trade"]
 
+# --- v0.6.2: market data abstraction ---------------------------------------
+# What a caller should tell the player about a batch of candles. Never
+# collapse this to a boolean or omit it — simulated/historical data must
+# never be presented as live (v0.6.2 brief). The mock provider
+# (app/market_data.py) only ever produces "simulated"; the rest of the
+# literal exists so a future real provider can express itself through
+# this exact same Candle shape without anything downstream changing.
+DataStatus = Literal["live", "delayed", "historical", "simulated", "stale", "error", "no_data"]
+
 
 class CamelModel(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
@@ -258,6 +267,24 @@ class WatchlistEntry(CamelModel):
     status: ResearchStatus
     research_progress: float = Field(alias="researchProgress")
     assigned_agent: AgentId | None = Field(default=None, alias="assignedAgent")
+
+
+class Candle(CamelModel):
+    """The wire shape of app/market_data.py's Candle dataclass — a
+    plain API response model, never stored in GameSaveState (chart data
+    is regenerable from the provider on demand, not game progress; see
+    v0.6.2's save-payload-size fix for why nothing regenerable belongs
+    in the save)."""
+
+    symbol: str
+    timeframe: str
+    timestamp: str
+    open: float
+    high: float
+    low: float
+    close: float
+    volume: float
+    data_status: DataStatus = Field(alias="dataStatus")
 
 
 class MeetingMinutes(CamelModel):

@@ -5,6 +5,55 @@ development milestones, not semver releases.
 
 ## Unreleased
 
+### Added
+
+- **v0.6.2 Phases 2-4: Market Data Abstraction + candlestick charts,
+  wired into the existing Command Center.** No duplicate Command Center
+  was created — this extends the one v0.6.1 already built.
+  - `app/market_data.py`'s `MarketDataProvider` interface gained
+    `get_candles(symbol, timeframe, limit)`, returning normalized OHLC
+    bars (`Candle`: symbol/timeframe/timestamp/open/high/low/close/
+    volume/dataStatus). `MockMarketDataProvider` generates a
+    deterministic-seeded random walk per (symbol, timeframe) — stable
+    across repeated fetches (reopening a chart doesn't reshuffle its own
+    history) — with the most recent bar's close tracking whichever live
+    mock price `get_quote()` has already established, so the chart's
+    rightmost candle stays consistent with the watchlist. Every bar is
+    labeled `dataStatus: "simulated"` — the `DataStatus` literal
+    (`live`/`delayed`/`historical`/`simulated`/`stale`/`error`/
+    `no_data`, now canonically defined in `app/schemas.py`) exists so a
+    future real provider can express itself through the same `Candle`
+    shape without any UI changes, but the mock never claims to be live.
+    Supported timeframes: 1m/5m/15m/1h/4h/1d.
+  - New `GET /api/market/candles` and `GET /api/market/timeframes`
+    endpoints (`app/routers/market.py`). Chart data is deliberately
+    **not** part of `GameSaveState` — it's fully regenerable from the
+    provider on demand, not game progress, consistent with the save-size
+    fix above.
+  - `CandlestickChart.tsx` — a hand-rolled `<canvas>` renderer (no new
+    charting-library dependency for bars + wicks + a price axis): real
+    OHLC bodies/wicks, green/red by direction, a right-side price axis,
+    bottom timestamp labels, and an always-visible `SIMULATED` badge.
+  - `MarketChartPanel.tsx` embeds a full symbol/timeframe browser at the
+    top of the Overview tab (backed by the real watchlist and the
+    backend's advertised timeframe list, not a hardcoded set).
+  - `DecisionDetail.tsx`'s drill-down now shows the relevant symbol's
+    chart directly, with **only real overlay values** — the linked
+    order's actual fill price (`ENTRY`) and the open position's actual
+    mark price (`MARK`) when either exists — never a fabricated
+    stop-loss/take-profit line, since TradeTown's auto-trader doesn't
+    attach those (see v0.6.1's own note on this). This is the "connect
+    charts to AI decisions" requirement: research → thesis → bull/bear
+    case → chart → risk check → approve/reject is now one continuous
+    drill-down instead of the reasoning being separate from the price
+    action it's about.
+  - Tests: 9 new backend tests (`test_market_data.py` — OHLC internal
+    consistency, determinism, timeframe validation, always-simulated
+    labeling, live-price tracking) and a new Playwright test confirming
+    the chart actually renders (not just that a container exists), the
+    SIMULATED badge is present, and switching timeframes visibly
+    redraws different data.
+
 ### Fixed
 
 - **v0.6.2: fixed `POST /api/save` failing with 413 Request Entity Too

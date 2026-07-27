@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db import init_db
 from app.persistence import load_save, persist_save
-from app.routers import health, save, ws
+from app.routers import health, market, save, ws
 from app.sim import run_sim_loop
 from app.state import game_state
 
@@ -54,3 +54,4 @@ app.add_middleware(
 app.include_router(health.router, prefix="/api")
 app.include_router(save.router)
 app.include_router(ws.router)
+app.include_router(market.router)

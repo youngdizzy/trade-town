@@ -1,8 +1,13 @@
+import { useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import type { TradeDecision } from "@/types";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
+import { CandlestickChart } from "./CandlestickChart";
 import { bearCaseVotes, bullCaseVotes, exitOrdersForPosition, formatMoney, linkedOrderFor, marketRegimeHeuristic, voteDirection } from "./lib/derive";
+import { useCandles } from "./lib/useCandles";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "./ui";
+
+const TIMEFRAMES = ["15m", "1h", "4h", "1d"];
 
 /**
  * The "why does the AI want this trade?" drill-down. Every section below
@@ -26,6 +31,10 @@ export function DecisionDetail({ decision, onClose }: { decision: TradeDecision;
   const position = paperPortfolio.positions.find((p) => p.symbol === decision.symbol) ?? null;
   const exitOrders = position ? exitOrdersForPosition(position.id, paperPortfolio.orders) : [];
   const approved = decision.outcome === "trade" && decision.orderId !== null;
+
+  const [timeframe, setTimeframe] = useState("1h");
+  const { candles, loading, error } = useCandles(decision.symbol, timeframe, 80);
+  const dataStatus = candles[0]?.dataStatus ?? null;
 
   return (
     <div className="absolute inset-0 z-10 flex items-center justify-center bg-cmd-bg/80 p-4 backdrop-blur-sm" onClick={onClose}>
@@ -96,6 +105,34 @@ export function DecisionDetail({ decision, onClose }: { decision: TradeDecision;
               <div className="text-cmd-text">{decision.technicalSummary}</div>
               <div className="text-cmd-text">{decision.fundamentalSummary}</div>
             </div>
+          </Glass>
+
+          <Glass className="p-3">
+            <div className="mb-2 flex items-center justify-between">
+              <TerminalLabel>Chart — {decision.symbol}</TerminalLabel>
+              <div className="flex gap-0.5">
+                {TIMEFRAMES.map((tf) => (
+                  <button
+                    key={tf}
+                    type="button"
+                    onClick={() => setTimeframe(tf)}
+                    className={`rounded-sm border px-1.5 py-0.5 text-[9px] uppercase transition-colors ${
+                      timeframe === tf ? "border-cmd-cyan/50 text-cmd-cyan" : "border-cmd-border text-cmd-textDim hover:text-cmd-text"
+                    }`}
+                  >
+                    {tf}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <CandlestickChart
+              candles={candles}
+              loading={loading}
+              error={error}
+              dataStatus={dataStatus}
+              height={200}
+              overlays={{ entry: order?.price, currentPrice: position?.currentPrice }}
+            />
           </Glass>
 
           <Glass className="p-3">

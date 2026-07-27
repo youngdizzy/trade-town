@@ -171,4 +171,26 @@ test.describe("Global Command Center", () => {
     await page.getByRole("button", { name: "QUICK VIEW", exact: true }).click();
     await expect(page.getByText("Quick View")).toBeVisible();
   });
+
+  test("renders a real candlestick chart on Overview, labeled SIMULATED, with working timeframe switching", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await expect(page.getByText("Market Chart")).toBeVisible();
+
+    // Never claim simulated data is live — the badge must say so explicitly.
+    await expect(page.getByText("SIMULATED")).toBeVisible();
+
+    const chartCanvas = page.locator("canvas").nth(1); // canvas 0 is the Phaser game itself
+    await expect(chartCanvas).toBeVisible();
+    const before = await chartCanvas.screenshot();
+
+    await page.getByRole("button", { name: "1d", exact: true }).click();
+    await page.waitForTimeout(500);
+    const after = await chartCanvas.screenshot();
+    expect(Buffer.compare(before, after)).not.toBe(0); // switching timeframe actually redraws different data
+  });
 });

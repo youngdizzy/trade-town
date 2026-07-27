@@ -1,4 +1,4 @@
-import type { GameSaveState } from "@/types";
+import type { Candle, GameSaveState } from "@/types";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
 
@@ -22,4 +22,7 @@ export const api = {
       body: JSON.stringify(state),
     }),
   health: () => request<{ status: string }>("/health"),
+  getCandles: (symbol: string, timeframe: string, limit = 150) =>
+    request<Candle[]>(`/market/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&limit=${limit}`),
+  getTimeframes: () => request<string[]>("/market/timeframes"),
 };

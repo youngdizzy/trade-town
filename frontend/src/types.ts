@@ -190,6 +190,26 @@ export interface WatchlistEntry {
   assignedAgent: AgentId | null;
 }
 
+// v0.6.2 Market Data Abstraction. Mirrors backend/app/schemas.py's Candle —
+// never part of GameSaveState (chart data is regenerable from the
+// provider on demand, not game progress), fetched on its own from
+// GET /api/market/candles instead of riding along on save/load or the
+// WebSocket state broadcast.
+export type DataStatus = "live" | "delayed" | "historical" | "simulated" | "stale" | "error" | "no_data";
+export type Timeframe = "1m" | "5m" | "15m" | "1h" | "4h" | "1d";
+
+export interface Candle {
+  symbol: string;
+  timeframe: string;
+  timestamp: string;
+  open: number;
+  high: number;
+  low: number;
+  close: number;
+  volume: number;
+  dataStatus: DataStatus;
+}
+
 export interface MeetingMinutes {
   id: string;
   day: number;
