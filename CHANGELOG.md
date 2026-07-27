@@ -7,6 +7,44 @@ development milestones, not semver releases.
 
 ### Fixed
 
+- **v0.6.2: fixed `POST /api/save` failing with 413 Request Entity Too
+  Large on long-running deployments.** `decisions: list[TradeDecision]`
+  (`app/nexus.py`) was the one list in the entire save schema with no
+  upper bound — every other growing list (trade history, order log, hall
+  of fame, scanner alerts, simulation results, coach reports, meeting
+  minutes, per-agent memory, ...) already had a `MAX_*` cap; `decisions`
+  didn't, and kept appending one ~1.5KB record every time research
+  crossed the trade-candidate confidence threshold, for as long as the
+  process stayed up. On a deployment left running for real (days to
+  weeks, not a short local session), that alone grows the save well past
+  nginx's default 1MB body-size limit — 500 decisions is already ~726KB
+  of decisions alone; 2,000 is ~2.9MB. Added `MAX_DECISIONS = 200`
+  (`_trim_decisions()`, applied the same oldest-first-eviction pattern
+  every other cap in this codebase already uses) instead of raising the
+  nginx limit — the real bug was unbounded growth, not an undersized
+  limit. Measured on this session's own save (84 real decisions, ~1.5KB
+  average):
+  - Previous trajectory (uncapped, projected from the real average): 84
+    decisions ≈ 122KB, 500 ≈ 726KB, 2,000 ≈ 2.9MB, 10,000 ≈ 14.2MB —
+    unbounded.
+  - After the fix: decisions plateau at ~290KB (200 records); every other
+    field was already capped and together contributes ~258KB; total
+    save size plateaus at **~548KB**, comfortably under the 1MB limit
+    with margin for future fields.
+  - Nothing was removed from what gets saved — trade history, open
+    positions, research, agent state, education/energy data (once those
+    exist) are all still full game progress and still persisted in full.
+    Only the decision *log*, which is an explainability/audit trail
+    rather than something gameplay depends on staying complete, is
+    capped — the same way its own docstring already claimed it was
+    ("Stored forever (capped, like every other list here)") before this
+    fix made that actually true.
+  - Existing over-large deployments self-heal on the next deploy with no
+    migration step needed: nginx only limits the *upload* direction
+    (`POST /api/save`), so a bloated existing save can still be loaded
+    fine on startup; the very next simulation tick trims it back down to
+    200 via `_trim_decisions()`, and the following save succeeds.
+
 - **v0.6.2 Phase 1: fixed the actual cause of reported game-progress loss
   after code updates.** Root cause: `persistence.py`'s `load_save()`
   treated *any* Pydantic validation failure — which is exactly what

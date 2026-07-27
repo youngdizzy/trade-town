@@ -78,6 +78,20 @@ from app.watchlist import default_watchlist, tick_watchlist
 MAX_MEMORY = 50
 MAX_TASKS = 60
 MAX_MEETING_MINUTES = 20
+# TradeDecision is one of the richest records in the whole save (a full
+# vote breakdown across 4-6 agents plus several paragraphs of reasoning
+# text, ~1.5KB each) and, unlike every other list this module produces,
+# it had no cap at all until this constant was added — it grew by one
+# entry every time research crossed the trade-candidate threshold, for
+# as long as the process kept running, with nothing ever evicted. Over
+# real deployment timescales (weeks of continuous uptime, not this
+# session's test runs) that silently grew the save payload past nginx's
+# default 1MB body-size limit, which is what actually caused reported
+# "413 Request Entity Too Large" save failures — not an undersized
+# limit. 200 keeps the Decisions/Opportunities tabs richly populated
+# (far more headroom than MAX_TRADE_HISTORY's 50) while keeping this
+# list's contribution to the save bounded at roughly 300KB.
+MAX_DECISIONS = 200
 # Per-category, not a single shared cap: discovery news fires far more
 # often than market/company news (it's tied to every task-changing event
 # across four agents, vs. a flat per-tick roll for market headlines), so a
@@ -424,6 +438,17 @@ def _maybe_call_meeting(
     return updated, MeetingState(active=True, participants=list(attendees), discussion=discussion)
 
 
+def _trim_decisions(decisions: list[TradeDecision]) -> None:
+    """In-place, oldest-first eviction down to MAX_DECISIONS — the fix for
+    the uncapped-growth bug described on MAX_DECISIONS' own comment.
+    In-place (unlike _trim_news' return-a-new-list style) because callers
+    already hold a `decisions` reference they keep using afterward via
+    closure, matching how MAX_TRADE_HISTORY/MAX_ORDER_LOG are trimmed
+    elsewhere in this codebase."""
+    if len(decisions) > MAX_DECISIONS:
+        del decisions[: len(decisions) - MAX_DECISIONS]
+
+
 def _trim_news(news: list[NewsItem]) -> list[NewsItem]:
     """Keep the most recent MAX_NEWS_PER_CATEGORY items per category
     instead of one global cap on the combined list, so a burst of
@@ -640,6 +665,10 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # tick it happens (matching how research completions already work).
     paper_portfolio, closed_trades = tick_paper_trading(paper_portfolio, watchlist, all_agent_ids(), new_time)
     paper_portfolio, closed_trades = _journal_closed_trades(paper_portfolio, [*broker_closed_trades, *closed_trades], decisions)
+    # Trimmed after _journal_closed_trades (not right after the append
+    # above) so a trade closing this very tick can still look its
+    # originating decision up by id before the oldest entries are evicted.
+    _trim_decisions(decisions)
     for trade in closed_trades:
         record_paper_trade(memory, trade)
         outcome = "gained" if trade.pnl > 0 else "lost"

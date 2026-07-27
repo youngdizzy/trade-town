@@ -7,7 +7,7 @@ import { EmptyState, TerminalLabel } from "../ui";
 
 type Filter = "all" | "trade" | "no_trade";
 
-/** The full, exhaustive decision log — every TradeDecision TradeTown has ever recorded, filterable, newest first. */
+/** The decision log — up to the most recent 200 TradeDecisions TradeTown has recorded (see nexus.py's MAX_DECISIONS; older ones roll off to keep the save payload bounded), filterable, newest first. */
 export function DecisionsPanel({ onInspect }: { onInspect: (d: TradeDecision) => void }) {
   const { decisions } = useGameStore();
   const [filter, setFilter] = useState<Filter>("all");
