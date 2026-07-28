@@ -6,6 +6,7 @@ import type {
   CeoDecisionRecord,
   CoachReport,
   CompanyScore,
+  Debate,
   HallOfFameEntry,
   MeetingMinutes,
   MeetingState,
@@ -71,6 +72,7 @@ export interface GameUiState {
   decisions: TradeDecision[];
   tradeProposals: TradeProposal[];
   ceoDecisions: CeoDecisionRecord[];
+  debates: Debate[];
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
@@ -158,6 +160,7 @@ class GameStore {
     decisions: [],
     tradeProposals: [],
     ceoDecisions: [],
+    debates: [],
     agentEnergy: { current: 100, cap: 100, updatedAt: new Date().toISOString() },
     signalCalibration: { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 },
     playerVsAi: { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 },
@@ -254,6 +257,7 @@ class GameStore {
     EventBus.on("decisions:updated", (decisions) => this.set({ decisions }));
     EventBus.on("tradeProposals:updated", (tradeProposals) => this.set({ tradeProposals }));
     EventBus.on("ceoDecisions:updated", (ceoDecisions) => this.set({ ceoDecisions }));
+    EventBus.on("debates:updated", (debates) => this.set({ debates }));
     EventBus.on("ui:executiveVoting", ({ open, proposalId }) =>
       this.set({ executiveVotingOpen: open, executiveVotingProposalId: open ? (proposalId ?? this.state.executiveVotingProposalId) : null }),
     );

@@ -3,6 +3,7 @@ import type {
   AnalystChoice,
   Candle,
   CeoDecisionRecord,
+  Debate,
   EducationLesson,
   EducationProgress,
   GameSaveState,
@@ -89,4 +90,9 @@ export const api = {
         body: JSON.stringify({ proposalId, choice }),
       },
     ),
+  regenerateDebate: (proposalId: string) =>
+    request<{ debates: Debate[] }>("/executive/debate/regenerate", {
+      method: "POST",
+      body: JSON.stringify({ proposalId }),
+    }),
 };

@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
-import type { AnalystChoice, AnalystVote, TradeProposal } from "@/types";
+import type { AnalystChoice, AnalystVote, DebateTurn, TradeProposal } from "@/types";
 import { CONFIDENCE_TIER_LABEL, ROLE_TO_AGENT } from "@/types";
 import { api } from "@/net/api";
 import { NexusManager } from "@/game/systems/NexusManager";
@@ -20,6 +20,9 @@ const ROLE_LABEL: Record<AnalystVote["role"], string> = {
   execution: "Execution Agent",
 };
 
+const STANCE_LABEL: Record<DebateTurn["stance"], string> = { opening: "OPENING", challenge: "CHALLENGES", support: "AGREES" };
+const STANCE_TONE: Record<DebateTurn["stance"], "cyan" | "red" | "green"> = { opening: "cyan", challenge: "red", support: "green" };
+
 /**
  * Feature 12 — the Executive Voting window. The player is TradeTown's CEO;
  * every trade candidate that crosses the confidence threshold arrives here
@@ -30,10 +33,12 @@ const ROLE_LABEL: Record<AnalystVote["role"], string> = {
  * recommendation, not separate outcomes.
  */
 export function ExecutiveVoting() {
-  const { tradeProposals, executiveVotingOpen, executiveVotingProposalId, riskWarnings, paperPortfolio, riskLimits, currentScene } = useGameStore();
+  const { tradeProposals, executiveVotingOpen, executiveVotingProposalId, riskWarnings, paperPortfolio, riskLimits, currentScene, debates } = useGameStore();
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
+  const [showDebate, setShowDebate] = useState(false);
   const [submitting, setSubmitting] = useState<AnalystChoice | null>(null);
+  const [regenerating, setRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // Same reasoning as TradeOutcomeBanner's own MainMenuScene guard: the
@@ -78,6 +83,25 @@ export function ExecutiveVoting() {
   const confidence = proposal.confidenceEngine;
   const checklist = preTradeChecklist(proposal, riskWarnings, paperPortfolio, riskLimits);
   const unmetCount = checklist.filter((c) => !c.met).length;
+  // v0.7 Feature 17 — the most recent debate over this proposal; nexus.py
+  // generates one the moment the proposal itself is created, and
+  // "request another debate" below appends a fresh one rather than
+  // replacing it, so the newest is always the live transcript.
+  const debate = [...debates].reverse().find((d) => d.proposalId === proposal.id);
+
+  const requestAnotherDebate = async () => {
+    if (regenerating) return;
+    setRegenerating(true);
+    setError(null);
+    try {
+      const res = await api.regenerateDebate(proposal.id);
+      NexusManager.setDebates(res.debates);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRegenerating(false);
+    }
+  };
 
   return (
     <div className="pointer-events-auto absolute inset-0 z-[55] flex items-center justify-center bg-cmd-bg/85 p-4 backdrop-blur-sm" data-testid="executive-voting">
@@ -141,6 +165,61 @@ export function ExecutiveVoting() {
               })}
             </div>
           </Glass>
+
+          <button
+            type="button"
+            onClick={() => setShowDebate(!showDebate)}
+            className="w-full rounded-sm border border-cmd-border px-3 py-1.5 text-cmd-textDim transition-colors hover:border-cmd-cyan/50 hover:text-cmd-cyan"
+          >
+            {showDebate ? "HIDE DEBATE ROOM ▲" : "OPEN DEBATE ROOM ▼"}
+          </button>
+
+          {showDebate && (
+            <Glass className="p-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <TerminalLabel>Investment Committee Debate</TerminalLabel>
+                <button
+                  type="button"
+                  disabled={regenerating}
+                  onClick={() => void requestAnotherDebate()}
+                  className="rounded-sm border border-cmd-border px-2 py-1 text-[9px] text-cmd-textDim transition-colors hover:enabled:border-cmd-cyan/50 hover:enabled:text-cmd-cyan disabled:opacity-40"
+                >
+                  {regenerating ? "…" : "Request Another Debate"}
+                </button>
+              </div>
+              {!debate ? (
+                <div className="text-[9px] text-cmd-textDim">No debate on record for this proposal yet.</div>
+              ) : (
+                <>
+                  <div className="space-y-1.5">
+                    {debate.turns.map((turn, i) => {
+                      const speaker = AGENT_PROFILES[ROLE_TO_AGENT[turn.role]];
+                      const respondingTo = turn.respondingTo ? AGENT_PROFILES[turn.respondingTo].name : null;
+                      return (
+                        <div key={i} className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-2 text-[9px]">
+                          <div className="mb-1 flex items-center justify-between gap-2">
+                            <span className="flex items-center gap-1.5">
+                              <span className="text-cmd-text">{speaker.name}</span>
+                              <span className="text-cmd-textDim">{ROLE_LABEL[turn.role]}</span>
+                            </span>
+                            <StatusPill tone={STANCE_TONE[turn.stance]}>
+                              {STANCE_LABEL[turn.stance]}
+                              {respondingTo ? ` ${respondingTo.toUpperCase()}` : ""}
+                            </StatusPill>
+                          </div>
+                          <div className="text-cmd-textDim">{turn.text}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                  <div className="mt-2 border-t border-cmd-border/40 pt-2 text-[9px] text-cmd-text">{debate.finalSummary}</div>
+                  <div className="mt-1.5 text-[9px] text-cmd-textDim">
+                    Click any seat in the Analyst Desk above to question that agent individually — its full reasoning and evidence are already there.
+                  </div>
+                </>
+              )}
+            </Glass>
+          )}
 
           <button
             type="button"

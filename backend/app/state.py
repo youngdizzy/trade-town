@@ -13,9 +13,10 @@ from datetime import datetime, timezone
 from app import education, nexus, player_vs_ai, signal_calibration, trade_notifications
 from app.agent_energy import default_agent_energy
 from app.company_score import compute_company_score
+from app.debate import generate_debate
 from app.executive import MAX_CEO_DECISIONS, AnalystChoice, resolve_proposal
 from app.market_data import market_data_provider
-from app.nexus import MAX_DECISIONS
+from app.nexus import MAX_DEBATES, MAX_DECISIONS
 from app.portfolio import default_portfolio, sim_minutes
 from app.research import default_research
 from app.scribe import record_ceo_decision
@@ -71,6 +72,7 @@ def default_state() -> GameSaveState:
         viewedTradeNotificationIds=[],
         tradeProposals=[],
         ceoDecisions=[],
+        debates=[],
         updatedAt=_now_iso(),
     )
 
@@ -220,6 +222,25 @@ class GameState:
                     "updated_at": _now_iso(),
                 }
             )
+            return self.data, None
+
+    async def regenerate_debate(self, proposal_id: str) -> tuple[GameSaveState, str | None]:
+        """v0.7 Feature 17 — "request another debate": re-runs the same
+        real analyst votes already on the pending proposal through a
+        fresh generate_debate() call, appended (not replacing) so the
+        prior debate stays reviewable in the Command Center's stored
+        history too. Only valid for a proposal that's still pending —
+        once the CEO decides, the proposal itself is gone."""
+        async with self.lock:
+            proposal = next((p for p in self.data.trade_proposals if p.id == proposal_id), None)
+            if proposal is None:
+                return self.data, f"No pending trade proposal with id {proposal_id!r}."
+
+            debates = [*self.data.debates, generate_debate(proposal)]
+            if len(debates) > MAX_DEBATES:
+                del debates[: len(debates) - MAX_DEBATES]
+
+            self.data = self.data.model_copy(update={"debates": debates, "updated_at": _now_iso()})
             return self.data, None
 
     async def tick(self, minutes: int) -> GameSaveState:

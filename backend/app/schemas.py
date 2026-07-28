@@ -871,6 +871,40 @@ class TradeProposal(CamelModel):
     created_sim_minutes: int = Field(alias="createdSimMinutes")
 
 
+# v0.7 Feature 17 — AI Debate Room. Every turn's substance is a real
+# AnalystVote's own reasoning/evidence (see app/debate.py); only the
+# opening/challenge/support framing is generated, never the underlying
+# claim.
+DebateStance = Literal["opening", "challenge", "support"]
+
+
+class DebateTurn(CamelModel):
+    agent_id: AgentId = Field(alias="agentId")
+    role: AnalystRole
+    stance: DebateStance
+    # None for an opening statement; another participant's agentId for a
+    # challenge/support turn.
+    responding_to: AgentId | None = Field(default=None, alias="respondingTo")
+    text: str
+
+
+class Debate(CamelModel):
+    """One full committee review of a TradeProposal — stored permanently
+    (capped, like every other list here) so a past debate is always
+    reviewable even after its proposal is long resolved. `proposalId`
+    links back to the TradeProposal it reviewed; the debate itself never
+    approves or rejects anything — that's still the CEO's real
+    buy/sell/wait call via app/executive.py's resolve_proposal."""
+
+    id: str
+    proposal_id: str = Field(alias="proposalId")
+    symbol: str
+    turns: list[DebateTurn] = Field(default_factory=list)
+    final_recommendation: AnalystChoice = Field(alias="finalRecommendation")
+    final_summary: str = Field(alias="finalSummary")
+    created_at: str = Field(alias="createdAt")
+
+
 class CeoDecisionRecord(CamelModel):
     """One resolved executive decision — the permanent record behind
     CEO Accuracy / AI Accuracy / Agreement Rate / Successful & Failed
@@ -937,6 +971,10 @@ class GameSaveState(CamelModel):
     # accuracy stats (see app/executive.py).
     trade_proposals: list[TradeProposal] = Field(default_factory=list, alias="tradeProposals")
     ceo_decisions: list[CeoDecisionRecord] = Field(default_factory=list, alias="ceoDecisions")
+    # v0.7 Feature 17 — AI Debate Room. One Debate per proposal (with the
+    # newest replacing prior ones for the same proposal if "request
+    # another debate" was used), capped like every other list here.
+    debates: list[Debate] = Field(default_factory=list)
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(default_factory=list, alias="dialogueHistory")

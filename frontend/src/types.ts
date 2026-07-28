@@ -660,6 +660,32 @@ export interface TradeProposal {
   createdSimMinutes: number;
 }
 
+// v0.7 Feature 17 — AI Debate Room. Every turn's text is a real
+// AnalystVote's own reasoning/evidence (see backend/app/debate.py);
+// only the opening/challenge/support framing is generated.
+export type DebateStance = "opening" | "challenge" | "support";
+
+export interface DebateTurn {
+  agentId: AgentId;
+  role: AnalystRole;
+  stance: DebateStance;
+  respondingTo: AgentId | null;
+  text: string;
+}
+
+/** One full committee review of a TradeProposal — stored permanently so a
+ * past debate is always reviewable. Never itself approves/rejects a trade;
+ * that's still the CEO's real buy/sell/wait call via /api/executive/decide. */
+export interface Debate {
+  id: string;
+  proposalId: string;
+  symbol: string;
+  turns: DebateTurn[];
+  finalRecommendation: AnalystChoice;
+  finalSummary: string;
+  createdAt: string;
+}
+
 /** The permanent record of one CEO decision, graded once (and only once) a
  * real trade it caused actually closes — an override's "AI accuracy" is
  * left "undecidable" rather than guessed, since no counterfactual trade
@@ -717,6 +743,7 @@ export interface GameSaveState {
   decisions: TradeDecision[];
   tradeProposals: TradeProposal[];
   ceoDecisions: CeoDecisionRecord[];
+  debates: Debate[];
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;

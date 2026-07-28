@@ -4,6 +4,7 @@ import type {
   CeoDecisionRecord,
   CoachReport,
   CompanyScore,
+  Debate,
   HallOfFameEntry,
   MeetingMinutes,
   MeetingState,
@@ -50,6 +51,7 @@ interface NexusSnapshot {
   decisions: TradeDecision[];
   tradeProposals: TradeProposal[];
   ceoDecisions: CeoDecisionRecord[];
+  debates: Debate[];
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
@@ -115,6 +117,7 @@ export class NexusManager {
   private static decisions: TradeDecision[] = [];
   private static tradeProposals: TradeProposal[] = [];
   private static ceoDecisions: CeoDecisionRecord[] = [];
+  private static debates: Debate[] = [];
   private static agentEnergy: AgentEnergy = { current: 100, cap: 100, updatedAt: new Date().toISOString() };
   private static signalCalibration: SignalCalibrationState = { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 };
   private static playerVsAi: PlayerVsAiState = { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 };
@@ -221,6 +224,17 @@ export class NexusManager {
 
   static getCeoDecisions(): CeoDecisionRecord[] {
     return this.ceoDecisions;
+  }
+
+  static getDebates(): Debate[] {
+    return this.debates;
+  }
+
+  /** Applies the result of a direct POST /api/executive/debate/regenerate
+   * call immediately — same reasoning as setExecutiveDecisionResult below. */
+  static setDebates(debates: Debate[]): void {
+    this.debates = debates;
+    EventBus.emit("debates:updated", debates);
   }
 
   /** Applies the result of a direct POST /api/executive/decide call
@@ -403,6 +417,9 @@ export class NexusManager {
     if (update.ceoDecisions.length !== this.ceoDecisions.length) EventBus.emit("ceoDecisions:updated", update.ceoDecisions);
     this.ceoDecisions = update.ceoDecisions;
 
+    if (update.debates.length !== this.debates.length) EventBus.emit("debates:updated", update.debates);
+    this.debates = update.debates;
+
     if (update.agentEnergy !== this.agentEnergy) EventBus.emit("agentEnergy:updated", update.agentEnergy);
     this.agentEnergy = update.agentEnergy;
 
@@ -442,6 +459,7 @@ export class NexusManager {
     this.decisions = save.decisions;
     this.tradeProposals = save.tradeProposals;
     this.ceoDecisions = save.ceoDecisions;
+    this.debates = save.debates;
     this.agentEnergy = save.agentEnergy;
     this.signalCalibration = save.signalCalibration;
     this.playerVsAi = save.playerVsAi;

@@ -69,6 +69,8 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         # capped (MAX_CEO_DECISIONS) like decisions above, sent as-is.
         "tradeProposals": [p.model_dump(by_alias=True) for p in state.trade_proposals],
         "ceoDecisions": [c.model_dump(by_alias=True) for c in state.ceo_decisions],
+        # v0.7 Feature 17 — already capped (MAX_DEBATES) like ceoDecisions above.
+        "debates": [d.model_dump(by_alias=True) for d in state.debates],
     }
 
 

@@ -27,6 +27,7 @@ from app.broker import tick_broker
 from app.coach import generate_report as generate_coach_report
 from app.coach import record_report as record_coach_report_entry
 from app.company_score import compute_company_score
+from app.debate import generate_debate
 from app.discussion import generate_discussion
 from app.executive import (
     MAX_CEO_DECISIONS,
@@ -62,6 +63,7 @@ from app.schemas import (
     AgentOverride,
     AgentState,
     CoachReport,
+    Debate,
     EntityTransform,
     GameSaveState,
     MemoryEntry,
@@ -101,6 +103,10 @@ MAX_MEETING_MINUTES = 20
 # (far more headroom than MAX_TRADE_HISTORY's 50) while keeping this
 # list's contribution to the save bounded at roughly 300KB.
 MAX_DECISIONS = 200
+# v0.7 Feature 17 — one Debate generated per new TradeProposal (see
+# generate_debate below); capped the same way every other per-proposal
+# record here is.
+MAX_DEBATES = 60
 # Per-category, not a single shared cap: discovery news fires far more
 # often than market/company news (it's tied to every task-changing event
 # across four agents, vs. a flat per-tick roll for market headlines), so a
@@ -593,6 +599,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     decisions = list(state.decisions)
     trade_proposals = list(state.trade_proposals)
     ceo_decisions = list(state.ceo_decisions)
+    debates: list[Debate] = list(state.debates)
     agent_energy = state.agent_energy
 
     agents = {aid: _tick_agent(aid, agent, new_time, minutes, tasks) for aid, agent in state.agents.items()}
@@ -650,6 +657,13 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     now_sim_minutes = sim_minutes(new_time)
     new_proposals = _generate_trade_proposals(trade_proposals, completed, prices, risk_limits, paper_portfolio, news, scanner_alerts, now_sim_minutes)
     trade_proposals = [*trade_proposals, *new_proposals]
+    # v0.7 Feature 17 — every new proposal gets a full committee debate
+    # (app/debate.py) generated up front, over the same real analyst
+    # votes the proposal already carries, so it's ready the instant the
+    # CEO opens Executive Voting rather than generated on demand.
+    debates = [*debates, *(generate_debate(p) for p in new_proposals)]
+    if len(debates) > MAX_DEBATES:
+        del debates[: len(debates) - MAX_DEBATES]
     for proposal in new_proposals:
         news.append(
             NewsItem(
@@ -815,6 +829,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "decisions": decisions,
             "trade_proposals": trade_proposals,
             "ceo_decisions": ceo_decisions,
+            "debates": debates,
             "agent_energy": agent_energy,
             "whiteboards": _update_whiteboards(agents, meeting, research),
             "updated_at": _now_iso(),

@@ -7,6 +7,7 @@ import type {
   CeoDecisionRecord,
   CoachReport,
   CompanyScore,
+  Debate,
   DialogueHistoryEntry,
   GameSaveState,
   HallOfFameEntry,
@@ -96,6 +97,7 @@ export interface GameEvents {
   "tradeProposals:updated": TradeProposal[];
   "tradeProposal:new": TradeProposal;
   "ceoDecisions:updated": CeoDecisionRecord[];
+  "debates:updated": Debate[];
   "ui:executiveVoting": { open: boolean; proposalId?: string };
   // v0.7 Feature 19 — opens the Command Center on the Decisions tab for a
   // specific trade's decision; openDetail additionally auto-opens

@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.executive import AnalystChoice
 from app.persistence import persist_save
-from app.schemas import CeoDecisionRecord, PaperPortfolio, TradeDecision, TradeProposal
+from app.schemas import CeoDecisionRecord, Debate, PaperPortfolio, TradeDecision, TradeProposal
 from app.state import game_state
 
 router = APIRouter(prefix="/api/executive", tags=["executive"])
@@ -45,3 +45,27 @@ async def decide(payload: SubmitCeoDecisionRequest) -> SubmitCeoDecisionResponse
         decisions=state.decisions,
         paperPortfolio=state.paper_portfolio,
     )
+
+
+class RegenerateDebateRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    proposal_id: str = Field(alias="proposalId")
+
+
+class RegenerateDebateResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    debates: list[Debate]
+
+
+@router.post("/debate/regenerate", response_model=RegenerateDebateResponse)
+async def regenerate_debate(payload: RegenerateDebateRequest) -> RegenerateDebateResponse:
+    """v0.7 Feature 17 — "request another debate" on a still-pending
+    proposal. See GameState.regenerate_debate for why this appends
+    rather than replaces."""
+    state, error = await game_state.regenerate_debate(payload.proposal_id)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_save(state)
+    return RegenerateDebateResponse(debates=state.debates)
