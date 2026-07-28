@@ -1,4 +1,4 @@
-import { test, expect } from "@playwright/test";
+import { test, expect, type Page } from "@playwright/test";
 
 /**
  * Browser tests for v0.6.3 Feature 12 — Executive Voting (CEO Approval).
@@ -8,10 +8,35 @@ import { test, expect } from "@playwright/test";
  * dev-loop run once research has crossed the trade-confidence threshold),
  * since the popup only ever renders real, server-generated proposals —
  * there is no test-only seam to fabricate one client-side.
+ *
+ * The popup is deliberately gated to never render during MainMenuScene
+ * (see ExecutiveVoting.tsx's currentScene guard — the WebSocket connects
+ * at app boot, independent of the title screen, so without this guard a
+ * pre-existing proposal would pop the modal up over the title screen
+ * itself and swallow the "Continue" click). So every test here goes
+ * through the real title-screen flow first, the same way a player would.
  */
+async function continueGame(page: Page): Promise<void> {
+  const canvas = page.locator("canvas");
+  await expect(canvas).toBeVisible();
+  await page.waitForTimeout(800);
+  for (let attempt = 0; attempt < 5; attempt++) {
+    const box = await canvas.boundingBox();
+    if (!box) throw new Error("canvas has no bounding box");
+    await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.5 + 44);
+    try {
+      await page.getByRole("button", { name: "Command ⌁" }).waitFor({ state: "attached", timeout: 3000 });
+      return;
+    } catch {
+      // not in-game yet — try again
+    }
+  }
+  throw new Error("continueGame: never reached an in-game scene after 5 click attempts");
+}
 
 test("Executive Voting popup shows real analyst votes and a BUY submits a real CEO decision", async ({ page }) => {
   await page.goto("/");
+  await continueGame(page);
 
   const popup = page.getByTestId("executive-voting");
   await expect(popup).toBeVisible({ timeout: 15000 });
@@ -35,6 +60,7 @@ test("Executive Voting popup shows real analyst votes and a BUY submits a real C
 
 test("Executive panel in the Command Center lists pending proposals and CEO track record", async ({ page }) => {
   await page.goto("/");
+  await continueGame(page);
 
   // Clear whatever popups auto-opened (a trade outcome popup sits above
   // Executive Voting, so it must be dismissed first if both are queued).
