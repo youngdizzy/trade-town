@@ -1,7 +1,7 @@
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { CONFIDENCE_TIER_LABEL } from "@/types";
 import { EventBus } from "@/game/systems/EventBus";
-import { computeCeoStats, confidenceTierTone } from "../lib/derive";
+import { computeCeoStats, confidenceTierTone, mistakeTagForCeoDecision } from "../lib/derive";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../ui";
 
 const CHOICE_TONE: Record<string, "green" | "red" | "amber"> = { buy: "green", sell: "red", wait: "amber" };
@@ -21,7 +21,7 @@ const OUTCOME_TONE: Record<string, "green" | "red" | "cyan" | "neutral"> = {
  * own doc comment for why overrides can't grade the AI itself.
  */
 export function ExecutivePanel() {
-  const { tradeProposals, ceoDecisions } = useGameStore();
+  const { tradeProposals, ceoDecisions, decisions } = useGameStore();
   const stats = computeCeoStats(ceoDecisions);
   const recent = [...ceoDecisions].reverse().slice(0, 12);
 
@@ -84,16 +84,20 @@ export function ExecutivePanel() {
             <EmptyState>No CEO decisions recorded yet.</EmptyState>
           ) : (
             <div className="divide-y divide-cmd-border/60">
-              {recent.map((r) => (
-                <div key={r.id} className="flex items-center justify-between gap-2 py-1.5">
-                  <span className="font-cmdmono text-cmd-cyan">{r.symbol}</span>
-                  <span className="text-[9px] text-cmd-textDim">
-                    you {r.ceoDecision.toUpperCase()} · desk {r.aiRecommendation.toUpperCase()}
-                  </span>
-                  {!r.agreedWithAi && <StatusPill tone="purple">OVERRIDE</StatusPill>}
-                  <StatusPill tone={OUTCOME_TONE[r.outcome]}>{r.outcome.toUpperCase()}</StatusPill>
-                </div>
-              ))}
+              {recent.map((r) => {
+                const mistakeTag = mistakeTagForCeoDecision(r, decisions);
+                return (
+                  <div key={r.id} className="flex items-center justify-between gap-2 py-1.5">
+                    <span className="font-cmdmono text-cmd-cyan">{r.symbol}</span>
+                    <span className="text-[9px] text-cmd-textDim">
+                      you {r.ceoDecision.toUpperCase()} · desk {r.aiRecommendation.toUpperCase()}
+                    </span>
+                    {!r.agreedWithAi && <StatusPill tone="purple">OVERRIDE</StatusPill>}
+                    {mistakeTag && <StatusPill tone="red">{mistakeTag}</StatusPill>}
+                    <StatusPill tone={OUTCOME_TONE[r.outcome]}>{r.outcome.toUpperCase()}</StatusPill>
+                  </div>
+                );
+              })}
             </div>
           )}
         </Glass>

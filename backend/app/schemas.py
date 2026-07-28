@@ -581,6 +581,9 @@ class CoachReport(CamelModel):
     average_confidence: float = Field(alias="averageConfidence")
     risk_score: float = Field(alias="riskScore")
     common_mistakes: list[str] = Field(default_factory=list, alias="commonMistakes")
+    # v0.7 Feature 18 — the positive counterpart to common_mistakes, same
+    # "real counted pattern, never filler" rule (see coach.py's _strengths).
+    strengths: list[str] = Field(default_factory=list)
     recommendations: list[str] = Field(default_factory=list)
     created_at: str = Field(alias="createdAt")
 

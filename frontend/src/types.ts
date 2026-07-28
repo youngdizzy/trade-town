@@ -494,6 +494,8 @@ export interface CoachReport {
   averageConfidence: number;
   riskScore: number;
   commonMistakes: string[];
+  /** v0.7 Feature 18 — the positive counterpart to commonMistakes, same "real counted pattern" rule (see backend/app/coach.py's _strengths). */
+  strengths: string[];
   recommendations: string[];
   createdAt: string;
 }

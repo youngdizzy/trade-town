@@ -329,3 +329,23 @@ export function computeCeoStats(records: CeoDecisionRecord[]): CeoStats {
     worstCategory,
   };
 }
+
+/**
+ * v0.7 Feature 18 — the same "overrode the Risk Manager" / "traded
+ * against the trend" pattern app/coach.py's _override_mistakes joins
+ * server-side for the weekly/monthly Coach report, applied per-row here
+ * so a single losing decision in the history table can be tagged with
+ * exactly which real analyst it went against — echo (technical) or
+ * sentinel (risk) present in the linked TradeDecision's opposingAgents,
+ * and only for a decision whose real outcome graded "incorrect". Never
+ * fabricated: null whenever no linked decision or no real losing outcome
+ * exists yet to judge.
+ */
+export function mistakeTagForCeoDecision(record: CeoDecisionRecord, decisions: TradeDecision[]): "OVERRODE RISK" | "AGAINST TREND" | null {
+  if (record.outcome !== "incorrect" || !record.decisionId) return null;
+  const decision = decisions.find((d) => d.id === record.decisionId);
+  if (!decision) return null;
+  if (decision.opposingAgents.includes("sentinel")) return "OVERRODE RISK";
+  if (decision.opposingAgents.includes("echo")) return "AGAINST TREND";
+  return null;
+}

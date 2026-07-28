@@ -79,6 +79,15 @@ export function CoachDashboard() {
                 </ul>
               </DashSection>
 
+              <DashSection title="Strengths">
+                {report.strengths.length === 0 && <p className="opacity-50">None flagged this period.</p>}
+                <ul className="list-inside list-disc space-y-1">
+                  {report.strengths.map((s, i) => (
+                    <li key={i}>{s}</li>
+                  ))}
+                </ul>
+              </DashSection>
+
               <DashSection title="Recommended Improvements">
                 {report.recommendations.length === 0 && <p className="opacity-50">Nothing to recommend right now — keep it up.</p>}
                 <ul className="list-inside list-disc space-y-1">

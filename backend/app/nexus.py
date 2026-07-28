@@ -750,13 +750,13 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     latest_report: CoachReport | None = None
 
     if is_evening and new_time.day % WEEKLY_INTERVAL_DAYS == 0:
-        latest_report = generate_coach_report("weekly", research, paper_portfolio, company_score, RESEARCHER_IDS, new_time)
+        latest_report = generate_coach_report("weekly", research, paper_portfolio, company_score, RESEARCHER_IDS, new_time, ceo_decisions=ceo_decisions, decisions=decisions)
         coach_reports = record_coach_report_entry(coach_reports, latest_report)
         record_coach_report(memory, latest_report)
         performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("weekly", paper_portfolio, research, new_time))
 
     if is_evening and new_time.day % MONTHLY_INTERVAL_DAYS == 0:
-        latest_report = generate_coach_report("monthly", research, paper_portfolio, company_score, RESEARCHER_IDS, new_time)
+        latest_report = generate_coach_report("monthly", research, paper_portfolio, company_score, RESEARCHER_IDS, new_time, ceo_decisions=ceo_decisions, decisions=decisions)
         coach_reports = record_coach_report_entry(coach_reports, latest_report)
         record_coach_report(memory, latest_report)
         performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("monthly", paper_portfolio, research, new_time))
