@@ -7,6 +7,122 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.7 — Intelligence & Decision Systems** — five systems that build on
+  v0.6.3's Executive Voting rather than replacing it, aimed at making
+  both the AI desk and the player better decision-makers over time, not
+  just at maximizing a single trade's P&L.
+  - **Decision Confidence Engine (Feature 15)**: a real, server-side,
+    persisted `DecisionConfidence` (`app/confidence.py`) formally
+    replaces v0.6.3's client-side "Trade Quality Score" heuristic.
+    Computed once at proposal-generation time from six real factors
+    already produced elsewhere — multi-agent vote agreement (0.30),
+    technical alignment (0.20), risk conditions (0.20), research
+    confidence (0.15), news/macro/sentiment alignment (0.10), portfolio
+    exposure (0.05) — and carried onto the resulting `TradeDecision`, so
+    Trade History and Post-Trade Review compare the *exact* reading a
+    decision was made under against its real later outcome, instead of
+    recomputing a possibly-drifting score client-side on every render.
+    Displayed in Executive Voting, the Trade Proposal itself, Market
+    Observatory, Trade History/`DecisionDetail`, and a new Post-Trade
+    Review section that explicitly recognizes a losing trade with an
+    excellent setup as still a good decision (and a winning trade with a
+    weak setup as luck, not skill). Several factors the v0.7 brief names
+    (support/resistance, multi-timeframe agreement, liquidity quality,
+    historical strategy performance, similar-setup matching) have no
+    real data source in this codebase and are deliberately not computed
+    — see `confidence.py`'s module docstring. Also removes
+    `app/decision.py`, dead since v0.6.3 replaced its automatic
+    `decide_trade()` pipeline with Executive Voting.
+  - **What-If Simulation Lab (Feature 16)**: before deciding, the player
+    can stress-test a proposal against 12 named market scenarios
+    (`app/whatif.py`) — bullish continuation, bearish reversal, sideways
+    consolidation, high/low volatility, news shock, gap up/down, trend
+    failure, breakout confirmation, liquidity sweep, flash crash. Every
+    simulated path is a bootstrap resample of the symbol's own real
+    recent bar-to-bar returns; each scenario's drift bias and any shock
+    are a documented, fixed multiple of the symbol's own real measured
+    volatility (never an invented absolute percentage), with
+    `trend_failure` the one scenario whose direction is resolved
+    dynamically against the symbol's real current trend. An unbiased
+    13th "baseline" run is the honest "most likely outcome" — best/worst
+    case are whichever named scenario produced the highest/lowest
+    reward-range edge, never a fabricated probability of one scenario
+    actually occurring over another. Computed fresh on every request via
+    `GET /api/executive/whatif` rather than persisted (this codebase has
+    already been bitten once by an unbounded persisted list bloating the
+    save payload — see `MAX_DECISIONS`'s history below). Surfaced as a
+    new expandable section in Executive Voting with a best/worst/most-
+    likely summary and a per-scenario horizontal reward-range bar chart
+    (pure CSS, one shared scale, no charting library) that expands on
+    click to show typical drawdown, max expected risk, win probability,
+    and the specific condition that would invalidate that scenario.
+  - **AI Debate Room (Feature 17)**: extends Executive Voting's existing
+    six real analyst seats into a full investment-committee review,
+    layered into the same popup as a new "DEBATE ROOM" section. A
+    `Debate` (`app/debate.py`) is generated the moment a `TradeProposal`
+    is created: an opening statement per analyst (their own real
+    `AnalystVote.reasoning`/`evidence`, unchanged) plus one real cross-
+    examination turn per analyst — a challenge if another analyst's real
+    vote disagrees, a support if it agrees — using the same
+    deterministic-but-varied templated-framing-over-real-state
+    convention `app/discussion.py` already established for the Meeting
+    Room. Only the framing sentence is generated; the substance is
+    always the analyst's own already-real reasoning. "Question any agent
+    individually" reuses the existing click-to-expand vote card.
+    "Request another debate" reshuffles the framing over the same real
+    votes and appends a fresh `Debate`, keeping prior ones in the stored
+    history (capped at `MAX_DEBATES`). Approve/Reject/Wait remain the
+    real, unchanged `/api/executive/decide` flow — the debate never
+    itself decides anything. The brief's "Portfolio Manager" and
+    "Strategy Analyst" have no independent real signal in this codebase;
+    Atlas's execution vote (already the desk's own synthesis) is
+    labelled "Portfolio Manager" as the closest real analogue, and no
+    seventh/eighth participant is invented.
+  - **Decision Journal & Mistake Tracker (Feature 18)**: extends Coach's
+    existing weekly/monthly reporting (unchanged since v0.5) rather than
+    building a parallel journal — every field the brief asks for (Date/
+    Asset/CEO Decision/Confidence Score/Entry/Exit/Holding Time/P&L) was
+    already permanently recorded across `TradeDecision`,
+    `CeoDecisionRecord`, and `PaperTrade`, and already exposed via
+    `DecisionsPanel`/`DecisionDetail`. The real gap was pattern
+    detection, so `CoachReport.commonMistakes` gains two new real
+    patterns — "overrode the Risk Manager" and "traded against the
+    trend" — both joining a `CeoDecisionRecord` against the
+    `TradeDecision` that produced it (by `decisionId`) and gated on that
+    decision's real linked trade having actually lost. A new
+    `CoachReport.strengths` field is the positive counterpart: win rate
+    over a real sample size, patient wins held 4+ simulated hours, wins
+    that agreed with Echo's trend read, and a real average-win-vs-
+    average-loss reward/risk check. `ExecutivePanel`'s Decision History
+    rows get a per-decision "OVERRODE RISK"/"AGAINST TREND" tag so a
+    single losing override reads its own real cause inline. Explicit
+    scope cut: personalized lesson/mini-game recommendations tied to
+    detected weaknesses would need a real mistake-to-lesson mapping this
+    codebase doesn't have yet — left out rather than faking a shallow
+    link.
+  - **Premium Trade Outcome Banner (Feature 19)**: replaces
+    `TradeOutcomePopup`'s full-screen blocking modal with a non-blocking,
+    top-center floating `TradeOutcomeBanner` — gameplay and the Command
+    Center toolbar stay fully interactive while it's showing. Win pulses
+    green with a confetti burst, loss shakes once with a brief
+    holographic glitch, breakeven gets a plain cyan glow; the P&L eases
+    upward (or downward) over ~900ms. Every closed, unviewed trade gets
+    its own turn in a real FIFO queue instead of the backlog being
+    silently acknowledged, with an 8s auto-dismiss paused on hover and
+    resumed on leave (a real remaining-time countdown). View Trade/
+    Analyze emit a `trade:inspect` event that jumps the Command Center to
+    the Decisions tab and, for Analyze, auto-opens `DecisionDetail`'s
+    Post-Trade Review — mirroring Feature 12's
+    `executiveVotingProposalId` pattern. "Strategy" and "Trade Quality
+    Score" from the spec are deliberately not shown: auto-traded orders
+    aren't linked to a named Strategy record, and Trade Quality Score was
+    already replaced by Feature 15's real Decision Confidence Engine.
+  - Verification: full backend (mypy/ruff/pytest, 134/134 — 33 new tests
+    across `test_confidence.py`/`test_debate.py`/`test_whatif.py`/
+    `test_coach.py`) and frontend (tsc/eslint/build) clean; the full
+    Playwright suite (14/14, one honest skip for organic trade timing)
+    passes against a freshly reset backend.
+
 - **v0.6.3 — Executive Voting, Risk Command Center, Cyber Overlay** — the
   player is now formally TradeTown's CEO. A research candidate crossing
   the trade-confidence threshold no longer executes automatically: it

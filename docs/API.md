@@ -243,6 +243,26 @@ perspective and exists purely to detect disconnects
       "outcome": "pending", // pending | correct | incorrect | undecidable
       "createdAt": "...", "resolvedAt": null
     }
+  ],
+  "debates": [
+    // v0.7 Feature 17 — one Debate generated automatically the moment its
+    // TradeProposal is created (see nexus.py), plus one more per
+    // POST /api/executive/debate/regenerate call for the same proposal
+    // (appended, not replacing — every debate stays reviewable). Every
+    // turn's text is a real AnalystVote's own reasoning; only the
+    // opening/challenge/support framing is generated.
+    {
+      "id": "debate-proposal-research-echo-AAPL-...-1234567890-4821", "proposalId": "proposal-research-echo-AAPL-...",
+      "symbol": "AAPL",
+      "turns": [
+        { "agentId": "echo", "role": "technical", "stance": "opening", "respondingTo": null, "text": "AAPL is in a real uptrend (+4.2% over the sample) relative to its own volatility. (Trend: +4.2% over the last 30 1h bars.; Volatility: 1.1% average bar range.)" },
+        { "agentId": "sentinel", "role": "risk", "stance": "challenge", "respondingTo": "scout", "text": "Not so fast — the News Analyst may be missing something: AAPL is within all configured risk limits." }
+        // stance: opening | challenge | support
+      ],
+      "finalRecommendation": "buy",
+      "finalSummary": "After 6 independent reads, the desk recommends BUY on AAPL. Strong Setup (88/100) — strongest: Multi-Agent Agreement (100), weakest: Portfolio Exposure (60).",
+      "createdAt": "..."
+    }
   ]
 }
 ```
@@ -254,6 +274,42 @@ Feature 12 — the CEO's real buy/sell/wait call on a pending
 (`choice`: `buy` | `sell` | `wait`). Returns the updated
 `tradeProposals`, `ceoDecisions`, `decisions`, and `paperPortfolio`.
 `400` if the proposal id isn't found (already resolved or expired).
+
+### `POST /api/executive/debate/regenerate`
+
+v0.7 Feature 17 — "request another debate" on a still-pending proposal.
+Body: `{ "proposalId": "..." }`. Returns the updated `debates` list (the
+new one appended). `400` if the proposal id isn't found.
+
+### `GET /api/executive/whatif?symbol=AAPL`
+
+v0.7 Feature 16 — the What-If Simulation Lab. Read-only, stateless, and
+computed fresh on every call (never part of `GameSaveState`/the WS
+broadcast — see `app/whatif.py`'s module docstring for why). Returns a
+`WhatIfSimulation`:
+
+```json
+{
+  "symbol": "AAPL", "holdBars": 20,
+  "scenarios": [
+    {
+      "scenarioType": "bullish_continuation", // one of 12 — see whatif.py's ScenarioType
+      "label": "Strong Bullish Continuation",
+      "rewardRangeLowPct": 0.3, "rewardRangeHighPct": 21.0, "mostLikelyPct": 13.4,
+      "typicalDrawdownPct": -5.5, "maxRiskPct": -17.2, "probabilityOfProfitPct": 90.0,
+      "invalidation": "A close back below the sample's starting price invalidates this thesis."
+    }
+    // ... 11 more scenarios
+  ],
+  "baseline": { "scenarioType": "bullish_continuation", "label": "Baseline (No Scenario Bias)", "...": "same shape as above, no scenario bias applied" },
+  "bestCaseScenario": "breakout_confirmation", "worstCaseScenario": "high_volatility"
+}
+```
+
+`400` for an unsupported timeframe (shouldn't happen — this endpoint
+always requests the same `PROPOSAL_TIMEFRAME`/`PROPOSAL_CANDLE_COUNT`
+the technical analyst vote itself uses, so both readings stay grounded
+in the same real candle sample).
 
 `GET /api/load` returns this same set of fields plus `version` (currently
 `"0.6"`), `player` (`EntityTransform`), `settings` (`SettingsState`),
@@ -281,6 +337,7 @@ never needs to trim anything itself:
 | `riskWarnings` | uncapped, but replaced wholesale every tick | current standing watch, not a log — see `risk_engine.monitor_portfolio()` |
 | `scannerAlerts` | last 30 (`MAX_ALERTS`) | rolling alert feed |
 | `decisions` | uncapped | the v0.6 brief's Explainable AI requirement is "store every report permanently" |
+| `debates` | last 60 (`MAX_DEBATES`) | one per proposal plus any "request another debate" calls — v0.7 Feature 17 |
 
 ### Provider configuration
 

@@ -752,6 +752,45 @@ exists anywhere in this codebase, though its `place_order()`/
 `tick_broker()` shape is deliberately adapter-friendly for a future
 version.
 
+## Version 0.7 scope
+
+Five intelligence/decision systems layered onto v0.6.3's Executive
+Voting rather than replacing it — every new module reuses the six real
+analyst votes (`app/executive.py`'s `generate_analyst_votes`) or the
+real candle series it already fetches, never a second parallel data
+source:
+
+- `app/confidence.py` — the Decision Confidence Engine (Feature 15):
+  formalizes v0.6.3's client-side "Trade Quality Score" into a real,
+  persisted, six-factor score computed once at proposal time and carried
+  onto the resulting `TradeDecision`.
+- `app/whatif.py` — the What-If Simulation Lab (Feature 16): a bootstrap
+  Monte Carlo over the symbol's own real recent bar-to-bar returns,
+  stress-tested against 12 named scenarios. Deliberately not part of
+  `GameSaveState` — computed fresh via `GET /api/executive/whatif` on
+  every request instead (see the module's own docstring for why).
+- `app/debate.py` — the AI Debate Room (Feature 17): generates one
+  `Debate` per `TradeProposal` (opening statement + real cross-
+  examination per analyst), stored permanently and capped at
+  `MAX_DEBATES` (60) the same way `ceo_decisions` is capped.
+- `app/coach.py` extensions — the Decision Journal & Mistake Tracker
+  (Feature 18): two new recurring-mistake patterns (`_override_mistakes`,
+  joining `CeoDecisionRecord` against the `TradeDecision` that produced
+  it) and a new `_strengths` function, both folded into the existing
+  weekly/monthly `CoachReport` pipeline rather than a parallel journal
+  system.
+- `frontend/src/ui/components/TradeOutcomeBanner.tsx` — the Premium
+  Trade Outcome Banner (Feature 19): replaces the old blocking
+  `TradeOutcomePopup.tsx` (deleted) with a non-blocking, top-center,
+  queued banner. Purely a frontend/presentation change — no new backend
+  module.
+
+`GameSaveState` gained one new field for this pass: `debates` (capped,
+broadcast over the WS state message and `/api/load`, same pattern as
+`ceoDecisions`). `WhatIfSimulation`/`ScenarioResult` are real Pydantic
+models but intentionally never touch `GameSaveState` — see
+`app/whatif.py`'s module docstring.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing
