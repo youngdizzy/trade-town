@@ -26,6 +26,8 @@ import type {
   ResearchItem,
   EducationProgress,
   PlayerVsAiState,
+  ReasoningChallenge,
+  ReasoningLabState,
   RiskLimits,
   RiskWarning,
   ScannerAlert,
@@ -81,6 +83,8 @@ type ServerMessage =
       academyState: AcademyState;
       disciplineReviews: DisciplineReview[];
       caseStudies: CaseStudy[];
+      reasoningChallenges: ReasoningChallenge[];
+      reasoningLabState: ReasoningLabState;
       agentEnergy: AgentEnergy;
       signalCalibration: SignalCalibrationState;
       playerVsAi: PlayerVsAiState;
@@ -176,6 +180,8 @@ export class GameSocket {
             academyState: msg.academyState,
             disciplineReviews: msg.disciplineReviews,
             caseStudies: msg.caseStudies,
+            reasoningChallenges: msg.reasoningChallenges,
+            reasoningLabState: msg.reasoningLabState,
             agentEnergy: msg.agentEnergy,
             signalCalibration: msg.signalCalibration,
             playerVsAi: msg.playerVsAi,

@@ -59,6 +59,7 @@ from app.market_environment import tick_market_environment
 from app.mistakes import generate_case_studies, record_case_studies
 from app.paper_trading import tick_paper_trading
 from app.portfolio import sim_minutes
+from app.reasoning_lab import compute_reasoning_lab_state, generate_challenge, record_challenge
 from app.research import RESEARCHER_IDS, default_research, tick_research
 from app.risk_engine import evaluate_guardian_exposure, evaluate_sentinel_risk, monitor_portfolio, recommended_quantity
 from app.scanner import tick_scanner
@@ -77,6 +78,7 @@ from app.scribe import (
     record_meeting,
     record_mentorship_session,
     record_paper_trade,
+    record_reasoning_challenge,
     record_research_completions,
     record_scanner_alert,
     record_simulation_result,
@@ -103,6 +105,7 @@ from app.schemas import (
     NewsItem,
     PaperPortfolio,
     PaperTrade,
+    ReasoningChallenge,
     ResearchItem,
     RiskLimits,
     RiskWarning,
@@ -179,6 +182,12 @@ MONTHLY_INTERVAL_DAYS = 30
 # checking every tick would either never fire or fire every tick once
 # the gap crosses threshold, neither of which reads as a real "session".
 MENTORSHIP_CHECK_INTERVAL_DAYS = 3
+# v0.7 Feature 29 — how often the company runs a Reasoning Lab challenge
+# from its most recent real AI Debate. Checked on the same evening
+# cadence, more often than mentorship since "departments regularly
+# participate" is the brief's own framing and a fresh real Debate is
+# usually available well within this window.
+REASONING_CHALLENGE_INTERVAL_DAYS = 2
 
 MARKET_HEADLINES = [
     "Markets drift sideways in a quiet overnight session",
@@ -783,6 +792,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     agent_knowledge: dict[AgentId, AgentKnowledgeState] = state.agent_knowledge or default_agent_knowledge()
     discipline_reviews: list[DisciplineReview] = list(state.discipline_reviews)
     case_studies: list[CaseStudy] = list(state.case_studies)
+    reasoning_challenges: list[ReasoningChallenge] = list(state.reasoning_challenges)
 
     agents = {aid: _tick_agent(aid, agent, new_time, minutes, tasks) for aid, agent in state.agents.items()}
 
@@ -1129,6 +1139,33 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             mentor_id, mentee_id = pairing
             record_mentorship_session(memory, agent_knowledge, mentor_id, mentee_id)
 
+    # v0.7 Feature 29 — the Reasoning Lab. Files one real ReasoningChallenge
+    # from the company's most recent real AI Debate + its linked
+    # TradeDecision, on a fixed evening cadence — practicing the reasoning
+    # process itself, decoupled from any trade outcome (see
+    # app/reasoning_lab.py's module docstring). Skipped when there is no
+    # real Debate yet, or when the most recent Debate was already used for
+    # the last challenge filed — this module never re-practices the exact
+    # same already-reasoned-through case just to hit the cadence.
+    if is_evening and new_time.day % REASONING_CHALLENGE_INTERVAL_DAYS == 0 and debates:
+        latest_debate = debates[-1]
+        linked_decision = next((d for d in decisions if d.id == f"decision-{latest_debate.proposal_id}"), None)
+        already_used = bool(reasoning_challenges) and reasoning_challenges[-1].decision_id == (linked_decision.id if linked_decision else None)
+        if linked_decision is not None and not already_used:
+            unlocked_level = compute_reasoning_lab_state(len(reasoning_challenges)).level
+            challenge = generate_challenge(
+                linked_decision,
+                latest_debate,
+                challenge_id=f"reasoning-{latest_debate.id}",
+                unlocked_level=unlocked_level,
+                sim_day=new_time.day,
+                created_at=_now_iso(),
+            )
+            reasoning_challenges = record_challenge(reasoning_challenges, challenge)
+            record_reasoning_challenge(memory, challenge)
+
+    reasoning_lab_state = compute_reasoning_lab_state(len(reasoning_challenges))
+
     if is_midnight:
         agent_energy = regen_daily(agent_energy)
         performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("daily", paper_portfolio, research, new_time))
@@ -1194,6 +1231,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "academy_state": academy_state,
             "discipline_reviews": discipline_reviews,
             "case_studies": case_studies,
+            "reasoning_challenges": reasoning_challenges,
+            "reasoning_lab_state": reasoning_lab_state,
             "agent_energy": agent_energy,
             "whiteboards": _update_whiteboards(agents, meeting, research),
             "updated_at": _now_iso(),

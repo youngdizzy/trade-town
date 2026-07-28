@@ -301,6 +301,32 @@ perspective and exists purely to detect disconnects
       "tradePnlPct": -2.2, "simDay": 12, "createdAt": "..."
     }
   ],
+  "reasoningChallenges": [
+    // v0.7 Feature 29 — filed periodically from the company's most recent
+    // real AI Debate + its linked TradeDecision (app/reasoning_lab.py).
+    // No pnl or outcome is ever read here — see the module docstring for
+    // exactly which real signal backs each of the seven categories.
+    {
+      "id": "reasoning-debate-...", "category": "evaluating_multiple_hypotheses", "title": "Evaluating Multiple Hypotheses", "symbol": "BTC-USD",
+      "decisionId": "decision-proposal-...",
+      "contributions": [
+        { "agentId": "echo", "role": "technical", "stance": "opening", "contribution": "..." }
+        // ... one entry per real Debate turn (opening/challenge/support)
+      ],
+      "solution": {
+        "whatWeKnow": ["Multi-Agent Agreement: 5/6 analysts agree with BUY."],
+        "whatWeDoNotKnow": [], "assumptions": ["..."],
+        "whyReasonable": "...", "confidence": 85.5,
+        "whatCouldChangeOurConclusion": "A material change in ... is the most likely thing to overturn this conclusion."
+      },
+      "reasoningLevel": 2, "simDay": 12, "createdAt": "..."
+    }
+  ],
+  "reasoningLabState": {
+    // Company-wide progression derived from the real completed-challenge
+    // count — mirrors academyState's level/label-only convention exactly.
+    "level": 2, "levelLabel": "Applied Reasoning", "completedChallengeCount": 7, "updatedAt": "..."
+  },
   "performanceSnapshots": [
     { "period": "daily", "returnPct": 1.2, "winRate": 60.0, "maxDrawdownPct": 4.1, "sharpeRatio": 0.29, "sortinoRatio": 0.34, "avgHoldingMinutes": 210.0, "researchAccuracy": 71.0, "confidenceAccuracy": 68.0, "computedAt": "..." }
   ],
@@ -532,6 +558,7 @@ never needs to trim anything itself:
 | `academyCompletedProjects` | last 50 (`MAX_ACADEMY_LIBRARY`) | the permanent Company Knowledge Library — v0.7 Feature 25 |
 | `disciplineReviews` | last 60 (`MAX_DISCIPLINE_REVIEWS`) | one per closed trade — v0.7 Feature 26 |
 | `caseStudies` | last 60 (`MAX_CASE_STUDIES`) | one per detected real process-gap mistake — v0.7 Feature 27 |
+| `reasoningChallenges` | last 60 (`MAX_REASONING_CHALLENGES`) | one per real AI Debate practiced, on a fixed cadence — v0.7 Feature 29 |
 
 ### Provider configuration
 

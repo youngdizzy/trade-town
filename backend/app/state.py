@@ -12,6 +12,7 @@ from datetime import datetime, timezone
 
 from app import education, nexus, player_vs_ai, signal_calibration, trade_notifications
 from app.academy import compute_academy_state, default_agent_knowledge
+from app.reasoning_lab import compute_reasoning_lab_state
 from app.academy_research import default_academy_projects
 from app.agent_energy import default_agent_energy
 from app.company_health import compute_company_health
@@ -103,6 +104,8 @@ def default_state() -> GameSaveState:
         academyState=compute_academy_state(agent_knowledge, 0),
         disciplineReviews=[],
         caseStudies=[],
+        reasoningChallenges=[],
+        reasoningLabState=compute_reasoning_lab_state(0),
         updatedAt=_now_iso(),
     )
 

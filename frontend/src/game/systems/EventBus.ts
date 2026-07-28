@@ -30,6 +30,8 @@ import type {
   RiskLimits,
   EducationProgress,
   PlayerVsAiState,
+  ReasoningChallenge,
+  ReasoningLabState,
   RiskWarning,
   ScannerAlert,
   SceneId,
@@ -117,6 +119,8 @@ export interface GameEvents {
   "academyState:updated": AcademyState;
   "disciplineReviews:updated": DisciplineReview[];
   "caseStudies:updated": CaseStudy[];
+  "reasoningChallenges:updated": ReasoningChallenge[];
+  "reasoningLabState:updated": ReasoningLabState;
   "ui:executiveVoting": { open: boolean; proposalId?: string };
   // v0.7 Feature 19 — opens the Command Center on the Decisions tab for a
   // specific trade's decision; openDetail additionally auto-opens

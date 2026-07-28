@@ -27,6 +27,8 @@ import type {
   RiskLimits,
   EducationProgress,
   PlayerVsAiState,
+  ReasoningChallenge,
+  ReasoningLabState,
   RiskWarning,
   ScannerAlert,
   SettingsState,
@@ -92,6 +94,8 @@ export interface GameUiState {
   academyState: AcademyState;
   disciplineReviews: DisciplineReview[];
   caseStudies: CaseStudy[];
+  reasoningChallenges: ReasoningChallenge[];
+  reasoningLabState: ReasoningLabState;
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
@@ -212,6 +216,8 @@ class GameStore {
     academyState: { level: 1, levelLabel: "Training Room", totalPoints: 0, completedProjectCount: 0, updatedAt: new Date().toISOString() },
     disciplineReviews: [],
     caseStudies: [],
+    reasoningChallenges: [],
+    reasoningLabState: { level: 1, levelLabel: "Foundations", completedChallengeCount: 0, updatedAt: new Date().toISOString() },
     agentEnergy: { current: 100, cap: 100, updatedAt: new Date().toISOString() },
     signalCalibration: { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 },
     playerVsAi: { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 },
@@ -319,6 +325,8 @@ class GameStore {
     EventBus.on("academyState:updated", (academyState) => this.set({ academyState }));
     EventBus.on("disciplineReviews:updated", (disciplineReviews) => this.set({ disciplineReviews }));
     EventBus.on("caseStudies:updated", (caseStudies) => this.set({ caseStudies }));
+    EventBus.on("reasoningChallenges:updated", (reasoningChallenges) => this.set({ reasoningChallenges }));
+    EventBus.on("reasoningLabState:updated", (reasoningLabState) => this.set({ reasoningLabState }));
     EventBus.on("ui:executiveVoting", ({ open, proposalId }) =>
       this.set({ executiveVotingOpen: open, executiveVotingProposalId: open ? (proposalId ?? this.state.executiveVotingProposalId) : null }),
     );

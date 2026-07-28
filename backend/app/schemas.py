@@ -136,6 +136,9 @@ MemoryCategory = Literal[
     # v0.7 Feature 27 — a Library of Mistakes case study (see
     # app/mistakes.py).
     "case_study",
+    # v0.7 Feature 29 — a completed Reasoning Lab challenge (see
+    # app/reasoning_lab.py).
+    "reasoning_challenge",
 ]
 
 # --- v0.5: paper trading, simulation, coaching, and scoring ---------------
@@ -1398,6 +1401,88 @@ class CaseStudy(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
+# v0.7 Feature 29 — the Reasoning Lab (app/reasoning_lab.py). A permanent
+# ReasoningChallenge is filed periodically from the company's most recent
+# real AI Debate + its linked TradeDecision — practicing the REASONING
+# itself, never a trade outcome (no pnl is ever read by this module,
+# structurally, the same "process not outcome" guarantee
+# app/discipline.py established). Nine categories were named in the
+# brief; two have no real, checkable signal anywhere in this codebase
+# ("Detecting Logical Fallacies" and "Building Better Questions" would
+# require actual fallacy/question-quality detection this system doesn't
+# do) and are deliberately not scored — see reasoning_lab.py's module
+# docstring for exactly which real signal backs each of the seven kept
+# categories.
+ReasoningChallengeCategory = Literal[
+    "finding_missing_information",
+    "identifying_weak_evidence",
+    "recognizing_contradictory_data",
+    "separating_facts_from_assumptions",
+    "evaluating_multiple_hypotheses",
+    "comparing_competing_explanations",
+    "improving_communication",
+]
+
+
+class ReasoningContribution(CamelModel):
+    """One real analyst's real turn in the underlying AI Debate, reframed
+    as this challenge's "departments collaborate" record — never invented
+    dialogue. `stance` mirrors DebateTurn's own opening/challenge/support
+    framing, the real, already-existing analogue of the brief's "Research
+    asks Risk," "News challenges assumptions" collaboration."""
+
+    agent_id: AgentId = Field(alias="agentId")
+    role: AnalystRole
+    stance: DebateStance
+    contribution: str
+
+
+class ReasoningSolution(CamelModel):
+    """The brief's six required "Explain Your Thinking" fields, each
+    filled from this challenge's own real Decision Confidence Engine
+    factors and TradeDecision fields — never invented commentary. See
+    reasoning_lab.py's _solution()."""
+
+    what_we_know: list[str] = Field(default_factory=list, alias="whatWeKnow")
+    what_we_do_not_know: list[str] = Field(default_factory=list, alias="whatWeDoNotKnow")
+    assumptions: list[str] = Field(default_factory=list)
+    why_reasonable: str = Field(alias="whyReasonable")
+    confidence: float
+    what_could_change_our_conclusion: str = Field(alias="whatCouldChangeOurConclusion")
+
+
+class ReasoningChallenge(CamelModel):
+    id: str
+    category: ReasoningChallengeCategory
+    title: str
+    symbol: str
+    decision_id: str = Field(alias="decisionId")
+    contributions: list[ReasoningContribution] = Field(default_factory=list)
+    solution: ReasoningSolution
+    # The company's own Reasoning Level (see ReasoningLabState) at the
+    # moment this challenge was generated — advanced categories are only
+    # ever detected once the level that unlocks them has been reached
+    # (see reasoning_lab.py's _LEVEL_FOR_CATEGORY), so this also records
+    # exactly why this particular category could appear.
+    reasoning_level: int = Field(alias="reasoningLevel")
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
+class ReasoningLabState(CamelModel):
+    """Company-wide reasoning progression — mirrors AcademyState's exact
+    shape/convention: a real, monotonic completed-count gates a level
+    number and label; unlocking "advanced challenges" (see
+    reasoning_lab.py) is real, but new art/seminar content per level is
+    an explicit scope cut, the same boundary AcademyState already
+    established."""
+
+    level: int
+    level_label: str = Field(alias="levelLabel")
+    completed_challenge_count: int = Field(alias="completedChallengeCount")
+    updated_at: str = Field(alias="updatedAt")
+
+
 class GameSaveState(CamelModel):
     version: Literal["0.6"] = "0.6"
     player: EntityTransform
@@ -1469,6 +1554,12 @@ class GameSaveState(CamelModel):
     # v0.7 Feature 27 — the Library of Mistakes (app/mistakes.py). One
     # capped, permanent CaseStudy per detected real process-gap mistake.
     case_studies: list[CaseStudy] = Field(default_factory=list, alias="caseStudies")
+    # v0.7 Feature 29 — the Reasoning Lab (app/reasoning_lab.py). One
+    # capped, permanent ReasoningChallenge filed periodically from the
+    # company's most recent real AI Debate; `reasoning_lab_state` is the
+    # company-wide progression level derived from the challenge count.
+    reasoning_challenges: list[ReasoningChallenge] = Field(default_factory=list, alias="reasoningChallenges")
+    reasoning_lab_state: ReasoningLabState = Field(alias="reasoningLabState")
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(default_factory=list, alias="dialogueHistory")

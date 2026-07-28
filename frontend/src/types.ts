@@ -1058,6 +1058,63 @@ export interface CaseStudy {
   createdAt: string;
 }
 
+// v0.7 Feature 29 — the Reasoning Lab (see backend/app/reasoning_lab.py).
+// A permanent ReasoningChallenge is filed periodically from the
+// company's most recent real AI Debate + its linked TradeDecision —
+// practicing the reasoning process itself, decoupled from any trade
+// outcome. Seven honest categories out of the brief's nine; "Detecting
+// Logical Fallacies" and "Building Better Questions" have no real
+// checkable signal in this codebase and are deliberately not built.
+export type ReasoningChallengeCategory =
+  | "finding_missing_information"
+  | "identifying_weak_evidence"
+  | "recognizing_contradictory_data"
+  | "separating_facts_from_assumptions"
+  | "evaluating_multiple_hypotheses"
+  | "comparing_competing_explanations"
+  | "improving_communication";
+
+export interface ReasoningContribution {
+  agentId: AgentId;
+  role: AnalystRole;
+  stance: DebateStance;
+  contribution: string;
+}
+
+export interface ReasoningSolution {
+  whatWeKnow: string[];
+  whatWeDoNotKnow: string[];
+  assumptions: string[];
+  whyReasonable: string;
+  confidence: number;
+  whatCouldChangeOurConclusion: string;
+}
+
+export interface ReasoningChallenge {
+  id: string;
+  category: ReasoningChallengeCategory;
+  title: string;
+  symbol: string;
+  decisionId: string;
+  contributions: ReasoningContribution[];
+  solution: ReasoningSolution;
+  /** The company's own Reasoning Level at the moment this challenge was
+   * generated — advanced categories only ever appear once the level
+   * that unlocks them has been reached. */
+  reasoningLevel: number;
+  /** The real in-game day this challenge was filed — see
+   * DisciplineReview.simDay above for why. */
+  simDay: number;
+  createdAt: string;
+}
+
+export interface ReasoningLabState {
+  level: number;
+  levelLabel: string;
+  completedChallengeCount: number;
+  updatedAt: string;
+}
+
 export interface GameSaveState {
   version: "0.6";
   player: EntityTransform;
@@ -1095,6 +1152,8 @@ export interface GameSaveState {
   academyState: AcademyState;
   disciplineReviews: DisciplineReview[];
   caseStudies: CaseStudy[];
+  reasoningChallenges: ReasoningChallenge[];
+  reasoningLabState: ReasoningLabState;
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;

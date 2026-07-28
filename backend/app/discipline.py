@@ -79,7 +79,7 @@ def tier_for_score(score: float) -> DisciplineTier:
     return "reckless"
 
 
-def _confidence_factor_score(decision: TradeDecision, name: str, default: float = 50.0) -> float:
+def confidence_factor_score(decision: TradeDecision, name: str, default: float = 50.0) -> float:
     if decision.confidence_engine is None:
         return default
     factor = next((f for f in decision.confidence_engine.factors if f.name == name), None)
@@ -115,8 +115,8 @@ def compute_discipline_score(
     challenge_turns = [t for t in debate.turns if t.stance == "challenge"] if debate else []
     challenge_score = min(100.0, len(challenge_turns) * 40.0)
 
-    exposure_score = _confidence_factor_score(decision, "Portfolio Exposure")
-    research_score = _confidence_factor_score(decision, "Research Confidence")
+    exposure_score = confidence_factor_score(decision, "Portfolio Exposure")
+    research_score = confidence_factor_score(decision, "Research Confidence")
 
     patience_score = min(100.0, (hold_duration_minutes / PATIENCE_TARGET_MINUTES) * 100.0)
 

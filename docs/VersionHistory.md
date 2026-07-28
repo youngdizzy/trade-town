@@ -310,6 +310,39 @@ in Executive Operating Mode confirmed the full pipeline end to end (60
 reviews, 60 case studies, zero exceptions); verified in the running app
 against seeded real data with zero console errors.
 
+### v0.7 continued — The Reasoning Lab (Feature 29)
+
+The company now practices how it thinks, not just what it decides. The
+**Reasoning Lab** files a real `ReasoningChallenge` periodically from the
+company's most recent real AI Debate plus its linked `TradeDecision` —
+like the Discipline Chamber, this is decoupled from trade outcomes
+structurally, not just by convention (no pnl is ever read to produce a
+challenge). Seven honest categories out of the brief's nine, each a real,
+checkable signal on the linked Debate/decision: Finding Missing
+Information, Identifying Weak Evidence, Recognizing Contradictory Data,
+Separating Facts from Assumptions, Evaluating Multiple Hypotheses,
+Comparing Competing Explanations, and Improving Communication. Detecting
+Logical Fallacies and Building Better Questions have no real checkable
+signal anywhere in this codebase and aren't built. A real Reasoning
+Level — mirroring `AcademyState`'s own progression convention — gates
+which categories can actually appear, so an advanced category is
+genuinely absent until the company has practiced the basics, never
+faked early. Each challenge's Collaborative Thinking record reframes the
+underlying AI Debate's own real opening/challenge/support turns as the
+brief's "departments collaborate" record, and its Explain Your Thinking
+solution answers the brief's six required questions from the linked
+decision's own real Confidence Engine factors and vote reasoning — never
+invented commentary. A new REASONING Command Center tab shows the
+current level/progress and a filterable, expandable Reasoning History;
+`DialogueManager` gained a third real recall source referencing a filed
+challenge an agent actually contributed a real Debate turn to. Explicit
+scope cuts: new seminar content and per-level collaboration animations
+have no real data source and aren't built. 21 new backend tests; a
+4000-tick standalone smoke test in Executive Operating Mode confirmed
+the full pipeline end to end (7 challenges across three genuinely
+different real categories, Reasoning Level correctly advancing); verified
+in the running app with zero console errors.
+
 ## What's next for v0.8 (not started, not scoped)
 
 These are candidate directions surfaced by v0.6/v0.7's design, not

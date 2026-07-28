@@ -195,7 +195,7 @@ test.describe("Global Command Center", () => {
     expect(moved.x).not.toBe(frozen.x);
   });
 
-  test("expands to the Full Command Center and renders all 15 tabs with graceful empty states", async ({ page }) => {
+  test("expands to the Full Command Center and renders all 16 tabs with graceful empty states", async ({ page }) => {
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);
     await continueGame(page);
@@ -214,7 +214,7 @@ test.describe("Global Command Center", () => {
     // ticking throughout, a genuine trade or trade proposal can appear
     // (and pop up) mid-test. clickTab() dismisses and retries rather
     // than losing the race to a popup that appears in that instant.
-    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "COMPANY", "KNOWLEDGE", "DISCIPLINE", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
+    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "COMPANY", "KNOWLEDGE", "DISCIPLINE", "REASONING", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
     for (const tab of tabs) {
       await clickTab(page, tab);
       await expect(page.getByRole("button", { name: tab, exact: true })).toHaveClass(/text-cmd-cyan/);
@@ -541,5 +541,27 @@ test.describe("Global Command Center", () => {
     const hasScore = await page.getByText(/\d+\/100 average discipline score/).count();
     const hasEmptyState = await page.getByText(/No trades have closed yet/).count();
     expect(hasScore + hasEmptyState).toBeGreaterThan(0);
+  });
+
+  test("REASONING tab shows the Reasoning Lab's level, progress, and history, always real content or an honest empty state", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickTab(page, "REASONING");
+
+    await expect(page.getByText("Reasoning Lab", { exact: true })).toBeVisible();
+    await expect(page.getByText(/LEVEL \d+ —/)).toBeVisible();
+    await expect(page.getByText("Reasoning History", { exact: true })).toBeVisible();
+
+    // Either real filed challenges or the honest "none yet" empty state —
+    // never a blank panel. No challenge here ever reads a trade's pnl, so
+    // whichever renders is truthful either way.
+    const hasEmptyState = await page.getByText(/No reasoning challenges filed yet/).count();
+    if (hasEmptyState === 0) {
+      await expect(page.locator(".text-cmd-purple").first()).toBeVisible();
+    }
   });
 });

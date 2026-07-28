@@ -26,6 +26,8 @@ import type {
   RiskLimits,
   EducationProgress,
   PlayerVsAiState,
+  ReasoningChallenge,
+  ReasoningLabState,
   RiskWarning,
   ScannerAlert,
   SignalCalibrationState,
@@ -72,6 +74,8 @@ interface NexusSnapshot {
   academyState: AcademyState;
   disciplineReviews: DisciplineReview[];
   caseStudies: CaseStudy[];
+  reasoningChallenges: ReasoningChallenge[];
+  reasoningLabState: ReasoningLabState;
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
@@ -176,6 +180,13 @@ export class NexusManager {
   };
   private static disciplineReviews: DisciplineReview[] = [];
   private static caseStudies: CaseStudy[] = [];
+  private static reasoningChallenges: ReasoningChallenge[] = [];
+  private static reasoningLabState: ReasoningLabState = {
+    level: 1,
+    levelLabel: "Foundations",
+    completedChallengeCount: 0,
+    updatedAt: new Date().toISOString(),
+  };
   private static agentEnergy: AgentEnergy = { current: 100, cap: 100, updatedAt: new Date().toISOString() };
   private static signalCalibration: SignalCalibrationState = { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 };
   private static playerVsAi: PlayerVsAiState = { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 };
@@ -290,6 +301,14 @@ export class NexusManager {
 
   static getCaseStudies(): CaseStudy[] {
     return this.caseStudies;
+  }
+
+  static getReasoningChallenges(): ReasoningChallenge[] {
+    return this.reasoningChallenges;
+  }
+
+  static getReasoningLabState(): ReasoningLabState {
+    return this.reasoningLabState;
   }
 
   static getPerformanceSnapshots(): PerformanceSnapshot[] {
@@ -564,6 +583,14 @@ export class NexusManager {
     if (update.caseStudies.length !== this.caseStudies.length) EventBus.emit("caseStudies:updated", update.caseStudies);
     this.caseStudies = update.caseStudies;
 
+    if (update.reasoningChallenges.length !== this.reasoningChallenges.length) {
+      EventBus.emit("reasoningChallenges:updated", update.reasoningChallenges);
+    }
+    this.reasoningChallenges = update.reasoningChallenges;
+
+    if (update.reasoningLabState !== this.reasoningLabState) EventBus.emit("reasoningLabState:updated", update.reasoningLabState);
+    this.reasoningLabState = update.reasoningLabState;
+
     if (update.agentEnergy !== this.agentEnergy) EventBus.emit("agentEnergy:updated", update.agentEnergy);
     this.agentEnergy = update.agentEnergy;
 
@@ -614,6 +641,8 @@ export class NexusManager {
     this.academyState = save.academyState;
     this.disciplineReviews = save.disciplineReviews;
     this.caseStudies = save.caseStudies;
+    this.reasoningChallenges = save.reasoningChallenges;
+    this.reasoningLabState = save.reasoningLabState;
     this.agentEnergy = save.agentEnergy;
     this.signalCalibration = save.signalCalibration;
     this.playerVsAi = save.playerVsAi;

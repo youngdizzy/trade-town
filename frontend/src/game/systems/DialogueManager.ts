@@ -168,20 +168,22 @@ export class DialogueManager {
   }
 
   /**
-   * v0.7 Features 25.5/27 — a modest, honest slice of "Institutional
+   * v0.7 Features 25.5/27/29 — a modest, honest slice of "Institutional
    * Memory." One in three conversations, an agent recalls a real thing
-   * they were actually part of — either their own most recent completed
-   * Academy project, or (Feature 27) a real Library of Mistakes case
-   * study from a decision they were a real attendee of, referencing its
-   * real title and real in-game day. Never a fabricated memory, and
-   * never claiming credit/involvement that isn't actually real. Both
-   * sources are tried and one is picked at random from whichever
-   * actually has real content, rather than a single coin-flip that could
-   * silently waste the one-in-three chance on an empty source.
+   * they were actually part of — their own most recent completed Academy
+   * project, a real Library of Mistakes case study from a decision they
+   * were a real attendee of (Feature 27), or a real Reasoning Lab
+   * challenge they actually contributed a real Debate turn to
+   * (Feature 29) — referencing its real title/category and real in-game
+   * day. Never a fabricated memory, and never claiming credit/involvement
+   * that isn't actually real. All sources are tried and one is picked at
+   * random from whichever actually has real content, rather than a
+   * single coin-flip that could silently waste the one-in-three chance
+   * on an empty source.
    */
   private recallLine(agentId: AgentId): string | null {
     if (Math.random() > 1 / 3) return null;
-    const candidates = [this.academyRecall(agentId), this.caseStudyRecall(agentId)].filter((line): line is string => line !== null);
+    const candidates = [this.academyRecall(agentId), this.caseStudyRecall(agentId), this.reasoningRecall(agentId)].filter((line): line is string => line !== null);
     if (candidates.length === 0) return null;
     return pick(candidates);
   }
@@ -203,6 +205,15 @@ export class DialogueManager {
     const latest = own[own.length - 1];
     if (!latest) return null;
     return `That "${latest.title}" case study from Day ${latest.simDay} still comes up — ${latest.symbol}, a real lesson we filed away.`;
+  }
+
+  private reasoningRecall(agentId: AgentId): string | null {
+    const { reasoningChallenges } = gameStore.getSnapshot();
+    const own = reasoningChallenges.filter((c) => c.contributions.some((contribution) => contribution.agentId === agentId));
+    if (own.length === 0) return null;
+    const latest = own[own.length - 1];
+    if (!latest) return null;
+    return `The Reasoning Lab's "${latest.title}" exercise on ${latest.symbol}, back on Day ${latest.simDay}, sharpened how I think about this.`;
   }
 
   close(): void {

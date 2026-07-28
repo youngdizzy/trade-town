@@ -510,6 +510,75 @@ development milestones, not semver releases.
     expansion, and category filtering all rendered correct real content
     with zero console errors).
 
+- **v0.7 — The Reasoning Lab (Feature 29)** — the company practices how
+  it thinks, not just what it decides. `app/reasoning_lab.py` files a
+  real `ReasoningChallenge` periodically from the company's most recent
+  real AI Debate plus its linked `TradeDecision` — like the Discipline
+  Chamber, no function in this module ever reads a trade's pnl or
+  outcome, so this is decoupled from results structurally, not just by
+  convention.
+  - **Seven honest challenge categories** out of the brief's nine, each
+    mapped to one real, checkable signal on the linked Debate/
+    TradeDecision: **Finding Missing Information** (research confidence
+    below the same threshold `app/mistakes.py` uses), **Identifying Weak
+    Evidence** (a real opening statement carried no real backing evidence
+    — the same indirect "(...)" proxy the Discipline Chamber's own
+    cross-examination check relies on), **Recognizing Contradictory
+    Data** (the six analyst votes split three ways), **Separating Facts
+    from Assumptions** (a real debate challenge turn occurred),
+    **Evaluating Multiple Hypotheses** (the votes split exactly two
+    ways), **Comparing Competing Explanations** (two or more distinct
+    analysts each filed a real support turn), and **Improving
+    Communication** (the honest fallback when no stronger signal fired,
+    including when no real Debate exists at all). **Detecting Logical
+    Fallacies** and **Building Better Questions** have no real,
+    checkable signal anywhere in this codebase and are deliberately not
+    built.
+  - **Reasoning Level** gates which categories can actually be detected —
+    a real, monotonic completed-challenge count crossing fixed
+    thresholds (Foundations → Applied Reasoning → Advanced Reasoning),
+    mirroring `AcademyState`'s own progression convention exactly. The
+    three foundational categories need no prior progress; the four
+    covering less-common real debate shapes only appear once the company
+    has practiced the basics — an advanced category is skipped, not
+    faked, until its level is actually reached.
+  - **Collaborative Thinking, made real, not scripted**: each
+    challenge's `ReasoningContribution` list reframes the underlying AI
+    Debate's own real opening/challenge/support turns as the brief's
+    "departments collaborate" record — never invented dialogue between
+    fixed department roles that don't exist in this codebase.
+  - **Explain Your Thinking**: every challenge's `ReasoningSolution`
+    answers the brief's six required questions (what we know, what we do
+    not know, what assumptions exist, why the conclusion is reasonable,
+    how confident we are, what could change the conclusion) filled from
+    the linked decision's own real Confidence Engine factors, vote
+    reasoning, and final reasoning — never invented commentary.
+  - A new **REASONING** Command Center tab shows the company's current
+    Reasoning Level and progress, and a filterable, expandable Reasoning
+    History (collaborative contributions + full solution detail per
+    challenge). `DialogueManager` gained a third real recall source
+    (alongside completed Academy projects and Library of Mistakes case
+    studies): an agent who actually contributed a real Debate turn to a
+    filed challenge may reference it by title, symbol, and real
+    `simDay`.
+  - Explicit scope cuts, matching this session's honesty convention: new
+    seminar content, interactive-seminar UI, and richer collaboration
+    animations per Reasoning Level have no real data source and are not
+    built (the same "a real number/label, not new art per level"
+    boundary `AcademyState` already drew); challenges are generated on a
+    fixed evening cadence from the company's most recent real Debate,
+    skipping any cycle with no Debate yet or where the most recent Debate
+    was already used, rather than re-practicing the same already-reasoned
+    case just to hit the cadence.
+  - Verification: full backend (mypy/ruff/pytest, 301/301 — 21 new tests
+    in `test_reasoning_lab.py`) and frontend (tsc/eslint/build) clean. A
+    4000-tick standalone smoke test in Executive Operating Mode confirmed
+    the full real pipeline end to end (7 reasoning challenges across
+    three genuinely different real categories, Reasoning Level correctly
+    advancing to 2, zero exceptions); manually verified in the running
+    app (Playwright: the REASONING tab, level readout, and challenge
+    history all rendered correct real content with zero console errors).
+
 - **v0.6.3 — Executive Voting, Risk Command Center, Cyber Overlay** — the
   player is now formally TradeTown's CEO. A research candidate crossing
   the trade-confidence threshold no longer executes automatically: it

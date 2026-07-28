@@ -1185,6 +1185,93 @@ discipline score for those would mean inventing numbers with no real
 backing; the existing `ExecutiveReview` and `CompanyMemory` systems
 remain the honest record for those instead.
 
+### The Reasoning Lab (Feature 29)
+
+`app/reasoning_lab.py` files a real `ReasoningChallenge` periodically
+from the company's most recent real `Debate` plus its linked
+`TradeDecision` (wired into `nexus.tick()` on a fixed evening cadence,
+`REASONING_CHALLENGE_INTERVAL_DAYS = 2`, alongside the mentorship check).
+Like `discipline.py`, this is a structural guarantee, not a convention:
+no function in this module ever receives a trade's pnl or a decision's
+realized outcome — `generate_challenge()`'s signature only takes the
+`TradeDecision`, its `Debate`, an `unlocked_level`, and timestamps.
+
+Seven honest categories out of the brief's nine, each a real, checkable
+signal on the linked Debate/TradeDecision, checked in priority order by
+`_detect_category()` (first real match wins): `comparing_competing_explanations`
+(two or more distinct analysts each filed a real "support" turn),
+`recognizing_contradictory_data` (the six votes split three ways),
+`separating_facts_from_assumptions` (at least one real "challenge" turn
+occurred), `identifying_weak_evidence` (a real opening turn's text
+carries no real backing evidence — reusing the same indirect `"(" in
+turn.text` proxy `discipline.py`'s own cross-examination check relies on,
+since `AnalystVote.evidence` itself isn't persisted onto `TradeDecision`),
+`finding_missing_information` (the Research Confidence factor is below
+`app/mistakes.py`'s own `INCOMPLETE_RESEARCH_THRESHOLD`, imported rather
+than redefined), and `evaluating_multiple_hypotheses` (the votes split
+exactly two ways). `improving_communication` is the unconditional
+fallback once every other check fails — including when no real `Debate`
+exists at all, which is itself an honest communication gap, not a
+missing-data placeholder. `detecting_logical_fallacies` and
+`building_better_questions` have no real, checkable signal anywhere in
+this codebase (neither a fallacy detector nor a question-quality scorer
+exists) and are deliberately not built.
+
+Reasoning Level gates which categories can actually be selected:
+`_LEVEL_FOR_CATEGORY` requires level 1 for the three foundational
+categories and levels 2-3 for the four covering less-common real debate
+shapes; `_detect_category()` skips any real-but-locked match and falls
+through to the next candidate, so an advanced category is never faked
+early — it's genuinely absent from a challenge filed before the company
+has practiced the basics. `compute_reasoning_lab_state()` mirrors
+`compute_academy_state()`'s exact level/label-threshold convention
+(`_REASONING_LEVEL_THRESHOLDS`, a real monotonic completed-challenge
+count crossing fixed thresholds), the same "a real number and label, not
+new art per level" boundary `AcademyState` already drew.
+
+`ReasoningContribution` reframes the underlying `Debate`'s own real
+opening/challenge/support turns as the brief's "departments collaborate"
+record (Research asks Risk, News challenges assumptions, and so on) —
+never invented dialogue between fixed department roles that don't exist
+in this codebase; each turn's real `agent_id`/`role`/`stance`/`text` is
+copied directly. `ReasoningSolution` answers the brief's six "Explain
+Your Thinking" questions from the linked decision's own real Decision
+Confidence Engine factors (strong factors → `whatWeKnow`, weak factors →
+`whatWeDoNotKnow`), real opposing-vote reasoning (→ `assumptions`, with
+an honest fallback sentence when no analyst dissented), and the real
+`final_reasoning`/`confidence_engine.score` — never invented commentary.
+
+The evening-cadence check in `nexus.tick()` looks up the linked
+`TradeDecision` for `debates[-1]` (`decision.id ==
+f"decision-{latest_debate.proposal_id}"`, the same lookup convention the
+Discipline Chamber's own wiring uses in reverse) and skips generating a
+new challenge entirely when either no real Debate exists yet, or the
+most recent Debate was already used for the previous challenge filed
+(`reasoning_challenges[-1].decision_id == linked_decision.id`) — this
+module never re-practices the exact same already-reasoned-through case
+just to hit the cadence.
+
+A new **REASONING** Command Center tab (`ReasoningLabPanel.tsx`) shows
+the company's current Reasoning Level/progress and a category-filterable,
+expandable Reasoning History (real collaborative contributions +
+full six-field solution detail on expand) — the same expand-in-place
+accordion pattern the Discipline Chamber and Library of Mistakes already
+use. `DialogueManager.recallLine()` gained a third real source
+(`reasoningRecall()`, alongside the academy-project and case-study
+recalls) that fires only for an agent who actually contributed a real
+`Debate` turn to a filed challenge, referencing its real title, symbol,
+and `simDay`.
+
+**Explicit scope cuts**, matching this session's honesty convention: new
+seminar content, an interactive-seminar UI, and richer per-level
+collaboration animations have no real data source in this codebase and
+are not built — the same "a real number/label, not new content per
+level" boundary `AcademyState` already established. Challenges are only
+ever generated from the company's most recent real Debate on a fixed
+cadence, never backfilled for every historical Debate at once — the
+Reasoning Lab, like the Discipline Chamber, is a going-forward practice
+system, not a retroactive audit of every past decision.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

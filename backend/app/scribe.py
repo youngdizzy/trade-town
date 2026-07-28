@@ -24,6 +24,7 @@ from app.schemas import (
     MeetingMinutes,
     PaperOrder,
     PaperTrade,
+    ReasoningChallenge,
     ResearchItem,
     ScannerAlert,
     SimulationResult,
@@ -191,3 +192,7 @@ def record_discipline_review(memory: list[MemoryRecord], review: DisciplineRevie
 
 def record_case_study(memory: list[MemoryRecord], case_study: CaseStudy) -> None:
     record(memory, "case_study", case_study.title, f"{case_study.symbol}: {case_study.missed_information}")
+
+
+def record_reasoning_challenge(memory: list[MemoryRecord], challenge: ReasoningChallenge) -> None:
+    record(memory, "reasoning_challenge", f"Reasoning Lab: {challenge.title}", f"{challenge.symbol}: {challenge.solution.why_reasonable}")
