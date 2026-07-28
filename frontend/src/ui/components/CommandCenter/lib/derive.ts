@@ -3,6 +3,7 @@ import type {
   AgentState,
   AgentVote,
   CeoDecisionRecord,
+  ConfidenceTier,
   PaperOrder,
   PaperPortfolio,
   PaperTrade,
@@ -193,56 +194,33 @@ export function computeNoTradeStats(decisions: TradeDecision[]): NoTradeStats {
 }
 
 // --- v0.6.3 Feature 12/13 — Executive Voting + Risk Command Center -------
-// Trade Quality Score and the pre-trade checklist below are deliberately
-// built ONLY from data TradeTown's backend actually tracks: agent
-// agreement, research confidence, Sentinel/Guardian's real risk warnings,
-// and current portfolio exposure. The spec also names stop-loss distance,
+// The pre-trade checklist below is deliberately built ONLY from data
+// TradeTown's backend actually tracks: agent agreement, research
+// confidence, Sentinel/Guardian's real risk warnings, and current
+// portfolio exposure. The spec also names stop-loss distance,
 // take-profit distance, and reward-to-risk ratio — TradeTown's paper
 // broker has never placed stop-loss/take-profit exit orders (see
 // DecisionDetail's "Trade Plan" section above), so there is no real
 // number to show for those; rather than invent one, the UI says so
 // explicitly instead of rendering a fabricated ratio.
+//
+// The trade-quality SCORE itself moved server-side in v0.7 Feature 15
+// (see backend/app/confidence.py) — TradeProposal.confidenceEngine /
+// TradeDecision.confidenceEngine are now the single source of truth,
+// computed once at decision time and persisted, rather than recomputed
+// fresh (and potentially drifting) on every client render.
 
-export interface TradeQuality {
-  score: number; // 0-100 — evaluates the SETUP, not a win prediction
-  reasons: string[];
-  concerns: string[];
-}
+const TIER_TONE: Record<ConfidenceTier, "green" | "cyan" | "amber" | "red" | "purple"> = {
+  elite: "purple",
+  strong: "green",
+  good: "cyan",
+  moderate: "amber",
+  weak: "amber",
+  poor: "red",
+};
 
-export function computeTradeQuality(
-  proposal: TradeProposal,
-  riskWarnings: RiskWarning[],
-  portfolio: PaperPortfolio,
-  riskLimits: RiskLimits,
-): TradeQuality {
-  const totalVotes = proposal.analystVotes.length || 1;
-  const agreeing = proposal.analystVotes.filter((v) => v.choice === proposal.overallRecommendation).length;
-  const agreementPct = (agreeing / totalVotes) * 100;
-
-  const symbolWarning = riskWarnings.find((w) => w.symbol === proposal.symbol);
-  const riskComponent = symbolWarning ? (symbolWarning.severity === "critical" ? 15 : 55) : 90;
-
-  const exposurePct = riskLimits.maxOpenPositions > 0 ? (portfolio.positions.length / riskLimits.maxOpenPositions) * 100 : 0;
-  const exposureComponent = Math.max(0, 100 - exposurePct);
-
-  const score = Math.round(agreementPct * 0.4 + proposal.confidence * 0.25 + riskComponent * 0.2 + exposureComponent * 0.15);
-
-  const reasons: string[] = [];
-  const concerns: string[] = [];
-
-  if (agreementPct >= 80) reasons.push(`Strong multi-agent agreement — ${agreeing}/${totalVotes} analysts agree.`);
-  else if (agreementPct <= 40) concerns.push(`Weak agreement across the desk — only ${agreeing}/${totalVotes} analysts agree.`);
-
-  if (proposal.confidence >= 80) reasons.push(`High research confidence (${proposal.confidence.toFixed(0)}%).`);
-  else if (proposal.confidence < 60) concerns.push(`Research confidence is only ${proposal.confidence.toFixed(0)}%.`);
-
-  if (symbolWarning) concerns.push(`Active risk warning on ${proposal.symbol}: ${symbolWarning.message}`);
-  else reasons.push(`No active Sentinel/Guardian warning on ${proposal.symbol}.`);
-
-  if (exposurePct >= 80) concerns.push(`Portfolio is near its open-position limit (${portfolio.positions.length}/${riskLimits.maxOpenPositions}).`);
-  else reasons.push(`Portfolio exposure is acceptable (${portfolio.positions.length}/${riskLimits.maxOpenPositions} positions open).`);
-
-  return { score: Math.max(0, Math.min(100, score)), reasons, concerns };
+export function confidenceTierTone(tier: ConfidenceTier): "green" | "cyan" | "amber" | "red" | "purple" {
+  return TIER_TONE[tier];
 }
 
 export interface ChecklistItem {

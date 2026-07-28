@@ -1,6 +1,7 @@
 import { useGameStore } from "@/ui/hooks/useGameStore";
+import { CONFIDENCE_TIER_LABEL } from "@/types";
 import { EventBus } from "@/game/systems/EventBus";
-import { computeCeoStats } from "../lib/derive";
+import { computeCeoStats, confidenceTierTone } from "../lib/derive";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../ui";
 
 const CHOICE_TONE: Record<string, "green" | "red" | "amber"> = { buy: "green", sell: "red", wait: "amber" };
@@ -67,6 +68,9 @@ export function ExecutivePanel() {
                 >
                   <span className="font-cmdmono text-cmd-cyan">{p.symbol}</span>
                   <span className="text-[9px] text-cmd-textDim">{Math.round(p.confidence)}% confidence</span>
+                  <StatusPill tone={confidenceTierTone(p.confidenceEngine.tier)}>
+                    {CONFIDENCE_TIER_LABEL[p.confidenceEngine.tier]} · {Math.round(p.confidenceEngine.score)}
+                  </StatusPill>
                   <StatusPill tone={CHOICE_TONE[p.overallRecommendation]}>{p.overallRecommendation.toUpperCase()}</StatusPill>
                 </button>
               ))}

@@ -559,8 +559,40 @@ export interface AgentVote {
   reason: string;
 }
 
+// v0.7 Feature 15 — Decision Confidence Engine. Never predicts an
+// outcome, only scores the quality of the current setup's real
+// evidence — see backend/app/confidence.py for exactly which factors
+// are real and which named in the v0.7 brief (support/resistance,
+// multi-timeframe agreement, liquidity, historical setup matching)
+// have no real data source in this codebase and are not computed.
+export type ConfidenceTier = "elite" | "strong" | "good" | "moderate" | "weak" | "poor";
+
+export interface ConfidenceFactor {
+  name: string;
+  score: number; // 0-100
+  weight: number; // 0-1
+  detail: string;
+}
+
+export interface DecisionConfidence {
+  score: number; // 0-100
+  tier: ConfidenceTier;
+  summary: string;
+  factors: ConfidenceFactor[];
+}
+
+export const CONFIDENCE_TIER_LABEL: Record<ConfidenceTier, string> = {
+  elite: "Elite Setup",
+  strong: "Strong Setup",
+  good: "Good Setup",
+  moderate: "Moderate",
+  weak: "Weak",
+  poor: "Poor",
+};
+
 /** The permanent, explainable-AI record of one trade candidate's outcome
- * (v0.6 brief, Decision Voting + Explainable AI) — see backend/app/decision.py. */
+ * (v0.6 brief, Decision Voting + Explainable AI; resolved by the CEO
+ * since v0.6.3 — see backend/app/executive.py). */
 export interface TradeDecision {
   id: string;
   symbol: string;
@@ -575,6 +607,10 @@ export interface TradeDecision {
   confidence: number;
   finalReasoning: string;
   orderId: string | null;
+  /** The real Decision Confidence Engine reading at the moment this
+   * decision was made, carried over from the TradeProposal that
+   * produced it — null only for decisions predating this field. */
+  confidenceEngine: DecisionConfidence | null;
   createdAt: string;
 }
 
@@ -616,6 +652,7 @@ export interface TradeProposal {
   overallRecommendation: AnalystChoice;
   researchSummary: string;
   riskSummary: string;
+  confidenceEngine: DecisionConfidence;
   createdAt: string;
   /** Simulated-clock minutes-since-epoch — expires after 3 in-game days unactioned. */
   createdSimMinutes: number;

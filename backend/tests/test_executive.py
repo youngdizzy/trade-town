@@ -24,6 +24,7 @@ from app.portfolio import default_portfolio
 from app.schemas import (
     AnalystVote,
     CeoDecisionRecord,
+    DecisionConfidence,
     PaperTrade,
     RiskLimits,
     RiskWarning,
@@ -143,6 +144,8 @@ class TestGenerateProposal:
             guardian_warning=None,
             provider=provider,
             now_sim_minutes=1440,
+            portfolio=default_portfolio(),
+            risk_limits=RiskLimits(),
         )
         assert proposal.symbol == "NEXA"
         assert len(proposal.analyst_votes) == 6
@@ -166,6 +169,8 @@ class TestResolveProposal:
             guardian_warning=None,
             provider=provider,
             now_sim_minutes=0,
+            portfolio=default_portfolio(),
+            risk_limits=RiskLimits(),
         )
 
     def test_buy_opens_a_real_long_position(self) -> None:
@@ -304,6 +309,7 @@ class TestExpireStaleProposals:
             overallRecommendation="buy",
             researchSummary="test",
             riskSummary="test",
+            confidenceEngine=DecisionConfidence(score=50.0, tier="moderate", summary="test", factors=[]),
             createdAt=_now_iso(),
             createdSimMinutes=created_sim_minutes,
         )

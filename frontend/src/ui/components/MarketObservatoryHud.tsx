@@ -3,7 +3,8 @@ import { useGameStore } from "@/ui/hooks/useGameStore";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { CandlestickChart } from "@/ui/components/CommandCenter/CandlestickChart";
 import { useCandles } from "@/ui/components/CommandCenter/lib/useCandles";
-import { RISK_LEVEL_LABEL, marketRegimeHeuristic, riskLevel, riskTextClass } from "@/ui/components/CommandCenter/lib/derive";
+import { CONFIDENCE_TIER_LABEL } from "@/types";
+import { RISK_LEVEL_LABEL, confidenceTierTone, marketRegimeHeuristic, riskLevel, riskTextClass } from "@/ui/components/CommandCenter/lib/derive";
 import { Glass, RiskDot, StatusPill, TerminalLabel } from "@/ui/components/CommandCenter/ui";
 
 const MACRO_CATEGORIES = new Set(["economy", "gold", "bitcoin", "index"]);
@@ -52,6 +53,11 @@ export function MarketObservatoryHud() {
           <span className="text-cmd-textDim">
             {activeWatch ? `${activeWatch.symbol} — $${activeWatch.lastPrice.toFixed(2)} (${activeWatch.dailyChangePct >= 0 ? "+" : ""}${activeWatch.dailyChangePct.toFixed(2)}%)` : symbol}
           </span>
+          {latestDecisionForSymbol?.confidenceEngine && (
+            <StatusPill tone={confidenceTierTone(latestDecisionForSymbol.confidenceEngine.tier)}>
+              {CONFIDENCE_TIER_LABEL[latestDecisionForSymbol.confidenceEngine.tier]} · {Math.round(latestDecisionForSymbol.confidenceEngine.score)}
+            </StatusPill>
+          )}
           <span className={`flex items-center gap-1 ${riskTextClass(level)}`}>
             <RiskDot level={level} /> {RISK_LEVEL_LABEL[level]}
           </span>

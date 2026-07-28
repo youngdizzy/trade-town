@@ -659,10 +659,10 @@ class AgentVote(CamelModel):
 
 class TradeDecision(CamelModel):
     """The permanent, explainable-AI record of one trade candidate's
-    outcome (v0.6 brief, Decision Voting + Explainable AI) — see
-    app/decision.py. Stored forever (capped, like every other list here)
-    so a past "why did/didn't we trade this" question always has an
-    answer."""
+    outcome (v0.6 brief, Decision Voting + Explainable AI; resolved by
+    the CEO since v0.6.3 — see app/executive.py). Stored forever
+    (capped, like every other list here) so a past "why did/didn't we
+    trade this" question always has an answer."""
 
     id: str
     symbol: str
@@ -677,6 +677,13 @@ class TradeDecision(CamelModel):
     confidence: float
     final_reasoning: str = Field(alias="finalReasoning")
     order_id: str | None = Field(default=None, alias="orderId")
+    # v0.7 Feature 15 — the real Decision Confidence Engine reading at
+    # the moment this decision was made, carried over from the
+    # TradeProposal that produced it (see app/executive.py's
+    # resolve_proposal) so Post-Trade Review can compare it against the
+    # trade's real realized outcome even after the proposal itself is
+    # gone. None only for decisions predating this field.
+    confidence_engine: "DecisionConfidence | None" = Field(default=None, alias="confidenceEngine")
     created_at: str = Field(alias="createdAt")
 
 
@@ -812,6 +819,28 @@ class AnalystVote(CamelModel):
     evidence: list[str] = Field(default_factory=list)
 
 
+# v0.7 Feature 15 — Decision Confidence Engine. Never a prediction of
+# outcome, only a measure of the current setup's evidence quality (see
+# app/confidence.py's module docstring for exactly which factors are
+# real and which named in the v0.7 brief have no real data source and
+# are deliberately not computed).
+ConfidenceTier = Literal["elite", "strong", "good", "moderate", "weak", "poor"]
+
+
+class ConfidenceFactor(CamelModel):
+    name: str
+    score: float  # 0-100, this factor's own reading
+    weight: float  # 0-1, this factor's share of the total score
+    detail: str
+
+
+class DecisionConfidence(CamelModel):
+    score: float  # 0-100, weighted sum of factors
+    tier: ConfidenceTier
+    summary: str
+    factors: list[ConfidenceFactor] = Field(default_factory=list)
+
+
 class TradeProposal(CamelModel):
     """A trade candidate awaiting the CEO's decision — real, persisted
     game progress (not regenerable practice content), since losing a
@@ -830,6 +859,7 @@ class TradeProposal(CamelModel):
     overall_recommendation: AnalystChoice = Field(alias="overallRecommendation")
     research_summary: str = Field(alias="researchSummary")
     risk_summary: str = Field(alias="riskSummary")
+    confidence_engine: DecisionConfidence = Field(alias="confidenceEngine")
     created_at: str = Field(alias="createdAt")
     # Simulated-clock minutes-since-epoch at creation, the same
     # convention PaperPosition.opened_sim_minutes uses — lets stale

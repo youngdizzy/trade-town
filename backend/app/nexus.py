@@ -518,6 +518,8 @@ def _generate_trade_proposals(
             guardian_warning=guardian_warning,
             provider=market_data_provider,
             now_sim_minutes=now_sim_minutes,
+            portfolio=portfolio,
+            risk_limits=risk_limits,
         )
         new_proposals.append(proposal)
         pending_symbols.add(item.symbol)

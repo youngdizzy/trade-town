@@ -1,9 +1,10 @@
 import { useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import type { TradeDecision } from "@/types";
+import { CONFIDENCE_TIER_LABEL } from "@/types";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { CandlestickChart } from "./CandlestickChart";
-import { bearCaseVotes, bullCaseVotes, exitOrdersForPosition, formatMoney, linkedOrderFor, marketRegimeHeuristic, voteDirection } from "./lib/derive";
+import { bearCaseVotes, bullCaseVotes, confidenceTierTone, exitOrdersForPosition, formatMoney, linkedOrderFor, marketRegimeHeuristic, voteDirection } from "./lib/derive";
 import { useCandles } from "./lib/useCandles";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "./ui";
 
@@ -31,6 +32,7 @@ export function DecisionDetail({ decision, onClose }: { decision: TradeDecision;
   const position = paperPortfolio.positions.find((p) => p.symbol === decision.symbol) ?? null;
   const exitOrders = position ? exitOrdersForPosition(position.id, paperPortfolio.orders) : [];
   const approved = decision.outcome === "trade" && decision.orderId !== null;
+  const closedTrade = paperPortfolio.tradeHistory.find((t) => t.decisionId === decision.id) ?? null;
 
   const [timeframe, setTimeframe] = useState("1h");
   const { candles, loading, error } = useCandles(decision.symbol, timeframe, 80);
@@ -145,6 +147,41 @@ export function DecisionDetail({ decision, onClose }: { decision: TradeDecision;
             </div>
             <Meter value={decision.confidence} tone={decision.confidence >= 70 ? "green" : decision.confidence >= 50 ? "amber" : "red"} />
           </Glass>
+
+          {decision.confidenceEngine && (
+            <Glass className="p-3">
+              <div className="mb-1 flex items-center justify-between">
+                <TerminalLabel>Decision Confidence Engine</TerminalLabel>
+                <StatusPill tone={confidenceTierTone(decision.confidenceEngine.tier)}>{CONFIDENCE_TIER_LABEL[decision.confidenceEngine.tier]}</StatusPill>
+              </div>
+              <div className="mb-1 font-cmdmono text-cmd-text">{Math.round(decision.confidenceEngine.score)}/100</div>
+              <Meter
+                value={decision.confidenceEngine.score}
+                tone={decision.confidenceEngine.score >= 70 ? "green" : decision.confidenceEngine.score >= 45 ? "amber" : "red"}
+              />
+              <div className="mt-1.5 text-[9px] text-cmd-textDim">{decision.confidenceEngine.summary}</div>
+            </Glass>
+          )}
+
+          {closedTrade && decision.confidenceEngine && (
+            <Glass className={`p-3 ${closedTrade.pnl > 0 ? "border-cmd-green/30" : "border-cmd-red/30"}`}>
+              <TerminalLabel>Post-Trade Review</TerminalLabel>
+              <DataRow
+                label="Setup quality at decision time"
+                value={`${Math.round(decision.confidenceEngine.score)}/100 (${CONFIDENCE_TIER_LABEL[decision.confidenceEngine.tier]})`}
+              />
+              <DataRow label="Actual result" value={`${closedTrade.pnl >= 0 ? "+" : ""}${closedTrade.pnl.toFixed(2)} (${closedTrade.pnlPct.toFixed(1)}%)`} valueClassName={closedTrade.pnl > 0 ? "text-cmd-green" : "text-cmd-red"} />
+              <div className="mt-1.5 text-cmd-text">
+                {decision.confidenceEngine.score >= 70 && closedTrade.pnl <= 0
+                  ? "A losing trade with an excellent setup — still a good decision. Process beats any single outcome."
+                  : decision.confidenceEngine.score < 55 && closedTrade.pnl > 0
+                    ? "A winning trade with a weak setup — this reads as luck, not skill. Don't mistake this one for validation of the process."
+                    : decision.confidenceEngine.score >= 70 && closedTrade.pnl > 0
+                      ? "A strong setup that also won — the process and the outcome agree."
+                      : "A weak setup that also lost — the process correctly flagged the risk here."}
+              </div>
+            </Glass>
+          )}
 
           <Glass className="p-3">
             <TerminalLabel>Trade Plan</TerminalLabel>

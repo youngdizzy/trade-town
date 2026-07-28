@@ -40,6 +40,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from app.confidence import compute_confidence
 from app.market_data import Candle as ProviderCandle
 from app.market_data import MarketDataProvider
 from app.market_data import trend_pct, volatility_pct
@@ -248,6 +249,8 @@ def generate_proposal(
     guardian_warning: RiskWarning | None,
     provider: MarketDataProvider,
     now_sim_minutes: int,
+    portfolio: PaperPortfolio,
+    risk_limits: RiskLimits,
 ) -> TradeProposal:
     assert item.symbol is not None
     votes, overall = generate_analyst_votes(
@@ -256,6 +259,7 @@ def generate_proposal(
     risk_summary = (
         sentinel_warning.message if sentinel_warning else guardian_warning.message if guardian_warning else f"{item.symbol} is within all configured risk limits."
     )
+    confidence_engine = compute_confidence(votes, overall, item.confidence, portfolio, risk_limits)
     return TradeProposal(
         id=f"proposal-{item.id}",
         symbol=item.symbol,
@@ -267,6 +271,7 @@ def generate_proposal(
         overallRecommendation=overall,
         researchSummary=f"{item.title} — {item.summary}",
         riskSummary=risk_summary,
+        confidenceEngine=confidence_engine,
         createdAt=_now_iso(),
         createdSimMinutes=now_sim_minutes,
     )
@@ -335,6 +340,7 @@ def resolve_proposal(
         confidence=proposal.confidence,
         finalReasoning=final_reasoning,
         orderId=order_id,
+        confidenceEngine=proposal.confidence_engine,
         createdAt=_now_iso(),
     )
     record = CeoDecisionRecord(

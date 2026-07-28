@@ -1,12 +1,12 @@
 import { useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import type { AnalystChoice, AnalystVote, TradeProposal } from "@/types";
-import { ROLE_TO_AGENT } from "@/types";
+import { CONFIDENCE_TIER_LABEL, ROLE_TO_AGENT } from "@/types";
 import { api } from "@/net/api";
 import { NexusManager } from "@/game/systems/NexusManager";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { EventBus } from "@/game/systems/EventBus";
-import { computeTradeQuality, formatMoney, preTradeChecklist } from "./lib/derive";
+import { confidenceTierTone, formatMoney, preTradeChecklist } from "./lib/derive";
 import { AnimatedGrid, DataRow, Glass, Meter, StatusPill, TerminalLabel } from "./ui";
 
 const CHOICE_TONE: Record<AnalystChoice, "green" | "red" | "amber"> = { buy: "green", sell: "red", wait: "amber" };
@@ -75,7 +75,7 @@ export function ExecutiveVoting() {
     }
   };
 
-  const quality = computeTradeQuality(proposal, riskWarnings, paperPortfolio, riskLimits);
+  const confidence = proposal.confidenceEngine;
   const checklist = preTradeChecklist(proposal, riskWarnings, paperPortfolio, riskLimits);
   const unmetCount = checklist.filter((c) => !c.met).length;
 
@@ -88,6 +88,9 @@ export function ExecutiveVoting() {
             <span className="tracking-[0.2em] text-cmd-cyan">EXECUTIVE VOTING</span>
             <span className="font-cmdmono text-lg text-cmd-text">{proposal.symbol}</span>
             <StatusPill tone={CHOICE_TONE[proposal.overallRecommendation]}>DESK: {proposal.overallRecommendation.toUpperCase()}</StatusPill>
+            <StatusPill tone={confidenceTierTone(confidence.tier)}>
+              {CONFIDENCE_TIER_LABEL[confidence.tier]} · {Math.round(confidence.score)}
+            </StatusPill>
           </div>
           {tradeProposals.length > 1 && <span className="text-[9px] text-cmd-textDim">+{tradeProposals.length - 1} more pending</span>}
         </header>
@@ -150,21 +153,20 @@ export function ExecutiveVoting() {
           {showAnalysis && (
             <div className="space-y-3">
               <Glass className="p-3">
-                <TerminalLabel>Trade Quality Score</TerminalLabel>
+                <TerminalLabel>Decision Confidence Engine</TerminalLabel>
                 <div className="mb-1 flex items-center justify-between">
-                  <span className="font-cmdmono text-xl text-cmd-text">{quality.score}/100</span>
-                  <span className="text-[9px] text-cmd-textDim">Evaluates the setup, not a guaranteed outcome.</span>
+                  <span className="font-cmdmono text-xl text-cmd-text">
+                    {Math.round(confidence.score)}/100 <span className="text-[11px] text-cmd-textDim">{CONFIDENCE_TIER_LABEL[confidence.tier]}</span>
+                  </span>
+                  <span className="text-[9px] text-cmd-textDim">Scores setup quality, not a guaranteed outcome.</span>
                 </div>
-                <Meter value={quality.score} tone={quality.score >= 70 ? "green" : quality.score >= 45 ? "amber" : "red"} />
-                <div className="mt-2 space-y-1 text-[9px]">
-                  {quality.reasons.map((r, i) => (
-                    <div key={`r${i}`} className="text-cmd-green">
-                      + {r}
-                    </div>
-                  ))}
-                  {quality.concerns.map((c, i) => (
-                    <div key={`c${i}`} className="text-cmd-amber">
-                      ⚠ {c}
+                <Meter value={confidence.score} tone={confidence.score >= 70 ? "green" : confidence.score >= 45 ? "amber" : "red"} />
+                <div className="mt-2 text-[9px] text-cmd-textDim">{confidence.summary}</div>
+                <div className="mt-2 space-y-1">
+                  {confidence.factors.map((f) => (
+                    <div key={f.name} className="flex items-center justify-between gap-2 border-t border-cmd-border/40 pt-1 text-[9px]">
+                      <span className="text-cmd-textDim">{f.name}</span>
+                      <span className={f.score >= 60 ? "text-cmd-green" : f.score >= 40 ? "text-cmd-amber" : "text-cmd-red"}>{f.score.toFixed(0)}</span>
                     </div>
                   ))}
                 </div>
