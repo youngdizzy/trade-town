@@ -195,7 +195,7 @@ test.describe("Global Command Center", () => {
     expect(moved.x).not.toBe(frozen.x);
   });
 
-  test("expands to the Full Command Center and renders all 19 tabs with graceful empty states", async ({ page }) => {
+  test("expands to the Full Command Center and renders all 20 tabs with graceful empty states", async ({ page }) => {
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);
     await continueGame(page);
@@ -214,7 +214,7 @@ test.describe("Global Command Center", () => {
     // ticking throughout, a genuine trade or trade proposal can appear
     // (and pop up) mid-test. clickTab() dismisses and retries rather
     // than losing the race to a popup that appears in that instant.
-    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "COMPANY", "KNOWLEDGE", "DISCIPLINE", "REASONING", "REFLECTION", "MENTOR", "TREASURY", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
+    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "COMPANY", "KNOWLEDGE", "DISCIPLINE", "REASONING", "REFLECTION", "MENTOR", "TREASURY", "CALENDAR", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
     for (const tab of tabs) {
       await clickTab(page, tab);
       await expect(page.getByRole("button", { name: tab, exact: true })).toHaveClass(/text-cmd-cyan/);
@@ -766,5 +766,54 @@ test.describe("Global Command Center", () => {
     await amountInput.type("2");
     await expect(page.getByRole("button", { name: "TREASURY", exact: true })).toHaveClass(/text-cmd-cyan/);
     await expect(amountInput).toHaveValue("2");
+  });
+
+  test("CALENDAR tab shows real system events, a real per-agent Live Schedule, and a working custom-event round trip", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickTab(page, "CALENDAR");
+
+    await expect(page.getByText("Executive View", { exact: true })).toBeVisible();
+    await expect(page.getByText("Current Company Focus", { exact: true })).toBeVisible();
+    await expect(page.getByText("Today's Schedule", { exact: true })).toBeVisible();
+    await expect(page.getByText("Tomorrow's Schedule", { exact: true })).toBeVisible();
+    await expect(page.getByText("Weekly Agenda", { exact: true })).toBeVisible();
+    await expect(page.getByText("Monthly Company Events", { exact: true })).toBeVisible();
+
+    // A real, always-present system event — Sage's daily Morning Briefing
+    // — Question of the Day — appears somewhere in the upcoming lists.
+    await expect(page.getByText(/Morning Briefing/).first()).toBeVisible();
+
+    // Live Schedule: switching agents shows that real agent's own full
+    // daily schedule (the same real blocks app/schedule.py drives).
+    await expect(page.getByText("Live Schedule", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Atlas", exact: true }).click();
+    await expect(page.getByText("Atlas's Real Daily Schedule")).toBeVisible();
+    await expect(page.getByText("Reviewing overnight strategy")).toBeVisible();
+
+    // Custom event round trip via a real POST /api/calendar/events/create
+    // and /delete. Scheduled for tomorrow at a fixed hour — always in the
+    // future regardless of the real backend's current in-game hour, since
+    // this shared dev backend keeps ticking for this whole file's run.
+    const dayInput = page.getByTestId("calendar-event-day");
+    const currentDay = Number(await dayInput.inputValue());
+    await dayInput.fill(String(currentDay + 1));
+    await page.getByTestId("calendar-event-hour").fill("9");
+    await page.getByTestId("calendar-event-minute").fill("0");
+
+    const uniqueTitle = `Playwright test event ${Date.now()}`;
+    await page.getByTestId("calendar-event-title").fill(uniqueTitle);
+    await page.getByRole("button", { name: "Schedule Event", exact: true }).click();
+
+    const eventRow = page.getByText(uniqueTitle, { exact: true });
+    await expect(eventRow).toBeVisible({ timeout: 5000 });
+
+    // Deleting it removes it — the ✕ button sits in the same row.
+    await eventRow.locator("xpath=..").getByText("✕", { exact: true }).click();
+    await expect(eventRow).not.toBeVisible({ timeout: 5000 });
   });
 });

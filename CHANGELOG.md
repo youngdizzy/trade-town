@@ -848,6 +848,74 @@ development milestones, not semver releases.
     `POST /api/time/advance`, and the number-key tab shortcut correctly
     ignoring a focused form field).
 
+- **v0.7 — CEO Calendar & Company Schedule (Feature 36)** — one place
+  that aggregates every real, already-computable recurring company event,
+  rather than a fabricated fixed hourly company-wide timetable.
+  - **System events**: `app/calendar.py`'s `compute_system_events()`
+    turns nexus.tick()'s own fixed cadence checkpoints — Weekly/Monthly
+    Coach Reports, the Monthly Executive Review, the Monthly Treasury
+    Savings Report, Weekly/Monthly Reflection Sessions, Sage's daily
+    Question of the Day — into a real, dated event list, recomputed fresh
+    every tick the same "cheap, always current" way company_health/
+    academy_state already are. The two *conditional* cadences (the
+    Reasoning Lab challenge and the Academy mentorship check) get a live
+    `eligible` flag computed by re-running the exact same real gate
+    `nexus.tick()` itself uses — a genuine "would this fire right now"
+    check against current data, not a guess about the future. Active
+    research items get an honest ESTIMATED completion date/time,
+    projected from the real current confidence and the real average
+    per-tick confidence-gain rate (scaled by Feature 34's research-speed
+    Company Priority multiplier when active) — labeled ESTIMATED, the
+    same "never claim more certainty than the data supports" convention
+    the WhatIf Simulation Lab's own "SIMULATED" badge already set. A
+    "Company Anniversary" milestone (day 365, 730, ...) rides the same
+    honestly-arbitrary-but-fixed-and-disclosed "30-day month" convention
+    `analytics.py` already uses for TradeTown's calendar.
+  - **Player events**: the CEO can schedule a custom calendar entry
+    (title + category, from the brief's own eight named examples plus
+    "other") for any real future day/hour/minute via a new
+    `POST /api/calendar/events/create` / `/delete` pair — informational
+    only, the same "no fabricated mechanical effect" boundary Feature
+    33's cut CEO Benefits list already established; scheduling a "Company
+    Holiday" doesn't pause research, and an "Extra Training Day" doesn't
+    boost Academy points, since no real payroll/attendance/training-boost
+    system exists anywhere in this codebase to attach one to honestly.
+  - A new **CALENDAR** Command Center tab (`CalendarPanel.tsx`) shows
+    Today's/Tomorrow's Schedule, a Weekly Agenda, Monthly Company Events,
+    an Executive View (current/next event, real department working/idle
+    counts, today's real meeting count, the real current Company
+    Priority), the custom-event form, and a **Live Schedule** section —
+    click any of the 11 agents to see their real current activity, room,
+    mood, Knowledge Level, active research, and their full real daily
+    schedule block-by-block (reusing the already-shipped client-side
+    `Schedule.ts` mirror, no new backend endpoint needed).
+  - **Explicit scope cuts**: the brief's fixed "8:00 Morning Briefing,
+    8:30 department assignments, 10:00 Research Sessions, ..." example
+    day is not reproduced — that exact synchronized company-wide
+    timetable doesn't exist in this codebase (each of the 11 agents
+    already runs its own distinct, personality-driven schedule — see
+    Feature 35), and fabricating one here would misrepresent what
+    actually happens. "Academy Classes" gets no fixed slot or ETA —
+    unlike research's steady per-tick rate, Academy progress moves in
+    irregular real bursts with nothing steady to project from. "Department
+    Meetings" gets no fixed slot either — `MEETING_CHANCE_PER_TICK` means
+    they're called spontaneously, never on a schedule; the panel surfaces
+    today's real count instead. Employee Birthdays (marked optional in
+    the brief) is cut outright — no agent has a birth date anywhere in
+    this codebase. "Missed Meetings" (an Executive View field the brief
+    itself asks for) is cut — no agent is ever "invited" in a trackable
+    way. Guest Lecturer, Academy Exam, Innovation Day, Department
+    Workshop, Knowledge Fair, Reflection Conference, Celebration Party,
+    and Research Presentation have no real system behind them anywhere
+    in this codebase and are not fabricated.
+  - Verification: full backend (mypy/ruff/pytest, 404/404 — 26 new tests
+    in `test_calendar.py`) and frontend (tsc/eslint/build) clean.
+    Manually verified in the running app (Playwright, 27/27 counting the
+    same tolerated real-trade-timing skip every run of this suite
+    already has — including a new CALENDAR-tab test covering the real
+    system-event lists, the per-agent Live Schedule, and a full custom-
+    event create/delete round trip against the live backend).
+
 - **v0.6.3 — Executive Voting, Risk Command Center, Cyber Overlay** — the
   player is now formally TradeTown's CEO. A research candidate crossing
   the trade-confidence threshold no longer executes automatically: it

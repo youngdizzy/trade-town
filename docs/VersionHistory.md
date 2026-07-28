@@ -463,6 +463,40 @@ tolerates) — a real deposit/withdraw round trip, Company Priority
 persisting across a reload, and a real End Workday clock jump all
 confirmed against the live backend.
 
+### v0.7 continued — CEO Calendar & Company Schedule (Feature 36)
+
+One place that aggregates every real, already-computable recurring
+company event, rather than the brief's fixed hourly company-wide
+timetable — that exact synchronized choreography doesn't exist here,
+since each of the 11 agents already runs its own distinct,
+personality-driven schedule (Feature 35). The calendar instead surfaces
+nexus.tick()'s own fixed cadence checkpoints (Weekly/Monthly Coach
+Reports, the Monthly Executive Review, the Monthly Treasury Savings
+Report, Weekly/Monthly Reflection Sessions, Sage's daily Question of the
+Day) across a 35-day horizon; the two conditional cadences (the
+Reasoning Lab challenge, the Academy mentorship check) get a live
+`eligible` flag computed by re-running the exact real gate that decides
+whether either actually fires, never a guess about the future. Active
+research gets an honest ESTIMATED completion date/time projected from
+real confidence and gain-rate data — labeled ESTIMATED, the same
+standard the WhatIf Lab's own "SIMULATED" badge already set. The CEO can
+also schedule custom calendar events (the brief's eight named types plus
+"other") — informational only, since no real system exists anywhere in
+this codebase to attach a mechanical effect to a "Company Holiday" or
+"Extra Training Day" honestly. A new CALENDAR Command Center tab shows
+Today's/Tomorrow's Schedule, a Weekly Agenda, Monthly Company Events, an
+Executive View, and a Live Schedule where selecting any agent shows their
+real current state plus their complete real daily schedule. Explicit
+scope cuts: Academy Classes and Department Meetings get no fixed slot
+(nothing steady to project from, meetings are spontaneous by design);
+Employee Birthdays and Missed Meetings are cut outright — no real data
+exists to back either; Guest Lecturer, Academy Exam, Innovation Day,
+Department Workshop, Knowledge Fair, Reflection Conference, Celebration
+Party, and Research Presentation have no real system behind them and
+aren't fabricated. 26 new backend tests (404/404 passing); verified in
+the running app (Playwright, 27/27) with a real custom-event create/
+delete round trip confirmed against the live backend.
+
 ## What's next for v0.8 (not started, not scoped)
 
 These are candidate directions surfaced by v0.6/v0.7's design, not

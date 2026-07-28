@@ -15,6 +15,7 @@ from app.academy import compute_academy_state, default_agent_knowledge
 from app.agents import all_agent_ids
 from app.config import settings
 from app.mentor import compute_mentor_state, compute_thinking_profiles, generate_question_of_the_day, submit_response
+from app.calendar import create_player_event, default_calendar, delete_player_event
 from app.treasury import create_rule, default_treasury, deposit, pause_all_rules, toggle_rule, withdraw
 from app.reasoning_lab import compute_reasoning_lab_state
 from app.wisdom import compute_wisdom_score
@@ -36,6 +37,7 @@ from app.schemas import (
     GameSaveState,
     GatekeeperRejection,
     MeetingState,
+    PlayerEventCategory,
     PlayerVsAiPrompt,
     PlayerVsAiState,
     SavingsRuleType,
@@ -154,6 +156,7 @@ def default_state() -> GameSaveState:
         ),
         mentorState=compute_mentor_state(1, _now_iso()),
         treasury=default_treasury(_now_iso()),
+        calendar=default_calendar(_now_iso()),
         updatedAt=_now_iso(),
     )
 
@@ -283,6 +286,28 @@ class GameState:
         async with self.lock:
             self.data = self.data.model_copy(update={"treasury": pause_all_rules(self.data.treasury, now_iso=_now_iso())})
             return self.data
+
+    async def create_calendar_event(self, category: PlayerEventCategory, title: str, day: int, hour: int, minute: int) -> tuple[GameSaveState, str | None]:
+        """CEO-scheduled custom calendar entry — informational only, the
+        same "no fabricated mechanical effect" boundary calendar.py's own
+        module docstring documents. Under the same lock every other state
+        mutation uses."""
+        async with self.lock:
+            time = self.data.time
+            event_id = f"calendar-player-{time.day}-{time.hour}-{time.minute}-{len(self.data.calendar.player_events)}"
+            new_events, error = create_player_event(
+                self.data.calendar.player_events, category=category, title=title, day=day, hour=hour, minute=minute, now=time, now_iso=_now_iso(), event_id=event_id
+            )
+            if error is None:
+                self.data = self.data.model_copy(update={"calendar": self.data.calendar.model_copy(update={"player_events": new_events, "updated_at": _now_iso()})})
+            return self.data, error
+
+    async def delete_calendar_event(self, event_id: str) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            new_events, error = delete_player_event(self.data.calendar.player_events, event_id)
+            if error is None:
+                self.data = self.data.model_copy(update={"calendar": self.data.calendar.model_copy(update={"player_events": new_events, "updated_at": _now_iso()})})
+            return self.data, error
 
     async def mark_lesson_viewed(self, lesson_id: str) -> EducationProgress:
         async with self.lock:

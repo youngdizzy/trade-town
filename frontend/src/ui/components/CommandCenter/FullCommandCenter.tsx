@@ -23,6 +23,7 @@ import { ReasoningLabPanel } from "./panels/ReasoningLabPanel";
 import { ReflectionPanel } from "./panels/ReflectionPanel";
 import { MentorPanel } from "./panels/MentorPanel";
 import { TreasuryPanel } from "./panels/TreasuryPanel";
+import { CalendarPanel } from "./panels/CalendarPanel";
 import { DecisionDetail } from "./DecisionDetail";
 
 // Note: "ACADEMY" (below) is the pre-existing v0.6.2 Trading Academy tab
@@ -46,6 +47,7 @@ const TABS = [
   "REFLECTION",
   "MENTOR",
   "TREASURY",
+  "CALENDAR",
   "TRAINING",
   "PVAI",
   "ACADEMY",
@@ -159,6 +161,7 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
         {tab === "REFLECTION" && <ReflectionPanel />}
         {tab === "MENTOR" && <MentorPanel />}
         {tab === "TREASURY" && <TreasuryPanel />}
+        {tab === "CALENDAR" && <CalendarPanel />}
         {tab === "TRAINING" && <CalibrationPanel onNeedHelp={needHelp} />}
         {tab === "PVAI" && <PlayerVsAiPanel />}
         {tab === "ACADEMY" && <EducationPanel openLessonId={helpLessonId} />}

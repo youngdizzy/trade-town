@@ -34,10 +34,12 @@ from app.agent_energy import RESEARCH_BOOST_AMOUNT, regen_daily, spend
 from app.agents import AGENT_PROFILES, LOCATION_TO_SCENE, all_agent_ids
 from app.analytics import compute_performance_snapshot, confidence_accuracy, period_profit_dollars, record_snapshot
 from app.broker import tick_broker
+from app.calendar import compute_system_events
 from app.coach import generate_report as generate_coach_report
 from app.coach import record_report as record_coach_report_entry
 from app.company_health import compute_company_health
 from app.company_score import compute_company_score
+from app.config import settings
 from app.debate import generate_debate
 from app.discipline import generate_discipline_review, record_review as record_discipline_review_entry
 from app.discussion import generate_discussion
@@ -92,6 +94,7 @@ from app.schemas import (
     AgentKnowledgeState,
     AgentOverride,
     AgentState,
+    CalendarState,
     CaseStudy,
     CeoDecisionRecord,
     CoachReport,
@@ -1323,6 +1326,28 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     for entry in hall_of_fame[hof_before:]:
         record_hall_of_fame_entry(memory, entry)
 
+    # v0.7 Feature 36 — the CEO Calendar. system_events is recomputed
+    # fresh every tick from real current data (cheap — see calendar.py's
+    # own module docstring), the same "always current, never stale"
+    # reasoning company_health/academy_state already use; player_events
+    # is only ever touched by the explicit create/delete endpoints in
+    # state.py, so it's carried through unchanged here.
+    calendar_state = CalendarState(
+        systemEvents=compute_system_events(
+            now=new_time,
+            now_iso=_now_iso(),
+            research=research,
+            debates=debates,
+            decisions=decisions,
+            reasoning_challenges=reasoning_challenges,
+            agent_knowledge=agent_knowledge,
+            research_speed_multiplier=research_speed_multiplier,
+            game_minutes_per_tick=settings.game_minutes_per_tick,
+        ),
+        playerEvents=state.calendar.player_events,
+        updatedAt=_now_iso(),
+    )
+
     return state.model_copy(
         update={
             # NOTE: model_copy(update=...) writes directly into the model's
@@ -1378,6 +1403,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "thinking_profiles": thinking_profiles,
             "mentor_state": mentor_state,
             "treasury": treasury,
+            "calendar": calendar_state,
             "agent_energy": agent_energy,
             "whiteboards": _update_whiteboards(agents, meeting, research),
             "updated_at": _now_iso(),

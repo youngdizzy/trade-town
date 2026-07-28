@@ -689,6 +689,27 @@ in one shot instead of waiting on the next WS broadcast:
 `400` if `target` is `"hours"` and `hours` is missing, non-positive, or
 over 72.
 
+### `POST /api/calendar/events/create` / `POST /api/calendar/events/delete`
+
+v0.7 Feature 36 — the CEO Calendar's player-created custom events.
+`create` body: `{ "category": "town_hall", "title": "All-hands on risk limits", "day": 12, "hour": 15, "minute": 0 }`
+— `category` is one of `emergency_meeting | company_holiday |
+extra_training_day | research_marathon | hackathon | strategy_day |
+celebration | town_hall | other` (the brief's own eight named examples
+plus a free-form `other`). `delete` body: `{ "eventId": "calendar-player-..." }`.
+Both return `{ "calendar": { "systemEvents": [...], "playerEvents": [...], "updatedAt": "..." } }`.
+These are informational only — creating one never changes department
+behavior (no real payroll/attendance/training-boost system exists
+anywhere in this codebase to attach one to honestly — see
+`app/calendar.py`'s module docstring). `400` on an empty/over-140-char
+title, an out-of-range hour/minute, or a day/time already in the past.
+
+`systemEvents` (the real, computable cadence events — Weekly/Monthly
+reports, the daily Question of the Day, honest ESTIMATED research
+completion dates, ...) is never fetched separately — it's recomputed
+fresh every tick and part of every `GameSaveState`/`"state"` WS message,
+the same way `companyHealth`/`academyState` already are.
+
 ### Bounding / trimming
 
 Every list above is capped server-side before it's ever sent — the client

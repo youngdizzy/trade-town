@@ -1684,6 +1684,106 @@ across a reload, a real End Workday clock jump via `POST
 /api/time/advance`, and the number-key shortcut correctly ignoring a
 focused form field).
 
+### CEO Calendar & Company Schedule (Feature 36)
+
+`app/calendar.py`'s `compute_system_events()` builds one dated event list
+from real, already-computable sources rather than the brief's fixed
+"8:00 Morning Briefing, 8:30 department assignments, 10:00 Research
+Sessions, ..." company-wide timetable — that exact synchronized
+choreography doesn't exist here: each of the 11 agents already runs its
+own believable, personality-distinct schedule (Feature 35's
+`AGENT_SCHEDULES`), never a single shared company-wide slot system, so
+reproducing the brief's Example Day would misrepresent what actually
+happens tick to tick.
+
+What the calendar surfaces instead: the fixed evening/monthly/weekly
+cadence checkpoints `nexus.tick()` already runs on (Weekly/Monthly Coach
+Reports, the Monthly Executive Review, the Monthly Treasury Savings
+Report, Weekly/Monthly Reflection Sessions, Sage's daily Question of the
+Day) — walked forward day-by-day across a 35-day horizon
+(`CALENDAR_HORIZON_DAYS`), checking each real `day % interval_days == 0`
+gate exactly the way `nexus.tick()` itself does. The two *conditional*
+cadences nexus.tick() already gates on — the Reasoning Lab challenge
+(needs a new, unused real AI Debate) and the Academy mentorship check
+(needs the real knowledge-points gap to cross `MENTORSHIP_GAP_THRESHOLD`)
+— get a live `eligible` flag on their nearest upcoming occurrence only,
+computed by `_reasoning_challenge_eligible()`/`_mentorship_eligible()`,
+pure non-mutating reads that mirror `nexus.tick()`'s own gate logic
+exactly (so the flag can never drift from the real thing that decides
+whether either actually fires). Occurrences further out than the nearest
+one carry no `eligible` value at all — this codebase has no way to
+predict whether a *future* day's debate/points-gap condition will hold,
+so it doesn't pretend to.
+
+Active research items get an honest ESTIMATED completion date, computed
+from the real current confidence gap divided by the real average
+per-tick confidence-gain rate (`research.py`'s `CONFIDENCE_GAIN_RANGE`,
+averaged, scaled by Feature 34's `research_speed_multiplier` when the
+"research" Company Priority is active) times `settings.game_minutes_per_tick`
+— labeled ESTIMATED in its own title string, the same "never claim more
+certainty than the data supports" convention the WhatIf Simulation Lab's
+"SIMULATED" badge already established. A "Company Anniversary" milestone
+appears every real 365 days from Day 1 — an honestly-arbitrary-but-fixed,
+disclosed convention on the same footing as `analytics.py`'s own 30-day
+"month" (TradeTown's clock has no real calendar year either, so this
+module picks one, states it plainly in its own docstring, and applies it
+consistently rather than hiding the choice).
+
+Player-created custom events (`create_player_event()`/
+`delete_player_event()`, `POST /api/calendar/events/create`/`/delete`)
+are the one genuinely new piece of state Feature 36 adds — validated
+(non-empty title ≤140 chars, real hour/minute range, can't schedule in
+the past) and capped at `MAX_PLAYER_CALENDAR_EVENTS` (60), the same
+list-capping convention every other feature's history list already
+follows. They are deliberately informational only: no mechanical effect
+is wired to any category. Giving "Company Holiday" a real effect (pausing
+research/trading) or "Extra Training Day" a real Academy-points boost
+would mean either duplicating Feature 34's Company Priority lever under a
+new name, or fabricating a payroll/attendance/training-boost system this
+codebase has no other trace of — the same reasoning that cut Feature 33's
+CEO Benefits list.
+
+A new **CALENDAR** Command Center tab (`CalendarPanel.tsx`) presents
+Today's/Tomorrow's Schedule, a Weekly Agenda, Monthly Company Events, an
+Executive View (current/next event, real department working/idle counts
+derived the same way `AgentsPanel.tsx`'s own idle heuristic already does,
+today's real meeting count from the existing `meetingMinutes` log, and
+the real current `settings.companyPriority`), the custom-event creation
+form, and a **Live Schedule** section: selecting any of the 11 agents
+shows their real current activity/room/mood (`AgentState`), Knowledge
+Level (`AgentKnowledgeState.level`), active research, and their complete
+real daily schedule block-by-block — reusing the already-shipped
+client-side `Schedule.ts` mirror directly, so no new backend endpoint was
+needed to expose it.
+
+**Explicit scope cuts** (matching this session's honesty convention):
+"Academy Classes" gets no fixed calendar slot or ETA — unlike research's
+steady per-tick confidence gain, Academy project progress moves in
+irregular real bursts (a research completion, a meeting attendance) with
+nothing steady to project an honest ETA from. "Department Meetings" gets
+no fixed slot either — `MEETING_CHANCE_PER_TICK` in nexus.py means
+meetings are called spontaneously, never on a schedule; the panel
+surfaces today's real count instead of a fabricated future slot.
+"Employee Birthdays" (marked optional in the brief) is cut outright — no
+agent has a birth date anywhere in this codebase. "Missed Meetings" (an
+Executive View field the brief itself asks for) is cut — meetings pick
+their attendees from whoever's `available` at call time; no agent is ever
+"invited" in a way that could later be tracked as missed. Guest Lecturer,
+Academy Exam, Innovation Day, Department Workshop, Knowledge Fair,
+Reflection Conference, Celebration Party, and Research Presentation have
+no real system behind them anywhere in this codebase and are not
+fabricated.
+
+Verification: full backend (mypy/ruff/pytest, 404/404 — 26 new tests in
+`test_calendar.py`, covering cadence math, both conditional-eligibility
+gates in both states, the ESTIMATED research-deadline formula, and
+player-event validation) and frontend (tsc/eslint/build) clean. Manually
+verified in the running app (Playwright, 27/27 counting the same
+tolerated real-trade-timing skip every run of this suite already has —
+a new CALENDAR-tab test confirms the real system-event lists, the
+per-agent Live Schedule, and a full custom-event create/delete round trip
+against the live backend).
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

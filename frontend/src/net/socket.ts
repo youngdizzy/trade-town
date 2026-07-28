@@ -6,6 +6,7 @@ import type {
   AgentKnowledgeState,
   AgentState,
   BacktestSession,
+  CalendarState,
   CaseStudy,
   CeoDecisionRecord,
   CoachReport,
@@ -97,6 +98,7 @@ type ServerMessage =
       thinkingProfiles: Record<AgentId, ThinkingProfile>;
       mentorState: MentorState;
       treasury: TreasuryState;
+      calendar: CalendarState;
       agentEnergy: AgentEnergy;
       signalCalibration: SignalCalibrationState;
       playerVsAi: PlayerVsAiState;
@@ -200,6 +202,7 @@ export class GameSocket {
             thinkingProfiles: msg.thinkingProfiles,
             mentorState: msg.mentorState,
             treasury: msg.treasury,
+            calendar: msg.calendar,
             agentEnergy: msg.agentEnergy,
             signalCalibration: msg.signalCalibration,
             playerVsAi: msg.playerVsAi,

@@ -1755,6 +1755,76 @@ class TreasuryState(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# v0.7 Feature 36 — the CEO Calendar & Company Schedule. One shared event
+# shape for both real system-computed cadence events and player-created
+# custom events — see app/calendar.py's module docstring for exactly
+# which of the brief's calendar categories are real here and which are
+# explicitly cut.
+CalendarEventCategory = Literal[
+    "morning_briefing",
+    "weekly_coach_report",
+    "monthly_coach_report",
+    "weekly_reflection",
+    "monthly_reflection",
+    "monthly_executive_review",
+    "monthly_treasury_report",
+    "reasoning_challenge_window",
+    "mentorship_window",
+    "company_anniversary",
+    "research_deadline",
+    "emergency_meeting",
+    "company_holiday",
+    "extra_training_day",
+    "research_marathon",
+    "hackathon",
+    "strategy_day",
+    "celebration",
+    "town_hall",
+    "other",
+]
+
+# The closed set of categories POST /api/calendar/events/create accepts —
+# the brief's own eight named examples plus a free-form "other".
+PlayerEventCategory = Literal[
+    "emergency_meeting",
+    "company_holiday",
+    "extra_training_day",
+    "research_marathon",
+    "hackathon",
+    "strategy_day",
+    "celebration",
+    "town_hall",
+    "other",
+]
+
+
+class CalendarEvent(CamelModel):
+    id: str
+    source: Literal["system", "player"]
+    category: CalendarEventCategory
+    title: str
+    detail: str = ""
+    day: int
+    hour: int
+    minute: int = 0
+    # Only meaningful for the nearest reasoning_challenge_window/
+    # mentorship_window entry — a live, honestly-computed "would this
+    # actually fire right now" check against real current data, not a
+    # prediction about a day that hasn't arrived yet. None everywhere
+    # else, including every player event.
+    eligible: bool | None = None
+    created_at: str = Field(alias="createdAt")
+
+
+class CalendarState(CamelModel):
+    # Recomputed fresh every tick from real current data — the same
+    # "cheap, always current" reasoning company_health/academy_state
+    # already use — so system_events is never persisted stale.
+    system_events: list[CalendarEvent] = Field(default_factory=list, alias="systemEvents")
+    player_events: list[CalendarEvent] = Field(default_factory=list, alias="playerEvents")
+    updated_at: str = Field(alias="updatedAt")
+
+
 class GameSaveState(CamelModel):
     version: Literal["0.6"] = "0.6"
     player: EntityTransform
@@ -1849,6 +1919,8 @@ class GameSaveState(CamelModel):
     # TreasuryState's own docstring for the structural "never touched by
     # any automatic system" guarantee.
     treasury: TreasuryState
+    # v0.7 Feature 36 — the CEO Calendar (app/calendar.py).
+    calendar: CalendarState
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(default_factory=list, alias="dialogueHistory")

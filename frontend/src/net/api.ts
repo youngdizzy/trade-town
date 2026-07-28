@@ -1,6 +1,7 @@
 import type {
   AgentEnergy,
   AnalystChoice,
+  CalendarState,
   Candle,
   CeoDecisionRecord,
   Debate,
@@ -10,6 +11,7 @@ import type {
   GatekeeperRejection,
   KnowledgeGraph,
   PaperPortfolio,
+  PlayerEventCategory,
   PlayerVsAiPrompt,
   PlayerVsAiState,
   QuestionOfTheDay,
@@ -141,5 +143,15 @@ export const api = {
     request<GameSaveState>("/time/advance", {
       method: "POST",
       body: JSON.stringify({ target, hours: hours ?? null }),
+    }),
+  createCalendarEvent: (category: PlayerEventCategory, title: string, day: number, hour: number, minute: number) =>
+    request<{ calendar: CalendarState }>("/calendar/events/create", {
+      method: "POST",
+      body: JSON.stringify({ category, title, day, hour, minute }),
+    }),
+  deleteCalendarEvent: (eventId: string) =>
+    request<{ calendar: CalendarState }>("/calendar/events/delete", {
+      method: "POST",
+      body: JSON.stringify({ eventId }),
     }),
 };

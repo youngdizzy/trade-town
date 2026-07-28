@@ -1266,6 +1266,61 @@ export interface TreasuryState {
   updatedAt: string;
 }
 
+// v0.7 Feature 36 — the CEO Calendar & Company Schedule (see
+// backend/app/calendar.py's module docstring for exactly which of the
+// brief's calendar categories are real here and which are explicitly cut).
+export type CalendarEventCategory =
+  | "morning_briefing"
+  | "weekly_coach_report"
+  | "monthly_coach_report"
+  | "weekly_reflection"
+  | "monthly_reflection"
+  | "monthly_executive_review"
+  | "monthly_treasury_report"
+  | "reasoning_challenge_window"
+  | "mentorship_window"
+  | "company_anniversary"
+  | "research_deadline"
+  | "emergency_meeting"
+  | "company_holiday"
+  | "extra_training_day"
+  | "research_marathon"
+  | "hackathon"
+  | "strategy_day"
+  | "celebration"
+  | "town_hall"
+  | "other";
+
+export type PlayerEventCategory =
+  | "emergency_meeting"
+  | "company_holiday"
+  | "extra_training_day"
+  | "research_marathon"
+  | "hackathon"
+  | "strategy_day"
+  | "celebration"
+  | "town_hall"
+  | "other";
+
+export interface CalendarEvent {
+  id: string;
+  source: "system" | "player";
+  category: CalendarEventCategory;
+  title: string;
+  detail: string;
+  day: number;
+  hour: number;
+  minute: number;
+  eligible: boolean | null;
+  createdAt: string;
+}
+
+export interface CalendarState {
+  systemEvents: CalendarEvent[];
+  playerEvents: CalendarEvent[];
+  updatedAt: string;
+}
+
 export interface GameSaveState {
   version: "0.6";
   player: EntityTransform;
@@ -1311,6 +1366,7 @@ export interface GameSaveState {
   thinkingProfiles: Record<AgentId, ThinkingProfile>;
   mentorState: MentorState;
   treasury: TreasuryState;
+  calendar: CalendarState;
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;

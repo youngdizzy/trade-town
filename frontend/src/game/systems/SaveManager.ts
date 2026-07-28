@@ -66,6 +66,7 @@ export class SaveManager {
       thinkingProfiles: NexusManager.getThinkingProfiles(),
       mentorState: NexusManager.getMentorState(),
       treasury: NexusManager.getTreasury(),
+      calendar: NexusManager.getCalendar(),
       agentEnergy: NexusManager.getAgentEnergy(),
       signalCalibration: NexusManager.getSignalCalibration(),
       playerVsAi: NexusManager.getPlayerVsAi(),

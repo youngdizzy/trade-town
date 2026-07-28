@@ -102,6 +102,7 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         # v0.7 Feature 33 — already capped (MAX_TREASURY_TRANSACTIONS/
         # MAX_TREASURY_MONTHLY_REPORTS) like questionArchive above.
         "treasury": state.treasury.model_dump(by_alias=True),
+        "calendar": state.calendar.model_dump(by_alias=True),
     }
 
 

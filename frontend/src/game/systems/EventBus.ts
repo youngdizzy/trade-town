@@ -7,6 +7,7 @@ import type {
   AgentKnowledgeState,
   AgentState,
   BacktestSession,
+  CalendarState,
   CeoDecisionRecord,
   CaseStudy,
   CoachReport,
@@ -133,6 +134,7 @@ export interface GameEvents {
   "thinkingProfiles:updated": Record<AgentId, ThinkingProfile>;
   "mentorState:updated": MentorState;
   "treasury:updated": TreasuryState;
+  "calendar:updated": CalendarState;
   "ui:executiveVoting": { open: boolean; proposalId?: string };
   // v0.7 Feature 19 — opens the Command Center on the Decisions tab for a
   // specific trade's decision; openDetail additionally auto-opens

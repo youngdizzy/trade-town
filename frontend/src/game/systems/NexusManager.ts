@@ -25,6 +25,7 @@ import type {
   PerformanceSnapshot,
   QuestionOfTheDay,
   ResearchItem,
+  CalendarState,
   TreasuryState,
   RiskLimits,
   EducationProgress,
@@ -88,6 +89,7 @@ interface NexusSnapshot {
   thinkingProfiles: Record<AgentId, ThinkingProfile>;
   mentorState: MentorState;
   treasury: TreasuryState;
+  calendar: CalendarState;
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
@@ -205,6 +207,7 @@ export class NexusManager {
   private static thinkingProfiles: Record<AgentId, ThinkingProfile> = {} as Record<AgentId, ThinkingProfile>;
   private static mentorState: MentorState = { tier: 0, tierLabel: "New Tradition", questionsAsked: 0, updatedAt: new Date().toISOString() };
   private static treasury: TreasuryState = { balance: 0, lifetimeDeposits: 0, largestBalance: 0, transactions: [], savingsRules: [], monthlyReports: [], updatedAt: new Date().toISOString() };
+  private static calendar: CalendarState = { systemEvents: [], playerEvents: [], updatedAt: new Date().toISOString() };
   private static agentEnergy: AgentEnergy = { current: 100, cap: 100, updatedAt: new Date().toISOString() };
   private static signalCalibration: SignalCalibrationState = { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 };
   private static playerVsAi: PlayerVsAiState = { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 };
@@ -358,6 +361,17 @@ export class NexusManager {
   static setTreasury(treasury: TreasuryState): void {
     this.treasury = treasury;
     EventBus.emit("treasury:updated", treasury);
+  }
+
+  static getCalendar(): CalendarState {
+    return this.calendar;
+  }
+
+  /** Applies the result of a direct POST /api/calendar/events/... call
+   * immediately, the same reasoning as setTreasury above. */
+  static setCalendar(calendar: CalendarState): void {
+    this.calendar = calendar;
+    EventBus.emit("calendar:updated", calendar);
   }
 
   /** Applies the real Operating Capital change a Treasury deposit/withdraw
@@ -677,6 +691,9 @@ export class NexusManager {
     if (update.treasury !== this.treasury) EventBus.emit("treasury:updated", update.treasury);
     this.treasury = update.treasury;
 
+    if (update.calendar !== this.calendar) EventBus.emit("calendar:updated", update.calendar);
+    this.calendar = update.calendar;
+
     if (update.agentEnergy !== this.agentEnergy) EventBus.emit("agentEnergy:updated", update.agentEnergy);
     this.agentEnergy = update.agentEnergy;
 
@@ -735,6 +752,7 @@ export class NexusManager {
     this.thinkingProfiles = save.thinkingProfiles;
     this.mentorState = save.mentorState;
     this.treasury = save.treasury;
+    this.calendar = save.calendar;
     this.agentEnergy = save.agentEnergy;
     this.signalCalibration = save.signalCalibration;
     this.playerVsAi = save.playerVsAi;
