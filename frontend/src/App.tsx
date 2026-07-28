@@ -13,7 +13,7 @@ import { CoachDashboard } from "@/ui/components/CoachDashboard";
 import { CommandCenter } from "@/ui/components/CommandCenter/CommandCenter";
 import { ExecutiveVoting } from "@/ui/components/CommandCenter/ExecutiveVoting";
 import { CyberNotifications } from "@/ui/components/CommandCenter/CyberNotifications";
-import { TradeOutcomePopup } from "@/ui/components/TradeOutcomePopup";
+import { TradeOutcomeBanner } from "@/ui/components/TradeOutcomeBanner";
 
 export default function App() {
   return (
@@ -33,7 +33,7 @@ export default function App() {
       <CommandCenter />
       <ExecutiveVoting />
       <CyberNotifications />
-      <TradeOutcomePopup />
+      <TradeOutcomeBanner />
     </div>
   );
 }

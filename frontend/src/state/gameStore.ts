@@ -88,6 +88,10 @@ export interface GameUiState {
   commandCenterMode: "quick" | "full";
   executiveVotingOpen: boolean;
   executiveVotingProposalId: string | null;
+  /** v0.7 Feature 19 — the Premium Trade Outcome Banner's "View Trade" /
+   * "Analyze" buttons request the Command Center jump to a specific
+   * decision; FullCommandCenter consumes and clears this. */
+  pendingInspectDecision: { decisionId: string; openDetail: boolean; nonce: number } | null;
   netConnected: boolean;
   save: SaveUiState;
   currentScene: string;
@@ -171,6 +175,7 @@ class GameStore {
     commandCenterMode: "quick",
     executiveVotingOpen: false,
     executiveVotingProposalId: null,
+    pendingInspectDecision: null,
     netConnected: false,
     save: { status: "idle", lastSavedAt: null, error: null },
     currentScene: "MainMenuScene",
@@ -260,6 +265,12 @@ class GameStore {
       if (this.state.executiveVotingOpen) return;
       this.set({ executiveVotingOpen: true, executiveVotingProposalId: proposal.id });
     });
+    // v0.7 Feature 19 — the trade outcome banner's View Trade/Analyze
+    // buttons jump straight to the Command Center's Decisions tab.
+    EventBus.on("trade:inspect", (payload) => {
+      this.set({ pendingInspectDecision: payload, commandCenterOpen: true, commandCenterMode: "full" });
+      EventBus.emit("world:overlayOpen", { open: true });
+    });
     EventBus.on("agentEnergy:updated", (agentEnergy) => this.set({ agentEnergy }));
     EventBus.on("signalCalibration:updated", (signalCalibration) => this.set({ signalCalibration }));
     EventBus.on("playerVsAi:updated", (playerVsAi) => this.set({ playerVsAi }));
@@ -292,6 +303,11 @@ class GameStore {
     } else {
       this.set({ dialogue: { ...dialogue, index: nextIndex } });
     }
+  }
+
+  /** FullCommandCenter calls this once it has acted on a pendingInspectDecision request. */
+  clearPendingInspectDecision(): void {
+    this.set({ pendingInspectDecision: null });
   }
 }
 

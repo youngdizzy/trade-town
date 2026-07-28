@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { gameStore } from "@/state/gameStore";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import type { EducationTopic, TradeDecision } from "@/types";
 import { aiStatus, riskLevel } from "./lib/derive";
@@ -21,10 +22,22 @@ const TABS = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AG
 type Tab = (typeof TABS)[number];
 
 export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => void; onClose: () => void }) {
-  const { time, riskWarnings, research, agents } = useGameStore();
+  const { time, riskWarnings, research, agents, decisions, pendingInspectDecision } = useGameStore();
   const [tab, setTab] = useState<Tab>("OVERVIEW");
   const [inspecting, setInspecting] = useState<TradeDecision | null>(null);
   const [helpLessonId, setHelpLessonId] = useState<EducationTopic | null>(null);
+
+  // v0.7 Feature 19 — the trade outcome banner's View Trade/Analyze buttons
+  // request a jump straight to a specific decision via gameStore.
+  useEffect(() => {
+    if (!pendingInspectDecision) return;
+    setTab("DECISIONS");
+    if (pendingInspectDecision.openDetail) {
+      const match = decisions.find((d) => d.id === pendingInspectDecision.decisionId) ?? null;
+      setInspecting(match);
+    }
+    gameStore.clearPendingInspectDecision();
+  }, [pendingInspectDecision, decisions]);
 
   const needHelp = (lessonId: EducationTopic) => {
     setHelpLessonId(lessonId);

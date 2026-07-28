@@ -97,6 +97,11 @@ export interface GameEvents {
   "tradeProposal:new": TradeProposal;
   "ceoDecisions:updated": CeoDecisionRecord[];
   "ui:executiveVoting": { open: boolean; proposalId?: string };
+  // v0.7 Feature 19 — opens the Command Center on the Decisions tab for a
+  // specific trade's decision; openDetail additionally auto-opens
+  // DecisionDetail's full Post-Trade Review. `nonce` forces a fresh
+  // effect trigger even if the same decisionId is requested twice in a row.
+  "trade:inspect": { decisionId: string; openDetail: boolean; nonce: number };
 }
 
 type Handler<K extends keyof GameEvents> = (payload: GameEvents[K]) => void;

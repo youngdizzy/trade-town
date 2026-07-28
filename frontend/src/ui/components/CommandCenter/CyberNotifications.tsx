@@ -25,7 +25,7 @@ const AUTO_DISMISS_MS = 6000;
 /**
  * Feature 14 — futuristic corner toasts for events that don't already
  * have a dedicated modal. TRADE WON / TRADE LOST from the spec's example
- * list are deliberately NOT duplicated here — TradeOutcomePopup.tsx
+ * list are deliberately NOT duplicated here — TradeOutcomeBanner.tsx
  * already gives a closed trade its own full-treatment celebration/shake
  * moment, and a second toast for the same event would just be noise on
  * top of it. AGENT LEVEL UP is also not implemented: TradeTown agents

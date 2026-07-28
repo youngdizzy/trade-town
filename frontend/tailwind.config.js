@@ -44,9 +44,9 @@ export default {
         "cmd-amber": "0 0 1px rgba(255,180,67,0.8), 0 0 16px rgba(255,180,67,0.25)",
         "cmd-red": "0 0 1px rgba(255,77,94,0.8), 0 0 16px rgba(255,77,94,0.3)",
       },
-      // v0.6.2 Phase 10 trade outcome popup — a win pulses its glow and
-      // drops confetti, a loss shakes once on entry, a breakeven gets
-      // neither (see TradeOutcomePopup.tsx).
+      // v0.6.2 Phase 10 / v0.7 Feature 19 trade outcome banner — a win
+      // pulses its glow and drops confetti, a loss shakes once on entry,
+      // a breakeven gets neither (see TradeOutcomeBanner.tsx).
       keyframes: {
         "cmd-shake": {
           "0%, 100%": { transform: "translateX(0)" },
@@ -87,6 +87,25 @@ export default {
           "0%": { backgroundPosition: "0px 0px" },
           "100%": { backgroundPosition: "48px 48px" },
         },
+        // v0.7 Feature 19 — the non-blocking trade outcome banner's own
+        // entrance/exit (drops in from above the toolbar, slides back up
+        // on dismiss) and a brief loss-only "holographic glitch" flicker
+        // on the TRADE LOST label (see TradeOutcomeBanner.tsx).
+        "cmd-banner-in": {
+          "0%": { opacity: "0", transform: "translateY(-18px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        "cmd-banner-out": {
+          "0%": { opacity: "1", transform: "translateY(0)" },
+          "100%": { opacity: "0", transform: "translateY(-18px)" },
+        },
+        "cmd-glitch": {
+          "0%, 100%": { transform: "translate(0, 0)", opacity: "1" },
+          "20%": { transform: "translate(-2px, 1px)", opacity: "0.8" },
+          "40%": { transform: "translate(2px, -1px)", opacity: "1" },
+          "60%": { transform: "translate(-1px, 0)", opacity: "0.85" },
+          "80%": { transform: "translate(1px, 1px)", opacity: "1" },
+        },
       },
       animation: {
         "cmd-shake": "cmd-shake 0.5s ease-in-out",
@@ -97,6 +116,9 @@ export default {
         "cmd-toast-in": "cmd-toast-in 0.28s cubic-bezier(0.16,1,0.3,1) both",
         "cmd-toast-out": "cmd-toast-out 0.22s ease-in both",
         "cmd-grid-drift": "cmd-grid-drift 12s linear infinite",
+        "cmd-banner-in": "cmd-banner-in 0.34s cubic-bezier(0.16,1,0.3,1) both",
+        "cmd-banner-out": "cmd-banner-out 0.3s ease-in both",
+        "cmd-glitch": "cmd-glitch 0.35s ease-in-out 1",
       },
     },
   },

@@ -108,9 +108,9 @@ test("Executive Voting popup shows real analyst votes and a BUY submits a real C
   await firstVoteCard.click();
   await expect(popup.getByText(/Trend:/)).toBeVisible();
 
-  // Review Analysis reveals the Trade Quality Score + Pre-Trade Checklist.
+  // Review Analysis reveals the Decision Confidence Engine + Pre-Trade Checklist.
   await popup.getByText("REVIEW ANALYSIS").click();
-  await expect(popup.getByText("Trade Quality Score")).toBeVisible();
+  await expect(popup.getByText("Decision Confidence Engine")).toBeVisible();
   await expect(popup.getByText("Pre-Trade Checklist")).toBeVisible();
 
   const symbol = await popup.locator("span.font-cmdmono").first().innerText();
@@ -123,12 +123,14 @@ test("Executive panel in the Command Center lists pending proposals and CEO trac
   await page.goto("/");
   await continueGame(page);
 
-  // Clear whatever popups auto-opened (a trade outcome popup sits above
-  // Executive Voting, so it must be dismissed first if both are queued).
+  // Clear whatever popups/banners auto-opened. The v0.7 trade outcome
+  // banner is non-blocking, but dismiss it anyway so it can't cover
+  // whatever this test clicks next; the Executive Voting popup is still
+  // a real blocking modal and must be dismissed to proceed.
   for (let i = 0; i < 5; i++) {
-    const tradePopup = page.getByTestId("trade-outcome-popup");
-    if (await tradePopup.isVisible().catch(() => false)) {
-      await tradePopup.getByText("Continue").click();
+    const tradeBanner = page.getByTestId("trade-outcome-banner");
+    if (await tradeBanner.isVisible().catch(() => false)) {
+      await tradeBanner.getByText("Dismiss").click();
       await page.waitForTimeout(300);
       continue;
     }

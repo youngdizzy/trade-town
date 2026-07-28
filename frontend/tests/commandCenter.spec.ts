@@ -66,18 +66,21 @@ async function continueGame(page: Page): Promise<void> {
  * This long-running test file shares one real dev backend, whose paper
  * trading and research pipeline have been running continuously since the
  * file started — a real closed trade or a fresh v0.6.3 TradeProposal may
- * already be waiting with a popup by the time any given test loads (or
- * appear mid-test). That's correct, honest behavior (see
- * TradeOutcomePopup.tsx / ExecutiveVoting.tsx), not a test-only quirk, so
- * tests clear both the same way a real player would: click Continue /
- * "Decide later". Loops briefly in case dismissing one reveals another.
+ * already be waiting with a banner/popup by the time any given test loads
+ * (or appear mid-test). That's correct, honest behavior (see
+ * TradeOutcomeBanner.tsx / ExecutiveVoting.tsx), not a test-only quirk, so
+ * tests clear both the same way a real player would: click Dismiss /
+ * "Decide later". The v0.7 trade outcome banner is non-blocking, but
+ * tests still clear it so it can't cover an element a later step needs to
+ * click. Loops briefly in case dismissing one reveals another queued
+ * behind it.
  */
 async function dismissTradeOutcomePopups(page: Page): Promise<void> {
   for (let i = 0; i < 5; i++) {
-    const tradePopup = page.getByTestId("trade-outcome-popup");
-    if (await tradePopup.isVisible().catch(() => false)) {
-      await tradePopup.getByRole("button", { name: "Continue" }).click();
-      await tradePopup.waitFor({ state: "hidden", timeout: 3000 }).catch(() => {});
+    const tradeBanner = page.getByTestId("trade-outcome-banner");
+    if (await tradeBanner.isVisible().catch(() => false)) {
+      await tradeBanner.getByText("Dismiss").click();
+      await tradeBanner.waitFor({ state: "hidden", timeout: 3000 }).catch(() => {});
       continue;
     }
     const votingPopup = page.getByTestId("executive-voting");
@@ -367,7 +370,7 @@ test.describe("Global Command Center", () => {
     await expect(page.getByTestId("education-lesson").getByText("Risk/Reward Ratio", { exact: true })).toBeVisible();
   });
 
-  test("Trade outcome popup shows a real closed trade's win/loss and post-trade analysis, and dismissal persists", async ({ page }) => {
+  test("Trade outcome banner shows a real closed trade's win/loss non-blockingly, and dismissal persists", async ({ page }) => {
     test.setTimeout(60000); // polls up to 45s for a real trade to close naturally
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);
@@ -380,39 +383,41 @@ test.describe("Global Command Center", () => {
     // on the real live WS feed for the sim's own paper-trading engine to
     // actually close one — the same "real backend, real timing" approach
     // this whole test file already uses everywhere else.
-    const popup = page.getByTestId("trade-outcome-popup");
+    const banner = page.getByTestId("trade-outcome-banner");
     let appeared = true;
     try {
-      await expect(popup).toBeVisible({ timeout: 45000 });
+      await expect(banner).toBeVisible({ timeout: 45000 });
     } catch {
       appeared = false;
     }
     test.skip(!appeared, "no new real trade closed within the poll window");
 
-    await expect(popup.getByText(/WIN|LOSS|BREAKEVEN/)).toBeVisible();
-    await expect(popup.getByText(/Post-Trade Analysis/)).toBeVisible();
-    await expect(popup.getByText(/Thesis (confirmed|invalidated|neutral)/)).toBeVisible();
+    // The banner must be non-blocking — gameplay behind it stays clickable.
+    await expect(page.getByRole("button", { name: "Command ⌁" })).toBeEnabled();
+
+    const status = banner.getByTestId("trade-outcome-status");
+    await expect(status).toHaveText(/TRADE WON|TRADE LOST|TRADE CLOSED/);
 
     // A real win must celebrate (glow) and a real loss must shake — assert
     // whichever this actual trade's real outcome produced.
-    const outcomeText = await popup.getByText(/WIN|LOSS|BREAKEVEN/).first().innerText();
-    if (outcomeText === "WIN") {
-      await expect(popup.locator("> div").first()).toHaveClass(/animate-cmd-glow-pulse/);
-    } else if (outcomeText === "LOSS") {
-      await expect(popup.locator("> div").first()).toHaveClass(/animate-cmd-shake/);
+    const outcomeText = await status.innerText();
+    if (outcomeText.includes("WON")) {
+      await expect(banner).toHaveClass(/animate-cmd-glow-pulse/);
+    } else if (outcomeText.includes("LOST")) {
+      await expect(banner).toHaveClass(/animate-cmd-shake/);
     }
 
-    const symbol = await popup.locator(".font-cmdmono.text-xl").innerText();
-    await popup.getByRole("button", { name: "Continue" }).click();
-    await expect(popup).not.toBeVisible();
+    const symbol = await banner.getByTestId("trade-outcome-symbol").innerText();
+    await banner.getByText("Dismiss").click();
+    await expect(banner).not.toBeVisible();
 
-    // Dismissal must persist — reloading must never re-show a popup for
+    // Dismissal must persist — reloading must never re-show a banner for
     // that same trade (a fresh one for a *different*, later trade closing
     // in the meantime is fine and expected).
     await page.reload();
     await clickContinueOnTitleScreen(page);
-    if (await popup.isVisible().catch(() => false)) {
-      await expect(popup.locator(".font-cmdmono.text-xl")).not.toHaveText(symbol);
+    if (await banner.isVisible().catch(() => false)) {
+      await expect(banner.getByTestId("trade-outcome-symbol")).not.toHaveText(symbol);
     }
   });
 });

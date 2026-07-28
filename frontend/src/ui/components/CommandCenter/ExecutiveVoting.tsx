@@ -36,7 +36,7 @@ export function ExecutiveVoting() {
   const [submitting, setSubmitting] = useState<AnalystChoice | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // Same reasoning as TradeOutcomePopup's own MainMenuScene guard: the
+  // Same reasoning as TradeOutcomeBanner's own MainMenuScene guard: the
   // WebSocket connects independent of the title screen, so never render
   // a full-screen popup over it.
   if (currentScene === "MainMenuScene" || !executiveVotingOpen) return null;
