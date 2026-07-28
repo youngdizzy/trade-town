@@ -252,11 +252,13 @@ perspective and exists purely to detect disconnects
     // MAX_ACADEMY_LIBRARY (50), same shape as academyProjects above but status:"completed".
   ],
   "agentKnowledge": {
-    // v0.7 Feature 25 — every agent's own real Knowledge Points/tier
+    // v0.7 Features 25/31 — every agent's own real Knowledge Points/tier
     // (app/academy.py). "branch" is a fixed, occupation-linked theme;
     // points only ever grow from real completed work (a finished
     // ResearchItem, a finished AcademyProject, real meeting attendance).
-    "echo": { "agentId": "echo", "branch": "Technical Analysis", "points": 18.5, "tier": 2 }
+    // "tier" (0-6) and "level" are the same real number, two views:
+    // level is tier's real Novice-through-Mentor name (v0.7 Feature 31).
+    "echo": { "agentId": "echo", "branch": "Technical Analysis", "points": 18.5, "tier": 2, "level": "intermediate" }
   },
   "academyState": {
     // Company-wide progression derived from agentKnowledge + real
@@ -326,6 +328,39 @@ perspective and exists purely to detect disconnects
     // Company-wide progression derived from the real completed-challenge
     // count — mirrors academyState's level/label-only convention exactly.
     "level": 2, "levelLabel": "Applied Reasoning", "completedChallengeCount": 7, "updatedAt": "..."
+  },
+  "reflectionSessions": [
+    // v0.7 Feature 30 — one real ReflectionSession every in-game week and
+    // month (app/wisdom.py). Every field is built from data already
+    // computed elsewhere; wisdomScore is a snapshot of the company-wide
+    // score at the moment this session closed, never re-derived from pnl.
+    {
+      "id": "reflection-weekly-7-20-0", "cadence": "weekly",
+      "attendees": ["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio"],
+      "questions": [
+        { "question": "What surprised us?", "answer": "..." }
+        // ... all nine of the brief's reflection questions, each a real answer
+      ],
+      "insights": [
+        { "agentId": "nova", "insight": "..." }
+        // ... real recent output from real agents, one per real source available
+      ],
+      "keyDiscoveries": ["..."], "lessonsLearned": ["..."],
+      "importantQuestions": ["..."], "recommendedFutureProjects": ["..."],
+      "wisdomScore": 71.2, "simDay": 7, "createdAt": "..."
+    }
+  ],
+  "wisdomState": {
+    // Never profit-based — a plain, unweighted mean of eight real factors
+    // (see app/wisdom.py's module docstring). Recomputed only when a
+    // ReflectionSession is generated, not every tick.
+    "score": 71.2, "tier": "seasoned_wisdom", "tierLabel": "Seasoned Wisdom",
+    "factors": [
+      { "id": "learn_from_experience", "name": "Learning From Experience", "score": 50.8, "weight": 0.125, "detail": "..." }
+      // ... all eight factors: share_knowledge, follow_principles, improve_communication,
+      // document_lessons, avoid_repeating_mistakes, complete_research, support_collaboration
+    ],
+    "updatedAt": "..."
   },
   "performanceSnapshots": [
     { "period": "daily", "returnPct": 1.2, "winRate": 60.0, "maxDrawdownPct": 4.1, "sharpeRatio": 0.29, "sortinoRatio": 0.34, "avgHoldingMinutes": 210.0, "researchAccuracy": 71.0, "confidenceAccuracy": 68.0, "computedAt": "..." }
@@ -559,6 +594,7 @@ never needs to trim anything itself:
 | `disciplineReviews` | last 60 (`MAX_DISCIPLINE_REVIEWS`) | one per closed trade — v0.7 Feature 26 |
 | `caseStudies` | last 60 (`MAX_CASE_STUDIES`) | one per detected real process-gap mistake — v0.7 Feature 27 |
 | `reasoningChallenges` | last 60 (`MAX_REASONING_CHALLENGES`) | one per real AI Debate practiced, on a fixed cadence — v0.7 Feature 29 |
+| `reflectionSessions` | last 80 (`MAX_REFLECTION_SESSIONS`) | one per real weekly/monthly cycle — v0.7 Feature 30 |
 
 ### Provider configuration
 

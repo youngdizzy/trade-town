@@ -12,6 +12,7 @@ from app.academy import (
     award_points,
     compute_academy_state,
     default_agent_knowledge,
+    is_mentor_level,
     maybe_run_mentorship,
 )
 from app.schemas import AGENT_IDS
@@ -24,6 +25,11 @@ class TestDefaultAgentKnowledge:
         for state in knowledge.values():
             assert state.points == 0.0
             assert state.tier == 0
+
+    def test_every_agent_starts_at_novice_level(self) -> None:
+        knowledge = default_agent_knowledge()
+        for state in knowledge.values():
+            assert state.level == "novice"
 
     def test_every_agent_has_a_non_empty_branch(self) -> None:
         knowledge = default_agent_knowledge()
@@ -114,3 +120,35 @@ class TestComputeAcademyState:
         low = compute_academy_state(default_agent_knowledge(), 0)
         high = compute_academy_state(default_agent_knowledge(), 50)
         assert high.level > low.level
+
+
+class TestKnowledgeLevels:
+    """v0.7 Feature 31 — the same real points, a real seven-level
+    Novice-through-Mentor name."""
+
+    def test_six_thresholds_give_seven_real_levels(self) -> None:
+        assert len(TIER_THRESHOLDS) == 6
+
+    def test_crossing_every_threshold_reaches_mentor_level(self) -> None:
+        knowledge = default_agent_knowledge()
+        knowledge, _ = award_points(knowledge, "echo", TIER_THRESHOLDS[-1])
+        assert knowledge["echo"].level == "mentor"
+        assert knowledge["echo"].tier == 6
+
+    def test_level_advances_with_each_real_threshold_crossed(self) -> None:
+        knowledge = default_agent_knowledge()
+        expected = ("novice", "beginner", "intermediate", "advanced", "expert", "master", "mentor")
+        for i, threshold in enumerate(TIER_THRESHOLDS):
+            knowledge, tier_up = award_points(knowledge, "echo", threshold - knowledge["echo"].points)
+            assert tier_up is not None
+            assert knowledge["echo"].level == expected[i + 1]
+
+    def test_is_mentor_level_false_below_the_top_threshold(self) -> None:
+        knowledge = default_agent_knowledge()
+        knowledge, _ = award_points(knowledge, "echo", TIER_THRESHOLDS[-1] - 1.0)
+        assert not is_mentor_level(knowledge["echo"])
+
+    def test_is_mentor_level_true_at_the_top_threshold(self) -> None:
+        knowledge = default_agent_knowledge()
+        knowledge, _ = award_points(knowledge, "echo", TIER_THRESHOLDS[-1])
+        assert is_mentor_level(knowledge["echo"])

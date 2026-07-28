@@ -160,6 +160,8 @@ export class DialogueManager {
     const moodLine = pick(MOOD_FLAVOR[moodBand]);
 
     const lines = [greeting, pick(taskLines), moodLine];
+    const depthLine = this.knowledgeDepthLine(agentId);
+    if (depthLine) lines.push(depthLine);
     const recall = this.recallLine(agentId);
     if (recall) lines.push(recall);
     this.recordLines(agentId, lines);
@@ -168,24 +170,64 @@ export class DialogueManager {
   }
 
   /**
-   * v0.7 Features 25.5/27/29 — a modest, honest slice of "Institutional
-   * Memory." One in three conversations, an agent recalls a real thing
-   * they were actually part of — their own most recent completed Academy
-   * project, a real Library of Mistakes case study from a decision they
-   * were a real attendee of (Feature 27), or a real Reasoning Lab
-   * challenge they actually contributed a real Debate turn to
-   * (Feature 29) — referencing its real title/category and real in-game
-   * day. Never a fabricated memory, and never claiming credit/involvement
-   * that isn't actually real. All sources are tried and one is picked at
-   * random from whichever actually has real content, rather than a
-   * single coin-flip that could silently waste the one-in-three chance
-   * on an empty source.
+   * v0.7 Feature 31 — "higher [Knowledge] levels unlock richer dialogue,
+   * deeper explanations." The honest, template-based version: no free-
+   * form NLG exists in this codebase to actually vary explanation depth
+   * per topic, so this surfaces the one real thing that does vary — the
+   * agent's own real Knowledge Level (app/academy.py) — as a real,
+   * deterministic line once they've actually reached "advanced" or
+   * higher. A novice/beginner/intermediate agent has nothing extra to
+   * say here yet, honestly.
+   */
+  private knowledgeDepthLine(agentId: AgentId): string | null {
+    const { agentKnowledge } = gameStore.getSnapshot();
+    const state = agentKnowledge[agentId];
+    if (!state || state.tier < 3) return null;
+    const byLevel: Partial<Record<string, string>> = {
+      advanced: `I've built real depth in ${state.branch} now — ask me anything about it.`,
+      expert: `${state.branch} is where I go deep. I can walk you through the reasoning, not just the answer.`,
+      master: `At this point I don't just apply ${state.branch} — I question it. Every answer comes with what could prove it wrong.`,
+      mentor: `I teach ${state.branch} now, not just practice it. If something's unclear, ask — I'll find the gap in my own explanation before you do.`,
+    };
+    return byLevel[state.level] ?? null;
+  }
+
+  /**
+   * v0.7 Features 25.5/27/29/30 — a modest, honest slice of
+   * "Institutional Memory." An agent recalls a real thing they were
+   * actually part of — their own most recent completed Academy project,
+   * a real Library of Mistakes case study from a decision they were a
+   * real attendee of (Feature 27), or a real Reasoning Lab challenge
+   * they actually contributed a real Debate turn to (Feature 29) —
+   * referencing its real title/category and real in-game day. Never a
+   * fabricated memory, and never claiming credit/involvement that isn't
+   * actually real. All sources are tried and one is picked at random
+   * from whichever actually has real content, rather than a single
+   * coin-flip that could silently waste the chance on an empty source.
+   *
+   * Feature 30's real, checkable version of "historical knowledge is
+   * referenced more often" as the company grows wiser: the base
+   * one-in-three chance scales up with the company's own real Wisdom
+   * tier (see recallChance()) — never a fabricated dialogue-quality
+   * upgrade, just the same real recall sources surfacing more often.
    */
   private recallLine(agentId: AgentId): string | null {
-    if (Math.random() > 1 / 3) return null;
+    if (Math.random() > this.recallChance()) return null;
     const candidates = [this.academyRecall(agentId), this.caseStudyRecall(agentId), this.reasoningRecall(agentId)].filter((line): line is string => line !== null);
     if (candidates.length === 0) return null;
     return pick(candidates);
+  }
+
+  private recallChance(): number {
+    const { wisdomState } = gameStore.getSnapshot();
+    const byTier: Record<string, number> = {
+      young_company: 1 / 4,
+      developing_judgment: 1 / 3,
+      institutional_memory: 0.4,
+      seasoned_wisdom: 0.5,
+      enduring_wisdom: 0.6,
+    };
+    return byTier[wisdomState.tier] ?? 1 / 3;
   }
 
   private academyRecall(agentId: AgentId): string | null {

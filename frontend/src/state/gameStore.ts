@@ -29,6 +29,7 @@ import type {
   PlayerVsAiState,
   ReasoningChallenge,
   ReasoningLabState,
+  ReflectionSession,
   RiskWarning,
   ScannerAlert,
   SettingsState,
@@ -40,6 +41,7 @@ import type {
   TradeDecision,
   TradeProposal,
   WatchlistEntry,
+  WisdomState,
 } from "@/types";
 import { EventBus } from "@/game/systems/EventBus";
 import { NPCManager } from "@/game/systems/NPCManager";
@@ -96,6 +98,8 @@ export interface GameUiState {
   caseStudies: CaseStudy[];
   reasoningChallenges: ReasoningChallenge[];
   reasoningLabState: ReasoningLabState;
+  reflectionSessions: ReflectionSession[];
+  wisdomState: WisdomState;
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
@@ -218,6 +222,8 @@ class GameStore {
     caseStudies: [],
     reasoningChallenges: [],
     reasoningLabState: { level: 1, levelLabel: "Foundations", completedChallengeCount: 0, updatedAt: new Date().toISOString() },
+    reflectionSessions: [],
+    wisdomState: { score: 0, tier: "young_company", tierLabel: "Young Company", factors: [], updatedAt: new Date().toISOString() },
     agentEnergy: { current: 100, cap: 100, updatedAt: new Date().toISOString() },
     signalCalibration: { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 },
     playerVsAi: { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 },
@@ -327,6 +333,8 @@ class GameStore {
     EventBus.on("caseStudies:updated", (caseStudies) => this.set({ caseStudies }));
     EventBus.on("reasoningChallenges:updated", (reasoningChallenges) => this.set({ reasoningChallenges }));
     EventBus.on("reasoningLabState:updated", (reasoningLabState) => this.set({ reasoningLabState }));
+    EventBus.on("reflectionSessions:updated", (reflectionSessions) => this.set({ reflectionSessions }));
+    EventBus.on("wisdomState:updated", (wisdomState) => this.set({ wisdomState }));
     EventBus.on("ui:executiveVoting", ({ open, proposalId }) =>
       this.set({ executiveVotingOpen: open, executiveVotingProposalId: open ? (proposalId ?? this.state.executiveVotingProposalId) : null }),
     );

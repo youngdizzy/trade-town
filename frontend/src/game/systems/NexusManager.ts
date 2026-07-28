@@ -28,6 +28,7 @@ import type {
   PlayerVsAiState,
   ReasoningChallenge,
   ReasoningLabState,
+  ReflectionSession,
   RiskWarning,
   ScannerAlert,
   SignalCalibrationState,
@@ -37,6 +38,7 @@ import type {
   TradeDecision,
   TradeProposal,
   WatchlistEntry,
+  WisdomState,
 } from "@/types";
 import { EventBus } from "./EventBus";
 
@@ -76,6 +78,8 @@ interface NexusSnapshot {
   caseStudies: CaseStudy[];
   reasoningChallenges: ReasoningChallenge[];
   reasoningLabState: ReasoningLabState;
+  reflectionSessions: ReflectionSession[];
+  wisdomState: WisdomState;
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
@@ -187,6 +191,8 @@ export class NexusManager {
     completedChallengeCount: 0,
     updatedAt: new Date().toISOString(),
   };
+  private static reflectionSessions: ReflectionSession[] = [];
+  private static wisdomState: WisdomState = { score: 0, tier: "young_company", tierLabel: "Young Company", factors: [], updatedAt: new Date().toISOString() };
   private static agentEnergy: AgentEnergy = { current: 100, cap: 100, updatedAt: new Date().toISOString() };
   private static signalCalibration: SignalCalibrationState = { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 };
   private static playerVsAi: PlayerVsAiState = { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 };
@@ -309,6 +315,14 @@ export class NexusManager {
 
   static getReasoningLabState(): ReasoningLabState {
     return this.reasoningLabState;
+  }
+
+  static getReflectionSessions(): ReflectionSession[] {
+    return this.reflectionSessions;
+  }
+
+  static getWisdomState(): WisdomState {
+    return this.wisdomState;
   }
 
   static getPerformanceSnapshots(): PerformanceSnapshot[] {
@@ -591,6 +605,14 @@ export class NexusManager {
     if (update.reasoningLabState !== this.reasoningLabState) EventBus.emit("reasoningLabState:updated", update.reasoningLabState);
     this.reasoningLabState = update.reasoningLabState;
 
+    if (update.reflectionSessions.length !== this.reflectionSessions.length) {
+      EventBus.emit("reflectionSessions:updated", update.reflectionSessions);
+    }
+    this.reflectionSessions = update.reflectionSessions;
+
+    if (update.wisdomState !== this.wisdomState) EventBus.emit("wisdomState:updated", update.wisdomState);
+    this.wisdomState = update.wisdomState;
+
     if (update.agentEnergy !== this.agentEnergy) EventBus.emit("agentEnergy:updated", update.agentEnergy);
     this.agentEnergy = update.agentEnergy;
 
@@ -643,6 +665,8 @@ export class NexusManager {
     this.caseStudies = save.caseStudies;
     this.reasoningChallenges = save.reasoningChallenges;
     this.reasoningLabState = save.reasoningLabState;
+    this.reflectionSessions = save.reflectionSessions;
+    this.wisdomState = save.wisdomState;
     this.agentEnergy = save.agentEnergy;
     this.signalCalibration = save.signalCalibration;
     this.playerVsAi = save.playerVsAi;

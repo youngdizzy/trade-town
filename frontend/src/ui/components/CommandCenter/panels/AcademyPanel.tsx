@@ -82,7 +82,7 @@ export function AcademyPanel() {
                 <Meter value={Math.min(100, (state.points / 30) * 100)} tone={tierTone(state.tier)} />
               </div>
               <span className="w-10 flex-none text-right tabular-nums text-cmd-textDim">{state.points.toFixed(0)}p</span>
-              <StatusPill tone={tierTone(state.tier)}>T{state.tier}</StatusPill>
+              <StatusPill tone={tierTone(state.tier)}>{state.level}</StatusPill>
             </div>
           ))}
         </div>

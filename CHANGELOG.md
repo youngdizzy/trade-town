@@ -579,6 +579,94 @@ development milestones, not semver releases.
     app (Playwright: the REASONING tab, level readout, and challenge
     history all rendered correct real content with zero console errors).
 
+- **v0.7 — The Reflection Chamber & Knowledge Levels (Features 30-31)** —
+  the company now pauses to learn, not just to act, and gets one real
+  step closer to the brief's Learning Center scale.
+  - **The Reflection Chamber (Feature 30)**: `app/wisdom.py` holds a real
+    `ReflectionSession` every in-game week and month (same evening
+    cadence Coach/Executive Review already use), answering the brief's
+    nine reflection questions from data already computed elsewhere —
+    `DisciplineReview`/`CaseStudy`/`ReasoningChallenge`/`ResearchItem` —
+    never a fabricated meeting transcript. Several questions deliberately
+    reuse the same underlying number from opposite ends (the strongest
+    real Discipline factor answers both "what are we doing well" and
+    "what should we continue," the same "strong vs weak factors from one
+    list" convention `discipline.py`'s own post-decision review already
+    established). Cross-department sharing is represented honestly:
+    Research's real latest completed item, News's real latest headline,
+    Risk's real latest warning or Gatekeeper block, Executive's real
+    latest review summary — never invented dialogue between department
+    roles this codebase doesn't have.
+  - **Company Wisdom**, a new permanent, never-profit-based score: a
+    plain, unweighted mean of eight real factors (learning from
+    experience, sharing knowledge, following the Gatekeeper's own
+    configured principles, improving communication, documenting lessons,
+    avoiding repeated mistakes, completing research, supporting
+    collaboration), each traced to a real signal already computed by
+    Discipline/Mistakes/Reasoning/research/Gatekeeper/mentorship — see
+    `wisdom.py`'s module docstring for exactly which. `compute_wisdom_score()`'s
+    own signature has no pnl/profit parameter, the same structural "never
+    reads the outcome" guarantee the Discipline Chamber established.
+    Recomputed only when a session is generated (weekly/monthly), not
+    every tick — deliberately, so the score reads as genuinely
+    slow-moving, and deliberately hard to max, since several factors
+    pull against each other in practice.
+  - A new **REFLECTION** Command Center tab shows the current Wisdom
+    Score/tier/factor breakdown and an expandable Reflection Journal
+    (all nine Q&A, department insights, key discoveries, lessons
+    learned, important questions, recommended future projects) per
+    session. `DialogueManager`'s existing institutional-memory recall
+    chance now scales up with the company's real Wisdom tier — the
+    honest, checkable version of "historical knowledge is referenced
+    more often as the company grows wiser."
+  - **Knowledge Levels (Feature 31)**: rather than build a second,
+    largely-redundant progression system alongside the already-shipped
+    AI Academy (Feature 25), `app/academy.py`'s existing per-agent
+    Knowledge Points now cross six real thresholds (was three) into a
+    real seven-level Novice → Beginner → Intermediate → Advanced →
+    Expert → Master → Mentor scale — the same real points, a richer
+    name. The existing mentorship mechanism (the real points-gap trigger
+    between the most- and least-experienced agent) is phrased as real
+    teaching, not generic mentoring, the moment the mentor has actually
+    reached the top Mentor level — `is_mentor_level()` is the real,
+    checkable gate the brief's "Teaching System" needs. `DialogueManager`
+    gained a real, template-based version of "explanation matches
+    knowledge level": once an agent's own real level reaches Advanced or
+    higher, their greeting includes one extra line at that real depth —
+    never a fabricated open-ended Q&A system.
+  - **Explicit scope cuts**, matching this session's honesty convention:
+    no new physical Reflection Chamber or Learning Center room was
+    built — a holographic table, a constellation-animated Knowledge
+    Graph floating in 3D, and a ten-room building all have no real
+    gameplay-data hook in this 2D, tile-based codebase, the same
+    "Command-Center-tab, not new art" boundary Academy/Discipline/
+    Mistakes/Reasoning Lab already drew. Feature 31's Player Knowledge
+    Import (PDFs, videos, books the player provides) is not built at
+    all — this codebase has no content-ingestion pipeline, and
+    fabricating lesson content from an uploaded file would mean
+    inventing text with no real backing. The brief's explicit 8-stage
+    learning pipeline and per-lesson Knowledge Summaries (key concepts,
+    definitions, open questions, weaknesses, related topics) are not
+    separately built either — the existing Academy Project pipeline and
+    Education quiz system already cover real study/practice/
+    understanding-check activity at an honest, coarser granularity, and
+    duplicating it under new names would mean fabricating distinct
+    per-stage signals this codebase doesn't have. Live Classrooms (a
+    physical room) and free-form "Ask Any Agent, explain this topic" are
+    both cut for the same reason — no real dynamic content-generation
+    capability exists here.
+  - Verification: full backend (mypy/ruff/pytest, 322/322 — 15 new tests
+    in `test_wisdom.py`, 5 new tests in `test_academy.py`) and frontend
+    (tsc/eslint/build) clean. An 11,500-tick (~41 in-game day) standalone
+    smoke test in Executive Operating Mode confirmed the full real
+    pipeline end to end (6 real reflection sessions across weekly/
+    monthly cadences, Company Wisdom genuinely growing from 23.8/100
+    "Young Company" to 71.2/100 "Seasoned Wisdom" purely from real
+    behavioral signals, zero exceptions); manually verified in the
+    running app (Playwright: the REFLECTION tab, Wisdom factor
+    breakdown, and Reflection Journal history all rendered correct real
+    content with zero console errors).
+
 - **v0.6.3 — Executive Voting, Risk Command Center, Cyber Overlay** — the
   player is now formally TradeTown's CEO. A research candidate crossing
   the trade-confidence threshold no longer executes automatically: it

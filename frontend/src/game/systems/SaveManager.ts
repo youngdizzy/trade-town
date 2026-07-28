@@ -60,6 +60,8 @@ export class SaveManager {
       caseStudies: NexusManager.getCaseStudies(),
       reasoningChallenges: NexusManager.getReasoningChallenges(),
       reasoningLabState: NexusManager.getReasoningLabState(),
+      reflectionSessions: NexusManager.getReflectionSessions(),
+      wisdomState: NexusManager.getWisdomState(),
       agentEnergy: NexusManager.getAgentEnergy(),
       signalCalibration: NexusManager.getSignalCalibration(),
       playerVsAi: NexusManager.getPlayerVsAi(),

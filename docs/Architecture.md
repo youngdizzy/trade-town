@@ -1272,6 +1272,152 @@ cadence, never backfilled for every historical Debate at once — the
 Reasoning Lab, like the Discipline Chamber, is a going-forward practice
 system, not a retroactive audit of every past decision.
 
+### The Reflection Chamber (Feature 30)
+
+`app/wisdom.py` files a real `ReflectionSession` on the same weekly/
+monthly evening cadence Coach's `CoachReport`/the CIO's
+`ExecutiveReview` already use (`WEEKLY_INTERVAL_DAYS`/
+`MONTHLY_INTERVAL_DAYS`, wired into `nexus.tick()` right after the
+Reasoning Lab check), answering the brief's nine reflection questions
+purely from data this codebase already computes elsewhere. `_questions()`
+maps each one onto a real signal: "what surprised us" reads the most
+recent `DisciplineReview` whose `score`/`outcome` pairing is a genuine
+mismatch (reusing the exact same real predicate `DisciplinePanel.tsx`'s
+own stats card already computes); "what assumptions turned out to be
+wrong" reads the most recent `confirmation_bias` `CaseStudy`; "what
+patterns are repeating" / "what should we stop doing" both read the same
+`Counter`-most-common `CaseStudyCategory` (via `mistakes.py`'s own
+`CATEGORY_TITLES`, renamed public from `_TITLES` specifically for this
+reuse); "what are we doing well" / "what should we continue doing" both
+read the `DisciplineFactor` name with the highest real average score
+across recent reviews, and "what knowledge are we missing" reads the
+same average's lowest scorer — the same "one real list, both ends"
+convention `discipline.py`'s own `_post_decision_review()` already
+established, not fabricated as four independent measurements. "Where are
+we becoming overconfident" counts real `overconfidence` case studies;
+"what new questions to investigate" prefers the most recent real
+`ReasoningChallenge`'s title, falling back to a real research item still
+below `mistakes.py`'s own `INCOMPLETE_RESEARCH_THRESHOLD`.
+
+Cross-department sharing (`_insights()`) is the honest version of the
+brief's "Research explains a discovery, Risk explains concerns" —
+real recent output from real existing agents (the latest completed
+`ResearchItem`'s own title/summary, the latest real `NewsItem` headline,
+the latest real `RiskWarning` or `GatekeeperRejection` reason, the
+latest real `ExecutiveReview` summary), never invented dialogue between
+department roles this codebase doesn't have ("Education" has no
+distinct agent or per-discovery lesson-generation capability — see
+`app/education.py`'s own static curriculum).
+
+Company Wisdom (`compute_wisdom_score()`) is a plain, unweighted mean of
+eight real factors — the same "plain mean, no hidden weighting"
+convention `company_score.py` already established — each traced to a
+real, already-computed signal: `learn_from_experience` compares the
+average `DisciplineReview.score` across the earlier vs. later half of
+the recent window; `share_knowledge` counts real `"mentorship"`
+`MemoryRecord`s; `follow_principles` is the real share of trades that
+reached `PaperPortfolio.trade_history` without a `GatekeeperRejection`;
+`improve_communication`/`support_collaboration` are the real average
+`cross_examination`/`viewpoint_diversity` `DisciplineFactor` scores
+(two different, already-real factors — not a redundant re-measurement);
+`document_lessons` is the real combined count of Discipline Reviews/
+Case Studies/Reasoning Challenges on record; `avoid_repeating_mistakes`
+is 100 minus the real dominant `CaseStudyCategory`'s share of the
+window; `complete_research` is the real completed/total `ResearchItem`
+ratio. `compute_wisdom_score()`'s own signature never receives a trade's
+pnl or any `PaperTrade`, only `PaperPortfolio.trade_history`'s length
+for the `follow_principles` ratio — the same structural "never reads the
+outcome" guarantee `compute_discipline_score()` established, verified by
+a dedicated test asserting identical scores for identical process
+regardless of the linked trade's real win/loss. `WisdomState` is
+recomputed only inside the same `if` block that generates a
+`ReflectionSession` (weekly/monthly), never every tick — a deliberate
+choice so the score reads as genuinely slow-moving, not a performance
+shortcut.
+
+A new **REFLECTION** Command Center tab (`ReflectionPanel.tsx`) shows
+the current Wisdom Score/tier/factor breakdown and an expandable
+Reflection Journal (all nine Q&A, department insights, key discoveries,
+lessons learned, important questions, recommended future projects) per
+session — the same expand-in-place accordion pattern already used
+elsewhere. `DialogueManager.recallChance()` scales the existing
+institutional-memory recall chance (see Feature 25.5/27/29 above) up
+with the company's own real `wisdomState.tier` — the honest, checkable
+version of "historical knowledge is referenced more often" as the
+company grows wiser, never a fabricated dialogue-quality upgrade.
+
+**Explicit scope cuts**: no new physical Reflection Chamber room was
+built — a circular holographic table, an animated constellation
+Knowledge Graph floating above it, and "NPCs gather naturally around the
+table" all have no real gameplay-data hook to back them in this 2D,
+tile-based codebase, the same boundary Academy/Discipline/Mistakes/
+Reasoning Lab already drew (only Feature 24's Executive Boardroom got a
+physical scene, tied to a genuinely new NPC-hosted location — Reflection
+has neither).
+
+### Knowledge Levels (Feature 31)
+
+Feature 31's brief asks for a Learning Center with a real Novice-through-
+Mentor progression, structured lesson pipeline, and player-provided
+learning materials. Most of this ground is already covered by the
+shipped AI Academy (Feature 25) — building a second, parallel
+points/project/mentorship system under a new name would mean either
+duplicating `academy.py`'s real mechanics or fabricating a shadow
+system with no real backing. Instead, `academy.py` itself was extended:
+`TIER_THRESHOLDS` widened from three real point thresholds (four tiers)
+to six (seven tiers), and each tier now also carries a real
+`KnowledgeLevel` name (`_KNOWLEDGE_LEVELS`) — `novice` through `mentor`,
+the same real points, a richer label. `AgentKnowledgeState.tier` (int)
+is kept unchanged in shape so existing threshold/test code didn't need
+restructuring; `level` is the same value's honest name, derived via
+`_level_for_tier()`.
+
+`is_mentor_level()` is the real, checkable gate the brief's "Teaching
+System" needs ("agents who master a subject may become instructors"):
+`maybe_run_mentorship()`'s existing mechanism (the real points-gap
+trigger between the most- and least-experienced agent — see Feature 25
+above) is unchanged, but `scribe.py`'s `record_mentorship_session()` now
+phrases the resulting memory entry as real teaching ("teaches"/"hosted a
+real teaching session for") rather than generic mentoring
+("mentors"/"spent time coaching") the moment the mentor has actually
+reached the top `mentor` level — no separate teaching subsystem, since
+the same points-gap mechanism already is the real trigger for "a more
+experienced agent helps a less experienced one."
+
+`DialogueManager.knowledgeDepthLine()` is the honest, template-based
+version of the brief's "explanation matches knowledge level" — no
+free-form NLG exists in this codebase to actually vary explanation depth
+per topic on demand, so once an agent's own real `tier` reaches 3
+(`advanced`) or higher, their greeting includes one extra real line at
+that depth, keyed off their own real `level`/`branch`. A
+novice/beginner/intermediate agent has nothing extra to say here yet,
+honestly.
+
+**Explicit scope cuts**, matching this session's honesty convention: the
+Learning Center building (Lecture Hall, Digital Library, Interactive
+Classrooms, Presentation Stage, Knowledge Archive, Simulation Classroom,
+Study Lounge, AI Training Pods — ten named physical spaces) is not
+built — the same "Command-Center-tab, not new art" boundary every recent
+feature has drawn. Player Knowledge Import (PDFs, guides, books, videos
+the player provides) is not built at all: this codebase has no
+content-ingestion or document-parsing capability anywhere, and
+fabricating lesson content "from" an uploaded file the system never
+actually reads would be dishonest by this session's own standard. The
+brief's explicit 8-stage learning pipeline (Study → Summarize → Discuss
+→ Ask Questions → Challenge Assumptions → Practice → Teach → Archive)
+and per-lesson Knowledge Summaries (key concepts, definitions, open
+questions, weaknesses, related topics, recommended follow-up) are not
+separately modeled either — `academy_research.py`'s existing
+`AcademyProject` pipeline and `education.py`'s existing quiz-graded
+lessons already cover real study/practice/understanding-check activity
+at an honest, coarser granularity; inventing eight distinct per-stage
+signals with no real data behind them would be fake precision. Live
+Classrooms (a physical room players walk into) and an open-ended "Ask
+Any Agent, explain this topic" free-text system are both cut for the
+same reason as Player Knowledge Import — no real dynamic
+content-generation capability exists in this codebase to back either
+one honestly.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

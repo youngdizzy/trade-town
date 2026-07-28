@@ -7,6 +7,7 @@ the historical record" glue, called from app/nexus.py's tick.
 """
 from __future__ import annotations
 
+from app.academy import is_mentor_level
 from app.agents import AGENT_PROFILES
 from app.knowledge import derive_lesson
 from app.memory import record
@@ -25,6 +26,7 @@ from app.schemas import (
     PaperOrder,
     PaperTrade,
     ReasoningChallenge,
+    ReflectionSession,
     ResearchItem,
     ScannerAlert,
     SimulationResult,
@@ -161,24 +163,30 @@ def record_knowledge_tier_up(memory: list[MemoryRecord], state: AgentKnowledgeSt
         memory,
         "academy",
         f"{AGENT_PROFILES[state.agent_id].name} advances in {state.branch}",
-        f"{AGENT_PROFILES[state.agent_id].name} has reached Tier {state.tier} in {state.branch}, "
+        f"{AGENT_PROFILES[state.agent_id].name} has reached {state.level.title()} level (Tier {state.tier}) in {state.branch}, "
         f"with {state.points:.1f} knowledge points earned through real completed work.",
     )
 
 
 def record_mentorship_session(memory: list[MemoryRecord], knowledge: dict[AgentId, AgentKnowledgeState], mentor_id: AgentId, mentee_id: AgentId) -> None:
-    """v0.7 Feature 25 — see app/academy.py's module docstring for why
+    """v0.7 Feature 25/31 — see app/academy.py's module docstring for why
     "seniority" here is grounded in real knowledge points rather than a
     fabricated status; both agents' own real point totals are logged
-    verbatim, not a generic "mentoring happened" line."""
+    verbatim, not a generic "mentoring happened" line. Phrased as real
+    teaching, not generic mentoring, only once the mentor has actually
+    reached the top "mentor" Knowledge Level (see
+    app/academy.py's is_mentor_level()) — the real gate the brief's
+    Teaching System asks for."""
     mentor = knowledge[mentor_id]
     mentee = knowledge[mentee_id]
+    verb = "teaches" if is_mentor_level(mentor) else "mentors"
+    activity = "hosted a real teaching session for" if is_mentor_level(mentor) else "spent time coaching"
     record(
         memory,
         "mentorship",
-        f"{AGENT_PROFILES[mentor_id].name} mentors {AGENT_PROFILES[mentee_id].name}",
-        f"{AGENT_PROFILES[mentor_id].name} ({mentor.branch}, Tier {mentor.tier}, {mentor.points:.1f} pts) spent time coaching "
-        f"{AGENT_PROFILES[mentee_id].name} ({mentee.branch}, Tier {mentee.tier}, {mentee.points:.1f} pts) this afternoon.",
+        f"{AGENT_PROFILES[mentor_id].name} {verb} {AGENT_PROFILES[mentee_id].name}",
+        f"{AGENT_PROFILES[mentor_id].name} ({mentor.branch}, {mentor.level.title()}, {mentor.points:.1f} pts) {activity} "
+        f"{AGENT_PROFILES[mentee_id].name} ({mentee.branch}, {mentee.level.title()}, {mentee.points:.1f} pts) this afternoon.",
     )
 
 
@@ -196,3 +204,12 @@ def record_case_study(memory: list[MemoryRecord], case_study: CaseStudy) -> None
 
 def record_reasoning_challenge(memory: list[MemoryRecord], challenge: ReasoningChallenge) -> None:
     record(memory, "reasoning_challenge", f"Reasoning Lab: {challenge.title}", f"{challenge.symbol}: {challenge.solution.why_reasonable}")
+
+
+def record_reflection_session(memory: list[MemoryRecord], session: ReflectionSession) -> None:
+    record(
+        memory,
+        "reflection",
+        f"{session.cadence.title()} Reflection Session",
+        f"Company Wisdom stands at {session.wisdom_score:.0f}/100. {session.questions[0].answer if session.questions else ''}",
+    )

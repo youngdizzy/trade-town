@@ -28,6 +28,7 @@ import type {
   PlayerVsAiState,
   ReasoningChallenge,
   ReasoningLabState,
+  ReflectionSession,
   RiskLimits,
   RiskWarning,
   ScannerAlert,
@@ -39,6 +40,7 @@ import type {
   TradeDecision,
   TradeProposal,
   WatchlistEntry,
+  WisdomState,
 } from "@/types";
 import { EventBus } from "@/game/systems/EventBus";
 import { TimeManager } from "@/game/systems/TimeManager";
@@ -85,6 +87,8 @@ type ServerMessage =
       caseStudies: CaseStudy[];
       reasoningChallenges: ReasoningChallenge[];
       reasoningLabState: ReasoningLabState;
+      reflectionSessions: ReflectionSession[];
+      wisdomState: WisdomState;
       agentEnergy: AgentEnergy;
       signalCalibration: SignalCalibrationState;
       playerVsAi: PlayerVsAiState;
@@ -182,6 +186,8 @@ export class GameSocket {
             caseStudies: msg.caseStudies,
             reasoningChallenges: msg.reasoningChallenges,
             reasoningLabState: msg.reasoningLabState,
+            reflectionSessions: msg.reflectionSessions,
+            wisdomState: msg.wisdomState,
             agentEnergy: msg.agentEnergy,
             signalCalibration: msg.signalCalibration,
             playerVsAi: msg.playerVsAi,

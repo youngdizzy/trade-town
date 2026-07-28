@@ -343,6 +343,46 @@ the full pipeline end to end (7 challenges across three genuinely
 different real categories, Reasoning Level correctly advancing); verified
 in the running app with zero console errors.
 
+### v0.7 continued — The Reflection Chamber & Knowledge Levels (Features 30-31)
+
+The company now pauses to learn, not just to act. The **Reflection
+Chamber** files a real `ReflectionSession` every in-game week and month,
+answering the brief's nine reflection questions purely from data already
+computed elsewhere (Discipline Reviews, Case Studies, Reasoning
+Challenges, research) — several questions deliberately reuse the same
+real number from opposite ends (the strongest Discipline factor answers
+both "what are we doing well" and "what should we continue"). A new
+**Company Wisdom** score — never profit-based — is a plain, unweighted
+mean of eight real factors (learning from experience, sharing knowledge,
+following the Gatekeeper's own principles, improving communication,
+documenting lessons, avoiding repeated mistakes, completing research,
+supporting collaboration), recomputed only when a session is generated
+so it reads as genuinely slow-moving, and deliberately hard to max since
+several factors pull against each other in practice. Cross-department
+sharing is real recent output from real existing agents, never invented
+department dialogue. A new REFLECTION Command Center tab shows the
+current score/tier/factor breakdown and the full Reflection Journal
+history; `DialogueManager`'s recall chance now scales up with the
+company's real Wisdom tier — the honest version of "historical knowledge
+referenced more often." **Knowledge Levels** extends the existing AI
+Academy (Feature 25) rather than duplicating it: the same real per-agent
+points now cross six thresholds into a real seven-level Novice-through-
+Mentor scale, and the existing mentorship mechanism is phrased as real
+teaching once a mentor actually reaches the top level. Explicit scope
+cuts: no new physical Reflection Chamber or Learning Center room (no
+real gameplay-data hook for a holographic table or a ten-room building
+in this 2D codebase); Player Knowledge Import (PDFs/videos/books) isn't
+built at all — no content-ingestion capability exists; the brief's
+8-stage learning pipeline and per-lesson Knowledge Summaries aren't
+separately modeled, since the existing Academy Project pipeline and
+Education quizzes already cover real study/practice/understanding-check
+activity honestly. 20 new backend tests; an 11,500-tick (~41 in-game
+day) standalone smoke test in Executive Operating Mode confirmed the
+full pipeline end to end (6 reflection sessions, Wisdom genuinely
+growing from 23.8 "Young Company" to 71.2 "Seasoned Wisdom" from real
+behavioral signals alone); verified in the running app with zero
+console errors.
+
 ## What's next for v0.8 (not started, not scoped)
 
 These are candidate directions surfaced by v0.6/v0.7's design, not

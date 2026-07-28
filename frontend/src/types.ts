@@ -935,11 +935,15 @@ export interface AcademyProject {
   updatedAt: string;
 }
 
+// v0.7 Feature 31 — the same real points, a real seven-level name.
+export type KnowledgeLevel = "novice" | "beginner" | "intermediate" | "advanced" | "expert" | "master" | "mentor";
+
 export interface AgentKnowledgeState {
   agentId: AgentId;
   branch: string;
   points: number;
   tier: number;
+  level: KnowledgeLevel;
 }
 
 export interface AcademyState {
@@ -1115,6 +1119,56 @@ export interface ReasoningLabState {
   updatedAt: string;
 }
 
+// v0.7 Feature 30 — the Reflection Chamber (see backend/app/wisdom.py).
+// A real ReflectionSession every in-game week and month, generated
+// fresh from data already computed elsewhere — never a fabricated
+// meeting transcript. The Company Wisdom Score is never profit-based.
+export type ReflectionCadence = "weekly" | "monthly";
+
+export interface ReflectionQuestion {
+  question: string;
+  answer: string;
+}
+
+export interface ReflectionInsight {
+  agentId: AgentId;
+  insight: string;
+}
+
+export interface ReflectionSession {
+  id: string;
+  cadence: ReflectionCadence;
+  attendees: AgentId[];
+  questions: ReflectionQuestion[];
+  insights: ReflectionInsight[];
+  keyDiscoveries: string[];
+  lessonsLearned: string[];
+  importantQuestions: string[];
+  recommendedFutureProjects: string[];
+  wisdomScore: number;
+  simDay: number;
+  createdAt: string;
+}
+
+export type WisdomFactorId = "learn_from_experience" | "share_knowledge" | "follow_principles" | "improve_communication" | "document_lessons" | "avoid_repeating_mistakes" | "complete_research" | "support_collaboration";
+export type WisdomTier = "young_company" | "developing_judgment" | "institutional_memory" | "seasoned_wisdom" | "enduring_wisdom";
+
+export interface WisdomFactor {
+  id: WisdomFactorId;
+  name: string;
+  score: number;
+  weight: number;
+  detail: string;
+}
+
+export interface WisdomState {
+  score: number;
+  tier: WisdomTier;
+  tierLabel: string;
+  factors: WisdomFactor[];
+  updatedAt: string;
+}
+
 export interface GameSaveState {
   version: "0.6";
   player: EntityTransform;
@@ -1154,6 +1208,8 @@ export interface GameSaveState {
   caseStudies: CaseStudy[];
   reasoningChallenges: ReasoningChallenge[];
   reasoningLabState: ReasoningLabState;
+  reflectionSessions: ReflectionSession[];
+  wisdomState: WisdomState;
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;

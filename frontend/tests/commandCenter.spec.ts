@@ -195,7 +195,7 @@ test.describe("Global Command Center", () => {
     expect(moved.x).not.toBe(frozen.x);
   });
 
-  test("expands to the Full Command Center and renders all 16 tabs with graceful empty states", async ({ page }) => {
+  test("expands to the Full Command Center and renders all 17 tabs with graceful empty states", async ({ page }) => {
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);
     await continueGame(page);
@@ -214,7 +214,7 @@ test.describe("Global Command Center", () => {
     // ticking throughout, a genuine trade or trade proposal can appear
     // (and pop up) mid-test. clickTab() dismisses and retries rather
     // than losing the race to a popup that appears in that instant.
-    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "COMPANY", "KNOWLEDGE", "DISCIPLINE", "REASONING", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
+    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "COMPANY", "KNOWLEDGE", "DISCIPLINE", "REASONING", "REFLECTION", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
     for (const tab of tabs) {
       await clickTab(page, tab);
       await expect(page.getByRole("button", { name: tab, exact: true })).toHaveClass(/text-cmd-cyan/);
@@ -496,6 +496,11 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
+    // The backend keeps ticking in real time across this whole test file,
+    // so a genuine trade proposal can pop up in the instant before this
+    // click — dismiss it first, the same guard the "renders all N tabs"
+    // test above already uses.
+    await dismissTradeOutcomePopups(page);
     await page.getByRole("button", { name: /EXPAND/ }).click();
     await clickTab(page, "KNOWLEDGE");
 
@@ -562,6 +567,29 @@ test.describe("Global Command Center", () => {
     const hasEmptyState = await page.getByText(/No reasoning challenges filed yet/).count();
     if (hasEmptyState === 0) {
       await expect(page.locator(".text-cmd-purple").first()).toBeVisible();
+    }
+  });
+
+  test("REFLECTION tab shows Company Wisdom and the Reflection Journal, always real content or an honest empty state", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await dismissTradeOutcomePopups(page);
+    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickTab(page, "REFLECTION");
+
+    await expect(page.getByText("Company Wisdom", { exact: true })).toBeVisible();
+    await expect(page.getByText(/\/100 —/)).toBeVisible();
+    await expect(page.getByText("Reflection Journal", { exact: true })).toBeVisible();
+
+    // Either real filed sessions or the honest "none yet" empty state —
+    // never a blank panel. Company Wisdom never reads a trade's pnl, so
+    // whichever renders is truthful either way.
+    const hasEmptyState = await page.getByText(/No Reflection Session yet/).count();
+    if (hasEmptyState === 0) {
+      await expect(page.getByText(/Wisdom \d+\/100/).first()).toBeVisible();
     }
   });
 });

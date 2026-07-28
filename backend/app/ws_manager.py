@@ -91,6 +91,8 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         "caseStudies": [c.model_dump(by_alias=True) for c in state.case_studies],
         "reasoningChallenges": [r.model_dump(by_alias=True) for r in state.reasoning_challenges],
         "reasoningLabState": state.reasoning_lab_state.model_dump(by_alias=True),
+        "reflectionSessions": [r.model_dump(by_alias=True) for r in state.reflection_sessions],
+        "wisdomState": state.wisdom_state.model_dump(by_alias=True),
     }
 
 

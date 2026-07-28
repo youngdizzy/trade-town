@@ -32,6 +32,7 @@ import type {
   PlayerVsAiState,
   ReasoningChallenge,
   ReasoningLabState,
+  ReflectionSession,
   RiskWarning,
   ScannerAlert,
   SceneId,
@@ -44,6 +45,7 @@ import type {
   TradeDecision,
   TradeProposal,
   WatchlistEntry,
+  WisdomState,
 } from "@/types";
 
 /** Every event the game emits, keyed by name, with its payload type. */
@@ -121,6 +123,8 @@ export interface GameEvents {
   "caseStudies:updated": CaseStudy[];
   "reasoningChallenges:updated": ReasoningChallenge[];
   "reasoningLabState:updated": ReasoningLabState;
+  "reflectionSessions:updated": ReflectionSession[];
+  "wisdomState:updated": WisdomState;
   "ui:executiveVoting": { open: boolean; proposalId?: string };
   // v0.7 Feature 19 — opens the Command Center on the Decisions tab for a
   // specific trade's decision; openDetail additionally auto-opens

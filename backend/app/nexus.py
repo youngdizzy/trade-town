@@ -79,6 +79,7 @@ from app.scribe import (
     record_mentorship_session,
     record_paper_trade,
     record_reasoning_challenge,
+    record_reflection_session,
     record_research_completions,
     record_scanner_alert,
     record_simulation_result,
@@ -106,6 +107,8 @@ from app.schemas import (
     PaperPortfolio,
     PaperTrade,
     ReasoningChallenge,
+    ReflectionCadence,
+    ReflectionSession,
     ResearchItem,
     RiskLimits,
     RiskWarning,
@@ -116,9 +119,12 @@ from app.schemas import (
     TimeState,
     TradeDecision,
     TradeProposal,
+    WisdomState,
 )
 from app.simulation import default_strategies, queue_backtest_now, tick_simulation_lab
 from app.watchlist import add_symbol_to_watchlist, default_watchlist, tick_watchlist
+from app.wisdom import compute_wisdom_score, generate_reflection_session
+from app.wisdom import record_session as record_reflection_session_entry
 
 MAX_MEMORY = 50
 MAX_TASKS = 60
@@ -793,6 +799,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     discipline_reviews: list[DisciplineReview] = list(state.discipline_reviews)
     case_studies: list[CaseStudy] = list(state.case_studies)
     reasoning_challenges: list[ReasoningChallenge] = list(state.reasoning_challenges)
+    reflection_sessions: list[ReflectionSession] = list(state.reflection_sessions)
+    wisdom_state: WisdomState = state.wisdom_state
 
     agents = {aid: _tick_agent(aid, agent, new_time, minutes, tasks) for aid, agent in state.agents.items()}
 
@@ -1166,6 +1174,40 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
 
     reasoning_lab_state = compute_reasoning_lab_state(len(reasoning_challenges))
 
+    # v0.7 Feature 30 — the Reflection Chamber. A real ReflectionSession
+    # every in-game week and month; the company's Wisdom Score is
+    # recomputed only at these moments, never every tick — see
+    # WisdomState's own docstring for why that's a deliberate design
+    # choice, not a shortcut, and app/wisdom.py's module docstring for
+    # exactly which real signal answers each of the brief's nine
+    # questions.
+    if is_evening and (new_time.day % WEEKLY_INTERVAL_DAYS == 0 or new_time.day % MONTHLY_INTERVAL_DAYS == 0):
+        wisdom_state = compute_wisdom_score(
+            discipline_reviews=discipline_reviews,
+            case_studies=case_studies,
+            reasoning_challenges=reasoning_challenges,
+            research=research,
+            trade_history=paper_portfolio.trade_history,
+            gatekeeper_rejections=gatekeeper_rejections,
+            memory=memory,
+        )
+        cadence: ReflectionCadence = "monthly" if new_time.day % MONTHLY_INTERVAL_DAYS == 0 else "weekly"
+        reflection_session = generate_reflection_session(
+            cadence,
+            discipline_reviews=discipline_reviews,
+            case_studies=case_studies,
+            reasoning_challenges=reasoning_challenges,
+            research=research,
+            news=news,
+            risk_warnings=risk_warnings,
+            gatekeeper_rejections=gatekeeper_rejections,
+            executive_reviews=executive_reviews,
+            wisdom_state=wisdom_state,
+            new_time=new_time,
+        )
+        reflection_sessions = record_reflection_session_entry(reflection_sessions, reflection_session)
+        record_reflection_session(memory, reflection_session)
+
     if is_midnight:
         agent_energy = regen_daily(agent_energy)
         performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("daily", paper_portfolio, research, new_time))
@@ -1233,6 +1275,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "case_studies": case_studies,
             "reasoning_challenges": reasoning_challenges,
             "reasoning_lab_state": reasoning_lab_state,
+            "reflection_sessions": reflection_sessions,
+            "wisdom_state": wisdom_state,
             "agent_energy": agent_energy,
             "whiteboards": _update_whiteboards(agents, meeting, research),
             "updated_at": _now_iso(),

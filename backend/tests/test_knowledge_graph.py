@@ -146,8 +146,8 @@ class TestBuildKnowledgeGraph:
 
     def test_agent_knowledge_creates_a_shared_branch_node(self) -> None:
         knowledge = {
-            "echo": AgentKnowledgeState(agentId="echo", branch="Technical Analysis", points=10.0, tier=1),  # type: ignore[arg-type]
-            "pulse": AgentKnowledgeState(agentId="pulse", branch="Statistics", points=5.0, tier=0),  # type: ignore[arg-type]
+            "echo": AgentKnowledgeState(agentId="echo", branch="Technical Analysis", points=10.0, tier=1, level="beginner"),  # type: ignore[arg-type]
+            "pulse": AgentKnowledgeState(agentId="pulse", branch="Statistics", points=5.0, tier=0, level="novice"),  # type: ignore[arg-type]
         }
         graph = build_knowledge_graph(
             agent_ids=("echo", "pulse"), research=[], academy_completed_projects=[], agent_knowledge=knowledge,

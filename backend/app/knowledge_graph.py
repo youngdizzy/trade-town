@@ -93,7 +93,7 @@ def build_knowledge_graph(
         if branch_id not in seen_branches:
             seen_branches.add(branch_id)
             nodes.append(KnowledgeNode(id=branch_id, type="branch", label=state.branch, subtitle="Knowledge Branch"))
-        edges.append(KnowledgeEdge(source=f"agent-{agent_id}", target=branch_id, relation="has_branch", label=f"Tier {state.tier}"))
+        edges.append(KnowledgeEdge(source=f"agent-{agent_id}", target=branch_id, relation="has_branch", label=f"{state.level.title()} (Tier {state.tier})"))
 
     research_chain_items: list[tuple[str, str, str]] = []
     for item in research:

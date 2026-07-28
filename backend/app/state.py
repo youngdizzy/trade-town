@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from app import education, nexus, player_vs_ai, signal_calibration, trade_notifications
 from app.academy import compute_academy_state, default_agent_knowledge
 from app.reasoning_lab import compute_reasoning_lab_state
+from app.wisdom import compute_wisdom_score
 from app.academy_research import default_academy_projects
 from app.agent_energy import default_agent_energy
 from app.company_health import compute_company_health
@@ -54,6 +55,7 @@ def default_state() -> GameSaveState:
     signal_calibration_state = SignalCalibrationState()
     education_progress = education.default_education_progress()
     agent_knowledge = default_agent_knowledge()
+    seed_research = default_research()
     return GameSaveState(
         player=EntityTransform(scene="LobbyScene", x=160, y=220, facing="down"),
         agents=agents,
@@ -61,7 +63,7 @@ def default_state() -> GameSaveState:
         whiteboards={},
         meeting=MeetingState(),
         news=[],
-        research=default_research(),
+        research=seed_research,
         watchlist=watchlist,
         memory=[],
         meetingMinutes=[],
@@ -106,6 +108,16 @@ def default_state() -> GameSaveState:
         caseStudies=[],
         reasoningChallenges=[],
         reasoningLabState=compute_reasoning_lab_state(0),
+        reflectionSessions=[],
+        wisdomState=compute_wisdom_score(
+            discipline_reviews=[],
+            case_studies=[],
+            reasoning_challenges=[],
+            research=seed_research,
+            trade_history=[],
+            gatekeeper_rejections=[],
+            memory=[],
+        ),
         updatedAt=_now_iso(),
     )
 

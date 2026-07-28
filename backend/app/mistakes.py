@@ -60,7 +60,7 @@ MAX_CASE_STUDIES = 60
 OVERCONFIDENCE_THRESHOLD = 80.0
 INCOMPLETE_RESEARCH_THRESHOLD = 50.0
 
-_TITLES: dict[CaseStudyCategory, str] = {
+CATEGORY_TITLES: dict[CaseStudyCategory, str] = {
     "overconfidence": "The Cost of Overconfidence",
     "incomplete_research": "Incomplete Research",
     "unchallenged_assumptions": "Failure to Challenge Assumptions",
@@ -176,7 +176,7 @@ def generate_case_studies(
         CaseStudy(
             id=f"{id_prefix}-{category}",
             category=category,
-            title=_TITLES[category],
+            title=CATEGORY_TITLES[category],
             symbol=decision.symbol,
             decisionId=decision.id,
             timeline=timeline,

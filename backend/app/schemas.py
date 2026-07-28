@@ -139,6 +139,9 @@ MemoryCategory = Literal[
     # v0.7 Feature 29 — a completed Reasoning Lab challenge (see
     # app/reasoning_lab.py).
     "reasoning_challenge",
+    # v0.7 Feature 30 — a weekly/monthly Reflection Session (see
+    # app/wisdom.py).
+    "reflection",
 ]
 
 # --- v0.5: paper trading, simulation, coaching, and scoring ---------------
@@ -1227,11 +1230,20 @@ class AcademyProject(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# v0.7 Feature 31 — the real 7-level Novice-to-Mentor progression scale
+# an agent's own Knowledge Points (app/academy.py) map onto, replacing the
+# old bare 0-3 `tier` number with an honest label — `tier` (0-6) is kept
+# as the underlying int so existing ordering/threshold code and tests
+# don't need to change shape, `level` is the same value's real name.
+KnowledgeLevel = Literal["novice", "beginner", "intermediate", "advanced", "expert", "master", "mentor"]
+
+
 class AgentKnowledgeState(CamelModel):
     agent_id: AgentId = Field(alias="agentId")
     branch: str
     points: float
     tier: int
+    level: KnowledgeLevel
 
 
 class AcademyState(CamelModel):
@@ -1483,6 +1495,93 @@ class ReasoningLabState(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# v0.7 Feature 30 — the Reflection Chamber (app/wisdom.py). Every
+# in-game week and month the company holds a real ReflectionSession —
+# generated fresh from data this codebase already computes elsewhere
+# (DisciplineReview/CaseStudy/ReasoningChallenge/ResearchItem/
+# GatekeeperRejection), never a fabricated meeting transcript. See
+# wisdom.py's module docstring for exactly which real signal answers
+# each of the brief's nine reflection questions and backs each of the
+# eight real Company Wisdom factors.
+ReflectionCadence = Literal["weekly", "monthly"]
+
+
+class ReflectionQuestion(CamelModel):
+    question: str
+    answer: str
+
+
+class ReflectionInsight(CamelModel):
+    """One real department's real contribution to a session — the
+    honest version of the brief's "Research explains a discovery, Risk
+    explains concerns" cross-department sharing: real text from a real
+    agent's own real recent output, never invented dialogue between
+    fixed department roles that don't exist in this codebase."""
+
+    agent_id: AgentId = Field(alias="agentId")
+    insight: str
+
+
+class ReflectionSession(CamelModel):
+    id: str
+    cadence: ReflectionCadence
+    # Every real agent "attends" — this codebase has no separate
+    # meeting-attendance record for company-wide sessions, the same
+    # honest stand-in DisciplineReview.attendees already uses.
+    attendees: list[AgentId] = Field(default_factory=list)
+    questions: list[ReflectionQuestion] = Field(default_factory=list)
+    insights: list[ReflectionInsight] = Field(default_factory=list)
+    key_discoveries: list[str] = Field(default_factory=list, alias="keyDiscoveries")
+    lessons_learned: list[str] = Field(default_factory=list, alias="lessonsLearned")
+    important_questions: list[str] = Field(default_factory=list, alias="importantQuestions")
+    recommended_future_projects: list[str] = Field(default_factory=list, alias="recommendedFutureProjects")
+    # The real Company Wisdom Score at the moment this session closed —
+    # see WisdomState below; never a trade-pnl-derived number.
+    wisdom_score: float = Field(alias="wisdomScore")
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
+# Never profit-based — see wisdom.py's module docstring for exactly
+# which already-real signal backs each factor. Deliberately hard to
+# max: an equal, unweighted mean of eight independent real behaviors,
+# several of which (avoiding repeated mistakes, following the
+# Gatekeeper's own principles) the company will realistically never
+# score a clean 100 on.
+WisdomFactorId = Literal[
+    "learn_from_experience",
+    "share_knowledge",
+    "follow_principles",
+    "improve_communication",
+    "document_lessons",
+    "avoid_repeating_mistakes",
+    "complete_research",
+    "support_collaboration",
+]
+WisdomTier = Literal["young_company", "developing_judgment", "institutional_memory", "seasoned_wisdom", "enduring_wisdom"]
+
+
+class WisdomFactor(CamelModel):
+    id: WisdomFactorId
+    name: str
+    score: float  # 0-100, this factor's own reading
+    weight: float  # 0-1, this factor's share of the total score
+    detail: str
+
+
+class WisdomState(CamelModel):
+    """Recomputed only when a ReflectionSession is generated (weekly/
+    monthly), not every tick — a deliberate design choice, not a
+    performance shortcut, so the score reads as genuinely slow-moving
+    the way the brief asks, rather than jittering tick to tick."""
+
+    score: float
+    tier: WisdomTier
+    tier_label: str = Field(alias="tierLabel")
+    factors: list[WisdomFactor] = Field(default_factory=list)
+    updated_at: str = Field(alias="updatedAt")
+
+
 class GameSaveState(CamelModel):
     version: Literal["0.6"] = "0.6"
     player: EntityTransform
@@ -1560,6 +1659,12 @@ class GameSaveState(CamelModel):
     # company-wide progression level derived from the challenge count.
     reasoning_challenges: list[ReasoningChallenge] = Field(default_factory=list, alias="reasoningChallenges")
     reasoning_lab_state: ReasoningLabState = Field(alias="reasoningLabState")
+    # v0.7 Feature 30 — the Reflection Chamber (app/wisdom.py). One
+    # capped, permanent ReflectionSession per weekly/monthly cycle;
+    # `wisdom_state` is the company-wide Wisdom Score, updated only when
+    # a session is generated (see WisdomState's own docstring for why).
+    reflection_sessions: list[ReflectionSession] = Field(default_factory=list, alias="reflectionSessions")
+    wisdom_state: WisdomState = Field(alias="wisdomState")
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(default_factory=list, alias="dialogueHistory")

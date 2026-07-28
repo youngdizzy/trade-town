@@ -23,12 +23,29 @@ transfers a small real point bonus to the lower agent (the mentor loses
 nothing — mentoring doesn't cost them), logged with both agents' own
 real point totals. A full mentor/mentee relationship graph and visible
 in-world mentoring animations are an explicit scope cut, not built here.
+
+v0.7 Feature 31 — "Knowledge Levels." The brief asks for a real
+Novice-through-Mentor progression per topic; this codebase already has
+exactly one real, per-agent, monotonically-growing knowledge number
+(the same points this module has tracked since Feature 25), so rather
+than inventing a second parallel progression system, `TIER_THRESHOLDS`
+widened from 3 thresholds (4 tiers) to 6 (7 tiers) and each tier now
+also carries a real `KnowledgeLevel` name — the same points, a richer
+label. `is_mentor_level()` is the real, checkable gate the brief's own
+"Teaching System" needs ("agents who master a subject may become
+instructors"): `maybe_run_mentorship()`'s existing mechanism already
+finds the single most experienced agent for a real pairing; when that
+agent has actually reached the top "mentor" level, `scribe.py` phrases
+the resulting memory entry as real teaching rather than generic
+mentorship — no separate teaching subsystem, since the same points-gap
+mechanism already is the real trigger for "a more experienced agent
+helps a less experienced one."
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.schemas import AcademyState, AgentId, AgentKnowledgeState
+from app.schemas import AcademyState, AgentId, AgentKnowledgeState, KnowledgeLevel
 
 KNOWLEDGE_BRANCH: dict[AgentId, str] = {
     "scout": "Market Structure",
@@ -48,11 +65,14 @@ ACADEMY_PROJECT_POINTS = 2.0
 MEETING_ATTENDANCE_POINTS = 0.5
 MENTORSHIP_BONUS_POINTS = 2.0
 
-# Crossing each threshold advances one tier (0-3) — a plain cumulative
+# Crossing each threshold advances one tier/level — a plain cumulative
 # gate, unlike Signal Calibration's streak gate, since there's no
 # "attempt" to grind here; every point already came from real completed
-# work, so cumulative is honest on its own.
-TIER_THRESHOLDS = (5.0, 15.0, 30.0)
+# work, so cumulative is honest on its own. Six thresholds give seven
+# real levels (tier 0-6), matching v0.7 Feature 31's Novice-through-
+# Mentor scale.
+TIER_THRESHOLDS = (3.0, 8.0, 15.0, 25.0, 40.0, 60.0)
+_KNOWLEDGE_LEVELS: tuple[KnowledgeLevel, ...] = ("novice", "beginner", "intermediate", "advanced", "expert", "master", "mentor")
 MENTORSHIP_GAP_THRESHOLD = 12.0
 
 # Company-wide Academy level thresholds (v0.7 brief's five named tiers).
@@ -82,8 +102,19 @@ def _tier_for_points(points: float) -> int:
     return tier
 
 
+def _level_for_tier(tier: int) -> KnowledgeLevel:
+    return _KNOWLEDGE_LEVELS[tier]
+
+
+def is_mentor_level(state: AgentKnowledgeState) -> bool:
+    """The real, checkable gate for the brief's "Teaching System" —
+    true only once an agent's own real points have actually crossed
+    every threshold. See module docstring."""
+    return state.level == "mentor"
+
+
 def default_agent_knowledge() -> dict[AgentId, AgentKnowledgeState]:
-    return {agent_id: AgentKnowledgeState(agentId=agent_id, branch=branch, points=0.0, tier=0) for agent_id, branch in KNOWLEDGE_BRANCH.items()}
+    return {agent_id: AgentKnowledgeState(agentId=agent_id, branch=branch, points=0.0, tier=0, level="novice") for agent_id, branch in KNOWLEDGE_BRANCH.items()}
 
 
 def award_points(knowledge: dict[AgentId, AgentKnowledgeState], agent_id: AgentId, amount: float) -> tuple[dict[AgentId, AgentKnowledgeState], AgentKnowledgeState | None]:
@@ -95,7 +126,7 @@ def award_points(knowledge: dict[AgentId, AgentKnowledgeState], agent_id: AgentI
         return knowledge, None
     new_points = round(state.points + amount, 1)
     new_tier = _tier_for_points(new_points)
-    updated = state.model_copy(update={"points": new_points, "tier": new_tier})
+    updated = state.model_copy(update={"points": new_points, "tier": new_tier, "level": _level_for_tier(new_tier)})
     new_knowledge = {**knowledge, agent_id: updated}
     tier_up = updated if new_tier > state.tier else None
     return new_knowledge, tier_up
