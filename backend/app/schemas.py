@@ -57,8 +57,11 @@ SceneId = Literal[
 # agent. Unlike every other agent, the CIO never votes on a trade or
 # generates a research signal (see app/executive.py) — it only reviews
 # already-real state (see app/executive_review.py).
-AgentId = Literal["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio"]
-AGENT_IDS: tuple[AgentId, ...] = ("scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio")
+# v0.7 Feature 32 — Sage, the Socratic Mentor, is the eleventh agent. Like
+# the CIO, Sage never trades, votes, or generates a signal — it only asks
+# questions (see app/mentor.py).
+AgentId = Literal["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio", "sage"]
+AGENT_IDS: tuple[AgentId, ...] = ("scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio", "sage")
 
 # Every room an agent's schedule (or a meeting/break override) can place them in.
 AgentLocation = Literal[
@@ -1582,6 +1585,87 @@ class WisdomState(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# v0.7 Feature 32 — Sage, the Socratic Mentor (app/mentor.py). Every
+# in-game morning, one QuestionOfTheDay is drawn (deterministically, by
+# sim day) from a small hand-authored QUESTION_LIBRARY — the honest
+# version of "the Mentor publishes a question": there is no free-form
+# question-generation capability in this codebase, so the library is
+# real, curated content (the same convention DialogueManager's own
+# flavor lines already use) rather than a fabricated claim that the AI
+# is composing new questions daily. `related_reference` is at most ONE
+# honest pointer into content this codebase already has for real
+# (a Reasoning Lab challenge, a Library of Mistakes case study, ...) —
+# never fabricated per-department "answers." See app/mentor.py's module
+# docstring for exactly which brief sub-features (a separate weekly
+# "Mentor Session," a graded "Daily Thinking Bonus," "Connected
+# Constitution Articles") have no real backing and were cut.
+QuestionCategory = Literal[
+    "critical_thinking",
+    "decision_making",
+    "communication",
+    "leadership",
+    "psychology",
+    "risk_awareness",
+    "research",
+    "reflection",
+    "logic",
+    "teamwork",
+]
+
+
+class QuestionOfTheDay(CamelModel):
+    id: str
+    category: QuestionCategory
+    question: str
+    related_reference: str | None = Field(default=None, alias="relatedReference")
+    player_response: str | None = Field(default=None, alias="playerResponse")
+    player_responded_at: str | None = Field(default=None, alias="playerRespondedAt")
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
+# Every trait is one distinct real, already-computed signal — never a
+# second independent measurement of a signal ThinkingProfile itself
+# already scores under a different name (DisciplineReview's own
+# "Patience" factor is deliberately NOT re-surfaced here for exactly
+# that reason). "Communication" and "Adaptability" were both named in
+# the brief but have no real, per-agent discriminating signal anywhere
+# in this codebase and are cut — see app/mentor.py.
+ThinkingTraitId = Literal[
+    "curiosity",
+    "evidence_quality",
+    "open_mindedness",
+    "humility",
+    "reasoning",
+    "collaboration",
+]
+
+
+class ThinkingTrait(CamelModel):
+    id: ThinkingTraitId
+    name: str
+    score: float
+    detail: str
+
+
+class ThinkingProfile(CamelModel):
+    """Purely computed from existing real signals, recomputed fresh each
+    tick the same as AcademyState/ReasoningLabState — cheap, since it
+    only re-scans already-capped lists, and honest, since the underlying
+    data itself only changes a few times a day."""
+
+    agent_id: AgentId = Field(alias="agentId")
+    traits: list[ThinkingTrait] = Field(default_factory=list)
+    updated_at: str = Field(alias="updatedAt")
+
+
+class MentorState(CamelModel):
+    tier: int
+    tier_label: str = Field(alias="tierLabel")
+    questions_asked: int = Field(alias="questionsAsked")
+    updated_at: str = Field(alias="updatedAt")
+
+
 class GameSaveState(CamelModel):
     version: Literal["0.6"] = "0.6"
     player: EntityTransform
@@ -1665,6 +1749,13 @@ class GameSaveState(CamelModel):
     # a session is generated (see WisdomState's own docstring for why).
     reflection_sessions: list[ReflectionSession] = Field(default_factory=list, alias="reflectionSessions")
     wisdom_state: WisdomState = Field(alias="wisdomState")
+    # v0.7 Feature 32 — the Socratic Mentor (app/mentor.py). One capped,
+    # permanent QuestionOfTheDay per in-game morning; `thinking_profiles`
+    # is every agent's purely-computed readout; `mentor_state` is the
+    # company-wide progression level derived from the archive's length.
+    question_archive: list[QuestionOfTheDay] = Field(default_factory=list, alias="questionArchive")
+    thinking_profiles: dict[AgentId, ThinkingProfile] = Field(default_factory=dict, alias="thinkingProfiles")
+    mentor_state: MentorState = Field(alias="mentorState")
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(default_factory=list, alias="dialogueHistory")

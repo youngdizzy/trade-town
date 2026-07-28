@@ -149,6 +149,18 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
     wanderRadius: 16,
     idlePauseChance: 0.7,
   },
+  sage: {
+    id: "sage",
+    name: "Sage",
+    occupation: "Socratic Mentor",
+    personality: "Calm and unhurried. Answers every question with a better one. Never tells anyone what to think.",
+    homeLocation: "brain-room",
+    tint: 0x9b7fd4,
+    spriteId: "characters/player/player-sage",
+    badge: "\u{1F9E0}",
+    wanderRadius: 20,
+    idlePauseChance: 0.75,
+  },
 };
 
 export const LOCATION_TO_SCENE: Record<AgentLocation, SceneId> = {

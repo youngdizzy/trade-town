@@ -122,6 +122,17 @@ AGENT_SCHEDULES: dict[AgentId, list[ScheduleBlock]] = {
         ScheduleBlock(22, 24, "executive-boardroom", "Reviewing the day's decisions"),
         ScheduleBlock(0, 6, "executive-boardroom", "Standing by"),
     ],
+    "sage": [
+        ScheduleBlock(6, 8, "brain-room", "Writing today's question"),
+        ScheduleBlock(8, 11, "brain-room", "Listening in on the research desk"),
+        ScheduleBlock(11, 12, "trading-floor", "Asking Risk what it's most uncertain about"),
+        ScheduleBlock(12, 13, "break-room", "Resting"),
+        ScheduleBlock(13, 16, "meeting-room", "Holding a Thinking Session"),
+        ScheduleBlock(16, 19, "brain-room", "Reviewing the day's reasoning"),
+        ScheduleBlock(19, 22, "meeting-room", "Coaching whoever asks"),
+        ScheduleBlock(22, 24, "brain-room", "Reading the day's lessons"),
+        ScheduleBlock(0, 6, "brain-room", "Sitting with an open question"),
+    ],
 }
 
 

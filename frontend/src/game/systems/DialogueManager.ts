@@ -105,6 +105,16 @@ const AGENT_TASK_LINES: Record<AgentId, Record<string, string[]>> = {
     "Reviewing the day's decisions": ["Going back over today's calls — not to second-guess, just to understand."],
     "Standing by": ["Standing by. Ask me anything about how the company's doing."],
   },
+  sage: {
+    "Writing today's question": ["Still deciding what to ask everyone this morning. The right question matters more than any answer."],
+    "Listening in on the research desk": ["I'm not here to check their work. I'm here to ask what they haven't asked yet."],
+    "Asking Risk what it's most uncertain about": ["I just asked Sentinel what they're least sure of. That's usually more useful than what they're sure of."],
+    "Holding a Thinking Session": ["No conclusions today — just better questions than we started with."],
+    "Reviewing the day's reasoning": ["Not grading anyone. Just noticing which assumptions held up and which didn't."],
+    "Coaching whoever asks": ["Someone came by earlier looking for an answer. I gave them a better question instead."],
+    "Reading the day's lessons": ["Reading back through what the company learned today. Worth sitting with, not rushing past."],
+    "Sitting with an open question": ["I don't mind not knowing yet. That's usually where the real thinking starts."],
+  },
 };
 
 /** Shared fallback lines for override-driven tasks (meetings/breaks), independent of agent personality. */
@@ -131,6 +141,7 @@ const AGENT_GREETINGS: Record<AgentId, string[]> = {
   pulse: ["Boss! Good, you're here.", "Four alerts since you last checked in.", "Hey — you're just in time."],
   guardian: ["Checking in on exposure?", "Boss. The book's in good shape.", "Good timing — I just finished a pass."],
   cio: ["Good to see you.", "I was just reviewing the department reports.", "Do you have a moment for a quick update?"],
+  sage: ["Ah. What's on your mind today?", "Good timing. I was just thinking about a question.", "Come in — no wrong questions here."],
 };
 
 export interface DialogueSession {

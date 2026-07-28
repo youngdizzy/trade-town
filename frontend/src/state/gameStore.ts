@@ -20,9 +20,11 @@ import type {
   MeetingMinutes,
   MeetingState,
   MemoryRecord,
+  MentorState,
   NewsItem,
   PaperPortfolio,
   PerformanceSnapshot,
+  QuestionOfTheDay,
   ResearchItem,
   RiskLimits,
   EducationProgress,
@@ -37,6 +39,7 @@ import type {
   SimulationResult,
   Strategy,
   Task,
+  ThinkingProfile,
   TimeState,
   TradeDecision,
   TradeProposal,
@@ -100,6 +103,9 @@ export interface GameUiState {
   reasoningLabState: ReasoningLabState;
   reflectionSessions: ReflectionSession[];
   wisdomState: WisdomState;
+  questionArchive: QuestionOfTheDay[];
+  thinkingProfiles: Record<AgentId, ThinkingProfile>;
+  mentorState: MentorState;
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
@@ -224,6 +230,9 @@ class GameStore {
     reasoningLabState: { level: 1, levelLabel: "Foundations", completedChallengeCount: 0, updatedAt: new Date().toISOString() },
     reflectionSessions: [],
     wisdomState: { score: 0, tier: "young_company", tierLabel: "Young Company", factors: [], updatedAt: new Date().toISOString() },
+    questionArchive: [],
+    thinkingProfiles: {} as Record<AgentId, ThinkingProfile>,
+    mentorState: { tier: 0, tierLabel: "New Tradition", questionsAsked: 0, updatedAt: new Date().toISOString() },
     agentEnergy: { current: 100, cap: 100, updatedAt: new Date().toISOString() },
     signalCalibration: { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 },
     playerVsAi: { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 },
@@ -335,6 +344,9 @@ class GameStore {
     EventBus.on("reasoningLabState:updated", (reasoningLabState) => this.set({ reasoningLabState }));
     EventBus.on("reflectionSessions:updated", (reflectionSessions) => this.set({ reflectionSessions }));
     EventBus.on("wisdomState:updated", (wisdomState) => this.set({ wisdomState }));
+    EventBus.on("questionArchive:updated", (questionArchive) => this.set({ questionArchive }));
+    EventBus.on("thinkingProfiles:updated", (thinkingProfiles) => this.set({ thinkingProfiles }));
+    EventBus.on("mentorState:updated", (mentorState) => this.set({ mentorState }));
     EventBus.on("ui:executiveVoting", ({ open, proposalId }) =>
       this.set({ executiveVotingOpen: open, executiveVotingProposalId: open ? (proposalId ?? this.state.executiveVotingProposalId) : null }),
     );

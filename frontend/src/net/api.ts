@@ -12,6 +12,7 @@ import type {
   PaperPortfolio,
   PlayerVsAiPrompt,
   PlayerVsAiState,
+  QuestionOfTheDay,
   SignalCalibrationState,
   SignalChallenge,
   SignalChoice,
@@ -103,4 +104,9 @@ export const api = {
     }),
   getWhatIfSimulation: (symbol: string) => request<WhatIfSimulation>(`/executive/whatif?symbol=${encodeURIComponent(symbol)}`),
   getKnowledgeGraph: () => request<KnowledgeGraph>("/knowledge-graph"),
+  submitQotdResponse: (questionId: string, response: string) =>
+    request<{ question: QuestionOfTheDay }>("/mentor/qotd/respond", {
+      method: "POST",
+      body: JSON.stringify({ questionId, response }),
+    }),
 };

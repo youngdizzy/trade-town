@@ -5,7 +5,7 @@ import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { upcomingEvents } from "@/game/systems/UpcomingEvents";
 import type { AgentId, TimeState } from "@/types";
 
-const AGENT_ORDER: AgentId[] = ["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian"];
+const AGENT_ORDER: AgentId[] = ["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio", "sage"];
 const RESEARCHER_ORDER: AgentId[] = ["scout", "atlas", "echo", "nova"];
 
 function formatClock(time: TimeState): string {

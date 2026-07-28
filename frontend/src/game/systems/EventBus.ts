@@ -23,9 +23,11 @@ import type {
   MeetingMinutes,
   MeetingState,
   MemoryRecord,
+  MentorState,
   NewsItem,
   PaperPortfolio,
   PerformanceSnapshot,
+  QuestionOfTheDay,
   ResearchItem,
   RiskLimits,
   EducationProgress,
@@ -41,6 +43,7 @@ import type {
   SimulationResult,
   Strategy,
   Task,
+  ThinkingProfile,
   TimeState,
   TradeDecision,
   TradeProposal,
@@ -125,6 +128,9 @@ export interface GameEvents {
   "reasoningLabState:updated": ReasoningLabState;
   "reflectionSessions:updated": ReflectionSession[];
   "wisdomState:updated": WisdomState;
+  "questionArchive:updated": QuestionOfTheDay[];
+  "thinkingProfiles:updated": Record<AgentId, ThinkingProfile>;
+  "mentorState:updated": MentorState;
   "ui:executiveVoting": { open: boolean; proposalId?: string };
   // v0.7 Feature 19 — opens the Command Center on the Decisions tab for a
   // specific trade's decision; openDetail additionally auto-opens

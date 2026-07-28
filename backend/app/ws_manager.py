@@ -93,6 +93,12 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         "reasoningLabState": state.reasoning_lab_state.model_dump(by_alias=True),
         "reflectionSessions": [r.model_dump(by_alias=True) for r in state.reflection_sessions],
         "wisdomState": state.wisdom_state.model_dump(by_alias=True),
+        # v0.7 Feature 32 — already capped (MAX_QUESTION_ARCHIVE) like
+        # academyCompletedProjects above; thinkingProfiles/mentorState are
+        # recomputed every tick like agentKnowledge/academyState above.
+        "questionArchive": [q.model_dump(by_alias=True) for q in state.question_archive],
+        "thinkingProfiles": {aid: p.model_dump(by_alias=True) for aid, p in state.thinking_profiles.items()},
+        "mentorState": state.mentor_state.model_dump(by_alias=True),
     }
 
 

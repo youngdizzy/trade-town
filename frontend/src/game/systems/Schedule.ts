@@ -115,6 +115,17 @@ export const AGENT_SCHEDULES: Record<AgentId, ScheduleBlock[]> = {
     { startHour: 22, endHour: 24, location: "executive-boardroom", task: "Reviewing the day's decisions" },
     { startHour: 0, endHour: 6, location: "executive-boardroom", task: "Standing by" },
   ],
+  sage: [
+    { startHour: 6, endHour: 8, location: "brain-room", task: "Writing today's question" },
+    { startHour: 8, endHour: 11, location: "brain-room", task: "Listening in on the research desk" },
+    { startHour: 11, endHour: 12, location: "trading-floor", task: "Asking Risk what it's most uncertain about" },
+    { startHour: 12, endHour: 13, location: "break-room", task: "Resting" },
+    { startHour: 13, endHour: 16, location: "meeting-room", task: "Holding a Thinking Session" },
+    { startHour: 16, endHour: 19, location: "brain-room", task: "Reviewing the day's reasoning" },
+    { startHour: 19, endHour: 22, location: "meeting-room", task: "Coaching whoever asks" },
+    { startHour: 22, endHour: 24, location: "brain-room", task: "Reading the day's lessons" },
+    { startHour: 0, endHour: 6, location: "brain-room", task: "Sitting with an open question" },
+  ],
 };
 
 export function scheduleBlockForHour(agentId: AgentId, hour: number): ScheduleBlock {

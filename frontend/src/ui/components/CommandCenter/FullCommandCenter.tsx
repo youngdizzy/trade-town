@@ -21,6 +21,7 @@ import { AcademyPanel } from "./panels/AcademyPanel";
 import { DisciplinePanel } from "./panels/DisciplinePanel";
 import { ReasoningLabPanel } from "./panels/ReasoningLabPanel";
 import { ReflectionPanel } from "./panels/ReflectionPanel";
+import { MentorPanel } from "./panels/MentorPanel";
 import { DecisionDetail } from "./DecisionDetail";
 
 // Note: "ACADEMY" (below) is the pre-existing v0.6.2 Trading Academy tab
@@ -29,7 +30,7 @@ import { DecisionDetail } from "./DecisionDetail";
 // Knowledge Points, research projects, the Company Knowledge Library —
 // see AcademyPanel.tsx) and gets its own "KNOWLEDGE" tab rather than
 // colliding with the existing name.
-const TABS = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "COMPANY", "KNOWLEDGE", "DISCIPLINE", "REASONING", "REFLECTION", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"] as const;
+const TABS = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "COMPANY", "KNOWLEDGE", "DISCIPLINE", "REASONING", "REFLECTION", "MENTOR", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"] as const;
 type Tab = (typeof TABS)[number];
 
 export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => void; onClose: () => void }) {
@@ -117,6 +118,7 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
         {tab === "DISCIPLINE" && <DisciplinePanel />}
         {tab === "REASONING" && <ReasoningLabPanel />}
         {tab === "REFLECTION" && <ReflectionPanel />}
+        {tab === "MENTOR" && <MentorPanel />}
         {tab === "TRAINING" && <CalibrationPanel onNeedHelp={needHelp} />}
         {tab === "PVAI" && <PlayerVsAiPanel />}
         {tab === "ACADEMY" && <EducationPanel openLessonId={helpLessonId} />}

@@ -383,6 +383,44 @@ growing from 23.8 "Young Company" to 71.2 "Seasoned Wisdom" from real
 behavioral signals alone); verified in the running app with zero
 console errors.
 
+### v0.7 continued — Sage, the Socratic Mentor (Feature 32)
+
+The company's eleventh agent, who never trades, votes, or generates a
+research signal — structurally the same guarantee Meridian (Feature 24)
+already made. Sage's home location reuses the Brain Room (no new scene);
+its sprite is a new palette-swapped variant generated the same real,
+deterministic way as all ten existing agents' — a PIL pixel-diff against
+the base sheet recovered the exact 7-color remap table, reapplied with a
+new deep indigo/violet target palette. Every in-game morning at 8:00,
+`app/mentor.py` publishes one **Question of the Day**, drawn
+deterministically from a small hand-authored 20-question library across
+10 categories — real curated content, since this codebase has no
+free-form question-generation capability. Each question carries at most
+one honest pointer into already-existing real company content sharing
+its category (a Reasoning Lab challenge, a Library of Mistakes case
+study, a Reflection Chamber lesson, ...), never a fabricated
+per-department "answer." Every entry is permanently archived; the
+player may answer via a new endpoint, stored verbatim and never graded.
+Every agent (including Sage) also gets a purely-computed **Thinking
+Profile** — six traits, each reusing a distinct existing real signal
+(Academy knowledge points, averaged Discipline Review factors across
+trades the agent attended, Reasoning Lab/Reflection Chamber
+participation counts) — deliberately not including "Patience" (already
+scored directly by Discipline Review under that name) or the brief's
+ungrounded "Communication"/"Adaptability." A new MENTOR Command Center
+tab shows today's question, the full archive, the Question Library, and
+every agent's Thinking Profile. Explicit scope cuts: a separate weekly
+"Mentor Session" (the Reflection Chamber already is one), "Thinking
+Exercises" (the Reasoning Lab already covers most of them), a graded
+"Daily Thinking Bonus" (no honest way to grade free text), "Connected
+Constitution Articles" (no Constitution system exists in this codebase),
+the Question Library being consumed live by NPCs, and a dedicated
+physical "Mentor Chamber" room. 14 new backend tests (336/336 passing);
+verified in the running app (Playwright, 21/21) with zero console
+errors — Sage's sprite and its Agent Status entry confirmed visually in
+the Brain Room, and the QOTD submit-and-persist round trip confirmed via
+a real save/reload.
+
 ## What's next for v0.8 (not started, not scoped)
 
 These are candidate directions surfaced by v0.6/v0.7's design, not

@@ -19,9 +19,11 @@ import type {
   MeetingMinutes,
   MeetingState,
   MemoryRecord,
+  MentorState,
   NewsItem,
   PaperPortfolio,
   PerformanceSnapshot,
+  QuestionOfTheDay,
   ResearchItem,
   RiskLimits,
   EducationProgress,
@@ -35,6 +37,7 @@ import type {
   SimulationResult,
   Strategy,
   Task,
+  ThinkingProfile,
   TradeDecision,
   TradeProposal,
   WatchlistEntry,
@@ -80,6 +83,9 @@ interface NexusSnapshot {
   reasoningLabState: ReasoningLabState;
   reflectionSessions: ReflectionSession[];
   wisdomState: WisdomState;
+  questionArchive: QuestionOfTheDay[];
+  thinkingProfiles: Record<AgentId, ThinkingProfile>;
+  mentorState: MentorState;
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
@@ -193,6 +199,9 @@ export class NexusManager {
   };
   private static reflectionSessions: ReflectionSession[] = [];
   private static wisdomState: WisdomState = { score: 0, tier: "young_company", tierLabel: "Young Company", factors: [], updatedAt: new Date().toISOString() };
+  private static questionArchive: QuestionOfTheDay[] = [];
+  private static thinkingProfiles: Record<AgentId, ThinkingProfile> = {} as Record<AgentId, ThinkingProfile>;
+  private static mentorState: MentorState = { tier: 0, tierLabel: "New Tradition", questionsAsked: 0, updatedAt: new Date().toISOString() };
   private static agentEnergy: AgentEnergy = { current: 100, cap: 100, updatedAt: new Date().toISOString() };
   private static signalCalibration: SignalCalibrationState = { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 };
   private static playerVsAi: PlayerVsAiState = { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 };
@@ -325,6 +334,18 @@ export class NexusManager {
     return this.wisdomState;
   }
 
+  static getQuestionArchive(): QuestionOfTheDay[] {
+    return this.questionArchive;
+  }
+
+  static getThinkingProfiles(): Record<AgentId, ThinkingProfile> {
+    return this.thinkingProfiles;
+  }
+
+  static getMentorState(): MentorState {
+    return this.mentorState;
+  }
+
   static getPerformanceSnapshots(): PerformanceSnapshot[] {
     return this.performanceSnapshots;
   }
@@ -435,6 +456,14 @@ export class NexusManager {
   static setEducation(education: EducationProgress): void {
     this.education = education;
     EventBus.emit("education:updated", education);
+  }
+
+  /** Applies the result of a direct POST /api/mentor/qotd/respond call
+   * immediately, the same reasoning as setEducation above — replaces the
+   * single archive entry the player just answered. */
+  static setQuestionOfTheDayResponse(question: QuestionOfTheDay): void {
+    this.questionArchive = this.questionArchive.map((q) => (q.id === question.id ? question : q));
+    EventBus.emit("questionArchive:updated", this.questionArchive);
   }
 
   static getViewedTradeNotificationIds(): string[] {
@@ -613,6 +642,17 @@ export class NexusManager {
     if (update.wisdomState !== this.wisdomState) EventBus.emit("wisdomState:updated", update.wisdomState);
     this.wisdomState = update.wisdomState;
 
+    if (update.questionArchive.length !== this.questionArchive.length) {
+      EventBus.emit("questionArchive:updated", update.questionArchive);
+    }
+    this.questionArchive = update.questionArchive;
+
+    if (update.thinkingProfiles !== this.thinkingProfiles) EventBus.emit("thinkingProfiles:updated", update.thinkingProfiles);
+    this.thinkingProfiles = update.thinkingProfiles;
+
+    if (update.mentorState !== this.mentorState) EventBus.emit("mentorState:updated", update.mentorState);
+    this.mentorState = update.mentorState;
+
     if (update.agentEnergy !== this.agentEnergy) EventBus.emit("agentEnergy:updated", update.agentEnergy);
     this.agentEnergy = update.agentEnergy;
 
@@ -667,6 +707,9 @@ export class NexusManager {
     this.reasoningLabState = save.reasoningLabState;
     this.reflectionSessions = save.reflectionSessions;
     this.wisdomState = save.wisdomState;
+    this.questionArchive = save.questionArchive;
+    this.thinkingProfiles = save.thinkingProfiles;
+    this.mentorState = save.mentorState;
     this.agentEnergy = save.agentEnergy;
     this.signalCalibration = save.signalCalibration;
     this.playerVsAi = save.playerVsAi;

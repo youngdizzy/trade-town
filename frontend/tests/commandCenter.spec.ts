@@ -195,7 +195,7 @@ test.describe("Global Command Center", () => {
     expect(moved.x).not.toBe(frozen.x);
   });
 
-  test("expands to the Full Command Center and renders all 17 tabs with graceful empty states", async ({ page }) => {
+  test("expands to the Full Command Center and renders all 18 tabs with graceful empty states", async ({ page }) => {
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);
     await continueGame(page);
@@ -214,7 +214,7 @@ test.describe("Global Command Center", () => {
     // ticking throughout, a genuine trade or trade proposal can appear
     // (and pop up) mid-test. clickTab() dismisses and retries rather
     // than losing the race to a popup that appears in that instant.
-    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "COMPANY", "KNOWLEDGE", "DISCIPLINE", "REASONING", "REFLECTION", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
+    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "COMPANY", "KNOWLEDGE", "DISCIPLINE", "REASONING", "REFLECTION", "MENTOR", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
     for (const tab of tabs) {
       await clickTab(page, tab);
       await expect(page.getByRole("button", { name: tab, exact: true })).toHaveClass(/text-cmd-cyan/);
@@ -591,5 +591,28 @@ test.describe("Global Command Center", () => {
     if (hasEmptyState === 0) {
       await expect(page.getByText(/Wisdom \d+\/100/).first()).toBeVisible();
     }
+  });
+
+  test("MENTOR tab shows Sage's Question of the Day, the archive, and Thinking Profiles, always real content or an honest empty state", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await dismissTradeOutcomePopups(page);
+    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickTab(page, "MENTOR");
+
+    await expect(page.getByText("Question of the Day", { exact: true })).toBeVisible();
+    await expect(page.getByText("Question Archive", { exact: true })).toBeVisible();
+    await expect(page.getByText("Thinking Profiles", { exact: true })).toBeVisible();
+
+    // Day 1 always seeds one real QuestionOfTheDay (see backend/app/state.py's
+    // default_state()) — never a blank panel here.
+    await expect(page.getByText(/“.+”/).first()).toBeVisible();
+
+    // Every real agent (including Sage) gets a purely-computed Thinking
+    // Profile from tick one — never a blank panel here either.
+    await expect(page.getByText("Collaboration", { exact: true }).first()).toBeVisible();
   });
 });

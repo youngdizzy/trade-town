@@ -1418,6 +1418,121 @@ same reason as Player Knowledge Import — no real dynamic
 content-generation capability exists in this codebase to back either
 one honestly.
 
+### Sage, the Socratic Mentor (Feature 32)
+
+Sage is added exactly the way Meridian (Feature 24) was — a real
+eleventh `AgentId` that never votes, trades, or generates a research
+signal (see `agents.py`'s own comment on `AgentId`). Its home location
+reuses `brain-room` rather than introducing a new scene, the same
+"Command-Center-tab, not new art" boundary every recent feature has
+drawn (Academy/Discipline/Reasoning Lab/Reflection Chamber; only
+Feature 24's Executive Boardroom got a physical scene, tied to a
+genuinely new NPC-hosted location). Its sprite is generated the same
+real, deterministic way as all ten existing agents': the exact 7-color
+remap table (2 hair colors, 5 shirt/pants-ramp colors) was recovered by
+pixel-diffing `Player.png` against `Player_Scout.png`/`Player_Meridian.png`
+with PIL, then applied over a fresh copy of the base sheet with a new
+deep indigo/violet target palette — not a hand-drawn or copied asset.
+
+`app/mentor.py` builds the one concrete artifact the brief actually asks
+for that this codebase can back honestly: a `QuestionOfTheDay`. Every
+in-game morning at 8:00 (`MORNING_QOTD_HOUR`, the same exact-minute
+trigger shape as `EVENING_REVIEW_HOUR`, wired into `nexus.tick()` right
+after the Reflection Chamber check), `generate_question_of_the_day()`
+picks `QUESTION_LIBRARY[sim_day % len(QUESTION_LIBRARY)]` — a small,
+hand-authored bank of 20 questions across 10 categories. This is real,
+curated content, the same convention `DialogueManager`'s own flavor
+lines already use — there is no free-form question-generation capability
+anywhere in this codebase, so nothing here claims Sage is "writing" a
+new question each morning. `_related_reference()` attaches at most one
+honest pointer into content this codebase already has for real (the
+latest `ReasoningChallenge` title for critical-thinking/logic questions,
+the latest `CaseStudy` title for psychology/decision-making, the latest
+`RiskWarning` message for risk-awareness, a completed `ResearchItem`
+title for research, a `ReflectionSession`'s own lesson/insight/attendee
+count for reflection/communication/teamwork, an `ExecutiveReview`'s
+flagged event for leadership) — never a fabricated per-department
+"answer," and `None` when nothing real exists yet to point to. Every
+entry is permanently archived (`record_question`, capped at
+`MAX_QUESTION_ARCHIVE` = 120, roughly four in-game months); the player's
+free-text answer (`POST /api/mentor/qotd/respond` → `GameState.
+submit_qotd_response()` → `mentor.submit_response()`) is stored verbatim
+and never graded — the same constraint that already kept Reflection
+Journal entries ungraded in Feature 30.
+
+`ThinkingProfile` (`compute_thinking_profiles()`) is a purely-computed,
+per-agent readout built entirely from signals this codebase already
+tracks: `curiosity` reads the agent's real Academy knowledge points
+(`AgentKnowledgeState.points`, normalized against the same 30-point scale
+`academy.py`'s own tier thresholds use); `evidence_quality`/
+`open_mindedness`/`humility`/`reasoning` average the real
+`research_depth`/`viewpoint_diversity`/`uncertainty_acknowledged`/
+(`assumptions_challenged`+`cross_examination`)/2 `DisciplineFactor`
+scores across every `DisciplineReview` the agent actually attended
+(neutral 50 default when an agent — Scribe, Coach, Meridian, Sage itself
+— has never attended one, since only the six analyst roles ever appear
+in `DisciplineReview.attendees`); `collaboration` counts real Reasoning
+Lab contributions plus real Reflection Chamber insights. "Patience" is
+deliberately not a trait here — `DisciplineReview` already scores it
+directly under that exact name, and re-surfacing the identical real
+number under a new label here would be the "redundant re-measurement"
+trap this session's other features have consistently avoided (see
+Feature 30's own note on `improve_communication`/`support_collaboration`
+being two *different* real factors, not one factor counted twice); the
+brief's "Communication" and "Adaptability" have no real, per-agent
+discriminating signal anywhere in this codebase and are cut for the same
+reason Feature 30 cut its own ungrounded factors. `ThinkingProfile` is
+recomputed fresh every tick, the same "cheap, only re-scans already-
+capped lists" reasoning `academy_state`/`reasoning_lab_state` already
+established — not throttled like `WisdomState`, since none of its inputs
+are themselves throttled.
+
+`MentorState` mirrors `ReasoningLabState`'s level/label-only shape: a
+real, monotonic `questionArchive` length gates a `tier` (0-3) and label
+("New Tradition" → "Taking Root" → "Established Ritual" → "Defining
+Tradition") at the real calendar rhythm the brief itself describes — a
+week, a month, and a full season of daily questions.
+
+A new **MENTOR** Command Center tab (`MentorPanel.tsx`) shows today's
+question with its category/related-reference and an answer box (or the
+player's already-submitted answer), the full Question Archive as an
+expand-in-place accordion (the same pattern `ReflectionPanel.tsx`
+already uses), a static Question Library summary, and every agent's
+`ThinkingProfile` rendered as trait meters, grouped per agent the same
+way `AcademyPanel.tsx`'s Knowledge Trees are grouped.
+
+**Explicit scope cuts**, matching this session's honesty convention: a
+separate weekly "Mentor Session" was not built — `wisdom.py`'s
+already-shipped `ReflectionSession` already IS a real weekly/monthly
+company-wide gathering built around real, Socratic-style questions (see
+Feature 30 above); building a second, parallel system would just
+re-package the same real signals under a new name, the exact
+"redundant re-measurement" trap this session has repeatedly checked for
+and avoided. "Thinking Exercises" are likewise not duplicated —
+`reasoning_lab.py`'s `ReasoningChallenge` (Feature 29) already covers 7
+of the brief's 10 named exercise types with a real, checkable signal
+each. Personal Coaching (per-employee improvement areas distinct from
+`ThinkingProfile`'s own traits) has no real signal to back a separate
+list and is cut. A graded "Daily Thinking Bonus" is cut for the same
+reason Reflection Journal entries stayed ungraded — no honest mechanism
+exists in this codebase to grade open-ended free text. "Connected
+Constitution Articles" is cut because no Company Constitution system
+exists anywhere in this codebase (checked directly via a repo-wide
+search before writing `mentor.py`). The Question Library being usable
+live by departments during meetings is cut — `scribe.py`'s discussion
+generator has no hook to pull from an external question bank without
+fabricating dialogue; the Library is real, authored content the player
+can browse, not something NPCs consume. A dedicated physical "Mentor
+Chamber" room (floating holographic books, a meditation garden, a
+question tree) was not built, the same boundary every recent feature has
+drawn.
+
+Incidental fix made while wiring Sage into the world: `BrainRoomHud.tsx`'s
+`AGENT_ORDER` constant (backing "N of M agents actively working" and the
+Agent Status list) had never actually included Meridian since Feature 24
+added her — a pre-existing gap, not something Feature 32 introduced, but
+trivial and safe to fix once noticed. Now includes both `cio` and `sage`.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

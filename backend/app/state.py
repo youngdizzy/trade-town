@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 
 from app import education, nexus, player_vs_ai, signal_calibration, trade_notifications
 from app.academy import compute_academy_state, default_agent_knowledge
+from app.agents import all_agent_ids
+from app.mentor import compute_mentor_state, compute_thinking_profiles, generate_question_of_the_day, submit_response
 from app.reasoning_lab import compute_reasoning_lab_state
 from app.wisdom import compute_wisdom_score
 from app.academy_research import default_academy_projects
@@ -118,6 +120,28 @@ def default_state() -> GameSaveState:
             gatekeeper_rejections=[],
             memory=[],
         ),
+        questionArchive=[
+            generate_question_of_the_day(
+                sim_day=1,
+                question_id="qotd-1",
+                created_at=_now_iso(),
+                case_studies=[],
+                reasoning_challenges=[],
+                research=seed_research,
+                reflection_sessions=[],
+                risk_warnings=[],
+                executive_reviews=[],
+            )
+        ],
+        thinkingProfiles=compute_thinking_profiles(
+            all_agent_ids(),
+            discipline_reviews=[],
+            reasoning_challenges=[],
+            reflection_sessions=[],
+            agent_knowledge=agent_knowledge,
+            updated_at=_now_iso(),
+        ),
+        mentorState=compute_mentor_state(1, _now_iso()),
         updatedAt=_now_iso(),
     )
 
@@ -193,6 +217,16 @@ class GameState:
             new_player_vs_ai, error = player_vs_ai.grade_submission(self.data.player_vs_ai, prompt_id, choice)
             if error is None:
                 self.data = self.data.model_copy(update={"player_vs_ai": new_player_vs_ai})
+            return self.data, error
+
+    async def submit_qotd_response(self, question_id: str, response: str) -> tuple[GameSaveState, str | None]:
+        """Stores the player's free-text QuestionOfTheDay answer, under
+        the same lock every other state mutation uses. Never graded —
+        see app/mentor.py's module docstring."""
+        async with self.lock:
+            new_archive, error = submit_response(self.data.question_archive, question_id, response, responded_at=_now_iso())
+            if error is None:
+                self.data = self.data.model_copy(update={"question_archive": new_archive})
             return self.data, error
 
     async def mark_lesson_viewed(self, lesson_id: str) -> EducationProgress:

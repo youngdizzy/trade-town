@@ -220,7 +220,7 @@ class TestGenerateReflectionSession:
             wisdom_state=_empty_wisdom_score(),
             new_time=TimeState(day=7, hour=20, minute=0),
         )
-        assert len(session.attendees) == 10
+        assert len(session.attendees) == 11
         assert len(session.questions) == 9
 
     def test_honest_defaults_with_no_history(self) -> None:

@@ -21,8 +21,8 @@ export type SceneId =
 // v0.7 Feature 24 — Meridian, the Chief Investment Officer, is the tenth
 // agent. Unlike every other agent, the CIO never votes on a trade or
 // generates a research signal — it only reviews already-real state.
-export type AgentId = "scout" | "atlas" | "echo" | "nova" | "scribe" | "coach" | "sentinel" | "pulse" | "guardian" | "cio";
-export const AGENT_IDS: readonly AgentId[] = ["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio"];
+export type AgentId = "scout" | "atlas" | "echo" | "nova" | "scribe" | "coach" | "sentinel" | "pulse" | "guardian" | "cio" | "sage";
+export const AGENT_IDS: readonly AgentId[] = ["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio", "sage"];
 
 /** Every room an agent's schedule (or a meeting/break override) can place them in. */
 export type AgentLocation =
@@ -1169,6 +1169,48 @@ export interface WisdomState {
   updatedAt: string;
 }
 
+// v0.7 Feature 32 — Sage, the Socratic Mentor (see backend/app/mentor.py).
+// One QuestionOfTheDay every in-game morning, drawn from a small
+// hand-authored library (real curated content, not a fabricated claim
+// of free-form generation); `relatedReference` is at most one honest
+// pointer into real existing company content, never a fabricated
+// per-department "answer." ThinkingProfile is purely computed from
+// signals this codebase already tracks elsewhere.
+export type QuestionCategory = "critical_thinking" | "decision_making" | "communication" | "leadership" | "psychology" | "risk_awareness" | "research" | "reflection" | "logic" | "teamwork";
+
+export interface QuestionOfTheDay {
+  id: string;
+  category: QuestionCategory;
+  question: string;
+  relatedReference: string | null;
+  playerResponse: string | null;
+  playerRespondedAt: string | null;
+  simDay: number;
+  createdAt: string;
+}
+
+export type ThinkingTraitId = "curiosity" | "evidence_quality" | "open_mindedness" | "humility" | "reasoning" | "collaboration";
+
+export interface ThinkingTrait {
+  id: ThinkingTraitId;
+  name: string;
+  score: number;
+  detail: string;
+}
+
+export interface ThinkingProfile {
+  agentId: AgentId;
+  traits: ThinkingTrait[];
+  updatedAt: string;
+}
+
+export interface MentorState {
+  tier: number;
+  tierLabel: string;
+  questionsAsked: number;
+  updatedAt: string;
+}
+
 export interface GameSaveState {
   version: "0.6";
   player: EntityTransform;
@@ -1210,6 +1252,9 @@ export interface GameSaveState {
   reasoningLabState: ReasoningLabState;
   reflectionSessions: ReflectionSession[];
   wisdomState: WisdomState;
+  questionArchive: QuestionOfTheDay[];
+  thinkingProfiles: Record<AgentId, ThinkingProfile>;
+  mentorState: MentorState;
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;

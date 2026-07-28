@@ -160,6 +160,20 @@
       "walk-up": { "row": 5, "frameCount": 6, "frameRate": 8, "repeat": -1 }
     }
   },
+  "_comment_sage": "v0.7 Feature 32 — the eleventh agent (Sage, the Socratic Mentor), added the same way as Meridian above: a palette-swapped copy of characters/player/player.png, using the same 7-color remap table (2 hair + 5 shirt/pants) reverse-engineered by PIL pixel-diffing Player.png against Player_Scout.png and Player_Meridian.png, this time hand-picked as a deep indigo/violet hair and robe for a calm, philosopher read distinct from all ten existing agents' tints.",
+  "characters/player/player-sage": {
+    "kind": "spritesheet",
+    "frameWidth": 32,
+    "frameHeight": 32,
+    "animations": {
+      "idle-down": { "row": 0, "frameCount": 6, "frameRate": 4, "repeat": -1 },
+      "walk-down": { "row": 1, "frameCount": 6, "frameRate": 8, "repeat": -1 },
+      "idle-up": { "row": 2, "frameCount": 6, "frameRate": 4, "repeat": -1 },
+      "idle-left": { "row": 3, "frameCount": 6, "frameRate": 4, "repeat": -1 },
+      "walk-left": { "row": 4, "frameCount": 6, "frameRate": 8, "repeat": -1 },
+      "walk-up": { "row": 5, "frameCount": 6, "frameRate": 8, "repeat": -1 }
+    }
+  },
 
   "characters/enemies/skeleton": {
     "kind": "spritesheet",

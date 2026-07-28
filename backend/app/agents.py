@@ -101,6 +101,14 @@ AGENT_PROFILES: dict[AgentId, AgentProfile] = {
         home_location="executive-boardroom",
         tint=0xD4AF37,
     ),
+    "sage": AgentProfile(
+        id="sage",
+        name="Sage",
+        occupation="Socratic Mentor",
+        personality="Calm and unhurried. Answers every question with a better one. Never tells anyone what to think.",
+        home_location="brain-room",
+        tint=0x9B7FD4,
+    ),
 }
 
 

@@ -362,6 +362,45 @@ perspective and exists purely to detect disconnects
     ],
     "updatedAt": "..."
   },
+  "questionArchive": [
+    // v0.7 Feature 32 — one QuestionOfTheDay every in-game morning at
+    // 8:00 (app/mentor.py), drawn deterministically from a small
+    // hand-authored library (real curated content — no free-form
+    // question generation exists in this codebase). relatedReference is
+    // at most one honest pointer into already-existing real company
+    // content sharing the question's category; null when nothing real
+    // exists yet to point to. playerResponse/playerRespondedAt are set
+    // via POST /api/mentor/qotd/respond below and never graded.
+    {
+      "id": "qotd-7", "category": "risk_awareness",
+      "question": "What's the one thing that would hurt us most if we're wrong?",
+      "relatedReference": "Sentinel flagged this recently: AAPL is 34.2% of the portfolio — above the 30% concentration limit.",
+      "playerResponse": null, "playerRespondedAt": null,
+      "simDay": 7, "createdAt": "..."
+    }
+  ],
+  "thinkingProfiles": {
+    // v0.7 Feature 32 — every real agent's purely-computed Thinking
+    // Profile (app/mentor.py). Recomputed every tick like agentKnowledge
+    // above; each trait reuses a distinct existing real signal — see the
+    // module docstring for why "Patience" (Discipline Review's own
+    // factor) and the brief's "Communication"/"Adaptability" (no real
+    // per-agent signal exists) aren't traits here.
+    "sage": {
+      "agentId": "sage",
+      "traits": [
+        { "id": "curiosity", "name": "Curiosity", "score": 28.0, "detail": "8.4 Academy knowledge points earned in Critical Thinking." },
+        { "id": "evidence_quality", "name": "Evidence Quality", "score": 50.0, "detail": "No Discipline Reviews attended yet — starts at a neutral baseline." }
+        // ... open_mindedness, humility, reasoning, collaboration
+      ],
+      "updatedAt": "..."
+    }
+  },
+  "mentorState": {
+    // Company-wide progression derived from the real archive length —
+    // mirrors reasoningLabState's level/label-only convention.
+    "tier": 1, "tierLabel": "Taking Root", "questionsAsked": 9, "updatedAt": "..."
+  },
   "performanceSnapshots": [
     { "period": "daily", "returnPct": 1.2, "winRate": 60.0, "maxDrawdownPct": 4.1, "sharpeRatio": 0.29, "sortinoRatio": 0.34, "avgHoldingMinutes": 210.0, "researchAccuracy": 71.0, "confidenceAccuracy": 68.0, "computedAt": "..." }
   ],
@@ -559,6 +598,22 @@ for the exact rule behind each `relation` type, and its docstring's
 explicit scope note on why no Academy-project-to-Education-lesson edge
 is generated (the two topic sets have no real thematic overlap).
 
+### `POST /api/mentor/qotd/respond`
+
+v0.7 Feature 32 — the player's answer to today's `QuestionOfTheDay`.
+Body: `{ "questionId": "qotd-7", "response": "..." }`. Stores the
+response verbatim on the matching archive entry — never graded (see
+`app/mentor.py`'s module docstring for why: this codebase has no honest
+mechanism to grade open-ended free text). Returns the updated
+`QuestionOfTheDay`:
+
+```json
+{ "question": { "id": "qotd-7", "category": "risk_awareness", "question": "...", "relatedReference": "...", "playerResponse": "...", "playerRespondedAt": "...", "simDay": 7, "createdAt": "..." } }
+```
+
+`400` if `response` is empty/whitespace-only, or if `questionId` doesn't
+match any archived entry.
+
 `GET /api/load` returns this same set of fields plus `version` (currently
 `"0.6"`), `player` (`EntityTransform`), `settings` (`SettingsState`),
 `dialogueHistory` (`DialogueHistoryEntry[]`), and `updatedAt`.
@@ -595,6 +650,7 @@ never needs to trim anything itself:
 | `caseStudies` | last 60 (`MAX_CASE_STUDIES`) | one per detected real process-gap mistake — v0.7 Feature 27 |
 | `reasoningChallenges` | last 60 (`MAX_REASONING_CHALLENGES`) | one per real AI Debate practiced, on a fixed cadence — v0.7 Feature 29 |
 | `reflectionSessions` | last 80 (`MAX_REFLECTION_SESSIONS`) | one per real weekly/monthly cycle — v0.7 Feature 30 |
+| `questionArchive` | last 120 (`MAX_QUESTION_ARCHIVE`) | one `QuestionOfTheDay` per real in-game morning — v0.7 Feature 32 |
 
 ### Provider configuration
 

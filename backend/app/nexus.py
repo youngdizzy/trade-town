@@ -56,6 +56,7 @@ from app.hall_of_fame import evaluate_hall_of_fame
 from app.journal import stamp_journal_entry
 from app.market_data import market_data_provider
 from app.market_environment import tick_market_environment
+from app.mentor import compute_mentor_state, compute_thinking_profiles, generate_question_of_the_day, record_question
 from app.mistakes import generate_case_studies, record_case_studies
 from app.paper_trading import tick_paper_trading
 from app.portfolio import sim_minutes
@@ -106,6 +107,7 @@ from app.schemas import (
     NewsItem,
     PaperPortfolio,
     PaperTrade,
+    QuestionOfTheDay,
     ReasoningChallenge,
     ReflectionCadence,
     ReflectionSession,
@@ -116,6 +118,7 @@ from app.schemas import (
     Task,
     TaskCategory,
     TaskPriority,
+    ThinkingProfile,
     TimeState,
     TradeDecision,
     TradeProposal,
@@ -179,6 +182,10 @@ RESTFUL_LOCATIONS = {"lobby", "break-room"}
 # in-game day passes through hour==20, minute==0 exactly once — a simpler,
 # more restart-safe trigger than diffing against the previous tick's time.
 EVENING_REVIEW_HOUR = 20
+# v0.7 Feature 32 — "every in-game morning at 8:00 AM" (the brief's own
+# wording), on the same exact-minute trigger shape as EVENING_REVIEW_HOUR
+# above.
+MORNING_QOTD_HOUR = 8
 WEEKLY_INTERVAL_DAYS = 7
 MONTHLY_INTERVAL_DAYS = 30
 # v0.7 Feature 25 — how often to check whether a real mentorship pairing
@@ -313,6 +320,7 @@ _DEFAULT_CATEGORY_BY_AGENT: dict[AgentId, TaskCategory] = {
     "pulse": "market_scanning",
     "guardian": "risk_management",
     "cio": "review",
+    "sage": "coaching",
 }
 
 
@@ -801,6 +809,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     reasoning_challenges: list[ReasoningChallenge] = list(state.reasoning_challenges)
     reflection_sessions: list[ReflectionSession] = list(state.reflection_sessions)
     wisdom_state: WisdomState = state.wisdom_state
+    question_archive: list[QuestionOfTheDay] = list(state.question_archive)
 
     agents = {aid: _tick_agent(aid, agent, new_time, minutes, tasks) for aid, agent in state.agents.items()}
 
@@ -1102,6 +1111,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
 
     is_evening = new_time.hour == EVENING_REVIEW_HOUR and new_time.minute == 0
     is_midnight = new_time.hour == 0 and new_time.minute == 0
+    is_morning_qotd = new_time.hour == MORNING_QOTD_HOUR and new_time.minute == 0
     latest_report: CoachReport | None = None
 
     if is_evening and new_time.day % WEEKLY_INTERVAL_DAYS == 0:
@@ -1208,6 +1218,38 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         reflection_sessions = record_reflection_session_entry(reflection_sessions, reflection_session)
         record_reflection_session(memory, reflection_session)
 
+    # v0.7 Feature 32 — Sage publishes one QuestionOfTheDay every in-game
+    # morning (see app/mentor.py's module docstring for why the question
+    # itself is drawn from a fixed, hand-authored library rather than
+    # claiming free-form generation).
+    if is_morning_qotd:
+        question = generate_question_of_the_day(
+            sim_day=new_time.day,
+            question_id=f"qotd-{new_time.day}",
+            created_at=_now_iso(),
+            case_studies=case_studies,
+            reasoning_challenges=reasoning_challenges,
+            research=research,
+            reflection_sessions=reflection_sessions,
+            risk_warnings=risk_warnings,
+            executive_reviews=executive_reviews,
+        )
+        question_archive = record_question(question_archive, question)
+
+    # v0.7 Feature 32 — cheap to recompute every tick, same reasoning as
+    # academy_state/reasoning_lab_state above: it only re-scans already-
+    # capped lists, so it stays real-time without needing its own cadence
+    # gate.
+    thinking_profiles: dict[AgentId, ThinkingProfile] = compute_thinking_profiles(
+        all_agent_ids(),
+        discipline_reviews=discipline_reviews,
+        reasoning_challenges=reasoning_challenges,
+        reflection_sessions=reflection_sessions,
+        agent_knowledge=agent_knowledge,
+        updated_at=_now_iso(),
+    )
+    mentor_state = compute_mentor_state(len(question_archive), _now_iso())
+
     if is_midnight:
         agent_energy = regen_daily(agent_energy)
         performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("daily", paper_portfolio, research, new_time))
@@ -1277,6 +1319,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "reasoning_lab_state": reasoning_lab_state,
             "reflection_sessions": reflection_sessions,
             "wisdom_state": wisdom_state,
+            "question_archive": question_archive,
+            "thinking_profiles": thinking_profiles,
+            "mentor_state": mentor_state,
             "agent_energy": agent_energy,
             "whiteboards": _update_whiteboards(agents, meeting, research),
             "updated_at": _now_iso(),

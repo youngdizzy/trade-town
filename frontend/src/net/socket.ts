@@ -20,9 +20,11 @@ import type {
   MeetingMinutes,
   MeetingState,
   MemoryRecord,
+  MentorState,
   NewsItem,
   PaperPortfolio,
   PerformanceSnapshot,
+  QuestionOfTheDay,
   ResearchItem,
   EducationProgress,
   PlayerVsAiState,
@@ -36,6 +38,7 @@ import type {
   SimulationResult,
   Strategy,
   Task,
+  ThinkingProfile,
   TimeState,
   TradeDecision,
   TradeProposal,
@@ -89,6 +92,9 @@ type ServerMessage =
       reasoningLabState: ReasoningLabState;
       reflectionSessions: ReflectionSession[];
       wisdomState: WisdomState;
+      questionArchive: QuestionOfTheDay[];
+      thinkingProfiles: Record<AgentId, ThinkingProfile>;
+      mentorState: MentorState;
       agentEnergy: AgentEnergy;
       signalCalibration: SignalCalibrationState;
       playerVsAi: PlayerVsAiState;
@@ -188,6 +194,9 @@ export class GameSocket {
             reasoningLabState: msg.reasoningLabState,
             reflectionSessions: msg.reflectionSessions,
             wisdomState: msg.wisdomState,
+            questionArchive: msg.questionArchive,
+            thinkingProfiles: msg.thinkingProfiles,
+            mentorState: msg.mentorState,
             agentEnergy: msg.agentEnergy,
             signalCalibration: msg.signalCalibration,
             playerVsAi: msg.playerVsAi,

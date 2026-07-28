@@ -667,6 +667,79 @@ development milestones, not semver releases.
     breakdown, and Reflection Journal history all rendered correct real
     content with zero console errors).
 
+- **v0.7 — Sage, the Socratic Mentor (Feature 32)** — the company's
+  eleventh agent, who never trades, votes, or generates a research
+  signal, structurally the same guarantee `agents.py` already made for
+  Meridian (Feature 24).
+  - **Sage**, home location Brain Room (no new physical "Mentor Chamber"
+    was built — the established Command-Center-tab-not-new-scene
+    precedent Academy/Discipline/Reasoning Lab/Reflection Chamber all
+    drew), a new palette-swapped sprite generated the same real,
+    deterministic way as all ten existing agents' sprites: PIL
+    pixel-diffed against the base sheet to recover the exact 7-color
+    remap table (2 hair + 5 shirt/pants-ramp), then remapped to a deep
+    indigo/violet hair-and-robe combination distinct from every existing
+    agent's tint.
+  - **Question of the Day**: every in-game morning at 8:00, `app/mentor.py`
+    draws one `QuestionOfTheDay` deterministically (`sim_day % library
+    length`) from a small, hand-authored 20-question library spanning 10
+    categories — real curated content, the same convention
+    `DialogueManager`'s own flavor lines already use, since this
+    codebase has no free-form question-generation capability. Each
+    question carries at most one honest `relatedReference` — a real
+    pointer into already-existing company content sharing its category
+    (a Reasoning Lab challenge, a Library of Mistakes case study, a
+    Reflection Chamber lesson, an Executive Review flag, ...) — never a
+    fabricated per-department "answer." Every entry is permanently
+    archived (capped at 120, roughly four in-game months); the player
+    may answer via a new `POST /api/mentor/qotd/respond`, stored verbatim
+    and never graded.
+  - **Thinking Profiles**: every agent (including Sage) gets a purely-
+    computed, six-trait profile — Curiosity (real Academy knowledge
+    points), Evidence Quality/Open-Mindedness/Humility/Reasoning (real
+    per-agent averages of Discipline Review factors across every closed
+    trade the agent attended), and Collaboration (real Reasoning Lab
+    contribution + Reflection Chamber insight counts). Recomputed fresh
+    every tick, the same "cheap to recompute, only re-scans already-
+    capped lists" reasoning `academy_state`/`reasoning_lab_state` already
+    established. "Patience" is deliberately not a trait here — Discipline
+    Review already scores it directly under that exact name, and
+    re-surfacing the identical signal under a new label would be the
+    "redundant re-measurement" trap this session has consistently
+    avoided; the brief's "Communication" and "Adaptability" have no real
+    per-agent discriminating signal anywhere in this codebase and are
+    likewise cut.
+  - A new **MENTOR** Command Center tab shows today's question (with
+    answer box), the full Question Archive, a static Question Library
+    summary, and every agent's Thinking Profile as trait meters.
+  - **Explicit scope cuts**: a separate weekly "Mentor Session" was not
+    built — `wisdom.py`'s already-shipped `ReflectionSession` already IS
+    a real weekly/monthly company-wide gathering built around real,
+    Socratic-style questions, and duplicating it under a new name would
+    just re-package the same real signals (the "redundant
+    re-measurement" trap again). "Thinking Exercises" are not duplicated
+    either — `reasoning_lab.py`'s `ReasoningChallenge` (Feature 29)
+    already covers 7 of the brief's 10 named exercise types with a real
+    signal each. Personal Coaching (per-employee improvement areas), a
+    graded "Daily Thinking Bonus" (no honest way to grade open-ended
+    free text), "Connected Constitution Articles" (no Company
+    Constitution system exists anywhere in this codebase — checked
+    directly), and the Question Library being consumable live by NPCs
+    during meetings (no hook exists in `scribe.py`'s discussion generator
+    without fabricating dialogue) are all cut and documented in
+    `mentor.py`'s module docstring.
+  - Incidental fix: `BrainRoomHud.tsx`'s `AGENT_ORDER` (Agent Status /
+    "N of M agents actively working") had never included Meridian since
+    Feature 24 added her; now includes both Meridian and Sage.
+  - Verification: full backend (mypy/ruff/pytest, 336/336 — 14 new tests
+    in `test_mentor.py`) and frontend (tsc/eslint/build) clean. Manually
+    verified in the running app (Playwright, 21/21 passing including a
+    new MENTOR-tab test; the MENTOR tab, Question of the Day
+    submit-and-persist round trip, Question Archive, and per-agent
+    Thinking Profile meters all rendered correct real content with zero
+    console errors; Sage's sprite and Agent Status entry confirmed
+    visually in the Brain Room).
+
 - **v0.6.3 — Executive Voting, Risk Command Center, Cyber Overlay** — the
   player is now formally TradeTown's CEO. A research candidate crossing
   the trade-confidence threshold no longer executes automatically: it

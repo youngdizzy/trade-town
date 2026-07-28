@@ -58,6 +58,7 @@ KNOWLEDGE_BRANCH: dict[AgentId, str] = {
     "pulse": "Statistics",
     "guardian": "Risk Management",
     "cio": "Leadership",
+    "sage": "Critical Thinking",
 }
 
 RESEARCH_COMPLETION_POINTS = 1.0
