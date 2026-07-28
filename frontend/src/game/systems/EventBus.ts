@@ -29,6 +29,7 @@ import type {
   PerformanceSnapshot,
   QuestionOfTheDay,
   ResearchItem,
+  TreasuryState,
   RiskLimits,
   EducationProgress,
   PlayerVsAiState,
@@ -131,6 +132,7 @@ export interface GameEvents {
   "questionArchive:updated": QuestionOfTheDay[];
   "thinkingProfiles:updated": Record<AgentId, ThinkingProfile>;
   "mentorState:updated": MentorState;
+  "treasury:updated": TreasuryState;
   "ui:executiveVoting": { open: boolean; proposalId?: string };
   // v0.7 Feature 19 — opens the Command Center on the Decisions tab for a
   // specific trade's decision; openDetail additionally auto-opens

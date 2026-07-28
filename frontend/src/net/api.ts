@@ -13,11 +13,14 @@ import type {
   PlayerVsAiPrompt,
   PlayerVsAiState,
   QuestionOfTheDay,
+  SavingsRuleType,
   SignalCalibrationState,
   SignalChallenge,
   SignalChoice,
+  TimeAdvanceTarget,
   TradeDecision,
   TradeProposal,
+  TreasuryState,
   WhatIfSimulation,
 } from "@/types";
 
@@ -108,5 +111,35 @@ export const api = {
     request<{ question: QuestionOfTheDay }>("/mentor/qotd/respond", {
       method: "POST",
       body: JSON.stringify({ questionId, response }),
+    }),
+  depositTreasury: (amount: number) =>
+    request<{ treasury: TreasuryState; paperPortfolio: PaperPortfolio }>("/treasury/deposit", {
+      method: "POST",
+      body: JSON.stringify({ amount }),
+    }),
+  withdrawTreasury: (amount: number) =>
+    request<{ treasury: TreasuryState; paperPortfolio: PaperPortfolio }>("/treasury/withdraw", {
+      method: "POST",
+      body: JSON.stringify({ amount }),
+    }),
+  createSavingsRule: (ruleType: SavingsRuleType, percent: number, reserveTarget: number | null) =>
+    request<{ treasury: TreasuryState }>("/treasury/rules/create", {
+      method: "POST",
+      body: JSON.stringify({ ruleType, percent, reserveTarget }),
+    }),
+  toggleSavingsRule: (ruleId: string, active: boolean) =>
+    request<{ treasury: TreasuryState }>("/treasury/rules/toggle", {
+      method: "POST",
+      body: JSON.stringify({ ruleId, active }),
+    }),
+  pauseAllSavingsRules: () =>
+    request<{ treasury: TreasuryState }>("/treasury/rules/pause-all", {
+      method: "POST",
+      body: JSON.stringify({}),
+    }),
+  advanceTime: (target: TimeAdvanceTarget, hours?: number) =>
+    request<GameSaveState>("/time/advance", {
+      method: "POST",
+      body: JSON.stringify({ target, hours: hours ?? null }),
     }),
 };

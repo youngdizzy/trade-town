@@ -43,6 +43,7 @@ import type {
   TimeState,
   TradeDecision,
   TradeProposal,
+  TreasuryState,
   WatchlistEntry,
   WisdomState,
 } from "@/types";
@@ -106,6 +107,7 @@ export interface GameUiState {
   questionArchive: QuestionOfTheDay[];
   thinkingProfiles: Record<AgentId, ThinkingProfile>;
   mentorState: MentorState;
+  treasury: TreasuryState;
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
@@ -233,12 +235,13 @@ class GameStore {
     questionArchive: [],
     thinkingProfiles: {} as Record<AgentId, ThinkingProfile>,
     mentorState: { tier: 0, tierLabel: "New Tradition", questionsAsked: 0, updatedAt: new Date().toISOString() },
+    treasury: { balance: 0, lifetimeDeposits: 0, largestBalance: 0, transactions: [], savingsRules: [], monthlyReports: [], updatedAt: new Date().toISOString() },
     agentEnergy: { current: 100, cap: 100, updatedAt: new Date().toISOString() },
     signalCalibration: { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 },
     playerVsAi: { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 },
     education: { viewedLessonIds: [], completedLessonIds: [], quizAttempts: 0, correctQuizAttempts: 0 },
     viewedTradeNotificationIds: [],
-    settings: { musicVolume: 0.5, sfxVolume: 0.7, autosaveIntervalSec: 60, showFps: false, operatingMode: "learning" },
+    settings: { musicVolume: 0.5, sfxVolume: 0.7, autosaveIntervalSec: 60, showFps: false, operatingMode: "learning", companyPriority: "balanced" },
     dialogue: { open: false, speaker: "", lines: [], index: 0 },
     paused: false,
     settingsOpen: false,
@@ -347,6 +350,7 @@ class GameStore {
     EventBus.on("questionArchive:updated", (questionArchive) => this.set({ questionArchive }));
     EventBus.on("thinkingProfiles:updated", (thinkingProfiles) => this.set({ thinkingProfiles }));
     EventBus.on("mentorState:updated", (mentorState) => this.set({ mentorState }));
+    EventBus.on("treasury:updated", (treasury) => this.set({ treasury }));
     EventBus.on("ui:executiveVoting", ({ open, proposalId }) =>
       this.set({ executiveVotingOpen: open, executiveVotingProposalId: open ? (proposalId ?? this.state.executiveVotingProposalId) : null }),
     );

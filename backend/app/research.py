@@ -78,11 +78,15 @@ def default_research() -> list[ResearchItem]:
     return items
 
 
-def tick_research(research: list[ResearchItem]) -> tuple[list[ResearchItem], list[ResearchItem]]:
+def tick_research(research: list[ResearchItem], *, speed_multiplier: float = 1.0) -> tuple[list[ResearchItem], list[ResearchItem]]:
     """Advances each researcher's active item and rotates a finished one
     out for a new topic. Returns `(full_list, just_completed)` — the
     caller (nexus.py, via scribe.py) turns completions into news/memory
-    records; this module only owns the queue's own state transitions."""
+    records; this module only owns the queue's own state transitions.
+    `speed_multiplier` is v0.7 Feature 34's "research" Company Priority
+    (see nexus.py) scaling the real per-tick confidence gain — 1.0 (the
+    default) leaves every other caller, including every existing test,
+    unaffected."""
     by_agent: dict[AgentId, list[ResearchItem]] = {}
     for item in research:
         by_agent.setdefault(item.assigned_agent, []).append(item)
@@ -102,7 +106,7 @@ def tick_research(research: list[ResearchItem]) -> tuple[list[ResearchItem], lis
             in_use.add(symbol)
             current = _new_item(agent_id, symbol, name, category)
         else:
-            confidence = min(CONFIDENCE_COMPLETE, current.confidence + random.uniform(*CONFIDENCE_GAIN_RANGE))
+            confidence = min(CONFIDENCE_COMPLETE, current.confidence + random.uniform(*CONFIDENCE_GAIN_RANGE) * speed_multiplier)
             current = current.model_copy(update={"confidence": round(confidence, 1), "updated_at": _now_iso()})
 
             if current.confidence >= CONFIDENCE_COMPLETE:

@@ -195,7 +195,7 @@ test.describe("Global Command Center", () => {
     expect(moved.x).not.toBe(frozen.x);
   });
 
-  test("expands to the Full Command Center and renders all 18 tabs with graceful empty states", async ({ page }) => {
+  test("expands to the Full Command Center and renders all 19 tabs with graceful empty states", async ({ page }) => {
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);
     await continueGame(page);
@@ -214,7 +214,7 @@ test.describe("Global Command Center", () => {
     // ticking throughout, a genuine trade or trade proposal can appear
     // (and pop up) mid-test. clickTab() dismisses and retries rather
     // than losing the race to a popup that appears in that instant.
-    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "COMPANY", "KNOWLEDGE", "DISCIPLINE", "REASONING", "REFLECTION", "MENTOR", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
+    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "COMPANY", "KNOWLEDGE", "DISCIPLINE", "REASONING", "REFLECTION", "MENTOR", "TREASURY", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
     for (const tab of tabs) {
       await clickTab(page, tab);
       await expect(page.getByRole("button", { name: tab, exact: true })).toHaveClass(/text-cmd-cyan/);
@@ -455,7 +455,10 @@ test.describe("Global Command Center", () => {
     // (settings are client-authoritative, merged into the next save).
     // "shadow-cmd-cyan" (not just "border-cmd-cyan", which also appears
     // in the inactive button's own hover: class) is the active-only marker.
-    const learningButton = page.getByRole("button", { name: /^LEARNING/ });
+    // Matched by its own description text, not just "LEARNING" — v0.7
+    // Feature 34's Company Priority section (below) has its own distinct
+    // "LEARNING" option, so a bare /^LEARNING/ match is ambiguous now.
+    const learningButton = page.getByRole("button", { name: /Every trade proposal waits for your real buy\/sell\/wait call/ });
     await expect(learningButton).toHaveClass(/shadow-cmd-cyan/);
 
     const assistedButton = page.getByRole("button", { name: /^ASSISTED/ });
@@ -614,5 +617,154 @@ test.describe("Global Command Center", () => {
     // Every real agent (including Sage) gets a purely-computed Thinking
     // Profile from tick one — never a blank panel here either.
     await expect(page.getByText("Collaboration", { exact: true }).first()).toBeVisible();
+  });
+
+  test("TREASURY tab performs a real deposit and withdrawal via POST /api/treasury/deposit and /withdraw", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickTab(page, "TREASURY");
+
+    await expect(page.getByText("CEO Treasury", { exact: true })).toBeVisible();
+    await expect(page.getByText("Operating Capital", { exact: true })).toBeVisible();
+
+    const treasuryBalance = page.getByTestId("treasury-balance");
+    const operatingBalance = page.getByTestId("operating-capital-balance");
+    const readDollar = async (locator: typeof treasuryBalance) => Number((await locator.innerText()).replace(/[^0-9.-]/g, ""));
+
+    // Structural isolation: a deposit moves real cash from Operating
+    // Capital to the Treasury — never invents money on either side.
+    const treasuryBefore = await readDollar(treasuryBalance);
+    const operatingBefore = await readDollar(operatingBalance);
+
+    const amountInput = page.locator('input[type="number"]').first();
+    await amountInput.fill("500");
+    await page.getByRole("button", { name: /Deposit/ }).click();
+
+    await expect(async () => {
+      const treasuryAfter = await readDollar(treasuryBalance);
+      expect(treasuryAfter).toBe(treasuryBefore + 500);
+    }).toPass({ timeout: 5000 });
+    const operatingAfterDeposit = await readDollar(operatingBalance);
+    expect(operatingAfterDeposit).toBe(operatingBefore - 500);
+
+    // And a withdrawal reverses it — the same real, validated transfer
+    // in the other direction.
+    await amountInput.fill("500");
+    await page.getByRole("button", { name: /Withdraw/ }).click();
+    await expect(async () => {
+      const treasuryAfter = await readDollar(treasuryBalance);
+      expect(treasuryAfter).toBe(treasuryBefore);
+    }).toPass({ timeout: 5000 });
+    const operatingAfterWithdraw = await readDollar(operatingBalance);
+    expect(operatingAfterWithdraw).toBe(operatingBefore);
+
+    // Withdrawing more than the Treasury holds is rejected honestly
+    // rather than silently going negative.
+    await amountInput.fill("999999999");
+    await page.getByRole("button", { name: /Withdraw/ }).click();
+    await expect(page.getByText(/Treasury only holds/)).toBeVisible({ timeout: 5000 });
+  });
+
+  test("Company Priority selection is real and persists across a reload, distinct from Operating Mode", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickTab(page, "COMPANY");
+
+    // Matched by its own description text, not just "RESEARCH" — the
+    // top nav already has an exact "RESEARCH" tab button, so a bare
+    // /^RESEARCH/ match against the priority button (whose accessible
+    // name also includes its description) is ambiguous.
+    await expect(page.getByText("Company Priority", { exact: true })).toBeVisible();
+    const researchPriority = page.getByRole("button", { name: /Active research items gain confidence/ });
+    await expect(researchPriority).toBeVisible();
+    await researchPriority.click();
+    await expect(researchPriority).toHaveClass(/border-cmd-purple/);
+
+    await page.reload();
+    await clickContinueOnTitleScreen(page);
+    await page.keyboard.press("Tab");
+    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickTab(page, "COMPANY");
+    await expect(page.getByRole("button", { name: /Active research items gain confidence/ })).toHaveClass(/border-cmd-purple/);
+
+    // Reset back to Balanced so later runs against this shared dev
+    // backend start from a known-neutral priority. "BALANCED" is unique
+    // (no Operating Mode or nav-tab collision).
+    const balancedPriority = page.getByRole("button", { name: /^BALANCED/ });
+    await balancedPriority.click();
+    await expect(balancedPriority).toHaveClass(/border-cmd-purple/);
+  });
+
+  test("Time Controls END WORKDAY jumps the real clock via POST /api/time/advance", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickTab(page, "COMPANY");
+
+    const headerTime = page.getByText(/^Day \d+ · \d{2}:\d{2}$/);
+    const readMinutes = async () => {
+      const text = await headerTime.textContent();
+      const match = text?.match(/Day (\d+) · (\d{2}):(\d{2})/);
+      if (!match) throw new Error(`could not parse header time: ${text}`);
+      return Number(match[1]) * 1440 + Number(match[2]) * 60 + Number(match[3]);
+    };
+    const before = await readMinutes();
+
+    // Not `exact: true` — the button's accessible name is its label plus
+    // its own description text ("END WORKDAY Jump to 20:00 — ..."), so an
+    // exact match against just the label never matches.
+    const advanceButton = page.getByRole("button", { name: /^END WORKDAY/ });
+    await expect(advanceButton).toBeVisible();
+    await advanceButton.click();
+
+    // A real fast-forward jumps a large amount — far more than the
+    // handful of minutes the sim's own background real-time tick loop
+    // could add over the few seconds this assertion polls for, so a
+    // sizable forward jump confirms the CEO action actually fired
+    // rather than just organic ticking.
+    await expect(async () => {
+      const after = await readMinutes();
+      expect(after - before).toBeGreaterThan(60);
+    }).toPass({ timeout: 15000 });
+  });
+
+  test("number keys 1-9 jump straight to the matching Command Center tab, ignored while typing in a form field", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await dismissTradeOutcomePopups(page);
+
+    // Tab 8 is "COMPANY" per FullCommandCenter.tsx's own TABS order.
+    await page.keyboard.press("8");
+    await expect(page.getByRole("button", { name: "COMPANY", exact: true })).toHaveClass(/text-cmd-cyan/);
+
+    // Tab 1 is "OVERVIEW".
+    await page.keyboard.press("1");
+    await expect(page.getByRole("button", { name: "OVERVIEW", exact: true })).toHaveClass(/text-cmd-cyan/);
+
+    // Now jump into TREASURY (via a mouse click — its own tab index is
+    // past 9, so it's not reachable by a number-key shortcut) and confirm
+    // typing a digit into its real amount field does NOT trigger a tab
+    // switch away from it.
+    await clickTab(page, "TREASURY");
+    const amountInput = page.locator('input[type="number"]').first();
+    await amountInput.fill("");
+    await amountInput.type("2");
+    await expect(page.getByRole("button", { name: "TREASURY", exact: true })).toHaveClass(/text-cmd-cyan/);
+    await expect(amountInput).toHaveValue("2");
   });
 });

@@ -1,6 +1,9 @@
+import { useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { SettingsManager } from "@/game/systems/SettingsManager";
-import type { CompanyHealthTier, MarketEnvironmentRegime, OperatingMode } from "@/types";
+import { SaveManager } from "@/game/systems/SaveManager";
+import { api } from "@/net/api";
+import type { CompanyHealthTier, CompanyPriority, MarketEnvironmentRegime, OperatingMode, TimeAdvanceTarget } from "@/types";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
 
 const MODE_LABEL: Record<OperatingMode, string> = { learning: "LEARNING", assisted: "ASSISTED", executive: "EXECUTIVE" };
@@ -11,6 +14,25 @@ const MODE_DESCRIPTION: Record<OperatingMode, string> = {
   executive:
     "Every proposal auto-resolves using the desk's own recommendation. You review Decisions and Company Health rather than individual trades.",
 };
+
+// v0.7 Feature 34 — Company Priorities. Each option biases exactly one
+// real, already-existing lever (see backend/app/nexus.py's tick()) —
+// "Expansion"/"Efficiency"/"Innovation" from the brief have no real
+// distinct lever to attach to and aren't offered (see schemas.py's
+// CompanyPriority docstring).
+const PRIORITY_LABEL: Record<CompanyPriority, string> = { balanced: "BALANCED", learning: "LEARNING", research: "RESEARCH", risk_reduction: "RISK REDUCTION" };
+const PRIORITY_DESCRIPTION: Record<CompanyPriority, string> = {
+  balanced: "No bias — every department runs at its normal, unmodified pace.",
+  learning: "Academy knowledge points from research, projects, and meetings are earned 1.5x faster.",
+  research: "Active research items gain confidence 1.5x faster toward completion.",
+  risk_reduction: "New trade proposals are sized and vetted against tightened (80%) risk limits — your own configured limits are unchanged.",
+};
+
+const TIME_TARGETS: { target: TimeAdvanceTarget; label: string; description: string }[] = [
+  { target: "workday_end", label: "END WORKDAY", description: "Jump to 20:00 — the moment every department's day genuinely ends." },
+  { target: "week_end", label: "END WEEK", description: "Jump to next week's close — weekly reports fire along the way." },
+  { target: "month_end", label: "END MONTH", description: "Jump to next month's close — monthly reports and Treasury rules fire along the way." },
+];
 
 const TIER_TONE: Record<CompanyHealthTier, "green" | "cyan" | "amber" | "red"> = {
   excellent: "green",
@@ -51,6 +73,23 @@ function metricTone(score: number): "green" | "amber" | "red" {
  */
 export function CompanyPanel() {
   const { settings, companyHealth, marketEnvironment } = useGameStore();
+  const [advancing, setAdvancing] = useState<TimeAdvanceTarget | null>(null);
+  const [customHours, setCustomHours] = useState("6");
+  const [timeError, setTimeError] = useState<string | null>(null);
+
+  const runAdvance = async (target: TimeAdvanceTarget, hours?: number) => {
+    if (advancing) return;
+    setAdvancing(target);
+    setTimeError(null);
+    try {
+      const state = await api.advanceTime(target, hours);
+      SaveManager.applyState(state);
+    } catch (err) {
+      setTimeError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAdvancing(null);
+    }
+  };
 
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
@@ -77,6 +116,72 @@ export function CompanyPanel() {
             );
           })}
         </div>
+      </Glass>
+
+      <Glass className="p-3 lg:col-span-3">
+        <TerminalLabel>Company Priority</TerminalLabel>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+          {(Object.keys(PRIORITY_LABEL) as CompanyPriority[]).map((priority) => {
+            const active = settings.companyPriority === priority;
+            return (
+              <button
+                key={priority}
+                type="button"
+                onClick={() => SettingsManager.update({ companyPriority: priority })}
+                className={`rounded-sm border p-2.5 text-left transition-colors ${
+                  active ? "border-cmd-purple/50 bg-cmd-purple/10" : "border-cmd-border/60 bg-cmd-bg/40 hover:border-cmd-purple/30"
+                }`}
+              >
+                <div className="mb-1 flex items-center justify-between">
+                  <span className={active ? "text-cmd-purple" : "text-cmd-text"}>{PRIORITY_LABEL[priority]}</span>
+                  {active && <StatusPill tone="purple">ACTIVE</StatusPill>}
+                </div>
+                <div className="text-[9px] text-cmd-textDim">{PRIORITY_DESCRIPTION[priority]}</div>
+              </button>
+            );
+          })}
+        </div>
+      </Glass>
+
+      <Glass className="p-3 lg:col-span-3">
+        <TerminalLabel>Time Controls</TerminalLabel>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
+          {TIME_TARGETS.map(({ target, label, description }) => (
+            <button
+              key={target}
+              type="button"
+              onClick={() => void runAdvance(target)}
+              disabled={advancing !== null}
+              className="rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2.5 text-left transition-colors hover:border-cmd-cyan/30 disabled:opacity-40"
+            >
+              <div className="mb-1 text-cmd-cyan">{advancing === target ? "ADVANCING…" : label}</div>
+              <div className="text-[9px] text-cmd-textDim">{description}</div>
+            </button>
+          ))}
+          <div className="rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2.5">
+            <div className="mb-1 text-cmd-cyan">FAST FORWARD</div>
+            <div className="flex items-center gap-1.5">
+              <input
+                type="number"
+                min={1}
+                max={72}
+                value={customHours}
+                onChange={(e) => setCustomHours(e.target.value)}
+                className="w-14 rounded-sm border border-cmd-border bg-cmd-bg/60 px-1.5 py-1 text-[9px] text-cmd-text focus:border-cmd-cyan/50 focus:outline-none"
+              />
+              <span className="text-[9px] text-cmd-textDim">hours</span>
+              <button
+                type="button"
+                onClick={() => void runAdvance("hours", Number(customHours))}
+                disabled={advancing !== null}
+                className="ml-auto flex-none rounded-sm border border-cmd-cyan/50 px-2 py-1 text-[9px] uppercase tracking-wider text-cmd-cyan transition-colors hover:bg-cmd-cyan/10 disabled:opacity-40"
+              >
+                {advancing === "hours" ? "…" : "GO"}
+              </button>
+            </div>
+          </div>
+        </div>
+        {timeError && <div className="mt-2 text-[9px] text-cmd-red">{timeError}</div>}
       </Glass>
 
       <Glass className="p-3 lg:col-span-2">

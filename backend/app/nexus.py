@@ -32,7 +32,7 @@ from app.academy import (
 from app.academy_research import MAX_ACADEMY_LIBRARY, default_academy_projects, tick_academy_projects
 from app.agent_energy import RESEARCH_BOOST_AMOUNT, regen_daily, spend
 from app.agents import AGENT_PROFILES, LOCATION_TO_SCENE, all_agent_ids
-from app.analytics import compute_performance_snapshot, confidence_accuracy, record_snapshot
+from app.analytics import compute_performance_snapshot, confidence_accuracy, period_profit_dollars, record_snapshot
 from app.broker import tick_broker
 from app.coach import generate_report as generate_coach_report
 from app.coach import record_report as record_coach_report_entry
@@ -65,6 +65,7 @@ from app.research import RESEARCHER_IDS, default_research, tick_research
 from app.risk_engine import evaluate_guardian_exposure, evaluate_sentinel_risk, monitor_portfolio, recommended_quantity
 from app.scanner import tick_scanner
 from app.schedule import block_for_hour
+from app.treasury import apply_monthly_savings_rules, record_monthly_report
 from app.scribe import (
     FUTURE_TRADE_CONFIDENCE_THRESHOLD,
     build_minutes,
@@ -94,6 +95,7 @@ from app.schemas import (
     CaseStudy,
     CeoDecisionRecord,
     CoachReport,
+    CompanyPriority,
     Debate,
     DisciplineReview,
     EntityTransform,
@@ -122,6 +124,7 @@ from app.schemas import (
     TimeState,
     TradeDecision,
     TradeProposal,
+    TreasuryState,
     WisdomState,
 )
 from app.simulation import default_strategies, queue_backtest_now, tick_simulation_lab
@@ -201,6 +204,35 @@ MENTORSHIP_CHECK_INTERVAL_DAYS = 3
 # participate" is the brief's own framing and a fresh real Debate is
 # usually available well within this window.
 REASONING_CHALLENGE_INTERVAL_DAYS = 2
+
+# v0.7 Feature 34 — Company Priorities. Real, fixed multipliers applied
+# to already-existing levers (see _effective_risk_limits() and the three
+# award_points() call sites / the tick_research() call below) — never a
+# new invented mechanic, just an existing one turned up or down.
+PRIORITY_KNOWLEDGE_MULTIPLIER = 1.5  # "learning"
+PRIORITY_RESEARCH_SPEED_MULTIPLIER = 1.5  # "research"
+PRIORITY_RISK_TIGHTEN_FACTOR = 0.8  # "risk_reduction"
+
+
+def _effective_risk_limits(limits: RiskLimits, priority: CompanyPriority) -> RiskLimits:
+    """A derived, tightened copy used only at the points Sentinel/Guardian
+    actually evaluate a trade candidate — never mutates or persists over
+    the player's own configured RiskLimits (`state.risk_limits` itself is
+    returned unchanged at the bottom of tick())."""
+    if priority != "risk_reduction":
+        return limits
+    factor = PRIORITY_RISK_TIGHTEN_FACTOR
+    return limits.model_copy(
+        update={
+            "max_position_pct": round(limits.max_position_pct * factor, 2),
+            "max_daily_loss_pct": round(limits.max_daily_loss_pct * factor, 2),
+            "max_drawdown_pct": round(limits.max_drawdown_pct * factor, 2),
+            "max_open_positions": max(1, round(limits.max_open_positions * factor)),
+            "max_sector_concentration_pct": round(limits.max_sector_concentration_pct * factor, 2),
+            "risk_per_trade_pct": round(limits.risk_per_trade_pct * factor, 2),
+        }
+    )
+
 
 MARKET_HEADLINES = [
     "Markets drift sideways in a quiet overnight session",
@@ -792,6 +824,10 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     coach_reports = list(state.coach_reports)
     performance_snapshots = list(state.performance_snapshots)
     risk_limits = state.risk_limits
+    company_priority: CompanyPriority = state.settings.company_priority
+    effective_risk_limits = _effective_risk_limits(risk_limits, company_priority)
+    knowledge_multiplier = PRIORITY_KNOWLEDGE_MULTIPLIER if company_priority == "learning" else 1.0
+    research_speed_multiplier = PRIORITY_RESEARCH_SPEED_MULTIPLIER if company_priority == "research" else 1.0
     scanner_alerts = list(state.scanner_alerts)
     decisions = list(state.decisions)
     trade_proposals = list(state.trade_proposals)
@@ -810,10 +846,11 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     reflection_sessions: list[ReflectionSession] = list(state.reflection_sessions)
     wisdom_state: WisdomState = state.wisdom_state
     question_archive: list[QuestionOfTheDay] = list(state.question_archive)
+    treasury: TreasuryState = state.treasury
 
     agents = {aid: _tick_agent(aid, agent, new_time, minutes, tasks) for aid, agent in state.agents.items()}
 
-    research, completed = tick_research(research)
+    research, completed = tick_research(research, speed_multiplier=research_speed_multiplier)
     record_research_completions(memory, completed)
     for item in completed:
         news.append(
@@ -826,7 +863,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         )
         # v0.7 Feature 25 — every real completed research item earns the
         # assigned agent real Knowledge Points (app/academy.py).
-        agent_knowledge, tier_up = award_points(agent_knowledge, item.assigned_agent, RESEARCH_COMPLETION_POINTS)
+        agent_knowledge, tier_up = award_points(agent_knowledge, item.assigned_agent, RESEARCH_COMPLETION_POINTS * knowledge_multiplier)
         if tier_up is not None:
             record_knowledge_tier_up(memory, tier_up)
 
@@ -838,7 +875,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         if len(academy_completed_projects) > MAX_ACADEMY_LIBRARY:
             del academy_completed_projects[: len(academy_completed_projects) - MAX_ACADEMY_LIBRARY]
         record_academy_project(memory, newly_completed_project)
-        agent_knowledge, tier_up = award_points(agent_knowledge, newly_completed_project.assigned_agent, ACADEMY_PROJECT_POINTS)
+        agent_knowledge, tier_up = award_points(agent_knowledge, newly_completed_project.assigned_agent, ACADEMY_PROJECT_POINTS * knowledge_multiplier)
         if tier_up is not None:
             record_knowledge_tier_up(memory, tier_up)
         news.append(
@@ -908,7 +945,13 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             )
         )
 
-    new_proposals = _generate_trade_proposals(trade_proposals, completed, prices, risk_limits, paper_portfolio, news, scanner_alerts, now_sim_minutes)
+    # v0.7 Feature 34 — "risk_reduction" biases new-proposal sizing/vetting
+    # toward the tightened effective_risk_limits; every other real reading
+    # of risk_limits (Guardian's ambient risk_warnings, the RiskPanel
+    # display) keeps showing the player's own actually-configured numbers,
+    # never the priority-derived ones, so nothing displayed misattributes
+    # a threshold the player didn't set.
+    new_proposals = _generate_trade_proposals(trade_proposals, completed, prices, effective_risk_limits, paper_portfolio, news, scanner_alerts, now_sim_minutes)
     trade_proposals = [*trade_proposals, *new_proposals]
     # v0.7 Feature 17 — every new proposal gets a full committee debate
     # (app/debate.py) generated up front, over the same real analyst
@@ -1071,7 +1114,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # "collaboration" grounded in the meeting system that already exists.
     if len(meeting_minutes) > mm_count_before_meeting:
         for attendee in meeting_minutes[-1].participants:
-            agent_knowledge, tier_up = award_points(agent_knowledge, attendee, MEETING_ATTENDANCE_POINTS)
+            agent_knowledge, tier_up = award_points(agent_knowledge, attendee, MEETING_ATTENDANCE_POINTS * knowledge_multiplier)
             if tier_up is not None:
                 record_knowledge_tier_up(memory, tier_up)
 
@@ -1125,6 +1168,18 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         coach_reports = record_coach_report_entry(coach_reports, latest_report)
         record_coach_report(memory, latest_report)
         performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("monthly", paper_portfolio, research, new_time))
+
+        # v0.7 Feature 33 — the CEO Treasury's Smart Savings Rules, on the
+        # same monthly cadence, using the real dollar profit the
+        # performance snapshot above was itself just computed from (see
+        # analytics.period_profit_dollars). Only ever moves money the CEO
+        # already explicitly authorized via an active rule — see
+        # treasury.py's module docstring.
+        monthly_profit_dollars = period_profit_dollars("monthly", paper_portfolio, new_time)
+        treasury, paper_portfolio = apply_monthly_savings_rules(
+            treasury, paper_portfolio, monthly_profit_dollars=monthly_profit_dollars, sim_day=new_time.day, now_iso=_now_iso(), id_prefix=f"treasury-auto-{new_time.day}"
+        )
+        treasury = record_monthly_report(treasury, month_ending_day=new_time.day, now_iso=_now_iso(), report_id=f"treasury-report-{new_time.day}")
 
         # v0.7 Feature 24 — the CIO's own Monthly Executive Review,
         # generated on the same monthly cadence as Coach's report above
@@ -1322,6 +1377,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "question_archive": question_archive,
             "thinking_profiles": thinking_profiles,
             "mentor_state": mentor_state,
+            "treasury": treasury,
             "agent_energy": agent_energy,
             "whiteboards": _update_whiteboards(agents, meeting, research),
             "updated_at": _now_iso(),

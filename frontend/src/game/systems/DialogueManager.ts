@@ -22,15 +22,16 @@ const AGENT_TASK_LINES: Record<AgentId, Record<string, string[]>> = {
       "Overnight book looks clean. No surprises while you were away.",
       "One position drifted past its band — I noted it for review.",
     ],
+    "Trading watchlist stories with whoever's around": ["Off the clock, but I still can't stop talking about tickers."],
+    "Reading market history for fun": ["Reading about the '87 crash tonight. Old news, still good lessons."],
   },
   atlas: {
     "Reviewing overnight strategy": ["Overnight strategy holds. No changes needed yet."],
     "Assessing agent performance": ["Watching how the team's doing. Numbers are steady."],
     "Weighing strategic options": ["Weighing a few options. Not ready to decide yet."],
     "Finalizing decisions": ["Decision's made. I'll brief the team shortly."],
-    "Planning tomorrow's priorities": ["Tomorrow's priorities are mostly set."],
-    "Reviewing the day": ["Reviewing how today went before I close out."],
-    "Standing by": ["Standing by. Call if you need a decision."],
+    "Reviewing the day one more time before letting it go": ["Even off the clock, I like to end the day with a clear head."],
+    "Reading quietly": ["Not thinking about strategy right now. Just reading."],
   },
   echo: {
     "Charting technical patterns": [
@@ -39,59 +40,55 @@ const AGENT_TASK_LINES: Record<AgentId, Record<string, string[]>> = {
     ],
     "Studying monitor feeds": ["Three feeds up at once — trying to catch the moment things shift."],
     "Tracking momentum indicators": ["Momentum's strengthening on this one. Worth flagging."],
-    "Scanning overnight charts": ["Overnight charts look quiet, but I'm still scanning."],
-    "Monitoring after-hours signals": ["After-hours is thin, but I don't like missing things."],
+    "Watching an old chart pattern for fun, off the clock": ["Old habit — I still find these things beautiful, even off duty."],
+    "Sketching new indicator ideas in a notebook": ["Sketching an idea I don't have data for yet. Just for me."],
   },
   nova: {
     "Reading quarterly reports": ["This quarterly report has a footnote worth a second read."],
     "Summarizing research findings": ["Summarizing findings — trying to keep it readable, not just accurate."],
     "Cross-checking Scout's notes": ["Cross-checking Scout's notes against the filings. Mostly lines up."],
-    "Reading overnight filings": ["A few overnight filings came in. Reading through them now."],
-    "Reviewing archived reports": ["Going back through the archive for context on this one."],
+    "Reading a novel, finally not about markets": ["Nice to read something without a single ticker symbol in it."],
+    "Journaling a few thoughts from the day": ["Writing down what stuck with me today. Not for a report — just for me."],
   },
   scribe: {
     "Reviewing overnight logs": ["Reading through what happened while you were away. Nothing missed."],
     "Filing yesterday's minutes": ["Filing yesterday's meeting minutes. Everyone's on the record."],
     "Logging research updates": ["Writing up the latest research as it comes in."],
     "Cross-referencing the archive": ["Cross-referencing this against the archive for consistency."],
-    "Indexing the day's discoveries": ["Indexing today's discoveries so they're easy to find later."],
-    "Archiving overnight records": ["Archiving the overnight records. The log never sleeps."],
+    "Writing in a personal journal, just for once": ["Some things don't belong in the company archive."],
+    "Reading quietly": ["Everything else can wait until tomorrow."],
   },
   coach: {
     "Reviewing yesterday's paper trades": ["Going through yesterday's paper trades — a couple worth discussing at the review."],
     "Observing research in progress": ["Sitting in on research this morning. Just watching, not interrupting."],
     "Analyzing confidence calibration": ["Checking whether confidence scores actually track outcomes. It's close, not perfect."],
     "Reviewing simulation results": ["The Simulation Lab's latest run is in. Promising, but I want more data."],
-    "Evening performance review": ["Wrapping up today's performance review. Nothing that surprises me."],
-    "Drafting recommendations": ["Drafting a couple of recommendations for the team. Nothing harsh, just honest."],
-    "Standing by": ["Standing by. Always happy to talk through a trade after the fact."],
+    "Exercising to clear the mind": ["Working out clears my head better than any report does."],
+    "Watching game film, but for fun this time": ["Watching old trades tonight — no notes, just enjoying the story."],
   },
   sentinel: {
     "Reviewing overnight risk exposure": ["Checking what the book looked like while nobody was watching. Clean so far."],
     "Monitoring position sizing": ["Every open position gets measured against the limits. No exceptions."],
     "Evaluating trade candidates": ["A candidate just came through voting. I'll say no if the sizing's off."],
     "Cross-checking risk against Coach's reports": ["Comparing my numbers against Coach's review. We usually agree."],
-    "Setting tomorrow's risk limits": ["Tightening a limit for tomorrow. Today taught us something."],
-    "Auditing the day's approvals": ["Going back through everything I approved today. Show your work."],
-    "Standing watch": ["Someone has to say no. Might as well be me."],
+    "Finally letting the guard down for a few hours": ["Even I have to stop watching the exits eventually."],
+    "Reading, off the clock": ["Reading something that isn't a risk report, for once."],
   },
   pulse: {
     "Scanning premarket movers": ["Premarket's already moving. I've got eyes on four symbols."],
     "Watching for breakouts": ["Watching for a real breakout, not just noise. Volume tells the story."],
     "Tracking volume spikes": ["Something just spiked. Checking if it's real or a fluke."],
     "Cross-referencing research with scanner alerts": ["Lining up my alerts against what research already flagged."],
-    "Scanning after-hours activity": ["After-hours is thin, but thin doesn't mean nothing's happening."],
-    "Compiling the day's alerts": ["Wrapping today's alerts into a summary for the morning."],
-    "Monitoring overnight volatility": ["Volatility never fully sleeps. Neither do I, apparently."],
+    "Still glancing at a ticker out of habit": ["I told myself I'd stop checking. I haven't stopped checking."],
+    "Playing a game to unwind": ["Trying to focus on something that isn't a chart for once."],
   },
   guardian: {
     "Checking overnight portfolio exposure": ["Exposure held steady overnight. Nothing to flag yet."],
     "Monitoring concentration risk": ["One symbol's creeping up as a share of the book. Watching it."],
     "Watching drawdown levels": ["Drawdown's within bounds, but I don't like getting close to the line."],
     "Reviewing portfolio performance": ["Reviewing how the portfolio's actually performing against the risk we took."],
-    "Recommending risk reductions": ["I recommended trimming a position today. Sentinel agreed."],
-    "Filing the day's exposure report": ["Filing today's exposure report. Everything's accounted for."],
-    "Standing watch over the book": ["Someone has to watch the whole book, not just one trade at a time."],
+    "Making sure everything is squared away before bed": ["Can't rest until everything's actually accounted for."],
+    "Reading quietly": ["The one time of day nothing needs protecting."],
   },
   cio: {
     "Reviewing overnight department reports": [
@@ -101,9 +98,8 @@ const AGENT_TASK_LINES: Record<AgentId, Record<string, string[]>> = {
     "Sitting in on the research desk": ["Just observing today. The research desk does its best work when I stay quiet."],
     "Reviewing risk and execution together": ["Comparing Sentinel's read against what's actually being executed. They should always agree."],
     "Preparing the executive briefing": ["Drafting this month's briefing. I want it honest, not just optimistic."],
-    "Encouraging cross-department collaboration": ["Reminding the team that Research and Risk work best when they actually talk to each other."],
-    "Reviewing the day's decisions": ["Going back over today's calls — not to second-guess, just to understand."],
-    "Standing by": ["Standing by. Ask me anything about how the company's doing."],
+    "Reflecting on today's decisions, off the clock": ["Not reviewing anyone — just sitting with how today actually went."],
+    "Reading, away from the boardroom": ["Away from the boardroom, I'm just reading. It's a relief, honestly."],
   },
   sage: {
     "Writing today's question": ["Still deciding what to ask everyone this morning. The right question matters more than any answer."],
@@ -111,9 +107,8 @@ const AGENT_TASK_LINES: Record<AgentId, Record<string, string[]>> = {
     "Asking Risk what it's most uncertain about": ["I just asked Sentinel what they're least sure of. That's usually more useful than what they're sure of."],
     "Holding a Thinking Session": ["No conclusions today — just better questions than we started with."],
     "Reviewing the day's reasoning": ["Not grading anyone. Just noticing which assumptions held up and which didn't."],
-    "Coaching whoever asks": ["Someone came by earlier looking for an answer. I gave them a better question instead."],
-    "Reading the day's lessons": ["Reading back through what the company learned today. Worth sitting with, not rushing past."],
-    "Sitting with an open question": ["I don't mind not knowing yet. That's usually where the real thinking starts."],
+    "Sitting quietly with today's question, off the clock": ["I don't mind not knowing yet. That's usually where the real thinking starts."],
+    "Reading something unrelated to work, for once": ["Even a mentor benefits from a question that isn't about the company."],
   },
 };
 
@@ -122,6 +117,10 @@ const OVERRIDE_LINES: Record<string, string[]> = {
   "In a meeting": ["Can this wait? We're mid-meeting.", "Good timing — we just wrapped up a point."],
   "Taking a break": ["Just grabbing a coffee. Back in a minute.", "Recharging. I'll be sharper shortly."],
   Resting: ["Taking five. Even AI needs a moment.", "Recharging. I'll be sharper in a few minutes."],
+  // v0.7 Feature 35 — every agent's shared 0:00-6:00 off-duty block (see
+  // schedule.py's own module docstring). One shared fallback rather than
+  // eleven identical per-agent copies of the same real fact.
+  Sleeping: ["Shh — I'm off the clock until morning.", "Catching real rest before the workday starts again."],
 };
 
 const MOOD_FLAVOR = {

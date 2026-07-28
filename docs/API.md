@@ -30,16 +30,25 @@ Body: a full `GameSaveState` (as returned by `GET /api/load` or received
 over the WebSocket, with the client's own `player`/`settings`/
 `dialogueHistory` filled in). `settings.operatingMode`
 (`learning | assisted | executive`, v0.7 Feature 21 — see
-`app/schemas.py`'s `SettingsState`) is the one client-owned field NEXUS
+`app/schemas.py`'s `SettingsState`) is one client-owned field NEXUS
 itself reads every tick, to decide whether to auto-resolve trade
-proposals (see `nexus._apply_operating_mode()`). Only those three client-owned fields are
-actually persisted from the payload — every other field
+proposals (see `nexus._apply_operating_mode()`). `settings.companyPriority`
+(`balanced | learning | research | risk_reduction`, v0.7 Feature 34) is
+the second — NEXUS reads it every tick to bias exactly one real,
+already-existing lever per priority (Academy knowledge-point awards,
+research confidence-gain speed, or tightened trade-sizing risk limits —
+see `nexus._effective_risk_limits()` and the comment above
+`PRIORITY_KNOWLEDGE_MULTIPLIER`); it never mutates the player's own
+stored `RiskLimits`. Only those client-owned fields (`player`, `settings`,
+`dialogueHistory`) are actually persisted from the payload — every other
+field
 (`agents`/`tasks`/`whiteboards`/`meeting`/`news`/`research`/`watchlist`/
 `memory`/`meetingMinutes`/`paperPortfolio`/`strategies`/
 `backtestSessions`/`simulationResults`/`hallOfFame`/`coachReports`/
-`companyScore`/`performanceSnapshots`/`time`) stays server-authoritative
-and is overwritten with whatever NEXUS currently has, regardless of what
-the client sent (see `GameState.apply_client_save()`).
+`companyScore`/`performanceSnapshots`/`treasury`/`time`) stays
+server-authoritative and is overwritten with whatever NEXUS currently
+has, regardless of what the client sent (see
+`GameState.apply_client_save()`).
 
 Response:
 
@@ -617,6 +626,68 @@ match any archived entry.
 `GET /api/load` returns this same set of fields plus `version` (currently
 `"0.6"`), `player` (`EntityTransform`), `settings` (`SettingsState`),
 `dialogueHistory` (`DialogueHistoryEntry[]`), and `updatedAt`.
+
+### `POST /api/treasury/deposit` / `POST /api/treasury/withdraw`
+
+v0.7 Feature 33 — the CEO Treasury. Body: `{ "amount": 1000 }`. Moves real
+cash between `paperPortfolio.cashBalance` (Operating Capital) and
+`treasury.balance` (the Treasury) — a deposit takes cash away from
+Operating Capital and adds it to the Treasury, a withdrawal reverses it.
+Both are explicit, CEO-initiated transfers; no automatic system in this
+codebase ever calls either (see `app/treasury.py`'s module docstring for
+the full structural isolation guarantee). Returns the updated pair:
+
+```json
+{ "treasury": { "balance": 1000.0, "lifetimeDeposits": 1000.0, "...": "..." }, "paperPortfolio": { "cashBalance": 99000.0, "...": "..." } }
+```
+
+`400` if `amount` isn't positive, if a deposit exceeds Operating
+Capital's real cash balance, or if a withdrawal exceeds the Treasury's
+real balance.
+
+### `POST /api/treasury/rules/create`
+
+Creates a Smart Savings Rule. Body: `{ "ruleType": "percent_of_monthly_profit", "percent": 10, "reserveTarget": null }`
+or `{ "ruleType": "excess_above_reserve", "percent": 0, "reserveTarget": 50000 }`.
+The brief's "save 5% of monthly profit" and "save 10% after profitable
+months" collapse into the one `percent_of_monthly_profit` rule type here
+— they're mechanically identical (saving a percent of profit only ever
+fires when profit is positive), so there's no second, redundant rule
+type. Applied automatically once a month, alongside the real monthly
+`TreasuryMonthlyReport` (see `app/treasury.py`'s
+`apply_monthly_savings_rules()`). Returns `{ "treasury": { ... } }`. `400`
+for an out-of-range percent, or a missing/negative reserve target.
+
+### `POST /api/treasury/rules/toggle` / `POST /api/treasury/rules/pause-all`
+
+`{ "ruleId": "treasury-rule-...", "active": false }` toggles one rule;
+pause-all (empty body) deactivates every rule at once — the brief's
+"Pause all automatic transfers." Both return `{ "treasury": { ... } }`.
+`400` from toggle if `ruleId` doesn't match any existing rule.
+
+### `POST /api/time/advance`
+
+v0.7 Feature 34 — CEO time controls (End Workday/Week/Month, or a bounded
+custom fast-forward). Body: `{ "target": "workday_end" }` (also
+`"week_end"` / `"month_end"`), or `{ "target": "hours", "hours": 6 }`
+(1-72). Rather than jumping the clock directly to the target, this loops
+the same real per-tick orchestration step (`GameState._advance_once()`)
+under one lock acquisition until it lands there — every exact-minute
+cadence check along the way (evening reports, the morning Question of the
+Day, Treasury's monthly savings rules, ...) fires exactly as it would if
+that much real time had actually passed. Calling it exactly at the
+target minute still advances to the *next* occurrence, never a no-op.
+Because a multi-hour fast-forward can touch nearly everything NEXUS
+touches, this returns the full `GameSaveState` (same shape as `GET
+/api/load`) rather than just the new `time`, so the client can apply it
+in one shot instead of waiting on the next WS broadcast:
+
+```json
+{ "time": { "day": 4, "hour": 20, "minute": 0 }, "treasury": { "...": "..." }, "...": "..." }
+```
+
+`400` if `target` is `"hours"` and `hours` is missing, non-positive, or
+over 72.
 
 ### Bounding / trimming
 

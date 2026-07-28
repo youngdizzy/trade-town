@@ -26,6 +26,7 @@ import type {
   PerformanceSnapshot,
   QuestionOfTheDay,
   ResearchItem,
+  TreasuryState,
   EducationProgress,
   PlayerVsAiState,
   ReasoningChallenge,
@@ -95,6 +96,7 @@ type ServerMessage =
       questionArchive: QuestionOfTheDay[];
       thinkingProfiles: Record<AgentId, ThinkingProfile>;
       mentorState: MentorState;
+      treasury: TreasuryState;
       agentEnergy: AgentEnergy;
       signalCalibration: SignalCalibrationState;
       playerVsAi: PlayerVsAiState;
@@ -197,6 +199,7 @@ export class GameSocket {
             questionArchive: msg.questionArchive,
             thinkingProfiles: msg.thinkingProfiles,
             mentorState: msg.mentorState,
+            treasury: msg.treasury,
             agentEnergy: msg.agentEnergy,
             signalCalibration: msg.signalCalibration,
             playerVsAi: msg.playerVsAi,

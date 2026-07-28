@@ -740,6 +740,114 @@ development milestones, not semver releases.
     console errors; Sage's sprite and Agent Status entry confirmed
     visually in the Brain Room).
 
+- **v0.7 — CEO Treasury, Company Priorities & Time Controls, Living
+  World Schedules (Features 33-35)** — the CEO gets a real protected
+  reserve, a real strategic-focus lever, and real control over how fast
+  time passes; every agent's day now runs through 24 real hours instead
+  of stopping at the evening review.
+  - **CEO Treasury (Feature 33)**: `app/treasury.py` holds a second
+    account (`TreasuryState.balance`) structurally isolated from
+    `PaperPortfolio.cashBalance` ("Operating Capital") — every function
+    that moves money takes the CEO-initiated amount as an explicit
+    parameter from a real player action (`POST /api/treasury/deposit`/
+    `/withdraw`), and no automatic system anywhere in this codebase
+    (`paper_trading.py`, `broker.py`, `risk_engine.py`, `research.py`,
+    `academy.py`, ...) ever reads or writes `treasury.balance` — checked
+    by grep, not just documented by convention (see `treasury.py`'s
+    module docstring). **Smart Savings Rules** are the one deliberate
+    exception, and only because the CEO explicitly configured and can
+    pause them: the brief's "save 5% of monthly profit" and "save 10%
+    after profitable months" collapse into one real rule type
+    (`percent_of_monthly_profit`) since they're mechanically identical —
+    saving a percent of profit only ever fires when that profit is
+    positive — rather than fabricating a second, redundant type;
+    `excess_above_reserve` (move cash above a chosen dollar reserve) is
+    genuinely distinct and kept separate. Both apply automatically once a
+    month alongside a real `TreasuryMonthlyReport`, computed from
+    `analytics.period_profit_dollars()` (a new function reusing the same
+    real trade-history filtering `compute_performance_snapshot()`
+    already does) rather than a second derived P&L path. Lifetime
+    Deposits, Largest Balance, Reserve Percentage, and the Savings Growth
+    Timeline are all real, computed or filtered from the same
+    transaction log — no second, redundant series maintained. A new
+    **TREASURY** Command Center tab is the room: no new physical
+    vault-door scene was built (the established Command-Center-tab
+    precedent every recent v0.7 feature has followed), and the brief's
+    CEO Benefits (Company Expansion, Emergency Funding, Building New
+    Departments, Buying Headquarters Upgrades, Special Story Events) are
+    not built — none of those systems exist anywhere in this codebase to
+    spend real Treasury dollars into; withdrawal itself (CEO-approved
+    funds moving back to Operating Capital, usable through whatever real
+    cash-consuming system already exists) is the honest piece that is.
+  - **Company Priorities (Feature 34)**: a new `settings.companyPriority`
+    (`balanced | learning | research | risk_reduction`, the same
+    client-authoritative mechanism `operatingMode` already uses) biases
+    exactly one real, already-existing lever per option — Academy
+    knowledge-point awards run 1.5x (`learning`), active research
+    confidence-gain speed runs 1.5x via `tick_research()`'s new
+    `speed_multiplier` parameter (`research`), or new trade proposals are
+    sized/vetted against a tightened, derived-only copy of the player's
+    own risk limits via the new `nexus._effective_risk_limits()`
+    (`risk_reduction`) — the player's own stored `RiskLimits` (and
+    everything else derived from it, like Guardian's ambient risk
+    warnings) is never mutated. The brief's "Expansion," "Efficiency,"
+    and "Innovation" priorities are not offered — no real, distinct lever
+    exists in this codebase for any of them, and reusing one of the three
+    real levers under a fourth label would misattribute its effect.
+  - **Time Controls (Feature 34)**: a new `POST /api/time/advance`
+    (`GameState.advance_time()`) drives End Workday / End Week / End
+    Month, plus a bounded 1-72 hour custom fast-forward. Rather than
+    jumping the clock directly, it loops the exact same real per-tick
+    orchestration step (`_advance_once()`, extracted from `tick()`) under
+    one lock acquisition until the target lands — structurally identical
+    to time actually passing faster, not a fake jump, so every
+    exact-minute cadence check along the way (evening reports, the
+    morning Question of the Day, Treasury's monthly rules, ...) still
+    fires correctly; calling it exactly at the target minute still
+    advances to the *next* occurrence rather than no-op-ing. Because a
+    multi-hour jump can touch nearly everything NEXUS touches, the
+    endpoint returns the full `GameSaveState` rather than just the new
+    time, applied client-side in one shot. The CompanyPanel tab gained a
+    Company Priority section and a Time Controls section (three presets
+    plus a custom-hours input); `FullCommandCenter` also gained a number-
+    key (1-9) tab-switch shortcut, ignored while a form field (Treasury's
+    amount input, the fast-forward hours field, ...) has focus.
+  - **Living World Schedules (Feature 35)**: every one of the 11 agents'
+    `AGENT_SCHEDULES` (`app/schedule.py`, mirrored in
+    `Schedule.ts`/`DialogueManager.ts`) now runs a real, personality-
+    flavored off-hours routine from 20:00 to 6:00 — a wind-down task, a
+    distinct evening activity, then sleep — instead of stopping cold at
+    the evening review. Each agent's two new tasks (22 total) are
+    genuinely per-personality (Coach exercises to clear his mind and
+    watches game film "for fun this time," Sentinel finally lets the
+    guard down, Sage sits quietly with today's question off the clock,
+    ...), each with its own new `DialogueManager` flavor line. No new
+    Employee Residence scene, Bedrooms/Kitchen/Game Room/etc., or City
+    Life locations (Coffee Shop, Park, Library, ...) were built — checked
+    concretely rather than assumed: the fantasy-village asset pack has
+    zero indoor-furniture sprites (bed, sofa, kitchen counter,
+    bookshelf), and the Lobby's existing 11-door layout is already a
+    tightly pixel-tuned, heavily collision-annotated arrangement where
+    every one of the 9 building sprites is already reused at least once —
+    a 12th door is high-risk, high-effort relative to the honest goal
+    here, which this schedule-and-dialogue approach delivers with zero
+    new art: agents feel alive with real off-hours routines the player
+    can walk into the Break Room and witness, not NPCs that vanish after
+    work. Incidentally closed a genuine pre-existing schedule gap (Nova's
+    day started at hour 7 while every other agent's day started at hour
+    6, leaving hour 6 silently mislabeled by the schedule lookup's own
+    fallback).
+  - Verification: full backend (mypy/ruff/pytest, 378/378 — 42 new tests
+    across `test_treasury.py`, `test_company_priority.py`, and
+    `test_time_advance.py`) and frontend (tsc/eslint/build) clean.
+    Manually verified in the running app (Playwright, 20/21 passing, 1
+    skipped for the same real-trade-timing reason every run of this file
+    already tolerates; new tests cover a real deposit/withdraw round trip
+    with a rejected over-withdrawal, Company Priority selection
+    persisting across a reload, a real End Workday clock jump via
+    `POST /api/time/advance`, and the number-key tab shortcut correctly
+    ignoring a focused form field).
+
 - **v0.6.3 — Executive Voting, Risk Command Center, Cyber Overlay** — the
   player is now formally TradeTown's CEO. A research candidate crossing
   the trade-confidence threshold no longer executes automatically: it

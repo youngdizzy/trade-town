@@ -9,6 +9,7 @@ const DEFAULT_SETTINGS: SettingsState = {
   autosaveIntervalSec: 60,
   showFps: false,
   operatingMode: "learning",
+  companyPriority: "balanced",
 };
 
 /** Persists user preferences to localStorage and broadcasts changes on the EventBus. */

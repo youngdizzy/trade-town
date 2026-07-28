@@ -236,6 +236,22 @@ class TimeState(CamelModel):
 #               (Decisions/Company Health) rather than individual trades.
 OperatingMode = Literal["learning", "assisted", "executive"]
 
+# v0.7 Feature 34 — Company Priorities. "Balanced" is the neutral default
+# (unchanged behavior); the other three each bias exactly one real,
+# already-existing lever — see nexus.py's tick() for where each is
+# actually applied. "Expansion," "Efficiency," and "Innovation" (also
+# named in the brief) have no real, distinct lever anywhere in this
+# codebase to attach to — biasing them would mean either faking a new
+# system or silently reusing another priority's real effect under a
+# different label, so they're not offered.
+CompanyPriority = Literal["balanced", "learning", "research", "risk_reduction"]
+
+# v0.7 Feature 34 — CEO time controls. "hours" advances a bounded custom
+# number of real hours; the other three jump to the next occurrence of an
+# already-real cadence boundary nexus.py's own tick() already checks for
+# (see app/state.py's GameState.advance_time()).
+TimeAdvanceTarget = Literal["workday_end", "week_end", "month_end", "hours"]
+
 
 class SettingsState(CamelModel):
     music_volume: float = Field(alias="musicVolume")
@@ -246,6 +262,9 @@ class SettingsState(CamelModel):
     # other field on this model), merged into server state via
     # apply_client_save the same way showFps/musicVolume already are.
     operating_mode: OperatingMode = Field(default="learning", alias="operatingMode")
+    # v0.7 Feature 34 — same client-authoritative mechanism as
+    # operating_mode above.
+    company_priority: CompanyPriority = Field(default="balanced", alias="companyPriority")
 
 
 class DialogueHistoryEntry(CamelModel):
@@ -1666,6 +1685,76 @@ class MentorState(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# v0.7 Feature 33 — the CEO Treasury (app/treasury.py). A second account,
+# structurally isolated from PaperPortfolio.cash_balance ("Operating
+# Capital"): every function in treasury.py that moves money takes an
+# explicit CEO-initiated amount as its own parameter — no automatic
+# system (paper_trading.py, broker.py, risk_engine.py, research.py, ...)
+# ever reads or writes `treasury.balance`, the same "never receives the
+# thing it must never touch" structural guarantee discipline.py already
+# established for pnl. The one deliberate exception is Smart Savings
+# Rules — real, but only because the CEO explicitly configured and can
+# pause them (the brief's own "Pause all automatic transfers"), never a
+# system acting on Treasury funds without prior authorization.
+TreasuryTransactionKind = Literal["deposit", "withdrawal", "auto_save"]
+
+
+class TreasuryTransaction(CamelModel):
+    id: str
+    kind: TreasuryTransactionKind
+    amount: float
+    balance_after: float = Field(alias="balanceAfter")
+    note: str
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
+# The brief names three example rules ("save 5% of monthly profit," "save
+# 10% after profitable months," "transfer excess operating cash above a
+# chosen reserve"). The first two are the same real mechanic — saving a
+# percentage of monthly profit only makes sense, and only ever fires,
+# when that profit is positive — so they're one rule type here rather
+# than two independently-fabricated ones that would behave identically;
+# see treasury.py's module docstring.
+SavingsRuleType = Literal["percent_of_monthly_profit", "excess_above_reserve"]
+
+
+class SmartSavingsRule(CamelModel):
+    id: str
+    rule_type: SavingsRuleType = Field(alias="ruleType")
+    # Meaning depends on rule_type: the save percentage for
+    # percent_of_monthly_profit (unused, 0, for excess_above_reserve).
+    percent: float
+    # The reserve threshold for excess_above_reserve (unused, null, for
+    # percent_of_monthly_profit).
+    reserve_target: float | None = Field(default=None, alias="reserveTarget")
+    active: bool = True
+    created_at: str = Field(alias="createdAt")
+
+
+class TreasuryMonthlyReport(CamelModel):
+    id: str
+    month_ending_day: int = Field(alias="monthEndingDay")
+    deposits: float
+    withdrawals: float
+    auto_saved: float = Field(alias="autoSaved")
+    ending_balance: float = Field(alias="endingBalance")
+    created_at: str = Field(alias="createdAt")
+
+
+class TreasuryState(CamelModel):
+    balance: float = 0.0
+    lifetime_deposits: float = Field(default=0.0, alias="lifetimeDeposits")
+    largest_balance: float = Field(default=0.0, alias="largestBalance")
+    # Capped, permanent — also doubles as the brief's "Savings Growth
+    # Timeline" (each entry's balanceAfter plotted over time) rather than
+    # a second, redundant stored series of the same real numbers.
+    transactions: list[TreasuryTransaction] = Field(default_factory=list)
+    savings_rules: list[SmartSavingsRule] = Field(default_factory=list, alias="savingsRules")
+    monthly_reports: list[TreasuryMonthlyReport] = Field(default_factory=list, alias="monthlyReports")
+    updated_at: str = Field(alias="updatedAt")
+
+
 class GameSaveState(CamelModel):
     version: Literal["0.6"] = "0.6"
     player: EntityTransform
@@ -1756,6 +1845,10 @@ class GameSaveState(CamelModel):
     question_archive: list[QuestionOfTheDay] = Field(default_factory=list, alias="questionArchive")
     thinking_profiles: dict[AgentId, ThinkingProfile] = Field(default_factory=dict, alias="thinkingProfiles")
     mentor_state: MentorState = Field(alias="mentorState")
+    # v0.7 Feature 33 — the CEO Treasury (app/treasury.py). See
+    # TreasuryState's own docstring for the structural "never touched by
+    # any automatic system" guarantee.
+    treasury: TreasuryState
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(default_factory=list, alias="dialogueHistory")

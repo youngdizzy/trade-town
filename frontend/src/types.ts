@@ -826,13 +826,22 @@ export interface TimeState {
 //               (Decisions / Company Health) instead of individual trades.
 export type OperatingMode = "learning" | "assisted" | "executive";
 
+// v0.7 Feature 34 — Company Priorities. "balanced" is the neutral
+// default; the other three each bias exactly one real, already-existing
+// lever (see backend/app/nexus.py's tick() for where each is applied).
+export type CompanyPriority = "balanced" | "learning" | "research" | "risk_reduction";
+
 export interface SettingsState {
   musicVolume: number; // 0-1
   sfxVolume: number; // 0-1
   autosaveIntervalSec: number;
   showFps: boolean;
   operatingMode: OperatingMode;
+  companyPriority: CompanyPriority;
 }
+
+// v0.7 Feature 34 — CEO time controls (POST /api/time/advance).
+export type TimeAdvanceTarget = "workday_end" | "week_end" | "month_end" | "hours";
 
 // v0.7 Feature 22 — Market Environment Simulation. Every regime is
 // computed server-side from real WatchlistEntry.dailyChangePct values
@@ -1211,6 +1220,52 @@ export interface MentorState {
   updatedAt: string;
 }
 
+// v0.7 Feature 33 — the CEO Treasury (see backend/app/treasury.py's
+// module docstring for the structural "never touched automatically"
+// guarantee).
+export type TreasuryTransactionKind = "deposit" | "withdrawal" | "auto_save";
+
+export interface TreasuryTransaction {
+  id: string;
+  kind: TreasuryTransactionKind;
+  amount: number;
+  balanceAfter: number;
+  note: string;
+  simDay: number;
+  createdAt: string;
+}
+
+export type SavingsRuleType = "percent_of_monthly_profit" | "excess_above_reserve";
+
+export interface SmartSavingsRule {
+  id: string;
+  ruleType: SavingsRuleType;
+  percent: number;
+  reserveTarget: number | null;
+  active: boolean;
+  createdAt: string;
+}
+
+export interface TreasuryMonthlyReport {
+  id: string;
+  monthEndingDay: number;
+  deposits: number;
+  withdrawals: number;
+  autoSaved: number;
+  endingBalance: number;
+  createdAt: string;
+}
+
+export interface TreasuryState {
+  balance: number;
+  lifetimeDeposits: number;
+  largestBalance: number;
+  transactions: TreasuryTransaction[];
+  savingsRules: SmartSavingsRule[];
+  monthlyReports: TreasuryMonthlyReport[];
+  updatedAt: string;
+}
+
 export interface GameSaveState {
   version: "0.6";
   player: EntityTransform;
@@ -1255,6 +1310,7 @@ export interface GameSaveState {
   questionArchive: QuestionOfTheDay[];
   thinkingProfiles: Record<AgentId, ThinkingProfile>;
   mentorState: MentorState;
+  treasury: TreasuryState;
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;

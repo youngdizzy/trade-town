@@ -13,7 +13,9 @@ from datetime import datetime, timezone
 from app import education, nexus, player_vs_ai, signal_calibration, trade_notifications
 from app.academy import compute_academy_state, default_agent_knowledge
 from app.agents import all_agent_ids
+from app.config import settings
 from app.mentor import compute_mentor_state, compute_thinking_profiles, generate_question_of_the_day, submit_response
+from app.treasury import create_rule, default_treasury, deposit, pause_all_rules, toggle_rule, withdraw
 from app.reasoning_lab import compute_reasoning_lab_state
 from app.wisdom import compute_wisdom_score
 from app.academy_research import default_academy_projects
@@ -36,15 +38,24 @@ from app.schemas import (
     MeetingState,
     PlayerVsAiPrompt,
     PlayerVsAiState,
+    SavingsRuleType,
     SettingsState,
     SignalCalibrationState,
     SignalChoice,
+    TimeAdvanceTarget,
     TimeState,
 )
 from app.simulation import default_strategies
 from app.watchlist import default_watchlist
 
 MAX_DIALOGUE_HISTORY = 200
+# v0.7 Feature 34 — CEO time controls. MAX_FAST_FORWARD_HOURS bounds the
+# custom "hours" target; MAX_FAST_FORWARD_TICKS is a hard safety ceiling
+# on week_end/month_end (worst case ~2016/~8640 real ticks at the default
+# 5-minute step — see GameState.advance_time()) so a bug in the stop
+# predicate can never spin the loop forever.
+MAX_FAST_FORWARD_HOURS = 72
+MAX_FAST_FORWARD_TICKS = 10_000
 
 
 def _now_iso() -> str:
@@ -142,6 +153,7 @@ def default_state() -> GameSaveState:
             updated_at=_now_iso(),
         ),
         mentorState=compute_mentor_state(1, _now_iso()),
+        treasury=default_treasury(_now_iso()),
         updatedAt=_now_iso(),
     )
 
@@ -228,6 +240,49 @@ class GameState:
             if error is None:
                 self.data = self.data.model_copy(update={"question_archive": new_archive})
             return self.data, error
+
+    async def deposit_treasury(self, amount: float) -> tuple[GameSaveState, str | None]:
+        """CEO-initiated Operating Capital -> Treasury transfer, under the
+        same lock every other state mutation uses. Returns (state, error)."""
+        async with self.lock:
+            time = self.data.time
+            transaction_id = f"treasury-deposit-{time.day}-{time.hour}-{time.minute}-{len(self.data.treasury.transactions)}"
+            new_treasury, new_portfolio, error = deposit(self.data.treasury, self.data.paper_portfolio, amount, sim_day=time.day, now_iso=_now_iso(), transaction_id=transaction_id)
+            if error is None:
+                self.data = self.data.model_copy(update={"treasury": new_treasury, "paper_portfolio": new_portfolio})
+            return self.data, error
+
+    async def withdraw_treasury(self, amount: float) -> tuple[GameSaveState, str | None]:
+        """CEO-initiated Treasury -> Operating Capital transfer, under the
+        same lock every other state mutation uses. Returns (state, error)."""
+        async with self.lock:
+            time = self.data.time
+            transaction_id = f"treasury-withdraw-{time.day}-{time.hour}-{time.minute}-{len(self.data.treasury.transactions)}"
+            new_treasury, new_portfolio, error = withdraw(self.data.treasury, self.data.paper_portfolio, amount, sim_day=time.day, now_iso=_now_iso(), transaction_id=transaction_id)
+            if error is None:
+                self.data = self.data.model_copy(update={"treasury": new_treasury, "paper_portfolio": new_portfolio})
+            return self.data, error
+
+    async def create_savings_rule(self, rule_type: SavingsRuleType, percent: float, reserve_target: float | None) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            time = self.data.time
+            rule_id = f"savings-rule-{time.day}-{time.hour}-{time.minute}-{len(self.data.treasury.savings_rules)}"
+            new_treasury, error = create_rule(self.data.treasury, rule_type, percent=percent, reserve_target=reserve_target, now_iso=_now_iso(), rule_id=rule_id)
+            if error is None:
+                self.data = self.data.model_copy(update={"treasury": new_treasury})
+            return self.data, error
+
+    async def toggle_savings_rule(self, rule_id: str, active: bool) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            new_treasury, error = toggle_rule(self.data.treasury, rule_id, active, now_iso=_now_iso())
+            if error is None:
+                self.data = self.data.model_copy(update={"treasury": new_treasury})
+            return self.data, error
+
+    async def pause_all_savings_rules(self) -> GameSaveState:
+        async with self.lock:
+            self.data = self.data.model_copy(update={"treasury": pause_all_rules(self.data.treasury, now_iso=_now_iso())})
+            return self.data
 
     async def mark_lesson_viewed(self, lesson_id: str) -> EducationProgress:
         async with self.lock:
@@ -351,18 +406,74 @@ class GameState:
             self.data = self.data.model_copy(update={"debates": debates, "updated_at": _now_iso()})
             return self.data, None
 
+    def _advance_once(self, minutes: int) -> None:
+        """Advance the game clock and run one NEXUS orchestration step.
+        Assumes `self.lock` is already held — the shared inner step both
+        `tick()` (one real-time step, called by the sim loop) and
+        `advance_time()` (v0.7 Feature 34, many steps in a row under one
+        lock acquisition) use, so a fast-forward burst is structurally
+        identical to time actually passing faster, not a fake jump: every
+        exact-minute cadence check in nexus.tick() (evening reports,
+        the morning Question of the Day, ...) still fires correctly along
+        the way."""
+        time = self.data.time
+        total_minutes = time.hour * 60 + time.minute + minutes
+        day = time.day + total_minutes // (24 * 60)
+        total_minutes %= 24 * 60
+        hour, minute = divmod(total_minutes, 60)
+        new_time = TimeState(day=day, hour=hour, minute=minute)
+        self.data = nexus.tick(self.data, new_time, minutes)
+
     async def tick(self, minutes: int) -> GameSaveState:
         """Advance the game clock and run one NEXUS orchestration step. Called by the sim loop."""
         async with self.lock:
-            time = self.data.time
-            total_minutes = time.hour * 60 + time.minute + minutes
-            day = time.day + total_minutes // (24 * 60)
-            total_minutes %= 24 * 60
-            hour, minute = divmod(total_minutes, 60)
-            new_time = TimeState(day=day, hour=hour, minute=minute)
-
-            self.data = nexus.tick(self.data, new_time, minutes)
+            self._advance_once(minutes)
             return self.data
+
+    async def advance_time(self, target: TimeAdvanceTarget, hours: int | None) -> tuple[GameSaveState, str | None]:
+        """v0.7 Feature 34 — CEO time controls (End Workday/Week/Month, or
+        a bounded custom fast-forward). Loops `_advance_once()` in real
+        `GAME_MINUTES_PER_TICK`-sized steps under a single lock
+        acquisition until the target is reached, rather than jumping the
+        clock directly to it — a direct jump could land off the exact
+        minute nexus.tick()'s own cadence checks require (see
+        EVENING_REVIEW_HOUR/MORNING_QOTD_HOUR's own "always divides 60
+        evenly" comment), silently skipping a report/QOTD/reflection that
+        should have fired along the way. Returns (state, error); error is
+        None on success."""
+        if target == "hours":
+            if hours is None or hours <= 0:
+                return self.data, "hours must be a positive number when target is 'hours'."
+            if hours > MAX_FAST_FORWARD_HOURS:
+                return self.data, f"Can't fast-forward more than {MAX_FAST_FORWARD_HOURS} hours at once."
+
+        async with self.lock:
+            step = settings.game_minutes_per_tick
+            ticks = 0
+            if target == "hours":
+                assert hours is not None
+                total_steps = (hours * 60) // step
+                for _ in range(total_steps):
+                    self._advance_once(step)
+                    ticks += 1
+            else:
+                stop_hour = nexus.EVENING_REVIEW_HOUR
+                if target == "workday_end":
+                    stop_predicate = lambda t: t.hour == stop_hour and t.minute == 0  # noqa: E731
+                elif target == "week_end":
+                    stop_predicate = lambda t: t.hour == stop_hour and t.minute == 0 and t.day % nexus.WEEKLY_INTERVAL_DAYS == 0  # noqa: E731
+                else:  # month_end
+                    stop_predicate = lambda t: t.hour == stop_hour and t.minute == 0 and t.day % nexus.MONTHLY_INTERVAL_DAYS == 0  # noqa: E731
+                # Always advances at least one step — calling this exactly
+                # at the target minute (e.g. clicking "End Workday" right
+                # at 20:00) must still jump forward to the *next*
+                # occurrence, not no-op.
+                while True:
+                    self._advance_once(step)
+                    ticks += 1
+                    if stop_predicate(self.data.time) or ticks >= MAX_FAST_FORWARD_TICKS:
+                        break
+            return self.data, None
 
 
 game_state = GameState()

@@ -22,6 +22,7 @@ import { DisciplinePanel } from "./panels/DisciplinePanel";
 import { ReasoningLabPanel } from "./panels/ReasoningLabPanel";
 import { ReflectionPanel } from "./panels/ReflectionPanel";
 import { MentorPanel } from "./panels/MentorPanel";
+import { TreasuryPanel } from "./panels/TreasuryPanel";
 import { DecisionDetail } from "./DecisionDetail";
 
 // Note: "ACADEMY" (below) is the pre-existing v0.6.2 Trading Academy tab
@@ -30,7 +31,27 @@ import { DecisionDetail } from "./DecisionDetail";
 // Knowledge Points, research projects, the Company Knowledge Library —
 // see AcademyPanel.tsx) and gets its own "KNOWLEDGE" tab rather than
 // colliding with the existing name.
-const TABS = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "COMPANY", "KNOWLEDGE", "DISCIPLINE", "REASONING", "REFLECTION", "MENTOR", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"] as const;
+const TABS = [
+  "OVERVIEW",
+  "OPPORTUNITIES",
+  "EXECUTIVE",
+  "DECISIONS",
+  "RISK",
+  "AGENTS",
+  "RESEARCH",
+  "COMPANY",
+  "KNOWLEDGE",
+  "DISCIPLINE",
+  "REASONING",
+  "REFLECTION",
+  "MENTOR",
+  "TREASURY",
+  "TRAINING",
+  "PVAI",
+  "ACADEMY",
+  "PERFORMANCE",
+  "LOGS",
+] as const;
 type Tab = (typeof TABS)[number];
 
 export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => void; onClose: () => void }) {
@@ -50,6 +71,24 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
     }
     gameStore.clearPendingInspectDecision();
   }, [pendingInspectDecision, decisions]);
+
+  // v0.7 Feature 34 — number keys 1-9 jump straight to the first nine
+  // tabs, the same real switch-tab action clicking one already performs.
+  // Ignored while typing in a form control so it never fights a text/
+  // number input's own digits (Treasury's amount field, Company
+  // Priority's fast-forward hours, ...).
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
+      const digit = Number(e.key);
+      if (!Number.isInteger(digit) || digit < 1 || digit > 9) return;
+      const nextTab = TABS[digit - 1];
+      if (nextTab) setTab(nextTab);
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, []);
 
   const needHelp = (lessonId: EducationTopic) => {
     setHelpLessonId(lessonId);
@@ -119,6 +158,7 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
         {tab === "REASONING" && <ReasoningLabPanel />}
         {tab === "REFLECTION" && <ReflectionPanel />}
         {tab === "MENTOR" && <MentorPanel />}
+        {tab === "TREASURY" && <TreasuryPanel />}
         {tab === "TRAINING" && <CalibrationPanel onNeedHelp={needHelp} />}
         {tab === "PVAI" && <PlayerVsAiPanel />}
         {tab === "ACADEMY" && <EducationPanel openLessonId={helpLessonId} />}

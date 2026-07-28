@@ -78,6 +78,18 @@ def _period_start_sim_minutes(period: PerformancePeriod, now: TimeState) -> int 
     return start_day * 1440
 
 
+def period_profit_dollars(period: PerformancePeriod, portfolio: PaperPortfolio, now: TimeState) -> float:
+    """The real dollar sum of `portfolio.trade_history` closed within
+    `period`'s current window — the same `_period_start_sim_minutes()`
+    filter `compute_performance_snapshot()` uses for its own `returnPct`,
+    exposed separately so callers that need a raw dollar figure (v0.7
+    Feature 33's Smart Savings Rules) don't have to re-derive it from a
+    percentage or duplicate the filtering logic."""
+    start_minutes = _period_start_sim_minutes(period, now)
+    trades = portfolio.trade_history if start_minutes is None else [t for t in portfolio.trade_history if t.closed_sim_minutes >= start_minutes]
+    return sum(t.pnl for t in trades)
+
+
 def compute_performance_snapshot(period: PerformancePeriod, portfolio: PaperPortfolio, research: list[ResearchItem], now: TimeState) -> PerformanceSnapshot:
     """`period` genuinely filters `portfolio.trade_history` to the matching
     in-game calendar window via PaperTrade.closed_sim_minutes (added in

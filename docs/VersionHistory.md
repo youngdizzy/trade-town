@@ -421,6 +421,48 @@ errors — Sage's sprite and its Agent Status entry confirmed visually in
 the Brain Room, and the QOTD submit-and-persist round trip confirmed via
 a real save/reload.
 
+### v0.7 continued — CEO Treasury, Company Priorities & Time Controls, Living World Schedules (Features 33-35)
+
+The CEO gets a real protected reserve, a real strategic-focus lever, and
+real control over how fast time passes; every agent's day now runs
+through 24 real hours instead of stopping at the evening review. The
+**CEO Treasury** is a second account, structurally isolated from
+Operating Capital — every balance-changing function takes the CEO's
+explicit amount as a parameter, and no automatic system anywhere in this
+codebase ever reads or writes it, the same "never receives pnl"
+structural guarantee the Discipline Chamber already established, checked
+by grep rather than just documented. Smart Savings Rules are the one
+deliberate exception, and the brief's "save 5%"/"save 10% after
+profitable months" collapse into one real rule type rather than two
+mechanically-identical ones. Deposit/Withdraw, rule management, the
+Savings Growth Timeline, and the Monthly Savings Report all live in a
+new TREASURY Command Center tab — no vault-door scene was built, the
+same tab-not-new-art precedent every recent feature has followed — and
+the brief's future CEO Benefits (Company Expansion, Emergency Funding,
+...) aren't built since no system in this codebase can honestly spend a
+real Treasury dollar into them yet. **Company Priorities** bias exactly
+one real, already-existing lever each — Academy knowledge points 1.5x
+faster, research confidence-gain 1.5x faster, or new trade proposals
+sized against a tightened, purely-derived copy of the player's own risk
+limits — never inventing a new mechanic, and the brief's Expansion/
+Efficiency/Innovation options aren't offered since no real lever exists
+for them. **Time Controls** (End Workday/Week/Month, plus a bounded
+1-72 hour fast-forward) loop the exact same real per-tick step under one
+lock rather than jumping the clock, so every exact-minute cadence check
+along the way still fires — structurally identical to time actually
+passing faster. **Living World Schedules** gives every agent a real,
+personality-flavored off-hours routine (20:00-6:00) in the existing
+Break Room rather than a new Residence scene — the asset pack has no
+indoor-furniture sprites and the Lobby's 11-door layout is already
+maximally packed, so the actual goal (agents feeling alive with real
+routines, not vanishing after work) is delivered through 22 new
+per-agent task labels and matching dialogue instead. 42 new backend
+tests (378/378 passing); verified in the running app (Playwright, 20/21,
+1 skipped for the same real-trade-timing reason every run of this suite
+tolerates) — a real deposit/withdraw round trip, Company Priority
+persisting across a reload, and a real End Workday clock jump all
+confirmed against the live backend.
+
 ## What's next for v0.8 (not started, not scoped)
 
 These are candidate directions surfaced by v0.6/v0.7's design, not

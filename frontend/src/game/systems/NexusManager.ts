@@ -25,6 +25,7 @@ import type {
   PerformanceSnapshot,
   QuestionOfTheDay,
   ResearchItem,
+  TreasuryState,
   RiskLimits,
   EducationProgress,
   PlayerVsAiState,
@@ -86,6 +87,7 @@ interface NexusSnapshot {
   questionArchive: QuestionOfTheDay[];
   thinkingProfiles: Record<AgentId, ThinkingProfile>;
   mentorState: MentorState;
+  treasury: TreasuryState;
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
@@ -202,6 +204,7 @@ export class NexusManager {
   private static questionArchive: QuestionOfTheDay[] = [];
   private static thinkingProfiles: Record<AgentId, ThinkingProfile> = {} as Record<AgentId, ThinkingProfile>;
   private static mentorState: MentorState = { tier: 0, tierLabel: "New Tradition", questionsAsked: 0, updatedAt: new Date().toISOString() };
+  private static treasury: TreasuryState = { balance: 0, lifetimeDeposits: 0, largestBalance: 0, transactions: [], savingsRules: [], monthlyReports: [], updatedAt: new Date().toISOString() };
   private static agentEnergy: AgentEnergy = { current: 100, cap: 100, updatedAt: new Date().toISOString() };
   private static signalCalibration: SignalCalibrationState = { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 };
   private static playerVsAi: PlayerVsAiState = { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 };
@@ -344,6 +347,24 @@ export class NexusManager {
 
   static getMentorState(): MentorState {
     return this.mentorState;
+  }
+
+  static getTreasury(): TreasuryState {
+    return this.treasury;
+  }
+
+  /** Applies the result of a direct POST /api/treasury/... call
+   * immediately, the same reasoning as setEducation above. */
+  static setTreasury(treasury: TreasuryState): void {
+    this.treasury = treasury;
+    EventBus.emit("treasury:updated", treasury);
+  }
+
+  /** Applies the real Operating Capital change a Treasury deposit/withdraw
+   * produces, the same reasoning as setTreasury above. */
+  static setPaperPortfolio(paperPortfolio: PaperPortfolio): void {
+    this.paperPortfolio = paperPortfolio;
+    EventBus.emit("portfolio:updated", paperPortfolio);
   }
 
   static getPerformanceSnapshots(): PerformanceSnapshot[] {
@@ -653,6 +674,9 @@ export class NexusManager {
     if (update.mentorState !== this.mentorState) EventBus.emit("mentorState:updated", update.mentorState);
     this.mentorState = update.mentorState;
 
+    if (update.treasury !== this.treasury) EventBus.emit("treasury:updated", update.treasury);
+    this.treasury = update.treasury;
+
     if (update.agentEnergy !== this.agentEnergy) EventBus.emit("agentEnergy:updated", update.agentEnergy);
     this.agentEnergy = update.agentEnergy;
 
@@ -710,6 +734,7 @@ export class NexusManager {
     this.questionArchive = save.questionArchive;
     this.thinkingProfiles = save.thinkingProfiles;
     this.mentorState = save.mentorState;
+    this.treasury = save.treasury;
     this.agentEnergy = save.agentEnergy;
     this.signalCalibration = save.signalCalibration;
     this.playerVsAi = save.playerVsAi;
