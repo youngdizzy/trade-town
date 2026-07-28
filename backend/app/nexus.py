@@ -37,6 +37,7 @@ from app.executive import (
     grade_ceo_decisions,
     resolve_proposal,
 )
+from app.gatekeeper import grade_gatekeeper_rejections
 from app.hall_of_fame import evaluate_hall_of_fame
 from app.journal import stamp_journal_entry
 from app.market_data import market_data_provider
@@ -66,6 +67,7 @@ from app.schemas import (
     Debate,
     EntityTransform,
     GameSaveState,
+    GatekeeperRejection,
     MemoryEntry,
     MemoryRecord,
     MeetingMinutes,
@@ -107,6 +109,10 @@ MAX_DECISIONS = 200
 # generate_debate below); capped the same way every other per-proposal
 # record here is.
 MAX_DEBATES = 60
+# v0.7 Feature 20 — one GatekeeperRejection per trade the Gatekeeper
+# vetoes (see app/state.py's submit_ceo_decision); capped the same way
+# every other per-proposal record here is.
+MAX_GATEKEEPER_REJECTIONS = 100
 # Per-category, not a single shared cap: discovery news fires far more
 # often than market/company news (it's tied to every task-changing event
 # across four agents, vs. a flat per-tick roll for market headlines), so a
@@ -600,6 +606,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     trade_proposals = list(state.trade_proposals)
     ceo_decisions = list(state.ceo_decisions)
     debates: list[Debate] = list(state.debates)
+    gatekeeper_rejections: list[GatekeeperRejection] = list(state.gatekeeper_rejections)
     agent_energy = state.agent_energy
 
     agents = {aid: _tick_agent(aid, agent, new_time, minutes, tasks) for aid, agent in state.agents.items()}
@@ -715,6 +722,13 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     ceo_decisions = grade_ceo_decisions(ceo_decisions, paper_portfolio.trade_history)
     if len(ceo_decisions) > MAX_CEO_DECISIONS:
         del ceo_decisions[: len(ceo_decisions) - MAX_CEO_DECISIONS]
+
+    # v0.7 Feature 20 — resolves any Gatekeeper rejection whose real
+    # evaluation window has elapsed, purely from the symbol's own real
+    # subsequent watchlist price movement (see app/gatekeeper.py).
+    gatekeeper_rejections = grade_gatekeeper_rejections(gatekeeper_rejections, watchlist, now_sim_minutes)
+    if len(gatekeeper_rejections) > MAX_GATEKEEPER_REJECTIONS:
+        del gatekeeper_rejections[: len(gatekeeper_rejections) - MAX_GATEKEEPER_REJECTIONS]
     for trade in closed_trades:
         record_paper_trade(memory, trade)
         outcome = "gained" if trade.pnl > 0 else "lost"
@@ -830,6 +844,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "trade_proposals": trade_proposals,
             "ceo_decisions": ceo_decisions,
             "debates": debates,
+            "gatekeeper_rejections": gatekeeper_rejections,
             "agent_energy": agent_energy,
             "whiteboards": _update_whiteboards(agents, meeting, research),
             "updated_at": _now_iso(),

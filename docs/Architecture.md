@@ -462,18 +462,51 @@ boundary, same convention as every earlier version.
   `ScannerAlert` if one exists; execution (Atlas) is the desk's own
   majority, not a seventh independent signal. `POST /api/executive/decide`
   (`state.py`'s `submit_ceo_decision()`) resolves a proposal against the
-  player's real buy/sell/wait call (`resolve_proposal()`): buy/sell opens
-  a real position immediately (a live player action, not tick-driven —
-  unlike broker orders, no extra latency tick), producing a permanent
-  `TradeDecision` (same shape every existing consumer — DecisionsPanel,
-  DecisionDetail, Player vs AI — already depends on) plus a
-  `CeoDecisionRecord` tracking CEO/AI accuracy, agreement, and
-  successful/failed overrides. `CeoDecisionRecord.outcome` only ever
-  resolves to `correct`/`incorrect` once a real trade the decision caused
-  has actually closed; a plain wait or an override both stay
-  `"undecidable"` — an override's real trade tells us whether the CEO's
-  own call worked, never whether the AI's original (never-taken)
-  direction would have, so that's never guessed at.
+  player's real buy/sell/wait call (`resolve_proposal()`): buy/sell that
+  clears the v0.7 Feature 20 Trade Gatekeeper below opens a real position
+  immediately (a live player action, not tick-driven — unlike broker
+  orders, no extra latency tick), producing a permanent `TradeDecision`
+  (same shape every existing consumer — DecisionsPanel, DecisionDetail,
+  Player vs AI — already depends on) plus a `CeoDecisionRecord` tracking
+  CEO/AI accuracy, agreement, and successful/failed overrides.
+  `CeoDecisionRecord.outcome` and `TradeDecision.outcome` are both keyed
+  off `order_id is not None` — the real signal of whether a position
+  actually opened — not off `ceoDecision` being buy/sell, since a
+  Gatekeeper-rejected trade keeps the CEO's real original buy/sell choice
+  on record without a position ever opening.
+  `CeoDecisionRecord.outcome` only ever resolves to `correct`/`incorrect`
+  once a real trade the decision caused has actually closed; a plain wait,
+  a Gatekeeper rejection, or an override all stay `"undecidable"` — an
+  override's real trade tells us whether the CEO's own call worked, never
+  whether the AI's original (never-taken) direction would have, so that's
+  never guessed at.
+- **Trade Gatekeeper (v0.7 Feature 20, `gatekeeper.py`)**: sits between
+  the CEO's real buy/sell call and `open_position()` — `resolve_proposal()`
+  calls `evaluate_gatekeeper()` and only opens the position if the
+  returned `GatekeeperVerdict.approved` is true, so even the player's own
+  choice can be vetoed (the v0.6.3 "the CEO's choice is unconditionally
+  final" model no longer holds). Seven checks, each reading real state
+  computed elsewhere: Decision Confidence Engine score vs. `MIN_CONFIDENCE`
+  (Feature 15), Sentinel's risk-vote alignment, multi-agent majority
+  agreement, the AI Debate's `finalRecommendation` (Feature 17, passed in
+  by `state.py` from the most recent `Debate` for the proposal), portfolio
+  exposure vs. `RiskLimits.maxOpenPositions`, correlated open positions
+  sharing the proposal's `SYMBOL_CATEGORY` lookup (capped at
+  `MAX_CORRELATED_POSITIONS`), and any active *critical* Sentinel/Guardian
+  `RiskWarning` for the symbol. The brief's longer checklist (multi-
+  timeframe confirmation, support/resistance, volume confirmation,
+  liquidity, news *timing*, reward-to-risk, stop-loss placement, strategy
+  match, historical similar-setup performance) has no real data source in
+  this codebase and is deliberately not computed — see the module
+  docstring. A rejected trade never executes, so there's no real P&L to
+  grade: `GatekeeperRejection` instead records the symbol's real price at
+  rejection and `grade_gatekeeper_rejections()` (called every `nexus.tick()`)
+  resolves `would_have_won`/`would_have_lost` once
+  `GATEKEEPER_EVAL_WINDOW_MINUTES` of simulated time have passed, purely
+  from the symbol's own real subsequent watchlist price — the same
+  "wait for real time, check real data" shape `grade_ceo_decisions()`
+  already uses for placed trades, just against watchlist price instead of
+  a closed `PaperTrade`.
 - **RiskEngine** (`risk_engine.py`): pure evaluation, no side effects.
   `evaluate_sentinel_risk()` is the hard trade-approval gate (equity ≤ 0,
   drawdown past `maxDrawdownPct`, open-position count past
@@ -754,7 +787,7 @@ version.
 
 ## Version 0.7 scope
 
-Five intelligence/decision systems layered onto v0.6.3's Executive
+Six intelligence/decision systems layered onto v0.6.3's Executive
 Voting rather than replacing it — every new module reuses the six real
 analyst votes (`app/executive.py`'s `generate_analyst_votes`) or the
 real candle series it already fetches, never a second parallel data
@@ -784,12 +817,19 @@ source:
   `TradeOutcomePopup.tsx` (deleted) with a non-blocking, top-center,
   queued banner. Purely a frontend/presentation change — no new backend
   module.
+- `app/gatekeeper.py` — the Trade Gatekeeper (Feature 20): a final-
+  approval veto between the CEO's real buy/sell call and
+  `open_position()` (see the "Trade Gatekeeper" bullet above), plus
+  `grade_gatekeeper_rejections()`'s self-evaluation grading, called every
+  `nexus.tick()` right after `grade_ceo_decisions()`.
 
-`GameSaveState` gained one new field for this pass: `debates` (capped,
-broadcast over the WS state message and `/api/load`, same pattern as
-`ceoDecisions`). `WhatIfSimulation`/`ScenarioResult` are real Pydantic
-models but intentionally never touch `GameSaveState` — see
-`app/whatif.py`'s module docstring.
+`GameSaveState` gained two new fields for this pass: `debates` and
+`gatekeeperRejections` (both capped, broadcast over the WS state message
+and `/api/load`, same pattern as `ceoDecisions`). `TradeDecision` also
+gained `gatekeeperVerdict` (null for decisions predating Feature 20).
+`WhatIfSimulation`/`ScenarioResult` are real Pydantic models but
+intentionally never touch `GameSaveState` — see `app/whatif.py`'s module
+docstring.
 
 ## Save format compatibility
 

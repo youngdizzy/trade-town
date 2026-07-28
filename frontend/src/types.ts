@@ -613,6 +613,12 @@ export interface TradeDecision {
    * decision was made, carried over from the TradeProposal that
    * produced it — null only for decisions predating this field. */
   confidenceEngine: DecisionConfidence | null;
+  /** v0.7 Feature 20 — the Trade Gatekeeper's final-approval verdict. Only
+   * ever set when the CEO chose buy/sell (a WAIT never reaches the
+   * gatekeeper); null for decisions predating this field. A rejected
+   * verdict here is exactly what makes `orderId` null even though the
+   * linked CeoDecisionRecord's `ceoDecision` was buy/sell, not wait. */
+  gatekeeperVerdict: GatekeeperVerdict | null;
   createdAt: string;
 }
 
@@ -675,7 +681,8 @@ export interface DebateTurn {
 
 /** One full committee review of a TradeProposal — stored permanently so a
  * past debate is always reviewable. Never itself approves/rejects a trade;
- * that's still the CEO's real buy/sell/wait call via /api/executive/decide. */
+ * that's still the CEO's real buy/sell/wait call via /api/executive/decide,
+ * subject to the Trade Gatekeeper's final approval (v0.7 Feature 20). */
 export interface Debate {
   id: string;
   proposalId: string;
@@ -684,6 +691,45 @@ export interface Debate {
   finalRecommendation: AnalystChoice;
   finalSummary: string;
   createdAt: string;
+}
+
+// v0.7 Feature 20 — Trade Gatekeeper. Every check is real (see
+// backend/app/gatekeeper.py for exactly what each one reads); never a
+// fabricated pass/fail. GatekeeperRejection tracks a *hypothetical*
+// outcome for a trade that never actually executed — graded later
+// against the symbol's own real subsequent watchlist price movement.
+export interface GatekeeperCheck {
+  id: string;
+  label: string;
+  passed: boolean;
+  detail: string;
+}
+
+export interface GatekeeperVerdict {
+  approved: boolean;
+  checks: GatekeeperCheck[];
+  summary: string;
+  createdAt: string;
+}
+
+export type GatekeeperOutcome = "pending" | "would_have_won" | "would_have_lost";
+
+/** One trade the Gatekeeper blocked. No order was ever placed — `outcome`
+ * resolves once the real evaluation window has passed, purely from the
+ * real difference between the symbol's watchlist price then and now,
+ * never a fabricated P&L. */
+export interface GatekeeperRejection {
+  id: string;
+  proposalId: string;
+  symbol: string;
+  ceoChoice: AnalystChoice;
+  reasons: string[];
+  priceAtRejection: number;
+  rejectedSimMinutes: number;
+  outcome: GatekeeperOutcome;
+  resolvedPriceChangePct: number | null;
+  createdAt: string;
+  resolvedAt: string | null;
 }
 
 // v0.7 Feature 16 — What-If Simulation Lab. Fetched on demand from
@@ -787,6 +833,7 @@ export interface GameSaveState {
   tradeProposals: TradeProposal[];
   ceoDecisions: CeoDecisionRecord[];
   debates: Debate[];
+  gatekeeperRejections: GatekeeperRejection[];
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;

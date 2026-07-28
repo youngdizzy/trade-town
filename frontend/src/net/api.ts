@@ -7,6 +7,7 @@ import type {
   EducationLesson,
   EducationProgress,
   GameSaveState,
+  GatekeeperRejection,
   PaperPortfolio,
   PlayerVsAiPrompt,
   PlayerVsAiState,
@@ -84,13 +85,16 @@ export const api = {
       body: JSON.stringify({ tradeId }),
     }),
   submitCeoDecision: (proposalId: string, choice: AnalystChoice) =>
-    request<{ tradeProposals: TradeProposal[]; ceoDecisions: CeoDecisionRecord[]; decisions: TradeDecision[]; paperPortfolio: PaperPortfolio }>(
-      "/executive/decide",
-      {
-        method: "POST",
-        body: JSON.stringify({ proposalId, choice }),
-      },
-    ),
+    request<{
+      tradeProposals: TradeProposal[];
+      ceoDecisions: CeoDecisionRecord[];
+      decisions: TradeDecision[];
+      paperPortfolio: PaperPortfolio;
+      gatekeeperRejections: GatekeeperRejection[];
+    }>("/executive/decide", {
+      method: "POST",
+      body: JSON.stringify({ proposalId, choice }),
+    }),
   regenerateDebate: (proposalId: string) =>
     request<{ debates: Debate[] }>("/executive/debate/regenerate", {
       method: "POST",

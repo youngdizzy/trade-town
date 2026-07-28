@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.executive import PROPOSAL_CANDLE_COUNT, PROPOSAL_TIMEFRAME, AnalystChoice
 from app.market_data import market_data_provider
 from app.persistence import persist_save
-from app.schemas import CeoDecisionRecord, Debate, PaperPortfolio, TradeDecision, TradeProposal, WhatIfSimulation
+from app.schemas import CeoDecisionRecord, Debate, GatekeeperRejection, PaperPortfolio, TradeDecision, TradeProposal, WhatIfSimulation
 from app.state import game_state
 from app.whatif import run_whatif_simulation
 
@@ -33,6 +33,10 @@ class SubmitCeoDecisionResponse(BaseModel):
     ceo_decisions: list[CeoDecisionRecord] = Field(alias="ceoDecisions")
     decisions: list[TradeDecision]
     paper_portfolio: PaperPortfolio = Field(alias="paperPortfolio")
+    # v0.7 Feature 20 — sent back immediately so the CEO sees a fresh
+    # rejection (if this decision produced one) without waiting for the
+    # next WS tick broadcast.
+    gatekeeper_rejections: list[GatekeeperRejection] = Field(alias="gatekeeperRejections")
 
 
 @router.post("/decide", response_model=SubmitCeoDecisionResponse)
@@ -46,6 +50,7 @@ async def decide(payload: SubmitCeoDecisionRequest) -> SubmitCeoDecisionResponse
         ceoDecisions=state.ceo_decisions,
         decisions=state.decisions,
         paperPortfolio=state.paper_portfolio,
+        gatekeeperRejections=state.gatekeeper_rejections,
     )
 
 

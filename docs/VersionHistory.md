@@ -119,11 +119,48 @@ execution of a single real trade — the same boundary every version
 before it has held. Every `PaperOrder`, `PaperPosition`, and `PaperTrade`
 is simulated bookkeeping only.
 
-## What's next for v0.7 (not started, not scoped)
+## v0.7 — Intelligence & Decision Systems
 
-These are candidate directions surfaced by v0.6's design, not commitments
-— nothing below has been designed, and per every version's stop
-condition, work stops at the end of its own brief:
+Six systems layered onto v0.6.3's Executive Voting rather than replacing
+it, aimed at making both the AI desk and the player better decision-
+makers over time rather than maximizing a single trade's P&L. A
+**Decision Confidence Engine** (`confidence.py`) formalizes the old
+client-side "Trade Quality Score" into a real, persisted six-factor
+score carried onto every `TradeDecision`. A **What-If Simulation Lab**
+(`whatif.py`) stress-tests a pending proposal against 12 named market
+scenarios, each a bootstrap resample of the symbol's own real recent
+returns — computed fresh per request, never persisted. An **AI Debate
+Room** (`debate.py`) turns the six analyst votes into a full investment-
+committee review (opening statement + real cross-examination per
+analyst) before the CEO decides. The **Decision Journal & Mistake
+Tracker** extends Coach's existing weekly/monthly reporting with two new
+recurring-mistake patterns and a strengths readout, rather than building
+a parallel journal. A **Premium Trade Outcome Banner** replaces the old
+blocking trade-result popup with a non-blocking, queued, top-center
+banner. Last, the **Trade Gatekeeper** (`gatekeeper.py`) sits between the
+CEO's real buy/sell call and the order actually being placed — seven
+real checks (confidence, risk-vote alignment, desk agreement, the AI
+Debate's own recommendation, portfolio exposure, correlated positions,
+active critical risk warnings) can now veto even the player's own
+choice, ending v0.6.3's "the CEO's choice is unconditionally final"
+model. A rejected trade never executes, so there's no real P&L to grade
+it against — its hypothetical outcome instead resolves later purely from
+the symbol's own real subsequent price move, the same "wait for real
+time, check real data" convention every other outcome-grading path in
+this codebase already uses.
+
+Several factors named across these six features' briefs (multi-timeframe
+confirmation, support/resistance quality, liquidity, reward-to-risk
+ratio, stop-loss placement, strategy match, historical similar-setup
+performance) have no real data source in this codebase and are
+deliberately not computed anywhere — see each module's own docstring for
+the same honesty boundary applied consistently across all six.
+
+## What's next for v0.8 (not started, not scoped)
+
+These are candidate directions surfaced by v0.6/v0.7's design, not
+commitments — nothing below has been designed, and per every version's
+stop condition, work stops at the end of its own brief:
 
 - **A real `MarketDataProvider` adapter.** The interface and mock
   implementation are already in place (`market_data.py`); the natural

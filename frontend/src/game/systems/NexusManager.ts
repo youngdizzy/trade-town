@@ -5,6 +5,7 @@ import type {
   CoachReport,
   CompanyScore,
   Debate,
+  GatekeeperRejection,
   HallOfFameEntry,
   MeetingMinutes,
   MeetingState,
@@ -52,6 +53,7 @@ interface NexusSnapshot {
   tradeProposals: TradeProposal[];
   ceoDecisions: CeoDecisionRecord[];
   debates: Debate[];
+  gatekeeperRejections: GatekeeperRejection[];
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
@@ -118,6 +120,7 @@ export class NexusManager {
   private static tradeProposals: TradeProposal[] = [];
   private static ceoDecisions: CeoDecisionRecord[] = [];
   private static debates: Debate[] = [];
+  private static gatekeeperRejections: GatekeeperRejection[] = [];
   private static agentEnergy: AgentEnergy = { current: 100, cap: 100, updatedAt: new Date().toISOString() };
   private static signalCalibration: SignalCalibrationState = { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 };
   private static playerVsAi: PlayerVsAiState = { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 };
@@ -237,17 +240,31 @@ export class NexusManager {
     EventBus.emit("debates:updated", debates);
   }
 
+  static getGatekeeperRejections(): GatekeeperRejection[] {
+    return this.gatekeeperRejections;
+  }
+
   /** Applies the result of a direct POST /api/executive/decide call
    * immediately, the same reasoning as setAgentEnergy below — no need to
-   * wait for the next sim-tick WS broadcast to see the proposal resolved. */
-  static setExecutiveDecisionResult(tradeProposals: TradeProposal[], ceoDecisions: CeoDecisionRecord[], decisions: TradeDecision[], paperPortfolio: PaperPortfolio): void {
+   * wait for the next sim-tick WS broadcast to see the proposal resolved.
+   * v0.7 Feature 20 — also carries any fresh GatekeeperRejection this
+   * decision produced. */
+  static setExecutiveDecisionResult(
+    tradeProposals: TradeProposal[],
+    ceoDecisions: CeoDecisionRecord[],
+    decisions: TradeDecision[],
+    paperPortfolio: PaperPortfolio,
+    gatekeeperRejections: GatekeeperRejection[],
+  ): void {
     this.tradeProposals = tradeProposals;
     this.ceoDecisions = ceoDecisions;
     this.decisions = decisions;
     this.paperPortfolio = paperPortfolio;
+    this.gatekeeperRejections = gatekeeperRejections;
     EventBus.emit("tradeProposals:updated", tradeProposals);
     EventBus.emit("ceoDecisions:updated", ceoDecisions);
     EventBus.emit("portfolio:updated", paperPortfolio);
+    EventBus.emit("gatekeeperRejections:updated", gatekeeperRejections);
   }
 
   static getAgentEnergy(): AgentEnergy {
@@ -420,6 +437,11 @@ export class NexusManager {
     if (update.debates.length !== this.debates.length) EventBus.emit("debates:updated", update.debates);
     this.debates = update.debates;
 
+    if (update.gatekeeperRejections.length !== this.gatekeeperRejections.length) {
+      EventBus.emit("gatekeeperRejections:updated", update.gatekeeperRejections);
+    }
+    this.gatekeeperRejections = update.gatekeeperRejections;
+
     if (update.agentEnergy !== this.agentEnergy) EventBus.emit("agentEnergy:updated", update.agentEnergy);
     this.agentEnergy = update.agentEnergy;
 
@@ -460,6 +482,7 @@ export class NexusManager {
     this.tradeProposals = save.tradeProposals;
     this.ceoDecisions = save.ceoDecisions;
     this.debates = save.debates;
+    this.gatekeeperRejections = save.gatekeeperRejections;
     this.agentEnergy = save.agentEnergy;
     this.signalCalibration = save.signalCalibration;
     this.playerVsAi = save.playerVsAi;

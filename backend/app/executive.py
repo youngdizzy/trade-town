@@ -41,6 +41,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.confidence import compute_confidence
+from app.gatekeeper import evaluate_gatekeeper
 from app.market_data import Candle as ProviderCandle
 from app.market_data import MarketDataProvider
 from app.market_data import trend_pct, volatility_pct
@@ -53,6 +54,8 @@ from app.schemas import (
     AnalystRole,
     AnalystVote,
     CeoDecisionRecord,
+    Debate,
+    GatekeeperVerdict,
     NewsItem,
     PaperPortfolio,
     PaperTrade,
@@ -285,15 +288,20 @@ def resolve_proposal(
     risk_limits: RiskLimits,
     current_price: float | None,
     now_sim_minutes: int,
+    debate: Debate | None = None,
+    risk_warnings: list[RiskWarning] | None = None,
 ) -> tuple[PaperPortfolio, TradeDecision, CeoDecisionRecord]:
     """Applies the CEO's real decision: buy opens a real long, sell opens
-    a real short, wait does nothing. Always produces a permanent
+    a real short, wait does nothing — subject to the Trade Gatekeeper's
+    final approval (v0.7 Feature 20, app/gatekeeper.py), which can veto
+    even a real buy/sell the CEO chose. Always produces a permanent
     TradeDecision (so every existing consumer — DecisionsPanel,
     DecisionDetail, Player vs AI — keeps working unchanged) and a
     CeoDecisionRecord (the accuracy-tracking side of this feature)."""
     decision_id = f"decision-{proposal.id}"
     order_id: str | None = None
     price = current_price if current_price and current_price > 0 else proposal.price
+    gatekeeper_verdict: GatekeeperVerdict | None = None
 
     if ceo_choice in ("buy", "sell"):
         quantity = recommended_quantity(risk_limits, portfolio, price)
@@ -303,33 +311,43 @@ def resolve_proposal(
             # size zero happened.
             ceo_choice = "wait"
         else:
-            position_id = f"pos-{proposal.id}"
-            portfolio = open_position(
-                portfolio,
-                position_id=position_id,
-                symbol=proposal.symbol,
-                price=price,
-                opened_by="atlas",
-                confidence=proposal.confidence,
-                opened_sim_minutes=now_sim_minutes,
-                side="buy" if ceo_choice == "buy" else "sell",
-                quantity=quantity,
-            )
-            order_id = position_id
+            gatekeeper_verdict = evaluate_gatekeeper(proposal, ceo_choice, debate, portfolio, risk_limits, risk_warnings or [])
+            if gatekeeper_verdict.approved:
+                position_id = f"pos-{proposal.id}"
+                portfolio = open_position(
+                    portfolio,
+                    position_id=position_id,
+                    symbol=proposal.symbol,
+                    price=price,
+                    opened_by="atlas",
+                    confidence=proposal.confidence,
+                    opened_sim_minutes=now_sim_minutes,
+                    side="buy" if ceo_choice == "buy" else "sell",
+                    quantity=quantity,
+                )
+                order_id = position_id
+            # else: the Gatekeeper vetoed it — ceo_choice is deliberately
+            # NOT downgraded to "wait" here (unlike the zero-quantity
+            # fallback above) so the CeoDecisionRecord still reflects the
+            # CEO's real original call; order_id staying None is what
+            # actually signals no trade happened.
 
-    final_reasoning = (
-        f"CEO {'approved' if ceo_choice == proposal.overall_recommendation else 'overrode the desk and chose'} "
-        f"{ceo_choice.upper()} on {proposal.symbol}."
-        if ceo_choice != "wait"
-        else f"CEO chose to WAIT on {proposal.symbol} — no trade placed."
-    )
+    if ceo_choice == "wait":
+        final_reasoning = f"CEO chose to WAIT on {proposal.symbol} — no trade placed."
+    elif gatekeeper_verdict is not None and not gatekeeper_verdict.approved:
+        final_reasoning = f"CEO chose {ceo_choice.upper()} on {proposal.symbol}, but the Trade Gatekeeper rejected it: {gatekeeper_verdict.summary}"
+    else:
+        final_reasoning = (
+            f"CEO {'approved' if ceo_choice == proposal.overall_recommendation else 'overrode the desk and chose'} "
+            f"{ceo_choice.upper()} on {proposal.symbol}."
+        )
     supporting = [v.agent_id for v in proposal.analyst_votes if v.choice == ceo_choice]
     opposing = [v.agent_id for v in proposal.analyst_votes if v.choice != ceo_choice]
     technical_vote = next((v for v in proposal.analyst_votes if v.role == "technical"), None)
     decision = TradeDecision(
         id=decision_id,
         symbol=proposal.symbol,
-        outcome="trade" if ceo_choice in ("buy", "sell") else "no_trade",
+        outcome="trade" if order_id is not None else "no_trade",
         votes=[AgentVote(agentId=v.agent_id, choice=v.choice if v.choice != "wait" else "hold", reason=v.reasoning) for v in proposal.analyst_votes],
         researchSummary=proposal.research_summary,
         technicalSummary=technical_vote.reasoning if technical_vote else "No technical read available.",
@@ -341,6 +359,7 @@ def resolve_proposal(
         finalReasoning=final_reasoning,
         orderId=order_id,
         confidenceEngine=proposal.confidence_engine,
+        gatekeeperVerdict=gatekeeper_verdict,
         createdAt=_now_iso(),
     )
     record = CeoDecisionRecord(
@@ -352,7 +371,7 @@ def resolve_proposal(
         ceoDecision=ceo_choice,
         agreedWithAi=(ceo_choice == proposal.overall_recommendation),
         decisionId=decision_id,
-        outcome="pending" if ceo_choice in ("buy", "sell") else "undecidable",
+        outcome="pending" if order_id is not None else "undecidable",
         createdAt=_now_iso(),
     )
     return portfolio, decision, record

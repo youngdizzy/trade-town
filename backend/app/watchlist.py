@@ -7,7 +7,7 @@ API directly, so swapping the provider later doesn't touch this file.
 from __future__ import annotations
 
 from app.market_data import MarketDataProvider
-from app.schemas import ResearchItem, WatchlistEntry
+from app.schemas import ResearchCategory, ResearchItem, WatchlistEntry
 
 # (symbol, display name, research category) — one per ResearchCategory in
 # the v0.3 brief, and also the pool research.py rotates agents through.
@@ -21,6 +21,11 @@ SEED_SYMBOLS: list[tuple[str, str, str]] = [
     ("XLF", "Financial Sector SPDR", "sector"),
     ("DXY", "US Dollar Index", "economy"),
 ]
+
+# v0.7 Feature 20 — the Trade Gatekeeper's "correlated positions" check
+# needs a symbol -> category lookup; this is that same real mapping
+# SEED_SYMBOLS already defines, not a second invented taxonomy.
+SYMBOL_CATEGORY: dict[str, ResearchCategory] = {symbol: category for symbol, _name, category in SEED_SYMBOLS}  # type: ignore[misc]
 
 
 def default_watchlist() -> list[WatchlistEntry]:

@@ -208,7 +208,13 @@ perspective and exists purely to detect disconnects
       "researchSummary": "...", "technicalSummary": "...", "fundamentalSummary": "...", "riskSummary": "...",
       "supportingAgents": ["atlas", "echo", "nova"], "opposingAgents": ["scout"],
       "confidence": 100.0, "finalReasoning": "3 of 5 votes in favor — Atlas approves the trade on AAPL.",
-      "orderId": "order-research-echo-AAPL-...", "createdAt": "..."
+      "orderId": "order-research-echo-AAPL-...", "createdAt": "...",
+      // v0.7 Feature 20 — set only when the CEO chose buy/sell (a WAIT
+      // never reaches the gatekeeper); null for decisions predating this
+      // field. A rejected verdict here is exactly what makes `orderId`
+      // null even though the linked CeoDecisionRecord's `ceoDecision`
+      // was buy/sell, not wait.
+      "gatekeeperVerdict": null
     }
   ],
   "tradeProposals": [
@@ -263,6 +269,22 @@ perspective and exists purely to detect disconnects
       "finalSummary": "After 6 independent reads, the desk recommends BUY on AAPL. Strong Setup (88/100) — strongest: Multi-Agent Agreement (100), weakest: Portfolio Exposure (60).",
       "createdAt": "..."
     }
+  ],
+  "gatekeeperRejections": [
+    // v0.7 Feature 20 — every trade the Trade Gatekeeper vetoed after the
+    // CEO chose buy/sell (see app/gatekeeper.py). No order was ever
+    // placed, so `outcome` starts "pending" and only resolves once
+    // GATEKEEPER_EVAL_WINDOW_MINUTES (4 simulated hours) have passed,
+    // purely from the symbol's own real subsequent watchlist price move
+    // — never a fabricated P&L.
+    {
+      "id": "gkreject-decision-proposal-research-echo-AAPL-...", "proposalId": "proposal-research-echo-AAPL-...",
+      "symbol": "AAPL", "ceoChoice": "buy",
+      "reasons": ["Decision Confidence: 42/100 — below the required 55 minimum."],
+      "priceAtRejection": 471.87, "rejectedSimMinutes": 1560,
+      "outcome": "pending", // pending | would_have_won | would_have_lost
+      "resolvedPriceChangePct": null, "createdAt": "...", "resolvedAt": null
+    }
   ]
 }
 ```
@@ -271,9 +293,14 @@ perspective and exists purely to detect disconnects
 
 Feature 12 — the CEO's real buy/sell/wait call on a pending
 `TradeProposal`. Body: `{ "proposalId": "...", "choice": "buy" }`
-(`choice`: `buy` | `sell` | `wait`). Returns the updated
-`tradeProposals`, `ceoDecisions`, `decisions`, and `paperPortfolio`.
-`400` if the proposal id isn't found (already resolved or expired).
+(`choice`: `buy` | `sell` | `wait`). A buy/sell still passes through the
+v0.7 Feature 20 Trade Gatekeeper before it executes (see
+`app/gatekeeper.py`) — a rejected verdict lands on the returned
+decision's `gatekeeperVerdict` and a new entry appears in
+`gatekeeperRejections`, while `orderId` stays null and no position
+opens. Returns the updated `tradeProposals`, `ceoDecisions`,
+`decisions`, `paperPortfolio`, and `gatekeeperRejections`. `400` if the
+proposal id isn't found (already resolved or expired).
 
 ### `POST /api/executive/debate/regenerate`
 
@@ -338,6 +365,7 @@ never needs to trim anything itself:
 | `scannerAlerts` | last 30 (`MAX_ALERTS`) | rolling alert feed |
 | `decisions` | uncapped | the v0.6 brief's Explainable AI requirement is "store every report permanently" |
 | `debates` | last 60 (`MAX_DEBATES`) | one per proposal plus any "request another debate" calls — v0.7 Feature 17 |
+| `gatekeeperRejections` | last 100 (`MAX_GATEKEEPER_REJECTIONS`) | one per trade the Trade Gatekeeper vetoed — v0.7 Feature 20 |
 
 ### Provider configuration
 

@@ -8,6 +8,8 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+import pytest
+
 from app.executive import (
     MAX_PENDING_PROPOSALS,
     _execution_vote,
@@ -25,6 +27,7 @@ from app.schemas import (
     AnalystVote,
     CeoDecisionRecord,
     DecisionConfidence,
+    GatekeeperVerdict,
     PaperTrade,
     RiskLimits,
     RiskWarning,
@@ -173,7 +176,18 @@ class TestResolveProposal:
             risk_limits=RiskLimits(),
         )
 
-    def test_buy_opens_a_real_long_position(self) -> None:
+    @staticmethod
+    def _stub_approved_verdict(*_args: object, **_kwargs: object) -> GatekeeperVerdict:
+        """These two tests exercise resolve_proposal's own order-placement
+        mechanics (Feature 12), not the Gatekeeper's approve/reject logic
+        (Feature 20, covered in its own test_gatekeeper.py) — the desk's
+        analyst votes are genuinely randomized (see voting.py's
+        researcher_vote), so without stubbing this out an unlucky roll
+        would make the Gatekeeper reject and these assertions flaky."""
+        return GatekeeperVerdict(approved=True, checks=[], summary="APPROVED — stubbed for this test.", createdAt=_now_iso())
+
+    def test_buy_opens_a_real_long_position(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("app.executive.evaluate_gatekeeper", self._stub_approved_verdict)
         proposal = self._proposal()
         portfolio = default_portfolio()
         new_portfolio, decision, record = resolve_proposal(
@@ -184,10 +198,12 @@ class TestResolveProposal:
         assert new_portfolio.positions[0].opened_sim_minutes == 100
         assert decision.outcome == "trade"
         assert decision.order_id == new_portfolio.positions[0].id
+        assert decision.gatekeeper_verdict is not None and decision.gatekeeper_verdict.approved
         assert record.ceo_decision == "buy"
         assert record.outcome == "pending"
 
-    def test_sell_opens_a_real_short_position(self) -> None:
+    def test_sell_opens_a_real_short_position(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("app.executive.evaluate_gatekeeper", self._stub_approved_verdict)
         proposal = self._proposal()
         portfolio = default_portfolio()
         new_portfolio, decision, record = resolve_proposal(

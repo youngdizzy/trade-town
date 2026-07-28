@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
-import type { AnalystChoice, AnalystVote, DebateTurn, ScenarioResult, ScenarioType, TradeProposal, WhatIfSimulation } from "@/types";
+import type { AnalystChoice, AnalystVote, DebateTurn, GatekeeperVerdict, ScenarioResult, ScenarioType, TradeProposal, WhatIfSimulation } from "@/types";
 import { CONFIDENCE_TIER_LABEL, ROLE_TO_AGENT } from "@/types";
 import { api } from "@/net/api";
 import { NexusManager } from "@/game/systems/NexusManager";
@@ -45,6 +45,16 @@ export function ExecutiveVoting() {
   const [submitting, setSubmitting] = useState<AnalystChoice | null>(null);
   const [regenerating, setRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // v0.7 Feature 20 — set only when the Trade Gatekeeper vetoes the CEO's
+  // real BUY/SELL call; holds the proposals list the backend already
+  // returned so acknowledging can advance to the next one without a
+  // second round-trip.
+  const [gatekeeperRejection, setGatekeeperRejection] = useState<{
+    symbol: string;
+    choice: AnalystChoice;
+    verdict: GatekeeperVerdict;
+    nextProposals: TradeProposal[];
+  } | null>(null);
 
   const proposal: TradeProposal | undefined =
     tradeProposals.find((p) => p.id === executiveVotingProposalId) ?? tradeProposals[0];
@@ -80,8 +90,11 @@ export function ExecutiveVoting() {
 
   // Same reasoning as TradeOutcomeBanner's own MainMenuScene guard: the
   // WebSocket connects independent of the title screen, so never render
-  // a full-screen popup over it.
-  if (currentScene === "MainMenuScene" || !executiveVotingOpen || !proposal) return null;
+  // a full-screen popup over it. A pending gatekeeperRejection keeps this
+  // window open even though its proposal has already been resolved and
+  // removed from tradeProposals (see decide() below).
+  if (currentScene === "MainMenuScene" || !executiveVotingOpen) return null;
+  if (!gatekeeperRejection && !proposal) return null;
 
   const close = () => {
     setExpandedAgent(null);
@@ -92,29 +105,53 @@ export function ExecutiveVoting() {
     EventBus.emit("ui:executiveVoting", { open: false });
   };
 
+  const advanceOrClose = (proposals: TradeProposal[]) => {
+    const next = proposals[0];
+    if (next) {
+      EventBus.emit("ui:executiveVoting", { open: true, proposalId: next.id });
+    } else {
+      EventBus.emit("ui:executiveVoting", { open: false });
+    }
+  };
+
   const decide = async (choice: AnalystChoice) => {
-    if (submitting) return;
+    if (submitting || !proposal) return;
     setSubmitting(choice);
     setError(null);
     try {
       const res = await api.submitCeoDecision(proposal.id, choice);
-      NexusManager.setExecutiveDecisionResult(res.tradeProposals, res.ceoDecisions, res.decisions, res.paperPortfolio);
+      NexusManager.setExecutiveDecisionResult(res.tradeProposals, res.ceoDecisions, res.decisions, res.paperPortfolio, res.gatekeeperRejections);
       setExpandedAgent(null);
       setShowAnalysis(false);
       setShowWhatIf(false);
       setExpandedScenario(null);
-      const next = res.tradeProposals[0];
-      if (next) {
-        EventBus.emit("ui:executiveVoting", { open: true, proposalId: next.id });
-      } else {
-        EventBus.emit("ui:executiveVoting", { open: false });
+      // v0.7 Feature 20 — the CEO's own buy/sell can still be vetoed by
+      // the Trade Gatekeeper; surface that instead of silently advancing
+      // to the next proposal (per the brief's transparency requirement).
+      const resolvedDecision = res.decisions.find((d) => d.id === `decision-${proposal.id}`);
+      if (resolvedDecision?.gatekeeperVerdict && !resolvedDecision.gatekeeperVerdict.approved) {
+        setGatekeeperRejection({ symbol: proposal.symbol, choice, verdict: resolvedDecision.gatekeeperVerdict, nextProposals: res.tradeProposals });
+        return;
       }
+      advanceOrClose(res.tradeProposals);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSubmitting(null);
     }
   };
+
+  const acknowledgeRejection = () => {
+    if (!gatekeeperRejection) return;
+    const nextProposals = gatekeeperRejection.nextProposals;
+    setGatekeeperRejection(null);
+    advanceOrClose(nextProposals);
+  };
+
+  if (gatekeeperRejection) {
+    return <GatekeeperRejectionScreen rejection={gatekeeperRejection} onAcknowledge={acknowledgeRejection} />;
+  }
+  if (!proposal) return null;
 
   const confidence = proposal.confidenceEngine;
   const checklist = preTradeChecklist(proposal, riskWarnings, paperPortfolio, riskLimits);
@@ -369,6 +406,92 @@ export function ExecutiveVoting() {
           </div>
           <button type="button" onClick={close} className="w-full py-1 text-[9px] text-cmd-textDim hover:text-cmd-text">
             Decide later — this proposal stays pending
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * v0.7 Feature 20 — shown in place of the normal voting panel whenever the
+ * Trade Gatekeeper vetoes the CEO's real BUY/SELL call. Per the brief's
+ * transparency requirement: which rule failed, why it matters (each
+ * check's own real detail text — see backend/app/gatekeeper.py), and what
+ * this rejection is tracked against (the self-evaluation described below).
+ */
+function GatekeeperRejectionScreen({
+  rejection,
+  onAcknowledge,
+}: {
+  rejection: { symbol: string; choice: AnalystChoice; verdict: GatekeeperVerdict };
+  onAcknowledge: () => void;
+}) {
+  const failedChecks = rejection.verdict.checks.filter((c) => !c.passed);
+  return (
+    <div className="pointer-events-auto absolute inset-0 z-[55] flex items-center justify-center bg-cmd-bg/85 p-4 backdrop-blur-sm" data-testid="gatekeeper-rejection">
+      <div className="motion-safe:animate-cmd-overlay-in relative max-h-[90vh] w-full max-w-xl overflow-y-auto rounded-sm border border-cmd-red/50 bg-cmd-panel shadow-cmd-red">
+        <AnimatedGrid />
+        <header className="sticky top-0 flex items-center justify-between border-b border-cmd-border bg-cmd-panel/95 px-4 py-3 backdrop-blur-sm">
+          <div className="flex items-center gap-3">
+            <StatusPill tone="red">REJECTED BY GATEKEEPER</StatusPill>
+            <span className="font-cmdmono text-lg text-cmd-text">{rejection.symbol}</span>
+          </div>
+        </header>
+
+        <div className="space-y-3 p-4">
+          <Glass className="p-3">
+            <TerminalLabel>Verdict</TerminalLabel>
+            <p className="text-cmd-text">
+              The CEO chose <span className="text-cmd-amber">{rejection.choice.toUpperCase()}</span> on {rejection.symbol}, but the firm&apos;s
+              final-approval layer blocked it before execution — no order was placed. &quot;The best trade is often the one you don&apos;t
+              take.&quot;
+            </p>
+            <p className="mt-2 text-cmd-textDim">{rejection.verdict.summary}</p>
+          </Glass>
+
+          <Glass className="p-3">
+            <TerminalLabel>Failed Checks — {failedChecks.length}</TerminalLabel>
+            <div className="space-y-1.5">
+              {failedChecks.map((c) => (
+                <div key={c.id} className="rounded-sm border border-cmd-red/30 bg-cmd-bg/40 p-2 text-[9px]">
+                  <div className="mb-1 flex items-center gap-2">
+                    <StatusPill tone="red">FAILED</StatusPill>
+                    <span className="text-cmd-text">{c.label}</span>
+                  </div>
+                  <div className="text-cmd-textDim">{c.detail}</div>
+                </div>
+              ))}
+            </div>
+          </Glass>
+
+          <Glass className="p-3">
+            <TerminalLabel>Full Checklist</TerminalLabel>
+            <div className="space-y-1">
+              {rejection.verdict.checks.map((c) => (
+                <div key={c.id} className="flex items-start gap-2 text-[9px]">
+                  <span className={c.passed ? "text-cmd-green" : "text-cmd-red"}>{c.passed ? "✓" : "✗"}</span>
+                  <div>
+                    <div className={c.passed ? "text-cmd-text" : "text-cmd-red"}>{c.label}</div>
+                    <div className="text-cmd-textDim">{c.detail}</div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </Glass>
+
+          <div className="text-[9px] text-cmd-textDim">
+            This rejection is tracked for the Gatekeeper&apos;s own self-evaluation (see the Executive tab&apos;s Trade Gatekeeper card) — once
+            enough simulated time passes, TradeTown checks {rejection.symbol}&apos;s real subsequent price move to see whether this trade would
+            actually have worked. Nothing here changes the firm&apos;s rules automatically; that stays a manual review.
+          </div>
+
+          <button
+            type="button"
+            onClick={onAcknowledge}
+            className="w-full rounded-sm border border-cmd-red/50 py-2.5 font-cmdmono tracking-wide text-cmd-red transition-all duration-150 hover:bg-cmd-red/10"
+          >
+            ACKNOWLEDGE
           </button>
         </div>
       </div>

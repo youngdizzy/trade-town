@@ -4,6 +4,7 @@ import type {
   AgentVote,
   CeoDecisionRecord,
   ConfidenceTier,
+  GatekeeperRejection,
   PaperOrder,
   PaperPortfolio,
   PaperTrade,
@@ -348,4 +349,40 @@ export function mistakeTagForCeoDecision(record: CeoDecisionRecord, decisions: T
   if (decision.opposingAgents.includes("sentinel")) return "OVERRODE RISK";
   if (decision.opposingAgents.includes("echo")) return "AGAINST TREND";
   return null;
+}
+
+export interface GatekeeperStats {
+  approvedCount: number;
+  rejectedCount: number;
+  resolvedRejections: number;
+  pendingRejections: number;
+  wouldHaveWon: number;
+  wouldHaveLost: number;
+  /** % of *resolved* rejections where blocking the trade actually spared
+   * the desk a loser — the Gatekeeper's own batting average on its calls,
+   * per the v0.7 brief's self-evaluation requirement. Null until at least
+   * one rejection has resolved (see backend/app/gatekeeper.py's
+   * GATEKEEPER_EVAL_WINDOW_MINUTES). */
+  vetoAccuracy: number | null;
+}
+
+/** Every count here comes straight off a real TradeDecision.gatekeeperVerdict
+ * or GatekeeperRejection (see backend/app/gatekeeper.py) — approved/rejected
+ * counts and the resolved would-have-won/lost outcomes are never estimated. */
+export function computeGatekeeperStats(decisions: TradeDecision[], rejections: GatekeeperRejection[]): GatekeeperStats {
+  const verdicts = decisions.map((d) => d.gatekeeperVerdict).filter((v) => v !== null);
+  const approvedCount = verdicts.filter((v) => v.approved).length;
+  const rejectedCount = verdicts.filter((v) => !v.approved).length;
+  const resolved = rejections.filter((r) => r.outcome !== "pending");
+  const wouldHaveWon = resolved.filter((r) => r.outcome === "would_have_won").length;
+  const wouldHaveLost = resolved.filter((r) => r.outcome === "would_have_lost").length;
+  return {
+    approvedCount,
+    rejectedCount,
+    resolvedRejections: resolved.length,
+    pendingRejections: rejections.length - resolved.length,
+    wouldHaveWon,
+    wouldHaveLost,
+    vetoAccuracy: resolved.length ? (wouldHaveLost / resolved.length) * 100 : null,
+  };
 }

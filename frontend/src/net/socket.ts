@@ -7,6 +7,7 @@ import type {
   CoachReport,
   CompanyScore,
   Debate,
+  GatekeeperRejection,
   HallOfFameEntry,
   MeetingMinutes,
   MeetingState,
@@ -62,6 +63,7 @@ type ServerMessage =
       tradeProposals: TradeProposal[];
       ceoDecisions: CeoDecisionRecord[];
       debates: Debate[];
+      gatekeeperRejections: GatekeeperRejection[];
       agentEnergy: AgentEnergy;
       signalCalibration: SignalCalibrationState;
       playerVsAi: PlayerVsAiState;
@@ -147,6 +149,7 @@ export class GameSocket {
             tradeProposals: msg.tradeProposals,
             ceoDecisions: msg.ceoDecisions,
             debates: msg.debates,
+            gatekeeperRejections: msg.gatekeeperRejections,
             agentEnergy: msg.agentEnergy,
             signalCalibration: msg.signalCalibration,
             playerVsAi: msg.playerVsAi,

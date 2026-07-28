@@ -117,11 +117,53 @@ development milestones, not semver releases.
     Score" from the spec are deliberately not shown: auto-traded orders
     aren't linked to a named Strategy record, and Trade Quality Score was
     already replaced by Feature 15's real Decision Confidence Engine.
-  - Verification: full backend (mypy/ruff/pytest, 134/134 — 33 new tests
-    across `test_confidence.py`/`test_debate.py`/`test_whatif.py`/
-    `test_coach.py`) and frontend (tsc/eslint/build) clean; the full
-    Playwright suite (14/14, one honest skip for organic trade timing)
-    passes against a freshly reset backend.
+  - **Trade Gatekeeper (Feature 20)**: a final-approval layer
+    (`app/gatekeeper.py`) that can veto even the CEO's own real BUY/SELL
+    call before `resolve_proposal` places the order — the v0.6.3 "the
+    player's choice is unconditionally final" model no longer holds.
+    Seven checks are real, each reading state already computed
+    elsewhere: the Decision Confidence Engine score (Feature 15) against
+    a minimum threshold, Sentinel's risk-analyst vote alignment,
+    multi-agent majority agreement, the AI Debate's own final
+    recommendation (Feature 17), portfolio exposure against
+    `RiskLimits.maxOpenPositions`, correlated open positions sharing the
+    proposal's real research category (capped at `MAX_CORRELATED_POSITIONS`),
+    and any active *critical* Sentinel/Guardian risk warning for the
+    symbol. The brief's longer checklist also names multi-timeframe
+    confirmation, support/resistance quality, volume confirmation,
+    liquidity, upcoming-news timing, reward-to-risk ratio, stop-loss
+    placement, strategy match, and historical performance of similar
+    setups — none have a real data source in this codebase (this sim
+    only ever fetches one timeframe, generates news reactively rather
+    than on a schedule, and the paper broker never places exit orders)
+    and none are fabricated; see `gatekeeper.py`'s module docstring for
+    the same honesty boundary already established for Feature 15/16. A
+    rejected trade is transparent about why: Executive Voting's popup
+    replaces itself with a "REJECTED BY GATEKEEPER" screen naming every
+    failed check's own real detail text, instead of silently advancing
+    to the next proposal. Since a blocked trade never executes, there's
+    no real P&L to grade it against — `GatekeeperRejection` instead
+    tracks the symbol's real price at rejection and resolves
+    "would_have_won"/"would_have_lost" once `GATEKEEPER_EVAL_WINDOW_MINUTES`
+    (4 simulated hours) of real subsequent watchlist price movement has
+    passed, the same "wait for real time, then check real data"
+    convention `grade_ceo_decisions` already uses for placed trades —
+    never a fabricated outcome. `ExecutivePanel`'s new "Trade Gatekeeper"
+    card surfaces approved/rejected counts, veto accuracy (% of resolved
+    rejections that would actually have lost), and the most recent
+    rejections with their real reasons — the self-evaluation tracking
+    the brief asks for, computed purely from these two real record types
+    and never auto-adjusting a rule on its own. Also fixes a pre-existing
+    latent bug this feature would otherwise have tripped:
+    `TradeDecision.outcome`/`CeoDecisionRecord.outcome` were keyed off
+    the CEO's `ceoChoice` being buy/sell, which was only ever equivalent
+    to "a trade actually happened" before a rejection path existed —
+    both now key off `orderId is not None`, the real signal of whether
+    an order was actually placed.
+  - Verification: full backend (mypy/ruff/pytest, 162/162 — 28 new tests
+    in `test_gatekeeper.py`) and frontend (tsc/eslint/build) clean; the
+    relevant Playwright specs (`executiveVoting.spec.ts`,
+    `commandCenter.spec.ts`) pass against a freshly reset backend.
 
 - **v0.6.3 — Executive Voting, Risk Command Center, Cyber Overlay** — the
   player is now formally TradeTown's CEO. A research candidate crossing

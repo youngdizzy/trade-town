@@ -16,7 +16,7 @@ from app.company_score import compute_company_score
 from app.debate import generate_debate
 from app.executive import MAX_CEO_DECISIONS, AnalystChoice, resolve_proposal
 from app.market_data import market_data_provider
-from app.nexus import MAX_DEBATES, MAX_DECISIONS
+from app.nexus import MAX_DEBATES, MAX_DECISIONS, MAX_GATEKEEPER_REJECTIONS
 from app.portfolio import default_portfolio, sim_minutes
 from app.research import default_research
 from app.scribe import record_ceo_decision
@@ -24,6 +24,7 @@ from app.schemas import (
     EducationProgress,
     EntityTransform,
     GameSaveState,
+    GatekeeperRejection,
     MeetingState,
     PlayerVsAiPrompt,
     PlayerVsAiState,
@@ -73,6 +74,7 @@ def default_state() -> GameSaveState:
         tradeProposals=[],
         ceoDecisions=[],
         debates=[],
+        gatekeeperRejections=[],
         updatedAt=_now_iso(),
     )
 
@@ -191,6 +193,11 @@ class GameState:
 
             watchlist_item = next((w for w in self.data.watchlist if w.symbol == proposal.symbol), None)
             current_price = watchlist_item.last_price if watchlist_item else None
+            now_sim_minutes = sim_minutes(self.data.time)
+            # v0.7 Feature 17 — the most recently generated debate for this
+            # proposal (regenerate_debate can append more than one), fed
+            # into the Gatekeeper's own debate-outcome check below.
+            debate = next((d for d in reversed(self.data.debates) if d.proposal_id == proposal_id), None)
 
             portfolio, decision, ceo_record = resolve_proposal(
                 proposal,
@@ -198,7 +205,9 @@ class GameState:
                 portfolio=self.data.paper_portfolio,
                 risk_limits=self.data.risk_limits,
                 current_price=current_price,
-                now_sim_minutes=sim_minutes(self.data.time),
+                now_sim_minutes=now_sim_minutes,
+                debate=debate,
+                risk_warnings=self.data.risk_warnings,
             )
 
             memory = list(self.data.memory)
@@ -212,12 +221,34 @@ class GameState:
             if len(ceo_decisions) > MAX_CEO_DECISIONS:
                 del ceo_decisions[: len(ceo_decisions) - MAX_CEO_DECISIONS]
 
+            gatekeeper_rejections = list(self.data.gatekeeper_rejections)
+            verdict = decision.gatekeeper_verdict
+            if verdict is not None and not verdict.approved and current_price is not None:
+                # v0.7 Feature 20 — the trade never executed, so there's no
+                # P&L to grade; tracked instead for the self-evaluation's
+                # "would it have worked?" read (see grade_gatekeeper_rejections).
+                gatekeeper_rejections.append(
+                    GatekeeperRejection(
+                        id=f"gkreject-{decision.id}",
+                        proposalId=proposal.id,
+                        symbol=proposal.symbol,
+                        ceoChoice=choice,
+                        reasons=[f"{c.label}: {c.detail}" for c in verdict.checks if not c.passed],
+                        priceAtRejection=current_price,
+                        rejectedSimMinutes=now_sim_minutes,
+                        createdAt=_now_iso(),
+                    )
+                )
+                if len(gatekeeper_rejections) > MAX_GATEKEEPER_REJECTIONS:
+                    del gatekeeper_rejections[: len(gatekeeper_rejections) - MAX_GATEKEEPER_REJECTIONS]
+
             self.data = self.data.model_copy(
                 update={
                     "trade_proposals": [p for p in self.data.trade_proposals if p.id != proposal_id],
                     "paper_portfolio": portfolio,
                     "decisions": decisions,
                     "ceo_decisions": ceo_decisions,
+                    "gatekeeper_rejections": gatekeeper_rejections,
                     "memory": memory,
                     "updated_at": _now_iso(),
                 }

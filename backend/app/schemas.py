@@ -687,6 +687,13 @@ class TradeDecision(CamelModel):
     # trade's real realized outcome even after the proposal itself is
     # gone. None only for decisions predating this field.
     confidence_engine: "DecisionConfidence | None" = Field(default=None, alias="confidenceEngine")
+    # v0.7 Feature 20 — the Trade Gatekeeper's final-approval verdict
+    # (see app/gatekeeper.py). Only ever set when the CEO chose buy/sell
+    # (a WAIT never reaches the gatekeeper); None for decisions predating
+    # this field. A rejected verdict here is exactly what makes
+    # `order_id` None even though `ceo_choice` on the linked
+    # CeoDecisionRecord was buy/sell, not wait.
+    gatekeeper_verdict: "GatekeeperVerdict | None" = Field(default=None, alias="gatekeeperVerdict")
     created_at: str = Field(alias="createdAt")
 
 
@@ -894,7 +901,8 @@ class Debate(CamelModel):
     reviewable even after its proposal is long resolved. `proposalId`
     links back to the TradeProposal it reviewed; the debate itself never
     approves or rejects anything — that's still the CEO's real
-    buy/sell/wait call via app/executive.py's resolve_proposal."""
+    buy/sell/wait call via app/executive.py's resolve_proposal, subject
+    to the Trade Gatekeeper's final approval (v0.7 Feature 20)."""
 
     id: str
     proposal_id: str = Field(alias="proposalId")
@@ -903,6 +911,50 @@ class Debate(CamelModel):
     final_recommendation: AnalystChoice = Field(alias="finalRecommendation")
     final_summary: str = Field(alias="finalSummary")
     created_at: str = Field(alias="createdAt")
+
+
+# v0.7 Feature 20 — Trade Gatekeeper. Every check is real (see
+# app/gatekeeper.py for exactly what each one reads); never a fabricated
+# pass/fail. `GatekeeperRejection` tracks a *hypothetical* outcome for a
+# trade that never actually executed — graded later against the
+# symbol's own real subsequent watchlist price movement, the same
+# "wait for real time to pass, then check real data" convention
+# app/executive.py's grade_ceo_decisions already uses for real trades.
+class GatekeeperCheck(CamelModel):
+    id: str
+    label: str
+    passed: bool
+    detail: str
+
+
+class GatekeeperVerdict(CamelModel):
+    approved: bool
+    checks: list[GatekeeperCheck] = Field(default_factory=list)
+    summary: str
+    created_at: str = Field(alias="createdAt")
+
+
+GatekeeperOutcome = Literal["pending", "would_have_won", "would_have_lost"]
+
+
+class GatekeeperRejection(CamelModel):
+    """One trade the Gatekeeper blocked, tracked for the spec's
+    "would it have worked?" self-evaluation. No order was ever placed —
+    `outcome` resolves once GATEKEEPER_EVAL_WINDOW_MINUTES of simulated
+    time has passed, purely from the real difference between the
+    symbol's watchlist price then and now, never a fabricated P&L."""
+
+    id: str
+    proposal_id: str = Field(alias="proposalId")
+    symbol: str
+    ceo_choice: AnalystChoice = Field(alias="ceoChoice")
+    reasons: list[str] = Field(default_factory=list)
+    price_at_rejection: float = Field(alias="priceAtRejection")
+    rejected_sim_minutes: int = Field(alias="rejectedSimMinutes")
+    outcome: GatekeeperOutcome = "pending"
+    resolved_price_change_pct: float | None = Field(default=None, alias="resolvedPriceChangePct")
+    created_at: str = Field(alias="createdAt")
+    resolved_at: str | None = Field(default=None, alias="resolvedAt")
 
 
 # v0.7 Feature 16 — What-If Simulation Lab. Computed on demand (never
@@ -1026,6 +1078,10 @@ class GameSaveState(CamelModel):
     # newest replacing prior ones for the same proposal if "request
     # another debate" was used), capped like every other list here.
     debates: list[Debate] = Field(default_factory=list)
+    # v0.7 Feature 20 — Trade Gatekeeper. Every trade the gatekeeper
+    # blocked, capped at MAX_GATEKEEPER_REJECTIONS like every other list
+    # here; see app/gatekeeper.py.
+    gatekeeper_rejections: list[GatekeeperRejection] = Field(default_factory=list, alias="gatekeeperRejections")
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(default_factory=list, alias="dialogueHistory")
