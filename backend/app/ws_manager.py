@@ -87,6 +87,8 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         "academyCompletedProjects": [p.model_dump(by_alias=True) for p in state.academy_completed_projects],
         "agentKnowledge": {aid: k.model_dump(by_alias=True) for aid, k in state.agent_knowledge.items()},
         "academyState": state.academy_state.model_dump(by_alias=True),
+        "disciplineReviews": [r.model_dump(by_alias=True) for r in state.discipline_reviews],
+        "caseStudies": [c.model_dump(by_alias=True) for c in state.case_studies],
     }
 
 

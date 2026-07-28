@@ -6,11 +6,13 @@ import type {
   AgentKnowledgeState,
   AgentState,
   BacktestSession,
+  CaseStudy,
   CeoDecisionRecord,
   CoachReport,
   CompanyHealth,
   CompanyScore,
   Debate,
+  DisciplineReview,
   ExecutiveReview,
   GatekeeperRejection,
   HallOfFameEntry,
@@ -88,6 +90,8 @@ export interface GameUiState {
   academyCompletedProjects: AcademyProject[];
   agentKnowledge: Record<AgentId, AgentKnowledgeState>;
   academyState: AcademyState;
+  disciplineReviews: DisciplineReview[];
+  caseStudies: CaseStudy[];
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
@@ -206,6 +210,8 @@ class GameStore {
     academyCompletedProjects: [],
     agentKnowledge: {} as Record<AgentId, AgentKnowledgeState>,
     academyState: { level: 1, levelLabel: "Training Room", totalPoints: 0, completedProjectCount: 0, updatedAt: new Date().toISOString() },
+    disciplineReviews: [],
+    caseStudies: [],
     agentEnergy: { current: 100, cap: 100, updatedAt: new Date().toISOString() },
     signalCalibration: { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 },
     playerVsAi: { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 },
@@ -311,6 +317,8 @@ class GameStore {
     EventBus.on("academyCompletedProjects:updated", (academyCompletedProjects) => this.set({ academyCompletedProjects }));
     EventBus.on("agentKnowledge:updated", (agentKnowledge) => this.set({ agentKnowledge }));
     EventBus.on("academyState:updated", (academyState) => this.set({ academyState }));
+    EventBus.on("disciplineReviews:updated", (disciplineReviews) => this.set({ disciplineReviews }));
+    EventBus.on("caseStudies:updated", (caseStudies) => this.set({ caseStudies }));
     EventBus.on("ui:executiveVoting", ({ open, proposalId }) =>
       this.set({ executiveVotingOpen: open, executiveVotingProposalId: open ? (proposalId ?? this.state.executiveVotingProposalId) : null }),
     );

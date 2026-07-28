@@ -409,6 +409,107 @@ development milestones, not semver releases.
     zooming, panning, searching, and clicking a node all produced the
     correct real side-panel content, with zero console errors).
 
+- **v0.7 — The Discipline Chamber & The Library of Mistakes (Features
+  26-27)** — the company now rewards good decisions, not lucky outcomes.
+  - **The Discipline Chamber (Feature 26)**: `app/discipline.py` files a
+    real `DisciplineReview` for every trade that closes, scoring the
+    decision PROCESS from seven real, already-computed signals — never
+    the trade's pnl. This is enforced structurally, not just by
+    convention: `compute_discipline_score()`'s signature only accepts a
+    real hold duration (a behavior signal, not a result), never the
+    trade or its outcome, so an identical process provably scores
+    identically whether the linked trade won or lost (see the module's
+    own test suite). The seven factors — Research Depth, Viewpoint
+    Diversity, Uncertainty Acknowledged, Cross-Examination Occurred,
+    Assumptions Challenged, Position Sizing Discipline, Patience — reuse
+    the Decision Confidence Engine's own factors, the AI Debate's real
+    turns, and each closed trade's own real hold duration. Two traps were
+    checked and avoided while designing the factor set: `votes` always
+    contains all six real analyst votes (a structural constant, not a
+    real discriminator — real *viewpoint diversity*, how many distinct
+    choices those votes actually held, is used instead), and every trade
+    that reaches this module already passed the Trade Gatekeeper in full
+    (a rejected verdict means no trade ever opens), so "did it pass the
+    Gatekeeper" is also constant for this population — Position Sizing
+    Discipline reuses the Confidence Engine's own still-varying Portfolio
+    Exposure factor instead. `outcome`/`tradePnlPct` are attached to the
+    finished review afterward, purely so the player can see whether a
+    good process and a good outcome actually lined up — the review's own
+    summary calls this out explicitly (a sound process that still lost
+    reads as "bad luck, not a bad decision"; a weak process that won
+    reads as "a warning, not a validation"). A real `PostDecisionReview`
+    answers the brief's seven questions from the review's own real
+    factors and — only for a real loss — names the specific real
+    dissenting analyst (Echo or Scout) whose overridden vote proved
+    right; Sentinel is deliberately never checked here, since the Trade
+    Gatekeeper's `risk_manager_check` hard-requires the risk analyst's
+    vote to match the CEO's choice before a trade can even open, so
+    Sentinel dissent on an executed trade cannot occur.
+  - **The Library of Mistakes (Feature 27)**: `app/mistakes.py` files a
+    permanent `CaseStudy` whenever a closed, *losing* trade's own
+    Discipline Review shows a specific real process gap — never merely
+    "the trade lost" on its own (a well-disciplined process that loses to
+    real market variance is the Discipline Chamber's whole point to
+    protect, not punish). Six categories, each mapped to one real,
+    checkable signal: **The Cost of Overconfidence** (Confidence Engine
+    scored 80+, still lost), **Incomplete Research** (research confidence
+    factor below 50), **Failure to Challenge Assumptions** (zero real
+    debate challenge turns), **Acting Too Quickly** (closed inside the
+    same patient-hold window `app/coach.py` already uses), **Poor
+    Communication** (the AI Debate's own real synthesis recommended the
+    opposite of what executed), and **Confirmation Bias** (a specific
+    real dissenting analyst — Echo or Scout — was overridden and proven
+    right). A single trade can trigger more than one category — each
+    becomes its own case study, matching the brief's own framing of these
+    as distinct, separately-filed examples. Every field in the resulting
+    case study (Timeline, Background, Decision Process, Department
+    Opinions, Missed Information, Lessons Learned, Recommended
+    Improvements, Related Company Principles) is built from real
+    structured data — the linked `TradeDecision`'s own real vote
+    reasoning, the real `Debate` turns, the real `RiskLimits`/Gatekeeper
+    thresholds, real timestamps — filled into a fixed template, never a
+    fabricated narrative.
+  - **Institutional memory**: both `DisciplineReview` and `CaseStudy`
+    carry a real `simDay` (TradeTown's own in-game calendar day, not a
+    real wall-clock date) so NPCs can honestly reference "on Day 47" the
+    way the brief's own example does. `DialogueManager` now tries two
+    real recall sources per conversation (a completed Academy project, or
+    — new this pass — a real case study from a decision the agent was an
+    actual attendee of, cross-referenced via `DisciplineReview.attendees`)
+    and picks at random from whichever actually has real content.
+  - A new **DISCIPLINE** Command Center tab surfaces both systems: an
+    aggregate discipline score, the two counts that make the "process,
+    not outcome" point concrete (good-process trades that still lost;
+    weak-process trades that happened to win), an expandable Discipline
+    Reviews list (full factor breakdown + post-decision review), and a
+    filterable Library of Mistakes browser (full case study detail per
+    entry).
+  - Explicit scope cuts, matching this session's honesty convention: two
+    of the brief's ten named discipline qualities have no real
+    discriminating signal in this codebase and are deliberately not
+    scored — "was proper documentation created" (every decision's
+    summaries/reasoning are unconditionally auto-populated, so scoring it
+    would be fake precision on an invariant) and "did departments
+    communicate effectively" beyond real cross-examination (folded into
+    the Cross-Examination factor rather than invented as a second,
+    redundant measure). Discipline Reviews are only generated for closed
+    trades — research projects, executive decisions, and "major company
+    events" have no comparable rich per-item process trail in this
+    codebase (no per-item "were multiple viewpoints considered" signal
+    exists for a research item or a company milestone), so inventing a
+    discipline score for them would mean fabricating numbers with no real
+    backing; the existing Executive Review and Company Memory systems
+    remain the honest record for those.
+  - Verification: full backend (mypy/ruff/pytest, 280/280 — 28 new tests
+    across `test_discipline.py` and `test_mistakes.py`) and frontend
+    (tsc/eslint/build) clean. A 3000-tick standalone smoke test in
+    Executive Operating Mode confirmed the full real pipeline end to end
+    (60 discipline reviews, 60 case studies, correct win/loss pairing,
+    zero exceptions); manually verified in the running app against seeded
+    real data (Playwright: the DISCIPLINE tab, review/case-study
+    expansion, and category filtering all rendered correct real content
+    with zero console errors).
+
 - **v0.6.3 — Executive Voting, Risk Command Center, Cyber Overlay** — the
   player is now formally TradeTown's CEO. A research candidate crossing
   the trade-confidence threshold no longer executes automatically: it

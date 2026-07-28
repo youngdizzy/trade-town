@@ -168,21 +168,41 @@ export class DialogueManager {
   }
 
   /**
-   * v0.7 Feature 25.5 — a modest, honest slice of "Institutional Memory."
-   * One in three conversations, an agent who has real completed Academy
-   * work recalls their own most recent real project by its real title —
-   * never a fabricated memory, and never claiming a project that isn't
-   * actually this agent's own (`assignedAgent`). A random one-in-three
-   * gate keeps it from repeating identically on every single interaction.
+   * v0.7 Features 25.5/27 — a modest, honest slice of "Institutional
+   * Memory." One in three conversations, an agent recalls a real thing
+   * they were actually part of — either their own most recent completed
+   * Academy project, or (Feature 27) a real Library of Mistakes case
+   * study from a decision they were a real attendee of, referencing its
+   * real title and real in-game day. Never a fabricated memory, and
+   * never claiming credit/involvement that isn't actually real. Both
+   * sources are tried and one is picked at random from whichever
+   * actually has real content, rather than a single coin-flip that could
+   * silently waste the one-in-three chance on an empty source.
    */
   private recallLine(agentId: AgentId): string | null {
     if (Math.random() > 1 / 3) return null;
+    const candidates = [this.academyRecall(agentId), this.caseStudyRecall(agentId)].filter((line): line is string => line !== null);
+    if (candidates.length === 0) return null;
+    return pick(candidates);
+  }
+
+  private academyRecall(agentId: AgentId): string | null {
     const { academyCompletedProjects } = gameStore.getSnapshot();
     const own = academyCompletedProjects.filter((p) => p.assignedAgent === agentId);
     if (own.length === 0) return null;
     const latest = own[own.length - 1];
     if (!latest) return null;
     return `I still think back on "${latest.title}" — that project taught me a lot.`;
+  }
+
+  private caseStudyRecall(agentId: AgentId): string | null {
+    const { caseStudies, disciplineReviews } = gameStore.getSnapshot();
+    const myDecisionIds = new Set(disciplineReviews.filter((r) => r.attendees.includes(agentId)).map((r) => r.decisionId));
+    const own = caseStudies.filter((c) => myDecisionIds.has(c.decisionId));
+    if (own.length === 0) return null;
+    const latest = own[own.length - 1];
+    if (!latest) return null;
+    return `That "${latest.title}" case study from Day ${latest.simDay} still comes up — ${latest.symbol}, a real lesson we filed away.`;
   }
 
   close(): void {

@@ -101,6 +101,8 @@ def default_state() -> GameSaveState:
         academyCompletedProjects=[],
         agentKnowledge=agent_knowledge,
         academyState=compute_academy_state(agent_knowledge, 0),
+        disciplineReviews=[],
+        caseStudies=[],
         updatedAt=_now_iso(),
     )
 

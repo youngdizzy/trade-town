@@ -195,20 +195,26 @@ test.describe("Global Command Center", () => {
     expect(moved.x).not.toBe(frozen.x);
   });
 
-  test("expands to the Full Command Center and renders all 14 tabs with graceful empty states", async ({ page }) => {
+  test("expands to the Full Command Center and renders all 15 tabs with graceful empty states", async ({ page }) => {
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);
     await continueGame(page);
 
     await page.keyboard.press("Tab");
     await expect(page.getByText("COMMAND CENTER", { exact: true })).toBeVisible();
+    // This is the longest-running test in the file — with the real sim
+    // ticking throughout, a genuine trade proposal can pop up in the
+    // instant between continueGame() returning and this click, the same
+    // race clickTab() below already guards against — so this one dismiss
+    // immediately before clicking closes that same window.
+    await dismissTradeOutcomePopups(page);
     await page.getByRole("button", { name: /EXPAND/ }).click();
 
     // This is the longest-running test in the file — with the real sim
     // ticking throughout, a genuine trade or trade proposal can appear
     // (and pop up) mid-test. clickTab() dismisses and retries rather
     // than losing the race to a popup that appears in that instant.
-    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "COMPANY", "KNOWLEDGE", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
+    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "COMPANY", "KNOWLEDGE", "DISCIPLINE", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
     for (const tab of tabs) {
       await clickTab(page, tab);
       await expect(page.getByRole("button", { name: tab, exact: true })).toHaveClass(/text-cmd-cyan/);
@@ -514,5 +520,26 @@ test.describe("Global Command Center", () => {
 
     await page.getByRole("button", { name: "CLOSE ✕" }).last().click();
     await expect(page.getByText("Company Knowledge Graph", { exact: true })).toBeVisible();
+  });
+
+  test("DISCIPLINE tab shows the Discipline Chamber and Library of Mistakes, always real content or an honest empty state", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickTab(page, "DISCIPLINE");
+
+    await expect(page.getByText("Discipline Chamber", { exact: true })).toBeVisible();
+    await expect(page.getByText("Discipline Reviews", { exact: true })).toBeVisible();
+    await expect(page.getByText("Library of Mistakes", { exact: true })).toBeVisible();
+
+    // Either a real average score readout or the honest "no trades yet"
+    // empty state — never a blank panel. Discipline Score is process-only
+    // (never derived from pnl), so whichever renders is truthful either way.
+    const hasScore = await page.getByText(/\d+\/100 average discipline score/).count();
+    const hasEmptyState = await page.getByText(/No trades have closed yet/).count();
+    expect(hasScore + hasEmptyState).toBeGreaterThan(0);
   });
 });

@@ -14,7 +14,9 @@ from app.schemas import (
     AcademyProject,
     AgentId,
     AgentKnowledgeState,
+    CaseStudy,
     CoachReport,
+    DisciplineReview,
     DiscussionMessage,
     ExecutiveReview,
     HallOfFameEntry,
@@ -181,3 +183,11 @@ def record_mentorship_session(memory: list[MemoryRecord], knowledge: dict[AgentI
 
 def record_executive_review(memory: list[MemoryRecord], review: ExecutiveReview) -> None:
     record(memory, "executive", "Meridian's Executive Review", review.summary)
+
+
+def record_discipline_review(memory: list[MemoryRecord], review: DisciplineReview) -> None:
+    record(memory, "discipline", f"Discipline Review: {review.symbol}", review.summary)
+
+
+def record_case_study(memory: list[MemoryRecord], case_study: CaseStudy) -> None:
+    record(memory, "case_study", case_study.title, f"{case_study.symbol}: {case_study.missed_information}")

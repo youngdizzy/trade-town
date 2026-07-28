@@ -264,6 +264,43 @@ perspective and exists purely to detect disconnects
     // (see docs/Architecture.md's scope-cut note).
     "level": 3, "levelLabel": "Innovation Lab", "totalPoints": 142.0, "completedProjectCount": 18, "updatedAt": "..."
   },
+  "disciplineReviews": [
+    // v0.7 Feature 26 — one DisciplineReview per closed paper trade
+    // (app/discipline.py). `score`/`factors` never depend on `outcome`/
+    // `tradePnlPct` — see the module docstring for how that's enforced
+    // structurally, not just by convention.
+    {
+      "id": "discipline-trade-...", "decisionId": "decision-proposal-...", "symbol": "AAPL",
+      "score": 84.0, "tier": "exemplary",
+      "factors": [
+        { "id": "research_depth", "name": "Research Depth", "score": 90.0, "weight": 0.20, "detail": "..." }
+        // ... viewpoint_diversity, uncertainty_acknowledged, cross_examination, assumptions_challenged, position_sizing_discipline, patience
+      ],
+      "attendees": ["echo", "scout", "sentinel"],
+      "summary": "Exemplary discipline (84/100) — the process was sound and the trade won (+3.5%): good decision, good outcome, aligned.",
+      "postDecisionReview": {
+        "whatWeDidWell": ["Research Depth: ..."], "mistakesMade": [], "informationOverlooked": [],
+        "assumptionsIncorrect": [], "whatToRepeat": ["Research Depth"], "whatToNeverRepeat": [], "howToImprove": ["Raise Patience — ..."]
+      },
+      "outcome": "win", "tradePnlPct": 3.5, "holdDurationMinutes": 240, "simDay": 12, "createdAt": "..."
+    }
+  ],
+  "caseStudies": [
+    // v0.7 Feature 27 — filed only for a real, specific process gap
+    // behind an actual loss (app/mistakes.py). One of six real categories
+    // — see mistakes.py's module docstring for exactly which real signal
+    // backs each one.
+    {
+      "id": "case-trade-...-overconfidence", "category": "overconfidence", "title": "The Cost of Overconfidence", "symbol": "MSFT",
+      "decisionId": "decision-proposal-...",
+      "timeline": [{ "label": "Decision made", "timestamp": "..." }, { "label": "Position opened", "timestamp": "..." }, { "label": "Position closed", "timestamp": "..." }],
+      "background": "...", "decisionProcess": "...",
+      "departmentOpinions": ["Echo: ...", "Scout: ..."],
+      "missedInformation": "...", "lessonsLearned": "...", "recommendedImprovements": "...",
+      "relatedPrinciples": ["Decision Confidence must clear 55/100 before the Trade Gatekeeper approves a trade.", "..."],
+      "tradePnlPct": -2.2, "simDay": 12, "createdAt": "..."
+    }
+  ],
   "performanceSnapshots": [
     { "period": "daily", "returnPct": 1.2, "winRate": 60.0, "maxDrawdownPct": 4.1, "sharpeRatio": 0.29, "sortinoRatio": 0.34, "avgHoldingMinutes": 210.0, "researchAccuracy": 71.0, "confidenceAccuracy": 68.0, "computedAt": "..." }
   ],
@@ -493,6 +530,8 @@ never needs to trim anything itself:
 | `executiveReviews` | last 20 (`MAX_EXECUTIVE_REVIEWS`) | the CIO's Monthly Executive Review — v0.7 Feature 24 |
 | `academyProjects` | uncapped, but always exactly one active | the Academy's one company-wide knowledge project — v0.7 Feature 25 |
 | `academyCompletedProjects` | last 50 (`MAX_ACADEMY_LIBRARY`) | the permanent Company Knowledge Library — v0.7 Feature 25 |
+| `disciplineReviews` | last 60 (`MAX_DISCIPLINE_REVIEWS`) | one per closed trade — v0.7 Feature 26 |
+| `caseStudies` | last 60 (`MAX_CASE_STUDIES`) | one per detected real process-gap mistake — v0.7 Feature 27 |
 
 ### Provider configuration
 

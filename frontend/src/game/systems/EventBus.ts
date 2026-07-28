@@ -8,11 +8,13 @@ import type {
   AgentState,
   BacktestSession,
   CeoDecisionRecord,
+  CaseStudy,
   CoachReport,
   CompanyHealth,
   CompanyScore,
   Debate,
   DialogueHistoryEntry,
+  DisciplineReview,
   ExecutiveReview,
   GameSaveState,
   GatekeeperRejection,
@@ -113,6 +115,8 @@ export interface GameEvents {
   "academyCompletedProjects:updated": AcademyProject[];
   "agentKnowledge:updated": Record<AgentId, AgentKnowledgeState>;
   "academyState:updated": AcademyState;
+  "disciplineReviews:updated": DisciplineReview[];
+  "caseStudies:updated": CaseStudy[];
   "ui:executiveVoting": { open: boolean; proposalId?: string };
   // v0.7 Feature 19 — opens the Command Center on the Decisions tab for a
   // specific trade's decision; openDetail additionally auto-opens

@@ -56,6 +56,8 @@ export class SaveManager {
       academyCompletedProjects: NexusManager.getAcademyCompletedProjects(),
       agentKnowledge: NexusManager.getAgentKnowledge(),
       academyState: NexusManager.getAcademyState(),
+      disciplineReviews: NexusManager.getDisciplineReviews(),
+      caseStudies: NexusManager.getCaseStudies(),
       agentEnergy: NexusManager.getAgentEnergy(),
       signalCalibration: NexusManager.getSignalCalibration(),
       playerVsAi: NexusManager.getPlayerVsAi(),

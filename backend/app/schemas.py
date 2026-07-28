@@ -130,6 +130,12 @@ MemoryCategory = Literal[
     # app/executive_review.py) — distinct from "coach_review" so it's
     # never misattributed to Coach.
     "executive",
+    # v0.7 Feature 26 — a Discipline Chamber review of one closed trade's
+    # decision process (see app/discipline.py).
+    "discipline",
+    # v0.7 Feature 27 — a Library of Mistakes case study (see
+    # app/mistakes.py).
+    "case_study",
 ]
 
 # --- v0.5: paper trading, simulation, coaching, and scoring ---------------
@@ -1267,6 +1273,131 @@ class KnowledgeGraph(CamelModel):
     generated_at: str = Field(alias="generatedAt")
 
 
+# v0.7 Feature 26 — the Discipline Chamber (app/discipline.py). One
+# DisciplineReview per closed paper trade, scoring the real DECISION
+# PROCESS behind it — never the outcome. `score`/`factors` are computed
+# entirely from data known at (or before) the moment the trade closed,
+# excluding pnl; `outcome`/`tradePnlPct` are attached afterward purely so
+# the player can see whether a good process and a good outcome actually
+# lined up. See discipline.py's module docstring for exactly which real
+# signal backs each factor and why several of the brief's ten named
+# qualities (documentation, principles-followed-via-Gatekeeper) have no
+# real discriminating signal in this codebase for the reviewed population
+# and are deliberately not scored.
+DisciplineFactorId = Literal[
+    "research_depth",
+    "viewpoint_diversity",
+    "uncertainty_acknowledged",
+    "cross_examination",
+    "assumptions_challenged",
+    "position_sizing_discipline",
+    "patience",
+]
+DisciplineTier = Literal["exemplary", "sound", "adequate", "weak", "reckless"]
+
+
+class DisciplineFactor(CamelModel):
+    id: DisciplineFactorId
+    name: str
+    score: float  # 0-100, this factor's own reading
+    weight: float  # 0-1, this factor's share of the total score
+    detail: str
+
+
+class PostDecisionReview(CamelModel):
+    """Real answers to the brief's seven post-decision questions, each
+    derived from this review's own real DisciplineFactor readings and the
+    trade's real outcome — never invented commentary. Any list may be
+    empty (e.g. `assumptionsIncorrect` has nothing to say about a winning
+    trade — see discipline.py's _post_decision_review)."""
+
+    what_we_did_well: list[str] = Field(default_factory=list, alias="whatWeDidWell")
+    mistakes_made: list[str] = Field(default_factory=list, alias="mistakesMade")
+    information_overlooked: list[str] = Field(default_factory=list, alias="informationOverlooked")
+    assumptions_incorrect: list[str] = Field(default_factory=list, alias="assumptionsIncorrect")
+    what_to_repeat: list[str] = Field(default_factory=list, alias="whatToRepeat")
+    what_to_never_repeat: list[str] = Field(default_factory=list, alias="whatToNeverRepeat")
+    how_to_improve: list[str] = Field(default_factory=list, alias="howToImprove")
+
+
+class DisciplineReview(CamelModel):
+    id: str
+    decision_id: str = Field(alias="decisionId")
+    symbol: str
+    score: float
+    tier: DisciplineTier
+    factors: list[DisciplineFactor] = Field(default_factory=list)
+    # Every real agent involved in this decision (supporting + opposing
+    # analysts) — the honest stand-in for "every department attends,"
+    # since this codebase has no separate meeting-attendance record for
+    # a single trade decision.
+    attendees: list[AgentId] = Field(default_factory=list)
+    summary: str
+    post_decision_review: PostDecisionReview = Field(alias="postDecisionReview")
+    # The trade's real outcome, attached after scoring — never fed back
+    # into `score`/`factors` above (see discipline.py's module docstring).
+    outcome: Literal["win", "loss"]
+    trade_pnl_pct: float = Field(alias="tradePnlPct")
+    hold_duration_minutes: int = Field(alias="holdDurationMinutes")
+    # The real in-game day this review was filed — TradeTown's own
+    # simulated calendar (TimeState.day), not a real wall-clock date, so
+    # NPCs can honestly say "three months ago" / "on Day 47" the way the
+    # brief's own example does. `created_at` above remains the real ISO
+    # timestamp, kept only for audit/display, same as every other *_at
+    # field in this codebase.
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
+# v0.7 Feature 27 — the Library of Mistakes (app/mistakes.py). A
+# permanent CaseStudy is filed whenever a closed, losing trade's own
+# DisciplineReview shows a specific real process gap — never merely
+# "the trade lost" on its own (a well-disciplined process that loses to
+# real market variance is not a mistake — see discipline.py). Every field
+# below is built from real structured data (the linked TradeDecision/
+# PaperTrade/Debate), template sentences filling in real values, never a
+# fabricated narrative — the same convention app/academy_research.py and
+# app/executive_review.py already established.
+CaseStudyCategory = Literal[
+    "overconfidence",
+    "incomplete_research",
+    "unchallenged_assumptions",
+    "acted_too_quickly",
+    "ignored_dissent",
+    "confirmation_bias",
+]
+
+
+class CaseStudyTimelineEntry(CamelModel):
+    label: str
+    timestamp: str
+
+
+class CaseStudy(CamelModel):
+    id: str
+    category: CaseStudyCategory
+    title: str
+    symbol: str
+    decision_id: str = Field(alias="decisionId")
+    timeline: list[CaseStudyTimelineEntry] = Field(default_factory=list)
+    background: str
+    decision_process: str = Field(alias="decisionProcess")
+    # Each entry is one real analyst's own real vote reasoning — never
+    # invented dialogue.
+    department_opinions: list[str] = Field(default_factory=list, alias="departmentOpinions")
+    missed_information: str = Field(alias="missedInformation")
+    lessons_learned: str = Field(alias="lessonsLearned")
+    recommended_improvements: str = Field(alias="recommendedImprovements")
+    # Real, already-configured company thresholds (RiskLimits, the Trade
+    # Gatekeeper's own checks) — never invented aspirational principles.
+    related_principles: list[str] = Field(default_factory=list, alias="relatedPrinciples")
+    trade_pnl_pct: float = Field(alias="tradePnlPct")
+    # The real in-game day this case study was filed — see
+    # DisciplineReview.sim_day above for why.
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
 class GameSaveState(CamelModel):
     version: Literal["0.6"] = "0.6"
     player: EntityTransform
@@ -1332,6 +1463,12 @@ class GameSaveState(CamelModel):
     academy_completed_projects: list[AcademyProject] = Field(default_factory=list, alias="academyCompletedProjects")
     agent_knowledge: dict[AgentId, AgentKnowledgeState] = Field(default_factory=dict, alias="agentKnowledge")
     academy_state: AcademyState = Field(alias="academyState")
+    # v0.7 Feature 26 — the Discipline Chamber (app/discipline.py). One
+    # capped, permanent DisciplineReview per closed paper trade.
+    discipline_reviews: list[DisciplineReview] = Field(default_factory=list, alias="disciplineReviews")
+    # v0.7 Feature 27 — the Library of Mistakes (app/mistakes.py). One
+    # capped, permanent CaseStudy per detected real process-gap mistake.
+    case_studies: list[CaseStudy] = Field(default_factory=list, alias="caseStudies")
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(default_factory=list, alias="dialogueHistory")

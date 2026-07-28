@@ -39,6 +39,7 @@ from app.coach import record_report as record_coach_report_entry
 from app.company_health import compute_company_health
 from app.company_score import compute_company_score
 from app.debate import generate_debate
+from app.discipline import generate_discipline_review, record_review as record_discipline_review_entry
 from app.discussion import generate_discussion
 from app.executive import (
     MAX_CEO_DECISIONS,
@@ -55,6 +56,7 @@ from app.hall_of_fame import evaluate_hall_of_fame
 from app.journal import stamp_journal_entry
 from app.market_data import market_data_provider
 from app.market_environment import tick_market_environment
+from app.mistakes import generate_case_studies, record_case_studies
 from app.paper_trading import tick_paper_trading
 from app.portfolio import sim_minutes
 from app.research import RESEARCHER_IDS, default_research, tick_research
@@ -65,8 +67,10 @@ from app.scribe import (
     FUTURE_TRADE_CONFIDENCE_THRESHOLD,
     build_minutes,
     record_academy_project,
+    record_case_study,
     record_ceo_decision,
     record_coach_report,
+    record_discipline_review,
     record_executive_review,
     record_hall_of_fame_entry,
     record_knowledge_tier_up,
@@ -83,9 +87,11 @@ from app.schemas import (
     AgentKnowledgeState,
     AgentOverride,
     AgentState,
+    CaseStudy,
     CeoDecisionRecord,
     CoachReport,
     Debate,
+    DisciplineReview,
     EntityTransform,
     ExecutiveReview,
     GameSaveState,
@@ -775,6 +781,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     academy_projects: list[AcademyProject] = state.academy_projects or default_academy_projects()
     academy_completed_projects: list[AcademyProject] = list(state.academy_completed_projects)
     agent_knowledge: dict[AgentId, AgentKnowledgeState] = state.agent_knowledge or default_agent_knowledge()
+    discipline_reviews: list[DisciplineReview] = list(state.discipline_reviews)
+    case_studies: list[CaseStudy] = list(state.case_studies)
 
     agents = {aid: _tick_agent(aid, agent, new_time, minutes, tasks) for aid, agent in state.agents.items()}
 
@@ -973,6 +981,48 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             )
         )
 
+        # v0.7 Feature 26 — the Discipline Chamber. One real DisciplineReview
+        # per closed trade, scoring the decision PROCESS (never the pnl
+        # above) — see app/discipline.py's module docstring. Only trades
+        # with a real matched decision_id (every trade this codebase can
+        # actually place) get reviewed; a trade closed before Feature 26
+        # shipped, or with no decision_id match, has no process trail to
+        # honestly score and is skipped rather than faked.
+        decision = next((d for d in decisions if d.id == trade.decision_id), None) if trade.decision_id else None
+        if decision is not None:
+            proposal_id = decision.id.removeprefix("decision-")
+            debate = next((d for d in reversed(debates) if d.proposal_id == proposal_id), None)
+            discipline_review = generate_discipline_review(
+                decision,
+                debate,
+                hold_duration_minutes=trade.duration_minutes,
+                pnl=trade.pnl,
+                pnl_pct=trade.pnl_pct,
+                review_id=f"discipline-{trade.id}",
+                sim_day=new_time.day,
+                created_at=_now_iso(),
+            )
+            discipline_reviews = record_discipline_review_entry(discipline_reviews, discipline_review)
+            record_discipline_review(memory, discipline_review)
+
+            # v0.7 Feature 27 — the Library of Mistakes. Only a real loss
+            # can produce a case study (see app/mistakes.py's module
+            # docstring on why a well-disciplined process that loses to
+            # real market variance is not a "mistake").
+            if trade.pnl <= 0:
+                new_case_studies = generate_case_studies(decision, debate, trade, discipline_review, id_prefix=f"case-{trade.id}")
+                case_studies = record_case_studies(case_studies, new_case_studies)
+                for case_study in new_case_studies:
+                    record_case_study(memory, case_study)
+                    news.append(
+                        NewsItem(
+                            id=f"news-case-study-{case_study.id}",
+                            headline=f'New case study filed: "{case_study.title}" ({case_study.symbol}).',
+                            category="company",
+                            timestamp=_now_iso(),
+                        )
+                    )
+
     backtest_sessions, simulation_results, newly_completed_sims = tick_simulation_lab(
         backtest_sessions, simulation_results, strategies, watchlist, RESEARCHER_IDS, new_time
     )
@@ -1142,6 +1192,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "academy_completed_projects": academy_completed_projects,
             "agent_knowledge": agent_knowledge,
             "academy_state": academy_state,
+            "discipline_reviews": discipline_reviews,
+            "case_studies": case_studies,
             "agent_energy": agent_energy,
             "whiteboards": _update_whiteboards(agents, meeting, research),
             "updated_at": _now_iso(),

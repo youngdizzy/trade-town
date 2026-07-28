@@ -5,11 +5,13 @@ import type {
   AgentId,
   AgentKnowledgeState,
   BacktestSession,
+  CaseStudy,
   CeoDecisionRecord,
   CoachReport,
   CompanyHealth,
   CompanyScore,
   Debate,
+  DisciplineReview,
   ExecutiveReview,
   GatekeeperRejection,
   HallOfFameEntry,
@@ -68,6 +70,8 @@ interface NexusSnapshot {
   academyCompletedProjects: AcademyProject[];
   agentKnowledge: Record<AgentId, AgentKnowledgeState>;
   academyState: AcademyState;
+  disciplineReviews: DisciplineReview[];
+  caseStudies: CaseStudy[];
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
@@ -170,6 +174,8 @@ export class NexusManager {
     completedProjectCount: 0,
     updatedAt: new Date().toISOString(),
   };
+  private static disciplineReviews: DisciplineReview[] = [];
+  private static caseStudies: CaseStudy[] = [];
   private static agentEnergy: AgentEnergy = { current: 100, cap: 100, updatedAt: new Date().toISOString() };
   private static signalCalibration: SignalCalibrationState = { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 };
   private static playerVsAi: PlayerVsAiState = { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 };
@@ -276,6 +282,14 @@ export class NexusManager {
 
   static getAcademyState(): AcademyState {
     return this.academyState;
+  }
+
+  static getDisciplineReviews(): DisciplineReview[] {
+    return this.disciplineReviews;
+  }
+
+  static getCaseStudies(): CaseStudy[] {
+    return this.caseStudies;
   }
 
   static getPerformanceSnapshots(): PerformanceSnapshot[] {
@@ -542,6 +556,14 @@ export class NexusManager {
     if (update.academyState !== this.academyState) EventBus.emit("academyState:updated", update.academyState);
     this.academyState = update.academyState;
 
+    if (update.disciplineReviews.length !== this.disciplineReviews.length) {
+      EventBus.emit("disciplineReviews:updated", update.disciplineReviews);
+    }
+    this.disciplineReviews = update.disciplineReviews;
+
+    if (update.caseStudies.length !== this.caseStudies.length) EventBus.emit("caseStudies:updated", update.caseStudies);
+    this.caseStudies = update.caseStudies;
+
     if (update.agentEnergy !== this.agentEnergy) EventBus.emit("agentEnergy:updated", update.agentEnergy);
     this.agentEnergy = update.agentEnergy;
 
@@ -590,6 +612,8 @@ export class NexusManager {
     this.academyCompletedProjects = save.academyCompletedProjects;
     this.agentKnowledge = save.agentKnowledge;
     this.academyState = save.academyState;
+    this.disciplineReviews = save.disciplineReviews;
+    this.caseStudies = save.caseStudies;
     this.agentEnergy = save.agentEnergy;
     this.signalCalibration = save.signalCalibration;
     this.playerVsAi = save.playerVsAi;

@@ -981,6 +981,83 @@ export interface KnowledgeGraph {
   generatedAt: string;
 }
 
+// v0.7 Feature 26 — the Discipline Chamber (see backend/app/discipline.py).
+// One real DisciplineReview per closed paper trade, scoring the decision
+// PROCESS — never the outcome. `score`/`factors` never depend on
+// `outcome`/`tradePnlPct`, which are attached afterward purely so the
+// player can see whether a good process and a good outcome lined up.
+export type DisciplineFactorId = "research_depth" | "viewpoint_diversity" | "uncertainty_acknowledged" | "cross_examination" | "assumptions_challenged" | "position_sizing_discipline" | "patience";
+export type DisciplineTier = "exemplary" | "sound" | "adequate" | "weak" | "reckless";
+
+export interface DisciplineFactor {
+  id: DisciplineFactorId;
+  name: string;
+  score: number;
+  weight: number;
+  detail: string;
+}
+
+export interface PostDecisionReview {
+  whatWeDidWell: string[];
+  mistakesMade: string[];
+  informationOverlooked: string[];
+  assumptionsIncorrect: string[];
+  whatToRepeat: string[];
+  whatToNeverRepeat: string[];
+  howToImprove: string[];
+}
+
+export interface DisciplineReview {
+  id: string;
+  decisionId: string;
+  symbol: string;
+  score: number;
+  tier: DisciplineTier;
+  factors: DisciplineFactor[];
+  attendees: AgentId[];
+  summary: string;
+  postDecisionReview: PostDecisionReview;
+  outcome: "win" | "loss";
+  tradePnlPct: number;
+  holdDurationMinutes: number;
+  /** The real in-game day this review was filed (TimeState.day) — not a
+   * real wall-clock date — so NPCs can honestly reference "Day X." */
+  simDay: number;
+  createdAt: string;
+}
+
+// v0.7 Feature 27 — the Library of Mistakes (see backend/app/mistakes.py).
+// A permanent CaseStudy is filed whenever a closed, losing trade's own
+// DisciplineReview shows a specific real process gap — never merely
+// "the trade lost" on its own.
+export type CaseStudyCategory = "overconfidence" | "incomplete_research" | "unchallenged_assumptions" | "acted_too_quickly" | "ignored_dissent" | "confirmation_bias";
+
+export interface CaseStudyTimelineEntry {
+  label: string;
+  timestamp: string;
+}
+
+export interface CaseStudy {
+  id: string;
+  category: CaseStudyCategory;
+  title: string;
+  symbol: string;
+  decisionId: string;
+  timeline: CaseStudyTimelineEntry[];
+  background: string;
+  decisionProcess: string;
+  departmentOpinions: string[];
+  missedInformation: string;
+  lessonsLearned: string;
+  recommendedImprovements: string;
+  relatedPrinciples: string[];
+  tradePnlPct: number;
+  /** The real in-game day this case study was filed — see
+   * DisciplineReview.simDay above for why. */
+  simDay: number;
+  createdAt: string;
+}
+
 export interface GameSaveState {
   version: "0.6";
   player: EntityTransform;
@@ -1016,6 +1093,8 @@ export interface GameSaveState {
   academyCompletedProjects: AcademyProject[];
   agentKnowledge: Record<AgentId, AgentKnowledgeState>;
   academyState: AcademyState;
+  disciplineReviews: DisciplineReview[];
+  caseStudies: CaseStudy[];
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;

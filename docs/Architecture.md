@@ -1080,6 +1080,111 @@ recalls its real title — never a fabricated memory, never another
 agent's project, and not a full conversational-memory system tracking
 who told whom what.
 
+### The Discipline Chamber & The Library of Mistakes (Features 26-27)
+
+`app/discipline.py` files a real `DisciplineReview` for every trade that
+closes (wired into `nexus.tick()` right after `_journal_closed_trades`,
+the same point `grade_ceo_decisions` already reads from), scoring the
+decision PROCESS — never the outcome. This is enforced structurally, not
+just by convention: `compute_discipline_score(decision, debate,
+hold_duration_minutes)`'s own signature can only ever read a real hold
+duration (a behavior signal known once a trade closes, but never the
+result itself), the original `TradeDecision`, and its linked `Debate` —
+it never receives the trade or its pnl at all, so an identical process
+provably scores identically regardless of win or loss (see
+`test_discipline.py`'s `test_never_reads_outcome_...`).
+
+Two structural traps were found and avoided while choosing the seven real
+factors. `TradeDecision.votes` always contains all six real analyst
+votes (`resolve_proposal` always maps every `proposal.analyst_votes`
+entry) — so "were multiple viewpoints gathered" is a constant, not a real
+discriminator; the codebase's real varying signal is *how many distinct
+choices* those six votes actually held (`viewpoint_diversity`, 1-3
+distinct choices mapped to 35/65/100). Separately, `gatekeeper_verdict`
+is only ever populated (and only ever `approved`) for a decision that
+actually reached this module, because a rejected verdict means `order_id`
+stays `None` and no `PaperTrade` ever exists to close — so "did it pass
+the Gatekeeper" is also a structural constant for the reviewed
+population; `position_sizing_discipline` reuses the Decision Confidence
+Engine's own real, still-varying "Portfolio Exposure" factor instead
+(pulled by name from `decision.confidence_engine.factors`, not
+recomputed). `_summary()` explicitly calls out a good-process/bad-outcome
+or weak-process/lucky-win mismatch — the whole pedagogical point of the
+feature — and `_post_decision_review()`'s `assumptionsIncorrect` only
+fires on a real loss, naming the specific real dissenting analyst (Echo
+or Scout — never Sentinel, whose real vote the Trade Gatekeeper's
+`risk_manager_check` hard-requires to match the CEO's choice before a
+trade can even open, so Sentinel dissent on an executed trade cannot
+occur) whose overridden vote turned out right.
+
+`app/mistakes.py` files a permanent `CaseStudy` only when a closed,
+*losing* trade's own `DisciplineReview` shows a specific real process
+gap — never merely "the trade lost" (a well-disciplined process losing to
+real market variance is what the Discipline Chamber exists to protect,
+not punish). Six categories, each a real, checkable signal:
+`overconfidence` (Confidence Engine score ≥80 at decision time),
+`incomplete_research` (the Research Confidence factor <50),
+`unchallenged_assumptions` (zero real "challenge"-stance Debate turns),
+`acted_too_quickly` (closed inside `QUICK_CLOSE_MINUTES`, the exact
+threshold `app/coach.py`'s own `quick_losses` pattern already uses),
+`ignored_dissent` (the Debate's own real `final_recommendation` disagreed
+with the trade's real executed `side`), and `confirmation_bias` (a real
+`overridden_dissent()` hit — the same shared helper `discipline.py`
+exports and both modules read, so the two never define "real dissent"
+differently). A single trade can trigger more than one category; each
+becomes its own `CaseStudy`, matching the brief's own framing of these as
+distinct, separately-filed examples rather than one bundled report.
+Every field (Timeline, Background, Decision Process, Department
+Opinions, Missed Information, Lessons Learned, Recommended Improvements,
+Related Company Principles) is built from real structured data — the
+linked `TradeDecision`'s own real vote reasoning, real `Debate` turns,
+real `RiskLimits`/Gatekeeper thresholds, real timestamps — filled into a
+fixed template, never a fabricated narrative, the same convention
+`app/executive_review.py` and `app/academy_research.py` already
+established.
+
+Both `DisciplineReview` and `CaseStudy` carry a real `simDay`
+(`TimeState.day` at generation time, threaded through from
+`nexus.tick()`'s own `new_time`) alongside the usual real ISO
+`createdAt` — added specifically so `DialogueManager.ts` could reference
+"on Day X" the way the brief's own example ("the Confirmation Bias case
+study from Day 47") asks for, rather than only a real wall-clock
+timestamp with no honest in-game-calendar framing. `DialogueManager`'s
+`recallLine()` now tries two independent real sources (an academy-project
+recall and a new case-study recall, the latter cross-referencing
+`DisciplineReview.attendees` by `decisionId` to confirm the speaking
+agent was a real party to that specific decision) and picks at random
+from whichever actually returned real content, rather than a single
+coin-flip that could silently waste the one-in-three chance on an empty
+source.
+
+A new **DISCIPLINE** Command Center tab (`DisciplinePanel.tsx`) surfaces
+both systems in one place: an aggregate average score, the two counts
+that make "process, not outcome" concrete client-side (real
+`score >= 70 && outcome === "loss"` and real `score < 55 && outcome ===
+"win"` filters over `disciplineReviews`), an accordion list of Discipline
+Reviews (full factor breakdown + post-decision review on expand), and a
+category-filterable Library of Mistakes browser (full case study detail
+on expand) — the same expand-in-place accordion pattern already used
+elsewhere in the Command Center, not a new interaction model.
+
+**Explicit scope cuts**, matching this session's honesty convention: two
+of the brief's ten named discipline qualities have no real discriminating
+signal in this codebase. "Was proper documentation created" is never
+scored — every decision's summaries/reasoning are unconditionally
+auto-populated by `resolve_proposal`, so it would be fake precision on an
+invariant, not a real measurement. "Did departments communicate
+effectively" beyond real cross-examination has no distinct second signal
+either, so it's folded into the `cross_examination` factor rather than
+invented as a redundant duplicate. Discipline Reviews are also only ever
+generated for closed trades — research projects, executive decisions, and
+"major company events" have no comparable rich per-item process trail in
+this codebase (no per-item "were multiple viewpoints considered" signal
+exists for a single research item or a company milestone), so a
+discipline score for those would mean inventing numbers with no real
+backing; the existing `ExecutiveReview` and `CompanyMemory` systems
+remain the honest record for those instead.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

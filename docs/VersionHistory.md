@@ -264,6 +264,52 @@ Academy's own topics. 17 new backend tests; verified end-to-end against a
 live dev backend with real data (zoom, pan, search, and node-selection all
 producing correct real content, zero console errors).
 
+### v0.7 continued — The Discipline Chamber & The Library of Mistakes (Features 26-27)
+
+The company now rewards good decisions, not lucky outcomes. The
+**Discipline Chamber** files a real `DisciplineReview` for every trade
+that closes, scoring the decision PROCESS from seven real signals —
+Research Depth, Viewpoint Diversity, Uncertainty Acknowledged,
+Cross-Examination Occurred, Assumptions Challenged, Position Sizing
+Discipline, Patience — reusing the Decision Confidence Engine's own
+factors and the AI Debate's real turns. The rule "a lucky outcome should
+never produce a high score" is enforced structurally: the scoring
+function's own signature can never see the trade's pnl, only a real hold
+duration and the original decision's real process trail — provably the
+same score regardless of win or loss. The trade's real outcome is
+attached to the finished review afterward purely so the player can see
+whether a good process and a good outcome lined up; a sound process that
+still lost reads as "bad luck, not a bad decision," while a weak process
+that won reads as "a warning, not a validation." A real
+`PostDecisionReview` answers the brief's seven questions from the
+review's own real factors, naming a specific real dissenting analyst
+(Echo or Scout) whose overridden vote proved right on a real loss.
+
+The **Library of Mistakes** files a permanent `CaseStudy` whenever a
+closed, losing trade's own Discipline Review shows a specific real
+process gap — never merely "the trade lost" alone. Six categories, each
+a real, checkable signal: The Cost of Overconfidence, Incomplete
+Research, Failure to Challenge Assumptions, Acting Too Quickly, Poor
+Communication, and Confirmation Bias. Every field (Timeline, Background,
+Decision Process, Department Opinions, Missed Information, Lessons
+Learned, Recommended Improvements, Related Company Principles) is built
+from real structured data filled into a fixed template, never a
+fabricated narrative. Both systems carry a real in-game day (`simDay`)
+so NPCs can honestly reference "on Day X" — `DialogueManager` gained a
+second real recall source (a case study from a decision the agent was a
+real party to) alongside the existing Academy-project recall. A new
+DISCIPLINE Command Center tab surfaces an aggregate score, the two
+counts that make "process, not outcome" concrete, and expandable
+reviews/case studies. Explicit scope cuts: "documentation created" and
+"departments communicated effectively" (beyond real cross-examination)
+have no real discriminating signal in this codebase and aren't scored;
+Discipline Reviews only cover closed trades, since research projects and
+company milestones have no comparable rich per-item process trail to
+honestly score. 28 new backend tests; a 3000-tick standalone smoke test
+in Executive Operating Mode confirmed the full pipeline end to end (60
+reviews, 60 case studies, zero exceptions); verified in the running app
+against seeded real data with zero console errors.
+
 ## What's next for v0.8 (not started, not scoped)
 
 These are candidate directions surfaced by v0.6/v0.7's design, not
