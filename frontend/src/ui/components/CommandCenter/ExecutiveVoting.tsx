@@ -1,12 +1,12 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
-import type { AnalystChoice, AnalystVote, DebateTurn, TradeProposal } from "@/types";
+import type { AnalystChoice, AnalystVote, DebateTurn, ScenarioResult, ScenarioType, TradeProposal, WhatIfSimulation } from "@/types";
 import { CONFIDENCE_TIER_LABEL, ROLE_TO_AGENT } from "@/types";
 import { api } from "@/net/api";
 import { NexusManager } from "@/game/systems/NexusManager";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { EventBus } from "@/game/systems/EventBus";
-import { confidenceTierTone, formatMoney, preTradeChecklist } from "./lib/derive";
+import { confidenceTierTone, formatMoney, formatPct, preTradeChecklist } from "./lib/derive";
 import { AnimatedGrid, DataRow, Glass, Meter, StatusPill, TerminalLabel } from "./ui";
 
 const CHOICE_TONE: Record<AnalystChoice, "green" | "red" | "amber"> = { buy: "green", sell: "red", wait: "amber" };
@@ -37,23 +37,57 @@ export function ExecutiveVoting() {
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [showDebate, setShowDebate] = useState(false);
+  const [showWhatIf, setShowWhatIf] = useState(false);
+  const [whatIf, setWhatIf] = useState<WhatIfSimulation | null>(null);
+  const [whatIfLoading, setWhatIfLoading] = useState(false);
+  const [whatIfError, setWhatIfError] = useState<string | null>(null);
+  const [expandedScenario, setExpandedScenario] = useState<ScenarioType | null>(null);
   const [submitting, setSubmitting] = useState<AnalystChoice | null>(null);
   const [regenerating, setRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Same reasoning as TradeOutcomeBanner's own MainMenuScene guard: the
-  // WebSocket connects independent of the title screen, so never render
-  // a full-screen popup over it.
-  if (currentScene === "MainMenuScene" || !executiveVotingOpen) return null;
-
   const proposal: TradeProposal | undefined =
     tradeProposals.find((p) => p.id === executiveVotingProposalId) ?? tradeProposals[0];
 
-  if (!proposal) return null;
+  // v0.7 Feature 16 — fetches fresh (never cached/persisted — see
+  // backend/app/whatif.py) every time the lab is opened for a given
+  // symbol, so switching between pending proposals always shows that
+  // proposal's own real simulation, not a stale one from the last symbol.
+  useEffect(() => {
+    if (!showWhatIf || !proposal) return;
+    let cancelled = false;
+    setWhatIfLoading(true);
+    setWhatIfError(null);
+    api
+      .getWhatIfSimulation(proposal.symbol)
+      .then((res) => {
+        if (!cancelled) setWhatIf(res);
+      })
+      .catch((err) => {
+        if (!cancelled) setWhatIfError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setWhatIfLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // Deliberately keyed on the symbol, not the whole proposal object
+    // (which is re-derived fresh every render) — refetches exactly when
+    // the lab opens or the active proposal's symbol actually changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showWhatIf, proposal?.symbol]);
+
+  // Same reasoning as TradeOutcomeBanner's own MainMenuScene guard: the
+  // WebSocket connects independent of the title screen, so never render
+  // a full-screen popup over it.
+  if (currentScene === "MainMenuScene" || !executiveVotingOpen || !proposal) return null;
 
   const close = () => {
     setExpandedAgent(null);
     setShowAnalysis(false);
+    setShowWhatIf(false);
+    setExpandedScenario(null);
     setError(null);
     EventBus.emit("ui:executiveVoting", { open: false });
   };
@@ -67,6 +101,8 @@ export function ExecutiveVoting() {
       NexusManager.setExecutiveDecisionResult(res.tradeProposals, res.ceoDecisions, res.decisions, res.paperPortfolio);
       setExpandedAgent(null);
       setShowAnalysis(false);
+      setShowWhatIf(false);
+      setExpandedScenario(null);
       const next = res.tradeProposals[0];
       if (next) {
         EventBus.emit("ui:executiveVoting", { open: true, proposalId: next.id });
@@ -223,6 +259,28 @@ export function ExecutiveVoting() {
 
           <button
             type="button"
+            onClick={() => setShowWhatIf(!showWhatIf)}
+            className="w-full rounded-sm border border-cmd-border px-3 py-1.5 text-cmd-textDim transition-colors hover:border-cmd-cyan/50 hover:text-cmd-cyan"
+          >
+            {showWhatIf ? "HIDE WHAT-IF SIMULATION LAB ▲" : "OPEN WHAT-IF SIMULATION LAB ▼"}
+          </button>
+
+          {showWhatIf && (
+            <Glass className="p-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <TerminalLabel>Scenario Stress Test — {proposal.symbol}</TerminalLabel>
+                <span className="text-[9px] text-cmd-textDim">Resilience test, not a prediction.</span>
+              </div>
+              {whatIfLoading && <div className="text-[9px] text-cmd-textDim">Simulating scenarios…</div>}
+              {whatIfError && <div className="text-[9px] text-cmd-red">{whatIfError}</div>}
+              {!whatIfLoading && whatIf && whatIf.symbol === proposal.symbol && (
+                <WhatIfPanel whatIf={whatIf} expandedScenario={expandedScenario} onToggleScenario={(s) => setExpandedScenario(expandedScenario === s ? null : s)} />
+              )}
+            </Glass>
+          )}
+
+          <button
+            type="button"
             onClick={() => setShowAnalysis(!showAnalysis)}
             className="w-full rounded-sm border border-cmd-border px-3 py-1.5 text-cmd-textDim transition-colors hover:border-cmd-purple/50 hover:text-cmd-purple"
           >
@@ -345,5 +403,118 @@ function ActionButton({
     >
       {loading ? "…" : label}
     </button>
+  );
+}
+
+/** A shared reward-range scale (min/max % across every scenario, padded
+ * 10%) so all 12 bars in the lab are directly visually comparable rather
+ * than each auto-scaling to its own range. */
+function scenarioScale(whatIf: WhatIfSimulation): { min: number; max: number } {
+  const all = [...whatIf.scenarios, whatIf.baseline];
+  const min = Math.min(0, ...all.map((s) => s.rewardRangeLowPct));
+  const max = Math.max(0, ...all.map((s) => s.rewardRangeHighPct));
+  const pad = Math.max((max - min) * 0.1, 0.5);
+  return { min: min - pad, max: max + pad };
+}
+
+function RewardRangeBar({ scenario, scale }: { scenario: ScenarioResult; scale: { min: number; max: number } }) {
+  const span = scale.max - scale.min || 1;
+  const toPct = (v: number) => ((v - scale.min) / span) * 100;
+  const lowPct = toPct(scenario.rewardRangeLowPct);
+  const highPct = toPct(scenario.rewardRangeHighPct);
+  return (
+    <div className="relative h-3 w-full rounded-sm bg-cmd-bg/60">
+      <div className="absolute inset-y-0 w-px bg-cmd-border" style={{ left: `${toPct(0)}%` }} />
+      <div
+        className={`absolute inset-y-0.5 rounded-sm ${scenario.mostLikelyPct >= 0 ? "bg-cmd-green/50" : "bg-cmd-red/50"}`}
+        style={{ left: `${Math.min(lowPct, highPct)}%`, width: `${Math.max(1, Math.abs(highPct - lowPct))}%` }}
+      />
+      <div className="absolute inset-y-0 w-0.5 bg-cmd-cyan" style={{ left: `${toPct(scenario.mostLikelyPct)}%` }} />
+    </div>
+  );
+}
+
+/**
+ * v0.7 Feature 16 — the What-If Simulation Lab's results. Every number is
+ * a real bootstrap-simulated outcome (see backend/app/whatif.py); best/
+ * worst case are whichever real scenario produced the highest/lowest
+ * reward-range edge, "most likely" is the unbiased baseline reading —
+ * never a fabricated cross-scenario probability (see WhatIfSimulation's
+ * own doc comment in types.ts for why).
+ */
+function WhatIfPanel({
+  whatIf,
+  expandedScenario,
+  onToggleScenario,
+}: {
+  whatIf: WhatIfSimulation;
+  expandedScenario: ScenarioType | null;
+  onToggleScenario: (s: ScenarioType) => void;
+}) {
+  const scale = scenarioScale(whatIf);
+  const bestCase = whatIf.scenarios.find((s) => s.scenarioType === whatIf.bestCaseScenario);
+  const worstCase = whatIf.scenarios.find((s) => s.scenarioType === whatIf.worstCaseScenario);
+
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-3 gap-2 text-[9px]">
+        <div className="rounded-sm border border-cmd-green/30 bg-cmd-bg/40 p-2">
+          <div className="text-cmd-textDim">BEST CASE</div>
+          <div className="truncate text-cmd-green">{bestCase?.label}</div>
+          <div className="text-cmd-text">up to {bestCase ? formatPct(bestCase.rewardRangeHighPct) : "—"}</div>
+        </div>
+        <div className="rounded-sm border border-cmd-red/30 bg-cmd-bg/40 p-2">
+          <div className="text-cmd-textDim">WORST CASE</div>
+          <div className="truncate text-cmd-red">{worstCase?.label}</div>
+          <div className="text-cmd-text">down to {worstCase ? formatPct(worstCase.rewardRangeLowPct) : "—"}</div>
+        </div>
+        <div className="rounded-sm border border-cmd-cyan/30 bg-cmd-bg/40 p-2">
+          <div className="text-cmd-textDim">MOST LIKELY (unbiased)</div>
+          <div className="text-cmd-cyan">{formatPct(whatIf.baseline.mostLikelyPct)}</div>
+          <div className="text-cmd-text">{whatIf.baseline.probabilityOfProfitPct.toFixed(0)}% win rate</div>
+        </div>
+      </div>
+
+      <div className="flex items-center gap-2 px-2 text-[8px] uppercase tracking-wide text-cmd-textDim">
+        <span className="w-32 shrink-0">Scenario</span>
+        <span className="flex-1">Reward range ({whatIf.holdBars}-bar hold)</span>
+        <span className="w-14 shrink-0 text-right">Likely</span>
+        <span className="w-10 shrink-0 text-right">Win%</span>
+      </div>
+
+      <div className="space-y-1">
+        {whatIf.scenarios.map((s) => {
+          const expanded = expandedScenario === s.scenarioType;
+          return (
+            <button
+              key={s.scenarioType}
+              type="button"
+              onClick={() => onToggleScenario(s.scenarioType)}
+              className="w-full rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2 text-left transition-colors hover:border-cmd-cyan/40"
+            >
+              <div className="flex items-center gap-2 text-[9px]">
+                <span className="w-32 shrink-0 truncate text-cmd-text">{s.label}</span>
+                <span className="flex-1">
+                  <RewardRangeBar scenario={s} scale={scale} />
+                </span>
+                <span className={`w-14 shrink-0 text-right ${s.mostLikelyPct >= 0 ? "text-cmd-green" : "text-cmd-red"}`}>{formatPct(s.mostLikelyPct)}</span>
+                <span className="w-10 shrink-0 text-right text-cmd-textDim">{s.probabilityOfProfitPct.toFixed(0)}%</span>
+              </div>
+              {expanded && (
+                <div className="mt-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5 border-t border-cmd-border/50 pt-1.5 text-[9px] text-cmd-textDim">
+                  <div>
+                    Reward range: {formatPct(s.rewardRangeLowPct)} to {formatPct(s.rewardRangeHighPct)}
+                  </div>
+                  <div>Typical drawdown: {formatPct(s.typicalDrawdownPct)}</div>
+                  <div>Max expected risk: {formatPct(s.maxRiskPct)}</div>
+                  <div>Probability of profit: {s.probabilityOfProfitPct.toFixed(0)}%</div>
+                  <div className="col-span-2 text-cmd-amber">Invalidated if: {s.invalidation}</div>
+                </div>
+              )}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }

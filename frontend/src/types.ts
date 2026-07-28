@@ -686,6 +686,49 @@ export interface Debate {
   createdAt: string;
 }
 
+// v0.7 Feature 16 — What-If Simulation Lab. Fetched on demand from
+// GET /api/executive/whatif (never persisted/broadcast — see
+// backend/app/whatif.py's module docstring for why).
+export type ScenarioType =
+  | "bullish_continuation"
+  | "bearish_reversal"
+  | "sideways_consolidation"
+  | "high_volatility"
+  | "low_volatility"
+  | "news_shock"
+  | "gap_up"
+  | "gap_down"
+  | "trend_failure"
+  | "breakout_confirmation"
+  | "liquidity_sweep"
+  | "flash_crash";
+
+/** One scenario's simulated outcome distribution — a bootstrap resample of
+ * the symbol's own real recent bar-to-bar returns, biased/scaled per
+ * scenario. Never a prediction of what will happen, only a resilience
+ * stress-test of "if this condition occurred." */
+export interface ScenarioResult {
+  scenarioType: ScenarioType;
+  label: string;
+  rewardRangeLowPct: number;
+  rewardRangeHighPct: number;
+  mostLikelyPct: number;
+  typicalDrawdownPct: number;
+  maxRiskPct: number;
+  probabilityOfProfitPct: number;
+  invalidation: string;
+}
+
+export interface WhatIfSimulation {
+  symbol: string;
+  holdBars: number;
+  scenarios: ScenarioResult[];
+  /** The organic, unbiased resample of the symbol's own real recent returns — no scenario bias applied. */
+  baseline: ScenarioResult;
+  bestCaseScenario: ScenarioType;
+  worstCaseScenario: ScenarioType;
+}
+
 /** The permanent record of one CEO decision, graded once (and only once) a
  * real trade it caused actually closes — an override's "AI accuracy" is
  * left "undecidable" rather than guessed, since no counterfactual trade

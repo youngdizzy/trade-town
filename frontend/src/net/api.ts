@@ -15,6 +15,7 @@ import type {
   SignalChoice,
   TradeDecision,
   TradeProposal,
+  WhatIfSimulation,
 } from "@/types";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
@@ -95,4 +96,5 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ proposalId }),
     }),
+  getWhatIfSimulation: (symbol: string) => request<WhatIfSimulation>(`/executive/whatif?symbol=${encodeURIComponent(symbol)}`),
 };

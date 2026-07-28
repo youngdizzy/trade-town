@@ -905,6 +905,57 @@ class Debate(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
+# v0.7 Feature 16 — What-If Simulation Lab. Computed on demand (never
+# persisted — see app/whatif.py's module docstring for why) from the
+# symbol's own real recent candles, so this is intentionally NOT part of
+# GameSaveState/the WS broadcast the way Debate/DecisionConfidence are.
+ScenarioType = Literal[
+    "bullish_continuation",
+    "bearish_reversal",
+    "sideways_consolidation",
+    "high_volatility",
+    "low_volatility",
+    "news_shock",
+    "gap_up",
+    "gap_down",
+    "trend_failure",
+    "breakout_confirmation",
+    "liquidity_sweep",
+    "flash_crash",
+]
+
+
+class ScenarioResult(CamelModel):
+    """One scenario's simulated outcome distribution over the position's
+    typical hold horizon — a bootstrap resample of the symbol's own real
+    recent bar-to-bar returns, biased/scaled per scenario (see
+    app/whatif.py). Never a prediction of what will happen, only what a
+    resilience stress-test of "if this condition occurred" looks like."""
+
+    scenario_type: ScenarioType = Field(alias="scenarioType")
+    label: str
+    reward_range_low_pct: float = Field(alias="rewardRangeLowPct")
+    reward_range_high_pct: float = Field(alias="rewardRangeHighPct")
+    most_likely_pct: float = Field(alias="mostLikelyPct")
+    typical_drawdown_pct: float = Field(alias="typicalDrawdownPct")
+    max_risk_pct: float = Field(alias="maxRiskPct")
+    probability_of_profit_pct: float = Field(alias="probabilityOfProfitPct")
+    invalidation: str
+
+
+class WhatIfSimulation(CamelModel):
+    symbol: str
+    hold_bars: int = Field(alias="holdBars")
+    scenarios: list[ScenarioResult] = Field(default_factory=list)
+    # The organic, unbiased resample of the symbol's own real recent
+    # returns — no scenario bias applied — used as the honest "most
+    # likely outcome" baseline (see app/whatif.py's module docstring for
+    # why no cross-scenario probability is invented).
+    baseline: ScenarioResult
+    best_case_scenario: ScenarioType = Field(alias="bestCaseScenario")
+    worst_case_scenario: ScenarioType = Field(alias="worstCaseScenario")
+
+
 class CeoDecisionRecord(CamelModel):
     """One resolved executive decision — the permanent record behind
     CEO Accuracy / AI Accuracy / Agreement Rate / Successful & Failed
