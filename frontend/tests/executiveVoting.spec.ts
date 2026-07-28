@@ -5,22 +5,24 @@ import { test, expect, type Page } from "@playwright/test";
  * Like commandCenter.spec.ts, these exercise the real running app rather
  * than a mocked harness.
  *
- * The popup is deliberately gated to never render during MainMenuScene
- * (see ExecutiveVoting.tsx's currentScene guard — the WebSocket connects
- * at app boot, independent of the title screen, so without this guard a
+ * The popup is deliberately gated to never render during MainMenuScene,
+ * and to never auto-open for a proposal that already existed before a
+ * given page's own first load (see ExecutiveVoting.tsx's currentScene
+ * guard and NexusManager's `hydrated` flag — the WebSocket connects at
+ * app boot, independent of the title screen, so without these guards a
  * pre-existing proposal would pop the modal up over the title screen
  * itself and swallow the "Continue" click). So every test here goes
- * through the real title-screen flow first, the same way a player would.
+ * through the real title-screen flow first, and opens the popup
+ * explicitly through the EXECUTIVE panel's pending-proposal list rather
+ * than waiting on an auto-popup that correctly won't fire for backlog.
  *
  * A real research item only crosses the trade-confidence threshold
  * (and so only generates a real TradeProposal) after many sim ticks —
  * on a freshly booted backend that can take longer than any reasonable
  * test timeout, even though it always happens eventually in real
- * gameplay. seedPendingProposal() writes one directly through the same
- * real POST /api/save endpoint SaveManager already uses (the same
- * legitimate "drive state through the real save path" approach
- * commandCenter.spec.ts's own setPlayerScene() already uses), so the
- * test is deterministic without needing a test-only seam.
+ * gameplay. boostResearchToThreshold() speeds that up via the real
+ * research_boost energy action (see its own doc comment below) instead
+ * of waiting on organic completion.
  */
 async function continueGame(page: Page): Promise<void> {
   const canvas = page.locator("canvas");
@@ -81,8 +83,24 @@ test("Executive Voting popup shows real analyst votes and a BUY submits a real C
   await continueGame(page);
   await boostResearchToThreshold(page);
 
+  // The popup only ever auto-opens for a proposal that appears WHILE this
+  // page is already live (see ExecutiveVoting.tsx's hydrated guard) —
+  // a proposal that already existed at this page's own first load (very
+  // likely true here, since other tests in this file/suite have been
+  // ticking the shared backend for a while) correctly does NOT auto-pop
+  // over whatever the player was already doing. So open it the same way
+  // a real player reviewing their queue would: through the EXECUTIVE
+  // panel's pending-proposal list, not by waiting on an auto-popup.
+  await page.keyboard.press("Tab");
+  await page.getByText("EXPAND — FULL COMMAND CENTER").click();
+  await page.getByRole("button", { name: "EXECUTIVE", exact: true }).click();
+
+  const pendingRow = page.locator("button").filter({ hasText: /% confidence/ }).first();
+  await expect(pendingRow).toBeVisible({ timeout: 20000 });
+  await pendingRow.click();
+
   const popup = page.getByTestId("executive-voting");
-  await expect(popup).toBeVisible({ timeout: 20000 });
+  await expect(popup).toBeVisible();
   await expect(popup.getByText("EXECUTIVE VOTING")).toBeVisible();
 
   // Expanding an analyst vote reveals its real reasoning + evidence.
