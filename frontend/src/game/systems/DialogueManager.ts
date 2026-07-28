@@ -1,4 +1,5 @@
 import type { AgentId, AgentState, DialogueHistoryEntry } from "@/types";
+import { gameStore } from "@/state/gameStore";
 import { AGENT_PROFILES } from "./AgentProfiles";
 import { EventBus } from "./EventBus";
 
@@ -159,9 +160,29 @@ export class DialogueManager {
     const moodLine = pick(MOOD_FLAVOR[moodBand]);
 
     const lines = [greeting, pick(taskLines), moodLine];
+    const recall = this.recallLine(agentId);
+    if (recall) lines.push(recall);
     this.recordLines(agentId, lines);
     EventBus.emit("dialogue:open", { lines, speaker: profile.name });
     return { speaker: profile.name, lines };
+  }
+
+  /**
+   * v0.7 Feature 25.5 — a modest, honest slice of "Institutional Memory."
+   * One in three conversations, an agent who has real completed Academy
+   * work recalls their own most recent real project by its real title —
+   * never a fabricated memory, and never claiming a project that isn't
+   * actually this agent's own (`assignedAgent`). A random one-in-three
+   * gate keeps it from repeating identically on every single interaction.
+   */
+  private recallLine(agentId: AgentId): string | null {
+    if (Math.random() > 1 / 3) return null;
+    const { academyCompletedProjects } = gameStore.getSnapshot();
+    const own = academyCompletedProjects.filter((p) => p.assignedAgent === agentId);
+    if (own.length === 0) return null;
+    const latest = own[own.length - 1];
+    if (!latest) return null;
+    return `I still think back on "${latest.title}" — that project taught me a lot.`;
   }
 
   close(): void {

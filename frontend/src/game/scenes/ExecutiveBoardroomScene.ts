@@ -31,7 +31,9 @@ function formatPerformanceOverview(score: CompanyScore): string {
 
 function formatBriefing(reviews: ExecutiveReview[]): string {
   const latest = reviews[reviews.length - 1];
-  const body = latest ? latest.summary : "No Executive Review yet — the first arrives at month's end.";
+  if (!latest) return "EXECUTIVE BRIEFING\n\nNo Executive Review yet — the first arrives at month's end.";
+  const connection = latest.knowledgeConnections[0];
+  const body = connection ? `${latest.summary}\n\n${connection}` : latest.summary;
   return `EXECUTIVE BRIEFING\n\n${body}`;
 }
 

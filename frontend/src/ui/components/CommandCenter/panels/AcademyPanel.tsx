@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import type { AgentKnowledgeState } from "@/types";
+import { KnowledgeGraphView } from "../KnowledgeGraphView";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
 
 function tierTone(tier: number): "cyan" | "green" {
@@ -19,14 +21,17 @@ function tierTone(tier: number): "cyan" | "green" {
  * archive (see backend/app/academy_research.py).
  */
 export function AcademyPanel() {
-  const { academyState, agentKnowledge, academyProjects, academyCompletedProjects, memory } = useGameStore();
+  const { academyState, agentKnowledge, academyProjects, academyCompletedProjects, memory, executiveReviews } = useGameStore();
   const activeProject = academyProjects[0];
   const knowledgeStates = Object.values(agentKnowledge) as AgentKnowledgeState[];
   const rankedKnowledge = [...knowledgeStates].sort((a, b) => b.points - a.points);
   const mentorshipMemories = [...memory].filter((m) => m.category === "mentorship").reverse().slice(0, 5);
+  const [showGraph, setShowGraph] = useState(false);
+  const latestReview = executiveReviews[executiveReviews.length - 1];
+  const knowledgeConnections = latestReview?.knowledgeConnections ?? [];
 
   return (
-    <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+    <div className="relative grid grid-cols-1 gap-3 lg:grid-cols-3">
       <Glass className="p-3 lg:col-span-3">
         <div className="mb-1.5 flex items-center justify-between">
           <TerminalLabel>Academy Progression</TerminalLabel>
@@ -39,6 +44,31 @@ export function AcademyPanel() {
           <span>{academyState.totalPoints.toFixed(0)} total knowledge points across the team</span>
           <span>{academyState.completedProjectCount} projects completed</span>
         </div>
+      </Glass>
+
+      <Glass className="p-3 lg:col-span-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <TerminalLabel>Company Knowledge Graph</TerminalLabel>
+            <div className="text-[9px] text-cmd-textDim">Explore every discovery, project, and report as one connected network.</div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setShowGraph(true)}
+            className="flex-none rounded-sm border border-cmd-cyan/50 px-3 py-1.5 text-[10px] uppercase tracking-wider text-cmd-cyan shadow-cmd-cyan transition-colors hover:bg-cmd-cyan/10"
+          >
+            Open Knowledge Graph ▸
+          </button>
+        </div>
+        {knowledgeConnections.length > 0 && (
+          <div className="mt-2 space-y-1 border-t border-cmd-border/50 pt-2">
+            {knowledgeConnections.slice(0, 3).map((line, i) => (
+              <div key={i} className="text-[9px] italic text-cmd-textDim">
+                “{line}”
+              </div>
+            ))}
+          </div>
+        )}
       </Glass>
 
       <Glass className="p-3 lg:col-span-2">
@@ -112,6 +142,8 @@ export function AcademyPanel() {
         <DataRow label="Current Academy Level" value={`${academyState.level} / 5`} />
         <DataRow label="Next Milestone" value={academyState.level < 5 ? "Advance the Academy toward its next tier" : "Executive Institute reached"} />
       </Glass>
+
+      {showGraph && <KnowledgeGraphView onClose={() => setShowGraph(false)} />}
     </div>
   );
 }

@@ -1178,6 +1178,12 @@ class ExecutiveReview(CamelModel):
     # Framed from real, already-configured company state (RiskLimits, the
     # Academy's own next level) — never invented aspirational text.
     long_term_goals: list[str] = Field(default_factory=list, alias="longTermGoals")
+    # v0.7 Feature 25.5 — real "this builds on that" callbacks, one per
+    # research category / Academy topic with 2+ completed items, naming
+    # the two real titles involved (see app/executive_review.py's
+    # _knowledge_connections). Empty when nothing yet has a real
+    # predecessor to reference.
+    knowledge_connections: list[str] = Field(default_factory=list, alias="knowledgeConnections")
     summary: str
     created_at: str = Field(alias="createdAt")
 
@@ -1225,6 +1231,40 @@ class AcademyState(CamelModel):
     total_points: float = Field(alias="totalPoints")
     completed_project_count: int = Field(alias="completedProjectCount")
     updated_at: str = Field(alias="updatedAt")
+
+
+# v0.7 Feature 25.5 — Company Knowledge Graph (app/knowledge_graph.py).
+# Computed fresh on every GET /api/knowledge-graph request, the same
+# "expensive-ish to compute, cheap to re-derive, never persisted"
+# convention app/whatif.py already established — the underlying records
+# (research/academy_completed_projects/executive_reviews/coach_reports/
+# hall_of_fame/agent_knowledge) are already persisted and capped
+# elsewhere, so this is a derived view, not a second store.
+KnowledgeNodeType = Literal["agent", "branch", "research", "academy_project", "executive_review", "coach_report", "hall_of_fame"]
+KnowledgeEdgeRelation = Literal["researched", "completed", "has_branch", "builds_on", "featured_in", "ranked_top_agent", "achieved"]
+
+
+class KnowledgeNode(CamelModel):
+    id: str
+    type: KnowledgeNodeType
+    label: str
+    subtitle: str
+    # ISO timestamp for timeline ordering; None for evergreen nodes
+    # (agent, branch) that were never "completed" at a point in time.
+    timestamp: str | None = None
+
+
+class KnowledgeEdge(CamelModel):
+    source: str
+    target: str
+    relation: KnowledgeEdgeRelation
+    label: str
+
+
+class KnowledgeGraph(CamelModel):
+    nodes: list[KnowledgeNode] = Field(default_factory=list)
+    edges: list[KnowledgeEdge] = Field(default_factory=list)
+    generated_at: str = Field(alias="generatedAt")
 
 
 class GameSaveState(CamelModel):

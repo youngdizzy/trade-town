@@ -1006,6 +1006,80 @@ deep-merge migration, no special-case migration code needed; verified
 against a real pre-Feature-24/25 save on a fresh backend start).
 `MemoryCategory` gained `academy`, `mentorship`, and `executive`.
 
+### Company Knowledge Graph (Feature 25.5)
+
+`app/knowledge_graph.py` connects every already-real, already-persisted
+record Feature 24/25 produces — completed `ResearchItem`s, completed
+`AcademyProject`s, each agent's own real Knowledge Branch,
+`ExecutiveReview`s, `CoachReport`s, and `HallOfFameEntry`s — into one
+node-edge graph, following the exact "computed fresh on every request,
+never persisted" convention `app/whatif.py` established for
+`GET /api/executive/whatif`: the underlying six sources are already
+persisted and capped elsewhere, so re-deriving the graph's structure from
+them on demand is a view, not a second, possibly-stale store of the same
+data. `GET /api/knowledge-graph` (`app/routers/knowledge_graph.py`) is
+the one new endpoint; `GameSaveState` gained nothing for this feature
+except `ExecutiveReview.knowledgeConnections` (below).
+
+Every `KnowledgeEdge` traces to a real, checkable shared attribute — a
+research item's own `assigned_agent` (`researched`), two research items
+sharing a real `category` or two Academy projects sharing a real `topic`,
+chained by their own real `updated_at` into a `builds_on` relationship,
+an agent's own real Knowledge Branch (`has_branch`), an agent's real
+appearance in an `ExecutiveReview`'s `department_activity`
+(`featured_in`), a `CoachReport`'s real top-ranked agent
+(`ranked_top_agent`), or a `HallOfFameEntry`'s real `agent_id`
+(`achieved`). None of this is invented — `_builds_on_chain`'s grouping
+key is always a real shared field, never a heuristic guess at semantic
+similarity.
+
+`app/executive_review.py` gained `_knowledge_connections()`, wired into
+`generate_executive_review()`: for every real research category / Academy
+topic with two or more completed items, it names the two most recent real
+titles (ordered by their own real `updated_at`) as a real "this builds on
+that" sentence, appended to `ExecutiveReview.knowledgeConnections` and
+referenced from the review's own `summary` when non-empty. It
+deliberately never claims a specific elapsed time (the brief's own
+example, "four months ago") — `ResearchItem`/`AcademyProject` only carry
+real wall-clock ISO timestamps, not a sim-time span guaranteed to read as
+meaningful within one play session, so the callback only asserts the
+real title-level relationship, not a fabricated duration.
+
+On the frontend, `KnowledgeGraphView.tsx` (launched from a new card on
+the KNOWLEDGE tab) is a hand-rolled `<canvas>` force-directed graph — no
+charting/graph-library dependency, matching `CandlestickChart.tsx`'s
+existing hand-rolled-canvas convention. `computeLayout()` uses velocity +
+damping (not a temperature-capped direct move) specifically because an
+earlier temperature-capped pass collapsed under this graph's real
+hub-and-spoke shape (many research nodes sharing one `agent`/`branch`
+hub) — velocity + damping settles into an even spread instead. Node
+*positions* are the one purely-visual invention in this feature: a
+client-side layout computed to make the real graph legible, never a
+second source of truth about the data itself, and recomputed (not
+persisted) on every fetch. Agent nodes reuse each agent's own real sprite
+tint (`AGENT_PROFILES[id].tint`) as their color — real department colors,
+not invented ones. `useKnowledgeGraph.ts` mirrors `useCandles.ts`'s
+fetch-with-light-refresh pattern (30s), only polling while the view is
+open.
+
+**Explicit scope cuts**, matching this session's honesty convention: the
+brief's "Academy Integration" request to auto-generate interactive
+lessons/seminars/training sessions/quizzes/museum exhibits/company
+presentations/new dialogue/knowledge challenges from completed research
+is not built — this codebase has no content-generation capability of any
+kind. The pre-existing v0.6.2 Education curriculum (`education.py`'s ten
+fixed lessons, all technical trading mechanics — candlesticks, stop-loss,
+position sizing) was checked directly against the six Academy topics
+(market history, psychology, economics — a different subject area
+entirely) and confirmed to have no real thematic overlap, so no
+Academy-project-to-Education-lesson edge or generated lesson content is
+fabricated either. "NPCs begin discussing it" is scoped to one honest
+addition in `DialogueManager.ts`: roughly one conversation in three, an
+agent with at least one real completed Academy project of their own
+recalls its real title — never a fabricated memory, never another
+agent's project, and not a full conversational-memory system tracking
+who told whom what.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

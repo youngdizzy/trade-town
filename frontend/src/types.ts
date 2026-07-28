@@ -909,6 +909,11 @@ export interface ExecutiveReview {
   flags: string[];
   recommendations: string[];
   longTermGoals: string[];
+  /** v0.7 Feature 25.5 — real "this builds on that" callbacks, one per
+   * research category / Academy topic with 2+ completed items, naming the
+   * two real titles involved. Empty when nothing yet has a real
+   * predecessor to reference. */
+  knowledgeConnections: string[];
   summary: string;
   createdAt: string;
 }
@@ -943,6 +948,37 @@ export interface AcademyState {
   totalPoints: number;
   completedProjectCount: number;
   updatedAt: string;
+}
+
+// v0.7 Feature 25.5 — Company Knowledge Graph (see
+// backend/app/knowledge_graph.py). Computed fresh on every
+// GET /api/knowledge-graph call, the same "expensive-ish to compute,
+// cheap to re-derive, never persisted" convention WhatIfSimulation
+// already uses — not part of GameSaveState.
+export type KnowledgeNodeType = "agent" | "branch" | "research" | "academy_project" | "executive_review" | "coach_report" | "hall_of_fame";
+export type KnowledgeEdgeRelation = "researched" | "completed" | "has_branch" | "builds_on" | "featured_in" | "ranked_top_agent" | "achieved";
+
+export interface KnowledgeNode {
+  id: string;
+  type: KnowledgeNodeType;
+  label: string;
+  subtitle: string;
+  /** ISO timestamp for timeline ordering; null for evergreen nodes
+   * (agent, branch) that were never "completed" at a point in time. */
+  timestamp: string | null;
+}
+
+export interface KnowledgeEdge {
+  source: string;
+  target: string;
+  relation: KnowledgeEdgeRelation;
+  label: string;
+}
+
+export interface KnowledgeGraph {
+  nodes: KnowledgeNode[];
+  edges: KnowledgeEdge[];
+  generatedAt: string;
 }
 
 export interface GameSaveState {

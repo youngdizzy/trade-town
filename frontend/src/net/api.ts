@@ -8,6 +8,7 @@ import type {
   EducationProgress,
   GameSaveState,
   GatekeeperRejection,
+  KnowledgeGraph,
   PaperPortfolio,
   PlayerVsAiPrompt,
   PlayerVsAiState,
@@ -101,4 +102,5 @@ export const api = {
       body: JSON.stringify({ proposalId }),
     }),
   getWhatIfSimulation: (symbol: string) => request<WhatIfSimulation>(`/executive/whatif?symbol=${encodeURIComponent(symbol)}`),
+  getKnowledgeGraph: () => request<KnowledgeGraph>("/knowledge-graph"),
 };

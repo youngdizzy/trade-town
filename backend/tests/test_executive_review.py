@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from app.executive_review import generate_executive_review
 from app.schemas import (
+    AcademyProject,
     AcademyState,
     CompanyHealth,
     CompanyScore,
@@ -38,6 +39,36 @@ def _research(agent: str = "nova", status: str = "completed", confidence: float 
         confidence=confidence,
         createdAt=_now_iso(),
         updatedAt=_now_iso(),
+    )
+
+
+def _research_titled(agent: str, title: str, category: str, updated_at: str, symbol: str = "AAPL") -> ResearchItem:
+    return ResearchItem(
+        id=f"r-{agent}-{title}-{updated_at}",
+        title=title,
+        symbol=symbol,
+        category=category,  # type: ignore[arg-type]
+        priority="normal",
+        status="completed",
+        assignedAgent=agent,  # type: ignore[arg-type]
+        summary="test",
+        confidence=80.0,
+        createdAt=updated_at,
+        updatedAt=updated_at,
+    )
+
+
+def _project_titled(agent: str, title: str, topic: str, updated_at: str) -> AcademyProject:
+    return AcademyProject(
+        id=f"p-{agent}-{title}-{updated_at}",
+        topic=topic,  # type: ignore[arg-type]
+        title=title,
+        assignedAgent=agent,  # type: ignore[arg-type]
+        status="completed",
+        progress=100.0,
+        summary="test",
+        createdAt=updated_at,
+        updatedAt=updated_at,
     )
 
 
@@ -236,3 +267,67 @@ class TestGenerateExecutiveReview:
             lessons_completed=0, agent_ids=("cio",), new_time=_time(),
         )
         assert "72" in review.summary
+
+
+class TestKnowledgeConnections:
+    """v0.7 Feature 25.5 — real "this builds on that" callbacks."""
+
+    def test_two_same_category_research_items_produce_a_real_callback(self) -> None:
+        earlier = _research_titled("nova", "Studying AAPL trends", "stock", "2026-01-01T00:00:00+00:00")
+        later = _research_titled("scout", "Reviewing MSFT momentum", "stock", "2026-02-01T00:00:00+00:00")
+        review = generate_executive_review(
+            research=[earlier, later], decisions=[], debates=[], news=[],
+            company_score=_company_score(), previous_score=None, company_health=_company_health(),
+            risk_limits=RiskLimits(), academy_state=_academy_state(), completed_academy_projects=[],
+            lessons_completed=0, agent_ids=("nova", "scout"), new_time=_time(),
+        )
+        assert len(review.knowledge_connections) == 1
+        assert "Reviewing MSFT momentum" in review.knowledge_connections[0]
+        assert "Studying AAPL trends" in review.knowledge_connections[0]
+
+    def test_a_single_research_item_produces_no_callback(self) -> None:
+        review = generate_executive_review(
+            research=[_research_titled("nova", "Studying AAPL trends", "stock", "2026-01-01T00:00:00+00:00")],
+            decisions=[], debates=[], news=[],
+            company_score=_company_score(), previous_score=None, company_health=_company_health(),
+            risk_limits=RiskLimits(), academy_state=_academy_state(), completed_academy_projects=[],
+            lessons_completed=0, agent_ids=("nova",), new_time=_time(),
+        )
+        assert review.knowledge_connections == []
+
+    def test_different_category_research_produces_no_callback(self) -> None:
+        review = generate_executive_review(
+            research=[
+                _research_titled("nova", "Studying AAPL trends", "stock", "2026-01-01T00:00:00+00:00"),
+                _research_titled("scout", "Scanning BTC volatility", "bitcoin", "2026-02-01T00:00:00+00:00"),
+            ],
+            decisions=[], debates=[], news=[],
+            company_score=_company_score(), previous_score=None, company_health=_company_health(),
+            risk_limits=RiskLimits(), academy_state=_academy_state(), completed_academy_projects=[],
+            lessons_completed=0, agent_ids=("nova", "scout"), new_time=_time(),
+        )
+        assert review.knowledge_connections == []
+
+    def test_two_same_topic_academy_projects_produce_a_real_callback(self) -> None:
+        earlier = _project_titled("scout", "Studying the 1987 Crash", "market_history", "2026-01-01T00:00:00+00:00")
+        later = _project_titled("atlas", "Studying the Dot-Com Bubble", "market_history", "2026-02-01T00:00:00+00:00")
+        review = generate_executive_review(
+            research=[], decisions=[], debates=[], news=[],
+            company_score=_company_score(), previous_score=None, company_health=_company_health(),
+            risk_limits=RiskLimits(), academy_state=_academy_state(), completed_academy_projects=[earlier, later],
+            lessons_completed=0, agent_ids=("scout", "atlas"), new_time=_time(),
+        )
+        assert len(review.knowledge_connections) == 1
+        assert "Studying the Dot-Com Bubble" in review.knowledge_connections[0]
+        assert "Studying the 1987 Crash" in review.knowledge_connections[0]
+
+    def test_summary_mentions_knowledge_connections_when_present(self) -> None:
+        earlier = _research_titled("nova", "Studying AAPL trends", "stock", "2026-01-01T00:00:00+00:00")
+        later = _research_titled("scout", "Reviewing MSFT momentum", "stock", "2026-02-01T00:00:00+00:00")
+        review = generate_executive_review(
+            research=[earlier, later], decisions=[], debates=[], news=[],
+            company_score=_company_score(), previous_score=None, company_health=_company_health(),
+            risk_limits=RiskLimits(), academy_state=_academy_state(), completed_academy_projects=[],
+            lessons_completed=0, agent_ids=("nova", "scout"), new_time=_time(),
+        )
+        assert "Knowledge Connections" in review.summary

@@ -88,6 +88,40 @@ def _long_term_goals(risk_limits: RiskLimits, academy_state: AcademyState) -> li
     return goals
 
 
+def _knowledge_connections(research: list[ResearchItem], completed_academy_projects: list[AcademyProject]) -> list[str]:
+    """v0.7 Feature 25.5 — real "this builds on that" callbacks. For every
+    real research category / Academy topic with 2+ completed items, names
+    the two most recent real titles (ordered by their own real
+    updated_at) — never a fabricated "N months ago" claim, since these
+    items only carry real wall-clock timestamps, not a sim-time span
+    guaranteed to read as dramatic in a short session."""
+    connections: list[str] = []
+
+    by_category: dict[str, list[ResearchItem]] = {}
+    for item in research:
+        if item.status == "completed":
+            by_category.setdefault(item.category, []).append(item)
+    for category, items in by_category.items():
+        if len(items) < 2:
+            continue
+        ordered = sorted(items, key=lambda r: r.updated_at)
+        latest, earlier = ordered[-1], ordered[-2]
+        connections.append(f'This period\'s "{latest.title}" builds on earlier {category} research, "{earlier.title}".')
+
+    by_topic: dict[str, list[AcademyProject]] = {}
+    for project in completed_academy_projects:
+        by_topic.setdefault(project.topic, []).append(project)
+    for topic, projects in by_topic.items():
+        if len(projects) < 2:
+            continue
+        ordered_projects = sorted(projects, key=lambda p: p.updated_at)
+        latest_project, earlier_project = ordered_projects[-1], ordered_projects[-2]
+        topic_label = topic.replace("_", " ")
+        connections.append(f'The Academy\'s "{latest_project.title}" extends an earlier {topic_label} study, "{earlier_project.title}".')
+
+    return connections
+
+
 def generate_executive_review(
     *,
     research: list[ResearchItem],
@@ -112,6 +146,7 @@ def generate_executive_review(
     score_change = round(company_score.overall - previous_score, 1) if previous_score is not None else 0.0
     recommendations = list(company_health.recommendations)
     goals = _long_term_goals(risk_limits, academy_state)
+    connections = _knowledge_connections(research, completed_academy_projects)
 
     summary = (
         f"Company score stands at {company_score.overall:.0f}/100 "
@@ -128,6 +163,8 @@ def generate_executive_review(
         summary += " No unresolved disagreements among the analysts this period."
     if flags:
         summary += " A few items are worth a closer look — see below."
+    if connections:
+        summary += " This period's work also builds on earlier company research — see Knowledge Connections below."
 
     return ExecutiveReview(
         id=f"review-{new_time.day}-{new_time.hour}-{new_time.minute}",
@@ -143,6 +180,7 @@ def generate_executive_review(
         flags=flags,
         recommendations=recommendations,
         longTermGoals=goals,
+        knowledgeConnections=connections,
         summary=summary,
         createdAt=_now_iso(),
     )

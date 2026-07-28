@@ -227,6 +227,12 @@ perspective and exists purely to detect disconnects
       "flags": ["Nova's research on SPY remains low-confidence — may need a fresh angle."],
       "recommendations": ["Technology Level is low (0/100) — worth attention."],
       "longTermGoals": ["Hold max drawdown under 20%, the standing risk limit."],
+      // v0.7 Feature 25.5 — real "this builds on that" callbacks, one per
+      // research category / Academy topic with 2+ completed items, naming
+      // the two real titles involved (app/executive_review.py's
+      // _knowledge_connections). Empty when nothing yet has a real
+      // predecessor to reference.
+      "knowledgeConnections": ["This period's \"Reviewing MSFT momentum\" builds on earlier stock research, \"Studying AAPL trends\"."],
       "summary": "Company score stands at 65/100 (+3.2 since the last review)...",
       "createdAt": "..."
     }
@@ -421,6 +427,39 @@ broadcast — see `app/whatif.py`'s module docstring for why). Returns a
 always requests the same `PROPOSAL_TIMEFRAME`/`PROPOSAL_CANDLE_COUNT`
 the technical analyst vote itself uses, so both readings stay grounded
 in the same real candle sample).
+
+### `GET /api/knowledge-graph`
+
+v0.7 Feature 25.5 — the Company Knowledge Graph. Read-only, stateless,
+and computed fresh on every call (never part of `GameSaveState`/the WS
+broadcast — same convention as `GET /api/executive/whatif` above; see
+`app/knowledge_graph.py`'s module docstring). Builds a node-edge graph
+from six already-real, already-persisted sources: completed
+`ResearchItem`s, completed `AcademyProject`s, `agentKnowledge` (one
+Knowledge Branch node per distinct branch), `executiveReviews`,
+`coachReports`, and `hallOfFame`. Returns a `KnowledgeGraph`:
+
+```json
+{
+  "nodes": [
+    { "id": "agent-scout", "type": "agent", "label": "Scout", "subtitle": "Research Analyst", "timestamp": null },
+    { "id": "research-r-scout-AAPL-...", "type": "research", "label": "Research on AAPL", "subtitle": "AAPL · 82% confidence", "timestamp": "2026-07-20T14:00:00+00:00" }
+    // ... branch / academy_project / executive_review / coach_report / hall_of_fame nodes
+  ],
+  "edges": [
+    { "source": "agent-scout", "target": "research-r-scout-AAPL-...", "relation": "researched", "label": "researched" },
+    { "source": "research-r-scout-MSFT-...", "target": "research-r-scout-AAPL-...", "relation": "builds_on", "label": "builds on" }
+    // ... has_branch / completed / featured_in / ranked_top_agent / achieved edges
+  ],
+  "generatedAt": "2026-07-28T18:04:11+00:00"
+}
+```
+
+Every edge traces to a real, checkable shared attribute — never a
+fabricated connection. See `app/knowledge_graph.py`'s module docstring
+for the exact rule behind each `relation` type, and its docstring's
+explicit scope note on why no Academy-project-to-Education-lesson edge
+is generated (the two topic sets have no real thematic overlap).
 
 `GET /api/load` returns this same set of fields plus `version` (currently
 `"0.6"`), `player` (`EntityTransform`), `settings` (`SettingsState`),

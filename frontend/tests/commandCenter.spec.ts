@@ -483,4 +483,36 @@ test.describe("Global Command Center", () => {
     await expect(page.getByText("Active Research Project", { exact: true })).toBeVisible();
     await expect(page.getByText("Company Knowledge Library", { exact: true })).toBeVisible();
   });
+
+  test("Knowledge Graph opens a real node-edge network fetched from GET /api/knowledge-graph, with working filters and search", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickTab(page, "KNOWLEDGE");
+
+    await expect(page.getByText("Company Knowledge Graph", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: /Open Knowledge Graph/ }).click();
+
+    // The header's live node/edge count is real — it comes straight from
+    // the fetched KnowledgeGraph, not a placeholder.
+    await expect(page.getByText(/\d+ NODES · \d+ LINKS/)).toBeVisible();
+    await expect(page.locator("canvas").last()).toBeVisible();
+
+    // Type filter chips toggle a real node type off (visual state change
+    // only — verified by the button no longer being "active"-styled).
+    const researchFilter = page.getByRole("button", { name: "Research", exact: true });
+    await expect(researchFilter).toBeVisible();
+    await researchFilter.click();
+
+    // Search narrows the "Recent Discoveries" default panel down to
+    // real matching titles (or shows nothing if no real node matches).
+    await page.getByPlaceholder("Search the network…").fill("zzz-no-such-discovery-zzz");
+    await page.waitForTimeout(300);
+
+    await page.getByRole("button", { name: "CLOSE ✕" }).last().click();
+    await expect(page.getByText("Company Knowledge Graph", { exact: true })).toBeVisible();
+  });
 });

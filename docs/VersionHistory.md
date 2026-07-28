@@ -232,6 +232,38 @@ dialogue (a completed project instead publishes a real news headline).
 33 new backend tests; the full Playwright suite (16 tests across three
 spec files) passes clean.
 
+### v0.7 continued — Company Knowledge Graph (Feature 25.5)
+
+The **Company Knowledge Graph** connects everything Feature 24/25
+produced into one queryable network instead of leaving it as isolated
+lists. `app/knowledge_graph.py` builds a real node-edge graph — computed
+fresh on every `GET /api/knowledge-graph` call, never persisted, the same
+convention the What-If Simulation Lab established — from six already-real
+sources: completed research, completed Academy projects, each agent's own
+Knowledge Branch, Executive Reviews, Coach Reports, and Hall of Fame
+entries. Every edge traces to a real, checkable shared attribute (a
+shared research category chained by real timestamps into a "builds on"
+relationship, an agent's real appearance in a report, and so on) — never
+a fabricated connection. The **Interactive Knowledge Map**
+(`KnowledgeGraphView.tsx`, opened from the KNOWLEDGE tab) is a hand-rolled
+canvas force-directed graph with real pan/zoom, per-type color coding
+(agent nodes reuse each agent's own real sprite tint), a label search, and
+a click-to-inspect side panel showing a node's real connections. The
+Executive Review gained real **Knowledge Connections** — "this period's
+research builds on earlier work" callbacks naming two real titles,
+deliberately never claiming a specific elapsed time since these records
+only carry real wall-clock timestamps. `DialogueManager` gained one
+honest institutional-memory touch: roughly one conversation in three, an
+agent recalls their own most recent real completed Academy project by
+its real title. Explicit scope cut: the brief's request to
+auto-generate Academy lessons/seminars/quizzes/museum exhibits/dialogue
+from completed research is not built — this codebase has no
+content-generation capability, and the existing Education curriculum was
+checked directly and confirmed to have no real thematic overlap with the
+Academy's own topics. 17 new backend tests; verified end-to-end against a
+live dev backend with real data (zoom, pan, search, and node-selection all
+producing correct real content, zero console errors).
+
 ## What's next for v0.8 (not started, not scoped)
 
 These are candidate directions surfaced by v0.6/v0.7's design, not

@@ -337,6 +337,78 @@ development milestones, not semver releases.
     Review, Academy project rotation/completion, knowledge-tier-ups, and
     a real mentorship pairing all fire correctly with no exceptions.
 
+- **v0.7 — Company Knowledge Graph (Feature 25.5)** — connects every
+  already-real, already-persisted record Feature 24/25 produces into one
+  queryable node-edge graph, so completed work stays part of the
+  company's institutional memory instead of sitting in isolated lists.
+  - **`app/knowledge_graph.py`**: a computed-fresh-on-every-request graph
+    (`GET /api/knowledge-graph`, the same never-persisted convention
+    `app/whatif.py` established) built from six real sources — completed
+    `ResearchItem`s, completed `AcademyProject`s, each agent's own real
+    Knowledge Branch, `ExecutiveReview`s, `CoachReport`s, and
+    `HallOfFameEntry`s. Every edge traces to a real, checkable shared
+    attribute: a research item's own `assigned_agent`, two research items
+    sharing a real `category` (or two Academy projects sharing a real
+    `topic`) chained by their own real `updated_at` into a `builds_on`
+    relationship, an agent's real appearance in an `ExecutiveReview`'s
+    `department_activity`, or a `CoachReport`'s real top-ranked agent —
+    never a fabricated connection. Verified against a 1500-tick
+    standalone smoke test (170 nodes / 285 edges, all correctly linked).
+  - **Executive Review "Knowledge Connections"**: `generate_executive_review`
+    now also computes real "this builds on that" callbacks — for every
+    research category / Academy topic with two or more completed items,
+    it names the two real titles involved (e.g. `This period's "Reviewing
+    MSFT momentum" builds on earlier stock research, "Studying AAPL
+    trends".`). Deliberately never claims a specific elapsed time (the
+    brief's own example, "four months ago") since `ResearchItem`/
+    `AcademyProject` only carry real wall-clock timestamps, not a sim-time
+    span guaranteed to read as meaningful within one play session.
+    Surfaced in the Executive Boardroom's briefing screen and in a new
+    "Company Knowledge Graph" card on the KNOWLEDGE tab.
+  - **Interactive Knowledge Map** (`KnowledgeGraphView.tsx`, launched from
+    the KNOWLEDGE tab): a hand-rolled canvas force-directed graph (no
+    charting/graph library dependency, matching `CandlestickChart.tsx`'s
+    existing hand-rolled-canvas convention) with velocity+damping physics
+    that settles into an even spread rather than a temperature-capped
+    layout that can oscillate or collapse around high-degree hub nodes.
+    Real pan (drag), zoom-to-cursor (scroll), a fit-to-real-bounding-box
+    initial view, per-type color-coded nodes (agent nodes use each
+    agent's own real sprite tint — real department colors, not invented
+    ones), animated dashed edges and a pulsing node glow for a "living
+    network" feel, a type filter row, a label search that dims
+    non-matching nodes, and a click-to-inspect side panel showing a
+    node's real summary, timestamp, and every real connected node/relation
+    (clickable to jump). A "Recent Discoveries" default view lists the
+    most recently timestamped real nodes when nothing is selected.
+  - **Institutional memory in dialogue**: `DialogueManager` gained a real,
+    honest recall line — roughly one conversation in three, an agent with
+    at least one real completed Academy project references their own most
+    recent real project by its real title. Never a fabricated memory, and
+    never another agent's project.
+  - Explicit scope cuts, matching this session's honesty convention: the
+    brief's "Academy Integration" section (auto-generating interactive
+    lessons/seminars/training sessions/quizzes/museum exhibits/company
+    presentations/new dialogue/knowledge challenges from completed
+    research) is not built — this codebase has no content-generation
+    capability, and the pre-existing v0.6.2 Education curriculum
+    (`education.py`'s ten fixed lessons — candlesticks, stop-loss,
+    position sizing, all technical trading mechanics) has no real
+    thematic overlap with the six Academy topics (market history,
+    psychology, economics), checked directly rather than assumed, so no
+    Academy-to-Education edge or generated lesson is fabricated either.
+    "NPCs begin discussing it" is scoped to the one honest recall line
+    above rather than a full conversational-memory system tracking who
+    told whom what. The Knowledge Graph's node *positions* are a purely
+    client-side visual layout (force-directed, recomputed per fetch), not
+    a second source of truth about the data.
+  - Verification: full backend (mypy/ruff/pytest, 252/252 — 17 new tests
+    across `test_knowledge_graph.py` and `TestKnowledgeConnections` in
+    `test_executive_review.py`) and frontend (tsc/eslint/build) clean.
+    Manually verified end-to-end against a live dev backend with real
+    completed research/Academy data (Playwright: opening the graph,
+    zooming, panning, searching, and clicking a node all produced the
+    correct real side-panel content, with zero console errors).
+
 - **v0.6.3 — Executive Voting, Risk Command Center, Cyber Overlay** — the
   player is now formally TradeTown's CEO. A research candidate crossing
   the trade-confidence threshold no longer executes automatically: it
