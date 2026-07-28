@@ -497,6 +497,29 @@ aren't fabricated. 26 new backend tests (404/404 passing); verified in
 the running app (Playwright, 27/27) with a real custom-event create/
 delete round trip confirmed against the live backend.
 
+### v0.7 continued — Work Mode System (Feature 37)
+
+Replaces the brief's imagined "Stop for the Day" button (no such button
+ever existed in this codebase — checked directly) with a real, always-
+visible, persistent toggle between Work Mode (indefinite continuous
+operation — unchanged behavior from every prior version) and a new Rest
+Mode. Resting pauses new research progress, new Academy training, and
+new meetings from starting (`"employees stop starting new work"`), while
+any meeting already under way finishes naturally rather than being cut
+off. Every idle agent routes to a real off-hours task via a new
+`_rest_block()` — a pure function of the real clock mapping onto the
+same real 10-hour wind-down/evening-activity/sleep span Feature 35
+already wrote per agent, cycling through genuine variety without
+inventing new content or new per-agent state. Trading and risk systems
+are structurally untouched by work_mode — never gated at all — which is
+exactly how "open trades continue to be managed safely, they do not
+abandon positions" holds true. A new always-visible toolbar toggle (🟢
+WORK MODE ACTIVE / 🌙 REST MODE ACTIVE) makes the current mode visible
+from anywhere in the game, plus a fuller section in the Company tab. 13
+new backend tests (417/417 passing); verified in the running app
+(Playwright, 28/28) with a full real round trip — toggle, save, and the
+next real backend tick showing every agent at a real off-hours task.
+
 ## What's next for v0.8 (not started, not scoped)
 
 These are candidate directions surfaced by v0.6/v0.7's design, not

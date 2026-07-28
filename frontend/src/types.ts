@@ -831,6 +831,12 @@ export type OperatingMode = "learning" | "assisted" | "executive";
 // lever (see backend/app/nexus.py's tick() for where each is applied).
 export type CompanyPriority = "balanced" | "learning" | "research" | "risk_reduction";
 
+// v0.7 Feature 37 — the Work Mode System. "work" (the default —
+// unchanged behavior from every prior version) is indefinite, continuous
+// operation; "rest" is the CEO-triggered wind-down. Persistent until the
+// CEO changes it, never an automatic timer.
+export type WorkMode = "work" | "rest";
+
 export interface SettingsState {
   musicVolume: number; // 0-1
   sfxVolume: number; // 0-1
@@ -838,6 +844,7 @@ export interface SettingsState {
   showFps: boolean;
   operatingMode: OperatingMode;
   companyPriority: CompanyPriority;
+  workMode: WorkMode;
 }
 
 // v0.7 Feature 34 — CEO time controls (POST /api/time/advance).

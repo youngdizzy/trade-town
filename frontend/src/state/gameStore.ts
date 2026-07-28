@@ -244,7 +244,7 @@ class GameStore {
     playerVsAi: { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 },
     education: { viewedLessonIds: [], completedLessonIds: [], quizAttempts: 0, correctQuizAttempts: 0 },
     viewedTradeNotificationIds: [],
-    settings: { musicVolume: 0.5, sfxVolume: 0.7, autosaveIntervalSec: 60, showFps: false, operatingMode: "learning", companyPriority: "balanced" },
+    settings: { musicVolume: 0.5, sfxVolume: 0.7, autosaveIntervalSec: 60, showFps: false, operatingMode: "learning", companyPriority: "balanced", workMode: "work" },
     dialogue: { open: false, speaker: "", lines: [], index: 0 },
     paused: false,
     settingsOpen: false,

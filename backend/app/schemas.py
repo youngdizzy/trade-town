@@ -252,6 +252,13 @@ CompanyPriority = Literal["balanced", "learning", "research", "risk_reduction"]
 # (see app/state.py's GameState.advance_time()).
 TimeAdvanceTarget = Literal["workday_end", "week_end", "month_end", "hours"]
 
+# v0.7 Feature 37 — the Work Mode System. "work" (the default — unchanged
+# behavior from every prior version) is indefinite, continuous operation;
+# "rest" is the CEO-triggered wind-down — see nexus.py's tick() for
+# exactly which real systems each mode gates. Persistent until the CEO
+# changes it, never an automatic timer.
+WorkMode = Literal["work", "rest"]
+
 
 class SettingsState(CamelModel):
     music_volume: float = Field(alias="musicVolume")
@@ -265,6 +272,9 @@ class SettingsState(CamelModel):
     # v0.7 Feature 34 — same client-authoritative mechanism as
     # operating_mode above.
     company_priority: CompanyPriority = Field(default="balanced", alias="companyPriority")
+    # v0.7 Feature 37 — same client-authoritative mechanism as
+    # operating_mode/company_priority above.
+    work_mode: WorkMode = Field(default="work", alias="workMode")
 
 
 class DialogueHistoryEntry(CamelModel):

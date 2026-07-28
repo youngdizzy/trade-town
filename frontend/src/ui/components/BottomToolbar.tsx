@@ -2,9 +2,10 @@ import { useGameStore } from "@/ui/hooks/useGameStore";
 import { SaveManager } from "@/game/systems/SaveManager";
 import { GameManager } from "@/game/systems/GameManager";
 import { EventBus } from "@/game/systems/EventBus";
+import { SettingsManager } from "@/game/systems/SettingsManager";
 
 export function BottomToolbar() {
-  const { save, currentScene, paused } = useGameStore();
+  const { save, currentScene, paused, settings } = useGameStore();
   const inGame = currentScene !== "MainMenuScene";
   if (!inGame) return null;
 
@@ -19,9 +20,30 @@ export function BottomToolbar() {
         <ToolbarButton label="Command ⌁" onClick={() => EventBus.emit("ui:commandCenter", { open: true, mode: "quick" })} />
         <ToolbarButton label="Settings" onClick={() => EventBus.emit("ui:settings", { open: true })} />
         <ToolbarButton label={paused ? "Resume" : "Pause"} onClick={() => GameManager.getInstance()?.togglePause()} />
+        <WorkModeToggle workMode={settings.workMode} />
         <SaveStatusIndicator status={save.status} error={save.error} />
       </div>
     </div>
+  );
+}
+
+/** v0.7 Feature 37 — the Work Mode System. Always visible, persistent
+ * until the CEO changes it (never an automatic timer) — a real,
+ * client-authoritative settings field the same way operatingMode/
+ * companyPriority already are, read every tick by nexus.py's tick(). */
+function WorkModeToggle({ workMode }: { workMode: "work" | "rest" }) {
+  const isWork = workMode === "work";
+  return (
+    <button
+      type="button"
+      onClick={() => SettingsManager.update({ workMode: isWork ? "rest" : "work" })}
+      title={isWork ? "Switch to Rest Mode" : "Switch to Work Mode"}
+      className={`rounded px-3 py-1.5 shadow-pixel transition-colors active:translate-y-px ${
+        isWork ? "bg-bullish/80 text-ink hover:bg-bullish" : "bg-indigo-400/80 text-ink hover:bg-indigo-400"
+      }`}
+    >
+      {isWork ? "🟢 WORK MODE ACTIVE" : "🌙 REST MODE ACTIVE"}
+    </button>
   );
 }
 

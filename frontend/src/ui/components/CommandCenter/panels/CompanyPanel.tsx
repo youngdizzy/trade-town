@@ -144,6 +144,42 @@ export function CompanyPanel() {
       </Glass>
 
       <Glass className="p-3 lg:col-span-3">
+        <div className="mb-1.5 flex items-center justify-between">
+          <TerminalLabel>Work Mode</TerminalLabel>
+          <StatusPill tone={settings.workMode === "work" ? "green" : "purple"}>{settings.workMode === "work" ? "🟢 WORK MODE ACTIVE" : "🌙 REST MODE ACTIVE"}</StatusPill>
+        </div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <button
+            type="button"
+            onClick={() => SettingsManager.update({ workMode: "work" })}
+            className={`rounded-sm border p-2.5 text-left transition-colors ${
+              settings.workMode === "work" ? "border-cmd-green/50 bg-cmd-green/10 shadow-cmd-green" : "border-cmd-border/60 bg-cmd-bg/40 hover:border-cmd-green/30"
+            }`}
+          >
+            <div className={`mb-1 ${settings.workMode === "work" ? "text-cmd-green" : "text-cmd-text"}`}>WORK MODE</div>
+            <div className="text-[9px] text-cmd-textDim">
+              Employees work their real schedules indefinitely — research, meetings, and Academy training all continue. Trading runs on the
+              selected Operating Mode above. No automatic stopping; stays active until you switch it.
+            </div>
+          </button>
+          <button
+            type="button"
+            onClick={() => SettingsManager.update({ workMode: "rest" })}
+            className={`rounded-sm border p-2.5 text-left transition-colors ${
+              settings.workMode === "rest" ? "border-cmd-purple/50 bg-cmd-purple/10" : "border-cmd-border/60 bg-cmd-bg/40 hover:border-cmd-purple/30"
+            }`}
+          >
+            <div className={`mb-1 ${settings.workMode === "rest" ? "text-cmd-purple" : "text-cmd-text"}`}>REST MODE</div>
+            <div className="text-[9px] text-cmd-textDim">
+              Employees finish what they're doing, stop starting new work, and head to the Break Room to eat, socialize, study, exercise, or
+              sleep — real off-hours routines, on demand. Open trades keep being managed safely by Automation Mode and risk rules; they never
+              get abandoned.
+            </div>
+          </button>
+        </div>
+      </Glass>
+
+      <Glass className="p-3 lg:col-span-3">
         <TerminalLabel>Time Controls</TerminalLabel>
         <div className="grid grid-cols-1 gap-2 sm:grid-cols-4">
           {TIME_TARGETS.map(({ target, label, description }) => (

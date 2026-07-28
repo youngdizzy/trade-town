@@ -39,7 +39,12 @@ already-existing lever per priority (Academy knowledge-point awards,
 research confidence-gain speed, or tightened trade-sizing risk limits —
 see `nexus._effective_risk_limits()` and the comment above
 `PRIORITY_KNOWLEDGE_MULTIPLIER`); it never mutates the player's own
-stored `RiskLimits`. Only those client-owned fields (`player`, `settings`,
+stored `RiskLimits`. `settings.workMode` (`work | rest`, v0.7 Feature 37)
+is the third — NEXUS reads it every tick to pause new research/Academy
+progress and new meeting starts while resting, and to route every agent
+with no active meeting/break override to a real off-hours task (see
+`nexus._rest_block()`); trading/risk systems never read it at all. Only
+those client-owned fields (`player`, `settings`,
 `dialogueHistory`) are actually persisted from the payload — every other
 field
 (`agents`/`tasks`/`whiteboards`/`meeting`/`news`/`research`/`watchlist`/

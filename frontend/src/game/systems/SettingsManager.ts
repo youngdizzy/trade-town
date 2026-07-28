@@ -10,6 +10,7 @@ const DEFAULT_SETTINGS: SettingsState = {
   showFps: false,
   operatingMode: "learning",
   companyPriority: "balanced",
+  workMode: "work",
 };
 
 /** Persists user preferences to localStorage and broadcasts changes on the EventBus. */

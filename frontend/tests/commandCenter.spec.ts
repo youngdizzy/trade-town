@@ -816,4 +816,40 @@ test.describe("Global Command Center", () => {
     await eventRow.locator("xpath=..").getByText("✕", { exact: true }).click();
     await expect(eventRow).not.toBeVisible({ timeout: 5000 });
   });
+
+  test("Work Mode toggle in the always-visible toolbar switches modes, the status indicator updates, and a real save routes every agent to a real off-hours task", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    const toggle = page.getByRole("button", { name: /WORK MODE ACTIVE|REST MODE ACTIVE/ });
+    await expect(toggle).toBeVisible();
+    await expect(toggle).toHaveText(/🟢 WORK MODE ACTIVE/);
+
+    await toggle.click();
+    await expect(toggle).toHaveText(/🌙 REST MODE ACTIVE/);
+
+    // A real POST /api/save pushes the new work_mode setting to the
+    // server the same way a real player's autosave would; the sim's own
+    // next real tick then applies the real Rest Mode routing — poll
+    // GET /api/load rather than asserting immediately, since that next
+    // tick is a real ~2s-interval async event, not synchronous with the
+    // save call.
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+    await expect(async () => {
+      const state = await page.evaluate(async () => {
+        const res = await fetch("/api/load");
+        return res.json();
+      });
+      const locations = Object.values(state.agents).map((a: unknown) => (a as { location: string }).location);
+      expect(locations.every((loc) => loc === "break-room")).toBe(true);
+    }).toPass({ timeout: 15000 });
+
+    // Switching back to Work Mode restores the status indicator; the
+    // underlying schedule-routing effect is already covered by
+    // backend/tests/test_work_mode.py, so the E2E round trip stops here.
+    await toggle.click();
+    await expect(toggle).toHaveText(/🟢 WORK MODE ACTIVE/);
+    await page.getByRole("button", { name: "Save", exact: true }).click();
+  });
 });

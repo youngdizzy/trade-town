@@ -916,6 +916,56 @@ development milestones, not semver releases.
     system-event lists, the per-agent Live Schedule, and a full custom-
     event create/delete round trip against the live backend).
 
+- **v0.7 — Work Mode System (Feature 37)** — the CEO gets a real, always-
+  visible, persistent toggle between indefinite continuous operation and
+  a genuine company-wide wind-down, replacing the brief's imagined "Stop
+  for the Day" button with a real mechanism this codebase can back
+  honestly (no such button existed anywhere in this codebase before —
+  checked directly).
+  - **Work Mode** (the default, unchanged behavior from every prior
+    version) is what already happens today: employees run their real
+    per-agent schedules, research/meetings/Academy training all continue,
+    and trading runs on the selected Operating Mode — indefinitely, with
+    no automatic stopping.
+  - **Rest Mode** is the new mechanism. `settings.workMode` joins
+    `operatingMode`/`companyPriority` as a third client-authoritative
+    settings field `nexus.tick()` reads every tick. While resting:
+    `tick_research()` and `tick_academy_projects()` are skipped entirely
+    (`"employees stop starting new work"`); `_maybe_call_meeting()` is
+    gated so no *new* meeting starts, though one already under way
+    finishes naturally, since the gate only ever short-circuits the
+    "maybe start a new one" branch, never the "an active meeting is
+    already wrapping up" branch. Every agent with no active
+    meeting/break override routes through a new `_rest_block()` — a pure
+    function of the real clock that maps the current time onto the same
+    real 10-hour off-hours span Feature 35 already authored per agent
+    (20:00-24:00 wind-down/evening activity, 0:00-6:00 sleep), repeating
+    every 10 in-game hours, so a CEO-triggered rest period shows genuine
+    variety using only real, already-written content — no new per-agent
+    state needed to track "how long has this agent been resting."
+    Trading/risk systems (`paper_trading.py`, `broker.py`,
+    `risk_engine.py`, `scanner.py`, `gatekeeper.py`) are never touched by
+    `work_mode` at all — structurally unaware of it — which is exactly
+    how the brief's "open trades continue to be managed safely... they
+    do not abandon positions" is satisfied.
+  - A new always-visible toolbar button (🟢 WORK MODE ACTIVE / 🌙 REST
+    MODE ACTIVE) toggles the mode from anywhere in the game, not just
+    from inside the Command Center — matching the brief's "the current
+    mode should always be visible." A fuller Work Mode section was also
+    added to the Company tab (`CompanyPanel.tsx`) alongside Operating
+    Mode/Company Priority/Time Controls, spelling out exactly what each
+    mode does.
+  - Verification: full backend (mypy/ruff/pytest, 417/417 — 13 new tests
+    in `test_work_mode.py`, covering the rest-block cycling math, both
+    modes' schedule routing, research/Academy pausing under rest, and
+    the meeting-gate's new-vs-continuing distinction) and frontend
+    (tsc/eslint/build) clean. Manually verified in the running app
+    (Playwright, 28/28 counting the same tolerated real-trade-timing skip
+    every run of this suite already has — a new toolbar test confirms
+    the full real round trip: toggling to Rest Mode, saving via a real
+    `POST /api/save`, and polling `GET /api/load` until the real backend's
+    next tick shows every agent routed to a real off-hours task).
+
 - **v0.6.3 — Executive Voting, Risk Command Center, Cyber Overlay** — the
   player is now formally TradeTown's CEO. A research candidate crossing
   the trade-confidence threshold no longer executes automatically: it

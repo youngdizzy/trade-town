@@ -66,7 +66,7 @@ from app.reasoning_lab import compute_reasoning_lab_state, generate_challenge, r
 from app.research import RESEARCHER_IDS, default_research, tick_research
 from app.risk_engine import evaluate_guardian_exposure, evaluate_sentinel_risk, monitor_portfolio, recommended_quantity
 from app.scanner import tick_scanner
-from app.schedule import block_for_hour
+from app.schedule import ScheduleBlock, block_for_hour
 from app.treasury import apply_monthly_savings_rules, record_monthly_report
 from app.scribe import (
     FUTURE_TRADE_CONFIDENCE_THRESHOLD,
@@ -469,12 +469,33 @@ def register_agents(state: GameSaveState) -> GameSaveState:
     return state.model_copy(update={"agents": agents}) if changed else state
 
 
+def _rest_block(agent_id: AgentId, new_time: TimeState) -> ScheduleBlock:
+    """v0.7 Feature 37 — Rest Mode. Maps the real current clock onto the
+    same real 10-hour off-hours span Feature 35 already authored per
+    agent (20:00-24:00 wind-down/evening activity, 0:00-6:00 sleep) via a
+    repeating cycle, so a CEO-triggered rest period shows genuine
+    variety — wind-down, then evening activity, then sleep, then wind-down
+    again — using only real, already-written per-agent content. This is a
+    pure function of the real clock, not new per-agent state: no field
+    tracks "how long has this agent been resting," since the mapping
+    itself already repeats every 10 in-game hours."""
+    minute_of_day = new_time.hour * 60 + new_time.minute
+    cycle_minute = minute_of_day % 600
+    rest_hour = 20 + cycle_minute // 60 if cycle_minute < 240 else (cycle_minute - 240) // 60
+    return block_for_hour(agent_id, rest_hour)
+
+
+def _effective_block(agent_id: AgentId, new_time: TimeState, resting: bool) -> ScheduleBlock:
+    return _rest_block(agent_id, new_time) if resting else block_for_hour(agent_id, new_time.hour)
+
+
 def _tick_agent(
     agent_id: AgentId,
     agent: AgentState,
     new_time: TimeState,
     minutes: int,
     tasks: list[Task],
+    resting: bool = False,
 ) -> AgentState:
     override_reason: str | None = None
 
@@ -482,7 +503,7 @@ def _tick_agent(
         remaining = agent.override.remaining_minutes - minutes
         if remaining <= 0:
             bonus = BREAK_ENERGY_BONUS if agent.override.reason == "break" else 0
-            block = block_for_hour(agent_id, new_time.hour)
+            block = _effective_block(agent_id, new_time, resting)
             location, task_label = block.location, block.task
             energy = min(100.0, agent.energy + bonus)
             override = None
@@ -493,7 +514,7 @@ def _tick_agent(
             energy = agent.energy
             override = agent.override.model_copy(update={"remaining_minutes": remaining})
     else:
-        block = block_for_hour(agent_id, new_time.hour)
+        block = _effective_block(agent_id, new_time, resting)
         location, task_label = block.location, block.task
         energy = agent.energy
         override = None
@@ -546,6 +567,7 @@ def _maybe_call_meeting(
     tasks: list[Task],
     memory: list[MemoryRecord],
     meeting_minutes: list[MeetingMinutes],
+    resting: bool = False,
 ) -> tuple[dict[AgentId, AgentState], MeetingState]:
     if meeting.active:
         still_meeting = [aid for aid in meeting.participants if (override := agents[aid].override) is not None and override.reason == "meeting"]
@@ -564,6 +586,12 @@ def _maybe_call_meeting(
                 )
             )
             return agents, MeetingState(active=False, participants=[], discussion=[])
+        return agents, meeting
+
+    # v0.7 Feature 37 — Rest Mode: "employees stop starting new work,"
+    # but a meeting already under way (handled above) still finishes
+    # naturally rather than being cut off mid-conversation.
+    if resting:
         return agents, meeting
 
     if random.random() >= MEETING_CHANCE_PER_TICK:
@@ -828,6 +856,13 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     performance_snapshots = list(state.performance_snapshots)
     risk_limits = state.risk_limits
     company_priority: CompanyPriority = state.settings.company_priority
+    # v0.7 Feature 37 — the Work Mode System. "rest" pauses new employee-
+    # initiated work (research progress, new meetings, Academy training)
+    # while every trading/risk system (paper_trading/broker/risk_engine/
+    # scanner/gatekeeper) keeps running exactly as it always has, unaware
+    # of work_mode entirely — see this module's own _rest_block() for how
+    # resting agents' locations/tasks are computed.
+    resting = state.settings.work_mode == "rest"
     effective_risk_limits = _effective_risk_limits(risk_limits, company_priority)
     knowledge_multiplier = PRIORITY_KNOWLEDGE_MULTIPLIER if company_priority == "learning" else 1.0
     research_speed_multiplier = PRIORITY_RESEARCH_SPEED_MULTIPLIER if company_priority == "research" else 1.0
@@ -851,9 +886,13 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     question_archive: list[QuestionOfTheDay] = list(state.question_archive)
     treasury: TreasuryState = state.treasury
 
-    agents = {aid: _tick_agent(aid, agent, new_time, minutes, tasks) for aid, agent in state.agents.items()}
+    agents = {aid: _tick_agent(aid, agent, new_time, minutes, tasks, resting=resting) for aid, agent in state.agents.items()}
 
-    research, completed = tick_research(research, speed_multiplier=research_speed_multiplier)
+    # v0.7 Feature 37 — Rest Mode pauses new research progress ("employees
+    # stop starting new work"); already-completed items stay completed,
+    # and whatever confidence an in-progress item had simply holds until
+    # Work Mode resumes.
+    research, completed = (research, []) if resting else tick_research(research, speed_multiplier=research_speed_multiplier)
     record_research_completions(memory, completed)
     for item in completed:
         news.append(
@@ -872,7 +911,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
 
     # v0.7 Feature 25 — the Academy's one company-wide knowledge project,
     # advanced and rotated the same way research.py's own queue is.
-    academy_projects, newly_completed_project = tick_academy_projects(academy_projects, len(academy_completed_projects))
+    # v0.7 Feature 37 — Rest Mode pauses this too ("Training continues"
+    # is a Work Mode-only bullet in the brief).
+    academy_projects, newly_completed_project = (academy_projects, None) if resting else tick_academy_projects(academy_projects, len(academy_completed_projects))
     if newly_completed_project is not None:
         academy_completed_projects.append(newly_completed_project)
         if len(academy_completed_projects) > MAX_ACADEMY_LIBRARY:
@@ -1111,7 +1152,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         )
 
     mm_count_before_meeting = len(meeting_minutes)
-    agents, meeting = _maybe_call_meeting(agents, state.meeting, research, new_time, news, tasks, memory, meeting_minutes)
+    agents, meeting = _maybe_call_meeting(agents, state.meeting, research, new_time, news, tasks, memory, meeting_minutes, resting=resting)
     # v0.7 Feature 25 — every agent who actually attended a real meeting
     # earns a small real Knowledge Points bonus (app/academy.py) —
     # "collaboration" grounded in the meeting system that already exists.

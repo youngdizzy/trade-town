@@ -1784,6 +1784,68 @@ a new CALENDAR-tab test confirms the real system-event lists, the
 per-agent Live Schedule, and a full custom-event create/delete round trip
 against the live backend).
 
+### Work Mode System (Feature 37)
+
+The brief asks to "replace the Stop for the Day button" — no such button
+exists anywhere in this codebase (checked directly; the game has always
+run continuously). What's real and worth building instead is the actual
+toggle: `settings.work_mode` (`"work" | "rest"`, `WorkMode` in
+schemas.py) joins `operating_mode`/`company_priority` as the third
+client-authoritative settings field `nexus.tick()` reads every tick,
+merged the same way via `apply_client_save`. "work" (the default) is
+exactly today's unchanged behavior — indefinite, continuous operation,
+no automatic stopping.
+
+"rest" gates three things inside `tick()`:
+- `tick_research()` and `tick_academy_projects()` are skipped entirely
+  (`research, completed = (research, []) if resting else tick_research(...)`
+  and the equivalent for Academy) — "employees stop starting new work."
+- `_maybe_call_meeting()` takes a new `resting` parameter that only ever
+  short-circuits the function's own "maybe start a *new* meeting" branch
+  (the `else` half, reached only once `meeting.active` is already
+  `False`) — the `if meeting.active:` branch above it, which wraps up an
+  in-progress meeting once its participants' overrides actually expire,
+  is completely unaffected by `resting`. This is a natural consequence of
+  the function's existing structure (see its own module comment on why
+  meetings/breaks share one `AgentOverride` mechanism), not new branching
+  logic — a meeting already under way simply finishes exactly as it
+  always would.
+- Every agent whose `override` is `None` (or has just expired) routes
+  through a new `_effective_block()` → `_rest_block()` instead of the
+  normal `block_for_hour()`. `_rest_block()` maps the real current
+  hour:minute onto the same real 10-hour off-hours span Feature 35
+  already authored per agent (20:00-24:00 wind-down/evening activity,
+  0:00-6:00 sleep) via `cycle_minute = minute_of_day % 600`, so a
+  CEO-triggered rest period cycles through wind-down → evening activity →
+  sleep → wind-down again, repeating every 10 in-game hours — genuine
+  variety from only real, already-written per-agent content. This is
+  deliberately a pure function of the real clock rather than new
+  per-agent state: no field tracks "how long has this agent been
+  resting," since the mapping itself already repeats on its own.
+
+Trading and risk systems — `paper_trading.py`, `broker.py`,
+`risk_engine.py`, `scanner.py`, `gatekeeper.py` — are never touched by
+`work_mode` anywhere in `tick()`; they're structurally unaware the
+setting exists. This is exactly how the brief's "open trades continue to
+be managed safely according to Automation Mode and risk rules — they do
+not abandon positions" is satisfied: not by special-casing trading logic
+around Rest Mode, but by simply never gating it in the first place.
+Cadence-driven company record-keeping (Weekly/Monthly Coach Reports, the
+Monthly Executive Review, Treasury's monthly rules, Reflection Sessions,
+the daily Question of the Day, the Reasoning Lab challenge, the Academy
+mentorship check) is likewise left ungated — these represent the company
+looking back at what already happened rather than new agent-initiated
+work, so pausing them mid-cycle would create odd half-finished
+retrospectives for no real benefit.
+
+A new always-visible toggle lives in `BottomToolbar.tsx` (🟢 WORK MODE
+ACTIVE / 🌙 REST MODE ACTIVE) — the same toolbar that already hosts
+Save/Load/Pause/Settings, satisfying the brief's "the current mode should
+always be visible" from anywhere in the game, not just inside the
+Command Center. A fuller Work Mode section (with the same visual
+language as Operating Mode/Company Priority) was also added to
+`CompanyPanel.tsx`, spelling out exactly what each mode does.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing
