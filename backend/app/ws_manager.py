@@ -64,6 +64,11 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         # (see education.py's module docstring).
         "education": state.education.model_dump(by_alias=True),
         "viewedTradeNotificationIds": state.viewed_trade_notification_ids,
+        # v0.6.3 Feature 12 — tradeProposals are the small, capped
+        # (MAX_PENDING_PROPOSALS) pending queue; ceoDecisions is already
+        # capped (MAX_CEO_DECISIONS) like decisions above, sent as-is.
+        "tradeProposals": [p.model_dump(by_alias=True) for p in state.trade_proposals],
+        "ceoDecisions": [c.model_dump(by_alias=True) for c in state.ceo_decisions],
     }
 
 

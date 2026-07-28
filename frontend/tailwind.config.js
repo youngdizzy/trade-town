@@ -63,11 +63,40 @@ export default {
           "0%": { transform: "translateY(-10px) rotate(0deg)", opacity: "1" },
           "100%": { transform: "translateY(160px) rotate(340deg)", opacity: "0" },
         },
+        // v0.6.3 Feature 14 — the cyber overlay's own open transition:
+        // a slight zoom-out-of-focus + fade, so opening any full-screen
+        // panel (Command Center, Executive Voting) reads as a deliberate
+        // "entering the bridge" moment rather than an instant cut.
+        "cmd-overlay-in": {
+          "0%": { opacity: "0", transform: "scale(1.03)", filter: "blur(6px)" },
+          "100%": { opacity: "1", transform: "scale(1)", filter: "blur(0)" },
+        },
+        "cmd-panel-in": {
+          "0%": { opacity: "0", transform: "translateY(10px)" },
+          "100%": { opacity: "1", transform: "translateY(0)" },
+        },
+        "cmd-toast-in": {
+          "0%": { opacity: "0", transform: "translateX(24px)" },
+          "100%": { opacity: "1", transform: "translateX(0)" },
+        },
+        "cmd-toast-out": {
+          "0%": { opacity: "1", transform: "translateX(0)" },
+          "100%": { opacity: "0", transform: "translateX(24px)" },
+        },
+        "cmd-grid-drift": {
+          "0%": { backgroundPosition: "0px 0px" },
+          "100%": { backgroundPosition: "48px 48px" },
+        },
       },
       animation: {
         "cmd-shake": "cmd-shake 0.5s ease-in-out",
         "cmd-glow-pulse": "cmd-glow-pulse 1.6s ease-in-out infinite",
         "cmd-confetti-fall": "cmd-confetti-fall 1.4s ease-in forwards",
+        "cmd-overlay-in": "cmd-overlay-in 0.32s cubic-bezier(0.16,1,0.3,1) both",
+        "cmd-panel-in": "cmd-panel-in 0.4s cubic-bezier(0.16,1,0.3,1) both",
+        "cmd-toast-in": "cmd-toast-in 0.28s cubic-bezier(0.16,1,0.3,1) both",
+        "cmd-toast-out": "cmd-toast-out 0.22s ease-in both",
+        "cmd-grid-drift": "cmd-grid-drift 12s linear infinite",
       },
     },
   },

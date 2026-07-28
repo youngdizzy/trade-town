@@ -3,6 +3,7 @@ import type {
   AgentId,
   AgentState,
   BacktestSession,
+  CeoDecisionRecord,
   CoachReport,
   CompanyScore,
   HallOfFameEntry,
@@ -25,6 +26,7 @@ import type {
   Task,
   TimeState,
   TradeDecision,
+  TradeProposal,
   WatchlistEntry,
 } from "@/types";
 import { EventBus } from "@/game/systems/EventBus";
@@ -67,6 +69,8 @@ export interface GameUiState {
   riskWarnings: RiskWarning[];
   scannerAlerts: ScannerAlert[];
   decisions: TradeDecision[];
+  tradeProposals: TradeProposal[];
+  ceoDecisions: CeoDecisionRecord[];
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
@@ -82,6 +86,8 @@ export interface GameUiState {
   brainRoomHudOpen: boolean;
   commandCenterOpen: boolean;
   commandCenterMode: "quick" | "full";
+  executiveVotingOpen: boolean;
+  executiveVotingProposalId: string | null;
   netConnected: boolean;
   save: SaveUiState;
   currentScene: string;
@@ -146,6 +152,8 @@ class GameStore {
     riskWarnings: [],
     scannerAlerts: [],
     decisions: [],
+    tradeProposals: [],
+    ceoDecisions: [],
     agentEnergy: { current: 100, cap: 100, updatedAt: new Date().toISOString() },
     signalCalibration: { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 },
     playerVsAi: { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 },
@@ -161,6 +169,8 @@ class GameStore {
     brainRoomHudOpen: false,
     commandCenterOpen: false,
     commandCenterMode: "quick",
+    executiveVotingOpen: false,
+    executiveVotingProposalId: null,
     netConnected: false,
     save: { status: "idle", lastSavedAt: null, error: null },
     currentScene: "MainMenuScene",
@@ -237,6 +247,19 @@ class GameStore {
     EventBus.on("riskWarnings:updated", (riskWarnings) => this.set({ riskWarnings }));
     EventBus.on("scannerAlerts:updated", (scannerAlerts) => this.set({ scannerAlerts }));
     EventBus.on("decisions:updated", (decisions) => this.set({ decisions }));
+    EventBus.on("tradeProposals:updated", (tradeProposals) => this.set({ tradeProposals }));
+    EventBus.on("ceoDecisions:updated", (ceoDecisions) => this.set({ ceoDecisions }));
+    EventBus.on("ui:executiveVoting", ({ open, proposalId }) =>
+      this.set({ executiveVotingOpen: open, executiveVotingProposalId: open ? (proposalId ?? this.state.executiveVotingProposalId) : null }),
+    );
+    // A freshly-generated proposal opens the Executive Voting window on
+    // its own (per the spec: "Each proposal opens an Executive Voting
+    // window") unless the CEO already has one open — never yank an
+    // in-progress review away to show a different proposal.
+    EventBus.on("tradeProposal:new", (proposal) => {
+      if (this.state.executiveVotingOpen) return;
+      this.set({ executiveVotingOpen: true, executiveVotingProposalId: proposal.id });
+    });
     EventBus.on("agentEnergy:updated", (agentEnergy) => this.set({ agentEnergy }));
     EventBus.on("signalCalibration:updated", (signalCalibration) => this.set({ signalCalibration }));
     EventBus.on("playerVsAi:updated", (playerVsAi) => this.set({ playerVsAi }));

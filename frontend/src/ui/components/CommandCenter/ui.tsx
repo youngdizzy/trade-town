@@ -66,3 +66,21 @@ export function Meter({ value, max = 100, tone = "cyan" }: { value: number; max?
 export function EmptyState({ children }: { children: ReactNode }) {
   return <div className="py-3 text-center text-cmd-textDim">{children}</div>;
 }
+
+/** Faint drifting grid — v0.6.3 Feature 14's "animated grid background."
+ * Pure CSS background-position animation (no canvas/WebGL, no per-frame
+ * JS), so it costs nothing while charts/AI panels are also updating.
+ * `pointer-events-none` so it never intercepts clicks meant for the
+ * panels layered above it. */
+export function AnimatedGrid({ className = "" }: { className?: string }) {
+  return (
+    <div
+      className={`pointer-events-none absolute inset-0 opacity-[0.05] motion-safe:animate-cmd-grid-drift ${className}`}
+      style={{
+        backgroundImage:
+          "linear-gradient(rgba(79,216,255,0.5) 1px, transparent 1px), linear-gradient(90deg, rgba(79,216,255,0.5) 1px, transparent 1px)",
+        backgroundSize: "24px 24px",
+      }}
+    />
+  );
+}

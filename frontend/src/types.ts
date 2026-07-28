@@ -578,6 +578,67 @@ export interface TradeDecision {
   createdAt: string;
 }
 
+// v0.6.3 Feature 12 — Executive Voting (CEO Approval). A research
+// candidate crossing the trade-confidence threshold no longer executes
+// automatically: it becomes a TradeProposal and waits for the CEO (the
+// player) to cast the real buy/sell/wait call. See backend/app/executive.py.
+export type AnalystRole = "technical" | "news" | "macro" | "risk" | "sentiment" | "execution";
+export type AnalystChoice = "buy" | "sell" | "wait";
+
+export const ROLE_TO_AGENT: Record<AnalystRole, AgentId> = {
+  technical: "echo",
+  news: "scout",
+  macro: "nova",
+  risk: "sentinel",
+  sentiment: "pulse",
+  execution: "atlas",
+};
+
+/** One analyst seat's independent vote, always backed by real evidence — see
+ * backend/app/executive.py's generate_analyst_votes() for what each role reuses. */
+export interface AnalystVote {
+  role: AnalystRole;
+  agentId: AgentId;
+  choice: AnalystChoice;
+  reasoning: string;
+  evidence: string[];
+}
+
+/** A trade candidate awaiting the CEO's decision — not yet a trade. */
+export interface TradeProposal {
+  id: string;
+  symbol: string;
+  category: ResearchCategory;
+  quantity: number;
+  price: number;
+  confidence: number;
+  analystVotes: AnalystVote[];
+  overallRecommendation: AnalystChoice;
+  researchSummary: string;
+  riskSummary: string;
+  createdAt: string;
+  /** Simulated-clock minutes-since-epoch — expires after 3 in-game days unactioned. */
+  createdSimMinutes: number;
+}
+
+/** The permanent record of one CEO decision, graded once (and only once) a
+ * real trade it caused actually closes — an override's "AI accuracy" is
+ * left "undecidable" rather than guessed, since no counterfactual trade
+ * was ever placed to test it. */
+export interface CeoDecisionRecord {
+  id: string;
+  proposalId: string;
+  symbol: string;
+  category: ResearchCategory;
+  aiRecommendation: AnalystChoice;
+  ceoDecision: AnalystChoice;
+  agreedWithAi: boolean;
+  decisionId: string | null;
+  outcome: "pending" | "correct" | "incorrect" | "undecidable";
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
 export interface TimeState {
   day: number;
   hour: number; // 0-23
@@ -615,6 +676,8 @@ export interface GameSaveState {
   riskWarnings: RiskWarning[];
   scannerAlerts: ScannerAlert[];
   decisions: TradeDecision[];
+  tradeProposals: TradeProposal[];
+  ceoDecisions: CeoDecisionRecord[];
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;

@@ -3,6 +3,7 @@ import type {
   AgentId,
   AgentState,
   BacktestSession,
+  CeoDecisionRecord,
   CoachReport,
   CompanyScore,
   HallOfFameEntry,
@@ -24,6 +25,7 @@ import type {
   Task,
   TimeState,
   TradeDecision,
+  TradeProposal,
   WatchlistEntry,
 } from "@/types";
 import { EventBus } from "@/game/systems/EventBus";
@@ -56,6 +58,8 @@ type ServerMessage =
       riskWarnings: RiskWarning[];
       scannerAlerts: ScannerAlert[];
       decisions: TradeDecision[];
+      tradeProposals: TradeProposal[];
+      ceoDecisions: CeoDecisionRecord[];
       agentEnergy: AgentEnergy;
       signalCalibration: SignalCalibrationState;
       playerVsAi: PlayerVsAiState;
@@ -138,6 +142,8 @@ export class GameSocket {
             riskWarnings: msg.riskWarnings,
             scannerAlerts: msg.scannerAlerts,
             decisions: msg.decisions,
+            tradeProposals: msg.tradeProposals,
+            ceoDecisions: msg.ceoDecisions,
             agentEnergy: msg.agentEnergy,
             signalCalibration: msg.signalCalibration,
             playerVsAi: msg.playerVsAi,

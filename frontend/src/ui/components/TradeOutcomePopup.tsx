@@ -39,7 +39,7 @@ const THESIS_LABEL: Record<Outcome, string> = {
  * happened" moment, not the only record.
  */
 export function TradeOutcomePopup() {
-  const { paperPortfolio, viewedTradeNotificationIds } = useGameStore();
+  const { paperPortfolio, viewedTradeNotificationIds, currentScene } = useGameStore();
   const [dismissing, setDismissing] = useState(false);
 
   const unviewed = useMemo(() => {
@@ -59,7 +59,14 @@ export function TradeOutcomePopup() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [backlog.map((t) => t.id).join(",")]);
 
-  if (!trade) return null;
+  // The WebSocket connects at app boot (see GameCanvas.tsx), independent
+  // of the title screen — so a real backlog of unviewed trades can already
+  // exist by the time MainMenuScene is still showing. Never render a
+  // full-screen popup over the title screen itself, or it swallows the
+  // click meant for the canvas's own "Continue" button. Checked after the
+  // hooks above (not as an early return before them) so every hook still
+  // runs unconditionally on every render.
+  if (currentScene === "MainMenuScene" || !trade) return null;
 
   const outcome = classifyOutcome(trade.pnl);
 

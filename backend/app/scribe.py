@@ -124,14 +124,13 @@ def record_scanner_alert(memory: list[MemoryRecord], alert: ScannerAlert) -> Non
     record(memory, "alert", f"Scanner alert: {alert.symbol}", alert.message)
 
 
-def record_decision(memory: list[MemoryRecord], decision: TradeDecision) -> None:
-    outcome = "approved a trade on" if decision.outcome == "trade" else "held off on"
-    record(
-        memory,
-        "decision",
-        f"Decision: {decision.symbol}",
-        f"Atlas {outcome} {decision.symbol} at {decision.confidence:.0f}% confidence. {decision.final_reasoning}",
-    )
+def record_ceo_decision(memory: list[MemoryRecord], decision: TradeDecision) -> None:
+    """Feature 12 — every CEO Approval outcome (a player's real buy/sell/
+    wait call, or an unactioned proposal auto-resolved as wait on
+    expiry — see app/executive.py's resolve_proposal()) is logged here.
+    decision.final_reasoning already states who decided and why, so it's
+    used verbatim rather than re-deriving an attribution string."""
+    record(memory, "decision", f"CEO decision: {decision.symbol}", decision.final_reasoning)
 
 
 def record_order_placed(memory: list[MemoryRecord], order: PaperOrder) -> None:

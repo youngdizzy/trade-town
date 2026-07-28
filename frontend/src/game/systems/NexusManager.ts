@@ -1,6 +1,7 @@
 import type {
   AgentEnergy,
   BacktestSession,
+  CeoDecisionRecord,
   CoachReport,
   CompanyScore,
   HallOfFameEntry,
@@ -21,6 +22,7 @@ import type {
   Strategy,
   Task,
   TradeDecision,
+  TradeProposal,
   WatchlistEntry,
 } from "@/types";
 import { EventBus } from "./EventBus";
@@ -46,6 +48,8 @@ interface NexusSnapshot {
   riskWarnings: RiskWarning[];
   scannerAlerts: ScannerAlert[];
   decisions: TradeDecision[];
+  tradeProposals: TradeProposal[];
+  ceoDecisions: CeoDecisionRecord[];
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
@@ -109,11 +113,23 @@ export class NexusManager {
   private static riskWarnings: RiskWarning[] = [];
   private static scannerAlerts: ScannerAlert[] = [];
   private static decisions: TradeDecision[] = [];
+  private static tradeProposals: TradeProposal[] = [];
+  private static ceoDecisions: CeoDecisionRecord[] = [];
   private static agentEnergy: AgentEnergy = { current: 100, cap: 100, updatedAt: new Date().toISOString() };
   private static signalCalibration: SignalCalibrationState = { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 };
   private static playerVsAi: PlayerVsAiState = { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 };
   private static education: EducationProgress = { viewedLessonIds: [], completedLessonIds: [], quizAttempts: 0, correctQuizAttempts: 0 };
   private static viewedTradeNotificationIds: string[] = [];
+  // The WebSocket connects at app boot (see GameCanvas.tsx), independent
+  // of the title screen — so the very first applyServerUpdate() can carry
+  // whatever proposals already existed server-side before this session
+  // ever opened. Without this flag, that pre-existing backlog reads as
+  // "just appeared" and auto-opens the Executive Voting popup over the
+  // title screen itself — the same class of bug already caught and fixed
+  // once for TradeOutcomePopup's own backlog handling (see CHANGELOG's
+  // v0.6.2 Phase 10 entry). Sending tradeProposal:new is skipped for the
+  // whole first snapshot; every proposal in it is "already there," not new.
+  private static hydrated = false;
 
   static getTasks(): Task[] {
     return this.tasks;
@@ -197,6 +213,27 @@ export class NexusManager {
 
   static getDecisions(): TradeDecision[] {
     return this.decisions;
+  }
+
+  static getTradeProposals(): TradeProposal[] {
+    return this.tradeProposals;
+  }
+
+  static getCeoDecisions(): CeoDecisionRecord[] {
+    return this.ceoDecisions;
+  }
+
+  /** Applies the result of a direct POST /api/executive/decide call
+   * immediately, the same reasoning as setAgentEnergy below — no need to
+   * wait for the next sim-tick WS broadcast to see the proposal resolved. */
+  static setExecutiveDecisionResult(tradeProposals: TradeProposal[], ceoDecisions: CeoDecisionRecord[], decisions: TradeDecision[], paperPortfolio: PaperPortfolio): void {
+    this.tradeProposals = tradeProposals;
+    this.ceoDecisions = ceoDecisions;
+    this.decisions = decisions;
+    this.paperPortfolio = paperPortfolio;
+    EventBus.emit("tradeProposals:updated", tradeProposals);
+    EventBus.emit("ceoDecisions:updated", ceoDecisions);
+    EventBus.emit("portfolio:updated", paperPortfolio);
   }
 
   static getAgentEnergy(): AgentEnergy {
@@ -355,6 +392,17 @@ export class NexusManager {
     }
     this.decisions = update.decisions;
 
+    if (update.tradeProposals.length !== this.tradeProposals.length) {
+      const newest = update.tradeProposals[update.tradeProposals.length - 1];
+      if (this.hydrated && newest && update.tradeProposals.length > this.tradeProposals.length) EventBus.emit("tradeProposal:new", newest);
+      EventBus.emit("tradeProposals:updated", update.tradeProposals);
+    }
+    this.tradeProposals = update.tradeProposals;
+    this.hydrated = true;
+
+    if (update.ceoDecisions.length !== this.ceoDecisions.length) EventBus.emit("ceoDecisions:updated", update.ceoDecisions);
+    this.ceoDecisions = update.ceoDecisions;
+
     if (update.agentEnergy !== this.agentEnergy) EventBus.emit("agentEnergy:updated", update.agentEnergy);
     this.agentEnergy = update.agentEnergy;
 
@@ -392,10 +440,13 @@ export class NexusManager {
     this.riskWarnings = save.riskWarnings;
     this.scannerAlerts = save.scannerAlerts;
     this.decisions = save.decisions;
+    this.tradeProposals = save.tradeProposals;
+    this.ceoDecisions = save.ceoDecisions;
     this.agentEnergy = save.agentEnergy;
     this.signalCalibration = save.signalCalibration;
     this.playerVsAi = save.playerVsAi;
     this.education = save.education;
     this.viewedTradeNotificationIds = save.viewedTradeNotificationIds;
+    this.hydrated = true;
   }
 }

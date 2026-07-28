@@ -13,9 +13,12 @@ from datetime import datetime, timezone
 from app import education, nexus, player_vs_ai, signal_calibration, trade_notifications
 from app.agent_energy import default_agent_energy
 from app.company_score import compute_company_score
+from app.executive import MAX_CEO_DECISIONS, AnalystChoice, resolve_proposal
 from app.market_data import market_data_provider
-from app.portfolio import default_portfolio
+from app.nexus import MAX_DECISIONS
+from app.portfolio import default_portfolio, sim_minutes
 from app.research import default_research
+from app.scribe import record_ceo_decision
 from app.schemas import (
     EducationProgress,
     EntityTransform,
@@ -66,6 +69,8 @@ def default_state() -> GameSaveState:
         playerVsAi=PlayerVsAiState(),
         education=education.default_education_progress(),
         viewedTradeNotificationIds=[],
+        tradeProposals=[],
+        ceoDecisions=[],
         updatedAt=_now_iso(),
     )
 
@@ -167,6 +172,55 @@ class GameState:
             if updated is not self.data.viewed_trade_notification_ids:
                 self.data = self.data.model_copy(update={"viewed_trade_notification_ids": updated})
             return self.data.viewed_trade_notification_ids
+
+    async def submit_ceo_decision(self, proposal_id: str, choice: AnalystChoice) -> tuple[GameSaveState, str | None]:
+        """Feature 12 — the CEO's (the player's) real buy/sell/wait call on
+        a pending TradeProposal, applied under the same lock every other
+        state mutation uses. Returns (state, error) — error is None on
+        success. Resolves and removes the proposal immediately (unlike a
+        broker order, this is a live player action, not a tick-driven
+        fill) and appends both the resulting TradeDecision and
+        CeoDecisionRecord, capped the same way tick()'s own decisions
+        list is."""
+        async with self.lock:
+            proposal = next((p for p in self.data.trade_proposals if p.id == proposal_id), None)
+            if proposal is None:
+                return self.data, f"No pending trade proposal with id {proposal_id!r}."
+
+            watchlist_item = next((w for w in self.data.watchlist if w.symbol == proposal.symbol), None)
+            current_price = watchlist_item.last_price if watchlist_item else None
+
+            portfolio, decision, ceo_record = resolve_proposal(
+                proposal,
+                choice,
+                portfolio=self.data.paper_portfolio,
+                risk_limits=self.data.risk_limits,
+                current_price=current_price,
+                now_sim_minutes=sim_minutes(self.data.time),
+            )
+
+            memory = list(self.data.memory)
+            record_ceo_decision(memory, decision)
+
+            decisions = [*self.data.decisions, decision]
+            if len(decisions) > MAX_DECISIONS:
+                del decisions[: len(decisions) - MAX_DECISIONS]
+
+            ceo_decisions = [*self.data.ceo_decisions, ceo_record]
+            if len(ceo_decisions) > MAX_CEO_DECISIONS:
+                del ceo_decisions[: len(ceo_decisions) - MAX_CEO_DECISIONS]
+
+            self.data = self.data.model_copy(
+                update={
+                    "trade_proposals": [p for p in self.data.trade_proposals if p.id != proposal_id],
+                    "paper_portfolio": portfolio,
+                    "decisions": decisions,
+                    "ceo_decisions": ceo_decisions,
+                    "memory": memory,
+                    "updated_at": _now_iso(),
+                }
+            )
+            return self.data, None
 
     async def tick(self, minutes: int) -> GameSaveState:
         """Advance the game clock and run one NEXUS orchestration step. Called by the sim loop."""

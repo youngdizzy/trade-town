@@ -433,26 +433,47 @@ boundary, same convention as every earlier version.
   latency between an order being placed and it being eligible to fill);
   then Guardian's standing risk watch refreshes
   (`risk_engine.monitor_portfolio()`); then this tick's freshly completed
-  research items become trade candidates
-  (`nexus._evaluate_trade_candidates()`); then v0.5's hold-duration
+  research items become **trade proposals** awaiting the CEO's decision
+  (`nexus._generate_trade_proposals()` — see "Executive Voting" below,
+  not an automatic vote-and-execute step since v0.6.3); any proposal left
+  unactioned past its expiry window auto-resolves as WAIT
+  (`executive.expire_stale_proposals()`); then v0.5's hold-duration
   closing logic runs (`paper_trading.tick_paper_trading()`); then every
   trade that closed this tick (from either the broker or the
   hold-duration closer) gets journal-stamped
-  (`nexus._journal_closed_trades()`).
-- **Decision Voting** (`voting.py` + `decision.py`): a trade candidate
-  collects one vote from each of the four researcher agents (templated
-  from their own research confidence — the same "deterministic but
-  varied" convention `discussion.py` uses for meeting dialogue) plus
-  Sentinel's and Guardian's votes, which are directly derived from
-  `risk_engine.py`'s evaluation rather than invented in `voting.py`.
-  `decision.decide_trade()` is the only place that turns a vote set into
-  an outcome: any Sentinel `risk_too_high` or Guardian
-  `position_too_large` vote is an absolute veto regardless of researcher
-  votes; absent a veto, a simple majority of `buy` votes approves. Every
-  candidate — approved or not — produces a permanent `TradeDecision`
-  (research/technical/fundamental/risk summaries, supporting/opposing
-  agents, confidence, final reasoning), satisfying the "Explainable AI"
-  requirement without a second, parallel report format.
+  (`nexus._journal_closed_trades()`); then any `CeoDecisionRecord` still
+  `"pending"` is graded against that fresh trade history
+  (`executive.grade_ceo_decisions()`).
+- **Decision Voting, pre-v0.6.3** (`voting.py` + `decision.py`, superseded
+  below): a trade candidate collected one vote from each of the four
+  researcher agents plus Sentinel's and Guardian's risk-derived votes,
+  and `decision.decide_trade()` turned the vote set into an
+  automatic trade/no-trade outcome (a hard risk veto, else majority
+  `buy`). `voting.researcher_vote()` (the per-researcher-agent vote
+  template) is still reused by Executive Voting's news/macro seats below;
+  `decision.decide_trade()` itself is no longer called anywhere.
+- **Executive Voting (v0.6.3, `executive.py`)**: the player is TradeTown's
+  CEO — a trade candidate no longer executes automatically. It becomes a
+  `TradeProposal` with six independent, evidence-backed analyst votes
+  (`generate_analyst_votes()`): technical (Echo) reads real trend/
+  volatility off the symbol's own candles; news/macro (Scout/Nova) reuse
+  `voting.researcher_vote()`'s existing template; risk (Sentinel) reuses
+  a real `RiskWarning` if one exists; sentiment (Pulse) reuses a real
+  `ScannerAlert` if one exists; execution (Atlas) is the desk's own
+  majority, not a seventh independent signal. `POST /api/executive/decide`
+  (`state.py`'s `submit_ceo_decision()`) resolves a proposal against the
+  player's real buy/sell/wait call (`resolve_proposal()`): buy/sell opens
+  a real position immediately (a live player action, not tick-driven —
+  unlike broker orders, no extra latency tick), producing a permanent
+  `TradeDecision` (same shape every existing consumer — DecisionsPanel,
+  DecisionDetail, Player vs AI — already depends on) plus a
+  `CeoDecisionRecord` tracking CEO/AI accuracy, agreement, and
+  successful/failed overrides. `CeoDecisionRecord.outcome` only ever
+  resolves to `correct`/`incorrect` once a real trade the decision caused
+  has actually closed; a plain wait or an override both stay
+  `"undecidable"` — an override's real trade tells us whether the CEO's
+  own call worked, never whether the AI's original (never-taken)
+  direction would have, so that's never guessed at.
 - **RiskEngine** (`risk_engine.py`): pure evaluation, no side effects.
   `evaluate_sentinel_risk()` is the hard trade-approval gate (equity ≤ 0,
   drawdown past `maxDrawdownPct`, open-position count past

@@ -210,9 +210,50 @@ perspective and exists purely to detect disconnects
       "confidence": 100.0, "finalReasoning": "3 of 5 votes in favor — Atlas approves the trade on AAPL.",
       "orderId": "order-research-echo-AAPL-...", "createdAt": "..."
     }
+  ],
+  "tradeProposals": [
+    // v0.6.3 Feature 12 — a research candidate crossing the trade-
+    // confidence threshold no longer executes automatically; it becomes
+    // a proposal awaiting the CEO's (the player's) own decision. Resolved
+    // via POST /api/executive/decide. Capped at MAX_PENDING_PROPOSALS (5)
+    // and auto-expires after 3 in-game days unactioned (resolved as WAIT).
+    {
+      "id": "proposal-research-echo-AAPL-...", "symbol": "AAPL", "category": "stock",
+      "quantity": 10.6, "price": 471.87, "confidence": 92.0,
+      "analystVotes": [
+        { "role": "technical", "agentId": "echo", "choice": "buy", "reasoning": "AAPL is in a real uptrend (+4.2% over the sample) relative to its own volatility.", "evidence": ["Trend: +4.2% over the last 30 1h bars.", "Volatility: 1.1% average bar range."] }
+        // role: technical | news | macro | risk | sentiment | execution
+        // choice: buy | sell | wait
+      ],
+      "overallRecommendation": "buy", "researchSummary": "...", "riskSummary": "...",
+      "createdAt": "...", "createdSimMinutes": 1560
+    }
+  ],
+  "ceoDecisions": [
+    // The permanent record of one CEO decision. `outcome` only ever
+    // resolves to correct/incorrect once a real trade the CEO's own
+    // choice caused has closed; a plain WAIT or any override (ceoDecision
+    // != aiRecommendation) stays "undecidable" — an override's real trade
+    // tells us whether the CEO's own call worked, never whether the AI's
+    // original (never-taken) direction would have.
+    {
+      "id": "ceo-proposal-research-echo-AAPL-...", "proposalId": "proposal-research-echo-AAPL-...",
+      "symbol": "AAPL", "category": "stock", "aiRecommendation": "buy", "ceoDecision": "buy",
+      "agreedWithAi": true, "decisionId": "decision-proposal-research-echo-AAPL-...",
+      "outcome": "pending", // pending | correct | incorrect | undecidable
+      "createdAt": "...", "resolvedAt": null
+    }
   ]
 }
 ```
+
+### `POST /api/executive/decide`
+
+Feature 12 — the CEO's real buy/sell/wait call on a pending
+`TradeProposal`. Body: `{ "proposalId": "...", "choice": "buy" }`
+(`choice`: `buy` | `sell` | `wait`). Returns the updated
+`tradeProposals`, `ceoDecisions`, `decisions`, and `paperPortfolio`.
+`400` if the proposal id isn't found (already resolved or expired).
 
 `GET /api/load` returns this same set of fields plus `version` (currently
 `"0.6"`), `player` (`EntityTransform`), `settings` (`SettingsState`),

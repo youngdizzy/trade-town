@@ -64,19 +64,29 @@ async function continueGame(page: Page): Promise<void> {
 
 /**
  * This long-running test file shares one real dev backend, whose paper
- * trading has been running continuously since the file started — a real
- * closed trade may already be waiting with a popup by the time any given
- * test loads. That's correct, honest behavior (see TradeOutcomePopup.tsx),
- * not a test-only quirk, so tests clear it the same way a real player
- * would: click Continue. Loops briefly in case dismissing one reveals a
- * newer trade that closed in the meantime.
+ * trading and research pipeline have been running continuously since the
+ * file started — a real closed trade or a fresh v0.6.3 TradeProposal may
+ * already be waiting with a popup by the time any given test loads (or
+ * appear mid-test). That's correct, honest behavior (see
+ * TradeOutcomePopup.tsx / ExecutiveVoting.tsx), not a test-only quirk, so
+ * tests clear both the same way a real player would: click Continue /
+ * "Decide later". Loops briefly in case dismissing one reveals another.
  */
 async function dismissTradeOutcomePopups(page: Page): Promise<void> {
-  const popup = page.getByTestId("trade-outcome-popup");
   for (let i = 0; i < 5; i++) {
-    if (!(await popup.isVisible().catch(() => false))) return;
-    await popup.getByRole("button", { name: "Continue" }).click();
-    await popup.waitFor({ state: "hidden", timeout: 3000 }).catch(() => {});
+    const tradePopup = page.getByTestId("trade-outcome-popup");
+    if (await tradePopup.isVisible().catch(() => false)) {
+      await tradePopup.getByRole("button", { name: "Continue" }).click();
+      await tradePopup.waitFor({ state: "hidden", timeout: 3000 }).catch(() => {});
+      continue;
+    }
+    const votingPopup = page.getByTestId("executive-voting");
+    if (await votingPopup.isVisible().catch(() => false)) {
+      await votingPopup.getByText("Decide later").click();
+      await votingPopup.waitFor({ state: "hidden", timeout: 3000 }).catch(() => {});
+      continue;
+    }
+    return;
   }
 }
 
@@ -164,7 +174,7 @@ test.describe("Global Command Center", () => {
     expect(moved.x).not.toBe(frozen.x);
   });
 
-  test("expands to the Full Command Center and renders all 11 tabs with graceful empty states", async ({ page }) => {
+  test("expands to the Full Command Center and renders all 12 tabs with graceful empty states", async ({ page }) => {
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);
     await continueGame(page);
@@ -176,7 +186,7 @@ test.describe("Global Command Center", () => {
     // This is the longest-running test in the file — with the real sim
     // ticking throughout, a genuine trade can close (and pop up) mid-test.
     // Dismiss defensively between steps rather than let it block a click.
-    const tabs = ["OVERVIEW", "OPPORTUNITIES", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
+    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
     for (const tab of tabs) {
       await dismissTradeOutcomePopups(page);
       await page.getByRole("button", { name: tab, exact: true }).click();

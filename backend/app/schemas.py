@@ -785,6 +785,84 @@ class EducationProgress(CamelModel):
     correct_quiz_attempts: int = Field(default=0, alias="correctQuizAttempts")
 
 
+# Feature 12 — Executive Voting System (CEO Approval). Every research
+# candidate that crosses the trade-confidence threshold now becomes a
+# TradeProposal awaiting the player's (the CEO's) decision, instead of
+# executing automatically. The six analyst seats are real existing
+# TradeTown agents, never invented characters — see
+# app/executive.py's ROLE_TO_AGENT for the mapping (technical=Echo,
+# news=Scout, macro=Nova, risk=Sentinel, sentiment=Pulse, execution=Atlas).
+AnalystRole = Literal["technical", "news", "macro", "risk", "sentiment", "execution"]
+# Deliberately distinct from the existing VoteChoice (buy/sell/hold/...)
+# used by TradeDecision/AgentVote — "wait" is the CEO-facing vocabulary
+# this feature uses end to end; app/executive.py maps between the two at
+# the one boundary where a CEO decision becomes a permanent TradeDecision.
+AnalystChoice = Literal["buy", "sell", "wait"]
+
+
+class AnalystVote(CamelModel):
+    """One analyst's independent stance on a trade proposal, with real
+    supporting evidence — never a bare choice with no backing. See
+    app/executive.py for exactly what data backs each role's vote."""
+
+    role: AnalystRole
+    agent_id: AgentId = Field(alias="agentId")
+    choice: AnalystChoice
+    reasoning: str
+    evidence: list[str] = Field(default_factory=list)
+
+
+class TradeProposal(CamelModel):
+    """A trade candidate awaiting the CEO's decision — real, persisted
+    game progress (not regenerable practice content), since losing a
+    pending proposal on restart would be losing an actual unresolved
+    business decision. Removed from the pending list the moment the CEO
+    decides (see app/executive.py's resolve_proposal); the resulting
+    TradeDecision is the permanent record of what happened."""
+
+    id: str
+    symbol: str
+    category: ResearchCategory
+    quantity: float
+    price: float
+    confidence: float
+    analyst_votes: list[AnalystVote] = Field(alias="analystVotes")
+    overall_recommendation: AnalystChoice = Field(alias="overallRecommendation")
+    research_summary: str = Field(alias="researchSummary")
+    risk_summary: str = Field(alias="riskSummary")
+    created_at: str = Field(alias="createdAt")
+    # Simulated-clock minutes-since-epoch at creation, the same
+    # convention PaperPosition.opened_sim_minutes uses — lets stale
+    # proposals expire against TradeTown's in-game calendar rather than
+    # real wall-clock time (see app/executive.py's expire_stale_proposals).
+    created_sim_minutes: int = Field(alias="createdSimMinutes")
+
+
+class CeoDecisionRecord(CamelModel):
+    """One resolved executive decision — the permanent record behind
+    CEO Accuracy / AI Accuracy / Agreement Rate / Successful & Failed
+    Overrides. `outcome` only ever resolves to "correct"/"incorrect" once
+    a *real* trade the CEO's choice actually caused has closed with a
+    real realized P&L (see app/executive.py's grade_ceo_decisions) —
+    "undecidable" covers both a CEO "wait" (no trade was ever placed to
+    grade) and an override where the CEO's choice differed from the AI's
+    recommendation (so the AI's own recommendation has no real trade to
+    test it against — a genuine, honest gap, not a guess dressed up as
+    data)."""
+
+    id: str
+    proposal_id: str = Field(alias="proposalId")
+    symbol: str
+    category: ResearchCategory
+    ai_recommendation: AnalystChoice = Field(alias="aiRecommendation")
+    ceo_decision: AnalystChoice = Field(alias="ceoDecision")
+    agreed_with_ai: bool = Field(alias="agreedWithAi")
+    decision_id: str | None = Field(default=None, alias="decisionId")
+    outcome: Literal["pending", "correct", "incorrect", "undecidable"] = "pending"
+    created_at: str = Field(alias="createdAt")
+    resolved_at: str | None = Field(default=None, alias="resolvedAt")
+
+
 class GameSaveState(CamelModel):
     version: Literal["0.6"] = "0.6"
     player: EntityTransform
@@ -820,6 +898,12 @@ class GameSaveState(CamelModel):
     # every other list here (see portfolio.py's own MAX_TRADE_HISTORY,
     # which this tracks against).
     viewed_trade_notification_ids: list[str] = Field(default_factory=list, alias="viewedTradeNotificationIds")
+    # Feature 12 — Executive Voting System. trade_proposals holds only
+    # currently-pending proposals (removed the moment the CEO decides);
+    # ceo_decisions is the permanent, capped history behind the CEO/AI
+    # accuracy stats (see app/executive.py).
+    trade_proposals: list[TradeProposal] = Field(default_factory=list, alias="tradeProposals")
+    ceo_decisions: list[CeoDecisionRecord] = Field(default_factory=list, alias="ceoDecisions")
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(default_factory=list, alias="dialogueHistory")

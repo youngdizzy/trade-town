@@ -4,6 +4,7 @@ import type {
   AgentId,
   AgentState,
   BacktestSession,
+  CeoDecisionRecord,
   CoachReport,
   CompanyScore,
   DialogueHistoryEntry,
@@ -29,6 +30,7 @@ import type {
   Task,
   TimeState,
   TradeDecision,
+  TradeProposal,
   WatchlistEntry,
 } from "@/types";
 
@@ -91,6 +93,10 @@ export interface GameEvents {
   "playerVsAi:updated": PlayerVsAiState;
   "education:updated": EducationProgress;
   "tradeNotifications:updated": string[];
+  "tradeProposals:updated": TradeProposal[];
+  "tradeProposal:new": TradeProposal;
+  "ceoDecisions:updated": CeoDecisionRecord[];
+  "ui:executiveVoting": { open: boolean; proposalId?: string };
 }
 
 type Handler<K extends keyof GameEvents> = (payload: GameEvents[K]) => void;

@@ -23,16 +23,24 @@ from datetime import datetime, timezone
 from app.agent_energy import RESEARCH_BOOST_AMOUNT, regen_daily, spend
 from app.agents import AGENT_PROFILES, LOCATION_TO_SCENE, all_agent_ids
 from app.analytics import compute_performance_snapshot, confidence_accuracy, record_snapshot
-from app.broker import place_order, tick_broker
+from app.broker import tick_broker
 from app.coach import generate_report as generate_coach_report
 from app.coach import record_report as record_coach_report_entry
 from app.company_score import compute_company_score
-from app.decision import decide_trade
 from app.discussion import generate_discussion
+from app.executive import (
+    MAX_CEO_DECISIONS,
+    MAX_PENDING_PROPOSALS,
+    expire_stale_proposals,
+    generate_proposal,
+    grade_ceo_decisions,
+    resolve_proposal,
+)
 from app.hall_of_fame import evaluate_hall_of_fame
 from app.journal import stamp_journal_entry
 from app.market_data import market_data_provider
 from app.paper_trading import tick_paper_trading
+from app.portfolio import sim_minutes
 from app.research import RESEARCHER_IDS, default_research, tick_research
 from app.risk_engine import evaluate_guardian_exposure, evaluate_sentinel_risk, monitor_portfolio, recommended_quantity
 from app.scanner import tick_scanner
@@ -40,11 +48,10 @@ from app.schedule import block_for_hour
 from app.scribe import (
     FUTURE_TRADE_CONFIDENCE_THRESHOLD,
     build_minutes,
+    record_ceo_decision,
     record_coach_report,
-    record_decision,
     record_hall_of_fame_entry,
     record_meeting,
-    record_order_placed,
     record_paper_trade,
     record_research_completions,
     record_scanner_alert,
@@ -66,14 +73,15 @@ from app.schemas import (
     PaperTrade,
     ResearchItem,
     RiskLimits,
+    ScannerAlert,
     Task,
     TaskCategory,
     TaskPriority,
     TimeState,
     TradeDecision,
+    TradeProposal,
 )
 from app.simulation import default_strategies, queue_backtest_now, tick_simulation_lab
-from app.voting import collect_votes
 from app.watchlist import add_symbol_to_watchlist, default_watchlist, tick_watchlist
 
 MAX_MEMORY = 50
@@ -465,23 +473,32 @@ def _trim_news(news: list[NewsItem]) -> list[NewsItem]:
     return keep
 
 
-def _evaluate_trade_candidates(
-    portfolio: PaperPortfolio,
+def _generate_trade_proposals(
+    trade_proposals: list[TradeProposal],
     completed_research: list[ResearchItem],
     prices: dict[str, float],
     risk_limits: RiskLimits,
-) -> tuple[PaperPortfolio, list[TradeDecision]]:
-    """The v0.6 Decision Voting pipeline: every research item that just
-    crossed FUTURE_TRADE_CONFIDENCE_THRESHOLD becomes a trade candidate,
-    voted on by the four researcher agents plus Sentinel and Guardian
-    (app/voting.py), then ruled on by Atlas (app/decision.py). An
-    approved candidate places a market order (app/broker.py) — it does
-    not open a position directly; that only happens once the order fills
-    on a future tick, same one-tick latency every order has."""
-    decisions: list[TradeDecision] = []
+    portfolio: PaperPortfolio,
+    news: list[NewsItem],
+    scanner_alerts: list[ScannerAlert],
+    now_sim_minutes: int,
+) -> list[TradeProposal]:
+    """Feature 12 — the CEO Approval pipeline. Every research item that
+    just crossed FUTURE_TRADE_CONFIDENCE_THRESHOLD becomes a TradeProposal
+    (app/executive.py's generate_proposal(), six-agent analyst desk) and
+    waits for the player's own buy/sell/wait call — it no longer
+    auto-executes via a majority-vote decision. Skips a symbol that
+    already has a pending proposal and stops once MAX_PENDING_PROPOSALS
+    is reached, so a slow CEO doesn't get spammed with duplicates."""
+    pending_symbols = {p.symbol for p in trade_proposals}
+    new_proposals: list[TradeProposal] = []
     for item in completed_research:
         if item.confidence < FUTURE_TRADE_CONFIDENCE_THRESHOLD or not item.symbol:
             continue
+        if item.symbol in pending_symbols:
+            continue
+        if len(trade_proposals) + len(new_proposals) >= MAX_PENDING_PROPOSALS:
+            break
         price = prices.get(item.symbol)
         if price is None or price <= 0:
             continue
@@ -491,42 +508,21 @@ def _evaluate_trade_candidates(
 
         sentinel_warning = evaluate_sentinel_risk(risk_limits, portfolio, symbol=item.symbol, proposed_value=quantity * price)
         guardian_warning = evaluate_guardian_exposure(risk_limits, portfolio, symbol=item.symbol)
-        votes = collect_votes(
-            symbol=item.symbol,
-            confidence=item.confidence,
-            originating_agent=item.assigned_agent,
-            researcher_ids=RESEARCHER_IDS,
+        proposal = generate_proposal(
+            item,
+            quantity=quantity,
+            price=price,
+            news=news,
+            scanner_alerts=scanner_alerts,
             sentinel_warning=sentinel_warning,
             guardian_warning=guardian_warning,
+            provider=market_data_provider,
+            now_sim_minutes=now_sim_minutes,
         )
-        risk_summary = (
-            sentinel_warning.message
-            if sentinel_warning
-            else guardian_warning.message
-            if guardian_warning
-            else f"{item.symbol} is within all of Sentinel's and Guardian's configured risk limits."
-        )
-        decision = decide_trade(decision_id=f"decision-{item.id}", item=item, votes=votes, risk_summary=risk_summary)
+        new_proposals.append(proposal)
+        pending_symbols.add(item.symbol)
 
-        if decision.outcome == "trade":
-            order_id = f"order-{item.id}"
-            portfolio = place_order(
-                portfolio,
-                order_id=order_id,
-                symbol=item.symbol,
-                side="buy",
-                order_type="market",
-                quantity=quantity,
-                price=price,
-                placed_by="atlas",
-                reason=decision.final_reasoning,
-                confidence=item.confidence,
-            )
-            decision = decision.model_copy(update={"order_id": order_id})
-
-        decisions.append(decision)
-
-    return portfolio, decisions
+    return new_proposals
 
 
 def _journal_closed_trades(portfolio: PaperPortfolio, trades: list[PaperTrade], decisions: list[TradeDecision]) -> tuple[PaperPortfolio, list[PaperTrade]]:
@@ -593,6 +589,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     risk_limits = state.risk_limits
     scanner_alerts = list(state.scanner_alerts)
     decisions = list(state.decisions)
+    trade_proposals = list(state.trade_proposals)
+    ceo_decisions = list(state.ceo_decisions)
     agent_energy = state.agent_energy
 
     agents = {aid: _tick_agent(aid, agent, new_time, minutes, tasks) for aid, agent in state.agents.items()}
@@ -640,25 +638,47 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # every tick like company_score already is below.
     risk_warnings = monitor_portfolio(risk_limits, paper_portfolio)
 
-    # --- v0.6: Decision Voting on this tick's freshly completed research --
-    # Every high-confidence completion is a trade candidate; approved
-    # candidates place an order (not a position — see app/broker.py).
-    paper_portfolio, new_decisions = _evaluate_trade_candidates(paper_portfolio, completed, prices, risk_limits)
-    for decision in new_decisions:
-        record_decision(memory, decision)
-        if decision.order_id is not None:
-            order = next((o for o in paper_portfolio.orders if o.id == decision.order_id), None)
-            if order is not None:
-                record_order_placed(memory, order)
+    # --- v0.6.3 Feature 12: CEO Approval pipeline --------------------------
+    # Every high-confidence research completion becomes a TradeProposal
+    # awaiting the player's own buy/sell/wait call (app/executive.py) — it
+    # no longer auto-executes via a majority-vote decision. A proposal the
+    # CEO never acts on expires after PROPOSAL_EXPIRY_SIM_MINUTES and is
+    # auto-resolved as an honest "wait" (still a real, permanent
+    # TradeDecision — see resolve_proposal), not silently dropped.
+    now_sim_minutes = sim_minutes(new_time)
+    new_proposals = _generate_trade_proposals(trade_proposals, completed, prices, risk_limits, paper_portfolio, news, scanner_alerts, now_sim_minutes)
+    trade_proposals = [*trade_proposals, *new_proposals]
+    for proposal in new_proposals:
         news.append(
             NewsItem(
-                id=f"news-decision-{decision.id}",
-                headline=f"Atlas's decision on {decision.symbol}: {'TRADE APPROVED' if decision.outcome == 'trade' else 'NO TRADE'} — {decision.final_reasoning}",
+                id=f"news-proposal-{proposal.id}",
+                headline=f"New trade proposal on {proposal.symbol}: the desk recommends {proposal.overall_recommendation.upper()} — awaiting CEO approval.",
                 category="company",
                 timestamp=_now_iso(),
             )
         )
-    decisions = [*decisions, *new_decisions]
+
+    trade_proposals, expired_proposals = expire_stale_proposals(trade_proposals, now_sim_minutes)
+    for expired in expired_proposals:
+        paper_portfolio, expired_decision, expired_record = resolve_proposal(
+            expired,
+            "wait",
+            portfolio=paper_portfolio,
+            risk_limits=risk_limits,
+            current_price=prices.get(expired.symbol),
+            now_sim_minutes=now_sim_minutes,
+        )
+        record_ceo_decision(memory, expired_decision)
+        decisions.append(expired_decision)
+        ceo_decisions.append(expired_record)
+        news.append(
+            NewsItem(
+                id=f"news-proposal-expired-{expired.id}",
+                headline=f"Trade proposal on {expired.symbol} expired unactioned — recorded as WAIT.",
+                category="company",
+                timestamp=_now_iso(),
+            )
+        )
 
     # --- v0.5: paper trading + simulation lab -----------------------------
     # Both run after research/watchlist so they see this tick's freshest
@@ -671,6 +691,14 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # above) so a trade closing this very tick can still look its
     # originating decision up by id before the oldest entries are evicted.
     _trim_decisions(decisions)
+
+    # grade_ceo_decisions runs after _journal_closed_trades so any trade
+    # that closed this tick already has its decision_id stamped in
+    # paper_portfolio.trade_history for a pending CeoDecisionRecord to
+    # match against.
+    ceo_decisions = grade_ceo_decisions(ceo_decisions, paper_portfolio.trade_history)
+    if len(ceo_decisions) > MAX_CEO_DECISIONS:
+        del ceo_decisions[: len(ceo_decisions) - MAX_CEO_DECISIONS]
     for trade in closed_trades:
         record_paper_trade(memory, trade)
         outcome = "gained" if trade.pnl > 0 else "lost"
@@ -783,6 +811,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "risk_warnings": risk_warnings,
             "scanner_alerts": scanner_alerts,
             "decisions": decisions,
+            "trade_proposals": trade_proposals,
+            "ceo_decisions": ceo_decisions,
             "agent_energy": agent_energy,
             "whiteboards": _update_whiteboards(agents, meeting, research),
             "updated_at": _now_iso(),

@@ -1,4 +1,19 @@
-import type { AgentId, AgentState, AgentVote, PaperOrder, PaperTrade, ResearchItem, RiskWarning, TradeDecision, WatchlistEntry } from "@/types";
+import type {
+  AgentId,
+  AgentState,
+  AgentVote,
+  CeoDecisionRecord,
+  PaperOrder,
+  PaperPortfolio,
+  PaperTrade,
+  ResearchCategory,
+  ResearchItem,
+  RiskLimits,
+  RiskWarning,
+  TradeDecision,
+  TradeProposal,
+  WatchlistEntry,
+} from "@/types";
 import { AGENT_IDS } from "@/types";
 
 /**
@@ -174,5 +189,165 @@ export function computeNoTradeStats(decisions: TradeDecision[]): NoTradeStats {
     tradedCount: decisions.length - noTrade.length,
     noTradeCount: noTrade.length,
     recentNoTrade: noTrade.slice(-8).reverse(),
+  };
+}
+
+// --- v0.6.3 Feature 12/13 — Executive Voting + Risk Command Center -------
+// Trade Quality Score and the pre-trade checklist below are deliberately
+// built ONLY from data TradeTown's backend actually tracks: agent
+// agreement, research confidence, Sentinel/Guardian's real risk warnings,
+// and current portfolio exposure. The spec also names stop-loss distance,
+// take-profit distance, and reward-to-risk ratio — TradeTown's paper
+// broker has never placed stop-loss/take-profit exit orders (see
+// DecisionDetail's "Trade Plan" section above), so there is no real
+// number to show for those; rather than invent one, the UI says so
+// explicitly instead of rendering a fabricated ratio.
+
+export interface TradeQuality {
+  score: number; // 0-100 — evaluates the SETUP, not a win prediction
+  reasons: string[];
+  concerns: string[];
+}
+
+export function computeTradeQuality(
+  proposal: TradeProposal,
+  riskWarnings: RiskWarning[],
+  portfolio: PaperPortfolio,
+  riskLimits: RiskLimits,
+): TradeQuality {
+  const totalVotes = proposal.analystVotes.length || 1;
+  const agreeing = proposal.analystVotes.filter((v) => v.choice === proposal.overallRecommendation).length;
+  const agreementPct = (agreeing / totalVotes) * 100;
+
+  const symbolWarning = riskWarnings.find((w) => w.symbol === proposal.symbol);
+  const riskComponent = symbolWarning ? (symbolWarning.severity === "critical" ? 15 : 55) : 90;
+
+  const exposurePct = riskLimits.maxOpenPositions > 0 ? (portfolio.positions.length / riskLimits.maxOpenPositions) * 100 : 0;
+  const exposureComponent = Math.max(0, 100 - exposurePct);
+
+  const score = Math.round(agreementPct * 0.4 + proposal.confidence * 0.25 + riskComponent * 0.2 + exposureComponent * 0.15);
+
+  const reasons: string[] = [];
+  const concerns: string[] = [];
+
+  if (agreementPct >= 80) reasons.push(`Strong multi-agent agreement — ${agreeing}/${totalVotes} analysts agree.`);
+  else if (agreementPct <= 40) concerns.push(`Weak agreement across the desk — only ${agreeing}/${totalVotes} analysts agree.`);
+
+  if (proposal.confidence >= 80) reasons.push(`High research confidence (${proposal.confidence.toFixed(0)}%).`);
+  else if (proposal.confidence < 60) concerns.push(`Research confidence is only ${proposal.confidence.toFixed(0)}%.`);
+
+  if (symbolWarning) concerns.push(`Active risk warning on ${proposal.symbol}: ${symbolWarning.message}`);
+  else reasons.push(`No active Sentinel/Guardian warning on ${proposal.symbol}.`);
+
+  if (exposurePct >= 80) concerns.push(`Portfolio is near its open-position limit (${portfolio.positions.length}/${riskLimits.maxOpenPositions}).`);
+  else reasons.push(`Portfolio exposure is acceptable (${portfolio.positions.length}/${riskLimits.maxOpenPositions} positions open).`);
+
+  return { score: Math.max(0, Math.min(100, score)), reasons, concerns };
+}
+
+export interface ChecklistItem {
+  label: string;
+  met: boolean;
+  detail: string;
+}
+
+/** TradeTown has no stop-loss/take-profit/reward-to-risk data to check
+ * (see this section's header comment), so this checklist only covers
+ * items the backend actually has real data for. */
+export function preTradeChecklist(proposal: TradeProposal, riskWarnings: RiskWarning[], portfolio: PaperPortfolio, riskLimits: RiskLimits): ChecklistItem[] {
+  const symbolWarning = riskWarnings.find((w) => w.symbol === proposal.symbol);
+  const totalVotes = proposal.analystVotes.length || 1;
+  const agreeing = proposal.analystVotes.filter((v) => v.choice === proposal.overallRecommendation).length;
+  return [
+    { label: "Thesis written", met: proposal.researchSummary.trim().length > 0, detail: proposal.researchSummary },
+    { label: "Risk reviewed", met: true, detail: proposal.riskSummary },
+    {
+      label: "No active risk warning",
+      met: !symbolWarning,
+      detail: symbolWarning?.message ?? `${proposal.symbol} is within all of Sentinel's and Guardian's configured limits.`,
+    },
+    {
+      label: "Multi-agent agreement",
+      met: agreeing >= Math.ceil(totalVotes / 2),
+      detail: `${agreeing}/${totalVotes} analysts agree with ${proposal.overallRecommendation.toUpperCase()}.`,
+    },
+    {
+      label: "Portfolio exposure acceptable",
+      met: portfolio.positions.length < riskLimits.maxOpenPositions,
+      detail: `${portfolio.positions.length}/${riskLimits.maxOpenPositions} positions currently open.`,
+    },
+  ];
+}
+
+export interface CeoCategoryStat {
+  category: ResearchCategory;
+  correct: number;
+  incorrect: number;
+  winRate: number;
+}
+
+export interface CeoStats {
+  totalDecisions: number;
+  gradedCount: number;
+  ceoAccuracy: number | null;
+  aiGradedCount: number;
+  aiAccuracy: number | null;
+  agreementRate: number | null;
+  successfulOverrides: number;
+  failedOverrides: number;
+  byCategory: CeoCategoryStat[];
+  bestCategory: CeoCategoryStat | null;
+  worstCategory: CeoCategoryStat | null;
+}
+
+/** AI Accuracy is only ever computed over decisions the CEO agreed with —
+ * an override's real trade tells us whether the CEO's own call was right,
+ * never whether the AI's original (never-taken) direction would have
+ * been, so overrides can never contribute to AI Accuracy (see
+ * backend/app/executive.py's module docstring for the same reasoning
+ * applied to CeoDecisionRecord.outcome server-side). */
+export function computeCeoStats(records: CeoDecisionRecord[]): CeoStats {
+  const graded = records.filter((r) => r.outcome === "correct" || r.outcome === "incorrect");
+  const ceoCorrect = graded.filter((r) => r.outcome === "correct").length;
+  const ceoAccuracy = graded.length ? (ceoCorrect / graded.length) * 100 : null;
+
+  const agreedGraded = graded.filter((r) => r.agreedWithAi);
+  const aiCorrect = agreedGraded.filter((r) => r.outcome === "correct").length;
+  const aiAccuracy = agreedGraded.length ? (aiCorrect / agreedGraded.length) * 100 : null;
+
+  const agreementRate = records.length ? (records.filter((r) => r.agreedWithAi).length / records.length) * 100 : null;
+
+  const overrides = graded.filter((r) => !r.agreedWithAi);
+  const successfulOverrides = overrides.filter((r) => r.outcome === "correct").length;
+  const failedOverrides = overrides.filter((r) => r.outcome === "incorrect").length;
+
+  const byCategoryMap = new Map<ResearchCategory, { correct: number; incorrect: number }>();
+  for (const r of graded) {
+    const bucket = byCategoryMap.get(r.category) ?? { correct: 0, incorrect: 0 };
+    if (r.outcome === "correct") bucket.correct += 1;
+    else bucket.incorrect += 1;
+    byCategoryMap.set(r.category, bucket);
+  }
+  const byCategory: CeoCategoryStat[] = [...byCategoryMap.entries()].map(([category, b]) => ({
+    category,
+    correct: b.correct,
+    incorrect: b.incorrect,
+    winRate: (b.correct / (b.correct + b.incorrect)) * 100,
+  }));
+  const bestCategory = byCategory.length ? byCategory.reduce((a, b) => (b.winRate > a.winRate ? b : a)) : null;
+  const worstCategory = byCategory.length ? byCategory.reduce((a, b) => (b.winRate < a.winRate ? b : a)) : null;
+
+  return {
+    totalDecisions: records.length,
+    gradedCount: graded.length,
+    ceoAccuracy,
+    aiGradedCount: agreedGraded.length,
+    aiAccuracy,
+    agreementRate,
+    successfulOverrides,
+    failedOverrides,
+    byCategory,
+    bestCategory,
+    worstCategory,
   };
 }

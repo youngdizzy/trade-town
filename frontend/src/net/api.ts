@@ -1,14 +1,19 @@
 import type {
   AgentEnergy,
+  AnalystChoice,
   Candle,
+  CeoDecisionRecord,
   EducationLesson,
   EducationProgress,
   GameSaveState,
+  PaperPortfolio,
   PlayerVsAiPrompt,
   PlayerVsAiState,
   SignalCalibrationState,
   SignalChallenge,
   SignalChoice,
+  TradeDecision,
+  TradeProposal,
 } from "@/types";
 
 const API_BASE = import.meta.env.VITE_API_BASE_URL ?? "/api";
@@ -76,4 +81,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ tradeId }),
     }),
+  submitCeoDecision: (proposalId: string, choice: AnalystChoice) =>
+    request<{ tradeProposals: TradeProposal[]; ceoDecisions: CeoDecisionRecord[]; decisions: TradeDecision[]; paperPortfolio: PaperPortfolio }>(
+      "/executive/decide",
+      {
+        method: "POST",
+        body: JSON.stringify({ proposalId, choice }),
+      },
+    ),
 };

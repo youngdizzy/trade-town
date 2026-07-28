@@ -6,6 +6,7 @@ import { RiskDot, StatusPill } from "./ui";
 import { OverviewPanel } from "./panels/OverviewPanel";
 import { OpportunitiesPanel } from "./panels/OpportunitiesPanel";
 import { DecisionsPanel } from "./panels/DecisionsPanel";
+import { ExecutivePanel } from "./panels/ExecutivePanel";
 import { RiskPanel } from "./panels/RiskPanel";
 import { AgentsPanel } from "./panels/AgentsPanel";
 import { ResearchPanel } from "./panels/ResearchPanel";
@@ -16,7 +17,7 @@ import { PlayerVsAiPanel } from "./panels/PlayerVsAiPanel";
 import { EducationPanel } from "./panels/EducationPanel";
 import { DecisionDetail } from "./DecisionDetail";
 
-const TABS = ["OVERVIEW", "OPPORTUNITIES", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"] as const;
+const TABS = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"] as const;
 type Tab = (typeof TABS)[number];
 
 export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => void; onClose: () => void }) {
@@ -82,6 +83,7 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
       <div className="flex-1 overflow-y-auto p-4">
         {tab === "OVERVIEW" && <OverviewPanel onInspect={setInspecting} onNavigate={setTab} />}
         {tab === "OPPORTUNITIES" && <OpportunitiesPanel onInspect={setInspecting} />}
+        {tab === "EXECUTIVE" && <ExecutivePanel />}
         {tab === "DECISIONS" && <DecisionsPanel onInspect={setInspecting} />}
         {tab === "RISK" && <RiskPanel onNeedHelp={needHelp} />}
         {tab === "AGENTS" && <AgentsPanel />}

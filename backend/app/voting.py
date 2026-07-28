@@ -25,7 +25,7 @@ AGREEMENT_CHANCE_ABOVE_THRESHOLD = 0.7
 AGREEMENT_CHANCE_BELOW_THRESHOLD = 0.35
 
 
-def _researcher_vote(agent_id: AgentId, *, originated: bool, confidence: float, symbol: str) -> AgentVote:
+def researcher_vote(agent_id: AgentId, *, originated: bool, confidence: float, symbol: str) -> AgentVote:
     if originated:
         return AgentVote(agentId=agent_id, choice="buy", reason=f"Originated this research on {symbol} at {confidence:.0f}% confidence.")
 
@@ -59,7 +59,7 @@ def collect_votes(
     function only translates them into votes, it doesn't re-derive the
     risk judgment itself."""
     votes = [
-        _researcher_vote(agent_id, originated=(agent_id == originating_agent), confidence=confidence, symbol=symbol)
+        researcher_vote(agent_id, originated=(agent_id == originating_agent), confidence=confidence, symbol=symbol)
         for agent_id in researcher_ids
     ]
 

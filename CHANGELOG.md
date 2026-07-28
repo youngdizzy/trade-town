@@ -7,6 +7,128 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.6.3 — Executive Voting, Risk Command Center, Cyber Overlay** — the
+  player is now formally TradeTown's CEO. A research candidate crossing
+  the trade-confidence threshold no longer executes automatically: it
+  becomes a `TradeProposal` (`app/executive.py`) and waits for the
+  player's own real BUY/SELL/WAIT call.
+  - **Executive Voting (Feature 12)**: six analyst seats (Echo/Scout/
+    Nova/Sentinel/Pulse/Atlas — TradeTown's real, existing agents, never
+    invented characters) each cast an independent, evidence-backed vote.
+    Technical reuses the same trend/volatility read Signal Calibration
+    and Player vs AI already use; news/macro reuse the existing
+    researcher-vote convention; risk reuses Sentinel/Guardian's real
+    `RiskWarning`s; sentiment reuses Pulse's real `ScannerAlert`s; Atlas
+    synthesizes the desk's own majority as its vote rather than
+    inventing a seventh independent signal. The player's BUY/SELL/WAIT
+    is the real, consequential action (SELL opens a genuine short —
+    `open_position()` already supported `side="sell"` correctly, this
+    was just never exposed to a real trade path before); APPROVE/REJECT
+    are convenience shortcuts for the desk's own recommendation, not a
+    fourth outcome. Every decision still produces a permanent
+    `TradeDecision` (so DecisionsPanel/DecisionDetail/Player vs AI keep
+    working unchanged) plus a `CeoDecisionRecord` tracking CEO
+    accuracy, AI accuracy, agreement rate, and successful/failed
+    overrides.
+    - Honesty boundary: "AI Accuracy" is only ever computed over
+      decisions the CEO *agreed* with — an override's real trade tells
+      us whether the CEO's own call worked, never whether the AI's
+      original (never-taken) direction would have, so `outcome:
+      "undecidable"` is the honest answer for a plain WAIT or any
+      override, exactly the same "never grade an unrealized
+      counterfactual" rule Player vs AI (Phase 8) already established.
+    - A pending proposal a player never acts on expires after 3
+      in-game days (`PROPOSAL_EXPIRY_SIM_MINUTES`) and auto-resolves as
+      an honest WAIT — not silently dropped, not silently traded.
+    - New backend: `app/executive.py`, `POST /api/executive/decide`,
+      `GameState.submit_ceo_decision()`. New frontend: the Executive
+      Voting popup (auto-opens on a genuinely new proposal — see the bug
+      note below — with click-to-expand vote reasoning/evidence,
+      BUY/SELL/WAIT, Approve/Reject, "Decide later"), and a new
+      EXECUTIVE Command Center tab (pending queue, CEO track record,
+      decision history).
+  - **Risk Command Center (Feature 13)**, folded into Executive Voting's
+    "Review Analysis" expansion rather than a separate screen, since
+    every field in it is specific to the proposal currently being
+    decided: a 0-100 **Trade Quality Score** (evaluates the *setup* —
+    agent agreement, research confidence, active risk warnings,
+    portfolio exposure — never a win prediction) with its real reasons/
+    concerns spelled out, and a **Pre-Trade Checklist** (thesis written,
+    risk reviewed, no active risk warning, multi-agent agreement,
+    exposure acceptable).
+    - Explicit scope cut, stated rather than faked: the brief also asks
+      for Stop-Loss/Take-Profit Distance and Reward-to-Risk Ratio.
+      TradeTown's paper broker has never placed stop-loss/take-profit
+      exit orders (DecisionDetail's Trade Plan section already says so
+      for the same reason), so there is no real number to show — the
+      UI states this explicitly instead of inventing a ratio. A Red
+      Flag System and Post-Trade Review beyond what's covered by the
+      Quality Score's own concerns list, and per-trade historical
+      quality-vs-outcome tracking, were also left out of this pass —
+      the latter would need a new persisted field snapshotting the
+      score at decision time, which is a reasonable v0.6.4 addition,
+      not one to rush into this pass.
+  - **Cyber Executive Overlay (Feature 14)**: the existing v0.6.1
+    Command Center already had most of the requested visual language
+    (glass panels, glow borders, scan-lines, terminal typography) — this
+    pass adds a smooth zoom/fade/blur open transition
+    (`cmd-overlay-in`), a faint drifting animated grid background
+    (pure CSS `background-position`, no canvas/WebGL, costs nothing
+    while charts/AI panels are also updating), holographic button hover
+    (glow + elevation), and a corner toast system (`CyberNotifications`)
+    for events that don't already have a dedicated popup: NEW TRADE
+    AVAILABLE, RESEARCH COMPLETE, HIGH VOLATILITY WARNING, and a
+    scanner-alert-driven NEWS ALERT.
+    - Explicit scope cuts, stated rather than half-built: TRADE WON/
+      TRADE LOST are deliberately *not* duplicated as toasts —
+      TradeOutcomePopup already gives a closed trade its own full-
+      treatment celebration/shake moment, and a toast on top would be
+      redundant noise. AGENT LEVEL UP is not implemented — TradeTown
+      agents have no leveling mechanic, and inventing one to satisfy an
+      example notification would be exactly the kind of fabrication
+      this project avoids. A full desktop-OS-style per-panel window
+      manager (drag/resize/minimize/maximize/dock/snap/remember-layout)
+      was also explicitly not built — the existing tab-based layout
+      already organizes the same LEFT/CENTER/RIGHT/BOTTOM content groups
+      the brief describes, and a real window manager is a multi-day
+      feature on its own, not something to half-implement in this pass.
+  - **Two bugs caught and fixed during this phase's own verification**:
+    (1) the Executive Voting popup's "auto-open on a new proposal" logic
+    first compared each WebSocket update's proposal count against the
+    frontend's *default* empty list — which meant any pending proposal
+    already sitting in the backend from before the page loaded (the
+    WebSocket connects at app boot, independent of the title screen —
+    see `GameCanvas.tsx`) read as "just appeared" and popped the modal
+    up over the title screen itself, intercepting clicks meant for the
+    game canvas. This is the exact same bug class already caught once
+    for `TradeOutcomePopup` in Phase 10 (see that entry above) — fixed
+    the same way: a `hydrated` flag on `NexusManager` so the very first
+    snapshot never fires a "new" event, only genuine subsequent
+    arrivals do. (2) That fix surfaced a second, older, previously-latent
+    bug in `TradeOutcomePopup` itself: since it derives its visibility
+    from real unviewed-trade backlog rather than a "new" event, it was
+    *never* guarded against rendering during `MainMenuScene` at all — a
+    session left running long enough to close an unviewed trade would
+    show that popup over the title screen the next time the page loaded,
+    for the same "socket connects before Continue is even clicked"
+    reason. Both popups now check `currentScene !== "MainMenuScene"`
+    before rendering (checked after all hooks, not as an early return
+    before them, so the Rules of Hooks stay intact).
+  - Tests: 23 new backend unit tests (`test_executive.py` — vote
+    generation per role, the execution-vote tie-break, `resolve_proposal`
+    for buy/sell/wait including the zero-quantity-falls-back-to-wait
+    case, grading correct/incorrect/undecidable, proposal expiry timing),
+    full live end-to-end verification (fast-forwarded a real proposal
+    through generation → CEO decision → position open → position close →
+    grading, and separately through expiry → auto-WAIT), a save/load
+    round-trip check for the two new persisted fields, and 2 new
+    Playwright tests (`executiveVoting.spec.ts`) covering the popup's
+    real vote/evidence rendering, the quality score + checklist, a real
+    BUY submission, and the EXECUTIVE panel's stats/pending list. Full
+    backend (mypy/ruff/pytest, 98/98) and frontend (tsc/eslint/build)
+    verification, plus the full existing Playwright suite re-run clean
+    after the hydration fix above.
+
 - **v0.6.2 Phase 10: Trade outcome popups** — a real, closed PaperTrade
   now surfaces a popup the moment the player is present to see it:
   celebration (pulsing green glow + a burst of CSS confetti) on a win,

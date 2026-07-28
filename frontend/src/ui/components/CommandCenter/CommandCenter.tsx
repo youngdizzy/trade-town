@@ -4,6 +4,7 @@ import { useCloseOnEscape } from "@/ui/hooks/useCloseOnEscape";
 import { EventBus } from "@/game/systems/EventBus";
 import { QuickView } from "./QuickView";
 import { FullCommandCenter } from "./FullCommandCenter";
+import { AnimatedGrid } from "./ui";
 
 /**
  * The Global Command Center (v0.6.1) — an application-level overlay
@@ -44,8 +45,9 @@ export function CommandCenter() {
   if (!commandCenterOpen) return null;
 
   return (
-    <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-black/70 p-[6vh] font-cmdmono text-[11px] text-cmd-text">
-      <div className="relative flex h-full w-full max-w-[1400px] flex-col overflow-hidden rounded-md border border-cmd-cyan/30 bg-cmd-bg shadow-cmd-cyan">
+    <div className="pointer-events-auto absolute inset-0 z-50 flex items-center justify-center bg-black/70 p-[6vh] font-cmdmono text-[11px] text-cmd-text backdrop-blur-sm">
+      <div className="motion-safe:animate-cmd-overlay-in relative flex h-full w-full max-w-[1400px] flex-col overflow-hidden rounded-md border border-cmd-cyan/30 bg-cmd-bg shadow-cmd-cyan">
+        <AnimatedGrid />
         <ScanlineOverlay />
         {commandCenterMode === "quick" ? <QuickView onExpand={openFull} /> : <FullCommandCenter onCollapse={openQuick} onClose={close} />}
       </div>
