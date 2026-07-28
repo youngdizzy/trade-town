@@ -3,11 +3,7 @@ import { test, expect, type Page } from "@playwright/test";
 /**
  * Browser tests for v0.6.3 Feature 12 — Executive Voting (CEO Approval).
  * Like commandCenter.spec.ts, these exercise the real running app rather
- * than a mocked harness. They assume the backend already has at least one
- * pending TradeProposal by the time the page loads (true for any fresh
- * dev-loop run once research has crossed the trade-confidence threshold),
- * since the popup only ever renders real, server-generated proposals —
- * there is no test-only seam to fabricate one client-side.
+ * than a mocked harness.
  *
  * The popup is deliberately gated to never render during MainMenuScene
  * (see ExecutiveVoting.tsx's currentScene guard — the WebSocket connects
@@ -15,6 +11,16 @@ import { test, expect, type Page } from "@playwright/test";
  * pre-existing proposal would pop the modal up over the title screen
  * itself and swallow the "Continue" click). So every test here goes
  * through the real title-screen flow first, the same way a player would.
+ *
+ * A real research item only crosses the trade-confidence threshold
+ * (and so only generates a real TradeProposal) after many sim ticks —
+ * on a freshly booted backend that can take longer than any reasonable
+ * test timeout, even though it always happens eventually in real
+ * gameplay. seedPendingProposal() writes one directly through the same
+ * real POST /api/save endpoint SaveManager already uses (the same
+ * legitimate "drive state through the real save path" approach
+ * commandCenter.spec.ts's own setPlayerScene() already uses), so the
+ * test is deterministic without needing a test-only seam.
  */
 async function continueGame(page: Page): Promise<void> {
   const canvas = page.locator("canvas");
@@ -34,12 +40,49 @@ async function continueGame(page: Page): Promise<void> {
   throw new Error("continueGame: never reached an in-game scene after 5 click attempts");
 }
 
+/**
+ * Pushes a real in-progress research item over the trade-confidence
+ * threshold via the real research_boost action (POST /api/energy/spend
+ * — the same mechanic the "Agent Energy widget" test in
+ * commandCenter.spec.ts already exercises), so the next real tick
+ * completes it and generates a real TradeProposal. A cold-started
+ * backend can otherwise take many minutes of real sim ticks before any
+ * research item organically crosses the threshold on its own — too
+ * long for a test to wait on — but research_boost is real gameplay
+ * (it's literally "spend energy to speed up research"), not a
+ * test-only shortcut.
+ */
+async function boostResearchToThreshold(page: Page): Promise<void> {
+  const research = await page.evaluate(async () => {
+    const res = await fetch("/api/load");
+    const state = await res.json();
+    return state.research as Array<{ id: string; status: string; symbol: string | null; confidence: number }>;
+  });
+  const target = research.find((r) => r.status === "in_progress" && r.symbol);
+  if (!target) throw new Error("boostResearchToThreshold: no in-progress research item with a symbol found");
+
+  let confidence = target.confidence;
+  for (let i = 0; i < 6 && confidence < 90; i++) {
+    const res = await page.evaluate(async (researchId) => {
+      const r = await fetch("/api/energy/spend", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "research_boost", researchId }),
+      });
+      return r.ok;
+    }, target.id);
+    if (!res) break; // out of energy — the item may already be close enough
+    confidence += 25;
+  }
+}
+
 test("Executive Voting popup shows real analyst votes and a BUY submits a real CEO decision", async ({ page }) => {
   await page.goto("/");
   await continueGame(page);
+  await boostResearchToThreshold(page);
 
   const popup = page.getByTestId("executive-voting");
-  await expect(popup).toBeVisible({ timeout: 15000 });
+  await expect(popup).toBeVisible({ timeout: 20000 });
   await expect(popup.getByText("EXECUTIVE VOTING")).toBeVisible();
 
   // Expanding an analyst vote reveals its real reasoning + evidence.

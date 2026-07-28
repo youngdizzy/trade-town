@@ -90,6 +90,24 @@ async function dismissTradeOutcomePopups(page: Page): Promise<void> {
   }
 }
 
+/** Clicks a Command Center tab, retrying if a popup that appeared in the
+ * instant between dismissing and clicking (a genuinely new proposal or
+ * closed trade — the sim keeps ticking in real time throughout this
+ * file) intercepts the click, rather than a one-shot dismiss-then-click
+ * that can lose that race. */
+async function clickTab(page: Page, tab: string): Promise<void> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    await dismissTradeOutcomePopups(page);
+    try {
+      await page.getByRole("button", { name: tab, exact: true }).click({ timeout: 5000 });
+      return;
+    } catch {
+      // a popup intercepted the click — loop back and dismiss again
+    }
+  }
+  throw new Error(`clickTab: could not click "${tab}" after 5 attempts`);
+}
+
 async function enableDebugOverlay(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Settings" }).click();
   const checkbox = page.getByRole("checkbox");
@@ -184,12 +202,12 @@ test.describe("Global Command Center", () => {
     await page.getByRole("button", { name: /EXPAND/ }).click();
 
     // This is the longest-running test in the file — with the real sim
-    // ticking throughout, a genuine trade can close (and pop up) mid-test.
-    // Dismiss defensively between steps rather than let it block a click.
+    // ticking throughout, a genuine trade or trade proposal can appear
+    // (and pop up) mid-test. clickTab() dismisses and retries rather
+    // than losing the race to a popup that appears in that instant.
     const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
     for (const tab of tabs) {
-      await dismissTradeOutcomePopups(page);
-      await page.getByRole("button", { name: tab, exact: true }).click();
+      await clickTab(page, tab);
       await expect(page.getByRole("button", { name: tab, exact: true })).toHaveClass(/text-cmd-cyan/);
     }
 
@@ -197,20 +215,16 @@ test.describe("Global Command Center", () => {
     // so by this point it may honestly have accumulated real decisions —
     // either way the panel must render something truthful, never a blank
     // screen: either real opportunity cards, or the explicit empty state.
-    await dismissTradeOutcomePopups(page);
-    await page.getByRole("button", { name: "OPPORTUNITIES", exact: true }).click();
+    await clickTab(page, "OPPORTUNITIES");
     await expect(page.getByText(/No opportunities evaluated yet/).or(page.locator("text=/% confidence/").first())).toBeVisible();
 
-    await dismissTradeOutcomePopups(page);
-    await page.getByRole("button", { name: "RISK", exact: true }).click();
+    await clickTab(page, "RISK");
     await expect(page.getByText(/NORMAL|ELEVATED|RESTRICTED/)).toBeVisible();
 
-    await dismissTradeOutcomePopups(page);
-    await page.getByRole("button", { name: "AGENTS", exact: true }).click();
+    await clickTab(page, "AGENTS");
     await expect(page.getByText("Atlas").first()).toBeVisible();
 
-    await dismissTradeOutcomePopups(page);
-    await page.getByRole("button", { name: "QUICK VIEW", exact: true }).click();
+    await clickTab(page, "QUICK VIEW");
     await expect(page.getByText("Quick View")).toBeVisible();
   });
 
