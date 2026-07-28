@@ -20,6 +20,16 @@ from __future__ import annotations
 import random
 from datetime import datetime, timezone
 
+from app.academy import (
+    ACADEMY_PROJECT_POINTS,
+    MEETING_ATTENDANCE_POINTS,
+    RESEARCH_COMPLETION_POINTS,
+    award_points,
+    compute_academy_state,
+    default_agent_knowledge,
+    maybe_run_mentorship,
+)
+from app.academy_research import MAX_ACADEMY_LIBRARY, default_academy_projects, tick_academy_projects
 from app.agent_energy import RESEARCH_BOOST_AMOUNT, regen_daily, spend
 from app.agents import AGENT_PROFILES, LOCATION_TO_SCENE, all_agent_ids
 from app.analytics import compute_performance_snapshot, confidence_accuracy, record_snapshot
@@ -39,6 +49,7 @@ from app.executive import (
     is_significant_proposal,
     resolve_proposal,
 )
+from app.executive_review import generate_executive_review, record_review
 from app.gatekeeper import grade_gatekeeper_rejections
 from app.hall_of_fame import evaluate_hall_of_fame
 from app.journal import stamp_journal_entry
@@ -53,23 +64,30 @@ from app.schedule import block_for_hour
 from app.scribe import (
     FUTURE_TRADE_CONFIDENCE_THRESHOLD,
     build_minutes,
+    record_academy_project,
     record_ceo_decision,
     record_coach_report,
+    record_executive_review,
     record_hall_of_fame_entry,
+    record_knowledge_tier_up,
     record_meeting,
+    record_mentorship_session,
     record_paper_trade,
     record_research_completions,
     record_scanner_alert,
     record_simulation_result,
 )
 from app.schemas import (
+    AcademyProject,
     AgentId,
+    AgentKnowledgeState,
     AgentOverride,
     AgentState,
     CeoDecisionRecord,
     CoachReport,
     Debate,
     EntityTransform,
+    ExecutiveReview,
     GameSaveState,
     GatekeeperRejection,
     MemoryEntry,
@@ -148,6 +166,13 @@ RESTFUL_LOCATIONS = {"lobby", "break-room"}
 EVENING_REVIEW_HOUR = 20
 WEEKLY_INTERVAL_DAYS = 7
 MONTHLY_INTERVAL_DAYS = 30
+# v0.7 Feature 25 — how often to check whether a real mentorship pairing
+# qualifies (see app/academy.py's maybe_run_mentorship). Checked on the
+# same evening cadence as everything else above, but only every 3 days —
+# the gap between two agents' real knowledge points moves slowly, so
+# checking every tick would either never fire or fire every tick once
+# the gap crosses threshold, neither of which reads as a real "session".
+MENTORSHIP_CHECK_INTERVAL_DAYS = 3
 
 MARKET_HEADLINES = [
     "Markets drift sideways in a quiet overnight session",
@@ -266,6 +291,7 @@ _DEFAULT_CATEGORY_BY_AGENT: dict[AgentId, TaskCategory] = {
     "sentinel": "risk_management",
     "pulse": "market_scanning",
     "guardian": "risk_management",
+    "cio": "review",
 }
 
 
@@ -745,6 +771,10 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     gatekeeper_rejections: list[GatekeeperRejection] = list(state.gatekeeper_rejections)
     agent_energy = state.agent_energy
     operating_mode = state.settings.operating_mode
+    executive_reviews: list[ExecutiveReview] = list(state.executive_reviews)
+    academy_projects: list[AcademyProject] = state.academy_projects or default_academy_projects()
+    academy_completed_projects: list[AcademyProject] = list(state.academy_completed_projects)
+    agent_knowledge: dict[AgentId, AgentKnowledgeState] = state.agent_knowledge or default_agent_knowledge()
 
     agents = {aid: _tick_agent(aid, agent, new_time, minutes, tasks) for aid, agent in state.agents.items()}
 
@@ -756,6 +786,31 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                 id=f"news-research-{item.id}",
                 headline=f"{AGENT_PROFILES[item.assigned_agent].name} completed research on {item.symbol}: {item.summary}",
                 category="discovery",
+                timestamp=_now_iso(),
+            )
+        )
+        # v0.7 Feature 25 — every real completed research item earns the
+        # assigned agent real Knowledge Points (app/academy.py).
+        agent_knowledge, tier_up = award_points(agent_knowledge, item.assigned_agent, RESEARCH_COMPLETION_POINTS)
+        if tier_up is not None:
+            record_knowledge_tier_up(memory, tier_up)
+
+    # v0.7 Feature 25 — the Academy's one company-wide knowledge project,
+    # advanced and rotated the same way research.py's own queue is.
+    academy_projects, newly_completed_project = tick_academy_projects(academy_projects, len(academy_completed_projects))
+    if newly_completed_project is not None:
+        academy_completed_projects.append(newly_completed_project)
+        if len(academy_completed_projects) > MAX_ACADEMY_LIBRARY:
+            del academy_completed_projects[: len(academy_completed_projects) - MAX_ACADEMY_LIBRARY]
+        record_academy_project(memory, newly_completed_project)
+        agent_knowledge, tier_up = award_points(agent_knowledge, newly_completed_project.assigned_agent, ACADEMY_PROJECT_POINTS)
+        if tier_up is not None:
+            record_knowledge_tier_up(memory, tier_up)
+        news.append(
+            NewsItem(
+                id=f"news-academy-{newly_completed_project.id}",
+                headline=f'Academy: {AGENT_PROFILES[newly_completed_project.assigned_agent].name} completes "{newly_completed_project.title}" — knowledge library updated.',
+                category="company",
                 timestamp=_now_iso(),
             )
         )
@@ -932,7 +987,16 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             )
         )
 
+    mm_count_before_meeting = len(meeting_minutes)
     agents, meeting = _maybe_call_meeting(agents, state.meeting, research, new_time, news, tasks, memory, meeting_minutes)
+    # v0.7 Feature 25 — every agent who actually attended a real meeting
+    # earns a small real Knowledge Points bonus (app/academy.py) —
+    # "collaboration" grounded in the meeting system that already exists.
+    if len(meeting_minutes) > mm_count_before_meeting:
+        for attendee in meeting_minutes[-1].participants:
+            agent_knowledge, tier_up = award_points(agent_knowledge, attendee, MEETING_ATTENDANCE_POINTS)
+            if tier_up is not None:
+                record_knowledge_tier_up(memory, tier_up)
 
     if random.random() < 0.04:
         news.append(
@@ -964,6 +1028,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         watchlist=watchlist,
         education=state.education,
     )
+    # v0.7 Feature 25 — cheap to recompute every tick, same reasoning as
+    # company_health above (feeds a live-updating Academy readout).
+    academy_state = compute_academy_state(agent_knowledge, len(academy_completed_projects))
 
     is_evening = new_time.hour == EVENING_REVIEW_HOUR and new_time.minute == 0
     is_midnight = new_time.hour == 0 and new_time.minute == 0
@@ -980,6 +1047,37 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         coach_reports = record_coach_report_entry(coach_reports, latest_report)
         record_coach_report(memory, latest_report)
         performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("monthly", paper_portfolio, research, new_time))
+
+        # v0.7 Feature 24 — the CIO's own Monthly Executive Review,
+        # generated on the same monthly cadence as Coach's report above
+        # but asking a different question (see app/executive_review.py).
+        previous_score = executive_reviews[-1].company_score if executive_reviews else None
+        review = generate_executive_review(
+            research=research,
+            decisions=decisions,
+            debates=debates,
+            news=news,
+            company_score=company_score,
+            previous_score=previous_score,
+            company_health=company_health,
+            risk_limits=risk_limits,
+            academy_state=academy_state,
+            completed_academy_projects=academy_completed_projects,
+            lessons_completed=len(state.education.completed_lesson_ids),
+            agent_ids=all_agent_ids(),
+            new_time=new_time,
+        )
+        executive_reviews = record_review(executive_reviews, review)
+        record_executive_review(memory, review)
+
+    # v0.7 Feature 25 — a modest, honestly-grounded mentorship check (see
+    # app/academy.py's module docstring). Checked far less often than
+    # every tick since the real points gap it watches moves slowly.
+    if is_evening and new_time.day % MENTORSHIP_CHECK_INTERVAL_DAYS == 0:
+        agent_knowledge, pairing = maybe_run_mentorship(agent_knowledge)
+        if pairing is not None:
+            mentor_id, mentee_id = pairing
+            record_mentorship_session(memory, agent_knowledge, mentor_id, mentee_id)
 
     if is_midnight:
         agent_energy = regen_daily(agent_energy)
@@ -1039,6 +1137,11 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "gatekeeper_rejections": gatekeeper_rejections,
             "market_environment": market_environment,
             "company_health": company_health,
+            "executive_reviews": executive_reviews,
+            "academy_projects": academy_projects,
+            "academy_completed_projects": academy_completed_projects,
+            "agent_knowledge": agent_knowledge,
+            "academy_state": academy_state,
             "agent_energy": agent_energy,
             "whiteboards": _update_whiteboards(agents, meeting, research),
             "updated_at": _now_iso(),

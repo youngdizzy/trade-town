@@ -11,9 +11,12 @@ from app.agents import AGENT_PROFILES
 from app.knowledge import derive_lesson
 from app.memory import record
 from app.schemas import (
+    AcademyProject,
     AgentId,
+    AgentKnowledgeState,
     CoachReport,
     DiscussionMessage,
+    ExecutiveReview,
     HallOfFameEntry,
     MemoryRecord,
     MeetingMinutes,
@@ -141,3 +144,40 @@ def record_order_placed(memory: list[MemoryRecord], order: PaperOrder) -> None:
         f"{AGENT_PROFILES[order.placed_by].name} placed a {order.order_type} {order.side} order for "
         f"{order.quantity:.2f} {order.symbol} — {order.reason}",
     )
+
+
+def record_academy_project(memory: list[MemoryRecord], project: AcademyProject) -> None:
+    """v0.7 Feature 25 — a completed AI Academy knowledge project. This is
+    also the Company Knowledge Library's real entry point (see
+    app/academy_research.py's module docstring)."""
+    record(memory, "academy", f"Academy: {project.title}", project.summary)
+
+
+def record_knowledge_tier_up(memory: list[MemoryRecord], state: AgentKnowledgeState) -> None:
+    record(
+        memory,
+        "academy",
+        f"{AGENT_PROFILES[state.agent_id].name} advances in {state.branch}",
+        f"{AGENT_PROFILES[state.agent_id].name} has reached Tier {state.tier} in {state.branch}, "
+        f"with {state.points:.1f} knowledge points earned through real completed work.",
+    )
+
+
+def record_mentorship_session(memory: list[MemoryRecord], knowledge: dict[AgentId, AgentKnowledgeState], mentor_id: AgentId, mentee_id: AgentId) -> None:
+    """v0.7 Feature 25 — see app/academy.py's module docstring for why
+    "seniority" here is grounded in real knowledge points rather than a
+    fabricated status; both agents' own real point totals are logged
+    verbatim, not a generic "mentoring happened" line."""
+    mentor = knowledge[mentor_id]
+    mentee = knowledge[mentee_id]
+    record(
+        memory,
+        "mentorship",
+        f"{AGENT_PROFILES[mentor_id].name} mentors {AGENT_PROFILES[mentee_id].name}",
+        f"{AGENT_PROFILES[mentor_id].name} ({mentor.branch}, Tier {mentor.tier}, {mentor.points:.1f} pts) spent time coaching "
+        f"{AGENT_PROFILES[mentee_id].name} ({mentee.branch}, Tier {mentee.tier}, {mentee.points:.1f} pts) this afternoon.",
+    )
+
+
+def record_executive_review(memory: list[MemoryRecord], review: ExecutiveReview) -> None:
+    record(memory, "executive", "Meridian's Executive Review", review.summary)

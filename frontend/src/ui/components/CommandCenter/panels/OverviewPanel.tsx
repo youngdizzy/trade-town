@@ -24,7 +24,7 @@ const REGIME_TONE: Record<MarketEnvironmentRegime, "green" | "red" | "amber" | "
 
 /** The landing tab — the small set of numbers most likely to change what the operator does next, pulled from every other panel's real data. */
 export function OverviewPanel({ onInspect, onNavigate }: { onInspect: (d: TradeDecision) => void; onNavigate: (t: Tab) => void }) {
-  const { companyScore, companyHealth, marketEnvironment, paperPortfolio, riskWarnings, decisions, agents } = useGameStore();
+  const { companyScore, companyHealth, marketEnvironment, academyState, paperPortfolio, riskWarnings, decisions, agents } = useGameStore();
   const level = riskLevel(riskWarnings);
   const recent = [...decisions].slice(-5).reverse();
   const noTrade = computeNoTradeStats(decisions);
@@ -84,8 +84,20 @@ export function OverviewPanel({ onInspect, onNavigate }: { onInspect: (d: TradeD
       </Glass>
 
       <Glass className="p-3">
+        <div className="mb-1.5 flex items-center justify-between">
+          <TerminalLabel>AI Academy</TerminalLabel>
+          <StatusPill tone="cyan">LVL {academyState.level}</StatusPill>
+        </div>
+        <div className="mb-2 text-[9px] text-cmd-textDim">{academyState.levelLabel}</div>
+        <Meter value={(academyState.level / 5) * 100} tone="cyan" />
+        <button type="button" onClick={() => onNavigate("KNOWLEDGE")} className="mt-2 w-full rounded-sm border border-cmd-border py-1 text-cmd-textDim hover:text-cmd-cyan">
+          View Knowledge →
+        </button>
+      </Glass>
+
+      <Glass className="p-3">
         <TerminalLabel>Team Status</TerminalLabel>
-        <DataRow label="Agents active" value={`${workingCount} / 9`} />
+        <DataRow label="Agents active" value={`${workingCount} / 10`} />
         <DataRow label="No-trade rate" value={noTrade.total ? `${Math.round((noTrade.noTradeCount / noTrade.total) * 100)}%` : "N/A"} />
         <button type="button" onClick={() => onNavigate("AGENTS")} className="mt-2 w-full rounded-sm border border-cmd-border py-1 text-cmd-textDim hover:text-cmd-cyan">
           View Agents →

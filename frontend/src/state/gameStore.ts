@@ -1,6 +1,9 @@
 import type {
+  AcademyProject,
+  AcademyState,
   AgentEnergy,
   AgentId,
+  AgentKnowledgeState,
   AgentState,
   BacktestSession,
   CeoDecisionRecord,
@@ -8,6 +11,7 @@ import type {
   CompanyHealth,
   CompanyScore,
   Debate,
+  ExecutiveReview,
   GatekeeperRejection,
   HallOfFameEntry,
   MarketEnvironmentState,
@@ -79,6 +83,11 @@ export interface GameUiState {
   gatekeeperRejections: GatekeeperRejection[];
   marketEnvironment: MarketEnvironmentState;
   companyHealth: CompanyHealth;
+  executiveReviews: ExecutiveReview[];
+  academyProjects: AcademyProject[];
+  academyCompletedProjects: AcademyProject[];
+  agentKnowledge: Record<AgentId, AgentKnowledgeState>;
+  academyState: AcademyState;
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
@@ -192,6 +201,11 @@ class GameStore {
       recommendations: [],
       updatedAt: new Date().toISOString(),
     },
+    executiveReviews: [],
+    academyProjects: [],
+    academyCompletedProjects: [],
+    agentKnowledge: {} as Record<AgentId, AgentKnowledgeState>,
+    academyState: { level: 1, levelLabel: "Training Room", totalPoints: 0, completedProjectCount: 0, updatedAt: new Date().toISOString() },
     agentEnergy: { current: 100, cap: 100, updatedAt: new Date().toISOString() },
     signalCalibration: { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 },
     playerVsAi: { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 },
@@ -292,6 +306,11 @@ class GameStore {
     EventBus.on("gatekeeperRejections:updated", (gatekeeperRejections) => this.set({ gatekeeperRejections }));
     EventBus.on("marketEnvironment:updated", (marketEnvironment) => this.set({ marketEnvironment }));
     EventBus.on("companyHealth:updated", (companyHealth) => this.set({ companyHealth }));
+    EventBus.on("executiveReviews:updated", (executiveReviews) => this.set({ executiveReviews }));
+    EventBus.on("academyProjects:updated", (academyProjects) => this.set({ academyProjects }));
+    EventBus.on("academyCompletedProjects:updated", (academyCompletedProjects) => this.set({ academyCompletedProjects }));
+    EventBus.on("agentKnowledge:updated", (agentKnowledge) => this.set({ agentKnowledge }));
+    EventBus.on("academyState:updated", (academyState) => this.set({ academyState }));
     EventBus.on("ui:executiveVoting", ({ open, proposalId }) =>
       this.set({ executiveVotingOpen: open, executiveVotingProposalId: open ? (proposalId ?? this.state.executiveVotingProposalId) : null }),
     );

@@ -210,6 +210,54 @@ perspective and exists purely to detect disconnects
       { "id": "env-bull-1560", "regime": "bull", "label": "BULL MARKET", "detail": "...", "simMinutes": 1560, "createdAt": "..." }
     ]
   },
+  "executiveReviews": [
+    // v0.7 Feature 24 — the CIO's Monthly Executive Review
+    // (app/executive_review.py). A fresh cumulative snapshot over each
+    // already-capped recent-history list (research/decisions/debates/
+    // news), same convention CoachReport already uses.
+    // companyScoreChange is the one true period-over-period figure — a
+    // real delta against the previous review's own stored score (0.0
+    // for the first review).
+    {
+      "id": "review-30-20-0", "companyScore": 65.0, "companyScoreChange": 3.2, "companyHealthTier": "stable",
+      "departmentActivity": [{ "agentId": "scout", "researchCompleted": 24, "decisionsInvolved": 45 }],
+      "researchCompleted": 96, "knowledgeGained": 50, "lessonsCompleted": 4,
+      "majorEvents": ["Atlas completed research on SPY: ..."],
+      "conflictsDetected": 12,
+      "flags": ["Nova's research on SPY remains low-confidence — may need a fresh angle."],
+      "recommendations": ["Technology Level is low (0/100) — worth attention."],
+      "longTermGoals": ["Hold max drawdown under 20%, the standing risk limit."],
+      "summary": "Company score stands at 65/100 (+3.2 since the last review)...",
+      "createdAt": "..."
+    }
+  ],
+  "academyProjects": [
+    // v0.7 Feature 25 — the Academy's one active, company-wide knowledge
+    // project (app/academy_research.py) — not one per agent, unlike
+    // market research.py's queue. Cycles through a fixed six-topic
+    // catalog and every non-CIO agent.
+    { "id": "academy-market_history-...", "topic": "market_history", "title": "Studying the 1987 Crash and Black Monday",
+      "assignedAgent": "scout", "status": "in_progress", "progress": 42.0,
+      "summary": "Scout is getting started: a study of historical market panics and what triggered them.",
+      "createdAt": "...", "updatedAt": "..." }
+  ],
+  "academyCompletedProjects": [
+    // The permanent Company Knowledge Library — capped at
+    // MAX_ACADEMY_LIBRARY (50), same shape as academyProjects above but status:"completed".
+  ],
+  "agentKnowledge": {
+    // v0.7 Feature 25 — every agent's own real Knowledge Points/tier
+    // (app/academy.py). "branch" is a fixed, occupation-linked theme;
+    // points only ever grow from real completed work (a finished
+    // ResearchItem, a finished AcademyProject, real meeting attendance).
+    "echo": { "agentId": "echo", "branch": "Technical Analysis", "points": 18.5, "tier": 2 }
+  },
+  "academyState": {
+    // Company-wide progression derived from agentKnowledge + real
+    // completed-project count — level/label only, no new art per level
+    // (see docs/Architecture.md's scope-cut note).
+    "level": 3, "levelLabel": "Innovation Lab", "totalPoints": 142.0, "completedProjectCount": 18, "updatedAt": "..."
+  },
   "performanceSnapshots": [
     { "period": "daily", "returnPct": 1.2, "winRate": 60.0, "maxDrawdownPct": 4.1, "sharpeRatio": 0.29, "sortinoRatio": 0.34, "avgHoldingMinutes": 210.0, "researchAccuracy": 71.0, "confidenceAccuracy": 68.0, "computedAt": "..." }
   ],
@@ -403,6 +451,9 @@ never needs to trim anything itself:
 | `debates` | last 60 (`MAX_DEBATES`) | one per proposal plus any "request another debate" calls — v0.7 Feature 17 |
 | `gatekeeperRejections` | last 100 (`MAX_GATEKEEPER_REJECTIONS`) | one per trade the Trade Gatekeeper vetoed — v0.7 Feature 20 |
 | `marketEnvironment.timeline` | last 100 (`MAX_MARKET_ENVIRONMENT_HISTORY`) | only grows on a real regime change, not every tick — v0.7 Feature 22 |
+| `executiveReviews` | last 20 (`MAX_EXECUTIVE_REVIEWS`) | the CIO's Monthly Executive Review — v0.7 Feature 24 |
+| `academyProjects` | uncapped, but always exactly one active | the Academy's one company-wide knowledge project — v0.7 Feature 25 |
+| `academyCompletedProjects` | last 50 (`MAX_ACADEMY_LIBRARY`) | the permanent Company Knowledge Library — v0.7 Feature 25 |
 
 ### Provider configuration
 

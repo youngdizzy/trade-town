@@ -1,6 +1,9 @@
 import type {
+  AcademyProject,
+  AcademyState,
   AgentEnergy,
   AgentId,
+  AgentKnowledgeState,
   AgentState,
   BacktestSession,
   CeoDecisionRecord,
@@ -8,6 +11,7 @@ import type {
   CompanyHealth,
   CompanyScore,
   Debate,
+  ExecutiveReview,
   GatekeeperRejection,
   HallOfFameEntry,
   MarketEnvironmentState,
@@ -68,6 +72,11 @@ type ServerMessage =
       gatekeeperRejections: GatekeeperRejection[];
       marketEnvironment: MarketEnvironmentState;
       companyHealth: CompanyHealth;
+      executiveReviews: ExecutiveReview[];
+      academyProjects: AcademyProject[];
+      academyCompletedProjects: AcademyProject[];
+      agentKnowledge: Record<AgentId, AgentKnowledgeState>;
+      academyState: AcademyState;
       agentEnergy: AgentEnergy;
       signalCalibration: SignalCalibrationState;
       playerVsAi: PlayerVsAiState;
@@ -156,6 +165,11 @@ export class GameSocket {
             gatekeeperRejections: msg.gatekeeperRejections,
             marketEnvironment: msg.marketEnvironment,
             companyHealth: msg.companyHealth,
+            executiveReviews: msg.executiveReviews,
+            academyProjects: msg.academyProjects,
+            academyCompletedProjects: msg.academyCompletedProjects,
+            agentKnowledge: msg.agentKnowledge,
+            academyState: msg.academyState,
             agentEnergy: msg.agentEnergy,
             signalCalibration: msg.signalCalibration,
             playerVsAi: msg.playerVsAi,

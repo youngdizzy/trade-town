@@ -109,6 +109,18 @@ const DOORS: DoorDef[] = [
   // with a comfortable margin, rather than hugging the square like the
   // first pass here did.
   { target: "HallOfFameScene", label: "Hall of Fame", x: 580 + LEFT_SHIFT, y: FRONT_ROW_Y, asset: "props/buildings/windmill", targetWidth: 78 },
+  // No dedicated boardroom sprite exists in the fantasy-village pack (see
+  // the Market Observatory door's own note on this project's asset-pack
+  // rule) — reuses CEO Office's Inn_Black silhouette (already the
+  // biggest, most "executive" building in the pack) a second time, with
+  // buildBuildings() adding a gold pulsing ring so it doesn't just read
+  // as a duplicate CEO Office. NOT placed in the wide-looking gap between
+  // Hall of Fame and Trading Floor — that gap is the town square itself
+  // (PLAZA_COLS spans x 736-1024, well inside that range). Placed instead
+  // in the smaller but genuinely clear gap between Simulation Lab
+  // (right edge ~411) and Hall of Fame (left edge ~557), narrower than
+  // its neighbors (targetWidth 110 vs. their 130/78) to fit.
+  { target: "ExecutiveBoardroomScene", label: "Executive Boardroom", x: 464 + LEFT_SHIFT, y: FRONT_ROW_Y, asset: "props/buildings/inn-black", targetWidth: 110 },
   { target: "TradingFloorScene", label: "Trading Floor", x: 1180 + LEFT_SHIFT, y: FRONT_ROW_Y, asset: "props/buildings/house-5-limestone-base-blue", targetWidth: 190 },
   { target: "PerformanceCenterScene", label: "Performance Center", x: 1430 + LEFT_SHIFT, y: FRONT_ROW_Y, asset: "props/buildings/barn-base-red", targetWidth: 165 },
   // Reuses the church silhouette (already Meeting Room's back-row asset —
@@ -664,6 +676,14 @@ export class LobbyScene extends Phaser.Scene {
       if (def.target === "MarketObservatoryScene") {
         const glow = this.add.circle(def.x, topEdge + building.displayHeight * 0.18, 5, 0x4fd8ff, 0.85).setDepth(4);
         this.tweens.add({ targets: glow, scale: { from: 0.8, to: 1.6 }, alpha: { from: 0.85, to: 0.1 }, duration: 1400, repeat: -1, ease: "Sine.easeOut" });
+      }
+
+      // Same reasoning as Market Observatory's cyan ring above, in gold
+      // to match Meridian's own tint — this door reuses CEO Office's
+      // Inn_Black silhouette (see this door's own DOORS comment).
+      if (def.target === "ExecutiveBoardroomScene") {
+        const glow = this.add.circle(def.x, topEdge + building.displayHeight * 0.14, 5, 0xd4af37, 0.85).setDepth(4);
+        this.tweens.add({ targets: glow, scale: { from: 0.8, to: 1.7 }, alpha: { from: 0.85, to: 0.1 }, duration: 1700, repeat: -1, ease: "Sine.easeOut" });
       }
 
       // Both labels float above the roof rather than one sitting on the

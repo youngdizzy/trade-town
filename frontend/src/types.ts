@@ -15,10 +15,14 @@ export type SceneId =
   | "HallOfFameScene"
   | "PerformanceCenterScene"
   | "TradingFloorScene"
-  | "MarketObservatoryScene";
+  | "MarketObservatoryScene"
+  | "ExecutiveBoardroomScene";
 
-export type AgentId = "scout" | "atlas" | "echo" | "nova" | "scribe" | "coach" | "sentinel" | "pulse" | "guardian";
-export const AGENT_IDS: readonly AgentId[] = ["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian"];
+// v0.7 Feature 24 — Meridian, the Chief Investment Officer, is the tenth
+// agent. Unlike every other agent, the CIO never votes on a trade or
+// generates a research signal — it only reviews already-real state.
+export type AgentId = "scout" | "atlas" | "echo" | "nova" | "scribe" | "coach" | "sentinel" | "pulse" | "guardian" | "cio";
+export const AGENT_IDS: readonly AgentId[] = ["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio"];
 
 /** Every room an agent's schedule (or a meeting/break override) can place them in. */
 export type AgentLocation =
@@ -30,7 +34,8 @@ export type AgentLocation =
   | "simulation-lab"
   | "hall-of-fame"
   | "performance-center"
-  | "trading-floor";
+  | "trading-floor"
+  | "executive-boardroom";
 
 export type TaskStatus = "pending" | "working" | "completed" | "failed";
 export type TaskPriority = "low" | "normal" | "high";
@@ -72,7 +77,14 @@ export type MemoryCategory =
   | "alert"
   | "vote"
   | "decision"
-  | "order";
+  | "order"
+  // v0.7 Feature 25 — a completed Academy knowledge project or a
+  // knowledge-tier advancement.
+  | "academy"
+  // v0.7 Feature 25 — a real mentorship session between two agents.
+  | "mentorship"
+  // v0.7 Feature 24 — the CIO's own Monthly Executive Review.
+  | "executive";
 
 export type OrderSide = "buy" | "sell";
 export type OrderStatus = "open" | "filled" | "closed" | "cancelled";
@@ -872,6 +884,67 @@ export interface CompanyHealth {
   updatedAt: string;
 }
 
+// v0.7 Feature 24 — the CIO's Monthly Executive Review (see
+// backend/app/executive_review.py). A fresh cumulative snapshot over
+// each already-capped recent-history list, same convention CoachReport
+// already uses — companyScoreChange is the one true period-over-period
+// figure, a real delta against the previous review's own stored score.
+export interface DepartmentActivity {
+  agentId: AgentId;
+  researchCompleted: number;
+  decisionsInvolved: number;
+}
+
+export interface ExecutiveReview {
+  id: string;
+  companyScore: number;
+  companyScoreChange: number;
+  companyHealthTier: CompanyHealthTier;
+  departmentActivity: DepartmentActivity[];
+  researchCompleted: number;
+  knowledgeGained: number;
+  lessonsCompleted: number;
+  majorEvents: string[];
+  conflictsDetected: number;
+  flags: string[];
+  recommendations: string[];
+  longTermGoals: string[];
+  summary: string;
+  createdAt: string;
+}
+
+// v0.7 Feature 25 — AI Academy & Knowledge Network (see
+// backend/app/academy.py, backend/app/academy_research.py).
+export type AcademyTopic = "market_history" | "trading_psychology" | "economic_concepts" | "visualization_tools" | "decision_biases" | "trading_philosophies";
+export type AcademyProjectStatus = "in_progress" | "completed";
+
+export interface AcademyProject {
+  id: string;
+  topic: AcademyTopic;
+  title: string;
+  assignedAgent: AgentId;
+  status: AcademyProjectStatus;
+  progress: number;
+  summary: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentKnowledgeState {
+  agentId: AgentId;
+  branch: string;
+  points: number;
+  tier: number;
+}
+
+export interface AcademyState {
+  level: number;
+  levelLabel: string;
+  totalPoints: number;
+  completedProjectCount: number;
+  updatedAt: string;
+}
+
 export interface GameSaveState {
   version: "0.6";
   player: EntityTransform;
@@ -902,6 +975,11 @@ export interface GameSaveState {
   gatekeeperRejections: GatekeeperRejection[];
   marketEnvironment: MarketEnvironmentState;
   companyHealth: CompanyHealth;
+  executiveReviews: ExecutiveReview[];
+  academyProjects: AcademyProject[];
+  academyCompletedProjects: AcademyProject[];
+  agentKnowledge: Record<AgentId, AgentKnowledgeState>;
+  academyState: AcademyState;
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;

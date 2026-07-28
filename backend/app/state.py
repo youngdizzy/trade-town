@@ -11,6 +11,8 @@ import asyncio
 from datetime import datetime, timezone
 
 from app import education, nexus, player_vs_ai, signal_calibration, trade_notifications
+from app.academy import compute_academy_state, default_agent_knowledge
+from app.academy_research import default_academy_projects
 from app.agent_energy import default_agent_energy
 from app.company_health import compute_company_health
 from app.company_score import compute_company_score
@@ -50,6 +52,7 @@ def default_state() -> GameSaveState:
     watchlist = default_watchlist()
     signal_calibration_state = SignalCalibrationState()
     education_progress = education.default_education_progress()
+    agent_knowledge = default_agent_knowledge()
     return GameSaveState(
         player=EntityTransform(scene="LobbyScene", x=160, y=220, facing="down"),
         agents=agents,
@@ -93,6 +96,11 @@ def default_state() -> GameSaveState:
             watchlist=watchlist,
             education=education_progress,
         ),
+        executiveReviews=[],
+        academyProjects=default_academy_projects(),
+        academyCompletedProjects=[],
+        agentKnowledge=agent_knowledge,
+        academyState=compute_academy_state(agent_knowledge, 0),
         updatedAt=_now_iso(),
     )
 

@@ -50,10 +50,15 @@ SceneId = Literal[
     "PerformanceCenterScene",
     "TradingFloorScene",
     "MarketObservatoryScene",
+    "ExecutiveBoardroomScene",
 ]
 
-AgentId = Literal["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian"]
-AGENT_IDS: tuple[AgentId, ...] = ("scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian")
+# v0.7 Feature 24 — Meridian, the Chief Investment Officer, is the tenth
+# agent. Unlike every other agent, the CIO never votes on a trade or
+# generates a research signal (see app/executive.py) — it only reviews
+# already-real state (see app/executive_review.py).
+AgentId = Literal["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio"]
+AGENT_IDS: tuple[AgentId, ...] = ("scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio")
 
 # Every room an agent's schedule (or a meeting/break override) can place them in.
 AgentLocation = Literal[
@@ -66,6 +71,7 @@ AgentLocation = Literal[
     "hall-of-fame",
     "performance-center",
     "trading-floor",
+    "executive-boardroom",
 ]
 
 TaskStatus = Literal["pending", "working", "completed", "failed"]
@@ -113,6 +119,17 @@ MemoryCategory = Literal[
     "vote",
     "decision",
     "order",
+    # v0.7 Feature 25 — a completed Academy knowledge project or a
+    # knowledge-tier advancement (app/academy.py, app/academy_research.py).
+    "academy",
+    # v0.7 Feature 25 — a real mentorship session between two agents (see
+    # app/academy.py's module docstring for why "seniority" here is
+    # grounded in real knowledge points, not a fabricated status).
+    "mentorship",
+    # v0.7 Feature 24 — the CIO's own Monthly Executive Review (see
+    # app/executive_review.py) — distinct from "coach_review" so it's
+    # never misattributed to Coach.
+    "executive",
 ]
 
 # --- v0.5: paper trading, simulation, coaching, and scoring ---------------
@@ -1127,6 +1144,89 @@ class CompanyHealth(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# v0.7 Feature 24 — the CIO's Monthly Executive Review (app/executive_review.py).
+# A fresh cumulative snapshot over each already-capped recent-history list
+# (research/decisions/debates/news), same convention CoachReport already
+# uses — not a precisely period-windowed query. `company_score_change` is
+# the one true period-over-period figure, a real delta against the
+# previous review's own stored score.
+class DepartmentActivity(CamelModel):
+    agent_id: AgentId = Field(alias="agentId")
+    research_completed: int = Field(alias="researchCompleted")
+    decisions_involved: int = Field(alias="decisionsInvolved")
+
+
+class ExecutiveReview(CamelModel):
+    id: str
+    company_score: float = Field(alias="companyScore")
+    company_score_change: float = Field(alias="companyScoreChange")
+    company_health_tier: CompanyHealthTier = Field(alias="companyHealthTier")
+    department_activity: list[DepartmentActivity] = Field(default_factory=list, alias="departmentActivity")
+    research_completed: int = Field(alias="researchCompleted")
+    # Count of Academy knowledge projects completed to date (capped
+    # library) — see app/academy_research.py. Not a points total, to
+    # avoid a second, confusing "knowledge score."
+    knowledge_gained: int = Field(alias="knowledgeGained")
+    lessons_completed: int = Field(alias="lessonsCompleted")
+    major_events: list[str] = Field(default_factory=list, alias="majorEvents")
+    conflicts_detected: int = Field(alias="conflictsDetected")
+    # Real, specific "worth another look" items — a low-confidence
+    # research item still stalled, or Company Health reading poorly —
+    # the CIO's "asks difficult questions" / "requests more research".
+    flags: list[str] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)
+    # Framed from real, already-configured company state (RiskLimits, the
+    # Academy's own next level) — never invented aspirational text.
+    long_term_goals: list[str] = Field(default_factory=list, alias="longTermGoals")
+    summary: str
+    created_at: str = Field(alias="createdAt")
+
+
+# v0.7 Feature 25 — AI Academy & Knowledge Network (app/academy.py,
+# app/academy_research.py). Every agent has one real Knowledge Branch and
+# a points total that only grows from real completed work (a finished
+# ResearchItem, a finished AcademyProject, meeting attendance) — see
+# academy.py's module docstring, including its honest scope note on why
+# "mentorship" here is grounded in real knowledge points rather than an
+# invented seniority system.
+AcademyTopic = Literal[
+    "market_history",
+    "trading_psychology",
+    "economic_concepts",
+    "visualization_tools",
+    "decision_biases",
+    "trading_philosophies",
+]
+AcademyProjectStatus = Literal["in_progress", "completed"]
+
+
+class AcademyProject(CamelModel):
+    id: str
+    topic: AcademyTopic
+    title: str
+    assigned_agent: AgentId = Field(alias="assignedAgent")
+    status: AcademyProjectStatus
+    progress: float
+    summary: str
+    created_at: str = Field(alias="createdAt")
+    updated_at: str = Field(alias="updatedAt")
+
+
+class AgentKnowledgeState(CamelModel):
+    agent_id: AgentId = Field(alias="agentId")
+    branch: str
+    points: float
+    tier: int
+
+
+class AcademyState(CamelModel):
+    level: int
+    level_label: str = Field(alias="levelLabel")
+    total_points: float = Field(alias="totalPoints")
+    completed_project_count: int = Field(alias="completedProjectCount")
+    updated_at: str = Field(alias="updatedAt")
+
+
 class GameSaveState(CamelModel):
     version: Literal["0.6"] = "0.6"
     player: EntityTransform
@@ -1180,6 +1280,18 @@ class GameSaveState(CamelModel):
     market_environment: MarketEnvironmentState = Field(alias="marketEnvironment")
     # v0.7 Feature 23 — Company Health & Stability System (app/company_health.py).
     company_health: CompanyHealth = Field(alias="companyHealth")
+    # v0.7 Feature 24 — the CIO's Monthly Executive Review (app/executive_review.py).
+    executive_reviews: list[ExecutiveReview] = Field(default_factory=list, alias="executiveReviews")
+    # v0.7 Feature 25 — AI Academy. `academy_projects` holds the one
+    # currently-active knowledge project (company-wide, not per-agent);
+    # `academy_completed_projects` is the permanent, capped Knowledge
+    # Library (app/academy_research.py). `agent_knowledge` is every
+    # agent's own real points/tier (app/academy.py); `academy_state` is
+    # the company-wide progression level derived from both.
+    academy_projects: list[AcademyProject] = Field(default_factory=list, alias="academyProjects")
+    academy_completed_projects: list[AcademyProject] = Field(default_factory=list, alias="academyCompletedProjects")
+    agent_knowledge: dict[AgentId, AgentKnowledgeState] = Field(default_factory=dict, alias="agentKnowledge")
+    academy_state: AcademyState = Field(alias="academyState")
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(default_factory=list, alias="dialogueHistory")

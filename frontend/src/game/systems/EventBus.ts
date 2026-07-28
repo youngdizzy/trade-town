@@ -1,7 +1,10 @@
 import Phaser from "phaser";
 import type {
+  AcademyProject,
+  AcademyState,
   AgentEnergy,
   AgentId,
+  AgentKnowledgeState,
   AgentState,
   BacktestSession,
   CeoDecisionRecord,
@@ -10,6 +13,7 @@ import type {
   CompanyScore,
   Debate,
   DialogueHistoryEntry,
+  ExecutiveReview,
   GameSaveState,
   GatekeeperRejection,
   HallOfFameEntry,
@@ -104,6 +108,11 @@ export interface GameEvents {
   "gatekeeperRejections:updated": GatekeeperRejection[];
   "marketEnvironment:updated": MarketEnvironmentState;
   "companyHealth:updated": CompanyHealth;
+  "executiveReviews:updated": ExecutiveReview[];
+  "academyProjects:updated": AcademyProject[];
+  "academyCompletedProjects:updated": AcademyProject[];
+  "agentKnowledge:updated": Record<AgentId, AgentKnowledgeState>;
+  "academyState:updated": AcademyState;
   "ui:executiveVoting": { open: boolean; proposalId?: string };
   // v0.7 Feature 19 — opens the Command Center on the Decisions tab for a
   // specific trade's decision; openDetail additionally auto-opens

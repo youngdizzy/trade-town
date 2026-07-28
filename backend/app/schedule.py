@@ -112,6 +112,16 @@ AGENT_SCHEDULES: dict[AgentId, list[ScheduleBlock]] = {
         ScheduleBlock(22, 24, "trading-floor", "Filing the day's exposure report"),
         ScheduleBlock(0, 6, "trading-floor", "Standing watch over the book"),
     ],
+    "cio": [
+        ScheduleBlock(6, 9, "executive-boardroom", "Reviewing overnight department reports"),
+        ScheduleBlock(9, 12, "brain-room", "Sitting in on the research desk"),
+        ScheduleBlock(12, 13, "break-room", "Resting"),
+        ScheduleBlock(13, 16, "trading-floor", "Reviewing risk and execution together"),
+        ScheduleBlock(16, 19, "executive-boardroom", "Preparing the executive briefing"),
+        ScheduleBlock(19, 22, "meeting-room", "Encouraging cross-department collaboration"),
+        ScheduleBlock(22, 24, "executive-boardroom", "Reviewing the day's decisions"),
+        ScheduleBlock(0, 6, "executive-boardroom", "Standing by"),
+    ],
 }
 
 

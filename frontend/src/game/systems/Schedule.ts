@@ -105,6 +105,16 @@ export const AGENT_SCHEDULES: Record<AgentId, ScheduleBlock[]> = {
     { startHour: 22, endHour: 24, location: "trading-floor", task: "Filing the day's exposure report" },
     { startHour: 0, endHour: 6, location: "trading-floor", task: "Standing watch over the book" },
   ],
+  cio: [
+    { startHour: 6, endHour: 9, location: "executive-boardroom", task: "Reviewing overnight department reports" },
+    { startHour: 9, endHour: 12, location: "brain-room", task: "Sitting in on the research desk" },
+    { startHour: 12, endHour: 13, location: "break-room", task: "Resting" },
+    { startHour: 13, endHour: 16, location: "trading-floor", task: "Reviewing risk and execution together" },
+    { startHour: 16, endHour: 19, location: "executive-boardroom", task: "Preparing the executive briefing" },
+    { startHour: 19, endHour: 22, location: "meeting-room", task: "Encouraging cross-department collaboration" },
+    { startHour: 22, endHour: 24, location: "executive-boardroom", task: "Reviewing the day's decisions" },
+    { startHour: 0, endHour: 6, location: "executive-boardroom", task: "Standing by" },
+  ],
 };
 
 export function scheduleBlockForHour(agentId: AgentId, hour: number): ScheduleBlock {

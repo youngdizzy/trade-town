@@ -1,11 +1,16 @@
 import type {
+  AcademyProject,
+  AcademyState,
   AgentEnergy,
+  AgentId,
+  AgentKnowledgeState,
   BacktestSession,
   CeoDecisionRecord,
   CoachReport,
   CompanyHealth,
   CompanyScore,
   Debate,
+  ExecutiveReview,
   GatekeeperRejection,
   HallOfFameEntry,
   MarketEnvironmentState,
@@ -58,6 +63,11 @@ interface NexusSnapshot {
   gatekeeperRejections: GatekeeperRejection[];
   marketEnvironment: MarketEnvironmentState;
   companyHealth: CompanyHealth;
+  executiveReviews: ExecutiveReview[];
+  academyProjects: AcademyProject[];
+  academyCompletedProjects: AcademyProject[];
+  agentKnowledge: Record<AgentId, AgentKnowledgeState>;
+  academyState: AcademyState;
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
@@ -149,6 +159,17 @@ export class NexusManager {
     recommendations: [],
     updatedAt: new Date().toISOString(),
   };
+  private static executiveReviews: ExecutiveReview[] = [];
+  private static academyProjects: AcademyProject[] = [];
+  private static academyCompletedProjects: AcademyProject[] = [];
+  private static agentKnowledge: Record<AgentId, AgentKnowledgeState> = {} as Record<AgentId, AgentKnowledgeState>;
+  private static academyState: AcademyState = {
+    level: 1,
+    levelLabel: "Training Room",
+    totalPoints: 0,
+    completedProjectCount: 0,
+    updatedAt: new Date().toISOString(),
+  };
   private static agentEnergy: AgentEnergy = { current: 100, cap: 100, updatedAt: new Date().toISOString() };
   private static signalCalibration: SignalCalibrationState = { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 };
   private static playerVsAi: PlayerVsAiState = { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 };
@@ -235,6 +256,26 @@ export class NexusManager {
 
   static getCompanyHealth(): CompanyHealth {
     return this.companyHealth;
+  }
+
+  static getExecutiveReviews(): ExecutiveReview[] {
+    return this.executiveReviews;
+  }
+
+  static getAcademyProjects(): AcademyProject[] {
+    return this.academyProjects;
+  }
+
+  static getAcademyCompletedProjects(): AcademyProject[] {
+    return this.academyCompletedProjects;
+  }
+
+  static getAgentKnowledge(): Record<AgentId, AgentKnowledgeState> {
+    return this.agentKnowledge;
+  }
+
+  static getAcademyState(): AcademyState {
+    return this.academyState;
   }
 
   static getPerformanceSnapshots(): PerformanceSnapshot[] {
@@ -484,6 +525,23 @@ export class NexusManager {
     if (update.companyHealth !== this.companyHealth) EventBus.emit("companyHealth:updated", update.companyHealth);
     this.companyHealth = update.companyHealth;
 
+    if (update.executiveReviews.length !== this.executiveReviews.length) EventBus.emit("executiveReviews:updated", update.executiveReviews);
+    this.executiveReviews = update.executiveReviews;
+
+    if (update.academyProjects !== this.academyProjects) EventBus.emit("academyProjects:updated", update.academyProjects);
+    this.academyProjects = update.academyProjects;
+
+    if (update.academyCompletedProjects.length !== this.academyCompletedProjects.length) {
+      EventBus.emit("academyCompletedProjects:updated", update.academyCompletedProjects);
+    }
+    this.academyCompletedProjects = update.academyCompletedProjects;
+
+    if (update.agentKnowledge !== this.agentKnowledge) EventBus.emit("agentKnowledge:updated", update.agentKnowledge);
+    this.agentKnowledge = update.agentKnowledge;
+
+    if (update.academyState !== this.academyState) EventBus.emit("academyState:updated", update.academyState);
+    this.academyState = update.academyState;
+
     if (update.agentEnergy !== this.agentEnergy) EventBus.emit("agentEnergy:updated", update.agentEnergy);
     this.agentEnergy = update.agentEnergy;
 
@@ -527,6 +585,11 @@ export class NexusManager {
     this.gatekeeperRejections = save.gatekeeperRejections;
     this.marketEnvironment = save.marketEnvironment;
     this.companyHealth = save.companyHealth;
+    this.executiveReviews = save.executiveReviews;
+    this.academyProjects = save.academyProjects;
+    this.academyCompletedProjects = save.academyCompletedProjects;
+    this.agentKnowledge = save.agentKnowledge;
+    this.academyState = save.academyState;
     this.agentEnergy = save.agentEnergy;
     this.signalCalibration = save.signalCalibration;
     this.playerVsAi = save.playerVsAi;

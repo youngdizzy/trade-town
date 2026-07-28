@@ -137,6 +137,18 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
     wanderRadius: 25,
     idlePauseChance: 0.5,
   },
+  cio: {
+    id: "cio",
+    name: "Meridian",
+    occupation: "Chief Investment Officer",
+    personality: "Calm, professional, and educational. Reviews every department's work rather than trading itself.",
+    homeLocation: "executive-boardroom",
+    tint: 0xd4af37,
+    spriteId: "characters/player/player-meridian",
+    badge: "\u{1F454}",
+    wanderRadius: 16,
+    idlePauseChance: 0.7,
+  },
 };
 
 export const LOCATION_TO_SCENE: Record<AgentLocation, SceneId> = {
@@ -149,4 +161,5 @@ export const LOCATION_TO_SCENE: Record<AgentLocation, SceneId> = {
   "hall-of-fame": "HallOfFameScene",
   "performance-center": "PerformanceCenterScene",
   "trading-floor": "TradingFloorScene",
+  "executive-boardroom": "ExecutiveBoardroomScene",
 };

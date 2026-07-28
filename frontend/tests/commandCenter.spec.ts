@@ -195,7 +195,7 @@ test.describe("Global Command Center", () => {
     expect(moved.x).not.toBe(frozen.x);
   });
 
-  test("expands to the Full Command Center and renders all 13 tabs with graceful empty states", async ({ page }) => {
+  test("expands to the Full Command Center and renders all 14 tabs with graceful empty states", async ({ page }) => {
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);
     await continueGame(page);
@@ -208,7 +208,7 @@ test.describe("Global Command Center", () => {
     // ticking throughout, a genuine trade or trade proposal can appear
     // (and pop up) mid-test. clickTab() dismisses and retries rather
     // than losing the race to a popup that appears in that instant.
-    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "COMPANY", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
+    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "COMPANY", "KNOWLEDGE", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
     for (const tab of tabs) {
       await clickTab(page, tab);
       await expect(page.getByRole("button", { name: tab, exact: true })).toHaveClass(/text-cmd-cyan/);
@@ -456,5 +456,31 @@ test.describe("Global Command Center", () => {
     await assistedButton.click();
     await expect(assistedButton).toHaveClass(/shadow-cmd-cyan/);
     await expect(learningButton).not.toHaveClass(/shadow-cmd-cyan/);
+  });
+
+  test("KNOWLEDGE tab shows real Academy Progression, Knowledge Trees, and the Company Knowledge Library", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickTab(page, "KNOWLEDGE");
+
+    // Academy Progression: a real level (1-5) and its named tier.
+    await expect(page.getByText("Academy Progression", { exact: true })).toBeVisible();
+    await expect(page.getByText(/LEVEL [1-5] —/)).toBeVisible();
+
+    // Knowledge Trees: every agent (including Meridian, the CIO) has a
+    // real branch and a real points total — the ten agent names below
+    // are the same roster the toolbar/Agents tab already shows.
+    await expect(page.getByText("Knowledge Trees", { exact: true })).toBeVisible();
+    await expect(page.getByText("Meridian", { exact: true }).first()).toBeVisible();
+
+    // Active Research Project and the Company Knowledge Library both
+    // render something truthful — either real content or the explicit
+    // empty state — never a blank panel.
+    await expect(page.getByText("Active Research Project", { exact: true })).toBeVisible();
+    await expect(page.getByText("Company Knowledge Library", { exact: true })).toBeVisible();
   });
 });

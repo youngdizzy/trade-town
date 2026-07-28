@@ -92,6 +92,18 @@ const AGENT_TASK_LINES: Record<AgentId, Record<string, string[]>> = {
     "Filing the day's exposure report": ["Filing today's exposure report. Everything's accounted for."],
     "Standing watch over the book": ["Someone has to watch the whole book, not just one trade at a time."],
   },
+  cio: {
+    "Reviewing overnight department reports": [
+      "Reading through what every department produced overnight. Steady work across the board.",
+      "Nothing urgent in the overnight reports — a good sign, not a boring one.",
+    ],
+    "Sitting in on the research desk": ["Just observing today. The research desk does its best work when I stay quiet."],
+    "Reviewing risk and execution together": ["Comparing Sentinel's read against what's actually being executed. They should always agree."],
+    "Preparing the executive briefing": ["Drafting this month's briefing. I want it honest, not just optimistic."],
+    "Encouraging cross-department collaboration": ["Reminding the team that Research and Risk work best when they actually talk to each other."],
+    "Reviewing the day's decisions": ["Going back over today's calls — not to second-guess, just to understand."],
+    "Standing by": ["Standing by. Ask me anything about how the company's doing."],
+  },
 };
 
 /** Shared fallback lines for override-driven tasks (meetings/breaks), independent of agent personality. */
@@ -117,6 +129,7 @@ const AGENT_GREETINGS: Record<AgentId, string[]> = {
   sentinel: ["Boss.", "Before you ask — yes, I already checked.", "What's the risk question this time?"],
   pulse: ["Boss! Good, you're here.", "Four alerts since you last checked in.", "Hey — you're just in time."],
   guardian: ["Checking in on exposure?", "Boss. The book's in good shape.", "Good timing — I just finished a pass."],
+  cio: ["Good to see you.", "I was just reviewing the department reports.", "Do you have a moment for a quick update?"],
 };
 
 export interface DialogueSession {

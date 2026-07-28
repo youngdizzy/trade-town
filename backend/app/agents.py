@@ -93,6 +93,14 @@ AGENT_PROFILES: dict[AgentId, AgentProfile] = {
         home_location="trading-floor",
         tint=0x4A90D9,
     ),
+    "cio": AgentProfile(
+        id="cio",
+        name="Meridian",
+        occupation="Chief Investment Officer",
+        personality="Calm, professional, and educational. Reviews every department's work rather than trading itself.",
+        home_location="executive-boardroom",
+        tint=0xD4AF37,
+    ),
 }
 
 
@@ -110,4 +118,5 @@ LOCATION_TO_SCENE: dict[AgentLocation, SceneId] = {
     "hall-of-fame": "HallOfFameScene",
     "performance-center": "PerformanceCenterScene",
     "trading-floor": "TradingFloorScene",
+    "executive-boardroom": "ExecutiveBoardroomScene",
 }

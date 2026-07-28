@@ -78,6 +78,15 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         "marketEnvironment": state.market_environment.model_dump(by_alias=True),
         # v0.7 Feature 23 — recomputed every tick like companyScore above.
         "companyHealth": state.company_health.model_dump(by_alias=True),
+        # v0.7 Feature 24 — already capped (MAX_EXECUTIVE_REVIEWS) like coachReports above.
+        "executiveReviews": [r.model_dump(by_alias=True) for r in state.executive_reviews],
+        # v0.7 Feature 25 — academyProjects holds the one active project
+        # (small); academyCompletedProjects is already capped
+        # (MAX_ACADEMY_LIBRARY), the permanent Knowledge Library.
+        "academyProjects": [p.model_dump(by_alias=True) for p in state.academy_projects],
+        "academyCompletedProjects": [p.model_dump(by_alias=True) for p in state.academy_completed_projects],
+        "agentKnowledge": {aid: k.model_dump(by_alias=True) for aid, k in state.agent_knowledge.items()},
+        "academyState": state.academy_state.model_dump(by_alias=True),
     }
 
 

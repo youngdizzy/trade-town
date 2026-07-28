@@ -893,6 +893,119 @@ building relationships) has no new relationship/memory system — the
 existing dialogue/`CompanyMemory` infrastructure is the honest ceiling
 given no new persisted-relationship state was added.
 
+## Version 0.7 scope, continued — Executive AI & Academy (Features 24-25)
+
+A tenth agent and a company-wide learning system.
+
+- **Chief Investment Officer (Feature 24)**. Meridian is added exactly
+  the way every prior agent was: `AgentId`/`AGENT_IDS` gain `"cio"`,
+  `AgentLocation`/`SceneId` gain `executive-boardroom`/
+  `ExecutiveBoardroomScene`, `agents.py` gets a real `AgentProfile`
+  entry, `schedule.py` gets a real 8-block daily routine, and the
+  frontend mirrors all of it (`AgentProfiles.ts`, `Schedule.ts`,
+  `DialogueManager.ts`). The one genuinely new piece is
+  `app/executive_review.py`'s `generate_executive_review()`, wired into
+  `nexus.tick()` on the exact same monthly cadence as
+  `generate_coach_report("monthly", ...)` (see `MONTHLY_INTERVAL_DAYS`).
+  Like `CoachReport`, it's a fresh cumulative snapshot over each
+  already-capped recent-history list (`research`, `decisions`,
+  `debates`, `news`) rather than a precisely period-windowed query —
+  the same convention this codebase already uses everywhere (see
+  `docs/API.md`'s bounding table). `companyScoreChange` is the one true
+  period-over-period figure: a real delta against the previous review's
+  own stored `companyScore`. The CIO deliberately has no vote-generation
+  or trading logic of its own — `is_significant_proposal`/
+  `_apply_operating_mode` never reference it.
+  - The CIO's sprite (`Player_Meridian.png`) required inventing a
+    process the codebase's own comment on the original nine
+    (`animation-config.json`'s `_comment_agent_variants`) didn't fully
+    specify — "hue-shifted," but not which pixels. Comparing the base
+    sheet against all nine existing variants pixel-by-pixel showed
+    exactly which of the sheet's colors are always recolored (hair,
+    shirt, pants — 7 distinct color slots) vs. always preserved (skin,
+    outline, shadow — 8 slots), then a slate-grey/gold/charcoal palette
+    was hand-picked for those 7 slots for an executive read, distinct
+    from all nine existing tints.
+  - `ExecutiveBoardroomScene.ts` is sized 34×22 tiles — larger than
+    every other room (Trading Floor, the next-largest, is 22×15) — after
+    a first pass at Trading-Floor scale produced overlapping, edge-
+    clipped panels once real content was on screen. Six live readouts
+    (`addLiveText`-driven, same pattern as Trading Floor's ticker/
+    central command) share the room: world market display, department
+    performance overview, department status wall (row 1), a decorative
+    strategy table (row 2), and the executive briefing screen plus a
+    stacked timeline/objectives column (row 3). No new Command Center
+    tab duplicates these — the brief specifically asks that "the player
+    can enter the room at any time" to read them, so the room itself is
+    the one place they live, the same design choice the Market
+    Observatory made for its own in-world-only detail view.
+  - The door reuses CEO Office's `Inn_Black` building sprite a second
+    time (no dedicated boardroom sprite exists in the Cute Fantasy
+    pack), with a gold pulsing ring at the roofline — the same
+    "no purpose-built sprite exists, so a colored ring signals distinct
+    tech inside" pattern the Market Observatory's cyan ring already
+    established. Placed in the gap between Simulation Lab and Hall of
+    Fame on the Lobby's front row (narrower than its neighbors,
+    `targetWidth: 110`) — the more obvious-looking gap between Hall of
+    Fame and Trading Floor turned out to be the town square itself
+    (`PLAZA_COLS` spans x 736-1024), not free building space.
+- **AI Academy & Knowledge Network (Feature 25)**. `app/academy.py`
+  gives every agent (the CIO included) one real Knowledge Branch
+  (`KNOWLEDGE_BRANCH`, occupation-linked) and a real Knowledge Points
+  total, mirroring `signal_calibration.py`'s single-number progression
+  pattern but per-agent and cumulative (not streak-gated — every point
+  already came from real completed work, so cumulative is honest on its
+  own). Three real sources feed it: a finished `ResearchItem`
+  (+1, hooked into `tick_research`'s existing `completed` return value),
+  a finished `AcademyProject` (+2), and real meeting attendance (+0.5
+  per participant, hooked into `_maybe_call_meeting`'s existing
+  `meeting_minutes` append). `app/academy_research.py` runs the
+  Academy's own non-market research queue — mechanically
+  `research.py`'s own progress-climbs-then-completes-and-rotates shape,
+  but keyed to a fixed six-topic catalog (`_TOPIC_CATALOG`) instead of a
+  ticker symbol, since these projects have no natural watchlist symbol.
+  Both the assigned-agent and topic rotations are derived from
+  `len(academy_completed_projects)` rather than a separate persisted
+  counter. Every completed project is permanently stored (capped at
+  `MAX_ACADEMY_LIBRARY`) as the Company Knowledge Library. A company-
+  wide `AcademyState.level` (1-5, `compute_academy_state`) blends real
+  total points with real completed-project count against fixed
+  thresholds — deliberately not five new physical rooms (no new art was
+  produced for this pass); the level and its named tier
+  ("Training Room" through "Executive Institute") are the whole
+  deliverable.
+  - Surfaced on a new **KNOWLEDGE** tab (`AcademyPanel.tsx`) —
+    deliberately not named "ACADEMY", since that tab name was already
+    taken by the pre-existing v0.6.2 Trading Academy (`EducationPanel`,
+    a lesson/quiz curriculum, a completely different system). The
+    collision was only caught by `tsc` failing on the `FullCommandCenter`
+    tab union after both were wired in.
+  - **Mentorship** (`maybe_run_mentorship`) is this pass's most
+    deliberate scope decision: this codebase has zero seniority/
+    relationship data anywhere (confirmed by grepping the whole backend
+    and frontend for "senior"/"junior"/"mentor"/"relationship"/"tenure"
+    before writing a line of this feature). Rather than inventing a
+    fabricated status label to satisfy the brief's "senior employees
+    mentor junior employees," "seniority" here is the one real number
+    that legitimately reflects it — an agent's own earned Knowledge
+    Points. When the real gap between the highest- and lowest-points
+    agent crosses `MENTORSHIP_GAP_THRESHOLD`, a real session transfers a
+    small real bonus to the lower agent (logged with both agents' own
+    real point totals), checked on a 3-day cadence
+    (`MENTORSHIP_CHECK_INTERVAL_DAYS`) rather than every tick, since a
+    real points gap moves slowly and checking every tick would either
+    never fire or fire every tick once crossed. A full mentor/mentee
+    relationship graph and visible in-world mentoring animations are
+    explicit scope cuts, not built.
+
+`GameSaveState` gained `executiveReviews`, `academyProjects`,
+`academyCompletedProjects`, `agentKnowledge`, and `academyState` (all
+required except the first three lists, following `companyHealth`'s own
+convention — backfilled from `default_state()` by the existing generic
+deep-merge migration, no special-case migration code needed; verified
+against a real pre-Feature-24/25 save on a fresh backend start).
+`MemoryCategory` gained `academy`, `mentorship`, and `executive`.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

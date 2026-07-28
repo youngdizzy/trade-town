@@ -1,0 +1,117 @@
+import { useGameStore } from "@/ui/hooks/useGameStore";
+import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
+import type { AgentKnowledgeState } from "@/types";
+import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
+
+function tierTone(tier: number): "cyan" | "green" {
+  return tier >= 3 ? "green" : "cyan";
+}
+
+/**
+ * v0.7 Feature 25 — the AI Academy & Knowledge Network. Every number here
+ * is real: agentKnowledge/academyState are recomputed server-side every
+ * tick from actually-completed work (see backend/app/academy.py's module
+ * docstring for exactly which real signal feeds which number, including
+ * its honest scope note on why "mentorship" here is grounded in real
+ * knowledge points rather than a fabricated seniority system).
+ * academyProjects/academyCompletedProjects together are the Company
+ * Knowledge Library — the active project plus its permanent, growing
+ * archive (see backend/app/academy_research.py).
+ */
+export function AcademyPanel() {
+  const { academyState, agentKnowledge, academyProjects, academyCompletedProjects, memory } = useGameStore();
+  const activeProject = academyProjects[0];
+  const knowledgeStates = Object.values(agentKnowledge) as AgentKnowledgeState[];
+  const rankedKnowledge = [...knowledgeStates].sort((a, b) => b.points - a.points);
+  const mentorshipMemories = [...memory].filter((m) => m.category === "mentorship").reverse().slice(0, 5);
+
+  return (
+    <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
+      <Glass className="p-3 lg:col-span-3">
+        <div className="mb-1.5 flex items-center justify-between">
+          <TerminalLabel>Academy Progression</TerminalLabel>
+          <StatusPill tone="cyan">
+            LEVEL {academyState.level} — {academyState.levelLabel.toUpperCase()}
+          </StatusPill>
+        </div>
+        <Meter value={(academyState.level / 5) * 100} tone="cyan" />
+        <div className="mt-2 flex justify-between text-[9px] text-cmd-textDim">
+          <span>{academyState.totalPoints.toFixed(0)} total knowledge points across the team</span>
+          <span>{academyState.completedProjectCount} projects completed</span>
+        </div>
+      </Glass>
+
+      <Glass className="p-3 lg:col-span-2">
+        <TerminalLabel>Knowledge Trees</TerminalLabel>
+        <div className="mt-1.5 space-y-1.5">
+          {rankedKnowledge.map((state) => (
+            <div key={state.agentId} className="flex items-center gap-2 rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-1.5 text-[9px]">
+              <span className="w-16 flex-none truncate text-cmd-cyan">{AGENT_PROFILES[state.agentId].name}</span>
+              <span className="w-28 flex-none truncate text-cmd-textDim">{state.branch}</span>
+              <div className="flex-1">
+                <Meter value={Math.min(100, (state.points / 30) * 100)} tone={tierTone(state.tier)} />
+              </div>
+              <span className="w-10 flex-none text-right tabular-nums text-cmd-textDim">{state.points.toFixed(0)}p</span>
+              <StatusPill tone={tierTone(state.tier)}>T{state.tier}</StatusPill>
+            </div>
+          ))}
+        </div>
+      </Glass>
+
+      <Glass className="p-3">
+        <TerminalLabel>Active Research Project</TerminalLabel>
+        {!activeProject ? (
+          <EmptyState>No project currently active.</EmptyState>
+        ) : (
+          <>
+            <div className="mb-1 text-cmd-cyan">{activeProject.title}</div>
+            <div className="mb-2 text-[9px] text-cmd-textDim">{activeProject.summary}</div>
+            <Meter value={activeProject.progress} tone="cyan" />
+            <div className="mt-1 flex justify-between text-[9px] text-cmd-textDim">
+              <span>{AGENT_PROFILES[activeProject.assignedAgent].name}</span>
+              <span>{activeProject.progress.toFixed(0)}%</span>
+            </div>
+          </>
+        )}
+      </Glass>
+
+      <Glass className="p-3 lg:col-span-2">
+        <TerminalLabel>Company Knowledge Library</TerminalLabel>
+        {academyCompletedProjects.length === 0 ? (
+          <EmptyState>No completed projects yet — the library grows as the Academy finishes its research.</EmptyState>
+        ) : (
+          <div className="max-h-56 space-y-1 overflow-y-auto">
+            {[...academyCompletedProjects].reverse().map((project) => (
+              <div key={project.id} className="flex items-center justify-between gap-2 border-b border-cmd-border/40 py-1 text-[9px] last:border-0">
+                <span className="flex-1 truncate text-cmd-text">{project.title}</span>
+                <span className="flex-none text-cmd-textDim">{AGENT_PROFILES[project.assignedAgent].name}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </Glass>
+
+      <Glass className="p-3">
+        <TerminalLabel>Recent Mentorship</TerminalLabel>
+        {mentorshipMemories.length === 0 ? (
+          <EmptyState>No mentorship sessions recorded yet — they start once a real knowledge gap opens between two agents.</EmptyState>
+        ) : (
+          <div className="space-y-1.5">
+            {mentorshipMemories.map((m) => (
+              <div key={m.id} className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-1.5 text-[9px]">
+                <div className="mb-0.5 text-cmd-cyan">{m.title}</div>
+                <div className="text-cmd-textDim">{m.body}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Glass>
+
+      <Glass className="p-3 lg:col-span-3">
+        <TerminalLabel>Company Objectives</TerminalLabel>
+        <DataRow label="Current Academy Level" value={`${academyState.level} / 5`} />
+        <DataRow label="Next Milestone" value={academyState.level < 5 ? "Advance the Academy toward its next tier" : "Executive Institute reached"} />
+      </Glass>
+    </div>
+  );
+}

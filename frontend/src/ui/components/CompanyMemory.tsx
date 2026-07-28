@@ -22,6 +22,9 @@ const CATEGORY_LABEL: Record<MemoryCategory, string> = {
   vote: "Vote",
   decision: "Decision",
   order: "Order",
+  academy: "Academy",
+  mentorship: "Mentorship",
+  executive: "Executive Review",
 };
 
 const CATEGORIES: MemoryCategory[] = [
@@ -42,6 +45,9 @@ const CATEGORIES: MemoryCategory[] = [
   "vote",
   "decision",
   "order",
+  "academy",
+  "mentorship",
+  "executive",
 ];
 
 /**
