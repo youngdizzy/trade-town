@@ -789,6 +789,12 @@ export interface CeoDecisionRecord {
   agreedWithAi: boolean;
   decisionId: string | null;
   outcome: "pending" | "correct" | "incorrect" | "undecidable";
+  /** v0.7 Feature 21 — "ceo" is a real player click via
+   * /api/executive/decide; "auto" is a Company Operating Mode
+   * auto-resolution or a stale-proposal expiry (see backend/app/nexus.py)
+   * — neither was ever a real CEO decision. Defaults to "ceo" on records
+   * predating this field, which were all real clicks. */
+  resolvedBy: "ceo" | "auto";
   createdAt: string;
   resolvedAt: string | null;
 }
@@ -799,11 +805,71 @@ export interface TimeState {
   minute: number; // 0-59
 }
 
+// v0.7 Feature 21 — Company Operating Modes.
+//   learning  — every proposal waits for the CEO (unchanged default).
+//   assisted  — routine proposals auto-resolve; only a "significant" one
+//               (see backend/app/executive.py's is_significant_proposal)
+//               still surfaces to the player.
+//   executive — every proposal auto-resolves; the player reviews reports
+//               (Decisions / Company Health) instead of individual trades.
+export type OperatingMode = "learning" | "assisted" | "executive";
+
 export interface SettingsState {
   musicVolume: number; // 0-1
   sfxVolume: number; // 0-1
   autosaveIntervalSec: number;
   showFps: boolean;
+  operatingMode: OperatingMode;
+}
+
+// v0.7 Feature 22 — Market Environment Simulation. Every regime is
+// computed server-side from real WatchlistEntry.dailyChangePct values
+// (see backend/app/market_environment.py) — never a client-side guess.
+export type MarketEnvironmentRegime = "bull" | "bear" | "sideways" | "high_volatility" | "low_volatility";
+
+/** One real regime *change* — the timeline only grows when the computed
+ * regime actually differs from the previous tick's, not once per tick. */
+export interface MarketEnvironmentEntry {
+  id: string;
+  regime: MarketEnvironmentRegime;
+  label: string;
+  detail: string;
+  simMinutes: number;
+  createdAt: string;
+}
+
+export interface MarketEnvironmentState {
+  current: MarketEnvironmentRegime;
+  label: string;
+  detail: string;
+  changedSimMinutes: number;
+  updatedAt: string;
+  timeline: MarketEnvironmentEntry[];
+}
+
+// v0.7 Feature 23 — Company Health & Stability System. Ten real,
+// documented sub-scores (see backend/app/company_health.py) — a
+// different question from v0.5's CompanyScore ("is the company healthy
+// to keep operating" vs. "is it performing well"); several factors
+// deliberately reuse the same underlying real signal an existing
+// CompanyScore metric already reads.
+export type CompanyHealthTier = "excellent" | "good" | "stable" | "needs_attention" | "critical";
+
+export interface CompanyHealth {
+  overall: number;
+  tier: CompanyHealthTier;
+  operationalStability: number;
+  departmentEfficiency: number;
+  employeeMorale: number;
+  researchProgress: number;
+  capitalHealth: number;
+  resourceUsage: number;
+  reputation: number;
+  technologyLevel: number;
+  officeExpansion: number;
+  educationProgress: number;
+  recommendations: string[];
+  updatedAt: string;
 }
 
 export interface GameSaveState {
@@ -834,6 +900,8 @@ export interface GameSaveState {
   ceoDecisions: CeoDecisionRecord[];
   debates: Debate[];
   gatekeeperRejections: GatekeeperRejection[];
+  marketEnvironment: MarketEnvironmentState;
+  companyHealth: CompanyHealth;
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;

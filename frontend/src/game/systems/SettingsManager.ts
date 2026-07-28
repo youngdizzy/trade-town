@@ -8,6 +8,7 @@ const DEFAULT_SETTINGS: SettingsState = {
   sfxVolume: 0.7,
   autosaveIntervalSec: 60,
   showFps: false,
+  operatingMode: "learning",
 };
 
 /** Persists user preferences to localStorage and broadcasts changes on the EventBus. */

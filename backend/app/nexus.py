@@ -26,6 +26,7 @@ from app.analytics import compute_performance_snapshot, confidence_accuracy, rec
 from app.broker import tick_broker
 from app.coach import generate_report as generate_coach_report
 from app.coach import record_report as record_coach_report_entry
+from app.company_health import compute_company_health
 from app.company_score import compute_company_score
 from app.debate import generate_debate
 from app.discussion import generate_discussion
@@ -35,12 +36,14 @@ from app.executive import (
     expire_stale_proposals,
     generate_proposal,
     grade_ceo_decisions,
+    is_significant_proposal,
     resolve_proposal,
 )
 from app.gatekeeper import grade_gatekeeper_rejections
 from app.hall_of_fame import evaluate_hall_of_fame
 from app.journal import stamp_journal_entry
 from app.market_data import market_data_provider
+from app.market_environment import tick_market_environment
 from app.paper_trading import tick_paper_trading
 from app.portfolio import sim_minutes
 from app.research import RESEARCHER_IDS, default_research, tick_research
@@ -63,6 +66,7 @@ from app.schemas import (
     AgentId,
     AgentOverride,
     AgentState,
+    CeoDecisionRecord,
     CoachReport,
     Debate,
     EntityTransform,
@@ -77,6 +81,7 @@ from app.schemas import (
     PaperTrade,
     ResearchItem,
     RiskLimits,
+    RiskWarning,
     ScannerAlert,
     Task,
     TaskCategory,
@@ -113,6 +118,10 @@ MAX_DEBATES = 60
 # vetoes (see app/state.py's submit_ceo_decision); capped the same way
 # every other per-proposal record here is.
 MAX_GATEKEEPER_REJECTIONS = 100
+# v0.7 Feature 22 — one MarketEnvironmentEntry per real regime change
+# (see app/market_environment.py) — a meaningful timeline stays small on
+# its own, but still capped like every other history list here.
+MAX_MARKET_ENVIRONMENT_HISTORY = 100
 # Per-category, not a single shared cap: discovery news fires far more
 # often than market/company news (it's tied to every task-changing event
 # across four agents, vs. a flat per-tick roll for market headlines), so a
@@ -147,6 +156,47 @@ MARKET_HEADLINES = [
     "Volatility index ticks lower for a third straight day",
     "Traders await fresh catalysts amid a slow news cycle",
 ]
+
+# v0.7 Feature 22 — Market Environment Simulation's one real "the News
+# desk reacts to conditions" hookup: the random per-tick market headline
+# (see the random.random() < 0.04 roll below) is now chosen from the
+# real *current* MarketEnvironmentRegime's own pool instead of one
+# shared list, so the newspaper's flavor headlines stay consistent with
+# whatever regime app/market_environment.py actually computed this tick
+# — a real, deterministic dependency on the regime, not a fabricated
+# "event." Sideways reuses MARKET_HEADLINES verbatim (the original pool
+# was already written in a sideways/uncertain voice).
+MARKET_HEADLINES_BY_REGIME: dict[str, list[str]] = {
+    "bull": [
+        "Broad rally extends as buyers keep stepping in on dips",
+        "Risk appetite climbs; growth names lead the advance",
+        "Another green session as momentum builds across sectors",
+        "Bulls in control as indices push toward recent highs",
+        "Optimism spreads through the desk as gains broaden out",
+    ],
+    "bear": [
+        "Selling pressure persists as buyers stay on the sidelines",
+        "Markets extend their slide on renewed growth concerns",
+        "Red across the board as risk-off sentiment takes hold",
+        "Bears keep the upper hand through another rough session",
+        "Defensive positioning grows as the drawdown deepens",
+    ],
+    "sideways": MARKET_HEADLINES,
+    "high_volatility": [
+        "Wild swings dominate trading as volatility spikes",
+        "Whipsaw price action leaves the desk on edge",
+        "Sharp intraday reversals as uncertainty grips the tape",
+        "Volatility index jumps as traders brace for more chop",
+        "Erratic moves in both directions keep risk desks busy",
+    ],
+    "low_volatility": [
+        "A notably quiet tape as ranges compress further",
+        "Volatility index grinds to multi-week lows",
+        "Trading desks report unusually calm conditions",
+        "Narrow ranges persist as the market digests recent moves",
+        "Low volume, low volatility — a holding-pattern session",
+    ],
+}
 
 # Keyword -> category, checked in order against the lowercased task label.
 # Falls back to _DEFAULT_CATEGORY_BY_AGENT when nothing matches. This is a
@@ -539,6 +589,92 @@ def _generate_trade_proposals(
     return new_proposals
 
 
+def _apply_operating_mode(
+    operating_mode: str,
+    trade_proposals: list[TradeProposal],
+    debates: list[Debate],
+    portfolio: PaperPortfolio,
+    risk_limits: RiskLimits,
+    risk_warnings: list[RiskWarning],
+    prices: dict[str, float],
+    now_sim_minutes: int,
+    memory: list[MemoryRecord],
+    decisions: list[TradeDecision],
+    ceo_decisions: list[CeoDecisionRecord],
+    gatekeeper_rejections: list[GatekeeperRejection],
+    news: list[NewsItem],
+) -> tuple[list[TradeProposal], PaperPortfolio]:
+    """v0.7 Feature 21 — Company Operating Modes. Learning Mode never
+    calls this (every proposal stays pending, the pre-Feature-21
+    default). Assisted Mode auto-resolves every non-"significant"
+    proposal (see executive.is_significant_proposal) and leaves the rest
+    pending for the CEO. Executive Mode auto-resolves everything —
+    "the player reviews reports, not individual trades." Every
+    auto-resolution is the exact same real resolve_proposal() call a
+    genuine CEO click would make (Gatekeeper included), just tagged
+    resolved_by="auto" for honest provenance."""
+    if operating_mode == "learning" or not trade_proposals:
+        return trade_proposals, portfolio
+
+    still_pending: list[TradeProposal] = []
+    for proposal in trade_proposals:
+        significant, reasons = is_significant_proposal(proposal, portfolio, risk_limits, risk_warnings)
+        if operating_mode == "assisted" and significant:
+            still_pending.append(proposal)
+            continue
+
+        debate = next((d for d in reversed(debates) if d.proposal_id == proposal.id), None)
+        portfolio, decision, record = resolve_proposal(
+            proposal,
+            proposal.overall_recommendation,
+            portfolio=portfolio,
+            risk_limits=risk_limits,
+            current_price=prices.get(proposal.symbol),
+            now_sim_minutes=now_sim_minutes,
+            debate=debate,
+            risk_warnings=risk_warnings,
+            resolved_by="auto",
+        )
+        record_ceo_decision(memory, decision)
+        decisions.append(decision)
+        ceo_decisions.append(record)
+
+        verdict = decision.gatekeeper_verdict
+        current_price = prices.get(proposal.symbol)
+        if verdict is not None and not verdict.approved and current_price is not None:
+            # v0.7 Feature 20 — same tracking a real player decision gets
+            # (see app/state.py's submit_ceo_decision); an auto-resolved
+            # trade can be vetoed exactly the same way.
+            gatekeeper_rejections.append(
+                GatekeeperRejection(
+                    id=f"gkreject-{decision.id}",
+                    proposalId=proposal.id,
+                    symbol=proposal.symbol,
+                    ceoChoice=proposal.overall_recommendation,
+                    reasons=[f"{c.label}: {c.detail}" for c in verdict.checks if not c.passed],
+                    priceAtRejection=current_price,
+                    rejectedSimMinutes=now_sim_minutes,
+                    createdAt=_now_iso(),
+                )
+            )
+            if len(gatekeeper_rejections) > MAX_GATEKEEPER_REJECTIONS:
+                del gatekeeper_rejections[: len(gatekeeper_rejections) - MAX_GATEKEEPER_REJECTIONS]
+
+        mode_label = "Executive Mode" if operating_mode == "executive" else "Assisted Mode"
+        outcome_word = "approved" if decision.order_id is not None else "passed on"
+        reason_text = f" ({'; '.join(reasons)})" if reasons else ""
+        news.append(
+            NewsItem(
+                id=f"news-auto-decision-{decision.id}",
+                headline=f"{mode_label}: the desk auto-{outcome_word} {proposal.overall_recommendation.upper()} on {proposal.symbol}{reason_text}.",
+                category="company",
+                timestamp=_now_iso(),
+            )
+        )
+
+    return still_pending, portfolio
+
+
 def _journal_closed_trades(portfolio: PaperPortfolio, trades: list[PaperTrade], decisions: list[TradeDecision]) -> tuple[PaperPortfolio, list[PaperTrade]]:
     """Stamps every trade that closed this tick with its TradeJournal
     fields (app/journal.py) and writes the stamped version back into
@@ -608,6 +744,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     debates: list[Debate] = list(state.debates)
     gatekeeper_rejections: list[GatekeeperRejection] = list(state.gatekeeper_rejections)
     agent_energy = state.agent_energy
+    operating_mode = state.settings.operating_mode
 
     agents = {aid: _tick_agent(aid, agent, new_time, minutes, tasks) for aid, agent in state.agents.items()}
 
@@ -662,6 +799,25 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # auto-resolved as an honest "wait" (still a real, permanent
     # TradeDecision — see resolve_proposal), not silently dropped.
     now_sim_minutes = sim_minutes(new_time)
+
+    # --- v0.7 Feature 22: Market Environment Simulation --------------------
+    # Recomputed every tick from this tick's freshest watchlist (the same
+    # real signal every other live reading here already uses) — only
+    # appends to the timeline, and only then publishes a real news
+    # headline, on an actual regime change (see market_environment.py).
+    market_environment, environment_changed = tick_market_environment(state.market_environment, watchlist, now_sim_minutes)
+    if len(market_environment.timeline) > MAX_MARKET_ENVIRONMENT_HISTORY:
+        market_environment = market_environment.model_copy(update={"timeline": market_environment.timeline[-MAX_MARKET_ENVIRONMENT_HISTORY:]})
+    if environment_changed:
+        news.append(
+            NewsItem(
+                id=f"news-environment-{market_environment.current}-{now_sim_minutes}",
+                headline=f"Market conditions shift: the desk now reads {market_environment.label}. {market_environment.detail}",
+                category="market",
+                timestamp=_now_iso(),
+            )
+        )
+
     new_proposals = _generate_trade_proposals(trade_proposals, completed, prices, risk_limits, paper_portfolio, news, scanner_alerts, now_sim_minutes)
     trade_proposals = [*trade_proposals, *new_proposals]
     # v0.7 Feature 17 — every new proposal gets a full committee debate
@@ -681,6 +837,26 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             )
         )
 
+    # v0.7 Feature 21 — Company Operating Modes. No-op in Learning Mode
+    # (the pre-Feature-21 default); Assisted/Executive sweep the full
+    # pending list every tick, not just this tick's new arrivals, so
+    # switching modes mid-game takes effect on the existing backlog too.
+    trade_proposals, paper_portfolio = _apply_operating_mode(
+        operating_mode,
+        trade_proposals,
+        debates,
+        paper_portfolio,
+        risk_limits,
+        risk_warnings,
+        prices,
+        now_sim_minutes,
+        memory,
+        decisions,
+        ceo_decisions,
+        gatekeeper_rejections,
+        news,
+    )
+
     trade_proposals, expired_proposals = expire_stale_proposals(trade_proposals, now_sim_minutes)
     for expired in expired_proposals:
         paper_portfolio, expired_decision, expired_record = resolve_proposal(
@@ -690,6 +866,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             risk_limits=risk_limits,
             current_price=prices.get(expired.symbol),
             now_sim_minutes=now_sim_minutes,
+            resolved_by="auto",
         )
         record_ceo_decision(memory, expired_decision)
         decisions.append(expired_decision)
@@ -761,7 +938,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         news.append(
             NewsItem(
                 id=f"news-market-{new_time.day}-{new_time.hour}-{new_time.minute}",
-                headline=random.choice(MARKET_HEADLINES),
+                headline=random.choice(MARKET_HEADLINES_BY_REGIME.get(market_environment.current, MARKET_HEADLINES)),
                 category="market",
                 timestamp=_now_iso(),
             )
@@ -772,6 +949,21 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # live-updating readout, so it's refreshed every tick like mood/energy
     # already are — not just on the evening/weekly/monthly cadences below.
     company_score = compute_company_score(research, paper_portfolio, memory, simulation_results, [a.mood for a in agents.values()])
+    # v0.7 Feature 23 — Company Health & Stability System. Cheap to
+    # recompute and refreshed every tick, same reasoning as company_score
+    # above (it feeds a live-updating Command Center readout, not just a
+    # periodic report).
+    company_health = compute_company_health(
+        agents=agents,
+        research=research,
+        portfolio=paper_portfolio,
+        risk_warnings=risk_warnings,
+        agent_energy=agent_energy,
+        hall_of_fame=hall_of_fame,
+        signal_calibration=state.signal_calibration,
+        watchlist=watchlist,
+        education=state.education,
+    )
 
     is_evening = new_time.hour == EVENING_REVIEW_HOUR and new_time.minute == 0
     is_midnight = new_time.hour == 0 and new_time.minute == 0
@@ -845,6 +1037,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "ceo_decisions": ceo_decisions,
             "debates": debates,
             "gatekeeper_rejections": gatekeeper_rejections,
+            "market_environment": market_environment,
+            "company_health": company_health,
             "agent_energy": agent_energy,
             "whiteboards": _update_whiteboards(agents, meeting, research),
             "updated_at": _now_iso(),

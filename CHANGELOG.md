@@ -165,6 +165,91 @@ development milestones, not semver releases.
     relevant Playwright specs (`executiveVoting.spec.ts`,
     `commandCenter.spec.ts`) pass against a freshly reset backend.
 
+- **v0.7 — AI Company Management & Simulation Systems** — three systems
+  aimed at making the company itself, not just individual trades, the
+  thing the player manages and learns to read.
+  - **Company Operating Modes (Feature 21)**: a new `operatingMode`
+    (`learning | assisted | executive`) on the client-authoritative
+    `SettingsState`, synced through the existing
+    `SettingsManager.update()` → `settings:changed` → next-autosave path
+    (the same mechanism `showFps`/`musicVolume` already use). Learning
+    Mode is unchanged v0.6.3 behavior — every `TradeProposal` waits for a
+    real CEO click. Assisted and Executive Mode add a new
+    `_apply_operating_mode()` sweep in `nexus.tick()` that calls the exact
+    same `resolve_proposal()` a real CEO click would (Gatekeeper
+    included), tagged with a new `CeoDecisionRecord.resolvedBy`
+    (`"ceo" | "auto"`) so an auto-resolved decision is never presented as
+    if the player made it — `ExecutivePanel`'s Decision History rows now
+    show "desk auto-decided" with an AUTO tag instead of "you" for these.
+    A new `is_significant_proposal()` (`app/executive.py`) decides what
+    counts as "routine" enough for Assisted Mode to auto-resolve, reusing
+    already-configured thresholds rather than inventing new ones:
+    confidence below `gatekeeper.MIN_CONFIDENCE`, an active critical risk
+    warning on the symbol, or position size at/above
+    `RiskLimits.maxPositionPct` of real portfolio equity. Executive Mode
+    auto-resolves everything regardless of significance. The pre-existing
+    `expire_stale_proposals` auto-wait path is also now honestly tagged
+    `resolvedBy: "auto"` (previously silently indistinguishable from a
+    real CEO "wait" click). A new COMPANY tab exposes the three-way
+    toggle plus real descriptions of what each mode does.
+  - **Market Environment Simulation (Feature 22)**: a new, persisted,
+    server-computed `MarketEnvironmentState` (`app/market_environment.py`)
+    classifies the whole watchlist every tick into one of five regimes —
+    bull, bear, sideways, high volatility, low volatility — from the real
+    aggregated `WatchlistEntry.dailyChangePct` values already used by the
+    now-superseded client-side `marketRegimeHeuristic`. A historical
+    `timeline` only grows on a real regime change (capped at
+    `MAX_MARKET_ENVIRONMENT_HISTORY`), and a real `NewsItem` is published
+    each time one happens. The one real department hookup implemented in
+    the time available: the existing per-tick random market headline is
+    now drawn from that regime's own headline pool
+    (`MARKET_HEADLINES_BY_REGIME`) instead of one shared pool — a genuine
+    dependency on the computed regime. The deeper "researchers get
+    busier"/"NPC dialogue changes"/discrete News-Events/Economic-Events/
+    Liquidity-Change/Panic mechanics the brief names have no real trigger
+    source in this codebase within scope and are not fabricated — see
+    `market_environment.py`'s module docstring. Surfaced on the new
+    COMPANY tab (current regime + real timeline), the Overview tab (new
+    Market Environment tile replacing the old regime heuristic tile), and
+    the Market Observatory's Technical Station (real regime + a real
+    3-entry Environment Timeline), instead of two disconnected systems.
+  - **Company Health & Stability System (Feature 23)**: a new
+    `CompanyHealth` (`app/company_health.py`) scores the company on ten
+    real sub-metrics — deliberately distinct in *what question they
+    answer* from, though some overlap in *underlying signal* with, the
+    existing `CompanyScore`: operational stability (active
+    `RiskWarning`s, severity-weighted), department efficiency (fraction
+    of agents not idling in lobby/break-room), employee morale (avg agent
+    mood), research progress (fraction of completed `ResearchItem`s),
+    capital health (real portfolio P&L%), resource usage (real
+    `AgentEnergy` remaining), reputation (real Hall of Fame entry count),
+    technology level (real Signal Calibration unlocked level), office
+    expansion (real extra watchlist symbols beyond the seed eight), and
+    education progress (real completed-lesson fraction). `overall` is the
+    plain unweighted mean, matching `CompanyScore`'s own "no hidden
+    weighting" convention; tier is Excellent/Good/Stable/Needs Attention/
+    Critical. Recommendations name the two lowest-scoring metrics in
+    plain language, and only appear at all once a metric actually falls
+    below 70 — a fully healthy company gets none. Surfaced on the new
+    COMPANY tab (all ten metrics + recommendations) and a new Company
+    Health tile on Overview.
+  - Explicit scope cuts: "Executive Reports" reuses the existing Coach
+    weekly/monthly report system (Feature 18) rather than building a
+    second, parallel report engine — no new report types were added.
+    "NPC Interactions" (remembering conversations, celebrating
+    achievements, building relationships with department leaders) has no
+    new relationship/memory system in this window; the existing
+    dialogue/`CompanyMemory` infrastructure from earlier versions is the
+    honest ceiling — inventing a fake relationship-score mechanic with no
+    real state behind it would violate this codebase's no-fabricated-
+    numbers convention.
+  - Verification: full backend (mypy/ruff/pytest, 202/202 — 33 new tests
+    across `test_market_environment.py`, `test_company_health.py`, and
+    `test_executive.py`) and frontend (tsc/eslint/build) clean; the
+    relevant Playwright specs (`executiveVoting.spec.ts`,
+    `commandCenter.spec.ts`, including a new Company-tab test) pass
+    against a freshly reset backend.
+
 - **v0.6.3 — Executive Voting, Risk Command Center, Cyber Overlay** — the
   player is now formally TradeTown's CEO. A research candidate crossing
   the trade-confidence threshold no longer executes automatically: it

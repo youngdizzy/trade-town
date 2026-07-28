@@ -5,10 +5,12 @@ import type {
   BacktestSession,
   CeoDecisionRecord,
   CoachReport,
+  CompanyHealth,
   CompanyScore,
   Debate,
   GatekeeperRejection,
   HallOfFameEntry,
+  MarketEnvironmentState,
   MeetingMinutes,
   MeetingState,
   MemoryRecord,
@@ -64,6 +66,8 @@ type ServerMessage =
       ceoDecisions: CeoDecisionRecord[];
       debates: Debate[];
       gatekeeperRejections: GatekeeperRejection[];
+      marketEnvironment: MarketEnvironmentState;
+      companyHealth: CompanyHealth;
       agentEnergy: AgentEnergy;
       signalCalibration: SignalCalibrationState;
       playerVsAi: PlayerVsAiState;
@@ -150,6 +154,8 @@ export class GameSocket {
             ceoDecisions: msg.ceoDecisions,
             debates: msg.debates,
             gatekeeperRejections: msg.gatekeeperRejections,
+            marketEnvironment: msg.marketEnvironment,
+            companyHealth: msg.companyHealth,
             agentEnergy: msg.agentEnergy,
             signalCalibration: msg.signalCalibration,
             playerVsAi: msg.playerVsAi,

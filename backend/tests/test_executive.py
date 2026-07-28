@@ -19,8 +19,10 @@ from app.executive import (
     expire_stale_proposals,
     generate_proposal,
     grade_ceo_decisions,
+    is_significant_proposal,
     resolve_proposal,
 )
+from app.gatekeeper import MIN_CONFIDENCE
 from app.market_data import Candle, MockMarketDataProvider
 from app.portfolio import default_portfolio
 from app.schemas import (
@@ -201,6 +203,19 @@ class TestResolveProposal:
         assert decision.gatekeeper_verdict is not None and decision.gatekeeper_verdict.approved
         assert record.ceo_decision == "buy"
         assert record.outcome == "pending"
+        assert record.resolved_by == "ceo"
+
+    def test_resolved_by_defaults_to_ceo_but_can_be_tagged_auto(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """v0.7 Feature 21 — a mode auto-resolution passes resolved_by="auto"
+        explicitly; every real player click via /api/executive/decide
+        relies on the default, which must stay "ceo"."""
+        monkeypatch.setattr("app.executive.evaluate_gatekeeper", self._stub_approved_verdict)
+        proposal = self._proposal()
+        portfolio = default_portfolio()
+        _, _, auto_record = resolve_proposal(
+            proposal, "buy", portfolio=portfolio, risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=100, resolved_by="auto"
+        )
+        assert auto_record.resolved_by == "auto"
 
     def test_sell_opens_a_real_short_position(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("app.executive.evaluate_gatekeeper", self._stub_approved_verdict)
@@ -345,3 +360,62 @@ class TestExpireStaleProposals:
 
 def test_max_pending_proposals_is_positive() -> None:
     assert MAX_PENDING_PROPOSALS > 0
+
+
+class TestIsSignificantProposal:
+    def _proposal(self, *, confidence_score: float = 90.0, overall: str = "buy", quantity: float = 1.0, price: float = 100.0, symbol: str = "NEXA") -> TradeProposal:
+        return TradeProposal(
+            id="proposal-1",
+            symbol=symbol,
+            category="stock",
+            quantity=quantity,
+            price=price,
+            confidence=90.0,
+            analystVotes=[],
+            overallRecommendation=overall,  # type: ignore[arg-type]
+            researchSummary="test",
+            riskSummary="test",
+            confidenceEngine=DecisionConfidence(score=confidence_score, tier="strong", summary="test", factors=[]),
+            createdAt=_now_iso(),
+            createdSimMinutes=0,
+        )
+
+    def test_wait_recommendation_is_never_significant(self) -> None:
+        proposal = self._proposal(overall="wait", confidence_score=10.0)
+        significant, reasons = is_significant_proposal(proposal, default_portfolio(), RiskLimits(), [])
+        assert significant is False
+        assert reasons == []
+
+    def test_high_confidence_small_size_no_warnings_is_not_significant(self) -> None:
+        proposal = self._proposal(confidence_score=95.0, quantity=1.0, price=10.0)
+        significant, reasons = is_significant_proposal(proposal, default_portfolio(), RiskLimits(), [])
+        assert significant is False
+        assert reasons == []
+
+    def test_low_confidence_is_significant(self) -> None:
+        proposal = self._proposal(confidence_score=MIN_CONFIDENCE - 1)
+        significant, reasons = is_significant_proposal(proposal, default_portfolio(), RiskLimits(), [])
+        assert significant is True
+        assert any("Confidence" in r for r in reasons)
+
+    def test_active_critical_risk_warning_on_the_symbol_is_significant(self) -> None:
+        proposal = self._proposal(confidence_score=95.0, symbol="NEXA")
+        warning = RiskWarning(id="w1", symbol="NEXA", severity="critical", message="Too concentrated.", createdAt=_now_iso())
+        significant, reasons = is_significant_proposal(proposal, default_portfolio(), RiskLimits(), [warning])
+        assert significant is True
+        assert any("risk warning" in r for r in reasons)
+
+    def test_critical_warning_on_a_different_symbol_does_not_count(self) -> None:
+        proposal = self._proposal(confidence_score=95.0, symbol="NEXA")
+        warning = RiskWarning(id="w1", symbol="OTHER", severity="critical", message="Too concentrated.", createdAt=_now_iso())
+        significant, reasons = is_significant_proposal(proposal, default_portfolio(), RiskLimits(), [warning])
+        assert significant is False
+        assert reasons == []
+
+    def test_large_position_relative_to_equity_is_significant(self) -> None:
+        # Default portfolio starts at $100,000 equity; maxPositionPct
+        # defaults to 10 — a $20,000 notional (20%) is well above it.
+        proposal = self._proposal(confidence_score=95.0, quantity=200.0, price=100.0)
+        significant, reasons = is_significant_proposal(proposal, default_portfolio(), RiskLimits(), [])
+        assert significant is True
+        assert any("Position size" in r for r in reasons)

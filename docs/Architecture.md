@@ -831,6 +831,68 @@ gained `gatekeeperVerdict` (null for decisions predating Feature 20).
 intentionally never touch `GameSaveState` — see `app/whatif.py`'s module
 docstring.
 
+## Version 0.7 scope, continued — AI Company Management (Features 21-23)
+
+Three more systems, shifting focus from individual trades to the company
+as a whole:
+
+- **Company Operating Modes (Feature 21)**. `settings.operatingMode`
+  (`learning | assisted | executive`) is a client-authoritative field —
+  same mechanism as `showFps`/`musicVolume` — that NEXUS itself reads
+  every tick via a new `nexus._apply_operating_mode()` sweep. Learning
+  Mode (the default) is a no-op: every `TradeProposal` still waits for a
+  real `POST /api/executive/decide` call. Assisted/Executive Mode call
+  the exact same `resolve_proposal()` a real CEO click would (Gatekeeper
+  included), just with a new `resolved_by: "auto"` tag on the resulting
+  `CeoDecisionRecord` — this is the honest-provenance mechanism that lets
+  the UI never claim an auto-resolved decision was the player's own.
+  `app/executive.py`'s new `is_significant_proposal()` decides what
+  Assisted Mode still surfaces to the player, reusing
+  `gatekeeper.MIN_CONFIDENCE` and `RiskLimits.maxPositionPct` rather than
+  adding new thresholds. The sweep re-processes the *entire* current
+  `trade_proposals` list every tick (not just new arrivals), so switching
+  modes mid-game immediately takes effect on the existing backlog.
+- **Market Environment Simulation (Feature 22)**. `app/market_environment.py`
+  classifies the whole watchlist into one of five regimes every tick from
+  the same `WatchlistEntry.dailyChangePct` values the old client-side
+  `marketRegimeHeuristic` (now removed) used — no new data fetch. A
+  persisted `MarketEnvironmentState.timeline` only grows on a real regime
+  change (capped at `MAX_MARKET_ENVIRONMENT_HISTORY`), and each real
+  change publishes a real `NewsItem`. `nexus.py`'s existing random-
+  headline roll now draws from `MARKET_HEADLINES_BY_REGIME[current]`
+  instead of one shared pool — the one real "department reacts to
+  conditions" hookup implemented; the brief's deeper researcher-workload/
+  NPC-dialogue/discrete-event mechanics have no real trigger source in
+  this codebase and are documented as not computed, not faked, in the
+  module's own docstring.
+- **Company Health & Stability System (Feature 23)**. `app/company_health.py`
+  computes a second, independent scorecard from `company_score.py`'s
+  `CompanyScore` — deliberately overlapping in a couple of underlying
+  signals (e.g. `employeeMorale` reads the same real agent-mood average
+  `teamCoordination` does) but answering "is the company stable?" rather
+  than "is it winning?". All ten sub-metrics read data already tracked
+  elsewhere (risk warnings, agent locations/mood, research completion,
+  portfolio P&L, agent energy, hall-of-fame count, signal-calibration
+  level, extra watchlist symbols, completed lessons) — no new simulation
+  state was introduced to feed it. `overall` is a plain mean (no hidden
+  weighting, matching `CompanyScore`'s own convention); recommendations
+  name the two lowest metrics and only appear once one actually falls
+  below 70.
+
+`GameSaveState` gained `marketEnvironment` and `companyHealth` (both
+required fields, following `companyScore`'s own convention — old saves
+get them backfilled from `default_state()` by the existing generic
+deep-merge migration in `persistence.py`, no special-case migration
+code needed). `CeoDecisionRecord` gained `resolvedBy`. `SettingsState`
+gained `operatingMode`.
+
+Explicit scope cuts for this pass: "Executive Reports" reuses the
+existing Coach weekly/monthly report pipeline (Feature 18) rather than a
+second report engine; "NPC Interactions" (remembering conversations,
+building relationships) has no new relationship/memory system — the
+existing dialogue/`CompanyMemory` infrastructure is the honest ceiling
+given no new persisted-relationship state was added.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

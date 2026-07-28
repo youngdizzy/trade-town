@@ -1,17 +1,31 @@
 import { useGameStore } from "@/ui/hooks/useGameStore";
-import type { TradeDecision } from "@/types";
+import type { CompanyHealthTier, MarketEnvironmentRegime, TradeDecision } from "@/types";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
-import { computeNoTradeStats, formatPct, latestDecision, marketRegimeHeuristic, riskLevel, voteDirection } from "../lib/derive";
-import { DataRow, EmptyState, Glass, Meter, RiskDot, TerminalLabel } from "../ui";
+import { computeNoTradeStats, formatPct, latestDecision, riskLevel, voteDirection } from "../lib/derive";
+import { DataRow, EmptyState, Glass, Meter, RiskDot, StatusPill, TerminalLabel } from "../ui";
 import { MarketChartPanel } from "../MarketChartPanel";
 import { AgentEnergyWidget } from "../AgentEnergyWidget";
 import type { Tab } from "../FullCommandCenter";
 
+const TIER_TONE: Record<CompanyHealthTier, "green" | "cyan" | "amber" | "red"> = {
+  excellent: "green",
+  good: "green",
+  stable: "cyan",
+  needs_attention: "amber",
+  critical: "red",
+};
+const REGIME_TONE: Record<MarketEnvironmentRegime, "green" | "red" | "amber" | "cyan" | "neutral"> = {
+  bull: "green",
+  bear: "red",
+  sideways: "neutral",
+  high_volatility: "amber",
+  low_volatility: "cyan",
+};
+
 /** The landing tab — the small set of numbers most likely to change what the operator does next, pulled from every other panel's real data. */
 export function OverviewPanel({ onInspect, onNavigate }: { onInspect: (d: TradeDecision) => void; onNavigate: (t: Tab) => void }) {
-  const { companyScore, paperPortfolio, riskWarnings, watchlist, decisions, agents } = useGameStore();
+  const { companyScore, companyHealth, marketEnvironment, paperPortfolio, riskWarnings, decisions, agents } = useGameStore();
   const level = riskLevel(riskWarnings);
-  const regime = marketRegimeHeuristic(watchlist);
   const recent = [...decisions].slice(-5).reverse();
   const noTrade = computeNoTradeStats(decisions);
   const latest = latestDecision(decisions);
@@ -51,9 +65,22 @@ export function OverviewPanel({ onInspect, onNavigate }: { onInspect: (d: TradeD
       </Glass>
 
       <Glass className="p-3">
-        <TerminalLabel>Market Regime</TerminalLabel>
-        <div className="font-cmdmono text-cmd-text">{regime.label}</div>
-        <div className="mt-1 text-[9px] text-cmd-textDim">{regime.detail}</div>
+        <div className="mb-1.5 flex items-center justify-between">
+          <TerminalLabel>Market Environment</TerminalLabel>
+          <StatusPill tone={REGIME_TONE[marketEnvironment.current]}>{marketEnvironment.label}</StatusPill>
+        </div>
+        <div className="text-[9px] text-cmd-textDim">{marketEnvironment.detail}</div>
+      </Glass>
+
+      <Glass className="p-3">
+        <div className="mb-1.5 flex items-center justify-between">
+          <TerminalLabel>Company Health</TerminalLabel>
+          <StatusPill tone={TIER_TONE[companyHealth.tier]}>{Math.round(companyHealth.overall)}</StatusPill>
+        </div>
+        <Meter value={companyHealth.overall} tone={TIER_TONE[companyHealth.tier]} />
+        <button type="button" onClick={() => onNavigate("COMPANY")} className="mt-2 w-full rounded-sm border border-cmd-border py-1 text-cmd-textDim hover:text-cmd-cyan">
+          View Company →
+        </button>
       </Glass>
 
       <Glass className="p-3">

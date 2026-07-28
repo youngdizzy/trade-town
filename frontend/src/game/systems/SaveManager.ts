@@ -49,6 +49,8 @@ export class SaveManager {
       ceoDecisions: NexusManager.getCeoDecisions(),
       debates: NexusManager.getDebates(),
       gatekeeperRejections: NexusManager.getGatekeeperRejections(),
+      marketEnvironment: NexusManager.getMarketEnvironment(),
+      companyHealth: NexusManager.getCompanyHealth(),
       agentEnergy: NexusManager.getAgentEnergy(),
       signalCalibration: NexusManager.getSignalCalibration(),
       playerVsAi: NexusManager.getPlayerVsAi(),

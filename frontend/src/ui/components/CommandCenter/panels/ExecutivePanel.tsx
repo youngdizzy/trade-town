@@ -138,8 +138,12 @@ export function ExecutivePanel() {
                   <div key={r.id} className="flex items-center justify-between gap-2 py-1.5">
                     <span className="font-cmdmono text-cmd-cyan">{r.symbol}</span>
                     <span className="text-[9px] text-cmd-textDim">
-                      you {r.ceoDecision.toUpperCase()} · desk {r.aiRecommendation.toUpperCase()}
+                      {r.resolvedBy === "auto" ? "desk auto-decided" : "you"} {r.ceoDecision.toUpperCase()} · desk {r.aiRecommendation.toUpperCase()}
                     </span>
+                    {/* v0.7 Feature 21 — resolvedBy is honest provenance: "auto" covers a
+                        Company Operating Mode auto-resolution or a stale-proposal expiry,
+                        never a real player click (see backend/app/executive.py). */}
+                    {r.resolvedBy === "auto" && <StatusPill tone="cyan">AUTO</StatusPill>}
                     {!r.agreedWithAi && <StatusPill tone="purple">OVERRIDE</StatusPill>}
                     {mistakeTag && <StatusPill tone="red">{mistakeTag}</StatusPill>}
                     <StatusPill tone={OUTCOME_TONE[r.outcome]}>{r.outcome.toUpperCase()}</StatusPill>

@@ -195,7 +195,7 @@ test.describe("Global Command Center", () => {
     expect(moved.x).not.toBe(frozen.x);
   });
 
-  test("expands to the Full Command Center and renders all 12 tabs with graceful empty states", async ({ page }) => {
+  test("expands to the Full Command Center and renders all 13 tabs with graceful empty states", async ({ page }) => {
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);
     await continueGame(page);
@@ -208,7 +208,7 @@ test.describe("Global Command Center", () => {
     // ticking throughout, a genuine trade or trade proposal can appear
     // (and pop up) mid-test. clickTab() dismisses and retries rather
     // than losing the race to a popup that appears in that instant.
-    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
+    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "COMPANY", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
     for (const tab of tabs) {
       await clickTab(page, tab);
       await expect(page.getByRole("button", { name: tab, exact: true })).toHaveClass(/text-cmd-cyan/);
@@ -419,5 +419,42 @@ test.describe("Global Command Center", () => {
     if (await banner.isVisible().catch(() => false)) {
       await expect(banner.getByTestId("trade-outcome-symbol")).not.toHaveText(symbol);
     }
+  });
+
+  test("Company tab shows real Company Health, Market Environment, and a working Operating Mode toggle", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickTab(page, "COMPANY");
+
+    // Company Health: a real overall score/tier and all ten sub-metrics.
+    await expect(page.getByText("Company Health", { exact: true })).toBeVisible();
+    await expect(page.getByText(/EXCELLENT|GOOD|STABLE|NEEDS ATTENTION|CRITICAL/)).toBeVisible();
+    for (const metric of ["Stability", "Efficiency", "Morale", "Research", "Capital", "Resources", "Reputation", "Technology", "Office", "Education"]) {
+      await expect(page.getByText(metric, { exact: true })).toBeVisible();
+    }
+
+    // Market Environment: a real regime pill plus its own detail text.
+    // (The regime label can also repeat in the historical timeline below,
+    // so `.first()` avoids a strict-mode ambiguity — any match confirms
+    // the real regime rendered.)
+    await expect(page.getByText("Market Environment", { exact: true })).toBeVisible();
+    await expect(page.getByText(/BULL MARKET|BEAR MARKET|SIDEWAYS|HIGH VOLATILITY|LOW VOLATILITY/).first()).toBeVisible();
+
+    // Operating Mode toggle: defaults to LEARNING; switching to ASSISTED
+    // both highlights the new selection and persists across a reload
+    // (settings are client-authoritative, merged into the next save).
+    // "shadow-cmd-cyan" (not just "border-cmd-cyan", which also appears
+    // in the inactive button's own hover: class) is the active-only marker.
+    const learningButton = page.getByRole("button", { name: /^LEARNING/ });
+    await expect(learningButton).toHaveClass(/shadow-cmd-cyan/);
+
+    const assistedButton = page.getByRole("button", { name: /^ASSISTED/ });
+    await assistedButton.click();
+    await expect(assistedButton).toHaveClass(/shadow-cmd-cyan/);
+    await expect(learningButton).not.toHaveClass(/shadow-cmd-cyan/);
   });
 });

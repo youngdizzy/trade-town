@@ -39,14 +39,15 @@ Player vs AI) keeps working unchanged — only *who* makes the call, and
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Literal
 
 from app.confidence import compute_confidence
-from app.gatekeeper import evaluate_gatekeeper
+from app.gatekeeper import MIN_CONFIDENCE, evaluate_gatekeeper
 from app.market_data import Candle as ProviderCandle
 from app.market_data import MarketDataProvider
 from app.market_data import trend_pct, volatility_pct
 from app.portfolio import open_position
-from app.risk_engine import recommended_quantity
+from app.risk_engine import portfolio_equity, recommended_quantity
 from app.schemas import (
     AgentId,
     AgentVote,
@@ -290,6 +291,7 @@ def resolve_proposal(
     now_sim_minutes: int,
     debate: Debate | None = None,
     risk_warnings: list[RiskWarning] | None = None,
+    resolved_by: Literal["ceo", "auto"] = "ceo",
 ) -> tuple[PaperPortfolio, TradeDecision, CeoDecisionRecord]:
     """Applies the CEO's real decision: buy opens a real long, sell opens
     a real short, wait does nothing — subject to the Trade Gatekeeper's
@@ -297,7 +299,12 @@ def resolve_proposal(
     even a real buy/sell the CEO chose. Always produces a permanent
     TradeDecision (so every existing consumer — DecisionsPanel,
     DecisionDetail, Player vs AI — keeps working unchanged) and a
-    CeoDecisionRecord (the accuracy-tracking side of this feature)."""
+    CeoDecisionRecord (the accuracy-tracking side of this feature).
+    `resolved_by` is honest provenance (v0.7 Feature 21) — "auto" for a
+    Company Operating Mode auto-resolution or a stale-proposal expiry
+    (see app/nexus.py), "ceo" only for a real POST /api/executive/decide
+    click; it never changes what actually happens, only what gets
+    recorded about who decided it."""
     decision_id = f"decision-{proposal.id}"
     order_id: str | None = None
     price = current_price if current_price and current_price > 0 else proposal.price
@@ -372,9 +379,44 @@ def resolve_proposal(
         agreedWithAi=(ceo_choice == proposal.overall_recommendation),
         decisionId=decision_id,
         outcome="pending" if order_id is not None else "undecidable",
+        resolvedBy=resolved_by,
         createdAt=_now_iso(),
     )
     return portfolio, decision, record
+
+
+# v0.7 Feature 21 — Company Operating Modes. Assisted Mode auto-resolves
+# every "routine" proposal via resolve_proposal(resolved_by="auto") and
+# only leaves a "significant" one pending for the CEO — see app/nexus.py's
+# tick(). Executive Mode auto-resolves regardless of significance;
+# Learning Mode never calls this at all (every proposal stays pending,
+# the pre-Feature-21 behavior). Reuses real, already-configured
+# thresholds (the Gatekeeper's own MIN_CONFIDENCE, the desk's own
+# RiskLimits.maxPositionPct) rather than inventing new magic numbers.
+def is_significant_proposal(
+    proposal: TradeProposal,
+    portfolio: PaperPortfolio,
+    risk_limits: RiskLimits,
+    risk_warnings: list[RiskWarning],
+) -> tuple[bool, list[str]]:
+    """Returns (significant, reasons) — reasons is always the real,
+    explainable cause, mirroring app/gatekeeper.py's own check style. A
+    "wait" recommendation is never significant (nothing to interrupt the
+    player over — there's no trade to auto-approve either way)."""
+    if proposal.overall_recommendation == "wait":
+        return False, []
+
+    reasons: list[str] = []
+    if proposal.confidence_engine.score < MIN_CONFIDENCE:
+        reasons.append(f"Confidence is only {proposal.confidence_engine.score:.0f}/100 — below the {MIN_CONFIDENCE:.0f} threshold.")
+    if any(w.symbol == proposal.symbol and w.severity == "critical" for w in risk_warnings):
+        reasons.append(f"An active critical risk warning is open on {proposal.symbol}.")
+    equity = portfolio_equity(portfolio)
+    if equity > 0 and risk_limits.max_position_pct > 0:
+        notional_pct = proposal.quantity * proposal.price / equity * 100
+        if notional_pct >= risk_limits.max_position_pct:
+            reasons.append(f"Position size is {notional_pct:.0f}% of portfolio equity — at or above the {risk_limits.max_position_pct:.0f}% max position limit.")
+    return len(reasons) > 0, reasons
 
 
 def grade_ceo_decisions(records: list[CeoDecisionRecord], trade_history: list[PaperTrade]) -> list[CeoDecisionRecord]:

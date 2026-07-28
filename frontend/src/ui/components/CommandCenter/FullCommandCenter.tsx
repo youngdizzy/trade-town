@@ -16,9 +16,10 @@ import { LogsPanel } from "./panels/LogsPanel";
 import { CalibrationPanel } from "./panels/CalibrationPanel";
 import { PlayerVsAiPanel } from "./panels/PlayerVsAiPanel";
 import { EducationPanel } from "./panels/EducationPanel";
+import { CompanyPanel } from "./panels/CompanyPanel";
 import { DecisionDetail } from "./DecisionDetail";
 
-const TABS = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"] as const;
+const TABS = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "COMPANY", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"] as const;
 type Tab = (typeof TABS)[number];
 
 export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => void; onClose: () => void }) {
@@ -101,6 +102,7 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
         {tab === "RISK" && <RiskPanel onNeedHelp={needHelp} />}
         {tab === "AGENTS" && <AgentsPanel />}
         {tab === "RESEARCH" && <ResearchPanel />}
+        {tab === "COMPANY" && <CompanyPanel />}
         {tab === "TRAINING" && <CalibrationPanel onNeedHelp={needHelp} />}
         {tab === "PVAI" && <PlayerVsAiPanel />}
         {tab === "ACADEMY" && <EducationPanel openLessonId={helpLessonId} />}

@@ -5,10 +5,12 @@ import type {
   BacktestSession,
   CeoDecisionRecord,
   CoachReport,
+  CompanyHealth,
   CompanyScore,
   Debate,
   GatekeeperRejection,
   HallOfFameEntry,
+  MarketEnvironmentState,
   MeetingMinutes,
   MeetingState,
   MemoryRecord,
@@ -75,6 +77,8 @@ export interface GameUiState {
   ceoDecisions: CeoDecisionRecord[];
   debates: Debate[];
   gatekeeperRejections: GatekeeperRejection[];
+  marketEnvironment: MarketEnvironmentState;
+  companyHealth: CompanyHealth;
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
@@ -164,12 +168,36 @@ class GameStore {
     ceoDecisions: [],
     debates: [],
     gatekeeperRejections: [],
+    marketEnvironment: {
+      current: "sideways",
+      label: "SIDEWAYS",
+      detail: "No data yet.",
+      changedSimMinutes: 0,
+      updatedAt: new Date().toISOString(),
+      timeline: [],
+    },
+    companyHealth: {
+      overall: 50,
+      tier: "stable",
+      operationalStability: 50,
+      departmentEfficiency: 50,
+      employeeMorale: 50,
+      researchProgress: 50,
+      capitalHealth: 50,
+      resourceUsage: 50,
+      reputation: 0,
+      technologyLevel: 0,
+      officeExpansion: 0,
+      educationProgress: 0,
+      recommendations: [],
+      updatedAt: new Date().toISOString(),
+    },
     agentEnergy: { current: 100, cap: 100, updatedAt: new Date().toISOString() },
     signalCalibration: { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 },
     playerVsAi: { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 },
     education: { viewedLessonIds: [], completedLessonIds: [], quizAttempts: 0, correctQuizAttempts: 0 },
     viewedTradeNotificationIds: [],
-    settings: { musicVolume: 0.5, sfxVolume: 0.7, autosaveIntervalSec: 60, showFps: false },
+    settings: { musicVolume: 0.5, sfxVolume: 0.7, autosaveIntervalSec: 60, showFps: false, operatingMode: "learning" },
     dialogue: { open: false, speaker: "", lines: [], index: 0 },
     paused: false,
     settingsOpen: false,
@@ -262,6 +290,8 @@ class GameStore {
     EventBus.on("ceoDecisions:updated", (ceoDecisions) => this.set({ ceoDecisions }));
     EventBus.on("debates:updated", (debates) => this.set({ debates }));
     EventBus.on("gatekeeperRejections:updated", (gatekeeperRejections) => this.set({ gatekeeperRejections }));
+    EventBus.on("marketEnvironment:updated", (marketEnvironment) => this.set({ marketEnvironment }));
+    EventBus.on("companyHealth:updated", (companyHealth) => this.set({ companyHealth }));
     EventBus.on("ui:executiveVoting", ({ open, proposalId }) =>
       this.set({ executiveVotingOpen: open, executiveVotingProposalId: open ? (proposalId ?? this.state.executiveVotingProposalId) : null }),
     );

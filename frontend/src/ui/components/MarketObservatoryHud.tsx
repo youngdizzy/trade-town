@@ -4,10 +4,19 @@ import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { CandlestickChart } from "@/ui/components/CommandCenter/CandlestickChart";
 import { useCandles } from "@/ui/components/CommandCenter/lib/useCandles";
 import { CONFIDENCE_TIER_LABEL } from "@/types";
-import { RISK_LEVEL_LABEL, confidenceTierTone, marketRegimeHeuristic, riskLevel, riskTextClass } from "@/ui/components/CommandCenter/lib/derive";
+import type { MarketEnvironmentRegime } from "@/types";
+import { RISK_LEVEL_LABEL, confidenceTierTone, riskLevel, riskTextClass } from "@/ui/components/CommandCenter/lib/derive";
 import { Glass, RiskDot, StatusPill, TerminalLabel } from "@/ui/components/CommandCenter/ui";
 
 const MACRO_CATEGORIES = new Set(["economy", "gold", "bitcoin", "index"]);
+
+const REGIME_TONE: Record<MarketEnvironmentRegime, "green" | "red" | "amber" | "cyan" | "neutral"> = {
+  bull: "green",
+  bear: "red",
+  sideways: "neutral",
+  high_volatility: "amber",
+  low_volatility: "cyan",
+};
 
 /**
  * The Market Observatory's readouts — "deep immersive analysis," in
@@ -24,14 +33,13 @@ const MACRO_CATEGORIES = new Set(["economy", "gold", "bitcoin", "index"]);
  * is that one requires actually walking there.
  */
 export function MarketObservatoryHud() {
-  const { currentScene, watchlist, decisions, research, news, riskWarnings, riskLimits, strategies, backtestSessions, time } = useGameStore();
+  const { currentScene, watchlist, decisions, research, news, riskWarnings, riskLimits, strategies, backtestSessions, time, marketEnvironment } = useGameStore();
   const [symbol, setSymbol] = useState(watchlist[0]?.symbol ?? "AAPL");
   const { candles, loading, error } = useCandles(symbol, "1h", 100);
   const dataStatus = candles[0]?.dataStatus ?? null;
 
   if (currentScene !== "MarketObservatoryScene") return null;
 
-  const regime = marketRegimeHeuristic(watchlist);
   const level = riskLevel(riskWarnings);
   const activeWatch = watchlist.find((w) => w.symbol === symbol);
 
@@ -90,10 +98,25 @@ export function MarketObservatoryHud() {
 
         <div className="col-span-1 grid grid-rows-2 gap-2">
           <Glass className="pointer-events-auto overflow-y-auto p-2.5">
-            <TerminalLabel>Technical Station</TerminalLabel>
-            <div className="text-cmd-text">{regime.label}</div>
-            <div className="mt-0.5 text-[9px] text-cmd-textDim">{regime.detail}</div>
+            <div className="mb-1 flex items-center justify-between">
+              <TerminalLabel>Technical Station</TerminalLabel>
+              <StatusPill tone={REGIME_TONE[marketEnvironment.current]}>{marketEnvironment.label}</StatusPill>
+            </div>
+            <div className="text-[9px] text-cmd-textDim">{marketEnvironment.detail}</div>
             {latestDecisionForSymbol && <div className="mt-1 text-[9px] text-cmd-textDim">{latestDecisionForSymbol.technicalSummary}</div>}
+            {marketEnvironment.timeline.length > 0 && (
+              <div className="mt-1.5 border-t border-cmd-border/50 pt-1.5">
+                <div className="mb-0.5 text-[9px] uppercase tracking-wide text-cmd-textDim">Environment Timeline</div>
+                {[...marketEnvironment.timeline]
+                  .reverse()
+                  .slice(0, 3)
+                  .map((entry) => (
+                    <div key={entry.id} className="truncate text-[9px] text-cmd-textDim">
+                      t+{entry.simMinutes}m — {entry.label}
+                    </div>
+                  ))}
+              </div>
+            )}
           </Glass>
           <Glass className="pointer-events-auto overflow-y-auto p-2.5">
             <TerminalLabel>News/Events Station</TerminalLabel>

@@ -3,10 +3,12 @@ import type {
   BacktestSession,
   CeoDecisionRecord,
   CoachReport,
+  CompanyHealth,
   CompanyScore,
   Debate,
   GatekeeperRejection,
   HallOfFameEntry,
+  MarketEnvironmentState,
   MeetingMinutes,
   MeetingState,
   MemoryRecord,
@@ -54,6 +56,8 @@ interface NexusSnapshot {
   ceoDecisions: CeoDecisionRecord[];
   debates: Debate[];
   gatekeeperRejections: GatekeeperRejection[];
+  marketEnvironment: MarketEnvironmentState;
+  companyHealth: CompanyHealth;
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
@@ -121,6 +125,30 @@ export class NexusManager {
   private static ceoDecisions: CeoDecisionRecord[] = [];
   private static debates: Debate[] = [];
   private static gatekeeperRejections: GatekeeperRejection[] = [];
+  private static marketEnvironment: MarketEnvironmentState = {
+    current: "sideways",
+    label: "SIDEWAYS",
+    detail: "No data yet.",
+    changedSimMinutes: 0,
+    updatedAt: new Date().toISOString(),
+    timeline: [],
+  };
+  private static companyHealth: CompanyHealth = {
+    overall: 50,
+    tier: "stable",
+    operationalStability: 50,
+    departmentEfficiency: 50,
+    employeeMorale: 50,
+    researchProgress: 50,
+    capitalHealth: 50,
+    resourceUsage: 50,
+    reputation: 0,
+    technologyLevel: 0,
+    officeExpansion: 0,
+    educationProgress: 0,
+    recommendations: [],
+    updatedAt: new Date().toISOString(),
+  };
   private static agentEnergy: AgentEnergy = { current: 100, cap: 100, updatedAt: new Date().toISOString() };
   private static signalCalibration: SignalCalibrationState = { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 };
   private static playerVsAi: PlayerVsAiState = { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 };
@@ -199,6 +227,14 @@ export class NexusManager {
 
   static getCompanyScore(): CompanyScore {
     return this.companyScore;
+  }
+
+  static getMarketEnvironment(): MarketEnvironmentState {
+    return this.marketEnvironment;
+  }
+
+  static getCompanyHealth(): CompanyHealth {
+    return this.companyHealth;
   }
 
   static getPerformanceSnapshots(): PerformanceSnapshot[] {
@@ -442,6 +478,12 @@ export class NexusManager {
     }
     this.gatekeeperRejections = update.gatekeeperRejections;
 
+    if (update.marketEnvironment !== this.marketEnvironment) EventBus.emit("marketEnvironment:updated", update.marketEnvironment);
+    this.marketEnvironment = update.marketEnvironment;
+
+    if (update.companyHealth !== this.companyHealth) EventBus.emit("companyHealth:updated", update.companyHealth);
+    this.companyHealth = update.companyHealth;
+
     if (update.agentEnergy !== this.agentEnergy) EventBus.emit("agentEnergy:updated", update.agentEnergy);
     this.agentEnergy = update.agentEnergy;
 
@@ -483,6 +525,8 @@ export class NexusManager {
     this.ceoDecisions = save.ceoDecisions;
     this.debates = save.debates;
     this.gatekeeperRejections = save.gatekeeperRejections;
+    this.marketEnvironment = save.marketEnvironment;
+    this.companyHealth = save.companyHealth;
     this.agentEnergy = save.agentEnergy;
     this.signalCalibration = save.signalCalibration;
     this.playerVsAi = save.playerVsAi;

@@ -28,7 +28,11 @@ Same shape as a `"state"` WebSocket message plus the client-owned fields
 
 Body: a full `GameSaveState` (as returned by `GET /api/load` or received
 over the WebSocket, with the client's own `player`/`settings`/
-`dialogueHistory` filled in). Only those three client-owned fields are
+`dialogueHistory` filled in). `settings.operatingMode`
+(`learning | assisted | executive`, v0.7 Feature 21 — see
+`app/schemas.py`'s `SettingsState`) is the one client-owned field NEXUS
+itself reads every tick, to decide whether to auto-resolve trade
+proposals (see `nexus._apply_operating_mode()`). Only those three client-owned fields are
 actually persisted from the payload — every other field
 (`agents`/`tasks`/`whiteboards`/`meeting`/`news`/`research`/`watchlist`/
 `memory`/`meetingMinutes`/`paperPortfolio`/`strategies`/
@@ -179,6 +183,33 @@ perspective and exists purely to detect disconnects
     "paperTradingPerformance": 52.0, "teamCoordination": 74.0, "knowledgeGrowth": 24.0, "simulationSuccess": 58.0,
     "updatedAt": "..."
   },
+  "companyHealth": {
+    // v0.7 Feature 23 — a second, deliberately independent scorecard from
+    // companyScore above: same "no hidden weighting, plain mean" philosophy
+    // (see app/company_health.py), but asking "is the company stable and
+    // well-run?" rather than "is it winning?" Some underlying signals
+    // overlap on purpose (e.g. employeeMorale and companyScore's
+    // teamCoordination both read real agent mood) — they're computed
+    // independently and answer different questions.
+    "overall": 71.4, "tier": "good", // excellent | good | stable | needs_attention | critical
+    "operationalStability": 88.0, "departmentEfficiency": 66.7, "employeeMorale": 74.0,
+    "researchProgress": 60.0, "capitalHealth": 58.4, "resourceUsage": 82.0,
+    "reputation": 20.0, "technologyLevel": 40.0, "officeExpansion": 25.0, "educationProgress": 15.0,
+    "recommendations": ["Reputation is low (20/100) — worth attention."],
+    "updatedAt": "..."
+  },
+  "marketEnvironment": {
+    // v0.7 Feature 22 — a 5-way regime classification computed every tick
+    // from the real, already-fetched watchlist.dailyChangePct values (see
+    // app/market_environment.py). "timeline" only grows on a real regime
+    // change, not every tick.
+    "current": "bull", "label": "BULL MARKET", // bull | bear | sideways | high_volatility | low_volatility
+    "detail": "Aggregated over 8 tracked symbols — avg move +1.84%, avg |move| 2.10%.",
+    "changedSimMinutes": 1560, "updatedAt": "...",
+    "timeline": [
+      { "id": "env-bull-1560", "regime": "bull", "label": "BULL MARKET", "detail": "...", "simMinutes": 1560, "createdAt": "..." }
+    ]
+  },
   "performanceSnapshots": [
     { "period": "daily", "returnPct": 1.2, "winRate": 60.0, "maxDrawdownPct": 4.1, "sharpeRatio": 0.29, "sortinoRatio": 0.34, "avgHoldingMinutes": 210.0, "researchAccuracy": 71.0, "confidenceAccuracy": 68.0, "computedAt": "..." }
   ],
@@ -247,6 +278,11 @@ perspective and exists purely to detect disconnects
       "symbol": "AAPL", "category": "stock", "aiRecommendation": "buy", "ceoDecision": "buy",
       "agreedWithAi": true, "decisionId": "decision-proposal-research-echo-AAPL-...",
       "outcome": "pending", // pending | correct | incorrect | undecidable
+      // v0.7 Feature 21 — "ceo" is a real player click; "auto" is a
+      // Company Operating Mode (Assisted/Executive) auto-resolution or a
+      // stale-proposal expiry, never presented as a real player decision.
+      // Defaults to "ceo" for records predating this field.
+      "resolvedBy": "ceo", // ceo | auto
       "createdAt": "...", "resolvedAt": null
     }
   ],
@@ -366,6 +402,7 @@ never needs to trim anything itself:
 | `decisions` | uncapped | the v0.6 brief's Explainable AI requirement is "store every report permanently" |
 | `debates` | last 60 (`MAX_DEBATES`) | one per proposal plus any "request another debate" calls — v0.7 Feature 17 |
 | `gatekeeperRejections` | last 100 (`MAX_GATEKEEPER_REJECTIONS`) | one per trade the Trade Gatekeeper vetoed — v0.7 Feature 20 |
+| `marketEnvironment.timeline` | last 100 (`MAX_MARKET_ENVIRONMENT_HISTORY`) | only grows on a real regime change, not every tick — v0.7 Feature 22 |
 
 ### Provider configuration
 

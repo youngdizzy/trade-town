@@ -12,10 +12,12 @@ from datetime import datetime, timezone
 
 from app import education, nexus, player_vs_ai, signal_calibration, trade_notifications
 from app.agent_energy import default_agent_energy
+from app.company_health import compute_company_health
 from app.company_score import compute_company_score
 from app.debate import generate_debate
 from app.executive import MAX_CEO_DECISIONS, AnalystChoice, resolve_proposal
 from app.market_data import market_data_provider
+from app.market_environment import default_market_environment
 from app.nexus import MAX_DEBATES, MAX_DECISIONS, MAX_GATEKEEPER_REJECTIONS
 from app.portfolio import default_portfolio, sim_minutes
 from app.research import default_research
@@ -44,19 +46,23 @@ def _now_iso() -> str:
 
 
 def default_state() -> GameSaveState:
+    agents = nexus.default_agents()
+    watchlist = default_watchlist()
+    signal_calibration_state = SignalCalibrationState()
+    education_progress = education.default_education_progress()
     return GameSaveState(
         player=EntityTransform(scene="LobbyScene", x=160, y=220, facing="down"),
-        agents=nexus.default_agents(),
+        agents=agents,
         tasks=[],
         whiteboards={},
         meeting=MeetingState(),
         news=[],
         research=default_research(),
-        watchlist=default_watchlist(),
+        watchlist=watchlist,
         memory=[],
         meetingMinutes=[],
         time=TimeState(day=1, hour=8, minute=0),
-        settings=SettingsState(musicVolume=0.5, sfxVolume=0.7, autosaveIntervalSec=60, showFps=False),
+        settings=SettingsState(musicVolume=0.5, sfxVolume=0.7, autosaveIntervalSec=60, showFps=False, operatingMode="learning"),
         dialogueHistory=[],
         paperPortfolio=default_portfolio(),
         strategies=default_strategies(),
@@ -67,14 +73,26 @@ def default_state() -> GameSaveState:
         companyScore=compute_company_score([], default_portfolio(), [], [], []),
         performanceSnapshots=[],
         agentEnergy=default_agent_energy(),
-        signalCalibration=SignalCalibrationState(),
+        signalCalibration=signal_calibration_state,
         playerVsAi=PlayerVsAiState(),
-        education=education.default_education_progress(),
+        education=education_progress,
         viewedTradeNotificationIds=[],
         tradeProposals=[],
         ceoDecisions=[],
         debates=[],
         gatekeeperRejections=[],
+        marketEnvironment=default_market_environment(),
+        companyHealth=compute_company_health(
+            agents=agents,
+            research=[],
+            portfolio=default_portfolio(),
+            risk_warnings=[],
+            agent_energy=default_agent_energy(),
+            hall_of_fame=[],
+            signal_calibration=signal_calibration_state,
+            watchlist=watchlist,
+            education=education_progress,
+        ),
         updatedAt=_now_iso(),
     )
 

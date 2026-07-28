@@ -156,6 +156,39 @@ performance) have no real data source in this codebase and are
 deliberately not computed anywhere — see each module's own docstring for
 the same honesty boundary applied consistently across all six.
 
+### v0.7 continued — AI Company Management & Simulation Systems
+
+Three more systems, shifting the frame from grading individual trades to
+managing the company itself. **Company Operating Modes** add a
+`Learning | Assisted | Executive` toggle (`settings.operatingMode`) that
+changes how much NEXUS auto-resolves on the player's behalf — Learning
+Mode leaves every trade proposal to a real CEO click (unchanged v0.6.3
+behavior); Assisted Mode auto-resolves only proposals a new
+`is_significant_proposal()` check calls routine (adequate confidence, no
+critical risk warning, reasonable position size), still surfacing
+anything bigger; Executive Mode auto-resolves everything. Every auto-
+resolved decision is honestly tagged `resolvedBy: "auto"` on its
+`CeoDecisionRecord`, never presented as the player's own call. **Market
+Environment Simulation** (`market_environment.py`) classifies the whole
+watchlist into bull/bear/sideways/high-volatility/low-volatility every
+tick from the real aggregated daily price changes already on hand, keeps
+a real timeline of actual regime changes, and now drives which pool of
+market headlines the News desk draws from — a genuine, if modest,
+"departments react to conditions" hookup. **Company Health & Stability**
+(`company_health.py`) adds a second scorecard alongside the existing
+`CompanyScore`, deliberately asking a different question ("is the
+company stable and well-run?" vs. "is it winning?") from ten real
+sub-metrics — risk warnings, agent activity, research completion,
+portfolio P&L, agent energy, hall-of-fame count, signal-calibration
+level, watchlist expansion, and education progress — with plain-language
+recommendations naming whichever two metrics are weakest. All three
+systems, plus a new COMPANY tab surfacing them, are covered by 33 new
+backend tests. The brief's "Executive Reports" is deliberately not a new
+report engine — it reuses Feature 18's existing Coach reporting — and
+"NPC Interactions" (persistent relationships, remembered conversations)
+has no new memory system behind it in this pass; both are documented
+scope cuts rather than fabricated mechanics.
+
 ## What's next for v0.8 (not started, not scoped)
 
 These are candidate directions surfaced by v0.6/v0.7's design, not

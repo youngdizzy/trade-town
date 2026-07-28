@@ -193,11 +193,27 @@ class TimeState(CamelModel):
     minute: int
 
 
+# v0.7 Feature 21 — Company Operating Modes.
+#   learning  — every proposal waits for the CEO (the pre-Feature-21
+#               default behavior, unchanged).
+#   assisted  — routine (non-significant) proposals auto-resolve using
+#               the desk's own real recommendation; only a "significant"
+#               one (see app/executive.py's is_significant_proposal)
+#               still surfaces to the player.
+#   executive — every proposal auto-resolves; the player reviews reports
+#               (Decisions/Company Health) rather than individual trades.
+OperatingMode = Literal["learning", "assisted", "executive"]
+
+
 class SettingsState(CamelModel):
     music_volume: float = Field(alias="musicVolume")
     sfx_volume: float = Field(alias="sfxVolume")
     autosave_interval_sec: int = Field(alias="autosaveIntervalSec")
     show_fps: bool = Field(alias="showFps")
+    # Client-authoritative (the player's own preference, same as every
+    # other field on this model), merged into server state via
+    # apply_client_save the same way showFps/musicVolume already are.
+    operating_mode: OperatingMode = Field(default="learning", alias="operatingMode")
 
 
 class DialogueHistoryEntry(CamelModel):
@@ -1029,8 +1045,86 @@ class CeoDecisionRecord(CamelModel):
     agreed_with_ai: bool = Field(alias="agreedWithAi")
     decision_id: str | None = Field(default=None, alias="decisionId")
     outcome: Literal["pending", "correct", "incorrect", "undecidable"] = "pending"
+    # v0.7 Feature 21 — Company Operating Modes. "ceo" is a real player
+    # click via POST /api/executive/decide; "auto" covers both a
+    # Feature-21 mode auto-resolution and the pre-existing stale-proposal
+    # expiry auto-wait (see app/executive.py's resolve_proposal and
+    # app/nexus.py's expire_stale_proposals loop) — neither was ever a
+    # real CEO decision, so this field is honest about it. Defaults to
+    # "ceo" for records predating this field, which were all real CEO
+    # clicks (auto-resolution didn't exist yet).
+    resolved_by: Literal["ceo", "auto"] = Field(default="ceo", alias="resolvedBy")
     created_at: str = Field(alias="createdAt")
     resolved_at: str | None = Field(default=None, alias="resolvedAt")
+
+
+# v0.7 Feature 22 — Market Environment Simulation. Every regime is
+# computed server-side from the same real trend/volatility signals
+# app/market_data.py already exposes (trend_pct/volatility_pct,
+# aggregated across the live watchlist) — see app/market_environment.py.
+# Never a per-render client guess: this is the one persisted, authoritative
+# reading every surface (Command Center, Market Observatory) reads from.
+# Named distinctly from the existing MarketRegime (trending_up/
+# trending_down/ranging, Player vs AI's per-symbol regime read) — a
+# different concept: this one is a whole-market, five-way classification
+# including volatility, not a single symbol's trend direction.
+MarketEnvironmentRegime = Literal["bull", "bear", "sideways", "high_volatility", "low_volatility"]
+
+
+class MarketEnvironmentEntry(CamelModel):
+    """One real regime *change* — the historical timeline only ever grows
+    when the computed regime actually differs from the previous tick's,
+    not once per tick (see app/market_environment.py's tick function),
+    so this stays a meaningful timeline rather than a repetitive log."""
+
+    id: str
+    regime: MarketEnvironmentRegime
+    label: str
+    detail: str
+    sim_minutes: int = Field(alias="simMinutes")
+    created_at: str = Field(alias="createdAt")
+
+
+class MarketEnvironmentState(CamelModel):
+    current: MarketEnvironmentRegime
+    label: str
+    detail: str
+    changed_sim_minutes: int = Field(alias="changedSimMinutes")
+    updated_at: str = Field(alias="updatedAt")
+    # Capped at MAX_MARKET_ENVIRONMENT_HISTORY (app/nexus.py), most recent last.
+    timeline: list[MarketEnvironmentEntry] = Field(default_factory=list)
+
+
+# v0.7 Feature 23 — Company Health & Stability System. Ten real,
+# documented sub-scores (see app/company_health.py for the exact formula
+# behind each) — deliberately not the same list as v0.5's CompanyScore
+# (research/decision/risk/paper-trading/teamwork/knowledge/simulation):
+# this one asks "is the company healthy to keep operating," CompanyScore
+# asks "is it performing well," and several factors overlap on purpose
+# (e.g. Employee Morale reuses the same real agent-mood average
+# CompanyScore's Team Coordination does) rather than inventing two
+# divergent readings of the same underlying number.
+CompanyHealthTier = Literal["excellent", "good", "stable", "needs_attention", "critical"]
+
+
+class CompanyHealth(CamelModel):
+    overall: float
+    tier: CompanyHealthTier
+    operational_stability: float = Field(alias="operationalStability")
+    department_efficiency: float = Field(alias="departmentEfficiency")
+    employee_morale: float = Field(alias="employeeMorale")
+    research_progress: float = Field(alias="researchProgress")
+    capital_health: float = Field(alias="capitalHealth")
+    resource_usage: float = Field(alias="resourceUsage")
+    reputation: float
+    technology_level: float = Field(alias="technologyLevel")
+    office_expansion: float = Field(alias="officeExpansion")
+    education_progress: float = Field(alias="educationProgress")
+    # The two (or more, on a tie) lowest-scoring areas, named in plain
+    # language — never generic filler, always tied to the actual weakest
+    # real sub-score this tick (see app/company_health.py).
+    recommendations: list[str] = Field(default_factory=list)
+    updated_at: str = Field(alias="updatedAt")
 
 
 class GameSaveState(CamelModel):
@@ -1082,6 +1176,10 @@ class GameSaveState(CamelModel):
     # blocked, capped at MAX_GATEKEEPER_REJECTIONS like every other list
     # here; see app/gatekeeper.py.
     gatekeeper_rejections: list[GatekeeperRejection] = Field(default_factory=list, alias="gatekeeperRejections")
+    # v0.7 Feature 22 — Market Environment Simulation (app/market_environment.py).
+    market_environment: MarketEnvironmentState = Field(alias="marketEnvironment")
+    # v0.7 Feature 23 — Company Health & Stability System (app/company_health.py).
+    company_health: CompanyHealth = Field(alias="companyHealth")
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(default_factory=list, alias="dialogueHistory")
