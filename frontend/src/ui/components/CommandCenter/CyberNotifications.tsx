@@ -3,7 +3,7 @@ import { EventBus } from "@/game/systems/EventBus";
 import type { ResearchItem, ScannerAlert, TradeProposal } from "@/types";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 
-type ToastKind = "trade" | "research" | "volatility" | "alert";
+type ToastKind = "trade" | "research" | "volatility" | "alert" | "save";
 
 interface Toast {
   id: string;
@@ -18,6 +18,7 @@ const KIND_STYLE: Record<ToastKind, { border: string; label: string; dot: string
   research: { border: "border-cmd-green/50 shadow-cmd-green", label: "text-cmd-green", dot: "bg-cmd-green" },
   volatility: { border: "border-cmd-amber/50 shadow-cmd-amber", label: "text-cmd-amber", dot: "bg-cmd-amber" },
   alert: { border: "border-cmd-purple/50", label: "text-cmd-purple", dot: "bg-cmd-purple" },
+  save: { border: "border-cmd-red/50", label: "text-cmd-red", dot: "bg-cmd-red" },
 };
 
 const AUTO_DISMISS_MS = 6000;
@@ -65,13 +66,20 @@ export function CyberNotifications() {
         push("alert", "NEWS ALERT", alert.message);
       }
     };
+    // v0.7 — Save Architecture Redesign Phase 3: the one real error case
+    // worth interrupting the player for — a successful save produces no
+    // toast (autosave fires every 30-60s; a toast on every one would just
+    // be noise, same reasoning as AGENT LEVEL UP not existing above).
+    const onSaveFailed = ({ error }: { error: string }) => push("save", "SAVE FAILED", error);
     EventBus.on("tradeProposal:new", onProposal);
     EventBus.on("research:completed", onResearch);
     EventBus.on("scanner:alertDetected", onAlert);
+    EventBus.on("save:failed", onSaveFailed);
     return () => {
       EventBus.off("tradeProposal:new", onProposal);
       EventBus.off("research:completed", onResearch);
       EventBus.off("scanner:alertDetected", onAlert);
+      EventBus.off("save:failed", onSaveFailed);
     };
   }, [push]);
 

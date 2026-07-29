@@ -1735,6 +1735,30 @@ progress-loss fix through Phase 10's trade outcome popups).
     per-module corruption recovery, and legacy-blob migration) and
     frontend (tsc/eslint/build) clean; live-verified against the real
     running dev backend and its real 19MB database.
+  - **Phase 3 — save queue, error reporting, size-guard.**
+    `SaveManager.save()` (frontend) gained a coalescing in-flight guard:
+    a save request that arrives while one is already in flight (autosave
+    firing mid-manual-save, or two rapid clicks) no longer fires a second
+    concurrent network request — it queues one trailing save, which
+    builds a *fresh* snapshot when it actually runs rather than replaying
+    a stale one. A client-side 512KB size-guard checks the real payload
+    byte count before sending and fails immediately with the exact byte
+    count if ever exceeded — the honest defensive fallback the redesign
+    spec asked for in place of a chunked-upload protocol, which would
+    have been permanently-dead code for a payload this provably small.
+    Save errors are now structured: a save with per-module failures
+    (`SaveResponse.modules[].ok === false`) surfaces exactly which
+    modules failed and why, shown as a toast
+    (`CyberNotifications.tsx`) — the codebase's first visible save-status
+    UI; a successful save stays silent (autosave fires every 30-60s, and
+    a toast on every one would be noise, same reasoning already applied
+    to every other toast in that component).
+  - Verification: frontend (tsc/eslint/build) clean; full Playwright
+    regression run against the live backend (28-29/37 passing — the
+    remaining failures are the same real trade/voting-popup/live-meeting
+    timing flakiness class documented above, not a save-path issue; the
+    one test that most directly exercises the save path shows a
+    successful "Saved" status at the point of its unrelated failure).
 
 ### Fixed
 

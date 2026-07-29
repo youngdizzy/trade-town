@@ -120,6 +120,27 @@ module map (see `GET /api/load` above), reflecting what
   independently (see `persist_modules()`'s docstring for how the
   per-module SAVEPOINT isolation works).
 
+**Client-side behavior (v0.7 Save Architecture Redesign Phase 3, see
+`frontend/src/game/systems/SaveManager.ts`):**
+
+- **Coalescing save queue**: `SaveManager.save()` is safe to call while a
+  save is already in flight (autosave firing mid-manual-save, or two rapid
+  clicks) — a second call sets a flag instead of firing a second request;
+  once the in-flight request resolves, one trailing save runs with a
+  freshly-built snapshot (never a stale one from when it was queued).
+- **Size-guard instead of chunking**: before sending, the client checks
+  the payload's real byte size against a 512KB ceiling — far above
+  anything `player`/`settings`/`dialogueHistory` can legitimately reach.
+  Exceeding it fails immediately with the real byte count in the error,
+  rather than attempting a chunked-upload protocol for a payload that's
+  supposed to be provably small.
+- **Structured error reporting**: a save with any `modules[].ok === false`
+  entries surfaces a specific message naming which modules failed and why
+  (not a generic "Save Failed"), shown as a toast
+  (`CyberNotifications.tsx`) — the one save-related notification the UI
+  shows, since a successful save produces no toast (autosave fires every
+  30-60s and a toast on every one would just be noise).
+
 ## `WS /ws`
 
 On connect, the server immediately sends one `"state"` message with the

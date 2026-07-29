@@ -15,6 +15,17 @@ const LOCAL_BACKUP_KEY = "tradetown:save-backup";
 // rather than relying solely on the server-side truncation.
 const MAX_DIALOGUE_HISTORY = 200;
 
+// v0.7 — Save Architecture Redesign Phase 3. A ClientSaveSnapshot is
+// player/settings/dialogueHistory only — a real one measures a few KB
+// (see docs/API.md's POST /api/save section). 512KB is a generous ceiling
+// well above anything this shape can legitimately reach; if it's ever hit
+// it means something is actually wrong (e.g. dialogue history bypassing
+// its own MAX_DIALOGUE_HISTORY cap), and the honest response is a clear
+// "too large" error naming the real byte count — not a chunked-upload
+// protocol for a payload that's supposed to be provably small, which
+// would just be more surface area for a bug to hide in.
+const MAX_SAVE_BYTES = 512 * 1024;
+
 /**
  * Builds the slim client-owned save payload and persists it via the
  * backend REST API, with a localStorage backup so a save is never lost if
@@ -37,6 +48,17 @@ const MAX_DIALOGUE_HISTORY = 200;
 export class SaveManager {
   private static autosaveHandle: number | null = null;
 
+  // v0.7 — Save Architecture Redesign Phase 3. Coalescing save queue: a
+  // save is a full-state replacement, so queuing N identical payloads
+  // behind an in-flight request is waste — at most one trailing call runs
+  // after the in-flight one finishes, and it builds a *fresh* snapshot at
+  // that point rather than replaying a stale one from when it was
+  // requested. This is what turns "autosave fires while a manual save is
+  // still in flight" (or two rapid manual-save clicks) from a race into a
+  // clean sequence.
+  private static inFlight: Promise<void> | null = null;
+  private static trailingQueued = false;
+
   static buildSnapshot(): ClientSaveSnapshot {
     const game = GameManager.getInstance();
     return {
@@ -46,12 +68,55 @@ export class SaveManager {
     };
   }
 
-  static async save(): Promise<void> {
+  static save(): Promise<void> {
+    if (this.inFlight) {
+      this.trailingQueued = true;
+      return this.inFlight;
+    }
+    const run = this.performSave().finally(() => {
+      this.inFlight = null;
+      if (this.trailingQueued) {
+        this.trailingQueued = false;
+        void this.save();
+      }
+    });
+    this.inFlight = run;
+    return run;
+  }
+
+  private static async performSave(): Promise<void> {
     const snapshot = this.buildSnapshot();
     EventBus.emit("save:started", undefined);
+
+    // Size-guard: the real defensive fallback in place of a chunked-upload
+    // protocol (see MAX_SAVE_BYTES's own comment above) — a payload this
+    // shape should never legitimately reach 512KB, so failing loudly with
+    // the real byte count here surfaces a genuine bug immediately instead
+    // of silently degrading into partial uploads.
+    const payload = JSON.stringify(snapshot);
+    const bytes = new TextEncoder().encode(payload).length;
+    if (bytes > MAX_SAVE_BYTES) {
+      EventBus.emit("save:failed", {
+        error: `Save payload too large (${(bytes / 1024).toFixed(0)}KB, limit ${MAX_SAVE_BYTES / 1024}KB) — this indicates a real bug (e.g. dialogue history growing past its cap), not normal play.`,
+      });
+      return;
+    }
+
     try {
-      localStorage.setItem(LOCAL_BACKUP_KEY, JSON.stringify(snapshot));
+      localStorage.setItem(LOCAL_BACKUP_KEY, payload);
       const result = await api.saveGame(snapshot);
+      const failedModules = result.modules.filter((m) => !m.ok);
+      if (failedModules.length > 0) {
+        // v0.7 — Save Architecture Redesign Phase 3: structured, per-module
+        // error reporting instead of a generic "Save Failed" — most saves
+        // still succeeded (see persist_modules()'s per-module SAVEPOINT
+        // isolation, backend/app/persistence.py), so this is real detail
+        // about exactly what didn't, not a blanket failure.
+        EventBus.emit("save:failed", {
+          error: `${failedModules.length} of ${result.modules.length} save module(s) failed: ${failedModules.map((m) => `${m.name} (${m.error ?? "unknown error"})`).join(", ")}`,
+        });
+        return;
+      }
       EventBus.emit("save:completed", { at: result.updatedAt });
     } catch (err) {
       EventBus.emit("save:failed", { error: err instanceof Error ? err.message : String(err) });
