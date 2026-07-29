@@ -1030,7 +1030,28 @@ export interface CompanyHealth {
   technologyLevel: number;
   officeExpansion: number;
   educationProgress: number;
+  /** v0.7 Feature 43 — real support-vs-challenge ratio across recent AI
+   * Debates (see backend/app/company_health.py's _team_chemistry). */
+  teamChemistry: number;
   recommendations: string[];
+  updatedAt: string;
+}
+
+// v0.7 Feature 43 — Company DNA (see backend/app/company_dna.py). The one
+// genuinely net-new concept the Executive Intelligence Dashboard brief
+// asked for; five real, descriptive behavioral traits read off the
+// company's own historical decision/trade record.
+export interface CompanyDnaTrait {
+  id: string;
+  name: string;
+  score: number;
+  detail: string;
+}
+
+export interface CompanyDNA {
+  traits: CompanyDnaTrait[];
+  summary: string;
+  sampleSize: number;
   updatedAt: string;
 }
 
@@ -1544,6 +1565,7 @@ export interface GameSaveState {
   gatekeeperRejections: GatekeeperRejection[];
   marketEnvironment: MarketEnvironmentState;
   companyHealth: CompanyHealth;
+  companyDna: CompanyDNA;
   executiveReviews: ExecutiveReview[];
   academyProjects: AcademyProject[];
   academyCompletedProjects: AcademyProject[];

@@ -241,6 +241,7 @@ export function CompanyPanel() {
           <HealthCell label="Technology" value={companyHealth.technologyLevel} />
           <HealthCell label="Office" value={companyHealth.officeExpansion} />
           <HealthCell label="Education" value={companyHealth.educationProgress} />
+          <HealthCell label="Team Chemistry" value={companyHealth.teamChemistry} />
         </div>
       </Glass>
 

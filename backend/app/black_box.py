@@ -48,9 +48,12 @@ overlap research this feature was scoped from):
                              external-institution simulation.
 
 What's genuinely new: the Quant agent itself, the BlackBoxProject
-lifecycle/dashboard, the team-formation logic below, Team Chemistry (a
-real derived reading of the team's own current mood — no fabricated
-pairwise relationship system), and the Eureka! cinematic moment (frontend).
+lifecycle/dashboard, the team-formation logic below, and the Eureka!
+cinematic moment (frontend). Team Chemistry, named in this feature's own
+original brief, was not actually implemented until v0.7 Feature 43 (see
+app/company_health.py's `_team_chemistry`) — a real support-vs-challenge
+ratio across recent AI Debates, company-wide rather than scoped to one
+project's team, with no fabricated pairwise relationship system.
 
 Team formation is real and deterministic, never a fabricated multi-factor
 "Skill/Experience/Workload" score: four seats are matched to whichever

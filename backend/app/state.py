@@ -23,6 +23,7 @@ from app.reasoning_lab import compute_reasoning_lab_state
 from app.wisdom import compute_wisdom_score
 from app.academy_research import default_academy_projects
 from app.agent_energy import default_agent_energy
+from app.company_dna import compute_company_dna
 from app.company_health import compute_company_health
 from app.company_score import compute_company_score
 from app.debate import generate_debate
@@ -125,7 +126,9 @@ def default_state() -> GameSaveState:
             signal_calibration=signal_calibration_state,
             watchlist=watchlist,
             education=education_progress,
+            debates=[],
         ),
+        companyDna=compute_company_dna([], [], []),
         executiveReviews=[],
         academyProjects=default_academy_projects(),
         academyCompletedProjects=[],

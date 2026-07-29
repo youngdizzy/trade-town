@@ -7,6 +7,76 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.7 Feature 43 — Executive Intelligence Dashboard**: scoped from a
+  brief asking for a 13-metric "Company Health" list, proactive "CEO
+  Insights," an AI-ranked "Executive Priorities" list, multi-year
+  "Performance Trends," and per-department "Efficiency/Workload/Morale/
+  Productivity/Bottlenecks" status for 8 named departments. Researched
+  first (see `docs/Architecture.md`'s "Executive Intelligence Dashboard"
+  section): most of the brief's own "Company Health" list already exists
+  under `CompanyHealth`/`CompanyScore`; "Performance Trends" already
+  exists as `PerformanceSnapshot` (the PERFORMANCE tab); "CEO Insights"
+  is the same real recommendation text this feature's own Executive
+  Priorities section surfaces, just reframed as alerts instead of a
+  ranked list — building a second, parallel insights generator would
+  have been the exact duplication this session's whole discipline exists
+  to avoid.
+  - **New `EXECINTEL` Command Center tab** (`ExecutiveIntelPanel.tsx`):
+    Company DNA, Executive Priorities, and Department Health. Like
+    Feature 42, this shipped mostly as a **frontend-only feature** —
+    Executive Priorities and Department Health are pure derivations
+    (`lib/derive.ts`'s `computeExecutivePriorities()`/
+    `computeDepartmentHealth()`) over data already broadcast on the
+    WebSocket; only Company DNA needed new backend computation.
+  - **Company DNA, the one genuinely net-new concept** (`app/company_dna.py`):
+    five real, descriptive behavioral traits read off the company's own
+    historical decision/trade record — Risk Appetite (% of executed
+    trades taken on a moderate-or-weaker Decision Confidence Engine
+    tier), Patience (average real hold duration against
+    `discipline.py`'s own patient-hold bar), Contrarian Tendency (% of
+    CEO decisions that overrode the AI's recommendation), Research Rigor
+    (average real Decision Confidence Engine score), and Collaboration
+    Style (% of decisions with 2+ distinct real analyst vote choices).
+    Each defaults to an honest neutral 50.0 with a real `sampleSize` of
+    0 until enough history exists — never a confident-looking guess from
+    thin data. Deliberately reuses no signal `company_health.py`'s new
+    `team_chemistry` (below) or `company_score.py`'s existing
+    `team_coordination` already read.
+  - **Team Chemistry, a real 11th `CompanyHealth` sub-score**
+    (`app/company_health.py`'s `_team_chemistry`): the real support-vs-
+    challenge ratio across the company's most recent 20 AI Debates —
+    corrects a genuine, self-discovered inconsistency where v0.7's own
+    Black Box feature (`app/black_box.py`) had claimed in its module
+    docstring that Team Chemistry was "genuinely new" without ever
+    actually implementing it; that docstring is now corrected to point
+    here. Distinct from `employee_morale` (individual mood) and
+    `company_score.py`'s `team_coordination` (also a mood proxy) — this
+    is specifically about how the team behaves *together* during real
+    debate, never a fabricated pairwise relationship graph.
+  - **Executive Priorities**: merges and dedupes `CompanyHealth`'s
+    always-current recommendations with the latest `CoachReport` and
+    `ExecutiveReview`'s own real recommendation text — first occurrence
+    wins, so a live Company Health read outranks a possibly-stale
+    periodic report repeating the same point. No invented ranking model:
+    order reflects which real system raised the point.
+  - **Department Health, honestly scoped**: the brief names 8
+    departments including "Brain Room" — this codebase has no literal
+    department concept, and Brain Room specifically is a physical room
+    housing the Overview HUD, not an operational unit with its own
+    state, so it's dropped entirely rather than inventing metrics for a
+    room. The other 7 (Academy/Research/Risk/Trading/Innovation/Coach/
+    Founders) each show whichever of the brief's five requested
+    dimensions (Efficiency/Workload/Morale/Productivity/Bottlenecks)
+    that real subsystem actually tracks — never a uniform template
+    forced onto systems that don't track all five.
+  - Verification: backend (`test_company_dna.py`, 15 new tests;
+    `test_company_health.py` extended with a `TestTeamChemistry` class,
+    4 new tests) + full suite (515/515) + mypy/ruff clean; frontend
+    tsc/eslint/build clean; a new `execIntel.spec.ts` (2 Playwright tests
+    against the live stack) plus `commandCenter.spec.ts`'s tab-count test
+    updated for the new 24th tab (COMPANY's own number-key index is
+    unaffected — EXECINTEL was inserted after it, not before).
+
 - **v0.7 Feature 42 — Decision Replay Center**: scoped from a brief
   asking for per-trade Stop Loss/Profit Target/Expected Value recording,
   a 13-stage decision timeline, a "Team Replay" of every real opinion,

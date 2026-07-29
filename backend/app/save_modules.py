@@ -12,7 +12,7 @@ and how big it actually gets, not the field's feature name:
 
 - `derived` is its own module specifically because every field in it is
   recomputed from scratch on nearly every tick (company_score,
-  company_health, academy_state, ...) — grouping any of them into a
+  company_health, company_dna, academy_state, ...) — grouping any of them into a
   feature module (e.g. company_health into `company`) would make that
   whole module "dirty" on every persist, defeating the hash-based
   dirty-skip in persistence.py.persist_modules().
@@ -84,6 +84,7 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
     "derived": (
         "company_score",
         "company_health",
+        "company_dna",
         "academy_state",
         "reasoning_lab_state",
         "wisdom_state",

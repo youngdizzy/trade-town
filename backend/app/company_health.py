@@ -31,6 +31,7 @@ from app.schemas import (
     AgentState,
     CompanyHealth,
     CompanyHealthTier,
+    Debate,
     EducationProgress,
     HallOfFameEntry,
     PaperPortfolio,
@@ -64,7 +65,12 @@ _METRIC_LABELS: dict[str, str] = {
     "technology_level": "Technology Level",
     "office_expansion": "Office Expansion",
     "education_progress": "Education Progress",
+    "team_chemistry": "Team Chemistry",
 }
+
+# The window of most-recent debates a fresh Team Chemistry reading is
+# computed over — recent behavior, not the company's entire history.
+TEAM_CHEMISTRY_WINDOW = 20
 
 
 def _now_iso() -> str:
@@ -137,6 +143,23 @@ def _education_progress(education: EducationProgress) -> float:
     return len(education.completed_lesson_ids) / total * 100.0
 
 
+def _team_chemistry(debates: list[Debate]) -> float:
+    """v0.7 Feature 43 — a real, checkable reading of whether the team
+    tends to back each other's calls during the AI Debate or mostly push
+    back, over the most recent TEAM_CHEMISTRY_WINDOW debates. Distinct
+    from `employee_morale` (individual mood) and `department_efficiency`
+    (time at desk) — this is specifically about how the team behaves
+    *together*, never a fabricated pairwise relationship graph (there is
+    no per-agent-pair data anywhere in this codebase to build one from).
+    50.0 (neutral) until the company has held at least one real debate."""
+    recent = debates[-TEAM_CHEMISTRY_WINDOW:]
+    turns = [t for d in recent for t in d.turns if t.stance != "opening"]
+    if not turns:
+        return 50.0
+    supportive = sum(1 for t in turns if t.stance == "support")
+    return supportive / len(turns) * 100.0
+
+
 def compute_company_health(
     *,
     agents: dict[AgentId, AgentState],
@@ -148,6 +171,7 @@ def compute_company_health(
     signal_calibration: SignalCalibrationState,
     watchlist: list[WatchlistEntry],
     education: EducationProgress,
+    debates: list[Debate],
 ) -> CompanyHealth:
     metrics = {
         "operational_stability": _operational_stability(risk_warnings),
@@ -160,6 +184,7 @@ def compute_company_health(
         "technology_level": _technology_level(signal_calibration),
         "office_expansion": _office_expansion(watchlist),
         "education_progress": _education_progress(education),
+        "team_chemistry": _team_chemistry(debates),
     }
     overall = sum(metrics.values()) / len(metrics)
 
@@ -182,6 +207,7 @@ def compute_company_health(
         technologyLevel=round(metrics["technology_level"], 1),
         officeExpansion=round(metrics["office_expansion"], 1),
         educationProgress=round(metrics["education_progress"], 1),
+        teamChemistry=round(metrics["team_chemistry"], 1),
         recommendations=recommendations,
         updatedAt=_now_iso(),
     )

@@ -38,6 +38,7 @@ from app.broker import tick_broker
 from app.calendar import compute_system_events
 from app.coach import generate_report as generate_coach_report
 from app.coach import record_report as record_coach_report_entry
+from app.company_dna import compute_company_dna
 from app.company_health import compute_company_health
 from app.company_score import compute_company_score
 from app.config import settings
@@ -1240,7 +1241,12 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         signal_calibration=state.signal_calibration,
         watchlist=watchlist,
         education=state.education,
+        debates=debates,
     )
+    # v0.7 Feature 43 — Company DNA. Cheap to recompute (a handful of
+    # linear scans over already-in-memory lists), same "always current"
+    # reasoning as company_health above.
+    company_dna = compute_company_dna(decisions, paper_portfolio.trade_history, ceo_decisions)
     # v0.7 Feature 25 — cheap to recompute every tick, same reasoning as
     # company_health above (feeds a live-updating Academy readout).
     academy_state = compute_academy_state(agent_knowledge, len(academy_completed_projects))
@@ -1588,6 +1594,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "gatekeeper_rejections": gatekeeper_rejections,
             "market_environment": market_environment,
             "company_health": company_health,
+            "company_dna": company_dna,
             "executive_reviews": executive_reviews,
             "academy_projects": academy_projects,
             "academy_completed_projects": academy_completed_projects,

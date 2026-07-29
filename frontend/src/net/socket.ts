@@ -12,6 +12,7 @@ import type {
   CeoDecisionRecord,
   ChallengeReport,
   CoachReport,
+  CompanyDNA,
   CompanyHealth,
   CompanyScore,
   Debate,
@@ -89,6 +90,7 @@ type ServerMessage =
       gatekeeperRejections: GatekeeperRejection[];
       marketEnvironment: MarketEnvironmentState;
       companyHealth: CompanyHealth;
+      companyDna: CompanyDNA;
       executiveReviews: ExecutiveReview[];
       academyProjects: AcademyProject[];
       academyCompletedProjects: AcademyProject[];
@@ -197,6 +199,7 @@ export class GameSocket {
             gatekeeperRejections: msg.gatekeeperRejections,
             marketEnvironment: msg.marketEnvironment,
             companyHealth: msg.companyHealth,
+            companyDna: msg.companyDna,
             executiveReviews: msg.executiveReviews,
             academyProjects: msg.academyProjects,
             academyCompletedProjects: msg.academyCompletedProjects,

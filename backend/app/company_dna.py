@@ -1,0 +1,125 @@
+"""CompanyDNA — v0.7 Feature 43, the Executive Intelligence Dashboard's
+one genuinely net-new concept (see the brief's own overlap research: every
+other item in its "Company Health" list already existed here under a
+different name).
+
+Five real, descriptive behavioral traits read off the company's own
+historical decision/trade record — never predictive, never a fabricated
+personality quiz. Each trait has an honest neutral (50.0) default and a
+real `sampleSize` until enough history exists to say anything real about
+it, the same "don't dress up thin data as a confident reading" convention
+`app/coach.py`/`app/mentor.py` already established elsewhere.
+
+  Risk Appetite        - % of executed trades taken on a confidence
+                          reading of "moderate" or weaker (the Decision
+                          Confidence Engine's own real tier) rather than a
+                          strong/elite signal.
+  Patience              - average real PaperTrade hold duration against
+                          discipline.py's own PATIENCE_TARGET_MINUTES
+                          bar — the same real yardstick the Discipline
+                          Chamber already uses per trade, applied here as
+                          a company-wide average.
+  Contrarian Tendency    - % of CeoDecisionRecords where the CEO's real
+                          choice disagreed with the AI's recommendation
+                          (`agreedWithAi == false`).
+  Research Rigor         - average real Decision Confidence Engine score
+                          across every graded decision.
+  Collaboration Style    - % of decisions where the six analysts cast at
+                          least two distinct real vote choices — genuine
+                          independent thinking rather than rubber-
+                          stamping.
+
+Deliberately distinct from `app/company_health.py`'s `team_chemistry`
+(a real support-vs-challenge ratio across recent AI Debates specifically)
+and from `app/company_score.py`'s `team_coordination` (a proxy off raw
+agent mood) — no trait here reuses either of those signals.
+"""
+from __future__ import annotations
+
+from datetime import datetime, timezone
+
+from app.discipline import PATIENCE_TARGET_MINUTES
+from app.schemas import CeoDecisionRecord, CompanyDNA, CompanyDnaTrait, PaperTrade, TradeDecision
+
+TRAIT_LABELS: dict[str, str] = {
+    "risk_appetite": "Risk Appetite",
+    "patience": "Patience",
+    "contrarian_tendency": "Contrarian Tendency",
+    "research_rigor": "Research Rigor",
+    "collaboration_style": "Collaboration Style",
+}
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
+
+
+def _risk_appetite(decisions: list[TradeDecision]) -> tuple[float, int, str]:
+    traded = [d for d in decisions if d.outcome == "trade" and d.confidence_engine is not None]
+    if not traded:
+        return 50.0, 0, "No executed trades with a Decision Confidence Engine reading yet."
+    risky = sum(1 for d in traded if d.confidence_engine is not None and d.confidence_engine.tier in ("moderate", "weak", "poor"))
+    score = risky / len(traded) * 100.0
+    return score, len(traded), f"{risky} of {len(traded)} executed trade(s) were taken on a moderate-or-weaker confidence reading."
+
+
+def _patience(trades: list[PaperTrade]) -> tuple[float, int, str]:
+    if not trades:
+        return 50.0, 0, "No closed trades yet."
+    avg = sum(t.duration_minutes for t in trades) / len(trades)
+    score = min(100.0, avg / PATIENCE_TARGET_MINUTES * 100.0)
+    return score, len(trades), f"Average real hold time is {avg:.0f} simulated minutes, against the Discipline Chamber's {PATIENCE_TARGET_MINUTES}-minute patient-hold bar."
+
+
+def _contrarian_tendency(records: list[CeoDecisionRecord]) -> tuple[float, int, str]:
+    if not records:
+        return 50.0, 0, "No resolved executive decisions yet."
+    overrides = sum(1 for r in records if not r.agreed_with_ai)
+    score = overrides / len(records) * 100.0
+    return score, len(records), f"The CEO overrode the AI's own recommendation on {overrides} of {len(records)} resolved decision(s)."
+
+
+def _research_rigor(decisions: list[TradeDecision]) -> tuple[float, int, str]:
+    scored = [d.confidence_engine.score for d in decisions if d.confidence_engine is not None]
+    if not scored:
+        return 50.0, 0, "No decisions with a Decision Confidence Engine reading yet."
+    avg = sum(scored) / len(scored)
+    return avg, len(scored), f"Average Decision Confidence Engine score across {len(scored)} decision(s): {avg:.0f}/100."
+
+
+def _collaboration_style(decisions: list[TradeDecision]) -> tuple[float, int, str]:
+    if not decisions:
+        return 50.0, 0, "No decisions on record yet."
+    diverse = sum(1 for d in decisions if len({v.choice for v in d.votes}) >= 2)
+    score = diverse / len(decisions) * 100.0
+    return score, len(decisions), f"{diverse} of {len(decisions)} decision(s) had at least two distinct real analyst positions on the table."
+
+
+def compute_company_dna(
+    decisions: list[TradeDecision],
+    trades: list[PaperTrade],
+    ceo_decisions: list[CeoDecisionRecord],
+) -> CompanyDNA:
+    risk_appetite, risk_n, risk_detail = _risk_appetite(decisions)
+    patience, patience_n, patience_detail = _patience(trades)
+    contrarian, contrarian_n, contrarian_detail = _contrarian_tendency(ceo_decisions)
+    rigor, rigor_n, rigor_detail = _research_rigor(decisions)
+    collaboration, collab_n, collab_detail = _collaboration_style(decisions)
+
+    traits = [
+        CompanyDnaTrait(id="risk_appetite", name=TRAIT_LABELS["risk_appetite"], score=round(risk_appetite, 1), detail=risk_detail),
+        CompanyDnaTrait(id="patience", name=TRAIT_LABELS["patience"], score=round(patience, 1), detail=patience_detail),
+        CompanyDnaTrait(id="contrarian_tendency", name=TRAIT_LABELS["contrarian_tendency"], score=round(contrarian, 1), detail=contrarian_detail),
+        CompanyDnaTrait(id="research_rigor", name=TRAIT_LABELS["research_rigor"], score=round(rigor, 1), detail=rigor_detail),
+        CompanyDnaTrait(id="collaboration_style", name=TRAIT_LABELS["collaboration_style"], score=round(collaboration, 1), detail=collab_detail),
+    ]
+    sample_size = max(risk_n, patience_n, contrarian_n, rigor_n, collab_n)
+
+    if sample_size == 0:
+        summary = "Not enough history yet to describe this company's real behavioral traits — check back after a few trades have closed."
+    else:
+        extreme = sorted(traits, key=lambda t: t.score)
+        lowest, highest = extreme[0], extreme[-1]
+        summary = f"This company's real track record reads highest on {highest.name} ({highest.score:.0f}/100) and lowest on {lowest.name} ({lowest.score:.0f}/100)."
+
+    return CompanyDNA(traits=traits, summary=summary, sampleSize=sample_size, updatedAt=_now_iso())

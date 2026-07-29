@@ -289,8 +289,26 @@ perspective and exists purely to detect disconnects
     "operationalStability": 88.0, "departmentEfficiency": 66.7, "employeeMorale": 74.0,
     "researchProgress": 60.0, "capitalHealth": 58.4, "resourceUsage": 82.0,
     "reputation": 20.0, "technologyLevel": 40.0, "officeExpansion": 25.0, "educationProgress": 15.0,
+    // v0.7 Feature 43 — real support-vs-challenge ratio across the most
+    // recent 20 AI Debates (app/company_health.py's _team_chemistry).
+    "teamChemistry": 62.5,
     "recommendations": ["Reputation is low (20/100) — worth attention."],
     "updatedAt": "..."
+  },
+  "companyDna": {
+    // v0.7 Feature 43 — app/company_dna.py. Five real, descriptive
+    // behavioral traits read off the company's own historical decision/
+    // trade record; each defaults to a neutral 50.0 with sampleSize 0
+    // until there's enough real history to say anything real.
+    "traits": [
+      { "id": "risk_appetite", "name": "Risk Appetite", "score": 40.0, "detail": "2 of 5 executed trade(s) were taken on a moderate-or-weaker confidence reading." },
+      { "id": "patience", "name": "Patience", "score": 75.0, "detail": "Average real hold time is 180 simulated minutes, against the Discipline Chamber's 240-minute patient-hold bar." },
+      { "id": "contrarian_tendency", "name": "Contrarian Tendency", "score": 20.0, "detail": "The CEO overrode the AI's own recommendation on 1 of 5 resolved decision(s)." },
+      { "id": "research_rigor", "name": "Research Rigor", "score": 78.0, "detail": "Average Decision Confidence Engine score across 5 decision(s): 78/100." },
+      { "id": "collaboration_style", "name": "Collaboration Style", "score": 60.0, "detail": "3 of 5 decision(s) had at least two distinct real analyst positions on the table." }
+    ],
+    "summary": "This company's real track record reads highest on Research Rigor (78/100) and lowest on Contrarian Tendency (20/100).",
+    "sampleSize": 5, "updatedAt": "..."
   },
   "marketEnvironment": {
     // v0.7 Feature 22 — a 5-way regime classification computed every tick

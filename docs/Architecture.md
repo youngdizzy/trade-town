@@ -2540,6 +2540,95 @@ updated to 23 tabs, its number-key-shortcut test updated for COMPANY's
 shifted index (8 → 9, since REPLAY now sits between DECISIONS and RISK),
 and its Discipline-tab test updated for the retitled panel heading.
 
+### Executive Intelligence Dashboard
+
+The brief asked for a 13-metric "Company Health" list, proactive "CEO
+Insights," an AI-ranked "Executive Priorities" list, multi-year
+"Performance Trends," and per-department status for 8 named departments.
+Checked first against what already exists: `company_health.py`'s
+`CompanyHealth` (10 sub-scores) and `company_score.py`'s `CompanyScore`
+(7 metrics) already cover most of the brief's own "Company Health" list
+under different names; `PerformanceSnapshot` (weekly/monthly/all-time,
+already surfaced on the PERFORMANCE tab) already covers "Performance
+Trends"; and `CompanyHealth.recommendations` already generates real,
+checkable "why this matters" text every tick — the honest core of "CEO
+Insights" already existed, just not unified into one ranked view. Two
+pieces were genuinely missing: a company-wide behavioral profile
+("Company DNA," the one item the overlap research flagged as clean) and
+a real per-department rollup.
+
+**Company DNA — the one genuinely net-new concept** (`app/company_dna.py`).
+Five real, descriptive behavioral traits, each computed from the
+company's own historical decision/trade record, each with an honest
+neutral 50.0 default and a real `sampleSize` field until there's enough
+history to say anything real:
+
+- **Risk Appetite** — % of executed trades taken on a "moderate" or
+  weaker Decision Confidence Engine tier rather than strong/elite.
+- **Patience** — average real `PaperTrade` hold duration against
+  `discipline.py`'s own `PATIENCE_TARGET_MINUTES` bar, the same real
+  yardstick the Discipline Chamber already uses per trade, applied here
+  as a company-wide average.
+- **Contrarian Tendency** — % of `CeoDecisionRecord`s where
+  `agreedWithAi` is false.
+- **Research Rigor** — average real Decision Confidence Engine score
+  across every graded decision.
+- **Collaboration Style** — % of decisions where the six analysts cast
+  at least two distinct real vote choices.
+
+Deliberately reuses none of `company_health.py`'s `team_chemistry` or
+`company_score.py`'s `team_coordination` signals — three independent
+company-culture readings exist now, each backed by a genuinely different
+real behavior (debate stance ratio, raw agent mood, and historical
+decision/trade patterns respectively), not three fabricated readings of
+the same thing under different names.
+
+**Team Chemistry — a real 11th `CompanyHealth` sub-score, and a
+self-corrected inconsistency.** While researching Company DNA, the
+Advanced Quantitative Research Division's own module docstring
+(`app/black_box.py`) was found to claim "Team Chemistry... genuinely
+new" among that feature's real additions — but no `team_chemistry` field
+had ever actually been implemented anywhere; the claim was aspirational,
+not shipped. `company_health.py`'s new `_team_chemistry()` makes it real:
+the fraction of "support" (vs. "challenge") stance turns across the
+company's most recent 20 AI Debates — genuinely distinct from
+`employee_morale` (individual mood, no debate involved) and from
+`company_score.py`'s `team_coordination` (also a mood proxy) — this is
+specifically about how the team behaves *together* during real
+cross-examination, never a fabricated pairwise relationship graph (no
+per-agent-pair data exists anywhere in this codebase to build one from).
+`black_box.py`'s docstring was corrected to point here instead of
+repeating the unfulfilled claim.
+
+**Executive Priorities and Department Health are both pure frontend
+derivations** — like the Decision Replay Center, no second backend
+computation was needed. `lib/derive.ts`'s `computeExecutivePriorities()`
+merges and dedupes `CompanyHealth.recommendations` with the latest
+`CoachReport` and `ExecutiveReview`'s own real recommendation text
+(first occurrence wins, so a live Company Health read outranks a
+possibly-stale periodic report repeating the same point — no invented
+ranking model). `computeDepartmentHealth()` maps the brief's 8 named
+departments onto the 7 real subsystems this codebase actually has state
+for (Academy/Research/Risk/Trading/Innovation/Coach/Founders), each
+showing whichever of the brief's five requested dimensions
+(Efficiency/Workload/Morale/Productivity/Bottlenecks) that subsystem
+genuinely tracks — never a uniform template forced onto systems that
+don't track all five. "Brain Room" is dropped entirely: it's the
+physical room housing the Overview HUD, not an operational unit with
+its own state, so including it would mean inventing metrics for a room.
+
+**Verification.** Backend: `test_company_dna.py` (15 new tests, one per
+trait's real trigger/formula, plus the honest empty-history default) +
+`test_company_health.py` extended with a `TestTeamChemistry` class (4
+new tests) + the full suite (515/515) + mypy/ruff clean. Frontend:
+`tsc -b`/eslint/build clean; a new `execIntel.spec.ts` (2 Playwright
+tests against the live stack — confirming `companyDna` is present in
+`GET /api/load` with all 5 traits, and that the EXECINTEL tab renders
+Company DNA/Executive Priorities/Department Health with zero console
+errors) both passed; `commandCenter.spec.ts`'s tab-count test updated to
+24 tabs (COMPANY's own number-key-shortcut index is unaffected, since
+EXECINTEL was inserted immediately after COMPANY rather than before it).
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

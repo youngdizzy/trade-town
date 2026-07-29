@@ -1379,10 +1379,39 @@ class CompanyHealth(CamelModel):
     technology_level: float = Field(alias="technologyLevel")
     office_expansion: float = Field(alias="officeExpansion")
     education_progress: float = Field(alias="educationProgress")
+    # v0.7 Feature 43 — real support-vs-challenge ratio across recent AI
+    # Debates (see app/company_health.py's _team_chemistry). Defaults to
+    # 50.0 (neutral) so a save from before this field existed still
+    # validates during load — see persistence.py's migration path.
+    team_chemistry: float = Field(default=50.0, alias="teamChemistry")
     # The two (or more, on a tie) lowest-scoring areas, named in plain
     # language — never generic filler, always tied to the actual weakest
     # real sub-score this tick (see app/company_health.py).
     recommendations: list[str] = Field(default_factory=list)
+    updated_at: str = Field(alias="updatedAt")
+
+
+# v0.7 Feature 43 — Company DNA (app/company_dna.py). The one genuinely
+# net-new concept the Executive Intelligence Dashboard brief asked for —
+# everything else in its "Company Health" list already existed under a
+# different name (see the module docstring). Five real, descriptive
+# behavioral traits computed from the company's own historical decision/
+# trade record — never predictive, never a personality quiz, just "here
+# is what this company's real track record shows about how it behaves."
+class CompanyDnaTrait(CamelModel):
+    id: str
+    name: str
+    score: float
+    detail: str
+
+
+class CompanyDNA(CamelModel):
+    traits: list[CompanyDnaTrait] = Field(default_factory=list)
+    summary: str
+    # How many real closed trades/graded decisions this reading is based
+    # on — shown so a fresh company's DNA reads as "not enough history
+    # yet" rather than a confident-looking guess from thin data.
+    sample_size: int = Field(alias="sampleSize")
     updated_at: str = Field(alias="updatedAt")
 
 
@@ -2158,6 +2187,8 @@ class GameSaveState(CamelModel):
     market_environment: MarketEnvironmentState = Field(alias="marketEnvironment")
     # v0.7 Feature 23 — Company Health & Stability System (app/company_health.py).
     company_health: CompanyHealth = Field(alias="companyHealth")
+    # v0.7 Feature 43 — Company DNA (app/company_dna.py).
+    company_dna: CompanyDNA = Field(alias="companyDna")
     # v0.7 Feature 24 — the CIO's Monthly Executive Review (app/executive_review.py).
     executive_reviews: list[ExecutiveReview] = Field(default_factory=list, alias="executiveReviews")
     # v0.7 Feature 25 — AI Academy. `academy_projects` holds the one

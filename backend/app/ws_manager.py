@@ -78,6 +78,7 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         "marketEnvironment": state.market_environment.model_dump(by_alias=True),
         # v0.7 Feature 23 — recomputed every tick like companyScore above.
         "companyHealth": state.company_health.model_dump(by_alias=True),
+        "companyDna": state.company_dna.model_dump(by_alias=True),
         # v0.7 Feature 24 — already capped (MAX_EXECUTIVE_REVIEWS) like coachReports above.
         "executiveReviews": [r.model_dump(by_alias=True) for r in state.executive_reviews],
         # v0.7 Feature 25 — academyProjects holds the one active project

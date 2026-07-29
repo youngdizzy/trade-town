@@ -13,6 +13,7 @@ import type {
   CaseStudy,
   ChallengeReport,
   CoachReport,
+  CompanyDNA,
   CompanyHealth,
   CompanyScore,
   Debate,
@@ -140,6 +141,7 @@ export interface GameEvents {
   "gatekeeperRejections:updated": GatekeeperRejection[];
   "marketEnvironment:updated": MarketEnvironmentState;
   "companyHealth:updated": CompanyHealth;
+  "companyDna:updated": CompanyDNA;
   "executiveReviews:updated": ExecutiveReview[];
   "academyProjects:updated": AcademyProject[];
   "academyCompletedProjects:updated": AcademyProject[];

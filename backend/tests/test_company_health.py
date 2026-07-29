@@ -13,6 +13,8 @@ from app.portfolio import default_portfolio
 from app.schemas import (
     AgentEnergy,
     AgentState,
+    Debate,
+    DebateTurn,
     EducationProgress,
     EntityTransform,
     ResearchItem,
@@ -61,6 +63,7 @@ def _health(**overrides):
         signal_calibration=SignalCalibrationState(),
         watchlist=default_watchlist(),
         education=EducationProgress(),
+        debates=[],
     )
     defaults.update(overrides)
     return compute_company_health(**defaults)
@@ -166,7 +169,7 @@ class TestEducationProgress:
 
 
 class TestOverallAndTier:
-    def test_overall_is_the_mean_of_the_ten_metrics(self) -> None:
+    def test_overall_is_the_mean_of_the_eleven_metrics(self) -> None:
         health = _health()
         metrics = [
             health.operational_stability,
@@ -179,6 +182,7 @@ class TestOverallAndTier:
             health.technology_level,
             health.office_expansion,
             health.education_progress,
+            health.team_chemistry,
         ]
         assert health.overall == round(sum(metrics) / len(metrics), 1)
 
@@ -209,5 +213,71 @@ class TestOverallAndTier:
             education=EducationProgress(completedLessonIds=[lesson.id for lesson in all_lessons()]),
             watchlist=[*default_watchlist(), *(WatchlistEntry(symbol=s, name=s, lastPrice=1.0, dailyChangePct=0.0, status="queued", researchProgress=0.0, assignedAgent=None) for s in ["AMZN", "GOOGL", "TSLA", "NVDA", "SLV", "USO"])],
             portfolio=default_portfolio().model_copy(update={"total_pnl_pct": 40.0}),
+            debates=[_all_supportive_debate()],
         )
         assert health.recommendations == []
+
+
+class TestTeamChemistry:
+    def test_no_debates_yet_reads_neutral(self) -> None:
+        health = _health(debates=[])
+        assert health.team_chemistry == 50.0
+
+    def test_mostly_supportive_turns_score_high(self) -> None:
+        health = _health(debates=[_all_supportive_debate()])
+        assert health.team_chemistry == 100.0
+
+    def test_mostly_challenge_turns_score_low(self) -> None:
+        debate = Debate(
+            id="d1",
+            proposalId="p1",
+            symbol="AAPL",
+            turns=[
+                DebateTurn(agentId="echo", role="technical", stance="opening", respondingTo=None, text="x"),  # type: ignore[arg-type]
+                DebateTurn(agentId="scout", role="news", stance="challenge", respondingTo="echo", text="x"),  # type: ignore[arg-type]
+                DebateTurn(agentId="nova", role="macro", stance="challenge", respondingTo="echo", text="x"),  # type: ignore[arg-type]
+            ],
+            finalRecommendation="wait",
+            finalSummary="x",
+            createdAt="2026-01-01T00:00:00+00:00",
+        )
+        health = _health(debates=[debate])
+        assert health.team_chemistry == 0.0
+
+    def test_only_the_most_recent_window_of_debates_counts(self) -> None:
+        # 19 challenge-only debates followed by 1 fully supportive one —
+        # only the most recent TEAM_CHEMISTRY_WINDOW (20) debates count,
+        # and the supportive one alone tips the ratio, so this stays
+        # well below a clean 100 (proving old debates aren't discarded
+        # entirely) but should read distinctly higher than a run of pure
+        # challenge debates would.
+        challenge_debate = Debate(
+            id="d-challenge",
+            proposalId="p1",
+            symbol="AAPL",
+            turns=[
+                DebateTurn(agentId="echo", role="technical", stance="opening", respondingTo=None, text="x"),  # type: ignore[arg-type]
+                DebateTurn(agentId="scout", role="news", stance="challenge", respondingTo="echo", text="x"),  # type: ignore[arg-type]
+            ],
+            finalRecommendation="wait",
+            finalSummary="x",
+            createdAt="2026-01-01T00:00:00+00:00",
+        )
+        health = _health(debates=[*(challenge_debate for _ in range(19)), _all_supportive_debate()])
+        assert 0.0 < health.team_chemistry < 100.0
+
+
+def _all_supportive_debate() -> Debate:
+    return Debate(
+        id="d-supportive",
+        proposalId="p1",
+        symbol="AAPL",
+        turns=[
+            DebateTurn(agentId="echo", role="technical", stance="opening", respondingTo=None, text="x"),  # type: ignore[arg-type]
+            DebateTurn(agentId="scout", role="news", stance="support", respondingTo="echo", text="x"),  # type: ignore[arg-type]
+            DebateTurn(agentId="nova", role="macro", stance="support", respondingTo="echo", text="x"),  # type: ignore[arg-type]
+        ],
+        finalRecommendation="buy",
+        finalSummary="x",
+        createdAt="2026-01-01T00:00:00+00:00",
+    )

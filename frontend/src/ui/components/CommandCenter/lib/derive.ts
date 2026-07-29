@@ -1,15 +1,22 @@
 import type {
+  AcademyState,
   AgentId,
   AgentState,
   AgentVote,
   AnalystRole,
+  BlackBoxState,
   CaseStudy,
   CeoDecisionRecord,
   ChallengeReport,
+  CoachReport,
+  CompanyHealth,
   ConfidenceTier,
   Debate,
   DisciplineReview,
+  ExecutiveReview,
+  FounderState,
   GatekeeperRejection,
+  InnovationState,
   PaperOrder,
   PaperPortfolio,
   PaperTrade,
@@ -569,4 +576,145 @@ export function computeGatekeeperStats(decisions: TradeDecision[], rejections: G
     wouldHaveLost,
     vetoAccuracy: resolved.length ? (wouldHaveLost / resolved.length) * 100 : null,
   };
+}
+
+// --- v0.7 Feature 43 — Executive Intelligence Dashboard --------------------
+// Every number below is a direct reuse of an already-real, already-
+// computed signal (CompanyHealth's recommendations, the latest CoachReport/
+// ExecutiveReview, per-department state this codebase already tracks) —
+// no new backend computation was needed for either function here, the same
+// "the data already exists, only the unified view was missing" pattern
+// Feature 42's Decision Replay Center used.
+
+export interface ExecutivePriority {
+  label: string;
+  source: "Company Health" | "Coach Report" | "Executive Review";
+}
+
+/**
+ * The brief's "Executive Priorities" is a single AI-ranked list; this
+ * codebase already generates three separate, real recommendation lists
+ * (CompanyHealth.recommendations every tick, the latest CoachReport's
+ * weekly/monthly recommendations, the latest ExecutiveReview's monthly
+ * recommendations) that have never been merged into one view. This merges
+ * and dedupes them by text — first occurrence wins, so Company Health's
+ * always-current read takes priority over a possibly-stale periodic
+ * report repeating the same point. No new ranking model: order reflects
+ * which real system raised the point, not an invented severity score.
+ */
+export function computeExecutivePriorities(companyHealth: CompanyHealth, coachReports: CoachReport[], executiveReviews: ExecutiveReview[]): ExecutivePriority[] {
+  const raw: ExecutivePriority[] = [];
+  for (const label of companyHealth.recommendations) raw.push({ label, source: "Company Health" });
+  const latestCoach = coachReports[coachReports.length - 1];
+  if (latestCoach) for (const label of latestCoach.recommendations) raw.push({ label, source: "Coach Report" });
+  const latestReview = executiveReviews[executiveReviews.length - 1];
+  if (latestReview) for (const label of latestReview.recommendations) raw.push({ label, source: "Executive Review" });
+
+  const seen = new Set<string>();
+  return raw.filter((p) => {
+    if (seen.has(p.label)) return false;
+    seen.add(p.label);
+    return true;
+  });
+}
+
+export interface DepartmentMetric {
+  label: string;
+  value: string;
+}
+
+export interface DepartmentHealthEntry {
+  id: string;
+  label: string;
+  metrics: DepartmentMetric[];
+}
+
+/**
+ * The brief names 8 departments (Academy, Research, Risk, Trading,
+ * Innovation, Coach, Founders, Brain Room), each with Efficiency/Workload/
+ * Morale/Productivity/Bottlenecks. This codebase has no literal
+ * "department" concept — what exists are 7 real subsystems, each with its
+ * own real state; every metric below is whichever of those five
+ * dimensions that subsystem actually has a real number for, never a
+ * uniform template forced onto systems that don't track all five.
+ * "Brain Room" is dropped entirely: it's the physical room housing the
+ * Overview HUD, not a distinct operational unit with its own state —
+ * including it would mean inventing metrics for a room, not a system.
+ */
+export function computeDepartmentHealth(state: {
+  companyHealth: CompanyHealth;
+  research: ResearchItem[];
+  riskWarnings: RiskWarning[];
+  portfolio: PaperPortfolio;
+  blackBox: BlackBoxState;
+  innovationState: Record<AgentId, InnovationState>;
+  coachReports: CoachReport[];
+  founderState: FounderState;
+  academyState: AcademyState;
+}): DepartmentHealthEntry[] {
+  const activeResearch = state.research.filter((r) => r.status === "in_progress").length;
+  const latestCoach = state.coachReports[state.coachReports.length - 1] ?? null;
+  const totalInnovationPoints = Object.values(state.innovationState).reduce((sum, i) => sum + i.points, 0);
+  const totalTrades = state.portfolio.winCount + state.portfolio.lossCount;
+
+  return [
+    {
+      id: "academy",
+      label: "Academy",
+      metrics: [
+        { label: "Level", value: state.academyState.levelLabel },
+        { label: "Knowledge Points (Productivity)", value: state.academyState.totalPoints.toFixed(0) },
+        { label: "Completed Projects", value: String(state.academyState.completedProjectCount) },
+      ],
+    },
+    {
+      id: "research",
+      label: "Research",
+      metrics: [
+        { label: "Progress (Efficiency)", value: `${state.companyHealth.researchProgress.toFixed(0)}/100` },
+        { label: "Active Items (Workload)", value: String(activeResearch) },
+      ],
+    },
+    {
+      id: "risk",
+      label: "Risk",
+      metrics: [
+        { label: "Operational Stability", value: `${state.companyHealth.operationalStability.toFixed(0)}/100` },
+        { label: "Active Warnings (Bottleneck)", value: String(state.riskWarnings.length) },
+      ],
+    },
+    {
+      id: "trading",
+      label: "Trading",
+      metrics: [
+        { label: "Capital Health", value: `${state.companyHealth.capitalHealth.toFixed(0)}/100` },
+        { label: "Open Positions (Workload)", value: String(state.portfolio.positions.length) },
+        { label: "Win Rate (Productivity)", value: totalTrades > 0 ? `${((state.portfolio.winCount / totalTrades) * 100).toFixed(0)}%` : "N/A — no trades closed yet" },
+      ],
+    },
+    {
+      id: "innovation",
+      label: "Innovation",
+      metrics: [
+        { label: "Active Project (Productivity)", value: state.blackBox.active ? `${state.blackBox.active.progress.toFixed(0)}% complete` : "None active" },
+        { label: "Company Innovation Points", value: totalInnovationPoints.toFixed(0) },
+      ],
+    },
+    {
+      id: "coach",
+      label: "Coach",
+      metrics: [
+        { label: "Latest Company Score (Efficiency)", value: latestCoach ? `${latestCoach.companyScore.toFixed(0)}/100` : "No report filed yet" },
+        { label: "Reports Filed", value: String(state.coachReports.length) },
+      ],
+    },
+    {
+      id: "founders",
+      label: "Founders",
+      metrics: [
+        { label: "Council Sessions", value: String(state.founderState.councilSessions.length) },
+        { label: "Status", value: state.founderState.retired ? "Retired" : "Active" },
+      ],
+    },
+  ];
 }

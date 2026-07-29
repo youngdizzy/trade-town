@@ -10,6 +10,7 @@ import type {
   CeoDecisionRecord,
   ChallengeReport,
   CoachReport,
+  CompanyDNA,
   CompanyHealth,
   CompanyScore,
   Debate,
@@ -80,6 +81,7 @@ interface NexusSnapshot {
   gatekeeperRejections: GatekeeperRejection[];
   marketEnvironment: MarketEnvironmentState;
   companyHealth: CompanyHealth;
+  companyDna: CompanyDNA;
   executiveReviews: ExecutiveReview[];
   academyProjects: AcademyProject[];
   academyCompletedProjects: AcademyProject[];
@@ -188,7 +190,14 @@ export class NexusManager {
     technologyLevel: 0,
     officeExpansion: 0,
     educationProgress: 0,
+    teamChemistry: 50,
     recommendations: [],
+    updatedAt: new Date().toISOString(),
+  };
+  private static companyDna: CompanyDNA = {
+    traits: [],
+    summary: "",
+    sampleSize: 0,
     updatedAt: new Date().toISOString(),
   };
   private static executiveReviews: ExecutiveReview[] = [];
@@ -306,6 +315,10 @@ export class NexusManager {
 
   static getCompanyHealth(): CompanyHealth {
     return this.companyHealth;
+  }
+
+  static getCompanyDna(): CompanyDNA {
+    return this.companyDna;
   }
 
   static getExecutiveReviews(): ExecutiveReview[] {
@@ -703,6 +716,9 @@ export class NexusManager {
     if (update.companyHealth !== this.companyHealth) EventBus.emit("companyHealth:updated", update.companyHealth);
     this.companyHealth = update.companyHealth;
 
+    if (update.companyDna !== this.companyDna) EventBus.emit("companyDna:updated", update.companyDna);
+    this.companyDna = update.companyDna;
+
     if (update.executiveReviews.length !== this.executiveReviews.length) EventBus.emit("executiveReviews:updated", update.executiveReviews);
     this.executiveReviews = update.executiveReviews;
 
@@ -822,6 +838,7 @@ export class NexusManager {
     this.gatekeeperRejections = save.gatekeeperRejections;
     this.marketEnvironment = save.marketEnvironment;
     this.companyHealth = save.companyHealth;
+    this.companyDna = save.companyDna;
     this.executiveReviews = save.executiveReviews;
     this.academyProjects = save.academyProjects;
     this.academyCompletedProjects = save.academyCompletedProjects;

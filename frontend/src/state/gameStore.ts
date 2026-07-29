@@ -12,6 +12,7 @@ import type {
   CeoDecisionRecord,
   ChallengeReport,
   CoachReport,
+  CompanyDNA,
   CompanyHealth,
   CompanyScore,
   Debate,
@@ -100,6 +101,7 @@ export interface GameUiState {
   gatekeeperRejections: GatekeeperRejection[];
   marketEnvironment: MarketEnvironmentState;
   companyHealth: CompanyHealth;
+  companyDna: CompanyDNA;
   executiveReviews: ExecutiveReview[];
   academyProjects: AcademyProject[];
   academyCompletedProjects: AcademyProject[];
@@ -236,7 +238,14 @@ class GameStore {
       technologyLevel: 0,
       officeExpansion: 0,
       educationProgress: 0,
+      teamChemistry: 50,
       recommendations: [],
+      updatedAt: new Date().toISOString(),
+    },
+    companyDna: {
+      traits: [],
+      summary: "",
+      sampleSize: 0,
       updatedAt: new Date().toISOString(),
     },
     executiveReviews: [],
@@ -379,6 +388,7 @@ class GameStore {
     EventBus.on("gatekeeperRejections:updated", (gatekeeperRejections) => this.set({ gatekeeperRejections }));
     EventBus.on("marketEnvironment:updated", (marketEnvironment) => this.set({ marketEnvironment }));
     EventBus.on("companyHealth:updated", (companyHealth) => this.set({ companyHealth }));
+    EventBus.on("companyDna:updated", (companyDna) => this.set({ companyDna }));
     EventBus.on("executiveReviews:updated", (executiveReviews) => this.set({ executiveReviews }));
     EventBus.on("academyProjects:updated", (academyProjects) => this.set({ academyProjects }));
     EventBus.on("academyCompletedProjects:updated", (academyCompletedProjects) => this.set({ academyCompletedProjects }));
