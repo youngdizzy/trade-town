@@ -1959,6 +1959,121 @@ is deliberately still just one visual bound to one already-real number,
 not the per-building construction system this file's Campus Map section
 above explicitly cut.
 
+### The Original Founders (Feature 39)
+
+The brief describes two Founders whose teaching style ("teaches through
+questions, case studies, and reviewing mistakes... rarely gives direct
+answers... guides employees toward discovering the correct reasoning
+themselves") is near-identical, in both cases, to Sage's already-shipped
+Socratic Mentor mechanic (`app/mentor.py`, Feature 32). Building a
+second, independent daily-teaching/grading system under new names would
+be exactly the "redundant re-measurement under a new name" trap
+`mentor.py`'s own module docstring already checked for once (its cut
+"Thinking Session"). It is not repeated here.
+
+**Design resolution.** Keystone (Chief Risk Architect) and Compass
+(Chief Learning Architect) are framed as the spiritual originators of
+two already-real system clusters this codebase built across earlier
+features — Keystone for the Discipline Chamber / Library of Mistakes /
+Risk Engine (`app/discipline.py`, `app/mistakes.py`, Sentinel/Guardian's
+real `RiskWarning`s), Compass for the Academy / Reasoning Lab /
+Reflection Chamber (`app/reasoning_lab.py`, `app/wisdom.py`, Sage's own
+domain). Sage remains the one who actively runs the daily Socratic
+mentoring mechanic; the Founders provide an identity/personality layer
+on top — real, hand-authored philosophy/specialty/quote content taken
+directly from the brief — plus a real reaction to whichever event most
+recently landed in their own domain, using `mentor.py`'s own
+`_related_reference`-style templated-framing-over-real-state pattern
+(see `app/founders.py`'s `_keystone_reference`/`_compass_reference`).
+
+**Added as real agents, not a parallel system.** `"keystone"`/`"compass"`
+join `AGENT_IDS` (11 → 13) the same proven way `"cio"`/`"sage"` were
+added in Features 24/32: a real `AgentProfile` entry (`app/agents.py`),
+a real `AGENT_SCHEDULES` entry (`app/schedule.py`) routing them through
+real locations (`trading-floor`/`executive-boardroom`/`meeting-room`/
+`lobby` for Keystone; `brain-room`/`meeting-room`/`hall-of-fame`/`lobby`
+for Compass), and automatic participation in every generic
+`all_agent_ids()`-driven system (mood/energy, default agent state,
+`register_agents()`'s self-healing migration for old saves). Neither
+ever routes through a trading task or earns Academy Knowledge Points —
+`academy.py`'s `KNOWLEDGE_BRANCH` deliberately has no entry for either,
+a documented exception (see `test_academy.py`), since they're the
+spiritual originators of that system, not students inside it.
+
+**Founder Log** (`FounderLogEntry`, `app/founders.py`): one real dialogue
+line per in-game day, alternating Keystone/Compass by day parity, at a
+distinct hour (`FOUNDER_LOG_HOUR = 10`, separate from Sage's own
+`MORNING_QOTD_HOUR` so neither mechanic is ever confused with the
+other). `_keystone_reference()`/`_compass_reference()` point at whichever
+real event — a `DisciplineReview`/`CaseStudy` for Keystone, a
+`ReasoningChallenge`/`ReflectionSession` for Compass — most recently
+landed in that Founder's domain, and return `None` (no entry recorded)
+when that Founder's domain genuinely has nothing real yet, an honest
+empty state never papered over. The line pairs a real, verbatim-from-
+the-brief quote (`FOUNDER_QUOTES`, cycled deterministically by
+`sim_day % len(quotes)`, the same convention `mentor.py`'s own
+`QUESTION_LIBRARY` already established) with the real reference.
+
+**Founder Council** (`FounderCouncilSession`): generated on the same
+monthly cadence as the existing `CoachReport` (`nexus.py`'s
+`is_evening and new_time.day % MONTHLY_INTERVAL_DAYS == 0` block),
+summarizing the just-generated monthly report's own real
+`strengths[0]`/`recommendations[0]` alongside each Founder's own latest
+real domain reference — never a fabricated meeting transcript.
+
+**Legendary Status.** `FounderState.retired` (`compute_founder_state()`)
+flips permanently to `True` the first time `CompanyHealth.tier` reaches
+`"excellent"` — the single most comprehensive real milestone this
+codebase already computes (a genuine average across ten real
+sub-scores) — and never reverts once true, the same "a crossed milestone
+stays crossed" convention `app/hall_of_fame.py` already established for
+its own permanent records. Retirement doesn't change either Founder's
+schedule, personality, or dialogue in any way — it only unlocks the Hall
+of Founders view in the Command Center's `FOUNDERS` tab.
+
+**Cut entirely, and why:** unique portraits/animations — reuses the
+exact same palette-swapped sprite convention every other agent already
+has (two new tint colors, `0x8C7A5C` for Keystone, `0x3FBFA0` for
+Compass); no new art pipeline exists. Voice acting — the brief itself
+calls this optional ("if voice acting is added later"); no audio/TTS
+system exists anywhere in this codebase. Onboarding for new employees —
+this codebase has a fixed 13-agent roster; no new-hire system, no
+employee ever joins the company after the game starts, so there is
+nothing to onboard. Employees "speaking about them with respect" in
+meetings — would require editing `app/discussion.py`'s real,
+already-tested meeting-dialogue generator to inject Founder references;
+left as a clean follow-up rather than risking a working system in this
+pass.
+
+**Frontend.** A new `FOUNDERS` tab in the Full Command Center
+(`FoundersPanel.tsx`) shows both Founders' real identity (badge, title,
+philosophy, personality, specialties, quotes, teaching style — mirrored
+as static content in a new `frontend/src/game/systems/founders.ts`, the
+same "real content mirrored client-side" convention `Schedule.ts`
+already established), Legendary Status, the real Founder Log, and real
+Founder Council history. Because the Campus Map (Feature 38) already
+iterates `AGENT_IDS` generically, Keystone and Compass appear on it
+automatically with no Campus Map code changes needed.
+
+**Verification.** 15 new backend tests (`test_founders.py`) covering log
+generation (both founders, honest-empty-state, quote cycling, domain
+preference), Founder Council generation (empty vs. real content), and
+retirement (stays active, flips permanently, never un-retires) — full
+backend suite 432/432 passing (417 pre-existing + 15 new), mypy/ruff
+clean. Two pre-existing tests (`test_academy.py`,
+`test_wisdom.py`) needed updates for the roster growing from 11 to 13 —
+both are genuine, correct behavior changes (Founders deliberately excluded
+from Academy Knowledge; Founders genuinely attend the Reflection Chamber),
+not regressions. Frontend `tsc -b`/eslint/build clean. Playwright
+regression re-verified across `commandCenter.spec.ts` (new FOUNDERS tab
+test; updated tab count/list), `campusMap.spec.ts` (updated Employee
+Count assertion), `executiveVoting.spec.ts`, `marketObservatory.spec.ts`.
+Also manually confirmed a real schema-migration round trip against a
+genuine pre-Feature-39 save already on disk — the backend's existing
+`register_agents()`/`_migrate_dict()` self-healed the roster and added
+the missing `founder_state` field with no data loss, no special-casing
+needed for this feature.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

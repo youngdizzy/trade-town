@@ -17,6 +17,7 @@ import type {
   DialogueHistoryEntry,
   DisciplineReview,
   ExecutiveReview,
+  FounderState,
   GameSaveState,
   GatekeeperRejection,
   HallOfFameEntry,
@@ -134,6 +135,7 @@ export interface GameEvents {
   "questionArchive:updated": QuestionOfTheDay[];
   "thinkingProfiles:updated": Record<AgentId, ThinkingProfile>;
   "mentorState:updated": MentorState;
+  "founderState:updated": FounderState;
   "treasury:updated": TreasuryState;
   "calendar:updated": CalendarState;
   "ui:executiveVoting": { open: boolean; proposalId?: string };

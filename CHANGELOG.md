@@ -916,6 +916,55 @@ development milestones, not semver releases.
     system-event lists, the per-agent Live Schedule, and a full custom-
     event create/delete round trip against the live backend).
 
+- **v0.7 — The Original Founders (Feature 39)** — Keystone (Chief Risk
+  Architect) and Compass (Chief Learning Architect) join the roster as
+  two new real agents (`AGENT_IDS` grows from 11 to 13). The brief's
+  teaching style for both ("teaches through questions... rarely gives
+  direct answers") is near-identical to Sage's already-shipped Socratic
+  Mentor (Feature 32) — rather than build a second competing daily-
+  teaching mechanic, the Founders are framed as the spiritual originators
+  of two already-real system clusters: Keystone for the Discipline
+  Chamber/Library of Mistakes/Risk Engine, Compass for the Academy/
+  Reasoning Lab/Reflection Chamber.
+  - Added the same proven way the CIO/Sage were added in earlier
+    features: real personality/schedule/campus presence via a new
+    `app/founders.py`, but neither ever routes through a trading task or
+    earns Academy Knowledge Points — a deliberate, documented exception.
+  - **Founder Log**: one real dialogue line per day, alternating between
+    Keystone and Compass, reacting to whichever real event most recently
+    landed in that Founder's own domain (a real DisciplineReview,
+    CaseStudy, ReasoningChallenge, or ReflectionSession) — never a
+    fabricated open-ended conversation. Philosophy/specialties/quotes
+    are real, hand-authored content taken directly from the brief.
+  - **Founder Council**: a real monthly session alongside the existing
+    monthly CoachReport, summarizing the Coach's own real highlight plus
+    each Founder's latest real domain commentary.
+  - **Legendary Status**: `FounderState.retired` flips permanently the
+    first time `CompanyHealth.tier` reaches "excellent" — the most
+    comprehensive real milestone this codebase already computes — and
+    never reverts, the same "a crossed milestone stays crossed"
+    convention `app/hall_of_fame.py` already established. Retirement
+    changes nothing about either Founder's schedule, personality, or
+    dialogue; it only unlocks the Hall of Founders view.
+  - Portraits reuse the exact same palette-swapped sprite convention
+    every other agent already has (two new tint colors: Keystone's
+    weathered bronze, Compass's teal). Voice acting is explicitly
+    brief-optional and cut. No employee-onboarding system exists
+    anywhere in this codebase — the roster is fixed and no new hires
+    ever join — so that brief item is cut outright.
+  - New `FOUNDERS` tab in the Command Center shows both Founders' real
+    identity, Legendary Status, the Founder Log, and Founder Council
+    history.
+  - Verification: 15 new backend tests (`test_founders.py`), full
+    backend suite 432/432 passing, mypy/ruff clean. Frontend `tsc -b`/
+    eslint/build clean. Playwright regression re-verified across
+    `commandCenter.spec.ts` (new FOUNDERS tab test, updated 21-tab
+    count), `campusMap.spec.ts` (updated Employee Count assertion),
+    `executiveVoting.spec.ts`, `marketObservatory.spec.ts`. Also
+    confirmed a real schema-migration round trip against a genuine
+    pre-Feature-39 save on disk — the backend self-healed the roster and
+    added the missing `founderState` field with no data loss.
+
 - **v0.7 — Company Campus Map (Feature 38)** — a real, always-current map
   overlay (`M` key, the Command Center's/Quick View's new 🗺 CAMPUS
   button, or Pause Menu → Campus Map) that turns every existing building

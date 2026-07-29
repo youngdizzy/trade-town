@@ -21,8 +21,11 @@ export type SceneId =
 // v0.7 Feature 24 — Meridian, the Chief Investment Officer, is the tenth
 // agent. Unlike every other agent, the CIO never votes on a trade or
 // generates a research signal — it only reviews already-real state.
-export type AgentId = "scout" | "atlas" | "echo" | "nova" | "scribe" | "coach" | "sentinel" | "pulse" | "guardian" | "cio" | "sage";
-export const AGENT_IDS: readonly AgentId[] = ["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio", "sage"];
+// v0.7 Feature 39 — Keystone and Compass, the Original Founders, are the
+// twelfth and thirteenth. Neither ever trades or earns Academy Knowledge
+// Points — see backend/app/founders.py's module docstring.
+export type AgentId = "scout" | "atlas" | "echo" | "nova" | "scribe" | "coach" | "sentinel" | "pulse" | "guardian" | "cio" | "sage" | "keystone" | "compass";
+export const AGENT_IDS: readonly AgentId[] = ["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio", "sage", "keystone", "compass"];
 
 /** Every room an agent's schedule (or a meeting/break override) can place them in. */
 export type AgentLocation =
@@ -1227,6 +1230,37 @@ export interface MentorState {
   updatedAt: string;
 }
 
+// v0.7 Feature 39 — the Original Founders (see backend/app/founders.py's
+// module docstring for why this is deliberately not a second Socratic-
+// teaching mechanic competing with MentorState above).
+export type FounderId = "keystone" | "compass";
+
+export interface FounderLogEntry {
+  id: string;
+  founderId: FounderId;
+  line: string;
+  reference: string;
+  simDay: number;
+  createdAt: string;
+}
+
+export interface FounderCouncilSession {
+  id: string;
+  simDay: number;
+  coachHighlight: string;
+  keystoneNote: string;
+  compassNote: string;
+  createdAt: string;
+}
+
+export interface FounderState {
+  retired: boolean;
+  retiredAt: string | null;
+  log: FounderLogEntry[];
+  councilSessions: FounderCouncilSession[];
+  updatedAt: string;
+}
+
 // v0.7 Feature 33 — the CEO Treasury (see backend/app/treasury.py's
 // module docstring for the structural "never touched automatically"
 // guarantee).
@@ -1372,6 +1406,7 @@ export interface GameSaveState {
   questionArchive: QuestionOfTheDay[];
   thinkingProfiles: Record<AgentId, ThinkingProfile>;
   mentorState: MentorState;
+  founderState: FounderState;
   treasury: TreasuryState;
   calendar: CalendarState;
   agentEnergy: AgentEnergy;

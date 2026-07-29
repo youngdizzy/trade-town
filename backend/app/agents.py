@@ -109,6 +109,27 @@ AGENT_PROFILES: dict[AgentId, AgentProfile] = {
         home_location="brain-room",
         tint=0x9B7FD4,
     ),
+    # v0.7 Feature 39 — the Original Founders. Keystone and Compass are
+    # the spiritual originators of two already-real system clusters
+    # (Discipline Chamber/Risk Engine, and Academy/Reasoning Lab) rather
+    # than a second Socratic-teaching mechanic competing with Sage's
+    # already-shipped one — see app/founders.py's module docstring.
+    "keystone": AgentProfile(
+        id="keystone",
+        name="Keystone",
+        occupation="Chief Risk Architect",
+        personality="Calm, patient, and immovable. Speaks rarely — when he does, the floor goes quiet.",
+        home_location="trading-floor",
+        tint=0x8C7A5C,
+    ),
+    "compass": AgentProfile(
+        id="compass",
+        name="Compass",
+        occupation="Chief Learning Architect",
+        personality="Endlessly curious. Treats every mistake as unfinished research.",
+        home_location="brain-room",
+        tint=0x3FBFA0,
+    ),
 }
 
 

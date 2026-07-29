@@ -21,7 +21,12 @@ from app.schemas import AGENT_IDS
 class TestDefaultAgentKnowledge:
     def test_every_agent_starts_at_zero_points_and_tier(self) -> None:
         knowledge = default_agent_knowledge()
-        assert set(knowledge.keys()) == set(AGENT_IDS)
+        # v0.7 Feature 39 — the Original Founders (keystone/compass)
+        # deliberately have no KNOWLEDGE_BRANCH entry: they're the
+        # spiritual originators of the Academy/Reasoning Lab system, not
+        # students earning points inside it (see app/founders.py's
+        # module docstring).
+        assert set(knowledge.keys()) == set(AGENT_IDS) - {"keystone", "compass"}
         for state in knowledge.values():
             assert state.points == 0.0
             assert state.tier == 0

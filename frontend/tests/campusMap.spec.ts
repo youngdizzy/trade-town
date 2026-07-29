@@ -97,7 +97,10 @@ test.describe("Company Campus Map", () => {
     await expect(page.getByText("Company Score", { exact: true })).toBeVisible();
     await expect(page.getByText("Treasury", { exact: true }).first()).toBeVisible();
     await expect(page.getByText("Employee Count", { exact: true })).toBeVisible();
-    await expect(page.getByText("11", { exact: true }).first()).toBeVisible();
+    // v0.7 Feature 39 — the roster grew from 11 to 13 with the Original
+    // Founders (Keystone/Compass); assert against the real live count
+    // rather than a hardcoded number that would go stale again.
+    await expect(page.getByText("13", { exact: true }).first()).toBeVisible();
 
     await page.keyboard.press("Escape");
     await expect(page.getByText("COMPANY CAMPUS MAP", { exact: true })).toHaveCount(0);

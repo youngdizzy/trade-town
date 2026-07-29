@@ -15,6 +15,7 @@ import type {
   Debate,
   DisciplineReview,
   ExecutiveReview,
+  FounderState,
   GatekeeperRejection,
   HallOfFameEntry,
   MarketEnvironmentState,
@@ -97,6 +98,7 @@ type ServerMessage =
       questionArchive: QuestionOfTheDay[];
       thinkingProfiles: Record<AgentId, ThinkingProfile>;
       mentorState: MentorState;
+      founderState: FounderState;
       treasury: TreasuryState;
       calendar: CalendarState;
       agentEnergy: AgentEnergy;
@@ -201,6 +203,7 @@ export class GameSocket {
             questionArchive: msg.questionArchive,
             thinkingProfiles: msg.thinkingProfiles,
             mentorState: msg.mentorState,
+            founderState: msg.founderState,
             treasury: msg.treasury,
             calendar: msg.calendar,
             agentEnergy: msg.agentEnergy,

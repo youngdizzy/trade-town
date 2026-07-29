@@ -60,8 +60,13 @@ SceneId = Literal[
 # v0.7 Feature 32 — Sage, the Socratic Mentor, is the eleventh agent. Like
 # the CIO, Sage never trades, votes, or generates a signal — it only asks
 # questions (see app/mentor.py).
-AgentId = Literal["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio", "sage"]
-AGENT_IDS: tuple[AgentId, ...] = ("scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio", "sage")
+# v0.7 Feature 39 — "keystone"/"compass" are the two Original Founders
+# (app/founders.py). Added as real AgentIds the same proven way "cio"/
+# "sage" were (Features 24/32): they get a real schedule, mood/energy,
+# and campus presence, and simply never route through a trading task —
+# never a second, parallel character system.
+AgentId = Literal["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio", "sage", "keystone", "compass"]
+AGENT_IDS: tuple[AgentId, ...] = ("scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio", "sage", "keystone", "compass")
 
 # Every room an agent's schedule (or a meeting/break override) can place them in.
 AgentLocation = Literal[
@@ -1695,6 +1700,57 @@ class MentorState(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# v0.7 Feature 39 — the Original Founders (app/founders.py). Only
+# "keystone"/"compass" can ever be a founder_id — everyone else stays a
+# normal employee, never blurring who is a Founder vs. an ordinary agent.
+FounderId = Literal["keystone", "compass"]
+
+
+class FounderLogEntry(CamelModel):
+    """One real dialogue line reacting to a real event in that Founder's
+    own domain (Keystone: DisciplineReview/CaseStudy; Compass:
+    ReasoningChallenge/ReflectionSession) — see founders.py's
+    `_domain_reference` for how the reference is chosen. Never a
+    fabricated free-form conversation."""
+
+    id: str
+    founder_id: FounderId = Field(alias="founderId")
+    line: str
+    reference: str
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
+class FounderCouncilSession(CamelModel):
+    """v0.7 Feature 39 — the Founder Council. A real monthly sit-down
+    between the Coach and both Founders, generated alongside the
+    existing monthly CoachReport (see founders.py) — never a duplicate,
+    independently-invented meeting transcript."""
+
+    id: str
+    sim_day: int = Field(alias="simDay")
+    coach_highlight: str = Field(alias="coachHighlight")
+    keystone_note: str = Field(alias="keystoneNote")
+    compass_note: str = Field(alias="compassNote")
+    created_at: str = Field(alias="createdAt")
+
+
+class FounderState(CamelModel):
+    """`retired` flips permanently to True the first time
+    CompanyHealth.tier reaches "excellent" — see founders.py's
+    `compute_founder_state`. Never reverts if health later dips, the
+    same "a crossed milestone stays crossed" convention app/hall_of_fame.py
+    already established. The Founders keep their existing schedule,
+    personality, and dialogue unchanged after retirement — see
+    founders.py's own module docstring."""
+
+    retired: bool = False
+    retired_at: str | None = Field(default=None, alias="retiredAt")
+    log: list[FounderLogEntry] = Field(default_factory=list)
+    council_sessions: list[FounderCouncilSession] = Field(default_factory=list, alias="councilSessions")
+    updated_at: str = Field(alias="updatedAt")
+
+
 # v0.7 Feature 33 — the CEO Treasury (app/treasury.py). A second account,
 # structurally isolated from PaperPortfolio.cash_balance ("Operating
 # Capital"): every function in treasury.py that moves money takes an
@@ -1925,6 +1981,8 @@ class GameSaveState(CamelModel):
     question_archive: list[QuestionOfTheDay] = Field(default_factory=list, alias="questionArchive")
     thinking_profiles: dict[AgentId, ThinkingProfile] = Field(default_factory=dict, alias="thinkingProfiles")
     mentor_state: MentorState = Field(alias="mentorState")
+    # v0.7 Feature 39 — the Original Founders (app/founders.py).
+    founder_state: FounderState = Field(alias="founderState")
     # v0.7 Feature 33 — the CEO Treasury (app/treasury.py). See
     # TreasuryState's own docstring for the structural "never touched by
     # any automatic system" guarantee.

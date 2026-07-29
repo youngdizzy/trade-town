@@ -15,6 +15,7 @@ import type {
   Debate,
   DisciplineReview,
   ExecutiveReview,
+  FounderState,
   GatekeeperRejection,
   HallOfFameEntry,
   MarketEnvironmentState,
@@ -108,6 +109,7 @@ export interface GameUiState {
   questionArchive: QuestionOfTheDay[];
   thinkingProfiles: Record<AgentId, ThinkingProfile>;
   mentorState: MentorState;
+  founderState: FounderState;
   treasury: TreasuryState;
   calendar: CalendarState;
   agentEnergy: AgentEnergy;
@@ -238,6 +240,7 @@ class GameStore {
     questionArchive: [],
     thinkingProfiles: {} as Record<AgentId, ThinkingProfile>,
     mentorState: { tier: 0, tierLabel: "New Tradition", questionsAsked: 0, updatedAt: new Date().toISOString() },
+    founderState: { retired: false, retiredAt: null, log: [], councilSessions: [], updatedAt: new Date().toISOString() },
     treasury: { balance: 0, lifetimeDeposits: 0, largestBalance: 0, transactions: [], savingsRules: [], monthlyReports: [], updatedAt: new Date().toISOString() },
     calendar: { systemEvents: [], playerEvents: [], updatedAt: new Date().toISOString() },
     agentEnergy: { current: 100, cap: 100, updatedAt: new Date().toISOString() },
@@ -358,6 +361,7 @@ class GameStore {
     EventBus.on("questionArchive:updated", (questionArchive) => this.set({ questionArchive }));
     EventBus.on("thinkingProfiles:updated", (thinkingProfiles) => this.set({ thinkingProfiles }));
     EventBus.on("mentorState:updated", (mentorState) => this.set({ mentorState }));
+    EventBus.on("founderState:updated", (founderState) => this.set({ founderState }));
     EventBus.on("treasury:updated", (treasury) => this.set({ treasury }));
     EventBus.on("calendar:updated", (calendar) => this.set({ calendar }));
     EventBus.on("ui:executiveVoting", ({ open, proposalId }) =>

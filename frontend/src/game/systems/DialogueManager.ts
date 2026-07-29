@@ -110,6 +110,27 @@ const AGENT_TASK_LINES: Record<AgentId, Record<string, string[]>> = {
     "Sitting quietly with today's question, off the clock": ["I don't mind not knowing yet. That's usually where the real thinking starts."],
     "Reading something unrelated to work, for once": ["Even a mentor benefits from a question that isn't about the company."],
   },
+  // v0.7 Feature 39 — the Original Founders.
+  keystone: {
+    "Reviewing overnight risk with Sentinel and Guardian": ["Protecting capital is the first victory. Nothing else matters if that fails."],
+    "Studying yesterday's closed trades for discipline lapses": ["I'm not looking at the P&L. I'm looking at whether the process held."],
+    "Walking the campus": ["Discipline beats emotion. I say it enough that I've started believing my own advice."],
+    "Watching how the desk handles pressure": ["A trade avoided can be just as valuable as a trade taken. Most people never learn that."],
+    "Holding office hours on risk discipline": ["I won't give you the answer. Tell me what the position sizing tells you first."],
+    "Weighing today's decisions against the firm's own history": ["Great traders survive long enough to become great. Survival first, always."],
+    "Sitting with the day's numbers, off the clock": ["Even off the clock, the numbers don't stop talking to me."],
+    "Reading quietly": ["Quiet is where I do my best thinking."],
+  },
+  compass: {
+    "Reading yesterday's research with fresh eyes": ["Curiosity creates breakthroughs. Yesterday's answer is today's question."],
+    "Watching the research desk work": ["Never stop asking why. I mean that literally — watch how many times they ask it today."],
+    "Walking the campus": ["Knowledge compounds, same as capital. I just don't have a ticker for it."],
+    "Holding an open discussion on company philosophy": ["The best companies never stop learning. I'd rather we argue about why than agree too quickly."],
+    "Reviewing the day's reasoning challenges": ["I'm not grading the answer. I'm grading whether the question was worth asking."],
+    "Looking over the company's own history for lessons": ["Every mistake is an opportunity to improve. Our own history is the best textbook we have."],
+    "Following a curiosity that has nothing to do with work": ["Off the clock, but curiosity doesn't punch out."],
+    "Reading quietly": ["Still reading. Still asking why."],
+  },
 };
 
 /** Shared fallback lines for override-driven tasks (meetings/breaks), independent of agent personality. */
@@ -141,6 +162,8 @@ const AGENT_GREETINGS: Record<AgentId, string[]> = {
   guardian: ["Checking in on exposure?", "Boss. The book's in good shape.", "Good timing — I just finished a pass."],
   cio: ["Good to see you.", "I was just reviewing the department reports.", "Do you have a moment for a quick update?"],
   sage: ["Ah. What's on your mind today?", "Good timing. I was just thinking about a question.", "Come in — no wrong questions here."],
+  keystone: ["CEO.", "Good timing. I was just reviewing the numbers.", "Sit. Tell me what's on your mind."],
+  compass: ["Ah, good timing.", "I was just about to ask myself a question — now I can ask you instead.", "Come in — curious what brought you by."],
 };
 
 export interface DialogueSession {

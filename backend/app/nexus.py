@@ -53,6 +53,7 @@ from app.executive import (
     resolve_proposal,
 )
 from app.executive_review import generate_executive_review, record_review
+from app.founders import compute_founder_state, generate_council_session, generate_founder_log_entry, record_council_session, record_founder_log
 from app.gatekeeper import grade_gatekeeper_rejections
 from app.hall_of_fame import evaluate_hall_of_fame
 from app.journal import stamp_journal_entry
@@ -103,6 +104,9 @@ from app.schemas import (
     DisciplineReview,
     EntityTransform,
     ExecutiveReview,
+    FounderCouncilSession,
+    FounderId,
+    FounderLogEntry,
     GameSaveState,
     GatekeeperRejection,
     MemoryEntry,
@@ -207,6 +211,11 @@ MENTORSHIP_CHECK_INTERVAL_DAYS = 3
 # participate" is the brief's own framing and a fresh real Debate is
 # usually available well within this window.
 REASONING_CHALLENGE_INTERVAL_DAYS = 2
+# v0.7 Feature 39 — the Original Founders. A distinct hour from
+# MORNING_QOTD_HOUR so a Founder's real log entry is never mistaken for
+# Sage's own QuestionOfTheDay mechanic — a separate, alternating-by-day
+# real reaction, not a shared one.
+FOUNDER_LOG_HOUR = 10
 
 # v0.7 Feature 34 — Company Priorities. Real, fixed multipliers applied
 # to already-existing levers (see _effective_risk_limits() and the three
@@ -884,6 +893,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     reflection_sessions: list[ReflectionSession] = list(state.reflection_sessions)
     wisdom_state: WisdomState = state.wisdom_state
     question_archive: list[QuestionOfTheDay] = list(state.question_archive)
+    founder_log: list[FounderLogEntry] = list(state.founder_state.log)
+    founder_council_sessions: list[FounderCouncilSession] = list(state.founder_state.council_sessions)
     treasury: TreasuryState = state.treasury
 
     agents = {aid: _tick_agent(aid, agent, new_time, minutes, tasks, resting=resting) for aid, agent in state.agents.items()}
@@ -1199,6 +1210,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     is_evening = new_time.hour == EVENING_REVIEW_HOUR and new_time.minute == 0
     is_midnight = new_time.hour == 0 and new_time.minute == 0
     is_morning_qotd = new_time.hour == MORNING_QOTD_HOUR and new_time.minute == 0
+    is_founder_log_hour = new_time.hour == FOUNDER_LOG_HOUR and new_time.minute == 0
     latest_report: CoachReport | None = None
 
     if is_evening and new_time.day % WEEKLY_INTERVAL_DAYS == 0:
@@ -1246,6 +1258,23 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         )
         executive_reviews = record_review(executive_reviews, review)
         record_executive_review(memory, review)
+
+        # v0.7 Feature 39 — the Founder Council. Real monthly sit-down
+        # between the Coach and both Founders, generated alongside the
+        # monthly CoachReport above (`latest_report`) — see
+        # app/founders.py's module docstring for why this never
+        # duplicates Sage's own daily mechanic.
+        council_session = generate_council_session(
+            sim_day=new_time.day,
+            session_id=f"council-{new_time.day}",
+            created_at=_now_iso(),
+            latest_coach_report=latest_report,
+            discipline_reviews=discipline_reviews,
+            case_studies=case_studies,
+            reasoning_challenges=reasoning_challenges,
+            reflection_sessions=reflection_sessions,
+        )
+        founder_council_sessions = record_council_session(founder_council_sessions, council_session)
 
     # v0.7 Feature 25 — a modest, honestly-grounded mentorship check (see
     # app/academy.py's module docstring). Checked far less often than
@@ -1349,6 +1378,32 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     )
     mentor_state = compute_mentor_state(len(question_archive), _now_iso())
 
+    # v0.7 Feature 39 — one real Founder log entry per in-game day,
+    # alternating Keystone/Compass by day parity so both appear roughly
+    # equally without needing two separate generations. None is recorded
+    # on a day where that Founder's own domain genuinely has nothing new
+    # yet (see founders.py's own honest-empty-state handling).
+    if is_founder_log_hour:
+        speaking_founder: FounderId = "keystone" if new_time.day % 2 == 0 else "compass"
+        founder_entry = generate_founder_log_entry(
+            speaking_founder,
+            sim_day=new_time.day,
+            entry_id=f"founder-log-{new_time.day}",
+            created_at=_now_iso(),
+            discipline_reviews=discipline_reviews,
+            case_studies=case_studies,
+            reasoning_challenges=reasoning_challenges,
+            reflection_sessions=reflection_sessions,
+        )
+        if founder_entry is not None:
+            founder_log = record_founder_log(founder_log, founder_entry)
+
+    # v0.7 Feature 39 — cheap to recompute every tick, same reasoning as
+    # company_health above: `retired` only ever needs company_health's
+    # own already-fresh tier.
+    founder_state = compute_founder_state(state.founder_state, company_health_tier=company_health.tier, updated_at=_now_iso())
+    founder_state = founder_state.model_copy(update={"log": founder_log, "council_sessions": founder_council_sessions})
+
     if is_midnight:
         agent_energy = regen_daily(agent_energy)
         performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("daily", paper_portfolio, research, new_time))
@@ -1443,6 +1498,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "question_archive": question_archive,
             "thinking_profiles": thinking_profiles,
             "mentor_state": mentor_state,
+            "founder_state": founder_state,
             "treasury": treasury,
             "calendar": calendar_state,
             "agent_energy": agent_energy,

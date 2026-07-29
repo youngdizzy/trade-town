@@ -161,6 +161,32 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
     wanderRadius: 20,
     idlePauseChance: 0.75,
   },
+  // v0.7 Feature 39 — the Original Founders. See backend/app/founders.py's
+  // module docstring for why they never trade or earn Academy Knowledge.
+  keystone: {
+    id: "keystone",
+    name: "Keystone",
+    occupation: "Chief Risk Architect",
+    personality: "Calm, patient, and immovable. Speaks rarely — when he does, the floor goes quiet.",
+    homeLocation: "trading-floor",
+    tint: 0x8c7a5c,
+    spriteId: "characters/player/player-keystone",
+    badge: "\u{1F3DB}\u{FE0F}",
+    wanderRadius: 15,
+    idlePauseChance: 0.8,
+  },
+  compass: {
+    id: "compass",
+    name: "Compass",
+    occupation: "Chief Learning Architect",
+    personality: "Endlessly curious. Treats every mistake as unfinished research.",
+    homeLocation: "brain-room",
+    tint: 0x3fbfa0,
+    spriteId: "characters/player/player-compass",
+    badge: "\u{1F9ED}",
+    wanderRadius: 35,
+    idlePauseChance: 0.3,
+  },
 };
 
 export const LOCATION_TO_SCENE: Record<AgentLocation, SceneId> = {

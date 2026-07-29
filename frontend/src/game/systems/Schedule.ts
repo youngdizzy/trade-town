@@ -131,6 +131,31 @@ export const AGENT_SCHEDULES: Record<AgentId, ScheduleBlock[]> = {
     { startHour: 22, endHour: 24, location: "break-room", task: "Reading something unrelated to work, for once" },
     { startHour: 0, endHour: 6, location: "break-room", task: "Sleeping" },
   ],
+  // v0.7 Feature 39 — the Original Founders. Mirrors backend/app/schedule.py exactly.
+  keystone: [
+    { startHour: 6, endHour: 9, location: "trading-floor", task: "Reviewing overnight risk with Sentinel and Guardian" },
+    { startHour: 9, endHour: 11, location: "executive-boardroom", task: "Studying yesterday's closed trades for discipline lapses" },
+    { startHour: 11, endHour: 12, location: "lobby", task: "Walking the campus" },
+    { startHour: 12, endHour: 13, location: "break-room", task: "Resting" },
+    { startHour: 13, endHour: 16, location: "trading-floor", task: "Watching how the desk handles pressure" },
+    { startHour: 16, endHour: 18, location: "meeting-room", task: "Holding office hours on risk discipline" },
+    { startHour: 18, endHour: 20, location: "executive-boardroom", task: "Weighing today's decisions against the firm's own history" },
+    { startHour: 20, endHour: 22, location: "break-room", task: "Sitting with the day's numbers, off the clock" },
+    { startHour: 22, endHour: 24, location: "break-room", task: "Reading quietly" },
+    { startHour: 0, endHour: 6, location: "break-room", task: "Sleeping" },
+  ],
+  compass: [
+    { startHour: 6, endHour: 9, location: "brain-room", task: "Reading yesterday's research with fresh eyes" },
+    { startHour: 9, endHour: 11, location: "brain-room", task: "Watching the research desk work" },
+    { startHour: 11, endHour: 12, location: "lobby", task: "Walking the campus" },
+    { startHour: 12, endHour: 13, location: "break-room", task: "Resting" },
+    { startHour: 13, endHour: 16, location: "meeting-room", task: "Holding an open discussion on company philosophy" },
+    { startHour: 16, endHour: 18, location: "brain-room", task: "Reviewing the day's reasoning challenges" },
+    { startHour: 18, endHour: 20, location: "hall-of-fame", task: "Looking over the company's own history for lessons" },
+    { startHour: 20, endHour: 22, location: "break-room", task: "Following a curiosity that has nothing to do with work" },
+    { startHour: 22, endHour: 24, location: "break-room", task: "Reading quietly" },
+    { startHour: 0, endHour: 6, location: "break-room", task: "Sleeping" },
+  ],
 };
 
 export function scheduleBlockForHour(agentId: AgentId, hour: number): ScheduleBlock {

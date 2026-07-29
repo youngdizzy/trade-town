@@ -195,7 +195,7 @@ test.describe("Global Command Center", () => {
     expect(moved.x).not.toBe(frozen.x);
   });
 
-  test("expands to the Full Command Center and renders all 20 tabs with graceful empty states", async ({ page }) => {
+  test("expands to the Full Command Center and renders all 21 tabs with graceful empty states", async ({ page }) => {
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);
     await continueGame(page);
@@ -214,7 +214,7 @@ test.describe("Global Command Center", () => {
     // ticking throughout, a genuine trade or trade proposal can appear
     // (and pop up) mid-test. clickTab() dismisses and retries rather
     // than losing the race to a popup that appears in that instant.
-    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "COMPANY", "KNOWLEDGE", "DISCIPLINE", "REASONING", "REFLECTION", "MENTOR", "TREASURY", "CALENDAR", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
+    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "COMPANY", "KNOWLEDGE", "DISCIPLINE", "REASONING", "REFLECTION", "MENTOR", "FOUNDERS", "TREASURY", "CALENDAR", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
     for (const tab of tabs) {
       await clickTab(page, tab);
       await expect(page.getByRole("button", { name: tab, exact: true })).toHaveClass(/text-cmd-cyan/);
@@ -617,6 +617,33 @@ test.describe("Global Command Center", () => {
     // Every real agent (including Sage) gets a purely-computed Thinking
     // Profile from tick one — never a blank panel here either.
     await expect(page.getByText("Collaboration", { exact: true }).first()).toBeVisible();
+  });
+
+  test("FOUNDERS tab shows Keystone and Compass's real identity, and Legendary Status starts active (not retired)", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await dismissTradeOutcomePopups(page);
+    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickTab(page, "FOUNDERS");
+
+    await expect(page.getByText("Legendary Status", { exact: true })).toBeVisible();
+    // A fresh company hasn't reached Company Health's "excellent" tier yet.
+    await expect(page.getByText("ACTIVE LEADERSHIP", { exact: true })).toBeVisible();
+
+    // Real, hand-authored identity content for both Founders — never a
+    // blank panel, since this is static content, not simulation output.
+    await expect(page.getByText("Keystone", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Chief Risk Architect", { exact: true })).toBeVisible();
+    await expect(page.getByText("Protect the company first. Profit comes second.", { exact: false })).toBeVisible();
+    await expect(page.getByText("Compass", { exact: true }).first()).toBeVisible();
+    await expect(page.getByText("Chief Learning Architect", { exact: true })).toBeVisible();
+    await expect(page.getByText("Every mistake is an opportunity to improve.", { exact: false })).toBeVisible();
+
+    await expect(page.getByText("Founder Log", { exact: true })).toBeVisible();
+    await expect(page.getByText("Founder Council", { exact: true })).toBeVisible();
   });
 
   test("TREASURY tab performs a real deposit and withdrawal via POST /api/treasury/deposit and /withdraw", async ({ page }) => {

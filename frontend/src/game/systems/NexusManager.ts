@@ -13,6 +13,7 @@ import type {
   Debate,
   DisciplineReview,
   ExecutiveReview,
+  FounderState,
   GatekeeperRejection,
   HallOfFameEntry,
   MarketEnvironmentState,
@@ -88,6 +89,7 @@ interface NexusSnapshot {
   questionArchive: QuestionOfTheDay[];
   thinkingProfiles: Record<AgentId, ThinkingProfile>;
   mentorState: MentorState;
+  founderState: FounderState;
   treasury: TreasuryState;
   calendar: CalendarState;
   agentEnergy: AgentEnergy;
@@ -206,6 +208,7 @@ export class NexusManager {
   private static questionArchive: QuestionOfTheDay[] = [];
   private static thinkingProfiles: Record<AgentId, ThinkingProfile> = {} as Record<AgentId, ThinkingProfile>;
   private static mentorState: MentorState = { tier: 0, tierLabel: "New Tradition", questionsAsked: 0, updatedAt: new Date().toISOString() };
+  private static founderState: FounderState = { retired: false, retiredAt: null, log: [], councilSessions: [], updatedAt: new Date().toISOString() };
   private static treasury: TreasuryState = { balance: 0, lifetimeDeposits: 0, largestBalance: 0, transactions: [], savingsRules: [], monthlyReports: [], updatedAt: new Date().toISOString() };
   private static calendar: CalendarState = { systemEvents: [], playerEvents: [], updatedAt: new Date().toISOString() };
   private static agentEnergy: AgentEnergy = { current: 100, cap: 100, updatedAt: new Date().toISOString() };
@@ -350,6 +353,10 @@ export class NexusManager {
 
   static getMentorState(): MentorState {
     return this.mentorState;
+  }
+
+  static getFounderState(): FounderState {
+    return this.founderState;
   }
 
   static getTreasury(): TreasuryState {
@@ -688,6 +695,9 @@ export class NexusManager {
     if (update.mentorState !== this.mentorState) EventBus.emit("mentorState:updated", update.mentorState);
     this.mentorState = update.mentorState;
 
+    if (update.founderState !== this.founderState) EventBus.emit("founderState:updated", update.founderState);
+    this.founderState = update.founderState;
+
     if (update.treasury !== this.treasury) EventBus.emit("treasury:updated", update.treasury);
     this.treasury = update.treasury;
 
@@ -751,6 +761,7 @@ export class NexusManager {
     this.questionArchive = save.questionArchive;
     this.thinkingProfiles = save.thinkingProfiles;
     this.mentorState = save.mentorState;
+    this.founderState = save.founderState;
     this.treasury = save.treasury;
     this.calendar = save.calendar;
     this.agentEnergy = save.agentEnergy;

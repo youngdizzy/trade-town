@@ -12,6 +12,7 @@ from app.wisdom import (
     generate_reflection_session,
 )
 from app.schemas import (
+    AGENT_IDS,
     CaseStudy,
     DisciplineFactor,
     DisciplineReview,
@@ -220,7 +221,11 @@ class TestGenerateReflectionSession:
             wisdom_state=_empty_wisdom_score(),
             new_time=TimeState(day=7, hour=20, minute=0),
         )
-        assert len(session.attendees) == 11
+        # v0.7 Feature 39 — the Original Founders (keystone/compass) are
+        # real agents too, and genuinely attend the Reflection Chamber
+        # (see their own schedule.py entries) — the roster grew from 11
+        # to len(AGENT_IDS), not a regression.
+        assert len(session.attendees) == len(AGENT_IDS)
         assert len(session.questions) == 9
 
     def test_honest_defaults_with_no_history(self) -> None:

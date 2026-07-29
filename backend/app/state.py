@@ -34,6 +34,7 @@ from app.scribe import record_ceo_decision
 from app.schemas import (
     EducationProgress,
     EntityTransform,
+    FounderState,
     GameSaveState,
     GatekeeperRejection,
     MeetingState,
@@ -155,6 +156,7 @@ def default_state() -> GameSaveState:
             updated_at=_now_iso(),
         ),
         mentorState=compute_mentor_state(1, _now_iso()),
+        founderState=FounderState(updatedAt=_now_iso()),
         treasury=default_treasury(_now_iso()),
         calendar=default_calendar(_now_iso()),
         updatedAt=_now_iso(),

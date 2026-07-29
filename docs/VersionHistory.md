@@ -556,6 +556,45 @@ from it and bound to the one real `CompanyHealth.officeExpansion` score
 as a small "HQ Expansion" visual in the Campus Overview panel, not a
 fabricated per-building construction system.
 
+### v0.7 continued — The Original Founders (Feature 39)
+
+The brief calls this "Feature 39" and describes two Founders whose
+teaching style ("teaches through questions... rarely gives direct
+answers") is near-identical to Sage's already-shipped Socratic Mentor
+(Feature 32). Rather than build a second, competing daily-teaching
+mechanic, Keystone (Chief Risk Architect) and Compass (Chief Learning
+Architect) are framed as the spiritual originators of two already-real
+system clusters — Keystone for the Discipline Chamber/Library of
+Mistakes/Risk Engine, Compass for the Academy/Reasoning Lab/Reflection
+Chamber. Added as two new real agents (`keystone`/`compass`, joining
+`AGENT_IDS`) the same proven way the CIO and Sage were added in earlier
+features: real personality/schedule/campus presence, but never routed
+through a trading task or Academy Knowledge Points. Their philosophy,
+specialties, and quotes are real, hand-authored content taken directly
+from the brief. One real dialogue line per day (alternating between
+them) reacts to whichever real event most recently landed in that
+Founder's own domain — a real Discipline Review, Case Study, Reasoning
+Challenge, or Reflection Session — never a fabricated open-ended
+conversation. A real monthly Founder Council session (alongside the
+existing monthly CoachReport) summarizes the Coach's own highlight plus
+each Founder's latest domain commentary. Legendary Status flips
+permanently the first time `CompanyHealth.tier` reaches "excellent" —
+the most comprehensive real milestone this codebase already computes —
+and never reverts, the same "a crossed milestone stays crossed"
+convention Hall of Fame already established; retirement changes nothing
+about either Founder's schedule, personality, or dialogue, only
+unlocking the Hall of Founders view. Portraits reuse the exact same
+palette-swapped sprite convention every other agent already has (two new
+tint colors); voice acting is explicitly brief-optional and cut; no
+employee-onboarding system exists anywhere in this codebase (fixed
+roster, no new hires ever join), so that brief item is cut outright. New
+`app/founders.py` (15 new backend tests, 432/432 passing); a new
+FOUNDERS tab in the Command Center shows both Founders' real identity,
+Legendary Status, the Founder Log, and Founder Council history. Verified
+in the running app (Playwright) including a real schema-migration check
+against a genuine pre-Feature-39 save (backend self-healed the roster
+and added the missing `founderState` field with no data loss).
+
 ## What's next for v0.8 (not started, not scoped)
 
 These are candidate directions surfaced by v0.6/v0.7's design, not

@@ -65,6 +65,7 @@ export class SaveManager {
       questionArchive: NexusManager.getQuestionArchive(),
       thinkingProfiles: NexusManager.getThinkingProfiles(),
       mentorState: NexusManager.getMentorState(),
+      founderState: NexusManager.getFounderState(),
       treasury: NexusManager.getTreasury(),
       calendar: NexusManager.getCalendar(),
       agentEnergy: NexusManager.getAgentEnergy(),

@@ -99,6 +99,10 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         "questionArchive": [q.model_dump(by_alias=True) for q in state.question_archive],
         "thinkingProfiles": {aid: p.model_dump(by_alias=True) for aid, p in state.thinking_profiles.items()},
         "mentorState": state.mentor_state.model_dump(by_alias=True),
+        # v0.7 Feature 39 — the Original Founders. log/councilSessions are
+        # already capped (MAX_FOUNDER_LOG/MAX_COUNCIL_SESSIONS) like
+        # questionArchive above.
+        "founderState": state.founder_state.model_dump(by_alias=True),
         # v0.7 Feature 33 — already capped (MAX_TREASURY_TRANSACTIONS/
         # MAX_TREASURY_MONTHLY_REPORTS) like questionArchive above.
         "treasury": state.treasury.model_dump(by_alias=True),

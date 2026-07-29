@@ -156,6 +156,34 @@ AGENT_SCHEDULES: dict[AgentId, list[ScheduleBlock]] = {
         ScheduleBlock(22, 24, "break-room", "Reading something unrelated to work, for once"),
         ScheduleBlock(0, 6, "break-room", "Sleeping"),
     ],
+    # v0.7 Feature 39 — the Original Founders. Neither routes through a
+    # trading task anywhere in this schedule; both spend their day
+    # walking the real campus locations tied to the system cluster each
+    # one originated (see app/founders.py's module docstring).
+    "keystone": [
+        ScheduleBlock(6, 9, "trading-floor", "Reviewing overnight risk with Sentinel and Guardian"),
+        ScheduleBlock(9, 11, "executive-boardroom", "Studying yesterday's closed trades for discipline lapses"),
+        ScheduleBlock(11, 12, "lobby", "Walking the campus"),
+        ScheduleBlock(12, 13, "break-room", "Resting"),
+        ScheduleBlock(13, 16, "trading-floor", "Watching how the desk handles pressure"),
+        ScheduleBlock(16, 18, "meeting-room", "Holding office hours on risk discipline"),
+        ScheduleBlock(18, 20, "executive-boardroom", "Weighing today's decisions against the firm's own history"),
+        ScheduleBlock(20, 22, "break-room", "Sitting with the day's numbers, off the clock"),
+        ScheduleBlock(22, 24, "break-room", "Reading quietly"),
+        ScheduleBlock(0, 6, "break-room", "Sleeping"),
+    ],
+    "compass": [
+        ScheduleBlock(6, 9, "brain-room", "Reading yesterday's research with fresh eyes"),
+        ScheduleBlock(9, 11, "brain-room", "Watching the research desk work"),
+        ScheduleBlock(11, 12, "lobby", "Walking the campus"),
+        ScheduleBlock(12, 13, "break-room", "Resting"),
+        ScheduleBlock(13, 16, "meeting-room", "Holding an open discussion on company philosophy"),
+        ScheduleBlock(16, 18, "brain-room", "Reviewing the day's reasoning challenges"),
+        ScheduleBlock(18, 20, "hall-of-fame", "Looking over the company's own history for lessons"),
+        ScheduleBlock(20, 22, "break-room", "Following a curiosity that has nothing to do with work"),
+        ScheduleBlock(22, 24, "break-room", "Reading quietly"),
+        ScheduleBlock(0, 6, "break-room", "Sleeping"),
+    ],
 }
 
 

@@ -336,7 +336,14 @@ export function CampusMap() {
                 const peers = agentsByLocation[state.location] ?? [];
                 const indexAmongPeers = peers.indexOf(id);
                 const angle = (indexAmongPeers / Math.max(peers.length, 1)) * Math.PI * 2;
-                const offsetRadius = peers.length > 1 ? 20 : 0;
+                // v0.7 Feature 39 grew the roster to 13, and every agent's
+                // real schedule shares the same break-room location during
+                // sleep (0:00-6:00) — a fixed radius that worked for a
+                // handful of peers left icons overlapping (and blocking
+                // each other's clicks) once a dozen could crowd one spot.
+                // Scale with peer count so the circle's circumference keeps
+                // pace with how many icons need to fit on it.
+                const offsetRadius = peers.length > 1 ? Math.max(20, peers.length * 7) : 0;
                 const leftPct = ((building.x + Math.cos(angle) * offsetRadius) / MAP_WIDTH_PX) * 100;
                 const topPct = ((building.y + Math.sin(angle) * offsetRadius - 26) / MAP_HEIGHT_PX) * 100;
                 return (
