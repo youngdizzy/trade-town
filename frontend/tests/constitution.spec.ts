@@ -99,14 +99,19 @@ test("the Constitution tab opens from the Command Center, shows the Articles and
   await expect(page.getByText("Live Enforcement", { exact: true })).toBeVisible();
   await expect(page.getByText("Propose an Amendment", { exact: true })).toBeVisible();
 
-  await page.getByPlaceholder("Article title").fill("Test Amendment");
+  // A unique title per run — the backend rejects a second pending
+  // amendment with a title that's already pending, and this dev
+  // backend's state persists across repeated test runs.
+  const amendmentTitle = `Test Amendment ${Date.now()}`;
+  await page.getByPlaceholder("Article title").fill(amendmentTitle);
   await page.getByPlaceholder("Article text").fill("Employees must double-check every real number before citing it.");
   await page.getByRole("button", { name: "Propose", exact: true }).click();
-  await expect(page.getByText("Test Amendment", { exact: true })).toBeVisible();
+  await expect(page.getByText(amendmentTitle, { exact: true })).toBeVisible();
 
-  await page.getByRole("button", { name: "Send to Founders, Coach & Employees" }).click();
+  const amendmentCard = page.getByTestId("amendment-card").filter({ hasText: amendmentTitle });
+  await amendmentCard.getByRole("button", { name: "Send to Founders, Coach & Employees" }).click();
   await expect(page.getByText(/Employee vote \(advisory\)/)).toBeVisible();
-  await expect(page.getByRole("button", { name: "Ratify" })).toBeVisible();
+  await expect(amendmentCard.getByRole("button", { name: "Ratify" })).toBeVisible();
 
   const relevantErrors = consoleErrors.filter((e) => !e.includes("favicon"));
   expect(relevantErrors).toEqual([]);

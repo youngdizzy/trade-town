@@ -106,7 +106,12 @@ def queue_backtest_now(
     chosen_strategy = strategy or random.choice(strategies)
     chosen_symbol = symbol or random.choice(watchlist).symbol
     session = BacktestSession(
-        id=f"sim-{chosen_strategy.id}-{scenario}-{new_time.day}-{new_time.hour}-{new_time.minute}",
+        # v0.7 Feature 45 — len(sessions) disambiguates two sessions
+        # queued for the same strategy/scenario within the same sim-
+        # minute (e.g. a CEO-triggered backtest landing the same minute
+        # as the automatic per-tick roll) — without it they'd share an
+        # id and collide as React keys in SandboxPanel.
+        id=f"sim-{chosen_strategy.id}-{scenario}-{new_time.day}-{new_time.hour}-{new_time.minute}-{len(sessions)}",
         strategyId=chosen_strategy.id,
         strategyName=chosen_strategy.name,
         symbol=chosen_symbol,

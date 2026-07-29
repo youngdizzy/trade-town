@@ -163,7 +163,7 @@ export function ConstitutionPanel() {
               const opposeCount = amendment.employeeVotes.filter((v) => v.choice === "oppose").length;
               const abstainCount = amendment.employeeVotes.filter((v) => v.choice === "abstain").length;
               return (
-                <div key={amendment.id} className="rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2 text-[9px]">
+                <div key={amendment.id} data-testid="amendment-card" className="rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2 text-[9px]">
                   <div className="mb-1 flex items-center justify-between">
                     <span className="text-cmd-cyan">{amendment.proposedTitle}</span>
                     <StatusPill tone={amendment.status === "approved" ? "green" : amendment.status === "rejected" ? "red" : "amber"}>{amendment.status}</StatusPill>
