@@ -10,7 +10,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.persistence import persist_save
+from app.persistence import persist_modules
 from app.schemas import AgentEnergy, SignalCalibrationState, SignalChallenge, SignalChoice
 from app.signal_calibration import MAX_LEVEL, MIN_LEVEL, generate_challenge
 from app.market_data import market_data_provider
@@ -47,5 +47,5 @@ async def submit_challenge(payload: SubmitCalibrationRequest) -> SubmitCalibrati
     state, error = await game_state.submit_signal_calibration(payload.challenge_id, payload.choice)
     if error is not None:
         raise HTTPException(status_code=400, detail=error)
-    persist_save(state)
+    persist_modules(state)
     return SubmitCalibrationResponse(signalCalibration=state.signal_calibration, agentEnergy=state.agent_energy)

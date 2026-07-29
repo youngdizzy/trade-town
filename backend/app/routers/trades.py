@@ -10,7 +10,7 @@ from __future__ import annotations
 from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.persistence import persist_save
+from app.persistence import persist_modules
 from app.state import game_state
 
 router = APIRouter(prefix="/api/trades", tags=["trades"])
@@ -31,5 +31,5 @@ class AckNotificationResponse(BaseModel):
 @router.post("/ack", response_model=AckNotificationResponse)
 async def ack_notification(payload: AckNotificationRequest) -> AckNotificationResponse:
     viewed_ids = await game_state.ack_trade_notification(payload.trade_id)
-    persist_save(await game_state.snapshot())
+    persist_modules(await game_state.snapshot())
     return AckNotificationResponse(viewedTradeNotificationIds=viewed_ids)

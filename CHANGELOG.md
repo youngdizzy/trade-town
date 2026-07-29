@@ -1668,6 +1668,74 @@ progress-loss fix through Phase 10's trade outcome popups).
     SIMULATED badge is present, and switching timeframes visibly
     redraws different data.
 
+- **v0.7 — Save Architecture Redesign** — the save system was hitting
+  HTTP 413 (Request Entity Too Large): `GET /api/load` was measured at
+  844KB against the live dev DB, and nginx's default 1MB
+  `client_max_body_size` meant every 60s autosave was already at the
+  edge and would keep tipping over as simulation history grew. Root
+  cause: `GameState.apply_client_save()` has only ever read `player`/
+  `settings`/`dialogueHistory` off a save POST — every other field
+  (agents, decisions, debates, research, caseStudies, ...) is already
+  server-authoritative, produced by the tick loop, and was being sent by
+  the client and silently discarded on every single autosave.
+  - **Phase 1 — stop sending what the server already owns.** New
+    `ClientSaveRequest` schema (`backend/app/schemas.py`) is exactly the
+    3 fields the client actually owns; `SaveManager.buildSnapshot()`
+    (frontend) sends only those. Cut the real save POST body from 844KB
+    to ~277 bytes, measured live. `extra="ignore"` keeps an un-updated
+    client (or a stale localStorage backup) accepted without error.
+    `client_max_body_size 4m` set explicitly as a defensive ceiling, not
+    the fix.
+  - **Phase 2 — modular per-section persistence with a real delta
+    system.** New `backend/app/save_modules.py` splits `GameSaveState`'s
+    ~57 fields into 12 named modules — 9 "core" (meta, settings, world,
+    employees, company, research, training, founders, and `derived` for
+    the handful of fields recomputed nearly every tick, kept separate so
+    they don't make every other module look dirty) and 3 "archive"
+    (`trade_history`, `knowledge_archive`, `academy` — real historical
+    logs that only ever grow). Every `GameSaveState` field is assigned to
+    exactly one module, enforced at import time so a future field added
+    without a module assignment fails loudly at startup instead of
+    silently never being persisted. New `SaveModule` DB table (one row
+    per slot+module); `persistence.persist_modules()` SHA-256-hashes each
+    module's JSON and skips the write entirely if it's unchanged since
+    last time — the real "only save what changed" mechanism, verified
+    live: an unchanged tick's save now writes 0 bytes for most modules,
+    where the old path rewrote the full ~840KB blob every time
+    regardless. Each module writes inside its own SAVEPOINT, so one
+    module failing to persist doesn't block the others — the response
+    from `POST /api/save` now reports `{name, ok, bytesWritten, error}`
+    per module instead of one generic success/failure. `GET /api/load`
+    now returns only the core modules (archive fields come back as real
+    empty defaults, not fabricated or omitted); new `GET
+    /api/load/archive/{module}` fetches one archive module's real data
+    on demand. No frontend wiring needed to lazy-load it, though — every
+    Command Center panel that shows archive data already hydrates from
+    the WebSocket tick broadcast within moments of connecting, which was
+    already true before this change and stays completely unchanged here.
+    A pre-Phase-2 deployment's existing single-blob save migrates into
+    modules exactly once, automatically, on first boot under the new
+    code — verified against the real 19MB live dev DB (day 32, 54 real
+    decisions, 58 real debates), which migrated with zero data loss.
+  - **Explicitly out of scope, and why**: request-side compression
+    (nginx already gzips JSON responses; the Phase-1 POST body is small
+    enough that adding client-side gzip would be negative value); chunked
+    uploading as the primary save mechanism (the payload is now provably
+    bounded — a chunk-upload protocol would be permanently-dead code,
+    exactly the code most likely to corrupt data the one time it finally
+    ran; a client-side size-guard is the honest alternative, see Phase 3
+    below); per-object/per-field dirty-tracking across ~15 frontend
+    manager classes (superseded by Phase 1's ownership-correction — the
+    server already owns and correctly tracks everything else); changing
+    the WebSocket tick broadcast itself (separate code path, not subject
+    to the 413 limit, every live panel depends on its current shape).
+  - Verification: full backend (mypy/ruff/pytest — 19 new tests across
+    `test_save_modules.py` and `test_persistence.py`, covering split/
+    assemble round-trips, module-map completeness, dirty-skip behavior,
+    per-module corruption recovery, and legacy-blob migration) and
+    frontend (tsc/eslint/build) clean; live-verified against the real
+    running dev backend and its real 19MB database.
+
 ### Fixed
 
 - **v0.6.2: fixed `POST /api/save` failing with 413 Request Entity Too

@@ -11,7 +11,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.executive import PROPOSAL_CANDLE_COUNT, PROPOSAL_TIMEFRAME, AnalystChoice
 from app.market_data import market_data_provider
-from app.persistence import persist_save
+from app.persistence import persist_modules
 from app.schemas import (
     AgentId,
     CeoDecisionRecord,
@@ -56,7 +56,7 @@ async def decide(payload: SubmitCeoDecisionRequest) -> SubmitCeoDecisionResponse
     state, error = await game_state.submit_ceo_decision(payload.proposal_id, payload.choice)
     if error is not None:
         raise HTTPException(status_code=400, detail=error)
-    persist_save(state)
+    persist_modules(state)
     return SubmitCeoDecisionResponse(
         tradeProposals=state.trade_proposals,
         ceoDecisions=state.ceo_decisions,
@@ -86,7 +86,7 @@ async def hold(payload: HoldProposalRequest) -> HoldProposalResponse:
     state, error = await game_state.hold_trade_proposal(payload.proposal_id, payload.reason)
     if error is not None:
         raise HTTPException(status_code=400, detail=error)
-    persist_save(state)
+    persist_modules(state)
     return HoldProposalResponse(tradeProposals=state.trade_proposals)
 
 
@@ -110,7 +110,7 @@ async def regenerate_debate(payload: RegenerateDebateRequest) -> RegenerateDebat
     state, error = await game_state.regenerate_debate(payload.proposal_id)
     if error is not None:
         raise HTTPException(status_code=400, detail=error)
-    persist_save(state)
+    persist_modules(state)
     return RegenerateDebateResponse(debates=state.debates)
 
 
@@ -135,7 +135,7 @@ async def regenerate_challenge_report(payload: RegenerateChallengeReportRequest)
     state, error = await game_state.regenerate_challenge_report(payload.proposal_id)
     if error is not None:
         raise HTTPException(status_code=400, detail=error)
-    persist_save(state)
+    persist_modules(state)
     return RegenerateChallengeReportResponse(challengeReports=state.challenge_reports, innovationState=state.innovation_state)
 
 

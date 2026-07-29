@@ -7,7 +7,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.persistence import persist_save
+from app.persistence import persist_modules
 from app.schemas import PaperPortfolio, SavingsRuleType, TreasuryState
 from app.state import game_state
 
@@ -53,7 +53,7 @@ async def deposit_treasury(payload: AmountRequest) -> TreasuryFundsResponse:
     state, error = await game_state.deposit_treasury(payload.amount)
     if error is not None:
         raise HTTPException(status_code=400, detail=error)
-    persist_save(state)
+    persist_modules(state)
     return TreasuryFundsResponse(treasury=state.treasury, paperPortfolio=state.paper_portfolio)
 
 
@@ -62,7 +62,7 @@ async def withdraw_treasury(payload: AmountRequest) -> TreasuryFundsResponse:
     state, error = await game_state.withdraw_treasury(payload.amount)
     if error is not None:
         raise HTTPException(status_code=400, detail=error)
-    persist_save(state)
+    persist_modules(state)
     return TreasuryFundsResponse(treasury=state.treasury, paperPortfolio=state.paper_portfolio)
 
 
@@ -71,7 +71,7 @@ async def create_savings_rule(payload: CreateRuleRequest) -> TreasuryResponse:
     state, error = await game_state.create_savings_rule(payload.rule_type, payload.percent, payload.reserve_target)
     if error is not None:
         raise HTTPException(status_code=400, detail=error)
-    persist_save(state)
+    persist_modules(state)
     return TreasuryResponse(treasury=state.treasury)
 
 
@@ -80,12 +80,12 @@ async def toggle_savings_rule(payload: ToggleRuleRequest) -> TreasuryResponse:
     state, error = await game_state.toggle_savings_rule(payload.rule_id, payload.active)
     if error is not None:
         raise HTTPException(status_code=400, detail=error)
-    persist_save(state)
+    persist_modules(state)
     return TreasuryResponse(treasury=state.treasury)
 
 
 @router.post("/rules/pause-all", response_model=TreasuryResponse)
 async def pause_all_savings_rules() -> TreasuryResponse:
     state = await game_state.pause_all_savings_rules()
-    persist_save(state)
+    persist_modules(state)
     return TreasuryResponse(treasury=state.treasury)

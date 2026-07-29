@@ -7,7 +7,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.persistence import persist_save
+from app.persistence import persist_modules
 from app.schemas import QuestionOfTheDay
 from app.state import game_state
 
@@ -32,6 +32,6 @@ async def submit_qotd_response(payload: SubmitQotdResponseRequest) -> SubmitQotd
     state, error = await game_state.submit_qotd_response(payload.question_id, payload.response)
     if error is not None:
         raise HTTPException(status_code=400, detail=error)
-    persist_save(state)
+    persist_modules(state)
     question = next(q for q in state.question_archive if q.id == payload.question_id)
     return SubmitQotdResponseResponse(question=question)

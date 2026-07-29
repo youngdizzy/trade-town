@@ -18,11 +18,42 @@ Liveness check used by Docker's healthcheck and load balancers.
 
 ## `GET /api/load`
 
-Returns the full authoritative `GameSaveState` — always succeeds; a fresh
-deployment just returns sensible defaults (see `state.default_state()`).
-Same shape as a `"state"` WebSocket message plus the client-owned fields
-(`player`, `settings`, `dialogueHistory`) and `version`/`updatedAt`. See
-"GameSaveState fields" below for the full shape.
+v0.7 Save Architecture Redesign Phase 2 — returns a `GameSaveState`-shaped
+object, but only the **core modules** are real (see
+`backend/app/save_modules.py` for the module map: `meta`, `settings`,
+`world`, `employees`, `company`, `research`, `training`, `founders`,
+`derived`). The three **archive modules** — `trade_history` (decisions,
+ceoDecisions, tradeProposals, debates, challengeReports,
+gatekeeperRejections), `knowledge_archive` (caseStudies, questionArchive,
+reasoningChallenges, reflectionSessions, disciplineReviews, hallOfFame,
+memory, meetingMinutes, executiveReviews), and `academy`
+(academyProjects, academyCompletedProjects, agentKnowledge) — come back
+as real empty arrays/dicts (the same defaults a fresh game legitimately
+starts with), not fabricated data and not omitted fields, so the response
+stays a structurally valid `GameSaveState` with no optional-field handling
+needed client-side. This measurably shrinks the response (~840KB → ~250KB
+against a real day-32 dev save) without changing its shape.
+
+The excluded archive data is never actually missing for long: every
+Command Center panel that displays it hydrates live from the WebSocket
+`"state"` broadcast within moments of connecting anyway (see `WS /ws`
+below, unchanged by this redesign) — so nothing is left showing stale or
+empty data because of what this endpoint leaves out.
+
+Always succeeds; a fresh deployment just returns sensible defaults (see
+`state.default_state()`). See "GameSaveState fields" below for the full
+shape.
+
+## `GET /api/load/archive/{module}`
+
+v0.7 Save Architecture Redesign Phase 2 — fetches one archive module's
+real data on demand. `module` must be one of `trade_history`,
+`knowledge_archive`, `academy` (a `404` otherwise). Returns a plain
+alias-keyed (camelCase) object with just that module's fields, e.g.:
+
+```json
+{ "decisions": [...], "ceoDecisions": [...], "tradeProposals": [...], "debates": [...], "challengeReports": [...], "gatekeeperRejections": [...] }
+```
 
 ## `POST /api/save`
 
@@ -64,11 +95,30 @@ read it at all.
 Response:
 
 ```json
-{ "ok": true, "updatedAt": "2026-01-01T00:00:00.000000+00:00", "modules": [] }
+{
+  "ok": true,
+  "updatedAt": "2026-01-01T00:00:00.000000+00:00",
+  "modules": [
+    { "name": "settings", "ok": true, "bytesWritten": 252, "error": null },
+    { "name": "world", "ok": true, "bytesWritten": 0, "error": null }
+  ]
+}
 ```
 
-`modules` is populated once Save Architecture Redesign Phase 2 (modular
-per-section persistence) ships; empty for now.
+`modules` has one entry per module in `backend/app/save_modules.py`'s
+module map (see `GET /api/load` above), reflecting what
+`persistence.persist_modules()` actually did on the server for this save:
+
+- `bytesWritten: 0` means that module's content was byte-for-byte
+  identical to what's already stored (compared via a SHA-256 hash, not a
+  full read-back) and was skipped entirely — this is the real "only save
+  what changed" mechanism the redesign asked for. Most modules skip most
+  saves; only `settings` (player/settings/dialogueHistory, the fields a
+  save POST can actually change) reliably writes on every call.
+- `ok: false` with a non-null `error` means that one module failed to
+  persist — every other module in the same request still committed
+  independently (see `persist_modules()`'s docstring for how the
+  per-module SAVEPOINT isolation works).
 
 ## `WS /ws`
 
@@ -639,7 +689,9 @@ match any archived entry.
 
 `GET /api/load` returns this same set of fields plus `version` (currently
 `"0.6"`), `player` (`EntityTransform`), `settings` (`SettingsState`),
-`dialogueHistory` (`DialogueHistoryEntry[]`), and `updatedAt`.
+`dialogueHistory` (`DialogueHistoryEntry[]`), and `updatedAt` — except the
+fields belonging to the three archive modules, which come back empty (see
+`GET /api/load`'s own section above for why).
 
 ### `POST /api/treasury/deposit` / `POST /api/treasury/withdraw`
 

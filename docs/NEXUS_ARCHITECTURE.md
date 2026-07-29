@@ -27,7 +27,11 @@ run_sim_loop()  (backend/app/sim.py)
     │
     ├─► ws_manager.broadcast(build_state_message(state))   (every connected client)
     │
-    └─► persist_save(state)   (every PERSIST_INTERVAL_TICKS)
+    └─► persist_modules(state)   (every PERSIST_INTERVAL_TICKS, or immediately on a day/trade event)
+          v0.7 Save Architecture Redesign Phase 2 — splits state into
+          per-module rows (backend/app/save_modules.py) and skips writing
+          any module whose content hash hasn't changed since the last
+          write; see backend/app/persistence.py's persist_modules().
 ```
 
 Everything downstream of `nexus.tick()` is synchronous, in-process Python

@@ -10,7 +10,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.persistence import persist_save
+from app.persistence import persist_modules
 from app.schemas import PlayerVsAiPrompt, PlayerVsAiState, SignalChoice
 from app.state import game_state
 
@@ -43,5 +43,5 @@ async def submit_prompt(payload: SubmitPlayerVsAiRequest) -> SubmitPlayerVsAiRes
     state, error = await game_state.submit_player_vs_ai(payload.prompt_id, payload.choice)
     if error is not None:
         raise HTTPException(status_code=400, detail=error)
-    persist_save(state)
+    persist_modules(state)
     return SubmitPlayerVsAiResponse(playerVsAi=state.player_vs_ai)

@@ -759,6 +759,16 @@ export class NexusManager {
     this.viewedTradeNotificationIds = update.viewedTradeNotificationIds;
   }
 
+  // v0.7 — Save Architecture Redesign Phase 2: GET /api/load now returns
+  // only the core modules (backend/app/save_modules.py); the archive
+  // modules (trade_history/knowledge_archive/academy — decisions, debates,
+  // caseStudies, questionArchive, hallOfFame, academyCompletedProjects,
+  // agentKnowledge, ...) come back as real empty arrays/dicts, not omitted
+  // fields, so every plain assignment below stays valid with no optional
+  // handling needed. Those fields get their real data moments later from
+  // the WebSocket tick broadcast (net/socket.ts calls applyServerUpdate()
+  // above, unconditionally, on every tick) — this method only runs once at
+  // boot, so no panel is ever stuck showing an empty archive.
   static loadFromSave(save: NexusSnapshot): void {
     this.tasks = save.tasks;
     this.whiteboards = save.whiteboards;

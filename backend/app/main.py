@@ -9,7 +9,7 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from app.config import settings
 from app.db import init_db
-from app.persistence import load_save, persist_save
+from app.persistence import load_state, persist_modules
 from app.routers import calendar, calibration, education, energy, executive, health, knowledge_graph, market, mentor, player_vs_ai, save, time, trades, treasury, ws
 from app.sim import run_sim_loop
 from app.state import game_state
@@ -21,12 +21,12 @@ logger = logging.getLogger("tradetown.main")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     init_db()
-    existing = load_save()
+    existing = load_state()
     if existing is not None:
         await game_state.load_from(existing)
         logger.info("Loaded existing save (day %s, %02d:%02d)", existing.time.day, existing.time.hour, existing.time.minute)
     else:
-        persist_save(await game_state.snapshot())
+        persist_modules(await game_state.snapshot())
         logger.info("No existing save found; persisted fresh default state.")
 
     sim_task = asyncio.create_task(run_sim_loop())

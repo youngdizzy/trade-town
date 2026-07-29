@@ -8,7 +8,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.persistence import persist_save
+from app.persistence import persist_modules
 from app.schemas import CalendarState, PlayerEventCategory
 from app.state import game_state
 
@@ -42,7 +42,7 @@ async def create_event(payload: CreateEventRequest) -> CalendarResponse:
     state, error = await game_state.create_calendar_event(payload.category, payload.title, payload.day, payload.hour, payload.minute)
     if error is not None:
         raise HTTPException(status_code=400, detail=error)
-    persist_save(state)
+    persist_modules(state)
     return CalendarResponse(calendar=state.calendar)
 
 
@@ -51,5 +51,5 @@ async def delete_event(payload: DeleteEventRequest) -> CalendarResponse:
     state, error = await game_state.delete_calendar_event(payload.event_id)
     if error is not None:
         raise HTTPException(status_code=400, detail=error)
-    persist_save(state)
+    persist_modules(state)
     return CalendarResponse(calendar=state.calendar)

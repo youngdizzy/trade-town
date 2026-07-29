@@ -18,7 +18,8 @@ from sqlalchemy.orm import sessionmaker
 
 import app.db as db
 import app.persistence as persistence
-from app.models import Base, SaveBackup, SaveGame
+from app.models import Base, SaveBackup, SaveGame, SaveModule
+from app.save_modules import ALL_MODULES
 from app.schemas import EntityTransform, TimeState
 from app.state import default_state
 
@@ -114,6 +115,97 @@ def test_periodic_backups_are_capped(temp_db):
         assert count == persistence.MAX_PERIODIC_BACKUPS
     finally:
         session.close()
+
+
+class TestPersistModules:
+    """v0.7 Save Architecture Redesign Phase 2 — the real primary write/read
+    path (see persist_modules()/load_modules()'s own docstrings)."""
+
+    def test_load_modules_returns_none_on_a_fresh_database(self, temp_db):
+        assert persistence.load_modules() is None
+
+    def test_persist_then_load_modules_round_trips_real_state(self, temp_db):
+        state = default_state().model_copy(
+            update={
+                "time": TimeState(day=12, hour=14, minute=30),
+                "player": EntityTransform(scene="BrainRoomScene", x=144, y=96, facing="up"),
+            }
+        )
+        results = persistence.persist_modules(state)
+        assert {r.name for r in results} == set(ALL_MODULES)
+        assert all(r.ok for r in results)
+        assert all(r.bytes_written > 0 for r in results)  # first write: nothing to skip yet
+
+        loaded = persistence.load_modules()
+        assert loaded is not None
+        assert loaded.time.day == 12
+        assert loaded.player.scene == "BrainRoomScene"
+        assert loaded.player.x == 144
+
+    def test_persisting_unchanged_state_twice_skips_every_module(self, temp_db):
+        state = default_state()
+        persistence.persist_modules(state)
+        results = persistence.persist_modules(state)  # nothing changed since the first call
+        assert all(r.ok for r in results)
+        assert all(r.bytes_written == 0 for r in results)  # this is the real "only save what changed" win
+
+    def test_changing_one_module_only_rewrites_that_module(self, temp_db):
+        state = default_state()
+        persistence.persist_modules(state)
+
+        changed = state.model_copy(update={"player": EntityTransform(scene="CeoOfficeScene", x=1, y=1, facing="down")})
+        results = persistence.persist_modules(changed)
+        by_name = {r.name: r for r in results}
+        assert by_name["settings"].bytes_written > 0  # player lives in the settings module
+        assert by_name["research"].bytes_written == 0
+        assert by_name["employees"].bytes_written == 0
+        assert by_name["trade_history"].bytes_written == 0
+
+    def test_a_corrupted_module_row_recovers_from_defaults_not_a_full_reset(self, temp_db):
+        state = default_state().model_copy(update={"time": TimeState(day=30, hour=6, minute=0)})
+        persistence.persist_modules(state)
+
+        session = db.SessionLocal()
+        try:
+            row = session.query(SaveModule).filter_by(slot="default", module="research").one()
+            row.data = "not valid json at all {{{"
+            session.commit()
+        finally:
+            session.close()
+
+        recovered = persistence.load_modules()
+        assert recovered is not None
+        # The real, undamaged data in every other module survives...
+        assert recovered.time.day == 30
+        # ...while only the corrupted module falls back to real defaults (not
+        # the real seeded research this save actually had, which is exactly
+        # what's expected — that module's own row was destroyed — but a
+        # sane, valid default rather than a crash or a full-state reset).
+        assert len(recovered.research) == len(default_state().research)
+
+    def test_load_state_migrates_a_legacy_single_blob_save_exactly_once(self, temp_db):
+        legacy = default_state().model_copy(update={"time": TimeState(day=88, hour=3, minute=0)})
+        persistence.persist_save(legacy)  # the pre-Phase-2 write path
+        assert persistence.load_modules() is None  # no module rows exist yet
+
+        migrated = persistence.load_state()
+        assert migrated is not None
+        assert migrated.time.day == 88
+
+        session = db.SessionLocal()
+        try:
+            count = session.query(SaveModule).filter_by(slot="default").count()
+            assert count == len(ALL_MODULES)  # the migration actually wrote module rows
+        finally:
+            session.close()
+
+        # Second call reads the now-existing module rows, not the legacy row again.
+        again = persistence.load_state()
+        assert again is not None
+        assert again.time.day == 88
+
+    def test_load_state_returns_none_on_a_fresh_database(self, temp_db):
+        assert persistence.load_state() is None
 
 
 def test_add_missing_columns_alters_a_table_created_by_an_older_version(tmp_path: Path):

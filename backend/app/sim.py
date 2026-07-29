@@ -8,7 +8,7 @@ import asyncio
 import logging
 
 from app.config import settings
-from app.persistence import persist_save
+from app.persistence import persist_modules
 from app.state import game_state
 from app.ws_manager import build_state_message, ws_manager
 
@@ -39,10 +39,10 @@ async def run_sim_loop() -> None:
             day_advanced = state.time.day != last_day
             trade_closed = trade_count != last_trade_count
             if day_advanced or trade_closed or tick_count % settings.persist_interval_ticks == 0:
-                persist_save(state)
+                persist_modules(state)
             last_day = state.time.day
             last_trade_count = trade_count
     except asyncio.CancelledError:
         logger.info("Simulation loop cancelled; persisting final state.")
-        persist_save(await game_state.snapshot())
+        persist_modules(await game_state.snapshot())
         raise
