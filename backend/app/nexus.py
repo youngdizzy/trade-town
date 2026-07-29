@@ -64,6 +64,7 @@ from app.market_data import market_data_provider
 from app.market_environment import tick_market_environment
 from app.mentor import compute_mentor_state, compute_thinking_profiles, generate_question_of_the_day, record_question
 from app.mistakes import generate_case_studies, record_case_studies
+from app.successes import generate_success_studies, record_success_studies
 from app.paper_trading import tick_paper_trading
 from app.portfolio import sim_minutes
 from app.reasoning_lab import compute_reasoning_lab_state, generate_challenge, record_challenge
@@ -1162,6 +1163,24 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                         NewsItem(
                             id=f"news-case-study-{case_study.id}",
                             headline=f'New case study filed: "{case_study.title}" ({case_study.symbol}).',
+                            category="company",
+                            timestamp=_now_iso(),
+                        )
+                    )
+            # v0.7 Feature 42 — the Library of Successes (app/successes.py),
+            # the Decision Replay Center's "Successes" lesson type. Same
+            # capped list/memory log as the Library of Mistakes above
+            # (CaseStudy is one shared schema — see schemas.py's
+            # SUCCESS_CASE_STUDY_CATEGORIES), only a real win can produce one.
+            elif trade.pnl > 0:
+                new_success_studies = generate_success_studies(decision, debate, trade, discipline_review, id_prefix=f"case-{trade.id}")
+                case_studies = record_success_studies(case_studies, new_success_studies)
+                for success_study in new_success_studies:
+                    record_case_study(memory, success_study)
+                    news.append(
+                        NewsItem(
+                            id=f"news-case-study-{success_study.id}",
+                            headline=f'New case study filed: "{success_study.title}" ({success_study.symbol}).',
                             category="company",
                             timestamp=_now_iso(),
                         )

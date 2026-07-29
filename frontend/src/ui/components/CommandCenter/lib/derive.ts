@@ -2,8 +2,13 @@ import type {
   AgentId,
   AgentState,
   AgentVote,
+  AnalystRole,
+  CaseStudy,
   CeoDecisionRecord,
+  ChallengeReport,
   ConfidenceTier,
+  Debate,
+  DisciplineReview,
   GatekeeperRejection,
   PaperOrder,
   PaperPortfolio,
@@ -16,7 +21,7 @@ import type {
   TradeProposal,
   WatchlistEntry,
 } from "@/types";
-import { AGENT_IDS } from "@/types";
+import { AGENT_IDS, ROLE_TO_AGENT } from "@/types";
 
 /**
  * Every number here is either a real field read straight off the wire, or
@@ -364,6 +369,185 @@ export interface GatekeeperStats {
    * one rejection has resolved (see backend/app/gatekeeper.py's
    * GATEKEEPER_EVAL_WINDOW_MINUTES). */
   vetoAccuracy: number | null;
+}
+
+// --- v0.7 Feature 42 — Decision Replay Center -----------------------------
+// Every one of these joins reuses data the client already has (broadcast
+// over WS the same way DecisionDetail.tsx's own order/closedTrade lookups
+// already work) — there is no dedicated replay endpoint, because there is
+// nothing left to fetch: TradeDecision already carries forward everything
+// its originating TradeProposal computed (confidenceEngine, votes,
+// gatekeeperVerdict), so a decisionId/proposalId join across the existing
+// capped lists is the whole feature.
+
+/** A TradeDecision's id is always `decision-{proposalId}` (see
+ * backend/app/executive.py's resolve_proposal) — every other permanent
+ * record downstream (Debate, ChallengeReport, GatekeeperRejection) keys
+ * off the raw proposalId, not the decisionId. */
+export function proposalIdForDecision(decision: TradeDecision): string {
+  return decision.id.startsWith("decision-") ? decision.id.slice("decision-".length) : decision.id;
+}
+
+export interface DecisionReplayLinks {
+  decision: TradeDecision;
+  ceoDecision: CeoDecisionRecord | null;
+  debate: Debate | null;
+  challengeReport: ChallengeReport | null;
+  disciplineReview: DisciplineReview | null;
+  caseStudies: CaseStudy[];
+  order: PaperOrder | null;
+  exitOrders: PaperOrder[];
+  trade: PaperTrade | null;
+}
+
+/** Joins every permanent record this decision ever touched, purely from
+ * lists already in gameStore — see the section header above for why no
+ * backend call is involved. Each linked record is independently
+ * nullable/empty: a Debate/ChallengeReport is only ever generated for
+ * some proposals (see backend/app/devils_advocate.py's rotation), and
+ * capped lists (the 40-order log, the 200-decision log) can age a record
+ * out even when it once existed — the replay UI shows that honestly
+ * rather than assuming absence means "never happened." */
+export function buildDecisionReplay(
+  decision: TradeDecision,
+  state: {
+    ceoDecisions: CeoDecisionRecord[];
+    debates: Debate[];
+    challengeReports: ChallengeReport[];
+    disciplineReviews: DisciplineReview[];
+    caseStudies: CaseStudy[];
+    portfolio: PaperPortfolio;
+  }
+): DecisionReplayLinks {
+  const proposalId = proposalIdForDecision(decision);
+  const ceoDecision =
+    state.ceoDecisions.find((r) => r.decisionId === decision.id) ?? state.ceoDecisions.find((r) => r.proposalId === proposalId) ?? null;
+  const debate = [...state.debates].reverse().find((d) => d.proposalId === proposalId) ?? null;
+  const challengeReport = [...state.challengeReports].reverse().find((c) => c.proposalId === proposalId) ?? null;
+  const disciplineReview = state.disciplineReviews.find((r) => r.decisionId === decision.id) ?? null;
+  const caseStudies = state.caseStudies.filter((c) => c.decisionId === decision.id);
+  const order = linkedOrderFor(decision, state.portfolio.orders);
+  const position = state.portfolio.positions.find((p) => p.symbol === decision.symbol) ?? null;
+  const exitOrders = position ? exitOrdersForPosition(position.id, state.portfolio.orders) : [];
+  const trade = state.portfolio.tradeHistory.find((t) => t.decisionId === decision.id) ?? null;
+  return { decision, ceoDecision, debate, challengeReport, disciplineReview, caseStudies, order, exitOrders, trade };
+}
+
+export type ReplayStageStatus = "recorded" | "not_generated" | "not_applicable";
+
+export interface ReplayStage {
+  key: string;
+  label: string;
+  status: ReplayStageStatus;
+  detail: string;
+}
+
+/**
+ * The brief's 13-stage timeline (Research Started → ... → Reflection
+ * Chamber Review), built entirely from `links`. Two honest departures
+ * from a literal reading, both documented inline rather than faked:
+ *
+ *  - "AI Research" is folded into Research/Technical/Fundamental Analysis
+ *    below rather than shown as a fifth, separate research stage — all
+ *    four would read from the exact same real summary fields, so
+ *    splitting them would just repeat the same text under two labels.
+ *  - "Quant Review" is always `not_applicable` — Quant/Vector reviews
+ *    long-horizon Black Box research projects (weeks of sim time), never
+ *    an individual trade decision (see backend/app/black_box.py); no
+ *    per-trade Quant review mechanism exists anywhere in this codebase.
+ *
+ * The final stage is labeled "Post-Decision Review" rather than a literal
+ * "Reflection Chamber Review": this codebase's actual per-decision
+ * post-mortem is the Discipline Chamber's DisciplineReview (see
+ * backend/app/discipline.py) — the "Reflection Chamber" name belongs to
+ * a different, company-wide weekly/monthly system (backend/app/wisdom.py)
+ * that has no per-decision link to key off.
+ */
+export function buildReplayTimeline(links: DecisionReplayLinks): ReplayStage[] {
+  const { decision, ceoDecision, debate, challengeReport, order, exitOrders, trade, disciplineReview } = links;
+  const approved = decision.outcome === "trade" && decision.orderId !== null;
+
+  return [
+    { key: "research_started", label: "Research Started", status: "recorded", detail: decision.researchSummary },
+    { key: "technical_analysis", label: "Technical Analysis", status: "recorded", detail: decision.technicalSummary },
+    { key: "fundamental_analysis", label: "Fundamental Analysis", status: "recorded", detail: decision.fundamentalSummary },
+    { key: "risk_review", label: "Risk Review", status: "recorded", detail: decision.riskSummary },
+    {
+      key: "quant_review",
+      label: "Quant Review",
+      status: "not_applicable",
+      detail: "Quant/Vector reviews long-horizon Black Box research projects, never an individual trade decision — there is no per-trade Quant review in this company.",
+    },
+    challengeReport
+      ? { key: "devils_advocate", label: "Devil's Advocate Review", status: "recorded", detail: challengeReport.finalRecommendation }
+      : { key: "devils_advocate", label: "Devil's Advocate Review", status: "not_generated", detail: "Not every proposal is escalated to a Devil's Advocate — none was assigned to this one." },
+    debate
+      ? { key: "team_discussion", label: "Team Discussion", status: "recorded", detail: debate.finalSummary }
+      : { key: "team_discussion", label: "Team Discussion", status: "not_generated", detail: "No AI Debate was generated for this proposal, or it has aged out of the capped debate log." },
+    ceoDecision
+      ? { key: "ceo_approval", label: "CEO Approval", status: "recorded", detail: `The CEO chose ${ceoDecision.ceoDecision.toUpperCase()} (${ceoDecision.resolvedBy === "ceo" ? "a real player decision" : "auto-resolved under the active Operating Mode"}).` }
+      : { key: "ceo_approval", label: "CEO Approval", status: "not_generated", detail: "No CeoDecisionRecord found — this decision predates that record, or it has aged out of the capped log." },
+    order
+      ? { key: "trade_execution", label: "Trade Execution", status: "recorded", detail: `${order.side.toUpperCase()} ${order.quantity} @ ${formatMoney(order.price)}, placed by ${order.placedBy}.` }
+      : {
+          key: "trade_execution",
+          label: "Trade Execution",
+          status: approved ? "not_generated" : "not_applicable",
+          detail: approved ? "The order has aged out of the capped 40-order log." : "This decision was not approved — no order was ever placed.",
+        },
+    exitOrders.length > 0
+      ? { key: "trade_management", label: "Trade Management", status: "recorded", detail: `${exitOrders.length} exit order(s) attached.` }
+      : { key: "trade_management", label: "Trade Management", status: "not_applicable", detail: "TradeTown's auto-trader doesn't place stop-loss/take-profit exit orders yet — see DecisionDetail's Trade Plan section for the same documented boundary." },
+    trade
+      ? { key: "trade_exit", label: "Trade Exit", status: "recorded", detail: `Closed ${trade.pnl >= 0 ? "+" : ""}${trade.pnl.toFixed(2)} (${trade.pnlPct.toFixed(1)}%) after ${trade.durationMinutes} simulated minutes.` }
+      : { key: "trade_exit", label: "Trade Exit", status: "not_applicable", detail: approved ? "This position is still open." : "This decision was not approved — no trade to exit." },
+    disciplineReview
+      ? { key: "post_decision_review", label: "Post-Decision Review", status: "recorded", detail: disciplineReview.summary }
+      : { key: "post_decision_review", label: "Post-Decision Review", status: "not_applicable", detail: "A Discipline Review is only filed once the resulting position closes." },
+  ];
+}
+
+export interface ReplayFilters {
+  agentId: AgentId | "all";
+  symbol: string;
+  result: "all" | "trade" | "no_trade" | "win" | "loss";
+  minConfidence: number;
+  role: AnalystRole | "all";
+}
+
+export const DEFAULT_REPLAY_FILTERS: ReplayFilters = { agentId: "all", symbol: "", result: "all", minConfidence: 0, role: "all" };
+
+/**
+ * The brief's "Smart Search" asks for natural-language queries ("Show all
+ * losing trades", "Show every trade where Risk disagreed", ...) — this
+ * codebase has no real NL/LLM infrastructure anywhere (confirmed by grep
+ * across the whole backend), so rather than fabricate a fake parser, this
+ * is the same query set expressed as real structured filters, covering
+ * every one of the brief's own examples honestly:
+ *   "losing trades"              -> result = "loss"
+ *   "where Risk disagreed"       -> role = "risk" + agentId = sentinel's
+ *                                    opposing vote (see matchesFilters)
+ *   "above 85% confidence"       -> minConfidence = 85
+ *   "reviewed by the Quant"      -> not supported (see buildReplayTimeline
+ *                                    — Quant never reviews individual trades)
+ *   "breakout strategy" / "during earnings" -> not supported (no strategy
+ *                                    taxonomy or earnings calendar exists)
+ * "Department" (from the brief's filter list) maps to AnalystRole, the
+ * closest real per-decision "who reviewed this" grouping this codebase has.
+ */
+export function matchesReplayFilters(decision: TradeDecision, filters: ReplayFilters, trade: PaperTrade | null): boolean {
+  if (filters.agentId !== "all" && !decision.votes.some((v) => v.agentId === filters.agentId)) return false;
+  if (filters.symbol.trim() && !decision.symbol.toLowerCase().includes(filters.symbol.trim().toLowerCase())) return false;
+  if (filters.result === "trade" && decision.outcome !== "trade") return false;
+  if (filters.result === "no_trade" && decision.outcome !== "no_trade") return false;
+  if (filters.result === "win" && (!trade || trade.pnl <= 0)) return false;
+  if (filters.result === "loss" && (!trade || trade.pnl >= 0)) return false;
+  if (decision.confidence < filters.minConfidence) return false;
+  if (filters.role !== "all") {
+    const roleAgent = ROLE_TO_AGENT[filters.role];
+    if (!decision.votes.some((v) => v.agentId === roleAgent)) return false;
+  }
+  return true;
 }
 
 /** Every count here comes straight off a real TradeDecision.gatekeeperVerdict

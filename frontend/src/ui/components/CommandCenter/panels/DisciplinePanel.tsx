@@ -2,6 +2,7 @@ import { useMemo, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import type { CaseStudy, CaseStudyCategory, DisciplineReview, DisciplineTier } from "@/types";
+import { SUCCESS_CASE_STUDY_CATEGORIES } from "@/types";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
 
 const TIER_TONE: Record<DisciplineTier, "green" | "cyan" | "amber" | "red"> = {
@@ -19,6 +20,11 @@ const CATEGORY_LABEL: Record<CaseStudyCategory, string> = {
   acted_too_quickly: "Acting Too Quickly",
   ignored_dissent: "Poor Communication",
   confirmation_bias: "Confirmation Bias",
+  // v0.7 Feature 42 — the Library of Successes half of the same case
+  // study log (see backend/app/successes.py).
+  disciplined_process: "A Well-Disciplined Process",
+  rigorous_cross_examination: "Rigorous Cross-Examination",
+  patient_execution: "Patient Execution",
 };
 
 /**
@@ -95,7 +101,7 @@ export function DisciplinePanel() {
 
       <Glass className="max-h-96 overflow-y-auto p-3">
         <div className="mb-1.5 flex items-center justify-between">
-          <TerminalLabel>Library of Mistakes</TerminalLabel>
+          <TerminalLabel>Library of Mistakes &amp; Successes</TerminalLabel>
           <StatusPill tone="purple">{caseStudies.length} case stud{caseStudies.length === 1 ? "y" : "ies"}</StatusPill>
         </div>
         <div className="mb-2 flex flex-wrap gap-1">
@@ -122,7 +128,7 @@ export function DisciplinePanel() {
           })}
         </div>
         {recentCaseStudies.length === 0 ? (
-          <EmptyState>No case studies filed yet — one is only ever filed for a real, specific process gap behind an actual loss.</EmptyState>
+          <EmptyState>No case studies filed yet — one is only ever filed for a real, specific process gap behind a loss, or a real process strength behind a win.</EmptyState>
         ) : (
           <div className="space-y-1.5">
             {recentCaseStudies.map((study) => (
@@ -191,14 +197,15 @@ function PostDecisionList({ label, items }: { label: string; items: string[] }) 
 }
 
 function CaseStudyRow({ study, expanded, onToggle }: { study: CaseStudy; expanded: boolean; onToggle: () => void }) {
+  const isSuccess = SUCCESS_CASE_STUDY_CATEGORIES.has(study.category);
   return (
     <div className="rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-1.5 text-[9px]">
       <button type="button" onClick={onToggle} className="flex w-full items-center justify-between gap-2 text-left">
         <span className="flex items-center gap-1.5">
-          <span className="text-cmd-purple">{study.title}</span>
+          <span className={isSuccess ? "text-cmd-green" : "text-cmd-purple"}>{study.title}</span>
           <span className="text-cmd-textDim">{study.symbol}</span>
         </span>
-        <span className="tabular-nums text-cmd-red">{study.tradePnlPct.toFixed(1)}%</span>
+        <span className={`tabular-nums ${isSuccess ? "text-cmd-green" : "text-cmd-red"}`}>{study.tradePnlPct >= 0 ? "+" : ""}{study.tradePnlPct.toFixed(1)}%</span>
       </button>
       <div className="mt-1 text-cmd-textDim">{study.missedInformation}</div>
       {expanded && (

@@ -7,6 +7,87 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.7 Feature 42 — Decision Replay Center**: scoped from a brief
+  asking for per-trade Stop Loss/Profit Target/Expected Value recording,
+  a 13-stage decision timeline, a "Team Replay" of every real opinion,
+  natural-language "Smart Search," and automatic "Successes"/"Mistakes"/
+  reflection-question lesson generation. Researched first (see the
+  research report referenced from `docs/Architecture.md`'s "Decision
+  Replay Center" section): the underlying decision chain
+  (`TradeProposal` → `Debate` → `ChallengeReport` → `TradeDecision` →
+  `CeoDecisionRecord` → `PaperTrade` → `DisciplineReview` → `CaseStudy`)
+  was already real and fully id-joinable — the actual gap was a unified
+  viewer, not new data. Built entirely as a **frontend-only feature**:
+  every field the Replay Center shows was already broadcast over the
+  existing WebSocket (the same lists `DecisionDetail.tsx` already reads
+  from), so no new backend endpoint or schema was needed for the join
+  itself — see `frontend/src/ui/components/CommandCenter/lib/derive.ts`'s
+  `buildDecisionReplay()`/`buildReplayTimeline()`.
+  - **New `REPLAY` Command Center tab** (`ReplayPanel.tsx`): a
+    structured filter grid (Symbol/Employee/Department/Result/Min.
+    Confidence) over the full decision archive, and a Decision Replay
+    modal per row showing the joined timeline, Team Replay (every real
+    vote + the linked AI Debate thread), the Devil's Advocate challenge
+    if one was assigned, Decision Recording fields, and any Lessons
+    Generated (case studies) tied to that decision.
+  - **Full Decision Timeline, honestly**: all 13 brief-named stages are
+    shown, each with a real `recorded`/`not_generated`/`not_applicable`
+    status rather than a fabricated "in progress" — "Quant Review" is
+    always `not_applicable` (Quant/Vector reviews long-horizon Black Box
+    research projects, never an individual trade — confirmed by grep,
+    no per-trade Quant review mechanism exists anywhere) and "AI
+    Research" is folded into Research/Technical/Fundamental Analysis
+    rather than repeating the same summary text under a fifth label.
+    "Pause/rewind/fast-forward" has no literal video/animation content
+    to scrub (every stage is a templated text record, not footage), so
+    it's implemented as jump-to-any-stage stage buttons instead.
+  - **"Successes" lesson generation, genuinely new** (`app/successes.py`,
+    the mirror image of `app/mistakes.py`'s Library of Mistakes): three
+    new `CaseStudyCategory` values (`disciplined_process`,
+    `rigorous_cross_examination`, `patient_execution`), each the crisp
+    inversion of one of the six existing mistake categories' real
+    trigger signal, filed for a real win the same way `mistakes.py`
+    files for a real loss — reuses the exact same `CaseStudy` schema and
+    `case_studies` list rather than a second, parallel schema (the
+    Command Center's Discipline tab is retitled "Library of Mistakes &
+    Successes" and color-codes each entry accordingly). The other three
+    mistake categories (`incomplete_research`/`ignored_dissent`/
+    `confirmation_bias`) have no equally crisp opposite and are
+    deliberately not mirrored — padding out to match the count would be
+    dishonest.
+  - **Explicit, documented scope cuts** (all inherited from real,
+    already-established boundaries elsewhere in this codebase, not new
+    gaps this feature introduces):
+    - **Stop Loss / Profit Target / Expected Value are not shown.**
+      TradeTown's paper broker has never placed a real stop-loss/take-
+      profit exit order (`OrderType` has always had the literal values,
+      but nothing in `broker.py`/`executive.py` has ever placed one —
+      confirmed by grep), and no calibrated probability model exists to
+      honestly compute an Expected Value from. This is the exact same
+      boundary `DecisionDetail.tsx`'s own "Trade Plan" section and
+      `app/gatekeeper.py`'s module docstring already documented — the
+      Replay Center says so explicitly rather than inventing numbers.
+    - **No natural-language "Smart Search."** No LLM/NL-understanding
+      infrastructure exists anywhere in this backend (confirmed by grep
+      across the whole codebase — every "AI-generated" line in
+      TradeTown is deterministic string templating over real data, by
+      design). Every one of the brief's own search examples ("show all
+      losing trades," "show trades above 85% confidence," "show every
+      trade where Risk disagreed") is covered by real structured
+      filters instead — "Department" maps to `AnalystRole`, the closest
+      real per-decision "who reviewed this" grouping this codebase has.
+      "Show every breakout strategy" and "show every trade during
+      earnings" are not supported — no strategy taxonomy or earnings
+      calendar exists — and "reviewed by the Quant" is not supported for
+      the same reason Quant Review is `not_applicable` above.
+  - Verification: backend (`test_successes.py`, 10 new tests, mirroring
+    `test_mistakes.py`'s structure) + full suite (496/496) + mypy/ruff
+    clean; frontend tsc/eslint/build clean; a new `replay.spec.ts` (3
+    Playwright tests against the live stack) plus the existing
+    `commandCenter.spec.ts` tab-count/number-shortcut/Discipline-tab
+    tests updated for the new 23rd tab and its shifted keyboard-shortcut
+    indices.
+
 - **v0.7 — Advanced Quantitative Research Division**: scoped from a
   spec asking for a "Chief Quantitative Strategist," a "Quant Lab,"
   long-running "Black Box Research Projects," a "CEO Research

@@ -1610,7 +1610,28 @@ CaseStudyCategory = Literal[
     "acted_too_quickly",
     "ignored_dissent",
     "confirmation_bias",
+    # v0.7 Feature 42 — the Decision Replay Center's "Successes" lesson
+    # type (app/successes.py). Each mirrors one of the six mistake
+    # categories above with its real trigger signal inverted, but only
+    # three have a clean, crisp inversion — the other three mistake
+    # signals ("incomplete_research", "ignored_dissent",
+    # "confirmation_bias") describe a specific failure with no equally
+    # crisp opposite (e.g. "research was NOT incomplete" is just the
+    # normal case, not a distinguishable success story) and are
+    # deliberately not mirrored, rather than padded out to match the
+    # count on the mistake side.
+    "disciplined_process",
+    "rigorous_cross_examination",
+    "patient_execution",
 ]
+# The subset of CaseStudyCategory that CaseStudy.category can hold for a
+# WIN (see app/successes.py) — every other category is loss-only (see
+# app/mistakes.py). Shared here so both modules and any UI/test code read
+# the same one true partition instead of maintaining two lists that could
+# drift apart.
+SUCCESS_CASE_STUDY_CATEGORIES: frozenset[CaseStudyCategory] = frozenset(
+    {"disciplined_process", "rigorous_cross_examination", "patient_execution"}
+)
 
 
 class CaseStudyTimelineEntry(CamelModel):

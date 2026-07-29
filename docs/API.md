@@ -382,10 +382,13 @@ perspective and exists purely to detect disconnects
     }
   ],
   "caseStudies": [
-    // v0.7 Feature 27 — filed only for a real, specific process gap
-    // behind an actual loss (app/mistakes.py). One of six real categories
-    // — see mistakes.py's module docstring for exactly which real signal
-    // backs each one.
+    // v0.7 Feature 27 — filed for a real, specific process gap behind
+    // an actual loss (app/mistakes.py, 6 categories) OR (v0.7 Feature 42)
+    // a real process strength behind an actual win (app/successes.py,
+    // 3 categories: disciplined_process/rigorous_cross_examination/
+    // patient_execution) — both share this one schema/list rather than
+    // duplicating it. See each module's docstring for exactly which real
+    // signal backs each category.
     {
       "id": "case-trade-...-overconfidence", "category": "overconfidence", "title": "The Cost of Overconfidence", "symbol": "MSFT",
       "decisionId": "decision-proposal-...",

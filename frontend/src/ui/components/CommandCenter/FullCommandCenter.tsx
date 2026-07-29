@@ -8,6 +8,7 @@ import { RiskDot, StatusPill } from "./ui";
 import { OverviewPanel } from "./panels/OverviewPanel";
 import { OpportunitiesPanel } from "./panels/OpportunitiesPanel";
 import { DecisionsPanel } from "./panels/DecisionsPanel";
+import { ReplayPanel } from "./panels/ReplayPanel";
 import { ExecutivePanel } from "./panels/ExecutivePanel";
 import { RiskPanel } from "./panels/RiskPanel";
 import { AgentsPanel } from "./panels/AgentsPanel";
@@ -40,6 +41,7 @@ const TABS = [
   "OPPORTUNITIES",
   "EXECUTIVE",
   "DECISIONS",
+  "REPLAY",
   "RISK",
   "AGENTS",
   "RESEARCH",
@@ -164,6 +166,7 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
         {tab === "OPPORTUNITIES" && <OpportunitiesPanel onInspect={setInspecting} />}
         {tab === "EXECUTIVE" && <ExecutivePanel />}
         {tab === "DECISIONS" && <DecisionsPanel onInspect={setInspecting} />}
+        {tab === "REPLAY" && <ReplayPanel />}
         {tab === "RISK" && <RiskPanel onNeedHelp={needHelp} />}
         {tab === "AGENTS" && <AgentsPanel />}
         {tab === "RESEARCH" && <ResearchPanel />}

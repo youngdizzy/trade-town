@@ -1184,7 +1184,26 @@ export interface DisciplineReview {
 // A permanent CaseStudy is filed whenever a closed, losing trade's own
 // DisciplineReview shows a specific real process gap — never merely
 // "the trade lost" on its own.
-export type CaseStudyCategory = "overconfidence" | "incomplete_research" | "unchallenged_assumptions" | "acted_too_quickly" | "ignored_dissent" | "confirmation_bias";
+// v0.7 Feature 42 — the last three are the Decision Replay Center's
+// "Successes" half (see backend/app/successes.py), each the crisp
+// inversion of one of the first six's real trigger signal. See
+// SUCCESS_CASE_STUDY_CATEGORIES below for the exact partition.
+export type CaseStudyCategory =
+  | "overconfidence"
+  | "incomplete_research"
+  | "unchallenged_assumptions"
+  | "acted_too_quickly"
+  | "ignored_dissent"
+  | "confirmation_bias"
+  | "disciplined_process"
+  | "rigorous_cross_examination"
+  | "patient_execution";
+
+export const SUCCESS_CASE_STUDY_CATEGORIES: ReadonlySet<CaseStudyCategory> = new Set([
+  "disciplined_process",
+  "rigorous_cross_examination",
+  "patient_execution",
+]);
 
 export interface CaseStudyTimelineEntry {
   label: string;

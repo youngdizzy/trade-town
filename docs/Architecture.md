@@ -2428,6 +2428,118 @@ the same file already did) — 15 missing calls added, plus the
 21-tab-count test updated to 22 for the new BLACKBOX tab. `blackBox.spec.ts`
 itself never failed in any of these runs.
 
+### Decision Replay Center
+
+The brief asked for per-trade Stop Loss/Profit Target/Expected Value
+recording, a 13-stage decision timeline (Research Started → ... →
+Reflection Chamber Review), a "Team Replay" of every real opinion,
+natural-language "Smart Search," and automatic lesson generation. Checked
+first against everything real this codebase already computes per
+decision: `TradeDecision` already carries `researchSummary`/
+`technicalSummary`/`fundamentalSummary`/`riskSummary`/`confidenceEngine`/
+`gatekeeperVerdict` forward from the `TradeProposal` that produced it, and
+a decision's id (`decision-{proposalId}`) already joins cleanly across
+`Debate.proposalId`, `ChallengeReport.proposalId`,
+`CeoDecisionRecord.decisionId`/`.proposalId`, `PaperTrade.decisionId`,
+`DisciplineReview.decisionId`, and `CaseStudy.decisionId` — every one of
+these is already broadcast over the WebSocket in a capped, permanent
+list. There was no missing data, only a missing unified viewer — so this
+shipped as a **frontend-only feature**, no new backend endpoint or
+schema for the join itself.
+
+**The join lives in `frontend/src/ui/components/CommandCenter/lib/derive.ts`.**
+`buildDecisionReplay()` does the actual cross-list lookup (the same
+`linkedOrderFor()`/`exitOrdersForPosition()` helpers `DecisionDetail.tsx`
+already used, extended to the five additional lists);
+`buildReplayTimeline()` turns that into the brief's 13 named stages, each
+tagged `recorded` / `not_generated` / `not_applicable` rather than a
+fabricated "in progress." Two honest departures from a literal reading:
+
+- **"Quant Review" is always `not_applicable`.** Quant/Vector reviews
+  long-horizon Black Box research projects (weeks of in-game time), never
+  an individual trade decision — confirmed by grep, there is no per-trade
+  Quant review mechanism anywhere in this codebase, and none was invented
+  to fill this stage.
+- **"AI Research" is folded into Research/Technical/Fundamental
+  Analysis** rather than shown as a fifth, separate stage — all four
+  would read from the exact same real summary fields on `TradeDecision`,
+  so splitting them would just repeat identical text under a second
+  label.
+
+The final stage is labeled "Post-Decision Review," backed by
+`DisciplineReview`, rather than a literal "Reflection Chamber Review" —
+this codebase's real per-decision post-mortem is the Discipline
+Chamber (`app/discipline.py`); "Reflection Chamber" names a different,
+company-wide weekly/monthly system (`app/wisdom.py`) with no per-decision
+link to key off. Naming it accurately here avoids implying a link that
+doesn't exist.
+
+**Smart Search became structured filters, not a fabricated NL parser.**
+No LLM/language-understanding infrastructure exists anywhere in this
+backend (confirmed by grepping the whole codebase for
+`openai|anthropic|LLM|gpt-|claude-|embeddings` — zero real hits; every
+"AI-generated" line in TradeTown is deterministic string templating, by
+design, per nearly every module's own docstring). Rather than fake a
+parser, `matchesReplayFilters()` implements the brief's own filter list
+(Employee/Strategy→Category/Market/Date/Result/Confidence/Risk/
+Department) as real dropdowns and a slider, and every one of the brief's
+own search *examples* ("show all losing trades," "show trades above 85%
+confidence," "show every trade where Risk disagreed") is reachable
+through them. "Department" maps to `AnalystRole` (technical/news/macro/
+risk/sentiment/execution) — the closest real per-decision "who reviewed
+this" grouping this codebase has, since no literal department concept
+exists at the per-trade level. "Show every breakout strategy" and "show
+every trade during earnings" are not supported (no strategy taxonomy or
+earnings calendar exists in this codebase) and "reviewed by the Quant"
+is not supported for the same reason Quant Review is `not_applicable`.
+
+**Stop Loss / Profit Target / Expected Value are not shown — an
+inherited, already-documented boundary, not a new gap.** TradeTown's
+paper broker has never placed a real stop-loss/take-profit exit order
+(`OrderType` has always included the literal `"stop"`/`"take_profit"`/
+`"stop_loss"` values, but grepping `executive.py`/`broker.py` confirms
+nothing has ever placed one), and no calibrated probability model exists
+anywhere to honestly compute an Expected Value from. This is the exact
+same boundary `DecisionDetail.tsx`'s "Trade Plan" section and
+`app/gatekeeper.py`'s own module docstring already documented — the
+Replay Center's Decision Recording panel says so explicitly rather than
+inventing a number.
+
+**"Successes" lesson generation, `app/successes.py` — the one genuinely
+new backend piece.** The brief's "Lesson Generation" list (Successes,
+Mistakes, Missed Opportunities, Suggested Improvements, Academy Lessons,
+Reflection Questions, Case Studies) is mostly already real under other
+names (`ChallengeReport.suggestedImprovements`, `CaseStudy` itself for
+Mistakes, `GatekeeperRejection.outcome == "would_have_won"` for Missed
+Opportunities) except "Successes" — `app/mistakes.py`'s Library of
+Mistakes has only ever filed a `CaseStudy` for a real loss.
+`app/successes.py` mirrors it exactly for a real win: three new
+`CaseStudyCategory` values (`disciplined_process`,
+`rigorous_cross_examination`, `patient_execution`), each the crisp
+inversion of one of the six existing mistake categories' real trigger
+signal (a discipline score of 70+, real cross-examination beyond opening
+statements, holding to the patient-hold target) — reusing the exact same
+`CaseStudy` schema and `case_studies` list rather than a second, parallel
+one. The other three mistake categories (`incomplete_research`/
+`ignored_dissent`/`confirmation_bias`) have no equally crisp opposite
+("research was NOT incomplete" is just the normal case, not a
+distinguishable success story) and are deliberately not mirrored. The
+Command Center's Discipline tab is retitled "Library of Mistakes &
+Successes" and color-codes each entry (green/red) rather than silently
+mixing success entries into a section still named only for mistakes.
+
+**Verification.** Backend: `test_successes.py` (10 new tests, mirroring
+`test_mistakes.py`'s structure — each category's real trigger condition
+checked to fire exactly when expected and not otherwise) + the full
+suite (496/496) + mypy/ruff clean. Frontend: `tsc -b`/eslint/build clean;
+a new `replay.spec.ts` (3 Playwright tests against the live stack —
+opening the REPLAY tab, filtering + resetting, opening a real decision's
+replay and confirming the Full Decision Timeline renders with an honest
+per-stage status) all passed; `commandCenter.spec.ts`'s tab-count test
+updated to 23 tabs, its number-key-shortcut test updated for COMPANY's
+shifted index (8 → 9, since REPLAY now sits between DECISIONS and RISK),
+and its Discipline-tab test updated for the retitled panel heading.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing
