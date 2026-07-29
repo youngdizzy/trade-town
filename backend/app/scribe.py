@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from app.academy import is_mentor_level
 from app.agents import AGENT_PROFILES
+from app.executive import MAX_PROPOSAL_HOLDS
 from app.knowledge import derive_lesson
 from app.memory import record
 from app.schemas import (
@@ -21,6 +22,7 @@ from app.schemas import (
     DiscussionMessage,
     ExecutiveReview,
     HallOfFameEntry,
+    HoldReason,
     MemoryRecord,
     MeetingMinutes,
     PaperOrder,
@@ -32,6 +34,7 @@ from app.schemas import (
     SimulationResult,
     TimeState,
     TradeDecision,
+    TradeProposal,
 )
 
 # Crossing this confidence on completion also logs a "future trade"
@@ -139,6 +142,15 @@ def record_ceo_decision(memory: list[MemoryRecord], decision: TradeDecision) -> 
     decision.final_reasoning already states who decided and why, so it's
     used verbatim rather than re-deriving an attribution string."""
     record(memory, "decision", f"CEO decision: {decision.symbol}", decision.final_reasoning)
+
+
+def record_proposal_hold(memory: list[MemoryRecord], proposal: TradeProposal, reason: HoldReason) -> None:
+    """v0.7 Feature 40.5 — Request More Research / Delay Decision. Not a
+    final call (see app/executive.py's hold_proposal()), but still a
+    real CEO action worth a permanent record of when and why the desk
+    was asked to wait."""
+    label = "requested more research on" if reason == "more_research" else "delayed the decision on"
+    record(memory, "decision", f"CEO held: {proposal.symbol}", f"CEO {label} {proposal.symbol} (hold {proposal.hold_count}/{MAX_PROPOSAL_HOLDS}).")
 
 
 def record_order_placed(memory: list[MemoryRecord], order: PaperOrder) -> None:

@@ -87,6 +87,11 @@ PROPOSAL_CANDLE_COUNT = 30
 # freeing its slot for a fresh opportunity rather than blocking the desk
 # indefinitely on one stale candidate.
 PROPOSAL_EXPIRY_SIM_MINUTES = 3 * 1440  # 3 in-game days
+# v0.7 Feature 40.5 — the Expert Consultation System's "Request More
+# Research" / "Delay Decision" CEO actions. A proposal can be held at
+# most twice before the CEO must actually decide (or let it expire the
+# normal way) — real and bounded, never an indefinite deferral.
+MAX_PROPOSAL_HOLDS = 2
 
 
 def _now_iso() -> str:
@@ -440,6 +445,22 @@ def grade_ceo_decisions(records: list[CeoDecisionRecord], trade_history: list[Pa
         outcome = "correct" if trade.pnl > 0 else "incorrect"
         updated.append(record.model_copy(update={"outcome": outcome, "resolved_at": _now_iso()}))
     return updated
+
+
+def hold_proposal(proposal: TradeProposal, *, now_sim_minutes: int) -> TradeProposal | None:
+    """v0.7 Feature 40.5 — "Request More Research" and "Delay Decision"
+    are both real applications of the same mechanism: reset the
+    proposal's own real expiry clock (created_sim_minutes — the same
+    field expire_stale_proposals already reads) so it doesn't go stale
+    while the CEO waits, rather than inventing a second timer or a fake
+    "research in progress" state with no real signal behind it. Returns
+    None if the proposal has already been held MAX_PROPOSAL_HOLDS times
+    — the caller must reject the request rather than deferring forever.
+    Never produces a TradeDecision/CeoDecisionRecord: nothing has
+    actually been decided yet, so the proposal simply stays pending."""
+    if proposal.hold_count >= MAX_PROPOSAL_HOLDS:
+        return None
+    return proposal.model_copy(update={"created_sim_minutes": now_sim_minutes, "hold_count": proposal.hold_count + 1})
 
 
 def expire_stale_proposals(proposals: list[TradeProposal], now_sim_minutes: int) -> tuple[list[TradeProposal], list[TradeProposal]]:

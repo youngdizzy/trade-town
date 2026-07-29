@@ -898,6 +898,13 @@ AnalystRole = Literal["technical", "news", "macro", "risk", "sentiment", "execut
 # the one boundary where a CEO decision becomes a permanent TradeDecision.
 AnalystChoice = Literal["buy", "sell", "wait"]
 
+# v0.7 Feature 40.5 — the Expert Consultation System's two real CEO
+# actions beyond buy/sell/wait. Both do the same real thing (reset the
+# proposal's own expiry clock — see app/executive.py's hold_proposal());
+# the reason is kept distinct only for honest logging, never a different
+# mechanism under the hood.
+HoldReason = Literal["more_research", "delay"]
+
 
 class AnalystVote(CamelModel):
     """One analyst's independent stance on a trade proposal, with real
@@ -958,6 +965,11 @@ class TradeProposal(CamelModel):
     # proposals expire against TradeTown's in-game calendar rather than
     # real wall-clock time (see app/executive.py's expire_stale_proposals).
     created_sim_minutes: int = Field(alias="createdSimMinutes")
+    # v0.7 Feature 40.5 — how many times the CEO has held this proposal
+    # (Request More Research / Delay Decision) instead of deciding.
+    # Capped by app/executive.py's MAX_PROPOSAL_HOLDS so a proposal can't
+    # be deferred forever.
+    hold_count: int = Field(default=0, alias="holdCount")
 
 
 # v0.7 Feature 17 — AI Debate Room. Every turn's substance is a real

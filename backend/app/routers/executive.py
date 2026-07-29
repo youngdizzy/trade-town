@@ -12,7 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.executive import PROPOSAL_CANDLE_COUNT, PROPOSAL_TIMEFRAME, AnalystChoice
 from app.market_data import market_data_provider
 from app.persistence import persist_save
-from app.schemas import CeoDecisionRecord, Debate, GatekeeperRejection, PaperPortfolio, TradeDecision, TradeProposal, WhatIfSimulation
+from app.schemas import CeoDecisionRecord, Debate, GatekeeperRejection, HoldReason, PaperPortfolio, TradeDecision, TradeProposal, WhatIfSimulation
 from app.state import game_state
 from app.whatif import run_whatif_simulation
 
@@ -52,6 +52,30 @@ async def decide(payload: SubmitCeoDecisionRequest) -> SubmitCeoDecisionResponse
         paperPortfolio=state.paper_portfolio,
         gatekeeperRejections=state.gatekeeper_rejections,
     )
+
+
+class HoldProposalRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    proposal_id: str = Field(alias="proposalId")
+    reason: HoldReason
+
+
+class HoldProposalResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    trade_proposals: list[TradeProposal] = Field(alias="tradeProposals")
+
+
+@router.post("/hold", response_model=HoldProposalResponse)
+async def hold(payload: HoldProposalRequest) -> HoldProposalResponse:
+    """v0.7 Feature 40.5 — "Request More Research" / "Delay Decision".
+    The proposal stays pending; see app/state.py's hold_trade_proposal."""
+    state, error = await game_state.hold_trade_proposal(payload.proposal_id, payload.reason)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_save(state)
+    return HoldProposalResponse(tradeProposals=state.trade_proposals)
 
 
 class RegenerateDebateRequest(BaseModel):

@@ -24,19 +24,20 @@ from app.agent_energy import default_agent_energy
 from app.company_health import compute_company_health
 from app.company_score import compute_company_score
 from app.debate import generate_debate
-from app.executive import MAX_CEO_DECISIONS, AnalystChoice, resolve_proposal
+from app.executive import MAX_CEO_DECISIONS, MAX_PROPOSAL_HOLDS, AnalystChoice, hold_proposal, resolve_proposal
 from app.market_data import market_data_provider
 from app.market_environment import default_market_environment
 from app.nexus import MAX_DEBATES, MAX_DECISIONS, MAX_GATEKEEPER_REJECTIONS
 from app.portfolio import default_portfolio, sim_minutes
 from app.research import default_research
-from app.scribe import record_ceo_decision
+from app.scribe import record_ceo_decision, record_proposal_hold
 from app.schemas import (
     EducationProgress,
     EntityTransform,
     FounderState,
     GameSaveState,
     GatekeeperRejection,
+    HoldReason,
     MeetingState,
     PlayerEventCategory,
     PlayerVsAiPrompt,
@@ -431,6 +432,34 @@ class GameState:
                 del debates[: len(debates) - MAX_DEBATES]
 
             self.data = self.data.model_copy(update={"debates": debates, "updated_at": _now_iso()})
+            return self.data, None
+
+    async def hold_trade_proposal(self, proposal_id: str, reason: HoldReason) -> tuple[GameSaveState, str | None]:
+        """v0.7 Feature 40.5 — "Request More Research" / "Delay Decision":
+        real CEO actions distinct from buy/sell/wait. The proposal stays
+        pending (see app/executive.py's hold_proposal()) — no
+        TradeDecision/CeoDecisionRecord, since nothing has actually been
+        decided. Capped at MAX_PROPOSAL_HOLDS; once exhausted the CEO
+        must actually decide (or let it expire the normal way)."""
+        async with self.lock:
+            proposal = next((p for p in self.data.trade_proposals if p.id == proposal_id), None)
+            if proposal is None:
+                return self.data, f"No pending trade proposal with id {proposal_id!r}."
+
+            held = hold_proposal(proposal, now_sim_minutes=sim_minutes(self.data.time))
+            if held is None:
+                return self.data, f"{proposal.symbol} has already been held the maximum {MAX_PROPOSAL_HOLDS} times — decide or let it expire."
+
+            memory = list(self.data.memory)
+            record_proposal_hold(memory, held, reason)
+
+            self.data = self.data.model_copy(
+                update={
+                    "trade_proposals": [held if p.id == proposal_id else p for p in self.data.trade_proposals],
+                    "memory": memory,
+                    "updated_at": _now_iso(),
+                }
+            )
             return self.data, None
 
     def _advance_once(self, minutes: int) -> None:

@@ -427,6 +427,15 @@ export class NexusManager {
     EventBus.emit("debates:updated", debates);
   }
 
+  /** v0.7 Feature 40.5 — applies the result of a direct POST
+   * /api/executive/hold call immediately. Unlike setExecutiveDecisionResult,
+   * a hold never resolves the proposal (see app/executive.py's
+   * hold_proposal()), so only tradeProposals itself changes. */
+  static setTradeProposals(tradeProposals: TradeProposal[]): void {
+    this.tradeProposals = tradeProposals;
+    EventBus.emit("tradeProposals:updated", tradeProposals);
+  }
+
   static getGatekeeperRejections(): GatekeeperRejection[] {
     return this.gatekeeperRejections;
   }

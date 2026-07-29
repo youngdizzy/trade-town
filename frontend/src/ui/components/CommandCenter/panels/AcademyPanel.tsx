@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
+import { careerLevelLabel, companyMajor } from "@/game/systems/careerLevels";
 import type { AgentKnowledgeState } from "@/types";
 import { KnowledgeGraphView } from "../KnowledgeGraphView";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
@@ -74,17 +75,36 @@ export function AcademyPanel() {
       <Glass className="p-3 lg:col-span-2">
         <TerminalLabel>Knowledge Trees</TerminalLabel>
         <div className="mt-1.5 space-y-1.5">
-          {rankedKnowledge.map((state) => (
-            <div key={state.agentId} className="flex items-center gap-2 rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-1.5 text-[9px]">
-              <span className="w-16 flex-none truncate text-cmd-cyan">{AGENT_PROFILES[state.agentId].name}</span>
-              <span className="w-28 flex-none truncate text-cmd-textDim">{state.branch}</span>
-              <div className="flex-1">
-                <Meter value={Math.min(100, (state.points / 30) * 100)} tone={tierTone(state.tier)} />
+          {rankedKnowledge.map((state) => {
+            const major = companyMajor(state);
+            return (
+              <div key={state.agentId} className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-1.5 text-[9px]">
+                <div className="flex items-center gap-2">
+                  <span className="w-16 flex-none truncate text-cmd-cyan">{AGENT_PROFILES[state.agentId].name}</span>
+                  <span className="w-28 flex-none truncate text-cmd-textDim">{state.branch}</span>
+                  <div className="flex-1">
+                    <Meter value={Math.min(100, (state.points / 30) * 100)} tone={tierTone(state.tier)} />
+                  </div>
+                  <span className="w-10 flex-none text-right tabular-nums text-cmd-textDim">{state.points.toFixed(0)}p</span>
+                  <StatusPill tone={tierTone(state.tier)}>{state.level}</StatusPill>
+                </div>
+                {/* v0.7 Feature 40 — Career Level relabels the same real
+                    tier academy.py already tracks; Company Major only
+                    appears once that tier has actually sustained a real
+                    specialization (see careerLevels.ts), an honest empty
+                    state rather than a fabricated major from day one. */}
+                <div className="mt-1 pl-[4.75rem] text-cmd-textDim">
+                  Career Level: <span className="text-cmd-text">{careerLevelLabel(state.level)}</span>
+                  {major && (
+                    <>
+                      {" · "}
+                      {major}
+                    </>
+                  )}
+                </div>
               </div>
-              <span className="w-10 flex-none text-right tabular-nums text-cmd-textDim">{state.points.toFixed(0)}p</span>
-              <StatusPill tone={tierTone(state.tier)}>{state.level}</StatusPill>
-            </div>
-          ))}
+            );
+          })}
         </div>
       </Glass>
 

@@ -12,6 +12,7 @@ import pytest
 
 from app.executive import (
     MAX_PENDING_PROPOSALS,
+    MAX_PROPOSAL_HOLDS,
     _execution_vote,
     _risk_vote,
     _sentiment_vote,
@@ -19,6 +20,7 @@ from app.executive import (
     expire_stale_proposals,
     generate_proposal,
     grade_ceo_decisions,
+    hold_proposal,
     is_significant_proposal,
     resolve_proposal,
 )
@@ -356,6 +358,58 @@ class TestExpireStaleProposals:
         keep, expired = expire_stale_proposals([proposal], now_sim_minutes=3 * 1440)
         assert keep == []
         assert expired == [proposal]
+
+
+class TestHoldProposal:
+    def _proposal(self, created_sim_minutes: int, hold_count: int = 0) -> TradeProposal:
+        return TradeProposal(
+            id="proposal-1",
+            symbol="NEXA",
+            category="stock",
+            quantity=10.0,
+            price=100.0,
+            confidence=90.0,
+            analystVotes=[],
+            overallRecommendation="buy",
+            researchSummary="test",
+            riskSummary="test",
+            confidenceEngine=DecisionConfidence(score=50.0, tier="moderate", summary="test", factors=[]),
+            createdAt=_now_iso(),
+            createdSimMinutes=created_sim_minutes,
+            holdCount=hold_count,
+        )
+
+    def test_resets_the_expiry_clock(self) -> None:
+        proposal = self._proposal(0)
+        held = hold_proposal(proposal, now_sim_minutes=500)
+        assert held is not None
+        assert held.created_sim_minutes == 500
+
+    def test_increments_hold_count(self) -> None:
+        proposal = self._proposal(0, hold_count=0)
+        held = hold_proposal(proposal, now_sim_minutes=100)
+        assert held is not None
+        assert held.hold_count == 1
+
+    def test_never_resolves_to_a_decision(self) -> None:
+        proposal = self._proposal(0)
+        held = hold_proposal(proposal, now_sim_minutes=100)
+        assert held is not None
+        # Same real fields, still pending — nothing about the proposal's
+        # own trade content changed, only its clock and hold count.
+        assert held.symbol == proposal.symbol
+        assert held.overall_recommendation == proposal.overall_recommendation
+
+    def test_capped_at_max_holds(self) -> None:
+        proposal = self._proposal(0, hold_count=MAX_PROPOSAL_HOLDS)
+        held = hold_proposal(proposal, now_sim_minutes=100)
+        assert held is None
+
+    def test_allows_exactly_max_holds(self) -> None:
+        proposal = self._proposal(0, hold_count=MAX_PROPOSAL_HOLDS - 1)
+        held = hold_proposal(proposal, now_sim_minutes=100)
+        assert held is not None
+        assert held.hold_count == MAX_PROPOSAL_HOLDS
 
 
 def test_max_pending_proposals_is_positive() -> None:

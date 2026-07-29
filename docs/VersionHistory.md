@@ -595,6 +595,36 @@ in the running app (Playwright) including a real schema-migration check
 against a genuine pre-Feature-39 save (backend self-healed the roster
 and added the missing `founderState` field with no data loss).
 
+### v0.7 continued — Expert Consultation & Career Levels (Feature 40/40.5)
+
+The brief bundled a Content Review pipeline, Learning Paths &
+Specializations, and an Expert Consultation System — research found
+~85-90% of both the latter two already shipped under different names.
+Content Review is cut outright: this codebase has no HTTP client, no
+PDF/video parsing, and no free-form NLG anywhere, so there's no way to
+actually ingest player-supplied content to review (the same gap "Player
+Knowledge Import" was already cut for under Feature 25/31). Learning
+Paths is already real: Academy's existing 7-tier `KnowledgeLevel`
+(`novice`→`mentor`) *is* the brief's Student→Legend ladder, and every
+agent already has one fixed, real `KNOWLEDGE_BRANCH` specialization —
+so rather than a second progression system, a new `careerLevels.ts`
+just relabels those same real tiers as "Career Level," and derives a
+"Company Major" (`Bachelor of {branch}`) once an agent's real tier has
+actually reached "advanced" (an honest empty state below that). Expert
+Consultation is already real too: Executive Voting's `AnalystVote`/
+`TradeProposal`/`DecisionConfidence`/`Debate`/`OperatingMode` already
+cover the per-specialist review, consensus report, healthy disagreement,
+and automation modes. The one genuinely new piece: **"Request More
+Research" / "Delay Decision"** — two real CEO actions that reuse the
+proposal's own existing expiry clock (reset via a new `hold_proposal()`)
+rather than inventing a second timer, capped at `MAX_PROPOSAL_HOLDS`
+(2) so a proposal can't be deferred forever, and never producing a
+`TradeDecision` — it just stays pending. New `POST /api/executive/hold`
+endpoint; every hold is logged to Company Memory. Two new buttons in the
+Executive Voting popup. Verified: 5 new backend tests (437/437 passing),
+mypy/ruff/tsc/eslint/build clean, Playwright regression 35/35 passing
+(including a new hold-to-cap test and a Career Level assertion).
+
 ## What's next for v0.8 (not started, not scoped)
 
 These are candidate directions surfaced by v0.6/v0.7's design, not

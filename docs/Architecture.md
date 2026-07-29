@@ -2074,6 +2074,83 @@ genuine pre-Feature-39 save already on disk — the backend's existing
 the missing `founder_state` field with no data loss, no special-casing
 needed for this feature.
 
+### Expert Consultation & Career Levels (Feature 40/40.5)
+
+The brief bundled three sections — "Content Review & Validation System,"
+"Learning Paths & Specializations," and "Expert Consultation System" —
+that, on inspection, are ~85-90% already-shipped functionality wearing
+different names. Rather than either refuse the whole spec or build a
+bloated duplicate system, this feature keeps the already-real systems as
+they are and adds only the one genuinely new mechanic underneath.
+
+**Cut entirely — the Content Review pipeline.** The brief's 8-stage
+Educational Review Pipeline (CEO Assignment → Coach Review → Founder
+Council Review → Research Validation → Academy Decision → Learning
+Output → Knowledge Debate → CEO Feedback) requires ingesting player-
+supplied content to review. This codebase has zero HTTP client (not even
+`requests`/`httpx` in `requirements.txt`), no PDF/video parsing, and no
+free-form NLG/LLM call anywhere. This is the exact same gap "Player
+Knowledge Import" was already cut for above (Feature 25/31's section) —
+restating that precedent rather than re-litigating it.
+
+**Already real — Learning Paths & Specializations.** `app/academy.py`'s
+existing `KnowledgeLevel` (7 tiers, `novice`→`mentor`, added in Feature
+31) already *is* the brief's Student→Junior→Professional→Senior→Expert→
+Master→Legend ladder — same seven rungs, same one real monotonically-
+growing number driving them. `KNOWLEDGE_BRANCH` already assigns every
+original agent one fixed, real specialization (Echo = Technical
+Analysis, Sentinel = Risk Management, and so on). Building a second
+parallel progression system for the same real signal would be the
+duplication this session's convention exists to avoid — so the frontend
+just relabels what's already there. A new `frontend/src/game/systems/
+careerLevels.ts` maps `KnowledgeLevel` to a "Career Level" name
+(`careerLevelLabel()`) and derives a "Company Major" (`companyMajor()`,
+`Bachelor of {branch}`) — but only once an agent's real `tier` has
+actually reached 3 (`advanced`/"Senior"); below that it returns `null`,
+an honest empty state rather than a fabricated major from day one. Shown
+per-agent in the Command Center's `KNOWLEDGE` tab, under each agent's
+existing Knowledge Trees row.
+
+**Already real — the Expert Consultation System.** Executive Voting
+(Feature 12) already implements nearly the entire brief section under
+different names: `AnalystVote{role, agentId, choice, reasoning,
+evidence}` is the per-specialist review; `TradeProposal` is the Lead
+Analyst's proposal; `DecisionConfidence` (Feature 15) is the weighted
+Consensus Report; `Debate`'s (Feature 17) cross-examination is "healthy
+disagreement"; `OperatingMode` (`"learning"`/`"assisted"`/`"executive"`)
+is the brief's three automation modes; a resolved `TradeDecision`/
+`CaseStudy` is the permanent consultation record. The one genuinely new
+piece is **"Request More Research" / "Delay Decision"** — two real CEO
+actions distinct from buy/sell/wait, for when the desk isn't ready to
+call it yet. Both do the exact same real thing under the hood: reset the
+proposal's own existing expiry clock (`TradeProposal.created_sim_minutes`
+— the same field `app/executive.py`'s `expire_stale_proposals()` already
+reads) via a new `hold_proposal()`, rather than inventing a second timer
+or a fake "research in progress" status with no real signal behind it.
+A new `hold_count` field caps each proposal at `MAX_PROPOSAL_HOLDS` (2)
+— once exhausted, the CEO must actually decide or let the proposal
+expire the normal way. A hold never produces a `TradeDecision` or
+`CeoDecisionRecord`: nothing has actually been decided, so the proposal
+simply stays pending. Every hold is still logged to Company Memory
+(`app/scribe.py`'s `record_proposal_hold()`) as a real, permanent record
+of when and why the desk was asked to wait. New `POST /api/executive/
+hold` endpoint backed by `GameState.hold_trade_proposal()`
+(`app/state.py`). Two new buttons ("Request More Research" / "Delay
+Decision") in the Executive Voting popup, showing the real
+`holdCount`/`MAX_PROPOSAL_HOLDS` progress and disabling once the cap is
+reached.
+
+**Verification.** 5 new backend tests (`TestHoldProposal` in
+`test_executive.py`, covering expiry-clock reset, hold-count increment,
+never-resolves-to-a-decision, cap enforcement, and exactly-at-cap
+behavior) — full backend suite 437/437 passing (432 pre-existing + 5
+new), mypy/ruff clean. Frontend `tsc -b`/eslint/build clean. Playwright
+regression re-verified across `executiveVoting.spec.ts` (new test
+holding a proposal to its cap and confirming it never resolves) and
+`commandCenter.spec.ts` (new Career Level assertion on the `KNOWLEDGE`
+tab) — 35/35 passing, plus the same tolerated real-trade-timing skip
+every run of this suite already carries.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

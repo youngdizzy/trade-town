@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
-import type { AnalystChoice, AnalystVote, DebateTurn, GatekeeperVerdict, ScenarioResult, ScenarioType, TradeProposal, WhatIfSimulation } from "@/types";
+import type { AnalystChoice, AnalystVote, DebateTurn, GatekeeperVerdict, HoldReason, ScenarioResult, ScenarioType, TradeProposal, WhatIfSimulation } from "@/types";
 import { CONFIDENCE_TIER_LABEL, ROLE_TO_AGENT } from "@/types";
 import { api } from "@/net/api";
 import { NexusManager } from "@/game/systems/NexusManager";
@@ -10,6 +10,9 @@ import { confidenceTierTone, formatMoney, formatPct, preTradeChecklist } from ".
 import { AnimatedGrid, DataRow, Glass, Meter, StatusPill, TerminalLabel } from "./ui";
 
 const CHOICE_TONE: Record<AnalystChoice, "green" | "red" | "amber"> = { buy: "green", sell: "red", wait: "amber" };
+
+// v0.7 Feature 40.5 — mirrors backend/app/executive.py's MAX_PROPOSAL_HOLDS.
+const MAX_PROPOSAL_HOLDS = 2;
 
 const ROLE_LABEL: Record<AnalystVote["role"], string> = {
   technical: "Technical Analyst",
@@ -43,6 +46,7 @@ export function ExecutiveVoting() {
   const [whatIfError, setWhatIfError] = useState<string | null>(null);
   const [expandedScenario, setExpandedScenario] = useState<ScenarioType | null>(null);
   const [submitting, setSubmitting] = useState<AnalystChoice | null>(null);
+  const [holding, setHolding] = useState<HoldReason | null>(null);
   const [regenerating, setRegenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // v0.7 Feature 20 — set only when the Trade Gatekeeper vetoes the CEO's
@@ -138,6 +142,24 @@ export function ExecutiveVoting() {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSubmitting(null);
+    }
+  };
+
+  // v0.7 Feature 40.5 — "Request More Research" / "Delay Decision". Unlike
+  // decide(), this never resolves the proposal (see backend/app/executive.py's
+  // hold_proposal()) — it stays pending and open, so there's no
+  // advanceOrClose() call here.
+  const hold = async (reason: HoldReason) => {
+    if (holding || submitting || !proposal) return;
+    setHolding(reason);
+    setError(null);
+    try {
+      const res = await api.holdProposal(proposal.id, reason);
+      NexusManager.setTradeProposals(res.tradeProposals);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setHolding(null);
     }
   };
 
@@ -382,14 +404,32 @@ export function ExecutiveVoting() {
           {error && <div className="text-[9px] text-cmd-red">{error}</div>}
 
           <div className="grid grid-cols-3 gap-2">
-            <ActionButton label="BUY" tone="green" disabled={submitting !== null} loading={submitting === "buy"} onClick={() => void decide("buy")} />
-            <ActionButton label="SELL" tone="red" disabled={submitting !== null} loading={submitting === "sell"} onClick={() => void decide("sell")} />
-            <ActionButton label="WAIT" tone="amber" disabled={submitting !== null} loading={submitting === "wait"} onClick={() => void decide("wait")} />
+            <ActionButton
+              label="BUY"
+              tone="green"
+              disabled={submitting !== null || holding !== null}
+              loading={submitting === "buy"}
+              onClick={() => void decide("buy")}
+            />
+            <ActionButton
+              label="SELL"
+              tone="red"
+              disabled={submitting !== null || holding !== null}
+              loading={submitting === "sell"}
+              onClick={() => void decide("sell")}
+            />
+            <ActionButton
+              label="WAIT"
+              tone="amber"
+              disabled={submitting !== null || holding !== null}
+              loading={submitting === "wait"}
+              onClick={() => void decide("wait")}
+            />
           </div>
           <div className="grid grid-cols-2 gap-2 text-[9px]">
             <button
               type="button"
-              disabled={submitting !== null}
+              disabled={submitting !== null || holding !== null}
               onClick={() => void decide(proposal.overallRecommendation)}
               className="rounded-sm border border-cmd-border py-1.5 text-cmd-textDim transition-colors hover:enabled:border-cmd-cyan/50 hover:enabled:text-cmd-cyan disabled:opacity-40"
             >
@@ -397,11 +437,33 @@ export function ExecutiveVoting() {
             </button>
             <button
               type="button"
-              disabled={submitting !== null}
+              disabled={submitting !== null || holding !== null}
               onClick={() => void decide("wait")}
               className="rounded-sm border border-cmd-border py-1.5 text-cmd-textDim transition-colors hover:enabled:border-cmd-red/50 hover:enabled:text-cmd-red disabled:opacity-40"
             >
               REJECT (no trade)
+            </button>
+          </div>
+          {/* v0.7 Feature 40.5 — Expert Consultation System's two real CEO
+              actions beyond buy/sell/wait: both just reset the proposal's own
+              expiry clock (see hold() above), capped at MAX_PROPOSAL_HOLDS so
+              a proposal can't be deferred forever. */}
+          <div className="grid grid-cols-2 gap-2 text-[9px]">
+            <button
+              type="button"
+              disabled={submitting !== null || holding !== null || proposal.holdCount >= MAX_PROPOSAL_HOLDS}
+              onClick={() => void hold("more_research")}
+              className="rounded-sm border border-cmd-border py-1.5 text-cmd-textDim transition-colors hover:enabled:border-cmd-cyan/50 hover:enabled:text-cmd-cyan disabled:opacity-40"
+            >
+              {holding === "more_research" ? "…" : `REQUEST MORE RESEARCH (${proposal.holdCount}/${MAX_PROPOSAL_HOLDS})`}
+            </button>
+            <button
+              type="button"
+              disabled={submitting !== null || holding !== null || proposal.holdCount >= MAX_PROPOSAL_HOLDS}
+              onClick={() => void hold("delay")}
+              className="rounded-sm border border-cmd-border py-1.5 text-cmd-textDim transition-colors hover:enabled:border-cmd-cyan/50 hover:enabled:text-cmd-cyan disabled:opacity-40"
+            >
+              {holding === "delay" ? "…" : `DELAY DECISION (${proposal.holdCount}/${MAX_PROPOSAL_HOLDS})`}
             </button>
           </div>
           <button type="button" onClick={close} className="w-full py-1 text-[9px] text-cmd-textDim hover:text-cmd-text">

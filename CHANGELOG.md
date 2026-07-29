@@ -916,6 +916,58 @@ development milestones, not semver releases.
     system-event lists, the per-agent Live Schedule, and a full custom-
     event create/delete round trip against the live backend).
 
+- **v0.7 — Expert Consultation & Career Levels (Feature 40/40.5)** — the
+  brief's "Content Review & Validation System," "Learning Paths &
+  Specializations," and "Expert Consultation System" turned out to be
+  ~85-90% already-shipped functionality under different names, so this
+  scopes down to the small honest remainder rather than duplicating any
+  of it. See `app/executive.py`, `app/academy.py`'s module docstrings,
+  and `docs/Architecture.md` for the full non-duplication reasoning.
+  - **Cut outright — Content Review pipeline** (CEO Assignment → Coach
+    Review → Founder Council Review → Research Validation → Academy
+    Decision → Learning Output → Knowledge Debate → CEO Feedback): this
+    codebase has zero HTTP client, no PDF/video parsing, and no free-form
+    NLG anywhere (not even in `requirements.txt`), so there is no way to
+    actually ingest player-supplied content to review. `docs/
+    Architecture.md` already carries a written precedent explicitly
+    rejecting "Player Knowledge Import" for this exact reason — this is
+    the same cut, restated for the same reason.
+  - **Already real — Learning Paths & Specializations**: `app/academy.py`'s
+    existing 7-tier `KnowledgeLevel` (novice→mentor) already *is* the
+    brief's Student→Legend ladder, and `KNOWLEDGE_BRANCH` already gives
+    every original agent a fixed real specialization (e.g. Echo =
+    Technical Analysis, Sentinel = Risk Management). Rather than building
+    a second parallel progression system, the frontend now just relabels
+    those same real tiers: a new `careerLevels.ts` maps `KnowledgeLevel`
+    onto Career Level names (novice=Student … mentor=Legend) and derives
+    a "Company Major" (`Bachelor of {branch}`) once an agent's real tier
+    has actually reached "advanced" (Senior) — an honest empty state
+    below that, not a fabricated major from day one. Shown per-agent in
+    the KNOWLEDGE tab's Knowledge Trees.
+  - **Already real — Expert Consultation System**: Executive Voting's
+    existing `AnalystVote`/`TradeProposal`/`DecisionConfidence`/`Debate`/
+    `OperatingMode` already implement the brief's per-specialist review,
+    Lead Analyst proposal, Consensus Report, cross-examination, and
+    3-mode automation. The one genuinely new piece: **"Request More
+    Research" / "Delay Decision"** — two real CEO actions beyond
+    buy/sell/wait. Both reuse `TradeProposal`'s own existing expiry
+    clock (`created_sim_minutes`, the same field `expire_stale_proposals`
+    already reads) rather than inventing a second timer or a fake
+    "research in progress" state; a new `hold_count` field caps each
+    proposal at `MAX_PROPOSAL_HOLDS` (2) holds so it can't be deferred
+    forever. Never produces a `TradeDecision` — the proposal simply stays
+    pending. New `POST /api/executive/hold` endpoint
+    (`app/state.py`'s `hold_trade_proposal`); every hold is logged to
+    Company Memory (`app/scribe.py`'s `record_proposal_hold`). Two new
+    buttons in the Executive Voting popup, disabled once the cap is hit.
+  - Verification: 5 new backend tests (`TestHoldProposal` in
+    `test_executive.py`), full backend suite 437/437 passing, mypy/ruff
+    clean. Frontend `tsc -b`/eslint/build clean. Playwright regression
+    re-verified across `executiveVoting.spec.ts` (new hold/cap test) and
+    `commandCenter.spec.ts` (new Career Level assertion on the KNOWLEDGE
+    tab) — 35/35 passing (plus the same tolerated real-trade-timing skip
+    every run of this suite already has).
+
 - **v0.7 — The Original Founders (Feature 39)** — Keystone (Chief Risk
   Architect) and Compass (Chief Learning Architect) join the roster as
   two new real agents (`AGENT_IDS` grows from 11 to 13). The brief's

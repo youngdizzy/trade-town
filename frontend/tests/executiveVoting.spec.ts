@@ -119,6 +119,44 @@ test("Executive Voting popup shows real analyst votes and a BUY submits a real C
   await expect(popup.getByText("EXECUTIVE VOTING")).not.toContainText(symbol, { timeout: 10000 });
 });
 
+test("Request More Research holds a proposal without resolving it, and caps out at the real limit", async ({ page }) => {
+  await page.goto("/");
+  await continueGame(page);
+  await boostResearchToThreshold(page);
+
+  await page.keyboard.press("Tab");
+  await page.getByText("EXPAND — FULL COMMAND CENTER").click();
+  await page.getByRole("button", { name: "EXECUTIVE", exact: true }).click();
+
+  const pendingRow = page.locator("button").filter({ hasText: /% confidence/ }).first();
+  await expect(pendingRow).toBeVisible({ timeout: 20000 });
+  await pendingRow.click();
+
+  const popup = page.getByTestId("executive-voting");
+  await expect(popup).toBeVisible();
+  const symbol = await popup.locator("span.font-cmdmono").first().innerText();
+
+  const researchButton = popup.getByRole("button", { name: /REQUEST MORE RESEARCH/ });
+  const delayButton = popup.getByRole("button", { name: /DELAY DECISION/ });
+  await expect(researchButton).toContainText("(0/2)");
+
+  // v0.7 Feature 40.5 — a hold resets the proposal's own expiry clock but
+  // never resolves it (see backend/app/executive.py's hold_proposal()), so
+  // the same proposal — same symbol — must still be the one showing.
+  await researchButton.click();
+  await expect(researchButton).toContainText("(1/2)", { timeout: 10000 });
+  await expect(popup.getByText("EXECUTIVE VOTING")).toBeVisible();
+  await expect(popup.locator("span.font-cmdmono").first()).toHaveText(symbol);
+
+  await delayButton.click();
+  await expect(delayButton).toContainText("(2/2)", { timeout: 10000 });
+
+  // MAX_PROPOSAL_HOLDS (2) reached — both hold buttons are now disabled,
+  // the CEO must actually decide (or let it expire).
+  await expect(researchButton).toBeDisabled();
+  await expect(delayButton).toBeDisabled();
+});
+
 test("Executive panel in the Command Center lists pending proposals and CEO track record", async ({ page }) => {
   await page.goto("/");
   await continueGame(page);

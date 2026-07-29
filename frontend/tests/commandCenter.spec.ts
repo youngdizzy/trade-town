@@ -486,6 +486,11 @@ test.describe("Global Command Center", () => {
     await expect(page.getByText("Knowledge Trees", { exact: true })).toBeVisible();
     await expect(page.getByText("Meridian", { exact: true }).first()).toBeVisible();
 
+    // v0.7 Feature 40 — Career Level is the same real per-agent knowledge
+    // tier academy.py already tracks, just relabeled onto the brief's
+    // Student-through-Legend ladder (see careerLevels.ts).
+    await expect(page.getByText(/Career Level: (Student|Junior|Professional|Senior|Expert|Master|Legend)/).first()).toBeVisible();
+
     // Active Research Project and the Company Knowledge Library both
     // render something truthful — either real content or the explicit
     // empty state — never a blank panel.

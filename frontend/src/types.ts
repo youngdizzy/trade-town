@@ -644,6 +644,12 @@ export interface TradeDecision {
 export type AnalystRole = "technical" | "news" | "macro" | "risk" | "sentiment" | "execution";
 export type AnalystChoice = "buy" | "sell" | "wait";
 
+// v0.7 Feature 40.5 — the Expert Consultation System's two real CEO
+// actions beyond buy/sell/wait. Both reset the same real expiry clock
+// (see backend/app/executive.py's hold_proposal()); the reason is kept
+// distinct only for honest logging.
+export type HoldReason = "more_research" | "delay";
+
 export const ROLE_TO_AGENT: Record<AnalystRole, AgentId> = {
   technical: "echo",
   news: "scout",
@@ -679,6 +685,10 @@ export interface TradeProposal {
   createdAt: string;
   /** Simulated-clock minutes-since-epoch — expires after 3 in-game days unactioned. */
   createdSimMinutes: number;
+  /** v0.7 Feature 40.5 — how many times the CEO has held this proposal
+   * (Request More Research / Delay Decision) instead of deciding. Capped
+   * at MAX_PROPOSAL_HOLDS (2) on the backend. */
+  holdCount: number;
 }
 
 // v0.7 Feature 17 — AI Debate Room. Every turn's text is a real

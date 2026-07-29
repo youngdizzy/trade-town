@@ -8,6 +8,7 @@ import type {
   EducationLesson,
   EducationProgress,
   GameSaveState,
+  HoldReason,
   GatekeeperRejection,
   KnowledgeGraph,
   PaperPortfolio,
@@ -106,6 +107,11 @@ export const api = {
     request<{ debates: Debate[] }>("/executive/debate/regenerate", {
       method: "POST",
       body: JSON.stringify({ proposalId }),
+    }),
+  holdProposal: (proposalId: string, reason: HoldReason) =>
+    request<{ tradeProposals: TradeProposal[] }>("/executive/hold", {
+      method: "POST",
+      body: JSON.stringify({ proposalId, reason }),
     }),
   getWhatIfSimulation: (symbol: string) => request<WhatIfSimulation>(`/executive/whatif?symbol=${encodeURIComponent(symbol)}`),
   getKnowledgeGraph: () => request<KnowledgeGraph>("/knowledge-graph"),
