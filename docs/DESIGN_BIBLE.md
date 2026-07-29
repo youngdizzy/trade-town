@@ -1,12 +1,106 @@
 # TradeTown Design Bible
 
+## Design Philosophy — The Self-Improving Company
+
+**Status:** Foundational. This section is the highest-level design
+philosophy for TradeTown and outranks every other section in this
+document, including the pillars below. It is never overwritten or
+removed — future updates may only expand it. If a proposed idea
+conflicts with it, the philosophy takes priority: the idea is redesigned
+or dropped, never the reverse.
+
+TradeTown is **not** just a trading game. TradeTown is a living AI
+company that continuously learns, improves, and evolves over time. Every
+mechanic, building, department, employee, and AI system should
+contribute toward one ultimate objective: **building the world's first
+self-improving AI investment company.**
+
+### The Golden Question
+
+Before adding any new feature, ask:
+
+> "Will this make the company smarter five years from now?"
+
+If the answer is **yes**, the feature is worth building. If the answer
+is **no**, the feature should be redesigned or removed. The company
+should become more intelligent through systems — not through
+unnecessary complexity. (This is the same discipline the "No Clutter"
+pillar already enforces at the UI layer; the Golden Question is that
+same discipline applied to the whole company, not just a panel.)
+
+### The Compounding Principle
+
+Every system should strengthen multiple other systems. For example: a
+better Academy creates better employees; better employees produce
+better research; better research creates better breakthroughs; better
+breakthroughs improve the company's Operating System; the Operating
+System strengthens future employees; future employees make better
+decisions; better decisions increase the company's DNA and legacy.
+Knowledge should compound exactly like long-term investing. Nothing
+should exist in isolation. Everything should improve something else.
+
+### Design Principles
+
+Every new feature should improve at least one of the following:
+
+- Trading Performance
+- Decision Quality
+- Risk Management
+- Research Quality
+- Learning Speed
+- Collaboration
+- Discipline
+- Innovation
+- Company Culture
+- Long-Term Knowledge
+- CEO Decision Making
+
+Features that do not improve the company should not be added.
+
+### The Company Philosophy
+
+TradeTown values:
+
+- Truth over Ego
+- Evidence over Authority
+- Process over Prediction
+- Discipline over Emotion
+- Teamwork over Individual Brilliance
+- Continuous Learning over Complacency
+- Knowledge Preservation over Short-Term Success
+- Innovation through Research
+- Respectful Debate
+- Long-Term Thinking
+
+### The Player's Role
+
+The player is not simply controlling traders. The player is building an
+institution. Every generation of employees should inherit the wisdom,
+discoveries, systems, and culture created by previous generations. The
+company's greatest competitive advantage is not a single strategy. It is
+its ability to continuously learn, question, improve, innovate, and
+teach.
+
+### The Ultimate Vision
+
+By the late game, TradeTown should feel less like a business and more
+like a world-renowned research institution whose AI employees
+continuously advance the science of trading, risk management, decision
+making, and collaboration. The goal is not to build the richest company.
+The goal is to build the smartest company — one whose knowledge
+compounds forever and whose legacy grows stronger with every generation.
+
+---
+
 **Status:** Canonical. This document is the permanent source of truth for
 what TradeTown is, why it exists, and what it will never become. Every
 future version's scope is evaluated against this document before it is
 evaluated against anything else — including a good idea. If a proposed
 feature (however compelling) conflicts with a design pillar below, the
 pillar wins, or the pillar changes first, deliberately, in a document
-edit of its own.
+edit of its own. The Design Philosophy above is the one exception to
+"the pillar changes first" — it does not change to accommodate a
+feature; a feature changes (or is dropped) to fit it.
 
 This is a design document, not an implementation guide. For "how the code
 is organized," see `PROJECT_STRUCTURE.md`. For "how NEXUS actually
@@ -27,7 +121,9 @@ into.** Not a dashboard with mascots bolted on, not a trading bot with a
 UI skin — an actual simulated company, with a building, a headcount, a
 culture, and a memory, that happens to be staffed by AI agents whose job
 is investment research. The game is the company. The company is the
-game.
+game. Per the Design Philosophy above, it's also a company that is
+never finished getting better at that job — the building doesn't just
+house the company, it's where the compounding actually happens.
 
 ## Philosophy
 
@@ -74,20 +170,27 @@ and managerial, not competitive:
    scheduled there right now; walking up to one opens a dialogue line
    reflecting their current task. There is nothing to fail at here — the
    player cannot break an agent's schedule by talking to it.
-3. **Read.** The Brain Room HUD, the whiteboards, TradeTown Daily (the
-   newspaper), Company Memory, the Coach Dashboard, the Simulation
-   Lab/Hall of Fame/Performance Center room readouts, and — new in v0.6 —
-   the Trading Floor's live ticker/Central Command display are all *read*
-   surfaces, not *control* surfaces. The player's role stays a visitor
-   with backstage access, not a manager giving orders: Coach evaluates
-   the company autonomously and the player reads its reports, and v0.6's
-   Decision Voting pipeline is entirely agent-to-agent — the player
-   watches Scout/Atlas/Echo/Nova vote and Sentinel/Guardian gate the
-   outcome, but never casts a vote, sets `RiskLimits`, or approves an
-   individual paper trade before it opens. That boundary was originally
-   drafted as something v0.5 might soften; it didn't, v0.6 extended the
-   same boundary to a whole new decision pipeline, and the player still
-   directs nothing at the level of an individual trade.
+3. **Read, then decide as CEO — never as a trader.** The Brain Room HUD,
+   the whiteboards, TradeTown Daily (the newspaper), Company Memory, the
+   Coach Dashboard, the Simulation Lab/Hall of Fame/Performance Center
+   room readouts, and the Trading Floor's live ticker/Central Command
+   display are all *read* surfaces the player never edits directly. The
+   line this pillar actually protects is narrower than "the player never
+   decides anything" (that boundary was true through v0.6 and did soften
+   deliberately from v0.6.3 onward, per the Design Philosophy's "CEO
+   Decision Making" principle) — it is *the player never does an
+   employee's job*. Scout/Atlas/Echo/Nova/Sentinel/Guardian still do
+   every real analysis, vote, and risk check autonomously; the player's
+   own real decisions sit one level up, at the institution's controls:
+   Executive Voting lets the CEO approve, reject, request more research,
+   or delay the desk's own recommendation on a real `TradeProposal`
+   (never place an order from scratch, never override a specific agent's
+   vote); the Treasury, Time Controls, Company Priority, Calendar, and
+   the CEO Research Dashboard let the CEO fund, pace, prioritize, and
+   steer the company without ever touching an agent's research process
+   or a position's entry/exit itself. The player still never sets
+   `RiskLimits` numerically or hand-picks a trade's size or price — that
+   stays Sentinel/Guardian's and the broker's job, not the CEO's.
 4. **Return.** Because the simulation keeps advancing offline (persisted
    to SQLite every `PERSIST_INTERVAL_TICKS`), coming back later always
    shows a company that kept working without you — new research
@@ -107,6 +210,12 @@ now watching it grade its own performance.
 
 ## What TradeTown Is
 
+- A **self-improving institution**, per the Design Philosophy above —
+  the reason "get better at their jobs over time" (see Vision) is a
+  mechanical fact (Academy Knowledge Points, Innovation Points, Company
+  Health, Hall of Fame, the Founder Council, the Museum of Discoveries),
+  not a flavor claim. Every system below exists to make that compounding
+  real and inspectable, not to exist in isolation.
 - A **living-company simulation** where AI agents have schedules, moods,
   energy, memory, and visible research output — see `AgentState` in
   `backend/app/schemas.py` for the literal shape of "alive" here.
@@ -211,6 +320,10 @@ Named honestly, including where TradeTown deliberately diverges:
 
 Every pillar below is a real, load-bearing constraint — each has already
 shaped a concrete decision in the shipped codebase, cited as evidence.
+They implement the Design Philosophy above at the level of concrete
+decisions; where a pillar and the philosophy ever appear to point
+different directions, re-read the pillar as the philosophy applied to
+this specific case, not as a competing authority.
 
 ### 1. Living AI Company
 
@@ -221,7 +334,12 @@ and a persistent memory (`CompanyMemory`). The simulation runs whether or
 not a client is connected (`sim.py`'s background loop is independent of
 WebSocket connections). *Evidence this is real, not aspirational:* the
 whole v0.3 build exists because this pillar demanded a research/watchlist/
-discussion system, not just more decoration.
+discussion system, not just more decoration. This pillar is also where
+the Compounding Principle becomes mechanical rather than aspirational:
+an agent's schedule, memory, and knowledge state are real fields that
+later systems (Academy, Innovation Points, the Founder Council) read
+and grow — a "living" agent is, among other things, one whose present
+state was actually shaped by its own past.
 
 ### 2. Readable Information
 
