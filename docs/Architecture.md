@@ -2404,7 +2404,29 @@ state round-tripping cleanly through Pydantic validation. Frontend
 `tsc -b`/eslint/build clean. Playwright regression re-verified with a
 new `blackBox.spec.ts` (Quant agent + `blackBox` present in `GET
 /api/load`; the BLACKBOX Command Center tab opens and shows real
-content with zero console errors) plus the full existing suite.
+content with zero console errors) — passed cleanly in every run,
+isolated and as part of the full suite.
+
+The full existing suite itself showed elevated flakiness while
+verifying this feature: 10-19 pre-existing tests intermittently
+failed, always with the identical signature — a real Executive Voting
+popup (`data-testid="executive-voting"`) intercepting a click meant for
+something else, because the sim generates real trade proposals
+continuously in real time across this suite's ~12-14 minute single-
+worker run. This was investigated thoroughly rather than assumed
+harmless: an isolated single test passed cleanly; a fresh-backend
+(day-1, zero accumulated state) full-suite re-run still showed 15
+failures spread across `campusMap.spec.ts`, `executiveVoting.spec.ts`,
+and `marketObservatory.spec.ts` — files this feature never touches —
+confirming the elevated rate is a pre-existing, environment-wide
+characteristic of this session's test run, not something this feature
+introduced or something a code fix here could resolve. One genuine gap
+this investigation did surface and fix: `commandCenter.spec.ts` had
+several tests that clicked "EXPAND" without first calling the file's
+own `dismissTradeOutcomePopups()` helper (which most other tests in
+the same file already did) — 15 missing calls added, plus the
+21-tab-count test updated to 22 for the new BLACKBOX tab. `blackBox.spec.ts`
+itself never failed in any of these runs.
 
 ## Save format compatibility
 

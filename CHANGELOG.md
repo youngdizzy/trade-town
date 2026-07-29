@@ -89,6 +89,16 @@ development milestones, not semver releases.
     sub-score already grows with Hall of Fame entry count, and a
     breakthrough adds one real `NewsItem` naming that real number,
     never a simulated external institution.
+  - **Verification note**: while verifying this feature, the full
+    Playwright suite showed elevated real-time-proposal-popup flakiness
+    (10-19 tests) — confirmed via a fresh-backend re-run to be a
+    pre-existing, environment-wide characteristic spread across files
+    this feature never touches (`campusMap.spec.ts`,
+    `executiveVoting.spec.ts`), not a regression. One real gap the
+    investigation did surface and fix: 15 `commandCenter.spec.ts` tests
+    were missing a `dismissTradeOutcomePopups()` call other tests in
+    the same file already had. See `docs/Architecture.md`'s "Advanced
+    Quantitative Research Division" section for the full investigation.
 
 - **v0.7 — Intelligence & Decision Systems** — five systems that build on
   v0.6.3's Executive Voting rather than replacing it, aimed at making

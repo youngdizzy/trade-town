@@ -241,7 +241,7 @@ test.describe("Global Command Center", () => {
     await expectMovement(page, "d", closedBefore);
   });
 
-  test("expands to the Full Command Center and renders all 21 tabs with graceful empty states", async ({ page }) => {
+  test("expands to the Full Command Center and renders all 22 tabs with graceful empty states", async ({ page }) => {
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);
     await continueGame(page);
@@ -260,7 +260,7 @@ test.describe("Global Command Center", () => {
     // ticking throughout, a genuine trade or trade proposal can appear
     // (and pop up) mid-test. clickTab() dismisses and retries rather
     // than losing the race to a popup that appears in that instant.
-    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "COMPANY", "KNOWLEDGE", "DISCIPLINE", "REASONING", "REFLECTION", "MENTOR", "FOUNDERS", "TREASURY", "CALENDAR", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
+    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "RISK", "AGENTS", "RESEARCH", "COMPANY", "KNOWLEDGE", "DISCIPLINE", "REASONING", "REFLECTION", "MENTOR", "FOUNDERS", "TREASURY", "CALENDAR", "BLACKBOX", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
     for (const tab of tabs) {
       await clickTab(page, tab);
       await expect(page.getByRole("button", { name: tab, exact: true })).toHaveClass(/text-cmd-cyan/);
@@ -289,6 +289,7 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
+    await dismissTradeOutcomePopups(page);
     await page.getByRole("button", { name: /EXPAND/ }).click();
     await expect(page.getByText("Market Chart")).toBeVisible();
 
@@ -315,6 +316,7 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
+    await dismissTradeOutcomePopups(page);
     await page.getByRole("button", { name: /EXPAND/ }).click();
     const widget = page.getByTestId("agent-energy-widget");
     await expect(widget).toBeVisible();
@@ -346,6 +348,7 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
+    await dismissTradeOutcomePopups(page);
     await page.getByRole("button", { name: /EXPAND/ }).click();
     await page.getByRole("button", { name: "TRAINING", exact: true }).click();
 
@@ -372,6 +375,7 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
+    await dismissTradeOutcomePopups(page);
     await page.getByRole("button", { name: /EXPAND/ }).click();
     await page.getByRole("button", { name: "PVAI", exact: true }).click();
 
@@ -400,6 +404,7 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
+    await dismissTradeOutcomePopups(page);
     await page.getByRole("button", { name: /EXPAND/ }).click();
     await page.getByRole("button", { name: "ACADEMY", exact: true }).click();
 
@@ -479,6 +484,7 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
+    await dismissTradeOutcomePopups(page);
     await page.getByRole("button", { name: /EXPAND/ }).click();
     await clickTab(page, "COMPANY");
 
@@ -519,6 +525,7 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
+    await dismissTradeOutcomePopups(page);
     await page.getByRole("button", { name: /EXPAND/ }).click();
     await clickTab(page, "KNOWLEDGE");
 
@@ -595,6 +602,7 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
+    await dismissTradeOutcomePopups(page);
     await page.getByRole("button", { name: /EXPAND/ }).click();
     await clickTab(page, "DISCIPLINE");
 
@@ -616,6 +624,7 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
+    await dismissTradeOutcomePopups(page);
     await page.getByRole("button", { name: /EXPAND/ }).click();
     await clickTab(page, "REASONING");
 
@@ -711,6 +720,7 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
+    await dismissTradeOutcomePopups(page);
     await page.getByRole("button", { name: /EXPAND/ }).click();
     await clickTab(page, "TREASURY");
 
@@ -761,6 +771,7 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
+    await dismissTradeOutcomePopups(page);
     await page.getByRole("button", { name: /EXPAND/ }).click();
     await clickTab(page, "COMPANY");
 
@@ -777,6 +788,7 @@ test.describe("Global Command Center", () => {
     await page.reload();
     await clickContinueOnTitleScreen(page);
     await page.keyboard.press("Tab");
+    await dismissTradeOutcomePopups(page);
     await page.getByRole("button", { name: /EXPAND/ }).click();
     await clickTab(page, "COMPANY");
     await expect(page.getByRole("button", { name: /Active research items gain confidence/ })).toHaveClass(/border-cmd-purple/);
@@ -795,6 +807,7 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
+    await dismissTradeOutcomePopups(page);
     await page.getByRole("button", { name: /EXPAND/ }).click();
     await clickTab(page, "COMPANY");
 
@@ -831,6 +844,7 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
+    await dismissTradeOutcomePopups(page);
     await page.getByRole("button", { name: /EXPAND/ }).click();
     await dismissTradeOutcomePopups(page);
 
@@ -860,6 +874,7 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
+    await dismissTradeOutcomePopups(page);
     await page.getByRole("button", { name: /EXPAND/ }).click();
     await clickTab(page, "CALENDAR");
 
