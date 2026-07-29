@@ -1941,6 +1941,24 @@ listening even while the overlay's own JSX renders `null`), a new 🗺
 CAMPUS button in both `QuickView.tsx` and `FullCommandCenter.tsx`, and a
 new "Campus Map" entry in `PauseMenu.tsx`.
 
+**Addendum — HQ Expansion visual.** The user separately supplied a legacy
+Cute Fantasy sprite pack (`Old_Sprites.zip`, not part of the repo) and
+asked for its building-under-construction art to be used on the Campus
+Map. Five frames were hand-sliced from its `Houses_Building_Stages_OLD/
+House_1_Stone_Stages.png` sheet (each 48x112, equal-width slices) into
+`assets/cute-fantasy-rpg/props/buildings/hq-expansion/stage-{1-5}.png`,
+picked up automatically by `scripts/generate-assets.mjs` like every other
+asset. `CampusMap.tsx`'s new `HQExpansionVisual` component maps the one
+real company-wide `CompanyHealth.officeExpansion` score (0-100) onto
+whichever of the 5 stage frames it falls into
+(`Math.floor((officeExpansion / 100) * 5)`, clamped) and renders it next
+to the Campus Overview stats via `AssetLoader.get(id).url` — the same
+manifest-lookup convention every asset access in this codebase already
+uses, even though this is React UI code rather than a Phaser scene. This
+is deliberately still just one visual bound to one already-real number,
+not the per-building construction system this file's Campus Map section
+above explicitly cut.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

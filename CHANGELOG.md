@@ -995,6 +995,18 @@ development milestones, not semver releases.
     category filters, fast travel, and all three entry points) passes
     6/6, plus the existing `commandCenter.spec.ts`/`executiveVoting.spec.ts`/
     `marketObservatory.spec.ts` suites re-run clean for regressions.
+  - **Addendum — HQ Expansion visual.** The user supplied a legacy Cute
+    Fantasy sprite pack (`Old_Sprites.zip`) and asked for its building-
+    stages art to give the Campus Map a construction look. Rather than
+    fabricate a per-building construction system (explicitly cut above),
+    five real frames were hand-sliced from its
+    `Houses_Building_Stages_OLD/House_1_Stone_Stages.png` sheet
+    (`assets/cute-fantasy-rpg/props/buildings/hq-expansion/stage-{1-5}.png`)
+    and bound to the one real company-wide number this codebase already
+    tracks for company growth — `CompanyHealth.officeExpansion` — shown
+    in the Campus Overview panel as a small sprite + stage label (e.g.
+    "33% — Framing"). One visual, tied to one already-real score, not an
+    invented per-building progress track.
 
 - **v0.7 — Work Mode System (Feature 37)** — the CEO gets a real, always-
   visible, persistent toggle between indefinite continuous operation and

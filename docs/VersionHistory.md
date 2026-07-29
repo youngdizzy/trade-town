@@ -549,7 +549,12 @@ changes; backend pytest suite unchanged at 417/417. New
 existing `commandCenter.spec.ts`/`executiveVoting.spec.ts`/
 `marketObservatory.spec.ts` suites re-verified clean for regressions
 (33/34 passing, 1 skipped — the same tolerated real-trade-timing skip
-every run of this suite already has).
+every run of this suite already has). Addendum: the user separately
+supplied a legacy Cute Fantasy sprite pack and asked for its building-
+under-construction art on the map — five real frames were hand-sliced
+from it and bound to the one real `CompanyHealth.officeExpansion` score
+as a small "HQ Expansion" visual in the Campus Overview panel, not a
+fabricated per-building construction system.
 
 ## What's next for v0.8 (not started, not scoped)
 

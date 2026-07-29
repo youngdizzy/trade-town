@@ -4,6 +4,7 @@ import { useCloseOnEscape } from "@/ui/hooks/useCloseOnEscape";
 import { EventBus } from "@/game/systems/EventBus";
 import { GameManager } from "@/game/systems/GameManager";
 import { SceneManager } from "@/game/systems/SceneManager";
+import { AssetLoader } from "@/game/systems/AssetLoader";
 import { AGENT_IDS } from "@/types";
 import type { AgentId, AgentLocation } from "@/types";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
@@ -66,6 +67,18 @@ import { AnimatedGrid, DataRow, Glass, StatusPill, TerminalLabel } from "../Comm
  *     that way.
  *   - "Current Weather" is cut — no weather system exists anywhere in
  *     this codebase.
+ *
+ * Addendum: the Campus Overview panel's "HQ Expansion" visual (below)
+ * uses five real hand-sliced frames from a legacy Cute Fantasy building-
+ * stages sprite sheet the user supplied directly (Old_Sprites.zip ->
+ * Houses_Building_Stages_OLD/House_1_Stone_Stages.png, sliced into
+ * assets/cute-fantasy-rpg/props/buildings/hq-expansion/stage-{1-5}.png).
+ * It's deliberately still bound to the one real company-wide number from
+ * the scope-cut above — `CompanyHealth.officeExpansion` — mapped onto
+ * whichever of the 5 real stage frames it falls into. This is NOT the
+ * brief's fabricated per-building construction system: one visual, tied
+ * to one already-real score, not 11 invented per-building progress
+ * tracks.
  */
 
 type BuildingStatus = "normal" | "busy" | "meeting" | "attention" | "idle";
@@ -79,6 +92,36 @@ const STATUS_META: Record<BuildingStatus, { label: string; dot: string; tone: "g
 };
 
 const CATEGORIES: CampusBuildingCategory[] = ["research", "trading", "leadership", "housing", "entertainment", "operations"];
+
+/** Five real sprite frames (see this file's module docstring addendum),
+ * mapped onto the one real company-wide `CompanyHealth.officeExpansion`
+ * score — never a fabricated per-building progress track. */
+const HQ_EXPANSION_STAGES = [
+  { id: "props/buildings/hq-expansion/stage-1", label: "Foundation" },
+  { id: "props/buildings/hq-expansion/stage-2", label: "Framing" },
+  { id: "props/buildings/hq-expansion/stage-3", label: "Structure Raised" },
+  { id: "props/buildings/hq-expansion/stage-4", label: "Walls & Roof" },
+  { id: "props/buildings/hq-expansion/stage-5", label: "Complete" },
+] as const;
+
+function HQExpansionVisual({ officeExpansion }: { officeExpansion: number }) {
+  const stageIndex = Math.min(HQ_EXPANSION_STAGES.length - 1, Math.floor((officeExpansion / 100) * HQ_EXPANSION_STAGES.length));
+  const stage = HQ_EXPANSION_STAGES[stageIndex] ?? HQ_EXPANSION_STAGES[0];
+  return (
+    <div
+      className="flex shrink-0 items-center gap-2 border-t border-cmd-border/50 pt-2 sm:border-l sm:border-t-0 sm:pl-3 sm:pt-0"
+      title={`Office Expansion — ${officeExpansion.toFixed(0)}% (${stage.label})`}
+    >
+      <img src={AssetLoader.get(stage.id).url} alt={`HQ expansion stage: ${stage.label}`} className="h-14 w-auto [image-rendering:pixelated]" />
+      <div className="text-[9px]">
+        <div className="uppercase tracking-wide text-cmd-textDim">HQ Expansion</div>
+        <div className="text-cmd-cyan">
+          {officeExpansion.toFixed(0)}% — {stage.label}
+        </div>
+      </div>
+    </div>
+  );
+}
 
 function buildingStatus(building: CampusBuilding, agentsHere: AgentId[], meetingActive: boolean, tradingAttention: boolean): BuildingStatus {
   if (building.location === "meeting-room" && meetingActive) return "meeting";
@@ -217,19 +260,22 @@ export function CampusMap() {
           {/* Campus Overview */}
           <Glass className="p-3 lg:col-span-4">
             <TerminalLabel>Campus Overview</TerminalLabel>
-            <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4 lg:grid-cols-6">
-              <DataRow label="Company Score" value={store.companyScore.overall.toFixed(0)} />
-              <DataRow label="Treasury" value={`$${treasury.balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
-              <DataRow label="Operating Capital" value={`$${paperPortfolio.cashBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
-              <DataRow label="Knowledge Score" value={academyState.totalPoints.toFixed(0)} />
-              <DataRow label="Wisdom Score" value={wisdomState.score.toFixed(0)} />
-              <DataRow label="Research Progress" value={`${companyHealth.researchProgress.toFixed(0)}%`} />
-              <DataRow label="Employee Count" value={String(AGENT_IDS.length)} />
-              <DataRow label="Avg. Happiness" value={avgMood.toFixed(0)} />
-              <DataRow label="Avg. Energy" value={avgEnergy.toFixed(0)} />
-              <DataRow label="Today's Events" value={String(todayEvents.length)} />
-              <DataRow label="Company Priority" value={settings.companyPriority.replace("_", " ").toUpperCase()} />
-              <DataRow label="Work Mode" value={settings.workMode === "rest" ? "REST" : "WORK"} />
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+              <div className="grid flex-1 grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4 lg:grid-cols-6">
+                <DataRow label="Company Score" value={store.companyScore.overall.toFixed(0)} />
+                <DataRow label="Treasury" value={`$${treasury.balance.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                <DataRow label="Operating Capital" value={`$${paperPortfolio.cashBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} />
+                <DataRow label="Knowledge Score" value={academyState.totalPoints.toFixed(0)} />
+                <DataRow label="Wisdom Score" value={wisdomState.score.toFixed(0)} />
+                <DataRow label="Research Progress" value={`${companyHealth.researchProgress.toFixed(0)}%`} />
+                <DataRow label="Employee Count" value={String(AGENT_IDS.length)} />
+                <DataRow label="Avg. Happiness" value={avgMood.toFixed(0)} />
+                <DataRow label="Avg. Energy" value={avgEnergy.toFixed(0)} />
+                <DataRow label="Today's Events" value={String(todayEvents.length)} />
+                <DataRow label="Company Priority" value={settings.companyPriority.replace("_", " ").toUpperCase()} />
+                <DataRow label="Work Mode" value={settings.workMode === "rest" ? "REST" : "WORK"} />
+              </div>
+              <HQExpansionVisual officeExpansion={companyHealth.officeExpansion} />
             </div>
           </Glass>
 
