@@ -1846,6 +1846,101 @@ Command Center. A fuller Work Mode section (with the same visual
 language as Operating Mode/Company Priority) was also added to
 `CompanyPanel.tsx`, spelling out exactly what each mode does.
 
+### Company Campus Map (Feature 38)
+
+The brief calls this "Feature 37," colliding with the Work Mode System
+above (also numbered 37 by the brief); tracked internally as Feature 38.
+It's a pure-frontend overlay — no backend changes — that reads the exact
+same `gameStore` data every other Command Center panel already reads,
+plus a new small data layer describing where each real building sits and
+what it does.
+
+**Reusing the real Lobby layout instead of a second copy.**
+`LobbyScene.ts`'s `DoorDef` interface, `DOORS` array, and `WIDTH_PX`/
+`HEIGHT_PX` are now exported. A new `frontend/src/ui/components/
+CampusMap/buildings.ts` imports them directly and builds `CAMPUS_BUILDINGS`
+(the Lobby node plus all 11 real doors) from that array — the map's
+layout can never drift from the real in-game layout because it's the same
+data, not a hand-authored second set of coordinates.
+
+**11 real buildings, not the brief's fictional 17-building blueprint.**
+This codebase has exactly 11 real doors (`ScoutOfficeScene`,
+`BrainRoomScene`, `CeoOfficeScene`, `MeetingRoomScene`, `BreakRoomScene`,
+`SimulationLabScene`, `HallOfFameScene`, `ExecutiveBoardroomScene`,
+`TradingFloorScene`, `PerformanceCenterScene`, `MarketObservatoryScene`)
+plus the Lobby courtyard. The brief's Think Tank/Library/standalone
+Reasoning Lab/Treasury/Headquarters/Cafe/Garden/Gym/Employee Residence/
+Park/Museum/Dock have no physical scene anywhere in this codebase —
+several were already established as Command Center tabs rather than
+physical rooms by earlier features (Academy, Reasoning Lab, Reflection
+Chamber, Treasury all made that call first). Only real buildings appear.
+
+**Status derivation uses only real signals.** `buildingStatus()` in
+`CampusMap.tsx` returns `meeting` only for the Meeting Room while
+`meeting.active` is true; `attention` only for the Trading Floor when a
+real `RiskWarning` with `severity === "critical"` exists (the closest
+honest per-building proxy available, since `RiskWarning` carries no
+location field); `busy` when 3+ agents are physically present
+(`AgentState.location`); `idle` at zero; `normal` otherwise. The brief's
+🔵 Training and 🟠 Construction statuses are cut — no per-building signal
+for either exists anywhere in this codebase.
+
+**One real metric per building, or none.** `buildingMetric()` surfaces
+exactly one already-existing real number per building where a genuine
+mapping exists (Brain Room → in-progress research count, Simulation Lab →
+`simulationResults.length`, Hall of Fame → `hallOfFame.length`, Trading
+Floor → win+loss count, Performance Center → `performanceSnapshots.length`,
+Executive Boardroom → `executiveReviews.length`, Meeting Room → today's
+real meeting count, Market Observatory → `watchlist.length`, Scout Office →
+`news.length`) and `null` (nothing shown) everywhere else, rather than
+fabricating the brief's nine generic per-building statistics (Lifetime
+Visitors, Most Active Employee, Daily Operating Cost, Power Status,
+Building Health, Monthly Performance — none of which this codebase tracks
+per building anywhere).
+
+**Employee Destination/ETA reuses real override and schedule data.**
+`Schedule.ts` gained `nextScheduleBlock(agentId, hour)` — every agent's
+blocks already cover all 24 hours with no gaps, so "next block" is always
+exactly the block whose `startHour` equals the current block's
+`endHour % 24`. The Employee panel checks the agent's live
+`AgentOverride` first (if mid-meeting/break, Destination/ETA come from
+the override's own real `location`/`remainingMinutes`/`reason`); falls
+back to `nextScheduleBlock()` otherwise. `Schedule.ts` also gained
+`LOCATIONS_TO_AGENTS`, a module-load-time inversion of every agent's real
+`AGENT_SCHEDULES` blocks into `location -> AgentId[]`, powering "Related
+Departments" without any new authored data.
+
+**Fast travel is the real fade transition, not a fabricated camera pan.**
+TradeTown is multi-scene, not one continuous open world, so double-
+clicking a building calls the same `SceneManager.goTo(currentScene,
+targetSceneId, {fromScene})` fade every door already uses (falling back
+to `GameManager.applyLoadedTransform()` if no live scene reference is
+available) — never a fabricated continuous pan across scenes that were
+never built to be traversed that way.
+
+**Cut entirely, and why:** the brief's 7-stage Building Upgrade/
+Construction system (Empty Lot → ... → Landmark, scaffolding, cranes,
+construction sounds) — no per-building progression is tracked anywhere;
+`CompanyHealth.officeExpansion` is one company-wide 0-100 score, not 11
+independent per-building tracks, and reusing it under 11 fake per-building
+labels would misattribute a company-wide number the same way earlier
+features' "misattribution trap" was avoided (see Feature 34's
+`_effective_risk_limits`). Per-building Daily Operating Cost/Power
+Status/Building Health/Lifetime Visitors/Most Active Employee/Monthly
+Performance — no such data exists per building. "Current Weather" — no
+weather system exists anywhere in this codebase.
+
+**Wiring.** `campusMapOpen` joins `gameStore.ts`'s existing `OVERLAY_KEYS`
+and shared `setOverlay()` helper, giving it the same mutual-exclusion-
+with-every-other-overlay and `world:overlayOpen`-broadcast behavior every
+other full-screen panel already has (freezes local player input while
+open; never touches the backend tick loop). Opens via a global `M`-key
+listener in `CampusMap.tsx` (mirrors `CommandCenter.tsx`'s always-mounted
+Tab-key listener — registered before any early return so it keeps
+listening even while the overlay's own JSX renders `null`), a new 🗺
+CAMPUS button in both `QuickView.tsx` and `FullCommandCenter.tsx`, and a
+new "Campus Map" entry in `PauseMenu.tsx`.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

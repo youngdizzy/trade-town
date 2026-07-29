@@ -138,3 +138,29 @@ export function scheduleBlockForHour(agentId: AgentId, hour: number): ScheduleBl
   const block = blocks.find((b) => hour >= b.startHour && hour < b.endHour);
   return block ?? blocks[0]!;
 }
+
+/** v0.7 Feature 38 — the Campus Map's employee-tracking "Destination"
+ * readout. Every agent's blocks cover the full 24 hours with no gaps, so
+ * the next block always starts exactly where the current one ends —
+ * this just looks that block up directly rather than re-deriving it. */
+export function nextScheduleBlock(agentId: AgentId, hour: number): ScheduleBlock {
+  const blocks = AGENT_SCHEDULES[agentId];
+  const current = scheduleBlockForHour(agentId, hour);
+  const nextStart = current.endHour % 24;
+  return blocks.find((b) => b.startHour === nextStart) ?? blocks[0]!;
+}
+
+/** Every AgentLocation any of the 11 agents' real schedules ever route
+ * them through, computed once at module load — the Campus Map's
+ * "Related Departments" per building. */
+export const LOCATIONS_TO_AGENTS: Partial<Record<AgentLocation, AgentId[]>> = (() => {
+  const map: Partial<Record<AgentLocation, AgentId[]>> = {};
+  for (const [agentId, blocks] of Object.entries(AGENT_SCHEDULES) as [AgentId, ScheduleBlock[]][]) {
+    for (const block of blocks) {
+      const list = map[block.location] ?? [];
+      if (!list.includes(agentId)) list.push(agentId);
+      map[block.location] = list;
+    }
+  }
+  return map;
+})();

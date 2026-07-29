@@ -14,6 +14,7 @@ export function PauseMenu() {
         <div className="flex flex-col gap-2">
           <MenuButton label="Resume" onClick={() => GameManager.getInstance()?.togglePause()} />
           <MenuButton label="Save" onClick={() => void SaveManager.save()} />
+          <MenuButton label="Campus Map" onClick={() => EventBus.emit("ui:campusMap", { open: true })} />
           <MenuButton label="Settings" onClick={() => EventBus.emit("ui:settings", { open: true })} />
         </div>
       </div>

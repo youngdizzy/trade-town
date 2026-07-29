@@ -17,8 +17,8 @@ const WIDTH_TILES = 110;
 // +5 tiles taller, all of it added as TOP_MARGIN above the back row — see
 // TOP_MARGIN's own comment for why 5 tiles specifically.
 const HEIGHT_TILES = 37;
-const WIDTH_PX = WIDTH_TILES * TILE_SIZE;
-const HEIGHT_PX = HEIGHT_TILES * TILE_SIZE;
+export const WIDTH_PX = WIDTH_TILES * TILE_SIZE;
+export const HEIGHT_PX = HEIGHT_TILES * TILE_SIZE;
 
 /**
  * Extra headroom above the back row. Each building's name label floats at
@@ -41,7 +41,7 @@ const LEFT_SHIFT = TILE_SIZE;
 const BACK_ROW_Y = 96 + TOP_MARGIN;
 const FRONT_ROW_Y = 336 + TOP_MARGIN;
 
-interface DoorDef {
+export interface DoorDef {
   target: SceneId;
   label: string;
   x: number;
@@ -87,7 +87,12 @@ interface DoorDef {
 // accents — see buildHedges()/buildCourtyardAccents(). Every building is a
 // distinct piece from the Cute Fantasy premium pack's Unique_Buildings set
 // (or a named house variant), not the same sprite re-tinted nine times.
-const DOORS: DoorDef[] = [
+// v0.7 Feature 38's Campus Map (see frontend/src/ui/components/CampusMap/
+// buildings.ts) imports this array directly for every building's real
+// in-game position rather than duplicating these coordinates a second
+// time — the schematic map's layout is always exactly this Lobby's real
+// layout, never a hand-authored approximation that could drift from it.
+export const DOORS: DoorDef[] = [
   { target: "ScoutOfficeScene", label: "Scout Office", x: 464 + LEFT_SHIFT, y: BACK_ROW_Y, asset: "props/buildings/fisherman-house-base-blue", targetWidth: 150, doorOffsetX: -9 },
   { target: "BrainRoomScene", label: "Brain Room", x: 664 + LEFT_SHIFT, y: BACK_ROW_Y, asset: "props/buildings/blacksmith-house-blue", targetWidth: 150, doorOffsetX: -43 },
   { target: "CeoOfficeScene", label: "CEO Office", x: WIDTH_PX / 2, y: BACK_ROW_Y, asset: "props/buildings/inn-black", targetWidth: 170 },

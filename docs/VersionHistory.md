@@ -520,6 +520,37 @@ new backend tests (417/417 passing); verified in the running app
 (Playwright, 28/28) with a full real round trip — toggle, save, and the
 next real backend tick showing every agent at a real off-hours task.
 
+### v0.7 continued — Company Campus Map (Feature 38)
+
+The brief labels this "Feature 37," colliding with the Work Mode System
+above (also numbered 37 by the brief); tracked internally as Feature 38.
+A new `M`-key/toolbar/Pause-Menu overlay turns the game's real buildings
+and agents into one navigable dashboard — a pure frontend feature, no
+backend changes, built entirely on data every other Command Center panel
+already reads. The map's building positions are `LobbyScene.ts`'s own
+real door coordinates (newly exported, not a hand-authored second copy),
+covering the 11 real buildings this codebase actually has plus the Lobby
+— not the brief's fictional 17-building blueprint, several of which
+(Think Tank, Library, a standalone Reasoning Lab/Treasury/Headquarters,
+Cafe, Garden, Gym, Employee Residence, Park, Museum, Dock) have no
+physical scene anywhere in this codebase. Building status, one real
+per-building metric where a genuine mapping exists, employee Destination/
+ETA (from real `AgentOverride`s and a new `nextScheduleBlock()` helper),
+and Related Departments (from a new schedule-derived
+`LOCATIONS_TO_AGENTS` lookup) are all derived from real, already-existing
+state — never fabricated. Fast travel reuses the exact real
+`SceneManager.goTo()` fade transition every door already performs. The
+brief's 7-stage Building Upgrade/Construction system, nine per-building
+lifetime statistics, and "Current Weather" are all cut outright — no
+per-building progression, per-building operating data, or weather system
+exists anywhere in this codebase to honestly back them. No backend
+changes; backend pytest suite unchanged at 417/417. New
+`tests/campusMap.spec.ts` (6 Playwright tests) passes 6/6, plus the
+existing `commandCenter.spec.ts`/`executiveVoting.spec.ts`/
+`marketObservatory.spec.ts` suites re-verified clean for regressions
+(33/34 passing, 1 skipped — the same tolerated real-trade-timing skip
+every run of this suite already has).
+
 ## What's next for v0.8 (not started, not scoped)
 
 These are candidate directions surfaced by v0.6/v0.7's design, not

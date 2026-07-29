@@ -101,6 +101,7 @@ export interface GameEvents {
   "ui:coachDashboard": { open: boolean };
   "ui:brainRoomHud": { open: boolean };
   "ui:commandCenter": { open: boolean; mode?: "quick" | "full" };
+  "ui:campusMap": { open: boolean };
   "riskLimits:updated": RiskLimits;
   "riskWarnings:updated": RiskWarning[];
   "scannerAlerts:updated": ScannerAlert[];

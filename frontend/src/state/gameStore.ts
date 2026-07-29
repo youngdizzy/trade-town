@@ -125,6 +125,7 @@ export interface GameUiState {
   brainRoomHudOpen: boolean;
   commandCenterOpen: boolean;
   commandCenterMode: "quick" | "full";
+  campusMapOpen: boolean;
   executiveVotingOpen: boolean;
   executiveVotingProposalId: string | null;
   /** v0.7 Feature 19 — the Premium Trade Outcome Banner's "View Trade" /
@@ -254,6 +255,7 @@ class GameStore {
     brainRoomHudOpen: false,
     commandCenterOpen: false,
     commandCenterMode: "quick",
+    campusMapOpen: false,
     executiveVotingOpen: false,
     executiveVotingProposalId: null,
     pendingInspectDecision: null,
@@ -282,7 +284,7 @@ class GameStore {
     // of them is open — without that, the player kept moving (invisibly,
     // since the overlay hides the world) behind a panel that only a mouse
     // click could close, which read as the game being stuck.
-    const OVERLAY_KEYS = ["newspaperOpen", "companyMemoryOpen", "coachDashboardOpen", "brainRoomHudOpen", "commandCenterOpen"] as const;
+    const OVERLAY_KEYS = ["newspaperOpen", "companyMemoryOpen", "coachDashboardOpen", "brainRoomHudOpen", "commandCenterOpen", "campusMapOpen"] as const;
     const setOverlay = (key: (typeof OVERLAY_KEYS)[number], open: boolean, extra?: Partial<GameUiState>): void => {
       const patch = Object.fromEntries(OVERLAY_KEYS.map((k) => [k, k === key ? open : open ? false : this.state[k]])) as Record<
         (typeof OVERLAY_KEYS)[number],
@@ -306,6 +308,9 @@ class GameStore {
     EventBus.on("ui:commandCenter", ({ open, mode }) =>
       setOverlay("commandCenterOpen", open, open ? { commandCenterMode: mode ?? this.state.commandCenterMode } : undefined),
     );
+    // v0.7 Feature 38 — the Company Campus Map. Same mutual-exclusion +
+    // world-pause overlay mechanism as every other full-screen overlay.
+    EventBus.on("ui:campusMap", ({ open }) => setOverlay("campusMapOpen", open));
     EventBus.on("net:status", ({ connected }) => this.set({ netConnected: connected }));
     EventBus.on("scene:ready", ({ scene }) => this.set({ currentScene: scene }));
 

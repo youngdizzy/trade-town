@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { gameStore } from "@/state/gameStore";
 import { useGameStore } from "@/ui/hooks/useGameStore";
+import { EventBus } from "@/game/systems/EventBus";
 import type { EducationTopic, TradeDecision } from "@/types";
 import { aiStatus, riskLevel } from "./lib/derive";
 import { RiskDot, StatusPill } from "./ui";
@@ -114,6 +115,14 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
           <span className="flex items-center gap-1">
             <RiskDot level={level} />
           </span>
+          <button
+            type="button"
+            onClick={() => EventBus.emit("ui:campusMap", { open: true })}
+            className="rounded-sm border border-cmd-border px-2.5 py-1 text-cmd-textDim transition-colors hover:border-cmd-cyan/50 hover:text-cmd-cyan"
+            title="Company Campus Map (M)"
+          >
+            🗺 CAMPUS
+          </button>
           <button
             type="button"
             onClick={onCollapse}

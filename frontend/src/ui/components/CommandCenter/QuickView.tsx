@@ -124,6 +124,14 @@ export function QuickView({ onExpand }: { onExpand: () => void }) {
         </button>
         <button
           type="button"
+          onClick={() => EventBus.emit("ui:campusMap", { open: true })}
+          className="rounded-sm border border-cmd-border px-4 py-2 text-[11px] text-cmd-textDim transition-colors hover:border-cmd-cyan/50 hover:text-cmd-cyan"
+          title="Company Campus Map (M)"
+        >
+          🗺 CAMPUS
+        </button>
+        <button
+          type="button"
           onClick={() => EventBus.emit("ui:commandCenter", { open: false })}
           className="rounded-sm border border-cmd-border px-4 py-2 text-[11px] text-cmd-textDim transition-colors hover:border-cmd-red/50 hover:text-cmd-red"
         >

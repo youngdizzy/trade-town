@@ -916,6 +916,86 @@ development milestones, not semver releases.
     system-event lists, the per-agent Live Schedule, and a full custom-
     event create/delete round trip against the live backend).
 
+- **v0.7 — Company Campus Map (Feature 38)** — a real, always-current map
+  overlay (`M` key, the Command Center's/Quick View's new 🗺 CAMPUS
+  button, or Pause Menu → Campus Map) that turns every existing building
+  and agent into a single navigable dashboard, built entirely on data
+  this codebase already tracks. (The brief itself calls this "Feature
+  37," colliding with the already-shipped Work Mode System above; tracked
+  internally as Feature 38 to avoid confusion.)
+  - **Real layout, not a redrawn one.** `LobbyScene.ts`'s own `DOORS`
+    array, `WIDTH_PX`, and `HEIGHT_PX` are now exported and imported
+    directly into a new `buildings.ts` — the map's building positions are
+    always exactly the real Lobby's real layout, never a hand-authored
+    second copy that could drift from it.
+  - **11 real buildings + the Lobby, not the brief's fictional 17.** The
+    brief's blueprint names buildings this codebase has no physical scene
+    for (Think Tank, Library, a standalone Reasoning Lab/Treasury/
+    Headquarters, Cafe, Garden, Gym, Employee Residence, Park, Museum,
+    Dock) — several of which prior features already established as
+    Command Center tabs rather than physical rooms (Academy, Reasoning
+    Lab, Reflection Chamber, Treasury). Only the 11 real doors
+    (`LobbyScene.ts`'s `DOORS`) plus the Lobby courtyard itself appear on
+    the map.
+  - **Building info panel** shows each building's real purpose, category,
+    current occupants (from real `AgentState.location`), and — where a
+    genuine one exists — exactly one real per-building metric (Brain Room
+    → in-progress research count, Simulation Lab → completed simulations,
+    Hall of Fame → entries, Trading Floor → win/loss count, Performance
+    Center → snapshot count, Executive Boardroom → review count, Meeting
+    Room → today's real meeting count, Market Observatory → watchlist
+    size, Scout Office → news count). No metric is shown for buildings
+    with no clean real mapping, rather than fabricating one. "Related
+    Departments" is derived by inverting every agent's real
+    `AGENT_SCHEDULES` blocks (`Schedule.ts`'s new `LOCATIONS_TO_AGENTS`)
+    into a per-location agent list — never hand-authored.
+  - **Live building status** (🟢 Normal / 🟡 Busy / 🟣 Meeting / 🔴
+    Attention / ⚪ Idle) is derived only from real signals: `meeting`
+    only for the Meeting Room while a real meeting is active; `attention`
+    only for the Trading Floor when a real critical `RiskWarning` exists;
+    `busy`/`idle` from real agent headcount. The brief's 🔵 Training and
+    🟠 Construction statuses are cut — no per-building signal for either
+    exists anywhere in this codebase.
+  - **Employee tracking**: clicking an agent icon shows their real
+    Current Task, Mood, Energy, and active research, plus a real
+    Destination/ETA — read from the agent's live `AgentOverride` if one
+    is active (meeting/break, with its own real `remainingMinutes`), or
+    otherwise from a new `nextScheduleBlock()` helper that looks up the
+    agent's own next real scheduled block (every agent's schedule already
+    covers all 24 hours with no gaps).
+  - **Fast travel**: double-clicking a building reuses the exact real
+    `SceneManager.goTo()` fade transition every door already performs —
+    not a fabricated continuous camera pan across scenes that were never
+    built to be traversed that way.
+  - **Building Upgrades/Construction (the brief's 7-stage progression,
+    scaffolding, cranes, sounds), per-building lifetime statistics
+    (Lifetime Visitors, Most Active Employee, Daily Operating Cost, Power
+    Status, Building Health, Monthly Performance), and "Current Weather"
+    are all cut entirely** — no per-building progression, per-building
+    operating-cost/power data, or weather system exists anywhere in this
+    codebase, and inventing any of them would misattribute fabricated
+    numbers as real. `CompanyHealth.officeExpansion` is a single
+    company-wide score, not 11 independent per-building tracks, so it is
+    not reused under 11 fake per-building labels either.
+  - **Campus Overview panel** surfaces real, already-existing company-
+    wide numbers only: Company Score, Treasury, Operating Capital,
+    Knowledge Score, Wisdom Score, Research Progress, Employee Count,
+    Avg. Happiness/Energy, today's real event count, current Company
+    Priority, and current Work Mode.
+  - Opens as the same kind of overlay every other full-screen panel
+    already is (`campusMapOpen` joins `gameStore.ts`'s existing
+    `OVERLAY_KEYS`) — opening it doesn't pause the sim, only freezes
+    local player movement while it's open, exactly like the Command
+    Center.
+  - Verification: no backend changes (pure frontend feature reading
+    already-existing `gameStore` state) — backend pytest suite unchanged
+    at 417/417. Frontend `tsc -b --noEmit`/eslint clean. New
+    `tests/campusMap.spec.ts` (6 Playwright tests: opening/closing,
+    world-input blocking while open, building/employee info panels,
+    category filters, fast travel, and all three entry points) passes
+    6/6, plus the existing `commandCenter.spec.ts`/`executiveVoting.spec.ts`/
+    `marketObservatory.spec.ts` suites re-run clean for regressions.
+
 - **v0.7 — Work Mode System (Feature 37)** — the CEO gets a real, always-
   visible, persistent toggle between indefinite continuous operation and
   a genuine company-wide wind-down, replacing the brief's imagined "Stop
