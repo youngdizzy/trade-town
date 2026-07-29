@@ -12,7 +12,19 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.executive import PROPOSAL_CANDLE_COUNT, PROPOSAL_TIMEFRAME, AnalystChoice
 from app.market_data import market_data_provider
 from app.persistence import persist_save
-from app.schemas import CeoDecisionRecord, Debate, GatekeeperRejection, HoldReason, PaperPortfolio, TradeDecision, TradeProposal, WhatIfSimulation
+from app.schemas import (
+    AgentId,
+    CeoDecisionRecord,
+    ChallengeReport,
+    Debate,
+    GatekeeperRejection,
+    HoldReason,
+    InnovationState,
+    PaperPortfolio,
+    TradeDecision,
+    TradeProposal,
+    WhatIfSimulation,
+)
 from app.state import game_state
 from app.whatif import run_whatif_simulation
 
@@ -100,6 +112,31 @@ async def regenerate_debate(payload: RegenerateDebateRequest) -> RegenerateDebat
         raise HTTPException(status_code=400, detail=error)
     persist_save(state)
     return RegenerateDebateResponse(debates=state.debates)
+
+
+class RegenerateChallengeReportRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    proposal_id: str = Field(alias="proposalId")
+
+
+class RegenerateChallengeReportResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    challenge_reports: list[ChallengeReport] = Field(alias="challengeReports")
+    innovation_state: dict[AgentId, InnovationState] = Field(alias="innovationState")
+
+
+@router.post("/challenge/regenerate", response_model=RegenerateChallengeReportResponse)
+async def regenerate_challenge_report(payload: RegenerateChallengeReportRequest) -> RegenerateChallengeReportResponse:
+    """v0.7 Feature 41 — "request another review" on a still-pending
+    proposal. See GameState.regenerate_challenge_report for why this
+    appends rather than replaces."""
+    state, error = await game_state.regenerate_challenge_report(payload.proposal_id)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_save(state)
+    return RegenerateChallengeReportResponse(challengeReports=state.challenge_reports, innovationState=state.innovation_state)
 
 
 @router.get("/whatif", response_model=WhatIfSimulation)

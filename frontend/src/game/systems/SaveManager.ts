@@ -48,6 +48,8 @@ export class SaveManager {
       tradeProposals: NexusManager.getTradeProposals(),
       ceoDecisions: NexusManager.getCeoDecisions(),
       debates: NexusManager.getDebates(),
+      challengeReports: NexusManager.getChallengeReports(),
+      innovationState: NexusManager.getInnovationState(),
       gatekeeperRejections: NexusManager.getGatekeeperRejections(),
       marketEnvironment: NexusManager.getMarketEnvironment(),
       companyHealth: NexusManager.getCompanyHealth(),

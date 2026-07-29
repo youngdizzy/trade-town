@@ -1,6 +1,17 @@
 import { useEffect, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
-import type { AnalystChoice, AnalystVote, DebateTurn, GatekeeperVerdict, HoldReason, ScenarioResult, ScenarioType, TradeProposal, WhatIfSimulation } from "@/types";
+import type {
+  AnalystChoice,
+  AnalystVote,
+  ChallengeSeverity,
+  DebateTurn,
+  GatekeeperVerdict,
+  HoldReason,
+  ScenarioResult,
+  ScenarioType,
+  TradeProposal,
+  WhatIfSimulation,
+} from "@/types";
 import { CONFIDENCE_TIER_LABEL, ROLE_TO_AGENT } from "@/types";
 import { api } from "@/net/api";
 import { NexusManager } from "@/game/systems/NexusManager";
@@ -26,6 +37,10 @@ const ROLE_LABEL: Record<AnalystVote["role"], string> = {
 const STANCE_LABEL: Record<DebateTurn["stance"], string> = { opening: "OPENING", challenge: "CHALLENGES", support: "AGREES" };
 const STANCE_TONE: Record<DebateTurn["stance"], "cyan" | "red" | "green"> = { opening: "cyan", challenge: "red", support: "green" };
 
+// v0.7 Feature 41 — the Intelligent Devil's Advocate System.
+const SEVERITY_LABEL: Record<ChallengeSeverity, string> = { none_found: "NO WEAKNESSES FOUND", minor: "MINOR WEAKNESSES", major: "MAJOR WEAKNESSES" };
+const SEVERITY_TONE: Record<ChallengeSeverity, "green" | "amber" | "red"> = { none_found: "green", minor: "amber", major: "red" };
+
 /**
  * Feature 12 — the Executive Voting window. The player is TradeTown's CEO;
  * every trade candidate that crosses the confidence threshold arrives here
@@ -36,10 +51,12 @@ const STANCE_TONE: Record<DebateTurn["stance"], "cyan" | "red" | "green"> = { op
  * recommendation, not separate outcomes.
  */
 export function ExecutiveVoting() {
-  const { tradeProposals, executiveVotingOpen, executiveVotingProposalId, riskWarnings, paperPortfolio, riskLimits, currentScene, debates } = useGameStore();
+  const { tradeProposals, executiveVotingOpen, executiveVotingProposalId, riskWarnings, paperPortfolio, riskLimits, currentScene, debates, challengeReports } =
+    useGameStore();
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [showDebate, setShowDebate] = useState(false);
+  const [showChallenge, setShowChallenge] = useState(false);
   const [showWhatIf, setShowWhatIf] = useState(false);
   const [whatIf, setWhatIf] = useState<WhatIfSimulation | null>(null);
   const [whatIfLoading, setWhatIfLoading] = useState(false);
@@ -48,6 +65,7 @@ export function ExecutiveVoting() {
   const [submitting, setSubmitting] = useState<AnalystChoice | null>(null);
   const [holding, setHolding] = useState<HoldReason | null>(null);
   const [regenerating, setRegenerating] = useState(false);
+  const [regeneratingChallenge, setRegeneratingChallenge] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // v0.7 Feature 20 — set only when the Trade Gatekeeper vetoes the CEO's
   // real BUY/SELL call; holds the proposals list the backend already
@@ -198,6 +216,26 @@ export function ExecutiveVoting() {
     }
   };
 
+  // v0.7 Feature 41 — the most recent Devil's Advocate Challenge Report
+  // over this proposal; nexus.py generates one the moment the proposal
+  // itself is created, and "request another review" below appends a
+  // fresh one (with a newly rotated assignee) rather than replacing it.
+  const challengeReport = [...challengeReports].reverse().find((c) => c.proposalId === proposal.id);
+
+  const requestAnotherReview = async () => {
+    if (regeneratingChallenge) return;
+    setRegeneratingChallenge(true);
+    setError(null);
+    try {
+      const res = await api.regenerateChallengeReport(proposal.id);
+      NexusManager.setChallengeReports(res.challengeReports, res.innovationState);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setRegeneratingChallenge(false);
+    }
+  };
+
   return (
     <div className="pointer-events-auto absolute inset-0 z-[55] flex items-center justify-center bg-cmd-bg/85 p-4 backdrop-blur-sm" data-testid="executive-voting">
       <div className="motion-safe:animate-cmd-overlay-in relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-sm border border-cmd-cyan/40 bg-cmd-panel shadow-cmd-cyan">
@@ -311,6 +349,108 @@ export function ExecutiveVoting() {
                   <div className="mt-1.5 text-[9px] text-cmd-textDim">
                     Click any seat in the Analyst Desk above to question that agent individually — its full reasoning and evidence are already there.
                   </div>
+                </>
+              )}
+            </Glass>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setShowChallenge(!showChallenge)}
+            className="w-full rounded-sm border border-cmd-border px-3 py-1.5 text-cmd-textDim transition-colors hover:border-cmd-amber/50 hover:text-cmd-amber"
+          >
+            {showChallenge ? "HIDE DEVIL'S ADVOCATE REVIEW ▲" : "OPEN DEVIL'S ADVOCATE REVIEW ▼"}
+          </button>
+
+          {showChallenge && (
+            <Glass className="p-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <TerminalLabel>Challenge Report — {proposal.symbol}</TerminalLabel>
+                <button
+                  type="button"
+                  disabled={regeneratingChallenge}
+                  onClick={() => void requestAnotherReview()}
+                  className="rounded-sm border border-cmd-border px-2 py-1 text-[9px] text-cmd-textDim transition-colors hover:enabled:border-cmd-amber/50 hover:enabled:text-cmd-amber disabled:opacity-40"
+                >
+                  {regeneratingChallenge ? "…" : "Request Another Review"}
+                </button>
+              </div>
+              {!challengeReport ? (
+                <div className="text-[9px] text-cmd-textDim">No Devil&apos;s Advocate review on record for this proposal yet.</div>
+              ) : (
+                <>
+                  <div className="mb-1.5 flex items-center gap-2 text-[9px]">
+                    <span data-testid="challenge-report-assignee" className="text-cmd-text">
+                      {AGENT_PROFILES[challengeReport.assignedAgent].name}
+                    </span>
+                    <span className="text-cmd-textDim">assigned Devil&apos;s Advocate</span>
+                    <StatusPill tone={SEVERITY_TONE[challengeReport.severity]}>{SEVERITY_LABEL[challengeReport.severity]}</StatusPill>
+                  </div>
+                  <div className="space-y-2 text-[9px]">
+                    <div>
+                      <div className="text-cmd-textDim">Bull Case</div>
+                      <div className="text-cmd-text">{challengeReport.bullCase}</div>
+                    </div>
+                    <div>
+                      <div className="text-cmd-textDim">Bear Case</div>
+                      <div className="text-cmd-text">{challengeReport.bearCase}</div>
+                    </div>
+                    {challengeReport.hiddenRisks.length > 0 && (
+                      <div>
+                        <div className="text-cmd-amber">Hidden Risks</div>
+                        <ul className="list-disc space-y-0.5 pl-3 text-cmd-textDim">
+                          {challengeReport.hiddenRisks.map((r, i) => (
+                            <li key={i}>{r}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {challengeReport.weakAssumptions.length > 0 && (
+                      <div>
+                        <div className="text-cmd-amber">Weak Assumptions</div>
+                        <ul className="list-disc space-y-0.5 pl-3 text-cmd-textDim">
+                          {challengeReport.weakAssumptions.map((a, i) => (
+                            <li key={i}>{a}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {challengeReport.missingEvidence.length > 0 && (
+                      <div>
+                        <div className="text-cmd-amber">Missing Evidence</div>
+                        <ul className="list-disc space-y-0.5 pl-3 text-cmd-textDim">
+                          {challengeReport.missingEvidence.map((m, i) => (
+                            <li key={i}>{m}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {challengeReport.historicalComparisons.length > 0 && (
+                      <div>
+                        <div className="text-cmd-textDim">Historical Comparisons</div>
+                        <ul className="list-disc space-y-0.5 pl-3 text-cmd-textDim">
+                          {challengeReport.historicalComparisons.map((h, i) => (
+                            <li key={i}>{h}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    <div>
+                      <div className="text-cmd-textDim">Worst Case Scenario</div>
+                      <div className="text-cmd-text">{challengeReport.worstCaseScenario}</div>
+                    </div>
+                    {challengeReport.suggestedImprovements.length > 0 && (
+                      <div>
+                        <div className="text-cmd-cyan">Suggested Improvements</div>
+                        <ul className="list-disc space-y-0.5 pl-3 text-cmd-textDim">
+                          {challengeReport.suggestedImprovements.map((s, i) => (
+                            <li key={i}>{s}</li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                  <div className="mt-2 border-t border-cmd-border/40 pt-2 text-[9px] text-cmd-text">{challengeReport.finalRecommendation}</div>
                 </>
               )}
             </Glass>

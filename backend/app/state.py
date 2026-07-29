@@ -24,7 +24,9 @@ from app.agent_energy import default_agent_energy
 from app.company_health import compute_company_health
 from app.company_score import compute_company_score
 from app.debate import generate_debate
+from app.devils_advocate import MAX_CHALLENGE_REPORTS, generate_challenge_report
 from app.executive import MAX_CEO_DECISIONS, MAX_PROPOSAL_HOLDS, AnalystChoice, hold_proposal, resolve_proposal
+from app.innovation import compute_innovation_state
 from app.market_data import market_data_provider
 from app.market_environment import default_market_environment
 from app.nexus import MAX_DEBATES, MAX_DECISIONS, MAX_GATEKEEPER_REJECTIONS
@@ -158,6 +160,8 @@ def default_state() -> GameSaveState:
         ),
         mentorState=compute_mentor_state(1, _now_iso()),
         founderState=FounderState(updatedAt=_now_iso()),
+        challengeReports=[],
+        innovationState={},
         treasury=default_treasury(_now_iso()),
         calendar=default_calendar(_now_iso()),
         updatedAt=_now_iso(),
@@ -432,6 +436,32 @@ class GameState:
                 del debates[: len(debates) - MAX_DEBATES]
 
             self.data = self.data.model_copy(update={"debates": debates, "updated_at": _now_iso()})
+            return self.data, None
+
+    async def regenerate_challenge_report(self, proposal_id: str) -> tuple[GameSaveState, str | None]:
+        """v0.7 Feature 41 — "request another review": a fresh Devil's
+        Advocate pass over the same real signals, appended (not replacing)
+        so the prior report stays reviewable too — the exact same
+        reasoning as regenerate_debate above. The rotating assignment
+        naturally advances to the next eligible employee since it's
+        derived from the already-updated report count (see
+        app/devils_advocate.py's module docstring)."""
+        async with self.lock:
+            proposal = next((p for p in self.data.trade_proposals if p.id == proposal_id), None)
+            if proposal is None:
+                return self.data, f"No pending trade proposal with id {proposal_id!r}."
+
+            report = generate_challenge_report(
+                proposal, provider=market_data_provider, case_studies=self.data.case_studies, existing_count=len(self.data.challenge_reports)
+            )
+            challenge_reports = [*self.data.challenge_reports, report]
+            if len(challenge_reports) > MAX_CHALLENGE_REPORTS:
+                del challenge_reports[: len(challenge_reports) - MAX_CHALLENGE_REPORTS]
+            innovation_state = compute_innovation_state(challenge_reports)
+
+            self.data = self.data.model_copy(
+                update={"challenge_reports": challenge_reports, "innovation_state": innovation_state, "updated_at": _now_iso()}
+            )
             return self.data, None
 
     async def hold_trade_proposal(self, proposal_id: str, reason: HoldReason) -> tuple[GameSaveState, str | None]:

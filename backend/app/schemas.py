@@ -1007,6 +1007,66 @@ class Debate(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
+# v0.7 Feature 41 — the Intelligent Devil's Advocate System. The AI
+# Debate Room (Feature 17, above) already has every analyst who genuinely
+# disagrees challenge the proposal — this is deliberately not a second
+# copy of that. Instead it's a single structured artifact: one specific
+# employee, temporarily assigned, whose real job is to actively try to
+# break the trade thesis — built entirely from real signals already
+# computed elsewhere (AnalystVote reasoning, DecisionConfidence factors,
+# the proposal's own risk_summary, the What-If Simulation Lab's worst
+# named scenario, past CaseStudy history for the same symbol) — never
+# invented evidence. See app/devils_advocate.py.
+ChallengeSeverity = Literal["none_found", "minor", "major"]
+
+
+class ChallengeReport(CamelModel):
+    id: str
+    proposal_id: str = Field(alias="proposalId")
+    symbol: str
+    assigned_agent: AgentId = Field(alias="assignedAgent")
+    trade_summary: str = Field(alias="tradeSummary")
+    bull_case: str = Field(alias="bullCase")
+    bear_case: str = Field(alias="bearCase")
+    hidden_risks: list[str] = Field(default_factory=list, alias="hiddenRisks")
+    weak_assumptions: list[str] = Field(default_factory=list, alias="weakAssumptions")
+    missing_evidence: list[str] = Field(default_factory=list, alias="missingEvidence")
+    # Titles of real past CaseStudies (Library of Mistakes) for this same
+    # symbol, if any — an honest empty list otherwise, never a fabricated
+    # "this looks like a past mistake."
+    historical_comparisons: list[str] = Field(default_factory=list, alias="historicalComparisons")
+    # One line drawn from the What-If Simulation Lab's own real worst
+    # named scenario (app/whatif.py) — never the full simulation, which
+    # this codebase has already been bitten once by persisting unbounded
+    # computed data (see nexus.py's MAX_DECISIONS history).
+    worst_case_scenario: str = Field(alias="worstCaseScenario")
+    suggested_improvements: list[str] = Field(default_factory=list, alias="suggestedImprovements")
+    severity: ChallengeSeverity
+    final_recommendation: str = Field(alias="finalRecommendation")
+    created_at: str = Field(alias="createdAt")
+
+
+# v0.7 Feature 41 — Innovation Points. A second, deliberately narrow
+# ladder alongside Academy's KnowledgeLevel (Feature 31): where Academy
+# tracks general knowledge mastery, this tracks one specific real skill —
+# the ability to find genuine weaknesses before capital is committed — so
+# it is driven by exactly one real, new signal this same feature
+# introduces: an agent's own record as a Devil's Advocate (see
+# app/innovation.py). Re-awarding points for events Academy already
+# scores (course completion, research, mentoring) would be double-
+# counting the same real signal under two names — the exact duplication
+# this session's convention exists to avoid — so those are deliberately
+# not wired here.
+InnovationTierName = Literal["research_contributor", "research_specialist", "innovation_leader", "chief_innovator", "legendary_innovator"]
+
+
+class InnovationState(CamelModel):
+    agent_id: AgentId = Field(alias="agentId")
+    points: float = 0.0
+    tier: int = 0  # 0-4, index into app/innovation.py's tier tables
+    tier_name: InnovationTierName = Field(default="research_contributor", alias="tierName")
+
+
 # v0.7 Feature 20 — Trade Gatekeeper. Every check is real (see
 # app/gatekeeper.py for exactly what each one reads); never a fabricated
 # pass/fail. `GatekeeperRejection` tracks a *hypothetical* outcome for a
@@ -1995,6 +2055,14 @@ class GameSaveState(CamelModel):
     mentor_state: MentorState = Field(alias="mentorState")
     # v0.7 Feature 39 — the Original Founders (app/founders.py).
     founder_state: FounderState = Field(alias="founderState")
+    # v0.7 Feature 41 — the Intelligent Devil's Advocate System. One
+    # capped, permanent ChallengeReport per proposal (with the newest
+    # replacing prior ones for the same proposal if "request another
+    # review" was used), same convention as `debates` above.
+    # `innovation_state` is every agent's own real points/tier earned
+    # through their Devil's Advocate track record (app/innovation.py).
+    challenge_reports: list[ChallengeReport] = Field(default_factory=list, alias="challengeReports")
+    innovation_state: dict[AgentId, InnovationState] = Field(default_factory=dict, alias="innovationState")
     # v0.7 Feature 33 — the CEO Treasury (app/treasury.py). See
     # TreasuryState's own docstring for the structural "never touched by
     # any automatic system" guarantee.

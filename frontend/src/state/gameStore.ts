@@ -9,6 +9,7 @@ import type {
   CalendarState,
   CaseStudy,
   CeoDecisionRecord,
+  ChallengeReport,
   CoachReport,
   CompanyHealth,
   CompanyScore,
@@ -18,6 +19,7 @@ import type {
   FounderState,
   GatekeeperRejection,
   HallOfFameEntry,
+  InnovationState,
   MarketEnvironmentState,
   MeetingMinutes,
   MeetingState,
@@ -92,6 +94,8 @@ export interface GameUiState {
   tradeProposals: TradeProposal[];
   ceoDecisions: CeoDecisionRecord[];
   debates: Debate[];
+  challengeReports: ChallengeReport[];
+  innovationState: Record<AgentId, InnovationState>;
   gatekeeperRejections: GatekeeperRejection[];
   marketEnvironment: MarketEnvironmentState;
   companyHealth: CompanyHealth;
@@ -201,6 +205,8 @@ class GameStore {
     tradeProposals: [],
     ceoDecisions: [],
     debates: [],
+    challengeReports: [],
+    innovationState: {} as Record<AgentId, InnovationState>,
     gatekeeperRejections: [],
     marketEnvironment: {
       current: "sideways",
@@ -344,6 +350,8 @@ class GameStore {
     EventBus.on("tradeProposals:updated", (tradeProposals) => this.set({ tradeProposals }));
     EventBus.on("ceoDecisions:updated", (ceoDecisions) => this.set({ ceoDecisions }));
     EventBus.on("debates:updated", (debates) => this.set({ debates }));
+    EventBus.on("challengeReports:updated", (challengeReports) => this.set({ challengeReports }));
+    EventBus.on("innovationState:updated", (innovationState) => this.set({ innovationState }));
     EventBus.on("gatekeeperRejections:updated", (gatekeeperRejections) => this.set({ gatekeeperRejections }));
     EventBus.on("marketEnvironment:updated", (marketEnvironment) => this.set({ marketEnvironment }));
     EventBus.on("companyHealth:updated", (companyHealth) => this.set({ companyHealth }));

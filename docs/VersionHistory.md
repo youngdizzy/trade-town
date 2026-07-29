@@ -625,6 +625,44 @@ Executive Voting popup. Verified: 5 new backend tests (437/437 passing),
 mypy/ruff/tsc/eslint/build clean, Playwright regression 35/35 passing
 (including a new hold-to-cap test and a Career Level assertion).
 
+### v0.7 continued — Intelligent Devil's Advocate & Innovation Points (Feature 41)
+
+Checked against four already-real systems before writing anything: the
+AI Debate Room (every analyst who disagrees already challenges in real
+time — Feature 17), the Library of Mistakes' `CaseStudy` (Feature 27),
+the What-If Simulation Lab (Feature 16), and Hall of Fame (Feature 24).
+Rather than a second Debate Room, `app/devils_advocate.py` produces one
+structured Challenge Report per proposal: bull/bear case from real
+agreeing/dissenting analyst votes, hidden risks from the proposal's own
+real risk summary, weak assumptions from any real confidence factor
+below 50, missing evidence from any vote with no evidence on record,
+historical comparisons from real past Library-of-Mistakes case studies
+for the same symbol, and a worst-case line drawn from the What-If Lab's
+own real worst named scenario (never the full simulation — this
+codebase already learned that lesson once). Severity
+(none found/minor/major) is a real, checkable count of how many concern
+categories actually found something, never a fabricated judgment call.
+One employee is temporarily assigned per report, rotating deterministically
+through a fixed pool of five (Scribe, Coach, Guardian, the CIO, Sage) —
+never one of the proposal's own six analysts, never the Founders.
+Generated automatically alongside the Debate; a "Request Another Review"
+button mirrors Feature 17's own regenerate pattern. Innovation Points
+(`app/innovation.py`) is a second, deliberately narrow ladder driven by
+exactly one new real signal — an agent's own record as a Devil's
+Advocate, weighted by real severity — five tiers (Research Contributor
+→ Legendary Innovator), shown in the KNOWLEDGE tab. Cut: re-awarding
+points for events Academy Points already scores (double-counting the
+same real signal); Project Proposals (a 9-field business-plan workflow
+with no real signal behind any field — same rejection as Player
+Knowledge Import); "CEO Innovation Challenges" (doesn't exist); a
+Legacy Museum (Hall of Fame's `best_research` category already is
+permanent recognition of a real broken record); and per-concern
+"documented response" tracking (the CEO's own real buy/sell/wait/hold
+decision already is that resolution). Verified: 18 new backend tests
+(455/455 passing), mypy/ruff/tsc/eslint/build clean, Playwright
+regression 36/36 passing (including a new test confirming the rotating
+assignment actually changes across two consecutive reviews).
+
 ## What's next for v0.8 (not started, not scoped)
 
 These are candidate directions surfaced by v0.6/v0.7's design, not

@@ -41,6 +41,7 @@ from app.company_health import compute_company_health
 from app.company_score import compute_company_score
 from app.config import settings
 from app.debate import generate_debate
+from app.devils_advocate import MAX_CHALLENGE_REPORTS, generate_challenge_report
 from app.discipline import generate_discipline_review, record_review as record_discipline_review_entry
 from app.discussion import generate_discussion
 from app.executive import (
@@ -56,6 +57,7 @@ from app.executive_review import generate_executive_review, record_review
 from app.founders import compute_founder_state, generate_council_session, generate_founder_log_entry, record_council_session, record_founder_log
 from app.gatekeeper import grade_gatekeeper_rejections
 from app.hall_of_fame import evaluate_hall_of_fame
+from app.innovation import compute_innovation_state
 from app.journal import stamp_journal_entry
 from app.market_data import market_data_provider
 from app.market_environment import tick_market_environment
@@ -98,6 +100,7 @@ from app.schemas import (
     CalendarState,
     CaseStudy,
     CeoDecisionRecord,
+    ChallengeReport,
     CoachReport,
     CompanyPriority,
     Debate,
@@ -109,6 +112,7 @@ from app.schemas import (
     FounderLogEntry,
     GameSaveState,
     GatekeeperRejection,
+    InnovationState,
     MemoryEntry,
     MemoryRecord,
     MeetingMinutes,
@@ -889,6 +893,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     agent_knowledge: dict[AgentId, AgentKnowledgeState] = state.agent_knowledge or default_agent_knowledge()
     discipline_reviews: list[DisciplineReview] = list(state.discipline_reviews)
     case_studies: list[CaseStudy] = list(state.case_studies)
+    challenge_reports: list[ChallengeReport] = list(state.challenge_reports)
     reasoning_challenges: list[ReasoningChallenge] = list(state.reasoning_challenges)
     reflection_sessions: list[ReflectionSession] = list(state.reflection_sessions)
     wisdom_state: WisdomState = state.wisdom_state
@@ -1015,6 +1020,16 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     debates = [*debates, *(generate_debate(p) for p in new_proposals)]
     if len(debates) > MAX_DEBATES:
         del debates[: len(debates) - MAX_DEBATES]
+    # v0.7 Feature 41 — every new proposal also gets a Devil's Advocate
+    # Challenge Report generated up front, the same "ready the instant
+    # Executive Voting opens" convention Feature 17's Debate already
+    # established just above. Appended one at a time (rather than a list
+    # comprehension like debates) so each new report's rotating assignment
+    # sees the reports generated earlier in this same tick.
+    for proposal in new_proposals:
+        challenge_reports.append(generate_challenge_report(proposal, provider=market_data_provider, case_studies=case_studies, existing_count=len(challenge_reports)))
+    if len(challenge_reports) > MAX_CHALLENGE_REPORTS:
+        del challenge_reports[: len(challenge_reports) - MAX_CHALLENGE_REPORTS]
     for proposal in new_proposals:
         news.append(
             NewsItem(
@@ -1404,6 +1419,12 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     founder_state = compute_founder_state(state.founder_state, company_health_tier=company_health.tier, updated_at=_now_iso())
     founder_state = founder_state.model_copy(update={"log": founder_log, "council_sessions": founder_council_sessions})
 
+    # v0.7 Feature 41 — recomputed fresh every tick from challenge_reports,
+    # same "pure function of already-persisted data" reasoning as
+    # compute_academy_state; cheap since it's just a running sum over a
+    # capped list.
+    innovation_state: dict[AgentId, InnovationState] = compute_innovation_state(challenge_reports)
+
     if is_midnight:
         agent_energy = regen_daily(agent_energy)
         performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("daily", paper_portfolio, research, new_time))
@@ -1499,6 +1520,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "thinking_profiles": thinking_profiles,
             "mentor_state": mentor_state,
             "founder_state": founder_state,
+            "challenge_reports": challenge_reports,
+            "innovation_state": innovation_state,
             "treasury": treasury,
             "calendar": calendar_state,
             "agent_energy": agent_energy,

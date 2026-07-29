@@ -2151,6 +2151,117 @@ holding a proposal to its cap and confirming it never resolves) and
 tab) — 35/35 passing, plus the same tolerated real-trade-timing skip
 every run of this suite already carries.
 
+### Intelligent Devil's Advocate & Innovation Points (Feature 41)
+
+The brief's Devil's Advocate System and Innovation Points, checked
+against four already-real systems before writing anything: the AI
+Debate Room (Feature 17), the Library of Mistakes' `CaseStudy` (Feature
+27), the What-If Simulation Lab (Feature 16), and Hall of Fame (Feature
+24).
+
+**Challenge Report, not a second Debate Room.** Feature 17's AI Debate
+Room already has every analyst who genuinely disagrees challenge the
+proposal in real time — building a second, parallel "devil's advocate
+challenges the proposal" mechanic on top of that would be exactly the
+duplication this session's convention exists to avoid. Instead
+`app/devils_advocate.py`'s `generate_challenge_report()` produces a
+single structured artifact per proposal, built entirely from real
+signals already computed elsewhere:
+
+- **Bull/bear case** — the real `AnalystVote.reasoning` of whichever
+  analysts agreed/disagreed with the desk's overall recommendation.
+- **Hidden risks** — the proposal's own real `risk_summary` (already
+  carries the real Sentinel/Guardian warning message when one exists).
+- **Weak assumptions** — any real `DecisionConfidence` factor scoring
+  below `WEAK_FACTOR_THRESHOLD` (50).
+- **Missing evidence** — any real `AnalystVote` with an empty evidence
+  list.
+- **Historical comparisons** — real past `CaseStudy` (Library of
+  Mistakes) titles for this same symbol; an honest empty list if none
+  exist, never a fabricated "similar situation."
+- **Worst case scenario** — one line drawn from the What-If Simulation
+  Lab's own real worst named scenario (`app/whatif.py`). Only that one
+  line is persisted — never the full `WhatIfSimulation`, which this
+  codebase has already been bitten once by persisting unbounded computed
+  data (see `nexus.py`'s `MAX_DECISIONS` history above).
+
+`severity` (`none_found`/`minor`/`major`) is a real, checkable count of
+how many of those concern categories — plus real analyst dissent —
+actually found something; it is never a fabricated judgment call, and
+"no significant weaknesses found" is a genuinely earned Outcome 1, not a
+default. The assigned employee rotates deterministically through a
+fixed pool of five (`ELIGIBLE_DEVILS_ADVOCATES`: Scribe, Coach, Guardian,
+the CIO, Sage) — never one of the proposal's own six analyst seats
+(echo/scout/nova/sentinel/pulse/atlas), and never Keystone/Compass, who
+per Feature 39 never route through operational work. Rotation is
+derived from the existing report count, the same "no extra counter
+needed" convention `app/academy_research.py` already established.
+Generated automatically alongside the Debate the instant a new proposal
+is created (`nexus.py`), with a "Request Another Review" button in
+Executive Voting mirroring Feature 17's own "request another debate."
+
+**Innovation Points, not a duplicate Academy ladder.** `app/innovation.py`
+computes a second, deliberately narrow tier ladder — where Academy's
+`KnowledgeLevel` (and Feature 40's Career Level relabeling of it) tracks
+general knowledge mastery, this tracks one specific real skill: an
+agent's own record as a Devil's Advocate. Points are awarded per
+Challenge Report the agent authored, weighted by its own real severity
+(`MAJOR_POINTS` 3.0 > `MINOR_POINTS` 1.0 > `NONE_FOUND_POINTS` 0.5 — the
+brief's own philosophy that intellectual honesty, not just catching
+problems, is a real contribution). Four thresholds
+(`TIER_THRESHOLDS = (3.0, 8.0, 18.0, 35.0)`) give five real tiers
+(Research Contributor → Research Specialist → Innovation Leader → Chief
+Innovator → Legendary Innovator), computed fresh every tick as a pure
+function of the persisted `challenge_reports` list — the same
+"recomputed, not incrementally mutated" convention `app/academy.py`'s
+`compute_academy_state()` already established, so it can never drift.
+
+**Cut, and why.** Re-awarding Innovation Points for events Academy
+Points already scores (course completion, research, mentoring) would be
+double-counting the same real signal under two names — the exact
+duplication check this session runs before building anything. Project
+Proposals (the brief's 9-field business-plan workflow: Problem/Why/
+Existing Solutions/Proposed Improvement/Expected Benefits/Risks/
+Required Research/Departments/Success Metrics) are cut outright: no real
+signal in this codebase backs any of those fields, and fabricating them
+would be the same dishonesty already rejected for Player Knowledge
+Import (see Feature 25/31's own scope-cut note above). "CEO Innovation
+Challenges" don't exist anywhere in this codebase. Breakthrough
+Recognition / a Legacy Museum is not separately built — Hall of Fame's
+existing `best_research` category (Feature 24) already is permanent
+recognition of a real broken record, and a second version of the same
+real concept would be the exact duplication this feature otherwise took
+care to avoid throughout. Per-concern "documented response" tracking
+(the brief's Team Discussion section) is cut: concerns in a Challenge
+Report have no persistent per-item identity anywhere else in this
+codebase, and the CEO's own real decision (buy/sell/wait, or Feature
+40.5's Request More Research/Delay Decision) already *is* the real,
+visible resolution sitting right next to the report in Executive Voting
+— tracking a second, parallel per-bullet response would invent
+structure with nothing real behind it.
+
+**Frontend.** A new "Devil's Advocate Review" expandable section in
+`ExecutiveVoting.tsx` (mirroring the Debate Room's own toggle pattern)
+shows the assigned employee, severity badge, and every real field above,
+with its own "Request Another Review" button. A new "Innovation Points"
+card in the Command Center's `KNOWLEDGE` tab (`AcademyPanel.tsx`) lists
+every agent's real points/tier, right below the existing Career Level
+display — an honest empty state until the first Challenge Report is
+filed.
+
+**Verification.** 18 new backend tests (`test_devils_advocate.py`,
+`test_innovation.py`) covering rotation, severity classification, real
+signal extraction (hidden risks/weak assumptions/missing evidence/
+historical comparisons), and tier/points accumulation — full backend
+suite 455/455 passing (437 pre-existing + 18 new), mypy/ruff clean.
+Frontend `tsc -b`/eslint/build clean. Playwright regression re-verified
+across `executiveVoting.spec.ts` (new test opening the Devil's Advocate
+Review, confirming real content, and confirming the rotating assignment
+actually changes across two consecutive "Request Another Review" calls)
+and `commandCenter.spec.ts` (new Innovation Points assertion on the
+`KNOWLEDGE` tab) — 36/36 passing, plus the same tolerated real-trade-
+timing skip every run of this suite already carries.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

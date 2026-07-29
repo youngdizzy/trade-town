@@ -496,6 +496,14 @@ test.describe("Global Command Center", () => {
     // empty state — never a blank panel.
     await expect(page.getByText("Active Research Project", { exact: true })).toBeVisible();
     await expect(page.getByText("Company Knowledge Library", { exact: true })).toBeVisible();
+
+    // v0.7 Feature 41 — Innovation Points, driven only by real Devil's
+    // Advocate Challenge Report authorship (see backend/app/innovation.py)
+    // — always real content or the honest empty state, never fabricated.
+    await expect(page.getByText("Innovation Points — Devil's Advocate Track Record", { exact: true })).toBeVisible();
+    const innovationEmptyState = page.getByText(/No Innovation Points earned yet/);
+    const innovationRow = page.getByText(/Research Contributor|Research Specialist|Innovation Leader|Chief Innovator|Legendary Innovator/).first();
+    await expect(innovationEmptyState.or(innovationRow)).toBeVisible();
   });
 
   test("Knowledge Graph opens a real node-edge network fetched from GET /api/knowledge-graph, with working filters and search", async ({ page }) => {

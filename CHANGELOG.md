@@ -916,6 +916,74 @@ development milestones, not semver releases.
     system-event lists, the per-agent Live Schedule, and a full custom-
     event create/delete round trip against the live backend).
 
+- **v0.7 — Intelligent Devil's Advocate & Innovation Points (Feature 41)**
+  — the brief's Devil's Advocate System and Innovation Points, scoped down
+  to what's genuinely new after checking against the AI Debate Room
+  (Feature 17), the Library of Mistakes' `CaseStudy` (Feature 27), the
+  What-If Simulation Lab (Feature 16), and Hall of Fame (Feature 24).
+  - **Challenge Report** (`app/devils_advocate.py`): a single structured
+    artifact — not a duplicate of the Debate Room's existing per-analyst
+    challenge/support turns — built entirely from real signals already
+    computed elsewhere: bull/bear case from the desk's own real
+    agreeing/dissenting `AnalystVote` reasoning; hidden risks from the
+    proposal's own real `riskSummary`; weak assumptions from any real
+    `DecisionConfidence` factor scoring below 50; missing evidence from
+    any real vote with an empty evidence list; historical comparisons
+    from real past `CaseStudy` titles for the same symbol; worst case
+    scenario from one line of the What-If Simulation Lab's own real
+    worst named scenario (never the full simulation — this codebase
+    already learned that lesson once, see `MAX_DECISIONS`'s history).
+    `severity` (`none_found`/`minor`/`major`) is a real, checkable count
+    of how many of those concern categories actually found something —
+    "no significant weaknesses found" is a genuine, earned outcome, not
+    a coin flip. One employee is temporarily assigned per report,
+    rotating deterministically through a fixed pool of five (Scribe,
+    Coach, Guardian, the CIO, Sage) — never one of the proposal's own six
+    analyst seats, never the Founders (who don't route through
+    operational work per Feature 39). Generated automatically alongside
+    the Debate the moment a proposal is created, with a "Request Another
+    Review" button in Executive Voting matching Feature 17's own
+    "request another debate" convention.
+  - **Innovation Points** (`app/innovation.py`): a second, deliberately
+    narrow ladder — where Career Level (Feature 40) tracks general
+    knowledge mastery, this tracks one specific real skill: an agent's
+    own record as a Devil's Advocate. Points are awarded per Challenge
+    Report the agent authored, weighted by its own real severity (major
+    weaknesses caught > minor > "none found, honestly reported" — the
+    brief's own "rewarded for discovering problems, and for intellectual
+    honesty"). Five real tiers (Research Contributor → Legendary
+    Innovator) gated by real cumulative thresholds, shown per-agent in
+    the KNOWLEDGE tab.
+  - **Cut, and why**: re-awarding Innovation Points for events Academy
+    Points already scores (course completion, research, mentoring) would
+    be double-counting the same real signal under two names — the exact
+    duplication this session's convention exists to avoid. Project
+    Proposals (a 9-field business-plan workflow: Problem/Why/Existing
+    Solutions/Expected Benefits/Risks/etc.) are cut outright — no real
+    signal in this codebase backs any of those fields, and fabricating
+    them would be the same dishonesty already rejected for Player
+    Knowledge Import. "CEO Innovation Challenges" don't exist anywhere in
+    this codebase. Breakthrough Recognition / a Legacy Museum is not
+    rebuilt — Hall of Fame's existing `best_research` category (Feature
+    24) already is permanent recognition of a real broken record; a
+    second version of the same real concept would be the duplication
+    this feature otherwise took care to avoid. Per-concern "documented
+    response" tracking is cut: concerns in a Challenge Report have no
+    persistent per-item identity elsewhere in this codebase, and the
+    CEO's own real decision (buy/sell/wait, or Feature 40.5's Request
+    More Research/Delay Decision) already *is* the real, visible
+    resolution sitting right next to the report — tracking a second,
+    parallel response per bullet would invent structure with nothing
+    real behind it.
+  - Verification: 18 new backend tests (`test_devils_advocate.py`,
+    `test_innovation.py`), full backend suite 455/455 passing, mypy/ruff
+    clean. Frontend `tsc -b`/eslint/build clean. Playwright regression
+    36/36 passing (plus the same tolerated real-trade-timing skip every
+    run of this suite already carries), including a new test that opens
+    the Devil's Advocate Review section, confirms real structured
+    content, and confirms the rotating assignment actually changes across
+    two consecutive "Request Another Review" calls.
+
 - **v0.7 — Expert Consultation & Career Levels (Feature 40/40.5)** — the
   brief's "Content Review & Validation System," "Learning Paths &
   Specializations," and "Expert Consultation System" turned out to be

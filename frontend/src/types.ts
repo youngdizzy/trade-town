@@ -718,6 +718,45 @@ export interface Debate {
   createdAt: string;
 }
 
+// v0.7 Feature 41 — the Intelligent Devil's Advocate System. Deliberately
+// not a second copy of the AI Debate Room above (every analyst who
+// disagrees already challenges there); this is a single structured
+// report from one specific, rotating employee, built entirely from real
+// signals already computed elsewhere — see backend/app/devils_advocate.py.
+export type ChallengeSeverity = "none_found" | "minor" | "major";
+
+export interface ChallengeReport {
+  id: string;
+  proposalId: string;
+  symbol: string;
+  assignedAgent: AgentId;
+  tradeSummary: string;
+  bullCase: string;
+  bearCase: string;
+  hiddenRisks: string[];
+  weakAssumptions: string[];
+  missingEvidence: string[];
+  historicalComparisons: string[];
+  worstCaseScenario: string;
+  suggestedImprovements: string[];
+  severity: ChallengeSeverity;
+  finalRecommendation: string;
+  createdAt: string;
+}
+
+// v0.7 Feature 41 — Innovation Points. A second, deliberately narrow
+// ladder alongside Career Level (Feature 40) — where that tracks general
+// knowledge mastery, this tracks one specific real skill: an agent's own
+// record as a Devil's Advocate (see backend/app/innovation.py).
+export type InnovationTierName = "research_contributor" | "research_specialist" | "innovation_leader" | "chief_innovator" | "legendary_innovator";
+
+export interface InnovationState {
+  agentId: AgentId;
+  points: number;
+  tier: number;
+  tierName: InnovationTierName;
+}
+
 // v0.7 Feature 20 — Trade Gatekeeper. Every check is real (see
 // backend/app/gatekeeper.py for exactly what each one reads); never a
 // fabricated pass/fail. GatekeeperRejection tracks a *hypothetical*
@@ -1399,6 +1438,8 @@ export interface GameSaveState {
   tradeProposals: TradeProposal[];
   ceoDecisions: CeoDecisionRecord[];
   debates: Debate[];
+  challengeReports: ChallengeReport[];
+  innovationState: Record<AgentId, InnovationState>;
   gatekeeperRejections: GatekeeperRejection[];
   marketEnvironment: MarketEnvironmentState;
   companyHealth: CompanyHealth;

@@ -9,6 +9,7 @@ import type {
   CalendarState,
   CaseStudy,
   CeoDecisionRecord,
+  ChallengeReport,
   CoachReport,
   CompanyHealth,
   CompanyScore,
@@ -18,6 +19,7 @@ import type {
   FounderState,
   GatekeeperRejection,
   HallOfFameEntry,
+  InnovationState,
   MarketEnvironmentState,
   MeetingMinutes,
   MeetingState,
@@ -81,6 +83,8 @@ type ServerMessage =
       tradeProposals: TradeProposal[];
       ceoDecisions: CeoDecisionRecord[];
       debates: Debate[];
+      challengeReports: ChallengeReport[];
+      innovationState: Record<AgentId, InnovationState>;
       gatekeeperRejections: GatekeeperRejection[];
       marketEnvironment: MarketEnvironmentState;
       companyHealth: CompanyHealth;
@@ -186,6 +190,8 @@ export class GameSocket {
             tradeProposals: msg.tradeProposals,
             ceoDecisions: msg.ceoDecisions,
             debates: msg.debates,
+            challengeReports: msg.challengeReports,
+            innovationState: msg.innovationState,
             gatekeeperRejections: msg.gatekeeperRejections,
             marketEnvironment: msg.marketEnvironment,
             companyHealth: msg.companyHealth,

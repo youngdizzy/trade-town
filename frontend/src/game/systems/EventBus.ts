@@ -10,6 +10,7 @@ import type {
   CalendarState,
   CeoDecisionRecord,
   CaseStudy,
+  ChallengeReport,
   CoachReport,
   CompanyHealth,
   CompanyScore,
@@ -21,6 +22,7 @@ import type {
   GameSaveState,
   GatekeeperRejection,
   HallOfFameEntry,
+  InnovationState,
   MarketEnvironmentState,
   MeetingMinutes,
   MeetingState,
@@ -118,6 +120,8 @@ export interface GameEvents {
   "tradeProposal:new": TradeProposal;
   "ceoDecisions:updated": CeoDecisionRecord[];
   "debates:updated": Debate[];
+  "challengeReports:updated": ChallengeReport[];
+  "innovationState:updated": Record<AgentId, InnovationState>;
   "gatekeeperRejections:updated": GatekeeperRejection[];
   "marketEnvironment:updated": MarketEnvironmentState;
   "companyHealth:updated": CompanyHealth;

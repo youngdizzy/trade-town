@@ -2,12 +2,19 @@ import { useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { careerLevelLabel, companyMajor } from "@/game/systems/careerLevels";
-import type { AgentKnowledgeState } from "@/types";
+import { INNOVATION_TIER_LABEL } from "@/game/systems/innovation";
+import type { AgentKnowledgeState, InnovationState } from "@/types";
 import { KnowledgeGraphView } from "../KnowledgeGraphView";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
 
 function tierTone(tier: number): "cyan" | "green" {
   return tier >= 3 ? "green" : "cyan";
+}
+
+function innovationTone(tier: number): "cyan" | "amber" | "green" {
+  if (tier >= 3) return "green";
+  if (tier >= 1) return "amber";
+  return "cyan";
 }
 
 /**
@@ -22,7 +29,7 @@ function tierTone(tier: number): "cyan" | "green" {
  * archive (see backend/app/academy_research.py).
  */
 export function AcademyPanel() {
-  const { academyState, agentKnowledge, academyProjects, academyCompletedProjects, memory, executiveReviews } = useGameStore();
+  const { academyState, agentKnowledge, academyProjects, academyCompletedProjects, memory, executiveReviews, innovationState } = useGameStore();
   const activeProject = academyProjects[0];
   const knowledgeStates = Object.values(agentKnowledge) as AgentKnowledgeState[];
   const rankedKnowledge = [...knowledgeStates].sort((a, b) => b.points - a.points);
@@ -30,6 +37,7 @@ export function AcademyPanel() {
   const [showGraph, setShowGraph] = useState(false);
   const latestReview = executiveReviews[executiveReviews.length - 1];
   const knowledgeConnections = latestReview?.knowledgeConnections ?? [];
+  const rankedInnovation = (Object.values(innovationState) as InnovationState[]).sort((a, b) => b.points - a.points);
 
   return (
     <div className="relative grid grid-cols-1 gap-3 lg:grid-cols-3">
@@ -151,6 +159,30 @@ export function AcademyPanel() {
               <div key={m.id} className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-1.5 text-[9px]">
                 <div className="mb-0.5 text-cmd-cyan">{m.title}</div>
                 <div className="text-cmd-textDim">{m.body}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Glass>
+
+      <Glass className="p-3 lg:col-span-3">
+        {/* v0.7 Feature 41 — a second, deliberately narrow ladder alongside
+            Career Level above: driven only by an agent's own real record as
+            a Devil's Advocate (see backend/app/innovation.py), not
+            re-awarded for events Career Level already scores. */}
+        <TerminalLabel>Innovation Points — Devil&apos;s Advocate Track Record</TerminalLabel>
+        {rankedInnovation.length === 0 ? (
+          <EmptyState>No Innovation Points earned yet — they start once a Devil&apos;s Advocate Challenge Report is filed on a real proposal.</EmptyState>
+        ) : (
+          <div className="mt-1.5 space-y-1.5">
+            {rankedInnovation.map((state) => (
+              <div key={state.agentId} className="flex items-center gap-2 rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-1.5 text-[9px]">
+                <span className="w-16 flex-none truncate text-cmd-cyan">{AGENT_PROFILES[state.agentId].name}</span>
+                <div className="flex-1">
+                  <Meter value={Math.min(100, (state.points / 35) * 100)} tone={innovationTone(state.tier)} />
+                </div>
+                <span className="w-10 flex-none text-right tabular-nums text-cmd-textDim">{state.points.toFixed(1)}p</span>
+                <StatusPill tone={innovationTone(state.tier)}>{INNOVATION_TIER_LABEL[state.tierName]}</StatusPill>
               </div>
             ))}
           </div>

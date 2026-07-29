@@ -43,6 +43,32 @@ async function continueGame(page: Page): Promise<void> {
 }
 
 /**
+ * Dismisses whatever trade-outcome banner / Executive Voting popup
+ * auto-opened while this page was already live (see the module doc
+ * comment above on the `hydrated` guard — a proposal or closed trade
+ * that appears mid-test can genuinely pop these up over whatever the
+ * test is about to click next). Idempotent and safe to call even when
+ * nothing is open.
+ */
+async function dismissAutoPopups(page: Page): Promise<void> {
+  for (let i = 0; i < 5; i++) {
+    const tradeBanner = page.getByTestId("trade-outcome-banner");
+    if (await tradeBanner.isVisible().catch(() => false)) {
+      await tradeBanner.getByText("Dismiss").click();
+      await page.waitForTimeout(300);
+      continue;
+    }
+    const votingPopup = page.getByTestId("executive-voting");
+    if (await votingPopup.isVisible().catch(() => false)) {
+      await votingPopup.getByText("Decide later").click();
+      await page.waitForTimeout(300);
+      continue;
+    }
+    break;
+  }
+}
+
+/**
  * Pushes a real in-progress research item over the trade-confidence
  * threshold via the real research_boost action (POST /api/energy/spend
  * — the same mechanic the "Agent Energy widget" test in
@@ -84,13 +110,11 @@ test("Executive Voting popup shows real analyst votes and a BUY submits a real C
   await boostResearchToThreshold(page);
 
   // The popup only ever auto-opens for a proposal that appears WHILE this
-  // page is already live (see ExecutiveVoting.tsx's hydrated guard) —
-  // a proposal that already existed at this page's own first load (very
-  // likely true here, since other tests in this file/suite have been
-  // ticking the shared backend for a while) correctly does NOT auto-pop
-  // over whatever the player was already doing. So open it the same way
-  // a real player reviewing their queue would: through the EXECUTIVE
-  // panel's pending-proposal list, not by waiting on an auto-popup.
+  // page is already live (see ExecutiveVoting.tsx's hydrated guard) — but
+  // that can genuinely happen mid-test on a long-running dev backend, so
+  // dismiss it first the same way a real player would before opening the
+  // EXECUTIVE panel's own pending-proposal list.
+  await dismissAutoPopups(page);
   await page.keyboard.press("Tab");
   await page.getByText("EXPAND — FULL COMMAND CENTER").click();
   await page.getByRole("button", { name: "EXECUTIVE", exact: true }).click();
@@ -123,6 +147,7 @@ test("Request More Research holds a proposal without resolving it, and caps out 
   await page.goto("/");
   await continueGame(page);
   await boostResearchToThreshold(page);
+  await dismissAutoPopups(page);
 
   await page.keyboard.press("Tab");
   await page.getByText("EXPAND — FULL COMMAND CENTER").click();
@@ -157,29 +182,59 @@ test("Request More Research holds a proposal without resolving it, and caps out 
   await expect(delayButton).toBeDisabled();
 });
 
+test("Devil's Advocate Challenge Report shows a real assigned employee and severity, and Request Another Review rotates the assignment", async ({
+  page,
+}) => {
+  await page.goto("/");
+  await continueGame(page);
+  await boostResearchToThreshold(page);
+  await dismissAutoPopups(page);
+
+  await page.keyboard.press("Tab");
+  await page.getByText("EXPAND — FULL COMMAND CENTER").click();
+  await page.getByRole("button", { name: "EXECUTIVE", exact: true }).click();
+
+  const pendingRow = page.locator("button").filter({ hasText: /% confidence/ }).first();
+  await expect(pendingRow).toBeVisible({ timeout: 20000 });
+  await pendingRow.click();
+
+  const popup = page.getByTestId("executive-voting");
+  await expect(popup).toBeVisible();
+
+  await popup.getByText("OPEN DEVIL'S ADVOCATE REVIEW").click();
+  await expect(popup.getByText(/Challenge Report —/)).toBeVisible();
+
+  // v0.7 Feature 41 — every genuinely new proposal gets a real Challenge
+  // Report generated up front (nexus.py, same convention as Feature 17's
+  // Debate); this popup may have opened on an older pending proposal from
+  // before this feature shipped in this long-running dev session, so
+  // "Request Another Review" is used unconditionally here (rather than
+  // asserting the auto-generated one) — it's real gameplay either way,
+  // and guarantees real content to assert on regardless of proposal age.
+  await popup.getByRole("button", { name: "Request Another Review" }).click();
+  await expect(popup.getByText(/NO WEAKNESSES FOUND|MINOR WEAKNESSES|MAJOR WEAKNESSES/)).toBeVisible({ timeout: 10000 });
+  await expect(popup.getByText("assigned Devil's Advocate")).toBeVisible();
+  await expect(popup.getByText("Bull Case")).toBeVisible();
+  await expect(popup.getByText("Bear Case")).toBeVisible();
+  await expect(popup.getByText("Worst Case Scenario")).toBeVisible();
+
+  const assignedBefore = await popup.getByTestId("challenge-report-assignee").innerText();
+  const reviewButton = popup.getByRole("button", { name: "Request Another Review" });
+  await expect(reviewButton).toBeEnabled();
+
+  await Promise.all([page.waitForResponse((res) => res.url().includes("/executive/challenge/regenerate") && res.ok()), reviewButton.click()]);
+
+  // The rotation is deterministic across a fixed pool of 5 eligible
+  // employees (see backend/app/devils_advocate.py) — a second report
+  // exists now, so the assignment should have moved to the next name in
+  // that rotation rather than staying identical.
+  await expect(popup.getByTestId("challenge-report-assignee")).not.toHaveText(assignedBefore, { timeout: 10000 });
+});
+
 test("Executive panel in the Command Center lists pending proposals and CEO track record", async ({ page }) => {
   await page.goto("/");
   await continueGame(page);
-
-  // Clear whatever popups/banners auto-opened. The v0.7 trade outcome
-  // banner is non-blocking, but dismiss it anyway so it can't cover
-  // whatever this test clicks next; the Executive Voting popup is still
-  // a real blocking modal and must be dismissed to proceed.
-  for (let i = 0; i < 5; i++) {
-    const tradeBanner = page.getByTestId("trade-outcome-banner");
-    if (await tradeBanner.isVisible().catch(() => false)) {
-      await tradeBanner.getByText("Dismiss").click();
-      await page.waitForTimeout(300);
-      continue;
-    }
-    const votingPopup = page.getByTestId("executive-voting");
-    if (await votingPopup.isVisible().catch(() => false)) {
-      await votingPopup.getByText("Decide later").click();
-      await page.waitForTimeout(300);
-      continue;
-    }
-    break;
-  }
+  await dismissAutoPopups(page);
 
   await page.keyboard.press("Tab");
   await page.getByText("EXPAND — FULL COMMAND CENTER").click();

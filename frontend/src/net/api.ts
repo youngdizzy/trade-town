@@ -1,15 +1,18 @@
 import type {
   AgentEnergy,
+  AgentId,
   AnalystChoice,
   CalendarState,
   Candle,
   CeoDecisionRecord,
+  ChallengeReport,
   Debate,
   EducationLesson,
   EducationProgress,
   GameSaveState,
   HoldReason,
   GatekeeperRejection,
+  InnovationState,
   KnowledgeGraph,
   PaperPortfolio,
   PlayerEventCategory,
@@ -112,6 +115,11 @@ export const api = {
     request<{ tradeProposals: TradeProposal[] }>("/executive/hold", {
       method: "POST",
       body: JSON.stringify({ proposalId, reason }),
+    }),
+  regenerateChallengeReport: (proposalId: string) =>
+    request<{ challengeReports: ChallengeReport[]; innovationState: Record<AgentId, InnovationState> }>("/executive/challenge/regenerate", {
+      method: "POST",
+      body: JSON.stringify({ proposalId }),
     }),
   getWhatIfSimulation: (symbol: string) => request<WhatIfSimulation>(`/executive/whatif?symbol=${encodeURIComponent(symbol)}`),
   getKnowledgeGraph: () => request<KnowledgeGraph>("/knowledge-graph"),

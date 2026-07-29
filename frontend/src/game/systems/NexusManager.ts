@@ -7,6 +7,7 @@ import type {
   BacktestSession,
   CaseStudy,
   CeoDecisionRecord,
+  ChallengeReport,
   CoachReport,
   CompanyHealth,
   CompanyScore,
@@ -16,6 +17,7 @@ import type {
   FounderState,
   GatekeeperRejection,
   HallOfFameEntry,
+  InnovationState,
   MarketEnvironmentState,
   MeetingMinutes,
   MeetingState,
@@ -72,6 +74,8 @@ interface NexusSnapshot {
   tradeProposals: TradeProposal[];
   ceoDecisions: CeoDecisionRecord[];
   debates: Debate[];
+  challengeReports: ChallengeReport[];
+  innovationState: Record<AgentId, InnovationState>;
   gatekeeperRejections: GatekeeperRejection[];
   marketEnvironment: MarketEnvironmentState;
   companyHealth: CompanyHealth;
@@ -158,6 +162,8 @@ export class NexusManager {
   private static tradeProposals: TradeProposal[] = [];
   private static ceoDecisions: CeoDecisionRecord[] = [];
   private static debates: Debate[] = [];
+  private static challengeReports: ChallengeReport[] = [];
+  private static innovationState: Record<AgentId, InnovationState> = {} as Record<AgentId, InnovationState>;
   private static gatekeeperRejections: GatekeeperRejection[] = [];
   private static marketEnvironment: MarketEnvironmentState = {
     current: "sideways",
@@ -427,6 +433,25 @@ export class NexusManager {
     EventBus.emit("debates:updated", debates);
   }
 
+  static getChallengeReports(): ChallengeReport[] {
+    return this.challengeReports;
+  }
+
+  static getInnovationState(): Record<AgentId, InnovationState> {
+    return this.innovationState;
+  }
+
+  /** v0.7 Feature 41 — applies the result of a direct POST
+   * /api/executive/challenge/regenerate call immediately, same reasoning
+   * as setDebates above. innovationState is recomputed server-side from
+   * challengeReports, so both always arrive together. */
+  static setChallengeReports(challengeReports: ChallengeReport[], innovationState: Record<AgentId, InnovationState>): void {
+    this.challengeReports = challengeReports;
+    this.innovationState = innovationState;
+    EventBus.emit("challengeReports:updated", challengeReports);
+    EventBus.emit("innovationState:updated", innovationState);
+  }
+
   /** v0.7 Feature 40.5 — applies the result of a direct POST
    * /api/executive/hold call immediately. Unlike setExecutiveDecisionResult,
    * a hold never resolves the proposal (see app/executive.py's
@@ -641,6 +666,11 @@ export class NexusManager {
     if (update.debates.length !== this.debates.length) EventBus.emit("debates:updated", update.debates);
     this.debates = update.debates;
 
+    if (update.challengeReports.length !== this.challengeReports.length) EventBus.emit("challengeReports:updated", update.challengeReports);
+    this.challengeReports = update.challengeReports;
+    if (update.innovationState !== this.innovationState) EventBus.emit("innovationState:updated", update.innovationState);
+    this.innovationState = update.innovationState;
+
     if (update.gatekeeperRejections.length !== this.gatekeeperRejections.length) {
       EventBus.emit("gatekeeperRejections:updated", update.gatekeeperRejections);
     }
@@ -753,6 +783,8 @@ export class NexusManager {
     this.tradeProposals = save.tradeProposals;
     this.ceoDecisions = save.ceoDecisions;
     this.debates = save.debates;
+    this.challengeReports = save.challengeReports;
+    this.innovationState = save.innovationState;
     this.gatekeeperRejections = save.gatekeeperRejections;
     this.marketEnvironment = save.marketEnvironment;
     this.companyHealth = save.companyHealth;
