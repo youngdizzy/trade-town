@@ -16,6 +16,7 @@ import { TradingFloorScene } from "@/game/scenes/TradingFloorScene";
 import { MarketObservatoryScene } from "@/game/scenes/MarketObservatoryScene";
 import { ExecutiveBoardroomScene } from "@/game/scenes/ExecutiveBoardroomScene";
 import { EventBus } from "./EventBus";
+import { isTypingInTextField } from "./inputFocus";
 
 const DEFAULT_PLAYER_TRANSFORM: EntityTransform = {
   scene: "LobbyScene",
@@ -36,7 +37,8 @@ export class GameManager {
   readonly game: Phaser.Game;
   playerTransform: EntityTransform = { ...DEFAULT_PLAYER_TRANSFORM };
   paused = false;
-  private overlayOpen = false;
+  private movementBlockedByOverlay = false;
+  private interactionBlockedByOverlay = false;
 
   private constructor(parent: HTMLElement) {
     // Full-screen React overlays (Newspaper, Company Memory, Coach
@@ -44,11 +46,27 @@ export class GameManager {
     // running scene — without this, the player keeps moving (invisibly,
     // since the overlay hides the world) while one is open, and since
     // none of them have a keyboard close (mouse-only "Close" button),
-    // that reads as the game being stuck. `worldActive` below is
-    // independent of `paused`/`ui:pause` (the ESC pause menu) so opening
-    // the newspaper doesn't also pop up the Pause Menu.
+    // that reads as the game being stuck. `worldActive`/`movementActive`
+    // below are independent of `paused`/`ui:pause` (the ESC pause menu)
+    // so opening the newspaper doesn't also pop up the Pause Menu.
+    //
+    // v0.7 — Input Priority fix: these are now two independent signals
+    // (see EventBus.ts's own comment). "world:overlayOpen" excludes the
+    // Command Center, so WASD keeps moving the player behind its
+    // (not-fully-opaque) backdrop — movement reads via `isDown`
+    // (InputManager.getMoveVector()), not `JustDown`, so there's no
+    // stale-keypress class of bug on this transition and no key reset is
+    // needed here. "world:interactionBlocked" is the original full set
+    // including the Command Center, preserving `worldActive`'s exact
+    // original semantics (E-key interaction, agent updates, door/scene
+    // triggers) — and, critically, the `resetSceneKeys()` call below,
+    // which already solves the "stale JustDown key" bug for E/ESC across
+    // an overlay-close transition.
     EventBus.on("world:overlayOpen", ({ open }) => {
-      this.overlayOpen = open;
+      this.movementBlockedByOverlay = open;
+    });
+    EventBus.on("world:interactionBlocked", ({ blocked }) => {
+      this.interactionBlockedByOverlay = blocked;
       if (this.worldActive) this.resetSceneKeys();
     });
 
@@ -148,7 +166,21 @@ export class GameManager {
    * class of bug.
    */
   get worldActive(): boolean {
-    return !this.paused && !this.overlayOpen;
+    return !this.paused && !this.interactionBlockedByOverlay;
+  }
+
+  /**
+   * Movement-only gate — separate from `worldActive` above so the Command
+   * Center (Mentor Tab included) can stay open while the player keeps
+   * walking around behind its dimmed-but-not-opaque backdrop, without
+   * also reactivating E-key interaction/agent updates/door triggers,
+   * which stay fully suppressed by `worldActive` exactly as before. A
+   * focused text field (Mentor's QOTD box, Calendar's event form,
+   * Treasury's amount inputs, ...) still takes priority over WASD so
+   * typing works normally instead of moving the player.
+   */
+  get movementActive(): boolean {
+    return !this.paused && !this.movementBlockedByOverlay && !isTypingInTextField();
   }
 
   /**

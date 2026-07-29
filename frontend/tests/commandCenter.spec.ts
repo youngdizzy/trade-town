@@ -118,6 +118,24 @@ async function enableDebugOverlay(page: Page): Promise<void> {
   await page.getByRole("button", { name: "Close" }).click();
 }
 
+/** Holds a movement key down, then confirms the player's real x actually
+ * changed — retrying the hold a few times before giving up, since
+ * DebugOverlay's readout updates on requestAnimationFrame (one tick
+ * behind the scene's own internal position, and this headless
+ * environment's render rate is real but variable), so a single
+ * hold-then-read can occasionally sample between frames. */
+async function expectMovement(page: Page, key: string, before: { x: number; scene: string }): Promise<{ scene: string; x: number; y: number }> {
+  for (let attempt = 0; attempt < 3; attempt++) {
+    await page.keyboard.down(key);
+    await page.waitForTimeout(400);
+    await page.keyboard.up(key);
+    await page.waitForTimeout(150);
+    const after = await readDebug(page);
+    if (after.x !== before.x) return after;
+  }
+  throw new Error(`expectMovement: player.x never changed from ${before.x} after 3 attempts holding "${key}"`);
+}
+
 /** Reads DebugOverlay's live "FPS — Scene (x, y)" readout. */
 async function readDebug(page: Page): Promise<{ scene: string; x: number; y: number }> {
   const text = await page.locator("text=/FPS — /").textContent();
@@ -166,33 +184,61 @@ test.describe("Global Command Center", () => {
     await expect(page.getByText("COMMAND CENTER", { exact: true })).toHaveCount(0);
   });
 
-  test("blocks world interaction while open: movement keys don't move the player", async ({ page }) => {
+  test("blocks interaction but allows movement while open, unless a text field has focus", async ({ page }) => {
+    // v0.7 — Input Priority fix: the Command Center's own backdrop isn't
+    // fully opaque (bg-black/70 backdrop-blur-sm), so WASD keeps moving
+    // the player behind it — only E-key interaction/agent updates/door
+    // triggers stay suppressed (see GameManager.movementActive vs
+    // worldActive, and gameStore.ts's MOVEMENT_BLOCKING_KEYS, which
+    // excludes commandCenterOpen). A focused text field inside it still
+    // takes priority over WASD so typing works normally.
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);
     await continueGame(page);
     await enableDebugOverlay(page);
 
+    const before = await readDebug(page);
+
     await page.keyboard.press("Tab");
     await expect(page.getByText("COMMAND CENTER", { exact: true })).toBeVisible();
-    const frozen = await readDebug(page);
 
-    // Hold movement keys with the overlay open — the world must stay inert.
-    for (const key of ["d", "d", "d", "s", "s", "s"]) {
+    const movedWhileOpen = await expectMovement(page, "d", before);
+    expect(movedWhileOpen.scene).toBe(before.scene); // no door/interaction fired — the scene never changed
+
+    // Expand to the Full Command Center and focus a real text field
+    // (Calendar's custom-event title input) — WASD must type into it
+    // instead of moving the player while it has focus.
+    await dismissTradeOutcomePopups(page);
+    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickTab(page, "CALENDAR");
+    await dismissTradeOutcomePopups(page);
+
+    const titleInput = page.getByTestId("calendar-event-title");
+    await titleInput.click();
+    // A brief settle after the click — the same real mouse-to-keyboard
+    // transition gap any actual player has (InputManager's capture
+    // release is polled once per rendered frame; typing faster than a
+    // single frame after the click isn't a scenario a real human hits).
+    await page.waitForTimeout(100);
+    const frozenWhileTyping = await readDebug(page);
+    for (const key of ["w", "a", "s", "d"]) {
       await page.keyboard.press(key);
       await page.waitForTimeout(30);
     }
+    await expect(titleInput).toHaveValue("wasd");
     const stillFrozen = await readDebug(page);
-    expect(stillFrozen).toEqual(frozen);
+    expect(stillFrozen).toEqual(frozenWhileTyping);
 
+    // No explicit blur() needed — Escape unmounts the whole Command
+    // Center (including this input), which clears focus as a side effect.
     await page.keyboard.press("Escape");
+    await expect(page.getByText("COMMAND CENTER", { exact: true })).toHaveCount(0);
 
-    // Sanity check: the same keys DO move the player once the overlay is closed.
-    for (const key of ["d", "d", "d", "d", "d", "d"]) {
-      await page.keyboard.press(key);
-      await page.waitForTimeout(30);
-    }
-    const moved = await readDebug(page);
-    expect(moved.x).not.toBe(frozen.x);
+    // Sanity check: movement (and, implicitly, interaction) resume
+    // normally once fully closed — no stale-keypress glitch from the
+    // overlay-close transition (see GameManager.ts's resetSceneKeys()).
+    const closedBefore = await readDebug(page);
+    await expectMovement(page, "d", closedBefore);
   });
 
   test("expands to the Full Command Center and renders all 21 tabs with graceful empty states", async ({ page }) => {

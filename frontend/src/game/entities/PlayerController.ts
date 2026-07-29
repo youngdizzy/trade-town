@@ -17,8 +17,19 @@ export class PlayerController extends AnimatedActor {
   }
 
   update(): void {
-    const worldActive = GameManager.getInstance()?.worldActive ?? true;
-    const move = worldActive
+    // v0.7 — Input Priority fix: releases Phaser's own keydown capture on
+    // WASD/arrows/E/ESC the instant a real text field has focus — without
+    // this, movementActive alone only stops the game from *reading* the
+    // key, not Phaser's lower-level preventDefault() on it, which would
+    // otherwise still swallow every keystroke before it reaches the
+    // field. See InputManager.syncCaptureWithFocus()'s own comment.
+    this.input.syncCaptureWithFocus();
+
+    // v0.7 — Input Priority fix: movement has its own gate, separate from
+    // worldActive (interaction) — see GameManager.movementActive's own
+    // comment for why.
+    const movementActive = GameManager.getInstance()?.movementActive ?? true;
+    const move = movementActive
       ? this.input.getMoveVector()
       : { x: 0, y: 0, direction: null, moving: false };
     this.setVelocityForDirection(move.x, move.y);

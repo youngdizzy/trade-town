@@ -68,6 +68,11 @@ export interface GameEvents {
   "dialogue:open": { lines: string[]; speaker: string };
   "dialogue:line": DialogueHistoryEntry;
   "dialogue:close": undefined;
+  // v0.7 — Input Priority fix: "Press E to Talk" prompt. Emitted every
+  // frame RoomScene.update() has a real nearestAgent() result and no
+  // dialogue currently open; null the instant neither is true. See
+  // InteractionPrompt.tsx.
+  "interaction:available": { agentName: string } | null;
   "time:tick": TimeState;
   "settings:changed": SettingsState;
   "save:started": undefined;
@@ -77,7 +82,15 @@ export interface GameEvents {
   "ui:pause": { paused: boolean };
   "ui:settings": { open: boolean };
   "ui:newspaper": { open: boolean };
+  // v0.7 — Input Priority fix. Two independent overlay-driven signals,
+  // split from one (see gameStore.ts's setOverlay()): "world:overlayOpen"
+  // now only reflects the movement-blocking subset of overlays (excludes
+  // the Command Center, whose backdrop isn't fully opaque), while
+  // "world:interactionBlocked" reflects the full set, preserving the
+  // original single-flag behavior for E-key interaction/agent updates/
+  // door triggers. See GameManager.ts's worldActive vs movementActive.
   "world:overlayOpen": { open: boolean };
+  "world:interactionBlocked": { blocked: boolean };
   "net:status": { connected: boolean };
   "task:assigned": Task;
   "task:completed": Task;

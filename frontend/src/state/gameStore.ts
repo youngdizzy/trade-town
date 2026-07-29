@@ -294,14 +294,26 @@ class GameStore {
     // since the overlay hides the world) behind a panel that only a mouse
     // click could close, which read as the game being stuck.
     const OVERLAY_KEYS = ["newspaperOpen", "companyMemoryOpen", "coachDashboardOpen", "brainRoomHudOpen", "commandCenterOpen", "campusMapOpen"] as const;
+    // v0.7 — Input Priority fix: the Command Center is intentionally
+    // excluded from the movement-blocking subset. Its own backdrop
+    // (bg-black/70 backdrop-blur-sm — see CommandCenter.tsx) isn't fully
+    // opaque, so the player stays visible walking around behind it;
+    // GameManager.movementActive lets WASD keep moving them unless a text
+    // field inside it has focus. Every other overlay here keeps blocking
+    // movement exactly as before — the reported bug was specifically
+    // about the Command Center/Mentor Tab, not Newspaper/Company Memory/
+    // Coach Dashboard/Brain Room HUD/Campus Map.
+    const MOVEMENT_BLOCKING_KEYS = OVERLAY_KEYS.filter((k) => k !== "commandCenterOpen");
     const setOverlay = (key: (typeof OVERLAY_KEYS)[number], open: boolean, extra?: Partial<GameUiState>): void => {
       const patch = Object.fromEntries(OVERLAY_KEYS.map((k) => [k, k === key ? open : open ? false : this.state[k]])) as Record<
         (typeof OVERLAY_KEYS)[number],
         boolean
       >;
       this.set({ ...patch, ...extra });
-      const anyOpen = OVERLAY_KEYS.some((k) => this.state[k]);
-      EventBus.emit("world:overlayOpen", { open: anyOpen });
+      // Two independent signals — see EventBus.ts's own comment on why
+      // these split from one "world:overlayOpen" flag.
+      EventBus.emit("world:overlayOpen", { open: MOVEMENT_BLOCKING_KEYS.some((k) => this.state[k]) });
+      EventBus.emit("world:interactionBlocked", { blocked: OVERLAY_KEYS.some((k) => this.state[k]) });
     };
     EventBus.on("ui:newspaper", ({ open }) => setOverlay("newspaperOpen", open));
     EventBus.on("ui:companyMemory", ({ open }) => setOverlay("companyMemoryOpen", open));
@@ -387,7 +399,9 @@ class GameStore {
     // buttons jump straight to the Command Center's Decisions tab.
     EventBus.on("trade:inspect", (payload) => {
       this.set({ pendingInspectDecision: payload, commandCenterOpen: true, commandCenterMode: "full" });
-      EventBus.emit("world:overlayOpen", { open: true });
+      // Command Center only — see setOverlay()'s own comment on why it's
+      // excluded from the movement-blocking signal.
+      EventBus.emit("world:interactionBlocked", { blocked: true });
     });
     EventBus.on("agentEnergy:updated", (agentEnergy) => this.set({ agentEnergy }));
     EventBus.on("signalCalibration:updated", (signalCalibration) => this.set({ signalCalibration }));

@@ -11,6 +11,7 @@ import { EventBus, type GameEvents } from "@/game/systems/EventBus";
 import { GameManager } from "@/game/systems/GameManager";
 import { NPCManager } from "@/game/systems/NPCManager";
 import { dialogueManager } from "@/game/systems/DialogueManager";
+import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { gameStore } from "@/state/gameStore";
 
 const TILE_SIZE = 16;
@@ -62,6 +63,7 @@ export abstract class RoomScene extends Phaser.Scene {
   private dialogueWasOpen = false;
   private widthPx = 0;
   private heightPx = 0;
+  private promptedAgentId: AgentId | null = null;
 
   create(data: SceneTransitionData): void {
     this.widthPx = this.widthTiles * TILE_SIZE;
@@ -142,7 +144,13 @@ export abstract class RoomScene extends Phaser.Scene {
       GameManager.getInstance()?.togglePause();
     }
 
-    if (!(GameManager.getInstance()?.worldActive ?? true)) return;
+    if (!(GameManager.getInstance()?.worldActive ?? true)) {
+      // Interaction (E-key) is suppressed while any overlay blocks
+      // worldActive — the prompt must clear with it, or it'd stay stuck
+      // on screen showing an agent E can no longer actually reach.
+      this.setInteractionPrompt(null);
+      return;
+    }
 
     for (const agent of this.agents.values()) agent.update();
 
@@ -150,6 +158,11 @@ export abstract class RoomScene extends Phaser.Scene {
     for (const agent of this.agents.values()) {
       agent.nameTag.setVisible(agent === nearestForTag);
     }
+
+    // Same 28px radius nearestAgent() uses by default below for the real
+    // E-key interaction — the prompt only ever shows when E would
+    // actually do something, never the wider NAME_TAG_RADIUS above.
+    const nearestForInteraction = this.nearestAgent();
 
     // Phaser's JustDown() consumes the "just pressed" state on read, so it
     // must be read exactly once per frame — read it into a local here
@@ -175,6 +188,11 @@ export abstract class RoomScene extends Phaser.Scene {
     this.dialogueWasOpen = dialogueOpen;
     const interacted = this.player.interactPressed && !dialogueOpen && !dialogueJustClosed;
 
+    // "Press E to Talk" prompt: no dialogue currently open (there's
+    // nothing new to press E for while one already is) and a real agent
+    // within real interact range.
+    this.setInteractionPrompt(dialogueOpen ? null : nearestForInteraction);
+
     const nearDoor = Phaser.Geom.Intersects.RectangleToRectangle(
       this.player.sprite.getBounds(),
       this.doorZone.getBounds(),
@@ -186,7 +204,7 @@ export abstract class RoomScene extends Phaser.Scene {
     // dialogue in the very frame the scene tears down, leaving a React
     // dialogue box stuck on screen with nothing left to close it.
     if (interacted && !nearDoor) {
-      const nearest = this.nearestAgent();
+      const nearest = nearestForInteraction;
       if (nearest) {
         dialogueManager.startConversation(nearest.agentId, NPCManager.getAgent(nearest.agentId));
       }
@@ -208,6 +226,9 @@ export abstract class RoomScene extends Phaser.Scene {
   }
 
   shutdown(): void {
+    // Leaving the room entirely (door exit, scene teardown) — the prompt
+    // must not survive into whatever scene loads next.
+    this.setInteractionPrompt(null);
     for (const agent of this.agents.values()) agent.destroy();
     this.agents.clear();
     for (const board of this.whiteboards) board.destroy();
@@ -257,6 +278,17 @@ export abstract class RoomScene extends Phaser.Scene {
       }
     }
     return closest;
+  }
+
+  /** Emits `interaction:available` only on actual change (agent
+   * identity flips, or clears to null) — avoids firing a React state
+   * update every single frame the player just stands still near an
+   * agent. */
+  private setInteractionPrompt(agent: AgentNPC | null): void {
+    const agentId = agent?.agentId ?? null;
+    if (agentId === this.promptedAgentId) return;
+    this.promptedAgentId = agentId;
+    EventBus.emit("interaction:available", agent ? { agentName: AGENT_PROFILES[agent.agentId].name } : null);
   }
 
   /** Spawns/despawns agents to match their server-driven schedule location. */

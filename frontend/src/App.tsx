@@ -2,6 +2,7 @@ import { GameCanvas } from "@/ui/components/GameCanvas";
 import { TopStatusBar } from "@/ui/components/TopStatusBar";
 import { BottomToolbar } from "@/ui/components/BottomToolbar";
 import { DialogueBox } from "@/ui/components/DialogueBox";
+import { InteractionPrompt } from "@/ui/components/InteractionPrompt";
 import { SettingsMenu } from "@/ui/components/SettingsMenu";
 import { PauseMenu } from "@/ui/components/PauseMenu";
 import { DebugOverlay } from "@/ui/components/DebugOverlay";
@@ -25,6 +26,7 @@ export default function App() {
       <BrainRoomHud />
       <MarketObservatoryHud />
       <DialogueBox />
+      <InteractionPrompt />
       <Newspaper />
       <CompanyMemory />
       <CoachDashboard />
