@@ -55,10 +55,12 @@ from app.schemas import (
     SettingsState,
     SignalCalibrationState,
     SignalChoice,
+    TalentState,
     TimeAdvanceTarget,
     TimeState,
 )
 from app.simulation import default_strategies
+from app.talent import mark_talent_report_viewed
 from app.watchlist import default_watchlist
 
 MAX_DIALOGUE_HISTORY = 200
@@ -176,6 +178,7 @@ def default_state() -> GameSaveState:
         treasury=default_treasury(_now_iso()),
         calendar=default_calendar(_now_iso()),
         blackBox=default_black_box_state(),
+        talent=TalentState(reports=[], viewedReportIds=[], updatedAt=_now_iso()),
         updatedAt=_now_iso(),
     )
 
@@ -392,6 +395,18 @@ class GameState:
             if updated is not self.data.black_box.viewed_breakthrough_ids:
                 self.data = self.data.model_copy(update={"black_box": self.data.black_box.model_copy(update={"viewed_breakthrough_ids": updated})})
             return self.data.black_box.viewed_breakthrough_ids
+
+    async def ack_talent_report(self, report_id: str) -> list[str]:
+        """The Talent Discovery System's only real CEO action beyond
+        acknowledging/ignoring a report — the same "seen" tracking
+        pattern ack_breakthrough already established, applied to
+        app/talent.py's reports. See talent.py's module docstring for
+        why no role-change action exists to offer here."""
+        async with self.lock:
+            updated = mark_talent_report_viewed(self.data.talent.viewed_report_ids, report_id)
+            if updated is not self.data.talent.viewed_report_ids:
+                self.data = self.data.model_copy(update={"talent": self.data.talent.model_copy(update={"viewed_report_ids": updated})})
+            return self.data.talent.viewed_report_ids
 
     async def create_calendar_event(self, category: PlayerEventCategory, title: str, day: int, hour: int, minute: int) -> tuple[GameSaveState, str | None]:
         """CEO-scheduled custom calendar entry — informational only, the

@@ -20,6 +20,8 @@ import type {
   PaperOrder,
   PaperPortfolio,
   PaperTrade,
+  ReasoningChallenge,
+  ReflectionSession,
   ResearchCategory,
   ResearchItem,
   RiskLimits,
@@ -717,4 +719,151 @@ export function computeDepartmentHealth(state: {
       ],
     },
   ];
+}
+
+// v0.7 Feature 44 — the Talent Discovery System's "Growth History" (see
+// backend/app/talent.py's module docstring). Never a fabricated career
+// log: every entry traces to a real record where this specific agent is
+// already named — DisciplineReview.attendees, ReasoningChallenge's own
+// contributions, ReflectionSession's own insights, ChallengeReport's
+// assignedAgent (the Devil's Advocate rotation), and Black Box project
+// team membership (active + archived). CoachReport.agentRankings adds
+// the agent's own real score on each report's filing date.
+export type GrowthHistorySource =
+  | "Discipline Review"
+  | "Reasoning Challenge"
+  | "Reflection Session"
+  | "Devil's Advocate Assignment"
+  | "Black Box Team"
+  | "Coach Ranking";
+
+export interface GrowthHistoryEntry {
+  source: GrowthHistorySource;
+  label: string;
+  detail: string;
+  simDay: number | null;
+  createdAt: string;
+}
+
+export function computeGrowthHistory(
+  agentId: AgentId,
+  state: {
+    disciplineReviews: DisciplineReview[];
+    reasoningChallenges: ReasoningChallenge[];
+    reflectionSessions: ReflectionSession[];
+    challengeReports: ChallengeReport[];
+    blackBox: BlackBoxState;
+    coachReports: CoachReport[];
+  },
+): GrowthHistoryEntry[] {
+  const entries: GrowthHistoryEntry[] = [];
+
+  for (const review of state.disciplineReviews) {
+    if (!review.attendees.includes(agentId)) continue;
+    entries.push({
+      source: "Discipline Review",
+      label: `Attended Discipline Review — ${review.symbol}`,
+      detail: `${review.tier} tier, scored ${review.score.toFixed(0)}/100 on a ${review.outcome === "win" ? "winning" : "losing"} trade.`,
+      simDay: review.simDay,
+      createdAt: review.createdAt,
+    });
+  }
+
+  for (const challenge of state.reasoningChallenges) {
+    const contribution = challenge.contributions.find((c) => c.agentId === agentId);
+    if (!contribution) continue;
+    entries.push({
+      source: "Reasoning Challenge",
+      label: `Contributed to Reasoning Challenge — ${challenge.title}`,
+      detail: contribution.contribution,
+      simDay: challenge.simDay,
+      createdAt: challenge.createdAt,
+    });
+  }
+
+  for (const session of state.reflectionSessions) {
+    const insight = session.insights.find((i) => i.agentId === agentId);
+    if (!insight) continue;
+    entries.push({
+      source: "Reflection Session",
+      label: `Shared insight in a ${session.cadence} Reflection Session`,
+      detail: insight.insight,
+      simDay: session.simDay,
+      createdAt: session.createdAt,
+    });
+  }
+
+  for (const report of state.challengeReports) {
+    if (report.assignedAgent !== agentId) continue;
+    entries.push({
+      source: "Devil's Advocate Assignment",
+      label: `Filed Devil's Advocate report — ${report.symbol}`,
+      detail: `Severity: ${report.severity.replace(/_/g, " ")}. ${report.finalRecommendation}`,
+      simDay: null,
+      createdAt: report.createdAt,
+    });
+  }
+
+  const blackBoxProjects = [...(state.blackBox.active ? [state.blackBox.active] : []), ...state.blackBox.archive];
+  for (const project of blackBoxProjects) {
+    if (!project.team.some((member) => member.agentId === agentId)) continue;
+    entries.push({
+      source: "Black Box Team",
+      label: `Joined Black Box project team — ${project.title}`,
+      detail: project.team.find((member) => member.agentId === agentId)!.role,
+      simDay: project.startedSimDay,
+      createdAt: project.createdAt,
+    });
+  }
+
+  for (const report of state.coachReports) {
+    const ranking = report.agentRankings.find((r) => r.agentId === agentId);
+    if (!ranking) continue;
+    entries.push({
+      source: "Coach Ranking",
+      label: `Scored in ${report.period} Coach Report`,
+      detail: `${ranking.score.toFixed(0)}/100 (research accuracy ${ranking.researchAccuracy.toFixed(0)}, confidence calibration ${ranking.confidenceCalibration.toFixed(0)}).`,
+      simDay: null,
+      createdAt: report.createdAt,
+    });
+  }
+
+  return entries.sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+}
+
+export interface CollaboratorPairing {
+  agentA: AgentId;
+  agentB: AgentId;
+  supportCount: number;
+  challengeCount: number;
+}
+
+/**
+ * The brief's "Team Optimization" asks which employee pairs work best
+ * together and how to recompose the roster around them — this codebase's
+ * roster is fixed (see talent.py's module docstring), so nothing about
+ * composition can ever change. The one real signal that survives is which
+ * agents actually support vs. challenge each other's points across every
+ * real AI Debate (DebateTurn.respondingTo + stance) — counted here turn by
+ * turn, nothing inferred or scored beyond the real tally.
+ */
+export function computeBestCollaborators(debates: Debate[]): CollaboratorPairing[] {
+  const pairs = new Map<string, CollaboratorPairing>();
+
+  for (const debate of debates) {
+    for (const turn of debate.turns) {
+      if (!turn.respondingTo || turn.respondingTo === turn.agentId || turn.stance === "opening") continue;
+      const [agentA, agentB] = [turn.agentId, turn.respondingTo].sort() as [AgentId, AgentId];
+      const key = `${agentA}|${agentB}`;
+      let pairing = pairs.get(key);
+      if (!pairing) {
+        pairing = { agentA, agentB, supportCount: 0, challengeCount: 0 };
+        pairs.set(key, pairing);
+      }
+      if (turn.stance === "support") pairing.supportCount += 1;
+      else pairing.challengeCount += 1;
+    }
+  }
+
+  return Array.from(pairs.values()).sort((a, b) => b.supportCount + b.challengeCount - (a.supportCount + a.challengeCount));
 }

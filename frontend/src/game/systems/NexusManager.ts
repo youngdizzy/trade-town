@@ -43,6 +43,7 @@ import type {
   SignalCalibrationState,
   SimulationResult,
   Strategy,
+  TalentState,
   Task,
   ThinkingProfile,
   TradeDecision,
@@ -89,6 +90,7 @@ interface NexusSnapshot {
   academyState: AcademyState;
   disciplineReviews: DisciplineReview[];
   caseStudies: CaseStudy[];
+  talent: TalentState;
   reasoningChallenges: ReasoningChallenge[];
   reasoningLabState: ReasoningLabState;
   reflectionSessions: ReflectionSession[];
@@ -213,6 +215,7 @@ export class NexusManager {
   };
   private static disciplineReviews: DisciplineReview[] = [];
   private static caseStudies: CaseStudy[] = [];
+  private static talent: TalentState = { reports: [], viewedReportIds: [], updatedAt: new Date().toISOString() };
   private static reasoningChallenges: ReasoningChallenge[] = [];
   private static reasoningLabState: ReasoningLabState = {
     level: 1,
@@ -347,6 +350,17 @@ export class NexusManager {
 
   static getCaseStudies(): CaseStudy[] {
     return this.caseStudies;
+  }
+
+  static getTalent(): TalentState {
+    return this.talent;
+  }
+
+  /** Applies the result of POST /api/talent/ack-report, the same "seen"
+   * tracking pattern setViewedBreakthroughIds already uses. */
+  static setViewedTalentReportIds(ids: string[]): void {
+    this.talent = { ...this.talent, viewedReportIds: ids };
+    EventBus.emit("talent:updated", this.talent);
   }
 
   static getReasoningChallenges(): ReasoningChallenge[] {
@@ -744,6 +758,9 @@ export class NexusManager {
     if (update.caseStudies.length !== this.caseStudies.length) EventBus.emit("caseStudies:updated", update.caseStudies);
     this.caseStudies = update.caseStudies;
 
+    if (update.talent !== this.talent) EventBus.emit("talent:updated", update.talent);
+    this.talent = update.talent;
+
     if (update.reasoningChallenges.length !== this.reasoningChallenges.length) {
       EventBus.emit("reasoningChallenges:updated", update.reasoningChallenges);
     }
@@ -846,6 +863,7 @@ export class NexusManager {
     this.academyState = save.academyState;
     this.disciplineReviews = save.disciplineReviews;
     this.caseStudies = save.caseStudies;
+    this.talent = save.talent;
     this.reasoningChallenges = save.reasoningChallenges;
     this.reasoningLabState = save.reasoningLabState;
     this.reflectionSessions = save.reflectionSessions;

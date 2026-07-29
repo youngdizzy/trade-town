@@ -90,6 +90,7 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         "academyState": state.academy_state.model_dump(by_alias=True),
         "disciplineReviews": [r.model_dump(by_alias=True) for r in state.discipline_reviews],
         "caseStudies": [c.model_dump(by_alias=True) for c in state.case_studies],
+        "talent": state.talent.model_dump(by_alias=True),
         "reasoningChallenges": [r.model_dump(by_alias=True) for r in state.reasoning_challenges],
         "reasoningLabState": state.reasoning_lab_state.model_dump(by_alias=True),
         "reflectionSessions": [r.model_dump(by_alias=True) for r in state.reflection_sessions],

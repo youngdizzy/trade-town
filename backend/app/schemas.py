@@ -1943,6 +1943,40 @@ class MentorState(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# v0.7 Feature 44 — the Talent Discovery System (app/talent.py). A real,
+# evidence-based "Discovery Event" — every field traces back to an
+# agent's own real ThinkingProfile trait and real CoachReport score
+# history, never a fabricated pattern. "Suggested Focus" deliberately
+# replaces the brief's "Suggested Career Path": no agent's real
+# occupation ever changes anywhere in this codebase (see talent.py's
+# module docstring), so a literal career-path recommendation would
+# imply a mechanic that doesn't exist.
+class TalentReport(CamelModel):
+    id: str
+    agent_id: AgentId = Field(alias="agentId")
+    trait_id: str = Field(alias="traitId")
+    trait_name: str = Field(alias="traitName")
+    title: str
+    narrative: str
+    evidence: list[str] = Field(default_factory=list)
+    examples: list[str] = Field(default_factory=list)
+    current_score: float = Field(alias="currentScore")
+    # How many recent CoachReports this discovery's "consistent pattern"
+    # check was based on — real, bounded evidence, never an unfulfillable
+    # claim about calendar days this codebase doesn't track per agent.
+    sample_size: int = Field(alias="sampleSize")
+    suggested_focus: str = Field(alias="suggestedFocus")
+    expected_benefits: str = Field(alias="expectedBenefits")
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
+class TalentState(CamelModel):
+    reports: list[TalentReport] = Field(default_factory=list)
+    viewed_report_ids: list[str] = Field(default_factory=list, alias="viewedReportIds")
+    updated_at: str = Field(alias="updatedAt")
+
+
 # v0.7 Feature 39 — the Original Founders (app/founders.py). Only
 # "keystone"/"compass" can ever be a founder_id — everyone else stays a
 # normal employee, never blurring who is a Founder vs. an ordinary agent.
@@ -2244,6 +2278,8 @@ class GameSaveState(CamelModel):
     calendar: CalendarState
     # v0.7 — the Advanced Quantitative Research Division (app/black_box.py).
     black_box: BlackBoxState = Field(alias="blackBox")
+    # v0.7 Feature 44 — Talent Discovery System (app/talent.py).
+    talent: TalentState = Field(alias="talent")
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(default_factory=list, alias="dialogueHistory")

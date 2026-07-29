@@ -206,4 +206,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ reviewId }),
     }),
+  ackTalentReport: (reportId: string) =>
+    request<{ viewedReportIds: string[] }>("/talent/ack-report", {
+      method: "POST",
+      body: JSON.stringify({ reportId }),
+    }),
 };

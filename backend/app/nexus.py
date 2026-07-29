@@ -66,6 +66,7 @@ from app.market_environment import tick_market_environment
 from app.mentor import compute_mentor_state, compute_thinking_profiles, generate_question_of_the_day, record_question
 from app.mistakes import generate_case_studies, record_case_studies
 from app.successes import generate_success_studies, record_success_studies
+from app.talent import generate_talent_reports, record_talent_reports
 from app.paper_trading import tick_paper_trading
 from app.portfolio import sim_minutes
 from app.reasoning_lab import compute_reasoning_lab_state, generate_challenge, record_challenge
@@ -133,6 +134,8 @@ from app.schemas import (
     RiskLimits,
     RiskWarning,
     ScannerAlert,
+    TalentReport,
+    TalentState,
     Task,
     TaskCategory,
     TaskPriority,
@@ -898,6 +901,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     agent_knowledge: dict[AgentId, AgentKnowledgeState] = state.agent_knowledge or default_agent_knowledge()
     discipline_reviews: list[DisciplineReview] = list(state.discipline_reviews)
     case_studies: list[CaseStudy] = list(state.case_studies)
+    talent_reports: list[TalentReport] = list(state.talent.reports)
     challenge_reports: list[ChallengeReport] = list(state.challenge_reports)
     reasoning_challenges: list[ReasoningChallenge] = list(state.reasoning_challenges)
     reflection_sessions: list[ReflectionSession] = list(state.reflection_sessions)
@@ -1422,6 +1426,28 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     )
     mentor_state = compute_mentor_state(len(question_archive), _now_iso())
 
+    # v0.7 Feature 44 — Talent Discovery System. Only ever files a new
+    # report once an agent's real trait/score-history evidence clears
+    # both thresholds — see app/talent.py's module docstring.
+    new_talent_reports = generate_talent_reports(
+        all_agent_ids(),
+        thinking_profiles,
+        coach_reports,
+        {r.id for r in talent_reports},
+        sim_day=new_time.day,
+    )
+    if new_talent_reports:
+        talent_reports = record_talent_reports(talent_reports, new_talent_reports)
+        for report in new_talent_reports:
+            news.append(
+                NewsItem(
+                    id=f"news-talent-{report.id}",
+                    headline=f'Talent Report filed: "{report.title}".',
+                    category="company",
+                    timestamp=_now_iso(),
+                )
+            )
+
     # v0.7 Feature 39 — one real Founder log entry per in-game day,
     # alternating Keystone/Compass by day parity so both appear roughly
     # equally without needing two separate generations. None is recorded
@@ -1615,6 +1641,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "treasury": treasury,
             "calendar": calendar_state,
             "black_box": black_box,
+            "talent": TalentState(reports=talent_reports, viewedReportIds=state.talent.viewed_report_ids, updatedAt=_now_iso()),
             "agent_energy": agent_energy,
             "whiteboards": _update_whiteboards(agents, meeting, research),
             "updated_at": _now_iso(),

@@ -49,6 +49,7 @@ import type {
   SignalCalibrationState,
   SimulationResult,
   Strategy,
+  TalentState,
   Task,
   ThinkingProfile,
   TimeState,
@@ -149,6 +150,7 @@ export interface GameEvents {
   "academyState:updated": AcademyState;
   "disciplineReviews:updated": DisciplineReview[];
   "caseStudies:updated": CaseStudy[];
+  "talent:updated": TalentState;
   "reasoningChallenges:updated": ReasoningChallenge[];
   "reasoningLabState:updated": ReasoningLabState;
   "reflectionSessions:updated": ReflectionSession[];

@@ -25,6 +25,7 @@ import { DisciplinePanel } from "./panels/DisciplinePanel";
 import { ReasoningLabPanel } from "./panels/ReasoningLabPanel";
 import { ReflectionPanel } from "./panels/ReflectionPanel";
 import { MentorPanel } from "./panels/MentorPanel";
+import { TalentPanel } from "./panels/TalentPanel";
 import { FoundersPanel } from "./panels/FoundersPanel";
 import { TreasuryPanel } from "./panels/TreasuryPanel";
 import { CalendarPanel } from "./panels/CalendarPanel";
@@ -53,6 +54,7 @@ const TABS = [
   "REASONING",
   "REFLECTION",
   "MENTOR",
+  "TALENT",
   "FOUNDERS",
   "TREASURY",
   "CALENDAR",
@@ -179,6 +181,7 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
         {tab === "REASONING" && <ReasoningLabPanel />}
         {tab === "REFLECTION" && <ReflectionPanel />}
         {tab === "MENTOR" && <MentorPanel />}
+        {tab === "TALENT" && <TalentPanel />}
         {tab === "FOUNDERS" && <FoundersPanel />}
         {tab === "TREASURY" && <TreasuryPanel />}
         {tab === "BLACKBOX" && <BlackBoxPanel />}

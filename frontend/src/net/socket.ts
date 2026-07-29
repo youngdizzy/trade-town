@@ -44,6 +44,7 @@ import type {
   SignalCalibrationState,
   SimulationResult,
   Strategy,
+  TalentState,
   Task,
   ThinkingProfile,
   TimeState,
@@ -98,6 +99,7 @@ type ServerMessage =
       academyState: AcademyState;
       disciplineReviews: DisciplineReview[];
       caseStudies: CaseStudy[];
+      talent: TalentState;
       reasoningChallenges: ReasoningChallenge[];
       reasoningLabState: ReasoningLabState;
       reflectionSessions: ReflectionSession[];
@@ -207,6 +209,7 @@ export class GameSocket {
             academyState: msg.academyState,
             disciplineReviews: msg.disciplineReviews,
             caseStudies: msg.caseStudies,
+            talent: msg.talent,
             reasoningChallenges: msg.reasoningChallenges,
             reasoningLabState: msg.reasoningLabState,
             reflectionSessions: msg.reflectionSessions,

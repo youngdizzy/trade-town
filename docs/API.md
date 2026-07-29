@@ -26,7 +26,7 @@ object, but only the **core modules** are real (see
 ceoDecisions, tradeProposals, debates, challengeReports,
 gatekeeperRejections), `knowledge_archive` (caseStudies, questionArchive,
 reasoningChallenges, reflectionSessions, disciplineReviews, hallOfFame,
-memory, meetingMinutes, executiveReviews), and `academy`
+memory, meetingMinutes, executiveReviews, talent), and `academy`
 (academyProjects, academyCompletedProjects, agentKnowledge) — come back
 as real empty arrays/dicts (the same defaults a fresh game legitimately
 starts with), not fabricated data and not omitted fields, so the response
@@ -854,6 +854,14 @@ tracking pattern `POST /api/trades/ack` already established, so a
 refresh or restart never re-shows a breakthrough moment the player
 already saw. Returns `{ "viewedBreakthroughIds": [...] }`.
 
+### `POST /api/talent/ack-report`
+
+v0.7 Feature 44 — the Talent Discovery System. Body:
+`{ "reportId": "talent-echo-reasoning" }`. Marks one `TalentReport` as
+seen — the same real "seen" tracking pattern
+`POST /api/black-box/ack-breakthrough` already established. Returns
+`{ "viewedReportIds": [...] }`.
+
 ### Bounding / trimming
 
 Every list above is capped server-side before it's ever sent — the client
@@ -889,6 +897,7 @@ never needs to trim anything itself:
 | `questionArchive` | last 120 (`MAX_QUESTION_ARCHIVE`) | one `QuestionOfTheDay` per real in-game morning — v0.7 Feature 32 |
 | `blackBox.archive` | last 30 (`MAX_ARCHIVE`) | completed + failed Black Box Projects — Museum of Discoveries entries and Research Archives both live here |
 | `blackBox.reviews` | last 30 (`MAX_REVIEWS`) | one Founder Council `BreakthroughReview` per project that reached review |
+| `talent.reports` | last 30 (`MAX_TALENT_REPORTS`) | one `TalentReport` per agent/trait pair that ever cleared both real thresholds — v0.7 Feature 44 |
 
 ### Provider configuration
 

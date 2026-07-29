@@ -1401,6 +1401,37 @@ export interface MentorState {
   updatedAt: string;
 }
 
+// v0.7 Feature 44 — the Talent Discovery System (see
+// backend/app/talent.py's module docstring). A real, evidence-based
+// "Discovery Event" — every field traces back to an agent's own real
+// ThinkingProfile trait and real CoachReport score history. "Suggested
+// Focus" deliberately replaces the brief's "Suggested Career Path": no
+// agent's real occupation ever changes anywhere in this codebase, so a
+// literal career-path recommendation would imply a mechanic that
+// doesn't exist.
+export interface TalentReport {
+  id: string;
+  agentId: AgentId;
+  traitId: string;
+  traitName: string;
+  title: string;
+  narrative: string;
+  evidence: string[];
+  examples: string[];
+  currentScore: number;
+  sampleSize: number;
+  suggestedFocus: string;
+  expectedBenefits: string;
+  simDay: number;
+  createdAt: string;
+}
+
+export interface TalentState {
+  reports: TalentReport[];
+  viewedReportIds: string[];
+  updatedAt: string;
+}
+
 // v0.7 Feature 39 — the Original Founders (see backend/app/founders.py's
 // module docstring for why this is deliberately not a second Socratic-
 // teaching mechanic competing with MentorState above).
@@ -1573,6 +1604,7 @@ export interface GameSaveState {
   academyState: AcademyState;
   disciplineReviews: DisciplineReview[];
   caseStudies: CaseStudy[];
+  talent: TalentState;
   reasoningChallenges: ReasoningChallenge[];
   reasoningLabState: ReasoningLabState;
   reflectionSessions: ReflectionSession[];

@@ -2629,6 +2629,106 @@ errors) both passed; `commandCenter.spec.ts`'s tab-count test updated to
 24 tabs (COMPANY's own number-key-shortcut index is unaffected, since
 EXECINTEL was inserted immediately after COMPANY rather than before it).
 
+### Talent Discovery System
+
+The brief asked for a "Performance Analysis" trait breakdown, automatic
+"Discovery Events" when an employee shows real talent, a CEO decision to
+invest in that talent, a per-employee "Growth History," "Career
+Development" (promotions, role changes, specializations), and "Team
+Optimization" (best-performing pairs, ideal roster composition). Checked
+first against what already exists and what the codebase's own
+architecture allows: Performance Analysis turned out to already be real
+and shipped — `mentor.py`'s `ThinkingProfile` (six traits per agent,
+built for Feature 32's Sage/Mentor Chamber) is exactly what the brief
+describes, just not surfaced in a talent-specific view. Career
+Development and most of Team Optimization ran straight into this
+codebase's fixed-roster architecture: `agents.py`'s `AgentProfile` is a
+`@dataclass(frozen=True)`, and `founders.py`'s own module docstring
+states plainly that there is "no new-hire system, no employee ever joins
+the company after the game starts... nothing to onboard." No agent's
+occupation, schedule, or room ever changes anywhere in the shipped
+codebase (confirmed by grepping for any code that mutates an
+`AgentProfile` field — there is none). A promotion or role-change
+mechanic, or a roster-recomposition recommendation, would have to be
+invented from nothing; neither was built.
+
+**Discovery Events — the one genuinely net-new concept**
+(`app/talent.py`'s `generate_talent_reports`). A `TalentReport` only
+ever files for one specific agent/trait pair when both of two real,
+independently checkable signals hold:
+
+1. That agent's own best `ThinkingProfile` trait score is at or above
+   `TALENT_SCORE_THRESHOLD` (80/100) — always the real highest trait,
+   never a lower one picked for a better story.
+2. Their last `CONSISTENCY_REPORT_WINDOW` (3) `CoachReport` scores are
+   *all* at or above `CONSISTENCY_MIN_SCORE` (70) — a one-off good report
+   never triggers a Discovery Event on its own; the pattern has to be
+   real and sustained.
+
+The report's `evidence` field is the trait's own real `detail` string
+(nothing paraphrased or invented), and `report_id` is deterministic
+(`talent-{agent_id}-{trait_id}`) so the same pair never re-files once
+recorded. "Suggested Focus" deliberately replaces the brief's literal
+"Suggested Career Path": since no agent's occupation can ever change,
+a career-path recommendation would promise a mechanic this codebase
+doesn't have — the field instead names a real coaching focus tied to
+the real trait that triggered the report. `MAX_TALENT_REPORTS` (30) caps
+the archive the same way `mistakes.py`/`successes.py`/`black_box.py`
+already cap their own permanent record lists.
+
+**Growth History and Best Collaborators are both pure frontend
+derivations** — like the Decision Replay Center and Executive
+Intelligence Dashboard's own derived sections, no second backend
+computation was needed for either. `lib/derive.ts`'s
+`computeGrowthHistory(agentId, state)` builds a real per-agent timeline
+from six sources that already name that agent somewhere in existing
+state: `DisciplineReview.attendees`, `ReasoningChallenge.contributions`,
+`ReflectionSession.insights`, `ChallengeReport.assignedAgent` (the
+Devil's Advocate rotation), Black Box project team membership (active +
+archived), and `CoachReport.agentRankings` (that agent's own real score
+on each report's filing date) — sorted chronologically by each record's
+own real `createdAt`. `computeBestCollaborators(debates)` is the one
+real signal salvageable from the brief's "Team Optimization": since the
+roster can't be recomposed, nothing about composition can be optimized,
+but which agents actually support vs. challenge each other's points
+across every real AI Debate (`DebateTurn.respondingTo` + `stance`) is a
+real, checkable tally — counted turn by turn, nothing inferred or scored
+beyond the real count.
+
+**New `TALENT` Command Center tab** (`TalentPanel.tsx`, inserted right
+after `MENTOR` since it directly extends that tab's `ThinkingProfile`
+data): Discovery Events with an acknowledge action
+(`POST /api/talent/ack-report` → `game_state.ack_talent_report()` →
+`mark_talent_report_viewed()`, the same "seen" tracking pattern
+`viewedBreakthroughIds`/`viewedTradeNotificationIds` already use), a
+per-employee Growth History timeline behind an agent selector, Best
+Collaborators, and a Performance Analysis section that reuses the
+Mentor tab's own `ThinkingProfileCard` layout rather than recomputing
+anything.
+
+**Save/load.** `TalentState` (`reports`, `viewedReportIds`, `updatedAt`)
+lives in the `"knowledge_archive"` save module alongside
+`case_studies`/`hall_of_fame`/`discipline_reviews` — a permanent,
+append-only record, excluded from `GET /api/load` and hydrated purely
+via the WebSocket broadcast. `default_state()` seeds an empty
+`TalentState`, so an older save missing the field migrates cleanly
+through `load_modules()`'s existing deep-merge-onto-`default_state()`
+recovery path with no new migration code required.
+
+**Verification.** Backend: `test_talent.py` (8 new tests — fires only
+when both thresholds clear, doesn't fire on a short or inconsistent
+score history, never re-files an already-filed pair, a missing
+`ThinkingProfile` is skipped rather than erroring, the report always
+names the real highest trait, and no literal career-path language is
+ever promised) + the full suite (523/523) + mypy/ruff clean. Frontend:
+`tsc -b`/eslint/build clean; a new `talent.spec.ts` (2 Playwright tests
+against the live stack — confirming `talent` is present in
+`GET /api/load`, and that the TALENT tab renders Discovery Events/Growth
+History/Best Collaborators/Performance Analysis with zero console
+errors) both passed; `commandCenter.spec.ts`'s tab-count test updated to
+25 tabs (MENTOR's own number-key-shortcut range is unaffected, since
+TALENT was inserted well past the 1-9 shortcut range).
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

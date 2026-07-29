@@ -7,6 +7,68 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.7 Feature 44 — Talent Discovery System**: scoped from a brief
+  asking for a "Performance Analysis" trait breakdown, automatic
+  "Discovery Events" when an employee shows real talent, a CEO decision
+  to invest in that talent, a per-employee "Growth History," "Career
+  Development" (promotions/role changes/specializations), and "Team
+  Optimization" (best-performing pairs, ideal roster composition).
+  Researched first (see `app/talent.py`'s module docstring): Performance
+  Analysis turned out to already be real and shipped — it's exactly
+  `ThinkingProfile`, built for Feature 32's Mentor Chamber — so this
+  feature surfaces it rather than recomputing it a second time. Career
+  Development and most of Team Optimization are fundamentally
+  incompatible with this codebase: `agents.py`'s `AgentProfile` is a
+  frozen dataclass and `founders.py`'s own docstring states plainly that
+  no employee ever joins, leaves, or changes role after the game starts —
+  there is no roster to promote within or recompose, so a literal
+  career-path or team-recomposition mechanic would have to be invented
+  from nothing. What's left is scoped honestly around what the codebase
+  can actually check.
+  - **Discovery Events, the one genuinely net-new concept**
+    (`app/talent.py`'s `generate_talent_reports`): a `TalentReport` only
+    ever files for an agent/trait pair when that agent's own best
+    `ThinkingProfile` trait clears a real score threshold (80/100) AND
+    their last three `CoachReport` scores are all consistently strong
+    (≥70) — both conditions real and checkable, never a fabricated
+    pattern. Each report names the real highest trait (never a lower one
+    picked for drama), cites the trait's own real evidence, and never
+    re-files the same agent/trait pair twice. "Suggested Focus" is a
+    real coaching note, not the brief's literal "Suggested Career Path"
+    — this codebase has no mechanic that promise could ever refer to.
+  - **New `TALENT` Command Center tab** (`TalentPanel.tsx`): Discovery
+    Events with an acknowledge action (`POST /api/talent/ack-report`,
+    the same "seen" tracking pattern as Breakthrough Reviews), a
+    per-employee **Growth History** timeline, **Best Collaborators**,
+    and a **Performance Analysis** section. Growth History and Best
+    Collaborators shipped as pure frontend derivations
+    (`lib/derive.ts`'s `computeGrowthHistory()`/
+    `computeBestCollaborators()`) over data already broadcast on the
+    WebSocket — like Features 42/43's derived sections, no new backend
+    state was needed for either.
+  - **Growth History, honestly built from six real sources**: every
+    entry traces to a record that already names the selected agent —
+    `DisciplineReview.attendees`, `ReasoningChallenge.contributions`,
+    `ReflectionSession.insights`, `ChallengeReport.assignedAgent` (the
+    Devil's Advocate rotation), Black Box project team membership
+    (active + archived), and `CoachReport.agentRankings` (the agent's
+    own real score on each report's filing date) — never a fabricated
+    career log.
+  - **Best Collaborators, the one real signal salvageable from "Team
+    Optimization"**: since the roster can't be recomposed, nothing about
+    composition can be optimized — but which agents actually support vs.
+    challenge each other's points across every real AI Debate
+    (`DebateTurn.respondingTo` + `stance`) is a real, checkable tally,
+    counted turn by turn with nothing inferred.
+  - Verification: backend (`test_talent.py`, 8 new tests covering both
+    threshold gates, non-refiling, missing-profile safety, and that no
+    literal career-path language is ever promised) + full suite
+    (523/523) + mypy/ruff clean; frontend tsc/eslint/build clean; a new
+    `talent.spec.ts` (2 Playwright tests against the live stack) plus
+    `commandCenter.spec.ts`'s tab-count test updated for the new 25th
+    tab (inserted after MENTOR, so number-key shortcuts 1-9 are
+    unaffected).
+
 - **v0.7 Feature 43 — Executive Intelligence Dashboard**: scoped from a
   brief asking for a 13-metric "Company Health" list, proactive "CEO
   Insights," an AI-ranked "Executive Priorities" list, multi-year

@@ -44,6 +44,7 @@ import type {
   SignalCalibrationState,
   SimulationResult,
   Strategy,
+  TalentState,
   Task,
   ThinkingProfile,
   TimeState,
@@ -109,6 +110,7 @@ export interface GameUiState {
   academyState: AcademyState;
   disciplineReviews: DisciplineReview[];
   caseStudies: CaseStudy[];
+  talent: TalentState;
   reasoningChallenges: ReasoningChallenge[];
   reasoningLabState: ReasoningLabState;
   reflectionSessions: ReflectionSession[];
@@ -255,6 +257,7 @@ class GameStore {
     academyState: { level: 1, levelLabel: "Training Room", totalPoints: 0, completedProjectCount: 0, updatedAt: new Date().toISOString() },
     disciplineReviews: [],
     caseStudies: [],
+    talent: { reports: [], viewedReportIds: [], updatedAt: new Date().toISOString() },
     reasoningChallenges: [],
     reasoningLabState: { level: 1, levelLabel: "Foundations", completedChallengeCount: 0, updatedAt: new Date().toISOString() },
     reflectionSessions: [],
@@ -396,6 +399,7 @@ class GameStore {
     EventBus.on("academyState:updated", (academyState) => this.set({ academyState }));
     EventBus.on("disciplineReviews:updated", (disciplineReviews) => this.set({ disciplineReviews }));
     EventBus.on("caseStudies:updated", (caseStudies) => this.set({ caseStudies }));
+    EventBus.on("talent:updated", (talent) => this.set({ talent }));
     EventBus.on("reasoningChallenges:updated", (reasoningChallenges) => this.set({ reasoningChallenges }));
     EventBus.on("reasoningLabState:updated", (reasoningLabState) => this.set({ reasoningLabState }));
     EventBus.on("reflectionSessions:updated", (reflectionSessions) => this.set({ reflectionSessions }));
