@@ -9,10 +9,12 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
+from typing import Callable
 
 from app import education, nexus, player_vs_ai, signal_calibration, trade_notifications
 from app.academy import compute_academy_state, default_agent_knowledge
 from app.agents import all_agent_ids
+from app.black_box import archive_project, default_black_box_state, mark_breakthrough_viewed
 from app.config import settings
 from app.mentor import compute_mentor_state, compute_thinking_profiles, generate_question_of_the_day, submit_response
 from app.calendar import create_player_event, default_calendar, delete_player_event
@@ -34,6 +36,9 @@ from app.portfolio import default_portfolio, sim_minutes
 from app.research import default_research
 from app.scribe import record_ceo_decision, record_proposal_hold
 from app.schemas import (
+    AgentId,
+    BlackBoxPriority,
+    BlackBoxProject,
     ClientSaveRequest,
     EducationProgress,
     EntityTransform,
@@ -56,6 +61,8 @@ from app.simulation import default_strategies
 from app.watchlist import default_watchlist
 
 MAX_DIALOGUE_HISTORY = 200
+MAX_BLACK_BOX_FUNDING_PER_CALL = 5000.0
+MAX_BLACK_BOX_NOTES = 20
 # v0.7 Feature 34 — CEO time controls. MAX_FAST_FORWARD_HOURS bounds the
 # custom "hours" target; MAX_FAST_FORWARD_TICKS is a hard safety ceiling
 # on week_end/month_end (worst case ~2016/~8640 real ticks at the default
@@ -165,6 +172,7 @@ def default_state() -> GameSaveState:
         innovationState={},
         treasury=default_treasury(_now_iso()),
         calendar=default_calendar(_now_iso()),
+        blackBox=default_black_box_state(),
         updatedAt=_now_iso(),
     )
 
@@ -295,6 +303,92 @@ class GameState:
         async with self.lock:
             self.data = self.data.model_copy(update={"treasury": pause_all_rules(self.data.treasury, now_iso=_now_iso())})
             return self.data
+
+    async def _update_black_box_project(self, mutate: Callable[[BlackBoxProject], BlackBoxProject | None], *, no_project_error: str) -> tuple[GameSaveState, str | None]:
+        """Shared lock/validate/persist plumbing for every CEO Research
+        Dashboard control below — each one only needs to say how the
+        active project changes."""
+        async with self.lock:
+            active = self.data.black_box.active
+            if active is None:
+                return self.data, no_project_error
+            updated = mutate(active)
+            if updated is None:
+                return self.data, "That action isn't valid for the current project."
+            new_black_box = self.data.black_box.model_copy(update={"active": updated.model_copy(update={"updated_at": _now_iso()}), "updated_at": _now_iso()})
+            self.data = self.data.model_copy(update={"black_box": new_black_box})
+            return self.data, None
+
+    async def fund_black_box_project(self, amount: float) -> tuple[GameSaveState, str | None]:
+        """CEO-initiated Black Box funding — see app/black_box.py's module
+        docstring for why this is a standalone project budget number
+        rather than drawn from app/treasury.py's Treasury balance (which
+        that module's own docstring documents as touched only by its own
+        three explicit CEO actions)."""
+        if amount <= 0:
+            return self.data, "Funding amount must be positive."
+        if amount > MAX_BLACK_BOX_FUNDING_PER_CALL:
+            return self.data, f"Can't add more than ${MAX_BLACK_BOX_FUNDING_PER_CALL:,.0f} in a single funding action."
+        return await self._update_black_box_project(
+            lambda p: p.model_copy(update={"budget": round(p.budget + amount, 2)}), no_project_error="No Black Box project is currently active."
+        )
+
+    async def set_black_box_paused(self, paused: bool) -> tuple[GameSaveState, str | None]:
+        def mutate(p: BlackBoxProject) -> BlackBoxProject | None:
+            if p.status not in ("active", "paused"):
+                return None
+            return p.model_copy(update={"status": "paused" if paused else "active"})
+
+        return await self._update_black_box_project(mutate, no_project_error="No Black Box project is currently active.")
+
+    async def cancel_black_box_project(self) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            active = self.data.black_box.active
+            if active is None:
+                return self.data, "No Black Box project is currently active."
+            cancelled = active.model_copy(
+                update={"status": "failed", "completed_at": _now_iso(), "research_notes": [*active.research_notes, "Cancelled by the CEO before completion."]}
+            )
+            new_black_box = archive_project(self.data.black_box, cancelled)
+            self.data = self.data.model_copy(update={"black_box": new_black_box})
+            return self.data, None
+
+    async def set_black_box_priority(self, priority: BlackBoxPriority) -> tuple[GameSaveState, str | None]:
+        return await self._update_black_box_project(
+            lambda p: p.model_copy(update={"priority": priority}), no_project_error="No Black Box project is currently active."
+        )
+
+    async def add_black_box_note(self, note: str) -> tuple[GameSaveState, str | None]:
+        stripped = note.strip()
+        if not stripped:
+            return self.data, "A research note can't be empty."
+
+        def mutate(p: BlackBoxProject) -> BlackBoxProject:
+            notes = [*p.research_notes, stripped]
+            if len(notes) > MAX_BLACK_BOX_NOTES:
+                del notes[: len(notes) - MAX_BLACK_BOX_NOTES]
+            return p.model_copy(update={"research_notes": notes})
+
+        return await self._update_black_box_project(mutate, no_project_error="No Black Box project is currently active.")
+
+    async def reassign_black_box_specialist(self, agent_id: AgentId, new_agent_id: AgentId) -> tuple[GameSaveState, str | None]:
+        def mutate(p: BlackBoxProject) -> BlackBoxProject | None:
+            if agent_id == "quant" or not any(m.agent_id == agent_id for m in p.team):
+                return None
+            team = [m.model_copy(update={"agent_id": new_agent_id}) if m.agent_id == agent_id else m for m in p.team]
+            return p.model_copy(update={"team": team})
+
+        return await self._update_black_box_project(mutate, no_project_error="No Black Box project is currently active.")
+
+    async def ack_breakthrough(self, review_id: str) -> list[str]:
+        """Marks one Eureka! Breakthrough cinematic as shown/dismissed —
+        the same real "seen" tracking pattern ack_trade_notification
+        already established, applied to app/black_box.py's reviews."""
+        async with self.lock:
+            updated = mark_breakthrough_viewed(self.data.black_box.viewed_breakthrough_ids, review_id)
+            if updated is not self.data.black_box.viewed_breakthrough_ids:
+                self.data = self.data.model_copy(update={"black_box": self.data.black_box.model_copy(update={"viewed_breakthrough_ids": updated})})
+            return self.data.black_box.viewed_breakthrough_ids
 
     async def create_calendar_event(self, category: PlayerEventCategory, title: str, day: int, hour: int, minute: int) -> tuple[GameSaveState, str | None]:
         """CEO-scheduled custom calendar entry — informational only, the

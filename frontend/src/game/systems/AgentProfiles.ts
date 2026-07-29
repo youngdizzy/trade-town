@@ -187,6 +187,21 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
     wanderRadius: 35,
     idlePauseChance: 0.3,
   },
+  // v0.7 — the Chief Quantitative Strategist, leads every Black Box
+  // Research Project (see backend/app/black_box.py). Works out of the
+  // Simulation Lab — no new physical scene was built for a "Quant Lab".
+  quant: {
+    id: "quant",
+    name: "Vector",
+    occupation: "Chief Quantitative Strategist",
+    personality: "Extremely analytical, patient, and precise. Trusts evidence over emotion — every claim has to survive being checked.",
+    homeLocation: "simulation-lab",
+    tint: 0x9aa5b1,
+    spriteId: "characters/player/player-quant",
+    badge: "\u{1F9EE}",
+    wanderRadius: 18,
+    idlePauseChance: 0.65,
+  },
 };
 
 export const LOCATION_TO_SCENE: Record<AgentLocation, SceneId> = {

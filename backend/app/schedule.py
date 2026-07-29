@@ -184,6 +184,21 @@ AGENT_SCHEDULES: dict[AgentId, list[ScheduleBlock]] = {
         ScheduleBlock(22, 24, "break-room", "Reading quietly"),
         ScheduleBlock(0, 6, "break-room", "Sleeping"),
     ],
+    # v0.7 — the Chief Quantitative Strategist. Spends the workday in the
+    # Simulation Lab (the real backtesting room the Black Box track runs
+    # out of — see app/black_box.py), with a research-desk check-in and
+    # an evening report to the CEO's boardroom.
+    "quant": [
+        ScheduleBlock(6, 9, "simulation-lab", "Reviewing overnight backtest results"),
+        ScheduleBlock(9, 12, "simulation-lab", "Running the Black Box project's daily analysis"),
+        ScheduleBlock(12, 13, "break-room", "Resting"),
+        ScheduleBlock(13, 16, "brain-room", "Cross-checking findings with the research desk"),
+        ScheduleBlock(16, 19, "simulation-lab", "Writing up the day's progress"),
+        ScheduleBlock(19, 20, "executive-boardroom", "Reporting Black Box progress to the CEO"),
+        ScheduleBlock(20, 22, "break-room", "Still turning the day's numbers over, off the clock"),
+        ScheduleBlock(22, 24, "break-room", "Reading quietly"),
+        ScheduleBlock(0, 6, "break-room", "Sleeping"),
+    ],
 }
 
 

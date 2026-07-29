@@ -200,6 +200,20 @@
       "walk-up": { "row": 5, "frameCount": 6, "frameRate": 8, "repeat": -1 }
     }
   },
+  "_comment_quant": "v0.7 — the fourteenth agent (Vector, the Chief Quantitative Strategist), added the same way as Sage/Keystone/Compass above: a palette-swapped copy of characters/player/player.png with the same 7-color remap table (2 hair + 5 shirt/pants), this time hand-picked as a cool steel-grey/slate for a precise, analytical read distinct from every existing agent's tint.",
+  "characters/player/player-quant": {
+    "kind": "spritesheet",
+    "frameWidth": 32,
+    "frameHeight": 32,
+    "animations": {
+      "idle-down": { "row": 0, "frameCount": 6, "frameRate": 4, "repeat": -1 },
+      "walk-down": { "row": 1, "frameCount": 6, "frameRate": 8, "repeat": -1 },
+      "idle-up": { "row": 2, "frameCount": 6, "frameRate": 4, "repeat": -1 },
+      "idle-left": { "row": 3, "frameCount": 6, "frameRate": 4, "repeat": -1 },
+      "walk-left": { "row": 4, "frameCount": 6, "frameRate": 8, "repeat": -1 },
+      "walk-up": { "row": 5, "frameCount": 6, "frameRate": 8, "repeat": -1 }
+    }
+  },
 
   "characters/enemies/skeleton": {
     "kind": "spritesheet",

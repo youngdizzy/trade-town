@@ -2,6 +2,8 @@ import type {
   AgentEnergy,
   AgentId,
   AnalystChoice,
+  BlackBoxPriority,
+  BlackBoxState,
   CalendarState,
   Candle,
   CeoDecisionRecord,
@@ -172,5 +174,36 @@ export const api = {
     request<{ calendar: CalendarState }>("/calendar/events/delete", {
       method: "POST",
       body: JSON.stringify({ eventId }),
+    }),
+  fundBlackBoxProject: (amount: number) =>
+    request<{ blackBox: BlackBoxState }>("/black-box/fund", {
+      method: "POST",
+      body: JSON.stringify({ amount }),
+    }),
+  pauseBlackBoxProject: () =>
+    request<{ blackBox: BlackBoxState }>("/black-box/pause", { method: "POST" }),
+  resumeBlackBoxProject: () =>
+    request<{ blackBox: BlackBoxState }>("/black-box/resume", { method: "POST" }),
+  cancelBlackBoxProject: () =>
+    request<{ blackBox: BlackBoxState }>("/black-box/cancel", { method: "POST" }),
+  setBlackBoxPriority: (priority: BlackBoxPriority) =>
+    request<{ blackBox: BlackBoxState }>("/black-box/priority", {
+      method: "POST",
+      body: JSON.stringify({ priority }),
+    }),
+  addBlackBoxNote: (note: string) =>
+    request<{ blackBox: BlackBoxState }>("/black-box/notes", {
+      method: "POST",
+      body: JSON.stringify({ note }),
+    }),
+  reassignBlackBoxSpecialist: (agentId: AgentId, newAgentId: AgentId) =>
+    request<{ blackBox: BlackBoxState }>("/black-box/reassign", {
+      method: "POST",
+      body: JSON.stringify({ agentId, newAgentId }),
+    }),
+  ackBreakthrough: (reviewId: string) =>
+    request<{ viewedBreakthroughIds: string[] }>("/black-box/ack-breakthrough", {
+      method: "POST",
+      body: JSON.stringify({ reviewId }),
     }),
 };

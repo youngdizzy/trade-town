@@ -78,7 +78,7 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         "backtest_sessions",
         "simulation_results",
     ),
-    "research": ("research", "watchlist"),
+    "research": ("research", "watchlist", "black_box"),
     "training": ("signal_calibration", "player_vs_ai", "education"),
     "founders": ("founder_state",),
     "derived": (

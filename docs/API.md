@@ -797,6 +797,42 @@ completion dates, ...) is never fetched separately — it's recomputed
 fresh every tick and part of every `GameSaveState`/`"state"` WS message,
 the same way `companyHealth`/`academyState` already are.
 
+### `POST /api/black-box/fund` / `pause` / `resume` / `cancel` / `priority` / `notes` / `reassign`
+
+v0.7 — the Advanced Quantitative Research Division's CEO Research
+Dashboard. All seven mutate the one active `BlackBoxProject` and return
+`{ "blackBox": { "active": {...}, "archive": [...], "reviews": [...], "viewedBreakthroughIds": [...], "updatedAt": "..." } }`.
+`400` if no project is currently active (all of these), plus per-action:
+
+- `fund`: body `{ "amount": 500 }`. Adds directly to the project's own
+  `budget` — **not** drawn from `treasury.balance` (see
+  `app/black_box.py`'s module docstring for why this doesn't touch the
+  Treasury's own structurally-isolated balance). `400` if `amount` isn't
+  positive or exceeds the per-call cap (`MAX_BLACK_BOX_FUNDING_PER_CALL`,
+  $5,000).
+- `pause` / `resume`: no body. `400` if the project is already
+  `under_review`/`completed`/`failed`.
+- `cancel`: no body. Archives the project immediately with
+  `status: "failed"` and a real cancellation note.
+- `priority`: body `{ "priority": "high" }` (`low | normal | high`) —
+  a real lever: higher priority scales the daily progress gain up and
+  the daily budget burn up together.
+- `notes`: body `{ "note": "Check the volume-weighted variant too" }` —
+  a real CEO-authored research idea, appended to `researchNotes` (capped
+  at `MAX_BLACK_BOX_NOTES`, 20). `400` if empty/whitespace-only.
+- `reassign`: body `{ "agentId": "echo", "newAgentId": "atlas" }` —
+  swaps one non-leader team seat for a different agent not already on
+  the team. `400` if `agentId` isn't a current team member, or if
+  `agentId` is `"quant"` (the leader seat is fixed).
+
+### `POST /api/black-box/ack-breakthrough`
+
+Body: `{ "reviewId": "breakthrough-blackbox-..." }`. Marks one Eureka!
+Breakthrough cinematic as shown/dismissed — the same real "seen"
+tracking pattern `POST /api/trades/ack` already established, so a
+refresh or restart never re-shows a breakthrough moment the player
+already saw. Returns `{ "viewedBreakthroughIds": [...] }`.
+
 ### Bounding / trimming
 
 Every list above is capped server-side before it's ever sent — the client
@@ -830,6 +866,8 @@ never needs to trim anything itself:
 | `reasoningChallenges` | last 60 (`MAX_REASONING_CHALLENGES`) | one per real AI Debate practiced, on a fixed cadence — v0.7 Feature 29 |
 | `reflectionSessions` | last 80 (`MAX_REFLECTION_SESSIONS`) | one per real weekly/monthly cycle — v0.7 Feature 30 |
 | `questionArchive` | last 120 (`MAX_QUESTION_ARCHIVE`) | one `QuestionOfTheDay` per real in-game morning — v0.7 Feature 32 |
+| `blackBox.archive` | last 30 (`MAX_ARCHIVE`) | completed + failed Black Box Projects — Museum of Discoveries entries and Research Archives both live here |
+| `blackBox.reviews` | last 30 (`MAX_REVIEWS`) | one Founder Council `BreakthroughReview` per project that reached review |
 
 ### Provider configuration
 

@@ -61,7 +61,10 @@ Explicitly NOT built, and why:
 from __future__ import annotations
 
 from app.schemas import (
+    BlackBoxProject,
+    BreakthroughReview,
     CaseStudy,
+    ChallengeReport,
     CoachReport,
     DisciplineReview,
     FounderCouncilSession,
@@ -71,6 +74,16 @@ from app.schemas import (
     ReasoningChallenge,
     ReflectionSession,
 )
+
+# v0.7 — the Advanced Quantitative Research Division's Founder Council
+# Review. A completed Black Box Project's discovery survives (or doesn't)
+# a real, checkable gate: the Devil's Advocate found no major weakness,
+# and the project's own confidence level actually cleared a real bar —
+# never a coin flip, and never a fabricated "the Founders debated for
+# hours" narrative. See app/black_box.py's module docstring for why this
+# is a new mode of generate_council_session() rather than a second,
+# independently-invented Founder meeting type.
+BREAKTHROUGH_CONFIDENCE_THRESHOLD = 55.0
 
 MAX_FOUNDER_LOG = 120  # roughly four in-game months of daily entries
 MAX_COUNCIL_SESSIONS = 24  # two in-game years of monthly sessions
@@ -232,6 +245,43 @@ def record_council_session(sessions: list[FounderCouncilSession], session: Found
     if len(updated) > MAX_COUNCIL_SESSIONS:
         del updated[: len(updated) - MAX_COUNCIL_SESSIONS]
     return updated
+
+
+def generate_breakthrough_review(
+    project: BlackBoxProject,
+    *,
+    challenge: ChallengeReport,
+    sim_day: int,
+    review_id: str,
+    created_at: str,
+) -> BreakthroughReview:
+    """The Founder Council's real, checkable verdict on whether a
+    completed Black Box Project becomes an official Company Breakthrough
+    (see module-level BREAKTHROUGH_CONFIDENCE_THRESHOLD)."""
+    approved = challenge.severity != "major" and project.confidence_level >= BREAKTHROUGH_CONFIDENCE_THRESHOLD
+    if approved:
+        verdict_reason = f"The Devil's Advocate found {challenge.severity.replace('_', ' ')}, and confidence held at {project.confidence_level:.0f}/100 — the Council approves this as an official Company Breakthrough."
+    elif challenge.severity == "major":
+        verdict_reason = f"The Devil's Advocate found real weaknesses ({len(challenge.hidden_risks) + len(challenge.weak_assumptions) + len(challenge.missing_evidence)} concerns raised) — the Council is not willing to sign off yet."
+    else:
+        verdict_reason = f"Confidence only reached {project.confidence_level:.0f}/100, short of the Council's {BREAKTHROUGH_CONFIDENCE_THRESHOLD:.0f} bar for an official breakthrough."
+
+    return BreakthroughReview(
+        id=review_id,
+        projectId=project.id,
+        projectTitle=project.title,
+        simDay=sim_day,
+        hypothesis=project.objective,
+        evidence=project.quant_journal[-5:],
+        statisticalResults=f"Final confidence level: {project.confidence_level:.0f}/100 after {project.progress:.0f}% completion over {project.estimated_completion_sim_day - project.started_sim_day} in-game days.",
+        risks=project.obstacles,
+        limitations=", ".join(challenge.weak_assumptions) if challenge.weak_assumptions else "No weak assumptions were flagged.",
+        devilsAdvocateCase=challenge.bear_case,
+        recommendation=challenge.final_recommendation,
+        verdict="approved" if approved else "rejected",
+        verdictReason=verdict_reason,
+        createdAt=created_at,
+    )
 
 
 def compute_founder_state(

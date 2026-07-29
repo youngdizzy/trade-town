@@ -24,8 +24,10 @@ export type SceneId =
 // v0.7 Feature 39 — Keystone and Compass, the Original Founders, are the
 // twelfth and thirteenth. Neither ever trades or earns Academy Knowledge
 // Points — see backend/app/founders.py's module docstring.
-export type AgentId = "scout" | "atlas" | "echo" | "nova" | "scribe" | "coach" | "sentinel" | "pulse" | "guardian" | "cio" | "sage" | "keystone" | "compass";
-export const AGENT_IDS: readonly AgentId[] = ["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio", "sage", "keystone", "compass"];
+// v0.7 — Vector, the Chief Quantitative Strategist, is the fourteenth.
+// Leads every Black Box Research Project (see backend/app/black_box.py).
+export type AgentId = "scout" | "atlas" | "echo" | "nova" | "scribe" | "coach" | "sentinel" | "pulse" | "guardian" | "cio" | "sage" | "keystone" | "compass" | "quant";
+export const AGENT_IDS: readonly AgentId[] = ["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio", "sage", "keystone", "compass", "quant"];
 
 /** Every room an agent's schedule (or a meeting/break override) can place them in. */
 export type AgentLocation =
@@ -105,7 +107,11 @@ export type HallOfFameCategory =
   | "winning_streak"
   | "highest_confidence_accuracy"
   | "best_month"
-  | "top_agent";
+  | "top_agent"
+  // v0.7 — Museum of Discoveries. Only HallOfFameEntry's
+  // discoveryTimeline/supportingEvidence/companyImpact are ever
+  // populated for this category (see backend/app/black_box.py).
+  | "breakthrough";
 export type PerformancePeriod = "daily" | "weekly" | "monthly" | "all_time";
 export type ReportPeriod = "weekly" | "monthly";
 
@@ -488,6 +494,10 @@ export interface HallOfFameEntry {
   agentId: AgentId | null;
   value: number;
   achievedAt: string;
+  // v0.7 — Museum of Discoveries fields, only populated for category="breakthrough".
+  discoveryTimeline: string | null;
+  supportingEvidence: string[];
+  companyImpact: string | null;
 }
 
 /** One agent's row in Coach's rankings (v0.5 brief Feature 1). */
@@ -755,6 +765,78 @@ export interface InnovationState {
   points: number;
   tier: number;
   tierName: InnovationTierName;
+}
+
+// v0.7 — the Advanced Quantitative Research Division (see
+// backend/app/black_box.py's module docstring for what this extends vs.
+// builds new: the Devil's Advocate/Innovation Points/backtesting engine/
+// Founder Council/Museum of Discoveries pieces all reuse existing systems
+// above rather than duplicating them).
+export type BlackBoxCategory =
+  | "new_trading_framework"
+  | "portfolio_allocation"
+  | "statistical_edge"
+  | "ai_communication"
+  | "risk_model"
+  | "decision_framework"
+  | "journaling_improvement"
+  | "automation_improvement"
+  | "market_regime_detection"
+  | "portfolio_optimization"
+  | "academy_improvement";
+export type BlackBoxProjectStatus = "active" | "paused" | "under_review" | "completed" | "failed";
+export type BlackBoxPriority = "low" | "normal" | "high";
+
+export interface BlackBoxTeamMember {
+  agentId: AgentId;
+  role: string;
+}
+
+export interface BlackBoxProject {
+  id: string;
+  category: BlackBoxCategory;
+  title: string;
+  objective: string;
+  status: BlackBoxProjectStatus;
+  priority: BlackBoxPriority;
+  team: BlackBoxTeamMember[];
+  devilsAdvocate: AgentId;
+  progress: number;
+  confidenceLevel: number;
+  budget: number;
+  obstacles: string[];
+  researchNotes: string[];
+  quantJournal: string[];
+  startedSimDay: number;
+  estimatedCompletionSimDay: number;
+  completedAt: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BreakthroughReview {
+  id: string;
+  projectId: string;
+  projectTitle: string;
+  simDay: number;
+  hypothesis: string;
+  evidence: string[];
+  statisticalResults: string;
+  risks: string[];
+  limitations: string;
+  devilsAdvocateCase: string;
+  recommendation: string;
+  verdict: "approved" | "rejected";
+  verdictReason: string;
+  createdAt: string;
+}
+
+export interface BlackBoxState {
+  active: BlackBoxProject | null;
+  archive: BlackBoxProject[];
+  reviews: BreakthroughReview[];
+  viewedBreakthroughIds: string[];
+  updatedAt: string;
 }
 
 // v0.7 Feature 20 — Trade Gatekeeper. Every check is real (see
@@ -1460,6 +1542,7 @@ export interface GameSaveState {
   founderState: FounderState;
   treasury: TreasuryState;
   calendar: CalendarState;
+  blackBox: BlackBoxState;
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;

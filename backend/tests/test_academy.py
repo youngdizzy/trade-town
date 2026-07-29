@@ -25,8 +25,10 @@ class TestDefaultAgentKnowledge:
         # deliberately have no KNOWLEDGE_BRANCH entry: they're the
         # spiritual originators of the Academy/Reasoning Lab system, not
         # students earning points inside it (see app/founders.py's
-        # module docstring).
-        assert set(knowledge.keys()) == set(AGENT_IDS) - {"keystone", "compass"}
+        # module docstring). The Quant is the same case — its own real
+        # progression is Innovation Points (app/black_box.py), not the
+        # general Academy ladder.
+        assert set(knowledge.keys()) == set(AGENT_IDS) - {"keystone", "compass", "quant"}
         for state in knowledge.values():
             assert state.points == 0.0
             assert state.tier == 0

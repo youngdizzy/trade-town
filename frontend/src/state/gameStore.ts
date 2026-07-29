@@ -6,6 +6,7 @@ import type {
   AgentKnowledgeState,
   AgentState,
   BacktestSession,
+  BlackBoxState,
   CalendarState,
   CaseStudy,
   CeoDecisionRecord,
@@ -116,6 +117,7 @@ export interface GameUiState {
   founderState: FounderState;
   treasury: TreasuryState;
   calendar: CalendarState;
+  blackBox: BlackBoxState;
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
@@ -132,6 +134,11 @@ export interface GameUiState {
   commandCenterOpen: boolean;
   commandCenterMode: "quick" | "full";
   campusMapOpen: boolean;
+  /** v0.7 — the Eureka! Breakthrough cinematic (see BreakthroughMoment.tsx).
+   * A true full-block overlay like Newspaper/Company Memory — unlike the
+   * Command Center, nothing behind it should keep moving during a
+   * breakthrough moment. */
+  breakthroughOpen: boolean;
   executiveVotingOpen: boolean;
   executiveVotingProposalId: string | null;
   /** v0.7 Feature 19 — the Premium Trade Outcome Banner's "View Trade" /
@@ -249,6 +256,7 @@ class GameStore {
     founderState: { retired: false, retiredAt: null, log: [], councilSessions: [], updatedAt: new Date().toISOString() },
     treasury: { balance: 0, lifetimeDeposits: 0, largestBalance: 0, transactions: [], savingsRules: [], monthlyReports: [], updatedAt: new Date().toISOString() },
     calendar: { systemEvents: [], playerEvents: [], updatedAt: new Date().toISOString() },
+    blackBox: { active: null, archive: [], reviews: [], viewedBreakthroughIds: [], updatedAt: new Date().toISOString() },
     agentEnergy: { current: 100, cap: 100, updatedAt: new Date().toISOString() },
     signalCalibration: { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 },
     playerVsAi: { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 },
@@ -265,6 +273,7 @@ class GameStore {
     commandCenterOpen: false,
     commandCenterMode: "quick",
     campusMapOpen: false,
+    breakthroughOpen: false,
     executiveVotingOpen: false,
     executiveVotingProposalId: null,
     pendingInspectDecision: null,
@@ -293,7 +302,7 @@ class GameStore {
     // of them is open — without that, the player kept moving (invisibly,
     // since the overlay hides the world) behind a panel that only a mouse
     // click could close, which read as the game being stuck.
-    const OVERLAY_KEYS = ["newspaperOpen", "companyMemoryOpen", "coachDashboardOpen", "brainRoomHudOpen", "commandCenterOpen", "campusMapOpen"] as const;
+    const OVERLAY_KEYS = ["newspaperOpen", "companyMemoryOpen", "coachDashboardOpen", "brainRoomHudOpen", "commandCenterOpen", "campusMapOpen", "breakthroughOpen"] as const;
     // v0.7 — Input Priority fix: the Command Center is intentionally
     // excluded from the movement-blocking subset. Its own backdrop
     // (bg-black/70 backdrop-blur-sm — see CommandCenter.tsx) isn't fully
@@ -332,6 +341,9 @@ class GameStore {
     // v0.7 Feature 38 — the Company Campus Map. Same mutual-exclusion +
     // world-pause overlay mechanism as every other full-screen overlay.
     EventBus.on("ui:campusMap", ({ open }) => setOverlay("campusMapOpen", open));
+    // v0.7 — the Eureka! Breakthrough cinematic. Same mutual-exclusion +
+    // world-pause mechanism as every other full-screen overlay.
+    EventBus.on("ui:breakthrough", ({ open }) => setOverlay("breakthroughOpen", open));
     EventBus.on("net:status", ({ connected }) => this.set({ netConnected: connected }));
     EventBus.on("scene:ready", ({ scene }) => this.set({ currentScene: scene }));
 
@@ -384,6 +396,7 @@ class GameStore {
     EventBus.on("founderState:updated", (founderState) => this.set({ founderState }));
     EventBus.on("treasury:updated", (treasury) => this.set({ treasury }));
     EventBus.on("calendar:updated", (calendar) => this.set({ calendar }));
+    EventBus.on("blackBox:updated", (blackBox) => this.set({ blackBox }));
     EventBus.on("ui:executiveVoting", ({ open, proposalId }) =>
       this.set({ executiveVotingOpen: open, executiveVotingProposalId: open ? (proposalId ?? this.state.executiveVotingProposalId) : null }),
     );

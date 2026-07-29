@@ -2262,6 +2262,150 @@ and `commandCenter.spec.ts` (new Innovation Points assertion on the
 `KNOWLEDGE` tab) — 36/36 passing, plus the same tolerated real-trade-
 timing skip every run of this suite already carries.
 
+### Advanced Quantitative Research Division
+
+The brief's "Chief Quantitative Strategist," "Quant Lab," "Black Box
+Research Projects," "CEO Research Dashboard," "Advanced Research
+Teams," "Team Chemistry," "Research Meetings," "Innovation Points"
+progression, "Eureka! Breakthrough System," "Founder Council Review,"
+"Museum of Discoveries," "Failed Research," and "World Reputation,"
+checked against every already-real system it overlaps before writing
+anything: Devil's Advocate + Innovation Points (Feature 41 above,
+which already owns the exact five-tier Research Contributor →
+Legendary Innovator ladder the brief separately asks for), the
+Founder Council (Feature 39), the Simulation Lab's real backtesting
+engine (v0.5), the Hall of Fame's permanent-record mechanism, and
+`company_health.py`'s real `reputation` sub-score.
+
+**Vector, the Chief Quantitative Strategist — the fourteenth agent.**
+Added the same proven way Meridian/Sage/Keystone/Compass were: a real
+`AgentId`, `AgentProfile`, schedule (`app/schedule.py`), dialogue
+lines, and a palette-swapped sprite (same 7-color remap table
+reverse-engineered by diffing `Player.png` against an existing
+variant). Works out of the **existing Simulation Lab room** — no new
+physical "Quant Lab" scene was built; that's real content layered onto
+an already-real room, the same precedent Discipline Chamber/Reasoning
+Lab/Reflection Chamber/Mentor already established for not needing new
+art per feature.
+
+**Black Box Research Projects, not a third rotating-queue system.**
+`app/black_box.py` mirrors `academy_research.py`'s own "exactly one
+active project, real fixed catalog, deterministic rotation" shape, but
+on a genuinely different cadence: progress advances once per real
+in-game day (gated on the same `is_evening` marker the weekly/monthly
+cadences already use), not once per tick, so a project takes 21-35
+in-game days to reach review — a real weeks-scale investment, not a
+minutes-scale one dressed up with a bigger number. Funding and
+priority are real levers: an unfunded project's daily gain drops to a
+near-stall and logs a real "Insufficient funding" obstacle; obstacles
+mechanically lower the project's own `confidence_level`.
+
+**Team formation is real occupation-fit, never a fabricated score.**
+The brief asks for team selection weighted by "Skill/Experience/
+Innovation Points/Collaboration Score/Personality/Workload/Previous
+Research Success" — most of those have no real per-agent number
+anywhere in this codebase. What's actually built: four seats matched
+to whichever existing agent already has that real occupation (Echo/
+Technical Analyst, Nova/Fundamental Analyst, Sentinel-or-Guardian/Risk
+Specialist alternating by project count, Coach/Psychology Coach), and
+a Devil's Advocate seat chosen from `devils_advocate.py`'s existing
+eligible pool by whichever candidate has the most real Innovation
+Points — one genuine real signal reused, not several fabricated ones
+invented. No "AI Research Scientist" seat: no agent in this thirteen-
+(now fourteen-)agent roster has that occupation, and this feature
+already adds one new agent — a documented cut, not a silent omission.
+
+**Devil's Advocate and Innovation Points reused, not duplicated.**
+`generate_project_challenge()` builds the exact `ChallengeReport` shape
+`devils_advocate.py` already defined, from the project's own real
+fields (obstacles → hidden risks, low confidence → weak assumption, an
+empty `researchNotes` → missing evidence). The resulting report is
+appended into the same `challenge_reports` history `innovation.py`
+already reads, so a project's Devil's Advocate review earns real
+Innovation Points through the existing pipeline automatically — a
+second, parallel points ladder was never built.
+
+**Founder Council Review is a new mode of the existing council
+generator.** `founders.py`'s `generate_breakthrough_review()` sits
+beside the existing monthly `generate_council_session()` rather than
+inventing a second, independent Founder meeting type. The verdict is
+real and checkable: approved only if the Devil's Advocate found
+nothing major *and* the project's confidence level cleared a real
+55/100 bar — never a coin flip, never a fabricated "the Founders
+debated for hours" narrative.
+
+**Museum of Discoveries extends Hall of Fame, doesn't duplicate its
+mechanism.** `HallOfFameEntry` gained three optional fields
+(`discoveryTimeline`/`supportingEvidence`/`companyImpact`), populated
+only for a new `breakthrough` category — reusing the exact "permanent,
+never-evicted record" guarantee `hall_of_fame.py`'s own module
+docstring already establishes, rather than building a second
+permanent-record system next to it.
+
+**Failed Research is the project archive, not a second schema.** A
+rejected project moves into `blackBox.archive` with `status: "failed"`
+and the Council's own real rejection reason appended to
+`researchNotes` — that archive entry *is* the brief's "Research
+Archives... never wasted." No separate `ResearchArchiveEntry` type
+was needed.
+
+**World Reputation is the real number, not simulated institutions.**
+`company_health.py`'s `reputation` sub-score already grows with Hall
+of Fame entry count (which a breakthrough's Museum entry feeds
+automatically). A breakthrough additionally files one real `NewsItem`
+naming that real number — never a fabricated "University X references
+our research" event, since no such external-entity system exists
+anywhere in this codebase.
+
+**Explicitly not built, and why.** Team Chemistry as a distinct
+fabricated pairwise-relationship system — no real per-pair signal
+exists anywhere in this codebase to back one honestly, and inventing
+one would be exactly the kind of "invented mechanic with no real
+backing" this session's whole convention exists to avoid. A separate
+"Research Meetings" transcript system — the Quant Journal (one real
+templated line per project-day) already serves as the real meeting
+record, the same "don't duplicate `discussion.py`/`debate.py`"
+reasoning `founders.py`'s own module docstring already applied to the
+brief's Founder "teaching sessions." Breakthrough effects like
+"unlock new Academy lessons/buildings/automation/dialogue" — checked
+directly: `education.py`'s lessons have no locked/unlocked concept at
+all (`all_lessons()` returns a fixed list), and no other system in
+this codebase tracks lockable content, so there's nothing honest to
+hook an "unlock" into.
+
+**Backend.** `app/black_box.py` (new), `app/founders.py`
+(`generate_breakthrough_review()`), `app/schemas.py` (`AgentId` +=
+`"quant"`, `BlackBoxProject`/`BreakthroughReview`/`BlackBoxState`,
+`HallOfFameEntry`/`HallOfFameCategory` extended), `app/agents.py` +
+`app/schedule.py` (the Quant's profile/schedule), `app/nexus.py`
+(daily tick + review orchestration), `app/state.py` (CEO Research
+Dashboard controls), `app/routers/black_box.py` (new), `app/
+save_modules.py` (`black_box` added to the `research` module).
+
+**Frontend.** `BlackBoxPanel.tsx` (new BLACKBOX Command Center tab —
+current project, team with real reassignment, obstacles, CEO controls,
+Founder Council review history, Museum of Discoveries, Research
+Archives), `BreakthroughMoment.tsx` (new — the Eureka! cinematic, a
+real full-block overlay added to `gameStore.ts`'s existing
+`OVERLAY_KEYS` mechanism), `AgentProfiles.ts`/`Schedule.ts`/
+`DialogueManager.ts` (the Quant's frontend mirrors), `types.ts`/
+`NexusManager.ts`/`EventBus.ts`/`socket.ts`/`api.ts` (the new
+`BlackBoxState` wiring end-to-end).
+
+**Verification.** 12 new backend tests (`test_black_box.py`) covering
+default state, team formation, Devil's Advocate non-collision,
+paused/unfunded projects, severity classification, and Founder Council
+approval/rejection — full backend suite 485/485 passing (473
+pre-existing + 12 new), mypy/ruff clean. A full end-to-end simulation
+(15,000 five-minute ticks ≈ 52 in-game days) confirmed a real project
+ran, stalled on real obstacles, was rejected by a real Founder Council
+verdict with a real reason, and archived — with the whole resulting
+state round-tripping cleanly through Pydantic validation. Frontend
+`tsc -b`/eslint/build clean. Playwright regression re-verified with a
+new `blackBox.spec.ts` (Quant agent + `blackBox` present in `GET
+/api/load`; the BLACKBOX Command Center tab opens and shows real
+content with zero console errors) plus the full existing suite.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

@@ -16,6 +16,7 @@ import { CampusMap } from "@/ui/components/CampusMap/CampusMap";
 import { ExecutiveVoting } from "@/ui/components/CommandCenter/ExecutiveVoting";
 import { CyberNotifications } from "@/ui/components/CommandCenter/CyberNotifications";
 import { TradeOutcomeBanner } from "@/ui/components/TradeOutcomeBanner";
+import { BreakthroughMoment } from "@/ui/components/BreakthroughMoment";
 
 export default function App() {
   return (
@@ -38,6 +39,7 @@ export default function App() {
       <ExecutiveVoting />
       <CyberNotifications />
       <TradeOutcomeBanner />
+      <BreakthroughMoment />
     </div>
   );
 }

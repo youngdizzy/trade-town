@@ -6,6 +6,7 @@ import type {
   AgentKnowledgeState,
   AgentState,
   BacktestSession,
+  BlackBoxState,
   CalendarState,
   CaseStudy,
   CeoDecisionRecord,
@@ -105,6 +106,7 @@ type ServerMessage =
       founderState: FounderState;
       treasury: TreasuryState;
       calendar: CalendarState;
+      blackBox: BlackBoxState;
       agentEnergy: AgentEnergy;
       signalCalibration: SignalCalibrationState;
       playerVsAi: PlayerVsAiState;
@@ -212,6 +214,7 @@ export class GameSocket {
             founderState: msg.founderState,
             treasury: msg.treasury,
             calendar: msg.calendar,
+            blackBox: msg.blackBox,
             agentEnergy: msg.agentEnergy,
             signalCalibration: msg.signalCalibration,
             playerVsAi: msg.playerVsAi,

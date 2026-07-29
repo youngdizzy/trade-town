@@ -5,6 +5,7 @@ import type {
   AgentId,
   AgentKnowledgeState,
   BacktestSession,
+  BlackBoxState,
   CaseStudy,
   CeoDecisionRecord,
   ChallengeReport,
@@ -96,6 +97,7 @@ interface NexusSnapshot {
   founderState: FounderState;
   treasury: TreasuryState;
   calendar: CalendarState;
+  blackBox: BlackBoxState;
   agentEnergy: AgentEnergy;
   signalCalibration: SignalCalibrationState;
   playerVsAi: PlayerVsAiState;
@@ -217,6 +219,7 @@ export class NexusManager {
   private static founderState: FounderState = { retired: false, retiredAt: null, log: [], councilSessions: [], updatedAt: new Date().toISOString() };
   private static treasury: TreasuryState = { balance: 0, lifetimeDeposits: 0, largestBalance: 0, transactions: [], savingsRules: [], monthlyReports: [], updatedAt: new Date().toISOString() };
   private static calendar: CalendarState = { systemEvents: [], playerEvents: [], updatedAt: new Date().toISOString() };
+  private static blackBox: BlackBoxState = { active: null, archive: [], reviews: [], viewedBreakthroughIds: [], updatedAt: new Date().toISOString() };
   private static agentEnergy: AgentEnergy = { current: 100, cap: 100, updatedAt: new Date().toISOString() };
   private static signalCalibration: SignalCalibrationState = { unlockedLevel: 1, attempts: [], correctCount: 0, totalCount: 0 };
   private static playerVsAi: PlayerVsAiState = { rounds: [], playerCorrectCount: 0, aiCorrectCount: 0, totalCount: 0 };
@@ -385,6 +388,24 @@ export class NexusManager {
   static setCalendar(calendar: CalendarState): void {
     this.calendar = calendar;
     EventBus.emit("calendar:updated", calendar);
+  }
+
+  static getBlackBox(): BlackBoxState {
+    return this.blackBox;
+  }
+
+  /** Applies the result of a direct POST /api/black-box/... call
+   * immediately, the same reasoning as setTreasury above. */
+  static setBlackBox(blackBox: BlackBoxState): void {
+    this.blackBox = blackBox;
+    EventBus.emit("blackBox:updated", blackBox);
+  }
+
+  /** Applies the result of POST /api/black-box/ack-breakthrough, the same
+   * "seen" tracking pattern setViewedTradeNotificationIds already uses. */
+  static setViewedBreakthroughIds(ids: string[]): void {
+    this.blackBox = { ...this.blackBox, viewedBreakthroughIds: ids };
+    EventBus.emit("blackBox:updated", this.blackBox);
   }
 
   /** Applies the real Operating Capital change a Treasury deposit/withdraw
@@ -743,6 +764,9 @@ export class NexusManager {
     if (update.calendar !== this.calendar) EventBus.emit("calendar:updated", update.calendar);
     this.calendar = update.calendar;
 
+    if (update.blackBox !== this.blackBox) EventBus.emit("blackBox:updated", update.blackBox);
+    this.blackBox = update.blackBox;
+
     if (update.agentEnergy !== this.agentEnergy) EventBus.emit("agentEnergy:updated", update.agentEnergy);
     this.agentEnergy = update.agentEnergy;
 
@@ -815,6 +839,7 @@ export class NexusManager {
     this.founderState = save.founderState;
     this.treasury = save.treasury;
     this.calendar = save.calendar;
+    this.blackBox = save.blackBox;
     this.agentEnergy = save.agentEnergy;
     this.signalCalibration = save.signalCalibration;
     this.playerVsAi = save.playerVsAi;

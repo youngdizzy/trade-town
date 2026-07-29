@@ -113,6 +113,9 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         # MAX_TREASURY_MONTHLY_REPORTS) like questionArchive above.
         "treasury": state.treasury.model_dump(by_alias=True),
         "calendar": state.calendar.model_dump(by_alias=True),
+        # v0.7 — the Advanced Quantitative Research Division. archive/reviews
+        # are already capped (MAX_ARCHIVE/MAX_REVIEWS) like questionArchive above.
+        "blackBox": state.black_box.model_dump(by_alias=True),
     }
 
 

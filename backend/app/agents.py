@@ -130,6 +130,19 @@ AGENT_PROFILES: dict[AgentId, AgentProfile] = {
         home_location="brain-room",
         tint=0x3FBFA0,
     ),
+    # v0.7 — the Chief Quantitative Strategist, leads every Black Box
+    # Research Project (app/black_box.py). Works out of the Simulation
+    # Lab — no new physical scene was built for a "Quant Lab"; that room
+    # is real content layered onto the existing backtesting room (see
+    # black_box.py's module docstring).
+    "quant": AgentProfile(
+        id="quant",
+        name="Vector",
+        occupation="Chief Quantitative Strategist",
+        personality="Extremely analytical, patient, and precise. Trusts evidence over emotion — every claim has to survive being checked.",
+        home_location="simulation-lab",
+        tint=0x9AA5B1,
+    ),
 }
 
 

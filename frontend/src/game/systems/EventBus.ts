@@ -7,6 +7,7 @@ import type {
   AgentKnowledgeState,
   AgentState,
   BacktestSession,
+  BlackBoxState,
   CalendarState,
   CeoDecisionRecord,
   CaseStudy,
@@ -118,6 +119,7 @@ export interface GameEvents {
   "ui:brainRoomHud": { open: boolean };
   "ui:commandCenter": { open: boolean; mode?: "quick" | "full" };
   "ui:campusMap": { open: boolean };
+  "ui:breakthrough": { open: boolean };
   "riskLimits:updated": RiskLimits;
   "riskWarnings:updated": RiskWarning[];
   "scannerAlerts:updated": ScannerAlert[];
@@ -155,6 +157,7 @@ export interface GameEvents {
   "founderState:updated": FounderState;
   "treasury:updated": TreasuryState;
   "calendar:updated": CalendarState;
+  "blackBox:updated": BlackBoxState;
   "ui:executiveVoting": { open: boolean; proposalId?: string };
   // v0.7 Feature 19 — opens the Command Center on the Decisions tab for a
   // specific trade's decision; openDetail additionally auto-opens

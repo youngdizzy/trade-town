@@ -33,6 +33,7 @@ from app.academy_research import MAX_ACADEMY_LIBRARY, default_academy_projects, 
 from app.agent_energy import RESEARCH_BOOST_AMOUNT, regen_daily, spend
 from app.agents import AGENT_PROFILES, LOCATION_TO_SCENE, all_agent_ids
 from app.analytics import compute_performance_snapshot, confidence_accuracy, period_profit_dollars, record_snapshot
+from app.black_box import archive_project, default_black_box_state, generate_project_challenge, record_review as record_breakthrough_review, tick_black_box_daily
 from app.broker import tick_broker
 from app.calendar import compute_system_events
 from app.coach import generate_report as generate_coach_report
@@ -54,7 +55,7 @@ from app.executive import (
     resolve_proposal,
 )
 from app.executive_review import generate_executive_review, record_review
-from app.founders import compute_founder_state, generate_council_session, generate_founder_log_entry, record_council_session, record_founder_log
+from app.founders import compute_founder_state, generate_breakthrough_review, generate_council_session, generate_founder_log_entry, record_council_session, record_founder_log
 from app.gatekeeper import grade_gatekeeper_rejections
 from app.hall_of_fame import evaluate_hall_of_fame
 from app.innovation import compute_innovation_state
@@ -97,6 +98,7 @@ from app.schemas import (
     AgentKnowledgeState,
     AgentOverride,
     AgentState,
+    BlackBoxState,
     CalendarState,
     CaseStudy,
     CeoDecisionRecord,
@@ -112,6 +114,7 @@ from app.schemas import (
     FounderLogEntry,
     GameSaveState,
     GatekeeperRejection,
+    HallOfFameEntry,
     InnovationState,
     MemoryEntry,
     MemoryRecord,
@@ -901,6 +904,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     founder_log: list[FounderLogEntry] = list(state.founder_state.log)
     founder_council_sessions: list[FounderCouncilSession] = list(state.founder_state.council_sessions)
     treasury: TreasuryState = state.treasury
+    black_box: BlackBoxState = state.black_box or default_black_box_state()
 
     agents = {aid: _tick_agent(aid, agent, new_time, minutes, tasks, resting=resting) for aid, agent in state.agents.items()}
 
@@ -1419,6 +1423,66 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     founder_state = compute_founder_state(state.founder_state, company_health_tier=company_health.tier, updated_at=_now_iso())
     founder_state = founder_state.model_copy(update={"log": founder_log, "council_sessions": founder_council_sessions})
 
+    # v0.7 — the Advanced Quantitative Research Division. Progress
+    # advances once per real in-game day (not per tick), the same
+    # is_evening gate the weekly/monthly cadences below already use, so a
+    # project genuinely takes weeks of in-game time to reach review — see
+    # app/black_box.py's module docstring. Rest Mode pauses it, same
+    # convention as research/Academy above.
+    if is_evening and not resting:
+        prior_innovation_state = compute_innovation_state(challenge_reports)
+        black_box = tick_black_box_daily(black_box, sim_day=new_time.day, innovation_state=prior_innovation_state)
+        if black_box.active is not None and black_box.active.status == "under_review":
+            black_box_project = black_box.active
+            project_challenge = generate_project_challenge(black_box_project, existing_count=len(challenge_reports))
+            challenge_reports.append(project_challenge)
+            if len(challenge_reports) > MAX_CHALLENGE_REPORTS:
+                del challenge_reports[: len(challenge_reports) - MAX_CHALLENGE_REPORTS]
+
+            breakthrough_review = generate_breakthrough_review(
+                black_box_project,
+                challenge=project_challenge,
+                sim_day=new_time.day,
+                review_id=f"breakthrough-{black_box_project.id}",
+                created_at=_now_iso(),
+            )
+            black_box = record_breakthrough_review(black_box, breakthrough_review)
+
+            if breakthrough_review.verdict == "approved":
+                completed_project = black_box_project.model_copy(update={"status": "completed", "completed_at": _now_iso()})
+                black_box = archive_project(black_box, completed_project)
+                hall_of_fame.append(
+                    HallOfFameEntry(
+                        id=f"hof-breakthrough-{black_box_project.id}",
+                        category="breakthrough",
+                        title=black_box_project.title,
+                        description=black_box_project.objective,
+                        agentId="quant",
+                        value=black_box_project.confidence_level,
+                        achievedAt=_now_iso(),
+                        discoveryTimeline=f"Day {black_box_project.started_sim_day} – Day {new_time.day}",
+                        supportingEvidence=black_box_project.quant_journal[-5:],
+                        companyImpact=f"Filed as an official Company Breakthrough — the {black_box_project.category.replace('_', ' ')} research is now part of TradeTown's permanent record.",
+                    )
+                )
+                news.append(
+                    NewsItem(
+                        id=f"news-breakthrough-{black_box_project.id}",
+                        headline=f'🧠 Breakthrough: {AGENT_PROFILES["quant"].name} and the research team confirm "{black_box_project.title}" — company reputation grows.',
+                        category="discovery",
+                        timestamp=_now_iso(),
+                    )
+                )
+            else:
+                failed_project = black_box_project.model_copy(
+                    update={
+                        "status": "failed",
+                        "completed_at": _now_iso(),
+                        "research_notes": [*black_box_project.research_notes, breakthrough_review.verdict_reason],
+                    }
+                )
+                black_box = archive_project(black_box, failed_project)
+
     # v0.7 Feature 41 — recomputed fresh every tick from challenge_reports,
     # same "pure function of already-persisted data" reasoning as
     # compute_academy_state; cheap since it's just a running sum over a
@@ -1524,6 +1588,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "innovation_state": innovation_state,
             "treasury": treasury,
             "calendar": calendar_state,
+            "black_box": black_box,
             "agent_energy": agent_energy,
             "whiteboards": _update_whiteboards(agents, meeting, research),
             "updated_at": _now_iso(),

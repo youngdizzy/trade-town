@@ -7,6 +7,89 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.7 — Advanced Quantitative Research Division**: scoped from a
+  spec asking for a "Chief Quantitative Strategist," a "Quant Lab,"
+  long-running "Black Box Research Projects," a "CEO Research
+  Dashboard," auto-formed "Advanced Research Teams," "Team Chemistry,"
+  "Research Meetings," an "Innovation Points" 5-tier progression, an
+  "Eureka! Breakthrough System," "Founder Council Review," a "Museum of
+  Discoveries," "Failed Research" archives, and "World Reputation."
+  Researched first: several of these already exist under different
+  names, so this pass extends them rather than building parallel
+  duplicates — see `backend/app/black_box.py`'s module docstring for
+  the full accounting. What's genuinely real and new:
+  - **Vector, the Chief Quantitative Strategist** (`quant`): the
+    fourteenth agent, added the same proven way as Sage/Keystone/
+    Compass — a real `AgentId`, schedule, palette-swapped sprite,
+    dialogue lines, and campus presence. Works out of the Simulation
+    Lab; **no new physical "Quant Lab" scene was built** — that room is
+    real content layered onto the existing backtesting room, the same
+    Command-Center-tab precedent Mentor/Founders/Discipline
+    Chamber/Reasoning Lab already established.
+  - **Black Box Research Projects** (`app/black_box.py`): exactly one
+    company-wide project at a time (mirrors `academy_research.py`'s own
+    "one active project" convention), drawn from the brief's own
+    eleven named example categories. Progress advances once per
+    real in-game day (not per tick), so a project genuinely takes
+    weeks of in-game time — honoring "unlike ordinary research they may
+    require weeks or months." Funding, priority, and obstacles are all
+    real mechanical levers: an unfunded project stalls and logs a real
+    obstacle; obstacles genuinely lower the project's confidence level.
+  - **Real team formation, not a fabricated multi-factor score**: the
+    Quant leads; four seats are matched to whichever existing agent
+    already has that real occupation (Echo/Technical, Nova/Fundamental,
+    Sentinel-or-Guardian/Risk alternating by project count, Coach/
+    Psychology). No "AI Research Scientist" seat — no agent in this
+    roster maps to it, and this pass already adds one new agent.
+  - **Devil's Advocate reused, not duplicated**: a project's review
+    calls `app/devils_advocate.py`'s exact `ChallengeReport` shape,
+    picking whichever eligible candidate (never a fixed team member)
+    has the most real Innovation Points — and the resulting report
+    feeds into the *same* `challenge_reports` history, so it earns
+    Innovation Points through `app/innovation.py`'s already-shipped
+    5-tier ladder (Research Contributor → Legendary Innovator) instead
+    of a second, parallel points system.
+  - **Founder Council Review** (`app/founders.py`'s new
+    `generate_breakthrough_review()`): a real, checkable gate — approved
+    only if the Devil's Advocate found nothing major and the project's
+    confidence level cleared a real bar. Rejected projects file into
+    the project archive with status `failed` and a real reason — this
+    *is* the brief's "Failed Research" archive, not a second schema.
+  - **Museum of Discoveries**: extends `HallOfFameEntry` with optional
+    `discoveryTimeline`/`supportingEvidence`/`companyImpact` fields
+    (only populated for the new `breakthrough` category) rather than
+    building a second permanent-record system next to the Hall of
+    Fame's own "never retroactively rewrites history" mechanism.
+  - **Eureka! Breakthrough moment** (`BreakthroughMoment.tsx`): a real
+    full-screen, world-pausing cinematic — the same "seen" tracking
+    pattern the Trade Outcome Banner already uses (`viewedBreakthroughIds`
+    + `POST /api/black-box/ack-breakthrough`), showing the real
+    hypothesis, statistical results, and Founder Council verdict. No
+    music-track swap — no audio system exists anywhere in this codebase
+    to hook one into (the same class of honest omission as the
+    Founders' own "voice acting" cut).
+  - **CEO Research Dashboard** (`BlackBoxPanel.tsx`, Command Center's
+    new BLACKBOX tab): Increase Funding, Pause/Resume, Cancel, Change
+    Priority, Add Research Ideas, and Assign Specialists are all real,
+    validated mutations (`backend/app/routers/black_box.py`). "Request
+    Progress Report" isn't a separate control — the dashboard already
+    shows live progress.
+  - Explicitly **not built**, and why: Team Chemistry as a distinct
+    fabricated pairwise-relationship system (no real per-pair signal
+    exists to back it — a genuine cut, not silently dropped); a
+    separate "Research Meetings" transcript system (the Quant Journal
+    already serves as the real meeting record, the same "don't
+    duplicate `discussion.py`/`debate.py`" reasoning `founders.py`
+    already established); breakthrough effects like "unlock new
+    Academy lessons/buildings/automation/dialogue" (no locked-content
+    system exists anywhere in this codebase to hook an "unlock" into
+    honestly — `education.py`'s lessons are always available); World
+    Reputation as external entities (universities, elite candidates,
+    partnership requests) — `company_health.py`'s real `reputation`
+    sub-score already grows with Hall of Fame entry count, and a
+    breakthrough adds one real `NewsItem` naming that real number,
+    never a simulated external institution.
+
 - **v0.7 — Intelligence & Decision Systems** — five systems that build on
   v0.6.3's Executive Voting rather than replacing it, aimed at making
   both the AI desk and the player better decision-makers over time, not

@@ -65,8 +65,14 @@ SceneId = Literal[
 # "sage" were (Features 24/32): they get a real schedule, mood/energy,
 # and campus presence, and simply never route through a trading task —
 # never a second, parallel character system.
-AgentId = Literal["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio", "sage", "keystone", "compass"]
-AGENT_IDS: tuple[AgentId, ...] = ("scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio", "sage", "keystone", "compass")
+# v0.7 — "quant" is the Chief Quantitative Strategist, the fourteenth
+# agent (app/black_box.py). Leads every Black Box Research Project and
+# works out of the Simulation Lab — no new physical scene was built for
+# a "Quant Lab"; that room is real content layered onto the existing
+# backtesting room (see black_box.py's module docstring for the full
+# list of what this feature extends rather than duplicates).
+AgentId = Literal["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio", "sage", "keystone", "compass", "quant"]
+AGENT_IDS: tuple[AgentId, ...] = ("scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio", "sage", "keystone", "compass", "quant")
 
 # Every room an agent's schedule (or a meeting/break override) can place them in.
 AgentLocation = Literal[
@@ -165,6 +171,13 @@ HallOfFameCategory = Literal[
     "winning_streak",
     "lowest_drawdown",
     "highest_confidence_accuracy",
+    # v0.7 — Museum of Discoveries. Extends the Hall of Fame's own
+    # "permanent, never-evicted record" mechanism (see hall_of_fame.py's
+    # module docstring) rather than building a second, parallel
+    # permanent-record system; only HallOfFameEntry.discovery_timeline/
+    # supporting_evidence/company_impact are ever populated for this
+    # category (see app/black_box.py).
+    "breakthrough",
 ]
 PerformancePeriod = Literal["daily", "weekly", "monthly", "all_time"]
 ReportPeriod = Literal["weekly", "monthly"]
@@ -641,6 +654,14 @@ class HallOfFameEntry(CamelModel):
     agent_id: AgentId | None = Field(default=None, alias="agentId")
     value: float
     achieved_at: str = Field(alias="achievedAt")
+    # v0.7 — Museum of Discoveries. Only ever populated for
+    # category="breakthrough" (see app/black_box.py); every other
+    # category leaves these at their honest empty default, since a
+    # best-metric leaderboard entry has no real timeline/evidence/impact
+    # to show.
+    discovery_timeline: str | None = Field(default=None, alias="discoveryTimeline")
+    supporting_evidence: list[str] = Field(default_factory=list, alias="supportingEvidence")
+    company_impact: str | None = Field(default=None, alias="companyImpact")
 
 
 class AgentScore(CamelModel):
@@ -1065,6 +1086,106 @@ class InnovationState(CamelModel):
     points: float = 0.0
     tier: int = 0  # 0-4, index into app/innovation.py's tier tables
     tier_name: InnovationTierName = Field(default="research_contributor", alias="tierName")
+
+
+# v0.7 — the Advanced Quantitative Research Division (app/black_box.py).
+# Black Box Research Projects are long-running (weeks of in-game time,
+# not ticks) investigations the Quant leads. The catalog is the brief's
+# own eleven named example projects, real hand-authored content like
+# app/academy_research.py's own topic catalog — never fabricated per
+# instance.
+BlackBoxCategory = Literal[
+    "new_trading_framework",
+    "portfolio_allocation",
+    "statistical_edge",
+    "ai_communication",
+    "risk_model",
+    "decision_framework",
+    "journaling_improvement",
+    "automation_improvement",
+    "market_regime_detection",
+    "portfolio_optimization",
+    "academy_improvement",
+]
+BlackBoxProjectStatus = Literal["active", "paused", "under_review", "completed", "failed"]
+BlackBoxPriority = Literal["low", "normal", "high"]
+
+
+class BlackBoxTeamMember(CamelModel):
+    agent_id: AgentId = Field(alias="agentId")
+    role: str
+
+
+class BlackBoxProject(CamelModel):
+    id: str
+    category: BlackBoxCategory
+    title: str
+    objective: str
+    status: BlackBoxProjectStatus
+    priority: BlackBoxPriority = "normal"
+    # Real, deterministic occupation-fit team formation (see
+    # black_box.py's module docstring for why there's no fabricated
+    # Skill/Experience/Workload score) — the Quant leads every project,
+    # plus four real specialist seats matched to an existing agent's own
+    # real occupation. No "AI Research Scientist" seat: no agent in this
+    # roster maps to it, and this feature already adds one new agent
+    # (the Quant) — a documented, explicit cut.
+    team: list[BlackBoxTeamMember] = Field(default_factory=list)
+    devils_advocate: AgentId = Field(alias="devilsAdvocate")
+    progress: float = 0.0
+    confidence_level: float = Field(default=50.0, alias="confidenceLevel")
+    budget: float = 0.0
+    obstacles: list[str] = Field(default_factory=list)
+    research_notes: list[str] = Field(default_factory=list, alias="researchNotes")
+    # The Quant's own running log — this doubles as the brief's "Research
+    # Meetings" (brainstorming/whiteboard/strategy-review entries) rather
+    # than a second, parallel meeting-transcript system alongside
+    # app/discussion.py and app/debate.py's own real meeting generators.
+    quant_journal: list[str] = Field(default_factory=list, alias="quantJournal")
+    started_sim_day: int = Field(alias="startedSimDay")
+    estimated_completion_sim_day: int = Field(alias="estimatedCompletionSimDay")
+    completed_at: str | None = Field(default=None, alias="completedAt")
+    created_at: str = Field(alias="createdAt")
+    updated_at: str = Field(alias="updatedAt")
+
+
+class BreakthroughReview(CamelModel):
+    """v0.7 — the Founder Council Review that gates whether a completed
+    Black Box Project becomes an official Company Breakthrough. See
+    app/founders.py's generate_breakthrough_review() — a new mode of the
+    same FounderCouncilSession-generating manager Feature 39 already
+    built, not a second, independently-invented Founder meeting type."""
+
+    id: str
+    project_id: str = Field(alias="projectId")
+    project_title: str = Field(alias="projectTitle")
+    sim_day: int = Field(alias="simDay")
+    hypothesis: str
+    evidence: list[str] = Field(default_factory=list)
+    statistical_results: str = Field(alias="statisticalResults")
+    risks: list[str] = Field(default_factory=list)
+    limitations: str
+    devils_advocate_case: str = Field(alias="devilsAdvocateCase")
+    recommendation: str
+    verdict: Literal["approved", "rejected"]
+    verdict_reason: str = Field(alias="verdictReason")
+    created_at: str = Field(alias="createdAt")
+
+
+class BlackBoxState(CamelModel):
+    # Exactly one active/paused/under_review project at a time — the same
+    # "one company-wide project" convention app/academy_research.py
+    # already established, now applied to the much longer-running Black
+    # Box track.
+    active: BlackBoxProject | None = None
+    # Completed AND failed projects both live here, permanently — a
+    # completed project already has its own Hall of Fame/Museum entry;
+    # a failed one *is* the brief's "Research Archives" (never wasted,
+    # revisitable) — no second, separate failed-research schema needed.
+    archive: list[BlackBoxProject] = Field(default_factory=list)
+    reviews: list[BreakthroughReview] = Field(default_factory=list)
+    viewed_breakthrough_ids: list[str] = Field(default_factory=list, alias="viewedBreakthroughIds")
+    updated_at: str = Field(alias="updatedAt")
 
 
 # v0.7 Feature 20 — Trade Gatekeeper. Every check is real (see
@@ -2069,6 +2190,8 @@ class GameSaveState(CamelModel):
     treasury: TreasuryState
     # v0.7 Feature 36 — the CEO Calendar (app/calendar.py).
     calendar: CalendarState
+    # v0.7 — the Advanced Quantitative Research Division (app/black_box.py).
+    black_box: BlackBoxState = Field(alias="blackBox")
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(default_factory=list, alias="dialogueHistory")

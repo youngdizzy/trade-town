@@ -156,6 +156,18 @@ export const AGENT_SCHEDULES: Record<AgentId, ScheduleBlock[]> = {
     { startHour: 22, endHour: 24, location: "break-room", task: "Reading quietly" },
     { startHour: 0, endHour: 6, location: "break-room", task: "Sleeping" },
   ],
+  // v0.7 — the Chief Quantitative Strategist. See backend/app/black_box.py.
+  quant: [
+    { startHour: 6, endHour: 9, location: "simulation-lab", task: "Reviewing overnight backtest results" },
+    { startHour: 9, endHour: 12, location: "simulation-lab", task: "Running the Black Box project's daily analysis" },
+    { startHour: 12, endHour: 13, location: "break-room", task: "Resting" },
+    { startHour: 13, endHour: 16, location: "brain-room", task: "Cross-checking findings with the research desk" },
+    { startHour: 16, endHour: 19, location: "simulation-lab", task: "Writing up the day's progress" },
+    { startHour: 19, endHour: 20, location: "executive-boardroom", task: "Reporting Black Box progress to the CEO" },
+    { startHour: 20, endHour: 22, location: "break-room", task: "Still turning the day's numbers over, off the clock" },
+    { startHour: 22, endHour: 24, location: "break-room", task: "Reading quietly" },
+    { startHour: 0, endHour: 6, location: "break-room", task: "Sleeping" },
+  ],
 };
 
 export function scheduleBlockForHour(agentId: AgentId, hour: number): ScheduleBlock {

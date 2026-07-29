@@ -131,6 +131,16 @@ const AGENT_TASK_LINES: Record<AgentId, Record<string, string[]>> = {
     "Following a curiosity that has nothing to do with work": ["Off the clock, but curiosity doesn't punch out."],
     "Reading quietly": ["Still reading. Still asking why."],
   },
+  // v0.7 — the Chief Quantitative Strategist.
+  quant: {
+    "Reviewing overnight backtest results": ["The overnight run finished clean. I want to see it fail before I trust it."],
+    "Running the Black Box project's daily analysis": ["Today's numbers moved the confidence needle a little. Small steps, real steps."],
+    "Cross-checking findings with the research desk": ["I'm not here to agree with them. I'm here to find where the data disagrees."],
+    "Writing up the day's progress": ["Writing today's entry. If it can't survive being written down plainly, it isn't ready yet."],
+    "Reporting Black Box progress to the CEO": ["Heading up to brief the CEO. No hedging — just what the evidence actually shows."],
+    "Still turning the day's numbers over, off the clock": ["Off the clock, but the numbers don't know that."],
+    "Reading quietly": ["Reading, not analyzing. Trying, anyway."],
+  },
 };
 
 /** Shared fallback lines for override-driven tasks (meetings/breaks), independent of agent personality. */
@@ -164,6 +174,7 @@ const AGENT_GREETINGS: Record<AgentId, string[]> = {
   sage: ["Ah. What's on your mind today?", "Good timing. I was just thinking about a question.", "Come in — no wrong questions here."],
   keystone: ["CEO.", "Good timing. I was just reviewing the numbers.", "Sit. Tell me what's on your mind."],
   compass: ["Ah, good timing.", "I was just about to ask myself a question — now I can ask you instead.", "Come in — curious what brought you by."],
+  quant: ["CEO. I have real numbers, not a hunch.", "Good timing — let me show you what actually held up.", "Trust evidence over emotion. That's where I'd start."],
 };
 
 export interface DialogueSession {
