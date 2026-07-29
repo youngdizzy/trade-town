@@ -34,7 +34,8 @@ from app.market_data import market_data_provider
 from app.market_environment import default_market_environment
 from app.nexus import MAX_DEBATES, MAX_DECISIONS, MAX_GATEKEEPER_REJECTIONS
 from app.portfolio import default_portfolio, sim_minutes
-from app.research import default_research
+from app.research import RESEARCHER_IDS, default_research
+from app.sandbox import apply_review_decision, begin_company_review, begin_limited_live, begin_paper_trial, generate_strategy_review
 from app.scribe import record_ceo_decision, record_proposal_hold
 from app.schemas import (
     AgentId,
@@ -55,11 +56,13 @@ from app.schemas import (
     SettingsState,
     SignalCalibrationState,
     SignalChoice,
+    Strategy,
     TalentState,
+    TestScenario,
     TimeAdvanceTarget,
     TimeState,
 )
-from app.simulation import default_strategies
+from app.simulation import default_strategies, queue_backtest_now
 from app.talent import mark_talent_report_viewed
 from app.watchlist import default_watchlist
 
@@ -104,6 +107,8 @@ def default_state() -> GameSaveState:
         strategies=default_strategies(),
         backtestSessions=[],
         simulationResults=[],
+        strategyReports=[],
+        strategyReviews=[],
         hallOfFame=[],
         coachReports=[],
         companyScore=compute_company_score([], default_portfolio(), [], [], []),
@@ -407,6 +412,99 @@ class GameState:
             if updated is not self.data.talent.viewed_report_ids:
                 self.data = self.data.model_copy(update={"talent": self.data.talent.model_copy(update={"viewed_report_ids": updated})})
             return self.data.talent.viewed_report_ids
+
+    def _find_strategy(self, strategy_id: str) -> Strategy | None:
+        return next((s for s in self.data.strategies if s.id == strategy_id), None)
+
+    async def queue_sandbox_backtest(self, strategy_id: str, scenario: TestScenario, custom_return_bias_pct: float, custom_volatility_bias: float) -> tuple[GameSaveState, str | None]:
+        """v0.7 Feature 45 — the Research Sandbox's CEO-triggered
+        POST /api/sandbox/backtest. Queues a real BacktestSession for one
+        specific strategy against one specific Testing Environment — the
+        same real engine app/simulation.py's automatic per-tick queueing
+        already uses, just CEO-directed instead of random."""
+        async with self.lock:
+            strategy = self._find_strategy(strategy_id)
+            if strategy is None:
+                return self.data, "No strategy found with that id."
+            if not self.data.watchlist:
+                return self.data, "No symbols on the watchlist to test against yet."
+            sessions = queue_backtest_now(
+                list(self.data.backtest_sessions),
+                self.data.strategies,
+                self.data.watchlist,
+                RESEARCHER_IDS,
+                self.data.time,
+                strategy=strategy,
+                scenario=scenario,
+                custom_return_bias_pct=custom_return_bias_pct,
+                custom_volatility_bias=custom_volatility_bias,
+            )
+            if sessions is None:
+                return self.data, "The Sandbox is already running the maximum number of concurrent backtests — wait for one to finish."
+            self.data = self.data.model_copy(update={"backtest_sessions": sessions})
+            return self.data, None
+
+    async def begin_strategy_paper_trial(self, strategy_id: str) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            strategy = self._find_strategy(strategy_id)
+            if strategy is None:
+                return self.data, "No strategy found with that id."
+            updated, error = begin_paper_trial(strategy, self.data.time.day)
+            if error is not None or updated is None:
+                return self.data, error
+            strategies = [updated if s.id == strategy_id else s for s in self.data.strategies]
+            self.data = self.data.model_copy(update={"strategies": strategies})
+            return self.data, None
+
+    async def begin_strategy_limited_live(self, strategy_id: str, amount: float) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            strategy = self._find_strategy(strategy_id)
+            if strategy is None:
+                return self.data, "No strategy found with that id."
+            updated, error = begin_limited_live(strategy, amount, self.data.time.day)
+            if error is not None or updated is None:
+                return self.data, error
+            strategies = [updated if s.id == strategy_id else s for s in self.data.strategies]
+            self.data = self.data.model_copy(update={"strategies": strategies})
+            return self.data, None
+
+    async def request_strategy_company_review(self, strategy_id: str) -> tuple[GameSaveState, str | None]:
+        """Advances the strategy into "company_review" and files its real
+        StrategyReview in one CEO action — see app/sandbox.py's
+        generate_strategy_review() for exactly how each of the five real
+        reviewer verdicts is computed."""
+        async with self.lock:
+            strategy = self._find_strategy(strategy_id)
+            if strategy is None:
+                return self.data, "No strategy found with that id."
+            updated, error = begin_company_review(strategy, self.data.time.day)
+            if error is not None or updated is None:
+                return self.data, error
+            existing_count = sum(1 for r in self.data.strategy_reviews if r.strategy_id == strategy_id)
+            review = generate_strategy_review(updated, self.data.simulation_results, self.data.research, existing_count, sim_day=self.data.time.day)
+            strategies = [updated if s.id == strategy_id else s for s in self.data.strategies]
+            strategy_reviews = [*self.data.strategy_reviews, review]
+            self.data = self.data.model_copy(update={"strategies": strategies, "strategy_reviews": strategy_reviews})
+            return self.data, None
+
+    async def decide_strategy_review(self, review_id: str, approve: bool) -> tuple[GameSaveState, str | None]:
+        """The Company Review stage's real manual CEO call — Learning
+        Mode always requires this; Assisted/Executive Mode auto-resolve
+        instead (see app/nexus.py's tick())."""
+        async with self.lock:
+            review = next((r for r in self.data.strategy_reviews if r.id == review_id), None)
+            if review is None:
+                return self.data, "No Company Review found with that id."
+            if review.ceo_decision != "pending":
+                return self.data, "That Company Review has already been decided."
+            strategy = self._find_strategy(review.strategy_id)
+            if strategy is None:
+                return self.data, "No strategy found for that review."
+            updated_strategy = apply_review_decision(strategy, review, approve, self.data.time.day)
+            strategies = [updated_strategy if s.id == strategy.id else s for s in self.data.strategies]
+            reviews = [r.model_copy(update={"ceo_decision": "approved" if approve else "rejected", "resolved_by": "ceo"}) if r.id == review_id else r for r in self.data.strategy_reviews]
+            self.data = self.data.model_copy(update={"strategies": strategies, "strategy_reviews": reviews})
+            return self.data, None
 
     async def create_calendar_event(self, category: PlayerEventCategory, title: str, day: int, hour: int, minute: int) -> tuple[GameSaveState, str | None]:
         """CEO-scheduled custom calendar entry — informational only, the

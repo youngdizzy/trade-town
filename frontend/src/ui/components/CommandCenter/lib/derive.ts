@@ -26,6 +26,7 @@ import type {
   ResearchItem,
   RiskLimits,
   RiskWarning,
+  SimulationResult,
   TradeDecision,
   TradeProposal,
   WatchlistEntry,
@@ -866,4 +867,32 @@ export function computeBestCollaborators(debates: Debate[]): CollaboratorPairing
   }
 
   return Array.from(pairs.values()).sort((a, b) => b.supportCount + b.challengeCount - (a.supportCount + a.challengeCount));
+}
+
+export interface StrategyConsistency {
+  sampleSize: number;
+  positiveRunPct: number;
+  distinctScenarios: number;
+}
+
+/**
+ * v0.7 Feature 45 — the Research Sandbox's "Consistency" and "Trade
+ * Frequency" metrics from the brief. Both are properties of a
+ * strategy's own real *history* (not a single run), so they're computed
+ * here rather than stored per-SimulationResult: Consistency is the real
+ * % of that strategy's own stored runs that came back positive;
+ * distinctScenarios is the real count of different Testing Environments
+ * actually exercised. "Trade Frequency" is deliberately not a separate
+ * derived rate here — see app/sandbox.py's module docstring for why a
+ * fabricated per-day rate would be worse than just showing each real
+ * run's own tradeCount, which the panel already does.
+ */
+export function computeStrategyConsistency(strategyId: string, results: SimulationResult[]): StrategyConsistency {
+  const own = results.filter((r) => r.strategyId === strategyId);
+  const positive = own.filter((r) => r.totalReturnPct > 0).length;
+  return {
+    sampleSize: own.length,
+    positiveRunPct: own.length > 0 ? (positive / own.length) * 100 : 0,
+    distinctScenarios: new Set(own.map((r) => r.scenario)).size,
+  };
 }

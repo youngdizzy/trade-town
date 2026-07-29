@@ -72,6 +72,7 @@ from app.portfolio import sim_minutes
 from app.reasoning_lab import compute_reasoning_lab_state, generate_challenge, record_challenge
 from app.research import RESEARCHER_IDS, default_research, tick_research
 from app.risk_engine import evaluate_guardian_exposure, evaluate_sentinel_risk, monitor_portfolio, recommended_quantity
+from app.sandbox import apply_review_decision, cap_strategy_reports, cap_strategy_reviews, generate_strategy_report, maybe_advance_after_research, maybe_advance_after_result
 from app.scanner import tick_scanner
 from app.schedule import ScheduleBlock, block_for_hour
 from app.treasury import apply_monthly_savings_rules, record_monthly_report
@@ -872,6 +873,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     strategies = state.strategies or default_strategies()
     backtest_sessions = list(state.backtest_sessions)
     simulation_results = list(state.simulation_results)
+    strategy_reports = list(state.strategy_reports)
+    strategy_reviews = list(state.strategy_reviews)
     hall_of_fame = list(state.hall_of_fame)
     coach_reports = list(state.coach_reports)
     performance_snapshots = list(state.performance_snapshots)
@@ -934,6 +937,13 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         agent_knowledge, tier_up = award_points(agent_knowledge, item.assigned_agent, RESEARCH_COMPLETION_POINTS * knowledge_multiplier)
         if tier_up is not None:
             record_knowledge_tier_up(memory, tier_up)
+
+    # v0.7 Feature 45 — the Research Sandbox. An "idea"-stage strategy
+    # advances to "research" the moment real completed research backs its
+    # own focus_category — checked every tick against the full research
+    # list (not just what completed this tick), since a strategy can be
+    # created after the qualifying research already landed.
+    strategies = [maybe_advance_after_research(s, research, new_time.day) if s.stage == "idea" else s for s in strategies]
 
     # v0.7 Feature 25 — the Academy's one company-wide knowledge project,
     # advanced and rotated the same way research.py's own queue is.
@@ -1204,6 +1214,54 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                 timestamp=_now_iso(),
             )
         )
+        # v0.7 Feature 45 — the Research Sandbox. Every completed run
+        # auto-generates a real StrategyReport and, if it's the strategy's
+        # own qualifying evidence, advances that strategy's pipeline stage.
+        matching_strategy = next((s for s in strategies if s.id == result.strategy_id), None)
+        if matching_strategy is not None:
+            strategy_report = generate_strategy_report(matching_strategy, result, sim_day=new_time.day)
+            strategy_reports.append(strategy_report)
+            cap_strategy_reports(strategy_reports)
+            strategies = [maybe_advance_after_result(s, result, new_time.day) if s.id == result.strategy_id else s for s in strategies]
+            news.append(
+                NewsItem(
+                    id=f"news-strategy-report-{strategy_report.id}",
+                    headline=f'Strategy Report filed: "{matching_strategy.name}" ({result.scenario}) — {result.total_return_pct:+.1f}%.',
+                    category="discovery",
+                    timestamp=_now_iso(),
+                )
+            )
+
+    # v0.7 Feature 45 — Automation Mode governs the Company Review stage's
+    # final CEO call exactly the way _apply_operating_mode already governs
+    # trade decisions: Learning Mode always waits for a real manual click
+    # (POST /api/sandbox/decide); Executive Mode auto-resolves every
+    # pending StrategyReview using its own real overall_verdict; Assisted
+    # Mode only auto-resolves the unambiguous cases (pass/fail), leaving a
+    # genuine "concern" verdict for real CEO judgment.
+    for i, pending_review in enumerate(strategy_reviews):
+        if pending_review.ceo_decision != "pending":
+            continue
+        if operating_mode == "learning":
+            continue
+        if operating_mode == "assisted" and pending_review.overall_verdict == "concern":
+            continue
+        approve = pending_review.overall_verdict == "pass"
+        review_strategy = next((s for s in strategies if s.id == pending_review.strategy_id), None)
+        if review_strategy is None:
+            continue
+        strategies = [apply_review_decision(s, pending_review, approve, new_time.day) if s.id == pending_review.strategy_id else s for s in strategies]
+        strategy_reviews[i] = pending_review.model_copy(update={"ceo_decision": "approved" if approve else "rejected", "resolved_by": "auto"})
+        mode_label = "Executive Mode" if operating_mode == "executive" else "Assisted Mode"
+        news.append(
+            NewsItem(
+                id=f"news-strategy-review-{pending_review.id}",
+                headline=f'{mode_label}: Company Review {"approved" if approve else "rejected"} "{review_strategy.name}" ({pending_review.overall_verdict}).',
+                category="company",
+                timestamp=_now_iso(),
+            )
+        )
+    cap_strategy_reviews(strategy_reviews)
 
     mm_count_before_meeting = len(meeting_minutes)
     agents, meeting = _maybe_call_meeting(agents, state.meeting, research, new_time, news, tasks, memory, meeting_minutes, resting=resting)
@@ -1606,6 +1664,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "strategies": strategies,
             "backtest_sessions": backtest_sessions,
             "simulation_results": simulation_results,
+            "strategy_reports": strategy_reports,
+            "strategy_reviews": strategy_reviews,
             "hall_of_fame": hall_of_fame,
             "coach_reports": coach_reports,
             "company_score": company_score,

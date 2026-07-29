@@ -44,6 +44,8 @@ import type {
   SignalCalibrationState,
   SimulationResult,
   Strategy,
+  StrategyReport,
+  StrategyReview,
   TalentState,
   Task,
   ThinkingProfile,
@@ -75,6 +77,8 @@ type ServerMessage =
       strategies: Strategy[];
       backtestSessions: BacktestSession[];
       simulationResults: SimulationResult[];
+      strategyReports: StrategyReport[];
+      strategyReviews: StrategyReview[];
       hallOfFame: HallOfFameEntry[];
       coachReports: CoachReport[];
       companyScore: CompanyScore;
@@ -185,6 +189,8 @@ export class GameSocket {
             strategies: msg.strategies,
             backtestSessions: msg.backtestSessions,
             simulationResults: msg.simulationResults,
+            strategyReports: msg.strategyReports,
+            strategyReviews: msg.strategyReviews,
             hallOfFame: msg.hallOfFame,
             coachReports: msg.coachReports,
             companyScore: msg.companyScore,

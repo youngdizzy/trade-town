@@ -44,6 +44,8 @@ import type {
   SignalCalibrationState,
   SimulationResult,
   Strategy,
+  StrategyReport,
+  StrategyReview,
   TalentState,
   Task,
   ThinkingProfile,
@@ -86,6 +88,8 @@ export interface GameUiState {
   strategies: Strategy[];
   backtestSessions: BacktestSession[];
   simulationResults: SimulationResult[];
+  strategyReports: StrategyReport[];
+  strategyReviews: StrategyReview[];
   hallOfFame: HallOfFameEntry[];
   coachReports: CoachReport[];
   companyScore: CompanyScore;
@@ -188,6 +192,8 @@ class GameStore {
     strategies: [],
     backtestSessions: [],
     simulationResults: [],
+    strategyReports: [],
+    strategyReviews: [],
     hallOfFame: [],
     coachReports: [],
     companyScore: {
@@ -374,6 +380,8 @@ class GameStore {
     EventBus.on("memory:updated", (memory) => this.set({ memory }));
     EventBus.on("portfolio:updated", (paperPortfolio) => this.set({ paperPortfolio }));
     EventBus.on("strategies:updated", (strategies) => this.set({ strategies }));
+    EventBus.on("strategyReports:updated", (strategyReports) => this.set({ strategyReports }));
+    EventBus.on("strategyReviews:updated", (strategyReviews) => this.set({ strategyReviews }));
     EventBus.on("simulation:updated", ({ sessions, results }) => this.set({ backtestSessions: sessions, simulationResults: results }));
     EventBus.on("hallOfFame:updated", (hallOfFame) => this.set({ hallOfFame }));
     EventBus.on("coachReports:updated", (coachReports) => this.set({ coachReports }));

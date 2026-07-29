@@ -49,6 +49,8 @@ import type {
   SignalCalibrationState,
   SimulationResult,
   Strategy,
+  StrategyReport,
+  StrategyReview,
   TalentState,
   Task,
   ThinkingProfile,
@@ -111,6 +113,8 @@ export interface GameEvents {
   "strategies:updated": Strategy[];
   "simulation:updated": { sessions: BacktestSession[]; results: SimulationResult[] };
   "simulation:completed": SimulationResult;
+  "strategyReports:updated": StrategyReport[];
+  "strategyReviews:updated": StrategyReview[];
   "hallOfFame:updated": HallOfFameEntry[];
   "hallOfFame:entryAdded": HallOfFameEntry;
   "coach:reportReceived": CoachReport;

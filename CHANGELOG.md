@@ -7,6 +7,81 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.7 Feature 45 — Research Sandbox**: scoped from a brief asking for
+  an 8-stage strategy pipeline (Idea → Research → Historical Backtest →
+  Market Simulation → Paper Trading → Limited Live Capital → Company
+  Review → Approved Strategy) that "strategies cannot skip," 9 Testing
+  Environments, 10 performance metrics, auto-generated Strategy Reports,
+  and a 5-role Approval Process gated by Automation Mode. Researched
+  first (see `app/sandbox.py`'s module docstring): almost every building
+  block already existed — `Strategy`/`ResearchItem`/`BacktestSession`/
+  `SimulationResult` were all real, just never stage-gated or reported
+  on. What was genuinely missing was the gating itself, scenario-aware
+  backtesting, auto-generated reports, and a real multi-reviewer Company
+  Review — this codebase's live/paper trading loop has no mechanism to
+  attribute an executed trade back to a specific `Strategy` object, so
+  the last three pipeline stages are real CEO-authorized trust
+  checkpoints rather than fabricated live P&L attribution.
+  - **8-stage pipeline** (`Strategy.stage`/`stageHistory`): the first
+    four stages advance automatically on a real signal (a completed
+    `ResearchItem` in the strategy's own category; a completed
+    `SimulationResult` in the "historical" scenario bucket; a completed
+    result in any other scenario, only once historical backtesting is
+    already on record); the last four are real CEO actions
+    (`POST /api/sandbox/begin-paper-trial` /
+    `begin-limited-live` /`request-review` /`decide`).
+  - **Scenario-aware backtesting** (`app/simulation.py`): `BacktestSession`/
+    `SimulationResult` gained a `scenario` field reusing the exact 5
+    regime names `market_environment.py` already computes live (bull/
+    bear/sideways/high_volatility/low_volatility), plus "historical" (the
+    pre-Feature-45 default) and "custom" (a CEO-tunable deterministic
+    bias on the same placeholder ranges). "Earnings weeks" and "economic
+    news" from the brief's longer Testing Environments list are not
+    built — no real data source for either exists anywhere in this
+    codebase.
+  - **Fuller, internally-consistent metrics**: `win_count`/`loss_count`/
+    `avg_win_pct`/`avg_loss_pct` are now the placeholder engine's own
+    real generating inputs (`total_return_pct` is derived FROM them, not
+    the reverse), so Expected Value, Profit Factor, and Risk/Reward are
+    real derivations of a run's own numbers, never independently rolled.
+    Consistency and Trade Frequency are frontend derivations over a
+    strategy's own stored result history (`lib/derive.ts`'s
+    `computeStrategyConsistency`) rather than stored per-run, since both
+    are properties of the history, not of one run.
+  - **Auto-generated Strategy Reports** (`generate_strategy_report`):
+    Executive Summary/Strengths/Weaknesses/Failure Conditions/Best Market
+    Environment/Recommended Improvements, filed the instant a
+    `SimulationResult` completes — the same templated-framing-over-real-
+    numbers discipline `app/mistakes.py`/`app/successes.py` established.
+  - **5-reviewer Company Review** (`generate_strategy_review`): Quant
+    (Vector — sample size + avg win rate + avg Sharpe), Risk Specialist
+    (Guardian — avg max drawdown), Technical Analyst (Echo — scenario
+    diversity), Fundamental Analyst (Nova — completed research on
+    record), and a rotating Devil's Advocate seat (worst single-run
+    drawdown / any negative-expected-value run) — every mapping is that
+    agent's own real occupation, and every verdict cites the real number
+    that produced it, the same threshold-citation discipline
+    `app/devils_advocate.py` established for individual trades.
+  - **Automation Mode governs the final CEO call**: reuses
+    `_apply_operating_mode`'s exact convention — Learning Mode always
+    waits for a real manual decision; Executive Mode auto-resolves every
+    pending review using its own real `overall_verdict`; Assisted Mode
+    auto-resolves only the unambiguous pass/fail cases, leaving a genuine
+    "concern" verdict for real CEO judgment.
+  - **New `SANDBOX` Command Center tab** (`SandboxPanel.tsx`): per-
+    strategy pipeline view, a scenario-picker backtest queue form, a
+    real per-run metrics table, Strategy Reports, and the Approval
+    Process (stage-appropriate CEO action buttons + review verdicts with
+    Approve/Reject).
+  - Verification: backend (`test_sandbox.py`, 29 new tests covering
+    stage gating in both directions — cannot skip forward, never moves
+    backward — every reviewer's real threshold, and the devil's-advocate
+    rotation) + full suite (552/552) + mypy/ruff clean; frontend
+    tsc/eslint/build clean; a new `sandbox.spec.ts` (2 Playwright tests
+    against the live stack, including actually queuing a real backtest)
+    plus `commandCenter.spec.ts`'s tab-count test updated for the new
+    26th tab.
+
 - **v0.7 Feature 44 — Talent Discovery System**: scoped from a brief
   asking for a "Performance Analysis" trait breakdown, automatic
   "Discovery Events" when an employee shows real talent, a CEO decision

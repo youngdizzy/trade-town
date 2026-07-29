@@ -43,6 +43,8 @@ import type {
   SignalCalibrationState,
   SimulationResult,
   Strategy,
+  StrategyReport,
+  StrategyReview,
   TalentState,
   Task,
   ThinkingProfile,
@@ -66,6 +68,8 @@ interface NexusSnapshot {
   strategies: Strategy[];
   backtestSessions: BacktestSession[];
   simulationResults: SimulationResult[];
+  strategyReports: StrategyReport[];
+  strategyReviews: StrategyReview[];
   hallOfFame: HallOfFameEntry[];
   coachReports: CoachReport[];
   companyScore: CompanyScore;
@@ -140,6 +144,8 @@ export class NexusManager {
   private static strategies: Strategy[] = [];
   private static backtestSessions: BacktestSession[] = [];
   private static simulationResults: SimulationResult[] = [];
+  private static strategyReports: StrategyReport[] = [];
+  private static strategyReviews: StrategyReview[] = [];
   private static hallOfFame: HallOfFameEntry[] = [];
   private static coachReports: CoachReport[] = [];
   private static companyScore: CompanyScore = {
@@ -298,6 +304,29 @@ export class NexusManager {
 
   static getSimulationResults(): SimulationResult[] {
     return this.simulationResults;
+  }
+
+  static getStrategyReports(): StrategyReport[] {
+    return this.strategyReports;
+  }
+
+  static getStrategyReviews(): StrategyReview[] {
+    return this.strategyReviews;
+  }
+
+  /** Applies the immediate result of any /api/sandbox/* CEO action —
+   * the same "don't wait for the next WS tick" pattern setPaperPortfolio
+   * already uses, so a Sandbox click updates the UI right away. */
+  static setSandboxState(strategies: Strategy[], strategyReviews: StrategyReview[]): void {
+    this.strategies = strategies;
+    this.strategyReviews = strategyReviews;
+    EventBus.emit("strategies:updated", strategies);
+    EventBus.emit("strategyReviews:updated", strategyReviews);
+  }
+
+  static setBacktestSessions(backtestSessions: BacktestSession[]): void {
+    this.backtestSessions = backtestSessions;
+    EventBus.emit("simulation:updated", { sessions: backtestSessions, results: this.simulationResults });
   }
 
   static getHallOfFame(): HallOfFameEntry[] {
@@ -658,6 +687,12 @@ export class NexusManager {
     this.backtestSessions = update.backtestSessions;
     this.simulationResults = update.simulationResults;
 
+    if (update.strategyReports.length !== this.strategyReports.length) EventBus.emit("strategyReports:updated", update.strategyReports);
+    this.strategyReports = update.strategyReports;
+
+    if (update.strategyReviews.length !== this.strategyReviews.length) EventBus.emit("strategyReviews:updated", update.strategyReviews);
+    this.strategyReviews = update.strategyReviews;
+
     if (update.hallOfFame.length !== this.hallOfFame.length) {
       const newest = update.hallOfFame[update.hallOfFame.length - 1];
       if (newest) EventBus.emit("hallOfFame:entryAdded", newest);
@@ -839,6 +874,8 @@ export class NexusManager {
     this.strategies = save.strategies;
     this.backtestSessions = save.backtestSessions;
     this.simulationResults = save.simulationResults;
+    this.strategyReports = save.strategyReports;
+    this.strategyReviews = save.strategyReviews;
     this.hallOfFame = save.hallOfFame;
     this.coachReports = save.coachReports;
     this.companyScore = save.companyScore;

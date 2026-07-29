@@ -448,6 +448,24 @@ export interface PaperPortfolio {
   lossCount: number;
 }
 
+// v0.7 Feature 45 — the Research Sandbox. TestScenario reuses the exact
+// 5 regime names market_environment.py already computes live, plus
+// "historical" (the pre-Feature-45 default) and "custom" (a CEO-tunable
+// bias — see backend/app/sandbox.py's module docstring for why
+// "earnings_weeks"/"economic_news" aren't included: no real data source).
+export type TestScenario = "historical" | "bull" | "bear" | "sideways" | "high_volatility" | "low_volatility" | "custom";
+
+// Strategies cannot skip stages — see backend/app/sandbox.py.
+export type StrategyStage = "idea" | "research" | "historical_backtest" | "market_simulation" | "paper_trading" | "limited_live_capital" | "company_review" | "approved";
+
+export interface StrategyStageEvent {
+  id: string;
+  stage: StrategyStage;
+  detail: string;
+  simDay: number;
+  createdAt: string;
+}
+
 export interface Strategy {
   id: string;
   name: string;
@@ -455,6 +473,9 @@ export interface Strategy {
   createdBy: AgentId;
   focusCategory: ResearchCategory;
   createdAt: string;
+  stage: StrategyStage;
+  stageHistory: StrategyStageEvent[];
+  allocatedCapital: number;
 }
 
 /** A strategy simulation in flight — queued or running in the Simulation Lab. */
@@ -468,6 +489,9 @@ export interface BacktestSession {
   runBy: AgentId;
   queuedAt: string;
   startedAt: string | null;
+  scenario: TestScenario;
+  customReturnBiasPct: number;
+  customVolatilityBias: number;
 }
 
 /** sharpeRatio/sortinoRatio are explicitly placeholder formulas — see backend/app/simulation.py. */
@@ -484,6 +508,53 @@ export interface SimulationResult {
   tradeCount: number;
   runBy: AgentId;
   completedAt: string;
+  scenario: TestScenario;
+  winCount: number;
+  lossCount: number;
+  avgWinPct: number;
+  avgLossPct: number;
+  expectedValuePct: number;
+  profitFactor: number;
+  riskRewardRatio: number;
+}
+
+// v0.7 Feature 45 — auto-generated whenever a SimulationResult completes.
+export interface StrategyReport {
+  id: string;
+  strategyId: string;
+  strategyName: string;
+  sourceResultId: string;
+  scenario: TestScenario;
+  executiveSummary: string;
+  strengths: string[];
+  weaknesses: string[];
+  failureConditions: string[];
+  bestMarketEnvironment: string;
+  recommendedImprovements: string[];
+  simDay: number;
+  createdAt: string;
+}
+
+export type StrategyReviewerRole = "quant" | "risk" | "technical" | "fundamental" | "devils_advocate";
+export type StrategyVerdict = "pass" | "concern" | "fail";
+
+export interface StrategyReviewVerdict {
+  reviewerRole: StrategyReviewerRole;
+  reviewerAgent: AgentId;
+  verdict: StrategyVerdict;
+  summary: string;
+}
+
+export interface StrategyReview {
+  id: string;
+  strategyId: string;
+  strategyName: string;
+  verdicts: StrategyReviewVerdict[];
+  overallVerdict: StrategyVerdict;
+  ceoDecision: "pending" | "approved" | "rejected";
+  resolvedBy: "ceo" | "auto" | null;
+  simDay: number;
+  createdAt: string;
 }
 
 export interface HallOfFameEntry {
@@ -1580,6 +1651,8 @@ export interface GameSaveState {
   strategies: Strategy[];
   backtestSessions: BacktestSession[];
   simulationResults: SimulationResult[];
+  strategyReports: StrategyReport[];
+  strategyReviews: StrategyReview[];
   hallOfFame: HallOfFameEntry[];
   coachReports: CoachReport[];
   companyScore: CompanyScore;

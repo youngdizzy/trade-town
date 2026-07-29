@@ -2729,6 +2729,141 @@ errors) both passed; `commandCenter.spec.ts`'s tab-count test updated to
 25 tabs (MENTOR's own number-key-shortcut range is unaffected, since
 TALENT was inserted well past the 1-9 shortcut range).
 
+### Research Sandbox
+
+The brief asked for an 8-stage strategy pipeline that "strategies cannot
+skip," 9 Testing Environments, 10 performance metrics, auto-generated
+Strategy Reports, and a 5-role Approval Process gated by Automation
+Mode. Checked first against what already exists (see
+`app/sandbox.py`'s module docstring): `Strategy`, `ResearchItem`,
+`BacktestSession`, and `SimulationResult` were all real and shipped
+back in v0.5 — the actual gap was stage-gating, scenario-awareness,
+auto-generated reports, and a real multi-reviewer review, not new base
+data.
+
+**The 8-stage pipeline never skips a stage** (`Strategy.stage`/
+`stageHistory`, `app/sandbox.py`'s `_advance()`). The first four stages
+advance automatically the moment a real signal clears:
+
+- **idea → research**: a completed `ResearchItem` in the strategy's own
+  `focus_category` exists.
+- **research → historical_backtest**: a completed `SimulationResult`
+  with `scenario == "historical"` exists.
+- **historical_backtest → market_simulation**: a completed result in
+  any *other* scenario exists — but only once historical backtesting is
+  already on record, so a strategy can't "skip" straight to Market
+  Simulation by testing a bull scenario first.
+
+The last four stages are real CEO actions — `POST /api/sandbox/
+begin-paper-trial` / `begin-limited-live` / `request-review` /
+`decide` — because this codebase's live/paper trading loop is symbol-
+and AI-Debate-driven, not `Strategy`-driven: there is no mechanism
+anywhere in this codebase to attribute a real executed trade back to a
+specific `Strategy` object, and building one would be a structural
+rewrite of the whole decision loop, not a Feature-45-sized change.
+Rather than fabricate that linkage, Paper Trading/Limited Live
+Capital/Company Review are real, CEO-authorized trust checkpoints — a
+tracked, bounded `allocated_capital` ceiling the CEO sets on entering
+Limited Live Capital (capped at `MAX_LIMITED_LIVE_CAPITAL`, $2,000) is a
+real number the CEO chose, never wired into fabricated live P&L.
+
+**Scenario-aware backtesting, one real engine** (`app/simulation.py`).
+`BacktestSession`/`SimulationResult` gained a `scenario` field
+(`TestScenario`) reusing the exact 5 regime names
+`market_environment.py` already computes live for the whole company
+(bull/bear/sideways/high_volatility/low_volatility), plus "historical"
+(the pre-Feature-45 default, keeping every old session's meaning) and
+"custom" (a CEO-tunable deterministic bias — `custom_return_bias_pct`/
+`custom_volatility_bias`, real chosen numbers applied to the same
+placeholder ranges, never an independently invented range). "Earnings
+weeks" and "economic news" from the brief's longer Testing Environments
+list are deliberately not built: no earnings calendar or economic-event
+data source exists anywhere in this codebase (confirmed by grep — even
+`app/calendar.py`'s own `systemEvents` never included either). Building
+a second, independent backtest engine for "Market Simulation" would
+have been the exact redundant-remeasurement trap this session's whole
+discipline exists to avoid — one real engine, scenario-parameterized,
+honestly serves both Historical Backtest and Market Simulation stages.
+
+**Fuller, internally-consistent metrics.** `win_count`/`loss_count`/
+`avg_win_pct`/`avg_loss_pct` are now the placeholder engine's own real
+*generating* inputs — `total_return_pct` is derived FROM them
+(`win_count * avg_win_pct + loss_count * avg_loss_pct`), not the
+reverse, so `expected_value_pct`/`profit_factor`/`risk_reward_ratio` are
+real, internally-consistent derivations of that one run's own numbers,
+never independently rolled. "Consistency" and "Trade Frequency" from
+the brief are left as frontend derivations over a strategy's own stored
+result *history* (`lib/derive.ts`'s `computeStrategyConsistency`)
+rather than stored per-run, since both are properties of the history,
+not of any single run.
+
+**Strategy Reports, auto-generated per completed run**
+(`generate_strategy_report`). Executive Summary/Strengths/Weaknesses/
+Failure Conditions/Best Market Environment/Recommended Improvements,
+every field a templated read of that one real `SimulationResult`'s own
+numbers — the same discipline `app/mistakes.py`/`app/successes.py`
+already established, filed automatically the instant a run completes
+(`app/nexus.py`'s `tick()`, right alongside the existing "Simulation
+complete" news item).
+
+**Company Review — five real reviewers, each a real occupation**
+(`generate_strategy_review`):
+
+| Role | Agent | Real signal checked |
+|---|---|---|
+| Quant | Vector (Chief Quantitative Strategist) | sample size ≥ `QUANT_MIN_SAMPLE_SIZE` (3), avg win rate ≥ 50%, avg Sharpe ≥ 1.0 |
+| Risk Specialist | Guardian (Portfolio Protection) | avg max drawdown ≤ `RISK_MAX_AVG_DRAWDOWN` (20%) |
+| Technical Analyst | Echo (Technical Analyst) | ≥ 2 distinct Testing Environments actually exercised |
+| Fundamental Analyst | Nova (Research Analyst, authored the seeded "Value Fundamentals" strategy) | ≥ 1 completed `ResearchItem` in the strategy's own category |
+| Devil's Advocate | rotates through `STRATEGY_DEVILS_ADVOCATES` (scribe/coach/cio/sage — distinct from the four fixed seats above) | worst single run's max drawdown > `DEVILS_ADVOCATE_MAX_SINGLE_DRAWDOWN` (25%), or any run with a negative `expected_value_pct` |
+
+Every verdict cites the real number that produced it — the same
+threshold-citation discipline `app/devils_advocate.py` already
+established for individual trades, applied here to a strategy's own
+aggregated history. `overall_verdict` is `fail` if any reviewer fails,
+`concern` if any reviewer has a concern, `pass` only if all five pass.
+
+**Automation Mode governs the final CEO call** (`app/nexus.py`'s
+`tick()`), reusing `_apply_operating_mode`'s exact convention: Learning
+Mode always waits for a real manual `POST /api/sandbox/decide`;
+Executive Mode auto-resolves every pending `StrategyReview` using its
+own real `overall_verdict` (`pass` → approve, else reject); Assisted
+Mode only auto-resolves the unambiguous `pass`/`fail` cases, leaving a
+genuine `concern` verdict for real CEO judgment — tagged
+`resolved_by="auto"` for honest provenance either way, the identical
+convention trade-decision auto-resolution already established.
+
+**New `SANDBOX` Command Center tab** (`SandboxPanel.tsx`, inserted
+after `TALENT`): per-strategy pipeline visualization with real stage
+history, a scenario-picker backtest queue form (including the Custom
+scenario's two real bias inputs), a per-run metrics table (Return/Win
+Rate/EV/Profit Factor/Max Drawdown/Sharpe/Risk-Reward/Trades), the
+auto-generated Strategy Reports, and the Approval Process section
+(stage-appropriate CEO action buttons plus any filed review's five
+verdicts with Approve/Reject when a decision is still pending).
+
+**Save/load.** `strategy_reports`/`strategy_reviews` join `strategies`/
+`backtest_sessions`/`simulation_results` in the `"company"` core module
+— returned in full by `GET /api/load`, the same as every other
+company-scoped list. `default_state()` seeds both as empty lists, so an
+older save migrates cleanly through `load_modules()`'s existing
+deep-merge-onto-`default_state()` recovery path with no new migration
+code required — confirmed live: restarting the backend against a
+pre-Feature-45 dev save produced no migration warning and the existing
+seeded strategies picked up real `stage`/`stageHistory` on the very
+next tick.
+
+**Verification.** Backend: `test_sandbox.py` (29 new tests — stage
+gating never skips forward and never moves backward, every reviewer's
+real threshold in both directions, the devil's-advocate rotation stays
+distinct within one review, report generation cites real numbers) + the
+full suite (552/552) + mypy/ruff clean. Frontend: `tsc -b`/eslint/build
+clean; a new `sandbox.spec.ts` (2 Playwright tests against the live
+stack — confirming every strategy carries real `stage`/`stageHistory`/
+`allocatedCapital`, and that the SANDBOX tab renders the pipeline and
+successfully queues a real scenario backtest) both passed;
+`commandCenter.spec.ts`'s tab-count test updated to 26 tabs.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

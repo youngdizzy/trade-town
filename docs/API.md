@@ -862,6 +862,34 @@ seen — the same real "seen" tracking pattern
 `POST /api/black-box/ack-breakthrough` already established. Returns
 `{ "viewedReportIds": [...] }`.
 
+### `POST /api/sandbox/backtest` / `begin-paper-trial` / `begin-limited-live` / `request-review` / `decide`
+
+v0.7 Feature 45 — the Research Sandbox. All five return
+`{ "strategies": [...] }` and/or `{ "strategyReviews": [...] }`
+(`backtest` also returns `{ "backtestSessions": [...] }`). `400` on any
+real stage-gate violation, with the exact required stage in the message.
+
+- `backtest`: body `{ "strategyId": "...", "scenario": "bull", "customReturnBiasPct": 0, "customVolatilityBias": 1 }`.
+  Queues a real `BacktestSession` for that strategy under the chosen
+  Testing Environment. `customReturnBiasPct`/`customVolatilityBias` only
+  matter when `scenario` is `"custom"`. `400` if the Sandbox is already
+  at `MAX_CONCURRENT_SESSIONS` or the watchlist is empty.
+- `begin-paper-trial`: body `{ "strategyId": "..." }`. Requires the
+  strategy's stage to already be `"market_simulation"`.
+- `begin-limited-live`: body `{ "strategyId": "...", "amount": 500 }`.
+  Requires stage `"paper_trading"` and at least `MIN_PAPER_TRIAL_SIM_DAYS`
+  (1) full in-game day since the trial began. `400` if `amount` isn't
+  positive or exceeds `MAX_LIMITED_LIVE_CAPITAL` ($2,000).
+- `request-review`: body `{ "strategyId": "..." }`. Requires stage
+  `"limited_live_capital"`; generates a real `StrategyReview` (five
+  reviewer verdicts) and advances the strategy to `"company_review"` in
+  one call.
+- `decide`: body `{ "reviewId": "...", "approve": true }`. The Company
+  Review stage's real manual CEO call — Learning Mode always requires
+  this; Assisted/Executive Mode auto-resolve instead (see
+  `docs/Architecture.md`'s "Research Sandbox" section). `400` if the
+  review was already decided.
+
 ### Bounding / trimming
 
 Every list above is capped server-side before it's ever sent — the client
@@ -898,6 +926,8 @@ never needs to trim anything itself:
 | `blackBox.archive` | last 30 (`MAX_ARCHIVE`) | completed + failed Black Box Projects — Museum of Discoveries entries and Research Archives both live here |
 | `blackBox.reviews` | last 30 (`MAX_REVIEWS`) | one Founder Council `BreakthroughReview` per project that reached review |
 | `talent.reports` | last 30 (`MAX_TALENT_REPORTS`) | one `TalentReport` per agent/trait pair that ever cleared both real thresholds — v0.7 Feature 44 |
+| `strategyReports` | last 60 (`MAX_STRATEGY_REPORTS`) | one per completed `SimulationResult` — v0.7 Feature 45 |
+| `strategyReviews` | last 30 (`MAX_STRATEGY_REVIEWS`) | one per Company Review requested — v0.7 Feature 45 |
 
 ### Provider configuration
 

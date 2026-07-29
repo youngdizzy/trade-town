@@ -162,6 +162,31 @@ MemoryCategory = Literal[
 OrderSide = Literal["buy", "sell"]
 OrderStatus = Literal["open", "filled", "closed", "cancelled"]
 SimulationStatus = Literal["queued", "running", "completed", "failed"]
+
+# v0.7 Feature 45 — the Research Sandbox. Reuses the exact same 5 regime
+# names market_environment.py already computes live (bull/bear/sideways/
+# high_volatility/low_volatility) as backtest scenario presets, plus
+# "historical" (the pre-Feature-45 default/neutral run) and "custom" (a
+# CEO-tunable bias — see app/sandbox.py). "Earnings weeks" and "economic
+# news" from the brief's longer example list are deliberately not
+# included: no earnings calendar or economic-event data source exists
+# anywhere in this codebase (see app/calendar.py's own real/cut boundary)
+# — see app/sandbox.py's module docstring.
+TestScenario = Literal["historical", "bull", "bear", "sideways", "high_volatility", "low_volatility", "custom"]
+
+# v0.7 Feature 45 — the Research Sandbox pipeline. Strategies cannot skip
+# stages (see app/sandbox.py); each transition requires a real, checkable
+# gate to clear.
+StrategyStage = Literal[
+    "idea",
+    "research",
+    "historical_backtest",
+    "market_simulation",
+    "paper_trading",
+    "limited_live_capital",
+    "company_review",
+    "approved",
+]
 HallOfFameCategory = Literal[
     "best_strategy",
     "best_simulation",
@@ -601,6 +626,18 @@ class PaperPortfolio(CamelModel):
     loss_count: int = Field(alias="lossCount")
 
 
+class StrategyStageEvent(CamelModel):
+    """One real transition in a Strategy's Research Sandbox pipeline —
+    see app/sandbox.py's module docstring for exactly what gates each
+    stage."""
+
+    id: str
+    stage: StrategyStage
+    detail: str
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
 class Strategy(CamelModel):
     id: str
     name: str
@@ -608,6 +645,16 @@ class Strategy(CamelModel):
     created_by: AgentId = Field(alias="createdBy")
     focus_category: ResearchCategory = Field(alias="focusCategory")
     created_at: str = Field(alias="createdAt")
+    # v0.7 Feature 45 — the Research Sandbox. Every Strategy starts as an
+    # "idea" and only ever advances forward through stage_history's real,
+    # gated transitions — see app/sandbox.py.
+    stage: StrategyStage = "idea"
+    stage_history: list[StrategyStageEvent] = Field(default_factory=list, alias="stageHistory")
+    # A real, CEO-chosen authorization ceiling set on entering
+    # limited_live_capital (POST /api/sandbox/begin-limited-live) — see
+    # app/sandbox.py's module docstring for why this is a tracked
+    # commitment number, not fabricated live P&L attribution.
+    allocated_capital: float = Field(default=0.0, alias="allocatedCapital")
 
 
 class BacktestSession(CamelModel):
@@ -624,13 +671,29 @@ class BacktestSession(CamelModel):
     run_by: AgentId = Field(alias="runBy")
     queued_at: str = Field(alias="queuedAt")
     started_at: str | None = Field(default=None, alias="startedAt")
+    # v0.7 Feature 45 — which Testing Environment this run exercises the
+    # strategy against. Defaults to "historical" so every pre-Feature-45
+    # (and every still-automatic per-tick) session keeps its old meaning.
+    scenario: TestScenario = "historical"
+    # Only meaningful when scenario == "custom" — the CEO's own real,
+    # chosen bias numbers (POST /api/sandbox/backtest), applied
+    # deterministically to the placeholder engine's win/loss ranges (see
+    # app/simulation.py's _scenario_ranges()). 0.0/1.0 are neutral
+    # defaults matching "historical" until the CEO picks something else.
+    custom_return_bias_pct: float = Field(default=0.0, alias="customReturnBiasPct")
+    custom_volatility_bias: float = Field(default=1.0, alias="customVolatilityBias")
 
 
 class SimulationResult(CamelModel):
     """sharpe_ratio/sortino_ratio are explicitly placeholder formulas
     (see app/simulation.py) — real risk-adjusted-return math needs a
     real historical data source, which v0.5 does not have (see
-    app/market_data.py)."""
+    app/market_data.py). v0.7 Feature 45 adds win_count/loss_count/
+    avg_win_pct/avg_loss_pct as the placeholder engine's own real
+    generating inputs (total_return_pct is now derived FROM them, not
+    the reverse — see app/simulation.py), so expected_value_pct/
+    profit_factor/risk_reward_ratio below are real, internally-consistent
+    derivations of this run's own numbers, never independently invented."""
 
     id: str
     strategy_id: str = Field(alias="strategyId")
@@ -644,6 +707,62 @@ class SimulationResult(CamelModel):
     trade_count: int = Field(alias="tradeCount")
     run_by: AgentId = Field(alias="runBy")
     completed_at: str = Field(alias="completedAt")
+    # v0.7 Feature 45 — the Research Sandbox's fuller metrics set.
+    scenario: TestScenario = "historical"
+    win_count: int = Field(default=0, alias="winCount")
+    loss_count: int = Field(default=0, alias="lossCount")
+    avg_win_pct: float = Field(default=0.0, alias="avgWinPct")
+    avg_loss_pct: float = Field(default=0.0, alias="avgLossPct")
+    expected_value_pct: float = Field(default=0.0, alias="expectedValuePct")
+    profit_factor: float = Field(default=0.0, alias="profitFactor")
+    risk_reward_ratio: float = Field(default=0.0, alias="riskRewardRatio")
+
+
+# v0.7 Feature 45 — auto-generated whenever a SimulationResult completes
+# (see app/sandbox.py's generate_strategy_report), the same templated-
+# framing-over-real-numbers discipline as app/mistakes.py/successes.py.
+class StrategyReport(CamelModel):
+    id: str
+    strategy_id: str = Field(alias="strategyId")
+    strategy_name: str = Field(alias="strategyName")
+    source_result_id: str = Field(alias="sourceResultId")
+    scenario: TestScenario
+    executive_summary: str = Field(alias="executiveSummary")
+    strengths: list[str] = Field(default_factory=list)
+    weaknesses: list[str] = Field(default_factory=list)
+    failure_conditions: list[str] = Field(default_factory=list, alias="failureConditions")
+    best_market_environment: str = Field(alias="bestMarketEnvironment")
+    recommended_improvements: list[str] = Field(default_factory=list, alias="recommendedImprovements")
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
+# v0.7 Feature 45 — the Company Review stage's five real reviewer
+# verdicts (Quant/Risk Specialist/Technical Analyst/Fundamental Analyst/
+# Devil's Advocate), each computed from that strategy's own real,
+# aggregated SimulationResult and ResearchItem history — see
+# app/sandbox.py's generate_strategy_review().
+StrategyReviewerRole = Literal["quant", "risk", "technical", "fundamental", "devils_advocate"]
+StrategyVerdict = Literal["pass", "concern", "fail"]
+
+
+class StrategyReviewVerdict(CamelModel):
+    reviewer_role: StrategyReviewerRole = Field(alias="reviewerRole")
+    reviewer_agent: AgentId = Field(alias="reviewerAgent")
+    verdict: StrategyVerdict
+    summary: str
+
+
+class StrategyReview(CamelModel):
+    id: str
+    strategy_id: str = Field(alias="strategyId")
+    strategy_name: str = Field(alias="strategyName")
+    verdicts: list[StrategyReviewVerdict]
+    overall_verdict: StrategyVerdict = Field(alias="overallVerdict")
+    ceo_decision: Literal["pending", "approved", "rejected"] = Field(default="pending", alias="ceoDecision")
+    resolved_by: Literal["ceo", "auto"] | None = Field(default=None, alias="resolvedBy")
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
 
 
 class HallOfFameEntry(CamelModel):
@@ -2184,6 +2303,8 @@ class GameSaveState(CamelModel):
     strategies: list[Strategy] = Field(default_factory=list)
     backtest_sessions: list[BacktestSession] = Field(default_factory=list, alias="backtestSessions")
     simulation_results: list[SimulationResult] = Field(default_factory=list, alias="simulationResults")
+    strategy_reports: list[StrategyReport] = Field(default_factory=list, alias="strategyReports")
+    strategy_reviews: list[StrategyReview] = Field(default_factory=list, alias="strategyReviews")
     hall_of_fame: list[HallOfFameEntry] = Field(default_factory=list, alias="hallOfFame")
     coach_reports: list[CoachReport] = Field(default_factory=list, alias="coachReports")
     company_score: CompanyScore = Field(alias="companyScore")

@@ -28,12 +28,32 @@ from __future__ import annotations
 import random
 from datetime import datetime, timezone
 
-from app.schemas import AgentId, BacktestSession, ResearchCategory, SimulationResult, Strategy, TimeState, WatchlistEntry
+from app.schemas import AgentId, BacktestSession, ResearchCategory, SimulationResult, Strategy, TestScenario, TimeState, WatchlistEntry
 
 MAX_CONCURRENT_SESSIONS = 2
 MAX_SIMULATION_RESULTS = 30
 QUEUE_CHANCE_PER_TICK = 0.05
 PROGRESS_GAIN_RANGE = (8.0, 18.0)
+
+# v0.7 Feature 45 — per-Testing-Environment win/loss ranges. Each tuple is
+# (avg_win_pct range, avg_loss_pct range, win_rate range, max_drawdown_pct
+# range) — real, hand-chosen, and honestly still placeholder (see this
+# module's own docstring), but now the *generating* inputs rather than an
+# independently-invented total_return_pct: total_return_pct, expected
+# value, profit factor, and risk/reward are all derived FROM these same
+# per-run numbers below, so a run's own reported metrics are always
+# internally consistent with each other. "historical" keeps the exact
+# distribution v0.5 shipped with. Reuses the same 5 regime names
+# app/market_environment.py already computes live — see schemas.py's
+# TestScenario for why "earnings_weeks"/"economic_news" aren't here.
+_SCENARIO_RANGES: dict[TestScenario, tuple[tuple[float, float], tuple[float, float], tuple[float, float], tuple[float, float]]] = {
+    "historical": ((2.0, 12.0), (-10.0, -1.5), (35.0, 75.0), (3.0, 25.0)),
+    "bull": ((4.0, 16.0), (-6.0, -1.0), (50.0, 85.0), (2.0, 15.0)),
+    "bear": ((1.0, 6.0), (-16.0, -3.0), (20.0, 55.0), (10.0, 35.0)),
+    "sideways": ((1.5, 5.0), (-5.0, -1.0), (35.0, 65.0), (2.0, 10.0)),
+    "high_volatility": ((3.0, 20.0), (-20.0, -2.0), (30.0, 70.0), (12.0, 40.0)),
+    "low_volatility": ((1.0, 4.0), (-3.5, -0.5), (40.0, 70.0), (1.0, 6.0)),
+}
 
 
 def _now_iso() -> str:
@@ -60,6 +80,12 @@ def queue_backtest_now(
     watchlist: list[WatchlistEntry],
     runner_pool: tuple[AgentId, ...],
     new_time: TimeState,
+    *,
+    strategy: Strategy | None = None,
+    symbol: str | None = None,
+    scenario: TestScenario = "historical",
+    custom_return_bias_pct: float = 0.0,
+    custom_volatility_bias: float = 1.0,
 ) -> list[BacktestSession] | None:
     """Queues one session unconditionally (no QUEUE_CHANCE_PER_TICK roll) —
     used both by the normal per-tick chance below and by the Agent Energy
@@ -67,21 +93,30 @@ def queue_backtest_now(
     immediate effect rather than a chance of one. Returns None if the lab
     is already at capacity or there's nothing to run yet, so callers (the
     energy spend endpoint especially) can tell the difference between "ran"
-    and "nothing happened" instead of silently no-oping."""
+    and "nothing happened" instead of silently no-oping.
+
+    v0.7 Feature 45 — `strategy`/`symbol`/`scenario` let the Research
+    Sandbox's own CEO-triggered POST /api/sandbox/backtest queue a
+    specific strategy against a specific Testing Environment instead of
+    the random pick below (still the automatic per-tick behavior when
+    these are omitted)."""
     active = [s for s in sessions if s.status in ("queued", "running")]
     if len(active) >= MAX_CONCURRENT_SESSIONS or not strategies or not watchlist:
         return None
-    strategy = random.choice(strategies)
-    symbol = random.choice(watchlist).symbol
+    chosen_strategy = strategy or random.choice(strategies)
+    chosen_symbol = symbol or random.choice(watchlist).symbol
     session = BacktestSession(
-        id=f"sim-{strategy.id}-{new_time.day}-{new_time.hour}-{new_time.minute}",
-        strategyId=strategy.id,
-        strategyName=strategy.name,
-        symbol=symbol,
+        id=f"sim-{chosen_strategy.id}-{scenario}-{new_time.day}-{new_time.hour}-{new_time.minute}",
+        strategyId=chosen_strategy.id,
+        strategyName=chosen_strategy.name,
+        symbol=chosen_symbol,
         status="queued",
         progress=0.0,
         runBy=random.choice(runner_pool),
         queuedAt=_now_iso(),
+        scenario=scenario,
+        customReturnBiasPct=custom_return_bias_pct,
+        customVolatilityBias=custom_volatility_bias,
     )
     return [*sessions, session]
 
@@ -113,18 +148,53 @@ def _run_strategy_step(sessions: list[BacktestSession]) -> list[BacktestSession]
     return updated
 
 
-def _placeholder_backtest_metrics() -> tuple[float, float, float, float, float, int]:
+def _scenario_ranges(scenario: TestScenario, custom_return_bias_pct: float, custom_volatility_bias: float) -> tuple[tuple[float, float], tuple[float, float], tuple[float, float], tuple[float, float]]:
+    if scenario != "custom":
+        return _SCENARIO_RANGES[scenario]
+    # "custom" scales the historical ranges by the CEO's own real chosen
+    # numbers — a deterministic, traceable transform of real input, never
+    # an independently fabricated range.
+    win_low, win_high = _SCENARIO_RANGES["historical"][0]
+    loss_low, loss_high = _SCENARIO_RANGES["historical"][1]
+    rate_low, rate_high = _SCENARIO_RANGES["historical"][2]
+    dd_low, dd_high = _SCENARIO_RANGES["historical"][3]
+    bias = custom_return_bias_pct
+    vol = max(custom_volatility_bias, 0.1)
+    return (
+        (max(0.1, win_low * vol + bias), max(0.2, win_high * vol + bias)),
+        (loss_low * vol + bias, loss_high * vol + bias),
+        (rate_low, rate_high),
+        (max(0.5, dd_low * vol), max(1.0, dd_high * vol)),
+    )
+
+
+def _placeholder_backtest_metrics(scenario: TestScenario, custom_return_bias_pct: float, custom_volatility_bias: float) -> tuple[float, float, float, float, float, int, int, int, float, float]:
     """Explicitly placeholder — see this module's docstring. sharpe_ratio/
     sortino_ratio here are return-to-drawdown ratios, not real
     risk-adjusted-return statistics (those need a real daily-return
-    series, which mock/placeholder data doesn't provide)."""
-    total_return_pct = random.uniform(-15.0, 35.0)
-    win_rate = random.uniform(35.0, 75.0)
-    max_drawdown_pct = random.uniform(3.0, 25.0)
+    series, which mock/placeholder data doesn't provide).
+
+    v0.7 Feature 45 — win_count/loss_count/avg_win_pct/avg_loss_pct are
+    now the real generating inputs; total_return_pct is derived FROM
+    them (win_count * avg_win_pct + loss_count * avg_loss_pct), so every
+    metric this function returns is internally consistent with every
+    other one, never independently rolled. Returns (total_return_pct,
+    win_rate, max_drawdown_pct, sharpe_ratio, sortino_ratio, trade_count,
+    win_count, loss_count, avg_win_pct, avg_loss_pct)."""
+    win_range, loss_range, rate_range, dd_range = _scenario_ranges(scenario, custom_return_bias_pct, custom_volatility_bias)
+
+    trade_count = random.randint(8, 60)
+    win_rate = random.uniform(*rate_range)
+    win_count = round(trade_count * win_rate / 100.0)
+    loss_count = trade_count - win_count
+    avg_win_pct = random.uniform(*win_range)
+    avg_loss_pct = random.uniform(*loss_range)
+
+    total_return_pct = win_count * avg_win_pct + loss_count * avg_loss_pct
+    max_drawdown_pct = random.uniform(*dd_range)
     sharpe_ratio = round(total_return_pct / max(max_drawdown_pct, 1.0), 2)
     sortino_ratio = round(sharpe_ratio * random.uniform(0.9, 1.3), 2)
-    trade_count = random.randint(8, 60)
-    return total_return_pct, win_rate, max_drawdown_pct, sharpe_ratio, sortino_ratio, trade_count
+    return total_return_pct, win_rate, max_drawdown_pct, sharpe_ratio, sortino_ratio, trade_count, win_count, loss_count, avg_win_pct, avg_loss_pct
 
 
 def _collect_completed(sessions: list[BacktestSession], results: list[SimulationResult]) -> tuple[list[BacktestSession], list[SimulationResult], list[SimulationResult]]:
@@ -132,7 +202,25 @@ def _collect_completed(sessions: list[BacktestSession], results: list[Simulation
     newly_completed: list[SimulationResult] = []
     for session in sessions:
         if session.status == "running" and session.progress >= 100.0:
-            total_return_pct, win_rate, max_drawdown_pct, sharpe, sortino, trade_count = _placeholder_backtest_metrics()
+            (
+                total_return_pct,
+                win_rate,
+                max_drawdown_pct,
+                sharpe,
+                sortino,
+                trade_count,
+                win_count,
+                loss_count,
+                avg_win_pct,
+                avg_loss_pct,
+            ) = _placeholder_backtest_metrics(session.scenario, session.custom_return_bias_pct, session.custom_volatility_bias)
+
+            gross_profit = win_count * avg_win_pct
+            gross_loss = abs(loss_count * avg_loss_pct)
+            profit_factor = round(gross_profit / gross_loss, 2) if gross_loss > 0 else round(gross_profit, 2) if gross_profit > 0 else 0.0
+            risk_reward_ratio = round(avg_win_pct / abs(avg_loss_pct), 2) if avg_loss_pct != 0 else 0.0
+            expected_value_pct = round(total_return_pct / trade_count, 3) if trade_count > 0 else 0.0
+
             newly_completed.append(
                 SimulationResult(
                     id=f"result-{session.id}",
@@ -147,6 +235,14 @@ def _collect_completed(sessions: list[BacktestSession], results: list[Simulation
                     tradeCount=trade_count,
                     runBy=session.run_by,
                     completedAt=_now_iso(),
+                    scenario=session.scenario,
+                    winCount=win_count,
+                    lossCount=loss_count,
+                    avgWinPct=round(avg_win_pct, 2),
+                    avgLossPct=round(avg_loss_pct, 2),
+                    expectedValuePct=expected_value_pct,
+                    profitFactor=profit_factor,
+                    riskRewardRatio=risk_reward_ratio,
                 )
             )
         else:

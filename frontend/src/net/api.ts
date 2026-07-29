@@ -27,6 +27,10 @@ import type {
   SignalCalibrationState,
   SignalChallenge,
   SignalChoice,
+  BacktestSession,
+  Strategy,
+  StrategyReview,
+  TestScenario,
   TimeAdvanceTarget,
   TradeDecision,
   TradeProposal,
@@ -210,5 +214,30 @@ export const api = {
     request<{ viewedReportIds: string[] }>("/talent/ack-report", {
       method: "POST",
       body: JSON.stringify({ reportId }),
+    }),
+  queueSandboxBacktest: (strategyId: string, scenario: TestScenario, customReturnBiasPct = 0, customVolatilityBias = 1) =>
+    request<{ backtestSessions: BacktestSession[] }>("/sandbox/backtest", {
+      method: "POST",
+      body: JSON.stringify({ strategyId, scenario, customReturnBiasPct, customVolatilityBias }),
+    }),
+  beginSandboxPaperTrial: (strategyId: string) =>
+    request<{ strategies: Strategy[]; strategyReviews: StrategyReview[] }>("/sandbox/begin-paper-trial", {
+      method: "POST",
+      body: JSON.stringify({ strategyId }),
+    }),
+  beginSandboxLimitedLive: (strategyId: string, amount: number) =>
+    request<{ strategies: Strategy[]; strategyReviews: StrategyReview[] }>("/sandbox/begin-limited-live", {
+      method: "POST",
+      body: JSON.stringify({ strategyId, amount }),
+    }),
+  requestSandboxCompanyReview: (strategyId: string) =>
+    request<{ strategies: Strategy[]; strategyReviews: StrategyReview[] }>("/sandbox/request-review", {
+      method: "POST",
+      body: JSON.stringify({ strategyId }),
+    }),
+  decideSandboxReview: (reviewId: string, approve: boolean) =>
+    request<{ strategies: Strategy[]; strategyReviews: StrategyReview[] }>("/sandbox/decide", {
+      method: "POST",
+      body: JSON.stringify({ reviewId, approve }),
     }),
 };
