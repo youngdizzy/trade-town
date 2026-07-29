@@ -1471,6 +1471,28 @@ export interface GameSaveState {
   updatedAt: string;
 }
 
+// v0.7 — Save Architecture Redesign. The only fields the client actually
+// owns (see backend/app/schemas.py's ClientSaveRequest docstring for why
+// this replaced sending the full GameSaveState on every save).
+export interface ClientSaveSnapshot {
+  player: EntityTransform;
+  settings: SettingsState;
+  dialogueHistory: DialogueHistoryEntry[];
+}
+
+export interface ModuleWriteResult {
+  name: string;
+  ok: boolean;
+  bytesWritten: number;
+  error: string | null;
+}
+
+export interface SaveResponse {
+  ok: true;
+  updatedAt: string;
+  modules: ModuleWriteResult[];
+}
+
 export function isDaytime(time: TimeState): boolean {
   return time.hour >= 6 && time.hour < 20;
 }

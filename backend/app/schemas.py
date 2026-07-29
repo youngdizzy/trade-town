@@ -2075,9 +2075,39 @@ class GameSaveState(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# v0.7 — Save Architecture Redesign. `apply_client_save` (app/state.py)
+# has only ever read three fields off the client's save POST —
+# `player`, `settings`, `dialogue_history` — because everything else in
+# GameSaveState is already server-authoritative, produced continuously
+# by the tick loop (app/nexus.py) and living in GameState.data. Sending
+# the rest was pure waste: real, measured, ~840KB of it, discarded by
+# the server on every autosave, which is what pushed the request body
+# past nginx's default 1MB limit (HTTP 413) as the simulation's history
+# grew. `ClientSaveRequest` is the honest shape of what the client
+# actually owns — inherits CamelModel's default `extra="ignore"`, so an
+# un-updated client still sending a full legacy GameSaveState body stays
+# accepted without error, just with the extra fields silently unused
+# exactly as they already were.
+class ClientSaveRequest(CamelModel):
+    player: EntityTransform
+    settings: SettingsState
+    dialogue_history: list[DialogueHistoryEntry] = Field(default_factory=list, alias="dialogueHistory")
+
+
+class ModuleWriteResult(CamelModel):
+    name: str
+    ok: bool
+    bytes_written: int = Field(default=0, alias="bytesWritten")
+    error: str | None = None
+
+
 class SaveResponse(BaseModel):
     ok: Literal[True] = True
     updated_at: str = Field(alias="updatedAt", serialization_alias="updatedAt")
+    # v0.7 — Save Architecture Redesign Phase 2 populates this with one
+    # entry per persisted module; empty until then (Phase 1 alone has
+    # nothing module-shaped yet to report).
+    modules: list[ModuleWriteResult] = Field(default_factory=list)
 
     model_config = ConfigDict(populate_by_name=True)
 

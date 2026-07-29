@@ -1,4 +1,4 @@
-import type { GameSaveState } from "@/types";
+import type { ClientSaveSnapshot, EntityTransform, GameSaveState } from "@/types";
 import { api } from "@/net/api";
 import { EventBus } from "./EventBus";
 import { GameManager } from "./GameManager";
@@ -10,75 +10,39 @@ import { dialogueManager } from "./DialogueManager";
 
 const LOCAL_BACKUP_KEY = "tradetown:save-backup";
 
+// v0.7 — Save Architecture Redesign. Mirrors backend/app/state.py's own
+// MAX_DIALOGUE_HISTORY so the wire payload is bounded on both ends,
+// rather than relying solely on the server-side truncation.
+const MAX_DIALOGUE_HISTORY = 200;
+
 /**
- * Collects a snapshot of the full game state and persists it via the
+ * Builds the slim client-owned save payload and persists it via the
  * backend REST API, with a localStorage backup so a save is never lost if
  * the backend is briefly unreachable. Autosaves on an interval driven by
  * SettingsManager and exposes a manual save/load path for the UI buttons.
+ *
+ * v0.7 — Save Architecture Redesign: the backend's apply_client_save has
+ * only ever read player/settings/dialogueHistory off a save POST — every
+ * other field (agents, decisions, debates, research, ...) is already
+ * server-authoritative, produced by the tick loop and persisted
+ * independently of what the client sends. Building and shipping the full
+ * ~50-field GameSaveState here was pure waste (a real, measured ~840KB
+ * the server discarded on every autosave, and a synchronous
+ * `localStorage.setItem` of the same size on every call — a genuine
+ * main-thread hitch). `buildSnapshot()` now only builds what the client
+ * actually owns. The full-state fetch (`api.loadGame()`/`load()` below)
+ * is unaffected — reading everything to hydrate the UI is real and
+ * necessary; it's only the write path that was over-broad.
  */
 export class SaveManager {
   private static autosaveHandle: number | null = null;
 
-  static buildSnapshot(): GameSaveState {
+  static buildSnapshot(): ClientSaveSnapshot {
     const game = GameManager.getInstance();
     return {
-      version: "0.6",
       player: game?.playerTransform ?? { scene: "LobbyScene", x: 160, y: 160, facing: "down" },
-      agents: NPCManager.getAllAgents(),
-      tasks: NexusManager.getTasks(),
-      whiteboards: NexusManager.getAllWhiteboards(),
-      meeting: NexusManager.getMeeting(),
-      news: NexusManager.getNews(),
-      research: NexusManager.getResearch(),
-      watchlist: NexusManager.getWatchlist(),
-      memory: NexusManager.getMemory(),
-      meetingMinutes: NexusManager.getMeetingMinutes(),
-      paperPortfolio: NexusManager.getPaperPortfolio(),
-      strategies: NexusManager.getStrategies(),
-      backtestSessions: NexusManager.getBacktestSessions(),
-      simulationResults: NexusManager.getSimulationResults(),
-      hallOfFame: NexusManager.getHallOfFame(),
-      coachReports: NexusManager.getCoachReports(),
-      companyScore: NexusManager.getCompanyScore(),
-      performanceSnapshots: NexusManager.getPerformanceSnapshots(),
-      riskLimits: NexusManager.getRiskLimits(),
-      riskWarnings: NexusManager.getRiskWarnings(),
-      scannerAlerts: NexusManager.getScannerAlerts(),
-      decisions: NexusManager.getDecisions(),
-      tradeProposals: NexusManager.getTradeProposals(),
-      ceoDecisions: NexusManager.getCeoDecisions(),
-      debates: NexusManager.getDebates(),
-      challengeReports: NexusManager.getChallengeReports(),
-      innovationState: NexusManager.getInnovationState(),
-      gatekeeperRejections: NexusManager.getGatekeeperRejections(),
-      marketEnvironment: NexusManager.getMarketEnvironment(),
-      companyHealth: NexusManager.getCompanyHealth(),
-      executiveReviews: NexusManager.getExecutiveReviews(),
-      academyProjects: NexusManager.getAcademyProjects(),
-      academyCompletedProjects: NexusManager.getAcademyCompletedProjects(),
-      agentKnowledge: NexusManager.getAgentKnowledge(),
-      academyState: NexusManager.getAcademyState(),
-      disciplineReviews: NexusManager.getDisciplineReviews(),
-      caseStudies: NexusManager.getCaseStudies(),
-      reasoningChallenges: NexusManager.getReasoningChallenges(),
-      reasoningLabState: NexusManager.getReasoningLabState(),
-      reflectionSessions: NexusManager.getReflectionSessions(),
-      wisdomState: NexusManager.getWisdomState(),
-      questionArchive: NexusManager.getQuestionArchive(),
-      thinkingProfiles: NexusManager.getThinkingProfiles(),
-      mentorState: NexusManager.getMentorState(),
-      founderState: NexusManager.getFounderState(),
-      treasury: NexusManager.getTreasury(),
-      calendar: NexusManager.getCalendar(),
-      agentEnergy: NexusManager.getAgentEnergy(),
-      signalCalibration: NexusManager.getSignalCalibration(),
-      playerVsAi: NexusManager.getPlayerVsAi(),
-      education: NexusManager.getEducation(),
-      viewedTradeNotificationIds: NexusManager.getViewedTradeNotificationIds(),
-      time: TimeManager.current,
       settings: SettingsManager.current,
-      dialogueHistory: dialogueManager.getHistory(),
-      updatedAt: new Date().toISOString(),
+      dialogueHistory: dialogueManager.getHistory().slice(-MAX_DIALOGUE_HISTORY),
     };
   }
 
@@ -94,17 +58,31 @@ export class SaveManager {
     }
   }
 
-  static async load(): Promise<GameSaveState> {
+  // v0.7 — Save Architecture Redesign: the only shape every caller of
+  // load() actually needs is `.player` (MainMenuScene's continueGame()
+  // starts the right scene at the right spawn point); the offline
+  // fallback below genuinely can't produce a full GameSaveState (agents/
+  // decisions/research only exist server-side now), so the return type
+  // is narrowed to what's honestly always available either way.
+  static async load(): Promise<{ player: EntityTransform }> {
     try {
       const state = await api.loadGame();
       this.applyState(state);
       return state;
     } catch (err) {
+      // v0.7 — Save Architecture Redesign: the localStorage backup is now
+      // the same slim ClientSaveSnapshot the server actually owns from
+      // the client (see buildSnapshot() above) — agents/decisions/research/
+      // everything else genuinely only exists server-side now, so there's
+      // nothing dishonest to fabricate here. Applying the snapshot still
+      // restores what the player actually cares about when reconnecting
+      // (their own position, settings, and recent dialogue); the rest
+      // repopulates for real the moment the WebSocket reconnects.
       const backup = localStorage.getItem(LOCAL_BACKUP_KEY);
       if (backup) {
-        const state = JSON.parse(backup) as GameSaveState;
-        this.applyState(state);
-        return state;
+        const snapshot = JSON.parse(backup) as ClientSaveSnapshot;
+        this.applyClientSnapshot(snapshot);
+        return snapshot;
       }
       throw err;
     }
@@ -118,6 +96,18 @@ export class SaveManager {
     dialogueManager.loadHistory(state.dialogueHistory);
     GameManager.getInstance()?.applyLoadedTransform(state.player);
     EventBus.emit("load:completed", state);
+  }
+
+  /** Offline-fallback counterpart to applyState() above, for when only the
+   * slim localStorage backup is available (backend unreachable). Doesn't
+   * touch NPCManager/NexusManager/TimeManager or emit `load:completed` —
+   * there's no real agents/decisions/research data to apply from a
+   * client-owned snapshot; that state repopulates for real once the
+   * WebSocket connects. */
+  static applyClientSnapshot(snapshot: ClientSaveSnapshot): void {
+    SettingsManager.update(snapshot.settings);
+    dialogueManager.loadHistory(snapshot.dialogueHistory);
+    GameManager.getInstance()?.applyLoadedTransform(snapshot.player);
   }
 
   static startAutosave(): void {

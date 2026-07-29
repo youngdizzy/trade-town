@@ -34,6 +34,7 @@ from app.portfolio import default_portfolio, sim_minutes
 from app.research import default_research
 from app.scribe import record_ceo_decision, record_proposal_hold
 from app.schemas import (
+    ClientSaveRequest,
     EducationProgress,
     EntityTransform,
     FounderState,
@@ -175,10 +176,11 @@ class GameState:
         self.data: GameSaveState = default_state()
         self.lock = asyncio.Lock()
 
-    async def apply_client_save(self, incoming: GameSaveState) -> GameSaveState:
+    async def apply_client_save(self, incoming: ClientSaveRequest) -> GameSaveState:
         """Merge a client-submitted save. Player position/settings/dialogue come from
         the client; agents/tasks/whiteboards/meeting/news/time stay server-authoritative
-        (NEXUS's tick loop owns them)."""
+        (NEXUS's tick loop owns them) — see ClientSaveRequest's own docstring for why
+        the request body is deliberately this narrow rather than a full GameSaveState."""
         async with self.lock:
             self.data = self.data.model_copy(
                 update={

@@ -26,40 +26,49 @@ Same shape as a `"state"` WebSocket message plus the client-owned fields
 
 ## `POST /api/save`
 
-Body: a full `GameSaveState` (as returned by `GET /api/load` or received
-over the WebSocket, with the client's own `player`/`settings`/
-`dialogueHistory` filled in). `settings.operatingMode`
-(`learning | assisted | executive`, v0.7 Feature 21 — see
-`app/schemas.py`'s `SettingsState`) is one client-owned field NEXUS
-itself reads every tick, to decide whether to auto-resolve trade
-proposals (see `nexus._apply_operating_mode()`). `settings.companyPriority`
-(`balanced | learning | research | risk_reduction`, v0.7 Feature 34) is
-the second — NEXUS reads it every tick to bias exactly one real,
-already-existing lever per priority (Academy knowledge-point awards,
-research confidence-gain speed, or tightened trade-sizing risk limits —
-see `nexus._effective_risk_limits()` and the comment above
-`PRIORITY_KNOWLEDGE_MULTIPLIER`); it never mutates the player's own
-stored `RiskLimits`. `settings.workMode` (`work | rest`, v0.7 Feature 37)
-is the third — NEXUS reads it every tick to pause new research/Academy
-progress and new meeting starts while resting, and to route every agent
-with no active meeting/break override to a real off-hours task (see
-`nexus._rest_block()`); trading/risk systems never read it at all. Only
-those client-owned fields (`player`, `settings`,
-`dialogueHistory`) are actually persisted from the payload — every other
-field
+v0.7 — Save Architecture Redesign. Body: a `ClientSaveRequest` —
+**only** `player`, `settings`, and `dialogueHistory`, not a full
+`GameSaveState`. These are the only fields the client has ever actually
+owned (see `GameState.apply_client_save()`); every other field
 (`agents`/`tasks`/`whiteboards`/`meeting`/`news`/`research`/`watchlist`/
 `memory`/`meetingMinutes`/`paperPortfolio`/`strategies`/
 `backtestSessions`/`simulationResults`/`hallOfFame`/`coachReports`/
-`companyScore`/`performanceSnapshots`/`treasury`/`time`) stays
-server-authoritative and is overwritten with whatever NEXUS currently
-has, regardless of what the client sent (see
-`GameState.apply_client_save()`).
+`companyScore`/`performanceSnapshots`/`treasury`/`time`/...) is
+server-authoritative, produced continuously by the NEXUS tick loop, and
+was previously being sent by the client (as part of the full
+`GameSaveState`) only to be silently discarded — a real, measured ~840KB
+per autosave that had grown large enough to trip nginx's default 1MB
+request-body limit (`413 Request Entity Too Large`) as simulation
+history accumulated. `ClientSaveRequest` inherits `CamelModel`'s default
+`extra="ignore"`, so an older client still sending a full `GameSaveState`
+body remains accepted without error — the extra fields are simply
+unused, exactly as they already were.
+
+`settings.operatingMode` (`learning | assisted | executive`, v0.7
+Feature 21 — see `app/schemas.py`'s `SettingsState`) is one client-owned
+field NEXUS itself reads every tick, to decide whether to auto-resolve
+trade proposals (see `nexus._apply_operating_mode()`).
+`settings.companyPriority` (`balanced | learning | research |
+risk_reduction`, v0.7 Feature 34) is the second — NEXUS reads it every
+tick to bias exactly one real, already-existing lever per priority
+(Academy knowledge-point awards, research confidence-gain speed, or
+tightened trade-sizing risk limits — see `nexus._effective_risk_limits()`
+and the comment above `PRIORITY_KNOWLEDGE_MULTIPLIER`); it never mutates
+the player's own stored `RiskLimits`. `settings.workMode` (`work | rest`,
+v0.7 Feature 37) is the third — NEXUS reads it every tick to pause new
+research/Academy progress and new meeting starts while resting, and to
+route every agent with no active meeting/break override to a real
+off-hours task (see `nexus._rest_block()`); trading/risk systems never
+read it at all.
 
 Response:
 
 ```json
-{ "ok": true, "updatedAt": "2026-01-01T00:00:00.000000+00:00" }
+{ "ok": true, "updatedAt": "2026-01-01T00:00:00.000000+00:00", "modules": [] }
 ```
+
+`modules` is populated once Save Architecture Redesign Phase 2 (modular
+per-section persistence) ships; empty for now.
 
 ## `WS /ws`
 

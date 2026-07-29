@@ -24,6 +24,11 @@ server {
 
     # certbot will add a redirect to HTTPS here once a certificate is issued.
 
+    # See frontend/deploy/nginx.conf's own comment on this same directive —
+    # a defensive ceiling, not the fix for the save-payload size this app
+    # used to send (see backend/app/schemas.py's ClientSaveRequest).
+    client_max_body_size 4m;
+
     location / {
         proxy_pass http://tradetown_app;
         proxy_http_version 1.1;
@@ -43,6 +48,8 @@ server {
 #
 #     ssl_certificate     /etc/letsencrypt/live/your-domain.example/fullchain.pem;
 #     ssl_certificate_key /etc/letsencrypt/live/your-domain.example/privkey.pem;
+#
+#     client_max_body_size 4m;
 #
 #     location / {
 #         proxy_pass http://tradetown_app;

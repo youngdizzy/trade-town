@@ -6,6 +6,7 @@ import type {
   Candle,
   CeoDecisionRecord,
   ChallengeReport,
+  ClientSaveSnapshot,
   Debate,
   EducationLesson,
   EducationProgress,
@@ -19,6 +20,7 @@ import type {
   PlayerVsAiPrompt,
   PlayerVsAiState,
   QuestionOfTheDay,
+  SaveResponse,
   SavingsRuleType,
   SignalCalibrationState,
   SignalChallenge,
@@ -53,10 +55,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   loadGame: () => request<GameSaveState>("/load"),
-  saveGame: (state: GameSaveState) =>
-    request<{ ok: true; updatedAt: string }>("/save", {
+  // v0.7 — Save Architecture Redesign. Only the fields the client
+  // actually owns (see types.ts's ClientSaveSnapshot) — the backend has
+  // only ever read these three fields off a save POST.
+  saveGame: (snapshot: ClientSaveSnapshot) =>
+    request<SaveResponse>("/save", {
       method: "POST",
-      body: JSON.stringify(state),
+      body: JSON.stringify(snapshot),
     }),
   health: () => request<{ status: string }>("/health"),
   getCandles: (symbol: string, timeframe: string, limit = 150) =>
