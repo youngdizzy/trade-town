@@ -890,6 +890,26 @@ real stage-gate violation, with the exact required stage in the message.
   `docs/Architecture.md`'s "Research Sandbox" section). `400` if the
   review was already decided.
 
+### `POST /api/constitution/propose` / `advance` / `decide`
+
+v0.7 Feature 46 — the Company Constitution. All three return
+`{ "constitution": { "articles": [...], "citations": [...], "amendments": [...] } }`.
+`400` on any real precondition violation.
+
+- `propose`: body `{ "title": "...", "text": "..." }`. Creates a real
+  `ConstitutionAmendment` in `status: "proposed"`. `400` if either field
+  is empty/whitespace-only, or another amendment with the same title is
+  already pending.
+- `advance`: body `{ "amendmentId": "..." }`. Requires `status ==
+  "proposed"`. Runs the Founder debate, Coach evaluation, and the
+  11-agent employee vote in one real step, setting `status: "voted"`.
+- `decide`: body `{ "amendmentId": "...", "approve": true }`. Requires
+  `status == "voted"`. The CEO's own real, manual, final call —
+  deliberately never auto-resolved by Automation Mode (see
+  `docs/Architecture.md`'s "Company Constitution" section). On approval,
+  appends a real new `ConstitutionArticle` (next Roman numeral) to the
+  permanent Articles list.
+
 ### Bounding / trimming
 
 Every list above is capped server-side before it's ever sent — the client
@@ -928,6 +948,7 @@ never needs to trim anything itself:
 | `talent.reports` | last 30 (`MAX_TALENT_REPORTS`) | one `TalentReport` per agent/trait pair that ever cleared both real thresholds — v0.7 Feature 44 |
 | `strategyReports` | last 60 (`MAX_STRATEGY_REPORTS`) | one per completed `SimulationResult` — v0.7 Feature 45 |
 | `strategyReviews` | last 30 (`MAX_STRATEGY_REVIEWS`) | one per Company Review requested — v0.7 Feature 45 |
+| `constitution.citations` | last 120 (`MAX_CONSTITUTION_CITATIONS`) | one per real "Live Enforcement" event across 6 real hooks — v0.7 Feature 46 |
 
 ### Provider configuration
 

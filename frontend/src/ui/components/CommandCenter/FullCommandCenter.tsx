@@ -10,6 +10,7 @@ import { OpportunitiesPanel } from "./panels/OpportunitiesPanel";
 import { DecisionsPanel } from "./panels/DecisionsPanel";
 import { ReplayPanel } from "./panels/ReplayPanel";
 import { SandboxPanel } from "./panels/SandboxPanel";
+import { ConstitutionPanel } from "./panels/ConstitutionPanel";
 import { ExecutivePanel } from "./panels/ExecutivePanel";
 import { RiskPanel } from "./panels/RiskPanel";
 import { AgentsPanel } from "./panels/AgentsPanel";
@@ -57,6 +58,7 @@ const TABS = [
   "MENTOR",
   "TALENT",
   "SANDBOX",
+  "CONSTITUTION",
   "FOUNDERS",
   "TREASURY",
   "CALENDAR",
@@ -185,6 +187,7 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
         {tab === "MENTOR" && <MentorPanel />}
         {tab === "TALENT" && <TalentPanel />}
         {tab === "SANDBOX" && <SandboxPanel />}
+        {tab === "CONSTITUTION" && <ConstitutionPanel />}
         {tab === "FOUNDERS" && <FoundersPanel />}
         {tab === "TREASURY" && <TreasuryPanel />}
         {tab === "BLACKBOX" && <BlackBoxPanel />}

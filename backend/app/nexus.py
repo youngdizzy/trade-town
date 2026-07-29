@@ -42,6 +42,7 @@ from app.company_dna import compute_company_dna
 from app.company_health import compute_company_health
 from app.company_score import compute_company_score
 from app.config import settings
+from app.constitution import MISTAKE_ARTICLE_MAP, cite_article
 from app.debate import generate_debate
 from app.devils_advocate import MAX_CHALLENGE_REPORTS, generate_challenge_report
 from app.discipline import generate_discipline_review, record_review as record_discipline_review_entry
@@ -875,6 +876,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     simulation_results = list(state.simulation_results)
     strategy_reports = list(state.strategy_reports)
     strategy_reviews = list(state.strategy_reviews)
+    constitution_citations = list(state.constitution.citations)
     hall_of_fame = list(state.hall_of_fame)
     coach_reports = list(state.coach_reports)
     performance_snapshots = list(state.performance_snapshots)
@@ -966,6 +968,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                 timestamp=_now_iso(),
             )
         )
+        # v0.7 Feature 46 — "Academy explains it": a completed Academy
+        # project is a direct, literal instance of Article VIII.
+        constitution_citations = cite_article(constitution_citations, "VIII", "academy", f'"{newly_completed_project.title}" completed by {AGENT_PROFILES[newly_completed_project.assigned_agent].name}.', new_time.day)
 
     watchlist = tick_watchlist(watchlist, research, market_data_provider)
     prices = {w.symbol: w.last_price for w in watchlist}
@@ -997,6 +1002,15 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # Reflects the current portfolio, not an accumulating log — refreshed
     # every tick like company_score already is below.
     risk_warnings = monitor_portfolio(risk_limits, paper_portfolio)
+    # v0.7 Feature 46 — "Risk Department enforces it": cite Article
+    # I/VII the moment a genuinely NEW critical warning appears (not
+    # already on the previous tick's watch), so this never fires on
+    # every tick a warning happens to still be standing.
+    previous_warning_ids = {w.id for w in state.risk_warnings}
+    for warning in risk_warnings:
+        if warning.severity == "critical" and warning.id not in previous_warning_ids:
+            constitution_citations = cite_article(constitution_citations, "I", "risk_department", warning.message, new_time.day)
+            constitution_citations = cite_article(constitution_citations, "VII", "risk_department", warning.message, new_time.day)
 
     # --- v0.6.3 Feature 12: CEO Approval pipeline --------------------------
     # Every high-confidence research completion becomes a TradeProposal
@@ -1047,7 +1061,15 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # comprehension like debates) so each new report's rotating assignment
     # sees the reports generated earlier in this same tick.
     for proposal in new_proposals:
-        challenge_reports.append(generate_challenge_report(proposal, provider=market_data_provider, case_studies=case_studies, existing_count=len(challenge_reports)))
+        new_challenge_report = generate_challenge_report(proposal, provider=market_data_provider, case_studies=case_studies, existing_count=len(challenge_reports))
+        challenge_reports.append(new_challenge_report)
+        # v0.7 Feature 46 — "Devil's Advocate references it": the whole
+        # job of a ChallengeReport is challenging assumptions (Article
+        # III); when it also finds real missing evidence, that's a
+        # second, distinct real citation (Article IV).
+        constitution_citations = cite_article(constitution_citations, "III", "devils_advocate", f'Challenge report filed for {proposal.symbol} — attempting to break the trade thesis.', new_time.day)
+        if new_challenge_report.missing_evidence:
+            constitution_citations = cite_article(constitution_citations, "IV", "devils_advocate", f"{proposal.symbol}: {len(new_challenge_report.missing_evidence)} vote(s) with no supporting evidence on record.", new_time.day)
     if len(challenge_reports) > MAX_CHALLENGE_REPORTS:
         del challenge_reports[: len(challenge_reports) - MAX_CHALLENGE_REPORTS]
     for proposal in new_proposals:
@@ -1182,6 +1204,14 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                             timestamp=_now_iso(),
                         )
                     )
+                    # v0.7 Feature 46 — "Every mistake must teach something"
+                    # (Article VI) is literally what a filed case study
+                    # already does; the specific detected pattern also
+                    # names whichever real Article it violates.
+                    constitution_citations = cite_article(constitution_citations, "VI", "case_study", f'"{case_study.title}" ({case_study.symbol}) filed as a real case study.', new_time.day)
+                    specific_article = MISTAKE_ARTICLE_MAP.get(case_study.category)
+                    if specific_article:
+                        constitution_citations = cite_article(constitution_citations, specific_article, "case_study", f'"{case_study.title}" — {case_study.category.replace("_", " ")}.', new_time.day)
             # v0.7 Feature 42 — the Library of Successes (app/successes.py),
             # the Decision Replay Center's "Successes" lesson type. Same
             # capped list/memory log as the Library of Mistakes above
@@ -1200,6 +1230,10 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                             timestamp=_now_iso(),
                         )
                     )
+                    constitution_citations = cite_article(constitution_citations, "VI", "case_study", f'"{success_study.title}" ({success_study.symbol}) filed as a real case study.', new_time.day)
+                    specific_article = MISTAKE_ARTICLE_MAP.get(success_study.category)
+                    if specific_article:
+                        constitution_citations = cite_article(constitution_citations, specific_article, "case_study", f'"{success_study.title}" — {success_study.category.replace("_", " ")}.', new_time.day)
 
     backtest_sessions, simulation_results, newly_completed_sims = tick_simulation_lab(
         backtest_sessions, simulation_results, strategies, watchlist, RESEARCHER_IDS, new_time
@@ -1324,12 +1358,25 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         coach_reports = record_coach_report_entry(coach_reports, latest_report)
         record_coach_report(memory, latest_report)
         performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("weekly", paper_portfolio, research, new_time))
+        # v0.7 Feature 46 — "Coach quotes it": the most recent real
+        # CaseStudy on record names the specific Article this week's
+        # commonMistakes actually trace back to.
+        if latest_report.common_mistakes and case_studies:
+            recent_category = case_studies[-1].category
+            coach_article = MISTAKE_ARTICLE_MAP.get(recent_category)
+            if coach_article:
+                constitution_citations = cite_article(constitution_citations, coach_article, "coach", f"Weekly report cites {len(latest_report.common_mistakes)} common mistake(s), echoing the {recent_category.replace('_', ' ')} pattern.", new_time.day)
 
     if is_evening and new_time.day % MONTHLY_INTERVAL_DAYS == 0:
         latest_report = generate_coach_report("monthly", research, paper_portfolio, company_score, RESEARCHER_IDS, new_time, ceo_decisions=ceo_decisions, decisions=decisions)
         coach_reports = record_coach_report_entry(coach_reports, latest_report)
         record_coach_report(memory, latest_report)
         performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("monthly", paper_portfolio, research, new_time))
+        if latest_report.common_mistakes and case_studies:
+            recent_category = case_studies[-1].category
+            coach_article = MISTAKE_ARTICLE_MAP.get(recent_category)
+            if coach_article:
+                constitution_citations = cite_article(constitution_citations, coach_article, "coach", f"Monthly report cites {len(latest_report.common_mistakes)} common mistake(s), echoing the {recent_category.replace('_', ' ')} pattern.", new_time.day)
 
         # v0.7 Feature 33 — the CEO Treasury's Smart Savings Rules, on the
         # same monthly cadence, using the real dollar profit the
@@ -1381,6 +1428,11 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             reflection_sessions=reflection_sessions,
         )
         founder_council_sessions = record_council_session(founder_council_sessions, council_session)
+        # v0.7 Feature 46 — "Founders teach it": Keystone (risk domain)
+        # and Compass (learning domain) each reaffirm the Article closest
+        # to their own real real domain at every monthly sit-down.
+        constitution_citations = cite_article(constitution_citations, "VII", "founders", "Keystone's monthly Council commentary reaffirms real risk discipline.", new_time.day)
+        constitution_citations = cite_article(constitution_citations, "VIII", "founders", "Compass's monthly Council commentary reaffirms continuous learning.", new_time.day)
 
     # v0.7 Feature 25 — a modest, honestly-grounded mentorship check (see
     # app/academy.py's module docstring). Checked far less often than
@@ -1666,6 +1718,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "simulation_results": simulation_results,
             "strategy_reports": strategy_reports,
             "strategy_reviews": strategy_reviews,
+            "constitution": state.constitution.model_copy(update={"citations": constitution_citations, "updated_at": _now_iso()}),
             "hall_of_fame": hall_of_fame,
             "coach_reports": coach_reports,
             "company_score": company_score,

@@ -1508,6 +1508,64 @@ export interface TalentState {
 // teaching mechanic competing with MentorState above).
 export type FounderId = "keystone" | "compass";
 
+// v0.7 Feature 46 — the Company Constitution. See
+// backend/app/constitution.py's module docstring for the full research
+// rationale, the real "Live Enforcement" citation hooks, and exactly how
+// the amendment pipeline (Founder debate -> Coach evaluation -> Employee
+// vote -> CEO ratification) is a real, checkable computation rather than
+// a fabricated debate transcript.
+export interface ConstitutionArticle {
+  id: string;
+  title: string;
+  text: string;
+  ratifiedSimDay: number;
+  createdAt: string;
+}
+
+export type ConstitutionCitationSource = "case_study" | "devils_advocate" | "risk_department" | "academy" | "founders" | "coach";
+
+export interface ConstitutionCitation {
+  id: string;
+  articleId: string;
+  source: ConstitutionCitationSource;
+  detail: string;
+  simDay: number;
+  createdAt: string;
+}
+
+export interface ConstitutionFounderVerdict {
+  founderId: FounderId;
+  verdict: string;
+  redundantWithArticleId: string | null;
+}
+
+export interface ConstitutionEmployeeVote {
+  agentId: AgentId;
+  choice: "support" | "oppose" | "abstain";
+  reason: string;
+}
+
+export interface ConstitutionAmendment {
+  id: string;
+  proposedTitle: string;
+  proposedText: string;
+  status: "proposed" | "debated" | "evaluated" | "voted" | "approved" | "rejected";
+  founderVerdicts: ConstitutionFounderVerdict[];
+  coachEvaluation: string | null;
+  employeeVotes: ConstitutionEmployeeVote[];
+  ceoDecision: "pending" | "approved" | "rejected";
+  ratifiedArticleId: string | null;
+  simDay: number;
+  createdAt: string;
+}
+
+export interface ConstitutionState {
+  articles: ConstitutionArticle[];
+  citations: ConstitutionCitation[];
+  amendments: ConstitutionAmendment[];
+  updatedAt: string;
+}
+
 export interface FounderLogEntry {
   id: string;
   founderId: FounderId;
@@ -1678,6 +1736,7 @@ export interface GameSaveState {
   disciplineReviews: DisciplineReview[];
   caseStudies: CaseStudy[];
   talent: TalentState;
+  constitution: ConstitutionState;
   reasoningChallenges: ReasoningChallenge[];
   reasoningLabState: ReasoningLabState;
   reflectionSessions: ReflectionSession[];

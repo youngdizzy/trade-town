@@ -13,6 +13,7 @@ import type {
   CompanyDNA,
   CompanyHealth,
   CompanyScore,
+  ConstitutionState,
   Debate,
   DisciplineReview,
   ExecutiveReview,
@@ -95,6 +96,7 @@ interface NexusSnapshot {
   disciplineReviews: DisciplineReview[];
   caseStudies: CaseStudy[];
   talent: TalentState;
+  constitution: ConstitutionState;
   reasoningChallenges: ReasoningChallenge[];
   reasoningLabState: ReasoningLabState;
   reflectionSessions: ReflectionSession[];
@@ -222,6 +224,7 @@ export class NexusManager {
   private static disciplineReviews: DisciplineReview[] = [];
   private static caseStudies: CaseStudy[] = [];
   private static talent: TalentState = { reports: [], viewedReportIds: [], updatedAt: new Date().toISOString() };
+  private static constitution: ConstitutionState = { articles: [], citations: [], amendments: [], updatedAt: new Date().toISOString() };
   private static reasoningChallenges: ReasoningChallenge[] = [];
   private static reasoningLabState: ReasoningLabState = {
     level: 1,
@@ -383,6 +386,18 @@ export class NexusManager {
 
   static getTalent(): TalentState {
     return this.talent;
+  }
+
+  static getConstitution(): ConstitutionState {
+    return this.constitution;
+  }
+
+  /** Applies the immediate result of any /api/constitution/* CEO action
+   * — the same "don't wait for the next WS tick" pattern setSandboxState
+   * already uses. */
+  static setConstitution(constitution: ConstitutionState): void {
+    this.constitution = constitution;
+    EventBus.emit("constitution:updated", constitution);
   }
 
   /** Applies the result of POST /api/talent/ack-report, the same "seen"
@@ -796,6 +811,9 @@ export class NexusManager {
     if (update.talent !== this.talent) EventBus.emit("talent:updated", update.talent);
     this.talent = update.talent;
 
+    if (update.constitution !== this.constitution) EventBus.emit("constitution:updated", update.constitution);
+    this.constitution = update.constitution;
+
     if (update.reasoningChallenges.length !== this.reasoningChallenges.length) {
       EventBus.emit("reasoningChallenges:updated", update.reasoningChallenges);
     }
@@ -901,6 +919,7 @@ export class NexusManager {
     this.disciplineReviews = save.disciplineReviews;
     this.caseStudies = save.caseStudies;
     this.talent = save.talent;
+    this.constitution = save.constitution;
     this.reasoningChallenges = save.reasoningChallenges;
     this.reasoningLabState = save.reasoningLabState;
     this.reflectionSessions = save.reflectionSessions;

@@ -15,6 +15,7 @@ import type {
   CompanyDNA,
   CompanyHealth,
   CompanyScore,
+  ConstitutionState,
   Debate,
   DisciplineReview,
   ExecutiveReview,
@@ -115,6 +116,7 @@ export interface GameUiState {
   disciplineReviews: DisciplineReview[];
   caseStudies: CaseStudy[];
   talent: TalentState;
+  constitution: ConstitutionState;
   reasoningChallenges: ReasoningChallenge[];
   reasoningLabState: ReasoningLabState;
   reflectionSessions: ReflectionSession[];
@@ -264,6 +266,7 @@ class GameStore {
     disciplineReviews: [],
     caseStudies: [],
     talent: { reports: [], viewedReportIds: [], updatedAt: new Date().toISOString() },
+    constitution: { articles: [], citations: [], amendments: [], updatedAt: new Date().toISOString() },
     reasoningChallenges: [],
     reasoningLabState: { level: 1, levelLabel: "Foundations", completedChallengeCount: 0, updatedAt: new Date().toISOString() },
     reflectionSessions: [],
@@ -408,6 +411,7 @@ class GameStore {
     EventBus.on("disciplineReviews:updated", (disciplineReviews) => this.set({ disciplineReviews }));
     EventBus.on("caseStudies:updated", (caseStudies) => this.set({ caseStudies }));
     EventBus.on("talent:updated", (talent) => this.set({ talent }));
+    EventBus.on("constitution:updated", (constitution) => this.set({ constitution }));
     EventBus.on("reasoningChallenges:updated", (reasoningChallenges) => this.set({ reasoningChallenges }));
     EventBus.on("reasoningLabState:updated", (reasoningLabState) => this.set({ reasoningLabState }));
     EventBus.on("reflectionSessions:updated", (reflectionSessions) => this.set({ reflectionSessions }));

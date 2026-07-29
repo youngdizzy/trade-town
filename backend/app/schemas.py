@@ -2096,6 +2096,66 @@ class TalentState(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# v0.7 Feature 46 — the Company Constitution. Article ids are plain
+# strings ("I".."VIII" seeded, "IX"+ for CEO amendments) rather than a
+# fixed Literal, since the Articles are the one piece of company state
+# that can genuinely grow — see app/constitution.py's module docstring.
+class ConstitutionArticle(CamelModel):
+    id: str
+    title: str
+    text: str
+    ratified_sim_day: int = Field(alias="ratifiedSimDay")
+    created_at: str = Field(alias="createdAt")
+
+
+# v0.7 Feature 46 — "Live Enforcement." A permanent, real log of every
+# actual moment some other real system's own event invoked a specific
+# Article — never a fabricated quote attributed to nobody.
+ConstitutionCitationSource = Literal["case_study", "devils_advocate", "risk_department", "academy", "founders", "coach"]
+
+
+class ConstitutionCitation(CamelModel):
+    id: str
+    article_id: str = Field(alias="articleId")
+    source: ConstitutionCitationSource
+    detail: str
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
+class ConstitutionFounderVerdict(CamelModel):
+    founder_id: FounderId = Field(alias="founderId")
+    verdict: str
+    redundant_with_article_id: str | None = Field(default=None, alias="redundantWithArticleId")
+
+
+class ConstitutionEmployeeVote(CamelModel):
+    agent_id: AgentId = Field(alias="agentId")
+    choice: Literal["support", "oppose", "abstain"]
+    reason: str
+
+
+class ConstitutionAmendment(CamelModel):
+    id: str
+    proposed_title: str = Field(alias="proposedTitle")
+    proposed_text: str = Field(alias="proposedText")
+    status: Literal["proposed", "debated", "evaluated", "voted", "approved", "rejected"]
+    founder_verdicts: list[ConstitutionFounderVerdict] = Field(default_factory=list, alias="founderVerdicts")
+    coach_evaluation: str | None = Field(default=None, alias="coachEvaluation")
+    employee_votes: list[ConstitutionEmployeeVote] = Field(default_factory=list, alias="employeeVotes")
+    ceo_decision: Literal["pending", "approved", "rejected"] = Field(default="pending", alias="ceoDecision")
+    ratified_article_id: str | None = Field(default=None, alias="ratifiedArticleId")
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
+class ConstitutionState(CamelModel):
+    articles: list[ConstitutionArticle] = Field(default_factory=list)
+    citations: list[ConstitutionCitation] = Field(default_factory=list)
+    amendments: list[ConstitutionAmendment] = Field(default_factory=list)
+    updated_at: str = Field(alias="updatedAt")
+
+
 # v0.7 Feature 39 — the Original Founders (app/founders.py). Only
 # "keystone"/"compass" can ever be a founder_id — everyone else stays a
 # normal employee, never blurring who is a Founder vs. an ordinary agent.
@@ -2401,6 +2461,8 @@ class GameSaveState(CamelModel):
     black_box: BlackBoxState = Field(alias="blackBox")
     # v0.7 Feature 44 — Talent Discovery System (app/talent.py).
     talent: TalentState = Field(alias="talent")
+    # v0.7 Feature 46 — the Company Constitution (app/constitution.py).
+    constitution: ConstitutionState = Field(alias="constitution")
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(default_factory=list, alias="dialogueHistory")

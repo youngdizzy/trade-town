@@ -107,6 +107,7 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         # already capped (MAX_FOUNDER_LOG/MAX_COUNCIL_SESSIONS) like
         # questionArchive above.
         "founderState": state.founder_state.model_dump(by_alias=True),
+        "constitution": state.constitution.model_dump(by_alias=True),
         # v0.7 Feature 41 — the Intelligent Devil's Advocate System.
         # challengeReports is already capped (MAX_CHALLENGE_REPORTS) like
         # questionArchive above; innovationState is recomputed every tick

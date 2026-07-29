@@ -7,6 +7,66 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.7 Feature 46 — Company Constitution**: scoped from a brief asking
+  for a permanent rulebook of Articles, "Live Enforcement" where Coach
+  quotes it/Founders teach it/Academy explains it/Risk Department
+  enforces it/Devil's Advocate references it, and a CEO-driven amendment
+  process (Founders debate, Coach evaluates, employees vote advisory-
+  only, CEO ratifies). No rule-of-conduct concept existed anywhere in
+  this codebase before this feature — the 8 example Articles are
+  genuinely new, seeded verbatim from the brief. What made "Live
+  Enforcement" honest rather than decorative was building it as a real,
+  permanent citation log fed by hooks at real event points this codebase
+  already has, never a fabricated quote attributed to nobody.
+  - **8 real Articles, permanent from game start** (`app/constitution.py`'s
+    `default_constitution()`): Protect Capital First, Research Before
+    Execution, Challenge Assumptions, Evidence Over Opinions, No Revenge
+    Trading, Every Mistake Must Teach Something, Respect Risk, Continuous
+    Learning Is Mandatory — the brief's own text, unmodified.
+  - **"Live Enforcement" — a real citation log, six real hooks**
+    (`app/nexus.py`'s `tick()`): every filed case study/success study
+    cites Article VI (literally what the mechanic does) plus the specific
+    Article its own detected pattern maps to (`MISTAKE_ARTICLE_MAP` —
+    e.g. `incomplete_research` → Article II, `unchallenged_assumptions`
+    → Article III); every Devil's Advocate `ChallengeReport` cites
+    Article III (its whole job) and Article IV when it found real missing
+    evidence; a genuinely *new* critical `RiskWarning` cites Articles
+    I/VII; a completed Academy project cites Article VIII; the monthly
+    Founder Council cites Keystone's Article VII and Compass's Article
+    VIII; a weekly/monthly `CoachReport` with real `commonMistakes` cites
+    whichever Article the most recent case study maps to. "No revenge
+    trading" (Article V) deliberately gets exactly one real trigger —
+    `acted_too_quickly`/`patient_execution`'s own real signal — rather
+    than a second, independently-invented detector.
+  - **A real amendment pipeline, not a fabricated debate transcript**
+    (`app/constitution.py`): the CEO proposes real text
+    (`POST /api/constitution/propose`); Keystone and Compass each run a
+    real word-overlap redundancy check against every existing Article
+    plus a real domain-keyword match (risk vs. learning); the Coach
+    evaluation cites whichever real `CompanyHealth` sub-score the
+    proposal's own keywords match; all 11 non-Founder employees cast a
+    real vote — "support" with a named reason when their own real
+    `AgentProfile.occupation` matches the theme, "abstain" only when a
+    Founder's own real redundancy flag was raised, "support" by default
+    otherwise (advisory only, never gates anything)
+    (`POST /api/constitution/advance`); the CEO's own final, manual
+    ratification (`POST /api/constitution/decide`) appends a real new
+    Article — deliberately *not* wired to Automation Mode, unlike the
+    Research Sandbox's Company Review, since amending company law is
+    exactly the kind of decision that stays the CEO's alone.
+  - **New `CONSTITUTION` Command Center tab** (`ConstitutionPanel.tsx`):
+    the Articles grid, a filterable Live Enforcement citation feed, an
+    amendment proposal form, and per-amendment Founder verdicts/Coach
+    evaluation/employee vote tally with Ratify/Reject actions.
+  - Verification: backend (`test_constitution.py`, 18 new tests
+    covering the redundancy-overlap edge case, domain-keyword matching
+    in both directions, and the full propose→debate→ratify pipeline) +
+    full suite (570/570) + mypy/ruff clean; frontend tsc/eslint/build
+    clean; a new `constitution.spec.ts` (2 Playwright tests against the
+    live stack, including proposing and advancing a real amendment
+    through the full pipeline) plus `commandCenter.spec.ts`'s tab-count
+    test updated for the new 27th tab.
+
 - **v0.7 Feature 45 — Research Sandbox**: scoped from a brief asking for
   an 8-stage strategy pipeline (Idea → Research → Historical Backtest →
   Market Simulation → Paper Trading → Limited Live Capital → Company

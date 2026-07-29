@@ -16,6 +16,7 @@ import type {
   CompanyDNA,
   CompanyHealth,
   CompanyScore,
+  ConstitutionState,
   Debate,
   DialogueHistoryEntry,
   DisciplineReview,
@@ -155,6 +156,7 @@ export interface GameEvents {
   "disciplineReviews:updated": DisciplineReview[];
   "caseStudies:updated": CaseStudy[];
   "talent:updated": TalentState;
+  "constitution:updated": ConstitutionState;
   "reasoningChallenges:updated": ReasoningChallenge[];
   "reasoningLabState:updated": ReasoningLabState;
   "reflectionSessions:updated": ReflectionSession[];

@@ -2864,6 +2864,131 @@ stack — confirming every strategy carries real `stage`/`stageHistory`/
 successfully queues a real scenario backtest) both passed;
 `commandCenter.spec.ts`'s tab-count test updated to 26 tabs.
 
+### Company Constitution
+
+The brief asked for a permanent rulebook of Articles, "Live
+Enforcement" (Coach quotes it, Founders teach it, Academy explains it,
+Risk Department enforces it, Devil's Advocate references it), and a
+CEO-driven amendment process. Checked first: no rule-of-conduct concept
+existed anywhere in this codebase before this feature — the 8 example
+Articles are genuinely new. The harder, more interesting design problem
+was making "Live Enforcement" real rather than decorative: sprinkling
+literal Article text into five unrelated systems' own generated content
+would mean editing (and risking) `CoachReport`/`FounderLogEntry`/
+`ChallengeReport`'s own tested generation logic in five different
+places. Instead, `app/constitution.py`'s `ConstitutionCitation` is a
+new, standalone, permanent log — `app/nexus.py`'s `tick()` appends to it
+at six real event points this codebase already has, never touching any
+of those five systems' own schemas or generation functions.
+
+**8 real Articles, permanent from game start**
+(`default_constitution()`): Protect Capital First, Research Before
+Execution, Challenge Assumptions, Evidence Over Opinions, No Revenge
+Trading, Every Mistake Must Teach Something, Respect Risk, Continuous
+Learning Is Mandatory — the brief's own text, seeded verbatim as
+Articles I-VIII.
+
+**Live Enforcement — six real citation hooks, one shared mapping table.**
+`MISTAKE_ARTICLE_MAP` gives each of the 6 real `CaseStudyCategory`
+mistake types (and their 3 positive inversions from
+`SUCCESS_CASE_STUDY_CATEGORIES`) a specific, defensible Article:
+`overconfidence`→VII, `incomplete_research`→II,
+`unchallenged_assumptions`→III (and its inversion
+`rigorous_cross_examination`→III), `acted_too_quickly`→V (and its
+inversion `patient_execution`→V), `ignored_dissent`→IV,
+`confirmation_bias`→IV. Every filed case study or success study cites
+both Article VI (the mechanic itself is literally "every mistake must
+teach something") and its own specific mapped Article. The other five
+hooks, each firing at a real, already-existing event in
+`app/nexus.py`'s `tick()`:
+
+| Real event | Citation |
+|---|---|
+| A `ChallengeReport` is filed | Article III always (challenging is the Devil's Advocate's whole job); Article IV when `missingEvidence` is real and non-empty |
+| A genuinely *new* critical `RiskWarning` appears (not already on the previous tick's watch) | Articles I and VII |
+| An Academy project completes | Article VIII (a direct, literal instance of continuous learning) |
+| The monthly Founder Council session runs | Keystone (risk domain) reaffirms Article VII; Compass (learning domain) reaffirms Article VIII |
+| A weekly/monthly `CoachReport` carries real `commonMistakes` | whichever Article the most recent real `CaseStudy`'s own category maps to |
+
+`MAX_CONSTITUTION_CITATIONS` (120) caps the log the same way every
+other capped list in this codebase does.
+
+**A real amendment pipeline, not a fabricated debate transcript**
+(`app/constitution.py`). Three CEO actions, each a real, checkable
+computation over the amendment's own real proposed text — never
+randomly generated opinions:
+
+1. `POST /api/constitution/propose` — creates a real
+   `ConstitutionAmendment` in `status: "proposed"`.
+2. `POST /api/constitution/advance` — runs Founder debate, Coach
+   evaluation, and the employee vote in one step (unlike the Research
+   Sandbox's stages, nothing here needs real elapsed time to gather more
+   evidence; every part is an immediate computation over already-known
+   text):
+   - **Founder debate** (`_founder_verdict`): Keystone and Compass each
+     check the proposal's significant words against their own real
+     domain keyword set (risk vs. learning), and both run a real
+     word-overlap redundancy check against every existing Article's own
+     text. The redundancy check requires `MIN_SHARED_WORDS_FOR_REDUNDANCY`
+     (2) shared words, not just a ratio — the seeded Articles are each
+     one short sentence (as few as 2 significant words), so a bare
+     single-word match would flag nearly any risk-themed proposal as
+     "redundant" against Article VII ("Respect risk") purely because it
+     also uses the word "risk."
+   - **Coach evaluation** (`generate_coach_evaluation`): a real templated
+     read of whichever real `CompanyHealth` sub-score the proposal's own
+     keywords match (risk → `operational_stability`/`capital_health`,
+     learning → `research_progress`/`education_progress`), falling back
+     to overall `CompanyHealth.tier` when neither theme matches — never a
+     fabricated simulation of "how this rule would have changed history."
+   - **Employee vote** (`generate_employee_votes`): all 11 non-Founder
+     agents cast a real vote — "support" with a real named reason when
+     their own real `AgentProfile.occupation` keyword-matches the
+     amendment's theme, "abstain" only when a Founder's own real
+     redundancy flag was raised (a genuine conditional link to that real
+     verdict), "support" by default otherwise. Advisory only — no vote
+     count ever gates anything.
+3. `POST /api/constitution/decide` — the CEO's own real, final,
+   *manual* call. Deliberately **not** wired to Automation Mode, unlike
+   the Research Sandbox's Company Review stage: amending the company's
+   permanent law is exactly the kind of decision the brief frames as
+   inherently the CEO's, never appropriate to auto-resolve. Approval
+   calls `ratify_amendment()`, which appends a real new
+   `ConstitutionArticle` (next Roman numeral — "IX," "X," ...) to the
+   permanent list; rejection leaves the Articles untouched.
+
+**New `CONSTITUTION` Command Center tab** (`ConstitutionPanel.tsx`,
+inserted after `SANDBOX`): the Articles grid (with an "Amendment" badge
+on any Article ratified after game start), a filterable Live
+Enforcement citation feed, an amendment proposal form, and per-amendment
+Founder verdicts/Coach evaluation/employee vote tally with
+Ratify/Reject actions once a decision is pending.
+
+**Save/load.** `constitution` (`ConstitutionState` — articles, citations,
+amendments) joins `founder_state` in the `"founders"` core save module
+— returned in full by `GET /api/load`, reflecting that Founders are the
+system most directly tied to teaching the Constitution.
+`default_state()` seeds the real 8-Article `default_constitution()`, so
+an older save missing the field migrates cleanly through
+`load_modules()`'s existing deep-merge-onto-`default_state()` recovery
+path — confirmed live: restarting the backend against a pre-Feature-46
+dev save produced a clean migration and the full 8-Article Constitution
+on the very next `GET /api/load`.
+
+**Verification.** Backend: `test_constitution.py` (18 new tests — the
+redundancy-overlap edge case that motivated
+`MIN_SHARED_WORDS_FOR_REDUNDANCY`, domain-keyword matching in both
+directions for both Founders, the Coach evaluation's three real
+branches, employee-vote exclusion of the two Founders, and the full
+propose→debate→ratify pipeline including the next-Roman-numeral
+assignment) + the full suite (570/570) + mypy/ruff clean. Frontend:
+`tsc -b`/eslint/build clean; a new `constitution.spec.ts` (2 Playwright
+tests against the live stack — confirming the real 8 Articles are
+present in `GET /api/load`, and that proposing an amendment through the
+CONSTITUTION tab runs the real pipeline end to end, surfacing real
+Founder/Coach/employee output and a Ratify button) both passed;
+`commandCenter.spec.ts`'s tab-count test updated to 27 tabs.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

@@ -15,6 +15,7 @@ import type {
   CompanyDNA,
   CompanyHealth,
   CompanyScore,
+  ConstitutionState,
   Debate,
   DisciplineReview,
   ExecutiveReview,
@@ -104,6 +105,7 @@ type ServerMessage =
       disciplineReviews: DisciplineReview[];
       caseStudies: CaseStudy[];
       talent: TalentState;
+      constitution: ConstitutionState;
       reasoningChallenges: ReasoningChallenge[];
       reasoningLabState: ReasoningLabState;
       reflectionSessions: ReflectionSession[];
@@ -216,6 +218,7 @@ export class GameSocket {
             disciplineReviews: msg.disciplineReviews,
             caseStudies: msg.caseStudies,
             talent: msg.talent,
+            constitution: msg.constitution,
             reasoningChallenges: msg.reasoningChallenges,
             reasoningLabState: msg.reasoningLabState,
             reflectionSessions: msg.reflectionSessions,

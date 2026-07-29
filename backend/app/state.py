@@ -26,6 +26,7 @@ from app.agent_energy import default_agent_energy
 from app.company_dna import compute_company_dna
 from app.company_health import compute_company_health
 from app.company_score import compute_company_score
+from app.constitution import decide_amendment, default_constitution, generate_coach_evaluation, generate_employee_votes, generate_founder_debate, propose_amendment, ratify_amendment
 from app.debate import generate_debate
 from app.devils_advocate import MAX_CHALLENGE_REPORTS, generate_challenge_report
 from app.executive import MAX_CEO_DECISIONS, MAX_PROPOSAL_HOLDS, AnalystChoice, hold_proposal, resolve_proposal
@@ -184,6 +185,7 @@ def default_state() -> GameSaveState:
         calendar=default_calendar(_now_iso()),
         blackBox=default_black_box_state(),
         talent=TalentState(reports=[], viewedReportIds=[], updatedAt=_now_iso()),
+        constitution=default_constitution(),
         updatedAt=_now_iso(),
     )
 
@@ -504,6 +506,60 @@ class GameState:
             strategies = [updated_strategy if s.id == strategy.id else s for s in self.data.strategies]
             reviews = [r.model_copy(update={"ceo_decision": "approved" if approve else "rejected", "resolved_by": "ceo"}) if r.id == review_id else r for r in self.data.strategy_reviews]
             self.data = self.data.model_copy(update={"strategies": strategies, "strategy_reviews": reviews})
+            return self.data, None
+
+    async def propose_constitution_amendment(self, title: str, text: str) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            title = title.strip()
+            text = text.strip()
+            if not title or not text:
+                return self.data, "An Amendment needs both a real title and real text."
+            if any(a.proposed_title.strip().lower() == title.lower() for a in self.data.constitution.amendments if a.ceo_decision == "pending"):
+                return self.data, "An amendment with that title is already pending."
+            amendment = propose_amendment(title, text, self.data.time.day)
+            constitution = self.data.constitution.model_copy(update={"amendments": [*self.data.constitution.amendments, amendment], "updated_at": _now_iso()})
+            self.data = self.data.model_copy(update={"constitution": constitution})
+            return self.data, None
+
+    async def advance_constitution_amendment(self, amendment_id: str) -> tuple[GameSaveState, str | None]:
+        """Runs the Founder debate, Coach evaluation, and employee vote in
+        one real step — unlike the Research Sandbox's stages, nothing
+        here needs real elapsed time to gather more evidence; every part
+        is a real, immediate computation over the amendment's own
+        already-proposed text (see app/constitution.py's module
+        docstring)."""
+        async with self.lock:
+            amendment = next((a for a in self.data.constitution.amendments if a.id == amendment_id), None)
+            if amendment is None:
+                return self.data, "No amendment found with that id."
+            if amendment.status != "proposed":
+                return self.data, "That amendment has already been debated."
+            founder_verdicts = generate_founder_debate(amendment, self.data.constitution.articles)
+            coach_evaluation = generate_coach_evaluation(amendment, self.data.company_health)
+            employee_votes = generate_employee_votes(amendment, founder_verdicts, all_agent_ids())
+            updated = amendment.model_copy(update={"status": "voted", "founder_verdicts": founder_verdicts, "coach_evaluation": coach_evaluation, "employee_votes": employee_votes})
+            amendments = [updated if a.id == amendment_id else a for a in self.data.constitution.amendments]
+            constitution = self.data.constitution.model_copy(update={"amendments": amendments, "updated_at": _now_iso()})
+            self.data = self.data.model_copy(update={"constitution": constitution})
+            return self.data, None
+
+    async def decide_constitution_amendment(self, amendment_id: str, approve: bool) -> tuple[GameSaveState, str | None]:
+        """The CEO's own real, manual, final call — deliberately never
+        auto-resolved by Automation Mode (see app/constitution.py's
+        module docstring)."""
+        async with self.lock:
+            amendment = next((a for a in self.data.constitution.amendments if a.id == amendment_id), None)
+            if amendment is None:
+                return self.data, "No amendment found with that id."
+            if amendment.status != "voted":
+                return self.data, "That amendment hasn't been debated and voted on yet."
+            decided = decide_amendment(amendment, approve, self.data.time.day)
+            articles = self.data.constitution.articles
+            if approve:
+                articles, decided = ratify_amendment(articles, decided, self.data.time.day)
+            amendments = [decided if a.id == amendment_id else a for a in self.data.constitution.amendments]
+            constitution = self.data.constitution.model_copy(update={"articles": articles, "amendments": amendments, "updated_at": _now_iso()})
+            self.data = self.data.model_copy(update={"constitution": constitution})
             return self.data, None
 
     async def create_calendar_event(self, category: PlayerEventCategory, title: str, day: int, hour: int, minute: int) -> tuple[GameSaveState, str | None]:

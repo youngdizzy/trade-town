@@ -28,6 +28,7 @@ import type {
   SignalChallenge,
   SignalChoice,
   BacktestSession,
+  ConstitutionState,
   Strategy,
   StrategyReview,
   TestScenario,
@@ -239,5 +240,20 @@ export const api = {
     request<{ strategies: Strategy[]; strategyReviews: StrategyReview[] }>("/sandbox/decide", {
       method: "POST",
       body: JSON.stringify({ reviewId, approve }),
+    }),
+  proposeConstitutionAmendment: (title: string, text: string) =>
+    request<{ constitution: ConstitutionState }>("/constitution/propose", {
+      method: "POST",
+      body: JSON.stringify({ title, text }),
+    }),
+  advanceConstitutionAmendment: (amendmentId: string) =>
+    request<{ constitution: ConstitutionState }>("/constitution/advance", {
+      method: "POST",
+      body: JSON.stringify({ amendmentId }),
+    }),
+  decideConstitutionAmendment: (amendmentId: string, approve: boolean) =>
+    request<{ constitution: ConstitutionState }>("/constitution/decide", {
+      method: "POST",
+      body: JSON.stringify({ amendmentId, approve }),
     }),
 };

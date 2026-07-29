@@ -82,7 +82,7 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
     ),
     "research": ("research", "watchlist", "black_box"),
     "training": ("signal_calibration", "player_vs_ai", "education"),
-    "founders": ("founder_state",),
+    "founders": ("founder_state", "constitution"),
     "derived": (
         "company_score",
         "company_health",
