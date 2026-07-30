@@ -807,6 +807,11 @@ export interface TradeProposal {
    * (Request More Research / Delay Decision) instead of deciding. Capped
    * at MAX_PROPOSAL_HOLDS (2) on the backend. */
   holdCount: number;
+  /** v0.7 Feature 51 — a real one-line citation of the Market
+   * Intelligence Department's regime/quality read at the moment this
+   * proposal was generated. null only for proposals that predate this
+   * feature. */
+  marketIntelligenceSummary: string | null;
 }
 
 // v0.7 Feature 17 — AI Debate Room. Every turn's text is a real
@@ -871,6 +876,10 @@ export interface ChallengeReport {
 // new computation engine of its own) — see
 // backend/app/executive_intelligence.py's module docstring. Computed
 // fresh on request, like WhatIfSimulation, never persisted.
+// v0.7 Feature 51 adds "market_intelligence" as a real ninth department —
+// see backend/app/executive_intelligence.py's module docstring for how it
+// plugs into the same generic opinion/self-evaluation/meeting-log
+// machinery the original eight already use.
 export type ExecutiveDepartmentRole =
   | "research"
   | "quant"
@@ -879,7 +888,8 @@ export type ExecutiveDepartmentRole =
   | "decision_intelligence"
   | "coach"
   | "founders"
-  | "devils_advocate";
+  | "devils_advocate"
+  | "market_intelligence";
 
 export type ExecutiveStance =
   | "agree"
@@ -920,6 +930,7 @@ export const EXECUTIVE_DEPARTMENT_LABEL: Record<ExecutiveDepartmentRole, string>
   coach: "Coach",
   founders: "Founders",
   devils_advocate: "Devil's Advocate",
+  market_intelligence: "Market Intelligence",
 };
 
 export const EXECUTIVE_ACTION_LABEL: Record<ExecutiveAction, string> = {
@@ -972,6 +983,199 @@ export interface DepartmentSelfEvaluation {
   summary: string;
   strengths: string[];
   improvementAreas: string[];
+  createdAt: string;
+}
+
+// v0.7 Feature 51 — Market Intelligence Department, "the company's
+// eyes." Every field traces back to real (mock) OHLCV candle data or
+// real wall-clock time — see backend/app/market_intelligence.py's
+// module docstring for the full honesty boundary: real technical
+// analysis over real synthesized price data, named PROXIES
+// (institutionalActivity, newsRisk, the accumulation/distribution
+// regimes) where this codebase has no real order-flow/economic-calendar
+// source, nothing fabricated. Named distinctly from the existing
+// MarketRegime (per-symbol trending_up/trending_down/ranging) and
+// MarketEnvironmentRegime (the simpler whole-market five-way
+// classification, Feature 22) — this is a richer thirteen-way real
+// classification, not a replacement for either.
+export type MarketIntelligenceRegime =
+  | "strong_bull_trend"
+  | "strong_bear_trend"
+  | "weak_uptrend"
+  | "weak_downtrend"
+  | "sideways_range"
+  | "expansion"
+  | "compression"
+  | "high_volatility"
+  | "low_volatility"
+  | "accumulation"
+  | "distribution"
+  | "liquidity_hunt"
+  | "transitional";
+
+export type MarketQualityTier = "excellent" | "good" | "average" | "poor" | "avoid_trading";
+
+// Fixed UTC windows — a documented simplification (no DST handling) —
+// computed from real wall-clock time, not TradeTown's simulated clock.
+export type TradingSession = "asian" | "london" | "london_ny_overlap" | "ny_lunch_hour" | "new_york" | "market_open" | "market_close" | "closed";
+
+export type MarketDebateSpecialist = "liquidity" | "price_action" | "momentum" | "quant" | "risk";
+
+/** One real equal-high/equal-low price cluster found in a symbol's own
+ * recent candle history — a probable liquidity zone, never a claim
+ * about real resting stop orders (this codebase has no order-book data). */
+export interface LiquidityZone {
+  kind: "equal_highs" | "equal_lows";
+  price: number;
+  touches: number;
+}
+
+export interface LiquidityRead {
+  symbol: string;
+  zones: LiquidityZone[];
+  sweepDetected: boolean;
+  sweepDirection: "above_highs" | "below_lows" | "none";
+  liquidityScore: number;
+  detail: string;
+}
+
+export interface MarketStructureRead {
+  symbol: string;
+  swingHighs: number[];
+  swingLows: number[];
+  lastBreakOfStructure: "bullish" | "bearish" | "none";
+  structureState: "trend_continuation" | "trend_reversal" | "consolidation" | "expansion" | "compression";
+  detail: string;
+}
+
+export interface VolatilityRead {
+  currentPct: number;
+  historicalAvgPct: number;
+  sessionPct: number;
+  percentile: number;
+  expectedPct: number;
+  detail: string;
+}
+
+export interface SessionRead {
+  current: TradingSession;
+  label: string;
+  overlapsActive: string[];
+  detail: string;
+}
+
+export interface MomentumRead {
+  rocPct: number;
+  strength: "accelerating" | "steady" | "decelerating" | "exhausted";
+  detail: string;
+}
+
+/** An explicit, named PROXY — never real order-flow data. See
+ * backend/app/market_intelligence.py's module docstring. */
+export interface InstitutionalActivityRead {
+  volumePriceDivergenceScore: number;
+  absorptionDetected: boolean;
+  symbolsFlagged: string[];
+  detail: string;
+}
+
+/** A real, honest proxy: the count of real market-category NewsItems on
+ * file, not a real economic calendar (this codebase has no per-symbol
+ * news linkage or event-timing data source). */
+export interface NewsRiskRead {
+  activeMarketNewsCount: number;
+  riskLevel: "low" | "moderate" | "elevated";
+  detail: string;
+}
+
+export interface MarketQualityScore {
+  tier: MarketQualityTier;
+  score: number;
+  confidencePct: number;
+  reasoning: string;
+  evidence: string[];
+  historicalSimilarity: string;
+}
+
+/** The department's always-current "eyes" — recomputed fresh every
+ * tick. This is what every new TradeProposal and the Trade Gatekeeper
+ * actually read — never the once-daily MarketIntelligenceReport below,
+ * which can be up to a day stale by the time a proposal fires. */
+export interface MarketIntelligenceState {
+  regime: MarketIntelligenceRegime;
+  regimeLabel: string;
+  regimeDetail: string;
+  quality: MarketQualityScore;
+  volatility: VolatilityRead;
+  session: SessionRead;
+  momentum: MomentumRead;
+  institutionalActivity: InstitutionalActivityRead;
+  newsRisk: NewsRiskRead;
+  liquidity: LiquidityRead[];
+  structure: MarketStructureRead[];
+  updatedAt: string;
+}
+
+/** One specialist's independent real read of the current
+ * MarketIntelligenceState — distinct from the proposal-scoped AiDebate
+ * (Feature 17) and the Executive Intelligence Network's own portfolio-
+ * level Risk department. See backend/app/market_debate.py. */
+export interface MarketDebateTurn {
+  specialist: MarketDebateSpecialist;
+  label: string;
+  observation: string;
+  confidencePct: number;
+  evidence: string[];
+  risks: string[];
+  opportunities: string[];
+}
+
+export interface MarketDebate {
+  id: string;
+  turns: MarketDebateTurn[];
+  summary: string;
+  createdAt: string;
+}
+
+/** Real, evidence-backed: only ever names a Strategy with a real
+ * StrategyReport on file whose own bestMarketEnvironment is consistent
+ * with today's regime. */
+export interface StrategyMatch {
+  recommendedStrategyIds: string[];
+  avoidedStrategyIds: string[];
+  recommendedRiskLevel: "minimal" | "reduced" | "normal" | "elevated";
+  detail: string;
+}
+
+/** The Executive Market Brief — one real, permanent snapshot per real
+ * in-game evening, embedding that day's own real MarketIntelligenceState
+ * plus a fresh MarketDebate and StrategyMatch. */
+export interface MarketIntelligenceReport {
+  id: string;
+  simDay: number;
+  snapshot: MarketIntelligenceState;
+  debate: MarketDebate;
+  strategyMatch: StrategyMatch;
+  tradeRecommendation: ExecutiveAction;
+  confidencePct: number;
+  evidence: string[];
+  createdAt: string;
+}
+
+/** The Learning Loop — generated the day AFTER forSimDay, comparing the
+ * prior day's real report against what actually happened. Either
+ * comparison field is honestly null when nothing real exists yet to
+ * compare against — never a fabricated accuracy percentage. */
+export interface MarketIntelligenceLearningEntry {
+  id: string;
+  forSimDay: number;
+  predictedRegime: MarketIntelligenceRegime;
+  predictedQualityTier: MarketQualityTier;
+  actualEnvironmentRegime: MarketEnvironmentRegime | null;
+  regimeConsistent: boolean | null;
+  tradesClosedThatDay: number;
+  tradesWinRatePct: number | null;
+  lesson: string;
   createdAt: string;
 }
 
@@ -1986,6 +2190,12 @@ export interface GameSaveState {
   innovationState: Record<AgentId, InnovationState>;
   gatekeeperRejections: GatekeeperRejection[];
   marketEnvironment: MarketEnvironmentState;
+  /** v0.7 Feature 51 — the always-current "eyes," recomputed every tick.
+   * marketIntelligenceReports/marketIntelligenceLearning are the
+   * permanent, capped daily histories. */
+  marketIntelligence: MarketIntelligenceState;
+  marketIntelligenceReports: MarketIntelligenceReport[];
+  marketIntelligenceLearning: MarketIntelligenceLearningEntry[];
   companyHealth: CompanyHealth;
   companyDna: CompanyDNA;
   dailyObjectiveStatus: DailyObjectiveStatus;

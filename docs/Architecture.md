@@ -4027,14 +4027,32 @@ active tracks (students × active-track count), not just one — its own
 formula already supported this correctly; only the test fixtures
 assuming a single active track needed updating.
 
-**Explicitly deferred, not silently cut:** the frontend (Executive
-Market Brief dashboard, per-symbol structure/liquidity display, Market
-Debate UI, the new Academy track's own lesson UI) — per this project's
-own backend-first discipline (commit and verify the backend, then build
-the frontend).
+**Frontend — a new "MARKETINTEL" Command Center tab**
+(`MarketIntelPanel.tsx`), mirroring EXECINTEL's precedent rather than
+being crammed into RISK/COMPANY given the data volume. Data-layer wiring
+follows the exact same pattern `marketEnvironment`/`companyHealth`
+already established: `NexusManager.ts` gained the three new fields (an
+object-reference diff for the always-current `marketIntelligence` state,
+a `.length` diff for the two growing history arrays), `EventBus.ts`
+gained the three matching event names, `gameStore.ts` gained matching
+defaults (identical to `default_market_intelligence_state()`'s own
+honest empty-state values) and listeners, and `socket.ts` threads the
+three fields through untouched from the WS "state" payload — no new
+data-fetching logic anywhere. The panel itself shows: the live regime/
+quality read (score, confidence, evidence, historical similarity);
+Session/Volatility/Momentum/Institutional Activity/News Risk cards (the
+latter two visibly marked as named proxies); a per-symbol Liquidity &
+Structure grid; the latest Executive Market Brief (all 5 debate
+specialists, Strategy Match) or its honest empty state before the first
+in-game evening; and the Learning Loop history or its own honest empty
+state before the first graded day. The Academy track's own lesson UI
+needed zero new frontend code: `MentorLibraryPanel.tsx`/
+`MentorLabPanel.tsx` already iterate `foundationalMentorState.mentors`
+generically, so the new `market_intelligence` roadmap track appeared
+there automatically once the backend shipped it.
 
-**Verified**: two new test files — `test_market_intelligence.py` (41
-tests: structure/liquidity/session/news-risk/regime-classification/
+**Verified**: two new backend test files — `test_market_intelligence.py`
+(41 tests: structure/liquidity/session/news-risk/regime-classification/
 quality-score/strategy-matching/learning-loop/end-to-end state
 computation) and `test_market_debate.py` (10 tests: all 5 specialists
 present, each reads its own real field, the Risk specialist never reads
@@ -4049,7 +4067,19 @@ no exceptions; a `save_modules` split/assemble round-trip confirmed the
 new fields persist correctly (`market_intelligence` joins `derived`
 alongside `market_environment`; `market_intelligence_reports`/
 `market_intelligence_learning` join `knowledge_archive` alongside
-`department_self_evaluations`).
+`department_self_evaluations`). Frontend: `npx tsc -b --noEmit`/
+`npm run lint`/`npm run build` all clean; the new panel was verified
+against the live Vite + FastAPI stack via scripted browser screenshots
+(both the honest pre-first-evening empty state and, after fast-forwarding
+real in-game time via `POST /api/time/advance`, the fully populated
+Executive Market Brief and a graded Learning Loop entry) with zero
+console/React errors. The repo's standard `commandCenter.spec.ts`/new
+`marketIntel.spec.ts` Playwright specs were updated for the 31st tab, but
+this sandbox's Playwright run currently fails to reach the title screen's
+"Continue" button at its configured 1400×900 viewport for every Command
+Center spec — reproduced identically on unmodified, pre-existing spec
+files unrelated to this feature — a pre-existing environment flake, not
+a regression from this change.
 
 ## Save format compatibility
 

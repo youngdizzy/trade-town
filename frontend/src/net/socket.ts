@@ -28,6 +28,9 @@ import type {
   HallOfFameEntry,
   InnovationState,
   MarketEnvironmentState,
+  MarketIntelligenceLearningEntry,
+  MarketIntelligenceReport,
+  MarketIntelligenceState,
   MeetingMinutes,
   MeetingState,
   MemoryRecord,
@@ -99,6 +102,9 @@ type ServerMessage =
       innovationState: Record<AgentId, InnovationState>;
       gatekeeperRejections: GatekeeperRejection[];
       marketEnvironment: MarketEnvironmentState;
+      marketIntelligence: MarketIntelligenceState;
+      marketIntelligenceReports: MarketIntelligenceReport[];
+      marketIntelligenceLearning: MarketIntelligenceLearningEntry[];
       companyHealth: CompanyHealth;
       companyDna: CompanyDNA;
       dailyObjectiveStatus: DailyObjectiveStatus;
@@ -216,6 +222,9 @@ export class GameSocket {
             innovationState: msg.innovationState,
             gatekeeperRejections: msg.gatekeeperRejections,
             marketEnvironment: msg.marketEnvironment,
+            marketIntelligence: msg.marketIntelligence,
+            marketIntelligenceReports: msg.marketIntelligenceReports,
+            marketIntelligenceLearning: msg.marketIntelligenceLearning,
             companyHealth: msg.companyHealth,
             companyDna: msg.companyDna,
             dailyObjectiveStatus: msg.dailyObjectiveStatus,

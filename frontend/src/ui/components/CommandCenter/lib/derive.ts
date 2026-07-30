@@ -28,6 +28,10 @@ import type {
   FoundationalMentorState,
   GatekeeperRejection,
   InnovationState,
+  MarketIntelligenceLearningEntry,
+  MarketIntelligenceReport,
+  MarketQualityTier,
+  MomentumRead,
   PaperOrder,
   PaperPortfolio,
   PaperTrade,
@@ -1305,4 +1309,55 @@ export function computeMentorComparison(foundationalMentorState: FoundationalMen
       avgCompletionPct,
     };
   });
+}
+
+// v0.7 Feature 51 — Market Intelligence Department. Tone helpers follow
+// the same "worse tier = warmer color" convention as decisionGradeTone/
+// confidenceTierTone above; none of these invent a number, they only map
+// real enum fields already on MarketIntelligenceState to a display tone.
+const MARKET_QUALITY_TONE: Record<MarketQualityTier, "green" | "cyan" | "amber" | "red"> = {
+  excellent: "green",
+  good: "cyan",
+  average: "amber",
+  poor: "amber",
+  avoid_trading: "red",
+};
+
+export function marketQualityTone(tier: MarketQualityTier): "green" | "cyan" | "amber" | "red" {
+  return MARKET_QUALITY_TONE[tier];
+}
+
+const NEWS_RISK_TONE: Record<"low" | "moderate" | "elevated", "green" | "amber" | "red"> = {
+  low: "green",
+  moderate: "amber",
+  elevated: "red",
+};
+
+export function newsRiskTone(level: "low" | "moderate" | "elevated"): "green" | "amber" | "red" {
+  return NEWS_RISK_TONE[level];
+}
+
+const MOMENTUM_TONE: Record<MomentumRead["strength"], "green" | "cyan" | "amber" | "red"> = {
+  accelerating: "green",
+  steady: "cyan",
+  decelerating: "amber",
+  exhausted: "red",
+};
+
+export function momentumTone(strength: MomentumRead["strength"]): "green" | "cyan" | "amber" | "red" {
+  return MOMENTUM_TONE[strength];
+}
+
+/** The most recent Executive Market Brief — one real permanent snapshot
+ * per real in-game evening (see backend/app/market_intelligence.py's
+ * generate_market_intelligence_report). Null before the first evening. */
+export function latestMarketIntelligenceReport(reports: MarketIntelligenceReport[]): MarketIntelligenceReport | null {
+  return reports.at(-1) ?? null;
+}
+
+/** Newest-first, capped — the Learning Loop history can grow to the
+ * backend's MAX_MARKET_INTELLIGENCE_LEARNING cap; the panel only shows a
+ * recent window, same pattern as recentMeetingLogEntries above. */
+export function recentMarketIntelligenceLearning(learning: MarketIntelligenceLearningEntry[], limit = 10): MarketIntelligenceLearningEntry[] {
+  return [...learning].reverse().slice(0, limit);
 }

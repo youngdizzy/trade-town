@@ -28,6 +28,9 @@ import type {
   HallOfFameEntry,
   InnovationState,
   MarketEnvironmentState,
+  MarketIntelligenceLearningEntry,
+  MarketIntelligenceReport,
+  MarketIntelligenceState,
   MeetingMinutes,
   MeetingState,
   MemoryRecord,
@@ -110,6 +113,9 @@ export interface GameUiState {
   innovationState: Record<AgentId, InnovationState>;
   gatekeeperRejections: GatekeeperRejection[];
   marketEnvironment: MarketEnvironmentState;
+  marketIntelligence: MarketIntelligenceState;
+  marketIntelligenceReports: MarketIntelligenceReport[];
+  marketIntelligenceLearning: MarketIntelligenceLearningEntry[];
   companyHealth: CompanyHealth;
   companyDna: CompanyDNA;
   dailyObjectiveStatus: DailyObjectiveStatus;
@@ -245,6 +251,29 @@ class GameStore {
       updatedAt: new Date().toISOString(),
       timeline: [],
     },
+    marketIntelligence: {
+      regime: "sideways_range",
+      regimeLabel: "Sideways Range",
+      regimeDetail: "No data yet.",
+      quality: {
+        tier: "average",
+        score: 50,
+        confidencePct: 40,
+        reasoning: "No real candle data sampled yet.",
+        evidence: [],
+        historicalSimilarity: "No real prior daily reports yet.",
+      },
+      volatility: { currentPct: 0, historicalAvgPct: 0, sessionPct: 0, percentile: 50, expectedPct: 0, detail: "No data yet." },
+      session: { current: "closed", label: "Between Sessions", overlapsActive: [], detail: "No data yet." },
+      momentum: { rocPct: 0, strength: "steady", detail: "No data yet." },
+      institutionalActivity: { volumePriceDivergenceScore: 0, absorptionDetected: false, symbolsFlagged: [], detail: "No data yet." },
+      newsRisk: { activeMarketNewsCount: 0, riskLevel: "low", detail: "No data yet." },
+      liquidity: [],
+      structure: [],
+      updatedAt: new Date().toISOString(),
+    },
+    marketIntelligenceReports: [],
+    marketIntelligenceLearning: [],
     companyHealth: {
       overall: 50,
       tier: "stable",
@@ -440,6 +469,9 @@ class GameStore {
     EventBus.on("innovationState:updated", (innovationState) => this.set({ innovationState }));
     EventBus.on("gatekeeperRejections:updated", (gatekeeperRejections) => this.set({ gatekeeperRejections }));
     EventBus.on("marketEnvironment:updated", (marketEnvironment) => this.set({ marketEnvironment }));
+    EventBus.on("marketIntelligence:updated", (marketIntelligence) => this.set({ marketIntelligence }));
+    EventBus.on("marketIntelligenceReports:updated", (marketIntelligenceReports) => this.set({ marketIntelligenceReports }));
+    EventBus.on("marketIntelligenceLearning:updated", (marketIntelligenceLearning) => this.set({ marketIntelligenceLearning }));
     EventBus.on("companyHealth:updated", (companyHealth) => this.set({ companyHealth }));
     EventBus.on("companyDna:updated", (companyDna) => this.set({ companyDna }));
     EventBus.on("dailyObjectiveStatus:updated", (dailyObjectiveStatus) => this.set({ dailyObjectiveStatus }));

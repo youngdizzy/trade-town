@@ -23,6 +23,7 @@ import { PlayerVsAiPanel } from "./panels/PlayerVsAiPanel";
 import { EducationPanel } from "./panels/EducationPanel";
 import { CompanyPanel } from "./panels/CompanyPanel";
 import { ExecutiveIntelPanel } from "./panels/ExecutiveIntelPanel";
+import { MarketIntelPanel } from "./panels/MarketIntelPanel";
 import { AcademyPanel } from "./panels/AcademyPanel";
 import { DisciplinePanel } from "./panels/DisciplinePanel";
 import { ReasoningLabPanel } from "./panels/ReasoningLabPanel";
@@ -72,6 +73,7 @@ const TABS = [
   "RESEARCH",
   "COMPANY",
   "EXECINTEL",
+  "MARKETINTEL",
   "KNOWLEDGE",
   "DISCIPLINE",
   "REASONING",
@@ -204,6 +206,7 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
         {tab === "RESEARCH" && <ResearchPanel />}
         {tab === "COMPANY" && <CompanyPanel />}
         {tab === "EXECINTEL" && <ExecutiveIntelPanel />}
+        {tab === "MARKETINTEL" && <MarketIntelPanel />}
         {tab === "KNOWLEDGE" && <AcademyPanel />}
         {tab === "DISCIPLINE" && <DisciplinePanel />}
         {tab === "REASONING" && <ReasoningLabPanel />}

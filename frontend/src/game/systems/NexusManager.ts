@@ -26,6 +26,9 @@ import type {
   HallOfFameEntry,
   InnovationState,
   MarketEnvironmentState,
+  MarketIntelligenceLearningEntry,
+  MarketIntelligenceReport,
+  MarketIntelligenceState,
   MeetingMinutes,
   MeetingState,
   MemoryRecord,
@@ -90,6 +93,9 @@ interface NexusSnapshot {
   innovationState: Record<AgentId, InnovationState>;
   gatekeeperRejections: GatekeeperRejection[];
   marketEnvironment: MarketEnvironmentState;
+  marketIntelligence: MarketIntelligenceState;
+  marketIntelligenceReports: MarketIntelligenceReport[];
+  marketIntelligenceLearning: MarketIntelligenceLearningEntry[];
   companyHealth: CompanyHealth;
   companyDna: CompanyDNA;
   dailyObjectiveStatus: DailyObjectiveStatus;
@@ -197,6 +203,22 @@ export class NexusManager {
     updatedAt: new Date().toISOString(),
     timeline: [],
   };
+  private static marketIntelligence: MarketIntelligenceState = {
+    regime: "sideways_range",
+    regimeLabel: "Sideways Range",
+    regimeDetail: "No data yet.",
+    quality: { tier: "average", score: 50, confidencePct: 40, reasoning: "No real candle data sampled yet.", evidence: [], historicalSimilarity: "No real prior daily reports yet." },
+    volatility: { currentPct: 0, historicalAvgPct: 0, sessionPct: 0, percentile: 50, expectedPct: 0, detail: "No data yet." },
+    session: { current: "closed", label: "Between Sessions", overlapsActive: [], detail: "No data yet." },
+    momentum: { rocPct: 0, strength: "steady", detail: "No data yet." },
+    institutionalActivity: { volumePriceDivergenceScore: 0, absorptionDetected: false, symbolsFlagged: [], detail: "No data yet." },
+    newsRisk: { activeMarketNewsCount: 0, riskLevel: "low", detail: "No data yet." },
+    liquidity: [],
+    structure: [],
+    updatedAt: new Date().toISOString(),
+  };
+  private static marketIntelligenceReports: MarketIntelligenceReport[] = [];
+  private static marketIntelligenceLearning: MarketIntelligenceLearningEntry[] = [];
   private static companyHealth: CompanyHealth = {
     overall: 50,
     tier: "stable",
@@ -385,6 +407,18 @@ export class NexusManager {
 
   static getMarketEnvironment(): MarketEnvironmentState {
     return this.marketEnvironment;
+  }
+
+  static getMarketIntelligence(): MarketIntelligenceState {
+    return this.marketIntelligence;
+  }
+
+  static getMarketIntelligenceReports(): MarketIntelligenceReport[] {
+    return this.marketIntelligenceReports;
+  }
+
+  static getMarketIntelligenceLearning(): MarketIntelligenceLearningEntry[] {
+    return this.marketIntelligenceLearning;
   }
 
   static getCompanyHealth(): CompanyHealth {
@@ -844,6 +878,19 @@ export class NexusManager {
     if (update.marketEnvironment !== this.marketEnvironment) EventBus.emit("marketEnvironment:updated", update.marketEnvironment);
     this.marketEnvironment = update.marketEnvironment;
 
+    if (update.marketIntelligence !== this.marketIntelligence) EventBus.emit("marketIntelligence:updated", update.marketIntelligence);
+    this.marketIntelligence = update.marketIntelligence;
+
+    if (update.marketIntelligenceReports.length !== this.marketIntelligenceReports.length) {
+      EventBus.emit("marketIntelligenceReports:updated", update.marketIntelligenceReports);
+    }
+    this.marketIntelligenceReports = update.marketIntelligenceReports;
+
+    if (update.marketIntelligenceLearning.length !== this.marketIntelligenceLearning.length) {
+      EventBus.emit("marketIntelligenceLearning:updated", update.marketIntelligenceLearning);
+    }
+    this.marketIntelligenceLearning = update.marketIntelligenceLearning;
+
     if (update.companyHealth !== this.companyHealth) EventBus.emit("companyHealth:updated", update.companyHealth);
     this.companyHealth = update.companyHealth;
 
@@ -994,6 +1041,9 @@ export class NexusManager {
     this.innovationState = save.innovationState;
     this.gatekeeperRejections = save.gatekeeperRejections;
     this.marketEnvironment = save.marketEnvironment;
+    this.marketIntelligence = save.marketIntelligence;
+    this.marketIntelligenceReports = save.marketIntelligenceReports;
+    this.marketIntelligenceLearning = save.marketIntelligenceLearning;
     this.companyHealth = save.companyHealth;
     this.companyDna = save.companyDna;
     this.dailyObjectiveStatus = save.dailyObjectiveStatus;

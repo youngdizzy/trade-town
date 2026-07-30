@@ -51,18 +51,35 @@ development milestones, not semver releases.
   Probability Thinking, Risk Context), each citing a specific real
   `app/market_intelligence.py` mechanic, reusing the module's existing
   generic employee-auto-progression/aptitude-quiz/CEO-approved-graduation
-  machinery with zero new plumbing. Explicitly deferred, not cut: the
-  frontend (Executive Market Brief dashboard, per-symbol structure/
-  liquidity display, Market Debate UI) — backend-first, per this
-  project's own discipline. Verified: two new test files (51 tests) plus
-  updates to the gatekeeper/executive/executive_intelligence/
-  company_health/foundational_mentors suites (including a real, honest
-  consequence of a second real active mentor track existing by default:
-  `company_health.py`'s Talent Development metric's real denominator now
-  correctly spans both) — 775/775 full suite, mypy/ruff clean; a direct
-  ~10-in-game-day `nexus.tick()` simulation confirmed the daily
-  report/Learning Loop cadence with no exceptions, and a `save_modules`
-  round-trip confirmed the new fields persist correctly.
+  machinery with zero new plumbing. **Frontend**: a new "MARKETINTEL"
+  Command Center tab (`MarketIntelPanel.tsx`), mirroring EXECINTEL's
+  precedent — the live regime/quality read, Session/Volatility/Momentum/
+  Institutional Activity/News Risk cards (proxies visibly labeled), a
+  per-symbol Liquidity & Structure grid, the latest Executive Market
+  Brief (all 5 debate specialists + Strategy Match) or its honest empty
+  state, and the Learning Loop history or its own honest empty state.
+  Data-layer wiring (`NexusManager.ts`/`EventBus.ts`/`gameStore.ts`/
+  `socket.ts`) follows the exact diff-and-emit pattern
+  `marketEnvironment`/`companyHealth` already established. The Academy
+  track's own lesson UI needed zero new code — `MentorLibraryPanel.tsx`
+  already iterates every roadmap track generically. Verified: two new
+  backend test files (51 tests) plus updates to the gatekeeper/executive/
+  executive_intelligence/company_health/foundational_mentors suites
+  (including a real, honest consequence of a second real active mentor
+  track existing by default: `company_health.py`'s Talent Development
+  metric's real denominator now correctly spans both) — 775/775 full
+  suite, mypy/ruff clean; a direct ~10-in-game-day `nexus.tick()`
+  simulation confirmed the daily report/Learning Loop cadence with no
+  exceptions, and a `save_modules` round-trip confirmed the new fields
+  persist correctly. Frontend: `tsc -b --noEmit`/lint/build all clean;
+  the panel was verified against the live stack via scripted browser
+  screenshots (both the pre-first-evening empty state and, after
+  fast-forwarding real in-game time, a fully populated brief and a
+  graded Learning Loop entry) with zero console/React errors — this
+  sandbox's own Playwright runner currently fails to reach the title
+  screen for every Command Center spec (reproduced on unmodified,
+  pre-existing spec files), a pre-existing environment flake unrelated
+  to this change.
 
 - **TradeTown Development Rules (v0.9)** — a new canonical constitution
   document (`docs/DEVELOPMENT_RULES.md`) governing how every future

@@ -31,6 +31,9 @@ import type {
   HallOfFameEntry,
   InnovationState,
   MarketEnvironmentState,
+  MarketIntelligenceLearningEntry,
+  MarketIntelligenceReport,
+  MarketIntelligenceState,
   MeetingMinutes,
   MeetingState,
   MemoryRecord,
@@ -150,6 +153,9 @@ export interface GameEvents {
   "innovationState:updated": Record<AgentId, InnovationState>;
   "gatekeeperRejections:updated": GatekeeperRejection[];
   "marketEnvironment:updated": MarketEnvironmentState;
+  "marketIntelligence:updated": MarketIntelligenceState;
+  "marketIntelligenceReports:updated": MarketIntelligenceReport[];
+  "marketIntelligenceLearning:updated": MarketIntelligenceLearningEntry[];
   "companyHealth:updated": CompanyHealth;
   "companyDna:updated": CompanyDNA;
   "dailyObjectiveStatus:updated": DailyObjectiveStatus;
