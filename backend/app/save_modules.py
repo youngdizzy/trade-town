@@ -81,7 +81,12 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         "strategy_reviews",
     ),
     "research": ("research", "watchlist", "black_box"),
-    "training": ("signal_calibration", "player_vs_ai", "education"),
+    # foundational_mentor_state lives here (not in `derived`) because,
+    # unlike mentor_state (Sage), it isn't recomputed from scratch each
+    # tick — its per-mentor progress (viewed/completed lessons, quiz
+    # counters, resources, pause/skip/repeat status) is real mutated
+    # state, the same category education's own progress already is.
+    "training": ("signal_calibration", "player_vs_ai", "education", "foundational_mentor_state"),
     "founders": ("founder_state", "constitution"),
     "derived": (
         "company_score",

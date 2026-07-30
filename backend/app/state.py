@@ -47,6 +47,8 @@ from app.schemas import (
     EducationProgress,
     EntityTransform,
     FounderState,
+    FoundationalMentorId,
+    FoundationalResourceType,
     GameSaveState,
     GatekeeperRejection,
     HoldReason,
@@ -63,6 +65,16 @@ from app.schemas import (
     TestScenario,
     TimeAdvanceTarget,
     TimeState,
+)
+from app.foundational_mentors import (
+    add_resource as add_foundational_mentor_resource_entry,
+    default_foundational_mentor_state,
+    grade_lesson_quiz,
+    mark_lesson_viewed,
+    pause_mentor,
+    repeat_mentor,
+    resume_mentor,
+    skip_mentor,
 )
 from app.simulation import default_strategies, queue_backtest_now
 from app.talent import mark_talent_report_viewed
@@ -180,6 +192,7 @@ def default_state() -> GameSaveState:
             updated_at=_now_iso(),
         ),
         mentorState=compute_mentor_state(1, _now_iso()),
+        foundationalMentorState=default_foundational_mentor_state(),
         founderState=FounderState(updatedAt=_now_iso()),
         challengeReports=[],
         innovationState={},
@@ -274,6 +287,60 @@ class GameState:
             new_archive, error = submit_response(self.data.question_archive, question_id, response, responded_at=_now_iso())
             if error is None:
                 self.data = self.data.model_copy(update={"question_archive": new_archive})
+            return self.data, error
+
+    async def view_foundational_mentor_lesson(self, mentor_id: FoundationalMentorId, lesson_id: str) -> GameSaveState:
+        async with self.lock:
+            new_state = mark_lesson_viewed(self.data.foundational_mentor_state, mentor_id, lesson_id)
+            self.data = self.data.model_copy(update={"foundational_mentor_state": new_state})
+            return self.data
+
+    async def grade_foundational_mentor_quiz(
+        self, mentor_id: FoundationalMentorId, lesson_id: str, selected_index: int
+    ) -> tuple[GameSaveState, bool, int, str] | None:
+        async with self.lock:
+            result = grade_lesson_quiz(self.data.foundational_mentor_state, mentor_id, lesson_id, selected_index, sim_day=self.data.time.day)
+            if result is None:
+                return None
+            new_state, correct, correct_index, correct_option = result
+            self.data = self.data.model_copy(update={"foundational_mentor_state": new_state})
+            return self.data, correct, correct_index, correct_option
+
+    async def pause_foundational_mentor(self, mentor_id: FoundationalMentorId) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            new_state, error = pause_mentor(self.data.foundational_mentor_state, mentor_id)
+            if error is None:
+                self.data = self.data.model_copy(update={"foundational_mentor_state": new_state})
+            return self.data, error
+
+    async def resume_foundational_mentor(self, mentor_id: FoundationalMentorId) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            new_state, error = resume_mentor(self.data.foundational_mentor_state, mentor_id)
+            if error is None:
+                self.data = self.data.model_copy(update={"foundational_mentor_state": new_state})
+            return self.data, error
+
+    async def skip_foundational_mentor(self, mentor_id: FoundationalMentorId) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            new_state, error = skip_mentor(self.data.foundational_mentor_state, mentor_id)
+            if error is None:
+                self.data = self.data.model_copy(update={"foundational_mentor_state": new_state})
+            return self.data, error
+
+    async def repeat_foundational_mentor(self, mentor_id: FoundationalMentorId) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            new_state, error = repeat_mentor(self.data.foundational_mentor_state, mentor_id)
+            if error is None:
+                self.data = self.data.model_copy(update={"foundational_mentor_state": new_state})
+            return self.data, error
+
+    async def add_foundational_mentor_resource(
+        self, mentor_id: FoundationalMentorId, *, title: str, url: str | None, resource_type: FoundationalResourceType
+    ) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            new_state, error = add_foundational_mentor_resource_entry(self.data.foundational_mentor_state, mentor_id, title=title, url=url, resource_type=resource_type)
+            if error is None:
+                self.data = self.data.model_copy(update={"foundational_mentor_state": new_state})
             return self.data, error
 
     async def update_risk_limits(

@@ -2110,6 +2110,70 @@ class MentorState(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# v0.7 Feature 49 (Phase 3) — the Foundational Mentor Program
+# (app/foundational_mentors.py). Real, named trading educators are used
+# only as CEO-assigned track labels on a roadmap; every lesson's actual
+# content is original TradeTown-authored material, never a claimed
+# transcription of that person's real work (see the module docstring for
+# the full attribution boundary). Distinct from the pre-existing
+# MentorState/Sage mentor above — that's a single always-available
+# Q&A advisor, this is a sequential lesson-and-quiz curriculum.
+FoundationalMentorId = Literal["tjr", "al_brooks", "linda_raschke", "mark_douglas", "tom_hougaard", "mike_bellafiore"]
+FoundationalMentorStatus = Literal["planned", "active", "paused", "graduated"]
+FoundationalResourceType = Literal["video", "book", "article", "pdf", "note"]
+
+
+class FoundationalMentorLesson(CamelModel):
+    """Public shape — deliberately has no answer key, mirroring
+    EducationLesson's own public/hidden split for the same reason."""
+
+    id: str
+    order: int
+    title: str
+    simple_explanation: str = Field(alias="simpleExplanation")
+    deeper_explanation: str = Field(alias="deeperExplanation")
+    quiz_question: str = Field(alias="quizQuestion")
+    quiz_options: list[str] = Field(alias="quizOptions")
+
+
+class FoundationalMentorResource(CamelModel):
+    """CEO-provided bookmark only — TradeTown never claims to have
+    watched, read, parsed, or graded the linked material."""
+
+    id: str
+    title: str
+    url: str | None = None
+    resource_type: FoundationalResourceType = Field(alias="resourceType")
+    added_at: str = Field(alias="addedAt")
+
+
+class FoundationalMentorProfile(CamelModel):
+    id: FoundationalMentorId
+    name: str
+    track_label: str = Field(alias="trackLabel")
+    focus_areas: list[str] = Field(alias="focusAreas")
+    content_note: str = Field(alias="contentNote")
+    status: FoundationalMentorStatus
+    lessons: list[FoundationalMentorLesson] = Field(default_factory=list)
+    resources: list[FoundationalMentorResource] = Field(default_factory=list)
+
+
+class FoundationalMentorProgress(CamelModel):
+    mentor_id: FoundationalMentorId = Field(alias="mentorId")
+    viewed_lesson_ids: list[str] = Field(default_factory=list, alias="viewedLessonIds")
+    completed_lesson_ids: list[str] = Field(default_factory=list, alias="completedLessonIds")
+    quiz_attempts: int = Field(default=0, alias="quizAttempts")
+    correct_quiz_attempts: int = Field(default=0, alias="correctQuizAttempts")
+    graduated_sim_day: int | None = Field(default=None, alias="graduatedSimDay")
+
+
+class FoundationalMentorState(CamelModel):
+    mentors: list[FoundationalMentorProfile] = Field(default_factory=list)
+    progress: dict[FoundationalMentorId, FoundationalMentorProgress] = Field(default_factory=dict)
+    active_mentor_id: FoundationalMentorId | None = Field(default=None, alias="activeMentorId")
+    updated_at: str = Field(alias="updatedAt")
+
+
 # v0.7 Feature 44 — the Talent Discovery System (app/talent.py). A real,
 # evidence-based "Discovery Event" — every field traces back to an
 # agent's own real ThinkingProfile trait and real CoachReport score
@@ -2498,6 +2562,10 @@ class GameSaveState(CamelModel):
     question_archive: list[QuestionOfTheDay] = Field(default_factory=list, alias="questionArchive")
     thinking_profiles: dict[AgentId, ThinkingProfile] = Field(default_factory=dict, alias="thinkingProfiles")
     mentor_state: MentorState = Field(alias="mentorState")
+    # v0.7 Feature 49 (Phase 3) — the Foundational Mentor Program
+    # (app/foundational_mentors.py). See FoundationalMentorState's own
+    # docstring for how this differs from mentor_state above.
+    foundational_mentor_state: FoundationalMentorState = Field(alias="foundationalMentorState")
     # v0.7 Feature 39 — the Original Founders (app/founders.py).
     founder_state: FounderState = Field(alias="founderState")
     # v0.7 Feature 41 — the Intelligent Devil's Advocate System. One

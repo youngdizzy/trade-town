@@ -1,0 +1,125 @@
+"""The Foundational Mentor Program's CEO-facing endpoints (v0.7 Feature
+49, Phase 3) — see app/foundational_mentors.py's module docstring for
+the full content-attribution boundary and what's real vs. roadmap.
+"""
+from __future__ import annotations
+
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.persistence import persist_modules
+from app.schemas import FoundationalMentorId, FoundationalMentorState, FoundationalResourceType
+from app.state import game_state
+
+router = APIRouter(prefix="/api/foundational-mentors", tags=["foundational-mentors"])
+
+
+class FoundationalMentorStateResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    foundational_mentor_state: FoundationalMentorState = Field(alias="foundationalMentorState")
+
+
+class QuizResultResponse(FoundationalMentorStateResponse):
+    correct: bool
+    correct_index: int = Field(alias="correctIndex")
+    correct_option: str = Field(alias="correctOption")
+
+
+class ViewLessonRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    mentor_id: FoundationalMentorId = Field(alias="mentorId")
+    lesson_id: str = Field(alias="lessonId")
+
+
+class QuizRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    mentor_id: FoundationalMentorId = Field(alias="mentorId")
+    lesson_id: str = Field(alias="lessonId")
+    selected_index: int = Field(alias="selectedIndex")
+
+
+class MentorIdRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    mentor_id: FoundationalMentorId = Field(alias="mentorId")
+
+
+class AddResourceRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    mentor_id: FoundationalMentorId = Field(alias="mentorId")
+    title: str
+    url: str | None = None
+    resource_type: FoundationalResourceType = Field(alias="resourceType")
+
+
+@router.post("/view", response_model=FoundationalMentorStateResponse)
+async def view_lesson(payload: ViewLessonRequest) -> FoundationalMentorStateResponse:
+    state = await game_state.view_foundational_mentor_lesson(payload.mentor_id, payload.lesson_id)
+    persist_modules(state)
+    return FoundationalMentorStateResponse(foundationalMentorState=state.foundational_mentor_state)
+
+
+@router.post("/quiz", response_model=QuizResultResponse)
+async def submit_quiz(payload: QuizRequest) -> QuizResultResponse:
+    result = await game_state.grade_foundational_mentor_quiz(payload.mentor_id, payload.lesson_id, payload.selected_index)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Unknown mentor or lesson.")
+    state, correct, correct_index, correct_option = result
+    persist_modules(state)
+    return QuizResultResponse(
+        foundationalMentorState=state.foundational_mentor_state,
+        correct=correct,
+        correctIndex=correct_index,
+        correctOption=correct_option,
+    )
+
+
+@router.post("/pause", response_model=FoundationalMentorStateResponse)
+async def pause(payload: MentorIdRequest) -> FoundationalMentorStateResponse:
+    state, error = await game_state.pause_foundational_mentor(payload.mentor_id)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    return FoundationalMentorStateResponse(foundationalMentorState=state.foundational_mentor_state)
+
+
+@router.post("/resume", response_model=FoundationalMentorStateResponse)
+async def resume(payload: MentorIdRequest) -> FoundationalMentorStateResponse:
+    state, error = await game_state.resume_foundational_mentor(payload.mentor_id)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    return FoundationalMentorStateResponse(foundationalMentorState=state.foundational_mentor_state)
+
+
+@router.post("/skip", response_model=FoundationalMentorStateResponse)
+async def skip(payload: MentorIdRequest) -> FoundationalMentorStateResponse:
+    state, error = await game_state.skip_foundational_mentor(payload.mentor_id)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    return FoundationalMentorStateResponse(foundationalMentorState=state.foundational_mentor_state)
+
+
+@router.post("/repeat", response_model=FoundationalMentorStateResponse)
+async def repeat(payload: MentorIdRequest) -> FoundationalMentorStateResponse:
+    state, error = await game_state.repeat_foundational_mentor(payload.mentor_id)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    return FoundationalMentorStateResponse(foundationalMentorState=state.foundational_mentor_state)
+
+
+@router.post("/resource", response_model=FoundationalMentorStateResponse)
+async def add_resource(payload: AddResourceRequest) -> FoundationalMentorStateResponse:
+    state, error = await game_state.add_foundational_mentor_resource(
+        payload.mentor_id, title=payload.title, url=payload.url, resource_type=payload.resource_type
+    )
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    return FoundationalMentorStateResponse(foundationalMentorState=state.foundational_mentor_state)
