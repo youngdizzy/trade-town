@@ -76,7 +76,10 @@ async function continueGame(page: Page): Promise<void> {
  * behind it.
  */
 async function dismissTradeOutcomePopups(page: Page): Promise<void> {
-  for (let i = 0; i < 5; i++) {
+  // 12 rather than a smaller number: the longer this shared dev backend
+  // has been running, the more real decisions can be queued up behind
+  // one another, and each is dismissed one at a time, same as a player.
+  for (let i = 0; i < 12; i++) {
     const tradeBanner = page.getByTestId("trade-outcome-banner");
     if (await tradeBanner.isVisible().catch(() => false)) {
       await tradeBanner.getByText("Dismiss").click();
@@ -111,11 +114,27 @@ async function clickTab(page: Page, tab: string): Promise<void> {
   throw new Error(`clickTab: could not click "${tab}" after 5 attempts`);
 }
 
+async function clickButton(page: Page, name: string | RegExp): Promise<void> {
+  for (let attempt = 0; attempt < 5; attempt++) {
+    await dismissTradeOutcomePopups(page);
+    try {
+      await page.getByRole("button", { name }).click({ timeout: 5000 });
+      return;
+    } catch {
+      // a popup intercepted the click — loop back and dismiss again
+    }
+  }
+  throw new Error(`clickButton: could not click "${String(name)}" after 5 attempts`);
+}
+
 async function enableDebugOverlay(page: Page): Promise<void> {
-  await page.getByRole("button", { name: "Settings" }).click();
+  await clickButton(page, "Settings");
   const checkbox = page.getByRole("checkbox");
-  if (!(await checkbox.isChecked())) await checkbox.check();
-  await page.getByRole("button", { name: "Close" }).click();
+  if (!(await checkbox.isChecked())) {
+    await dismissTradeOutcomePopups(page);
+    await checkbox.check();
+  }
+  await clickButton(page, "Close");
 }
 
 /** Holds a movement key down, then confirms the player's real x actually
@@ -201,6 +220,12 @@ test.describe("Global Command Center", () => {
 
     await page.keyboard.press("Tab");
     await expect(page.getByText("COMMAND CENTER", { exact: true })).toBeVisible();
+    // A real proposal/vote can appear in the instant between opening and
+    // this movement check (the sim keeps ticking); its modal is opaque
+    // and does legitimately block input, unlike the Command Center's own
+    // translucent backdrop this test is actually verifying, so clear it
+    // first the same way a real player would.
+    await dismissTradeOutcomePopups(page);
 
     const movedWhileOpen = await expectMovement(page, "d", before);
     expect(movedWhileOpen.scene).toBe(before.scene); // no door/interaction fired — the scene never changed
@@ -933,7 +958,7 @@ test.describe("Global Command Center", () => {
     await expect(toggle).toBeVisible();
     await expect(toggle).toHaveText(/🟢 WORK MODE ACTIVE/);
 
-    await toggle.click();
+    await clickButton(page, /WORK MODE ACTIVE|REST MODE ACTIVE/);
     await expect(toggle).toHaveText(/🌙 REST MODE ACTIVE/);
 
     // A real POST /api/save pushes the new work_mode setting to the
