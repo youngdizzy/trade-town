@@ -73,7 +73,9 @@ from collections import Counter
 from datetime import datetime, timezone
 
 from app.agents import all_agent_ids
-from app.mistakes import CATEGORY_TITLES, INCOMPLETE_RESEARCH_THRESHOLD, OVERCONFIDENCE_THRESHOLD
+from app.mistakes import CATEGORY_TITLES as MISTAKE_CATEGORY_TITLES
+from app.mistakes import INCOMPLETE_RESEARCH_THRESHOLD, OVERCONFIDENCE_THRESHOLD
+from app.successes import CATEGORY_TITLES as SUCCESS_CATEGORY_TITLES
 from app.schemas import (
     CaseStudy,
     CaseStudyCategory,
@@ -98,6 +100,16 @@ from app.schemas import (
 )
 
 MAX_REFLECTION_SESSIONS = 80
+
+# case_studies (app/mistakes.py's record_case_studies + app/successes.py's
+# record_success_studies) is one shared, mixed list — a real CaseStudy's
+# category can be any of mistakes.py's six or successes.py's three. Bug
+# fix: _most_common_category() below scans that full mixed list, so its
+# title lookup must cover both, not just the mistake-only dict (a save
+# whose most common real category happened to be a success one — e.g.
+# "disciplined_process" — crashed this module's weekly/monthly tick with
+# a KeyError otherwise).
+_CATEGORY_TITLES: dict[CaseStudyCategory, str] = {**MISTAKE_CATEGORY_TITLES, **SUCCESS_CATEGORY_TITLES}
 
 _WISDOM_TIER_THRESHOLDS: tuple[tuple[float, WisdomTier, str], ...] = (
     (0.0, "young_company", "Young Company"),
@@ -192,7 +204,7 @@ def _questions(
         ReflectionQuestion(
             question="What patterns are repeating?",
             answer=(
-                f'"{CATEGORY_TITLES[common[0]]}" has recurred {common[1]} time(s) in the Library of Mistakes — the most common real pattern on record.'
+                f'"{_CATEGORY_TITLES[common[0]]}" has recurred {common[1]} time(s) in the Library of Mistakes — the most common real pattern on record.'
                 if common is not None
                 else "No repeated mistake pattern has emerged yet in the Library of Mistakes."
             ),
@@ -219,7 +231,7 @@ def _questions(
         ),
         ReflectionQuestion(
             question="What should we stop doing?",
-            answer=(f'Stop repeating the conditions behind "{CATEGORY_TITLES[common[0]]}" — it is the most common real mistake on record.' if common is not None else "No repeated mistake pattern to stop yet."),
+            answer=(f'Stop repeating the conditions behind "{_CATEGORY_TITLES[common[0]]}" — it is the most common real mistake on record.' if common is not None else "No repeated mistake pattern to stop yet."),
         ),
         ReflectionQuestion(
             question="What new questions should we investigate?",

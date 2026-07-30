@@ -281,3 +281,27 @@ class TestGenerateReflectionSession:
             new_time=TimeState(day=7, hour=20, minute=0),
         )
         assert session.wisdom_score == state.score
+
+    def test_a_success_category_as_the_most_common_case_study_does_not_crash(self) -> None:
+        """Regression test — case_studies is a real mixed list of both
+        mistakes (app/mistakes.py) and successes (app/successes.py); a
+        save whose most common real category happened to be a success
+        one (e.g. "disciplined_process") used to raise a KeyError because
+        the title lookup only covered the six mistake categories. See
+        app/wisdom.py's _CATEGORY_TITLES fix."""
+        success_studies = [_case_study(category="disciplined_process") for _ in range(3)]
+        session = generate_reflection_session(
+            "weekly",
+            discipline_reviews=[],
+            case_studies=success_studies,
+            reasoning_challenges=[],
+            research=[],
+            news=[],
+            risk_warnings=[],
+            gatekeeper_rejections=[],
+            executive_reviews=[],
+            wisdom_state=_empty_wisdom_score(),
+            new_time=TimeState(day=7, hour=20, minute=0),
+        )
+        patterns_answer = next(q.answer for q in session.questions if q.question == "What patterns are repeating?")
+        assert "A Well-Disciplined Process" in patterns_answer
