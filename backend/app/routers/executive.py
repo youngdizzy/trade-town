@@ -10,6 +10,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.executive import PROPOSAL_CANDLE_COUNT, PROPOSAL_TIMEFRAME, AnalystChoice
+from app.executive_intelligence import compute_executive_recommendation, generate_department_opinions
 from app.market_data import market_data_provider
 from app.persistence import persist_modules
 from app.schemas import (
@@ -17,6 +18,7 @@ from app.schemas import (
     CeoDecisionRecord,
     ChallengeReport,
     Debate,
+    ExecutiveRecommendation,
     GatekeeperRejection,
     HoldReason,
     InnovationState,
@@ -152,3 +154,20 @@ async def whatif(symbol: str = Query(..., min_length=1, max_length=16)) -> WhatI
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     return run_whatif_simulation(symbol.upper(), candles)
+
+
+@router.get("/intelligence", response_model=ExecutiveRecommendation)
+async def executive_intelligence(proposal_id: str = Query(..., alias="proposalId")) -> ExecutiveRecommendation:
+    """v0.7 Feature 50 (Part 1) — the Executive Intelligence Network's
+    real "combine every perspective" read for one pending TradeProposal.
+    Read-only and computed fresh (see app/executive_intelligence.py's
+    module docstring for why: every input already lives somewhere
+    permanent, so this is a synthesis, not a second source of truth).
+    No game-state lock needed — nothing here mutates the save."""
+    state = await game_state.snapshot()
+    proposal = next((p for p in state.trade_proposals if p.id == proposal_id), None)
+    if proposal is None:
+        raise HTTPException(status_code=404, detail="Unknown or already-resolved proposal.")
+    challenge_report = next((c for c in reversed(state.challenge_reports) if c.proposal_id == proposal_id), None)
+    opinions = generate_department_opinions(proposal, challenge_report, state.coach_reports)
+    return compute_executive_recommendation(proposal, opinions)

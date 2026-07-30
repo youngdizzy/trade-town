@@ -88,6 +88,40 @@ development milestones, not semver releases.
     Foundational Principle rule, explicitly cross-referenced rather than
     duplicated as an unrelated third rule.
 
+- **v0.7 Feature 50 (Part 1) — Executive Intelligence Network**: the
+  brief's own instruction was "do not create duplicate systems — refactor
+  and upgrade the current implementation." Research found every one of
+  the eight named departments (Research, Quant, Risk, Simulation,
+  Decision Intelligence, Coach, Founders, Devil's Advocate) already has a
+  real, checkable system behind it in this codebase — see the mapping
+  table in `docs/Architecture.md`'s new Feature 50 section. New
+  `app/executive_intelligence.py` is a synthesis layer, not a new
+  computation engine: `generate_department_opinions()` produces a real
+  `DepartmentOpinion` per department by reading `TradeProposal`'s
+  `research_summary`/`risk_summary`/`confidence_engine`/`analyst_votes`,
+  a `ChallengeReport` when one exists (Simulation and Founders both
+  already had exactly what they needed — `worst_case_scenario` and
+  `historical_comparisons` — sitting unused for this purpose), and the
+  latest `CoachReport`. `compute_executive_recommendation()` is a real,
+  rule-based aggregate over those opinions — never fabricated — checked
+  in priority order (an active major concern always outranks a merely-
+  lukewarm average), producing one of six real actions with real
+  supporting/opposing department lists. New
+  `GET /api/executive/intelligence?proposalId=...`, computed fresh on
+  every call (no persistence — every input already lives somewhere
+  permanent). This is the largest single brief given this session;
+  it's being built phased, the same way Feature 49 was (Phases 1/2/3 +
+  a Revision) — this is Part 1, the foundational synthesis layer.
+  Explicitly deferred to later phases: the permanent Executive Meeting
+  Log, per-department weekly Self-Evaluation, Decision Grade (A+–F), the
+  Company Health formula redesign, and all frontend work (Executive
+  Recommendation Panel, the three redesigned dashboards). Explicitly
+  cut, not deferred: the brief's "Session Changes / Market Open / Market
+  Close" simulation environments — no session-boundary model exists
+  anywhere in this codebase's continuous sim clock to back them.
+  Backend: `test_executive_intelligence.py` — 20 new tests, 680/680 full
+  suite, mypy/ruff clean.
+
 - **v0.7 Feature 49 Revision — Professional Academy: employees are the
   students, the CEO manages**: inverts the Foundational Mentor
   Program's model per an explicit CEO revision request. TradeTown is a

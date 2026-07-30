@@ -3082,6 +3082,72 @@ active so the shared dev backend's state doesn't leak into other tests);
 `commandCenter.spec.ts`'s tab-count regression updated (29 → 30 tabs,
 `MENTORLAB` added to the tab list).
 
+### Executive Intelligence Network — Feature 50 (Part 1 of a phased build)
+
+The brief's own instruction: "Do NOT create duplicate systems. Refactor
+and upgrade the current implementation so all existing functionality is
+preserved while expanding it." Researched first, and this turned out to
+be achievable almost entirely as a synthesis layer — every one of the
+brief's eight named departments (Research, Quant, Risk, Simulation,
+Decision Intelligence, Coach, Founders, Devil's Advocate) already has a
+real, checkable system behind it in this codebase:
+
+| Department | Real backing system |
+|---|---|
+| Research | `TradeProposal.research_summary` (real `ResearchItem` confidence, already generated at proposal time) |
+| Quant | `DecisionConfidence`'s real "technical"/"research" `ConfidenceFactor` readings (`app/confidence.py`) |
+| Risk | `TradeProposal.risk_summary` (Sentinel/Guardian, `app/risk_engine.py`) plus the real "risk" `AnalystVote` |
+| Simulation | The What-If Simulation Lab's real worst-case read, already carried on a `ChallengeReport` as `worst_case_scenario` when one exists (`app/whatif.py` via `app/devils_advocate.py`) |
+| Decision Intelligence | `DecisionConfidence` itself (score/tier/summary) — this department's opinion IS the Decision Confidence Engine's own real read |
+| Coach | The most recent real `CoachReport`'s strengths/recommendations (`app/coach.py`) |
+| Founders | The real Library of Mistakes titles already attached to a `ChallengeReport` as `historical_comparisons` |
+| Devil's Advocate | The `ChallengeReport` itself when one exists (CEO-requested, not automatic) |
+
+**What's genuinely new** (`app/executive_intelligence.py`): the
+synthesis layer itself, filling exactly the gap the "Multiple Opinions"
+Development Rules addendum already identified — the Brain Room's "combine
+every perspective" claim wasn't true yet. `generate_department_opinions()`
+produces a real `DepartmentOpinion` per department (role, stance, real
+summary text, real confidence %), reading the systems above rather than
+recomputing anything. `compute_executive_recommendation()` is a real,
+rule-based (never fabricated) aggregate over those opinions — checked in
+priority order (an active major Devil's Advocate/Risk concern always
+outranks a merely-lukewarm average) — producing one of six real actions
+(`trade_normally`, `reduce_risk`, `wait`, `research_more`,
+`pause_trading`, `focus_on_simulation`) with real supporting/opposing
+department lists. `GET /api/executive/intelligence?proposalId=...`
+exposes it, computed fresh on every request (same "no permanence
+requirement, every input already lives somewhere permanent" reasoning as
+`app/whatif.py` — no game-state lock needed, nothing here mutates the
+save).
+
+**Explicit phasing, not silent scope-cutting** — this is easily the
+largest single brief given this session; it's being built the same way
+Feature 49 was (Phases 1/2/3 + a Revision), not crammed into one pass:
+
+- **Part 1 (this phase, done)**: the department-opinion synthesis layer
+  above — the foundational piece everything else builds on.
+- **Deferred to a later phase**: the permanent Executive Meeting Log,
+  per-department weekly Self-Evaluation (would mirror `wisdom.py`'s real
+  weekly cadence), Decision Grade (A+–F), and the Company Health formula
+  redesign around the brief's ten new named dimensions (the existing
+  eleven-metric `company_health.py` is already real and transparent —
+  redesigning its formula is a distinct, separately-scoped change, not
+  bundled in here).
+- **Explicit cut, not deferred**: the brief's "Session Changes / Market
+  Open / Market Close" simulation environments. No session-boundary
+  model exists anywhere in this codebase's continuous sim clock to back
+  them honestly, and none is being invented.
+- **Frontend** (Executive Recommendation Panel, the three redesigned
+  dashboards) is not yet built — backend-first, per this session's own
+  data-loss-avoidance discipline (commit and verify the backend before
+  starting frontend work).
+
+**Verified**: `test_executive_intelligence.py` — 20 new tests (every
+department's real-field reuse, every honest "not yet" fallback, and the
+recommendation engine's priority-ordered rules) — 680/680 full suite,
+mypy/ruff clean.
+
 ### Professional Day Trading Program — Foundational Mentor Program (Phase 3, original design — content/roadmap/attribution still accurate, see the Revision section above for who now does the lessons)
 
 The third phase of Feature 49 — an expandable, CEO-facing library of

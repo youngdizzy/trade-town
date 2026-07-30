@@ -721,6 +721,45 @@ always requests the same `PROPOSAL_TIMEFRAME`/`PROPOSAL_CANDLE_COUNT`
 the technical analyst vote itself uses, so both readings stay grounded
 in the same real candle sample).
 
+### `GET /api/executive/intelligence?proposalId=...`
+
+v0.7 Feature 50 (Part 1) — the Executive Intelligence Network. Read-only,
+stateless, and computed fresh on every call (see
+`app/executive_intelligence.py`'s module docstring for why: every input
+already lives somewhere permanent — the proposal, its `ChallengeReport`
+if one exists, the latest `CoachReport` — so this is a synthesis, not a
+second source of truth). Returns an `ExecutiveRecommendation`:
+
+```json
+{
+  "proposalId": "proposal-42",
+  "action": "trade_normally", // one of: trade_normally | reduce_risk | wait | research_more | pause_trading | focus_on_simulation
+  "confidencePct": 78.5,
+  "reason": "No department raised a real concern serious enough to change course.",
+  "supporting": ["research", "quant", "decision_intelligence"],
+  "opposing": [],
+  "opinions": [
+    {
+      "role": "simulation", // one of the 8 departments — see the table in docs/Architecture.md's Feature 50 section
+      "departmentLabel": "Simulation",
+      "agentId": "atlas",
+      "stance": "agree", // agree | disagree | request_more_research | recommend_waiting | recommend_position_change | recommend_rejecting
+      "summary": "Worst case simulated: Flash crash wipes out 8% in one bar.",
+      "confidencePct": 80.0
+    }
+    // ... 7 more, one per department
+  ],
+  "generatedAt": "2026-07-30T12:00:00Z"
+}
+```
+
+`404` if `proposalId` doesn't match a currently-pending `TradeProposal`
+(already resolved or never existed). Every department opinion is a real
+read off an existing system (see the mapping table in
+`docs/Architecture.md`) — Simulation and Devil's Advocate honestly report
+"not yet stress-tested"/"not yet challenged" when no `ChallengeReport`
+exists for the proposal yet, rather than fabricating one.
+
 ### `GET /api/knowledge-graph`
 
 v0.7 Feature 25.5 — the Company Knowledge Graph. Read-only, stateless,

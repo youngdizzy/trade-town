@@ -1236,6 +1236,47 @@ class ChallengeReport(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
+# v0.7 Feature 50 — Executive Intelligence Network. Eight named
+# "departments," each backed by a real, already-shipped system rather
+# than a new one: research.py, the technical/research factors on
+# DecisionConfidence (Quant), risk_engine.py + the real gatekeeper checks
+# (Risk), the What-If Simulation Lab via ChallengeReport.worstCaseScenario
+# (Simulation), DecisionConfidence itself (Decision Intelligence),
+# coach.py's CoachReport (Coach), ChallengeReport.historicalComparisons
+# (Founders — the real Library of Mistakes titles for this symbol), and
+# ChallengeReport itself (Devil's Advocate). See
+# app/executive_intelligence.py's module docstring for the full mapping.
+ExecutiveDepartmentRole = Literal["research", "quant", "risk", "simulation", "decision_intelligence", "coach", "founders", "devils_advocate"]
+ExecutiveStance = Literal["agree", "disagree", "request_more_research", "recommend_waiting", "recommend_position_change", "recommend_rejecting"]
+ExecutiveAction = Literal["trade_normally", "reduce_risk", "wait", "research_more", "pause_trading", "focus_on_simulation"]
+
+
+class DepartmentOpinion(CamelModel):
+    role: ExecutiveDepartmentRole
+    department_label: str = Field(alias="departmentLabel")
+    agent_id: AgentId | None = Field(default=None, alias="agentId")
+    stance: ExecutiveStance
+    summary: str
+    confidence_pct: float = Field(alias="confidencePct")
+
+
+class ExecutiveRecommendation(CamelModel):
+    """The Brain Room's real "combine every perspective" read for one
+    pending TradeProposal — computed fresh on request, not persisted
+    (same reasoning as WhatIfSimulation: no permanence requirement, and
+    every input already lives somewhere permanent — the proposal, its
+    ChallengeReport if one exists, the latest CoachReport)."""
+
+    proposal_id: str = Field(alias="proposalId")
+    action: ExecutiveAction
+    confidence_pct: float = Field(alias="confidencePct")
+    reason: str
+    supporting: list[ExecutiveDepartmentRole] = Field(default_factory=list)
+    opposing: list[ExecutiveDepartmentRole] = Field(default_factory=list)
+    opinions: list[DepartmentOpinion] = Field(default_factory=list)
+    generated_at: str = Field(alias="generatedAt")
+
+
 # v0.7 Feature 41 — Innovation Points. A second, deliberately narrow
 # ladder alongside Academy's KnowledgeLevel (Feature 31): where Academy
 # tracks general knowledge mastery, this tracks one specific real skill —
