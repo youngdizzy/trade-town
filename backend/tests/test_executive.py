@@ -27,6 +27,7 @@ from app.executive import (
 )
 from app.gatekeeper import MIN_CONFIDENCE
 from app.market_data import Candle, MockMarketDataProvider
+from app.market_intelligence import default_market_intelligence_state
 from app.portfolio import default_portfolio
 from app.schemas import (
     AnalystVote,
@@ -155,6 +156,7 @@ class TestGenerateProposal:
             now_sim_minutes=1440,
             portfolio=default_portfolio(),
             risk_limits=RiskLimits(),
+            market_intelligence=default_market_intelligence_state(),
         )
         assert proposal.symbol == "NEXA"
         assert len(proposal.analyst_votes) == 6
@@ -180,6 +182,7 @@ class TestResolveProposal:
             now_sim_minutes=0,
             portfolio=default_portfolio(),
             risk_limits=RiskLimits(),
+            market_intelligence=default_market_intelligence_state(),
         )
 
     @staticmethod
@@ -197,7 +200,7 @@ class TestResolveProposal:
         proposal = self._proposal()
         portfolio = default_portfolio()
         new_portfolio, decision, record = resolve_proposal(
-            proposal, "buy", portfolio=portfolio, risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=100
+            proposal, "buy", portfolio=portfolio, risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=100, market_intelligence=default_market_intelligence_state()
         )
         assert len(new_portfolio.positions) == 1
         assert new_portfolio.positions[0].side == "buy"
@@ -217,7 +220,7 @@ class TestResolveProposal:
         proposal = self._proposal()
         portfolio = default_portfolio()
         _, _, auto_record = resolve_proposal(
-            proposal, "buy", portfolio=portfolio, risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=100, resolved_by="auto"
+            proposal, "buy", portfolio=portfolio, risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=100, market_intelligence=default_market_intelligence_state(), resolved_by="auto"
         )
         assert auto_record.resolved_by == "auto"
 
@@ -226,7 +229,7 @@ class TestResolveProposal:
         proposal = self._proposal()
         portfolio = default_portfolio()
         new_portfolio, decision, record = resolve_proposal(
-            proposal, "sell", portfolio=portfolio, risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=100
+            proposal, "sell", portfolio=portfolio, risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=100, market_intelligence=default_market_intelligence_state()
         )
         assert len(new_portfolio.positions) == 1
         assert new_portfolio.positions[0].side == "sell"
@@ -237,7 +240,7 @@ class TestResolveProposal:
         proposal = self._proposal()
         portfolio = default_portfolio()
         new_portfolio, decision, record = resolve_proposal(
-            proposal, "wait", portfolio=portfolio, risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=100
+            proposal, "wait", portfolio=portfolio, risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=100, market_intelligence=default_market_intelligence_state()
         )
         assert new_portfolio.positions == []
         assert decision.outcome == "no_trade"
@@ -249,7 +252,7 @@ class TestResolveProposal:
         # Drain the portfolio so recommended_quantity() computes zero.
         portfolio = default_portfolio().model_copy(update={"cash_balance": 0.0})
         new_portfolio, decision, record = resolve_proposal(
-            proposal, "buy", portfolio=portfolio, risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=100
+            proposal, "buy", portfolio=portfolio, risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=100, market_intelligence=default_market_intelligence_state()
         )
         assert new_portfolio.positions == []
         assert decision.outcome == "no_trade"
@@ -261,11 +264,11 @@ class TestResolveProposal:
         portfolio = default_portfolio()
         forced_recommendation = proposal.model_copy(update={"overall_recommendation": "buy"})
         _, _, agreeing = resolve_proposal(
-            forced_recommendation, "buy", portfolio=portfolio, risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=0
+            forced_recommendation, "buy", portfolio=portfolio, risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=0, market_intelligence=default_market_intelligence_state()
         )
         assert agreeing.agreed_with_ai is True
         _, _, overriding = resolve_proposal(
-            forced_recommendation, "sell", portfolio=portfolio, risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=0
+            forced_recommendation, "sell", portfolio=portfolio, risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=0, market_intelligence=default_market_intelligence_state()
         )
         assert overriding.agreed_with_ai is False
 
@@ -554,7 +557,7 @@ class TestComputeDecisionGrade:
     def test_resolve_proposal_attaches_a_real_grade_to_the_decision(self, monkeypatch: pytest.MonkeyPatch) -> None:
         monkeypatch.setattr("app.executive.evaluate_gatekeeper", TestResolveProposal._stub_approved_verdict)
         proposal = TestResolveProposal()._proposal()
-        _, decision, _ = resolve_proposal(proposal, "buy", portfolio=default_portfolio(), risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=100)
+        _, decision, _ = resolve_proposal(proposal, "buy", portfolio=default_portfolio(), risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=100, market_intelligence=default_market_intelligence_state())
         assert decision.decision_grade is not None
         assert decision.decision_grade_score is not None
         expected_grade, expected_score = compute_decision_grade(proposal, decision.gatekeeper_verdict)

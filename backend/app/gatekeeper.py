@@ -34,6 +34,7 @@ from app.schemas import (
     GatekeeperCheck,
     GatekeeperRejection,
     GatekeeperVerdict,
+    MarketIntelligenceState,
     PaperPortfolio,
     RiskLimits,
     RiskWarning,
@@ -121,6 +122,21 @@ def _risk_warning_check(proposal: TradeProposal, risk_warnings: list[RiskWarning
     return GatekeeperCheck(id="risk_warning", label="Active Risk Warnings", passed=passed, detail=detail)
 
 
+# v0.7 Feature 51 — the Market Intelligence Department's real mechanical
+# enforcement of the brief's own closing rule: "No department may
+# recommend a trade without first explaining the current market
+# environment... every recommendation must be justified before capital is
+# committed." A trade cannot pass the Gatekeeper while the department's
+# own real, current Market Quality Score reads "avoid_trading" — the same
+# real MarketIntelligenceState every new TradeProposal already carries a
+# summary of (see app/executive.py's generate_proposal), never a second,
+# independently-computed read.
+def _market_intelligence_check(market_intelligence: MarketIntelligenceState) -> GatekeeperCheck:
+    passed = market_intelligence.quality.tier != "avoid_trading"
+    detail = f"Market Quality reads {market_intelligence.quality.tier.replace('_', ' ')} ({market_intelligence.quality.score:.0f}/100) — {market_intelligence.quality.reasoning}"
+    return GatekeeperCheck(id="market_intelligence", label="Market Intelligence Quality", passed=passed, detail=detail)
+
+
 def evaluate_gatekeeper(
     proposal: TradeProposal,
     ceo_choice: AnalystChoice,
@@ -128,6 +144,7 @@ def evaluate_gatekeeper(
     portfolio: PaperPortfolio,
     risk_limits: RiskLimits,
     risk_warnings: list[RiskWarning],
+    market_intelligence: MarketIntelligenceState,
 ) -> "GatekeeperVerdict":
     from app.schemas import GatekeeperVerdict  # local import avoids a schemas.py forward-reference cycle at module load
 
@@ -139,6 +156,7 @@ def evaluate_gatekeeper(
         _exposure_check(portfolio, risk_limits),
         _correlation_check(proposal, portfolio),
         _risk_warning_check(proposal, risk_warnings),
+        _market_intelligence_check(market_intelligence),
     ]
     approved = all(c.passed for c in checks)
     if approved:

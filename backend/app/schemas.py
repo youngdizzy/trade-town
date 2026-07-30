@@ -1160,6 +1160,14 @@ class TradeProposal(CamelModel):
     # Capped by app/executive.py's MAX_PROPOSAL_HOLDS so a proposal can't
     # be deferred forever.
     hold_count: int = Field(default=0, alias="holdCount")
+    # v0.7 Feature 51 — a one-line real citation of the Market Intelligence
+    # Department's current regime/quality read at the moment this proposal
+    # was generated (app/market_intelligence.py's MarketIntelligenceState),
+    # so every proposal literally carries real market context per the
+    # brief's own rule: "No department may recommend a trade without first
+    # explaining the current market environment." Defaults to None only
+    # for proposals that predate this feature (old saves).
+    market_intelligence_summary: str | None = Field(default=None, alias="marketIntelligenceSummary")
 
 
 # v0.7 Feature 17 — AI Debate Room. Every turn's substance is a real
@@ -1252,7 +1260,11 @@ class ChallengeReport(CamelModel):
 # (Founders — the real Library of Mistakes titles for this symbol), and
 # ChallengeReport itself (Devil's Advocate). See
 # app/executive_intelligence.py's module docstring for the full mapping.
-ExecutiveDepartmentRole = Literal["research", "quant", "risk", "simulation", "decision_intelligence", "coach", "founders", "devils_advocate"]
+# v0.7 Feature 51 adds "market_intelligence" as a ninth department — see
+# app/executive_intelligence.py's module docstring for how it plugs into
+# the same generic opinion/self-evaluation/meeting-log machinery the
+# original eight already use, with zero changes needed to that machinery.
+ExecutiveDepartmentRole = Literal["research", "quant", "risk", "simulation", "decision_intelligence", "coach", "founders", "devils_advocate", "market_intelligence"]
 ExecutiveStance = Literal["agree", "disagree", "request_more_research", "recommend_waiting", "recommend_position_change", "recommend_rejecting"]
 ExecutiveAction = Literal["trade_normally", "reduce_risk", "wait", "research_more", "pause_trading", "focus_on_simulation"]
 
@@ -1334,6 +1346,241 @@ class DepartmentSelfEvaluation(CamelModel):
     summary: str
     strengths: list[str] = Field(default_factory=list)
     improvement_areas: list[str] = Field(default_factory=list, alias="improvementAreas")
+    created_at: str = Field(alias="createdAt")
+
+
+# v0.7 Feature 51 — Market Intelligence Department, "the company's eyes."
+# Every field below is computed from real data this codebase already has
+# access to: the (mock) MarketDataProvider's real OHLCV Candle series
+# (app/market_data.py) and real wall-clock time for session detection —
+# see app/market_intelligence.py's module docstring for the full honesty
+# boundary (what's real technical analysis over real synthesized price
+# data vs. what has no real backing data anywhere in this codebase and is
+# therefore explicitly NOT computed: true institutional order flow,
+# Level 2/dark-pool data, real stop-order locations, or any economic
+# calendar). Named distinctly from the existing `MarketRegime`
+# (trending_up/trending_down/ranging, Player vs AI's per-symbol read) and
+# `MarketEnvironmentRegime` (bull/bear/sideways/high_volatility/
+# low_volatility, the simpler five-way whole-market classification Feature
+# 22 already computes) — this is a richer, thirteen-way classification
+# built from real per-symbol swing/volatility/volume structure, not a
+# replacement for either existing one.
+MarketIntelligenceRegime = Literal[
+    "strong_bull_trend",
+    "strong_bear_trend",
+    "weak_uptrend",
+    "weak_downtrend",
+    "sideways_range",
+    "expansion",
+    "compression",
+    "high_volatility",
+    "low_volatility",
+    "accumulation",
+    "distribution",
+    "liquidity_hunt",
+    "transitional",
+]
+
+MarketQualityTier = Literal["excellent", "good", "average", "poor", "avoid_trading"]
+
+# Fixed UTC windows — a documented simplification (no DST handling, no
+# live timezone feed), computed from real wall-clock time the same way
+# Candle.timestamp already is (app/market_data.py), not TradeTown's
+# simulated clock: a "session" is about when real markets are open, not
+# an in-game concept.
+TradingSession = Literal["asian", "london", "london_ny_overlap", "new_york", "ny_lunch_hour", "market_open", "market_close", "closed"]
+
+MarketDebateSpecialist = Literal["liquidity", "price_action", "momentum", "quant", "risk"]
+
+
+class LiquidityZone(CamelModel):
+    """One real equal-high/equal-low price cluster found in a symbol's
+    own recent candle history — the standard price-action technique for
+    naming a probable liquidity zone. `touches` is how many of the
+    sampled swing points landed within the clustering tolerance of this
+    price — never a claim about real resting stop orders, which this
+    codebase has no data source for (see app/market_intelligence.py)."""
+
+    kind: Literal["equal_highs", "equal_lows"]
+    price: float
+    touches: int
+
+
+class LiquidityRead(CamelModel):
+    """Real, per-symbol. `sweepDetected` is a real, checkable price-action
+    pattern (a candle wick pierces a recorded LiquidityZone and closes
+    back inside it) — the same definition price-action traders use on a
+    real chart, computed here from real (mock) candle data, never from
+    real order-book/order-flow data this codebase does not have."""
+
+    symbol: str
+    zones: list[LiquidityZone] = Field(default_factory=list)
+    sweep_detected: bool = Field(alias="sweepDetected")
+    sweep_direction: Literal["above_highs", "below_lows", "none"] = Field(alias="sweepDirection")
+    liquidity_score: float = Field(alias="liquidityScore")  # 0-100
+    detail: str
+
+
+class MarketStructureRead(CamelModel):
+    """Real, per-symbol swing structure from the symbol's own recent
+    candle history — swing highs/lows via real local-extrema detection,
+    Break of Structure/Market Structure Shift via the standard real
+    definition (a new swing high above the prior swing high in an
+    uptrend, or the reverse)."""
+
+    symbol: str
+    swing_highs: list[float] = Field(default_factory=list, alias="swingHighs")
+    swing_lows: list[float] = Field(default_factory=list, alias="swingLows")
+    last_break_of_structure: Literal["bullish", "bearish", "none"] = Field(alias="lastBreakOfStructure")
+    structure_state: Literal["trend_continuation", "trend_reversal", "consolidation", "expansion", "compression"] = Field(alias="structureState")
+    detail: str
+
+
+class VolatilityRead(CamelModel):
+    """All four numbers are real, derived from the same real
+    app/market_data.py `volatility_pct()` helper app/signal_calibration.py
+    and app/player_vs_ai.py already use — `expected_pct` is an honest
+    trailing-average statistical projection, explicitly never a forecast
+    of any specific future move (see the PROBABILITY FIRST rule in
+    app/market_intelligence.py's module docstring)."""
+
+    current_pct: float = Field(alias="currentPct")
+    historical_avg_pct: float = Field(alias="historicalAvgPct")
+    session_pct: float = Field(alias="sessionPct")
+    percentile: float  # 0-100, current vs. this same fetched window's own historical average
+    expected_pct: float = Field(alias="expectedPct")
+    detail: str
+
+
+class SessionRead(CamelModel):
+    current: TradingSession
+    label: str
+    overlaps_active: list[str] = Field(default_factory=list, alias="overlapsActive")
+    detail: str
+
+
+class MomentumRead(CamelModel):
+    roc_pct: float = Field(alias="rocPct")  # rate of change over the current sampled window
+    strength: Literal["accelerating", "steady", "decelerating", "exhausted"]
+    detail: str
+
+
+class InstitutionalActivityRead(CamelModel):
+    """An explicit, named PROXY — never real order-flow or institutional
+    footprint data, which this codebase has no source for. Real signal:
+    volume well above a symbol's own trailing average alongside an
+    unusually small price move for that volume ("absorption") is a
+    standard real technical heuristic traders use as one input among many
+    when guessing at large-participant activity on ordinary OHLCV data —
+    it is not verified knowledge of who is actually trading."""
+
+    volume_price_divergence_score: float = Field(alias="volumePriceDivergenceScore")  # 0-100
+    absorption_detected: bool = Field(alias="absorptionDetected")
+    symbols_flagged: list[str] = Field(default_factory=list, alias="symbolsFlagged")
+    detail: str
+
+
+class NewsRiskRead(CamelModel):
+    """A real, honest proxy: the count of real `market`-category NewsItem
+    records currently on file (app/schemas.py's NewsItem has no per-symbol
+    linkage — headlines are real but generic regime flavor text, see
+    app/nexus.py's MARKET_HEADLINES_BY_REGIME) — not a real economic
+    calendar or per-symbol event-risk read, which this codebase has no
+    data source for (same honest gap app/sandbox.py's own "Testing
+    Environments" cut already documents)."""
+
+    active_market_news_count: int = Field(alias="activeMarketNewsCount")
+    risk_level: Literal["low", "moderate", "elevated"] = Field(alias="riskLevel")
+    detail: str
+
+
+class MarketQualityScore(CamelModel):
+    tier: MarketQualityTier
+    score: float  # 0-100
+    confidence_pct: float = Field(alias="confidencePct")
+    reasoning: str
+    evidence: list[str] = Field(default_factory=list)
+    # An honest text comparison against this same company's own real
+    # MarketIntelligenceReport history (never an external dataset) — see
+    # app/market_intelligence.py's compute_historical_similarity().
+    historical_similarity: str = Field(alias="historicalSimilarity")
+
+
+class MarketIntelligenceState(CamelModel):
+    """The department's always-current "eyes" — recomputed fresh every
+    tick from real (mock) OHLCV data, the same "cheap, always current,
+    never a stale second copy" convention app/company_health.py and
+    app/market_environment.py already use. This is what a TradeProposal
+    and the Trade Gatekeeper actually read (see app/executive.py/
+    app/gatekeeper.py) — never the once-daily MarketIntelligenceReport
+    below, which can be up to a day stale by the time a proposal fires."""
+
+    regime: MarketIntelligenceRegime
+    regime_label: str = Field(alias="regimeLabel")
+    regime_detail: str = Field(alias="regimeDetail")
+    quality: MarketQualityScore
+    volatility: VolatilityRead
+    session: SessionRead
+    momentum: MomentumRead
+    institutional_activity: InstitutionalActivityRead = Field(alias="institutionalActivity")
+    news_risk: NewsRiskRead = Field(alias="newsRisk")
+    liquidity: list[LiquidityRead] = Field(default_factory=list)
+    structure: list[MarketStructureRead] = Field(default_factory=list)
+    updated_at: str = Field(alias="updatedAt")
+
+
+class MarketDebateTurn(CamelModel):
+    """One specialist's independent real read of the current
+    MarketIntelligenceState — never a copy of another specialist's turn,
+    and never a trade-specific opinion (contrast with app/debate.py's
+    proposal-scoped AiDebate, which this is not a duplicate of — see
+    app/market_debate.py's module docstring)."""
+
+    specialist: MarketDebateSpecialist
+    label: str
+    observation: str
+    confidence_pct: float = Field(alias="confidencePct")
+    evidence: list[str] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+    opportunities: list[str] = Field(default_factory=list)
+
+
+class MarketDebate(CamelModel):
+    id: str
+    turns: list[MarketDebateTurn] = Field(default_factory=list)
+    summary: str
+    created_at: str = Field(alias="createdAt")
+
+
+class StrategyMatch(CamelModel):
+    """Real, evidence-backed: only ever names a Strategy that has at
+    least one real StrategyReport on file whose own `bestMarketEnvironment`
+    (app/sandbox.py) is consistent with today's regime — never a
+    fabricated recommendation for a strategy with no track record."""
+
+    recommended_strategy_ids: list[str] = Field(default_factory=list, alias="recommendedStrategyIds")
+    avoided_strategy_ids: list[str] = Field(default_factory=list, alias="avoidedStrategyIds")
+    recommended_risk_level: Literal["minimal", "reduced", "normal", "elevated"] = Field(alias="recommendedRiskLevel")
+    detail: str
+
+
+class MarketIntelligenceReport(CamelModel):
+    """The Executive Market Brief — one real, permanent snapshot per real
+    in-game day (generated on the same evening cadence as CoachReport and
+    the Executive Meeting Log's other daily/weekly cadences, see
+    app/nexus.py), embedding that day's own real MarketIntelligenceState
+    plus the day's real MarketDebate and StrategyMatch. `trade_recommendation`
+    reuses the existing ExecutiveAction enum (app/executive_intelligence.py)
+    rather than inventing a parallel one."""
+
+    id: str
+    sim_day: int = Field(alias="simDay")
+    snapshot: MarketIntelligenceState
+    debate: MarketDebate
+    strategy_match: StrategyMatch = Field(alias="strategyMatch")
+    trade_recommendation: ExecutiveAction = Field(alias="tradeRecommendation")
+    confidence_pct: float = Field(alias="confidencePct")
+    evidence: list[str] = Field(default_factory=list)
     created_at: str = Field(alias="createdAt")
 
 
@@ -1622,6 +1869,37 @@ class MarketEnvironmentState(CamelModel):
     updated_at: str = Field(alias="updatedAt")
     # Capped at MAX_MARKET_ENVIRONMENT_HISTORY (app/nexus.py), most recent last.
     timeline: list[MarketEnvironmentEntry] = Field(default_factory=list)
+
+
+# v0.7 Feature 51 — the Market Intelligence Department's Learning Loop.
+# Defined here (rather than alongside the rest of Feature 51's models
+# above) because it directly references MarketEnvironmentRegime, and this
+# file has no `from __future__ import annotations` — Pydantic evaluates
+# annotations eagerly, so a forward reference to a not-yet-defined name
+# would fail at import time.
+class MarketIntelligenceLearningEntry(CamelModel):
+    """The Learning Loop — generated the day AFTER `for_sim_day`, once
+    that day's real outcomes are on record, comparing the prior day's
+    real MarketIntelligenceReport against what actually happened: the
+    real MarketEnvironmentRegime app/market_environment.py's own timeline
+    recorded for that day (may be None if the regime never changed that
+    day) and the real win rate of PaperTrades actually closed that day.
+    Never a fabricated accuracy percentage — `regime_consistent` is a
+    real, documented direction-only comparison (see
+    app/market_intelligence.py's _REGIME_CONSISTENCY_MAP), and either
+    outcome field can honestly be `None` when there is nothing real to
+    compare against yet."""
+
+    id: str
+    for_sim_day: int = Field(alias="forSimDay")
+    predicted_regime: MarketIntelligenceRegime = Field(alias="predictedRegime")
+    predicted_quality_tier: MarketQualityTier = Field(alias="predictedQualityTier")
+    actual_environment_regime: MarketEnvironmentRegime | None = Field(default=None, alias="actualEnvironmentRegime")
+    regime_consistent: bool | None = Field(default=None, alias="regimeConsistent")
+    trades_closed_that_day: int = Field(alias="tradesClosedThatDay")
+    trades_win_rate_pct: float | None = Field(default=None, alias="tradesWinRatePct")
+    lesson: str
+    created_at: str = Field(alias="createdAt")
 
 
 # v0.7 Feature 23 — Company Health & Stability System. Ten real,
@@ -2707,6 +2985,16 @@ class GameSaveState(CamelModel):
     gatekeeper_rejections: list[GatekeeperRejection] = Field(default_factory=list, alias="gatekeeperRejections")
     # v0.7 Feature 22 — Market Environment Simulation (app/market_environment.py).
     market_environment: MarketEnvironmentState = Field(alias="marketEnvironment")
+    # v0.7 Feature 51 — Market Intelligence Department (app/market_intelligence.py).
+    # `market_intelligence` is the always-current "eyes" reading, recomputed
+    # fresh every tick like market_environment/company_health above.
+    # `market_intelligence_reports` is the permanent once-daily Executive
+    # Market Brief history, capped at MAX_MARKET_INTELLIGENCE_REPORTS.
+    # `market_intelligence_learning` is the Learning Loop's own permanent
+    # history, capped at MAX_MARKET_INTELLIGENCE_LEARNING.
+    market_intelligence: MarketIntelligenceState = Field(alias="marketIntelligence")
+    market_intelligence_reports: list[MarketIntelligenceReport] = Field(default_factory=list, alias="marketIntelligenceReports")
+    market_intelligence_learning: list[MarketIntelligenceLearningEntry] = Field(default_factory=list, alias="marketIntelligenceLearning")
     # v0.7 Feature 23 — Company Health & Stability System (app/company_health.py).
     company_health: CompanyHealth = Field(alias="companyHealth")
     # v0.7 Feature 43 — Company DNA (app/company_dna.py).

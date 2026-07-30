@@ -24,6 +24,7 @@ from app.gatekeeper import (
     evaluate_gatekeeper,
     grade_gatekeeper_rejections,
 )
+from app.market_intelligence import default_market_intelligence_state
 from app.portfolio import default_portfolio
 from app.schemas import (
     AnalystVote,
@@ -210,16 +211,16 @@ class TestEvaluateGatekeeper:
     def test_approves_when_every_check_passes(self) -> None:
         proposal = _proposal(confidence_score=90.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}))
         portfolio = default_portfolio()
-        verdict = evaluate_gatekeeper(proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [])
+        verdict = evaluate_gatekeeper(proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], default_market_intelligence_state())
         assert verdict.approved is True
-        assert len(verdict.checks) == 7
+        assert len(verdict.checks) == 8
         assert all(c.passed for c in verdict.checks)
         assert "APPROVED" in verdict.summary
 
     def test_rejects_and_names_the_failed_check_when_confidence_is_too_low(self) -> None:
         proposal = _proposal(confidence_score=10.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}))
         portfolio = default_portfolio()
-        verdict = evaluate_gatekeeper(proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [])
+        verdict = evaluate_gatekeeper(proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], default_market_intelligence_state())
         assert verdict.approved is False
         assert "REJECTED" in verdict.summary
         assert "Decision Confidence" in verdict.summary
@@ -230,9 +231,19 @@ class TestEvaluateGatekeeper:
         proposal = _proposal(symbol="NEXA", confidence_score=90.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}))
         portfolio = default_portfolio()
         warning = RiskWarning(id="w1", symbol="NEXA", severity="critical", message="Too concentrated.", createdAt=_now_iso())
-        verdict = evaluate_gatekeeper(proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [warning])
+        verdict = evaluate_gatekeeper(proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [warning], default_market_intelligence_state())
         assert verdict.approved is False
         assert any(c.id == "risk_warning" and not c.passed for c in verdict.checks)
+
+    def test_rejects_when_market_intelligence_reads_avoid_trading(self) -> None:
+        proposal = _proposal(confidence_score=90.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}))
+        portfolio = default_portfolio()
+        poor_market = default_market_intelligence_state().model_copy(
+            update={"quality": default_market_intelligence_state().quality.model_copy(update={"tier": "avoid_trading", "score": 10.0})}
+        )
+        verdict = evaluate_gatekeeper(proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], poor_market)
+        assert verdict.approved is False
+        assert any(c.id == "market_intelligence" and not c.passed for c in verdict.checks)
 
 
 class TestGradeGatekeeperRejections:

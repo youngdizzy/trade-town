@@ -88,6 +88,7 @@ from app.schemas import (
     ExecutiveMeetingLogEntry,
     ExecutiveRecommendation,
     ExecutiveStance,
+    MarketIntelligenceState,
     TradeDecision,
     TradeProposal,
 )
@@ -98,6 +99,14 @@ MAX_SELF_EVAL_HISTORY = 250
 # cadence as app/wisdom.py's weekly ReflectionSession (see nexus.py's
 # WEEKLY_INTERVAL_DAYS).
 SELF_EVAL_WINDOW_DAYS = 7
+# v0.7 Feature 51 adds "market_intelligence" as a ninth department — its
+# own opinion reads the real, always-current MarketIntelligenceState
+# (app/market_intelligence.py), a company-wide read rather than a
+# proposal-specific one (there is no per-proposal market intelligence —
+# every proposal generated at the same moment shares the same real read).
+# Both generic consumers below (Weekly Self-Evaluation, the Executive
+# Meeting Log) already iterate this tuple generically, so no other change
+# was needed to fold it into either.
 _ALL_DEPARTMENT_ROLES: tuple[ExecutiveDepartmentRole, ...] = (
     "research",
     "quant",
@@ -107,6 +116,7 @@ _ALL_DEPARTMENT_ROLES: tuple[ExecutiveDepartmentRole, ...] = (
     "coach",
     "founders",
     "devils_advocate",
+    "market_intelligence",
 )
 # An Executive Recommendation's action never maps 1:1 onto the CEO's own
 # buy/sell/wait choice (six actions vs. three choices) — these two sets
@@ -124,6 +134,7 @@ _DEPARTMENT_LABELS: dict[str, str] = {
     "coach": "Coach",
     "founders": "Founders",
     "devils_advocate": "Devil's Advocate",
+    "market_intelligence": "Market Intelligence",
 }
 
 
@@ -217,7 +228,26 @@ def _devils_advocate_opinion(challenge_report: ChallengeReport | None) -> Depart
     return DepartmentOpinion(role="devils_advocate", departmentLabel=_DEPARTMENT_LABELS["devils_advocate"], agentId=challenge_report.assigned_agent, stance=stance, summary=challenge_report.final_recommendation, confidencePct={"none_found": 80.0, "minor": 55.0, "major": 25.0}[challenge_report.severity])
 
 
-def generate_department_opinions(proposal: TradeProposal, challenge_report: ChallengeReport | None, coach_reports: list[CoachReport]) -> list[DepartmentOpinion]:
+# v0.7 Feature 51 — Market Intelligence's own opinion, real and
+# company-wide rather than proposal-specific (every proposal generated at
+# the same moment shares the same real MarketIntelligenceState read).
+# Never recomputed here — reads app/market_intelligence.py's own already-
+# computed Market Quality Score directly.
+def _market_intelligence_opinion(market_intelligence: MarketIntelligenceState) -> DepartmentOpinion:
+    stance_by_tier: dict[str, ExecutiveStance] = {
+        "excellent": "agree",
+        "good": "agree",
+        "average": "request_more_research",
+        "poor": "recommend_waiting",
+        "avoid_trading": "recommend_rejecting",
+    }
+    quality = market_intelligence.quality
+    stance = stance_by_tier[quality.tier]
+    summary = f"{market_intelligence.regime_label} — {quality.reasoning}"
+    return DepartmentOpinion(role="market_intelligence", departmentLabel=_DEPARTMENT_LABELS["market_intelligence"], stance=stance, summary=summary, confidencePct=quality.confidence_pct)
+
+
+def generate_department_opinions(proposal: TradeProposal, challenge_report: ChallengeReport | None, coach_reports: list[CoachReport], market_intelligence: MarketIntelligenceState) -> list[DepartmentOpinion]:
     return [
         _research_opinion(proposal),
         _quant_opinion(proposal),
@@ -227,6 +257,7 @@ def generate_department_opinions(proposal: TradeProposal, challenge_report: Chal
         _coach_opinion(coach_reports),
         _founders_opinion(challenge_report),
         _devils_advocate_opinion(challenge_report),
+        _market_intelligence_opinion(market_intelligence),
     ]
 
 
@@ -240,7 +271,18 @@ def compute_executive_recommendation(proposal: TradeProposal, opinions: list[Dep
 
     action: ExecutiveAction
     reason: str
-    if any(o.role == "devils_advocate" and o.stance == "recommend_rejecting" for o in opinions) or any(o.role == "risk" and o.stance == "recommend_position_change" for o in opinions):
+    # v0.7 Feature 51 — checked first: the brief's own rule that "no
+    # department may recommend a trade without first explaining the
+    # current market environment." A real "avoid_trading" Market Quality
+    # read outranks every other department's opinion, the same way the
+    # Gatekeeper's own market_intelligence check mechanically blocks the
+    # trade itself (app/gatekeeper.py) — this just makes the Network's own
+    # recommendation say so too, rather than silently disagreeing with
+    # what the Gatekeeper is about to do.
+    if any(o.role == "market_intelligence" and o.stance == "recommend_rejecting" for o in opinions):
+        action = "pause_trading"
+        reason = "Market Intelligence reads today's conditions as Avoid Trading — the company shouldn't force a trade into a real, currently poor environment."
+    elif any(o.role == "devils_advocate" and o.stance == "recommend_rejecting" for o in opinions) or any(o.role == "risk" and o.stance == "recommend_position_change" for o in opinions):
         action = "reduce_risk"
         reason = "Risk or Devil's Advocate flagged a real concern serious enough to size down before proceeding."
     elif any(o.role == "simulation" and o.stance == "request_more_research" for o in opinions):
@@ -284,11 +326,12 @@ def generate_meeting_log_entry(
     ceo_decision: AnalystChoice,
     challenge_report: ChallengeReport | None,
     coach_reports: list[CoachReport],
+    market_intelligence: MarketIntelligenceState,
     *,
     sim_day: int,
     resolved_by: Literal["ceo", "auto"],
 ) -> ExecutiveMeetingLogEntry:
-    opinions = generate_department_opinions(proposal, challenge_report, coach_reports)
+    opinions = generate_department_opinions(proposal, challenge_report, coach_reports, market_intelligence)
     recommendation = compute_executive_recommendation(proposal, opinions)
     if ceo_decision in ("buy", "sell"):
         network_agreed = recommendation.action in _TRADING_ACTIONS

@@ -34,6 +34,7 @@ from app.executive_intelligence import generate_meeting_log_entry, record_meetin
 from app.innovation import compute_innovation_state
 from app.market_data import market_data_provider
 from app.market_environment import default_market_environment
+from app.market_intelligence import compute_market_intelligence_state
 from app.nexus import MAX_DEBATES, MAX_DECISIONS, MAX_GATEKEEPER_REJECTIONS
 from app.portfolio import default_portfolio, sim_minutes
 from app.research import RESEARCHER_IDS, default_research
@@ -157,6 +158,9 @@ def default_state() -> GameSaveState:
         debates=[],
         gatekeeperRejections=[],
         marketEnvironment=default_market_environment(),
+        marketIntelligence=compute_market_intelligence_state(watchlist, [], [], market_data_provider),
+        marketIntelligenceReports=[],
+        marketIntelligenceLearning=[],
         companyHealth=compute_company_health(
             agents=agents,
             research=[],
@@ -836,6 +840,7 @@ class GameState:
                 risk_limits=self.data.risk_limits,
                 current_price=current_price,
                 now_sim_minutes=now_sim_minutes,
+                market_intelligence=self.data.market_intelligence,
                 debate=debate,
                 risk_warnings=self.data.risk_warnings,
             )
@@ -855,7 +860,7 @@ class GameState:
             meeting_log = record_meeting_log_entry(
                 list(self.data.executive_meeting_log),
                 generate_meeting_log_entry(
-                    proposal, decision, ceo_record.ceo_decision, challenge_report, self.data.coach_reports, sim_day=self.data.time.day, resolved_by="ceo"
+                    proposal, decision, ceo_record.ceo_decision, challenge_report, self.data.coach_reports, self.data.market_intelligence, sim_day=self.data.time.day, resolved_by="ceo"
                 ),
             )
 

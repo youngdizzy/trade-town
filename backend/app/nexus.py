@@ -65,7 +65,18 @@ from app.hall_of_fame import evaluate_hall_of_fame
 from app.innovation import compute_innovation_state
 from app.journal import stamp_journal_entry
 from app.market_data import market_data_provider
+from app.market_debate import generate_market_debate
 from app.market_environment import tick_market_environment
+from app.market_intelligence import (
+    compute_market_intelligence_state,
+    compute_strategy_match,
+    filter_environment_entries_for_day,
+    filter_trades_for_day,
+    generate_learning_entry,
+    generate_market_intelligence_report,
+    record_learning_entry,
+    record_market_intelligence_report,
+)
 from app.mentor import compute_mentor_state, compute_thinking_profiles, generate_question_of_the_day, record_question
 from app.mistakes import generate_case_studies, record_case_studies
 from app.successes import generate_success_studies, record_success_studies
@@ -125,6 +136,9 @@ from app.schemas import (
     GatekeeperRejection,
     HallOfFameEntry,
     InnovationState,
+    MarketIntelligenceLearningEntry,
+    MarketIntelligenceReport,
+    MarketIntelligenceState,
     MemoryEntry,
     MemoryRecord,
     MeetingMinutes,
@@ -689,6 +703,7 @@ def _generate_trade_proposals(
     news: list[NewsItem],
     scanner_alerts: list[ScannerAlert],
     now_sim_minutes: int,
+    market_intelligence: MarketIntelligenceState,
 ) -> list[TradeProposal]:
     """Feature 12 — the CEO Approval pipeline. Every research item that
     just crossed FUTURE_TRADE_CONFIDENCE_THRESHOLD becomes a TradeProposal
@@ -727,6 +742,7 @@ def _generate_trade_proposals(
             now_sim_minutes=now_sim_minutes,
             portfolio=portfolio,
             risk_limits=risk_limits,
+            market_intelligence=market_intelligence,
         )
         new_proposals.append(proposal)
         pending_symbols.add(item.symbol)
@@ -752,6 +768,7 @@ def _apply_operating_mode(
     coach_reports: list[CoachReport],
     meeting_log: list[ExecutiveMeetingLogEntry],
     sim_day: int,
+    market_intelligence: MarketIntelligenceState,
 ) -> tuple[list[TradeProposal], PaperPortfolio, list[ExecutiveMeetingLogEntry]]:
     """v0.7 Feature 21 — Company Operating Modes. Learning Mode never
     calls this (every proposal stays pending, the pre-Feature-21
@@ -783,6 +800,7 @@ def _apply_operating_mode(
             risk_limits=risk_limits,
             current_price=prices.get(proposal.symbol),
             now_sim_minutes=now_sim_minutes,
+            market_intelligence=market_intelligence,
             debate=debate,
             risk_warnings=risk_warnings,
             resolved_by="auto",
@@ -794,7 +812,7 @@ def _apply_operating_mode(
         challenge_report = next((c for c in reversed(challenge_reports) if c.proposal_id == proposal.id), None)
         meeting_log = record_meeting_log_entry(
             meeting_log,
-            generate_meeting_log_entry(proposal, decision, record.ceo_decision, challenge_report, coach_reports, sim_day=sim_day, resolved_by="auto"),
+            generate_meeting_log_entry(proposal, decision, record.ceo_decision, challenge_report, coach_reports, market_intelligence, sim_day=sim_day, resolved_by="auto"),
         )
 
         verdict = decision.gatekeeper_verdict
@@ -943,6 +961,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # Self-Evaluation (app/executive_intelligence.py).
     meeting_log: list[ExecutiveMeetingLogEntry] = list(state.executive_meeting_log)
     self_evaluations: list[DepartmentSelfEvaluation] = list(state.department_self_evaluations)
+    # v0.7 Feature 51 — Market Intelligence Department (app/market_intelligence.py).
+    market_intelligence_reports: list[MarketIntelligenceReport] = list(state.market_intelligence_reports)
+    market_intelligence_learning: list[MarketIntelligenceLearningEntry] = list(state.market_intelligence_learning)
 
     agents = {aid: _tick_agent(aid, agent, new_time, minutes, tasks, resting=resting) for aid, agent in state.agents.items()}
 
@@ -1022,6 +1043,16 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     watchlist = tick_watchlist(watchlist, research, market_data_provider)
     prices = {w.symbol: w.last_price for w in watchlist}
 
+    # --- v0.7 Feature 51: Market Intelligence Department -------------------
+    # Recomputed fresh every tick, before any proposal is generated below —
+    # "the company's eyes," the same real-data-every-tick convention
+    # market_environment/company_health already use. See
+    # app/market_intelligence.py's module docstring for the full honesty
+    # boundary (real technical analysis over real mock OHLCV data, named
+    # proxies where this codebase has no real order-flow/news-calendar
+    # source, nothing fabricated).
+    market_intelligence = compute_market_intelligence_state(watchlist, news, market_intelligence_reports, market_data_provider)
+
     # --- v0.6: Pulse's market scanner --------------------------------------
     # Runs off this tick's freshest watchlist prices, same as everything
     # else below. Every alert is memory-worthy; only the sharper moves
@@ -1092,7 +1123,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # display) keeps showing the player's own actually-configured numbers,
     # never the priority-derived ones, so nothing displayed misattributes
     # a threshold the player didn't set.
-    new_proposals = _generate_trade_proposals(trade_proposals, completed, prices, effective_risk_limits, paper_portfolio, news, scanner_alerts, now_sim_minutes)
+    new_proposals = _generate_trade_proposals(trade_proposals, completed, prices, effective_risk_limits, paper_portfolio, news, scanner_alerts, now_sim_minutes, market_intelligence)
     trade_proposals = [*trade_proposals, *new_proposals]
     # v0.7 Feature 17 — every new proposal gets a full committee debate
     # (app/debate.py) generated up front, over the same real analyst
@@ -1151,6 +1182,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         coach_reports,
         meeting_log,
         new_time.day,
+        market_intelligence,
     )
 
     trade_proposals, expired_proposals = expire_stale_proposals(trade_proposals, now_sim_minutes)
@@ -1162,6 +1194,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             risk_limits=risk_limits,
             current_price=prices.get(expired.symbol),
             now_sim_minutes=now_sim_minutes,
+            market_intelligence=market_intelligence,
             resolved_by="auto",
         )
         record_ceo_decision(memory, expired_decision)
@@ -1171,7 +1204,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         meeting_log = record_meeting_log_entry(
             meeting_log,
             generate_meeting_log_entry(
-                expired, expired_decision, expired_record.ceo_decision, expired_challenge_report, coach_reports, sim_day=new_time.day, resolved_by="auto"
+                expired, expired_decision, expired_record.ceo_decision, expired_challenge_report, coach_reports, market_intelligence, sim_day=new_time.day, resolved_by="auto"
             ),
         )
         news.append(
@@ -1436,6 +1469,30 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     is_morning_qotd = new_time.hour == MORNING_QOTD_HOUR and new_time.minute == 0
     is_founder_log_hour = new_time.hour == FOUNDER_LOG_HOUR and new_time.minute == 0
     latest_report: CoachReport | None = None
+
+    # v0.7 Feature 51 — the Market Intelligence Department's daily
+    # Executive Market Brief. Gated on is_evening alone (every real day,
+    # not a weekly/monthly modulo like the reports below) per the brief's
+    # own "every day produce an Executive Market Brief" — snapshots
+    # today's real MarketIntelligenceState plus a fresh Market Debate and
+    # Strategy Match. The Learning Loop grades YESTERDAY's report the
+    # moment a full day of real outcomes exists to compare it against,
+    # never the same day's own not-yet-final numbers.
+    if is_evening:
+        market_intelligence_debate = generate_market_debate(market_intelligence, debate_id=f"midebate-{new_time.day}")
+        market_intelligence_strategy_match = compute_strategy_match(market_intelligence.regime, strategies, strategy_reports)
+        market_intelligence_report = generate_market_intelligence_report(market_intelligence, market_intelligence_debate, market_intelligence_strategy_match, sim_day=new_time.day)
+        market_intelligence_reports = record_market_intelligence_report(market_intelligence_reports, market_intelligence_report)
+
+        yesterday_sim_day = new_time.day - 1
+        yesterday_report = next((r for r in reversed(market_intelligence_reports) if r.sim_day == yesterday_sim_day), None)
+        already_graded = any(e.for_sim_day == yesterday_sim_day for e in market_intelligence_learning)
+        if yesterday_report is not None and not already_graded:
+            yesterday_environment_entries = filter_environment_entries_for_day(market_environment.timeline, yesterday_sim_day)
+            yesterday_trades = filter_trades_for_day(paper_portfolio.trade_history, yesterday_sim_day)
+            market_intelligence_learning = record_learning_entry(
+                market_intelligence_learning, generate_learning_entry(yesterday_report, yesterday_environment_entries, yesterday_trades)
+            )
 
     if is_evening and new_time.day % WEEKLY_INTERVAL_DAYS == 0:
         latest_report = generate_coach_report("weekly", research, paper_portfolio, company_score, RESEARCHER_IDS, new_time, ceo_decisions=ceo_decisions, decisions=decisions)
@@ -1836,6 +1893,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "debates": debates,
             "gatekeeper_rejections": gatekeeper_rejections,
             "market_environment": market_environment,
+            "market_intelligence": market_intelligence,
+            "market_intelligence_reports": market_intelligence_reports,
+            "market_intelligence_learning": market_intelligence_learning,
             "company_health": company_health,
             "company_dna": company_dna,
             "daily_objective_status": daily_objective_status,

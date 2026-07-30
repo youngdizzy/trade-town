@@ -24,9 +24,10 @@ object, but only the **core modules** are real (see
 `world`, `employees`, `company`, `research`, `training`, `founders`,
 `derived`). The three **archive modules** — `trade_history` (decisions,
 ceoDecisions, tradeProposals, debates, challengeReports,
-gatekeeperRejections), `knowledge_archive` (caseStudies, questionArchive,
+gatekeeperRejections, executiveMeetingLog), `knowledge_archive` (caseStudies, questionArchive,
 reasoningChallenges, reflectionSessions, disciplineReviews, hallOfFame,
-memory, meetingMinutes, executiveReviews, talent), and `academy`
+memory, meetingMinutes, executiveReviews, talent, departmentSelfEvaluations,
+marketIntelligenceReports, marketIntelligenceLearning), and `academy`
 (academyProjects, academyCompletedProjects, agentKnowledge) — come back
 as real empty arrays/dicts (the same defaults a fresh game legitimately
 starts with), not fabricated data and not omitted fields, so the response
@@ -349,6 +350,28 @@ perspective and exists purely to detect disconnects
       { "id": "env-bull-1560", "regime": "bull", "label": "BULL MARKET", "detail": "...", "simMinutes": 1560, "createdAt": "..." }
     ]
   },
+  "marketIntelligence": {
+    // v0.7 Feature 51 — the Market Intelligence Department's always-current
+    // "eyes," recomputed every tick from real (mock) OHLCV candle data
+    // and real wall-clock time (app/market_intelligence.py). This is what
+    // every new TradeProposal and the Trade Gatekeeper actually read —
+    // never the once-daily report below, which can be up to a day stale.
+    // See that module's own docstring for the full honesty boundary:
+    // real technical analysis over real synthesized price data, named
+    // proxies (institutionalActivity, newsRisk, the accumulation/
+    // distribution regimes) where this codebase has no real order-flow/
+    // economic-calendar source, nothing fabricated.
+    "regime": "sideways_range", "regimeLabel": "Sideways Range", "regimeDetail": "...",
+    "quality": { "tier": "good", "score": 78.8, "confidencePct": 88.0, "reasoning": "...", "evidence": ["..."], "historicalSimilarity": "This regime has occurred on 2 of the last 5 real recorded day(s)." },
+    "volatility": { "currentPct": 1.2, "historicalAvgPct": 1.2, "sessionPct": 1.2, "percentile": 49.7, "expectedPct": 1.2, "detail": "..." },
+    "session": { "current": "new_york", "label": "New York Session", "overlapsActive": [], "detail": "..." },
+    "momentum": { "rocPct": 0.2, "strength": "decelerating", "detail": "..." },
+    "institutionalActivity": { "volumePriceDivergenceScore": 18.0, "absorptionDetected": true, "symbolsFlagged": ["QQQ"], "detail": "..." },
+    "newsRisk": { "activeMarketNewsCount": 0, "riskLevel": "low", "detail": "..." },
+    "liquidity": [{ "symbol": "AAPL", "zones": [], "sweepDetected": false, "sweepDirection": "none", "liquidityScore": 0.0, "detail": "..." }],
+    "structure": [{ "symbol": "AAPL", "swingHighs": [], "swingLows": [], "lastBreakOfStructure": "none", "structureState": "consolidation", "detail": "..." }],
+    "updatedAt": "..."
+  },
   "executiveReviews": [
     // v0.7 Feature 24 — the CIO's Monthly Executive Review
     // (app/executive_review.py). A fresh cumulative snapshot over each
@@ -623,6 +646,11 @@ perspective and exists purely to detect disconnects
         // choice: buy | sell | wait
       ],
       "overallRecommendation": "buy", "researchSummary": "...", "riskSummary": "...",
+      // v0.7 Feature 51 — a real one-line citation of the Market
+      // Intelligence Department's regime/quality read at the moment this
+      // proposal was generated (app/market_intelligence.py). null only
+      // for proposals that predate this feature.
+      "marketIntelligenceSummary": "Weak Uptrend — Market Quality good (79/100, 88% confidence).",
       "createdAt": "...", "createdSimMinutes": 1560
     }
   ],
@@ -672,7 +700,11 @@ perspective and exists purely to detect disconnects
     // placed, so `outcome` starts "pending" and only resolves once
     // GATEKEEPER_EVAL_WINDOW_MINUTES (4 simulated hours) have passed,
     // purely from the symbol's own real subsequent watchlist price move
-    // — never a fabricated P&L.
+    // — never a fabricated P&L. v0.7 Feature 51 added an 8th real check
+    // ("market_intelligence"): a trade cannot pass while the Market
+    // Intelligence Department's real, current Market Quality Score reads
+    // "avoid_trading" — the same mechanical enforcement of the brief's
+    // "no trade without explaining the current market environment" rule.
     {
       "id": "gkreject-decision-proposal-research-echo-AAPL-...", "proposalId": "proposal-research-echo-AAPL-...",
       "symbol": "AAPL", "ceoChoice": "buy",
@@ -790,7 +822,7 @@ capped at `MAX_MEETING_LOG_ENTRIES` (200):
 ```json
 {
   "id": "meeting-proposal-42", "proposalId": "proposal-42", "symbol": "AAPL", "simDay": 12,
-  "opinions": [ /* the same 8 DepartmentOpinion entries as the intelligence endpoint above */ ],
+  "opinions": [ /* the same 9 DepartmentOpinion entries as the intelligence endpoint above (v0.7 Feature 51 added "market_intelligence" as the 9th) */ ],
   "recommendedAction": "trade_normally", "recommendationReason": "...",
   "ceoDecision": "buy", "networkAgreed": true,
   "decisionGrade": "A-", "decisionGradeScore": 91.2, // see below
@@ -825,6 +857,64 @@ Never reads the trade's own P&L (see `app/executive.py`'s
 `compute_decision_grade`) — same "process over outcome" convention
 `app/discipline.py`'s Discipline Score already established. `null` on
 `TradeDecision` records that predate this field.
+
+#### `marketIntelligenceReports` / `marketIntelligenceLearning` (WS + archive state, no dedicated endpoint)
+
+v0.7 Feature 51 — the Market Intelligence Department's permanent daily
+record, on the same "broadcast every WS tick + archived in
+`knowledge_archive`" pattern as `executiveMeetingLog`/
+`departmentSelfEvaluations` above (`GET /api/load/archive/knowledge_archive`).
+
+`marketIntelligenceReports` — one real Executive Market Brief per real
+in-game evening (`app/nexus.py`'s `EVENING_REVIEW_HOUR`, every day, not
+gated by a weekly/monthly modulo), snapshotting that day's
+`marketIntelligence` state plus a fresh 5-specialist Market Debate and a
+Strategy Match, capped at `MAX_MARKET_INTELLIGENCE_REPORTS` (60):
+
+```json
+{
+  "id": "mireport-12", "simDay": 12,
+  "snapshot": { /* the same MarketIntelligenceState shape as the top-level marketIntelligence field above */ },
+  "debate": {
+    "id": "midebate-12",
+    "turns": [
+      { "specialist": "liquidity", "label": "Liquidity Specialist", "observation": "...", "confidencePct": 62.0, "evidence": ["..."], "risks": ["..."], "opportunities": ["..."] }
+      /* price_action, momentum, quant, risk — 5 total, see app/market_debate.py */
+    ],
+    "summary": "5 independent specialist read(s) on today's Weak Uptrend — average confidence 57/100. Market Quality: good (79/100).",
+    "createdAt": "..."
+  },
+  "strategyMatch": { "recommendedStrategyIds": [], "avoidedStrategyIds": [], "recommendedRiskLevel": "normal", "detail": "No strategy has been tested under today's specific conditions yet — no real match either way." },
+  "tradeRecommendation": "trade_normally", "confidencePct": 88.0, "evidence": ["..."],
+  "createdAt": "..."
+}
+```
+
+`marketIntelligenceLearning` — the Learning Loop, generated the day
+AFTER `forSimDay` once that day's real outcomes exist to compare
+against, capped at `MAX_MARKET_INTELLIGENCE_LEARNING` (60):
+
+```json
+{
+  "id": "mi-learning-12", "forSimDay": 12,
+  "predictedRegime": "weak_uptrend", "predictedQualityTier": "good",
+  "actualEnvironmentRegime": "bull", "regimeConsistent": true,
+  "tradesClosedThatDay": 3, "tradesWinRatePct": 66.7,
+  "lesson": "The read held up against what actually happened that day.",
+  "createdAt": "..."
+}
+```
+
+`regimeConsistent` compares the day's prediction against the real regime
+`app/market_environment.py`'s own timeline recorded for that day via a
+documented direction-only mapping (`app/market_intelligence.py`'s
+`_REGIME_CONSISTENCY_MAP`) — `null` when nothing real exists yet to
+compare against (no regime change or closed trade that day), never a
+fabricated accuracy percentage. See `app/market_intelligence.py`'s module
+docstring for the full real-vs-proxy honesty boundary behind every field
+above (real technical analysis over real mock OHLCV data; institutional
+activity/news risk are explicitly named proxies, never real order-flow
+or economic-calendar data).
 
 ### `GET /api/knowledge-graph`
 
@@ -1200,6 +1290,8 @@ never needs to trim anything itself:
 | `constitution.citations` | last 120 (`MAX_CONSTITUTION_CITATIONS`) | one per real "Live Enforcement" event across 6 real hooks — v0.7 Feature 46 |
 | `executiveMeetingLog` | last 200 (`MAX_MEETING_LOG_ENTRIES`) | one per real `resolve_proposal()` call — v0.7 Feature 50 (Part 2/3) |
 | `departmentSelfEvaluations` | last 250 (`MAX_SELF_EVAL_HISTORY`) | one per department per real in-game week — v0.7 Feature 50 (Part 2/3) |
+| `marketIntelligenceReports` | last 60 (`MAX_MARKET_INTELLIGENCE_REPORTS`) | one Executive Market Brief per real in-game evening — v0.7 Feature 51 |
+| `marketIntelligenceLearning` | last 60 (`MAX_MARKET_INTELLIGENCE_LEARNING`) | one Learning Loop entry per real in-game evening, graded the day after — v0.7 Feature 51 |
 
 ### Provider configuration
 

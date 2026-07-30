@@ -58,6 +58,7 @@ from app.schemas import (
     Debate,
     DecisionGrade,
     GatekeeperVerdict,
+    MarketIntelligenceState,
     NewsItem,
     PaperPortfolio,
     PaperTrade,
@@ -304,6 +305,7 @@ def generate_proposal(
     now_sim_minutes: int,
     portfolio: PaperPortfolio,
     risk_limits: RiskLimits,
+    market_intelligence: MarketIntelligenceState,
 ) -> TradeProposal:
     assert item.symbol is not None
     votes, overall = generate_analyst_votes(
@@ -313,6 +315,13 @@ def generate_proposal(
         sentinel_warning.message if sentinel_warning else guardian_warning.message if guardian_warning else f"{item.symbol} is within all configured risk limits."
     )
     confidence_engine = compute_confidence(votes, overall, item.confidence, portfolio, risk_limits)
+    # v0.7 Feature 51 — a real one-line citation of the Market Intelligence
+    # Department's current read, attached to every new proposal so it
+    # literally carries real market context (see app/market_intelligence.py).
+    market_intelligence_summary = (
+        f"{market_intelligence.regime_label} — Market Quality {market_intelligence.quality.tier.replace('_', ' ')} "
+        f"({market_intelligence.quality.score:.0f}/100, {market_intelligence.quality.confidence_pct:.0f}% confidence)."
+    )
     return TradeProposal(
         id=f"proposal-{item.id}",
         symbol=item.symbol,
@@ -327,6 +336,7 @@ def generate_proposal(
         confidenceEngine=confidence_engine,
         createdAt=_now_iso(),
         createdSimMinutes=now_sim_minutes,
+        marketIntelligenceSummary=market_intelligence_summary,
     )
 
 
@@ -338,6 +348,7 @@ def resolve_proposal(
     risk_limits: RiskLimits,
     current_price: float | None,
     now_sim_minutes: int,
+    market_intelligence: MarketIntelligenceState,
     debate: Debate | None = None,
     risk_warnings: list[RiskWarning] | None = None,
     resolved_by: Literal["ceo", "auto"] = "ceo",
@@ -367,7 +378,7 @@ def resolve_proposal(
             # size zero happened.
             ceo_choice = "wait"
         else:
-            gatekeeper_verdict = evaluate_gatekeeper(proposal, ceo_choice, debate, portfolio, risk_limits, risk_warnings or [])
+            gatekeeper_verdict = evaluate_gatekeeper(proposal, ceo_choice, debate, portfolio, risk_limits, risk_warnings or [], market_intelligence)
             if gatekeeper_verdict.approved:
                 position_id = f"pos-{proposal.id}"
                 portfolio = open_position(

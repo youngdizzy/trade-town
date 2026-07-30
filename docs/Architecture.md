@@ -3899,6 +3899,136 @@ and that the OPS tab opens and renders the Knowledge Base timeline with
 no console errors); `commandCenter.spec.ts`'s tab-count test updated to
 28 tabs.
 
+### Market Intelligence Department — Feature 51, "the company's eyes"
+
+GOAL (from the brief): before any department searches for trades, the
+company must first understand the environment it's operating in — every
+department should receive Market Intelligence before deciding.
+
+**The honesty boundary, decided before any code was written.** This
+codebase's `MarketDataProvider` (`app/market_data.py`) exposes real (mock)
+OHLCV `Candle` data — no order book, no Level 2, no dark-pool prints, no
+economic calendar. The brief's longer feature list names several things
+with no real data source anywhere in this codebase: true institutional
+positioning, real resting stop-order locations, real per-symbol news/
+event-risk timing. Rather than fabricate any of these, `app/market_intelligence.py`
+draws a line documented in its own module docstring and repeated in every
+affected schema field's own docstring:
+
+| Real (standard technical analysis over real mock candle data) | Named PROXY (a real, computable stand-in, always labeled) | Explicitly not built |
+|---|---|---|
+| 13-way regime classification (trend/volatility/volume-ratio thresholds) | Institutional Activity — volume/price-move divergence ("absorption"), not real order flow | Real order-book/Level-2/dark-pool data |
+| Market Structure — real local-extrema swing highs/lows, Break of Structure | Accumulation/Distribution regimes — flat price + rising/fading volume, not confirmed Wyckoff volume-at-price | Real resting stop-order locations |
+| Liquidity zones — real equal-high/low clustering + a real sweep-and-close-back pattern | News Risk — the real count of `market`-category `NewsItem`s on file (no per-symbol linkage exists), not a real economic calendar | A real economic/earnings calendar |
+| Volatility Engine — current/historical/session `volatility_pct()` readings | | |
+| Session Intelligence — real wall-clock UTC time, fixed windows (documented, no DST handling) | | |
+| Momentum — real rate-of-change across two real candle sub-windows | | |
+| Strategy Matching — real cross-reference against `app/sandbox.py`'s own `StrategyReport.bestMarketEnvironment` | | |
+| Learning Loop — real comparison against `app/market_environment.py`'s own regime timeline and real closed `PaperTrade` outcomes | | |
+
+Every regime/quality/liquidity/structure string in the UI states this
+distinction directly (e.g. `InstitutionalActivityRead`'s docstring: "a
+real volume/price-divergence proxy, not verified order-flow data"), the
+same discipline `app/confidence.py`'s own module docstring already
+established for an overlapping list of factors it deliberately doesn't
+compute.
+
+**Two-tier architecture, mirroring `MarketEnvironmentState`/`CompanyHealth`'s
+own "cheap live reading vs. permanent snapshot" split:**
+
+- **`MarketIntelligenceState`** (`market_intelligence` on `GameSaveState`) —
+  the always-current "eyes," recomputed fresh every tick from real (mock)
+  candles across the live watchlist, before any trade proposal is
+  generated (`app/nexus.py`'s `tick()`, right after `tick_watchlist`).
+  This is what a new `TradeProposal` and the Trade Gatekeeper actually
+  read — never the once-daily report below, which can be up to a day
+  stale by the time a proposal fires.
+- **`MarketIntelligenceReport`** (the Executive Market Brief,
+  `market_intelligence_reports`) — one real, permanent snapshot per real
+  in-game evening (`is_evening`, every day — not gated by a weekly/
+  monthly modulo, per the brief's own "every day produce an Executive
+  Market Brief"), embedding that day's `MarketIntelligenceState` plus a
+  fresh 5-specialist Market Debate and Strategy Match. Capped at
+  `MAX_MARKET_INTELLIGENCE_REPORTS` (60).
+- **`MarketIntelligenceLearningEntry`** (`market_intelligence_learning`) —
+  the Learning Loop, generated the day AFTER a report, once that day's
+  real outcomes exist: compares the predicted regime against the real
+  `MarketEnvironmentRegime` `app/market_environment.py`'s own timeline
+  recorded for that day (via a documented, direction-only
+  `_REGIME_CONSISTENCY_MAP` — several of the 13 regimes honestly map to
+  more than one acceptable outcome against that coarser 5-way scale) and
+  the real win rate of `PaperTrade`s actually closed that day. Either
+  comparison field is honestly `None` when nothing real exists yet to
+  compare against. Capped at `MAX_MARKET_INTELLIGENCE_LEARNING` (60).
+
+**Market Debate System** (`app/market_debate.py`) — five specialists
+(Liquidity/Price Action/Momentum/Quant/Risk), each independently reading
+the real `MarketIntelligenceState` — never a trade-specific opinion, and
+deliberately distinct from two other real debate-shaped systems already
+in this codebase: `app/debate.py`'s `AiDebate` (proposal-scoped, six
+analyst-vote seats) and the Executive Intelligence Network's own "Risk"
+department (a proposal's portfolio-exposure read). This module's Risk
+specialist reads only real market-CONDITION risk (session liquidity,
+quality tier, news volume) — never portfolio positions or drawdown,
+which stays Sentinel/Guardian's job, so it's additive rather than a
+duplicate.
+
+**Integration — "every department receives Market Intelligence" made
+literally true by construction, not by rewriting eight separate
+modules:**
+
+- **Trade Gatekeeper** (`app/gatekeeper.py`) — a new 8th real check,
+  `_market_intelligence_check`: a trade cannot pass while the
+  department's own current Market Quality Score reads `avoid_trading` —
+  the mechanical enforcement of the brief's closing rule ("no department
+  may recommend a trade without first explaining the current market
+  environment... every recommendation must be justified before capital
+  is committed").
+- **TradeProposal** (`app/executive.py`'s `generate_proposal`) — every
+  new proposal carries a real one-line `marketIntelligenceSummary`
+  citation of the department's regime/quality read at generation time.
+- **Executive Intelligence Network** (`app/executive_intelligence.py`) —
+  `market_intelligence` becomes a real ninth `ExecutiveDepartmentRole`.
+  Because the Executive Meeting Log and Weekly Self-Evaluation already
+  iterate `_ALL_DEPARTMENT_ROLES` generically (Feature 50), adding one
+  more role to that tuple plus one new `_market_intelligence_opinion()`
+  function was the entire integration — no changes needed to either of
+  those two systems. `compute_executive_recommendation()` also gained a
+  new top-priority rule: a real `avoid_trading` read outranks every
+  other department's opinion, mirroring what the Gatekeeper's own check
+  is about to do mechanically.
+- **Strategy Matching** cross-references `app/sandbox.py`'s real
+  `Strategy`/`StrategyReport` history — only ever recommends a strategy
+  with real positive evidence in a matching regime, only ever avoids one
+  with a real recorded loss in one, honest "no real match yet" otherwise.
+
+**Explicitly deferred, not silently cut — Part 2 of this same feature:**
+a new Academy mentor track teaching Market Structure/Liquidity/Session
+Characteristics/Probability Thinking (`app/foundational_mentors.py`
+already has the generic add-track/add-lesson/quiz/CEO-approved-
+graduation machinery this needs — see the Foundational Mentor Program
+section above), and the frontend (Executive Market Brief dashboard,
+per-symbol structure/liquidity display, Market Debate UI) — per this
+project's own backend-first discipline (commit and verify the backend,
+then build the frontend).
+
+**Verified**: two new test files — `test_market_intelligence.py` (41
+tests: structure/liquidity/session/news-risk/regime-classification/
+quality-score/strategy-matching/learning-loop/end-to-end state
+computation) and `test_market_debate.py` (10 tests: all 5 specialists
+present, each reads its own real field, the Risk specialist never reads
+portfolio state) — plus updates to the pre-existing gatekeeper/executive/
+executive_intelligence suites for the new department/check — 769/769
+full suite, mypy/ruff clean. A direct ~10-in-game-day `nexus.tick()`
+simulation (not just unit tests) confirmed the daily report/Learning Loop
+cadence, real `TradeProposal.marketIntelligenceSummary` citations, and
+real `market_intelligence` opinions landing in the Executive Meeting Log
+with no exceptions; a `save_modules` split/assemble round-trip confirmed
+the new fields persist correctly (`market_intelligence` joins `derived`
+alongside `market_environment`; `market_intelligence_reports`/
+`market_intelligence_learning` join `knowledge_archive` alongside
+`department_self_evaluations`).
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

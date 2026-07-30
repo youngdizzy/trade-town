@@ -7,6 +7,51 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.7 Feature 51 — Market Intelligence Department, "the company's eyes"
+  (backend)**: before any trade proposal is generated, the company now
+  computes a real, always-current read of the market it's operating in.
+  New `app/market_intelligence.py` classifies a 13-way regime (vs. the
+  existing 5-way `MarketEnvironmentRegime` — additive, not a replacement),
+  Market Structure (real swing-high/low + Break of Structure detection),
+  Liquidity Intelligence (real equal-high/low zone clustering + a real
+  sweep-and-close-back pattern), a Volatility Engine, Session Intelligence
+  (real wall-clock UTC windows), Momentum, and a composite Market Quality
+  Score (Excellent/Good/Average/Poor/Avoid Trading) — all from this
+  codebase's real (mock) OHLCV candle data, using standard technical-
+  analysis formulas, never a prediction of future price. Two explicitly
+  named PROXIES (Institutional Activity — a volume/price-divergence
+  "absorption" read; News Risk — a real count of `market`-category
+  `NewsItem`s on file) stand in for signals this codebase has no real
+  order-flow/economic-calendar data source for, always labeled as such —
+  real institutional order flow, Level 2 data, and an economic calendar
+  are explicitly not built, matching the same honesty boundary
+  `app/confidence.py`'s own module docstring already established. New
+  `app/market_debate.py` gives five specialists (Liquidity/Price Action/
+  Momentum/Quant/Risk) — distinct from the existing proposal-scoped
+  `AiDebate` and the Executive Intelligence Network's own portfolio-level
+  Risk department — independent real reads of that state. Integration:
+  a new 8th Trade Gatekeeper check blocks a trade while the real Market
+  Quality Score reads "avoid_trading"; every new `TradeProposal` carries
+  a real one-line `marketIntelligenceSummary`; `market_intelligence`
+  becomes the Executive Intelligence Network's real ninth department —
+  because the Meeting Log/Weekly Self-Evaluation already iterate every
+  department generically (Feature 50), this was the entire integration,
+  no rewiring of the other eight departments needed. One real Executive
+  Market Brief is generated every in-game evening (`MarketIntelligenceReport`,
+  embedding the day's state + a fresh Market Debate + a real Strategy
+  Match cross-referencing `app/sandbox.py`'s own backtest history); a
+  Learning Loop grades the prior day's report the next evening against
+  the real regime `app/market_environment.py`'s timeline recorded and
+  real closed-trade win rate. Explicitly deferred, not cut: a new Academy
+  mentor track (reuses `app/foundational_mentors.py`'s existing generic
+  track/lesson/quiz machinery) and the frontend — backend-first, per this
+  project's own discipline. Verified: two new test files (51 tests) plus
+  updates to the gatekeeper/executive/executive_intelligence suites —
+  769/769 full suite, mypy/ruff clean; a direct ~10-in-game-day
+  `nexus.tick()` simulation confirmed the daily report/Learning Loop
+  cadence with no exceptions, and a `save_modules` round-trip confirmed
+  the new fields persist correctly.
+
 - **TradeTown Development Rules (v0.9)** — a new canonical constitution
   document (`docs/DEVELOPMENT_RULES.md`) governing how every future
   feature must be designed: company-over-player, autonomous employees,

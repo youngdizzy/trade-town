@@ -169,5 +169,5 @@ async def executive_intelligence(proposal_id: str = Query(..., alias="proposalId
     if proposal is None:
         raise HTTPException(status_code=404, detail="Unknown or already-resolved proposal.")
     challenge_report = next((c for c in reversed(state.challenge_reports) if c.proposal_id == proposal_id), None)
-    opinions = generate_department_opinions(proposal, challenge_report, state.coach_reports)
+    opinions = generate_department_opinions(proposal, challenge_report, state.coach_reports, state.market_intelligence)
     return compute_executive_recommendation(proposal, opinions)
