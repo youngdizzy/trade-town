@@ -231,6 +231,38 @@ test("Devil's Advocate Challenge Report shows a real assigned employee and sever
   await expect(popup.getByTestId("challenge-report-assignee")).not.toHaveText(assignedBefore, { timeout: 10000 });
 });
 
+test("Executive Intelligence Network panel synthesizes real department opinions into one recommendation", async ({ page }) => {
+  await page.goto("/");
+  await continueGame(page);
+  await boostResearchToThreshold(page);
+  await dismissAutoPopups(page);
+
+  await page.keyboard.press("Tab");
+  await page.getByText("EXPAND — FULL COMMAND CENTER").click();
+  await page.getByRole("button", { name: "EXECUTIVE", exact: true }).click();
+
+  const pendingRow = page.locator("button").filter({ hasText: /% confidence/ }).first();
+  await expect(pendingRow).toBeVisible({ timeout: 20000 });
+  await pendingRow.click();
+
+  const popup = page.getByTestId("executive-voting");
+  await expect(popup).toBeVisible();
+
+  await popup.getByText("OPEN EXECUTIVE INTELLIGENCE NETWORK").click();
+  await expect(popup.getByText(/Executive Recommendation —/)).toBeVisible({ timeout: 10000 });
+
+  // v0.7 Feature 50 (Part 1) — 8 real departments, each a real stance
+  // synthesized from an already-computed system (see
+  // backend/app/executive_intelligence.py), never a fabricated 9th vote.
+  for (const label of ["Research", "Quant", "Risk", "Simulation", "Decision Intelligence", "Coach", "Founders", "Devil's Advocate"]) {
+    await expect(popup.getByText(label, { exact: true })).toBeVisible();
+  }
+  await expect(popup.getByText(/% network confidence/)).toBeVisible();
+  await expect(popup.getByText(/Supporting:/)).toBeVisible();
+  await expect(popup.getByText(/Opposing:/)).toBeVisible();
+  await expect(popup.getByText(/recomputed fresh each time this panel opens, not stored/)).toBeVisible();
+});
+
 test("Executive panel in the Command Center lists pending proposals and CEO track record", async ({ page }) => {
   await page.goto("/");
   await continueGame(page);

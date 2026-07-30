@@ -16,7 +16,9 @@ import type {
   ConstitutionCitation,
   Debate,
   DisciplineReview,
+  ExecutiveAction,
   ExecutiveReview,
+  ExecutiveStance,
   FounderState,
   FoundationalMentorId,
   FoundationalMentorProfile,
@@ -244,6 +246,34 @@ const TIER_TONE: Record<ConfidenceTier, "green" | "cyan" | "amber" | "red" | "pu
 
 export function confidenceTierTone(tier: ConfidenceTier): "green" | "cyan" | "amber" | "red" | "purple" {
   return TIER_TONE[tier];
+}
+
+// v0.7 Feature 50 (Part 1) — the Executive Intelligence Network's
+// synthesis over 8 real departments (see backend/app/executive_intelligence.py).
+const EXECUTIVE_STANCE_TONE: Record<ExecutiveStance, "green" | "amber" | "red"> = {
+  agree: "green",
+  disagree: "red",
+  request_more_research: "amber",
+  recommend_waiting: "amber",
+  recommend_position_change: "amber",
+  recommend_rejecting: "red",
+};
+
+export function executiveStanceTone(stance: ExecutiveStance): "green" | "amber" | "red" {
+  return EXECUTIVE_STANCE_TONE[stance];
+}
+
+const EXECUTIVE_ACTION_TONE: Record<ExecutiveAction, "green" | "amber" | "red"> = {
+  trade_normally: "green",
+  reduce_risk: "amber",
+  wait: "amber",
+  research_more: "amber",
+  pause_trading: "red",
+  focus_on_simulation: "red",
+};
+
+export function executiveActionTone(action: ExecutiveAction): "green" | "amber" | "red" {
+  return EXECUTIVE_ACTION_TONE[action];
 }
 
 export interface ChecklistItem {

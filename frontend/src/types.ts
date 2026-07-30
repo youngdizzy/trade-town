@@ -858,6 +858,80 @@ export interface ChallengeReport {
   createdAt: string;
 }
 
+// v0.7 Feature 50 (Part 1) — the Executive Intelligence Network. A pure
+// synthesis/presentation layer over 8 already-real departments (never a
+// new computation engine of its own) — see
+// backend/app/executive_intelligence.py's module docstring. Computed
+// fresh on request, like WhatIfSimulation, never persisted.
+export type ExecutiveDepartmentRole =
+  | "research"
+  | "quant"
+  | "risk"
+  | "simulation"
+  | "decision_intelligence"
+  | "coach"
+  | "founders"
+  | "devils_advocate";
+
+export type ExecutiveStance =
+  | "agree"
+  | "disagree"
+  | "request_more_research"
+  | "recommend_waiting"
+  | "recommend_position_change"
+  | "recommend_rejecting";
+
+export type ExecutiveAction = "trade_normally" | "reduce_risk" | "wait" | "research_more" | "pause_trading" | "focus_on_simulation";
+
+export interface DepartmentOpinion {
+  role: ExecutiveDepartmentRole;
+  departmentLabel: string;
+  agentId: AgentId | null;
+  stance: ExecutiveStance;
+  summary: string;
+  confidencePct: number;
+}
+
+export interface ExecutiveRecommendation {
+  proposalId: string;
+  action: ExecutiveAction;
+  confidencePct: number;
+  reason: string;
+  supporting: ExecutiveDepartmentRole[];
+  opposing: ExecutiveDepartmentRole[];
+  opinions: DepartmentOpinion[];
+  generatedAt: string;
+}
+
+export const EXECUTIVE_DEPARTMENT_LABEL: Record<ExecutiveDepartmentRole, string> = {
+  research: "Research",
+  quant: "Quant",
+  risk: "Risk",
+  simulation: "Simulation",
+  decision_intelligence: "Decision Intelligence",
+  coach: "Coach",
+  founders: "Founders",
+  devils_advocate: "Devil's Advocate",
+};
+
+export const EXECUTIVE_ACTION_LABEL: Record<ExecutiveAction, string> = {
+  trade_normally: "Trade Normally",
+  reduce_risk: "Reduce Risk",
+  wait: "Wait",
+  research_more: "Research More",
+  pause_trading: "Pause Trading",
+  focus_on_simulation: "Focus On Simulation",
+};
+
+export const EXECUTIVE_STANCE_LABEL: Record<ExecutiveStance, string> = {
+  agree: "Agree",
+  disagree: "Disagree",
+  request_more_research: "Request More Research",
+  recommend_waiting: "Recommend Waiting",
+  recommend_position_change: "Recommend Position Change",
+  recommend_rejecting: "Recommend Rejecting",
+};
+
 // v0.7 Feature 41 — Innovation Points. A second, deliberately narrow
 // ladder alongside Career Level (Feature 40) — where that tracks general
 // knowledge mastery, this tracks one specific real skill: an agent's own

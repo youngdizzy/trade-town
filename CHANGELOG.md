@@ -114,13 +114,31 @@ development milestones, not semver releases.
   a Revision) — this is Part 1, the foundational synthesis layer.
   Explicitly deferred to later phases: the permanent Executive Meeting
   Log, per-department weekly Self-Evaluation, Decision Grade (A+–F), the
-  Company Health formula redesign, and all frontend work (Executive
-  Recommendation Panel, the three redesigned dashboards). Explicitly
-  cut, not deferred: the brief's "Session Changes / Market Open / Market
-  Close" simulation environments — no session-boundary model exists
-  anywhere in this codebase's continuous sim clock to back them.
+  Company Health formula redesign, and the three redesigned Decision
+  Intelligence/Risk/Simulation dashboards. Explicitly cut, not deferred:
+  the brief's "Session Changes / Market Open / Market Close" simulation
+  environments — no session-boundary model exists anywhere in this
+  codebase's continuous sim clock to back them.
   Backend: `test_executive_intelligence.py` — 20 new tests, 680/680 full
   suite, mypy/ruff clean.
+  - **Frontend (Part 1's Executive Recommendation Panel)**: a new
+    "OPEN EXECUTIVE INTELLIGENCE NETWORK" collapsible inside the
+    existing Executive Voting popup (`ExecutiveVoting.tsx`) — proposal-
+    scoped, fetched fresh via `api.getExecutiveIntelligence(proposalId)`
+    exactly when opened (same never-cached convention as the What-If
+    Simulation Lab beside it), not a new standalone tab, since
+    `ExecutiveRecommendation` is computed fresh per-proposal like
+    `WhatIfSimulation` and has no persisted history to justify a
+    company-wide dashboard yet. Shows the synthesized recommended
+    action, network confidence, supporting/opposing departments, and
+    all 8 real department opinions with their own stance and summary.
+    New TS mirrors (`ExecutiveRecommendation`, `DepartmentOpinion`,
+    `ExecutiveAction`/`ExecutiveStance`/`ExecutiveDepartmentRole`) in
+    `types.ts`, tone helpers in `derive.ts`. Verified: tsc/eslint/build
+    clean; new Playwright test in `executiveVoting.spec.ts` opens a
+    real pending proposal's popup and asserts all 8 department labels,
+    the recommendation, and the supporting/opposing lists render from
+    the real endpoint — passing live against the running dev stack.
 
 - **"Revoke Graduation" — a new Executive Action on the Academy**: the
   mirror image of the Graduation Queue's Approve button. New

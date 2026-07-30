@@ -5,6 +5,7 @@ import type {
   AnalystVote,
   ChallengeSeverity,
   DebateTurn,
+  ExecutiveRecommendation,
   GatekeeperVerdict,
   HoldReason,
   ScenarioResult,
@@ -12,12 +13,12 @@ import type {
   TradeProposal,
   WhatIfSimulation,
 } from "@/types";
-import { CONFIDENCE_TIER_LABEL, ROLE_TO_AGENT } from "@/types";
+import { CONFIDENCE_TIER_LABEL, EXECUTIVE_ACTION_LABEL, EXECUTIVE_DEPARTMENT_LABEL, EXECUTIVE_STANCE_LABEL, ROLE_TO_AGENT } from "@/types";
 import { api } from "@/net/api";
 import { NexusManager } from "@/game/systems/NexusManager";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { EventBus } from "@/game/systems/EventBus";
-import { confidenceTierTone, formatMoney, formatPct, preTradeChecklist } from "./lib/derive";
+import { confidenceTierTone, executiveActionTone, executiveStanceTone, formatMoney, formatPct, preTradeChecklist } from "./lib/derive";
 import { AnimatedGrid, DataRow, Glass, Meter, StatusPill, TerminalLabel } from "./ui";
 
 const CHOICE_TONE: Record<AnalystChoice, "green" | "red" | "amber"> = { buy: "green", sell: "red", wait: "amber" };
@@ -71,6 +72,10 @@ export function ExecutiveVoting() {
   const [whatIf, setWhatIf] = useState<WhatIfSimulation | null>(null);
   const [whatIfLoading, setWhatIfLoading] = useState(false);
   const [whatIfError, setWhatIfError] = useState<string | null>(null);
+  const [showExecIntel, setShowExecIntel] = useState(false);
+  const [execIntel, setExecIntel] = useState<ExecutiveRecommendation | null>(null);
+  const [execIntelLoading, setExecIntelLoading] = useState(false);
+  const [execIntelError, setExecIntelError] = useState<string | null>(null);
   const [expandedScenario, setExpandedScenario] = useState<ScenarioType | null>(null);
   const [submitting, setSubmitting] = useState<AnalystChoice | null>(null);
   const [holding, setHolding] = useState<HoldReason | null>(null);
@@ -120,6 +125,32 @@ export function ExecutiveVoting() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showWhatIf, proposal?.symbol]);
 
+  // v0.7 Feature 50 (Part 1) — the Executive Intelligence Network's
+  // recommendation is computed fresh (never persisted — see
+  // backend/app/routers/executive.py) every time this section is opened
+  // for a given proposal, same reasoning as the What-If lab above.
+  useEffect(() => {
+    if (!showExecIntel || !proposal) return;
+    let cancelled = false;
+    setExecIntelLoading(true);
+    setExecIntelError(null);
+    api
+      .getExecutiveIntelligence(proposal.id)
+      .then((res) => {
+        if (!cancelled) setExecIntel(res);
+      })
+      .catch((err) => {
+        if (!cancelled) setExecIntelError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setExecIntelLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showExecIntel, proposal?.id]);
+
   // Same reasoning as TradeOutcomeBanner's own MainMenuScene guard: the
   // WebSocket connects independent of the title screen, so never render
   // a full-screen popup over it. A pending gatekeeperRejection keeps this
@@ -132,6 +163,7 @@ export function ExecutiveVoting() {
     setExpandedAgent(null);
     setShowAnalysis(false);
     setShowWhatIf(false);
+    setShowExecIntel(false);
     setExpandedScenario(null);
     setError(null);
     EventBus.emit("ui:executiveVoting", { open: false });
@@ -156,6 +188,7 @@ export function ExecutiveVoting() {
       setExpandedAgent(null);
       setShowAnalysis(false);
       setShowWhatIf(false);
+      setShowExecIntel(false);
       setExpandedScenario(null);
       // v0.7 Feature 20 — the CEO's own buy/sell can still be vetoed by
       // the Trade Gatekeeper; surface that instead of silently advancing
@@ -496,6 +529,26 @@ export function ExecutiveVoting() {
               {!whatIfLoading && whatIf && whatIf.symbol === proposal.symbol && (
                 <WhatIfPanel whatIf={whatIf} expandedScenario={expandedScenario} onToggleScenario={(s) => setExpandedScenario(expandedScenario === s ? null : s)} />
               )}
+            </Glass>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setShowExecIntel(!showExecIntel)}
+            className="w-full rounded-sm border border-cmd-border px-3 py-1.5 text-cmd-textDim transition-colors hover:border-cmd-purple/50 hover:text-cmd-purple"
+          >
+            {showExecIntel ? "HIDE EXECUTIVE INTELLIGENCE NETWORK ▲" : "OPEN EXECUTIVE INTELLIGENCE NETWORK ▼"}
+          </button>
+
+          {showExecIntel && (
+            <Glass className="p-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <TerminalLabel>Executive Recommendation — {proposal.symbol}</TerminalLabel>
+                <span className="text-[9px] text-cmd-textDim">Synthesized live, not a 9th vote.</span>
+              </div>
+              {execIntelLoading && <div className="text-[9px] text-cmd-textDim">Convening the network…</div>}
+              {execIntelError && <div className="text-[9px] text-cmd-red">{execIntelError}</div>}
+              {!execIntelLoading && execIntel && execIntel.proposalId === proposal.id && <ExecutiveIntelligencePanel recommendation={execIntel} />}
             </Glass>
           )}
 
@@ -860,6 +913,52 @@ function WhatIfPanel({
             </button>
           );
         })}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * v0.7 Feature 50 (Part 1) — the Executive Intelligence Network's
+ * recommendation panel. All 8 department opinions are real stances
+ * derived from already-computed systems (see
+ * backend/app/executive_intelligence.py); the recommended action is a
+ * rule-based synthesis of those opinions, never a fabricated score.
+ */
+function ExecutiveIntelligencePanel({ recommendation }: { recommendation: ExecutiveRecommendation }) {
+  return (
+    <div className="space-y-2">
+      <div className="rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2">
+        <div className="mb-1 flex items-center justify-between gap-2">
+          <StatusPill tone={executiveActionTone(recommendation.action)}>{EXECUTIVE_ACTION_LABEL[recommendation.action]}</StatusPill>
+          <span className="text-[9px] text-cmd-textDim">{Math.round(recommendation.confidencePct)}% network confidence</span>
+        </div>
+        <div className="text-[9px] text-cmd-text">{recommendation.reason}</div>
+        <div className="mt-1.5 flex flex-wrap gap-x-3 gap-y-0.5 text-[8px] text-cmd-textDim">
+          <span>
+            Supporting: {recommendation.supporting.length > 0 ? recommendation.supporting.map((r) => EXECUTIVE_DEPARTMENT_LABEL[r]).join(", ") : "none"}
+          </span>
+          <span>Opposing: {recommendation.opposing.length > 0 ? recommendation.opposing.map((r) => EXECUTIVE_DEPARTMENT_LABEL[r]).join(", ") : "none"}</span>
+        </div>
+      </div>
+
+      <div className="space-y-1">
+        {recommendation.opinions.map((op) => (
+          <div key={op.role} className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-2 text-[9px]">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <span className="flex items-center gap-1.5">
+                <span className="text-cmd-text">{op.departmentLabel}</span>
+                {op.agentId && <span className="text-cmd-textDim">{AGENT_PROFILES[op.agentId].name}</span>}
+              </span>
+              <StatusPill tone={executiveStanceTone(op.stance)}>{EXECUTIVE_STANCE_LABEL[op.stance]}</StatusPill>
+            </div>
+            <div className="text-cmd-textDim">{op.summary}</div>
+            <div className="mt-1 text-[8px] text-cmd-textDim">{Math.round(op.confidencePct)}% confidence</div>
+          </div>
+        ))}
+      </div>
+      <div className="text-[8px] text-cmd-textDim">
+        Generated {new Date(recommendation.generatedAt).toLocaleTimeString()} — recomputed fresh each time this panel opens, not stored.
       </div>
     </div>
   );

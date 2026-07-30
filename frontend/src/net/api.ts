@@ -12,6 +12,7 @@ import type {
   Debate,
   EducationLesson,
   EducationProgress,
+  ExecutiveRecommendation,
   FoundationalMentorId,
   FoundationalMentorState,
   FoundationalResourceType,
@@ -138,6 +139,7 @@ export const api = {
       body: JSON.stringify({ proposalId }),
     }),
   getWhatIfSimulation: (symbol: string) => request<WhatIfSimulation>(`/executive/whatif?symbol=${encodeURIComponent(symbol)}`),
+  getExecutiveIntelligence: (proposalId: string) => request<ExecutiveRecommendation>(`/executive/intelligence?proposalId=${encodeURIComponent(proposalId)}`),
   getKnowledgeGraph: () => request<KnowledgeGraph>("/knowledge-graph"),
   submitQotdResponse: (questionId: string, response: string) =>
     request<{ question: QuestionOfTheDay }>("/mentor/qotd/respond", {

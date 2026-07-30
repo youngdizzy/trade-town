@@ -3204,15 +3204,42 @@ Feature 49 was (Phases 1/2/3 + a Revision), not crammed into one pass:
   Open / Market Close" simulation environments. No session-boundary
   model exists anywhere in this codebase's continuous sim clock to back
   them honestly, and none is being invented.
-- **Frontend** (Executive Recommendation Panel, the three redesigned
-  dashboards) is not yet built — backend-first, per this session's own
-  data-loss-avoidance discipline (commit and verify the backend before
-  starting frontend work).
+- **The three redesigned dashboards** (Decision Intelligence, Risk,
+  Simulation) are not yet built — deferred with the rest of the
+  above.
 
 **Verified**: `test_executive_intelligence.py` — 20 new tests (every
 department's real-field reuse, every honest "not yet" fallback, and the
 recommendation engine's priority-ordered rules) — 680/680 full suite,
 mypy/ruff clean.
+
+**Frontend (Part 1's Executive Recommendation Panel)**: built as a
+proposal-scoped collapsible section inside the existing Executive
+Voting popup (`ExecutiveVoting.tsx`), the same slot pattern as the
+What-If Simulation Lab beside it — `ExecutiveRecommendation` is
+computed fresh per-proposal (never persisted), exactly like
+`WhatIfSimulation`, so a standalone company-wide dashboard tab isn't
+the right shape for it yet (there's no history to show). Opening
+"EXECUTIVE INTELLIGENCE NETWORK" calls
+`api.getExecutiveIntelligence(proposalId)` and renders the recommended
+action, network confidence, supporting/opposing department lists, and
+each of the 8 department opinions with its own real stance and
+summary. New TS mirrors (`ExecutiveRecommendation`, `DepartmentOpinion`,
+`ExecutiveAction`, `ExecutiveStance`, `ExecutiveDepartmentRole`) in
+`types.ts`; `executiveActionTone()`/`executiveStanceTone()` tone
+helpers in `derive.ts`, following the same pattern as
+`confidenceTierTone()`. Verified: `tsc --noEmit` and `eslint` clean,
+`npm run build` clean, and a new Playwright test in
+`executiveVoting.spec.ts` that boosts a real research item to
+threshold, opens its real Executive Voting popup, opens the network
+panel, and asserts all 8 department labels plus the recommendation and
+supporting/opposing lists render from the real live endpoint — passing
+against the running dev stack. The 30-tab Command Center regression and
+the rest of `executiveVoting.spec.ts` were re-run afterward and remain
+green (one pre-existing, unrelated flake in that suite — a real trade
+proposal intercepting a click mid-test in the shared long-running dev
+backend — was confirmed present even with this change's diff stashed
+out, i.e. not a regression).
 
 ### Professional Day Trading Program — Foundational Mentor Program (Phase 3, original design — content/roadmap/attribution still accurate, see the Revision section above for who now does the lessons)
 
