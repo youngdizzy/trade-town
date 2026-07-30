@@ -28,6 +28,7 @@ import { DisciplinePanel } from "./panels/DisciplinePanel";
 import { ReasoningLabPanel } from "./panels/ReasoningLabPanel";
 import { ReflectionPanel } from "./panels/ReflectionPanel";
 import { MentorPanel } from "./panels/MentorPanel";
+import { MentorLibraryPanel } from "./panels/MentorLibraryPanel";
 import { TalentPanel } from "./panels/TalentPanel";
 import { FoundersPanel } from "./panels/FoundersPanel";
 import { TreasuryPanel } from "./panels/TreasuryPanel";
@@ -44,7 +45,11 @@ import { DecisionDetail } from "./DecisionDetail";
 // System — the "Knowledge Base" — gets its own "OPS" tab for the same
 // reason: it's a flat, filterable timeline over six real learning
 // sources (see KnowledgeBasePanel.tsx), distinct from KNOWLEDGE's
-// relational graph.
+// relational graph. "MENTOR" is Sage, the single always-available
+// Socratic Q&A advisor (MentorPanel.tsx); v0.7 Feature 49's Foundational
+// Mentor Program is a different system entirely — a roadmap of named-
+// track lesson/quiz curricula (see MentorLibraryPanel.tsx) — and gets
+// its own "MENTORLIB" tab rather than colliding with MENTOR.
 const TABS = [
   "OVERVIEW",
   "OPPORTUNITIES",
@@ -61,6 +66,7 @@ const TABS = [
   "REASONING",
   "REFLECTION",
   "MENTOR",
+  "MENTORLIB",
   "TALENT",
   "SANDBOX",
   "CONSTITUTION",
@@ -191,6 +197,7 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
         {tab === "REASONING" && <ReasoningLabPanel />}
         {tab === "REFLECTION" && <ReflectionPanel />}
         {tab === "MENTOR" && <MentorPanel />}
+        {tab === "MENTORLIB" && <MentorLibraryPanel />}
         {tab === "TALENT" && <TalentPanel />}
         {tab === "SANDBOX" && <SandboxPanel />}
         {tab === "CONSTITUTION" && <ConstitutionPanel />}

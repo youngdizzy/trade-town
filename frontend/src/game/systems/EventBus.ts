@@ -23,6 +23,7 @@ import type {
   DisciplineReview,
   ExecutiveReview,
   FounderState,
+  FoundationalMentorState,
   GameSaveState,
   GatekeeperRejection,
   HallOfFameEntry,
@@ -166,6 +167,7 @@ export interface GameEvents {
   "questionArchive:updated": QuestionOfTheDay[];
   "thinkingProfiles:updated": Record<AgentId, ThinkingProfile>;
   "mentorState:updated": MentorState;
+  "foundationalMentorState:updated": FoundationalMentorState;
   "founderState:updated": FounderState;
   "treasury:updated": TreasuryState;
   "calendar:updated": CalendarState;

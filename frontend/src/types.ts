@@ -1508,6 +1508,62 @@ export interface MentorState {
   updatedAt: string;
 }
 
+// v0.7 Feature 49 (Phase 3) — the Foundational Mentor Program (see
+// backend/app/foundational_mentors.py's module docstring for the full
+// content-attribution boundary). Real named trading educators are used
+// only as CEO-assigned track labels; every lesson's actual content is
+// original TradeTown-authored material. Distinct from MentorState (Sage)
+// above — that's a single always-available Q&A advisor, this is a
+// sequential lesson-and-quiz curriculum with a roadmap of tracks.
+export type FoundationalMentorId = "tjr" | "al_brooks" | "linda_raschke" | "mark_douglas" | "tom_hougaard" | "mike_bellafiore";
+export type FoundationalMentorStatus = "planned" | "active" | "paused" | "graduated";
+export type FoundationalResourceType = "video" | "book" | "article" | "pdf" | "note";
+
+export interface FoundationalMentorLesson {
+  id: string;
+  order: number;
+  title: string;
+  simpleExplanation: string;
+  deeperExplanation: string;
+  quizQuestion: string;
+  quizOptions: string[];
+}
+
+export interface FoundationalMentorResource {
+  id: string;
+  title: string;
+  url: string | null;
+  resourceType: FoundationalResourceType;
+  addedAt: string;
+}
+
+export interface FoundationalMentorProfile {
+  id: FoundationalMentorId;
+  name: string;
+  trackLabel: string;
+  focusAreas: string[];
+  contentNote: string;
+  status: FoundationalMentorStatus;
+  lessons: FoundationalMentorLesson[];
+  resources: FoundationalMentorResource[];
+}
+
+export interface FoundationalMentorProgress {
+  mentorId: FoundationalMentorId;
+  viewedLessonIds: string[];
+  completedLessonIds: string[];
+  quizAttempts: number;
+  correctQuizAttempts: number;
+  graduatedSimDay: number | null;
+}
+
+export interface FoundationalMentorState {
+  mentors: FoundationalMentorProfile[];
+  progress: Partial<Record<FoundationalMentorId, FoundationalMentorProgress>>;
+  activeMentorId: FoundationalMentorId | null;
+  updatedAt: string;
+}
+
 // v0.7 Feature 44 — the Talent Discovery System (see
 // backend/app/talent.py's module docstring). A real, evidence-based
 // "Discovery Event" — every field traces back to an agent's own real
@@ -1781,6 +1837,7 @@ export interface GameSaveState {
   questionArchive: QuestionOfTheDay[];
   thinkingProfiles: Record<AgentId, ThinkingProfile>;
   mentorState: MentorState;
+  foundationalMentorState: FoundationalMentorState;
   founderState: FounderState;
   treasury: TreasuryState;
   calendar: CalendarState;

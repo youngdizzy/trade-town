@@ -2864,6 +2864,91 @@ stack — confirming every strategy carries real `stage`/`stageHistory`/
 successfully queues a real scenario backtest) both passed;
 `commandCenter.spec.ts`'s tab-count test updated to 26 tabs.
 
+### Professional Day Trading Program — Foundational Mentor Program (Phase 3)
+
+The third phase of Feature 49 — an expandable, CEO-facing library of
+named trading-educator "tracks" (`app/foundational_mentors.py`), worked
+through as a sequential lesson-and-quiz curriculum with a roadmap of
+unlockable tracks.
+
+**The content-attribution boundary this phase was built around.** The
+brief names real, living public trading educators (TJR, Al Brooks,
+Linda Raschke, Mark Douglas, Tom Hougaard, Mike Bellafiore). This
+codebase has no HTTP client, no PDF/video parser, and no LLM call
+anywhere (confirmed by grep across the whole backend, consistent with
+the precedent in `app/education.py` and Feature 40's own docstring) —
+so TradeTown cannot actually watch, read, or otherwise ingest any real
+person's real published content. This was escalated to an explicit CEO
+decision rather than assumed: given the choice between refusing to use
+real names at all, or using real names as CEO-assigned track labels over
+100% original TradeTown-authored content with an explicit in-product
+disclaimer, the CEO chose the latter. Every `FoundationalMentorProfile`
+carries a `contentNote` stating this directly — never a claimed
+transcription, summary, or quote of that person's actual work.
+
+**What's real vs. roadmap — the same "ship one real depth, document the
+rest as an honest roadmap" pattern Features 47/48 already established.**
+Only the **"tjr" track** ships real lesson content: 6 original lessons,
+each tied to a real, checkable TradeTown mechanic —
+
+| Lesson | Real TradeTown mechanic |
+|---|---|
+| Trading Psychology: Process Over Outcome | The Discipline Score (`discipline.py`) never reads trade P&L — it scores real process signals only |
+| Building a Daily Routine | Honestly conceptual — `schedule.py`'s workday mechanic is availability, not ritual; points at the real Daily Trading Objectives review as the actionable analog |
+| Patience as a Skill | The real `PATIENCE_TARGET_MINUTES` (240) Discipline factor — a real measured hold-duration-vs-target signal |
+| High-Quality Trade Selection | The real Gatekeeper (`gatekeeper.py`) and Daily Trading Objectives (`risk_engine.py`) filters — most proposals getting blocked is the system working, not a bug |
+| Trade Planning & Journaling | The real Trading Journal (`journal.py`) — including why its `screenshot` field is honestly a placeholder string, not a fabricated image |
+| Emotional Control & Consistency | Honestly can't read literal emotion — points at Discipline tier stability and the Wisdom Score (`wisdom.py`) as the closest real, checkable analog |
+
+The other **5 named tracks are real, ordered roadmap entries** — real
+display name, real track label, real focus-area topics drawn straight
+from the brief — but deliberately ship with zero lessons and
+`status: "planned"` rather than five fabricated placeholder shells.
+`_LESSON_SPECS_BY_MENTOR` in `foundational_mentors.py` is exactly where
+a future track's real content gets added; nothing else needs to change
+for it to come online.
+
+**Graduation and unlock mechanics.** A track graduates when every one of
+its lessons is in the agent's `completed_lesson_ids` — a real, checkable
+signal. This deliberately does **not** reuse Research Sandbox backtest
+stats: `sandbox.py`'s own docstring already documents that there's no
+mechanism to attribute a real executed trade to a specific `Strategy`; a
+"mentor track concept" is one level further removed than that, so
+reusing Sandbox stats would just be a second, worse version of the same
+non-attribution problem. Graduating a track flips the next roadmap entry
+from `"planned"` to `"active"` — a real mechanical unlock, honest that
+the newly-unlocked track still has no lessons until its own content is
+authored.
+
+**CEO manual controls**, modeled on `black_box.py`'s pause/resume
+router pattern: pause/resume an active/paused track, skip straight to
+the next roadmap entry (progress preserved, not discarded), and repeat a
+graduated track (resets its progress). Plus a bookmark-only "External
+Resources — CEO Reading List": a CEO-provided title/URL/type TradeTown
+stores and displays, but never fetches, parses, or grades — the same
+"bookmark, never ingest" boundary the whole module is built around.
+
+**Explicit scope cuts, checked against the brief and not built**: no
+CEO custom-mentor-authoring UI (the data model is expandable — add an
+id, roadmap entry, and lesson tuple — but there's no in-product
+authoring form; a repo-side content contribution is the real workflow
+for now); no "concepts adopted/rejected" or "statistical success"
+mentor rating (no real signal in this codebase could honestly measure
+whether an agent "adopted" a mentor's concept in a later trade).
+
+**Verified**: backend — new `test_foundational_mentors.py` (22 tests
+covering default-state seeding, lesson viewing, quiz grading and
+graduation-triggered unlock, all 4 CEO controls, and resource
+bookmarking) + the full suite (642/642) + mypy/ruff clean. Frontend:
+`tsc -b`/eslint/build clean; new `MentorLibraryPanel.tsx` (a new
+"MENTORLIB" Command Center tab, distinct from the pre-existing
+"MENTOR"/Sage Socratic-advisor tab); `commandCenter.spec.ts`'s tab-count
+test updated to 29 tabs; new `mentorLibrary.spec.ts` (2 Playwright tests
+against the live stack — confirming the backend seeds all 6 tracks in
+roadmap order with only tjr active, and that the MENTORLIB tab renders
+the disclaimer and a real quiz round-trips through
+`POST /api/foundational-mentors/quiz`).
+
 ### Professional Day Trading Program — Liquidity/Market Structure Curriculum (Phase 2)
 
 The second phase of Feature 49 (see Phase 1 below for the shared

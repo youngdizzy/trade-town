@@ -7,6 +7,56 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.7 Feature 49 (Phase 3) — Professional Day Trading Program:
+  Foundational Mentor Program**: an expandable, CEO-facing library of
+  named trading-educator "tracks" worked through as a sequential
+  lesson-and-quiz curriculum (`app/foundational_mentors.py`). Real named
+  educators (TJR, Al Brooks, Linda Raschke, Mark Douglas, Tom Hougaard,
+  Mike Bellafiore) are used only as CEO-assigned track labels — this
+  codebase has no HTTP client, PDF/video parser, or LLM call anywhere,
+  so there is no mechanism to actually ingest their real work. Every
+  lesson's content is 100% original TradeTown-authored material,
+  explicitly disclaimed on every mentor profile, never a claimed
+  transcription of a real person's real teaching (an explicit CEO
+  content-attribution decision).
+  - Only the **"tjr" track ships real content**: 6 original lessons
+    tied to real, checkable TradeTown mechanics — the Discipline
+    Score's process-over-outcome design (`discipline.py`), the real
+    Patience factor (`PATIENCE_TARGET_MINUTES`), the Gatekeeper +
+    Daily Trading Objectives filters, the Trading Journal's honest
+    `screenshot` placeholder, and the Wisdom Score as the closest real
+    analog to "consistency".
+  - The other 5 named tracks are seeded as **real, ordered roadmap
+    entries** — real display name, real track label, real focus-area
+    topics from the brief — but ship with zero lessons and
+    `status: "planned"` rather than five fabricated placeholder shells.
+    Completing a track's lessons graduates it and unlocks the next
+    roadmap entry (a real mechanical unlock, honest that the newly
+    unlocked track still has no content until it's authored).
+  - Graduation is gated purely on the real "all lessons completed"
+    signal — deliberately not tied to Research Sandbox backtest stats
+    (`sandbox.py`'s own docstring already documents its trade-to-
+    strategy attribution gap).
+  - CEO controls: pause/resume/skip/repeat a track (mirrors
+    `black_box.py`'s manual-override pattern), plus a bookmark-only
+    "External Resources — CEO Reading List" (title/URL/type; TradeTown
+    never fetches, parses, or grades linked material).
+  - Explicit scope cuts: no CEO custom-mentor-authoring UI (the data
+    model is expandable — add an id, roadmap entry, and lesson tuple —
+    but there's no in-product authoring form); no "concepts adopted/
+    rejected" or "statistical success" mentor rating (no real signal
+    exists to measure it honestly).
+
+  Backend: new `app/foundational_mentors.py`,
+  `routers/foundational_mentors.py`, `tests/test_foundational_mentors.py`
+  (22 tests, 642 total passing). Extends `schemas.py`, `state.py`,
+  `save_modules.py`, `ws_manager.py`, `main.py`.
+  Frontend: new `MentorLibraryPanel.tsx` (new "MENTORLIB" Command
+  Center tab, distinct from the pre-existing "MENTOR"/Sage tab), full
+  WS-mirror wiring across `types.ts`/`gameStore.ts`/`EventBus.ts`/
+  `NexusManager.ts`/`socket.ts`/`api.ts`, and new `mentorLibrary.spec.ts`
+  Playwright coverage.
+
 - **v0.7 Feature 49 (Phase 2) — Professional Day Trading Program:
   Liquidity/Market Structure curriculum**: extends the existing 10-lesson
   Trading Education curriculum (`app/education.py`) with 8 new lessons

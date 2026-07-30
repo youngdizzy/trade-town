@@ -12,6 +12,9 @@ import type {
   Debate,
   EducationLesson,
   EducationProgress,
+  FoundationalMentorId,
+  FoundationalMentorState,
+  FoundationalResourceType,
   GameSaveState,
   HoldReason,
   GatekeeperRejection,
@@ -263,5 +266,40 @@ export const api = {
     request<{ riskLimits: RiskLimits }>("/risk-limits", {
       method: "POST",
       body: JSON.stringify(updates),
+    }),
+  viewFoundationalMentorLesson: (mentorId: FoundationalMentorId, lessonId: string) =>
+    request<{ foundationalMentorState: FoundationalMentorState }>("/foundational-mentors/view", {
+      method: "POST",
+      body: JSON.stringify({ mentorId, lessonId }),
+    }),
+  submitFoundationalMentorQuiz: (mentorId: FoundationalMentorId, lessonId: string, selectedIndex: number) =>
+    request<{ foundationalMentorState: FoundationalMentorState; correct: boolean; correctIndex: number; correctOption: string }>("/foundational-mentors/quiz", {
+      method: "POST",
+      body: JSON.stringify({ mentorId, lessonId, selectedIndex }),
+    }),
+  pauseFoundationalMentor: (mentorId: FoundationalMentorId) =>
+    request<{ foundationalMentorState: FoundationalMentorState }>("/foundational-mentors/pause", {
+      method: "POST",
+      body: JSON.stringify({ mentorId }),
+    }),
+  resumeFoundationalMentor: (mentorId: FoundationalMentorId) =>
+    request<{ foundationalMentorState: FoundationalMentorState }>("/foundational-mentors/resume", {
+      method: "POST",
+      body: JSON.stringify({ mentorId }),
+    }),
+  skipFoundationalMentor: (mentorId: FoundationalMentorId) =>
+    request<{ foundationalMentorState: FoundationalMentorState }>("/foundational-mentors/skip", {
+      method: "POST",
+      body: JSON.stringify({ mentorId }),
+    }),
+  repeatFoundationalMentor: (mentorId: FoundationalMentorId) =>
+    request<{ foundationalMentorState: FoundationalMentorState }>("/foundational-mentors/repeat", {
+      method: "POST",
+      body: JSON.stringify({ mentorId }),
+    }),
+  addFoundationalMentorResource: (mentorId: FoundationalMentorId, title: string, url: string | null, resourceType: FoundationalResourceType) =>
+    request<{ foundationalMentorState: FoundationalMentorState }>("/foundational-mentors/resource", {
+      method: "POST",
+      body: JSON.stringify({ mentorId, title, url, resourceType }),
     }),
 };

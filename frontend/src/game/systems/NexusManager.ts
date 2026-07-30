@@ -19,6 +19,7 @@ import type {
   DisciplineReview,
   ExecutiveReview,
   FounderState,
+  FoundationalMentorState,
   GatekeeperRejection,
   HallOfFameEntry,
   InnovationState,
@@ -106,6 +107,7 @@ interface NexusSnapshot {
   questionArchive: QuestionOfTheDay[];
   thinkingProfiles: Record<AgentId, ThinkingProfile>;
   mentorState: MentorState;
+  foundationalMentorState: FoundationalMentorState;
   founderState: FounderState;
   treasury: TreasuryState;
   calendar: CalendarState;
@@ -253,6 +255,7 @@ export class NexusManager {
   private static questionArchive: QuestionOfTheDay[] = [];
   private static thinkingProfiles: Record<AgentId, ThinkingProfile> = {} as Record<AgentId, ThinkingProfile>;
   private static mentorState: MentorState = { tier: 0, tierLabel: "New Tradition", questionsAsked: 0, updatedAt: new Date().toISOString() };
+  private static foundationalMentorState: FoundationalMentorState = { mentors: [], progress: {}, activeMentorId: null, updatedAt: new Date().toISOString() };
   private static founderState: FounderState = { retired: false, retiredAt: null, log: [], councilSessions: [], updatedAt: new Date().toISOString() };
   private static treasury: TreasuryState = { balance: 0, lifetimeDeposits: 0, largestBalance: 0, transactions: [], savingsRules: [], monthlyReports: [], updatedAt: new Date().toISOString() };
   private static calendar: CalendarState = { systemEvents: [], playerEvents: [], updatedAt: new Date().toISOString() };
@@ -460,6 +463,15 @@ export class NexusManager {
 
   static getMentorState(): MentorState {
     return this.mentorState;
+  }
+
+  static getFoundationalMentorState(): FoundationalMentorState {
+    return this.foundationalMentorState;
+  }
+
+  static setFoundationalMentorState(foundationalMentorState: FoundationalMentorState): void {
+    this.foundationalMentorState = foundationalMentorState;
+    EventBus.emit("foundationalMentorState:updated", foundationalMentorState);
   }
 
   static getFounderState(): FounderState {
@@ -871,6 +883,11 @@ export class NexusManager {
     if (update.mentorState !== this.mentorState) EventBus.emit("mentorState:updated", update.mentorState);
     this.mentorState = update.mentorState;
 
+    if (update.foundationalMentorState !== this.foundationalMentorState) {
+      EventBus.emit("foundationalMentorState:updated", update.foundationalMentorState);
+    }
+    this.foundationalMentorState = update.foundationalMentorState;
+
     if (update.founderState !== this.founderState) EventBus.emit("founderState:updated", update.founderState);
     this.founderState = update.founderState;
 
@@ -958,6 +975,7 @@ export class NexusManager {
     this.questionArchive = save.questionArchive;
     this.thinkingProfiles = save.thinkingProfiles;
     this.mentorState = save.mentorState;
+    this.foundationalMentorState = save.foundationalMentorState;
     this.founderState = save.founderState;
     this.treasury = save.treasury;
     this.calendar = save.calendar;

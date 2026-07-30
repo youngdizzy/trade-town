@@ -530,6 +530,20 @@ perspective and exists purely to detect disconnects
     // mirrors reasoningLabState's level/label-only convention.
     "tier": 1, "tierLabel": "Taking Root", "questionsAsked": 9, "updatedAt": "..."
   },
+  "foundationalMentorState": {
+    // v0.7 Feature 49 (Phase 3) — the Foundational Mentor Program. Real
+    // mutated progress, unlike mentorState above — see
+    // docs/Architecture.md's "Foundational Mentor Program" section.
+    "mentors": [
+      { "id": "tjr", "name": "TJR", "trackLabel": "TJR Track", "focusAreas": ["Trading Psychology", "Discipline", "Daily Routines", "Patience", "Trade Planning", "Journaling"],
+        "contentNote": "This track's name credits a real, respected trading educator...", "status": "active",
+        "lessons": [ { "id": "tjr-psychology", "order": 1, "title": "Trading Psychology: Process Over Outcome", "simpleExplanation": "...", "deeperExplanation": "...", "quizQuestion": "...", "quizOptions": ["...", "...", "...", "..."] } ],
+        "resources": [] }
+      // ... al_brooks, linda_raschke, mark_douglas, tom_hougaard, mike_bellafiore — all "status": "planned", "lessons": []
+    ],
+    "progress": { "tjr": { "mentorId": "tjr", "viewedLessonIds": ["tjr-psychology"], "completedLessonIds": [], "quizAttempts": 0, "correctQuizAttempts": 0, "graduatedSimDay": null } },
+    "activeMentorId": "tjr", "updatedAt": "..."
+  },
   "performanceSnapshots": [
     { "period": "daily", "returnPct": 1.2, "winRate": 60.0, "maxDrawdownPct": 4.1, "sharpeRatio": 0.29, "sortinoRatio": 0.34, "avgHoldingMinutes": 210.0, "researchAccuracy": 71.0, "confidenceAccuracy": 68.0, "computedAt": "..." }
   ],
@@ -943,6 +957,42 @@ all. Takes effect on the very next generated `TradeProposal` — see
 `app/risk_engine.py`'s `evaluate_sentinel_risk` and
 `docs/Architecture.md`'s "Daily Trading Objectives" section for exactly
 how each limit is enforced.
+
+### `POST /api/foundational-mentors/*`
+
+v0.7 Feature 49 (Phase 3) — the Foundational Mentor Program (see
+`docs/Architecture.md`'s "Foundational Mentor Program" section for the
+full content-attribution rationale). All 7 endpoints return
+`{ "foundationalMentorState": { ... } }` with the full, current
+`FoundationalMentorState`, and call `persist_modules()` before
+returning.
+
+- `POST /api/foundational-mentors/view` — body
+  `{ "mentorId": "tjr", "lessonId": "tjr-psychology" }`. Marks the
+  lesson viewed (idempotent). Unknown mentor/lesson is a silent no-op.
+- `POST /api/foundational-mentors/quiz` — body
+  `{ "mentorId": "tjr", "lessonId": "tjr-psychology", "selectedIndex": 0 }`.
+  Returns the state plus `{ "correct": true, "correctIndex": 0,
+  "correctOption": "..." }`. A correct answer marks the lesson complete;
+  completing every lesson in a track graduates it and, if the next
+  roadmap entry is still `"planned"`, flips it to `"active"`. `404` if
+  the mentor or lesson id doesn't exist.
+- `POST /api/foundational-mentors/pause` / `/resume` — body
+  `{ "mentorId": "tjr" }`. `400` if the track isn't in the required
+  starting status (`"active"` to pause, `"paused"` to resume).
+- `POST /api/foundational-mentors/skip` — body `{ "mentorId": "tjr" }`.
+  CEO manual override: pauses the current track (progress preserved)
+  and activates the next roadmap entry. `400` if the track is already
+  the last roadmap entry.
+- `POST /api/foundational-mentors/repeat` — body `{ "mentorId": "tjr" }`.
+  Resets a graduated track's progress and reactivates it. `400` if the
+  track isn't `"graduated"`.
+- `POST /api/foundational-mentors/resource` — body
+  `{ "mentorId": "tjr", "title": "...", "url": "https://...",
+  "resourceType": "video" }` (`url` optional). Adds a CEO-provided
+  bookmark — TradeTown never fetches, parses, or grades it. `400` on an
+  empty title, an unknown mentor, or once a track hits
+  `MAX_RESOURCES_PER_MENTOR` (20).
 
 ### Bounding / trimming
 
