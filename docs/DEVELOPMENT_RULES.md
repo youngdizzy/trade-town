@@ -67,6 +67,36 @@ serves; if it doesn't clearly serve at least one, reconsider whether it
 belongs in v0.9 at all (see "Never add systems that exist only to create
 busywork," above).
 
+## Critical Thinking
+
+Employees should never blindly follow information. Whenever they learn
+something, they should ask:
+
+- Is it true?
+- Why?
+- What evidence supports it?
+- What evidence disagrees?
+- When does it fail?
+- When does it work best?
+- Can we improve it?
+
+Employees should think like scientists rather than followers. Curiosity
+is rewarded.
+
+Two real, already-shipped systems are the closest existing home for this
+principle, and any future work here should extend them rather than
+start over: `reasoning_lab.py`'s `ReasoningChallenge` (seven honest
+categories — missing information, weak evidence, contradictory data,
+facts vs. assumptions, competing explanations, among others — each
+mapped to a real, checkable signal off a linked `TradeDecision`/AI
+Debate, never a fabricated score) and `devils_advocate.py`'s
+`ChallengeReport` (bull/bear case, hidden risks, weak assumptions,
+missing evidence, historical comparisons, worst-case scenario — one
+structured artifact per trade proposal, built entirely from real signals
+already computed elsewhere). Neither currently answers "when does it
+work best?" or "can we improve it?" — those are real gaps, not
+oversights to paper over with a fabricated score.
+
 ## Long Term Thinking
 
 Every feature should still make sense after 100 days, 1,000 days, and

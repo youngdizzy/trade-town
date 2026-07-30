@@ -30,6 +30,14 @@ development milestones, not semver releases.
     quality, statistical thinking, risk management, trading psychology,
     adaptability, communication, long-term learning). Every future
     feature's GOAL should name which category it serves.
+  - **Critical Thinking** (added to the same doc): employees should
+    treat new information like scientists, not followers — ask what's
+    true, why, what evidence agrees/disagrees, when it fails, when it
+    works best, and whether it can be improved. Documents the two real
+    existing systems closest to this today (`reasoning_lab.py`'s
+    `ReasoningChallenge`, `devils_advocate.py`'s `ChallengeReport`) and
+    the two real gaps neither currently covers ("when does it work
+    best," "can it be improved") for future scoping.
 
 - **v0.7 Feature 49 Revision — Professional Academy: employees are the
   students, the CEO manages**: inverts the Foundational Mentor
