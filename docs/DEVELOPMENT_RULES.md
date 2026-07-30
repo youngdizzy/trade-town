@@ -337,6 +337,30 @@ in mind. Avoid temporary solutions that will require complete rewrites
 later. Whenever possible, build production-quality systems from the
 beginning while keeping the architecture modular and extensible.
 
+## Intelligence Over Implementation
+
+Whenever implementing a feature, optimize first for employee
+intelligence rather than feature completion. If there are multiple
+possible implementations, always choose the version that increases:
+
+- Reasoning
+- Learning
+- Autonomy
+- Decision quality
+- Adaptability
+- Collaboration
+- Long-term knowledge
+
+**The purpose of every system is to make the company smarter.**
+
+This sharpens the Foundational Principle below for the specific case of
+choosing between implementations of the same feature — same decision
+rule ("when in doubt, pick the option that creates more of X"), applied
+to a more specific, intelligence-focused list. Where the two overlap
+(autonomy, long-term depth/knowledge), they agree; this section is the
+one to apply when a feature-implementation choice is on the table,
+Foundational Principle for broader architectural choices.
+
 ## Foundational Principle
 
 Whenever multiple implementation choices exist, always choose the

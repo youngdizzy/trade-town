@@ -80,6 +80,13 @@ development milestones, not semver releases.
     `ROADMAP.md`'s own stop condition — this principle does not
     pre-authorize live brokerage code; that stays a separate, deliberate
     decision at v1.0's own kickoff.
+  - **Intelligence Over Implementation** (added to the same doc): when
+    choosing between implementations of the same feature, pick the one
+    that increases reasoning, learning, autonomy, decision quality,
+    adaptability, collaboration, or long-term knowledge. Positioned as a
+    sharper, feature-implementation-specific successor to the existing
+    Foundational Principle rule, explicitly cross-referenced rather than
+    duplicated as an unrelated third rule.
 
 - **v0.7 Feature 49 Revision — Professional Academy: employees are the
   students, the CEO manages**: inverts the Foundational Mentor
