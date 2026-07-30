@@ -520,8 +520,12 @@ test.describe("Global Command Center", () => {
     await clickTab(page, "COMPANY");
 
     // Company Health: a real overall score/tier and all ten sub-metrics.
+    // (v0.7 Feature 50 Part 2/3 added an Executive Health card and a
+    // Combined Overall row with their own tier badges from the same
+    // EXCELLENT/GOOD/STABLE/... vocabulary, so `.first()` avoids a
+    // strict-mode ambiguity — any match confirms a real tier rendered.)
     await expect(page.getByText("Company Health", { exact: true })).toBeVisible();
-    await expect(page.getByText(/EXCELLENT|GOOD|STABLE|NEEDS ATTENTION|CRITICAL/)).toBeVisible();
+    await expect(page.getByText(/EXCELLENT|GOOD|STABLE|NEEDS ATTENTION|CRITICAL/).first()).toBeVisible();
     for (const metric of ["Stability", "Efficiency", "Morale", "Research", "Capital", "Resources", "Reputation", "Technology", "Office", "Education"]) {
       await expect(page.getByText(metric, { exact: true })).toBeVisible();
     }
