@@ -7,6 +7,22 @@ development milestones, not semver releases.
 
 ### Added
 
+- **TradeTown Development Rules (v0.9)** — a new canonical constitution
+  document (`docs/DEVELOPMENT_RULES.md`) governing how every future
+  feature must be designed: company-over-player, autonomous employees,
+  every building needs a real function, no fake progression, permanent
+  company memory, evidence-before-opinion, no placeholder systems, and a
+  required nine-part GOAL/REQUIREMENTS/SYSTEM BEHAVIOR/PLAYER
+  ACTIONS/EMPLOYEE ACTIONS/UI/RULES/DO NOT/SUCCESS CRITERIA structure for
+  scoping new work. Also adds a root `CLAUDE.md` (previously absent
+  despite the existing `docs/` "bible" family) that points to it and to
+  the other canonical docs, and writes down this project's own
+  established engineering discipline — research overlap first, scope
+  honestly and document every cut, commit the backend before starting
+  the frontend, verify thoroughly, document before committing — so it
+  persists across sessions instead of living only in conversation
+  history.
+
 - **v0.7 Feature 49 Revision — Professional Academy: employees are the
   students, the CEO manages**: inverts the Foundational Mentor
   Program's model per an explicit CEO revision request. TradeTown is a
