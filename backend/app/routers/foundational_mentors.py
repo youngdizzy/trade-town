@@ -133,6 +133,21 @@ async def approve_graduation(payload: ApproveGraduationRequest) -> ApproveGradua
     return ApproveGraduationResponse(foundationalMentorState=state.foundational_mentor_state, companyGraduated=company_graduated)
 
 
+@router.post("/revoke-graduation", response_model=FoundationalMentorStateResponse)
+async def revoke_graduation(payload: ApproveGraduationRequest) -> FoundationalMentorStateResponse:
+    """The Executive Action "Revoke Graduation" — remedial education, not
+    deletion: the employee's certification and graduation status revert,
+    their lesson/quiz progress on this track resets so they genuinely
+    repeat it, and the Coach's real note explains why. Company Knowledge
+    (`academy_research.py`) and the mentor track's own company-wide
+    status are untouched — see revoke_employee_graduation's docstring."""
+    state, error = await game_state.revoke_academy_graduation(payload.agent_id, payload.mentor_id)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    return FoundationalMentorStateResponse(foundationalMentorState=state.foundational_mentor_state)
+
+
 @router.post("/pause", response_model=FoundationalMentorStateResponse)
 async def pause() -> FoundationalMentorStateResponse:
     state, error = await game_state.pause_academy_training()

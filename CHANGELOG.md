@@ -122,6 +122,25 @@ development milestones, not semver releases.
   Backend: `test_executive_intelligence.py` — 20 new tests, 680/680 full
   suite, mypy/ruff clean.
 
+- **"Revoke Graduation" — a new Executive Action on the Academy**: the
+  mirror image of the Graduation Queue's Approve button. New
+  `POST /api/foundational-mentors/revoke-graduation` (body `{agentId,
+  mentorId}`) reverts one employee's `graduationStatus` from
+  `"graduated"` back to `"in_progress"`, resets their lesson/quiz
+  progress on that track to a genuine fresh start (real
+  auto-progression picks it back up on the next tick), and sets a real,
+  deterministic Coach improvement-plan note (a new `coachNote` field,
+  cleared automatically on real re-approval). Scoped exactly to the
+  request's own bullet list: the mentor track's company-wide status/
+  roadmap position and every other employee's progress are untouched,
+  and Company Knowledge (`academy_research.py`) was never gated by any
+  one employee's graduation in the first place — "remedial education,
+  not deleting progress" reuses the exact same real fresh-progress
+  constructor `repeat_mentor_company_wide` already established.
+  Backend: `TestRevokeGraduation` — 9 new tests plus 1 confirming
+  `approve_graduation` clears a leftover note on real re-approval,
+  689/689 full suite, mypy/ruff clean.
+
 - **v0.7 Feature 49 Revision — Professional Academy: employees are the
   students, the CEO manages**: inverts the Foundational Mentor
   Program's model per an explicit CEO revision request. TradeTown is a

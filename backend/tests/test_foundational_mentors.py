@@ -21,6 +21,7 @@ from app.foundational_mentors import (
     pause_company_training,
     repeat_mentor_company_wide,
     resume_company_training,
+    revoke_employee_graduation,
     set_active_mentor,
     skip_to_next_mentor,
     tick_employee_progress,
@@ -218,6 +219,98 @@ class TestApproveGraduation:
     def test_rejects_unknown_agent(self):
         state = default_foundational_mentor_state()
         _, _, error = approve_graduation(state, "not-a-real-agent", "tjr", sim_day=1)  # type: ignore[arg-type]
+        assert error is not None
+
+    def test_approving_clears_any_leftover_coach_note(self):
+        state = default_foundational_mentor_state()
+        state = _tick_until_all_students_pending(state)
+        state, _, error = approve_graduation(state, "scout", "tjr", sim_day=7)  # type: ignore[arg-type]
+        assert error is None
+        state, error = revoke_employee_graduation(state, "scout", "tjr", sim_day=8)  # type: ignore[arg-type]
+        assert error is None
+        state = _tick_until_all_students_pending(state)
+        state, _, error = approve_graduation(state, "scout", "tjr", sim_day=9)  # type: ignore[arg-type]
+        assert error is None
+        assert state.progress["scout"]["tjr"].coach_note is None
+
+
+class TestRevokeGraduation:
+    def test_revoke_reverts_status_and_clears_the_certification(self):
+        state = default_foundational_mentor_state()
+        state = _tick_until_all_students_pending(state)
+        state, _, error = approve_graduation(state, "scout", "tjr", sim_day=7)  # type: ignore[arg-type]
+        assert error is None
+        state, error = revoke_employee_graduation(state, "scout", "tjr", sim_day=10)  # type: ignore[arg-type]
+        assert error is None
+        progress = state.progress["scout"]["tjr"]
+        assert progress.graduation_status == "in_progress"
+        assert progress.graduated_sim_day is None
+
+    def test_revoke_resets_lesson_and_quiz_progress_for_a_real_repeat(self):
+        state = default_foundational_mentor_state()
+        state = _tick_until_all_students_pending(state)
+        state, _, error = approve_graduation(state, "scout", "tjr", sim_day=7)  # type: ignore[arg-type]
+        assert error is None
+        assert state.progress["scout"]["tjr"].completed_lesson_ids != []
+        state, error = revoke_employee_graduation(state, "scout", "tjr", sim_day=10)  # type: ignore[arg-type]
+        assert error is None
+        progress = state.progress["scout"]["tjr"]
+        assert progress.completed_lesson_ids == []
+        assert progress.viewed_lesson_ids == []
+        assert progress.current_lesson_study_pct == 0.0
+        assert progress.quiz_attempts == 0
+        assert progress.consecutive_quiz_failures == 0
+
+    def test_revoke_gives_a_real_coach_improvement_plan_note(self):
+        state = default_foundational_mentor_state()
+        state = _tick_until_all_students_pending(state)
+        state, _, error = approve_graduation(state, "scout", "tjr", sim_day=7)  # type: ignore[arg-type]
+        assert error is None
+        state, error = revoke_employee_graduation(state, "scout", "tjr", sim_day=10)  # type: ignore[arg-type]
+        assert error is None
+        note = state.progress["scout"]["tjr"].coach_note
+        assert note is not None
+        assert "TJR" in note
+        assert "sim day 10" in note
+
+    def test_revoke_does_not_touch_the_mentor_tracks_company_status(self):
+        state = default_foundational_mentor_state()
+        state = _tick_until_all_students_pending(state)
+        for agent_id in STUDENT_AGENT_IDS:
+            state, _, error = approve_graduation(state, agent_id, "tjr", sim_day=7)  # type: ignore[arg-type]
+            assert error is None
+        tjr_before = next(m for m in state.mentors if m.id == "tjr")
+        assert tjr_before.status == "graduated"
+        state, error = revoke_employee_graduation(state, "scout", "tjr", sim_day=10)  # type: ignore[arg-type]
+        assert error is None
+        tjr_after = next(m for m in state.mentors if m.id == "tjr")
+        assert tjr_after.status == "graduated"
+        assert tjr_after.company_graduated_sim_day == 7
+
+    def test_revoke_does_not_touch_other_employees_progress(self):
+        state = default_foundational_mentor_state()
+        state = _tick_until_all_students_pending(state)
+        state, _, error = approve_graduation(state, "scout", "tjr", sim_day=7)  # type: ignore[arg-type]
+        assert error is None
+        atlas_before = state.progress["atlas"]["tjr"]
+        state, error = revoke_employee_graduation(state, "scout", "tjr", sim_day=10)  # type: ignore[arg-type]
+        assert error is None
+        assert state.progress["atlas"]["tjr"] == atlas_before
+
+    def test_cannot_revoke_without_an_existing_graduation(self):
+        state = default_foundational_mentor_state()
+        state = _tick_until_all_students_pending(state)
+        _, error = revoke_employee_graduation(state, "scout", "tjr", sim_day=10)  # type: ignore[arg-type]
+        assert error is not None
+
+    def test_rejects_unknown_agent(self):
+        state = default_foundational_mentor_state()
+        _, error = revoke_employee_graduation(state, "not-a-real-agent", "tjr", sim_day=1)  # type: ignore[arg-type]
+        assert error is not None
+
+    def test_rejects_unknown_mentor(self):
+        state = default_foundational_mentor_state()
+        _, error = revoke_employee_graduation(state, "scout", "not-a-real-mentor", sim_day=1)  # type: ignore[arg-type]
         assert error is not None
 
 

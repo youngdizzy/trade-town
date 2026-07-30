@@ -545,7 +545,7 @@ def approve_graduation(state: FoundationalMentorState, agent_id: AgentId, mentor
     if progress.graduation_status != "pending_approval":
         return state, False, f"{agent_id} has no pending graduation on {mentor_id} to approve."
 
-    progress = progress.model_copy(update={"graduation_status": "graduated", "graduated_sim_day": sim_day})
+    progress = progress.model_copy(update={"graduation_status": "graduated", "graduated_sim_day": sim_day, "coach_note": None})
     new_progress_map = {aid: dict(m) for aid, m in state.progress.items()}
     new_progress_map.setdefault(agent_id, {})[mentor_id] = progress
     new_state = state.model_copy(update={"progress": new_progress_map, "updated_at": _now_iso()})
@@ -562,6 +562,39 @@ def approve_graduation(state: FoundationalMentorState, agent_id: AgentId, mentor
         new_active_id = next_id
     new_state = new_state.model_copy(update={"mentors": new_mentors, "active_mentor_id": new_active_id, "updated_at": _now_iso()})
     return new_state, True, None
+
+
+def revoke_employee_graduation(state: FoundationalMentorState, agent_id: AgentId, mentor_id: FoundationalMentorId, *, sim_day: int) -> tuple[FoundationalMentorState, str | None]:
+    """The mirror image of approve_graduation — a real CEO action, not
+    automatic. Treated as remedial education, never as deleting progress:
+    the employee's real lesson/quiz record on this track resets to fresh
+    (the same reset repeat_mentor_company_wide already uses per student),
+    their certification (the `graduation_status == "graduated"` read the
+    Academy Dashboard's Certifications list is already computed from) is
+    gone the moment `graduation_status` flips back to `"in_progress"`,
+    and the Coach's real, deterministic improvement-plan note explains
+    why. Deliberately narrow: only this one employee's own progress
+    record changes. The mentor track's own company-wide status/roadmap
+    position, and Company Knowledge (`academy_research.py`'s separate,
+    company-wide project system — never gated by any one employee's
+    individual graduation), are untouched — the brief's own bullet list
+    never asked for either, and reverting a whole track's roadmap
+    position over one employee's revocation would be a much larger,
+    unrequested side effect."""
+    if agent_id not in STUDENT_AGENT_IDS:
+        return state, "Unknown employee — not a real Academy student."
+    mentor = _mentor_by_id(state, mentor_id)
+    if mentor is None:
+        return state, "Unknown mentor track."
+    progress = _employee_progress(state, agent_id, mentor_id)
+    if progress.graduation_status != "graduated":
+        return state, f"{agent_id} is not currently graduated on {mentor_id} — nothing to revoke."
+
+    note = f"Improvement plan: repeat {mentor.track_label}'s curriculum before re-attempting graduation. Revoked by the CEO on sim day {sim_day}."
+    new_progress = FoundationalMentorProgress(mentorId=mentor_id, coachNote=note)
+    new_progress_map = {aid: dict(m) for aid, m in state.progress.items()}
+    new_progress_map.setdefault(agent_id, {})[mentor_id] = new_progress
+    return state.model_copy(update={"progress": new_progress_map, "updated_at": _now_iso()}), None
 
 
 def pause_company_training(state: FoundationalMentorState) -> tuple[FoundationalMentorState, str | None]:

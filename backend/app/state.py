@@ -77,6 +77,7 @@ from app.foundational_mentors import (
     pause_company_training,
     repeat_mentor_company_wide,
     resume_company_training,
+    revoke_employee_graduation,
     set_active_mentor,
     skip_to_next_mentor,
 )
@@ -319,6 +320,15 @@ class GameState:
             if error is None:
                 self.data = self.data.model_copy(update={"foundational_mentor_state": new_state})
             return self.data, company_graduated, error
+
+    async def revoke_academy_graduation(self, agent_id: AgentId, mentor_id: FoundationalMentorId) -> tuple[GameSaveState, str | None]:
+        """The Executive Action "Revoke Graduation" — a real CEO action,
+        the mirror image of approve_academy_graduation above."""
+        async with self.lock:
+            new_state, error = revoke_employee_graduation(self.data.foundational_mentor_state, agent_id, mentor_id, sim_day=self.data.time.day)
+            if error is None:
+                self.data = self.data.model_copy(update={"foundational_mentor_state": new_state})
+            return self.data, error
 
     async def pause_academy_training(self) -> tuple[GameSaveState, str | None]:
         async with self.lock:

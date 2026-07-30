@@ -1026,6 +1026,17 @@ backend tick. All endpoints below return
   approved graduation on that track (which also unlocks the next
   roadmap mentor). `400` if that employee has no pending graduation on
   that track, or isn't a real student (`STUDENT_AGENT_IDS`).
+- `POST /api/foundational-mentors/revoke-graduation` — body
+  `{ "agentId": "scout", "mentorId": "tjr" }`. The Executive Action
+  "Revoke Graduation" — the mirror image of `/approve-graduation`.
+  Reverts that employee's `graduationStatus` from `"graduated"` back to
+  `"in_progress"`, resets their lesson/quiz progress on that track to a
+  real fresh start (they genuinely repeat it — real auto-progression
+  picks it back up next tick), and sets a real Coach improvement-plan
+  note (`coachNote`, cleared automatically on real re-approval). Never
+  touches the mentor track's own company-wide status/roadmap position or
+  any other employee's progress. `400` if that employee has no real
+  graduation on that track to revoke, or isn't a real student.
 - `POST /api/foundational-mentors/pause` / `/resume` — no body. Pauses
   or resumes the whole company's training on the currently-active
   mentor. `400` if the track isn't in the required starting status

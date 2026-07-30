@@ -3082,6 +3082,56 @@ active so the shared dev backend's state doesn't leak into other tests);
 `commandCenter.spec.ts`'s tab-count regression updated (29 → 30 tabs,
 `MENTORLAB` added to the tab list).
 
+### Revoke Graduation — a real Executive Action on the Academy
+
+The mirror image of the Graduation Queue's Approve button
+(`approve_graduation`): a real CEO action, `revoke_employee_graduation`
+(`app/foundational_mentors.py`), reachable via
+`POST /api/foundational-mentors/revoke-graduation`. Explicitly scoped to
+match the brief's own bullet list, not expanded beyond it:
+
+- **Certification removed / graduation status reverts**: the employee's
+  `graduation_status` flips from `"graduated"` back to `"in_progress"`
+  (the real enum value backing "In Training") and `graduated_sim_day`
+  clears. The Academy Dashboard's Certifications list is already
+  *derived* from `graduation_status == "graduated"`, never a separately
+  stored entity, so it updates automatically — nothing extra to remove.
+- **The employee repeats the required mentor modules**: their lesson/
+  quiz progress on this one track resets to a fresh
+  `FoundationalMentorProgress` — the same reset
+  `repeat_mentor_company_wide` already uses per student, reused here for
+  one employee instead of the whole cohort. Real auto-progression
+  (`tick_employee_progress`) picks it back up from lesson one on the
+  very next tick, the same as any other in-progress employee.
+- **The Coach creates a new improvement plan**: a real, deterministic
+  templated note (`coach_note`, a new field on `FoundationalMentorProgress`)
+  naming the track and the real sim day it was revoked — never a
+  fabricated free-form message. Cleared automatically the moment the
+  employee earns real re-approval.
+- **Company knowledge remains intact**: `academy_research.py`'s
+  company-wide Knowledge Points/project system was never gated by any
+  one employee's individual graduation in the first place, so nothing
+  there needed touching.
+
+**Deliberately narrow, matching the brief's own bullet list exactly**:
+only the one employee's own progress record changes. The mentor track's
+company-wide status (`graduated`/`active`/etc.) and roadmap position are
+untouched even if this was the graduation that had completed the whole
+cohort — reverting a track's company-wide state over one employee's
+revocation would be a much larger, unrequested side effect the brief
+never asked for. "Treated as remedial education rather than deleting
+progress" is why the reset goes through the same real
+`FoundationalMentorProgress()` fresh-state constructor `repeat_mentor_
+company_wide` already uses, rather than any kind of soft-delete or
+history-erasure.
+
+**Verified**: `test_foundational_mentors.py` gains 9 new tests
+(`TestRevokeGraduation` — status reversion, real progress reset, the
+real Coach note's content, non-interference with the track's
+company-wide status and with other employees' progress, and the error
+paths) plus a 10th confirming `approve_graduation` clears any leftover
+note on real re-approval — 689/689 full suite, mypy/ruff clean.
+
 ### Executive Intelligence Network — Feature 50 (Part 1 of a phased build)
 
 The brief's own instruction: "Do NOT create duplicate systems. Refactor

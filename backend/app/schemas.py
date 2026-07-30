@@ -2245,6 +2245,11 @@ class FoundationalMentorProgress(CamelModel):
     consecutive_quiz_failures: int = Field(default=0, alias="consecutiveQuizFailures")
     graduation_status: FoundationalGraduationStatus = Field(default="in_progress", alias="graduationStatus")
     graduated_sim_day: int | None = Field(default=None, alias="graduatedSimDay")
+    # v0.7 Feature 50 addendum — "Revoke Graduation." Set by
+    # revoke_employee_graduation() to a real, deterministic templated
+    # note (never a fabricated free-form message); cleared automatically
+    # once the employee re-graduates via approve_graduation().
+    coach_note: str | None = Field(default=None, alias="coachNote")
 
 
 class FoundationalMentorState(CamelModel):
