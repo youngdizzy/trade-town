@@ -51,8 +51,18 @@ const SEVERITY_TONE: Record<ChallengeSeverity, "green" | "amber" | "red"> = { no
  * recommendation, not separate outcomes.
  */
 export function ExecutiveVoting() {
-  const { tradeProposals, executiveVotingOpen, executiveVotingProposalId, riskWarnings, paperPortfolio, riskLimits, currentScene, debates, challengeReports } =
-    useGameStore();
+  const {
+    tradeProposals,
+    executiveVotingOpen,
+    executiveVotingProposalId,
+    riskWarnings,
+    paperPortfolio,
+    riskLimits,
+    currentScene,
+    debates,
+    challengeReports,
+    constitution,
+  } = useGameStore();
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
   const [showDebate, setShowDebate] = useState(false);
@@ -450,6 +460,17 @@ export function ExecutiveVoting() {
                       </div>
                     )}
                   </div>
+                  {challengeReport.citedArticleIds.length > 0 && (
+                    <div data-testid="challenge-cited-articles" className="mt-2 border-t border-cmd-border/40 pt-2 text-[9px]">
+                      <div className="text-cmd-cyan">Constitution Citations</div>
+                      <ul className="list-disc space-y-0.5 pl-3 text-cmd-textDim">
+                        {challengeReport.citedArticleIds.map((articleId) => {
+                          const article = constitution.articles.find((a) => a.id === articleId);
+                          return <li key={articleId}>{article ? `Article ${article.id} — ${article.title}` : `Article ${articleId}`}</li>;
+                        })}
+                      </ul>
+                    </div>
+                  )}
                   <div className="mt-2 border-t border-cmd-border/40 pt-2 text-[9px] text-cmd-text">{challengeReport.finalRecommendation}</div>
                 </>
               )}

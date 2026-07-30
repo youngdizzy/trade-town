@@ -822,6 +822,10 @@ export interface ChallengeReport {
   suggestedImprovements: string[];
   severity: ChallengeSeverity;
   finalRecommendation: string;
+  // v0.7 Feature 47 — real Constitution Article ids this report's own
+  // concern buckets map to (see backend/app/constitution.py's
+  // articles_for_challenge()).
+  citedArticleIds: string[];
   createdAt: string;
 }
 

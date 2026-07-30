@@ -7,6 +7,49 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.7 Feature 47 — Company Operating System**: scoped from a brief
+  asking for one place where "everything the company learns" is visible,
+  a system that "references company principles when giving advice" (e.g.
+  "This violates Company Principle 8"), and "Continuous Improvement"
+  fed by 8 named sources. Researched first: every one of the 8 named
+  sources (Reflection Chamber, Academy, Research Division, Innovation
+  Lab/Black Box, Constitution, Founder Lessons, Coach Reviews, Decision
+  Replay Center) already exists and already produces real, persisted
+  records — so "Continuous Improvement" needed no new backend at all,
+  only a place to actually see it aggregated. Built as two honest,
+  additive pieces:
+  - **Knowledge Base — a pure, zero-new-backend-data aggregation**
+    (`frontend/src/ui/components/CommandCenter/lib/derive.ts`'s
+    `computeKnowledgeBase`): joins six real, already-persisted learning
+    records (Library of Mistakes case studies, Research Sandbox
+    `StrategyReport`s, Constitution citations, Coach `recommendations`,
+    completed Academy projects, Reflection Chamber insights) into one
+    chronological, source-filterable timeline — the new "OPS" tab
+    (`KnowledgeBasePanel.tsx`). Deliberately distinct from the existing
+    Knowledge Graph tab (Feature 25.5): that is a relational node/edge
+    structure over a different, smaller set of sources; this is a flat
+    timeline over six sources, three of which (Constitution, Reflection
+    Chamber, Library of Mistakes) the graph never touches.
+  - **Real-Time Guidance — Constitution citations surfaced inline on
+    the report itself** (`app/constitution.py`'s new
+    `articles_for_challenge()`): a Devil's Advocate `ChallengeReport`
+    already computes four real concern buckets (`hiddenRisks`,
+    `weakAssumptions`, `missingEvidence`, `historicalComparisons`); each
+    non-empty bucket now maps to the one real Article it most directly
+    speaks to (VII/III/IV/VI respectively) and is stored on the report's
+    new `citedArticleIds` field, shown directly under the report in the
+    Executive Voting popup — literally realizing the brief's "This
+    violates Company Principle 8" example with 100% real, already-
+    computed data. Distinct from `nexus.py`'s own separate global
+    "Live Enforcement" citation log (Feature 46), which always cites
+    Article III on any filed report for a different reason (the act of
+    filing a challenge itself is "challenging assumptions") — this is
+    the same real signals surfaced on the report the CEO is actually
+    looking at, not a duplicate detector.
+  - **Scope cut, explicitly**: no new detection logic, no fabricated
+    "AI recommendation engine" — every citation traces to a field the
+    report already computed for itself.
+
 - **v0.7 Feature 46 — Company Constitution**: scoped from a brief asking
   for a permanent rulebook of Articles, "Live Enforcement" where Coach
   quotes it/Founders teach it/Academy explains it/Risk Department

@@ -161,6 +161,29 @@ def cite_article(citations: list[ConstitutionCitation], article_id: str, source:
     return updated
 
 
+# v0.7 Feature 47 — Company Operating System's "Real-Time Guidance":
+# "the system references company principles when giving advice... 'This
+# violates Company Principle 8'... 'conflicts with historical evidence.'"
+# Each real concern bucket a ChallengeReport already computes for itself
+# (app/devils_advocate.py) maps to the one real Article it most directly
+# speaks to — surfaced on the report itself, distinct from nexus.py's own
+# separate global enforcement-log hook (which always cites III on any
+# filed report, and IV only when evidence is missing, for the permanent
+# "Live Enforcement" feed). No new detection logic — purely a read of
+# fields that already exist.
+def articles_for_challenge(*, hidden_risks: list[str], weak_assumptions: list[str], missing_evidence: list[str], historical_comparisons: list[str]) -> list[str]:
+    ids: list[str] = []
+    if hidden_risks:
+        ids.append("VII")  # Respect risk
+    if weak_assumptions:
+        ids.append("III")  # Challenge assumptions
+    if missing_evidence:
+        ids.append("IV")  # Evidence over opinions
+    if historical_comparisons:
+        ids.append("VI")  # Every mistake must teach something
+    return ids
+
+
 def _significant_words(text: str) -> set[str]:
     return {w for w in "".join(c.lower() if c.isalnum() else " " for c in text).split() if w not in _STOPWORDS and len(w) > 2}
 

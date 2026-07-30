@@ -50,6 +50,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from app.constitution import articles_for_challenge
 from app.market_data import MarketDataProvider
 from app.schemas import AgentId, CaseStudy, ChallengeReport, ChallengeSeverity, TradeProposal
 from app.whatif import run_whatif_simulation
@@ -151,5 +152,8 @@ def generate_challenge_report(
         suggestedImprovements=suggested_improvements,
         severity=severity,
         finalRecommendation=final_recommendation,
+        citedArticleIds=articles_for_challenge(
+            hidden_risks=hidden_risks, weak_assumptions=weak_assumptions, missing_evidence=missing_evidence, historical_comparisons=historical_comparisons
+        ),
         createdAt=_now_iso(),
     )

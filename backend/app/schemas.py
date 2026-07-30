@@ -1183,6 +1183,12 @@ class ChallengeReport(CamelModel):
     suggested_improvements: list[str] = Field(default_factory=list, alias="suggestedImprovements")
     severity: ChallengeSeverity
     final_recommendation: str = Field(alias="finalRecommendation")
+    # v0.7 Feature 47 — Company Operating System's "Real-Time Guidance":
+    # real Constitution Article ids this report's own concern buckets map
+    # to (see app/constitution.py's articles_for_challenge()), shown
+    # inline on the report itself rather than only in the separate
+    # enforcement log nexus.py already writes to ConstitutionState.
+    cited_article_ids: list[str] = Field(default_factory=list, alias="citedArticleIds")
     created_at: str = Field(alias="createdAt")
 
 

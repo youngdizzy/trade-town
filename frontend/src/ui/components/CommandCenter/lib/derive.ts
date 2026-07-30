@@ -1,4 +1,5 @@
 import type {
+  AcademyProject,
   AcademyState,
   AgentId,
   AgentState,
@@ -11,6 +12,7 @@ import type {
   CoachReport,
   CompanyHealth,
   ConfidenceTier,
+  ConstitutionCitation,
   Debate,
   DisciplineReview,
   ExecutiveReview,
@@ -27,6 +29,7 @@ import type {
   RiskLimits,
   RiskWarning,
   SimulationResult,
+  StrategyReport,
   TradeDecision,
   TradeProposal,
   WatchlistEntry,
@@ -895,4 +898,115 @@ export function computeStrategyConsistency(strategyId: string, results: Simulati
     positiveRunPct: own.length > 0 ? (positive / own.length) * 100 : 0,
     distinctScenarios: new Set(own.map((r) => r.scenario)).size,
   };
+}
+
+// v0.7 Feature 47 — Company Operating System's "Knowledge Absorption."
+// The brief asks for one place where "everything the company learns" is
+// visible. This codebase already has six real, independently-filed
+// learning records (Library of Mistakes, Research Sandbox reports,
+// Constitution citations, Coach recommendations, completed Academy
+// projects, Reflection Chamber insights) — this is a pure, zero-new-
+// backend-data aggregation of those six into one chronological feed, the
+// same "frontend-only feature" pattern Feature 45's Consistency metric
+// used. Distinct from the existing Knowledge Graph (Feature 25.5,
+// app/knowledge_graph.py): that is a relational node/edge structure over
+// research/Academy/reviews; this is a flat, filterable timeline over a
+// different (and larger) set of six real sources, several of which
+// (Constitution, Reflection Chamber, Library of Mistakes) the graph
+// doesn't touch at all.
+export type KnowledgeBaseSource = "case_study" | "strategy_report" | "constitution_citation" | "coach_recommendation" | "academy_project" | "reflection_insight";
+
+export const KNOWLEDGE_BASE_SOURCE_LABEL: Record<KnowledgeBaseSource, string> = {
+  case_study: "Library of Mistakes",
+  strategy_report: "Research Sandbox",
+  constitution_citation: "Constitution",
+  coach_recommendation: "Coach",
+  academy_project: "Academy",
+  reflection_insight: "Reflection Chamber",
+};
+
+export interface KnowledgeBaseEntry {
+  id: string;
+  source: KnowledgeBaseSource;
+  title: string;
+  detail: string;
+  agentId: AgentId | null;
+  createdAt: string;
+}
+
+export function computeKnowledgeBase(state: {
+  caseStudies: CaseStudy[];
+  strategyReports: StrategyReport[];
+  constitutionCitations: ConstitutionCitation[];
+  coachReports: CoachReport[];
+  academyProjects: AcademyProject[];
+  reflectionSessions: ReflectionSession[];
+}): KnowledgeBaseEntry[] {
+  const entries: KnowledgeBaseEntry[] = [];
+
+  for (const cs of state.caseStudies) {
+    entries.push({ id: `case-study-${cs.id}`, source: "case_study", title: cs.title, detail: cs.lessonsLearned, agentId: null, createdAt: cs.createdAt });
+  }
+
+  for (const report of state.strategyReports) {
+    entries.push({
+      id: `strategy-report-${report.id}`,
+      source: "strategy_report",
+      title: `${report.strategyName} — ${report.scenario}`,
+      detail: report.executiveSummary,
+      agentId: null,
+      createdAt: report.createdAt,
+    });
+  }
+
+  for (const citation of state.constitutionCitations) {
+    entries.push({
+      id: `constitution-citation-${citation.id}`,
+      source: "constitution_citation",
+      title: `Article ${citation.articleId} cited`,
+      detail: citation.detail,
+      agentId: null,
+      createdAt: citation.createdAt,
+    });
+  }
+
+  for (const report of state.coachReports) {
+    report.recommendations.forEach((recommendation, i) => {
+      entries.push({
+        id: `coach-recommendation-${report.id}-${i}`,
+        source: "coach_recommendation",
+        title: `${report.period} Coach recommendation`,
+        detail: recommendation,
+        agentId: null,
+        createdAt: report.createdAt,
+      });
+    });
+  }
+
+  for (const project of state.academyProjects) {
+    if (project.status !== "completed") continue;
+    entries.push({
+      id: `academy-project-${project.id}`,
+      source: "academy_project",
+      title: project.title,
+      detail: project.summary,
+      agentId: project.assignedAgent,
+      createdAt: project.updatedAt,
+    });
+  }
+
+  for (const session of state.reflectionSessions) {
+    session.insights.forEach((insight, i) => {
+      entries.push({
+        id: `reflection-insight-${session.id}-${i}`,
+        source: "reflection_insight",
+        title: `${session.cadence} reflection insight`,
+        detail: insight.insight,
+        agentId: insight.agentId,
+        createdAt: session.createdAt,
+      });
+    });
+  }
+
+  return entries.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
 }

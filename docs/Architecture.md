@@ -2864,6 +2864,66 @@ stack — confirming every strategy carries real `stage`/`stageHistory`/
 successfully queues a real scenario backtest) both passed;
 `commandCenter.spec.ts`'s tab-count test updated to 26 tabs.
 
+### Company Operating System
+
+The brief asked for one place where "everything the company learns" is
+visible, a system that "references company principles when giving
+advice" (its own example: "This violates Company Principle 8"), and
+"Continuous Improvement" fed by 8 named sources (Reflection Chamber,
+Academy, Research Division, Innovation Lab/Black Box, Constitution,
+Founder Lessons, Coach Reviews, Decision Replay Center). Checked first:
+every one of those 8 sources already exists in this codebase and already
+produces real, persisted records — so "Continuous Improvement" needed no
+new backend data at all, only somewhere to actually see it aggregated.
+Two honest, additive pieces:
+
+**Knowledge Base — a pure, zero-new-backend-data aggregation**
+(`frontend/src/ui/components/CommandCenter/lib/derive.ts`'s
+`computeKnowledgeBase`). Joins six real, already-persisted learning
+records — Library of Mistakes `CaseStudy`, Research Sandbox
+`StrategyReport`, Constitution `ConstitutionCitation`, `CoachReport`'s
+own `recommendations`, completed `AcademyProject`s, and Reflection
+Chamber `ReflectionInsight`s — into one flat, chronological,
+source-filterable timeline. The same "frontend-only feature" pattern
+Feature 45's Consistency metric used: every field a direct read or
+simple join, nothing generated. Rendered as the new `OPS` tab
+(`KnowledgeBasePanel.tsx`, inserted after `CONSTITUTION`). Deliberately
+distinct from the existing Knowledge Graph tab (`KNOWLEDGE`, Feature
+25.5): that is a *relational* node/edge structure built over research
+items, completed Academy projects, executive reviews, coach reports, and
+Hall of Fame entries; this is a *flat timeline* over a different (and
+partially non-overlapping) set of six sources — three of them
+(Constitution, Reflection Chamber, Library of Mistakes) the graph never
+touches at all. Naming them "KNOWLEDGE" and "OPS" rather than two tabs
+both called "Knowledge ___" keeps them unambiguous in the tab bar.
+
+**Real-Time Guidance — Constitution citations surfaced on the report
+itself** (`app/constitution.py`'s new `articles_for_challenge()`). A
+Devil's Advocate `ChallengeReport` (Feature 41) already computes four
+real concern buckets before this feature ever runs:  `hiddenRisks`,
+`weakAssumptions`, `missingEvidence`, `historicalComparisons`. Each
+non-empty bucket now maps to the one real Article it most directly
+speaks to (`hiddenRisks`→VII "Respect risk", `weakAssumptions`→III
+"Challenge assumptions", `missingEvidence`→IV "Evidence over opinions",
+`historicalComparisons`→VI "Every mistake must teach something"), stored
+on the report's new `citedArticleIds` field and shown directly beneath
+the report in the Executive Voting popup (`ExecutiveVoting.tsx`) —
+literally realizing the brief's "This violates Company Principle 8" /
+"conflicts with historical evidence" examples with 100% real,
+already-computed data, no new detection logic. This is deliberately
+**not** the same mechanism as `nexus.py`'s own separate "Live
+Enforcement" citation log (Feature 46), which always cites Article III
+on any filed `ChallengeReport` for a different, unconditional reason
+(the act of filing a challenge itself is "challenging assumptions") and
+writes to the permanent, global `ConstitutionState.citations` feed — the
+two coexist without duplicating each other: one is a permanent company-
+wide audit log, the other is guidance attached to the specific report
+the CEO is looking at right now.
+
+**Scope cut, explicitly**: no fabricated "AI recommendation engine," no
+new detection heuristics — every citation traces to a field the report
+already computed for itself before this feature touched it.
+
 ### Company Constitution
 
 The brief asked for a permanent rulebook of Articles, "Live
@@ -2988,6 +3048,19 @@ present in `GET /api/load`, and that proposing an amendment through the
 CONSTITUTION tab runs the real pipeline end to end, surfacing real
 Founder/Coach/employee output and a Ratify button) both passed;
 `commandCenter.spec.ts`'s tab-count test updated to 27 tabs.
+
+**Feature 47 verified**: backend — new `TestArticlesForChallenge` (6
+tests covering each of the four concern buckets independently and in
+combination) + `test_devils_advocate.py` gained 5 tests confirming
+`generate_challenge_report`'s real wiring end to end (none-found reports
+cite nothing; each real concern bucket cites its own mapped Article) +
+the full suite (581/581) + mypy/ruff clean. Frontend: `tsc -b`/eslint/
+build clean; a new `knowledgeBase.spec.ts` (2 Playwright tests against
+the live stack — confirming every real `ChallengeReport`'s
+`citedArticleIds` only ever names a real Article on the Constitution,
+and that the OPS tab opens and renders the Knowledge Base timeline with
+no console errors); `commandCenter.spec.ts`'s tab-count test updated to
+28 tabs.
 
 ## Save format compatibility
 

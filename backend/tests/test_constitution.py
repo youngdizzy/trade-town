@@ -10,6 +10,7 @@ from __future__ import annotations
 from app.constitution import (
     MAX_CONSTITUTION_CITATIONS,
     MISTAKE_ARTICLE_MAP,
+    articles_for_challenge,
     cite_article,
     decide_amendment,
     default_constitution,
@@ -88,6 +89,28 @@ class TestCiteArticle:
         for i in range(MAX_CONSTITUTION_CITATIONS + 10):
             citations = cite_article(citations, "I", "risk_department", f"warning {i}", sim_day=1)
         assert len(citations) == MAX_CONSTITUTION_CITATIONS
+
+
+# v0.7 Feature 47 — Company Operating System's "Real-Time Guidance."
+class TestArticlesForChallenge:
+    def test_no_concerns_cites_nothing(self) -> None:
+        assert articles_for_challenge(hidden_risks=[], weak_assumptions=[], missing_evidence=[], historical_comparisons=[]) == []
+
+    def test_hidden_risk_cites_vii(self) -> None:
+        assert "VII" in articles_for_challenge(hidden_risks=["real risk"], weak_assumptions=[], missing_evidence=[], historical_comparisons=[])
+
+    def test_weak_assumption_cites_iii(self) -> None:
+        assert "III" in articles_for_challenge(hidden_risks=[], weak_assumptions=["real weak factor"], missing_evidence=[], historical_comparisons=[])
+
+    def test_missing_evidence_cites_iv(self) -> None:
+        assert "IV" in articles_for_challenge(hidden_risks=[], weak_assumptions=[], missing_evidence=["no evidence on record"], historical_comparisons=[])
+
+    def test_historical_comparison_cites_vi(self) -> None:
+        assert "VI" in articles_for_challenge(hidden_risks=[], weak_assumptions=[], missing_evidence=[], historical_comparisons=["real past case study"])
+
+    def test_all_concerns_cite_all_four_in_order(self) -> None:
+        result = articles_for_challenge(hidden_risks=["r"], weak_assumptions=["w"], missing_evidence=["m"], historical_comparisons=["h"])
+        assert result == ["VII", "III", "IV", "VI"]
 
 
 class TestFounderDebate:

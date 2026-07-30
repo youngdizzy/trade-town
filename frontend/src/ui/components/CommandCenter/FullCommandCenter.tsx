@@ -11,6 +11,7 @@ import { DecisionsPanel } from "./panels/DecisionsPanel";
 import { ReplayPanel } from "./panels/ReplayPanel";
 import { SandboxPanel } from "./panels/SandboxPanel";
 import { ConstitutionPanel } from "./panels/ConstitutionPanel";
+import { KnowledgeBasePanel } from "./panels/KnowledgeBasePanel";
 import { ExecutivePanel } from "./panels/ExecutivePanel";
 import { RiskPanel } from "./panels/RiskPanel";
 import { AgentsPanel } from "./panels/AgentsPanel";
@@ -39,7 +40,11 @@ import { DecisionDetail } from "./DecisionDetail";
 // & Knowledge Network is a different system entirely (per-agent
 // Knowledge Points, research projects, the Company Knowledge Library —
 // see AcademyPanel.tsx) and gets its own "KNOWLEDGE" tab rather than
-// colliding with the existing name.
+// colliding with the existing name. v0.7 Feature 47's Company Operating
+// System — the "Knowledge Base" — gets its own "OPS" tab for the same
+// reason: it's a flat, filterable timeline over six real learning
+// sources (see KnowledgeBasePanel.tsx), distinct from KNOWLEDGE's
+// relational graph.
 const TABS = [
   "OVERVIEW",
   "OPPORTUNITIES",
@@ -59,6 +64,7 @@ const TABS = [
   "TALENT",
   "SANDBOX",
   "CONSTITUTION",
+  "OPS",
   "FOUNDERS",
   "TREASURY",
   "CALENDAR",
@@ -188,6 +194,7 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
         {tab === "TALENT" && <TalentPanel />}
         {tab === "SANDBOX" && <SandboxPanel />}
         {tab === "CONSTITUTION" && <ConstitutionPanel />}
+        {tab === "OPS" && <KnowledgeBasePanel />}
         {tab === "FOUNDERS" && <FoundersPanel />}
         {tab === "TREASURY" && <TreasuryPanel />}
         {tab === "BLACKBOX" && <BlackBoxPanel />}

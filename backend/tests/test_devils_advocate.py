@@ -161,3 +161,38 @@ class TestGenerateChallengeReport:
         assert report.proposal_id == proposal.id
         assert report.symbol == proposal.symbol
         assert proposal.id in report.id
+
+    # v0.7 Feature 47 — Company Operating System's "Real-Time Guidance":
+    # real Constitution Article citations computed from this same
+    # report's own already-real concern buckets (see
+    # app/constitution.py's articles_for_challenge()).
+    def test_none_found_report_cites_no_articles(self) -> None:
+        votes = _six_votes("buy")
+        proposal = _proposal(votes, risk_summary="NEXA is within all configured risk limits.", factors=[_factor("agreement", 90.0)])
+        report = generate_challenge_report(proposal, provider=MockMarketDataProvider(), case_studies=[], existing_count=0)
+        assert report.cited_article_ids == []
+
+    def test_hidden_risk_cites_article_vii(self) -> None:
+        votes = _six_votes("buy")
+        votes[0] = _vote("technical", "sell")
+        proposal = _proposal(votes, risk_summary="Sentinel flags NEXA over the configured exposure limit.", factors=[_factor("agreement", 90.0)])
+        report = generate_challenge_report(proposal, provider=MockMarketDataProvider(), case_studies=[], existing_count=0)
+        assert "VII" in report.cited_article_ids
+
+    def test_missing_evidence_cites_article_iv(self) -> None:
+        votes = _six_votes("buy", missing_evidence_role="news")
+        proposal = _proposal(votes)
+        report = generate_challenge_report(proposal, provider=MockMarketDataProvider(), case_studies=[], existing_count=0)
+        assert "IV" in report.cited_article_ids
+
+    def test_weak_assumption_cites_article_iii(self) -> None:
+        votes = _six_votes("buy")
+        proposal = _proposal(votes, factors=[_factor("agreement", 90.0), _factor("research_confidence", 30.0)])
+        report = generate_challenge_report(proposal, provider=MockMarketDataProvider(), case_studies=[], existing_count=0)
+        assert "III" in report.cited_article_ids
+
+    def test_historical_comparison_cites_article_vi(self) -> None:
+        votes = _six_votes("buy")
+        proposal = _proposal(votes, symbol="NEXA")
+        report = generate_challenge_report(proposal, provider=MockMarketDataProvider(), case_studies=[_case_study("NEXA", "NEXA mistake")], existing_count=0)
+        assert "VI" in report.cited_article_ids
