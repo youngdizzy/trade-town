@@ -29,6 +29,7 @@ import { ReasoningLabPanel } from "./panels/ReasoningLabPanel";
 import { ReflectionPanel } from "./panels/ReflectionPanel";
 import { MentorPanel } from "./panels/MentorPanel";
 import { MentorLibraryPanel } from "./panels/MentorLibraryPanel";
+import { MentorLabPanel } from "./panels/MentorLabPanel";
 import { TalentPanel } from "./panels/TalentPanel";
 import { FoundersPanel } from "./panels/FoundersPanel";
 import { TreasuryPanel } from "./panels/TreasuryPanel";
@@ -49,7 +50,17 @@ import { DecisionDetail } from "./DecisionDetail";
 // Socratic Q&A advisor (MentorPanel.tsx); v0.7 Feature 49's Foundational
 // Mentor Program is a different system entirely — a roadmap of named-
 // track lesson/quiz curricula (see MentorLibraryPanel.tsx) — and gets
-// its own "MENTORLIB" tab rather than colliding with MENTOR.
+// its own "MENTORLIB" tab rather than colliding with MENTOR. The Command
+// Center UI Revision brief asked for this dashboard to be relabeled
+// "ACADEMY", but that name is already the pre-existing Trading Academy
+// tab above, so MENTORLIB keeps its name (it already functions as the
+// employees'-progress dashboard the brief describes) and a new
+// "MENTORLAB" tab is added alongside it for CEO custom-mentor/lesson
+// authoring (see MentorLabPanel.tsx). The brief's third tab, "TRAINING",
+// is also already a distinct pre-existing system (CalibrationPanel's
+// Signal Calibration mini-game) and is left untouched — its content
+// overlaps with the real backtesting/paper-trading pipeline already on
+// the SANDBOX tab, so no changes were made there for this revision.
 const TABS = [
   "OVERVIEW",
   "OPPORTUNITIES",
@@ -67,6 +78,7 @@ const TABS = [
   "REFLECTION",
   "MENTOR",
   "MENTORLIB",
+  "MENTORLAB",
   "TALENT",
   "SANDBOX",
   "CONSTITUTION",
@@ -198,6 +210,7 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
         {tab === "REFLECTION" && <ReflectionPanel />}
         {tab === "MENTOR" && <MentorPanel />}
         {tab === "MENTORLIB" && <MentorLibraryPanel />}
+        {tab === "MENTORLAB" && <MentorLabPanel />}
         {tab === "TALENT" && <TalentPanel />}
         {tab === "SANDBOX" && <SandboxPanel />}
         {tab === "CONSTITUTION" && <ConstitutionPanel />}

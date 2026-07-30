@@ -72,6 +72,50 @@ development milestones, not semver releases.
   wiring; `mentorLibrary.spec.ts` rewritten (2 Playwright tests
   against the live stack) — tsc/eslint/build clean.
 
+- **Command Center UI Revision — Mentor Lab tab (real CEO custom-mentor
+  authoring)**: the previous revision's "no in-product authoring form
+  exists" scope cut is now built for real. `FoundationalMentorId` is
+  loosened from a fixed six-value literal to a plain string (backend
+  `schemas.py`, frontend `types.ts`) so the CEO can add genuinely new
+  mentor tracks and lessons at runtime, not just the six seeded ones.
+  - New backend functions `add_custom_mentor`, `add_custom_lesson`,
+    `set_active_mentor` (`foundational_mentors.py`), backing three new
+    endpoints `POST /add-mentor`, `POST /add-lesson`, `POST /set-active`.
+    `FoundationalMentorState` gains a persisted `roadmap_order` (so
+    custom mentors join the real sequential unlock queue) and
+    `custom_lesson_answers` (a hidden runtime answer key for
+    CEO-authored quizzes — built-in lessons keep their answers in a
+    module constant that's never serialized; custom ones can't, so they
+    live in real per-state storage instead). Capped at 20 custom mentors
+    / 30 lessons per mentor.
+  - New **MENTOR LAB** Command Center tab (`MentorLabPanel.tsx`):
+    mentor-centric browsing distinct from MENTORLIB's employee-centric
+    dashboard — pick a track, see its curriculum/focus areas/content
+    disclaimer/graduation status, "+ Add New Mentor," "+ Add Lesson,"
+    and "Make Active Track" (a real CEO override that jumps company-wide
+    focus, pausing whatever was active — same mechanism
+    `skip_to_next_mentor` already used). Also shows "Company Concepts
+    Learned" (a real, derivable count) and a Mentor Comparison table.
+  - The brief's "Concepts Validated" / "Concepts Rejected" counters are
+    **not** shown as numbers — no real cross-system validation pipeline
+    (Discussed → Backtested → Paper Traded → Sandbox Tested → Quant
+    Reviewed → Risk Reviewed → Devil's Advocate Reviewed → Founder
+    Council Reviewed) exists in this codebase to back them honestly; the
+    panel says so explicitly instead of fabricating the numbers.
+  - The brief's "ACADEMY" tab name collides with the pre-existing v0.6.2
+    Trading Academy tab (`EducationPanel`), so the existing "MENTORLIB"
+    tab keeps its name — it already is the employees'-progress dashboard
+    the brief describes. The brief's "TRAINING" tab name likewise
+    collides with the pre-existing Signal Calibration mini-game
+    (`CalibrationPanel`), whose content overlaps with the real
+    backtesting/paper-trading pipeline already on the SANDBOX tab; no
+    changes were made there for this revision.
+  - Backend: `test_foundational_mentors.py` gains 12 new tests (39 in
+    the file, 660 total passing) — mypy/ruff clean. Frontend: new
+    `mentorLab.spec.ts` Playwright test (live stack, add-mentor →
+    add-lesson → make-active round trip); `commandCenter.spec.ts`'s
+    tab-count regression updated (29 → 30 tabs).
+
 - **v0.7 Feature 49 (Phase 3) — Professional Day Trading Program:
   Foundational Mentor Program**: an expandable, CEO-facing library of
   named trading-educator "tracks" worked through as a sequential

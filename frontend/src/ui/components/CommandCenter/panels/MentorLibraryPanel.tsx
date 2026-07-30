@@ -34,7 +34,7 @@ function studentToneFor(status: AcademyStudentSummary["graduationStatus"]): "neu
  * employee progress.
  */
 export function MentorLibraryPanel() {
-  const { foundationalMentorState, agentKnowledge, settings } = useGameStore();
+  const { foundationalMentorState, agentKnowledge, settings, academyState } = useGameStore();
   const [selectedAgentId, setSelectedAgentId] = useState<AgentId | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -127,6 +127,14 @@ export function MentorLibraryPanel() {
           <DataRow label="Avg knowledge points" value={dashboard.avgKnowledgeScore.toFixed(1)} />
           <DataRow label="Students" value={ACADEMY_STUDENT_AGENT_IDS.length} />
           <DataRow label="Certifications earned" value={dashboard.certifications.length} />
+        </Glass>
+
+        <Glass className="p-3">
+          <TerminalLabel>Company Knowledge Growth</TerminalLabel>
+          <DataRow label="Academy level" value={`${academyState.level} — ${academyState.levelLabel}`} />
+          <DataRow label="Total knowledge points" value={academyState.totalPoints.toFixed(0)} />
+          <DataRow label="Projects completed" value={academyState.completedProjectCount} />
+          <div className="mt-1 text-[9px] text-cmd-textDim">Real, current totals from the AI Academy (KNOWLEDGE tab) — not a fabricated trend line.</div>
         </Glass>
 
         <StudentListCard title="Currently Studying" students={dashboard.currentlyStudying} onSelect={setSelectedAgentId} emptyText="No one studying right now." />

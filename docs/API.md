@@ -1020,6 +1020,29 @@ never touches real employee progress):**
   exactly as a human player would be. `404` if the mentor or lesson id
   doesn't exist.
 
+**Mentor Lab — real CEO custom-mentor/lesson authoring** (Command
+Center UI Revision; see `docs/Architecture.md`'s "Mentor Lab" section):
+
+- `POST /api/foundational-mentors/add-mentor` — body `{ "name": "...",
+  "trackLabel": "...", "focusAreas": ["..."] }`. Appends a real new
+  mentor track to the roster and to the end of the persisted roadmap
+  order. Returns `{ "foundationalMentorState": { ... }, "mentorId":
+  "..." }`. `400` on an empty name/focus areas, or once
+  `MAX_CUSTOM_MENTORS` (20) is reached.
+- `POST /api/foundational-mentors/add-lesson` — body `{ "mentorId":
+  "...", "title": "...", "simpleExplanation": "...",
+  "deeperExplanation": "...", "quizQuestion": "...", "quizOptions":
+  ["...", "...", "...", "..."], "correctIndex": 0 }`. Appends a real
+  lesson to that mentor's curriculum; the correct answer is stored
+  server-side only (`custom_lesson_answers`), never sent to the client.
+  `400` on an unknown mentor, a malformed quiz shape, or once
+  `MAX_LESSONS_PER_MENTOR` (30) is reached.
+- `POST /api/foundational-mentors/set-active` — body `{ "mentorId":
+  "..." }`. CEO override: makes any mentor with at least one lesson the
+  active company-wide track, pausing whatever was previously active
+  (progress preserved, not discarded). `400` if the mentor has no
+  lessons yet, is unknown, or is already the active track.
+
 ### Bounding / trimming
 
 Every list above is capped server-side before it's ever sent — the client

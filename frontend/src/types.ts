@@ -1525,7 +1525,12 @@ export interface MentorState {
 // auto-progress through the company's one active mentor every real
 // tick; `progress` below is keyed by employee AgentId. `ceoProgress` is
 // the CEO's own entirely separate, optional personal learning bucket.
-export type FoundationalMentorId = "tjr" | "al_brooks" | "linda_raschke" | "mark_douglas" | "tom_hougaard" | "mike_bellafiore";
+// A plain string, not a union, as of the Mentor Lab revision: the CEO
+// can now really add new mentor tracks in-product (see
+// backend/app/foundational_mentors.py's add_custom_mentor). The
+// original 6 named ids ("tjr", "al_brooks", ...) still exist as real
+// string values — nothing about their content changed, only the type.
+export type FoundationalMentorId = string;
 export type FoundationalMentorStatus = "planned" | "active" | "paused" | "graduated";
 export type FoundationalResourceType = "video" | "book" | "article" | "pdf" | "note";
 export type FoundationalGraduationStatus = "in_progress" | "pending_approval" | "graduated";
@@ -1577,6 +1582,14 @@ export interface FoundationalMentorState {
   progress: Partial<Record<AgentId, Partial<Record<FoundationalMentorId, FoundationalMentorProgress>>>>;
   ceoProgress: Partial<Record<FoundationalMentorId, FoundationalMentorProgress>>;
   activeMentorId: FoundationalMentorId | null;
+  // The real, persisted sequential unlock order — the CEO's own
+  // add-mentor action appends to this (see MentorLabPanel.tsx).
+  roadmapOrder: FoundationalMentorId[];
+  // Hidden answer keys for CEO-authored custom lessons — server-
+  // internal bookkeeping (grade_ceo_lesson_quiz), never read directly
+  // by the UI (the CEO's own quiz still goes through the API, never
+  // grades client-side).
+  customLessonAnswers: Record<string, number>;
   updatedAt: string;
 }
 

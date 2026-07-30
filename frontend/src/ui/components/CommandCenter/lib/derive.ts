@@ -19,6 +19,7 @@ import type {
   ExecutiveReview,
   FounderState,
   FoundationalMentorId,
+  FoundationalMentorProfile,
   FoundationalMentorState,
   GatekeeperRejection,
   InnovationState,
@@ -1159,4 +1160,58 @@ export function computeAcademyDashboard(foundationalMentorState: FoundationalMen
     certifications,
     recommendations,
   };
+}
+
+/**
+ * Mentor Lab — "Company Concepts Learned" — a real, checkable count: the
+ * number of distinct lessons, across every mentor track (not just the
+ * currently-active one), that at least one real employee has actually
+ * completed. Deliberately NOT paired with "Concepts Validated" /
+ * "Concepts Rejected" numbers — no real cross-system validation
+ * pipeline exists in this codebase to back them (see
+ * backend/app/foundational_mentors.py's module docstring's "Mentor
+ * Validation" scope-cut note) — MentorLabPanel shows an explicit honest
+ * disclaimer instead of a fabricated number for those two.
+ */
+export function computeCompanyConceptsLearned(foundationalMentorState: FoundationalMentorState): number {
+  const learnedLessonIds = new Set<string>();
+  for (const agentProgress of Object.values(foundationalMentorState.progress)) {
+    for (const progress of Object.values(agentProgress ?? {})) {
+      for (const lessonId of progress?.completedLessonIds ?? []) {
+        learnedLessonIds.add(lessonId);
+      }
+    }
+  }
+  return learnedLessonIds.size;
+}
+
+export interface MentorComparisonRow {
+  mentorId: FoundationalMentorId;
+  name: string;
+  trackLabel: string;
+  status: FoundationalMentorProfile["status"];
+  lessonCount: number;
+  avgCompletionPct: number;
+}
+
+/** Mentor Lab — "Mentor Comparison": a real, per-mentor completion
+ * average across the real 8-agent student roster, computed the same way
+ * computeAcademyDashboard's own per-student completion% already is. */
+export function computeMentorComparison(foundationalMentorState: FoundationalMentorState): MentorComparisonRow[] {
+  return foundationalMentorState.mentors.map((mentor) => {
+    const completionPcts = ACADEMY_STUDENT_AGENT_IDS.map((agentId) => {
+      const progress = foundationalMentorState.progress[agentId]?.[mentor.id];
+      if (mentor.lessons.length === 0) return 0;
+      return ((progress?.completedLessonIds.length ?? 0) / mentor.lessons.length) * 100;
+    });
+    const avgCompletionPct = completionPcts.length > 0 ? completionPcts.reduce((a, b) => a + b, 0) / completionPcts.length : 0;
+    return {
+      mentorId: mentor.id,
+      name: mentor.name,
+      trackLabel: mentor.trackLabel,
+      status: mentor.status,
+      lessonCount: mentor.lessons.length,
+      avgCompletionPct,
+    };
+  });
 }

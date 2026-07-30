@@ -292,7 +292,7 @@ class GameStore {
     questionArchive: [],
     thinkingProfiles: {} as Record<AgentId, ThinkingProfile>,
     mentorState: { tier: 0, tierLabel: "New Tradition", questionsAsked: 0, updatedAt: new Date().toISOString() },
-    foundationalMentorState: { mentors: [], progress: {}, ceoProgress: {}, activeMentorId: null, updatedAt: new Date().toISOString() },
+    foundationalMentorState: { mentors: [], progress: {}, ceoProgress: {}, activeMentorId: null, roadmapOrder: [], customLessonAnswers: {}, updatedAt: new Date().toISOString() },
     founderState: { retired: false, retiredAt: null, log: [], councilSessions: [], updatedAt: new Date().toISOString() },
     treasury: { balance: 0, lifetimeDeposits: 0, largestBalance: 0, transactions: [], savingsRules: [], monthlyReports: [], updatedAt: new Date().toISOString() },
     calendar: { systemEvents: [], playerEvents: [], updatedAt: new Date().toISOString() },

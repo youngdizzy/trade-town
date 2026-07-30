@@ -302,4 +302,28 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ mentorId, title, url, resourceType }),
     }),
+  // Mentor Lab: real, in-product Foundational Mentor Library expansion.
+  addAcademyMentor: (name: string, trackLabel: string, focusAreas: string[]) =>
+    request<{ foundationalMentorState: FoundationalMentorState; mentorId: string }>("/foundational-mentors/add-mentor", {
+      method: "POST",
+      body: JSON.stringify({ name, trackLabel, focusAreas }),
+    }),
+  addAcademyLesson: (
+    mentorId: FoundationalMentorId,
+    title: string,
+    simpleExplanation: string,
+    deeperExplanation: string,
+    quizQuestion: string,
+    quizOptions: string[],
+    correctIndex: number,
+  ) =>
+    request<{ foundationalMentorState: FoundationalMentorState }>("/foundational-mentors/add-lesson", {
+      method: "POST",
+      body: JSON.stringify({ mentorId, title, simpleExplanation, deeperExplanation, quizQuestion, quizOptions, correctIndex }),
+    }),
+  setActiveAcademyMentor: (mentorId: FoundationalMentorId) =>
+    request<{ foundationalMentorState: FoundationalMentorState }>("/foundational-mentors/set-active", {
+      method: "POST",
+      body: JSON.stringify({ mentorId }),
+    }),
 };

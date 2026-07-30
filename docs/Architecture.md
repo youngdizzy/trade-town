@@ -2957,8 +2957,9 @@ Quality Trade Selection).
 
 **Explicit scope cuts, checked against the revision brief and NOT
 built** (see `foundational_mentors.py`'s own module docstring for the
-full reasoning on each): CEO custom-mentor-authoring UI / "Add Custom
-Courses" / "Add New Mentors"; per-employee assignment of individual
+full reasoning on each; CEO custom-mentor-authoring UI / "Add Custom
+Courses" / "Add New Mentors" was cut here but has since been built for
+real — see the Mentor Lab section below): per-employee assignment of individual
 books/videos/PDFs/research papers/backtesting/paper-trading (the one
 real assignment mechanic that exists — bookmarked external resources —
 stays company-wide per mentor track, unchanged from Phase 3); the
@@ -3000,6 +3001,86 @@ backend seeds real per-employee progress restricted to
 dashboard with CEO Learning Mode initially hidden and revealed on
 toggle, including a full personal-quiz round-trip through
 `POST /api/foundational-mentors/ceo/quiz`).
+
+### Mentor Lab — Command Center UI Revision (real CEO custom-mentor authoring)
+
+A follow-up "Command Center UI Revision" brief asked for the Academy /
+Training / Mentor Lab tabs to become three distinct dashboards. Two of
+those three names collide with pre-existing, unrelated real systems in
+this codebase:
+
+- **"ACADEMY"** is already the v0.6.2 Trading Academy tab
+  (`EducationPanel` — the player's own lesson/quiz curriculum).
+- **"TRAINING"** is already the Signal Calibration mini-game
+  (`CalibrationPanel`), whose real content (pattern-recognition drills)
+  overlaps with the real backtesting/paper-trading pipeline already on
+  the SANDBOX tab.
+
+Rather than silently reusing those names for a third, different meaning,
+the existing **MENTORLIB** tab (built in the Revision above) keeps its
+name — it already is the employees'-progress dashboard the brief
+describes — and only one new tab, **MENTORLAB**, was added. TRAINING was
+left untouched entirely; this is a deliberate, documented scope decision,
+not an oversight.
+
+**What's real and built** — Mentor Lab is a mentor-centric browsing and
+authoring surface, distinct from MENTORLIB's employee-centric management
+view:
+
+- `FoundationalMentorId` is loosened from a fixed six-value `Literal` to
+  a plain `str` (`schemas.py`, `types.ts`), since custom mentor/lesson
+  IDs are CEO-chosen at runtime, not a closed enum.
+- `add_custom_mentor(state, *, name, track_label, focus_areas)` appends a
+  real new mentor to `state.mentors` and to the end of a newly-persisted
+  `FoundationalMentorState.roadmap_order` (previously the roadmap
+  sequence was a hardcoded module constant; it's now real runtime state
+  so CEO-added mentors actually participate in the automatic sequential
+  unlock, capped at `MAX_CUSTOM_MENTORS = 20`).
+- `add_custom_lesson(state, mentor_id, *, title, simple_explanation,
+  deeper_explanation, quiz_question, quiz_options, correct_index)` adds a
+  real lesson to that mentor's curriculum (capped at
+  `MAX_LESSONS_PER_MENTOR = 30`). Built-in lessons keep their correct
+  answer in a module-level Python constant that's never serialized to
+  the client; a CEO-authored lesson has no such constant, so its answer
+  is stored for real in a new `FoundationalMentorState.
+  custom_lesson_answers: dict[str, int]` field — `grade_ceo_lesson_quiz`
+  falls back to it when the built-in lookup misses.
+- `set_active_mentor(state, mentor_id)` is a real CEO override: jumps
+  company-wide focus straight to any mentor with lesson content,
+  built-in or custom, pausing (not discarding) whatever was active —
+  the same mechanism `skip_to_next_mentor` already used, just addressable
+  by ID instead of "next in sequence."
+- Three new endpoints back these: `POST /add-mentor`, `POST
+  /add-lesson`, `POST /set-active`.
+- `MentorLabPanel.tsx`: a Mentor Roadmap list (with "+ Add New Mentor"),
+  a selected-mentor detail panel (focus areas, content-attribution note,
+  lesson count, company graduation day, "Make Active Track," "+ Add
+  Lesson"), a Curriculum list, a "Company Concepts Learned" card
+  (`computeCompanyConceptsLearned` — a real, derivable distinct-lesson
+  count), and a Mentor Comparison table (`computeMentorComparison`) — all
+  three new `lib/derive.ts` computations follow the same "frontend-only
+  feature" pattern as Feature 47's Knowledge Base and the Academy
+  Dashboard above: computed client-side from data already broadcast, no
+  new WS payload fields needed beyond `roadmapOrder`/`customLessonAnswers`.
+
+**Deliberately not shown**: the brief's "Concepts Validated" / "Concepts
+Rejected" counters. No real cross-system validation pipeline (Discussed →
+Backtested → Paper Traded → Sandbox Tested → Quant Reviewed → Risk
+Reviewed → Devil's Advocate Reviewed → Founder Council Reviewed) exists
+in this codebase to back those numbers honestly — this is the same gap
+the Revision section above already declined to build for the same
+reason. The panel states this explicitly rather than fabricating either
+number.
+
+**Verified**: backend — `test_foundational_mentors.py` gains 12 new
+tests (`TestAddCustomMentor`, `TestAddCustomLesson`,
+`TestSetActiveMentor` — 39 tests in the file, 660/660 full suite) +
+mypy/ruff clean. Frontend: `tsc -b`/eslint/build clean; new
+`mentorLab.spec.ts` (live-stack Playwright test: add a real mentor, add
+a real lesson to it, make it the active track, then restore TJR as
+active so the shared dev backend's state doesn't leak into other tests);
+`commandCenter.spec.ts`'s tab-count regression updated (29 → 30 tabs,
+`MENTORLAB` added to the tab list).
 
 ### Professional Day Trading Program — Foundational Mentor Program (Phase 3, original design — content/roadmap/attribution still accurate, see the Revision section above for who now does the lessons)
 
