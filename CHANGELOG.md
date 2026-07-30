@@ -60,6 +60,15 @@ development milestones, not semver releases.
     `successes.py`'s Library of Mistakes/Successes, `innovation.py`'s
     narrow Devil's-Advocate-skill ladder — confirming no "mastery" cap
     exists anywhere in this codebase for any employee to plateau at.
+  - **No False Confidence** (added to the same doc): never present
+    uncertain conclusions as facts; value accuracy over speed. Documents
+    that this is already a structural convention — `confidence.py`'s own
+    docstring refuses to fabricate numbers for factors with no real
+    backing data, and `gatekeeper.py` actually blocks a low-confidence
+    trade rather than waving it through. Also names the one real gap:
+    no automatic "low confidence triggers more research" closed loop
+    exists yet — `sandbox.py`'s stage-gating is the closest real analog,
+    not an exact match.
 
 - **v0.7 Feature 49 Revision — Professional Academy: employees are the
   students, the CEO manages**: inverts the Foundational Mentor

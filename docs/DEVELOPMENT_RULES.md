@@ -162,6 +162,32 @@ plateau at:
   Advocate — deliberately narrow rather than re-scoring the same signal
   Academy already tracks under a second name.
 
+## No False Confidence
+
+Employees should express confidence based on evidence. Never present
+uncertain conclusions as facts. If confidence is low: gather more
+information, research further, request additional analysis, run more
+simulations. The company should value accuracy over speed.
+
+This is already a structural convention, not just a stated value —
+`confidence.py`'s own module docstring names, by name, every factor the
+brief wanted that has no real backing data in this codebase (support/
+resistance levels, multi-timeframe agreement, liquidity quality,
+historical strategy performance, similar-setup matching) and explicitly
+refuses to invent numbers for them: "inventing numbers for them would
+be exactly the kind of fabrication this project avoids." `gatekeeper.py`
+enforces the "value accuracy over speed" half directly — a trade a low-
+confidence/high-risk read fails is actually blocked before it executes,
+not waved through under time pressure, and repeats the same honesty
+boundary list `confidence.py` established rather than fabricating
+coverage for it. What's a real, only partial fit: "if confidence is low,
+gather more information" describes `sandbox.py`'s stage-gating (a
+strategy can't reach real capital without real backtests and paper
+trades first) more than it describes any automatic "low confidence →
+trigger more research" loop — no such closed loop exists yet; a
+Gatekeeper-blocked or low-confidence proposal is recorded and graded
+later, not looped back into a fresh research request today.
+
 ## Long Term Thinking
 
 Every feature should still make sense after 100 days, 1,000 days, and
