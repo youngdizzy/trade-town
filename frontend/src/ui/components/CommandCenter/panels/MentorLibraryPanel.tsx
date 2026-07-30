@@ -69,6 +69,19 @@ export function MentorLibraryPanel() {
     }
   };
 
+  const revoke = async (agentId: AgentId, mentorId: FoundationalMentorId) => {
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.revokeAcademyGraduation(agentId, mentorId);
+      NexusManager.setFoundationalMentorState(res.foundationalMentorState);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
   if (foundationalMentorState.mentors.length === 0) return <EmptyState>Loading Academy…</EmptyState>;
 
   return (
@@ -226,7 +239,7 @@ export function MentorLibraryPanel() {
       </Glass>
 
       {selectedAgentId && (
-        <EmployeeAcademyReport agentId={selectedAgentId} mentorId={dashboard.activeMentorId} onClose={() => setSelectedAgentId(null)} onApprove={approve} busy={busy} />
+        <EmployeeAcademyReport agentId={selectedAgentId} mentorId={dashboard.activeMentorId} onClose={() => setSelectedAgentId(null)} onApprove={approve} onRevoke={revoke} busy={busy} />
       )}
 
       {learningMode && <CeoPersonalLearning />}
@@ -259,12 +272,14 @@ function EmployeeAcademyReport({
   mentorId,
   onClose,
   onApprove,
+  onRevoke,
   busy,
 }: {
   agentId: AgentId;
   mentorId: FoundationalMentorId | null;
   onClose: () => void;
   onApprove: (agentId: AgentId, mentorId: FoundationalMentorId) => void;
+  onRevoke: (agentId: AgentId, mentorId: FoundationalMentorId) => void;
   busy: boolean;
 }) {
   const { foundationalMentorState, agentKnowledge } = useGameStore();
@@ -304,6 +319,7 @@ function EmployeeAcademyReport({
                   Approve Graduation
                 </button>
               )}
+              {summary.coachNote && <div className="mt-2 rounded-sm border border-cmd-amber/40 bg-cmd-amber/10 p-2 text-[9px] text-cmd-amber">{summary.coachNote}</div>}
             </>
           )}
           <div className="mt-3 border-t border-cmd-border/60 pt-2">
@@ -312,8 +328,18 @@ function EmployeeAcademyReport({
               <EmptyState>None yet.</EmptyState>
             ) : (
               certifications.map((c) => (
-                <div key={c.mentorId} className="text-[9px] text-cmd-textDim">
-                  {c.mentorName} — Day {c.graduatedSimDay}
+                <div key={c.mentorId} className="flex items-center justify-between gap-2 py-0.5 text-[9px] text-cmd-textDim">
+                  <span>
+                    {c.mentorName} — Day {c.graduatedSimDay}
+                  </span>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => onRevoke(agentId, c.mentorId)}
+                    className="rounded-sm border border-cmd-red/40 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-cmd-red hover:bg-cmd-red/10 disabled:opacity-40"
+                  >
+                    Revoke Graduation
+                  </button>
                 </div>
               ))
             )}

@@ -3125,12 +3125,28 @@ progress" is why the reset goes through the same real
 company_wide` already uses, rather than any kind of soft-delete or
 history-erasure.
 
+Frontend: `MentorLibraryPanel.tsx`'s Employee Academy Report now shows a
+"Revoke Graduation" button next to each certification, and a real Coach
+improvement-plan note when one exists on the employee's current-track
+progress. No new WS payload fields needed beyond `coachNote` on
+`FoundationalMentorProgress`.
+
 **Verified**: `test_foundational_mentors.py` gains 9 new tests
 (`TestRevokeGraduation` — status reversion, real progress reset, the
 real Coach note's content, non-interference with the track's
 company-wide status and with other employees' progress, and the error
 paths) plus a 10th confirming `approve_graduation` clears any leftover
 note on real re-approval — 689/689 full suite, mypy/ruff clean.
+Frontend: `tsc -b`/eslint/build clean; new live Playwright test in
+`mentorLibrary.spec.ts` covering the honest empty state (no
+certifications, no Revoke button) before any real graduation exists —
+a full live graduate-then-revoke round trip isn't reachable within a
+test's time budget (reaching "graduated" takes many real ticks plus a
+probabilistic real quiz pass, and this codebase deliberately has no
+test-only shortcut to force it: `ClientSaveRequest`, the real
+`/api/save` shape, only ever accepts player/settings/dialogueHistory),
+so the revoke logic itself is verified by the 9 backend unit tests
+instead.
 
 ### Executive Intelligence Network — Feature 50 (Part 1 of a phased build)
 

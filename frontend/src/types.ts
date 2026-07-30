@@ -1575,6 +1575,7 @@ export interface FoundationalMentorProgress {
   consecutiveQuizFailures: number;
   graduationStatus: FoundationalGraduationStatus;
   graduatedSimDay: number | null;
+  coachNote: string | null;
 }
 
 export interface FoundationalMentorState {

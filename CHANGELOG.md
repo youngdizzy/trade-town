@@ -139,7 +139,13 @@ development milestones, not semver releases.
   constructor `repeat_mentor_company_wide` already established.
   Backend: `TestRevokeGraduation` — 9 new tests plus 1 confirming
   `approve_graduation` clears a leftover note on real re-approval,
-  689/689 full suite, mypy/ruff clean.
+  689/689 full suite, mypy/ruff clean. Frontend: the Employee Academy
+  Report's Certifications list now shows a real "Revoke Graduation"
+  button per certification, and a real Coach improvement-plan note when
+  one exists; `tsc -b`/eslint/build clean, new live Playwright test
+  covering the honest empty state (a full graduate-then-revoke round
+  trip isn't reachable within a test's time budget — see
+  `docs/Architecture.md`).
 
 - **v0.7 Feature 49 Revision — Professional Academy: employees are the
   students, the CEO manages**: inverts the Foundational Mentor

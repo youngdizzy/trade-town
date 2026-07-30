@@ -159,3 +159,42 @@ test("the MENTORLIB tab renders the Academy Dashboard and CEO Learning Mode reve
   const relevantErrors = consoleErrors.filter((e) => !e.includes("favicon"));
   expect(relevantErrors).toEqual([]);
 });
+
+test("an Employee Academy Report honestly shows no certifications yet, and no Revoke Graduation button, before any real graduation exists", async ({ page }) => {
+  // "Revoke Graduation" can only act on a real graduated employee, and
+  // reaching that state takes many real ticks plus a probabilistic real
+  // quiz pass through tick_employee_progress() — there is no test-only
+  // shortcut to force it (ClientSaveRequest, the real /api/save shape,
+  // only ever accepts player/settings/dialogueHistory, deliberately never
+  // foundationalMentorState — see app/schemas.py). The revoke logic
+  // itself (status reversion, real progress reset, the real Coach note,
+  // non-interference with other employees/the track's own status) is
+  // covered thoroughly by TestRevokeGraduation in
+  // test_foundational_mentors.py; this test covers what's honestly
+  // reachable live: the empty state before any graduation exists.
+  await page.goto("/");
+  await continueGame(page);
+
+  for (let attempt = 0; attempt < 5; attempt++) {
+    await dismissTradeOutcomePopups(page);
+    try {
+      await page.getByRole("button", { name: "Command ⌁" }).click({ timeout: 5000 });
+      break;
+    } catch {
+      // a popup intercepted the click — loop back and dismiss again
+    }
+  }
+  await page.getByRole("button", { name: "EXPAND — FULL COMMAND CENTER" }).click();
+  await clickTab(page, "MENTORLIB");
+
+  const state = await page.evaluate(async () => {
+    const res = await fetch("/api/load");
+    return res.json();
+  });
+  const certifications = Object.values(state.foundationalMentorState.progress as Record<string, Record<string, { graduationStatus: string }>>).flatMap((byMentor) => Object.values(byMentor)).filter((p) => p.graduationStatus === "graduated");
+  test.skip(certifications.length > 0, "a real employee has already graduated in this shared dev backend — the honest-empty-state case no longer applies");
+
+  await expect(page.getByText("Current Certifications")).toBeVisible();
+  await expect(page.getByText("No certifications earned yet.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Revoke Graduation" })).toHaveCount(0);
+});

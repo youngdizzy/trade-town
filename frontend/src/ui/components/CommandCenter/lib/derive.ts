@@ -1037,6 +1037,7 @@ export interface AcademyStudentSummary {
   quizAveragePct: number;
   consecutiveQuizFailures: number;
   graduationStatus: "in_progress" | "pending_approval" | "graduated";
+  coachNote: string | null;
 }
 
 export interface AcademyCertification {
@@ -1087,6 +1088,7 @@ function studentSummaryFor(agentId: AgentId, mentorId: FoundationalMentorId, fou
     quizAveragePct: quizAttempts > 0 ? (correctQuizAttempts / quizAttempts) * 100 : 0,
     consecutiveQuizFailures: progress?.consecutiveQuizFailures ?? 0,
     graduationStatus: progress?.graduationStatus ?? "in_progress",
+    coachNote: progress?.coachNote ?? null,
   };
 }
 

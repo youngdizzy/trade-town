@@ -286,6 +286,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ agentId, mentorId }),
     }),
+  revokeAcademyGraduation: (agentId: AgentId, mentorId: FoundationalMentorId) =>
+    request<{ foundationalMentorState: FoundationalMentorState }>("/foundational-mentors/revoke-graduation", {
+      method: "POST",
+      body: JSON.stringify({ agentId, mentorId }),
+    }),
   pauseAcademyTraining: () =>
     request<{ foundationalMentorState: FoundationalMentorState }>("/foundational-mentors/pause", { method: "POST" }),
   resumeAcademyTraining: () =>
