@@ -18,7 +18,9 @@ import type {
   ConstitutionState,
   DailyObjectiveStatus,
   Debate,
+  DepartmentSelfEvaluation,
   DisciplineReview,
+  ExecutiveMeetingLogEntry,
   ExecutiveReview,
   FounderState,
   FoundationalMentorState,
@@ -122,6 +124,8 @@ export interface GameUiState {
   constitution: ConstitutionState;
   reasoningChallenges: ReasoningChallenge[];
   reasoningLabState: ReasoningLabState;
+  executiveMeetingLog: ExecutiveMeetingLogEntry[];
+  departmentSelfEvaluations: DepartmentSelfEvaluation[];
   reflectionSessions: ReflectionSession[];
   wisdomState: WisdomState;
   questionArchive: QuestionOfTheDay[];
@@ -257,6 +261,20 @@ class GameStore {
       teamChemistry: 50,
       recommendations: [],
       updatedAt: new Date().toISOString(),
+      decisionQuality: 50,
+      executiveAlignment: 50,
+      riskGovernance: 50,
+      simulationCoverage: 0,
+      departmentConsensus: 50,
+      selfEvaluationHealth: 50,
+      institutionalMemory: 50,
+      innovationVelocity: 0,
+      talentDevelopment: 0,
+      founderOversight: 0,
+      executiveOverall: 50,
+      executiveTier: "stable",
+      combinedOverall: 50,
+      combinedTier: "stable",
     },
     companyDna: {
       traits: [],
@@ -287,6 +305,8 @@ class GameStore {
     constitution: { articles: [], citations: [], amendments: [], updatedAt: new Date().toISOString() },
     reasoningChallenges: [],
     reasoningLabState: { level: 1, levelLabel: "Foundations", completedChallengeCount: 0, updatedAt: new Date().toISOString() },
+    executiveMeetingLog: [],
+    departmentSelfEvaluations: [],
     reflectionSessions: [],
     wisdomState: { score: 0, tier: "young_company", tierLabel: "Young Company", factors: [], updatedAt: new Date().toISOString() },
     questionArchive: [],
@@ -434,6 +454,8 @@ class GameStore {
     EventBus.on("constitution:updated", (constitution) => this.set({ constitution }));
     EventBus.on("reasoningChallenges:updated", (reasoningChallenges) => this.set({ reasoningChallenges }));
     EventBus.on("reasoningLabState:updated", (reasoningLabState) => this.set({ reasoningLabState }));
+    EventBus.on("executiveMeetingLog:updated", (executiveMeetingLog) => this.set({ executiveMeetingLog }));
+    EventBus.on("departmentSelfEvaluations:updated", (departmentSelfEvaluations) => this.set({ departmentSelfEvaluations }));
     EventBus.on("reflectionSessions:updated", (reflectionSessions) => this.set({ reflectionSessions }));
     EventBus.on("wisdomState:updated", (wisdomState) => this.set({ wisdomState }));
     EventBus.on("questionArchive:updated", (questionArchive) => this.set({ questionArchive }));

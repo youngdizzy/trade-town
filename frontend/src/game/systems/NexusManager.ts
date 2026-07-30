@@ -16,7 +16,9 @@ import type {
   ConstitutionState,
   DailyObjectiveStatus,
   Debate,
+  DepartmentSelfEvaluation,
   DisciplineReview,
+  ExecutiveMeetingLogEntry,
   ExecutiveReview,
   FounderState,
   FoundationalMentorState,
@@ -117,6 +119,8 @@ interface NexusSnapshot {
   playerVsAi: PlayerVsAiState;
   education: EducationProgress;
   viewedTradeNotificationIds: string[];
+  executiveMeetingLog: ExecutiveMeetingLogEntry[];
+  departmentSelfEvaluations: DepartmentSelfEvaluation[];
 }
 
 /**
@@ -209,6 +213,20 @@ export class NexusManager {
     teamChemistry: 50,
     recommendations: [],
     updatedAt: new Date().toISOString(),
+    decisionQuality: 50,
+    executiveAlignment: 50,
+    riskGovernance: 50,
+    simulationCoverage: 0,
+    departmentConsensus: 50,
+    selfEvaluationHealth: 50,
+    institutionalMemory: 50,
+    innovationVelocity: 0,
+    talentDevelopment: 0,
+    founderOversight: 0,
+    executiveOverall: 50,
+    executiveTier: "stable",
+    combinedOverall: 50,
+    combinedTier: "stable",
   };
   private static companyDna: CompanyDNA = {
     traits: [],
@@ -250,6 +268,8 @@ export class NexusManager {
     completedChallengeCount: 0,
     updatedAt: new Date().toISOString(),
   };
+  private static executiveMeetingLog: ExecutiveMeetingLogEntry[] = [];
+  private static departmentSelfEvaluations: DepartmentSelfEvaluation[] = [];
   private static reflectionSessions: ReflectionSession[] = [];
   private static wisdomState: WisdomState = { score: 0, tier: "young_company", tierLabel: "Young Company", factors: [], updatedAt: new Date().toISOString() };
   private static questionArchive: QuestionOfTheDay[] = [];
@@ -443,6 +463,14 @@ export class NexusManager {
 
   static getReasoningLabState(): ReasoningLabState {
     return this.reasoningLabState;
+  }
+
+  static getExecutiveMeetingLog(): ExecutiveMeetingLogEntry[] {
+    return this.executiveMeetingLog;
+  }
+
+  static getDepartmentSelfEvaluations(): DepartmentSelfEvaluation[] {
+    return this.departmentSelfEvaluations;
   }
 
   static getReflectionSessions(): ReflectionSession[] {
@@ -864,6 +892,16 @@ export class NexusManager {
     if (update.reasoningLabState !== this.reasoningLabState) EventBus.emit("reasoningLabState:updated", update.reasoningLabState);
     this.reasoningLabState = update.reasoningLabState;
 
+    if (update.executiveMeetingLog.length !== this.executiveMeetingLog.length) {
+      EventBus.emit("executiveMeetingLog:updated", update.executiveMeetingLog);
+    }
+    this.executiveMeetingLog = update.executiveMeetingLog;
+
+    if (update.departmentSelfEvaluations.length !== this.departmentSelfEvaluations.length) {
+      EventBus.emit("departmentSelfEvaluations:updated", update.departmentSelfEvaluations);
+    }
+    this.departmentSelfEvaluations = update.departmentSelfEvaluations;
+
     if (update.reflectionSessions.length !== this.reflectionSessions.length) {
       EventBus.emit("reflectionSessions:updated", update.reflectionSessions);
     }
@@ -970,6 +1008,8 @@ export class NexusManager {
     this.constitution = save.constitution;
     this.reasoningChallenges = save.reasoningChallenges;
     this.reasoningLabState = save.reasoningLabState;
+    this.executiveMeetingLog = save.executiveMeetingLog;
+    this.departmentSelfEvaluations = save.departmentSelfEvaluations;
     this.reflectionSessions = save.reflectionSessions;
     this.wisdomState = save.wisdomState;
     this.questionArchive = save.questionArchive;

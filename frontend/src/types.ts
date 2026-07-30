@@ -720,6 +720,11 @@ export const CONFIDENCE_TIER_LABEL: Record<ConfidenceTier, string> = {
 /** The permanent, explainable-AI record of one trade candidate's outcome
  * (v0.6 brief, Decision Voting + Explainable AI; resolved by the CEO
  * since v0.6.3 — see backend/app/executive.py). */
+// v0.7 Feature 50 (Part 2/3) — a real, weighted process-quality grade
+// (never the trade's own P&L) on a standard 12-step academic scale. See
+// backend/app/executive.py's compute_decision_grade.
+export type DecisionGrade = "A+" | "A" | "A-" | "B+" | "B" | "B-" | "C+" | "C" | "C-" | "D+" | "D" | "F";
+
 export interface TradeDecision {
   id: string;
   symbol: string;
@@ -744,6 +749,9 @@ export interface TradeDecision {
    * verdict here is exactly what makes `orderId` null even though the
    * linked CeoDecisionRecord's `ceoDecision` was buy/sell, not wait. */
   gatekeeperVerdict: GatekeeperVerdict | null;
+  /** v0.7 Feature 50 (Part 2/3) — null only for decisions predating this field. */
+  decisionGrade: DecisionGrade | null;
+  decisionGradeScore: number | null;
   createdAt: string;
 }
 
@@ -931,6 +939,41 @@ export const EXECUTIVE_STANCE_LABEL: Record<ExecutiveStance, string> = {
   recommend_position_change: "Recommend Position Change",
   recommend_rejecting: "Recommend Rejecting",
 };
+
+// v0.7 Feature 50 (Part 2/3) — the Executive Meeting Log. Makes Part 1's
+// ephemeral synthesis permanent: one real entry per actual
+// resolve_proposal() call. See backend/app/executive_intelligence.py.
+export interface ExecutiveMeetingLogEntry {
+  id: string;
+  proposalId: string;
+  symbol: string;
+  simDay: number;
+  opinions: DepartmentOpinion[];
+  recommendedAction: ExecutiveAction;
+  recommendationReason: string;
+  ceoDecision: AnalystChoice;
+  networkAgreed: boolean;
+  decisionGrade: DecisionGrade;
+  decisionGradeScore: number;
+  resolvedBy: "ceo" | "auto";
+  createdAt: string;
+}
+
+// v0.7 Feature 50 (Part 2/3) — Weekly Self-Evaluation. One real entry
+// per department per in-game week, built entirely from that
+// department's own real Meeting Log opinions over the trailing week.
+export interface DepartmentSelfEvaluation {
+  id: string;
+  role: ExecutiveDepartmentRole;
+  departmentLabel: string;
+  weekEndingSimDay: number;
+  decisionsReviewed: number;
+  score: number;
+  summary: string;
+  strengths: string[];
+  improvementAreas: string[];
+  createdAt: string;
+}
 
 // v0.7 Feature 41 — Innovation Points. A second, deliberately narrow
 // ladder alongside Career Level (Feature 40) — where that tracks general
@@ -1218,6 +1261,27 @@ export interface CompanyHealth {
   teamChemistry: number;
   recommendations: string[];
   updatedAt: string;
+
+  // v0.7 Feature 50 (Part 2/3) — the Company Health redesign. Ten more
+  // real Executive-tier dimensions, additive alongside the eleven
+  // Operational ones above (overall/tier are unchanged) — see
+  // backend/app/company_health.py's module docstring.
+  decisionQuality: number;
+  executiveAlignment: number;
+  riskGovernance: number;
+  simulationCoverage: number;
+  departmentConsensus: number;
+  selfEvaluationHealth: number;
+  institutionalMemory: number;
+  innovationVelocity: number;
+  talentDevelopment: number;
+  founderOversight: number;
+  executiveOverall: number;
+  executiveTier: CompanyHealthTier;
+  /** An equal blend of `overall` and `executiveOverall` — the true
+   * redesigned headline number. */
+  combinedOverall: number;
+  combinedTier: CompanyHealthTier;
 }
 
 // v0.7 Feature 43 — Company DNA (see backend/app/company_dna.py). The one
@@ -1955,6 +2019,8 @@ export interface GameSaveState {
   settings: SettingsState;
   dialogueHistory: DialogueHistoryEntry[];
   updatedAt: string;
+  executiveMeetingLog: ExecutiveMeetingLogEntry[];
+  departmentSelfEvaluations: DepartmentSelfEvaluation[];
 }
 
 // v0.7 — Save Architecture Redesign. The only fields the client actually

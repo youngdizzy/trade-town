@@ -18,7 +18,9 @@ import type {
   ConstitutionState,
   DailyObjectiveStatus,
   Debate,
+  DepartmentSelfEvaluation,
   DisciplineReview,
+  ExecutiveMeetingLogEntry,
   ExecutiveReview,
   FounderState,
   FoundationalMentorState,
@@ -113,6 +115,8 @@ type ServerMessage =
       reasoningLabState: ReasoningLabState;
       reflectionSessions: ReflectionSession[];
       wisdomState: WisdomState;
+      executiveMeetingLog: ExecutiveMeetingLogEntry[];
+      departmentSelfEvaluations: DepartmentSelfEvaluation[];
       questionArchive: QuestionOfTheDay[];
       thinkingProfiles: Record<AgentId, ThinkingProfile>;
       mentorState: MentorState;
@@ -228,6 +232,8 @@ export class GameSocket {
             reasoningLabState: msg.reasoningLabState,
             reflectionSessions: msg.reflectionSessions,
             wisdomState: msg.wisdomState,
+            executiveMeetingLog: msg.executiveMeetingLog,
+            departmentSelfEvaluations: msg.departmentSelfEvaluations,
             questionArchive: msg.questionArchive,
             thinkingProfiles: msg.thinkingProfiles,
             mentorState: msg.mentorState,

@@ -15,8 +15,11 @@ import type {
   ConfidenceTier,
   ConstitutionCitation,
   Debate,
+  DecisionGrade,
+  DepartmentSelfEvaluation,
   DisciplineReview,
   ExecutiveAction,
+  ExecutiveMeetingLogEntry,
   ExecutiveReview,
   ExecutiveStance,
   FounderState,
@@ -274,6 +277,62 @@ const EXECUTIVE_ACTION_TONE: Record<ExecutiveAction, "green" | "amber" | "red"> 
 
 export function executiveActionTone(action: ExecutiveAction): "green" | "amber" | "red" {
   return EXECUTIVE_ACTION_TONE[action];
+}
+
+// v0.7 Feature 50 (Part 2/3) — Decision Grade, a real process-quality
+// letter grade (see backend/app/executive.py's compute_decision_grade).
+const DECISION_GRADE_TONE: Record<DecisionGrade, "green" | "cyan" | "amber" | "red"> = {
+  "A+": "green",
+  A: "green",
+  "A-": "green",
+  "B+": "cyan",
+  B: "cyan",
+  "B-": "cyan",
+  "C+": "amber",
+  C: "amber",
+  "C-": "amber",
+  "D+": "red",
+  D: "red",
+  F: "red",
+};
+
+export function decisionGradeTone(grade: DecisionGrade): "green" | "cyan" | "amber" | "red" {
+  return DECISION_GRADE_TONE[grade];
+}
+
+const GRADE_ORDER: DecisionGrade[] = ["A+", "A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D+", "D", "F"];
+
+export interface DecisionGradeCount {
+  grade: DecisionGrade;
+  count: number;
+}
+
+/** Real grade counts across every decision that has one (older decisions
+ * predating v0.7 Feature 50 have `decisionGrade: null` and are excluded
+ * honestly, not counted as an "F"). Ordered A+ to F for a readable bar. */
+export function computeDecisionGradeDistribution(decisions: TradeDecision[]): DecisionGradeCount[] {
+  const counts = new Map<DecisionGrade, number>();
+  for (const d of decisions) {
+    if (d.decisionGrade) counts.set(d.decisionGrade, (counts.get(d.decisionGrade) ?? 0) + 1);
+  }
+  return GRADE_ORDER.filter((grade) => counts.has(grade)).map((grade) => ({ grade, count: counts.get(grade) ?? 0 }));
+}
+
+/** Newest-first, capped — the Executive Meeting Log can grow to
+ * MAX_MEETING_LOG_ENTRIES (200); the panel only ever shows a recent
+ * window. */
+export function recentMeetingLogEntries(log: ExecutiveMeetingLogEntry[], limit = 20): ExecutiveMeetingLogEntry[] {
+  return [...log].reverse().slice(0, limit);
+}
+
+/** The most recent DepartmentSelfEvaluation per department — the list is
+ * append-only chronological (see backend/app/executive_intelligence.py's
+ * record_self_evaluations), so the last entry for a given role is its
+ * latest real weekly read. */
+export function latestSelfEvaluationsByRole(evaluations: DepartmentSelfEvaluation[]): DepartmentSelfEvaluation[] {
+  const latest = new Map<string, DepartmentSelfEvaluation>();
+  for (const e of evaluations) latest.set(e.role, e);
+  return Array.from(latest.values());
 }
 
 export interface ChecklistItem {

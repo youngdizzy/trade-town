@@ -19,8 +19,10 @@ import type {
   ConstitutionState,
   DailyObjectiveStatus,
   Debate,
+  DepartmentSelfEvaluation,
   DialogueHistoryEntry,
   DisciplineReview,
+  ExecutiveMeetingLogEntry,
   ExecutiveReview,
   FounderState,
   FoundationalMentorState,
@@ -162,6 +164,8 @@ export interface GameEvents {
   "constitution:updated": ConstitutionState;
   "reasoningChallenges:updated": ReasoningChallenge[];
   "reasoningLabState:updated": ReasoningLabState;
+  "executiveMeetingLog:updated": ExecutiveMeetingLogEntry[];
+  "departmentSelfEvaluations:updated": DepartmentSelfEvaluation[];
   "reflectionSessions:updated": ReflectionSession[];
   "wisdomState:updated": WisdomState;
   "questionArchive:updated": QuestionOfTheDay[];

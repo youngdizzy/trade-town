@@ -245,6 +245,44 @@ export function CompanyPanel() {
         </div>
       </Glass>
 
+      <Glass className="p-3 lg:col-span-2">
+        <div className="mb-1.5 flex items-center justify-between">
+          <TerminalLabel>Executive Health</TerminalLabel>
+          <StatusPill tone={TIER_TONE[companyHealth.executiveTier]}>{TIER_LABEL[companyHealth.executiveTier]}</StatusPill>
+        </div>
+        <p className="mb-2 text-[9px] text-cmd-textDim">
+          Ten dimensions computed from the Executive Intelligence Network&apos;s own real data — additive alongside Company Health above, never
+          replacing it.
+        </p>
+        <div className="mb-2 flex items-baseline justify-between">
+          <span className="font-cmdmono text-2xl text-cmd-cyan">{Math.round(companyHealth.executiveOverall)}</span>
+          <span className="text-cmd-textDim">/ 100</span>
+        </div>
+        <Meter
+          value={companyHealth.executiveOverall}
+          tone={TIER_TONE[companyHealth.executiveTier] === "amber" || TIER_TONE[companyHealth.executiveTier] === "red" ? TIER_TONE[companyHealth.executiveTier] : "cyan"}
+        />
+        <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 sm:grid-cols-3">
+          <HealthCell label="Decision Quality" value={companyHealth.decisionQuality} />
+          <HealthCell label="Exec Alignment" value={companyHealth.executiveAlignment} />
+          <HealthCell label="Risk Governance" value={companyHealth.riskGovernance} />
+          <HealthCell label="Sim Coverage" value={companyHealth.simulationCoverage} />
+          <HealthCell label="Dept Consensus" value={companyHealth.departmentConsensus} />
+          <HealthCell label="Self-Eval Health" value={companyHealth.selfEvaluationHealth} />
+          <HealthCell label="Institutional Memory" value={companyHealth.institutionalMemory} />
+          <HealthCell label="Innovation Velocity" value={companyHealth.innovationVelocity} />
+          <HealthCell label="Talent Development" value={companyHealth.talentDevelopment} />
+          <HealthCell label="Founder Oversight" value={companyHealth.founderOversight} />
+        </div>
+        <div className="mt-3 flex items-center justify-between border-t border-cmd-border/50 pt-2">
+          <span className="text-[9px] uppercase tracking-wide text-cmd-textDim">Combined Overall</span>
+          <span className="flex items-center gap-2">
+            <StatusPill tone={TIER_TONE[companyHealth.combinedTier]}>{TIER_LABEL[companyHealth.combinedTier]}</StatusPill>
+            <span className="font-cmdmono text-cmd-text">{Math.round(companyHealth.combinedOverall)}/100</span>
+          </span>
+        </div>
+      </Glass>
+
       <Glass className="p-3">
         <TerminalLabel>Recommendations</TerminalLabel>
         {companyHealth.recommendations.length === 0 ? (

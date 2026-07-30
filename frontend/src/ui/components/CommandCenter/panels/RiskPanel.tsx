@@ -22,7 +22,7 @@ const RISK_BANNER = {
  * label.
  */
 export function RiskPanel({ onNeedHelp }: { onNeedHelp?: (lessonId: EducationTopic) => void } = {}) {
-  const { riskWarnings, riskLimits, paperPortfolio, companyScore, dailyObjectiveStatus } = useGameStore();
+  const { riskWarnings, riskLimits, paperPortfolio, companyScore, dailyObjectiveStatus, companyHealth } = useGameStore();
   const level = riskLevel(riskWarnings);
 
   const equity = paperPortfolio.cashBalance + paperPortfolio.positions.reduce((s, p) => s + p.quantity * p.currentPrice, 0);
@@ -164,6 +164,14 @@ export function RiskPanel({ onNeedHelp }: { onNeedHelp?: (lessonId: EducationTop
         <Glass className="p-3">
           <TerminalLabel>Risk Management Score</TerminalLabel>
           <div className="font-cmdmono text-cmd-text">{Math.round(companyScore.riskManagement)}/100</div>
+        </Glass>
+        <Glass className="p-3">
+          <div className="flex items-center justify-between">
+            <TerminalLabel>Risk Governance</TerminalLabel>
+            <span className="text-[8px] uppercase tracking-wide text-cmd-textDim">v0.7 Feature 50</span>
+          </div>
+          <div className="font-cmdmono text-cmd-text">{Math.round(companyHealth.riskGovernance)}/100</div>
+          <div className="mt-0.5 text-[9px] text-cmd-textDim">Real Trade Gatekeeper approval rate — closed trades vs. real rejections.</div>
         </Glass>
       </div>
 

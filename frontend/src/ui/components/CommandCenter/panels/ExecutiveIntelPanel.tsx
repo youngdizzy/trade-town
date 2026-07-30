@@ -1,5 +1,8 @@
+import { useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
-import { computeDepartmentHealth, computeExecutivePriorities } from "../lib/derive";
+import { EXECUTIVE_ACTION_LABEL, EXECUTIVE_STANCE_LABEL } from "@/types";
+import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
+import { computeDepartmentHealth, computeExecutivePriorities, decisionGradeTone, executiveActionTone, executiveStanceTone, latestSelfEvaluationsByRole, recentMeetingLogEntries } from "../lib/derive";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
 
 /**
@@ -17,7 +20,8 @@ import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "..
  * subsystem actually supports).
  */
 export function ExecutiveIntelPanel() {
-  const { companyDna, companyHealth, coachReports, executiveReviews, research, riskWarnings, paperPortfolio, blackBox, innovationState, founderState, academyState } = useGameStore();
+  const { companyDna, companyHealth, coachReports, executiveReviews, research, riskWarnings, paperPortfolio, blackBox, innovationState, founderState, academyState, executiveMeetingLog, departmentSelfEvaluations } = useGameStore();
+  const [expandedMeeting, setExpandedMeeting] = useState<string | null>(null);
 
   const priorities = computeExecutivePriorities(companyHealth, coachReports, executiveReviews);
   const departments = computeDepartmentHealth({
@@ -31,6 +35,8 @@ export function ExecutiveIntelPanel() {
     founderState,
     academyState,
   });
+  const recentMeetings = recentMeetingLogEntries(executiveMeetingLog, 20);
+  const latestSelfEvaluations = latestSelfEvaluationsByRole(departmentSelfEvaluations);
 
   return (
     <div className="space-y-3">
@@ -95,6 +101,84 @@ export function ExecutiveIntelPanel() {
             </div>
           ))}
         </div>
+      </Glass>
+
+      <Glass className="p-3">
+        <div className="mb-1.5 flex items-center justify-between">
+          <TerminalLabel>Weekly Self-Evaluation</TerminalLabel>
+          <span className="text-[9px] text-cmd-textDim">v0.7 Feature 50 (Part 2/3) — one real read per department per in-game week</span>
+        </div>
+        {latestSelfEvaluations.length === 0 ? (
+          <EmptyState>No real decisions have reached the network yet — nothing to self-evaluate.</EmptyState>
+        ) : (
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-4">
+            {latestSelfEvaluations.map((evaluation) => (
+              <div key={evaluation.role} className="rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2 text-[9px]">
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-cmd-cyan">{evaluation.departmentLabel}</span>
+                  <span className="text-cmd-text">{Math.round(evaluation.score)}/100</span>
+                </div>
+                <Meter value={evaluation.score} tone={evaluation.score >= 70 ? "green" : evaluation.score >= 45 ? "amber" : "red"} />
+                <div className="mt-1.5 text-cmd-textDim">{evaluation.summary}</div>
+                {evaluation.strengths.length > 0 && (
+                  <div className="mt-1.5 text-cmd-green">{evaluation.strengths[0]}</div>
+                )}
+                {evaluation.improvementAreas.length > 0 && (
+                  <div className="mt-1 text-cmd-amber">{evaluation.improvementAreas[0]}</div>
+                )}
+                <div className="mt-1.5 text-cmd-textDim">Week ending sim day {evaluation.weekEndingSimDay}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Glass>
+
+      <Glass className="p-3">
+        <div className="mb-1.5 flex items-center justify-between">
+          <TerminalLabel>Executive Meeting Log ({executiveMeetingLog.length})</TerminalLabel>
+          <span className="text-[9px] text-cmd-textDim">v0.7 Feature 50 (Part 2/3) — one real entry per resolved decision</span>
+        </div>
+        {recentMeetings.length === 0 ? (
+          <EmptyState>No real Executive decisions have been recorded yet.</EmptyState>
+        ) : (
+          <div className="space-y-1.5">
+            {recentMeetings.map((entry) => {
+              const expanded = expandedMeeting === entry.id;
+              return (
+                <button
+                  key={entry.id}
+                  type="button"
+                  onClick={() => setExpandedMeeting(expanded ? null : entry.id)}
+                  className="w-full rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2 text-left transition-colors hover:border-cmd-cyan/40"
+                >
+                  <div className="flex flex-wrap items-center gap-2 text-[9px]">
+                    <span className="font-cmdmono text-cmd-cyan">{entry.symbol}</span>
+                    <StatusPill tone={executiveActionTone(entry.recommendedAction)}>{EXECUTIVE_ACTION_LABEL[entry.recommendedAction]}</StatusPill>
+                    <StatusPill tone={decisionGradeTone(entry.decisionGrade)}>{entry.decisionGrade}</StatusPill>
+                    <span className={entry.networkAgreed ? "text-cmd-green" : "text-cmd-amber"}>{entry.networkAgreed ? "CEO agreed" : "CEO diverged"}</span>
+                    <span className="ml-auto text-cmd-textDim">Day {entry.simDay} — {entry.resolvedBy === "ceo" ? "CEO decision" : "auto-resolved"}</span>
+                  </div>
+                  {expanded && (
+                    <div className="mt-1.5 space-y-1.5 border-t border-cmd-border/50 pt-1.5">
+                      <div className="text-[9px] text-cmd-text">{entry.recommendationReason}</div>
+                      <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+                        {entry.opinions.map((op) => (
+                          <div key={op.role} className="flex items-center justify-between gap-2 rounded-sm border border-cmd-border/40 bg-cmd-bg/60 p-1.5 text-[9px]">
+                            <span className="flex items-center gap-1.5">
+                              <span className="text-cmd-textDim">{op.departmentLabel}</span>
+                              {op.agentId && <span className="text-cmd-textDim">({AGENT_PROFILES[op.agentId].name})</span>}
+                            </span>
+                            <StatusPill tone={executiveStanceTone(op.stance)}>{EXECUTIVE_STANCE_LABEL[op.stance]}</StatusPill>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        )}
       </Glass>
     </div>
   );
