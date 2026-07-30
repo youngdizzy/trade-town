@@ -188,6 +188,44 @@ trigger more research" loop — no such closed loop exists yet; a
 Gatekeeper-blocked or low-confidence proposal is recorded and graded
 later, not looped back into a fresh research request today.
 
+## Real Money Readiness
+
+v0.9 exists to prepare the company for real capital. Every system should
+move the company closer to professional-grade performance. When v1.0
+begins, the company should already possess professional discipline,
+education, research, risk management, documentation, communication,
+statistical analysis, and decision making. **Real money should simply
+activate an already mature company — not fundamentally change how it
+operates.**
+
+This is the exact same philosophy `docs/ROADMAP.md` already states
+independently for its own Version 1.0 entry ("Live Brokerage Support,
+re-authorization required"): "Everything from v0.5–v0.8 (Coach,
+Simulation Lab, Paper Trading, Hall of Fame, Trading Floor, Risk Engine,
+Market Scanner, Decision Voting, Strategy Marketplace, Risk Calibration)
+exists specifically so this version has real scaffolding to build on
+instead of starting from zero trust." Each professional dimension
+already has a real system behind it: discipline → `discipline.py`'s
+Discipline Score (process-over-outcome, never pnl-based); education →
+`foundational_mentors.py`/`academy.py`/`academy_research.py`; research →
+`research.py`/`sandbox.py`'s stage-gated pipeline; risk management →
+`risk_engine.py`/`gatekeeper.py`; communication → the AI Debate Room
+(`debate.py`) and `executive.py`'s six-seat voting; statistical analysis
+→ `confidence.py` and `sandbox.py`'s Quant reviewer; decision making →
+`executive.py`/`gatekeeper.py`/`wisdom.py`. Documentation is this very
+doc's own "Engineering discipline for every feature" section in
+`CLAUDE.md` and the CHANGELOG-first convention already followed
+throughout `CHANGELOG.md`.
+
+This principle does **not** change `docs/ROADMAP.md`'s own explicit
+stop condition on Version 1.0: "this document does not pre-authorize
+brokerage code — that authorization is a separate, explicit decision
+made at v1.0's own kickoff, not implied by this roadmap entry existing."
+v0.9 work makes the company *ready*; it does not itself authorize
+connecting to a real brokerage or moving real money — that remains a
+deliberate, separately-scoped decision for whenever v1.0 actually
+begins.
+
 ## Long Term Thinking
 
 Every feature should still make sense after 100 days, 1,000 days, and

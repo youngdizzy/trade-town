@@ -69,6 +69,17 @@ development milestones, not semver releases.
     no automatic "low confidence triggers more research" closed loop
     exists yet — `sandbox.py`'s stage-gating is the closest real analog,
     not an exact match.
+  - **Real Money Readiness** (added to the same doc): v0.9 exists to
+    prepare the company for real capital — real money should activate
+    an already mature company, not change how it operates. Documents
+    that `docs/ROADMAP.md` already states this exact philosophy
+    independently for its own Version 1.0 entry, maps each named
+    "professional" dimension to a real existing system (discipline,
+    education, research, risk management, communication, statistical
+    analysis, decision making, documentation), and explicitly preserves
+    `ROADMAP.md`'s own stop condition — this principle does not
+    pre-authorize live brokerage code; that stays a separate, deliberate
+    decision at v1.0's own kickoff.
 
 - **v0.7 Feature 49 Revision — Professional Academy: employees are the
   students, the CEO manages**: inverts the Foundational Mentor
