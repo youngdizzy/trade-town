@@ -130,6 +130,38 @@ own panels. "The Brain Room combines every perspective" is this
 document's aspiration, not yet a shipped fact — a real gap for future
 scoping, not something to claim as already built.
 
+## Never Stop Learning
+
+Employees should never believe they have mastered trading. Markets
+evolve. Strategies evolve. Technology evolves. The company should
+constantly search for better ideas, better research, better execution,
+better psychology, better statistics, better risk management. Learning
+never stops.
+
+Several real, already-shipped systems already embody this — no single
+"mastery" state exists anywhere in this codebase for any employee to
+plateau at:
+
+- `market_environment.py` computes the "markets evolve" half directly:
+  a live regime read (bull/bear/sideways/high-volatility/
+  low-volatility) recomputed every tick from real watchlist data, never
+  a static label.
+- `wisdom.py`'s Reflection Chamber is the closest real analog to this
+  whole principle — a real `ReflectionSession` filed every in-game week
+  and month, and a Company Wisdom Score built entirely from real
+  existing signals (`DisciplineReview`, `CaseStudy`,
+  `ReasoningChallenge`, `ResearchItem`, `GatekeeperRejection`,
+  `PaperTrade`, `MemoryRecord`) and, by design, never based on profit —
+  learning is scored on process, not on being right.
+- `mistakes.py` and `successes.py` (the Library of Mistakes/Successes)
+  file a permanent `CaseStudy` from every closed trade's real process
+  strengths and weaknesses, so "better ideas" compound as real,
+  checkable history rather than vibes.
+- `innovation.py` tracks one specific real skill improving over
+  time — an agent's own record finding genuine weaknesses as Devil's
+  Advocate — deliberately narrow rather than re-scoring the same signal
+  Academy already tracks under a second name.
+
 ## Long Term Thinking
 
 Every feature should still make sense after 100 days, 1,000 days, and

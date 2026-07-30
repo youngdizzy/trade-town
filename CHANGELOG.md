@@ -49,6 +49,17 @@ development milestones, not semver releases.
     a research/company-score HUD today, while these opinions live
     scattered across Sandbox/Executive/Founders/Coach panels. Named as
     a real gap for future scoping, not claimed as already built.
+  - **Never Stop Learning** (added to the same doc): no employee should
+    ever believe they've mastered trading — markets, strategies, and
+    technology all evolve, and the company should keep searching for
+    better ideas, research, execution, psychology, statistics, and risk
+    management. Documents the real systems that already embody this —
+    `market_environment.py`'s live regime read, `wisdom.py`'s
+    Reflection Chamber (a weekly/monthly `ReflectionSession` and a
+    never-profit-based Company Wisdom Score), `mistakes.py`/
+    `successes.py`'s Library of Mistakes/Successes, `innovation.py`'s
+    narrow Devil's-Advocate-skill ladder — confirming no "mastery" cap
+    exists anywhere in this codebase for any employee to plateau at.
 
 - **v0.7 Feature 49 Revision — Professional Academy: employees are the
   students, the CEO manages**: inverts the Foundational Mentor
