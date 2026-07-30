@@ -1,9 +1,11 @@
 """Covers app/foundational_mentors.py — v0.7 Feature 49 (Phase 3,
-revised). Employees are the real students — real progress advances via
+revised) and its v0.7 Feature 51 "market_intelligence" track addition.
+Employees are the real students — real progress advances via
 tick_employee_progress(), never via a player click. Real lesson content
-only exists for the "tjr" track; the other five roadmap entries are
-real, named, ordered, but intentionally empty until their own content is
-authored — see the module's own docstring."""
+exists for the "tjr" track and the "market_intelligence" track (the
+latter not attributed to any real external educator — see the module's
+own docstring); the other five roadmap entries are real, named,
+ordered, but intentionally empty until their own content is authored."""
 from __future__ import annotations
 
 from app.foundational_mentors import (
@@ -86,13 +88,19 @@ class TestDefaultState:
         state = default_foundational_mentor_state()
         assert [m.id for m in state.mentors] == list(_ROADMAP_ORDER)
 
-    def test_only_tjr_has_lesson_content(self):
+    def test_only_tjr_and_market_intelligence_have_lesson_content(self):
+        # v0.7 Feature 51 — the Market Intelligence Department's own
+        # track is the second real, shipped-content track (the other
+        # five real-educator tracks stay roadmap-only, see this module's
+        # docstring for why).
         state = default_foundational_mentor_state()
         by_id = {m.id: m for m in state.mentors}
         assert by_id["tjr"].status == "active"
         assert len(by_id["tjr"].lessons) == 8
+        assert by_id["market_intelligence"].status == "active"
+        assert len(by_id["market_intelligence"].lessons) == 8
         for mentor_id in _ROADMAP_ORDER:
-            if mentor_id == "tjr":
+            if mentor_id in ("tjr", "market_intelligence"):
                 continue
             assert by_id[mentor_id].status == "planned"
             assert by_id[mentor_id].lessons == []
@@ -107,9 +115,16 @@ class TestDefaultState:
         assert state.ceo_progress == {}
 
     def test_every_profile_carries_the_content_disclaimer(self):
+        # market_intelligence's own note is honestly different — it
+        # credits no real external educator at all (see this module's
+        # docstring's "v0.7 Feature 51" note) — so it's checked for its
+        # own real disclosure instead of the six-educator-track phrase.
         state = default_foundational_mentor_state()
         for mentor in state.mentors:
-            assert "original TradeTown-authored teaching material" in mentor.content_note
+            if mentor.id == "market_intelligence":
+                assert "not credited to any real external trading educator" in mentor.content_note
+            else:
+                assert "original TradeTown-authored teaching material" in mentor.content_note
             assert mentor.name in mentor.track_label
 
     def test_lesson_public_shape_hides_the_answer_key(self):
@@ -119,6 +134,42 @@ class TestDefaultState:
             assert not hasattr(lesson, "correct_index")
             assert not hasattr(lesson, "correctIndex")
             assert len(lesson.quiz_options) == 4
+
+
+class TestMarketIntelligenceTrack:
+    """v0.7 Feature 51 — the Market Intelligence Department's own
+    Academy track. Not attributed to any real external educator; every
+    lesson cites a real app/market_intelligence.py mechanic."""
+
+    def test_appears_last_on_the_real_roadmap(self):
+        assert _ROADMAP_ORDER[-1] == "market_intelligence"
+        assert _ROADMAP_ORDER[-2] == "mike_bellafiore"
+
+    def test_eight_real_lessons_in_order(self):
+        state = default_foundational_mentor_state()
+        mentor = next(m for m in state.mentors if m.id == "market_intelligence")
+        assert len(mentor.lessons) == 8
+        assert [lesson.order for lesson in sorted(mentor.lessons, key=lambda x: x.order)] == list(range(1, 9))
+
+    def test_every_lesson_has_exactly_one_real_correct_answer(self):
+        state = default_foundational_mentor_state()
+        mentor = next(m for m in state.mentors if m.id == "market_intelligence")
+        for lesson in mentor.lessons:
+            index = _correct_index_for(state, "market_intelligence", lesson.id)
+            assert 0 <= index < 4
+
+    def test_focus_areas_match_the_brief(self):
+        state = default_foundational_mentor_state()
+        mentor = next(m for m in state.mentors if m.id == "market_intelligence")
+        for topic in ("Market Structure", "Liquidity", "Volatility", "Market Regimes", "Probability Thinking", "Risk Context"):
+            assert topic in mentor.focus_areas
+
+    def test_employees_can_auto_progress_through_it_once_active(self):
+        state = default_foundational_mentor_state()
+        state, error = set_active_mentor(state, "market_intelligence")  # type: ignore[arg-type]
+        assert error is None
+        state, _ = tick_employee_progress(state, discipline_reviews=[], sim_day=1)
+        assert "scout" in state.progress and "market_intelligence" in state.progress["scout"]
 
 
 class TestTickEmployeeProgress:
@@ -343,9 +394,11 @@ class TestCompanyWideControls:
         assert state.active_mentor_id == "al_brooks"
 
     def test_skip_on_last_roadmap_entry_errors(self):
+        # v0.7 Feature 51 added market_intelligence as the real last
+        # roadmap entry, after mike_bellafiore.
         state = default_foundational_mentor_state()
-        new_mentors = [m.model_copy(update={"status": "active"}) if m.id == "mike_bellafiore" else (m.model_copy(update={"status": "paused"}) if m.id == "tjr" else m) for m in state.mentors]
-        state = state.model_copy(update={"mentors": new_mentors, "active_mentor_id": "mike_bellafiore"})
+        new_mentors = [m.model_copy(update={"status": "active"}) if m.id == "market_intelligence" else (m.model_copy(update={"status": "paused"}) if m.id == "tjr" else m) for m in state.mentors]
+        state = state.model_copy(update={"mentors": new_mentors, "active_mentor_id": "market_intelligence"})
         _, error = skip_to_next_mentor(state)
         assert error == "This is the last track on the roadmap — nothing to skip to."
 

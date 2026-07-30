@@ -198,6 +198,18 @@ _CONTENT_DISCLAIMER = (
     "that person's actual work."
 )
 
+# v0.7 Feature 51 — the Market Intelligence Department's own Academy
+# track. Deliberately NOT the same _CONTENT_DISCLAIMER as the six tracks
+# above: this one credits no real external educator at all — it teaches
+# the real mechanics of TradeTown's own in-house department
+# (app/market_intelligence.py), so the honest content note is different.
+_MARKET_INTELLIGENCE_CONTENT_NOTE = (
+    "This track is not credited to any real external trading educator. It teaches the real, checkable mechanics "
+    "behind TradeTown's own in-house Market Intelligence Department (app/market_intelligence.py) — every lesson "
+    "below cites a specific real formula or signal that module actually computes, including where it's an honest "
+    "proxy for something this codebase has no real data source for (see that module's own docstring)."
+)
+
 _ROADMAP_ORDER: tuple[FoundationalMentorId, ...] = (
     "tjr",
     "al_brooks",
@@ -205,6 +217,7 @@ _ROADMAP_ORDER: tuple[FoundationalMentorId, ...] = (
     "mark_douglas",
     "tom_hougaard",
     "mike_bellafiore",
+    "market_intelligence",
 )
 
 _ROADMAP_FOCUS: dict[FoundationalMentorId, tuple[str, list[str]]] = {
@@ -217,6 +230,10 @@ _ROADMAP_FOCUS: dict[FoundationalMentorId, tuple[str, list[str]]] = {
     "mark_douglas": ("Mark Douglas", ["Psychology", "Consistency", "Probability", "Confidence", "Emotional Control", "Mindset"]),
     "tom_hougaard": ("Tom Hougaard", ["Professional Execution", "Mental Toughness", "Performance Under Pressure", "Confidence", "Elite Mindset"]),
     "mike_bellafiore": ("Mike Bellafiore", ["Building Elite Traders", "Performance Reviews", "Journaling", "Practice", "Trading Team Development", "Continuous Improvement"]),
+    "market_intelligence": (
+        "Market Intelligence Department",
+        ["Market Structure", "Liquidity", "Trend Analysis", "Institutional Behavior", "Session Characteristics", "Volatility", "Market Regimes", "Probability Thinking", "Risk Context"],
+    ),
 }
 
 
@@ -355,8 +372,138 @@ _TJR_LESSONS: tuple[_LessonSpec, ...] = (
     ),
 )
 
+# v0.7 Feature 51 — the Market Intelligence Department's own Academy
+# track. Not attributed to any real external educator (see
+# _MARKET_INTELLIGENCE_CONTENT_NOTE above) — every lesson teaches a real
+# mechanic app/market_intelligence.py actually computes, the exact same
+# "cite the real module/field, never fabricate" discipline _TJR_LESSONS
+# above already established.
+_MARKET_INTELLIGENCE_LESSONS: tuple[_LessonSpec, ...] = (
+    _LessonSpec(
+        id="mi-regimes",
+        order=1,
+        title="Market Regimes & Trend Analysis",
+        simple_explanation="Markets don't move the same way every day — sometimes they trend hard, sometimes they chop sideways, sometimes volatility expands or compresses. Naming the current regime honestly, before looking for a trade, is the first real step of professional market analysis.",
+        deeper_explanation="app/market_intelligence.py's _classify_regime() names one of thirteen real regimes (strong/weak bull or bear trend, sideways range, expansion, compression, high/low volatility, accumulation, distribution, liquidity hunt, transitional) from real, ordered thresholds on the average trend and volatility across the watchlist's own real (mock) candle data — never a guess, and never a forecast of what happens next per the department's own Probability First rule.",
+        quiz_question="What does TradeTown's 13-way regime classification actually describe?",
+        quiz_options=(
+            "The market's current real state, computed from real candle data — never a prediction of what happens next",
+            "A forecast of tomorrow's price direction",
+            "A random label chosen for flavor text",
+            "The CEO's own personal opinion of the market",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="mi-structure",
+        order=2,
+        title="Market Structure",
+        simple_explanation="Market structure is the real skeleton underneath price — swing highs and lows, and whether a new swing breaks past the last one (a real Break of Structure). Reading structure tells you whether a trend is continuing, reversing, or just consolidating.",
+        deeper_explanation="app/market_intelligence.py's compute_market_structure() finds real local-extrema swing points in a symbol's own candle history and checks the standard real definition of a Break of Structure — a new swing high above the prior one (bullish) or a new swing low below the prior one (bearish) — never an invented pattern.",
+        quiz_question="What is a real Break of Structure, as TradeTown computes it?",
+        quiz_options=(
+            "A new real swing high (or low) that goes beyond the prior real swing high (or low)",
+            "Any single red candle in an uptrend",
+            "A random event chosen once per day",
+            "Whenever the CEO manually flags it",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="mi-liquidity",
+        order=3,
+        title="Liquidity",
+        simple_explanation="Price is often drawn toward clusters of similar highs or lows before reversing — probable liquidity zones. Watching for a wick that pierces one of these zones and then closes back inside is a real, standard price-action signal.",
+        deeper_explanation="app/market_intelligence.py's compute_liquidity() clusters real equal-high/equal-low swing points into LiquidityZones and flags a real sweepDetected pattern (a wick beyond the zone that closes back inside it) — an honest, real price-action read. It is explicitly NOT real order-book data: this codebase's MarketDataProvider has no bid/ask depth or resting-order feed, so a LiquidityZone is a probable zone inferred from real price structure, never a claim about actual stop orders.",
+        quiz_question="What does a TradeTown LiquidityZone actually represent?",
+        quiz_options=(
+            "A probable zone inferred from real price structure — not a real read of actual resting orders, which this codebase has no data for",
+            "A confirmed list of every trader's real stop-loss price",
+            "A guaranteed reversal point",
+            "A random price level generated for flavor",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="mi-institutional",
+        order=4,
+        title="Institutional Behavior",
+        simple_explanation="Unusually high volume alongside a surprisingly small price move can hint that a large participant is absorbing supply or demand quietly. It's a real, useful clue — but on ordinary price/volume data alone, it's a clue, not proof of who's actually trading.",
+        deeper_explanation="app/market_intelligence.py's InstitutionalActivityRead is an explicit, named PROXY: a real volume-vs-price-move divergence ('absorption') score computed from real (mock) volume and price data. It is never presented as verified institutional order flow, Level 2 data, or dark-pool prints — this codebase's MarketDataProvider exposes no order book at all, and none is fabricated. The department's own module docstring states this boundary directly.",
+        quiz_question="Why does TradeTown call its Institutional Activity read a 'proxy' rather than real institutional data?",
+        quiz_options=(
+            "Because this codebase has no real order-flow, Level 2, or dark-pool data source — it's a real but indirect volume/price-divergence signal instead",
+            "Because it's randomly generated and meaningless",
+            "Because only the CEO is allowed to see real institutional data",
+            "Because it was too expensive to build a real version",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="mi-session",
+        order=5,
+        title="Session Characteristics",
+        simple_explanation="Liquidity and volatility change dramatically by time of day — the London/New York overlap trades very differently than the quiet hours between the Asian and London sessions. Knowing which session is active is real, useful context before evaluating any setup.",
+        deeper_explanation="app/market_intelligence.py's compute_session() reads real wall-clock UTC time (the same convention Candle.timestamp already uses, not TradeTown's simulated clock) against fixed, documented session windows — Asian, London, the London/New York Overlap, NY Lunch Hour, New York, and dedicated Market Open/Close windows — an honest, documented simplification (no live timezone/DST feed).",
+        quiz_question="What real-world clock does TradeTown's Session Intelligence read from?",
+        quiz_options=(
+            "Real wall-clock UTC time — the same convention real candle timestamps already use",
+            "TradeTown's own simulated in-game clock",
+            "The CEO's local computer time zone, unadjusted",
+            "It doesn't track time at all",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="mi-volatility",
+        order=6,
+        title="Volatility",
+        simple_explanation="Volatility isn't just 'is the market moving a lot' — professional analysis compares the CURRENT range against a real historical baseline, so an unusually quiet or unusually wild period stands out clearly.",
+        deeper_explanation="app/market_intelligence.py's VolatilityRead carries four real numbers: currentPct and historicalAvgPct (both from the real volatility_pct() helper app/signal_calibration.py and app/player_vs_ai.py already use, over different real candle sub-windows), sessionPct (volatility computed only from candles inside the current real session), and a percentile comparing the two — never a forecast, always a real comparison against this same data's own history.",
+        quiz_question="What does TradeTown's Volatility percentile actually compare?",
+        quiz_options=(
+            "The current real volatility reading against this same symbol set's own real historical average",
+            "This company's volatility against every other real trading firm",
+            "A random number with no real basis",
+            "Tomorrow's expected volatility",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="mi-probability",
+        order=7,
+        title="Probability Thinking",
+        simple_explanation="TradeTown never claims to know what happens next — it thinks in probabilities and comparisons instead: how good are today's conditions, really, and how often has this same situation shown up before?",
+        deeper_explanation="The Market Quality Score (MarketQualityScore) grades today's real conditions Excellent/Good/Average/Poor/Avoid Trading from a real weighted composite of volatility fit, structure clarity, session liquidity, sweep risk, and news activity — with a confidencePct that is deliberately capped below 100, since the department's own Probability First rule forbids claiming full certainty. historicalSimilarity is a real, honest count of how often this exact regime has occurred in this company's own prior daily reports — never an external dataset, never a fabricated statistic.",
+        quiz_question="Why does the Market Quality Score's confidence never reach 100%?",
+        quiz_options=(
+            "Because the Probability First rule forbids claiming full certainty about market conditions",
+            "Because of a rounding bug",
+            "Because the CEO capped it arbitrarily for no reason",
+            "Because the formula is broken",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="mi-risk-context",
+        order=8,
+        title="Risk Context",
+        simple_explanation="Even a well-researched trade idea should be checked against the market's own current conditions — thin session liquidity, an active liquidity sweep, or an outright poor Market Quality read are all real reasons to pause, independent of the trade's own individual merits.",
+        deeper_explanation="Two real, independent checks enforce this: the Market Debate's Risk specialist (app/market_debate.py) reads only real market-CONDITION risk (session, quality tier, news volume) — never portfolio exposure, which stays Sentinel/Guardian's job — and the Trade Gatekeeper's own market_intelligence check (app/gatekeeper.py) mechanically blocks a trade outright while the real Market Quality Score reads 'avoid_trading', regardless of how confident any single department is.",
+        quiz_question="What real check can block a trade purely because of market conditions, independent of the proposal's own confidence?",
+        quiz_options=(
+            "The Trade Gatekeeper's market_intelligence check, when the real Market Quality Score reads 'avoid_trading'",
+            "A coin flip",
+            "The CEO's mood that day",
+            "Nothing — market conditions are never actually checked",
+        ),
+        correct_index=0,
+    ),
+)
+
 _LESSON_SPECS_BY_MENTOR: dict[FoundationalMentorId, tuple[_LessonSpec, ...]] = {
     "tjr": _TJR_LESSONS,
+    "market_intelligence": _MARKET_INTELLIGENCE_LESSONS,
     # The other five roadmap tracks intentionally have no entry here yet —
     # see this module's docstring. Adding real content for one of them
     # later is exactly: write its own _LessonSpec tuple and add it here.
@@ -397,7 +544,7 @@ def default_foundational_mentor_state() -> FoundationalMentorState:
                 name=name,
                 trackLabel=f"{name} Track",
                 focusAreas=focus_areas,
-                contentNote=_CONTENT_DISCLAIMER,
+                contentNote=_MARKET_INTELLIGENCE_CONTENT_NOTE if mentor_id == "market_intelligence" else _CONTENT_DISCLAIMER,
                 status="active" if specs else "planned",
                 lessons=_public_lessons(specs),
                 resources=[],

@@ -4002,15 +4002,36 @@ modules:**
   with real positive evidence in a matching regime, only ever avoids one
   with a real recorded loss in one, honest "no real match yet" otherwise.
 
-**Explicitly deferred, not silently cut — Part 2 of this same feature:**
-a new Academy mentor track teaching Market Structure/Liquidity/Session
-Characteristics/Probability Thinking (`app/foundational_mentors.py`
-already has the generic add-track/add-lesson/quiz/CEO-approved-
-graduation machinery this needs — see the Foundational Mentor Program
-section above), and the frontend (Executive Market Brief dashboard,
-per-symbol structure/liquidity display, Market Debate UI) — per this
-project's own backend-first discipline (commit and verify the backend,
-then build the frontend).
+**Academy Integration** (`app/foundational_mentors.py`) — a real,
+shipped seventh roadmap track, `market_intelligence`, appended after
+`mike_bellafiore`. Deliberately NOT attributed to any real external
+trading educator (unlike the other six tracks): its own content note
+states this directly, since Market Intelligence is TradeTown's own
+in-house department, not a real person's expertise. Eight real lessons —
+Market Regimes & Trend Analysis, Market Structure, Liquidity,
+Institutional Behavior, Session Characteristics, Volatility, Probability
+Thinking, and Risk Context — each citing a specific real
+`app/market_intelligence.py` field or formula the same way `_TJR_LESSONS`
+already cites `app/discipline.py`/`app/risk_engine.py`/etc., including
+where a lesson is honest about a named proxy (Institutional Activity,
+Liquidity zones) rather than claiming real order-flow knowledge. Employee
+auto-progression, the aptitude-based auto-quiz, and CEO-approved
+graduation all reuse the module's existing generic machinery with zero
+new code needed beyond the lesson content itself and the roadmap/focus-
+area entries — exactly what the module's own docstring already
+described as the extension point. One real, measurable consequence: with
+two tracks (`tjr` and `market_intelligence`) both real and `"active"`
+by default on a fresh game, `app/company_health.py`'s
+`_talent_development()` metric's real denominator now spans both real
+active tracks (students × active-track count), not just one — its own
+formula already supported this correctly; only the test fixtures
+assuming a single active track needed updating.
+
+**Explicitly deferred, not silently cut:** the frontend (Executive
+Market Brief dashboard, per-symbol structure/liquidity display, Market
+Debate UI, the new Academy track's own lesson UI) — per this project's
+own backend-first discipline (commit and verify the backend, then build
+the frontend).
 
 **Verified**: two new test files — `test_market_intelligence.py` (41
 tests: structure/liquidity/session/news-risk/regime-classification/
@@ -4018,13 +4039,14 @@ quality-score/strategy-matching/learning-loop/end-to-end state
 computation) and `test_market_debate.py` (10 tests: all 5 specialists
 present, each reads its own real field, the Risk specialist never reads
 portfolio state) — plus updates to the pre-existing gatekeeper/executive/
-executive_intelligence suites for the new department/check — 769/769
-full suite, mypy/ruff clean. A direct ~10-in-game-day `nexus.tick()`
-simulation (not just unit tests) confirmed the daily report/Learning Loop
-cadence, real `TradeProposal.marketIntelligenceSummary` citations, and
-real `market_intelligence` opinions landing in the Executive Meeting Log
-with no exceptions; a `save_modules` split/assemble round-trip confirmed
-the new fields persist correctly (`market_intelligence` joins `derived`
+executive_intelligence/company_health/foundational_mentors suites for
+the new department/check/track — 775/775 full suite, mypy/ruff clean. A
+direct ~10-in-game-day `nexus.tick()` simulation (not just unit tests)
+confirmed the daily report/Learning Loop cadence, real
+`TradeProposal.marketIntelligenceSummary` citations, and real
+`market_intelligence` opinions landing in the Executive Meeting Log with
+no exceptions; a `save_modules` split/assemble round-trip confirmed the
+new fields persist correctly (`market_intelligence` joins `derived`
 alongside `market_environment`; `market_intelligence_reports`/
 `market_intelligence_learning` join `knowledge_archive` alongside
 `department_self_evaluations`).

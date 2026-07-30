@@ -7,8 +7,8 @@ development milestones, not semver releases.
 
 ### Added
 
-- **v0.7 Feature 51 — Market Intelligence Department, "the company's eyes"
-  (backend)**: before any trade proposal is generated, the company now
+- **v0.7 Feature 51 — Market Intelligence Department, "the company's eyes"**:
+  before any trade proposal is generated, the company now
   computes a real, always-current read of the market it's operating in.
   New `app/market_intelligence.py` classifies a 13-way regime (vs. the
   existing 5-way `MarketEnvironmentRegime` — additive, not a replacement),
@@ -42,15 +42,27 @@ development milestones, not semver releases.
   Match cross-referencing `app/sandbox.py`'s own backtest history); a
   Learning Loop grades the prior day's report the next evening against
   the real regime `app/market_environment.py`'s timeline recorded and
-  real closed-trade win rate. Explicitly deferred, not cut: a new Academy
-  mentor track (reuses `app/foundational_mentors.py`'s existing generic
-  track/lesson/quiz machinery) and the frontend — backend-first, per this
+  real closed-trade win rate. **Academy Integration**: a new seventh
+  Foundational Mentor roadmap track, `market_intelligence` — deliberately
+  not attributed to any real external trading educator (unlike the other
+  six), since this is TradeTown's own in-house department. Eight real
+  lessons (Market Regimes & Trend Analysis, Market Structure, Liquidity,
+  Institutional Behavior, Session Characteristics, Volatility,
+  Probability Thinking, Risk Context), each citing a specific real
+  `app/market_intelligence.py` mechanic, reusing the module's existing
+  generic employee-auto-progression/aptitude-quiz/CEO-approved-graduation
+  machinery with zero new plumbing. Explicitly deferred, not cut: the
+  frontend (Executive Market Brief dashboard, per-symbol structure/
+  liquidity display, Market Debate UI) — backend-first, per this
   project's own discipline. Verified: two new test files (51 tests) plus
-  updates to the gatekeeper/executive/executive_intelligence suites —
-  769/769 full suite, mypy/ruff clean; a direct ~10-in-game-day
-  `nexus.tick()` simulation confirmed the daily report/Learning Loop
-  cadence with no exceptions, and a `save_modules` round-trip confirmed
-  the new fields persist correctly.
+  updates to the gatekeeper/executive/executive_intelligence/
+  company_health/foundational_mentors suites (including a real, honest
+  consequence of a second real active mentor track existing by default:
+  `company_health.py`'s Talent Development metric's real denominator now
+  correctly spans both) — 775/775 full suite, mypy/ruff clean; a direct
+  ~10-in-game-day `nexus.tick()` simulation confirmed the daily
+  report/Learning Loop cadence with no exceptions, and a `save_modules`
+  round-trip confirmed the new fields persist correctly.
 
 - **TradeTown Development Rules (v0.9)** — a new canonical constitution
   document (`docs/DEVELOPMENT_RULES.md`) governing how every future
