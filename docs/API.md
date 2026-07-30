@@ -531,17 +531,24 @@ perspective and exists purely to detect disconnects
     "tier": 1, "tierLabel": "Taking Root", "questionsAsked": 9, "updatedAt": "..."
   },
   "foundationalMentorState": {
-    // v0.7 Feature 49 (Phase 3) — the Foundational Mentor Program. Real
-    // mutated progress, unlike mentorState above — see
-    // docs/Architecture.md's "Foundational Mentor Program" section.
+    // v0.7 Feature 49 (Phase 3, revised) — the Foundational Mentor
+    // Program / Professional Academy. Real mutated progress, unlike
+    // mentorState above — see docs/Architecture.md's "Professional
+    // Academy — Feature 49 Revision" section. `progress` is now keyed
+    // per real employee student (STUDENT_AGENT_IDS), then per mentor;
+    // `ceoProgress` is the CEO's own entirely separate, optional bucket.
     "mentors": [
-      { "id": "tjr", "name": "TJR", "trackLabel": "TJR Track", "focusAreas": ["Trading Psychology", "Discipline", "Daily Routines", "Patience", "Trade Planning", "Journaling"],
-        "contentNote": "This track's name credits a real, respected trading educator...", "status": "active",
+      { "id": "tjr", "name": "TJR", "trackLabel": "TJR Track", "focusAreas": ["Trading Psychology", "Discipline", "Daily Routine", "Liquidity", "Market Structure", "Patience", "Risk Management", "Journaling", "Trade Planning", "High Quality Trade Selection"],
+        "contentNote": "This track's name credits a real, respected trading educator...", "status": "active", "companyGraduatedSimDay": null,
         "lessons": [ { "id": "tjr-psychology", "order": 1, "title": "Trading Psychology: Process Over Outcome", "simpleExplanation": "...", "deeperExplanation": "...", "quizQuestion": "...", "quizOptions": ["...", "...", "...", "..."] } ],
         "resources": [] }
       // ... al_brooks, linda_raschke, mark_douglas, tom_hougaard, mike_bellafiore — all "status": "planned", "lessons": []
     ],
-    "progress": { "tjr": { "mentorId": "tjr", "viewedLessonIds": ["tjr-psychology"], "completedLessonIds": [], "quizAttempts": 0, "correctQuizAttempts": 0, "graduatedSimDay": null } },
+    "progress": {
+      "scout": { "tjr": { "mentorId": "tjr", "viewedLessonIds": ["tjr-psychology"], "completedLessonIds": [], "currentLessonStudyPct": 26.9, "quizAttempts": 0, "correctQuizAttempts": 0, "consecutiveQuizFailures": 0, "graduationStatus": "in_progress", "graduatedSimDay": null } }
+      // ... atlas, echo, nova, scribe, sentinel, pulse, guardian — the real 8-agent student roster, never coach/sage/cio/quant
+    },
+    "ceoProgress": {},
     "activeMentorId": "tjr", "updatedAt": "..."
   },
   "performanceSnapshots": [
@@ -960,39 +967,58 @@ how each limit is enforced.
 
 ### `POST /api/foundational-mentors/*`
 
-v0.7 Feature 49 (Phase 3) — the Foundational Mentor Program (see
-`docs/Architecture.md`'s "Foundational Mentor Program" section for the
-full content-attribution rationale). All 7 endpoints return
+v0.7 Feature 49 (Phase 3, revised) — the Foundational Mentor Program /
+Professional Academy (see `docs/Architecture.md`'s "Professional
+Academy — Feature 49 Revision" section for the full "employees are the
+students" rationale and content-attribution boundary). Real employee
+students never call these endpoints — they advance automatically every
+backend tick. All endpoints below return
 `{ "foundationalMentorState": { ... } }` with the full, current
-`FoundationalMentorState`, and call `persist_modules()` before
-returning.
+`FoundationalMentorState` (now keyed per-employee — see below), and call
+`persist_modules()` before returning.
 
-- `POST /api/foundational-mentors/view` — body
-  `{ "mentorId": "tjr", "lessonId": "tjr-psychology" }`. Marks the
-  lesson viewed (idempotent). Unknown mentor/lesson is a silent no-op.
-- `POST /api/foundational-mentors/quiz` — body
-  `{ "mentorId": "tjr", "lessonId": "tjr-psychology", "selectedIndex": 0 }`.
-  Returns the state plus `{ "correct": true, "correctIndex": 0,
-  "correctOption": "..." }`. A correct answer marks the lesson complete;
-  completing every lesson in a track graduates it and, if the next
-  roadmap entry is still `"planned"`, flips it to `"active"`. `404` if
-  the mentor or lesson id doesn't exist.
-- `POST /api/foundational-mentors/pause` / `/resume` — body
-  `{ "mentorId": "tjr" }`. `400` if the track isn't in the required
-  starting status (`"active"` to pause, `"paused"` to resume).
-- `POST /api/foundational-mentors/skip` — body `{ "mentorId": "tjr" }`.
-  CEO manual override: pauses the current track (progress preserved)
-  and activates the next roadmap entry. `400` if the track is already
-  the last roadmap entry.
+**Real CEO management actions (the real employee cohort):**
+
+- `POST /api/foundational-mentors/approve-graduation` — body
+  `{ "agentId": "scout", "mentorId": "tjr" }`. The Graduation Queue's
+  real Approve action — advances that employee's `graduationStatus`
+  from `"pending_approval"` to `"graduated"`. Also returns
+  `{ "companyGraduated": true }` if every real student now has an
+  approved graduation on that track (which also unlocks the next
+  roadmap mentor). `400` if that employee has no pending graduation on
+  that track, or isn't a real student (`STUDENT_AGENT_IDS`).
+- `POST /api/foundational-mentors/pause` / `/resume` — no body. Pauses
+  or resumes the whole company's training on the currently-active
+  mentor. `400` if the track isn't in the required starting status
+  (`"active"` to pause, `"paused"` to resume).
+- `POST /api/foundational-mentors/skip` — no body. CEO manual override:
+  pauses the current track (every employee's progress preserved) and
+  activates the next roadmap entry for the whole company. `400` if the
+  track is already the last roadmap entry.
 - `POST /api/foundational-mentors/repeat` — body `{ "mentorId": "tjr" }`.
-  Resets a graduated track's progress and reactivates it. `400` if the
-  track isn't `"graduated"`.
+  Resets every real student's progress on a graduated track and puts
+  the whole company back through it. `400` if the track isn't
+  `"graduated"`.
 - `POST /api/foundational-mentors/resource` — body
   `{ "mentorId": "tjr", "title": "...", "url": "https://...",
   "resourceType": "video" }` (`url` optional). Adds a CEO-provided
-  bookmark — TradeTown never fetches, parses, or grades it. `400` on an
-  empty title, an unknown mentor, or once a track hits
-  `MAX_RESOURCES_PER_MENTOR` (20).
+  bookmark, company-wide per mentor track — TradeTown never fetches,
+  parses, or grades it. `400` on an empty title, an unknown mentor, or
+  once a track hits `MAX_RESOURCES_PER_MENTOR` (20).
+
+**The CEO's own, entirely optional personal learning (never required,
+never touches real employee progress):**
+
+- `POST /api/foundational-mentors/ceo/view` — body
+  `{ "mentorId": "tjr", "lessonId": "tjr-psychology" }`. Marks the
+  lesson viewed in the CEO's own separate `ceoProgress` bucket
+  (idempotent). Unknown mentor/lesson is a silent no-op.
+- `POST /api/foundational-mentors/ceo/quiz` — body
+  `{ "mentorId": "tjr", "lessonId": "tjr-psychology", "selectedIndex": 0 }`.
+  Returns the state plus `{ "correct": true, "correctIndex": 0,
+  "correctOption": "..." }`, graded against the real hidden answer key
+  exactly as a human player would be. `404` if the mentor or lesson id
+  doesn't exist.
 
 ### Bounding / trimming
 

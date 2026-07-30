@@ -267,32 +267,32 @@ export const api = {
       method: "POST",
       body: JSON.stringify(updates),
     }),
-  viewFoundationalMentorLesson: (mentorId: FoundationalMentorId, lessonId: string) =>
-    request<{ foundationalMentorState: FoundationalMentorState }>("/foundational-mentors/view", {
+  // The CEO's own entirely optional personal Learning Mode — never
+  // touches real employee progress. See FoundationalMentorState's own
+  // doc comment in types.ts.
+  ceoViewAcademyLesson: (mentorId: FoundationalMentorId, lessonId: string) =>
+    request<{ foundationalMentorState: FoundationalMentorState }>("/foundational-mentors/ceo/view", {
       method: "POST",
       body: JSON.stringify({ mentorId, lessonId }),
     }),
-  submitFoundationalMentorQuiz: (mentorId: FoundationalMentorId, lessonId: string, selectedIndex: number) =>
-    request<{ foundationalMentorState: FoundationalMentorState; correct: boolean; correctIndex: number; correctOption: string }>("/foundational-mentors/quiz", {
+  ceoSubmitAcademyQuiz: (mentorId: FoundationalMentorId, lessonId: string, selectedIndex: number) =>
+    request<{ foundationalMentorState: FoundationalMentorState; correct: boolean; correctIndex: number; correctOption: string }>("/foundational-mentors/ceo/quiz", {
       method: "POST",
       body: JSON.stringify({ mentorId, lessonId, selectedIndex }),
     }),
-  pauseFoundationalMentor: (mentorId: FoundationalMentorId) =>
-    request<{ foundationalMentorState: FoundationalMentorState }>("/foundational-mentors/pause", {
+  // Real CEO management actions over the real employee cohort.
+  approveAcademyGraduation: (agentId: AgentId, mentorId: FoundationalMentorId) =>
+    request<{ foundationalMentorState: FoundationalMentorState; companyGraduated: boolean }>("/foundational-mentors/approve-graduation", {
       method: "POST",
-      body: JSON.stringify({ mentorId }),
+      body: JSON.stringify({ agentId, mentorId }),
     }),
-  resumeFoundationalMentor: (mentorId: FoundationalMentorId) =>
-    request<{ foundationalMentorState: FoundationalMentorState }>("/foundational-mentors/resume", {
-      method: "POST",
-      body: JSON.stringify({ mentorId }),
-    }),
-  skipFoundationalMentor: (mentorId: FoundationalMentorId) =>
-    request<{ foundationalMentorState: FoundationalMentorState }>("/foundational-mentors/skip", {
-      method: "POST",
-      body: JSON.stringify({ mentorId }),
-    }),
-  repeatFoundationalMentor: (mentorId: FoundationalMentorId) =>
+  pauseAcademyTraining: () =>
+    request<{ foundationalMentorState: FoundationalMentorState }>("/foundational-mentors/pause", { method: "POST" }),
+  resumeAcademyTraining: () =>
+    request<{ foundationalMentorState: FoundationalMentorState }>("/foundational-mentors/resume", { method: "POST" }),
+  skipAcademyToNextMentor: () =>
+    request<{ foundationalMentorState: FoundationalMentorState }>("/foundational-mentors/skip", { method: "POST" }),
+  repeatAcademyMentor: (mentorId: FoundationalMentorId) =>
     request<{ foundationalMentorState: FoundationalMentorState }>("/foundational-mentors/repeat", {
       method: "POST",
       body: JSON.stringify({ mentorId }),

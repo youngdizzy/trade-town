@@ -7,6 +7,71 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.7 Feature 49 Revision — Professional Academy: employees are the
+  students, the CEO manages**: inverts the Foundational Mentor
+  Program's model per an explicit CEO revision request. TradeTown is a
+  company management sim — the player is the CEO, the employees are
+  the staff — so requiring the CEO to personally click through every
+  lesson/quiz to make company progress happen was the wrong shape.
+  - Real employee agents (scout, atlas, echo, nova, scribe, sentinel,
+    pulse, guardian — the same roster `academy_research.py`'s own
+    company-wide Academy project rotation already uses, minus Coach,
+    who is explicitly the teacher/monitor in this revision) now
+    auto-progress through the company's one active mentor track every
+    real backend tick, the same honest tick-accrual convention
+    `AcademyProject` already established. A lesson's auto-graded quiz
+    pass probability is tied to each employee's own real average
+    `DisciplineReview` score (clamped, never deterministic) — never a
+    fabricated "picked option."
+  - **Graduation Queue**: completing all lessons moves an employee to
+    `pending_approval`, not immediately graduated — approving is a
+    real CEO action. The company as a whole advances to the next
+    roadmap mentor once every student has an approved graduation
+    ("mastery before progression").
+  - **Academy Dashboard** (the MENTORLIB tab, now a management
+    dashboard, not a player-learning screen): Currently Studying, Top
+    Students, Needing Help, Graduation Queue, Upcoming Graduations,
+    Academy Statistics, Coach Recommendations, and Current
+    Certifications — computed entirely client-side
+    (`computeAcademyDashboard` in `lib/derive.ts`) from data already
+    broadcast, the same "frontend-only feature" pattern Feature 47's
+    Knowledge Base already established. Clicking an employee opens
+    their real Academy Report.
+  - **Coach Recommendations**: "Repeat Lesson" and "One-on-One
+    Coaching," both driven by the real `consecutiveQuizFailures`
+    counter — the brief's other recommendation types (Extra Reading,
+    Extra Backtesting, Reflection Session, Research Assignment, Paper
+    Trading Practice) have no real backing signal yet and are not
+    fabricated.
+  - **CEO Learning Mode** (Settings, default off): an entirely
+    separate, optional bucket (`ceoProgress`) letting the CEO
+    personally take the same lessons if they want to — never gates or
+    is required for real company progress.
+  - New company-wide CEO controls: pause/resume/skip/repeat training
+    for the whole cohort.
+  - TJR's lesson set expanded from 6 to 8 lessons (added Liquidity/
+    Market Structure and Risk Management Fundamentals) to cover the
+    revision's wider focus-area list.
+  - Explicit scope cuts (documented in
+    `foundational_mentors.py`'s module docstring): CEO custom-mentor
+    authoring, per-employee assignment of books/videos/backtesting/
+    paper-trading, the full cross-system "Mentor Validation" pipeline,
+    CEO Daily Settings (trading sessions/allowed strategies), post-halt
+    activity redirection, and fabricated "growth" deltas.
+
+  Backend: `schemas.py` restructures `FoundationalMentorState.progress`
+  to per-employee (`dict[AgentId, dict[FoundationalMentorId, ...]]`),
+  adds `ceoProgress`/`graduationStatus`/`companyGraduatedSimDay`;
+  `nexus.py` wires `tick_employee_progress()` into the real tick loop
+  (Rest Mode-gated, same as Academy projects); router and `state.py`
+  rewritten around the new function set (`approve-graduation`, company-
+  wide `pause`/`resume`/`skip`/`repeat`, `/ceo/view`, `/ceo/quiz`).
+  `test_foundational_mentors.py` rewritten (27 tests, 648 total
+  passing) — mypy/ruff clean. Frontend: `MentorLibraryPanel.tsx`
+  rebuilt as the dashboard + Employee Report modal; full WS-mirror
+  wiring; `mentorLibrary.spec.ts` rewritten (2 Playwright tests
+  against the live stack) — tsc/eslint/build clean.
+
 - **v0.7 Feature 49 (Phase 3) — Professional Day Trading Program:
   Foundational Mentor Program**: an expandable, CEO-facing library of
   named trading-educator "tracks" worked through as a sequential

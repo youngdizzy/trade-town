@@ -2864,7 +2864,144 @@ stack — confirming every strategy carries real `stage`/`stageHistory`/
 successfully queues a real scenario backtest) both passed;
 `commandCenter.spec.ts`'s tab-count test updated to 26 tabs.
 
-### Professional Day Trading Program — Foundational Mentor Program (Phase 3)
+### Professional Academy — Feature 49 Revision (employees are the students, the CEO manages)
+
+**Supersedes the "Foundational Mentor Program (Phase 3)" section
+immediately below** in one specific way — everything below about
+content, lessons, roadmap, and the attribution boundary is still
+accurate; what changed is *who does the lessons*. This revision was an
+explicit CEO request: TradeTown is a company management sim (the player
+is the CEO, the employees are the staff), so requiring the CEO to
+personally click through every lesson/quiz to make company progress
+happen was the wrong shape.
+
+**The pivot.** Real employee agents — `STUDENT_AGENT_IDS` in
+`app/foundational_mentors.py` (scout, atlas, echo, nova, scribe,
+sentinel, pulse, guardian; the same roster `academy_research.py`'s own
+company-wide Academy project rotation already uses, minus Coach, who is
+explicitly the teacher/monitor in this revision's own brief) — now
+auto-progress through the company's one active mentor track every real
+backend tick (`tick_employee_progress()`, wired into `nexus.py`'s
+`tick()` right after the existing Academy-project tick, Rest Mode-gated
+the same way). This is the same honest "progress climbs each tick, no
+LLM content generation" convention `academy_research.py`'s
+`AcademyProject` already established, applied to a second real system.
+
+**The honest signal behind an auto-graded quiz.** There is no player
+picking an option for an employee's own quiz attempt — inventing a
+fabricated "the employee selected option C" would be dishonest. Instead
+`_agent_aptitude()` computes each employee's real average
+`DisciplineReview` score across every review they attended (the same
+kind of real per-agent signal `mentor.py`'s ThinkingProfile already
+treats as a legitimate aptitude proxy), clamped between
+`MIN_QUIZ_PASS_PROBABILITY` (0.35) and `MAX_QUIZ_PASS_PROBABILITY`
+(0.90) so no employee is deterministically guaranteed or barred. A
+failed quiz doesn't erase all study progress — it lands the employee at
+`FAILURE_STUDY_RESET_PCT` (50%), an honest middle ground between "no
+penalty" and "start the lesson over."
+
+**Graduation Queue — a real CEO gate, not automatic.** Completing every
+lesson (correctly quizzed) moves an employee's `graduationStatus` to
+`"pending_approval"`, not immediately `"graduated"` — matching the
+brief's own "CEO Responsibilities: Approve Graduation" and "Graduation
+Queue" dashboard section. Only `POST /api/foundational-mentors/approve-
+graduation` (a real CEO action) advances it to `"graduated"`. Once every
+student has an approved graduation on the active mentor, the company as
+a whole graduates that track (`companyGraduatedSimDay`) and the next
+roadmap entry unlocks — "mastery before progression."
+
+**The Academy Dashboard is a pure client-side derivation — zero new
+backend broadcast fields.** `computeAcademyDashboard()` in
+`frontend/src/ui/components/CommandCenter/lib/derive.ts` computes
+Currently Studying, Top Students, Needing Help, Graduation Queue,
+Upcoming Graduations, Academy Statistics (avg quiz score, avg knowledge
+points), Current Certifications, and Coach Recommendations entirely
+from state already broadcast (`foundationalMentorState` +
+`agentKnowledge`) — the same "frontend-only feature" pattern Feature
+47's Knowledge Base (`computeKnowledgeBase`) already established, chosen
+deliberately over adding a parallel backend-computed dashboard schema.
+Clicking an employee in any list opens their real Employee Academy
+Report (mentor, current lesson, completion %, quiz average, Discipline/
+Knowledge scores, certifications).
+
+**Coach Recommendations are real, not the brief's full list.** Only
+"Repeat Lesson" and "One-on-One Coaching" are computed, both driven by
+the real `consecutiveQuizFailures` counter (escalating past
+`COACH_ESCALATION_THRESHOLD` = 3 consecutive misses). The brief's other
+recommendation types — Extra Reading, Extra Backtesting, Reflection
+Session, Research Assignment, Paper Trading Practice — have no real
+backing signal or assignment plumbing yet and are not fabricated.
+
+**CEO Learning Mode — entirely optional, never required.** A new
+`Settings.ceoAcademyLearningMode` toggle (default off) reveals a
+separate "Your Personal Learning" panel where the CEO may voluntarily
+take the exact same lessons personally. This writes to
+`FoundationalMentorState.ceoProgress` — an entirely separate bucket from
+real employee progress, never gating or required for company
+advancement. The pre-revision CEO-facing view/quiz endpoints were
+renamed to `/api/foundational-mentors/ceo/view` and `.../ceo/quiz` to
+make this separation explicit at the API layer too.
+
+**New company-wide CEO controls**, unchanged in spirit from Phase 3 but
+now operating on the whole cohort at once rather than a single shared
+record: pause/resume the active track, skip straight to the next
+roadmap entry (every employee's progress preserved, not discarded), and
+repeat a graduated track (resets every employee's progress on it).
+
+**Curriculum change**: TJR's lesson set expanded from 6 to 8 lessons —
+added "Liquidity and Market Structure" and "Risk Management
+Fundamentals" — to cover the revision's wider TJR focus-area list
+(Trading Psychology, Discipline, Daily Routine, Liquidity, Market
+Structure, Patience, Risk Management, Journaling, Trade Planning, High
+Quality Trade Selection).
+
+**Explicit scope cuts, checked against the revision brief and NOT
+built** (see `foundational_mentors.py`'s own module docstring for the
+full reasoning on each): CEO custom-mentor-authoring UI / "Add Custom
+Courses" / "Add New Mentors"; per-employee assignment of individual
+books/videos/PDFs/research papers/backtesting/paper-trading (the one
+real assignment mechanic that exists — bookmarked external resources —
+stays company-wide per mentor track, unchanged from Phase 3); the
+brief's full "Mentor Validation" pipeline (every concept Discussed →
+Backtested → Paper Traded → Sandbox Tested → Quant Reviewed → Risk
+Reviewed → Devil's Advocate Reviewed → Founder Council Reviewed →
+becomes Company Knowledge/Operating System/Constitution/Playbooks) —
+this would mean building an entirely new cross-cutting approval-
+workflow engine touching six-plus existing systems, and graduation
+stays gated on the real lessons-plus-quiz signal only, the same honesty
+boundary `sandbox.py`'s own docstring already documents (no mechanism
+exists anywhere in this codebase to attribute a validated "concept" to
+a specific later trade); "Quant Approval" as a literal second
+graduation gate; CEO Daily Settings additions from the revision brief
+(Trading Sessions, Allowed Strategies — `RiskLimits` doesn't have these
+fields, a real separate follow-up to Feature 49 Phase 1); post-halt
+automatic activity redirection (employees demonstrably switching to
+study/research/backtest/journal once the Daily Trading Objective halts
+trading — a real behavioral change to `schedule.py`/`nexus.py`'s task-
+assignment logic, large and orthogonal to this module); "growth"
+metrics as deltas over time (no snapshot-history mechanism exists — the
+dashboard shows real current aggregate values instead, explicitly
+relabeled); TradeTown's own retired Founders/Coach/Quant becoming
+Foundational Mentors themselves (explicitly framed in the brief as a
+"long term goal").
+
+**Verified**: backend — `test_foundational_mentors.py` rewritten (27
+tests covering default-state seeding, per-employee tick progression
+including the Rest-Mode/no-active-content no-ops, high- and low-
+aptitude quiz outcome distributions, the full Graduation Queue →
+Approve → company-wide advancement path, all 4 company-wide CEO
+controls, and the CEO's separate personal-learning bucket) + the full
+suite (648/648) + mypy/ruff clean. Frontend: `tsc -b`/eslint/build
+clean; `MentorLibraryPanel.tsx` rebuilt as the dashboard + Employee
+Report modal + CEO Learning Mode toggle; `mentorLibrary.spec.ts`
+rewritten (2 Playwright tests against the live stack — confirming the
+backend seeds real per-employee progress restricted to
+`STUDENT_AGENT_IDS` only, and that the MENTORLIB tab renders the
+dashboard with CEO Learning Mode initially hidden and revealed on
+toggle, including a full personal-quiz round-trip through
+`POST /api/foundational-mentors/ceo/quiz`).
+
+### Professional Day Trading Program — Foundational Mentor Program (Phase 3, original design — content/roadmap/attribution still accurate, see the Revision section above for who now does the lessons)
 
 The third phase of Feature 49 — an expandable, CEO-facing library of
 named trading-educator "tracks" (`app/foundational_mentors.py`), worked

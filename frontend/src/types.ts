@@ -1083,6 +1083,11 @@ export interface SettingsState {
   operatingMode: OperatingMode;
   companyPriority: CompanyPriority;
   workMode: WorkMode;
+  // v0.7 Feature 49 (Phase 3 revision) — off by default. Employees
+  // always auto-progress through the Academy regardless; this only
+  // gates whether the CEO may ALSO voluntarily take the same lessons
+  // personally. See FoundationalMentorState's own doc comment above.
+  ceoAcademyLearningMode: boolean;
 }
 
 // v0.7 Feature 34 — CEO time controls (POST /api/time/advance).
@@ -1508,16 +1513,22 @@ export interface MentorState {
   updatedAt: string;
 }
 
-// v0.7 Feature 49 (Phase 3) — the Foundational Mentor Program (see
-// backend/app/foundational_mentors.py's module docstring for the full
-// content-attribution boundary). Real named trading educators are used
-// only as CEO-assigned track labels; every lesson's actual content is
-// original TradeTown-authored material. Distinct from MentorState (Sage)
-// above — that's a single always-available Q&A advisor, this is a
-// sequential lesson-and-quiz curriculum with a roadmap of tracks.
+// v0.7 Feature 49 (Phase 3, revised) — the Foundational Mentor Program /
+// Professional Academy (see backend/app/foundational_mentors.py's
+// module docstring for the full content-attribution boundary and the
+// "employees are the students" redesign rationale). Real named trading
+// educators are used only as CEO-assigned track labels; every lesson's
+// actual content is original TradeTown-authored material. Distinct from
+// MentorState (Sage) above — that's a single always-available Q&A
+// advisor, this is a sequential lesson-and-quiz curriculum with a
+// roadmap of tracks. Real EMPLOYEES (STUDENT_AGENT_IDS in derive.ts)
+// auto-progress through the company's one active mentor every real
+// tick; `progress` below is keyed by employee AgentId. `ceoProgress` is
+// the CEO's own entirely separate, optional personal learning bucket.
 export type FoundationalMentorId = "tjr" | "al_brooks" | "linda_raschke" | "mark_douglas" | "tom_hougaard" | "mike_bellafiore";
 export type FoundationalMentorStatus = "planned" | "active" | "paused" | "graduated";
 export type FoundationalResourceType = "video" | "book" | "article" | "pdf" | "note";
+export type FoundationalGraduationStatus = "in_progress" | "pending_approval" | "graduated";
 
 export interface FoundationalMentorLesson {
   id: string;
@@ -1546,20 +1557,25 @@ export interface FoundationalMentorProfile {
   status: FoundationalMentorStatus;
   lessons: FoundationalMentorLesson[];
   resources: FoundationalMentorResource[];
+  companyGraduatedSimDay: number | null;
 }
 
 export interface FoundationalMentorProgress {
   mentorId: FoundationalMentorId;
   viewedLessonIds: string[];
   completedLessonIds: string[];
+  currentLessonStudyPct: number;
   quizAttempts: number;
   correctQuizAttempts: number;
+  consecutiveQuizFailures: number;
+  graduationStatus: FoundationalGraduationStatus;
   graduatedSimDay: number | null;
 }
 
 export interface FoundationalMentorState {
   mentors: FoundationalMentorProfile[];
-  progress: Partial<Record<FoundationalMentorId, FoundationalMentorProgress>>;
+  progress: Partial<Record<AgentId, Partial<Record<FoundationalMentorId, FoundationalMentorProgress>>>>;
+  ceoProgress: Partial<Record<FoundationalMentorId, FoundationalMentorProgress>>;
   activeMentorId: FoundationalMentorId | null;
   updatedAt: string;
 }

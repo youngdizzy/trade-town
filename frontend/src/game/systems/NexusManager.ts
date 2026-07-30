@@ -255,7 +255,7 @@ export class NexusManager {
   private static questionArchive: QuestionOfTheDay[] = [];
   private static thinkingProfiles: Record<AgentId, ThinkingProfile> = {} as Record<AgentId, ThinkingProfile>;
   private static mentorState: MentorState = { tier: 0, tierLabel: "New Tradition", questionsAsked: 0, updatedAt: new Date().toISOString() };
-  private static foundationalMentorState: FoundationalMentorState = { mentors: [], progress: {}, activeMentorId: null, updatedAt: new Date().toISOString() };
+  private static foundationalMentorState: FoundationalMentorState = { mentors: [], progress: {}, ceoProgress: {}, activeMentorId: null, updatedAt: new Date().toISOString() };
   private static founderState: FounderState = { retired: false, retiredAt: null, log: [], councilSessions: [], updatedAt: new Date().toISOString() };
   private static treasury: TreasuryState = { balance: 0, lifetimeDeposits: 0, largestBalance: 0, transactions: [], savingsRules: [], monthlyReports: [], updatedAt: new Date().toISOString() };
   private static calendar: CalendarState = { systemEvents: [], playerEvents: [], updatedAt: new Date().toISOString() };

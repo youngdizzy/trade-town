@@ -2,6 +2,7 @@ import type {
   AcademyProject,
   AcademyState,
   AgentId,
+  AgentKnowledgeState,
   AgentState,
   AgentVote,
   AnalystRole,
@@ -17,6 +18,8 @@ import type {
   DisciplineReview,
   ExecutiveReview,
   FounderState,
+  FoundationalMentorId,
+  FoundationalMentorState,
   GatekeeperRejection,
   InnovationState,
   PaperOrder,
@@ -1009,4 +1012,151 @@ export function computeKnowledgeBase(state: {
   }
 
   return entries.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
+}
+
+// v0.7 Feature 49 (Phase 3 revision) — the Foundational Mentor Program /
+// Professional Academy. Mirrors backend/app/foundational_mentors.py's
+// STUDENT_AGENT_IDS exactly (see that module's own docstring for the
+// full "why these 8, not the other 6 agents" reasoning) — duplicated
+// here the same necessary way agent roster/identity data already lives
+// in both layers (backend game logic, frontend rendering).
+export const ACADEMY_STUDENT_AGENT_IDS: AgentId[] = ["scout", "atlas", "echo", "nova", "scribe", "sentinel", "pulse", "guardian"];
+
+// Mirrors backend's COACH_ESCALATION_THRESHOLD.
+const COACH_ESCALATION_THRESHOLD = 3;
+
+export interface AcademyStudentSummary {
+  agentId: AgentId;
+  mentorId: FoundationalMentorId;
+  currentLessonTitle: string | null;
+  currentLessonOrder: number | null;
+  totalLessons: number;
+  completedLessonCount: number;
+  completionPct: number;
+  quizAveragePct: number;
+  consecutiveQuizFailures: number;
+  graduationStatus: "in_progress" | "pending_approval" | "graduated";
+}
+
+export interface AcademyCertification {
+  agentId: AgentId;
+  mentorId: FoundationalMentorId;
+  mentorName: string;
+  graduatedSimDay: number;
+}
+
+export interface AcademyRecommendation {
+  agentId: AgentId;
+  recommendation: "repeat_lesson" | "one_on_one_coaching";
+  reason: string;
+}
+
+export interface AcademyDashboard {
+  activeMentorId: FoundationalMentorId | null;
+  activeMentorLabel: string | null;
+  currentlyStudying: AcademyStudentSummary[];
+  topStudents: AcademyStudentSummary[];
+  needingHelp: AcademyStudentSummary[];
+  graduationQueue: AcademyStudentSummary[];
+  upcomingGraduations: AcademyStudentSummary[];
+  avgQuizScorePct: number;
+  avgKnowledgeScore: number;
+  certifications: AcademyCertification[];
+  recommendations: AcademyRecommendation[];
+}
+
+function studentSummaryFor(agentId: AgentId, mentorId: FoundationalMentorId, foundationalMentorState: FoundationalMentorState): AcademyStudentSummary | null {
+  const mentor = foundationalMentorState.mentors.find((m) => m.id === mentorId);
+  if (!mentor) return null;
+  const progress = foundationalMentorState.progress[agentId]?.[mentorId];
+  const completedLessonCount = progress?.completedLessonIds.length ?? 0;
+  const totalLessons = mentor.lessons.length;
+  const sortedLessons = [...mentor.lessons].sort((a, b) => a.order - b.order);
+  const currentLesson = sortedLessons.find((l) => !(progress?.completedLessonIds.includes(l.id) ?? false)) ?? null;
+  const quizAttempts = progress?.quizAttempts ?? 0;
+  const correctQuizAttempts = progress?.correctQuizAttempts ?? 0;
+  return {
+    agentId,
+    mentorId,
+    currentLessonTitle: currentLesson?.title ?? null,
+    currentLessonOrder: currentLesson?.order ?? null,
+    totalLessons,
+    completedLessonCount,
+    completionPct: totalLessons > 0 ? (completedLessonCount / totalLessons) * 100 : 0,
+    quizAveragePct: quizAttempts > 0 ? (correctQuizAttempts / quizAttempts) * 100 : 0,
+    consecutiveQuizFailures: progress?.consecutiveQuizFailures ?? 0,
+    graduationStatus: progress?.graduationStatus ?? "in_progress",
+  };
+}
+
+/**
+ * The Academy Dashboard — a pure client-side derivation, the same
+ * "frontend-only feature" pattern computeKnowledgeBase above already
+ * established, since every field here is computable from state already
+ * broadcast over the WS tick (foundationalMentorState + agentKnowledge).
+ * No new backend endpoint or schema exists for this dashboard shape.
+ */
+export function computeAcademyDashboard(foundationalMentorState: FoundationalMentorState, agentKnowledge: Record<AgentId, AgentKnowledgeState>): AcademyDashboard {
+  const activeMentorId = foundationalMentorState.activeMentorId;
+  const activeMentor = activeMentorId ? (foundationalMentorState.mentors.find((m) => m.id === activeMentorId) ?? null) : null;
+
+  const activeSummaries = activeMentorId
+    ? ACADEMY_STUDENT_AGENT_IDS.map((agentId) => studentSummaryFor(agentId, activeMentorId, foundationalMentorState)).filter((s): s is AcademyStudentSummary => s !== null)
+    : [];
+
+  const currentlyStudying = activeSummaries.filter((s) => s.graduationStatus === "in_progress");
+  const graduationQueue = activeSummaries.filter((s) => s.graduationStatus === "pending_approval");
+  const needingHelp = activeSummaries.filter((s) => s.consecutiveQuizFailures >= 1 && s.graduationStatus === "in_progress");
+  const upcomingGraduations = currentlyStudying.filter((s) => s.totalLessons > 0 && s.totalLessons - s.completedLessonCount === 1);
+  const topStudents = [...activeSummaries].sort((a, b) => b.completedLessonCount - a.completedLessonCount || b.quizAveragePct - a.quizAveragePct).slice(0, 3);
+
+  const attemptsTotal = activeSummaries.reduce((sum, s) => sum + (foundationalMentorState.progress[s.agentId]?.[s.mentorId]?.quizAttempts ?? 0), 0);
+  const correctTotal = activeSummaries.reduce((sum, s) => sum + (foundationalMentorState.progress[s.agentId]?.[s.mentorId]?.correctQuizAttempts ?? 0), 0);
+  const avgQuizScorePct = attemptsTotal > 0 ? (correctTotal / attemptsTotal) * 100 : 0;
+
+  const knowledgeScores = ACADEMY_STUDENT_AGENT_IDS.map((aid) => agentKnowledge[aid]?.points ?? 0);
+  const avgKnowledgeScore = knowledgeScores.length > 0 ? knowledgeScores.reduce((a, b) => a + b, 0) / knowledgeScores.length : 0;
+
+  const certifications: AcademyCertification[] = [];
+  for (const agentId of ACADEMY_STUDENT_AGENT_IDS) {
+    const agentProgress = foundationalMentorState.progress[agentId];
+    if (!agentProgress) continue;
+    for (const mentorId of Object.keys(agentProgress) as FoundationalMentorId[]) {
+      const progress = agentProgress[mentorId];
+      if (progress?.graduationStatus === "graduated" && progress.graduatedSimDay !== null) {
+        const mentor = foundationalMentorState.mentors.find((m) => m.id === mentorId);
+        certifications.push({ agentId, mentorId, mentorName: mentor?.name ?? mentorId, graduatedSimDay: progress.graduatedSimDay });
+      }
+    }
+  }
+  certifications.sort((a, b) => b.graduatedSimDay - a.graduatedSimDay);
+
+  // Real Coach recommendations — see COACH_ESCALATION_THRESHOLD's
+  // backend twin for the full reasoning. Only "Repeat Lesson" and
+  // "One-on-One Coaching" are computed (both driven by the real
+  // consecutiveQuizFailures counter); the brief's other recommendation
+  // types have no real backing signal yet — see foundational_mentors.py's
+  // module docstring.
+  const recommendations: AcademyRecommendation[] = needingHelp.map((s) => ({
+    agentId: s.agentId,
+    recommendation: s.consecutiveQuizFailures >= COACH_ESCALATION_THRESHOLD ? "one_on_one_coaching" : "repeat_lesson",
+    reason:
+      s.consecutiveQuizFailures >= COACH_ESCALATION_THRESHOLD
+        ? `${s.consecutiveQuizFailures} consecutive quiz misses on "${s.currentLessonTitle ?? "the current lesson"}" — recommend one-on-one coaching.`
+        : `Missed the last quiz attempt on "${s.currentLessonTitle ?? "the current lesson"}" — recommend repeating the lesson before the next try.`,
+  }));
+
+  return {
+    activeMentorId,
+    activeMentorLabel: activeMentor?.trackLabel ?? null,
+    currentlyStudying,
+    topStudents,
+    needingHelp,
+    graduationQueue,
+    upcomingGraduations,
+    avgQuizScorePct,
+    avgKnowledgeScore,
+    certifications,
+    recommendations,
+  };
 }

@@ -11,6 +11,7 @@ const DEFAULT_SETTINGS: SettingsState = {
   operatingMode: "learning",
   companyPriority: "balanced",
   workMode: "work",
+  ceoAcademyLearningMode: false,
 };
 
 /** Persists user preferences to localStorage and broadcasts changes on the EventBus. */

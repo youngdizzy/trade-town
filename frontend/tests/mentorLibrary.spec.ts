@@ -1,7 +1,10 @@
 import { test, expect, type Page } from "@playwright/test";
 
 /**
- * v0.7 Feature 49 (Phase 3) — the Foundational Mentor Program. Same
+ * v0.7 Feature 49 (Phase 3, revised) — the Foundational Mentor Program /
+ * Professional Academy. Employees are the real students (auto-progress
+ * every backend tick); the CEO manages via a dashboard and may
+ * optionally also take lessons personally (CEO Learning Mode). Same
  * real-app testing approach as dailyObjectives.spec.ts — exercises the
  * live Vite + FastAPI stack, no mocking.
  */
@@ -60,8 +63,12 @@ async function clickTab(page: Page, tab: string): Promise<void> {
   throw new Error(`clickTab: could not click "${tab}" after 5 attempts`);
 }
 
-test("the backend state seeds all six mentor tracks in roadmap order, only tjr active with real content", async ({ page }) => {
+test("the backend auto-progresses real employee students, not the CEO, through the active mentor track", async ({ page }) => {
   await page.goto("/");
+  // Give the shared dev backend's real tick loop a moment to run at
+  // least once — the same "wait for a real tick" convention as other
+  // real-app tests in this suite (see dailyObjectives.spec.ts).
+  await page.waitForTimeout(2500);
   const state = await page.evaluate(async () => {
     const res = await fetch("/api/load");
     return res.json();
@@ -72,16 +79,26 @@ test("the backend state seeds all six mentor tracks in roadmap order, only tjr a
 
   const tjr = fm.mentors.find((m: { id: string }) => m.id === "tjr");
   expect(tjr.status).toBe("active");
-  expect(tjr.lessons.length).toBe(6);
+  expect(tjr.lessons.length).toBe(8);
   expect(tjr.contentNote).toContain("original TradeTown-authored teaching material");
 
-  for (const mentor of fm.mentors.filter((m: { id: string }) => m.id !== "tjr")) {
-    expect(mentor.status).toBe("planned");
-    expect(mentor.lessons).toEqual([]);
-  }
+  // Real employee students only — never the CEO, never Coach/Sage/CIO/Quant.
+  const studentAgentIds = ["scout", "atlas", "echo", "nova", "scribe", "sentinel", "pulse", "guardian"];
+  const progressKeys = Object.keys(fm.progress);
+  for (const key of progressKeys) expect(studentAgentIds).toContain(key);
+  expect(progressKeys.length).toBeGreaterThan(0);
+  expect(fm.progress.coach).toBeUndefined();
+  expect(fm.progress.sage).toBeUndefined();
+
+  const scoutTjr = fm.progress.scout?.tjr;
+  expect(scoutTjr).toBeTruthy();
+  expect(typeof scoutTjr.currentLessonStudyPct).toBe("number");
+  expect(scoutTjr.graduationStatus).toBe("in_progress");
+
+  expect(fm.ceoProgress).toEqual({});
 });
 
-test("the MENTORLIB tab shows the content disclaimer and a real quiz round-trips through POST /api/foundational-mentors/quiz", async ({ page }) => {
+test("the MENTORLIB tab renders the Academy Dashboard and CEO Learning Mode reveals a separate personal-learning panel", async ({ page }) => {
   const consoleErrors: string[] = [];
   page.on("console", (msg) => {
     if (msg.type() === "error") consoleErrors.push(msg.text());
@@ -102,18 +119,22 @@ test("the MENTORLIB tab shows the content disclaimer and a real quiz round-trips
   await page.getByRole("button", { name: "EXPAND — FULL COMMAND CENTER" }).click();
   await clickTab(page, "MENTORLIB");
 
-  const detail = page.getByTestId("mentor-library-detail");
-  await expect(detail.getByText(/original TradeTown-authored teaching material/)).toBeVisible();
+  await expect(page.getByText("Professional Academy")).toBeVisible();
+  await expect(page.getByText("Academy Statistics")).toBeVisible();
+  await expect(page.getByText(/Employees complete Academy training automatically/)).toBeVisible();
 
-  await detail.getByText("1. Trading Psychology: Process Over Outcome").click();
+  // Personal learning is hidden until CEO Learning Mode is switched on.
+  await expect(page.getByTestId("ceo-personal-learning")).toHaveCount(0);
 
-  const viewer = page.getByTestId("mentor-lesson-viewer");
+  await page.getByRole("button", { name: /CEO Learning Mode: OFF/ }).click();
+  await expect(page.getByTestId("ceo-personal-learning")).toBeVisible();
+
+  await page.getByText("1. Trading Psychology: Process Over Outcome").click();
+  const viewer = page.getByTestId("ceo-lesson-viewer");
   await expect(viewer.getByText("Trading Psychology: Process Over Outcome")).toBeVisible();
 
   await viewer.getByRole("button", { name: "It stays high — Discipline Score never reads trade P&L" }).click();
-
-  await Promise.all([page.waitForResponse((res) => res.url().includes("/api/foundational-mentors/quiz") && res.ok()), viewer.getByRole("button", { name: "Submit Answer" }).click()]);
-
+  await Promise.all([page.waitForResponse((res) => res.url().includes("/api/foundational-mentors/ceo/quiz") && res.ok()), viewer.getByRole("button", { name: "Submit Answer" }).click()]);
   await expect(viewer.getByText(/CORRECT|NOT QUITE/)).toBeVisible();
 
   const relevantErrors = consoleErrors.filter((e) => !e.includes("favicon"));
