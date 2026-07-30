@@ -72,6 +72,30 @@ class AddResourceRequest(BaseModel):
     resource_type: FoundationalResourceType = Field(alias="resourceType")
 
 
+class AddMentorRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str
+    track_label: str = Field(alias="trackLabel")
+    focus_areas: list[str] = Field(alias="focusAreas")
+
+
+class AddMentorResponse(FoundationalMentorStateResponse):
+    mentor_id: str = Field(alias="mentorId")
+
+
+class AddLessonRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    mentor_id: FoundationalMentorId = Field(alias="mentorId")
+    title: str
+    simple_explanation: str = Field(alias="simpleExplanation")
+    deeper_explanation: str = Field(alias="deeperExplanation")
+    quiz_question: str = Field(alias="quizQuestion")
+    quiz_options: list[str] = Field(alias="quizOptions")
+    correct_index: int = Field(alias="correctIndex")
+
+
 # --- The CEO's own optional personal Learning Mode (ceoProgress only) ---
 
 
@@ -150,6 +174,44 @@ async def add_resource(payload: AddResourceRequest) -> FoundationalMentorStateRe
     state, error = await game_state.add_foundational_mentor_resource(
         payload.mentor_id, title=payload.title, url=payload.url, resource_type=payload.resource_type
     )
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    return FoundationalMentorStateResponse(foundationalMentorState=state.foundational_mentor_state)
+
+
+# --- Mentor Lab: real, in-product Foundational Mentor Library expansion ---
+
+
+@router.post("/add-mentor", response_model=AddMentorResponse)
+async def add_mentor(payload: AddMentorRequest) -> AddMentorResponse:
+    state, mentor_id, error = await game_state.add_custom_academy_mentor(name=payload.name, track_label=payload.track_label, focus_areas=payload.focus_areas)
+    if error is not None or mentor_id is None:
+        raise HTTPException(status_code=400, detail=error or "Could not add mentor.")
+    persist_modules(state)
+    return AddMentorResponse(foundationalMentorState=state.foundational_mentor_state, mentorId=mentor_id)
+
+
+@router.post("/add-lesson", response_model=FoundationalMentorStateResponse)
+async def add_lesson(payload: AddLessonRequest) -> FoundationalMentorStateResponse:
+    state, error = await game_state.add_custom_academy_lesson(
+        payload.mentor_id,
+        title=payload.title,
+        simple_explanation=payload.simple_explanation,
+        deeper_explanation=payload.deeper_explanation,
+        quiz_question=payload.quiz_question,
+        quiz_options=payload.quiz_options,
+        correct_index=payload.correct_index,
+    )
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    return FoundationalMentorStateResponse(foundationalMentorState=state.foundational_mentor_state)
+
+
+@router.post("/set-active", response_model=FoundationalMentorStateResponse)
+async def set_active(payload: MentorIdRequest) -> FoundationalMentorStateResponse:
+    state, error = await game_state.set_active_academy_mentor(payload.mentor_id)
     if error is not None:
         raise HTTPException(status_code=400, detail=error)
     persist_modules(state)

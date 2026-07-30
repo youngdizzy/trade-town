@@ -8,8 +8,11 @@ from __future__ import annotations
 
 from app.foundational_mentors import (
     COACH_ESCALATION_THRESHOLD,
+    MAX_CUSTOM_MENTORS,
     STUDENT_AGENT_IDS,
     _ROADMAP_ORDER,
+    add_custom_lesson,
+    add_custom_mentor,
     add_resource,
     approve_graduation,
     default_foundational_mentor_state,
@@ -18,6 +21,7 @@ from app.foundational_mentors import (
     pause_company_training,
     repeat_mentor_company_wide,
     resume_company_training,
+    set_active_mentor,
     skip_to_next_mentor,
     tick_employee_progress,
 )
@@ -313,4 +317,138 @@ class TestAddResource:
     def test_rejects_unknown_mentor(self):
         state = default_foundational_mentor_state()
         _, error = add_resource(state, "nonexistent", title="X", url=None, resource_type="note")  # type: ignore[arg-type]
+        assert error is not None
+
+
+class TestAddCustomMentor:
+    def test_adds_a_real_mentor_appended_to_the_roadmap(self):
+        state = default_foundational_mentor_state()
+        state, mentor_id, error = add_custom_mentor(state, name="Jane Trader", track_label="Jane Trader Track", focus_areas=["Order Flow", "Tape Reading"])
+        assert error is None
+        assert mentor_id == "jane-trader"
+        new_mentor = next(m for m in state.mentors if m.id == mentor_id)
+        assert new_mentor.status == "planned"
+        assert new_mentor.lessons == []
+        assert new_mentor.focus_areas == ["Order Flow", "Tape Reading"]
+        assert "CEO-authored" in new_mentor.content_note
+        assert state.roadmap_order[-1] == mentor_id
+
+    def test_deduplicates_slug_collisions(self):
+        state = default_foundational_mentor_state()
+        state, first_id, _ = add_custom_mentor(state, name="Jane Trader", track_label="Track A", focus_areas=["X"])
+        state, second_id, error = add_custom_mentor(state, name="Jane Trader", track_label="Track B", focus_areas=["Y"])
+        assert error is None
+        assert first_id != second_id
+        assert second_id == "jane-trader-2"
+
+    def test_rejects_empty_name_or_focus_areas(self):
+        state = default_foundational_mentor_state()
+        _, mentor_id, error = add_custom_mentor(state, name="  ", track_label="Track", focus_areas=["X"])
+        assert error is not None
+        assert mentor_id is None
+        _, mentor_id, error = add_custom_mentor(state, name="Real Name", track_label="Track", focus_areas=["  ", ""])
+        assert error is not None
+        assert mentor_id is None
+
+    def test_enforces_max_custom_mentors(self):
+        state = default_foundational_mentor_state()
+        for i in range(MAX_CUSTOM_MENTORS):
+            state, _, error = add_custom_mentor(state, name=f"Mentor {i}", track_label="Track", focus_areas=["X"])
+            assert error is None
+        _, mentor_id, error = add_custom_mentor(state, name="One Too Many", track_label="Track", focus_areas=["X"])
+        assert error is not None
+        assert mentor_id is None
+
+
+class TestAddCustomLesson:
+    def test_adds_a_real_ceo_authored_lesson(self):
+        state = default_foundational_mentor_state()
+        state, mentor_id, _ = add_custom_mentor(state, name="Jane Trader", track_label="Jane Trader Track", focus_areas=["Order Flow"])
+        state, error = add_custom_lesson(
+            state,
+            mentor_id,  # type: ignore[arg-type]
+            title="Reading the Tape",
+            simple_explanation="A simple explanation.",
+            deeper_explanation="A deeper explanation.",
+            quiz_question="What is tape reading?",
+            quiz_options=["A real skill", "Fake", "Also fake", "Still fake"],
+            correct_index=0,
+        )
+        assert error is None
+        mentor = next(m for m in state.mentors if m.id == mentor_id)
+        assert len(mentor.lessons) == 1
+        lesson = mentor.lessons[0]
+        assert lesson.title == "Reading the Tape"
+        assert lesson.order == 1
+        assert not hasattr(lesson, "correct_index")  # public shape never carries it
+        assert state.custom_lesson_answers[lesson.id] == 0
+
+    def test_employee_auto_progression_works_on_a_custom_lesson_once_activated(self):
+        state = default_foundational_mentor_state()
+        state, mentor_id, _ = add_custom_mentor(state, name="Jane Trader", track_label="Jane Trader Track", focus_areas=["Order Flow"])
+        state, _ = add_custom_lesson(
+            state, mentor_id, title="Lesson One", simple_explanation="...", deeper_explanation="...", quiz_question="Q?", quiz_options=["A", "B", "C", "D"], correct_index=1  # type: ignore[arg-type]
+        )
+        state, error = set_active_mentor(state, mentor_id)  # type: ignore[arg-type]
+        assert error is None
+        state, _ = tick_employee_progress(state, discipline_reviews=[], sim_day=1)
+        progress = state.progress["scout"][mentor_id]
+        assert progress.current_lesson_study_pct > 0.0
+
+    def test_rejects_invalid_quiz_shape(self):
+        state = default_foundational_mentor_state()
+        _, error = add_custom_lesson(
+            state, "tjr", title="X", simple_explanation="", deeper_explanation="", quiz_question="Q?", quiz_options=["only one"], correct_index=0
+        )
+        assert error is not None
+        _, error = add_custom_lesson(
+            state, "tjr", title="X", simple_explanation="", deeper_explanation="", quiz_question="Q?", quiz_options=["A", "B", "C", "D"], correct_index=9
+        )
+        assert error is not None
+
+    def test_rejects_unknown_mentor(self):
+        state = default_foundational_mentor_state()
+        _, error = add_custom_lesson(
+            state, "nonexistent", title="X", simple_explanation="", deeper_explanation="", quiz_question="Q?", quiz_options=["A", "B", "C", "D"], correct_index=0
+        )
+        assert error is not None
+
+    def test_ceo_can_take_a_quiz_on_a_custom_lesson(self):
+        state = default_foundational_mentor_state()
+        state, mentor_id, _ = add_custom_mentor(state, name="Jane Trader", track_label="Jane Trader Track", focus_areas=["Order Flow"])
+        state, _ = add_custom_lesson(
+            state, mentor_id, title="Lesson One", simple_explanation="...", deeper_explanation="...", quiz_question="Q?", quiz_options=["A", "B", "C", "D"], correct_index=2  # type: ignore[arg-type]
+        )
+        lesson_id = next(m for m in state.mentors if m.id == mentor_id).lessons[0].id
+        result = grade_ceo_lesson_quiz(state, mentor_id, lesson_id, 2)  # type: ignore[arg-type]
+        assert result is not None
+        _, correct, correct_index, correct_option = result
+        assert correct is True
+        assert correct_index == 2
+        assert correct_option == "C"
+
+
+class TestSetActiveMentor:
+    def test_jumps_focus_to_a_track_with_content_pausing_the_previous_one(self):
+        state = default_foundational_mentor_state()
+        state, mentor_id, _ = add_custom_mentor(state, name="Jane Trader", track_label="Jane Trader Track", focus_areas=["Order Flow"])
+        state, _ = add_custom_lesson(
+            state, mentor_id, title="Lesson One", simple_explanation="...", deeper_explanation="...", quiz_question="Q?", quiz_options=["A", "B", "C", "D"], correct_index=0  # type: ignore[arg-type]
+        )
+        state, error = set_active_mentor(state, mentor_id)  # type: ignore[arg-type]
+        assert error is None
+        assert state.active_mentor_id == mentor_id
+        tjr = next(m for m in state.mentors if m.id == "tjr")
+        custom = next(m for m in state.mentors if m.id == mentor_id)
+        assert tjr.status == "paused"
+        assert custom.status == "active"
+
+    def test_rejects_a_track_with_no_lessons(self):
+        state = default_foundational_mentor_state()
+        _, error = set_active_mentor(state, "al_brooks")  # type: ignore[arg-type]
+        assert error is not None
+
+    def test_rejects_the_already_active_track(self):
+        state = default_foundational_mentor_state()
+        _, error = set_active_mentor(state, "tjr")  # type: ignore[arg-type]
         assert error is not None

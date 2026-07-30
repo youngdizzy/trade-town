@@ -2131,7 +2131,14 @@ class MentorState(CamelModel):
 # optionally take the same lessons personally via `ceo_progress` when
 # Settings.ceoAcademyLearningMode is on, entirely separate from the real
 # employee cohort's own progress.
-FoundationalMentorId = Literal["tjr", "al_brooks", "linda_raschke", "mark_douglas", "tom_hougaard", "mike_bellafiore"]
+#
+# A plain `str`, not a `Literal`, as of the Mentor Lab revision: the CEO
+# can now really add new mentor tracks in-product (see
+# foundational_mentors.py's `add_custom_mentor`), so the set of valid
+# ids is no longer fixed at code-authoring time. The original 6 named
+# ids (`"tjr"`, `"al_brooks"`, ...) still exist as real string values —
+# nothing about their content or behavior changed, only the type.
+FoundationalMentorId = str
 FoundationalMentorStatus = Literal["planned", "active", "paused", "graduated"]
 FoundationalResourceType = Literal["video", "book", "article", "pdf", "note"]
 # "pending_approval" is the real Graduation Queue gate: lessons+quiz are
@@ -2215,6 +2222,18 @@ class FoundationalMentorState(CamelModel):
     # employee works the same track; company_graduated_sim_day above
     # advances it once every student has an approved graduation).
     active_mentor_id: FoundationalMentorId | None = Field(default=None, alias="activeMentorId")
+    # The real sequential unlock order — persisted (not a hardcoded
+    # module constant) specifically so the CEO can really append new
+    # custom mentors to it via add_custom_mentor() and have them
+    # eventually come up for company-wide study, same as the original 6.
+    roadmap_order: list[FoundationalMentorId] = Field(default_factory=list, alias="roadmapOrder")
+    # Hidden answer keys for CEO-authored custom lessons (lesson id ->
+    # correct option index) — the runtime equivalent of the built-in
+    # curriculum's module-level `_LessonSpec.correct_index`, which can't
+    # be used here since custom lesson content only exists at runtime.
+    # `FoundationalMentorLesson`'s own public shape never carries this,
+    # matching the built-in convention.
+    custom_lesson_answers: dict[str, int] = Field(default_factory=dict, alias="customLessonAnswers")
     updated_at: str = Field(alias="updatedAt")
 
 

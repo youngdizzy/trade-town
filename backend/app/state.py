@@ -67,6 +67,8 @@ from app.schemas import (
     TimeState,
 )
 from app.foundational_mentors import (
+    add_custom_lesson as add_custom_academy_lesson_entry,
+    add_custom_mentor as add_custom_academy_mentor_entry,
     add_resource as add_foundational_mentor_resource_entry,
     approve_graduation as approve_foundational_mentor_graduation,
     default_foundational_mentor_state,
@@ -75,6 +77,7 @@ from app.foundational_mentors import (
     pause_company_training,
     repeat_mentor_company_wide,
     resume_company_training,
+    set_active_mentor,
     skip_to_next_mentor,
 )
 from app.simulation import default_strategies, queue_backtest_now
@@ -350,6 +353,50 @@ class GameState:
     ) -> tuple[GameSaveState, str | None]:
         async with self.lock:
             new_state, error = add_foundational_mentor_resource_entry(self.data.foundational_mentor_state, mentor_id, title=title, url=url, resource_type=resource_type)
+            if error is None:
+                self.data = self.data.model_copy(update={"foundational_mentor_state": new_state})
+            return self.data, error
+
+    async def add_custom_academy_mentor(self, *, name: str, track_label: str, focus_areas: list[str]) -> tuple[GameSaveState, str | None, str | None]:
+        """The Mentor Lab's real "Add New Mentor" action. Returns
+        (state, new_mentor_id, error)."""
+        async with self.lock:
+            new_state, mentor_id, error = add_custom_academy_mentor_entry(self.data.foundational_mentor_state, name=name, track_label=track_label, focus_areas=focus_areas)
+            if error is None:
+                self.data = self.data.model_copy(update={"foundational_mentor_state": new_state})
+            return self.data, mentor_id, error
+
+    async def add_custom_academy_lesson(
+        self,
+        mentor_id: FoundationalMentorId,
+        *,
+        title: str,
+        simple_explanation: str,
+        deeper_explanation: str,
+        quiz_question: str,
+        quiz_options: list[str],
+        correct_index: int,
+    ) -> tuple[GameSaveState, str | None]:
+        """The Mentor Lab's real "Build Academy Curriculum" action — a
+        CEO-authored lesson for any mentor track."""
+        async with self.lock:
+            new_state, error = add_custom_academy_lesson_entry(
+                self.data.foundational_mentor_state,
+                mentor_id,
+                title=title,
+                simple_explanation=simple_explanation,
+                deeper_explanation=deeper_explanation,
+                quiz_question=quiz_question,
+                quiz_options=quiz_options,
+                correct_index=correct_index,
+            )
+            if error is None:
+                self.data = self.data.model_copy(update={"foundational_mentor_state": new_state})
+            return self.data, error
+
+    async def set_active_academy_mentor(self, mentor_id: FoundationalMentorId) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            new_state, error = set_active_mentor(self.data.foundational_mentor_state, mentor_id)
             if error is None:
                 self.data = self.data.model_copy(update={"foundational_mentor_state": new_state})
             return self.data, error

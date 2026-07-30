@@ -88,11 +88,18 @@ the currently-active mentor, the company as a whole graduates that
 track (`company_graduated_sim_day`) and the next roadmap entry unlocks
 — "mastery before progression," per the brief.
 
-EXPLICIT SCOPE CUTS, checked against the revision brief and NOT built:
-  - CEO custom-mentor-authoring UI / "Add Custom Courses" / "Add New
-    Mentors" / "Build New Curriculum": the data model is expandable
-    (add an id, roadmap entry, and lesson tuple to this file) but there
-    is still no in-product authoring form.
+MENTOR LAB REVISION — real, in-product mentor/lesson authoring is now
+built (`add_custom_mentor`, `add_custom_lesson`, `set_active_mentor`),
+no longer a code-only scope cut. `FoundationalMentorId` changed from a
+fixed `Literal` to a plain `str` and the sequential roadmap order moved
+from a module constant (`_ROADMAP_ORDER`) to real persisted state
+(`FoundationalMentorState.roadmap_order`) specifically so a CEO-added
+mentor really does come up for company-wide study in its turn, the same
+as the original 6. `set_active_mentor` additionally lets the CEO jump
+straight to any mentor with real content — built-in or custom — without
+waiting for the automatic unlock, when they want to prioritize it now.
+
+EXPLICIT SCOPE CUTS, checked against both revision briefs and NOT built:
   - Assigning individual books/videos/PDFs/research papers/journals/
     practical exercises/backtesting/paper trading to a SPECIFIC
     employee: no per-employee assignment plumbing to those other real
@@ -139,6 +146,7 @@ EXPLICIT SCOPE CUTS, checked against the revision brief and NOT built:
 from __future__ import annotations
 
 import random
+import re
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
@@ -155,6 +163,14 @@ from app.schemas import (
 )
 
 MAX_RESOURCES_PER_MENTOR = 20
+MAX_CUSTOM_MENTORS = 20
+MAX_LESSONS_PER_MENTOR = 30
+
+_CUSTOM_CONTENT_NOTE = (
+    "This track was added directly by the CEO. Its content is entirely CEO-authored — TradeTown has no ability to "
+    "ingest external content for it either (no HTTP client or content-parsing exists anywhere in this codebase, "
+    "the same boundary the original named tracks are built around)."
+)
 
 # See module docstring's "STUDENT ROSTER" section for the full reasoning.
 STUDENT_AGENT_IDS: tuple[AgentId, ...] = ("scout", "atlas", "echo", "nova", "scribe", "sentinel", "pulse", "guardian")
@@ -387,7 +403,9 @@ def default_foundational_mentor_state() -> FoundationalMentorState:
                 resources=[],
             )
         )
-    return FoundationalMentorState(mentors=mentors, progress={}, ceoProgress={}, activeMentorId="tjr", updatedAt=_now_iso())
+    return FoundationalMentorState(
+        mentors=mentors, progress={}, ceoProgress={}, activeMentorId="tjr", roadmapOrder=list(_ROADMAP_ORDER), customLessonAnswers={}, updatedAt=_now_iso()
+    )
 
 
 def _mentor_by_id(state: FoundationalMentorState, mentor_id: FoundationalMentorId | None) -> FoundationalMentorProfile | None:
@@ -424,11 +442,18 @@ def _is_graduated_progress(mentor: FoundationalMentorProfile, progress: Foundati
     return all(lesson.id in completed for lesson in mentor.lessons)
 
 
-def _next_roadmap_id(mentor_id: FoundationalMentorId) -> FoundationalMentorId | None:
-    idx = _ROADMAP_ORDER.index(mentor_id)
-    if idx + 1 >= len(_ROADMAP_ORDER):
+def _next_roadmap_id(state: FoundationalMentorState, mentor_id: FoundationalMentorId) -> FoundationalMentorId | None:
+    """Reads the real, persisted `state.roadmap_order` — not the module-
+    level `_ROADMAP_ORDER` constant — so CEO-added custom mentors
+    (appended to `roadmap_order` by `add_custom_mentor`) really do come
+    up for company-wide study in their turn."""
+    order = state.roadmap_order
+    if mentor_id not in order:
         return None
-    return _ROADMAP_ORDER[idx + 1]
+    idx = order.index(mentor_id)
+    if idx + 1 >= len(order):
+        return None
+    return order[idx + 1]
 
 
 def _employee_progress(state: FoundationalMentorState, agent_id: AgentId, mentor_id: FoundationalMentorId) -> FoundationalMentorProgress:
@@ -531,7 +556,7 @@ def approve_graduation(state: FoundationalMentorState, agent_id: AgentId, mentor
 
     new_mentors = [m.model_copy(update={"status": "graduated", "company_graduated_sim_day": sim_day}) if m.id == mentor_id else m for m in new_state.mentors]
     new_active_id = new_state.active_mentor_id
-    next_id = _next_roadmap_id(mentor_id)
+    next_id = _next_roadmap_id(new_state, mentor_id)
     if next_id is not None:
         new_mentors = [m.model_copy(update={"status": "active"}) if m.id == next_id else m for m in new_mentors]
         new_active_id = next_id
@@ -567,7 +592,7 @@ def skip_to_next_mentor(state: FoundationalMentorState) -> tuple[FoundationalMen
         return state, "No active mentor track to skip."
     if mentor.status not in ("active", "paused"):
         return state, "Only an active or paused track can be skipped."
-    next_id = _next_roadmap_id(mentor.id)
+    next_id = _next_roadmap_id(state, mentor.id)
     if next_id is None:
         return state, "This is the last track on the roadmap — nothing to skip to."
     new_mentors = [
@@ -620,11 +645,19 @@ def grade_ceo_lesson_quiz(
     if mentor is None:
         return None
     lesson = _lesson_by_id(mentor, lesson_id)
-    spec = next((s for s in _specs_for(mentor_id) if s.id == lesson_id), None)
-    if lesson is None or spec is None:
+    if lesson is None:
         return None
 
-    correct = selected_index == spec.correct_index
+    spec = next((s for s in _specs_for(mentor_id) if s.id == lesson_id), None)
+    if spec is not None:
+        correct_index = spec.correct_index
+    elif lesson_id in state.custom_lesson_answers:
+        correct_index = state.custom_lesson_answers[lesson_id]
+    else:
+        return None
+    correct_option = lesson.quiz_options[correct_index]
+
+    correct = selected_index == correct_index
     progress = state.ceo_progress.get(mentor_id) or FoundationalMentorProgress(mentorId=mentor_id)
     completed_ids = _add_once(progress.completed_lesson_ids, lesson_id) if correct else progress.completed_lesson_ids
     new_progress = progress.model_copy(
@@ -635,7 +668,7 @@ def grade_ceo_lesson_quiz(
         }
     )
     new_state = state.model_copy(update={"ceo_progress": {**state.ceo_progress, mentor_id: new_progress}, "updated_at": _now_iso()})
-    return new_state, correct, spec.correct_index, spec.quiz_options[spec.correct_index]
+    return new_state, correct, correct_index, correct_option
 
 
 def add_resource(
@@ -663,3 +696,122 @@ def add_resource(
     )
     new_mentors = [m.model_copy(update={"resources": [*m.resources, resource]}) if m.id == mentor_id else m for m in state.mentors]
     return state.model_copy(update={"mentors": new_mentors, "updated_at": _now_iso()}), None
+
+
+# --- Mentor Lab: real, in-product Foundational Mentor Library expansion ---
+# The CEO-facing version of what this module's own docstring originally
+# described as a code-only scope cut ("add an id, roadmap entry, and
+# lesson tuple to this file"). Every mentor/lesson added this way is
+# real, persisted state — never a fabricated placeholder.
+
+
+def add_custom_mentor(state: FoundationalMentorState, *, name: str, track_label: str, focus_areas: list[str]) -> tuple[FoundationalMentorState, str | None, str | None]:
+    """Appends a new, CEO-authored mentor track to the end of the real
+    roadmap. Starts `"planned"` with zero lessons — exactly like the
+    original 5 roadmap-only tracks — until the CEO adds real lesson
+    content via `add_custom_lesson`. Returns (state, new_mentor_id, error)."""
+    custom_count = sum(1 for m in state.mentors if m.id not in _ROADMAP_FOCUS)
+    if custom_count >= MAX_CUSTOM_MENTORS:
+        return state, None, f"The Mentor Library already has the maximum of {MAX_CUSTOM_MENTORS} CEO-added tracks."
+    clean_name = name.strip()
+    clean_label = track_label.strip()
+    clean_focus = [f.strip() for f in focus_areas if f.strip()]
+    if not clean_name:
+        return state, None, "Mentor name cannot be empty."
+    if not clean_label:
+        return state, None, "Track label cannot be empty."
+    if not clean_focus:
+        return state, None, "At least one focus area is required."
+
+    slug = re.sub(r"[^a-z0-9]+", "-", clean_name.lower()).strip("-") or "mentor"
+    existing_ids = {m.id for m in state.mentors}
+    mentor_id = slug
+    suffix = 1
+    while mentor_id in existing_ids:
+        suffix += 1
+        mentor_id = f"{slug}-{suffix}"
+
+    new_mentor = FoundationalMentorProfile(
+        id=mentor_id,
+        name=clean_name,
+        trackLabel=clean_label,
+        focusAreas=clean_focus,
+        contentNote=_CUSTOM_CONTENT_NOTE,
+        status="planned",
+        lessons=[],
+        resources=[],
+    )
+    new_state = state.model_copy(
+        update={"mentors": [*state.mentors, new_mentor], "roadmap_order": [*state.roadmap_order, mentor_id], "updated_at": _now_iso()}
+    )
+    return new_state, mentor_id, None
+
+
+def add_custom_lesson(
+    state: FoundationalMentorState,
+    mentor_id: FoundationalMentorId,
+    *,
+    title: str,
+    simple_explanation: str,
+    deeper_explanation: str,
+    quiz_question: str,
+    quiz_options: list[str],
+    correct_index: int,
+) -> tuple[FoundationalMentorState, str | None]:
+    """A real, CEO-authored lesson — for any mentor, built-in or custom.
+    Employee auto-progression (`tick_employee_progress`) already works
+    generically over `mentor.lessons` with no changes needed; only the
+    CEO's own optional quiz-taking (`grade_ceo_lesson_quiz`) needs the
+    hidden answer key, stored in `state.custom_lesson_answers`."""
+    mentor = _mentor_by_id(state, mentor_id)
+    if mentor is None:
+        return state, "Unknown mentor track."
+    if len(mentor.lessons) >= MAX_LESSONS_PER_MENTOR:
+        return state, f"This track already has the maximum of {MAX_LESSONS_PER_MENTOR} lessons."
+    clean_title = title.strip()
+    clean_question = quiz_question.strip()
+    clean_options = [o.strip() for o in quiz_options]
+    if not clean_title:
+        return state, "Lesson title cannot be empty."
+    if not clean_question:
+        return state, "Quiz question cannot be empty."
+    if len(clean_options) != 4 or any(not o for o in clean_options):
+        return state, "Exactly 4 non-empty quiz options are required."
+    if not 0 <= correct_index < 4:
+        return state, "correctIndex must be between 0 and 3."
+
+    lesson_id = f"custom-{mentor_id}-{len(mentor.lessons)}"
+    new_lesson = FoundationalMentorLesson(
+        id=lesson_id,
+        order=len(mentor.lessons) + 1,
+        title=clean_title,
+        simpleExplanation=simple_explanation.strip(),
+        deeperExplanation=deeper_explanation.strip(),
+        quizQuestion=clean_question,
+        quizOptions=clean_options,
+    )
+    new_mentors = [m.model_copy(update={"lessons": [*m.lessons, new_lesson]}) if m.id == mentor_id else m for m in state.mentors]
+    new_answers = {**state.custom_lesson_answers, lesson_id: correct_index}
+    return state.model_copy(update={"mentors": new_mentors, "custom_lesson_answers": new_answers, "updated_at": _now_iso()}), None
+
+
+def set_active_mentor(state: FoundationalMentorState, mentor_id: FoundationalMentorId) -> tuple[FoundationalMentorState, str | None]:
+    """A real CEO override — jumps company-wide focus straight to any
+    mentor with real lesson content (built-in or custom) without waiting
+    for the roadmap's automatic sequential unlock. Whatever was active
+    before is paused, not discarded — same as skip_to_next_mentor."""
+    mentor = _mentor_by_id(state, mentor_id)
+    if mentor is None:
+        return state, "Unknown mentor track."
+    if not mentor.lessons:
+        return state, "This track has no lessons yet — add at least one before making it active."
+    if mentor.id == state.active_mentor_id:
+        return state, "This track is already the active one."
+
+    new_mentors = list(state.mentors)
+    if state.active_mentor_id is not None:
+        previous = _mentor_by_id(state, state.active_mentor_id)
+        if previous is not None and previous.status == "active":
+            new_mentors = [m.model_copy(update={"status": "paused"}) if m.id == previous.id else m for m in new_mentors]
+    new_mentors = [m.model_copy(update={"status": "active"}) if m.id == mentor_id else m for m in new_mentors]
+    return state.model_copy(update={"mentors": new_mentors, "active_mentor_id": mentor_id, "updated_at": _now_iso()}), None
