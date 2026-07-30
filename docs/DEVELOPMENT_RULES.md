@@ -35,6 +35,38 @@ Every feature should strengthen the company. Every feature should improve:
 
 Never add systems that exist only to create busywork.
 
+## Elite Intelligence Objective
+
+The primary objective of v0.9 is to build the smartest autonomous
+trading company possible **before risking real capital.**
+
+Every feature should improve one or more of the following:
+
+- Reasoning
+- Critical Thinking
+- Research Ability
+- Pattern Recognition
+- Market Understanding
+- Decision Quality
+- Statistical Thinking
+- Risk Management
+- Trading Psychology
+- Adaptability
+- Communication
+- Long-Term Learning
+
+The company should continuously become more intelligent.
+
+**Intelligence is the primary progression system.**
+
+**Money is the result of intelligence — not the goal itself.**
+
+When scoping a new feature under this doc's Implementation Style
+structure, its GOAL should name which of the twelve categories above it
+serves; if it doesn't clearly serve at least one, reconsider whether it
+belongs in v0.9 at all (see "Never add systems that exist only to create
+busywork," above).
+
 ## Long Term Thinking
 
 Every feature should still make sense after 100 days, 1,000 days, and

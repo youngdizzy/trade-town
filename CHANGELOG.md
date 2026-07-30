@@ -22,6 +22,14 @@ development milestones, not semver releases.
   the frontend, verify thoroughly, document before committing — so it
   persists across sessions instead of living only in conversation
   history.
+  - **Elite Intelligence Objective** (added to the same doc): v0.9's
+    stated primary objective — build the smartest autonomous trading
+    company possible before risking real capital, across twelve named
+    intelligence categories (reasoning, critical thinking, research
+    ability, pattern recognition, market understanding, decision
+    quality, statistical thinking, risk management, trading psychology,
+    adaptability, communication, long-term learning). Every future
+    feature's GOAL should name which category it serves.
 
 - **v0.7 Feature 49 Revision — Professional Academy: employees are the
   students, the CEO manages**: inverts the Foundational Mentor
