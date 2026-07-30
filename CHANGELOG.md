@@ -138,7 +138,7 @@ development milestones, not semver releases.
     the real endpoint — passing live against the running dev stack.
 
 - **v0.7 Feature 50 (Part 2/3) — Decision Grade, Executive Meeting Log,
-  Weekly Self-Evaluation, Company Health redesign (backend)**: three new
+  Weekly Self-Evaluation, Company Health redesign**: three new
   real, permanent systems built directly on Part 1's synthesis, plus one
   redesign — none of them a second opinion engine. **Decision Grade
   (A+–F)**: `app/executive.py`'s `compute_decision_grade()` grades the
@@ -181,9 +181,32 @@ development milestones, not semver releases.
   simulation run confirmed both cadences and the new Company Health
   fields populate correctly with no exceptions, and a `save_modules`
   split/assemble round-trip confirmed the new archive fields persist.
-  Frontend not yet built — backend-first, per this session's own
-  data-loss-avoidance discipline; planned homes documented in
-  `docs/Architecture.md`.
+  - **Frontend**: `CompanyPanel.tsx` gains an "Executive Health" card
+    (all ten new dimensions, a Meter, and a Combined Overall footer)
+    beside the existing Company Health card; `DecisionsPanel.tsx` gains
+    a Decision Grade Distribution card and a Grade column on the
+    decision table; `RiskPanel.tsx` gains a Risk Governance mini-card;
+    `ExecutiveIntelPanel.tsx` gains a Weekly Self-Evaluation grid (one
+    card per department) and an expandable Executive Meeting Log list.
+    New fields threaded through `types.ts`, `NexusManager.ts`,
+    `EventBus.ts`, `gameStore.ts`, `socket.ts`, plus new tone/derive
+    helpers. Verified: `npx tsc -b --noEmit` (the correct invocation for
+    this repo's solution-style `tsconfig.json`), `npm run lint`,
+    `npm run build` all clean; a new `tests/feature50Part2.spec.ts`
+    (4 tests) passes against the live dev stack, and the 30-tab
+    `commandCenter.spec.ts` regression stayed green.
+  - **Incidental bug found and fixed while verifying this phase**
+    (unrelated to Feature 50's scope): `app/wisdom.py`'s title lookup for
+    the most-common case-study category only covered `mistakes.py`'s six
+    categories, but the list it scans is shared with `successes.py`'s
+    (Feature 42) three success categories — whenever the most common
+    real category was a success one, it raised `KeyError`, and because
+    `app/sim.py`'s sim loop has no exception handling beyond
+    `CancelledError` (and the dead task's exception was never retrieved),
+    this silently froze the sim clock with zero log output. Fixed by
+    merging both modules' `CATEGORY_TITLES`; reproduced against the real
+    persisted save file and added a regression test. See
+    `docs/Architecture.md` for the full root-cause writeup.
 
 - **"Revoke Graduation" — a new Executive Action on the Academy**: the
   mirror image of the Graduation Queue's Approve button. New

@@ -3315,32 +3315,69 @@ the Meeting Log, Self-Evaluation) or by a real existing system not yet
 folded into Company Health (Wisdom, Innovation Points, the Academy, the
 Founder Council).
 
-**Frontend**: not yet built for Part 2/3 — backend-first, per this
-session's own data-loss-avoidance discipline (commit and verify the
-backend before starting frontend work). Planned home for each piece,
-so the next session picks this up without re-deriving the plan:
-`CompanyPanel.tsx`'s Company Health card gains a second "Executive
-Health" card with the ten new dimensions plus the combined headline;
-`DecisionsPanel.tsx` (the Decision Intelligence dashboard) shows each
-decision's real grade and a company-wide grade distribution;
-`RiskPanel.tsx` (the Risk dashboard) shows Risk Governance;
-`ExecutiveIntelPanel.tsx` (the Executive Intelligence Network's own
-company-wide hub) gains the Executive Meeting Log (recent entries) and
-Weekly Self-Evaluation (8 department cards) sections — integrating
-directly into the existing network rather than creating a new
-standalone Simulation dashboard, since Simulation's own real company-
-wide signal (stress-test coverage) already lives there beside the other
-7 departments' self-evaluations.
+**Frontend (built)**: `CompanyPanel.tsx`'s Company Health card gained a
+second "Executive Health" card directly beneath it — `executiveOverall`/
+`executiveTier` header, a Meter, all ten new dimension cells, and a
+"Combined Overall" footer row for `combinedOverall`/`combinedTier`.
+`DecisionsPanel.tsx` (the Decision Intelligence dashboard) gained a
+"Decision Grade Distribution" card (grade counts as `StatusPill`s, shown
+only once real decisions exist) and a Grade column on the decision
+table. `RiskPanel.tsx` (the Risk dashboard) gained a fifth mini-card for
+Risk Governance. `ExecutiveIntelPanel.tsx` (the Executive Intelligence
+Network's own company-wide hub) gained a Weekly Self-Evaluation grid (one
+card per department — score, Meter, summary, top strength/improvement
+area) and an expandable Executive Meeting Log list (symbol, recommended
+action, decision grade, CEO-agreed/diverged indicator; expanding an entry
+shows the recommendation reason plus all 8 department opinions) —
+integrating directly into the existing network rather than creating a
+new standalone Simulation dashboard, since Simulation's own real
+company-wide signal (stress-test coverage) already lives there beside
+the other 7 departments' self-evaluations. Data layer: new fields
+threaded through `types.ts`, `NexusManager.ts` (diff-and-emit plus
+`loadFromSave`), `EventBus.ts`, `gameStore.ts`, and `socket.ts`; new
+`decisionGradeTone()`/`computeDecisionGradeDistribution()`/
+`recentMeetingLogEntries()`/`latestSelfEvaluationsByRole()` helpers in
+`derive.ts`.
 
 **Verified (backend)**: new tests in `test_executive.py` (`TestComputeDecisionGrade`,
 7 tests), `test_executive_intelligence.py` (`TestGenerateMeetingLogEntry`/
 `TestGenerateWeeklySelfEvaluations`, 9 tests), and `test_company_health.py`
-(`TestExecutiveTier`, 11 tests) — 716/716 full suite, mypy/ruff clean. A
-direct 9-in-game-day `nexus.tick()` simulation run (not just unit tests)
+(`TestExecutiveTier`, 11 tests) — 717/717 full suite (see the wisdom.py
+bug-fix note below for the 717th), mypy/ruff clean. A direct
+9-in-game-day `nexus.tick()` simulation run (not just unit tests)
 confirmed the Meeting Log/Self-Evaluation cadences and Company Health's
 new fields populate correctly with no exceptions, and a `save_modules`
 split/assemble round-trip confirmed the new archive fields persist
 correctly.
+
+**Verified (frontend)**: `npx tsc -b --noEmit` (the correct invocation
+for this repo's solution-style `tsconfig.json` — a bare `tsc --noEmit`
+silently checks nothing), `npm run lint`, and `npm run build` all clean.
+A new `tests/feature50Part2.spec.ts` (4 tests, same real-app approach as
+`executiveVoting.spec.ts`) exercises all four surfaces above against the
+live dev stack; the 30-tab `commandCenter.spec.ts` regression stayed
+green.
+
+**Incidental bug found and fixed while verifying this phase**
+(unrelated to Feature 50's own scope): `app/wisdom.py`'s `_questions()`
+scans the full shared `case_studies` list — populated by both
+`mistakes.py`'s `record_case_studies` and `successes.py`'s (Feature 42)
+`record_success_studies` — but its title lookup only covered
+`mistakes.py`'s six categories. Whenever the most common real category
+turned out to be one of `successes.py`'s three (e.g.
+`disciplined_process`), it raised `KeyError`. Because `app/sim.py`'s
+`run_sim_loop()` has no exception handling beyond `CancelledError`, and
+`app.state.sim_task` holds a permanent reference to the task (so its
+exception is never retrieved or logged), this silently froze the sim
+clock — HTTP endpoints kept responding, but game time stopped advancing,
+with zero log output. This is what was actually causing the severe
+Playwright flakiness observed while first verifying this phase (not
+ordinary real-popup-intercepts-click flakiness — the clock had genuinely
+stopped for a long real-world stretch, confirmed via two `/api/load`
+polls 15 seconds apart returning identical `time`). Fixed by merging
+both modules' `CATEGORY_TITLES` into a `wisdom.py`-local
+`_CATEGORY_TITLES`; reproduced directly against the real persisted save
+file and added a regression test.
 
 ### Professional Day Trading Program — Foundational Mentor Program (Phase 3, original design — content/roadmap/attribution still accurate, see the Revision section above for who now does the lessons)
 
