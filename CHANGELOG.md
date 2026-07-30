@@ -38,6 +38,17 @@ development milestones, not semver releases.
     `ReasoningChallenge`, `devils_advocate.py`'s `ChallengeReport`) and
     the two real gaps neither currently covers ("when does it work
     best," "can it be improved") for future scoping.
+  - **Multiple Opinions** (added to the same doc): important decisions
+    should rarely rest on one employee's call — Research/Quant/Risk/
+    Coach/Founders/Devil's Advocate should each weigh in, and the Brain
+    Room should combine every perspective. Documents that most of these
+    roles already exist as real, independent reviewers today
+    (`sandbox.py`'s five-role `StrategyReviewVerdict`, `executive.py`'s
+    six-seat analyst voting, `founders.py`, `coach.py`), but that the
+    Brain Room itself does **not** yet combine them into one view — it's
+    a research/company-score HUD today, while these opinions live
+    scattered across Sandbox/Executive/Founders/Coach panels. Named as
+    a real gap for future scoping, not claimed as already built.
 
 - **v0.7 Feature 49 Revision — Professional Academy: employees are the
   students, the CEO manages**: inverts the Foundational Mentor

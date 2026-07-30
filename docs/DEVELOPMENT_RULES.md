@@ -97,6 +97,39 @@ already computed elsewhere). Neither currently answers "when does it
 work best?" or "can we improve it?" — those are real gaps, not
 oversights to paper over with a fabricated score.
 
+## Multiple Opinions
+
+Important company decisions should rarely be made by one employee. The
+company should encourage disagreement:
+
+- Research presents evidence.
+- Quant presents statistics.
+- Risk presents dangers.
+- Coach presents human development.
+- Founders provide long-term perspective.
+- Devil's Advocate intentionally argues against the proposal.
+
+The Brain Room combines every perspective before making important
+decisions. Disagreement should improve decision quality rather than
+create conflict.
+
+Most of these roles are already real, independent reviewers, not one
+placeholder — `sandbox.py`'s `StrategyReviewVerdict` already has this
+exact five-role shape (`StrategyReviewerRole = Literal["quant", "risk",
+"technical", "fundamental", "devils_advocate"]`, each a real agent —
+Quant, Guardian, Echo, Nova, and a rotating Devil's Advocate — grading a
+strategy on real signals, never a shared score), and `executive.py`'s
+six independent analyst seats vote on every trade proposal the same
+way. Founders (`founders.py`) and Coach (`coach.py`) are real, separate
+systems too. What's **not** real yet: the Brain Room itself doesn't
+actually combine all of these into one view today — it's a research/
+company-score HUD (see `nexus.py`'s and `schemas.py`'s own references),
+while Quant/Risk/Technical/Fundamental/Devil's-Advocate opinions live on
+Sandbox, trade votes live on Executive, and Founders/Coach live on their
+own panels. "The Brain Room combines every perspective" is this
+document's aspiration, not yet a shipped fact — a real gap for future
+scoping, not something to claim as already built.
+
 ## Long Term Thinking
 
 Every feature should still make sense after 100 days, 1,000 days, and
