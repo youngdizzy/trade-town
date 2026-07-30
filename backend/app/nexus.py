@@ -72,7 +72,7 @@ from app.paper_trading import tick_paper_trading
 from app.portfolio import sim_minutes
 from app.reasoning_lab import compute_reasoning_lab_state, generate_challenge, record_challenge
 from app.research import RESEARCHER_IDS, default_research, tick_research
-from app.risk_engine import evaluate_guardian_exposure, evaluate_sentinel_risk, monitor_portfolio, recommended_quantity
+from app.risk_engine import compute_daily_objective_status, evaluate_guardian_exposure, evaluate_sentinel_risk, monitor_portfolio, recommended_quantity
 from app.sandbox import apply_review_decision, cap_strategy_reports, cap_strategy_reviews, generate_strategy_report, maybe_advance_after_research, maybe_advance_after_result
 from app.scanner import tick_scanner
 from app.schedule import ScheduleBlock, block_for_hour
@@ -709,7 +709,7 @@ def _generate_trade_proposals(
         if quantity <= 0:
             continue
 
-        sentinel_warning = evaluate_sentinel_risk(risk_limits, portfolio, symbol=item.symbol, proposed_value=quantity * price)
+        sentinel_warning = evaluate_sentinel_risk(risk_limits, portfolio, symbol=item.symbol, proposed_value=quantity * price, sim_day=now_sim_minutes // 1440)
         guardian_warning = evaluate_guardian_exposure(risk_limits, portfolio, symbol=item.symbol)
         proposal = generate_proposal(
             item,
@@ -1362,6 +1362,10 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # linear scans over already-in-memory lists), same "always current"
     # reasoning as company_health above.
     company_dna = compute_company_dna(decisions, paper_portfolio.trade_history, ceo_decisions, legacy_deltas=company_dna_legacy)
+    # v0.7 Feature 49 — Daily Trading Objectives. Real-time readout, same
+    # "derived, recomputed fresh every tick" convention as company_dna
+    # above.
+    daily_objective_status = compute_daily_objective_status(risk_limits, paper_portfolio, new_time.day)
     # v0.7 Feature 25 — cheap to recompute every tick, same reasoning as
     # company_health above (feeds a live-updating Academy readout).
     academy_state = compute_academy_state(agent_knowledge, len(academy_completed_projects))
@@ -1764,6 +1768,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "market_environment": market_environment,
             "company_health": company_health,
             "company_dna": company_dna,
+            "daily_objective_status": daily_objective_status,
             "company_dna_legacy": company_dna_legacy,
             "executive_reviews": executive_reviews,
             "academy_projects": academy_projects,

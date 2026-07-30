@@ -2864,6 +2864,111 @@ stack — confirming every strategy carries real `stage`/`stageHistory`/
 successfully queues a real scenario backtest) both passed;
 `commandCenter.spec.ts`'s tab-count test updated to 26 tabs.
 
+### Professional Day Trading Program — Daily Trading Objectives (Phase 1)
+
+A large brief (Daily Trading Objectives, a "Trade Quality Checklist," a
+full Liquidity/Market Structure curriculum, and a Foundational Mentor
+Program with TJR plus a five-mentor roadmap). Researched first — a full
+audit of `RiskLimits`, `app/gatekeeper.py`, `app/discipline.py`,
+`app/academy.py`/`app/academy_research.py`, `app/market_data.py`,
+`app/mentor.py`, and `app/sandbox.py` — before scoping. This is the
+first, narrowest real slice: Daily Trading Objectives. The Liquidity
+curriculum and Foundational Mentor Program are separate follow-up
+phases of the same feature.
+
+**The headline finding**: `RiskLimits.max_daily_loss_pct` already
+existed (v0.6 brief) but was never enforced anywhere — confirmed by
+grep before writing any code; its only readers were `nexus.py`'s
+automation-mode scaling and `RiskPanel.tsx`'s display. This feature
+makes it real, and adds two genuinely new limits alongside it:
+`daily_profit_target_pct` and `max_trades_per_day`. All three read
+`PaperTrade.opened_sim_minutes`/`closed_sim_minutes` (already real,
+already persisted — `// 1440` is the sim day a trade opened/closed on),
+so zero new data was needed.
+
+**Enforcement reuses the existing Gatekeeper block path — deliberately
+not a second mechanism.** `app/risk_engine.py`'s `evaluate_sentinel_risk`
+gains three new early-return checks (daily max loss, daily profit
+target, max trades/day), positioned right after the account-equity
+check and before the pre-existing lifetime-drawdown check — a
+day-scoped halt is the more common real event in normal play, so
+checking it early keeps the returned warning's message relevant to
+*today*. Each returns a critical, symbol-scoped `RiskWarning` exactly
+the way the pre-existing drawdown check already does. That warning
+becomes the new proposal's own `riskSummary`
+(`app/executive.py`'s `generate_proposal`) and drives Sentinel's real
+analyst vote to "wait" (`_risk_vote`) — which then fails
+`app/gatekeeper.py`'s `_risk_manager_check` if the CEO tries to force a
+trade through anyway. A trade cannot be forced past a reached daily
+objective, by construction, the same way it can't be forced past any
+other critical risk warning.
+
+**Why no new "penalize forcing a trade after the halt" Discipline
+factor was added**: once the Gatekeeper blocks a trade, no `PaperTrade`
+— and therefore no `DisciplineReview` — is ever created for it. This is
+the exact "structurally constant, nothing real to score" case
+`app/discipline.py`'s own module docstring already documents for "did
+it pass the Gatekeeper." Adding a factor for an event that structurally
+cannot happen for the population `compute_discipline_score` ever sees
+would be fake precision on an invariant, the same trap that docstring
+already warns against.
+
+**A real-time readout** (`DailyObjectiveStatus`,
+`compute_daily_objective_status()` in `app/risk_engine.py`): today's
+real trade count, today's real realized P&L (as a % of the portfolio's
+real starting balance, the same fixed-reference convention
+`total_pnl_pct` already uses), and which objective (if any) halted
+trading — computed fresh every tick from `paper_portfolio.trade_history`,
+the same "derived, recomputed rather than persisted" convention
+`CompanyHealth`/`CompanyDNA` already use, so it can never drift from
+what the Gatekeeper is actually enforcing.
+
+**The first real CEO write path for `RiskLimits`.** Before this
+feature, `RiskLimits` was purely display-only — no endpoint existed at
+all (confirmed by grep across every router). `POST /api/risk-limits`
+(new `app/routers/risk.py`, backed by `GameState.update_risk_limits()`)
+lets the CEO configure daily profit target, daily max loss, max trades
+per day, plus the two pre-existing per-trade limits (risk per trade,
+max open positions) the brief also names — every field optional so one
+call can change just one limit, each validated positive before merging
+into the real `RiskLimits` object `evaluate_sentinel_risk` already
+enforces every tick. Surfaced in `RiskPanel.tsx`'s new "Daily Trading
+Objectives" section: a live status card (trades today, realized P&L
+today, halt reason if any) plus an editable form that round-trips
+through the real endpoint.
+
+**Scope cuts, citing this codebase's own already-shipped precedent**
+(the "Trade Quality Checklist" from the brief):
+
+| Checklist item | Why cut |
+|---|---|
+| Market structure / liquidity analysis / higher-timeframe context | `app/gatekeeper.py`'s own module docstring already explicitly refuses these by name — no real data source |
+| Risk/reward vs. company minimum, stop-loss placement | The paper broker has never placed stop-loss/take-profit exit orders — same cut `derive.ts`'s `preTradeChecklist` comment already documents |
+| Session confirmation, economic news check | `app/sandbox.py`'s and `app/schemas.py`'s own "Earnings weeks / economic news" cuts already establish there is no economic-calendar or market-session-hours data source anywhere in this codebase |
+| Strategy matches validated playbook | `app/sandbox.py`'s own docstring: no mechanism exists to attribute a real executed trade back to a specific `Strategy` object |
+
+Four of the checklist's eleven items were already real and already
+enforced before this feature touched anything (Quant confidence via
+`MIN_CONFIDENCE`, Risk Department approval via
+`_risk_manager_check`/`_risk_warning_check`, position sizing via
+`recommended_quantity`/`_exposure_check`) — no duplicate "checklist"
+object was built on top of the Gatekeeper's own real
+`GatekeeperCheck` list.
+
+**Verified**: backend — new `test_risk_engine.py` (20 tests: the two
+new today-scoped helpers, all three new `evaluate_sentinel_risk`
+checks including that yesterday's trades don't count against today's
+objectives, `compute_daily_objective_status`'s halt-reason priority
+order, plus baseline coverage of the pre-existing sentinel/guardian
+checks this file had zero tests for before) + `test_state.py` gained a
+`TestUpdateRiskLimits` class (4 tests: partial updates, all-five-at-once,
+positive-value validation, empty-call rejection) + the full suite
+(620/620) + mypy/ruff clean. Frontend: `tsc -b`/eslint/build clean; a
+new `dailyObjectives.spec.ts` (2 Playwright tests against the live
+stack — confirming the real backend fields, and a real CEO edit
+round-tripping through `POST /api/risk-limits` and rendering back in
+the RISK tab).
+
 ### Company Operating System
 
 The brief asked for one place where "everything the company learns" is

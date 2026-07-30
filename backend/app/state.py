@@ -36,6 +36,7 @@ from app.market_environment import default_market_environment
 from app.nexus import MAX_DEBATES, MAX_DECISIONS, MAX_GATEKEEPER_REJECTIONS
 from app.portfolio import default_portfolio, sim_minutes
 from app.research import RESEARCHER_IDS, default_research
+from app.risk_engine import compute_daily_objective_status, default_risk_limits
 from app.sandbox import apply_review_decision, begin_company_review, begin_limited_live, begin_paper_trial, generate_strategy_review
 from app.scribe import record_ceo_decision, record_proposal_hold
 from app.schemas import (
@@ -137,6 +138,7 @@ def default_state() -> GameSaveState:
             debates=[],
         ),
         companyDna=compute_company_dna([], [], []),
+        dailyObjectiveStatus=compute_daily_objective_status(default_risk_limits(), default_portfolio(), 1),
         executiveReviews=[],
         academyProjects=default_academy_projects(),
         academyCompletedProjects=[],
@@ -273,6 +275,52 @@ class GameState:
             if error is None:
                 self.data = self.data.model_copy(update={"question_archive": new_archive})
             return self.data, error
+
+    async def update_risk_limits(
+        self,
+        *,
+        daily_profit_target_pct: float | None = None,
+        max_daily_loss_pct: float | None = None,
+        max_trades_per_day: int | None = None,
+        risk_per_trade_pct: float | None = None,
+        max_open_positions: int | None = None,
+    ) -> tuple[GameSaveState, str | None]:
+        """v0.7 Feature 49 — the CEO's Daily Trading Objectives. The
+        first real CEO-facing write path for RiskLimits (previously
+        display-only — see app/risk_engine.py's module docstring). Every
+        field is optional so a single call can update just one limit;
+        each provided value is validated positive before being merged
+        into the real RiskLimits object app/risk_engine.py's
+        evaluate_sentinel_risk already enforces every tick — no separate
+        "pending CEO settings" object, the change takes effect on the
+        very next generated trade proposal."""
+        async with self.lock:
+            updates: dict[str, float | int] = {}
+            if daily_profit_target_pct is not None:
+                if daily_profit_target_pct <= 0:
+                    return self.data, "Daily profit target must be a positive percentage."
+                updates["daily_profit_target_pct"] = daily_profit_target_pct
+            if max_daily_loss_pct is not None:
+                if max_daily_loss_pct <= 0:
+                    return self.data, "Daily maximum loss must be a positive percentage."
+                updates["max_daily_loss_pct"] = max_daily_loss_pct
+            if max_trades_per_day is not None:
+                if max_trades_per_day <= 0:
+                    return self.data, "Maximum trades per day must be a positive whole number."
+                updates["max_trades_per_day"] = max_trades_per_day
+            if risk_per_trade_pct is not None:
+                if risk_per_trade_pct <= 0:
+                    return self.data, "Maximum risk per trade must be a positive percentage."
+                updates["risk_per_trade_pct"] = risk_per_trade_pct
+            if max_open_positions is not None:
+                if max_open_positions <= 0:
+                    return self.data, "Maximum open positions must be a positive whole number."
+                updates["max_open_positions"] = max_open_positions
+            if not updates:
+                return self.data, "No risk limit changes were provided."
+            new_limits = self.data.risk_limits.model_copy(update=updates)
+            self.data = self.data.model_copy(update={"risk_limits": new_limits})
+            return self.data, None
 
     async def deposit_treasury(self, amount: float) -> tuple[GameSaveState, str | None]:
         """CEO-initiated Operating Capital -> Treasury transfer, under the

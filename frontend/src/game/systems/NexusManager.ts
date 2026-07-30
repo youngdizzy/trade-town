@@ -14,6 +14,7 @@ import type {
   CompanyHealth,
   CompanyScore,
   ConstitutionState,
+  DailyObjectiveStatus,
   Debate,
   DisciplineReview,
   ExecutiveReview,
@@ -88,6 +89,7 @@ interface NexusSnapshot {
   marketEnvironment: MarketEnvironmentState;
   companyHealth: CompanyHealth;
   companyDna: CompanyDNA;
+  dailyObjectiveStatus: DailyObjectiveStatus;
   executiveReviews: ExecutiveReview[];
   academyProjects: AcademyProject[];
   academyCompletedProjects: AcademyProject[];
@@ -169,6 +171,8 @@ export class NexusManager {
     maxOpenPositions: 8,
     maxSectorConcentrationPct: 30,
     riskPerTradePct: 2,
+    dailyProfitTargetPct: 3,
+    maxTradesPerDay: 6,
   };
   private static riskWarnings: RiskWarning[] = [];
   private static scannerAlerts: ScannerAlert[] = [];
@@ -209,6 +213,17 @@ export class NexusManager {
     summary: "",
     identity: "Not Yet Established",
     sampleSize: 0,
+    updatedAt: new Date().toISOString(),
+  };
+  private static dailyObjectiveStatus: DailyObjectiveStatus = {
+    simDay: 0,
+    tradesToday: 0,
+    realizedPnlPctToday: 0,
+    profitTargetReached: false,
+    maxLossReached: false,
+    maxTradesReached: false,
+    tradingHalted: false,
+    haltReason: null,
     updatedAt: new Date().toISOString(),
   };
   private static executiveReviews: ExecutiveReview[] = [];
@@ -357,6 +372,10 @@ export class NexusManager {
     return this.companyDna;
   }
 
+  static getDailyObjectiveStatus(): DailyObjectiveStatus {
+    return this.dailyObjectiveStatus;
+  }
+
   static getExecutiveReviews(): ExecutiveReview[] {
     return this.executiveReviews;
   }
@@ -399,6 +418,13 @@ export class NexusManager {
   static setConstitution(constitution: ConstitutionState): void {
     this.constitution = constitution;
     EventBus.emit("constitution:updated", constitution);
+  }
+
+  /** v0.7 Feature 49 — applies the result of POST /api/risk-limits, the
+   * CEO's Daily Trading Objectives configuration. */
+  static setRiskLimits(riskLimits: RiskLimits): void {
+    this.riskLimits = riskLimits;
+    EventBus.emit("riskLimits:updated", riskLimits);
   }
 
   /** Applies the result of POST /api/talent/ack-report, the same "seen"
@@ -784,6 +810,9 @@ export class NexusManager {
     if (update.companyDna !== this.companyDna) EventBus.emit("companyDna:updated", update.companyDna);
     this.companyDna = update.companyDna;
 
+    if (update.dailyObjectiveStatus !== this.dailyObjectiveStatus) EventBus.emit("dailyObjectiveStatus:updated", update.dailyObjectiveStatus);
+    this.dailyObjectiveStatus = update.dailyObjectiveStatus;
+
     if (update.executiveReviews.length !== this.executiveReviews.length) EventBus.emit("executiveReviews:updated", update.executiveReviews);
     this.executiveReviews = update.executiveReviews;
 
@@ -912,6 +941,7 @@ export class NexusManager {
     this.marketEnvironment = save.marketEnvironment;
     this.companyHealth = save.companyHealth;
     this.companyDna = save.companyDna;
+    this.dailyObjectiveStatus = save.dailyObjectiveStatus;
     this.executiveReviews = save.executiveReviews;
     this.academyProjects = save.academyProjects;
     this.academyCompletedProjects = save.academyCompletedProjects;

@@ -7,6 +7,57 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.7 Feature 49 (Phase 1) — Professional Day Trading Program: Daily
+  Trading Objectives**: scoped from a large brief covering daily profit
+  targets/loss limits, a "Trade Quality Checklist," a full Liquidity/
+  Market Structure curriculum, and a Foundational Mentor Program (TJR +
+  a five-mentor roadmap). Researched first (a full audit of
+  `RiskLimits`, `app/gatekeeper.py`, `app/discipline.py`,
+  `app/academy.py`/`app/academy_research.py`, `app/market_data.py`,
+  `app/mentor.py`, and `app/sandbox.py`) before scoping this first,
+  narrowest real slice:
+  - **`max_daily_loss_pct` is now actually enforced.** It already
+    existed on `RiskLimits` but was never read by anything —
+    confirmed by grep before this feature — only displayed. Two new
+    real limits join it: `daily_profit_target_pct` and
+    `max_trades_per_day`.
+  - **All three derive from real, already-persisted data** —
+    `PaperTrade.opened_sim_minutes`/`closed_sim_minutes` (`// 1440` =
+    the sim day) — zero new data source.
+  - **Enforcement reuses the existing Gatekeeper block path, not a new
+    mechanism**: `app/risk_engine.py`'s `evaluate_sentinel_risk` returns
+    a critical, symbol-scoped `RiskWarning` the same way the existing
+    lifetime-drawdown check already does, which becomes the proposal's
+    `riskSummary` and drives Sentinel's analyst vote to "wait" (see
+    `app/executive.py`'s `_risk_vote`), which then fails
+    `app/gatekeeper.py`'s `_risk_manager_check` if the CEO tries to
+    force a trade anyway. This is also why no new "penalize forcing a
+    trade after the halt" Discipline factor was added — once the
+    Gatekeeper blocks it, no `PaperTrade` (and therefore no
+    `DisciplineReview`) is ever created for it, the same "structurally
+    constant, nothing real to score" case `app/discipline.py`'s own
+    module docstring already documents.
+  - **A new real-time readout** (`DailyObjectiveStatus`,
+    `compute_daily_objective_status()`) shows today's real trade count,
+    real realized P&L, and which objective (if any) halted trading —
+    computed fresh every tick, the same "derived, never persisted"
+    convention `CompanyHealth`/`CompanyDNA` already use.
+  - **The first real CEO write path for RiskLimits** (`POST
+    /api/risk-limits`) — it was display-only before this feature, with
+    no endpoint at all.
+  - **Explicit scope cuts, citing this codebase's own existing
+    precedent**: the "Trade Quality Checklist"'s market structure/
+    liquidity analysis/session confirmation/higher-timeframe context/
+    stop-loss R:R items were already explicitly refused by name in
+    `app/gatekeeper.py`'s own module docstring and `derive.ts`'s
+    `preTradeChecklist` comment (no real data source for any of them);
+    economic news timing and market trading sessions were already
+    refused for the identical reason in `app/sandbox.py`'s and
+    `app/schemas.py`'s own "Earnings weeks / economic news" cuts (no
+    economic calendar or session-hours data source anywhere in this
+    codebase). The Liquidity curriculum and Foundational Mentor Program
+    are follow-up phases of this same feature, scoped separately.
+
 - **v0.7 Feature 48 — Company DNA System**: scoped from a brief asking
   for a "Company Identity" label, DNA that "changes slowly" and is
   influenced by "every major event," DNA effects on company behavior,

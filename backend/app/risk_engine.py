@@ -15,17 +15,47 @@ but framed as "this symbol/sector is already a large share of the
 book" rather than "this one trade is too big." Both return `None` when
 nothing is wrong, matching the "neutral unless there's something to flag"
 convention already used by app/company_score.py's default-50 scores.
+
+v0.7 Feature 49 — Professional Day Trading Program's "Daily Trading
+Objectives." `max_daily_loss_pct` already existed on `RiskLimits` but was
+never enforced anywhere (confirmed by grep before this feature — the
+only readers were nexus.py's automation-mode scaling and RiskPanel.tsx's
+display); this feature makes it real, and adds a real daily profit
+target and a real max-trades-per-day limit alongside it. All three read
+`PaperTrade.opened_sim_minutes`/`closed_sim_minutes` (already real,
+already persisted, `// 1440` = the sim day a trade opened/closed on) —
+zero new data. Deliberately routed through the exact same mechanism the
+existing lifetime-drawdown check already uses (`evaluate_sentinel_risk`
+returning a critical, symbol-scoped `RiskWarning`, which becomes the
+proposal's own `risk_summary` and drives Sentinel's analyst vote to
+"wait" — see app/executive.py's `_risk_vote` — which then fails
+app/gatekeeper.py's `_risk_manager_check` if the CEO tries to force a
+trade anyway) rather than inventing a second, parallel "stop trading"
+mechanism. Once a daily objective is reached, every new proposal for
+every symbol carries this same warning until the next sim day, so no
+new position can open — trading for that symbol is not paused by a
+separate flag, it fails the real Gatekeeper the same way any other
+critical risk warning already does.
+
+This is also why no separate "penalize forcing a trade after the daily
+halt" Discipline factor was added (app/discipline.py): once the
+Gatekeeper blocks it, no PaperTrade — and therefore no DisciplineReview
+— is ever created for it, the exact same "structurally constant,
+nothing real to score" case discipline.py's own module docstring already
+documents for "did it pass the Gatekeeper."
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.schemas import PaperPortfolio, RiskLimits, RiskWarning
+from app.schemas import DailyObjectiveStatus, PaperPortfolio, PaperTrade, RiskLimits, RiskWarning
 
 # Position sizing floor/ceiling, mirroring app/portfolio.py's
 # MIN_POSITION_SIZE — a proposed trade smaller than this isn't worth
 # routing through the full risk/voting pipeline.
 MIN_TRADE_VALUE = 100.0
+
+SIM_MINUTES_PER_DAY = 1440
 
 
 def _now_iso() -> str:
@@ -34,6 +64,25 @@ def _now_iso() -> str:
 
 def default_risk_limits() -> RiskLimits:
     return RiskLimits()
+
+
+def trades_opened_today(trade_history: list[PaperTrade], sim_day: int) -> list[PaperTrade]:
+    return [t for t in trade_history if t.opened_sim_minutes // SIM_MINUTES_PER_DAY == sim_day]
+
+
+def trades_closed_today(trade_history: list[PaperTrade], sim_day: int) -> list[PaperTrade]:
+    return [t for t in trade_history if t.closed_sim_minutes // SIM_MINUTES_PER_DAY == sim_day]
+
+
+def daily_realized_pnl_pct(portfolio: PaperPortfolio, sim_day: int) -> float:
+    """Today's real realized P&L, as a % of the portfolio's real starting
+    balance — the same fixed-reference convention app/portfolio.py's own
+    `total_pnl_pct` already uses, just scoped to trades closed on this
+    one sim day instead of the account's whole lifetime."""
+    if portfolio.starting_balance <= 0:
+        return 0.0
+    realized = sum(t.pnl for t in trades_closed_today(portfolio.trade_history, sim_day))
+    return realized / portfolio.starting_balance * 100
 
 
 def portfolio_equity(portfolio: PaperPortfolio) -> float:
@@ -65,11 +114,16 @@ def evaluate_sentinel_risk(
     *,
     symbol: str,
     proposed_value: float,
+    sim_day: int,
 ) -> RiskWarning | None:
     """Sentinel's trade-approval gate. Checked in order of severity —
     the first violation found is the one reported, since a single clear
     reason is more useful in a vote's "reason" field than a combined
-    list."""
+    list. v0.7 Feature 49 — Daily Trading Objectives are checked right
+    after account-level equity and before the lifetime drawdown check:
+    a day-scoped halt is the more common real event in normal play, and
+    checking it early keeps the message the CEO actually sees relevant
+    to *today*, not the account's whole history."""
     equity = portfolio_equity(portfolio)
     if equity <= 0:
         return RiskWarning(
@@ -77,6 +131,35 @@ def evaluate_sentinel_risk(
             symbol=symbol,
             severity="critical",
             message="Portfolio equity is at or below zero — no new positions until it recovers.",
+            createdAt=_now_iso(),
+        )
+
+    daily_pnl_pct = daily_realized_pnl_pct(portfolio, sim_day)
+    if daily_pnl_pct <= -limits.max_daily_loss_pct:
+        return RiskWarning(
+            id=f"risk-{symbol}-{_now_iso()}",
+            symbol=symbol,
+            severity="critical",
+            message=f"Today's realized loss ({daily_pnl_pct:.1f}%) has hit the {limits.max_daily_loss_pct:.0f}% daily maximum loss — no new trades until tomorrow.",
+            createdAt=_now_iso(),
+        )
+
+    if daily_pnl_pct >= limits.daily_profit_target_pct:
+        return RiskWarning(
+            id=f"risk-{symbol}-{_now_iso()}",
+            symbol=symbol,
+            severity="critical",
+            message=f"Today's realized profit ({daily_pnl_pct:.1f}%) has reached the {limits.daily_profit_target_pct:.0f}% daily target — protecting today's gain, no new trades until tomorrow.",
+            createdAt=_now_iso(),
+        )
+
+    trades_today_count = len(trades_opened_today(portfolio.trade_history, sim_day))
+    if trades_today_count >= limits.max_trades_per_day:
+        return RiskWarning(
+            id=f"risk-{symbol}-{_now_iso()}",
+            symbol=symbol,
+            severity="critical",
+            message=f"{trades_today_count} trade(s) already opened today, at the {limits.max_trades_per_day}-trade daily maximum — no new trades until tomorrow.",
             createdAt=_now_iso(),
         )
 
@@ -181,3 +264,40 @@ def monitor_portfolio(limits: RiskLimits, portfolio: PaperPortfolio) -> list[Ris
             )
 
     return warnings
+
+
+def compute_daily_objective_status(limits: RiskLimits, portfolio: PaperPortfolio, sim_day: int) -> DailyObjectiveStatus:
+    """v0.7 Feature 49 — a real-time readout of today's real trading
+    activity against the CEO's configured Daily Trading Objectives,
+    computed fresh every tick from `portfolio.trade_history` (the same
+    'derived, recomputed rather than persisted' convention
+    app/company_health.py and app/company_dna.py already use). Reports
+    the same halt condition `evaluate_sentinel_risk` above actually
+    enforces, so the Command Center can show *why* new trades stopped
+    without duplicating the gating logic itself."""
+    trades_today_count = len(trades_opened_today(portfolio.trade_history, sim_day))
+    daily_pnl_pct = daily_realized_pnl_pct(portfolio, sim_day)
+
+    profit_target_reached = daily_pnl_pct >= limits.daily_profit_target_pct
+    max_loss_reached = daily_pnl_pct <= -limits.max_daily_loss_pct
+    max_trades_reached = trades_today_count >= limits.max_trades_per_day
+
+    halt_reason: str | None = None
+    if max_loss_reached:
+        halt_reason = f"Daily maximum loss reached ({daily_pnl_pct:.1f}% / -{limits.max_daily_loss_pct:.0f}%) — protecting capital, no new trades until tomorrow."
+    elif profit_target_reached:
+        halt_reason = f"Daily profit target reached ({daily_pnl_pct:+.1f}% / {limits.daily_profit_target_pct:.0f}%) — protecting today's gain, no new trades until tomorrow."
+    elif max_trades_reached:
+        halt_reason = f"Daily trade limit reached ({trades_today_count}/{limits.max_trades_per_day}) — no new trades until tomorrow."
+
+    return DailyObjectiveStatus(
+        simDay=sim_day,
+        tradesToday=trades_today_count,
+        realizedPnlPctToday=round(daily_pnl_pct, 2),
+        profitTargetReached=profit_target_reached,
+        maxLossReached=max_loss_reached,
+        maxTradesReached=max_trades_reached,
+        tradingHalted=profit_target_reached or max_loss_reached or max_trades_reached,
+        haltReason=halt_reason,
+        updatedAt=_now_iso(),
+    )

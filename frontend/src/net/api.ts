@@ -29,6 +29,7 @@ import type {
   SignalChoice,
   BacktestSession,
   ConstitutionState,
+  RiskLimits,
   Strategy,
   StrategyReview,
   TestScenario,
@@ -255,5 +256,12 @@ export const api = {
     request<{ constitution: ConstitutionState }>("/constitution/decide", {
       method: "POST",
       body: JSON.stringify({ amendmentId, approve }),
+    }),
+  updateRiskLimits: (
+    updates: Partial<{ dailyProfitTargetPct: number; maxDailyLossPct: number; maxTradesPerDay: number; riskPerTradePct: number; maxOpenPositions: number }>,
+  ) =>
+    request<{ riskLimits: RiskLimits }>("/risk-limits", {
+      method: "POST",
+      body: JSON.stringify(updates),
     }),
 };

@@ -314,6 +314,16 @@ perspective and exists purely to detect disconnects
     "identity": "Research Driven",
     "sampleSize": 5, "updatedAt": "..."
   },
+  "dailyObjectiveStatus": {
+    // v0.7 Feature 49 — a real-time readout of today's real trading
+    // activity against riskLimits above, computed fresh every tick
+    // (app/risk_engine.py's compute_daily_objective_status()). Reports
+    // the same halt condition evaluate_sentinel_risk actually enforces
+    // via the Gatekeeper — see "Daily Trading Objectives" below.
+    "simDay": 4, "tradesToday": 2, "realizedPnlPctToday": 1.4,
+    "profitTargetReached": false, "maxLossReached": false, "maxTradesReached": false,
+    "tradingHalted": false, "haltReason": null, "updatedAt": "..."
+  },
   "marketEnvironment": {
     // v0.7 Feature 22 — a 5-way regime classification computed every tick
     // from the real, already-fetched watchlist.dailyChangePct values (see
@@ -525,7 +535,13 @@ perspective and exists purely to detect disconnects
   ],
   "riskLimits": {
     "maxPositionPct": 10.0, "maxDailyLossPct": 5.0, "maxDrawdownPct": 20.0,
-    "maxOpenPositions": 8, "maxSectorConcentrationPct": 30.0, "riskPerTradePct": 2.0
+    "maxOpenPositions": 8, "maxSectorConcentrationPct": 30.0, "riskPerTradePct": 2.0,
+    // v0.7 Feature 49 — Daily Trading Objectives. maxDailyLossPct above
+    // already existed but was never enforced before this feature; both
+    // of these are new. CEO-configurable via POST /api/risk-limits (see
+    // "Daily Trading Objectives" below) — the first real write path
+    // RiskLimits has ever had.
+    "dailyProfitTargetPct": 3.0, "maxTradesPerDay": 6
   },
   "riskWarnings": [
     // Guardian's *current* standing watch — refreshed every tick from
@@ -913,6 +929,20 @@ v0.7 Feature 46 — the Company Constitution. All three return
   `docs/Architecture.md`'s "Company Constitution" section). On approval,
   appends a real new `ConstitutionArticle` (next Roman numeral) to the
   permanent Articles list.
+
+### `POST /api/risk-limits`
+
+v0.7 Feature 49 — the first real CEO write path for `RiskLimits`
+(previously display-only, with no endpoint at all). Body: any subset of
+`{ "dailyProfitTargetPct": 3.0, "maxDailyLossPct": 5.0, "maxTradesPerDay": 6,
+"riskPerTradePct": 2.0, "maxOpenPositions": 8 }` — every field optional,
+so a single call can update just one limit. Returns
+`{ "riskLimits": { ... } }` with the full, current `RiskLimits`. `400`
+if a provided value isn't positive, or if no fields were provided at
+all. Takes effect on the very next generated `TradeProposal` — see
+`app/risk_engine.py`'s `evaluate_sentinel_risk` and
+`docs/Architecture.md`'s "Daily Trading Objectives" section for exactly
+how each limit is enforced.
 
 ### Bounding / trimming
 

@@ -17,6 +17,7 @@ import type {
   CompanyHealth,
   CompanyScore,
   ConstitutionState,
+  DailyObjectiveStatus,
   Debate,
   DialogueHistoryEntry,
   DisciplineReview,
@@ -148,6 +149,7 @@ export interface GameEvents {
   "marketEnvironment:updated": MarketEnvironmentState;
   "companyHealth:updated": CompanyHealth;
   "companyDna:updated": CompanyDNA;
+  "dailyObjectiveStatus:updated": DailyObjectiveStatus;
   "executiveReviews:updated": ExecutiveReview[];
   "academyProjects:updated": AcademyProject[];
   "academyCompletedProjects:updated": AcademyProject[];

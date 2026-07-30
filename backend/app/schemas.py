@@ -851,6 +851,13 @@ class RiskLimits(CamelModel):
     max_open_positions: int = Field(default=8, alias="maxOpenPositions")
     max_sector_concentration_pct: float = Field(default=30.0, alias="maxSectorConcentrationPct")
     risk_per_trade_pct: float = Field(default=2.0, alias="riskPerTradePct")
+    # v0.7 Feature 49 — Professional Day Trading Program's Daily Trading
+    # Objectives. `max_daily_loss_pct` above already existed; these two
+    # are new. Both are enforced the same way as every other limit here
+    # (app/risk_engine.py's evaluate_sentinel_risk) — never a separate
+    # mechanism.
+    daily_profit_target_pct: float = Field(default=3.0, alias="dailyProfitTargetPct")
+    max_trades_per_day: int = Field(default=6, alias="maxTradesPerDay")
 
 
 class RiskWarning(CamelModel):
@@ -859,6 +866,24 @@ class RiskWarning(CamelModel):
     severity: AlertSeverity
     message: str
     created_at: str = Field(alias="createdAt")
+
+
+# v0.7 Feature 49 — Professional Day Trading Program's Daily Trading
+# Objectives. Computed fresh every tick from real PaperTrade history
+# (app/risk_engine.py's compute_daily_objective_status), the same
+# "derived, recomputed rather than persisted" convention CompanyHealth/
+# CompanyDNA already use — never a second, possibly-stale copy of state
+# the Gatekeeper's real check already tracks.
+class DailyObjectiveStatus(CamelModel):
+    sim_day: int = Field(alias="simDay")
+    trades_today: int = Field(alias="tradesToday")
+    realized_pnl_pct_today: float = Field(alias="realizedPnlPctToday")
+    profit_target_reached: bool = Field(alias="profitTargetReached")
+    max_loss_reached: bool = Field(alias="maxLossReached")
+    max_trades_reached: bool = Field(alias="maxTradesReached")
+    trading_halted: bool = Field(alias="tradingHalted")
+    halt_reason: str | None = Field(default=None, alias="haltReason")
+    updated_at: str = Field(alias="updatedAt")
 
 
 class ScannerAlert(CamelModel):
@@ -2420,6 +2445,9 @@ class GameSaveState(CamelModel):
     # recomputed, never mixed into the five traits' own formulas. Keyed
     # by trait id (e.g. "risk_appetite").
     company_dna_legacy: dict[str, float] = Field(default_factory=dict, alias="companyDnaLegacy")
+    # v0.7 Feature 49 — Daily Trading Objectives (app/risk_engine.py's
+    # compute_daily_objective_status).
+    daily_objective_status: DailyObjectiveStatus = Field(alias="dailyObjectiveStatus")
     # v0.7 Feature 24 — the CIO's Monthly Executive Review (app/executive_review.py).
     executive_reviews: list[ExecutiveReview] = Field(default_factory=list, alias="executiveReviews")
     # v0.7 Feature 25 — AI Academy. `academy_projects` holds the one

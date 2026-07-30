@@ -630,6 +630,26 @@ export interface RiskLimits {
   maxOpenPositions: number;
   maxSectorConcentrationPct: number;
   riskPerTradePct: number;
+  // v0.7 Feature 49 — Daily Trading Objectives. maxDailyLossPct above
+  // already existed; these two are new.
+  dailyProfitTargetPct: number;
+  maxTradesPerDay: number;
+}
+
+// v0.7 Feature 49 — a real-time readout of today's real trading activity
+// against the CEO's configured Daily Trading Objectives, computed fresh
+// every tick (see backend/app/risk_engine.py's
+// compute_daily_objective_status).
+export interface DailyObjectiveStatus {
+  simDay: number;
+  tradesToday: number;
+  realizedPnlPctToday: number;
+  profitTargetReached: boolean;
+  maxLossReached: boolean;
+  maxTradesReached: boolean;
+  tradingHalted: boolean;
+  haltReason: string | null;
+  updatedAt: string;
 }
 
 export interface RiskWarning {
@@ -1735,6 +1755,7 @@ export interface GameSaveState {
   marketEnvironment: MarketEnvironmentState;
   companyHealth: CompanyHealth;
   companyDna: CompanyDNA;
+  dailyObjectiveStatus: DailyObjectiveStatus;
   executiveReviews: ExecutiveReview[];
   academyProjects: AcademyProject[];
   academyCompletedProjects: AcademyProject[];

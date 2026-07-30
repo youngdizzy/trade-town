@@ -16,6 +16,7 @@ import type {
   CompanyHealth,
   CompanyScore,
   ConstitutionState,
+  DailyObjectiveStatus,
   Debate,
   DisciplineReview,
   ExecutiveReview,
@@ -97,6 +98,7 @@ type ServerMessage =
       marketEnvironment: MarketEnvironmentState;
       companyHealth: CompanyHealth;
       companyDna: CompanyDNA;
+      dailyObjectiveStatus: DailyObjectiveStatus;
       executiveReviews: ExecutiveReview[];
       academyProjects: AcademyProject[];
       academyCompletedProjects: AcademyProject[];
@@ -210,6 +212,7 @@ export class GameSocket {
             marketEnvironment: msg.marketEnvironment,
             companyHealth: msg.companyHealth,
             companyDna: msg.companyDna,
+            dailyObjectiveStatus: msg.dailyObjectiveStatus,
             executiveReviews: msg.executiveReviews,
             academyProjects: msg.academyProjects,
             academyCompletedProjects: msg.academyCompletedProjects,

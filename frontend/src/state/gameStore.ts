@@ -16,6 +16,7 @@ import type {
   CompanyHealth,
   CompanyScore,
   ConstitutionState,
+  DailyObjectiveStatus,
   Debate,
   DisciplineReview,
   ExecutiveReview,
@@ -108,6 +109,7 @@ export interface GameUiState {
   marketEnvironment: MarketEnvironmentState;
   companyHealth: CompanyHealth;
   companyDna: CompanyDNA;
+  dailyObjectiveStatus: DailyObjectiveStatus;
   executiveReviews: ExecutiveReview[];
   academyProjects: AcademyProject[];
   academyCompletedProjects: AcademyProject[];
@@ -217,6 +219,8 @@ class GameStore {
       maxOpenPositions: 8,
       maxSectorConcentrationPct: 30,
       riskPerTradePct: 2,
+      dailyProfitTargetPct: 3,
+      maxTradesPerDay: 6,
     },
     riskWarnings: [],
     scannerAlerts: [],
@@ -257,6 +261,17 @@ class GameStore {
       summary: "",
       identity: "Not Yet Established",
       sampleSize: 0,
+      updatedAt: new Date().toISOString(),
+    },
+    dailyObjectiveStatus: {
+      simDay: 0,
+      tradesToday: 0,
+      realizedPnlPctToday: 0,
+      profitTargetReached: false,
+      maxLossReached: false,
+      maxTradesReached: false,
+      tradingHalted: false,
+      haltReason: null,
       updatedAt: new Date().toISOString(),
     },
     executiveReviews: [],
@@ -404,6 +419,7 @@ class GameStore {
     EventBus.on("marketEnvironment:updated", (marketEnvironment) => this.set({ marketEnvironment }));
     EventBus.on("companyHealth:updated", (companyHealth) => this.set({ companyHealth }));
     EventBus.on("companyDna:updated", (companyDna) => this.set({ companyDna }));
+    EventBus.on("dailyObjectiveStatus:updated", (dailyObjectiveStatus) => this.set({ dailyObjectiveStatus }));
     EventBus.on("executiveReviews:updated", (executiveReviews) => this.set({ executiveReviews }));
     EventBus.on("academyProjects:updated", (academyProjects) => this.set({ academyProjects }));
     EventBus.on("academyCompletedProjects:updated", (academyCompletedProjects) => this.set({ academyCompletedProjects }));
