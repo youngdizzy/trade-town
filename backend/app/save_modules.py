@@ -109,6 +109,7 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         "debates",
         "challenge_reports",
         "gatekeeper_rejections",
+        "executive_meeting_log",
     ),
     "knowledge_archive": (
         "case_studies",
@@ -121,6 +122,7 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         "meeting_minutes",
         "executive_reviews",
         "talent",
+        "department_self_evaluations",
     ),
     "academy": ("academy_projects", "academy_completed_projects", "agent_knowledge"),
 }

@@ -56,6 +56,7 @@ from app.schemas import (
     AnalystVote,
     CeoDecisionRecord,
     Debate,
+    DecisionGrade,
     GatekeeperVerdict,
     NewsItem,
     PaperPortfolio,
@@ -92,6 +93,49 @@ PROPOSAL_EXPIRY_SIM_MINUTES = 3 * 1440  # 3 in-game days
 # most twice before the CEO must actually decide (or let it expire the
 # normal way) — real and bounded, never an indefinite deferral.
 MAX_PROPOSAL_HOLDS = 2
+
+# v0.7 Feature 50 (Part 2/3) — Decision Grade, a standard academic-scale
+# letter grade on the DECISION-MAKING PROCESS at the moment it's made
+# (never the trade's own P&L — that stays app/discipline.py's separate,
+# already-real Discipline Score). Real, checkable inputs only: the
+# Decision Confidence Engine's own score (process quality), the real
+# multi-agent agreement rate among the six analyst votes, and whether
+# the trade actually cleared the Trade Gatekeeper.
+_GRADE_THRESHOLDS: tuple[tuple[float, DecisionGrade], ...] = (
+    (97.0, "A+"),
+    (93.0, "A"),
+    (90.0, "A-"),
+    (87.0, "B+"),
+    (83.0, "B"),
+    (80.0, "B-"),
+    (77.0, "C+"),
+    (73.0, "C"),
+    (70.0, "C-"),
+    (67.0, "D+"),
+    (60.0, "D"),
+)
+
+
+def _grade_for_score(score: float) -> DecisionGrade:
+    for threshold, grade in _GRADE_THRESHOLDS:
+        if score >= threshold:
+            return grade
+    return "F"
+
+
+def compute_decision_grade(proposal: TradeProposal, gatekeeper_verdict: GatekeeperVerdict | None) -> tuple[DecisionGrade, float]:
+    """50% the real Decision Confidence Engine score, 25% the real share
+    of the six analyst votes that agreed with the desk's own overall
+    recommendation, 25% whether the Trade Gatekeeper actually approved
+    the trade (100 if it did, or if the CEO chose WAIT and never reached
+    the gate — nothing to penalize; 40 if the Gatekeeper vetoed it)."""
+    confidence_component = proposal.confidence_engine.score
+    total_votes = len(proposal.analyst_votes) or 1
+    agreeing = sum(1 for v in proposal.analyst_votes if v.choice == proposal.overall_recommendation)
+    agreement_component = agreeing / total_votes * 100.0
+    gatekeeper_component = 100.0 if gatekeeper_verdict is None or gatekeeper_verdict.approved else 40.0
+    score = confidence_component * 0.5 + agreement_component * 0.25 + gatekeeper_component * 0.25
+    return _grade_for_score(score), round(score, 1)
 
 
 def _now_iso() -> str:
@@ -356,6 +400,7 @@ def resolve_proposal(
     supporting = [v.agent_id for v in proposal.analyst_votes if v.choice == ceo_choice]
     opposing = [v.agent_id for v in proposal.analyst_votes if v.choice != ceo_choice]
     technical_vote = next((v for v in proposal.analyst_votes if v.role == "technical"), None)
+    decision_grade, decision_grade_score = compute_decision_grade(proposal, gatekeeper_verdict)
     decision = TradeDecision(
         id=decision_id,
         symbol=proposal.symbol,
@@ -372,6 +417,8 @@ def resolve_proposal(
         orderId=order_id,
         confidenceEngine=proposal.confidence_engine,
         gatekeeperVerdict=gatekeeper_verdict,
+        decisionGrade=decision_grade,
+        decisionGradeScore=decision_grade_score,
         createdAt=_now_iso(),
     )
     record = CeoDecisionRecord(

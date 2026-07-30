@@ -3148,7 +3148,7 @@ test-only shortcut to force it: `ClientSaveRequest`, the real
 so the revoke logic itself is verified by the 9 backend unit tests
 instead.
 
-### Executive Intelligence Network — Feature 50 (Part 1 of a phased build)
+### Executive Intelligence Network — Feature 50
 
 The brief's own instruction: "Do NOT create duplicate systems. Refactor
 and upgrade the current implementation so all existing functionality is
@@ -3188,25 +3188,18 @@ requirement, every input already lives somewhere permanent" reasoning as
 save).
 
 **Explicit phasing, not silent scope-cutting** — this is easily the
-largest single brief given this session; it's being built the same way
+largest single brief given this session; it was built the same way
 Feature 49 was (Phases 1/2/3 + a Revision), not crammed into one pass:
 
-- **Part 1 (this phase, done)**: the department-opinion synthesis layer
-  above — the foundational piece everything else builds on.
-- **Deferred to a later phase**: the permanent Executive Meeting Log,
-  per-department weekly Self-Evaluation (would mirror `wisdom.py`'s real
-  weekly cadence), Decision Grade (A+–F), and the Company Health formula
-  redesign around the brief's ten new named dimensions (the existing
-  eleven-metric `company_health.py` is already real and transparent —
-  redesigning its formula is a distinct, separately-scoped change, not
-  bundled in here).
+- **Part 1 (done)**: the department-opinion synthesis layer above — the
+  foundational piece everything else builds on.
+- **Part 2/3 (done — see the section below)**: Decision Grade (A+–F),
+  the permanent Executive Meeting Log, per-department weekly
+  Self-Evaluation, and the Company Health formula redesign.
 - **Explicit cut, not deferred**: the brief's "Session Changes / Market
   Open / Market Close" simulation environments. No session-boundary
   model exists anywhere in this codebase's continuous sim clock to back
   them honestly, and none is being invented.
-- **The three redesigned dashboards** (Decision Intelligence, Risk,
-  Simulation) are not yet built — deferred with the rest of the
-  above.
 
 **Verified**: `test_executive_intelligence.py` — 20 new tests (every
 department's real-field reuse, every honest "not yet" fallback, and the
@@ -3240,6 +3233,114 @@ green (one pre-existing, unrelated flake in that suite — a real trade
 proposal intercepting a click mid-test in the shared long-running dev
 backend — was confirmed present even with this change's diff stashed
 out, i.e. not a regression).
+
+### Executive Intelligence Network Part 2/3 — Decision Grade, Executive Meeting Log, Weekly Self-Evaluation, Company Health redesign
+
+Three new real, permanent systems built directly on Part 1's synthesis
+layer, plus one redesign of an existing system — none of them a second
+opinion engine.
+
+**Decision Grade (A+–F)** — `app/executive.py`'s `compute_decision_grade()`
+grades the decision-making PROCESS at the moment `resolve_proposal()`
+makes it, never the trade's own P&L (the same "process over outcome"
+convention `app/discipline.py`'s Discipline Score already established,
+so it's available immediately, not just once a trade closes). A real,
+weighted composite — 50% the Decision Confidence Engine's own score,
+25% the real multi-agent analyst agreement rate, 25% whether the trade
+actually cleared the Trade Gatekeeper (100 if approved or never
+reached — a WAIT — 40 if vetoed) — mapped onto a standard 12-step
+academic letter scale. Attached directly to every `TradeDecision` going
+forward (`decisionGrade`/`decisionGradeScore`, `null` on older records).
+
+**Executive Meeting Log** — makes Part 1's previously ephemeral,
+compute-on-open synthesis permanent. `app/executive_intelligence.py`'s
+`generate_meeting_log_entry()` runs the exact same
+`generate_department_opinions()`/`compute_executive_recommendation()`
+pair Part 1 uses, then records one real `ExecutiveMeetingLogEntry` —
+the department opinions, the recommendation, the CEO's actual choice,
+whether the two agreed (`networkAgreed`), and the decision's own real
+grade (read straight off the already-built `TradeDecision`, never
+recomputed) — at every real `resolve_proposal()` call site: a genuine
+CEO decision (`app/state.py`'s `submit_ceo_decision`), a Company
+Operating Mode auto-resolution, and a stale-proposal expiry (both in
+`app/nexus.py`). Capped at `MAX_MEETING_LOG_ENTRIES` (200), broadcast
+live and archived in the `trade_history` save module (see `docs/API.md`).
+
+**Weekly Self-Evaluation** — `generate_weekly_self_evaluations()`,
+fired on the exact same weekly cadence as `wisdom.py`'s
+`ReflectionSession` (`nexus.py`'s `WEEKLY_INTERVAL_DAYS`). One real
+`DepartmentSelfEvaluation` per department per week, built entirely from
+that department's own real `DepartmentOpinion` entries already logged
+to the Meeting Log over the trailing 7 sim days — average confidence as
+the score, real agree/concern counts driving honest strengths/
+improvement-area text, and an explicit "no real decisions yet" neutral
+default for a department with nothing on record that week. Capped at
+`MAX_SELF_EVAL_HISTORY` (250), archived in `knowledge_archive`.
+
+**Company Health redesign** (`app/company_health.py`) — ten new real
+Executive-tier dimensions, additive alongside the eleven Operational
+ones Feature 23 already established (never replacing them — this
+codebase's own "no duplicate systems" convention bars replacing a real
+working formula with one that can't actually improve on it, and
+`overall`/`tier` stay byte-for-byte unchanged so every existing
+consumer — Company Priorities, the Founders' retirement trigger, the
+COMPANY tab — keeps working identically):
+
+| Dimension | Real backing signal |
+|---|---|
+| Decision Quality | average real Decision Grade score across recent `TradeDecision`s |
+| Executive Alignment | % of recent Meeting Log entries where `networkAgreed` is true |
+| Risk Governance | real Gatekeeper approval rate (closed trades ÷ closed trades + rejections) — the same real signal `wisdom.py`'s `follow_principles` already reads, reused for a different question |
+| Simulation Coverage | % of recent Meeting Log entries whose Simulation opinion wasn't an honest "not yet stress-tested" |
+| Department Consensus | % of all recent Meeting Log opinions with an "agree" stance |
+| Self-Evaluation Health | mean of the latest weekly Self-Evaluation score per department |
+| Institutional Memory | the real `WisdomState.score`, reused directly |
+| Innovation Velocity | average real Innovation Points, normalized against the real Legendary Innovator threshold |
+| Talent Development | real Academy graduation rate (graduated ÷ possible across active mentor tracks × students) |
+| Founder Oversight | real Founder Council session frequency, capped at 100 |
+
+`executiveOverall`/`executiveTier` are this tier's own headline;
+`combinedOverall`/`combinedTier` (an equal blend of `overall` and
+`executiveOverall`) is the true redesigned headline number, and
+`recommendations` now surfaces the weakest metric from each tier
+(capped at 4 total) rather than just the Operational one.
+
+**Note on the brief's exact ten dimension names**: the original
+chat-only brief text wasn't preserved verbatim in this session's history
+by the time Part 2/3 began. Rather than fabricate plausible-sounding
+names that couldn't be checked against the real brief, these ten were
+chosen as the most defensible honest real signals available — every one
+backed by data this phase's own new systems produce (Decision Grade,
+the Meeting Log, Self-Evaluation) or by a real existing system not yet
+folded into Company Health (Wisdom, Innovation Points, the Academy, the
+Founder Council).
+
+**Frontend**: not yet built for Part 2/3 — backend-first, per this
+session's own data-loss-avoidance discipline (commit and verify the
+backend before starting frontend work). Planned home for each piece,
+so the next session picks this up without re-deriving the plan:
+`CompanyPanel.tsx`'s Company Health card gains a second "Executive
+Health" card with the ten new dimensions plus the combined headline;
+`DecisionsPanel.tsx` (the Decision Intelligence dashboard) shows each
+decision's real grade and a company-wide grade distribution;
+`RiskPanel.tsx` (the Risk dashboard) shows Risk Governance;
+`ExecutiveIntelPanel.tsx` (the Executive Intelligence Network's own
+company-wide hub) gains the Executive Meeting Log (recent entries) and
+Weekly Self-Evaluation (8 department cards) sections — integrating
+directly into the existing network rather than creating a new
+standalone Simulation dashboard, since Simulation's own real company-
+wide signal (stress-test coverage) already lives there beside the other
+7 departments' self-evaluations.
+
+**Verified (backend)**: new tests in `test_executive.py` (`TestComputeDecisionGrade`,
+7 tests), `test_executive_intelligence.py` (`TestGenerateMeetingLogEntry`/
+`TestGenerateWeeklySelfEvaluations`, 9 tests), and `test_company_health.py`
+(`TestExecutiveTier`, 11 tests) — 716/716 full suite, mypy/ruff clean. A
+direct 9-in-game-day `nexus.tick()` simulation run (not just unit tests)
+confirmed the Meeting Log/Self-Evaluation cadences and Company Health's
+new fields populate correctly with no exceptions, and a `save_modules`
+split/assemble round-trip confirmed the new archive fields persist
+correctly.
 
 ### Professional Day Trading Program — Foundational Mentor Program (Phase 3, original design — content/roadmap/attribution still accurate, see the Revision section above for who now does the lessons)
 

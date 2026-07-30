@@ -293,7 +293,20 @@ perspective and exists purely to detect disconnects
     // recent 20 AI Debates (app/company_health.py's _team_chemistry).
     "teamChemistry": 62.5,
     "recommendations": ["Reputation is low (20/100) — worth attention."],
-    "updatedAt": "..."
+    "updatedAt": "...",
+    // v0.7 Feature 50 (Part 2/3) — the Company Health redesign. Ten
+    // more real Executive-tier dimensions, additive alongside the
+    // eleven Operational ones above (never replacing them — see
+    // app/company_health.py's module docstring). recommendations above
+    // now also includes the weakest of these when below 70.
+    "decisionQuality": 82.4, "executiveAlignment": 66.7, "riskGovernance": 100.0,
+    "simulationCoverage": 50.0, "departmentConsensus": 75.0, "selfEvaluationHealth": 68.1,
+    "institutionalMemory": 71.2, "innovationVelocity": 20.0, "talentDevelopment": 12.5,
+    "founderOversight": 40.0,
+    "executiveOverall": 58.7, "executiveTier": "stable",
+    // The true redesigned headline number — an equal blend of `overall`
+    // and `executiveOverall`, so neither tier silently outweighs the other.
+    "combinedOverall": 65.1, "combinedTier": "stable"
   },
   "companyDna": {
     // v0.7 Feature 43 — app/company_dna.py. Five real, descriptive
@@ -723,7 +736,8 @@ in the same real candle sample).
 
 ### `GET /api/executive/intelligence?proposalId=...`
 
-v0.7 Feature 50 (Part 1) — the Executive Intelligence Network. Read-only,
+v0.7 Feature 50 — the Executive Intelligence Network's live, per-proposal
+synthesis panel. Read-only,
 stateless, and computed fresh on every call (see
 `app/executive_intelligence.py`'s module docstring for why: every input
 already lives somewhere permanent — the proposal, its `ChallengeReport`
@@ -759,6 +773,58 @@ read off an existing system (see the mapping table in
 `docs/Architecture.md`) — Simulation and Devil's Advocate honestly report
 "not yet stress-tested"/"not yet challenged" when no `ChallengeReport`
 exists for the proposal yet, rather than fabricating one.
+
+#### `executiveMeetingLog` / `departmentSelfEvaluations` (WS + archive state, no dedicated endpoint)
+
+v0.7 Feature 50 (Part 2/3) — the permanent record the intelligence
+endpoint above never kept. Both broadcast on every WS `state` tick and
+live in the `trade_history`/`knowledge_archive` archive modules
+respectively (`GET /api/load/archive/trade_history` and
+`GET /api/load/archive/knowledge_archive` — see `docs/API.md`'s Save
+Architecture section below), same as `decisions`/`reflectionSessions`.
+
+`executiveMeetingLog` — one real `ExecutiveMeetingLogEntry` per actual
+`resolve_proposal()` call (CEO-driven, auto-resolved, or stale-expired),
+capped at `MAX_MEETING_LOG_ENTRIES` (200):
+
+```json
+{
+  "id": "meeting-proposal-42", "proposalId": "proposal-42", "symbol": "AAPL", "simDay": 12,
+  "opinions": [ /* the same 8 DepartmentOpinion entries as the intelligence endpoint above */ ],
+  "recommendedAction": "trade_normally", "recommendationReason": "...",
+  "ceoDecision": "buy", "networkAgreed": true,
+  "decisionGrade": "A-", "decisionGradeScore": 91.2, // see below
+  "resolvedBy": "ceo", "createdAt": "..."
+}
+```
+
+`departmentSelfEvaluations` — one real `DepartmentSelfEvaluation` per
+department per in-game week (same weekly cadence as `reflectionSessions`
+above), built entirely from that department's own real opinions logged
+to `executiveMeetingLog` over the trailing 7 sim days, capped at
+`MAX_SELF_EVAL_HISTORY` (250):
+
+```json
+{
+  "id": "selfeval-risk-14", "role": "risk", "departmentLabel": "Risk",
+  "weekEndingSimDay": 14, "decisionsReviewed": 6, "score": 71.3,
+  "summary": "6 real decision(s) reviewed this week; 71/100 average confidence.",
+  "strengths": ["Weighed in on 6 real decision(s) this week, averaging 71/100 confidence.", "Agreed with the desk's overall call on 4/6 decisions."],
+  "improvementAreas": ["Raised a real concern on 2/6 decisions — worth revisiting whether those calls held up."],
+  "createdAt": "..."
+}
+```
+
+**Decision Grade** — a real A+-to-F letter grade (`decisionGrade` on
+both the entry above and on every `TradeDecision` from here forward —
+`decisionGradeScore` is the 0-100 composite behind it) on the
+decision-making PROCESS at the moment it's made: 50% the real Decision
+Confidence Engine score, 25% the real multi-agent analyst agreement
+rate, 25% whether the Trade Gatekeeper actually approved the trade.
+Never reads the trade's own P&L (see `app/executive.py`'s
+`compute_decision_grade`) — same "process over outcome" convention
+`app/discipline.py`'s Discipline Score already established. `null` on
+`TradeDecision` records that predate this field.
 
 ### `GET /api/knowledge-graph`
 
@@ -1132,6 +1198,8 @@ never needs to trim anything itself:
 | `strategyReports` | last 60 (`MAX_STRATEGY_REPORTS`) | one per completed `SimulationResult` — v0.7 Feature 45 |
 | `strategyReviews` | last 30 (`MAX_STRATEGY_REVIEWS`) | one per Company Review requested — v0.7 Feature 45 |
 | `constitution.citations` | last 120 (`MAX_CONSTITUTION_CITATIONS`) | one per real "Live Enforcement" event across 6 real hooks — v0.7 Feature 46 |
+| `executiveMeetingLog` | last 200 (`MAX_MEETING_LOG_ENTRIES`) | one per real `resolve_proposal()` call — v0.7 Feature 50 (Part 2/3) |
+| `departmentSelfEvaluations` | last 250 (`MAX_SELF_EVAL_HISTORY`) | one per department per real in-game week — v0.7 Feature 50 (Part 2/3) |
 
 ### Provider configuration
 

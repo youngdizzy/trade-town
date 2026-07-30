@@ -17,6 +17,7 @@ from app.executive import (
     _risk_vote,
     _sentiment_vote,
     _technical_vote,
+    compute_decision_grade,
     expire_stale_proposals,
     generate_proposal,
     grade_ceo_decisions,
@@ -30,6 +31,7 @@ from app.portfolio import default_portfolio
 from app.schemas import (
     AnalystVote,
     CeoDecisionRecord,
+    ConfidenceFactor,
     DecisionConfidence,
     GatekeeperVerdict,
     PaperTrade,
@@ -473,3 +475,88 @@ class TestIsSignificantProposal:
         significant, reasons = is_significant_proposal(proposal, default_portfolio(), RiskLimits(), [])
         assert significant is True
         assert any("Position size" in r for r in reasons)
+
+
+def _grade_proposal(*, score: float = 90.0, agreeing_votes: int = 6, total_votes: int = 6) -> TradeProposal:
+    """v0.7 Feature 50 (Part 2/3) — a deterministic TradeProposal for
+    compute_decision_grade, unlike generate_proposal's real randomized
+    votes above."""
+    votes = [AnalystVote(role="technical", agentId="echo", choice="buy", reasoning="x", evidence=["x"]) for _ in range(agreeing_votes)]  # type: ignore[arg-type]
+    votes += [AnalystVote(role="risk", agentId="sentinel", choice="wait", reasoning="x", evidence=["x"]) for _ in range(total_votes - agreeing_votes)]  # type: ignore[arg-type]
+    return TradeProposal(
+        id="p1",
+        symbol="NEXA",
+        category="stock",
+        quantity=1.0,
+        price=100.0,
+        confidence=score,
+        analystVotes=votes,
+        overallRecommendation="buy",
+        researchSummary="x",
+        riskSummary="x",
+        confidenceEngine=DecisionConfidence(score=score, tier="strong", summary="x", factors=[ConfidenceFactor(name="technical", score=score, weight=1.0, detail="x")]),  # type: ignore[arg-type]
+        createdAt=_now_iso(),
+        createdSimMinutes=0,
+    )
+
+
+class TestComputeDecisionGrade:
+    def test_perfect_confidence_full_agreement_approved_gatekeeper_is_a_plus(self) -> None:
+        proposal = _grade_proposal(score=100.0, agreeing_votes=6, total_votes=6)
+        verdict = GatekeeperVerdict(approved=True, checks=[], summary="x", createdAt=_now_iso())
+        grade, score = compute_decision_grade(proposal, verdict)
+        assert grade == "A+"
+        assert score == 100.0
+
+    def test_never_reads_the_trades_own_pnl(self) -> None:
+        """Same inputs, same grade, regardless of anything trade-outcome
+        related — compute_decision_grade takes no P&L parameter at all,
+        so this is really just documenting the contract via a type-level
+        check: the function signature itself has no such input."""
+        proposal = _grade_proposal(score=80.0, agreeing_votes=4, total_votes=6)
+        grade_a, score_a = compute_decision_grade(proposal, None)
+        grade_b, score_b = compute_decision_grade(proposal, None)
+        assert (grade_a, score_a) == (grade_b, score_b)
+
+    def test_gatekeeper_rejection_pulls_the_grade_down(self) -> None:
+        proposal = _grade_proposal(score=95.0, agreeing_votes=6, total_votes=6)
+        approved = GatekeeperVerdict(approved=True, checks=[], summary="x", createdAt=_now_iso())
+        rejected = GatekeeperVerdict(approved=False, checks=[], summary="x", createdAt=_now_iso())
+        _, approved_score = compute_decision_grade(proposal, approved)
+        _, rejected_score = compute_decision_grade(proposal, rejected)
+        assert rejected_score < approved_score
+
+    def test_no_gatekeeper_verdict_is_not_penalized(self) -> None:
+        """A WAIT never reaches the Gatekeeper (see resolve_proposal) —
+        None must score identically to an approved verdict, never like a
+        rejected one."""
+        proposal = _grade_proposal(score=95.0, agreeing_votes=6, total_votes=6)
+        approved = GatekeeperVerdict(approved=True, checks=[], summary="x", createdAt=_now_iso())
+        _, none_score = compute_decision_grade(proposal, None)
+        _, approved_score = compute_decision_grade(proposal, approved)
+        assert none_score == approved_score
+
+    def test_low_confidence_weak_agreement_rejected_is_an_f(self) -> None:
+        proposal = _grade_proposal(score=20.0, agreeing_votes=1, total_votes=6)
+        rejected = GatekeeperVerdict(approved=False, checks=[], summary="x", createdAt=_now_iso())
+        grade, _ = compute_decision_grade(proposal, rejected)
+        assert grade == "F"
+
+    def test_grade_letter_matches_the_composite_score_thresholds(self) -> None:
+        # 50% confidence * 0.5 + 100% agreement * 0.25 + 100% gatekeeper
+        # * 0.25 == 25 + 25 + 25 == 75, which is squarely a real "C".
+        proposal = _grade_proposal(score=50.0, agreeing_votes=6, total_votes=6)
+        approved = GatekeeperVerdict(approved=True, checks=[], summary="x", createdAt=_now_iso())
+        grade, score = compute_decision_grade(proposal, approved)
+        assert score == 75.0
+        assert grade == "C"
+
+    def test_resolve_proposal_attaches_a_real_grade_to_the_decision(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("app.executive.evaluate_gatekeeper", TestResolveProposal._stub_approved_verdict)
+        proposal = TestResolveProposal()._proposal()
+        _, decision, _ = resolve_proposal(proposal, "buy", portfolio=default_portfolio(), risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=100)
+        assert decision.decision_grade is not None
+        assert decision.decision_grade_score is not None
+        expected_grade, expected_score = compute_decision_grade(proposal, decision.gatekeeper_verdict)
+        assert decision.decision_grade == expected_grade
+        assert decision.decision_grade_score == expected_score

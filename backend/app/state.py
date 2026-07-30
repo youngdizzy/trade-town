@@ -30,6 +30,7 @@ from app.constitution import decide_amendment, default_constitution, generate_co
 from app.debate import generate_debate
 from app.devils_advocate import MAX_CHALLENGE_REPORTS, generate_challenge_report
 from app.executive import MAX_CEO_DECISIONS, MAX_PROPOSAL_HOLDS, AnalystChoice, hold_proposal, resolve_proposal
+from app.executive_intelligence import generate_meeting_log_entry, record_meeting_log_entry
 from app.innovation import compute_innovation_state
 from app.market_data import market_data_provider
 from app.market_environment import default_market_environment
@@ -108,6 +109,20 @@ def default_state() -> GameSaveState:
     education_progress = education.default_education_progress()
     agent_knowledge = default_agent_knowledge()
     seed_research = default_research()
+    # v0.7 Feature 50 (Part 2/3) — computed once here so both
+    # companyHealth (its institutionalMemory/talentDevelopment executive
+    # metrics) and their own top-level fields below reuse the exact same
+    # fresh-game default rather than two independently-invented ones.
+    default_wisdom_state = compute_wisdom_score(
+        discipline_reviews=[],
+        case_studies=[],
+        reasoning_challenges=[],
+        research=seed_research,
+        trade_history=[],
+        gatekeeper_rejections=[],
+        memory=[],
+    )
+    default_foundational_mentors = default_foundational_mentor_state()
     return GameSaveState(
         player=EntityTransform(scene="LobbyScene", x=160, y=220, facing="down"),
         agents=agents,
@@ -153,6 +168,14 @@ def default_state() -> GameSaveState:
             watchlist=watchlist,
             education=education_progress,
             debates=[],
+            decisions=[],
+            meeting_log=[],
+            self_evaluations=[],
+            wisdom_state=default_wisdom_state,
+            innovation_state={},
+            foundational_mentor_state=default_foundational_mentors,
+            founder_council_sessions=[],
+            gatekeeper_rejections=[],
         ),
         companyDna=compute_company_dna([], [], []),
         dailyObjectiveStatus=compute_daily_objective_status(default_risk_limits(), default_portfolio(), 1),
@@ -166,15 +189,7 @@ def default_state() -> GameSaveState:
         reasoningChallenges=[],
         reasoningLabState=compute_reasoning_lab_state(0),
         reflectionSessions=[],
-        wisdomState=compute_wisdom_score(
-            discipline_reviews=[],
-            case_studies=[],
-            reasoning_challenges=[],
-            research=seed_research,
-            trade_history=[],
-            gatekeeper_rejections=[],
-            memory=[],
-        ),
+        wisdomState=default_wisdom_state,
         questionArchive=[
             generate_question_of_the_day(
                 sim_day=1,
@@ -197,7 +212,7 @@ def default_state() -> GameSaveState:
             updated_at=_now_iso(),
         ),
         mentorState=compute_mentor_state(1, _now_iso()),
-        foundationalMentorState=default_foundational_mentor_state(),
+        foundationalMentorState=default_foundational_mentors,
         founderState=FounderState(updatedAt=_now_iso()),
         challengeReports=[],
         innovationState={},
@@ -832,6 +847,18 @@ class GameState:
             if len(decisions) > MAX_DECISIONS:
                 del decisions[: len(decisions) - MAX_DECISIONS]
 
+            # v0.7 Feature 50 (Part 2/3) — the Executive Meeting Log's
+            # real permanent record of this same decision, reusing the
+            # already-computed TradeDecision (its decisionGrade included)
+            # rather than a second parallel synthesis.
+            challenge_report = next((c for c in reversed(self.data.challenge_reports) if c.proposal_id == proposal_id), None)
+            meeting_log = record_meeting_log_entry(
+                list(self.data.executive_meeting_log),
+                generate_meeting_log_entry(
+                    proposal, decision, ceo_record.ceo_decision, challenge_report, self.data.coach_reports, sim_day=self.data.time.day, resolved_by="ceo"
+                ),
+            )
+
             ceo_decisions = [*self.data.ceo_decisions, ceo_record]
             if len(ceo_decisions) > MAX_CEO_DECISIONS:
                 del ceo_decisions[: len(ceo_decisions) - MAX_CEO_DECISIONS]
@@ -865,6 +892,7 @@ class GameState:
                     "ceo_decisions": ceo_decisions,
                     "gatekeeper_rejections": gatekeeper_rejections,
                     "memory": memory,
+                    "executive_meeting_log": meeting_log,
                     "updated_at": _now_iso(),
                 }
             )

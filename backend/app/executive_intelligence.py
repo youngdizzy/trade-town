@@ -1,5 +1,5 @@
-"""ExecutiveIntelligence — v0.7 Feature 50 (Part 1 of a phased build),
-the Executive Intelligence Network.
+"""ExecutiveIntelligence — v0.7 Feature 50, the Executive Intelligence
+Network.
 
 The brief's own instruction: "Do NOT create duplicate systems. Refactor
 and upgrade the current implementation so all existing functionality is
@@ -42,29 +42,78 @@ computation engine:
                             (a report is CEO-requested, not automatic —
                             see app/devils_advocate.py's own docstring).
 
-Explicit cuts for this phase (documented, not silently dropped — see
-docs/Architecture.md's Feature 50 section for the full phased plan):
-Executive Meeting Log (a new permanent-record persistence feature),
-per-department weekly Self-Evaluation, the Company Health formula
-redesign, and the brief's "Session Changes / Market Open / Market Close"
-simulation environments (no session-boundary model exists anywhere in
-this codebase's continuous sim clock to back them) are all deferred to
-later phases or cut outright, not fabricated here.
+Part 2/3 adds three more real, permanent systems on top of the Part 1
+synthesis above — none of them a second opinion engine, all of them
+consumers of the exact same `generate_department_opinions()`/
+`compute_executive_recommendation()` pair:
+
+  Decision Grade          -> app/executive.py's `compute_decision_grade()`,
+                            a real A+-F letter grade on the decision-
+                            making PROCESS at the moment it's made (never
+                            the trade's own P&L), attached directly to
+                            the TradeDecision resolve_proposal() already
+                            builds.
+  Executive Meeting Log    -> `generate_meeting_log_entry()` below makes
+                            the synthesis permanent: one real entry per
+                            actual resolve_proposal() call (CEO-driven,
+                            auto-resolved, or stale-expired), reusing
+                            that same call's already-computed
+                            TradeDecision's own Decision Grade.
+  Weekly Self-Evaluation   -> `generate_weekly_self_evaluations()` below,
+                            one real entry per department per week, built
+                            entirely from that department's own real
+                            opinions already logged to the Meeting Log
+                            over the trailing 7 sim days.
+
+Explicit cut, not deferred: the brief's "Session Changes / Market Open /
+Market Close" simulation environments — no session-boundary model exists
+anywhere in this codebase's continuous sim clock to back them honestly,
+and none is being invented. The Company Health formula redesign lives in
+app/company_health.py, not here — see that module's own docstring.
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Literal
 
 from app.schemas import (
+    AnalystChoice,
     ChallengeReport,
     CoachReport,
     DecisionConfidence,
     DepartmentOpinion,
+    DepartmentSelfEvaluation,
     ExecutiveAction,
+    ExecutiveDepartmentRole,
+    ExecutiveMeetingLogEntry,
     ExecutiveRecommendation,
     ExecutiveStance,
+    TradeDecision,
     TradeProposal,
 )
+
+MAX_MEETING_LOG_ENTRIES = 200
+MAX_SELF_EVAL_HISTORY = 250
+# The Weekly Self-Evaluation's own trailing window — same 7-sim-day
+# cadence as app/wisdom.py's weekly ReflectionSession (see nexus.py's
+# WEEKLY_INTERVAL_DAYS).
+SELF_EVAL_WINDOW_DAYS = 7
+_ALL_DEPARTMENT_ROLES: tuple[ExecutiveDepartmentRole, ...] = (
+    "research",
+    "quant",
+    "risk",
+    "simulation",
+    "decision_intelligence",
+    "coach",
+    "founders",
+    "devils_advocate",
+)
+# An Executive Recommendation's action never maps 1:1 onto the CEO's own
+# buy/sell/wait choice (six actions vs. three choices) — these two sets
+# define "the network and the CEO were pointed the same direction" for
+# ExecutiveMeetingLogEntry.network_agreed, real and checkable either way.
+_TRADING_ACTIONS: frozenset[ExecutiveAction] = frozenset({"trade_normally", "reduce_risk"})
+_HOLDING_ACTIONS: frozenset[ExecutiveAction] = frozenset({"wait", "research_more", "pause_trading", "focus_on_simulation"})
 
 _DEPARTMENT_LABELS: dict[str, str] = {
     "research": "Research",
@@ -222,3 +271,114 @@ def compute_executive_recommendation(proposal: TradeProposal, opinions: list[Dep
         opinions=opinions,
         generatedAt=_now_iso(),
     )
+
+
+# v0.7 Feature 50 (Part 2/3) — the Executive Meeting Log. Makes Part 1's
+# previously ephemeral, compute-on-open synthesis permanent: generated
+# once per real resolve_proposal() call (app/executive.py), reusing that
+# same call's own already-computed TradeDecision (its decisionGrade/
+# decisionGradeScore is read straight off it, never recomputed).
+def generate_meeting_log_entry(
+    proposal: TradeProposal,
+    decision: TradeDecision,
+    ceo_decision: AnalystChoice,
+    challenge_report: ChallengeReport | None,
+    coach_reports: list[CoachReport],
+    *,
+    sim_day: int,
+    resolved_by: Literal["ceo", "auto"],
+) -> ExecutiveMeetingLogEntry:
+    opinions = generate_department_opinions(proposal, challenge_report, coach_reports)
+    recommendation = compute_executive_recommendation(proposal, opinions)
+    if ceo_decision in ("buy", "sell"):
+        network_agreed = recommendation.action in _TRADING_ACTIONS
+    else:
+        network_agreed = recommendation.action in _HOLDING_ACTIONS
+    grade = decision.decision_grade or "F"
+    grade_score = decision.decision_grade_score if decision.decision_grade_score is not None else 0.0
+    return ExecutiveMeetingLogEntry(
+        id=f"meeting-{proposal.id}",
+        proposalId=proposal.id,
+        symbol=proposal.symbol,
+        simDay=sim_day,
+        opinions=opinions,
+        recommendedAction=recommendation.action,
+        recommendationReason=recommendation.reason,
+        ceoDecision=ceo_decision,
+        networkAgreed=network_agreed,
+        decisionGrade=grade,
+        decisionGradeScore=grade_score,
+        resolvedBy=resolved_by,
+        createdAt=_now_iso(),
+    )
+
+
+def record_meeting_log_entry(log: list[ExecutiveMeetingLogEntry], entry: ExecutiveMeetingLogEntry) -> list[ExecutiveMeetingLogEntry]:
+    updated = [*log, entry]
+    if len(updated) > MAX_MEETING_LOG_ENTRIES:
+        del updated[: len(updated) - MAX_MEETING_LOG_ENTRIES]
+    return updated
+
+
+# v0.7 Feature 50 (Part 2/3) — Weekly Self-Evaluation. One real,
+# evidence-backed evaluation per department per week, built entirely
+# from that department's own real DepartmentOpinion entries logged to
+# the Executive Meeting Log over the trailing SELF_EVAL_WINDOW_DAYS —
+# never a fabricated self-assessment, and honestly neutral (50.0, "no
+# real decisions yet") for a department with nothing on record this week.
+def generate_weekly_self_evaluations(meeting_log: list[ExecutiveMeetingLogEntry], *, sim_day: int) -> list[DepartmentSelfEvaluation]:
+    window_start = sim_day - SELF_EVAL_WINDOW_DAYS + 1
+    week_entries = [e for e in meeting_log if window_start <= e.sim_day <= sim_day]
+    evaluations: list[DepartmentSelfEvaluation] = []
+    for role in _ALL_DEPARTMENT_ROLES:
+        label = _DEPARTMENT_LABELS[role]
+        role_opinions = [op for entry in week_entries for op in entry.opinions if op.role == role]
+        if not role_opinions:
+            evaluations.append(
+                DepartmentSelfEvaluation(
+                    id=f"selfeval-{role}-{sim_day}",
+                    role=role,
+                    departmentLabel=label,
+                    weekEndingSimDay=sim_day,
+                    decisionsReviewed=0,
+                    score=50.0,
+                    summary="No real decisions reached the network this week — nothing to evaluate yet.",
+                    strengths=[],
+                    improvementAreas=[],
+                    createdAt=_now_iso(),
+                )
+            )
+            continue
+        score = sum(op.confidence_pct for op in role_opinions) / len(role_opinions)
+        agree_count = sum(1 for op in role_opinions if op.stance == "agree")
+        concern_count = sum(1 for op in role_opinions if op.stance in ("disagree", "recommend_rejecting"))
+        strengths = [f"Weighed in on {len(role_opinions)} real decision(s) this week, averaging {score:.0f}/100 confidence."]
+        if agree_count:
+            strengths.append(f"Agreed with the desk's overall call on {agree_count}/{len(role_opinions)} decisions.")
+        improvement_areas: list[str] = []
+        if concern_count:
+            improvement_areas.append(f"Raised a real concern on {concern_count}/{len(role_opinions)} decisions — worth revisiting whether those calls held up.")
+        if score < 50:
+            improvement_areas.append("Average confidence stayed below 50/100 this week — real evidence was thin more often than not.")
+        evaluations.append(
+            DepartmentSelfEvaluation(
+                id=f"selfeval-{role}-{sim_day}",
+                role=role,
+                departmentLabel=label,
+                weekEndingSimDay=sim_day,
+                decisionsReviewed=len(role_opinions),
+                score=round(score, 1),
+                summary=f"{len(role_opinions)} real decision(s) reviewed this week; {score:.0f}/100 average confidence.",
+                strengths=strengths,
+                improvementAreas=improvement_areas,
+                createdAt=_now_iso(),
+            )
+        )
+    return evaluations
+
+
+def record_self_evaluations(history: list[DepartmentSelfEvaluation], new_entries: list[DepartmentSelfEvaluation]) -> list[DepartmentSelfEvaluation]:
+    updated = [*history, *new_entries]
+    if len(updated) > MAX_SELF_EVAL_HISTORY:
+        del updated[: len(updated) - MAX_SELF_EVAL_HISTORY]
+    return updated

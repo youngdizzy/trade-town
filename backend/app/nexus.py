@@ -56,6 +56,7 @@ from app.executive import (
     is_significant_proposal,
     resolve_proposal,
 )
+from app.executive_intelligence import generate_meeting_log_entry, generate_weekly_self_evaluations, record_meeting_log_entry, record_self_evaluations
 from app.executive_review import generate_executive_review, record_review
 from app.founders import compute_founder_state, generate_breakthrough_review, generate_council_session, generate_founder_log_entry, record_council_session, record_founder_log
 from app.foundational_mentors import tick_employee_progress
@@ -112,8 +113,10 @@ from app.schemas import (
     CoachReport,
     CompanyPriority,
     Debate,
+    DepartmentSelfEvaluation,
     DisciplineReview,
     EntityTransform,
+    ExecutiveMeetingLogEntry,
     ExecutiveReview,
     FounderCouncilSession,
     FounderId,
@@ -745,7 +748,11 @@ def _apply_operating_mode(
     ceo_decisions: list[CeoDecisionRecord],
     gatekeeper_rejections: list[GatekeeperRejection],
     news: list[NewsItem],
-) -> tuple[list[TradeProposal], PaperPortfolio]:
+    challenge_reports: list[ChallengeReport],
+    coach_reports: list[CoachReport],
+    meeting_log: list[ExecutiveMeetingLogEntry],
+    sim_day: int,
+) -> tuple[list[TradeProposal], PaperPortfolio, list[ExecutiveMeetingLogEntry]]:
     """v0.7 Feature 21 — Company Operating Modes. Learning Mode never
     calls this (every proposal stays pending, the pre-Feature-21
     default). Assisted Mode auto-resolves every non-"significant"
@@ -754,9 +761,12 @@ def _apply_operating_mode(
     "the player reviews reports, not individual trades." Every
     auto-resolution is the exact same real resolve_proposal() call a
     genuine CEO click would make (Gatekeeper included), just tagged
-    resolved_by="auto" for honest provenance."""
+    resolved_by="auto" for honest provenance — including the v0.7
+    Feature 50 Executive Meeting Log entry it now also generates,
+    exactly like a real CEO decision does (see app/state.py's
+    submit_ceo_decision)."""
     if operating_mode == "learning" or not trade_proposals:
-        return trade_proposals, portfolio
+        return trade_proposals, portfolio, meeting_log
 
     still_pending: list[TradeProposal] = []
     for proposal in trade_proposals:
@@ -780,6 +790,12 @@ def _apply_operating_mode(
         record_ceo_decision(memory, decision)
         decisions.append(decision)
         ceo_decisions.append(record)
+
+        challenge_report = next((c for c in reversed(challenge_reports) if c.proposal_id == proposal.id), None)
+        meeting_log = record_meeting_log_entry(
+            meeting_log,
+            generate_meeting_log_entry(proposal, decision, record.ceo_decision, challenge_report, coach_reports, sim_day=sim_day, resolved_by="auto"),
+        )
 
         verdict = decision.gatekeeper_verdict
         current_price = prices.get(proposal.symbol)
@@ -814,7 +830,7 @@ def _apply_operating_mode(
             )
         )
 
-    return still_pending, portfolio
+    return still_pending, portfolio, meeting_log
 
 
 def _journal_closed_trades(portfolio: PaperPortfolio, trades: list[PaperTrade], decisions: list[TradeDecision]) -> tuple[PaperPortfolio, list[PaperTrade]]:
@@ -923,6 +939,10 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     treasury: TreasuryState = state.treasury
     black_box: BlackBoxState = state.black_box or default_black_box_state()
     foundational_mentor_state = state.foundational_mentor_state
+    # v0.7 Feature 50 (Part 2/3) — the Executive Meeting Log and Weekly
+    # Self-Evaluation (app/executive_intelligence.py).
+    meeting_log: list[ExecutiveMeetingLogEntry] = list(state.executive_meeting_log)
+    self_evaluations: list[DepartmentSelfEvaluation] = list(state.department_self_evaluations)
 
     agents = {aid: _tick_agent(aid, agent, new_time, minutes, tasks, resting=resting) for aid, agent in state.agents.items()}
 
@@ -1113,7 +1133,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # (the pre-Feature-21 default); Assisted/Executive sweep the full
     # pending list every tick, not just this tick's new arrivals, so
     # switching modes mid-game takes effect on the existing backlog too.
-    trade_proposals, paper_portfolio = _apply_operating_mode(
+    trade_proposals, paper_portfolio, meeting_log = _apply_operating_mode(
         operating_mode,
         trade_proposals,
         debates,
@@ -1127,6 +1147,10 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         ceo_decisions,
         gatekeeper_rejections,
         news,
+        challenge_reports,
+        coach_reports,
+        meeting_log,
+        new_time.day,
     )
 
     trade_proposals, expired_proposals = expire_stale_proposals(trade_proposals, now_sim_minutes)
@@ -1143,6 +1167,13 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         record_ceo_decision(memory, expired_decision)
         decisions.append(expired_decision)
         ceo_decisions.append(expired_record)
+        expired_challenge_report = next((c for c in reversed(challenge_reports) if c.proposal_id == expired.id), None)
+        meeting_log = record_meeting_log_entry(
+            meeting_log,
+            generate_meeting_log_entry(
+                expired, expired_decision, expired_record.ceo_decision, expired_challenge_report, coach_reports, sim_day=new_time.day, resolved_by="auto"
+            ),
+        )
         news.append(
             NewsItem(
                 id=f"news-proposal-expired-{expired.id}",
@@ -1375,6 +1406,18 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         watchlist=watchlist,
         education=state.education,
         debates=debates,
+        decisions=decisions,
+        meeting_log=meeting_log,
+        self_evaluations=self_evaluations,
+        wisdom_state=wisdom_state,
+        # v0.7 Feature 50 (Part 2/3) — a cheap, pure recompute (same
+        # "cheap to recompute every tick" reasoning as this whole
+        # function) rather than waiting for the tick's own later
+        # innovation_state assignment below, which runs after this call.
+        innovation_state=compute_innovation_state(challenge_reports),
+        foundational_mentor_state=foundational_mentor_state,
+        founder_council_sessions=founder_council_sessions,
+        gatekeeper_rejections=gatekeeper_rejections,
     )
     # v0.7 Feature 43 — Company DNA. Cheap to recompute (a handful of
     # linear scans over already-in-memory lists), same "always current"
@@ -1544,6 +1587,15 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         )
         reflection_sessions = record_reflection_session_entry(reflection_sessions, reflection_session)
         record_reflection_session(memory, reflection_session)
+
+    # v0.7 Feature 50 (Part 2/3) — Weekly Self-Evaluation, one real entry
+    # per Executive Intelligence Network department, built from that
+    # department's own real Meeting Log opinions over the trailing week.
+    # Deliberately gated on the weekly condition alone (not the combined
+    # weekly-or-monthly one above) — this is always a 7-day window.
+    if is_evening and new_time.day % WEEKLY_INTERVAL_DAYS == 0:
+        new_self_evaluations = generate_weekly_self_evaluations(meeting_log, sim_day=new_time.day)
+        self_evaluations = record_self_evaluations(self_evaluations, new_self_evaluations)
 
     # v0.7 Feature 32 — Sage publishes one QuestionOfTheDay every in-game
     # morning (see app/mentor.py's module docstring for why the question
@@ -1809,6 +1861,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "treasury": treasury,
             "calendar": calendar_state,
             "black_box": black_box,
+            "executive_meeting_log": meeting_log,
+            "department_self_evaluations": self_evaluations,
             "talent": TalentState(reports=talent_reports, viewedReportIds=state.talent.viewed_report_ids, updatedAt=_now_iso()),
             "agent_energy": agent_energy,
             "whiteboards": _update_whiteboards(agents, meeting, research),

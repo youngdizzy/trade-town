@@ -9,21 +9,134 @@ from __future__ import annotations
 
 from app.company_health import compute_company_health
 from app.education import all_lessons
+from app.foundational_mentors import STUDENT_AGENT_IDS, default_foundational_mentor_state
 from app.portfolio import default_portfolio
 from app.schemas import (
     AgentEnergy,
     AgentState,
     Debate,
     DebateTurn,
+    DepartmentOpinion,
+    DepartmentSelfEvaluation,
     EducationProgress,
     EntityTransform,
+    ExecutiveDepartmentRole,
+    ExecutiveMeetingLogEntry,
+    FoundationalMentorProgress,
+    FounderCouncilSession,
+    InnovationState,
+    PaperTrade,
     ResearchItem,
     RiskWarning,
     SignalCalibrationState,
+    TradeDecision,
     WatchlistEntry,
+    WisdomState,
 )
 from app.signal_calibration import MAX_LEVEL as SIGNAL_MAX_LEVEL
 from app.watchlist import SEED_SYMBOLS, default_watchlist
+
+_ALL_ROLES: tuple[ExecutiveDepartmentRole, ...] = ("research", "quant", "risk", "simulation", "decision_intelligence", "coach", "founders", "devils_advocate")
+
+
+def _strong_trade_history() -> list[PaperTrade]:
+    """Real closed trades with no matching gatekeeper rejections, so
+    `_risk_governance` reads a clean 100% approval rate."""
+    return [
+        PaperTrade(
+            id=f"t{i}",
+            symbol="AAPL",
+            side="buy",
+            quantity=1.0,
+            entryPrice=100.0,
+            exitPrice=105.0,
+            pnl=5.0,
+            pnlPct=5.0,
+            durationMinutes=60,
+            confidence=90.0,
+            reason="x",
+            marketConditions="x",
+            openedAt="2026-01-01T00:00:00+00:00",
+            closedAt="2026-01-01T01:00:00+00:00",
+        )
+        for i in range(5)
+    ]
+
+
+def _strong_executive_overrides() -> dict:
+    """Every real Executive-tier input maxed out, mirroring `_health`'s
+    own "everything strong" convention for the Operational tier below —
+    used by TestOverallAndTier's combined "nothing to recommend" test."""
+    opinions = [DepartmentOpinion(role=role, departmentLabel=role, stance="agree", summary="x", confidencePct=95.0) for role in _ALL_ROLES]
+    meeting_log = [
+        ExecutiveMeetingLogEntry(
+            id=f"m{i}",
+            proposalId=f"p{i}",
+            symbol="AAPL",
+            simDay=i,
+            opinions=opinions,
+            recommendedAction="trade_normally",
+            recommendationReason="x",
+            ceoDecision="buy",
+            networkAgreed=True,
+            decisionGrade="A+",
+            decisionGradeScore=98.0,
+            resolvedBy="ceo",
+            createdAt="2026-01-01T00:00:00+00:00",
+        )
+        for i in range(5)
+    ]
+    decisions = [
+        TradeDecision(
+            id=f"d{i}",
+            symbol="AAPL",
+            outcome="trade",
+            votes=[],
+            researchSummary="x",
+            technicalSummary="x",
+            fundamentalSummary="x",
+            riskSummary="x",
+            supportingAgents=[],
+            opposingAgents=[],
+            confidence=90.0,
+            finalReasoning="x",
+            orderId=None,
+            decisionGrade="A+",
+            decisionGradeScore=98.0,
+            createdAt="2026-01-01T00:00:00+00:00",
+        )
+        for i in range(5)
+    ]
+    self_evaluations = [
+        DepartmentSelfEvaluation(
+            id=f"s-{role}",
+            role=role,
+            departmentLabel=role,
+            weekEndingSimDay=7,
+            decisionsReviewed=5,
+            score=95.0,
+            summary="x",
+            strengths=["x"],
+            improvementAreas=[],
+            createdAt="2026-01-01T00:00:00+00:00",
+        )
+        for role in _ALL_ROLES
+    ]
+    graduated = FoundationalMentorProgress(mentorId="tjr", graduationStatus="graduated")  # type: ignore[call-arg]
+    fm_state = default_foundational_mentor_state().model_copy(update={"progress": {agent_id: {"tjr": graduated} for agent_id in STUDENT_AGENT_IDS}})
+    founder_council_sessions = [
+        FounderCouncilSession(id=f"c{i}", simDay=i, coachHighlight="x", keystoneNote="x", compassNote="x", createdAt="2026-01-01T00:00:00+00:00") for i in range(5)
+    ]
+    return dict(
+        decisions=decisions,
+        meeting_log=meeting_log,
+        self_evaluations=self_evaluations,
+        wisdom_state=WisdomState(score=95.0, tier="enduring_wisdom", tierLabel="Enduring Wisdom", factors=[], updatedAt="2026-01-01T00:00:00+00:00"),
+        innovation_state={"scout": InnovationState(agentId="scout", points=35.0, tier=4, tierName="legendary_innovator")},
+        foundational_mentor_state=fm_state,
+        founder_council_sessions=founder_council_sessions,
+        gatekeeper_rejections=[],
+    )
 
 
 def _agent(location: str = "brain-room", mood: float = 70.0) -> AgentState:
@@ -64,6 +177,14 @@ def _health(**overrides):
         watchlist=default_watchlist(),
         education=EducationProgress(),
         debates=[],
+        decisions=[],
+        meeting_log=[],
+        self_evaluations=[],
+        wisdom_state=WisdomState(score=50.0, tier="young_company", tierLabel="Young Company", factors=[], updatedAt="2026-01-01T00:00:00+00:00"),
+        innovation_state={},
+        foundational_mentor_state=default_foundational_mentor_state(),
+        founder_council_sessions=[],
+        gatekeeper_rejections=[],
     )
     defaults.update(overrides)
     return compute_company_health(**defaults)
@@ -212,8 +333,9 @@ class TestOverallAndTier:
             signal_calibration=SignalCalibrationState(unlockedLevel=SIGNAL_MAX_LEVEL),
             education=EducationProgress(completedLessonIds=[lesson.id for lesson in all_lessons()]),
             watchlist=[*default_watchlist(), *(WatchlistEntry(symbol=s, name=s, lastPrice=1.0, dailyChangePct=0.0, status="queued", researchProgress=0.0, assignedAgent=None) for s in ["AMZN", "GOOGL", "TSLA", "NVDA", "SLV", "USO"])],
-            portfolio=default_portfolio().model_copy(update={"total_pnl_pct": 40.0}),
+            portfolio=default_portfolio().model_copy(update={"total_pnl_pct": 40.0, "trade_history": _strong_trade_history()}),
             debates=[_all_supportive_debate()],
+            **_strong_executive_overrides(),
         )
         assert health.recommendations == []
 
@@ -281,3 +403,102 @@ def _all_supportive_debate() -> Debate:
         finalSummary="x",
         createdAt="2026-01-01T00:00:00+00:00",
     )
+
+
+class TestExecutiveTier:
+    """v0.7 Feature 50 (Part 2/3) — the ten new Executive-tier dimensions,
+    additive alongside the eleven Operational ones covered above."""
+
+    def test_defaults_to_neutral_fifty_with_no_executive_data_yet(self) -> None:
+        health = _health()
+        assert health.decision_quality == 50.0
+        assert health.executive_alignment == 50.0
+        assert health.department_consensus == 50.0
+        assert health.self_evaluation_health == 50.0
+        assert health.institutional_memory == 50.0
+        assert health.talent_development == 0.0  # no active mentor track has any graduate yet
+        assert health.simulation_coverage == 0.0  # honestly "no coverage" rather than neutral
+        assert health.innovation_velocity == 0.0
+        assert health.founder_oversight == 0.0
+
+    def test_decision_quality_averages_recent_real_decision_grades(self) -> None:
+        decisions = [
+            TradeDecision(
+                id=f"d{i}",
+                symbol="AAPL",
+                outcome="trade",
+                researchSummary="x",
+                technicalSummary="x",
+                fundamentalSummary="x",
+                riskSummary="x",
+                confidence=90.0,
+                finalReasoning="x",
+                decisionGrade="A+",
+                decisionGradeScore=score,
+                createdAt="2026-01-01T00:00:00+00:00",
+            )
+            for i, score in enumerate([80.0, 90.0])
+        ]
+        health = _health(decisions=decisions)
+        assert health.decision_quality == 85.0
+
+    def test_executive_alignment_reads_the_real_network_agreed_flag(self) -> None:
+        opinions = [DepartmentOpinion(role=role, departmentLabel=role, stance="agree", summary="x", confidencePct=90.0) for role in _ALL_ROLES]
+        agreeing = ExecutiveMeetingLogEntry(
+            id="m1", proposalId="p1", symbol="AAPL", simDay=1, opinions=opinions, recommendedAction="trade_normally", recommendationReason="x",
+            ceoDecision="buy", networkAgreed=True, decisionGrade="A", decisionGradeScore=90.0, resolvedBy="ceo", createdAt="2026-01-01T00:00:00+00:00",
+        )
+        disagreeing = agreeing.model_copy(update={"id": "m2", "network_agreed": False})
+        health = _health(meeting_log=[agreeing, disagreeing])
+        assert health.executive_alignment == 50.0
+
+    def test_simulation_coverage_counts_real_stress_tested_decisions(self) -> None:
+        stress_tested = [DepartmentOpinion(role="simulation", departmentLabel="Simulation", stance="agree", summary="x", confidencePct=80.0)]
+        not_yet = [DepartmentOpinion(role="simulation", departmentLabel="Simulation", stance="request_more_research", summary="x", confidencePct=50.0)]
+        covered = ExecutiveMeetingLogEntry(
+            id="m1", proposalId="p1", symbol="AAPL", simDay=1, opinions=stress_tested, recommendedAction="trade_normally", recommendationReason="x",
+            ceoDecision="buy", networkAgreed=True, decisionGrade="A", decisionGradeScore=90.0, resolvedBy="ceo", createdAt="2026-01-01T00:00:00+00:00",
+        )
+        uncovered = covered.model_copy(update={"id": "m2", "opinions": not_yet})
+        health = _health(meeting_log=[covered, uncovered])
+        assert health.simulation_coverage == 50.0
+
+    def test_self_evaluation_health_uses_the_latest_entry_per_department(self) -> None:
+        old = DepartmentSelfEvaluation(id="s1", role="research", departmentLabel="Research", weekEndingSimDay=7, decisionsReviewed=1, score=20.0, summary="x", createdAt="2026-01-01T00:00:00+00:00")
+        new = DepartmentSelfEvaluation(id="s2", role="research", departmentLabel="Research", weekEndingSimDay=14, decisionsReviewed=1, score=90.0, summary="x", createdAt="2026-01-08T00:00:00+00:00")
+        health = _health(self_evaluations=[old, new])
+        assert health.self_evaluation_health == 90.0
+
+    def test_institutional_memory_reuses_the_real_wisdom_score(self) -> None:
+        health = _health(wisdom_state=WisdomState(score=72.5, tier="seasoned_wisdom", tierLabel="Seasoned Wisdom", factors=[], updatedAt="2026-01-01T00:00:00+00:00"))
+        assert health.institutional_memory == 72.5
+
+    def test_innovation_velocity_normalizes_against_the_legendary_threshold(self) -> None:
+        health = _health(innovation_state={"scout": InnovationState(agentId="scout", points=17.5, tier=2, tierName="innovation_leader")})
+        assert health.innovation_velocity == 50.0
+
+    def test_founder_oversight_caps_at_one_hundred(self) -> None:
+        sessions = [FounderCouncilSession(id=f"c{i}", simDay=i, coachHighlight="x", keystoneNote="x", compassNote="x", createdAt="2026-01-01T00:00:00+00:00") for i in range(10)]
+        health = _health(founder_council_sessions=sessions)
+        assert health.founder_oversight == 100.0
+
+    def test_talent_development_reads_real_graduation_progress(self) -> None:
+        fm_state = default_foundational_mentor_state()
+        graduated = FoundationalMentorProgress(mentorId="tjr", graduationStatus="graduated")  # type: ignore[call-arg]
+        fm_state = fm_state.model_copy(update={"progress": {agent_id: {"tjr": graduated} for agent_id in list(STUDENT_AGENT_IDS)[:4]}})
+        health = _health(foundational_mentor_state=fm_state)
+        assert health.talent_development == 50.0
+
+    def test_executive_overall_is_the_mean_of_the_ten_executive_metrics_and_never_moves_the_operational_overall(self) -> None:
+        baseline = _health()
+        strong = _health(**_strong_executive_overrides())
+        # The original Operational overall/tier are completely
+        # unaffected by Executive-tier inputs — the redesign is additive.
+        assert strong.overall == baseline.overall
+        assert strong.tier == baseline.tier
+        assert strong.executive_overall > baseline.executive_overall
+        assert strong.combined_overall > baseline.combined_overall
+
+    def test_combined_overall_is_the_equal_blend_of_both_tiers(self) -> None:
+        health = _health(**_strong_executive_overrides())
+        assert health.combined_overall == round((health.overall + health.executive_overall) / 2.0, 1)

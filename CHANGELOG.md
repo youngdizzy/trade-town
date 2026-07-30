@@ -110,13 +110,10 @@ development milestones, not semver releases.
   `GET /api/executive/intelligence?proposalId=...`, computed fresh on
   every call (no persistence — every input already lives somewhere
   permanent). This is the largest single brief given this session;
-  it's being built phased, the same way Feature 49 was (Phases 1/2/3 +
-  a Revision) — this is Part 1, the foundational synthesis layer.
-  Explicitly deferred to later phases: the permanent Executive Meeting
-  Log, per-department weekly Self-Evaluation, Decision Grade (A+–F), the
-  Company Health formula redesign, and the three redesigned Decision
-  Intelligence/Risk/Simulation dashboards. Explicitly cut, not deferred:
-  the brief's "Session Changes / Market Open / Market Close" simulation
+  it was built phased, the same way Feature 49 was (Phases 1/2/3 +
+  a Revision) — this is Part 1, the foundational synthesis layer (Part
+  2/3 below completes the rest). Explicitly cut, not deferred: the
+  brief's "Session Changes / Market Open / Market Close" simulation
   environments — no session-boundary model exists anywhere in this
   codebase's continuous sim clock to back them.
   Backend: `test_executive_intelligence.py` — 20 new tests, 680/680 full
@@ -139,6 +136,54 @@ development milestones, not semver releases.
     real pending proposal's popup and asserts all 8 department labels,
     the recommendation, and the supporting/opposing lists render from
     the real endpoint — passing live against the running dev stack.
+
+- **v0.7 Feature 50 (Part 2/3) — Decision Grade, Executive Meeting Log,
+  Weekly Self-Evaluation, Company Health redesign (backend)**: three new
+  real, permanent systems built directly on Part 1's synthesis, plus one
+  redesign — none of them a second opinion engine. **Decision Grade
+  (A+–F)**: `app/executive.py`'s `compute_decision_grade()` grades the
+  decision-making PROCESS at the moment `resolve_proposal()` makes it —
+  50% the real Decision Confidence Engine score, 25% real multi-agent
+  analyst agreement, 25% whether the Trade Gatekeeper actually approved
+  it — never the trade's own P&L (same "process over outcome" convention
+  `discipline.py`'s Discipline Score already established). Attached to
+  every `TradeDecision` going forward. **Executive Meeting Log**: makes
+  Part 1's ephemeral synthesis permanent — `generate_meeting_log_entry()`
+  runs the same opinion/recommendation engine and records one real
+  `ExecutiveMeetingLogEntry` (reusing the decision's own already-computed
+  grade, never recomputed) at every real `resolve_proposal()` call site —
+  a genuine CEO decision, a Company Operating Mode auto-resolution, and a
+  stale-proposal expiry. **Weekly Self-Evaluation**: `generate_weekly_self_evaluations()`,
+  fired on the same weekly cadence as `wisdom.py`'s `ReflectionSession`,
+  builds one real `DepartmentSelfEvaluation` per department entirely from
+  that department's own real Meeting Log opinions over the trailing week
+  — an honest "no real decisions yet" neutral default when there's
+  nothing on record. **Company Health redesign**: ten new real
+  Executive-tier dimensions in `app/company_health.py` (Decision
+  Quality, Executive Alignment, Risk Governance, Simulation Coverage,
+  Department Consensus, Self-Evaluation Health, Institutional Memory,
+  Innovation Velocity, Talent Development, Founder Oversight) — additive
+  alongside the eleven Operational ones Feature 23 already established,
+  never replacing them (`overall`/`tier` are byte-for-byte unchanged).
+  `executiveOverall`/`executiveTier` are the new tier's headline;
+  `combinedOverall`/`combinedTier` (an equal blend) is the true
+  redesigned headline. The original brief's exact ten dimension names
+  weren't preserved verbatim in this session's chat-only history by the
+  time this phase began — rather than fabricate names that couldn't be
+  checked against the real brief, these ten were chosen as the most
+  defensible real, checkable signals available (see
+  `docs/Architecture.md`'s full mapping table). Verified: new tests in
+  `test_executive.py` (`TestComputeDecisionGrade`, 7 tests),
+  `test_executive_intelligence.py` (`TestGenerateMeetingLogEntry`/
+  `TestGenerateWeeklySelfEvaluations`, 9 tests), and
+  `test_company_health.py` (`TestExecutiveTier`, 11 tests) — 716/716
+  full suite, mypy/ruff clean. A direct 9-in-game-day `nexus.tick()`
+  simulation run confirmed both cadences and the new Company Health
+  fields populate correctly with no exceptions, and a `save_modules`
+  split/assemble round-trip confirmed the new archive fields persist.
+  Frontend not yet built — backend-first, per this session's own
+  data-loss-avoidance discipline; planned homes documented in
+  `docs/Architecture.md`.
 
 - **"Revoke Graduation" — a new Executive Action on the Academy**: the
   mirror image of the Graduation Queue's Approve button. New

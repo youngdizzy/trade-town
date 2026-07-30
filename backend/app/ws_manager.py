@@ -127,6 +127,10 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         # v0.7 — the Advanced Quantitative Research Division. archive/reviews
         # are already capped (MAX_ARCHIVE/MAX_REVIEWS) like questionArchive above.
         "blackBox": state.black_box.model_dump(by_alias=True),
+        # v0.7 Feature 50 (Part 2/3) — already capped (MAX_MEETING_LOG_ENTRIES/
+        # MAX_SELF_EVAL_HISTORY) like questionArchive above.
+        "executiveMeetingLog": [e.model_dump(by_alias=True) for e in state.executive_meeting_log],
+        "departmentSelfEvaluations": [e.model_dump(by_alias=True) for e in state.department_self_evaluations],
     }
 
 

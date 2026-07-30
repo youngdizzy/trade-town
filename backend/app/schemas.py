@@ -947,6 +947,12 @@ class TradeDecision(CamelModel):
     # `order_id` None even though `ceo_choice` on the linked
     # CeoDecisionRecord was buy/sell, not wait.
     gatekeeper_verdict: "GatekeeperVerdict | None" = Field(default=None, alias="gatekeeperVerdict")
+    # v0.7 Feature 50 (Part 2/3) — the real process-quality Decision Grade
+    # (see app/executive.py's compute_decision_grade), set at the moment
+    # resolve_proposal() builds this record. None only for decisions that
+    # predate this field.
+    decision_grade: "DecisionGrade | None" = Field(default=None, alias="decisionGrade")
+    decision_grade_score: float | None = Field(default=None, alias="decisionGradeScore")
     created_at: str = Field(alias="createdAt")
 
 
@@ -1277,6 +1283,60 @@ class ExecutiveRecommendation(CamelModel):
     generated_at: str = Field(alias="generatedAt")
 
 
+# v0.7 Feature 50 (Part 2/3) — a real, rule-based process-quality grade
+# on every TradeDecision, standard academic scale. Never reads the
+# trade's own P&L (see app/executive.py's compute_decision_grade — the
+# same "process over outcome" convention app/discipline.py's Discipline
+# Score already established), so it's available immediately at decision
+# time, not just once a trade closes.
+DecisionGrade = Literal["A+", "A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D+", "D", "F"]
+
+
+class ExecutiveMeetingLogEntry(CamelModel):
+    """v0.7 Feature 50 (Part 2/3) — the Executive Meeting Log. The
+    permanent record of one real Executive Intelligence Network
+    synthesis: what each department said (the same DepartmentOpinion
+    list Part 1's live panel shows), what the network recommended, what
+    the CEO actually decided, and whether the two agreed. Generated once
+    per real resolve_proposal() call — CEO-driven, auto-resolved, or
+    stale-expired — never fabricated or backfilled for old decisions
+    that predate this feature."""
+
+    id: str
+    proposal_id: str = Field(alias="proposalId")
+    symbol: str
+    sim_day: int = Field(alias="simDay")
+    opinions: list[DepartmentOpinion] = Field(default_factory=list)
+    recommended_action: ExecutiveAction = Field(alias="recommendedAction")
+    recommendation_reason: str = Field(alias="recommendationReason")
+    ceo_decision: AnalystChoice = Field(alias="ceoDecision")
+    network_agreed: bool = Field(alias="networkAgreed")
+    decision_grade: DecisionGrade = Field(alias="decisionGrade")
+    decision_grade_score: float = Field(alias="decisionGradeScore")
+    resolved_by: Literal["ceo", "auto"] = Field(alias="resolvedBy")
+    created_at: str = Field(alias="createdAt")
+
+
+class DepartmentSelfEvaluation(CamelModel):
+    """v0.7 Feature 50 (Part 2/3) — Weekly Self-Evaluation. Generated on
+    the same real weekly cadence as app/wisdom.py's ReflectionSession
+    (see nexus.py's WEEKLY_INTERVAL_DAYS), one per Executive Intelligence
+    Network department, built entirely from that department's own real
+    DepartmentOpinion entries logged to the Executive Meeting Log over
+    the trailing 7 sim days — never a fabricated self-assessment."""
+
+    id: str
+    role: ExecutiveDepartmentRole
+    department_label: str = Field(alias="departmentLabel")
+    week_ending_sim_day: int = Field(alias="weekEndingSimDay")
+    decisions_reviewed: int = Field(alias="decisionsReviewed")
+    score: float
+    summary: str
+    strengths: list[str] = Field(default_factory=list)
+    improvement_areas: list[str] = Field(default_factory=list, alias="improvementAreas")
+    created_at: str = Field(alias="createdAt")
+
+
 # v0.7 Feature 41 — Innovation Points. A second, deliberately narrow
 # ladder alongside Academy's KnowledgeLevel (Feature 31): where Academy
 # tracks general knowledge mastery, this tracks one specific real skill —
@@ -1599,6 +1659,32 @@ class CompanyHealth(CamelModel):
     # real sub-score this tick (see app/company_health.py).
     recommendations: list[str] = Field(default_factory=list)
     updated_at: str = Field(alias="updatedAt")
+
+    # v0.7 Feature 50 (Part 2/3) — the Company Health redesign. Ten new
+    # Executive-tier dimensions, additive alongside the eleven Operational
+    # ones above (never replacing them — see app/company_health.py's
+    # module docstring for why: they're real and already working, and
+    # this codebase's own "no duplicate systems" convention bars
+    # replacing a real working formula with one that can't actually
+    # improve on it). All ten default to 50.0 (neutral) so a save from
+    # before this field existed still validates during load.
+    decision_quality: float = Field(default=50.0, alias="decisionQuality")
+    executive_alignment: float = Field(default=50.0, alias="executiveAlignment")
+    risk_governance: float = Field(default=50.0, alias="riskGovernance")
+    simulation_coverage: float = Field(default=50.0, alias="simulationCoverage")
+    department_consensus: float = Field(default=50.0, alias="departmentConsensus")
+    self_evaluation_health: float = Field(default=50.0, alias="selfEvaluationHealth")
+    institutional_memory: float = Field(default=50.0, alias="institutionalMemory")
+    innovation_velocity: float = Field(default=50.0, alias="innovationVelocity")
+    talent_development: float = Field(default=50.0, alias="talentDevelopment")
+    founder_oversight: float = Field(default=50.0, alias="founderOversight")
+    executive_overall: float = Field(default=50.0, alias="executiveOverall")
+    executive_tier: CompanyHealthTier = Field(default="stable", alias="executiveTier")
+    # The true redesigned headline number — an equal blend of the
+    # original Operational overall and the new Executive overall, so
+    # neither tier silently outweighs the other.
+    combined_overall: float = Field(default=50.0, alias="combinedOverall")
+    combined_tier: CompanyHealthTier = Field(default="stable", alias="combinedTier")
 
 
 # v0.7 Feature 43 — Company DNA (app/company_dna.py). The one genuinely
@@ -2693,6 +2779,11 @@ class GameSaveState(CamelModel):
     calendar: CalendarState
     # v0.7 — the Advanced Quantitative Research Division (app/black_box.py).
     black_box: BlackBoxState = Field(alias="blackBox")
+    # v0.7 Feature 50 (Part 2/3) — the Executive Meeting Log and Weekly
+    # Self-Evaluation. Both are real permanent history (grow, never
+    # recomputed from scratch) — see app/executive_intelligence.py.
+    executive_meeting_log: list[ExecutiveMeetingLogEntry] = Field(default_factory=list, alias="executiveMeetingLog")
+    department_self_evaluations: list[DepartmentSelfEvaluation] = Field(default_factory=list, alias="departmentSelfEvaluations")
     # v0.7 Feature 44 — Talent Discovery System (app/talent.py).
     talent: TalentState = Field(alias="talent")
     # v0.7 Feature 46 — the Company Constitution (app/constitution.py).

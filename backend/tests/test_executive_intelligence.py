@@ -10,8 +10,15 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.executive_intelligence import compute_executive_recommendation, generate_department_opinions
-from app.schemas import AnalystVote, ChallengeReport, CoachReport, ConfidenceFactor, DecisionConfidence, TradeProposal
+from app.executive_intelligence import (
+    compute_executive_recommendation,
+    generate_department_opinions,
+    generate_meeting_log_entry,
+    generate_weekly_self_evaluations,
+    record_meeting_log_entry,
+    record_self_evaluations,
+)
+from app.schemas import AnalystVote, ChallengeReport, CoachReport, ConfidenceFactor, DecisionConfidence, ExecutiveMeetingLogEntry, TradeDecision, TradeProposal
 
 
 def _now_iso() -> str:
@@ -224,3 +231,114 @@ class TestComputeExecutiveRecommendation:
             assert next(o for o in opinions if o.role == role).stance == "agree"
         for role in recommendation.opposing:
             assert next(o for o in opinions if o.role == role).stance in ("disagree", "recommend_rejecting")
+
+
+def _decision(*, decision_grade: str = "A", decision_grade_score: float = 90.0) -> TradeDecision:
+    return TradeDecision(
+        id="decision-proposal-1",
+        symbol="NEXA",
+        outcome="trade",
+        researchSummary="x",
+        technicalSummary="x",
+        fundamentalSummary="x",
+        riskSummary="x",
+        confidence=90.0,
+        finalReasoning="x",
+        decisionGrade=decision_grade,  # type: ignore[arg-type]
+        decisionGradeScore=decision_grade_score,
+        createdAt=_now_iso(),
+    )
+
+
+class TestGenerateMeetingLogEntry:
+    """v0.7 Feature 50 (Part 2/3) — the Executive Meeting Log makes Part
+    1's ephemeral synthesis permanent, reusing the same real opinion/
+    recommendation engine above plus the already-computed TradeDecision's
+    own real Decision Grade (never recomputed a second time)."""
+
+    def test_reuses_the_decisions_own_grade_rather_than_recomputing(self) -> None:
+        proposal = _proposal()
+        decision = _decision(decision_grade="A+", decision_grade_score=98.0)
+        entry = generate_meeting_log_entry(proposal, decision, "buy", None, [], sim_day=5, resolved_by="ceo")
+        assert entry.decision_grade == "A+"
+        assert entry.decision_grade_score == 98.0
+
+    def test_buy_choice_agreeing_with_trade_normally_is_network_agreed(self) -> None:
+        proposal = _proposal(tier="elite", score=96.0)
+        report = _challenge_report(severity="none_found")
+        opinions = generate_department_opinions(proposal, report, [_coach_report(company_score=90.0)])
+        recommendation = compute_executive_recommendation(proposal, opinions)
+        assert recommendation.action == "trade_normally"
+        entry = generate_meeting_log_entry(proposal, _decision(), "buy", report, [_coach_report(company_score=90.0)], sim_day=1, resolved_by="ceo")
+        assert entry.network_agreed is True
+
+    def test_wait_choice_against_trade_normally_is_not_network_agreed(self) -> None:
+        proposal = _proposal(tier="elite", score=96.0)
+        report = _challenge_report(severity="none_found")
+        coach_reports = [_coach_report(company_score=90.0)]
+        opinions = generate_department_opinions(proposal, report, coach_reports)
+        recommendation = compute_executive_recommendation(proposal, opinions)
+        assert recommendation.action == "trade_normally"
+        entry = generate_meeting_log_entry(proposal, _decision(), "wait", report, coach_reports, sim_day=1, resolved_by="ceo")
+        assert entry.network_agreed is False
+
+    def test_carries_the_real_proposal_and_provenance_fields(self) -> None:
+        proposal = _proposal()
+        entry = generate_meeting_log_entry(proposal, _decision(), "buy", None, [], sim_day=7, resolved_by="auto")
+        assert entry.proposal_id == proposal.id
+        assert entry.symbol == proposal.symbol
+        assert entry.sim_day == 7
+        assert entry.resolved_by == "auto"
+        assert len(entry.opinions) == 8
+
+    def test_record_meeting_log_entry_caps_at_the_max(self) -> None:
+        from app.executive_intelligence import MAX_MEETING_LOG_ENTRIES
+
+        log: list[ExecutiveMeetingLogEntry] = []
+        proposal = _proposal()
+        for i in range(MAX_MEETING_LOG_ENTRIES + 5):
+            entry = generate_meeting_log_entry(proposal.model_copy(update={"id": f"p{i}"}), _decision(), "buy", None, [], sim_day=i, resolved_by="ceo")
+            log = record_meeting_log_entry(log, entry)
+        assert len(log) == MAX_MEETING_LOG_ENTRIES
+        # Oldest entries roll off first — the newest survives.
+        assert log[-1].proposal_id == f"p{MAX_MEETING_LOG_ENTRIES + 4}"
+
+
+class TestGenerateWeeklySelfEvaluations:
+    """v0.7 Feature 50 (Part 2/3) — Weekly Self-Evaluation, built entirely
+    from real DepartmentOpinion entries already logged to the Executive
+    Meeting Log over the trailing week — never a fabricated self-read."""
+
+    def test_no_meeting_log_entries_is_an_honest_neutral_default(self) -> None:
+        evaluations = generate_weekly_self_evaluations([], sim_day=7)
+        assert len(evaluations) == 8
+        for e in evaluations:
+            assert e.score == 50.0
+            assert e.decisions_reviewed == 0
+            assert "No real decisions" in e.summary
+
+    def test_entries_outside_the_trailing_window_are_excluded(self) -> None:
+        proposal = _proposal()
+        old_entry = generate_meeting_log_entry(proposal, _decision(), "buy", None, [], sim_day=1, resolved_by="ceo")
+        evaluations = generate_weekly_self_evaluations([old_entry], sim_day=20)
+        for e in evaluations:
+            assert e.decisions_reviewed == 0
+
+    def test_entries_inside_the_trailing_window_are_averaged_per_department(self) -> None:
+        proposal = _proposal(tier="elite", score=96.0)
+        report = _challenge_report(severity="none_found")
+        coach_reports = [_coach_report(company_score=90.0)]
+        entry = generate_meeting_log_entry(proposal, _decision(), "buy", report, coach_reports, sim_day=10, resolved_by="ceo")
+        evaluations = generate_weekly_self_evaluations([entry], sim_day=12)
+        research_eval = next(e for e in evaluations if e.role == "research")
+        assert research_eval.decisions_reviewed == 1
+        expected_score = next(o for o in entry.opinions if o.role == "research").confidence_pct
+        assert research_eval.score == round(expected_score, 1)
+
+    def test_record_self_evaluations_caps_at_the_max(self) -> None:
+        from app.executive_intelligence import MAX_SELF_EVAL_HISTORY
+
+        history: list = []
+        for day in range(1, 400, 7):
+            history = record_self_evaluations(history, generate_weekly_self_evaluations([], sim_day=day))
+        assert len(history) == MAX_SELF_EVAL_HISTORY
