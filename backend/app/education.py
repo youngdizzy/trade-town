@@ -12,6 +12,27 @@ formula in app/risk_engine.py's recommended_quantity(), the ENTER/WAIT/
 AVOID lesson points at the real Command Center Overview chart) rather
 than inventing a parallel example.
 
+v0.7 Feature 49 (Phase 2) extends the curriculum with an eight-lesson
+Liquidity/Market Structure module (orders 11-18), continuing the same
+real progression from where the original ten leave off. Researched
+first: this codebase has no order-book, bid/ask, trade-by-trade tape, or
+liquidity-pool data anywhere (app/market_data.py's `Candle` is a single
+aggregate OHLC bar with one volume number, uncorrelated with the bar's
+own price move) — so every lesson in this module teaches the real
+professional concept honestly, and either points at the one real
+TradeTown mechanic that's the closest honest analog (the What-If
+Simulation Lab's real "Liquidity Sweep" scenario for liquidity_sweeps;
+the Scanner's real volume-confirmed breakout alert for
+structure_shifts; the Trends/Support & Resistance lessons' own real
+regime read for swing_structure/premium_discount) or explicitly
+disclaims that no real detector exists for it in this simulation
+(liquidity_basics, equal_highs_lows, inducement, order_flow_intro) —
+never a fabricated one. The final lesson, order_flow_intro, exists
+specifically to name that honesty boundary explicitly: every other
+lesson in the module is really a way of *inferring* likely order flow
+from price action alone, because the real order-by-order data isn't
+available here.
+
 Never part of GameSaveState — only EducationProgress (what's been
 viewed/completed) is real progress worth persisting.
 """
@@ -146,6 +167,94 @@ _LESSONS: tuple[_LessonSpec, ...] = (
         deeper_explanation="A trading record isn't just measured by wins and losses on trades taken — avoiding a real loser by correctly passing is just as valuable, even though it never shows up as a P&L number. Confusing activity with progress is one of the costliest habits to unlearn.",
         quiz_question="An AI agent reviews a setup and logs a real 'NO TRADE' decision. Does this always mean the AI 'did nothing useful'?",
         quiz_options=("Yes — it should always find a way to trade", "No — correctly avoiding a bad setup is a valid, useful outcome", "Only if the stock later goes up", "Only if a human overrides it"),
+        correct_index=1,
+    ),
+    _LessonSpec(
+        id="liquidity_basics",
+        order=11,
+        title="What Is Liquidity?",
+        simple_explanation="Liquidity is where a lot of buy or sell orders are sitting, waiting to be filled. Price is often drawn toward these areas, because large orders need enough volume on the other side to fill without moving price too much.",
+        visual_example_note="TradeTown has no real order-book or liquidity-pool feed to point to here — this lesson is conceptual, describing what a real broker's Level 2 data shows, which this simulation doesn't model.",
+        deeper_explanation="Buy-side liquidity sits above price (stop orders from short sellers, breakout buy orders); sell-side liquidity sits below price (stop losses from long positions, breakout sell orders). Institutions with large orders often need these resting pools to fill their own size — part of why price is frequently drawn toward them before reversing.",
+        quiz_question="Why does professional trading theory say price is often drawn toward areas of resting liquidity, like clusters of stop orders?",
+        quiz_options=("Because liquidity always causes a reversal", "Because large orders often need that resting liquidity to fill their own size", "Because liquidity guarantees a profitable trade", "Because it has no effect on price"),
+        correct_index=1,
+    ),
+    _LessonSpec(
+        id="swing_structure",
+        order=12,
+        title="Swing Highs, Swing Lows & Market Structure",
+        simple_explanation="A swing high is a peak where price turned down; a swing low is a trough where price turned up. A sequence of higher swing highs and higher swing lows defines an uptrend's structure — the reverse defines a downtrend.",
+        visual_example_note="This builds on the Trends vs. Ranges lesson — the Overview chart's own real candles are exactly where you'd mark swing highs and lows by hand. TradeTown doesn't run a formal swing-detection algorithm, but that same lesson's real trend read tells you the net direction those swings are forming.",
+        deeper_explanation="Market structure is the story swing highs and lows tell over time: as long as swings keep making higher highs and higher lows, structure is bullish. The first swing low that fails to hold — an old low getting broken — is the earliest real warning that structure may be shifting.",
+        quiz_question="Price makes a new high, pulls back to a higher low than the previous pullback, then pushes to another new high. What does this sequence describe?",
+        quiz_options=("A market structure shift", "Bullish market structure (higher highs, higher lows)", "A liquidity sweep", "A range"),
+        correct_index=1,
+    ),
+    _LessonSpec(
+        id="equal_highs_lows",
+        order=13,
+        title="Equal Highs, Equal Lows & Stop Clusters",
+        simple_explanation="When price tests the same high (or low) more than once without breaking it, it forms 'equal highs' or 'equal lows' — a level many traders draw stops or breakout orders around, forming a real cluster of resting orders at that one price.",
+        visual_example_note="TradeTown's simulated price data moves continuously and rarely lands on the exact same level twice, and there's no order-book feed to confirm a real stop cluster forming — this lesson describes what to look for on a real chart, not something this simulation detects for you.",
+        deeper_explanation="Unlike a broader support/resistance zone, equal highs/lows are precise: the same near-exact level tested multiple times. That precision is exactly what makes them attractive to sweep — a lot of stops and breakout orders often sit clustered right above or below that one level.",
+        quiz_question="A stock tests $50.00 resistance three times over two weeks, never closing above it, and traders start placing breakout buy stops just above $50.00. What is forming at that level?",
+        quiz_options=("A support zone only", "A cluster of resting orders (stops/breakout orders)", "A dividend adjustment", "Nothing significant"),
+        correct_index=1,
+    ),
+    _LessonSpec(
+        id="liquidity_sweeps",
+        order=14,
+        title="Liquidity Sweeps & Grabs",
+        simple_explanation="A liquidity sweep (or 'liquidity grab') is a fast move that pushes price just past a well-known high or low — triggering the stops and breakout orders resting there — before reversing hard the other way.",
+        visual_example_note="TradeTown's own What-If Simulation Lab (open it while reviewing any real trade proposal in Executive Voting) already models this exact idea as its real 'Liquidity Sweep' scenario — a real hypothetical move scaled off that symbol's own measured volatility, honestly labeled a scenario rather than a claim that a sweep was actually detected.",
+        deeper_explanation="The danger is assuming every push past a level is a sweep about to reverse — most of the time, a break of a level is just a break, and price keeps going. A real sweep is only confirmed after the fact, once price actually reverses hard; reacting to the mere possibility of one every time is how a real edge turns into overtrading.",
+        quiz_question="Price spikes 2% above a well-known resistance level in seconds, triggering breakout buy stops, then reverses and closes back below that level within the hour. What does this describe?",
+        quiz_options=("A confirmed breakout", "A liquidity sweep — the level was swept for stops, then price reversed", "A dividend payment", "A stock split"),
+        correct_index=1,
+    ),
+    _LessonSpec(
+        id="inducement",
+        order=15,
+        title="Inducement & Engineered Liquidity",
+        simple_explanation="Inducement is a small, obvious move designed to lure traders into a position before the real move happens the other way. 'Engineered liquidity' describes resting orders that built up specifically because of an obvious, heavily-watched level.",
+        visual_example_note="TradeTown has no real data on other market participants' intent or positioning — there's no way to actually confirm a move was 'engineered' rather than a genuine break. This lesson describes a professional concept to be aware of, not something this simulation can detect or verify.",
+        deeper_explanation="The key discipline here is the same as with liquidity sweeps: inducement is a pattern to recognize in hindsight, not a signal to trade on its mere possibility. Assuming every obvious setup is a trap can be just as costly as assuming every setup is genuine — evidence and confirmation matter more than the theory alone.",
+        quiz_question="Why should a trader be cautious about assuming every obvious, heavily-watched breakout level is 'inducement' set up to trap them?",
+        quiz_options=("Because inducement never actually happens", "Because most breaks of a level are genuine, and assuming a trap every time has no more real evidence behind it than assuming a real breakout every time", "Because TradeTown detects inducement automatically", "Because inducement only happens on Mondays"),
+        correct_index=1,
+    ),
+    _LessonSpec(
+        id="structure_shifts",
+        order=16,
+        title="Market Structure Shifts & Displacement",
+        simple_explanation="A market structure shift happens when price breaks a key swing high or low in the opposite direction of the prior trend, suggesting control has changed hands. Displacement is the strong, fast, high-momentum move that often accompanies a real structure shift, as opposed to a slow grind.",
+        visual_example_note="TradeTown's real Scanner (Command Center alerts) already flags this exact combination — a 'breakout' alert only fires when a large price move is confirmed by a real volume spike in the same tick, the closest real signal this simulation has to true displacement.",
+        deeper_explanation="A structure shift is a real, checkable event — a genuine break of a prior swing point — but confirming genuine displacement behind it, rather than a low-volume, easily-reversed poke through the level, is what separates a real shift from a fakeout. Scanner's own volume-spike requirement exists for exactly this reason.",
+        quiz_question="An uptrend's price breaks below its most recent higher low, on a big volume spike. What does this combination suggest?",
+        quiz_options=("The uptrend is definitely continuing", "A possible market structure shift, backed by real displacement (a volume-confirmed move)", "A dividend adjustment", "Nothing — volume doesn't matter"),
+        correct_index=1,
+    ),
+    _LessonSpec(
+        id="premium_discount",
+        order=17,
+        title="Premium and Discount Pricing",
+        simple_explanation="Within a recent trading range, the upper half is considered 'premium' (relatively expensive, where sellers look to sell) and the lower half is considered 'discount' (relatively cheap, where buyers look to buy). The midpoint of the range is equilibrium.",
+        visual_example_note="This is a more precise way of describing where inside a range price sits — the same 'range' concept from the Trends vs. Ranges lesson. TradeTown's own market regime read (Brain Room HUD) will call a symbol 'sideways' when it isn't trending, but doesn't split that range into premium/discount halves itself — that's a manual read you apply to the same real range you already know how to identify.",
+        deeper_explanation="The idea isn't that discount always bounces and premium always drops — it's a bias: buyers preferentially look for reasons to buy in the discount half, and sellers preferentially look for reasons to sell in the premium half, all else being equal. It's a lens for weighing evidence, not a signal on its own.",
+        quiz_question="A stock has been ranging between $40 (low) and $60 (high). At $45, where is price relative to premium/discount?",
+        quiz_options=("In the premium half — expensive relative to the range", "In the discount half — cheap relative to the range", "Exactly at equilibrium", "Outside the range entirely"),
+        correct_index=1,
+    ),
+    _LessonSpec(
+        id="order_flow_intro",
+        order=18,
+        title="Order Flow: What It Is, and What TradeTown Can't Show You",
+        simple_explanation="Order flow is the real-time record of actual buy and sell orders hitting the market — who's trading, how much, and at what price, moment to moment. Professional order-flow tools (like a real broker's Level 2 or Time & Sales) show this directly.",
+        visual_example_note="TradeTown's own market data is a single aggregate OHLC candle per period, with one volume number per bar — there's no real order-book, no bid/ask, and no trade-by-trade tape anywhere in this simulation. This lesson exists so you understand the concept and its real limits here, not because TradeTown can show it to you.",
+        deeper_explanation="Every other lesson in this Liquidity module — swing structure, equal highs/lows, sweeps, inducement, displacement, premium/discount — is really a way of *inferring* likely order flow from price action alone, when the real order-by-order data isn't available. That's a legitimate, widely-used approach in real trading, but it's important to know the difference between inferring flow from price and actually seeing it.",
+        quiz_question="Why does this Liquidity module teach ways to infer buyer/seller behavior from price action instead of reading real order flow directly?",
+        quiz_options=("Because order flow doesn't matter", "Because TradeTown's real market data is aggregate OHLC candles only — no order-book or trade-by-trade data exists in this simulation", "Because inferring from price is always more accurate", "Because real traders never use order flow"),
         correct_index=1,
     ),
 )

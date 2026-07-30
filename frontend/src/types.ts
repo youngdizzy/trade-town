@@ -329,7 +329,16 @@ export type EducationTopic =
   | "take_profit"
   | "risk_reward"
   | "position_sizing"
-  | "no_trade_ok";
+  | "no_trade_ok"
+  // v0.7 Feature 49 (Phase 2) — the Liquidity/Market Structure module.
+  | "liquidity_basics"
+  | "swing_structure"
+  | "equal_highs_lows"
+  | "liquidity_sweeps"
+  | "inducement"
+  | "structure_shifts"
+  | "premium_discount"
+  | "order_flow_intro";
 
 export interface EducationLesson {
   id: EducationTopic;

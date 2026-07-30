@@ -1019,6 +1019,19 @@ EducationTopic = Literal[
     "risk_reward",
     "position_sizing",
     "no_trade_ok",
+    # v0.7 Feature 49 (Phase 2) — the Liquidity/Market Structure module,
+    # orders 11-18. See app/education.py's module docstring for exactly
+    # which of these point at a real TradeTown mechanic vs. are honestly
+    # disclaimed as conceptual (no order-book/liquidity-pool data exists
+    # anywhere in this codebase).
+    "liquidity_basics",
+    "swing_structure",
+    "equal_highs_lows",
+    "liquidity_sweeps",
+    "inducement",
+    "structure_shifts",
+    "premium_discount",
+    "order_flow_intro",
 ]
 
 

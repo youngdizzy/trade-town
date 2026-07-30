@@ -7,12 +7,30 @@ from app.education import all_lessons, default_education_progress, grade_quiz, m
 from app.schemas import EducationProgress
 
 
-def test_all_lessons_covers_the_ten_topic_curriculum_in_order():
+def test_all_lessons_covers_the_eighteen_topic_curriculum_in_order():
+    # v0.7 Feature 49 (Phase 2) extended the original 10-lesson
+    # curriculum with an 8-lesson Liquidity/Market Structure module.
     lessons = all_lessons()
-    assert len(lessons) == 10
+    assert len(lessons) == 18
     orders = [lesson.order for lesson in lessons]
     assert orders == sorted(orders)
-    assert orders == list(range(1, 11))
+    assert orders == list(range(1, 19))
+
+
+def test_liquidity_module_lessons_are_present_and_unique():
+    liquidity_ids = {
+        "liquidity_basics",
+        "swing_structure",
+        "equal_highs_lows",
+        "liquidity_sweeps",
+        "inducement",
+        "structure_shifts",
+        "premium_discount",
+        "order_flow_intro",
+    }
+    lesson_ids = {lesson.id for lesson in all_lessons()}
+    assert liquidity_ids <= lesson_ids
+    assert len(lesson_ids) == 18  # no duplicate ids across all 18
 
 
 def test_lesson_public_shape_never_leaks_the_quiz_answer():

@@ -410,6 +410,12 @@ test.describe("Global Command Center", () => {
 
     const lessonPane = page.getByTestId("education-lesson");
     await expect(lessonPane).toBeVisible();
+
+    // v0.7 Feature 49 (Phase 2) — the 8-lesson Liquidity/Market
+    // Structure module extends the curriculum through order 18.
+    await expect(page.getByRole("button", { name: /11\. What Is Liquidity\?/ })).toBeVisible();
+    await expect(page.getByRole("button", { name: /18\. Order Flow/ })).toBeVisible();
+
     await page.getByRole("button", { name: /1\. Reading a Candlestick/ }).click();
     await expect(lessonPane.getByText(/Practice Challenge/)).toBeVisible();
 

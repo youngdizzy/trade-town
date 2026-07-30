@@ -7,6 +7,41 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.7 Feature 49 (Phase 2) — Professional Day Trading Program:
+  Liquidity/Market Structure curriculum**: extends the existing 10-lesson
+  Trading Education curriculum (`app/education.py`) with 8 new lessons
+  (orders 11-18) covering liquidity, buy-side/sell-side liquidity, swing
+  highs/lows and market structure, equal highs/lows and stop clusters,
+  liquidity sweeps/grabs, inducement, market structure shifts and
+  displacement, premium/discount pricing, and order flow. Researched
+  first: this codebase has no order-book, bid/ask, trade-by-trade tape,
+  or liquidity-pool data anywhere (`app/market_data.py`'s `Candle` is a
+  single aggregate OHLC bar with one volume number, uncorrelated with
+  the bar's own price move). Every lesson teaches the real professional
+  concept honestly:
+  - Where a real, honest analog exists in TradeTown, the lesson points
+    at it: `liquidity_sweeps` points at the What-If Simulation Lab's
+    real "Liquidity Sweep" scenario (a real hypothetical scaled off the
+    symbol's own measured volatility, already honestly labeled a
+    scenario); `structure_shifts` points at the Scanner's real
+    volume-confirmed breakout alert; `swing_structure`/
+    `premium_discount` build directly on the existing Trends vs. Ranges
+    and Support & Resistance lessons' own real trend/regime reads.
+  - Where no real detector exists, the lesson says so explicitly rather
+    than fabricating one: `liquidity_basics`, `equal_highs_lows`,
+    `inducement`. The final lesson, `order_flow_intro`, names this
+    honesty boundary directly — every other lesson in the module is
+    really a way of *inferring* likely order flow from price action
+    alone, because the real order-by-order data isn't available here.
+  - Zero new persistence, zero new endpoints — reuses the existing
+    `all_lessons()`/`mark_viewed()`/`grade_quiz()` API and
+    `EducationPanel.tsx` UI exactly as-is.
+
+  Backend: `test_education.py` updated for the 18-lesson curriculum +
+  the full suite (621/621) + mypy/ruff clean. Frontend: tsc/eslint/build
+  clean; `commandCenter.spec.ts`'s Trading Academy test extended to
+  confirm the new module's first and last lessons render.
+
 - **v0.7 Feature 49 (Phase 1) — Professional Day Trading Program: Daily
   Trading Objectives**: scoped from a large brief covering daily profit
   targets/loss limits, a "Trade Quality Checklist," a full Liquidity/

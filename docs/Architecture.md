@@ -2864,6 +2864,67 @@ stack — confirming every strategy carries real `stage`/`stageHistory`/
 successfully queues a real scenario backtest) both passed;
 `commandCenter.spec.ts`'s tab-count test updated to 26 tabs.
 
+### Professional Day Trading Program — Liquidity/Market Structure Curriculum (Phase 2)
+
+The second phase of Feature 49 (see Phase 1 below for the shared
+research this whole feature was scoped from). The brief asked for a
+"complete curriculum on liquidity": buy-side/sell-side liquidity, swing
+highs/lows, equal highs/lows, stop clusters, resting/engineered
+liquidity, liquidity sweeps/grabs, inducement, market structure shifts,
+displacement, premium/discount pricing, order flow.
+
+**Extends the existing Trading Education curriculum, doesn't build a
+new one.** `app/education.py` (v0.6.2 Phase 9) already has a real,
+ordered 10-lesson progression (candlesticks → ... → why NO TRADE can be
+correct), a real `EducationTopic` Literal, real server-side quiz
+grading, and a real `EducationPanel.tsx` UI. This phase adds 8 more
+`_LessonSpec` entries (orders 11-18) continuing the exact same real
+progression, rather than inventing a second curriculum system.
+
+**The honesty check that shaped every lesson**: `app/market_data.py`'s
+`Candle` is a single aggregate OHLC bar with one `volume` float per
+period, generated independently of that bar's own price move — there is
+no order-book, no bid/ask spread, and no trade-by-trade tape anywhere in
+this codebase. That rules out ever claiming to *detect* a real swing
+high, equal high, sweep, or inducement — this module teaches the
+concepts, it does not run detectors that don't exist.
+
+**Real analogs, named explicitly where one exists**:
+
+| Lesson | Real TradeTown analog |
+|---|---|
+| `liquidity_sweeps` | The What-If Simulation Lab's real "Liquidity Sweep" scenario (`app/whatif.py`'s `_SCENARIO_PARAMS`) — a real hypothetical move scaled off the symbol's own measured volatility, already honestly labeled a *scenario*, never a claim of detection |
+| `structure_shifts` | The Scanner's real `breakout` alert (`app/scanner.py`'s `_classify`), which only fires when a large price move is confirmed by a real volume spike in the same tick — the closest real signal this codebase has to genuine displacement |
+| `swing_structure` | Builds directly on the pre-existing Trends vs. Ranges lesson's own real trend read |
+| `premium_discount` | Builds directly on the pre-existing Support and Resistance lesson's own real range concept, and the real market regime classification (`app/market_environment.py`) |
+
+**Honestly disclaimed, where no real analog exists**: `liquidity_basics`,
+`equal_highs_lows`, and `inducement` each say directly, in their own
+`visual_example_note`, that TradeTown has no order-book/participant-
+positioning data to confirm the concept — teaching material, not a
+claimed mechanic. The closing lesson, `order_flow_intro`, makes this the
+explicit theme of the whole module: every other lesson is a way of
+*inferring* likely order flow from price action alone, because the real
+order-by-order data isn't available here — a legitimate, widely-used
+real trading approach, but one worth being honest about the difference
+from actually seeing the flow.
+
+**Zero new persistence, zero new endpoints.** The existing
+`GET /api/education/lessons`, `POST /api/education/view`, and
+`POST /api/education/quiz` already handle any lesson id in the real
+curriculum; `EducationProgress`'s `viewed_lesson_ids`/
+`completed_lesson_ids` already track by id with no schema change needed.
+
+**Verified**: backend — `test_education.py`'s topic-count test updated
+to 18 lessons/orders 1-18, plus a new test confirming all 8 Liquidity
+module ids are present and every one of the 18 ids is unique + the full
+suite (621/621) + mypy/ruff clean. Frontend: `tsc -b`/eslint/build
+clean (the frontend's own `EducationTopic` literal union, previously a
+second hand-copied 10-member list, was extended to match); the existing
+`commandCenter.spec.ts` Trading Academy test extended to assert the new
+module's first (`11. What Is Liquidity?`) and last (`18. Order Flow`)
+lessons render in the lesson list.
+
 ### Professional Day Trading Program — Daily Trading Objectives (Phase 1)
 
 A large brief (Daily Trading Objectives, a "Trade Quality Checklist," a
