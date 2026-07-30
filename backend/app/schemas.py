@@ -1533,6 +1533,10 @@ class CompanyDnaTrait(CamelModel):
 class CompanyDNA(CamelModel):
     traits: list[CompanyDnaTrait] = Field(default_factory=list)
     summary: str
+    # v0.7 Feature 48 — a pure, deterministic label read off the five
+    # traits above (see app/company_dna.py's classify_identity()). Zero
+    # new data — just an honest name for a real combination of numbers.
+    identity: str = "Not Yet Established"
     # How many real closed trades/graded decisions this reading is based
     # on — shown so a fresh company's DNA reads as "not enough history
     # yet" rather than a confident-looking guess from thin data.
@@ -2410,6 +2414,12 @@ class GameSaveState(CamelModel):
     company_health: CompanyHealth = Field(alias="companyHealth")
     # v0.7 Feature 43 — Company DNA (app/company_dna.py).
     company_dna: CompanyDNA = Field(alias="companyDna")
+    # v0.7 Feature 48 — Legacy: a small, permanent, capped per-trait
+    # delta (app/company_dna.py's nudge_legacy()), layered on top of
+    # company_dna's own fresh historical-average score every time it's
+    # recomputed, never mixed into the five traits' own formulas. Keyed
+    # by trait id (e.g. "risk_appetite").
+    company_dna_legacy: dict[str, float] = Field(default_factory=dict, alias="companyDnaLegacy")
     # v0.7 Feature 24 — the CIO's Monthly Executive Review (app/executive_review.py).
     executive_reviews: list[ExecutiveReview] = Field(default_factory=list, alias="executiveReviews")
     # v0.7 Feature 25 — AI Academy. `academy_projects` holds the one

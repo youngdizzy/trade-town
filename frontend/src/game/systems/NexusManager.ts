@@ -207,6 +207,7 @@ export class NexusManager {
   private static companyDna: CompanyDNA = {
     traits: [],
     summary: "",
+    identity: "Not Yet Established",
     sampleSize: 0,
     updatedAt: new Date().toISOString(),
   };

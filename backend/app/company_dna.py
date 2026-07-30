@@ -33,6 +33,41 @@ Deliberately distinct from `app/company_health.py`'s `team_chemistry`
 (a real support-vs-challenge ratio across recent AI Debates specifically)
 and from `app/company_score.py`'s `team_coordination` (a proxy off raw
 agent mood) — no trait here reuses either of those signals.
+
+v0.7 Feature 48 — the Company DNA System adds two real, additive pieces
+on top of the five traits above, without touching their own tested
+formulas or documented meaning:
+
+  Company Identity  - a pure, deterministic label (`classify_identity`)
+                      read off the five trait scores that already exist
+                      — zero new data, just an honest name for a
+                      combination of real numbers. "Not Yet Established"
+                      until `sampleSize` is real.
+  Legacy            - a small, permanent, capped delta layered on top of
+                      the fresh historical-average score (never mixed
+                      into the average itself, so the five formulas'
+                      documented meaning never changes). Nudged by
+                      exactly four real, one-time or rare company events
+                      this codebase already tracks: a ratified Black Box
+                      breakthrough and a completed Academy project each
+                      nudge `research_rigor` up (real completed research
+                      effort); a filed `disciplined_process` success
+                      study nudges `risk_appetite` down and a filed
+                      `patient_execution` success study nudges `patience`
+                      up (each one records real behavior that already
+                      happened — never a prediction of future behavior);
+                      the Founders' one-time, permanent "Legendary
+                      Status" retirement (Feature 39) nudges both
+                      `risk_appetite` down and `research_rigor` up at
+                      once, since Keystone (risk) and Compass (learning)
+                      retire together. See `nexus.py`'s `tick()` for
+                      exactly where each hook fires.
+
+  Explicit scope cut: this codebase is single-tenant (one company, one
+  save slot — see `state.py`'s and `save_modules.py`'s own module
+  docstrings), so the brief's "no two companies should think exactly
+  alike" and any recruitment/cross-company comparison have no real
+  mechanism to attach to and are not built.
 """
 from __future__ import annotations
 
@@ -48,6 +83,57 @@ TRAIT_LABELS: dict[str, str] = {
     "research_rigor": "Research Rigor",
     "collaboration_style": "Collaboration Style",
 }
+
+# v0.7 Feature 48 — Legacy nudges are small and capped so DNA "changes
+# slowly": no single real event can move a trait by more than this many
+# points, cumulative, in either direction.
+LEGACY_DELTA_CAP = 15.0
+BLACK_BOX_BREAKTHROUGH_NUDGE = 2.0
+ACADEMY_COMPLETION_NUDGE = 0.5
+SUCCESS_STUDY_NUDGE = 1.0
+FOUNDER_RETIREMENT_NUDGE = 3.0
+
+
+def nudge_legacy(deltas: dict[str, float], trait_id: str, amount: float) -> dict[str, float]:
+    """Applies one small, permanent, capped nudge to `trait_id`'s Legacy
+    delta — a real, one-time company event's lasting mark, layered on top
+    of (never mixed into) the five traits' own fresh historical-average
+    computation below."""
+    updated = dict(deltas)
+    current = updated.get(trait_id, 0.0)
+    updated[trait_id] = max(-LEGACY_DELTA_CAP, min(LEGACY_DELTA_CAP, current + amount))
+    return updated
+
+
+def classify_identity(traits: list[CompanyDnaTrait], sample_size: int) -> str:
+    """A pure, deterministic label read off the five real trait scores —
+    zero new data, checked in a fixed priority order so exactly one label
+    always applies. Never predictive: describes what the track record
+    already shows, the same "descriptive, not predictive" rule the five
+    traits themselves follow."""
+    if sample_size == 0:
+        return "Not Yet Established"
+
+    by_id = {t.id: t.score for t in traits}
+    risk_appetite = by_id.get("risk_appetite", 50.0)
+    patience = by_id.get("patience", 50.0)
+    contrarian_tendency = by_id.get("contrarian_tendency", 50.0)
+    research_rigor = by_id.get("research_rigor", 50.0)
+    collaboration_style = by_id.get("collaboration_style", 50.0)
+
+    if risk_appetite <= 25.0 and patience >= 60.0:
+        return "Ultra Conservative"
+    if research_rigor >= 75.0:
+        return "Research Driven"
+    if patience >= 70.0 and risk_appetite <= 40.0:
+        return "Highly Disciplined"
+    if contrarian_tendency >= 65.0:
+        return "Independent Thinker"
+    if collaboration_style >= 70.0:
+        return "Collaborative Culture"
+    if risk_appetite >= 65.0:
+        return "Aggressive Risk-Taker"
+    return "Balanced Operator"
 
 
 def _now_iso() -> str:
@@ -95,11 +181,21 @@ def _collaboration_style(decisions: list[TradeDecision]) -> tuple[float, int, st
     return score, len(decisions), f"{diverse} of {len(decisions)} decision(s) had at least two distinct real analyst positions on the table."
 
 
+def _with_legacy(trait_id: str, name: str, base_score: float, sample_size: int, detail: str, legacy_deltas: dict[str, float]) -> CompanyDnaTrait:
+    delta = legacy_deltas.get(trait_id, 0.0)
+    final_score = max(0.0, min(100.0, base_score + delta))
+    if delta != 0.0 and sample_size > 0:
+        detail = f"{detail} Includes a permanent Legacy nudge of {delta:+.1f} from real company milestones."
+    return CompanyDnaTrait(id=trait_id, name=name, score=round(final_score, 1), detail=detail)
+
+
 def compute_company_dna(
     decisions: list[TradeDecision],
     trades: list[PaperTrade],
     ceo_decisions: list[CeoDecisionRecord],
+    legacy_deltas: dict[str, float] | None = None,
 ) -> CompanyDNA:
+    legacy_deltas = legacy_deltas or {}
     risk_appetite, risk_n, risk_detail = _risk_appetite(decisions)
     patience, patience_n, patience_detail = _patience(trades)
     contrarian, contrarian_n, contrarian_detail = _contrarian_tendency(ceo_decisions)
@@ -107,11 +203,11 @@ def compute_company_dna(
     collaboration, collab_n, collab_detail = _collaboration_style(decisions)
 
     traits = [
-        CompanyDnaTrait(id="risk_appetite", name=TRAIT_LABELS["risk_appetite"], score=round(risk_appetite, 1), detail=risk_detail),
-        CompanyDnaTrait(id="patience", name=TRAIT_LABELS["patience"], score=round(patience, 1), detail=patience_detail),
-        CompanyDnaTrait(id="contrarian_tendency", name=TRAIT_LABELS["contrarian_tendency"], score=round(contrarian, 1), detail=contrarian_detail),
-        CompanyDnaTrait(id="research_rigor", name=TRAIT_LABELS["research_rigor"], score=round(rigor, 1), detail=rigor_detail),
-        CompanyDnaTrait(id="collaboration_style", name=TRAIT_LABELS["collaboration_style"], score=round(collaboration, 1), detail=collab_detail),
+        _with_legacy("risk_appetite", TRAIT_LABELS["risk_appetite"], risk_appetite, risk_n, risk_detail, legacy_deltas),
+        _with_legacy("patience", TRAIT_LABELS["patience"], patience, patience_n, patience_detail, legacy_deltas),
+        _with_legacy("contrarian_tendency", TRAIT_LABELS["contrarian_tendency"], contrarian, contrarian_n, contrarian_detail, legacy_deltas),
+        _with_legacy("research_rigor", TRAIT_LABELS["research_rigor"], rigor, rigor_n, rigor_detail, legacy_deltas),
+        _with_legacy("collaboration_style", TRAIT_LABELS["collaboration_style"], collaboration, collab_n, collab_detail, legacy_deltas),
     ]
     sample_size = max(risk_n, patience_n, contrarian_n, rigor_n, collab_n)
 
@@ -122,4 +218,6 @@ def compute_company_dna(
         lowest, highest = extreme[0], extreme[-1]
         summary = f"This company's real track record reads highest on {highest.name} ({highest.score:.0f}/100) and lowest on {lowest.name} ({lowest.score:.0f}/100)."
 
-    return CompanyDNA(traits=traits, summary=summary, sampleSize=sample_size, updatedAt=_now_iso())
+    identity = classify_identity(traits, sample_size)
+
+    return CompanyDNA(traits=traits, summary=summary, identity=identity, sampleSize=sample_size, updatedAt=_now_iso())

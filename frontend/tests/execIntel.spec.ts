@@ -69,6 +69,10 @@ test("companyDna is present in the real backend state", async ({ page }) => {
   expect(state.companyDna).toBeTruthy();
   expect(Array.isArray(state.companyDna.traits)).toBe(true);
   expect(state.companyDna.traits.length).toBe(5);
+  // v0.7 Feature 48 — Company Identity: a real, non-empty label always
+  // present, "Not Yet Established" until enough history exists.
+  expect(typeof state.companyDna.identity).toBe("string");
+  expect(state.companyDna.identity.length).toBeGreaterThan(0);
   expect(state.companyHealth.teamChemistry).not.toBeUndefined();
 });
 
@@ -94,6 +98,7 @@ test("the Executive Intelligence Dashboard opens from the Command Center and sho
   await clickTab(page, "EXECINTEL");
 
   await expect(page.getByText("Company DNA", { exact: true })).toBeVisible();
+  await expect(page.getByTestId("company-dna-identity")).toBeVisible();
   await expect(page.getByText("Risk Appetite", { exact: true })).toBeVisible();
   await expect(page.getByText("Patience", { exact: true })).toBeVisible();
   await expect(page.getByText("Contrarian Tendency", { exact: true })).toBeVisible();

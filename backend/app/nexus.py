@@ -38,7 +38,7 @@ from app.broker import tick_broker
 from app.calendar import compute_system_events
 from app.coach import generate_report as generate_coach_report
 from app.coach import record_report as record_coach_report_entry
-from app.company_dna import compute_company_dna
+from app.company_dna import ACADEMY_COMPLETION_NUDGE, BLACK_BOX_BREAKTHROUGH_NUDGE, FOUNDER_RETIREMENT_NUDGE, SUCCESS_STUDY_NUDGE, compute_company_dna, nudge_legacy
 from app.company_health import compute_company_health
 from app.company_score import compute_company_score
 from app.config import settings
@@ -877,6 +877,11 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     strategy_reports = list(state.strategy_reports)
     strategy_reviews = list(state.strategy_reviews)
     constitution_citations = list(state.constitution.citations)
+    # v0.7 Feature 48 — Company DNA Legacy: a small, permanent, capped
+    # per-trait delta nudged by real one-time/rare company events (see
+    # app/company_dna.py's module docstring), layered on top of
+    # company_dna's own fresh historical-average score every tick.
+    company_dna_legacy = dict(state.company_dna_legacy)
     hall_of_fame = list(state.hall_of_fame)
     coach_reports = list(state.coach_reports)
     performance_snapshots = list(state.performance_snapshots)
@@ -971,6 +976,10 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         # v0.7 Feature 46 — "Academy explains it": a completed Academy
         # project is a direct, literal instance of Article VIII.
         constitution_citations = cite_article(constitution_citations, "VIII", "academy", f'"{newly_completed_project.title}" completed by {AGENT_PROFILES[newly_completed_project.assigned_agent].name}.', new_time.day)
+        # v0.7 Feature 48 — a completed Academy project is real evidence
+        # of institutional research effort: a small, permanent Legacy
+        # nudge to Company DNA's Research Rigor.
+        company_dna_legacy = nudge_legacy(company_dna_legacy, "research_rigor", ACADEMY_COMPLETION_NUDGE)
 
     watchlist = tick_watchlist(watchlist, research, market_data_provider)
     prices = {w.symbol: w.last_price for w in watchlist}
@@ -1234,6 +1243,16 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                     specific_article = MISTAKE_ARTICLE_MAP.get(success_study.category)
                     if specific_article:
                         constitution_citations = cite_article(constitution_citations, specific_article, "case_study", f'"{success_study.title}" — {success_study.category.replace("_", " ")}.', new_time.day)
+                    # v0.7 Feature 48 — a filed success study records real
+                    # behavior that just happened (never a prediction): a
+                    # disciplined_process win is real evidence of lower
+                    # risk-taking; a patient_execution win is real
+                    # evidence of patience. Each gets one small, permanent
+                    # Legacy nudge.
+                    if success_study.category == "disciplined_process":
+                        company_dna_legacy = nudge_legacy(company_dna_legacy, "risk_appetite", -SUCCESS_STUDY_NUDGE)
+                    elif success_study.category == "patient_execution":
+                        company_dna_legacy = nudge_legacy(company_dna_legacy, "patience", SUCCESS_STUDY_NUDGE)
 
     backtest_sessions, simulation_results, newly_completed_sims = tick_simulation_lab(
         backtest_sessions, simulation_results, strategies, watchlist, RESEARCHER_IDS, new_time
@@ -1342,7 +1361,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # v0.7 Feature 43 — Company DNA. Cheap to recompute (a handful of
     # linear scans over already-in-memory lists), same "always current"
     # reasoning as company_health above.
-    company_dna = compute_company_dna(decisions, paper_portfolio.trade_history, ceo_decisions)
+    company_dna = compute_company_dna(decisions, paper_portfolio.trade_history, ceo_decisions, legacy_deltas=company_dna_legacy)
     # v0.7 Feature 25 — cheap to recompute every tick, same reasoning as
     # company_health above (feeds a live-updating Academy readout).
     academy_state = compute_academy_state(agent_knowledge, len(academy_completed_projects))
@@ -1583,6 +1602,13 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # own already-fresh tier.
     founder_state = compute_founder_state(state.founder_state, company_health_tier=company_health.tier, updated_at=_now_iso())
     founder_state = founder_state.model_copy(update={"log": founder_log, "council_sessions": founder_council_sessions})
+    # v0.7 Feature 48 — Legacy: the Founders' one-time, permanent
+    # "Legendary Status" retirement leaves a lasting mark on Company DNA.
+    # Keystone (Chief Risk Architect) and Compass (Chief Learning
+    # Architect) retire together, so both domains nudge at once.
+    if founder_state.retired and not state.founder_state.retired:
+        company_dna_legacy = nudge_legacy(company_dna_legacy, "risk_appetite", -FOUNDER_RETIREMENT_NUDGE)
+        company_dna_legacy = nudge_legacy(company_dna_legacy, "research_rigor", FOUNDER_RETIREMENT_NUDGE)
 
     # v0.7 — the Advanced Quantitative Research Division. Progress
     # advances once per real in-game day (not per tick), the same
@@ -1612,6 +1638,10 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             if breakthrough_review.verdict == "approved":
                 completed_project = black_box_project.model_copy(update={"status": "completed", "completed_at": _now_iso()})
                 black_box = archive_project(black_box, completed_project)
+                # v0.7 Feature 48 — a ratified Black Box breakthrough is
+                # real evidence of deep, completed research effort: a
+                # small, permanent Legacy nudge to Research Rigor.
+                company_dna_legacy = nudge_legacy(company_dna_legacy, "research_rigor", BLACK_BOX_BREAKTHROUGH_NUDGE)
                 hall_of_fame.append(
                     HallOfFameEntry(
                         id=f"hof-breakthrough-{black_box_project.id}",
@@ -1734,6 +1764,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "market_environment": market_environment,
             "company_health": company_health,
             "company_dna": company_dna,
+            "company_dna_legacy": company_dna_legacy,
             "executive_reviews": executive_reviews,
             "academy_projects": academy_projects,
             "academy_completed_projects": academy_completed_projects,

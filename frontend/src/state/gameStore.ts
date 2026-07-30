@@ -255,6 +255,7 @@ class GameStore {
     companyDna: {
       traits: [],
       summary: "",
+      identity: "Not Yet Established",
       sampleSize: 0,
       updatedAt: new Date().toISOString(),
     },

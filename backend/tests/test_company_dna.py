@@ -5,9 +5,9 @@ confirms the honest "not enough history" neutral default with zero records.
 """
 from __future__ import annotations
 
-from app.company_dna import compute_company_dna
+from app.company_dna import LEGACY_DELTA_CAP, classify_identity, compute_company_dna, nudge_legacy
 from app.discipline import PATIENCE_TARGET_MINUTES
-from app.schemas import AgentVote, CeoDecisionRecord, ConfidenceFactor, DecisionConfidence, PaperTrade, TradeDecision
+from app.schemas import AgentVote, CeoDecisionRecord, CompanyDnaTrait, ConfidenceFactor, DecisionConfidence, PaperTrade, TradeDecision
 
 
 def _now_iso() -> str:
@@ -161,3 +161,77 @@ class TestSummaryAndSampleSize:
         decisions = [_decision(confidence_engine=_confidence_engine()), _decision(confidence_engine=_confidence_engine(), decision_id="decision-p2")]
         dna = compute_company_dna(decisions, [], [])
         assert dna.sample_size == 2
+
+
+# v0.7 Feature 48 — Company Identity: a pure, deterministic label read
+# off the five real trait scores.
+class TestClassifyIdentity:
+    def _traits(self, **scores: float) -> list[CompanyDnaTrait]:
+        defaults = {"risk_appetite": 50.0, "patience": 50.0, "contrarian_tendency": 50.0, "research_rigor": 50.0, "collaboration_style": 50.0}
+        defaults.update(scores)
+        return [CompanyDnaTrait(id=tid, name=tid, score=score, detail="test") for tid, score in defaults.items()]
+
+    def test_zero_sample_size_is_not_yet_established(self) -> None:
+        assert classify_identity(self._traits(), 0) == "Not Yet Established"
+
+    def test_low_risk_high_patience_is_ultra_conservative(self) -> None:
+        assert classify_identity(self._traits(risk_appetite=20.0, patience=65.0), 5) == "Ultra Conservative"
+
+    def test_high_research_rigor_is_research_driven(self) -> None:
+        assert classify_identity(self._traits(risk_appetite=50.0, research_rigor=80.0), 5) == "Research Driven"
+
+    def test_high_patience_moderate_risk_is_highly_disciplined(self) -> None:
+        assert classify_identity(self._traits(risk_appetite=35.0, patience=75.0), 5) == "Highly Disciplined"
+
+    def test_high_contrarian_tendency_is_independent_thinker(self) -> None:
+        assert classify_identity(self._traits(contrarian_tendency=70.0), 5) == "Independent Thinker"
+
+    def test_high_collaboration_is_collaborative_culture(self) -> None:
+        assert classify_identity(self._traits(collaboration_style=75.0), 5) == "Collaborative Culture"
+
+    def test_high_risk_appetite_alone_is_aggressive_risk_taker(self) -> None:
+        assert classify_identity(self._traits(risk_appetite=70.0), 5) == "Aggressive Risk-Taker"
+
+    def test_all_neutral_scores_is_balanced_operator(self) -> None:
+        assert classify_identity(self._traits(), 5) == "Balanced Operator"
+
+
+# v0.7 Feature 48 — Legacy: a small, permanent, capped per-trait delta.
+class TestNudgeLegacy:
+    def test_adds_a_real_delta(self) -> None:
+        deltas = nudge_legacy({}, "research_rigor", 2.0)
+        assert deltas["research_rigor"] == 2.0
+
+    def test_accumulates_across_multiple_nudges(self) -> None:
+        deltas = nudge_legacy({}, "research_rigor", 2.0)
+        deltas = nudge_legacy(deltas, "research_rigor", 2.0)
+        assert deltas["research_rigor"] == 4.0
+
+    def test_caps_at_the_max_in_either_direction(self) -> None:
+        deltas: dict[str, float] = {}
+        for _ in range(20):
+            deltas = nudge_legacy(deltas, "risk_appetite", -5.0)
+        assert deltas["risk_appetite"] == -LEGACY_DELTA_CAP
+
+    def test_does_not_mutate_the_input_dict(self) -> None:
+        original = {"research_rigor": 1.0}
+        nudge_legacy(original, "research_rigor", 2.0)
+        assert original == {"research_rigor": 1.0}
+
+
+class TestComputeCompanyDnaWithLegacy:
+    def test_legacy_delta_is_added_on_top_of_the_base_score(self) -> None:
+        without = compute_company_dna([_decision(confidence_engine=_confidence_engine())], [], [])
+        with_legacy = compute_company_dna([_decision(confidence_engine=_confidence_engine())], [], [], legacy_deltas={"research_rigor": 5.0})
+        base = next(t for t in without.traits if t.id == "research_rigor").score
+        nudged = next(t for t in with_legacy.traits if t.id == "research_rigor").score
+        assert nudged == base + 5.0
+
+    def test_legacy_delta_clamps_to_the_valid_range(self) -> None:
+        dna = compute_company_dna([_decision(confidence_engine=_confidence_engine(tier="strong", score=99.0))], [], [], legacy_deltas={"research_rigor": 50.0})
+        trait = next(t for t in dna.traits if t.id == "research_rigor")
+        assert trait.score == 100.0
+
+    def test_identity_is_included_and_deterministic(self) -> None:
+        dna = compute_company_dna([_decision(confidence_engine=_confidence_engine(tier="moderate"))], [], [_ceo_decision(agreed=True)])
+        assert dna.identity == classify_identity(dna.traits, dna.sample_size)

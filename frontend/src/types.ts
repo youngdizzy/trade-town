@@ -1126,6 +1126,9 @@ export interface CompanyDnaTrait {
 export interface CompanyDNA {
   traits: CompanyDnaTrait[];
   summary: string;
+  // v0.7 Feature 48 — a pure, deterministic label read off the five
+  // traits above (see backend/app/company_dna.py's classify_identity()).
+  identity: string;
   sampleSize: number;
   updatedAt: string;
 }

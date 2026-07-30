@@ -87,6 +87,7 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         "company_score",
         "company_health",
         "company_dna",
+        "company_dna_legacy",
         "academy_state",
         "reasoning_lab_state",
         "wisdom_state",

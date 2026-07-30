@@ -2924,6 +2924,77 @@ the CEO is looking at right now.
 new detection heuristics — every citation traces to a field the report
 already computed for itself before this feature touched it.
 
+### Company DNA System
+
+The brief asked for a "Company Identity" label, DNA that "changes
+slowly" and is influenced by "every major event," DNA effects on
+company behavior, a Founder-retirement "Legacy," and — the primary
+honest scope cut — "no two companies should think exactly alike."
+Checked first: Company DNA (Feature 43, `app/company_dna.py`) already
+exists as five real behavioral traits (Risk Appetite, Patience,
+Contrarian Tendency, Research Rigor, Collaboration Style), each read off
+the company's own historical decision/trade record and recomputed fresh
+from full history on nearly every tick. This feature adds two real,
+additive pieces on top, deliberately without touching those five
+formulas' own tested behavior or documented meaning — changing an
+already-shipped, already-tested contract to build a new feature is
+exactly the kind of risk this session's discipline avoids.
+
+**Company Identity — a pure label, zero new data**
+(`classify_identity()`). Reads the five existing trait scores in a
+fixed priority order so exactly one label always applies: "Ultra
+Conservative" (low risk appetite, high patience), "Research Driven"
+(high research rigor), "Highly Disciplined" (high patience, moderate-
+or-lower risk appetite), "Independent Thinker" (high contrarian
+tendency), "Collaborative Culture" (high collaboration style),
+"Aggressive Risk-Taker" (high risk appetite alone), or "Balanced
+Operator" as the honest default. "Not Yet Established" until
+`sampleSize` is real, the same "don't dress up thin data" convention
+the five traits themselves already follow.
+
+**Legacy — a small, permanent, capped delta layered on top of the fresh
+score, never mixed into it.** The five traits' own formulas keep
+computing a pure historical average exactly as before — `nudge_legacy()`
+adds a second, independent signal on top: a persisted
+`companyDnaLegacy: dict[trait_id, float]` (a new field on
+`GameSaveState`, living in the `derived` save module alongside
+`company_dna` itself), capped at `LEGACY_DELTA_CAP` (15 points per trait,
+either direction) so no single event can swing a trait far, and no
+accumulation of events can either. Four real, already-tracked company
+events each contribute one small nudge, wired at their own real
+`app/nexus.py` `tick()` hook points:
+
+| Real event | Nudge |
+|---|---|
+| A Black Box breakthrough is ratified (`breakthrough_review.verdict == "approved"`) | Research Rigor +2.0 — real completed deep-research effort |
+| An Academy project completes | Research Rigor +0.5 — real completed research effort, smaller since these are far more frequent |
+| A `disciplined_process` success study is filed | Risk Appetite −1.0 — records real behavior that just happened, never a prediction |
+| A `patient_execution` success study is filed | Patience +1.0 — same "real behavior, not a forecast" rule |
+| The Founders' one-time "Legendary Status" retirement fires (Feature 39; `founder_state.retired` flips False→True) | Risk Appetite −3.0 **and** Research Rigor +3.0 at once — Keystone (Chief Risk Architect) and Compass (Chief Learning Architect) retire together, so both domains' legacy lands in the same event |
+
+This is what makes DNA genuinely "change slowly": most events happening
+before or after `compute_company_dna()`'s own call point in the same
+tick take effect starting the next tick (a few sim-minutes' lag,
+deliberately not worth restructuring `tick()`'s existing event order
+to avoid), and every nudge is small and capped — no single event can
+swing a trait's reading in one step the way a single fabricated
+"personality shift" would.
+
+**Explicit scope cut**: this codebase is single-tenant — `state.py`'s
+and `save_modules.py`'s own module docstrings both say so directly ("one
+company, one save slot"). "No two companies should think exactly alike"
+and any recruitment/cross-generation/cross-company DNA comparison have
+no real mechanism to attach to here and are not built.
+
+**Verified**: backend — 30 tests in `test_company_dna.py` (`nudge_legacy`
+accumulation/capping/immutability, `classify_identity`'s full priority
+order, `compute_company_dna`'s new `legacy_deltas` parameter adding on
+top of and clamping the base score) + the full suite (596/596) + mypy/
+ruff clean. Frontend: `tsc -b`/eslint/build clean;
+`execIntel.spec.ts` extended to assert `companyDna.identity` is a real
+non-empty string in both the raw backend state and the rendered
+EXECINTEL tab.
+
 ### Company Constitution
 
 The brief asked for a permanent rulebook of Articles, "Live

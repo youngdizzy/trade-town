@@ -308,6 +308,10 @@ perspective and exists purely to detect disconnects
       { "id": "collaboration_style", "name": "Collaboration Style", "score": 60.0, "detail": "3 of 5 decision(s) had at least two distinct real analyst positions on the table." }
     ],
     "summary": "This company's real track record reads highest on Research Rigor (78/100) and lowest on Contrarian Tendency (20/100).",
+    // v0.7 Feature 48 — a pure, deterministic label read off the traits
+    // above (app/company_dna.py's classify_identity()). "Not Yet
+    // Established" until sampleSize is real.
+    "identity": "Research Driven",
     "sampleSize": 5, "updatedAt": "..."
   },
   "marketEnvironment": {

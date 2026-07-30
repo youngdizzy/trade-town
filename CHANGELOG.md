@@ -7,6 +7,43 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.7 Feature 48 — Company DNA System**: scoped from a brief asking
+  for a "Company Identity" label, DNA that "changes slowly" and is
+  influenced by "every major event," DNA effects on company behavior,
+  a Founder-retirement "Legacy," and (explicitly cut) cross-company
+  comparison. Company DNA (Feature 43) already existed as five real
+  behavioral traits recomputed fresh from full history every tick — this
+  feature adds two real, additive pieces without touching the five
+  traits' own tested formulas or documented meaning:
+  - **Company Identity** (`app/company_dna.py`'s `classify_identity()`):
+    a pure, deterministic label read off the five existing trait
+    scores — zero new data, checked in a fixed priority order so exactly
+    one label always applies (e.g. "Ultra Conservative," "Research
+    Driven," "Highly Disciplined," "Independent Thinker," "Collaborative
+    Culture," "Aggressive Risk-Taker," "Balanced Operator"). "Not Yet
+    Established" until real sample size exists.
+  - **Legacy — a small, permanent, capped delta layered on top of the
+    fresh score** (`nudge_legacy()`, capped at `LEGACY_DELTA_CAP` = 15
+    points per trait in either direction, never mixed into the five
+    formulas themselves): four real, one-time or rare company events
+    this codebase already tracks each contribute one small nudge — a
+    ratified Black Box breakthrough and a completed Academy project each
+    nudge Research Rigor up (real completed research effort); a filed
+    `disciplined_process` success study nudges Risk Appetite down and a
+    filed `patient_execution` success study nudges Patience up (each
+    records real behavior that already happened — never a prediction);
+    the Founders' one-time "Legendary Status" retirement (Feature 39)
+    nudges Risk Appetite down and Research Rigor up at once, since
+    Keystone (risk) and Compass (learning) retire together. This is what
+    makes DNA genuinely "change slowly" — the base score is still a pure
+    historical average, but real milestones now leave a lasting mark on
+    top of it.
+  - **Explicit scope cut**: this codebase is single-tenant (one company,
+    one save slot — see `state.py`'s and `save_modules.py`'s own module
+    docstrings), so "no two companies should think exactly alike" and
+    any recruitment/cross-company comparison have no real mechanism to
+    attach to and are not built.
+
 - **v0.7 Feature 47 — Company Operating System**: scoped from a brief
   asking for one place where "everything the company learns" is visible,
   a system that "references company principles when giving advice" (e.g.
