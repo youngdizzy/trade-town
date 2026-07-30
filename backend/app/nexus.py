@@ -58,6 +58,7 @@ from app.executive import (
 )
 from app.executive_review import generate_executive_review, record_review
 from app.founders import compute_founder_state, generate_breakthrough_review, generate_council_session, generate_founder_log_entry, record_council_session, record_founder_log
+from app.foundational_mentors import tick_employee_progress
 from app.gatekeeper import grade_gatekeeper_rejections
 from app.hall_of_fame import evaluate_hall_of_fame
 from app.innovation import compute_innovation_state
@@ -921,6 +922,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     founder_council_sessions: list[FounderCouncilSession] = list(state.founder_state.council_sessions)
     treasury: TreasuryState = state.treasury
     black_box: BlackBoxState = state.black_box or default_black_box_state()
+    foundational_mentor_state = state.foundational_mentor_state
 
     agents = {aid: _tick_agent(aid, agent, new_time, minutes, tasks, resting=resting) for aid, agent in state.agents.items()}
 
@@ -980,6 +982,22 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         # of institutional research effort: a small, permanent Legacy
         # nudge to Company DNA's Research Rigor.
         company_dna_legacy = nudge_legacy(company_dna_legacy, "research_rigor", ACADEMY_COMPLETION_NUDGE)
+
+    # v0.7 Feature 49 (Phase 3 revision) — the Foundational Mentor
+    # Program / Professional Academy. Employees are the real students —
+    # see app/foundational_mentors.py's module docstring. Rest Mode
+    # pauses this too, same reasoning as the Academy project tick above.
+    if not resting:
+        foundational_mentor_state, newly_pending_graduations = tick_employee_progress(foundational_mentor_state, discipline_reviews=discipline_reviews, sim_day=new_time.day)
+        for agent_id in newly_pending_graduations:
+            news.append(
+                NewsItem(
+                    id=f"news-academy-grad-pending-{agent_id}-{foundational_mentor_state.active_mentor_id}-{new_time.day}",
+                    headline=f"Academy: {AGENT_PROFILES[agent_id].name} has completed the {foundational_mentor_state.active_mentor_id} track — awaiting CEO graduation approval.",
+                    category="company",
+                    timestamp=_now_iso(),
+                )
+            )
 
     watchlist = tick_watchlist(watchlist, research, market_data_provider)
     prices = {w.symbol: w.last_price for w in watchlist}
@@ -1784,6 +1802,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "question_archive": question_archive,
             "thinking_profiles": thinking_profiles,
             "mentor_state": mentor_state,
+            "foundational_mentor_state": foundational_mentor_state,
             "founder_state": founder_state,
             "challenge_reports": challenge_reports,
             "innovation_state": innovation_state,

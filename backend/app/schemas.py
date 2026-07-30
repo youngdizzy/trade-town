@@ -318,6 +318,12 @@ class SettingsState(CamelModel):
     # v0.7 Feature 37 — same client-authoritative mechanism as
     # operating_mode/company_priority above.
     work_mode: WorkMode = Field(default="work", alias="workMode")
+    # v0.7 Feature 49 (Phase 3 revision) — off by default. Employee
+    # agents always auto-progress through the Foundational Mentor
+    # Program regardless of this setting; it only gates whether the CEO
+    # may ALSO voluntarily take the same lessons personally (never
+    # required — see app/foundational_mentors.py's module docstring).
+    ceo_academy_learning_mode: bool = Field(default=False, alias="ceoAcademyLearningMode")
 
 
 class DialogueHistoryEntry(CamelModel):
@@ -2110,17 +2116,28 @@ class MentorState(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
-# v0.7 Feature 49 (Phase 3) — the Foundational Mentor Program
-# (app/foundational_mentors.py). Real, named trading educators are used
-# only as CEO-assigned track labels on a roadmap; every lesson's actual
-# content is original TradeTown-authored material, never a claimed
-# transcription of that person's real work (see the module docstring for
-# the full attribution boundary). Distinct from the pre-existing
-# MentorState/Sage mentor above — that's a single always-available
-# Q&A advisor, this is a sequential lesson-and-quiz curriculum.
+# v0.7 Feature 49 (Phase 3, revised) — the Foundational Mentor Program /
+# Professional Academy (app/foundational_mentors.py). Real, named
+# trading educators are used only as CEO-assigned track labels on a
+# roadmap; every lesson's actual content is original TradeTown-authored
+# material, never a claimed transcription of that person's real work
+# (see the module docstring for the full attribution boundary).
+# Distinct from the pre-existing MentorState/Sage mentor above — that's
+# a single always-available Q&A advisor, this is a sequential
+# lesson-and-quiz curriculum. As of the Phase 3 revision, the real
+# STUDENTS are the employee agents (auto-progressing every tick), not
+# the CEO — see foundational_mentors.py's module docstring for the full
+# "employees are the students" redesign rationale. The CEO may still
+# optionally take the same lessons personally via `ceo_progress` when
+# Settings.ceoAcademyLearningMode is on, entirely separate from the real
+# employee cohort's own progress.
 FoundationalMentorId = Literal["tjr", "al_brooks", "linda_raschke", "mark_douglas", "tom_hougaard", "mike_bellafiore"]
 FoundationalMentorStatus = Literal["planned", "active", "paused", "graduated"]
 FoundationalResourceType = Literal["video", "book", "article", "pdf", "note"]
+# "pending_approval" is the real Graduation Queue gate: lessons+quiz are
+# complete (a real, checkable signal) but the CEO hasn't clicked Approve
+# yet — see foundational_mentors.py's approve_graduation().
+FoundationalGraduationStatus = Literal["in_progress", "pending_approval", "graduated"]
 
 
 class FoundationalMentorLesson(CamelModel):
@@ -2156,20 +2173,47 @@ class FoundationalMentorProfile(CamelModel):
     status: FoundationalMentorStatus
     lessons: list[FoundationalMentorLesson] = Field(default_factory=list)
     resources: list[FoundationalMentorResource] = Field(default_factory=list)
+    # Company-wide graduation — set once every real student (see
+    # STUDENT_AGENT_IDS) has an individually-approved graduation on this
+    # track. None while the track is planned/active/paused.
+    company_graduated_sim_day: int | None = Field(default=None, alias="companyGraduatedSimDay")
 
 
 class FoundationalMentorProgress(CamelModel):
+    """One student's (an employee agent's, or the CEO's own optional
+    Learning Mode progress) real progress on one mentor track."""
+
     mentor_id: FoundationalMentorId = Field(alias="mentorId")
     viewed_lesson_ids: list[str] = Field(default_factory=list, alias="viewedLessonIds")
     completed_lesson_ids: list[str] = Field(default_factory=list, alias="completedLessonIds")
+    # Real tick-accrued study progress (0-100) toward the current
+    # in-flight (first not-yet-completed) lesson — the honest "how far
+    # through this lesson" bar the Academy Dashboard shows per employee.
+    current_lesson_study_pct: float = Field(default=0.0, alias="currentLessonStudyPct")
     quiz_attempts: int = Field(default=0, alias="quizAttempts")
     correct_quiz_attempts: int = Field(default=0, alias="correctQuizAttempts")
+    # Resets to 0 on any correct answer — drives the Coach's real
+    # "Repeat Lesson" / "One-on-One Coaching" recommendation escalation.
+    consecutive_quiz_failures: int = Field(default=0, alias="consecutiveQuizFailures")
+    graduation_status: FoundationalGraduationStatus = Field(default="in_progress", alias="graduationStatus")
     graduated_sim_day: int | None = Field(default=None, alias="graduatedSimDay")
 
 
 class FoundationalMentorState(CamelModel):
     mentors: list[FoundationalMentorProfile] = Field(default_factory=list)
-    progress: dict[FoundationalMentorId, FoundationalMentorProgress] = Field(default_factory=dict)
+    # Real per-employee progress — the actual students. Keyed by the
+    # employee's own AgentId, then by mentor id (an employee keeps every
+    # mentor's progress record permanently, including already-graduated
+    # tracks, so "Current Certifications" needs no separate list).
+    progress: dict[AgentId, dict[FoundationalMentorId, FoundationalMentorProgress]] = Field(default_factory=dict)
+    # The CEO's own entirely separate, optional personal progress —
+    # only reachable when Settings.ceoAcademyLearningMode is on. Same
+    # shape as an employee's per-mentor progress dict, never mixed with
+    # real employee records.
+    ceo_progress: dict[FoundationalMentorId, FoundationalMentorProgress] = Field(default_factory=dict, alias="ceoProgress")
+    # Company-wide — "the Academy studies one mentor at a time" (every
+    # employee works the same track; company_graduated_sim_day above
+    # advances it once every student has an approved graduation).
     active_mentor_id: FoundationalMentorId | None = Field(default=None, alias="activeMentorId")
     updated_at: str = Field(alias="updatedAt")
 

@@ -1,6 +1,11 @@
-"""The Foundational Mentor Program's CEO-facing endpoints (v0.7 Feature
-49, Phase 3) — see app/foundational_mentors.py's module docstring for
-the full content-attribution boundary and what's real vs. roadmap.
+"""The Foundational Mentor Program / Professional Academy's endpoints
+(v0.7 Feature 49, Phase 3 — revised so employees, not the CEO, are the
+real students) — see app/foundational_mentors.py's module docstring for
+the full content-attribution boundary, the employee auto-progression
+engine, and what's real vs. roadmap. `/view` and `/quiz` below operate
+on the CEO's own entirely optional personal learning progress
+(`ceoProgress`) — real employee progress advances automatically every
+tick and is never driven by these two endpoints.
 """
 from __future__ import annotations
 
@@ -8,7 +13,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.persistence import persist_modules
-from app.schemas import FoundationalMentorId, FoundationalMentorState, FoundationalResourceType
+from app.schemas import AgentId, FoundationalMentorId, FoundationalMentorState, FoundationalResourceType
 from app.state import game_state
 
 router = APIRouter(prefix="/api/foundational-mentors", tags=["foundational-mentors"])
@@ -24,6 +29,10 @@ class QuizResultResponse(FoundationalMentorStateResponse):
     correct: bool
     correct_index: int = Field(alias="correctIndex")
     correct_option: str = Field(alias="correctOption")
+
+
+class ApproveGraduationResponse(FoundationalMentorStateResponse):
+    company_graduated: bool = Field(alias="companyGraduated")
 
 
 class ViewLessonRequest(BaseModel):
@@ -47,6 +56,13 @@ class MentorIdRequest(BaseModel):
     mentor_id: FoundationalMentorId = Field(alias="mentorId")
 
 
+class ApproveGraduationRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    agent_id: AgentId = Field(alias="agentId")
+    mentor_id: FoundationalMentorId = Field(alias="mentorId")
+
+
 class AddResourceRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -56,16 +72,19 @@ class AddResourceRequest(BaseModel):
     resource_type: FoundationalResourceType = Field(alias="resourceType")
 
 
-@router.post("/view", response_model=FoundationalMentorStateResponse)
-async def view_lesson(payload: ViewLessonRequest) -> FoundationalMentorStateResponse:
-    state = await game_state.view_foundational_mentor_lesson(payload.mentor_id, payload.lesson_id)
+# --- The CEO's own optional personal Learning Mode (ceoProgress only) ---
+
+
+@router.post("/ceo/view", response_model=FoundationalMentorStateResponse)
+async def ceo_view_lesson(payload: ViewLessonRequest) -> FoundationalMentorStateResponse:
+    state = await game_state.view_ceo_academy_lesson(payload.mentor_id, payload.lesson_id)
     persist_modules(state)
     return FoundationalMentorStateResponse(foundationalMentorState=state.foundational_mentor_state)
 
 
-@router.post("/quiz", response_model=QuizResultResponse)
-async def submit_quiz(payload: QuizRequest) -> QuizResultResponse:
-    result = await game_state.grade_foundational_mentor_quiz(payload.mentor_id, payload.lesson_id, payload.selected_index)
+@router.post("/ceo/quiz", response_model=QuizResultResponse)
+async def ceo_submit_quiz(payload: QuizRequest) -> QuizResultResponse:
+    result = await game_state.grade_ceo_academy_quiz(payload.mentor_id, payload.lesson_id, payload.selected_index)
     if result is None:
         raise HTTPException(status_code=404, detail="Unknown mentor or lesson.")
     state, correct, correct_index, correct_option = result
@@ -78,9 +97,21 @@ async def submit_quiz(payload: QuizRequest) -> QuizResultResponse:
     )
 
 
+# --- Real CEO management actions over the real employee cohort ---
+
+
+@router.post("/approve-graduation", response_model=ApproveGraduationResponse)
+async def approve_graduation(payload: ApproveGraduationRequest) -> ApproveGraduationResponse:
+    state, company_graduated, error = await game_state.approve_academy_graduation(payload.agent_id, payload.mentor_id)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    return ApproveGraduationResponse(foundationalMentorState=state.foundational_mentor_state, companyGraduated=company_graduated)
+
+
 @router.post("/pause", response_model=FoundationalMentorStateResponse)
-async def pause(payload: MentorIdRequest) -> FoundationalMentorStateResponse:
-    state, error = await game_state.pause_foundational_mentor(payload.mentor_id)
+async def pause() -> FoundationalMentorStateResponse:
+    state, error = await game_state.pause_academy_training()
     if error is not None:
         raise HTTPException(status_code=400, detail=error)
     persist_modules(state)
@@ -88,8 +119,8 @@ async def pause(payload: MentorIdRequest) -> FoundationalMentorStateResponse:
 
 
 @router.post("/resume", response_model=FoundationalMentorStateResponse)
-async def resume(payload: MentorIdRequest) -> FoundationalMentorStateResponse:
-    state, error = await game_state.resume_foundational_mentor(payload.mentor_id)
+async def resume() -> FoundationalMentorStateResponse:
+    state, error = await game_state.resume_academy_training()
     if error is not None:
         raise HTTPException(status_code=400, detail=error)
     persist_modules(state)
@@ -97,8 +128,8 @@ async def resume(payload: MentorIdRequest) -> FoundationalMentorStateResponse:
 
 
 @router.post("/skip", response_model=FoundationalMentorStateResponse)
-async def skip(payload: MentorIdRequest) -> FoundationalMentorStateResponse:
-    state, error = await game_state.skip_foundational_mentor(payload.mentor_id)
+async def skip() -> FoundationalMentorStateResponse:
+    state, error = await game_state.skip_academy_to_next_mentor()
     if error is not None:
         raise HTTPException(status_code=400, detail=error)
     persist_modules(state)
@@ -107,7 +138,7 @@ async def skip(payload: MentorIdRequest) -> FoundationalMentorStateResponse:
 
 @router.post("/repeat", response_model=FoundationalMentorStateResponse)
 async def repeat(payload: MentorIdRequest) -> FoundationalMentorStateResponse:
-    state, error = await game_state.repeat_foundational_mentor(payload.mentor_id)
+    state, error = await game_state.repeat_academy_mentor(payload.mentor_id)
     if error is not None:
         raise HTTPException(status_code=400, detail=error)
     persist_modules(state)

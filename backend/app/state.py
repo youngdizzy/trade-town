@@ -68,13 +68,14 @@ from app.schemas import (
 )
 from app.foundational_mentors import (
     add_resource as add_foundational_mentor_resource_entry,
+    approve_graduation as approve_foundational_mentor_graduation,
     default_foundational_mentor_state,
-    grade_lesson_quiz,
-    mark_lesson_viewed,
-    pause_mentor,
-    repeat_mentor,
-    resume_mentor,
-    skip_mentor,
+    grade_ceo_lesson_quiz,
+    mark_ceo_lesson_viewed,
+    pause_company_training,
+    repeat_mentor_company_wide,
+    resume_company_training,
+    skip_to_next_mentor,
 )
 from app.simulation import default_strategies, queue_backtest_now
 from app.talent import mark_talent_report_viewed
@@ -289,47 +290,57 @@ class GameState:
                 self.data = self.data.model_copy(update={"question_archive": new_archive})
             return self.data, error
 
-    async def view_foundational_mentor_lesson(self, mentor_id: FoundationalMentorId, lesson_id: str) -> GameSaveState:
+    async def view_ceo_academy_lesson(self, mentor_id: FoundationalMentorId, lesson_id: str) -> GameSaveState:
+        """The CEO's own optional Learning Mode — never touches real
+        employee progress. See app/foundational_mentors.py's module
+        docstring."""
         async with self.lock:
-            new_state = mark_lesson_viewed(self.data.foundational_mentor_state, mentor_id, lesson_id)
+            new_state = mark_ceo_lesson_viewed(self.data.foundational_mentor_state, mentor_id, lesson_id)
             self.data = self.data.model_copy(update={"foundational_mentor_state": new_state})
             return self.data
 
-    async def grade_foundational_mentor_quiz(
-        self, mentor_id: FoundationalMentorId, lesson_id: str, selected_index: int
-    ) -> tuple[GameSaveState, bool, int, str] | None:
+    async def grade_ceo_academy_quiz(self, mentor_id: FoundationalMentorId, lesson_id: str, selected_index: int) -> tuple[GameSaveState, bool, int, str] | None:
         async with self.lock:
-            result = grade_lesson_quiz(self.data.foundational_mentor_state, mentor_id, lesson_id, selected_index, sim_day=self.data.time.day)
+            result = grade_ceo_lesson_quiz(self.data.foundational_mentor_state, mentor_id, lesson_id, selected_index)
             if result is None:
                 return None
             new_state, correct, correct_index, correct_option = result
             self.data = self.data.model_copy(update={"foundational_mentor_state": new_state})
             return self.data, correct, correct_index, correct_option
 
-    async def pause_foundational_mentor(self, mentor_id: FoundationalMentorId) -> tuple[GameSaveState, str | None]:
+    async def approve_academy_graduation(self, agent_id: AgentId, mentor_id: FoundationalMentorId) -> tuple[GameSaveState, bool, str | None]:
+        """The real Graduation Queue's Approve button — a real CEO
+        action, not automatic (see module docstring)."""
         async with self.lock:
-            new_state, error = pause_mentor(self.data.foundational_mentor_state, mentor_id)
+            new_state, company_graduated, error = approve_foundational_mentor_graduation(self.data.foundational_mentor_state, agent_id, mentor_id, sim_day=self.data.time.day)
+            if error is None:
+                self.data = self.data.model_copy(update={"foundational_mentor_state": new_state})
+            return self.data, company_graduated, error
+
+    async def pause_academy_training(self) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            new_state, error = pause_company_training(self.data.foundational_mentor_state)
             if error is None:
                 self.data = self.data.model_copy(update={"foundational_mentor_state": new_state})
             return self.data, error
 
-    async def resume_foundational_mentor(self, mentor_id: FoundationalMentorId) -> tuple[GameSaveState, str | None]:
+    async def resume_academy_training(self) -> tuple[GameSaveState, str | None]:
         async with self.lock:
-            new_state, error = resume_mentor(self.data.foundational_mentor_state, mentor_id)
+            new_state, error = resume_company_training(self.data.foundational_mentor_state)
             if error is None:
                 self.data = self.data.model_copy(update={"foundational_mentor_state": new_state})
             return self.data, error
 
-    async def skip_foundational_mentor(self, mentor_id: FoundationalMentorId) -> tuple[GameSaveState, str | None]:
+    async def skip_academy_to_next_mentor(self) -> tuple[GameSaveState, str | None]:
         async with self.lock:
-            new_state, error = skip_mentor(self.data.foundational_mentor_state, mentor_id)
+            new_state, error = skip_to_next_mentor(self.data.foundational_mentor_state)
             if error is None:
                 self.data = self.data.model_copy(update={"foundational_mentor_state": new_state})
             return self.data, error
 
-    async def repeat_foundational_mentor(self, mentor_id: FoundationalMentorId) -> tuple[GameSaveState, str | None]:
+    async def repeat_academy_mentor(self, mentor_id: FoundationalMentorId) -> tuple[GameSaveState, str | None]:
         async with self.lock:
-            new_state, error = repeat_mentor(self.data.foundational_mentor_state, mentor_id)
+            new_state, error = repeat_mentor_company_wide(self.data.foundational_mentor_state, mentor_id)
             if error is None:
                 self.data = self.data.model_copy(update={"foundational_mentor_state": new_state})
             return self.data, error
