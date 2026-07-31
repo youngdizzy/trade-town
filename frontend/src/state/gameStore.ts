@@ -52,8 +52,16 @@ import type {
   SignalCalibrationState,
   SimulationResult,
   Strategy,
+  StrategyExecutiveReview,
+  StrategyFounderApproval,
+  StrategyHallOfFameEntry,
+  StrategyHealthAssessment,
+  StrategyLiquidityValidation,
+  StrategyMonteCarloResult,
+  StrategyRegimeTestReport,
   StrategyReport,
   StrategyReview,
+  FailedStrategyArchiveEntry,
   TalentState,
   Task,
   ThinkingProfile,
@@ -98,6 +106,14 @@ export interface GameUiState {
   simulationResults: SimulationResult[];
   strategyReports: StrategyReport[];
   strategyReviews: StrategyReview[];
+  strategyMonteCarloResults: StrategyMonteCarloResult[];
+  strategyRegimeTests: StrategyRegimeTestReport[];
+  strategyLiquidityValidations: StrategyLiquidityValidation[];
+  strategyExecutiveReviews: StrategyExecutiveReview[];
+  strategyFounderApprovals: StrategyFounderApproval[];
+  strategyHealthAssessments: StrategyHealthAssessment[];
+  strategyHallOfFame: StrategyHallOfFameEntry[];
+  strategyFailedArchive: FailedStrategyArchiveEntry[];
   hallOfFame: HallOfFameEntry[];
   coachReports: CoachReport[];
   companyScore: CompanyScore;
@@ -210,6 +226,14 @@ class GameStore {
     simulationResults: [],
     strategyReports: [],
     strategyReviews: [],
+    strategyMonteCarloResults: [],
+    strategyRegimeTests: [],
+    strategyLiquidityValidations: [],
+    strategyExecutiveReviews: [],
+    strategyFounderApprovals: [],
+    strategyHealthAssessments: [],
+    strategyHallOfFame: [],
+    strategyFailedArchive: [],
     hallOfFame: [],
     coachReports: [],
     companyScore: {
@@ -454,6 +478,14 @@ class GameStore {
     EventBus.on("strategyReports:updated", (strategyReports) => this.set({ strategyReports }));
     EventBus.on("strategyReviews:updated", (strategyReviews) => this.set({ strategyReviews }));
     EventBus.on("simulation:updated", ({ sessions, results }) => this.set({ backtestSessions: sessions, simulationResults: results }));
+    EventBus.on("strategyMonteCarloResults:updated", (strategyMonteCarloResults) => this.set({ strategyMonteCarloResults }));
+    EventBus.on("strategyRegimeTests:updated", (strategyRegimeTests) => this.set({ strategyRegimeTests }));
+    EventBus.on("strategyLiquidityValidations:updated", (strategyLiquidityValidations) => this.set({ strategyLiquidityValidations }));
+    EventBus.on("strategyExecutiveReviews:updated", (strategyExecutiveReviews) => this.set({ strategyExecutiveReviews }));
+    EventBus.on("strategyFounderApprovals:updated", (strategyFounderApprovals) => this.set({ strategyFounderApprovals }));
+    EventBus.on("strategyHealthAssessments:updated", (strategyHealthAssessments) => this.set({ strategyHealthAssessments }));
+    EventBus.on("strategyHallOfFame:updated", (strategyHallOfFame) => this.set({ strategyHallOfFame }));
+    EventBus.on("strategyFailedArchive:updated", (strategyFailedArchive) => this.set({ strategyFailedArchive }));
     EventBus.on("hallOfFame:updated", (hallOfFame) => this.set({ hallOfFame }));
     EventBus.on("coachReports:updated", (coachReports) => this.set({ coachReports }));
     EventBus.on("companyScore:updated", (companyScore) => this.set({ companyScore }));

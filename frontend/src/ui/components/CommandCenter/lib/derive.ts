@@ -42,7 +42,10 @@ import type {
   RiskLimits,
   RiskWarning,
   SimulationResult,
+  StrategyExecutiveAction,
+  StrategyHealthStatus,
   StrategyReport,
+  StrategyStage,
   TradeDecision,
   TradeProposal,
   WatchlistEntry,
@@ -281,6 +284,70 @@ const EXECUTIVE_ACTION_TONE: Record<ExecutiveAction, "green" | "amber" | "red"> 
 
 export function executiveActionTone(action: ExecutiveAction): "green" | "amber" | "red" {
   return EXECUTIVE_ACTION_TONE[action];
+}
+
+// v0.7 Feature 52 (Part 1) — the Strategy Validation Laboratory's own
+// 9-department Executive Review recommendation. Deliberately distinct
+// from the trade-scoped ExecutiveAction above (strategy-lifecycle
+// semantics differ from single-trade semantics) — see
+// backend/app/schemas.py's StrategyExecutiveAction docstring.
+const STRATEGY_EXECUTIVE_ACTION_TONE: Record<StrategyExecutiveAction, "green" | "cyan" | "amber" | "red"> = {
+  advance: "green",
+  request_more_evidence: "cyan",
+  hold_for_improvement: "amber",
+  reject: "red",
+};
+
+export function strategyExecutiveActionTone(action: StrategyExecutiveAction): "green" | "cyan" | "amber" | "red" {
+  return STRATEGY_EXECUTIVE_ACTION_TONE[action];
+}
+
+const STRATEGY_REGIME_VERDICT_TONE: Record<"strong" | "weak" | "neutral" | "untested", "green" | "cyan" | "amber" | "red"> = {
+  strong: "green",
+  weak: "red",
+  neutral: "cyan",
+  untested: "amber",
+};
+
+export function strategyRegimeVerdictTone(verdict: "strong" | "weak" | "neutral" | "untested"): "green" | "cyan" | "amber" | "red" {
+  return STRATEGY_REGIME_VERDICT_TONE[verdict];
+}
+
+const STRATEGY_LIQUIDITY_VERDICT_TONE: Record<"favorable" | "neutral" | "unfavorable", "green" | "cyan" | "amber"> = {
+  favorable: "green",
+  neutral: "cyan",
+  unfavorable: "amber",
+};
+
+export function strategyLiquidityVerdictTone(verdict: "favorable" | "neutral" | "unfavorable"): "green" | "cyan" | "amber" {
+  return STRATEGY_LIQUIDITY_VERDICT_TONE[verdict];
+}
+
+const STRATEGY_RISK_RATING_TONE: Record<"low" | "moderate" | "elevated" | "high", "green" | "cyan" | "amber" | "red"> = {
+  low: "green",
+  moderate: "cyan",
+  elevated: "amber",
+  high: "red",
+};
+
+export function strategyRiskRatingTone(rating: "low" | "moderate" | "elevated" | "high"): "green" | "cyan" | "amber" | "red" {
+  return STRATEGY_RISK_RATING_TONE[rating];
+}
+
+// v0.7 Feature 52 (Part 2) — Strategy Health's seven-status ladder (see
+// backend/app/strategy_lab.py's compute_strategy_health()).
+const STRATEGY_HEALTH_TONE: Record<StrategyHealthStatus, "green" | "cyan" | "amber" | "red"> = {
+  excellent: "green",
+  healthy: "green",
+  stable: "cyan",
+  needs_review: "amber",
+  declining: "amber",
+  critical: "red",
+  retire_candidate: "red",
+};
+
+export function strategyHealthTone(status: StrategyHealthStatus): "green" | "cyan" | "amber" | "red" {
+  return STRATEGY_HEALTH_TONE[status];
 }
 
 // v0.7 Feature 50 (Part 2/3) — Decision Grade, a real process-quality
@@ -987,6 +1054,19 @@ export interface StrategyConsistency {
  * fabricated per-day rate would be worse than just showing each real
  * run's own tradeCount, which the panel already does.
  */
+export const STAGE_LABELS: Record<StrategyStage, string> = {
+  idea: "Idea",
+  research: "Research",
+  historical_backtest: "Historical Backtest",
+  market_simulation: "Market Simulation",
+  paper_trading: "Paper Trading",
+  limited_live_capital: "Limited Live Capital",
+  company_review: "Company Review",
+  approved: "Approved",
+  // v0.7 Feature 52 (Part 2) — the only terminal stage.
+  retired: "Retired",
+};
+
 export function computeStrategyConsistency(strategyId: string, results: SimulationResult[]): StrategyConsistency {
   const own = results.filter((r) => r.strategyId === strategyId);
   const positive = own.filter((r) => r.totalReturnPct > 0).length;

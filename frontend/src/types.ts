@@ -464,8 +464,10 @@ export interface PaperPortfolio {
 // "earnings_weeks"/"economic_news" aren't included: no real data source).
 export type TestScenario = "historical" | "bull" | "bear" | "sideways" | "high_volatility" | "low_volatility" | "custom";
 
-// Strategies cannot skip stages — see backend/app/sandbox.py.
-export type StrategyStage = "idea" | "research" | "historical_backtest" | "market_simulation" | "paper_trading" | "limited_live_capital" | "company_review" | "approved";
+// Strategies cannot skip stages — see backend/app/sandbox.py. "retired" is
+// v0.7 Feature 52 (Part 2) — the only terminal stage, reachable from any
+// prior stage via a real, deliberate CEO action (never automatic).
+export type StrategyStage = "idea" | "research" | "historical_backtest" | "market_simulation" | "paper_trading" | "limited_live_capital" | "company_review" | "approved" | "retired";
 
 export interface StrategyStageEvent {
   id: string;
@@ -564,6 +566,251 @@ export interface StrategyReview {
   resolvedBy: "ceo" | "auto" | null;
   simDay: number;
   createdAt: string;
+}
+
+// v0.7 Feature 52 (Part 1) — the Strategy Validation Laboratory. See
+// backend/app/strategy_lab.py's module docstring for the full honesty
+// boundary each of these observes (never a second measurement engine,
+// never fabricated statistics beyond a strategy's own real
+// SimulationResult history).
+export interface StrategyMonteCarloResult {
+  id: string;
+  strategyId: string;
+  strategyName: string;
+  pathsSimulated: number;
+  tradesPerPath: number;
+  sourceWinRate: number;
+  sourceAvgWinPct: number;
+  sourceAvgLossPct: number;
+  medianReturnPct: number;
+  returnRangeLowPct: number;
+  returnRangeHighPct: number;
+  medianMaxDrawdownPct: number;
+  worstCaseDrawdownPct: number;
+  probabilityOfProfitPct: number;
+  /** A real share of this run's own paths that breached a named
+   * drawdown bar — never a true infinite-sample probability of ruin. */
+  probabilityOfRuinPct: number;
+  capitalSurvivalPct: number;
+  simDay: number;
+  createdAt: string;
+}
+
+/** SimulationResult is only ever tagged at the coarser 7-way TestScenario
+ * grain — `regimes` honestly labels which of Feature 51's real 13-way
+ * MarketIntelligenceRegimes this bucket covers, never claiming
+ * independently-tested 13-way granularity. */
+export interface StrategyRegimeBucketPerformance {
+  scenario: TestScenario;
+  regimes: MarketIntelligenceRegime[];
+  tested: boolean;
+  runCount: number;
+  avgReturnPct: number;
+  avgWinRate: number;
+  verdict: "strong" | "weak" | "neutral" | "untested";
+}
+
+export interface StrategyRegimeTestReport {
+  id: string;
+  strategyId: string;
+  strategyName: string;
+  buckets: StrategyRegimeBucketPerformance[];
+  bestScenario: TestScenario | null;
+  worstScenario: TestScenario | null;
+  simDay: number;
+  createdAt: string;
+}
+
+/** Reuses Feature 51's real compute_liquidity()/compute_market_structure()
+ * against the strategy's own watched symbols, as-is. */
+export interface StrategyLiquidityValidation {
+  id: string;
+  strategyId: string;
+  strategyName: string;
+  symbolsChecked: string[];
+  liquidityReads: LiquidityRead[];
+  structureReads: MarketStructureRead[];
+  realSweepRatePct: number;
+  verdict: "favorable" | "neutral" | "unfavorable";
+  detail: string;
+  simDay: number;
+  createdAt: string;
+}
+
+// Deliberately distinct from the trade-scoped ExecutiveAction —
+// strategy-lifecycle semantics differ from single-trade semantics.
+export type StrategyExecutiveAction = "advance" | "request_more_evidence" | "hold_for_improvement" | "reject";
+
+export interface StrategyDepartmentOpinion {
+  role: ExecutiveDepartmentRole;
+  departmentLabel: string;
+  agentId: AgentId | null;
+  stance: ExecutiveStance;
+  confidencePct: number;
+  evidence: string[];
+  concerns: string[];
+  suggestedImprovements: string[];
+}
+
+/** The brief's 9-department Executive Review — reuses the exact same
+ * nine real department seats as Feature 50's ExecutiveDepartmentRole;
+ * "Brain Room" reuses the same devils_advocate seat every other 9-role
+ * read in this codebase already does. */
+export interface StrategyExecutiveReview {
+  id: string;
+  strategyId: string;
+  strategyName: string;
+  opinions: StrategyDepartmentOpinion[];
+  overallConfidencePct: number;
+  recommendation: StrategyExecutiveAction;
+  reason: string;
+  simDay: number;
+  createdAt: string;
+}
+
+/** A new mode of the same real threshold-based approval pattern
+ * app/founders.py's generate_breakthrough_review() already established
+ * for Black Box Projects, applied here to a Strategy. */
+export interface StrategyFounderApproval {
+  id: string;
+  strategyId: string;
+  strategyName: string;
+  simDay: number;
+  evidenceSummary: string;
+  confidencePct: number;
+  verdict: "approved" | "rejected";
+  verdictReason: string;
+  createdAt: string;
+}
+
+export interface StrategyConfidenceScore {
+  id: string;
+  strategyId: string;
+  strategyName: string;
+  overallConfidencePct: number;
+  evidence: string[];
+  knownStrengths: string[];
+  knownWeaknesses: string[];
+  riskRating: "low" | "moderate" | "elevated" | "high";
+  recommendedPositionSizePct: number;
+  recommendedMarketConditions: string[];
+  simDay: number;
+  createdAt: string;
+}
+
+/** The brief's auto-generated "professional Strategy Report" — an
+ * assembling read over every other real Feature 52 artifact for this
+ * strategy, computed fresh on request (GET /api/sandbox/dossier), never
+ * a second copy of their data. */
+export interface StrategyDossier {
+  strategyId: string;
+  strategyName: string;
+  createdBy: AgentId;
+  purpose: string;
+  stage: StrategyStage;
+  latestReport: StrategyReport | null;
+  latestReview: StrategyReview | null;
+  monteCarlo: StrategyMonteCarloResult | null;
+  regimeTest: StrategyRegimeTestReport | null;
+  liquidityValidation: StrategyLiquidityValidation | null;
+  executiveReview: StrategyExecutiveReview | null;
+  founderApproval: StrategyFounderApproval | null;
+  confidence: StrategyConfidenceScore | null;
+  generatedAt: string;
+}
+
+// v0.7 Feature 52 (Part 2) — "Living Strategies."
+export type StrategyHealthStatus = "excellent" | "healthy" | "stable" | "needs_review" | "declining" | "critical" | "retire_candidate";
+export type StrategyHealthTrend = "improving" | "stable" | "declining";
+
+/** A real recent-vs-lifetime trend read over a strategy's own
+ * SimulationResult history — deliberately NOT the brief's literal "Live
+ * Performance Monitor": this codebase has no mechanism to attribute a
+ * live/paper trade back to a specific Strategy object (see
+ * backend/app/sandbox.py's module docstring), so this reads the real
+ * Market Simulation run history a strategy actually has. */
+export interface StrategyHealthAssessment {
+  id: string;
+  strategyId: string;
+  strategyName: string;
+  status: StrategyHealthStatus;
+  trend: StrategyHealthTrend;
+  recentWinRate: number;
+  lifetimeWinRate: number;
+  recentAvgReturnPct: number;
+  lifetimeAvgReturnPct: number;
+  recentAvgDrawdownPct: number;
+  lifetimeAvgDrawdownPct: number;
+  recentSampleSize: number;
+  lifetimeSampleSize: number;
+  reasoning: string[];
+  simDay: number;
+  createdAt: string;
+}
+
+/** Permanent, never evicted — only ever filed for a strategy that
+ * cleared a real, strict induction bar at the moment of its own real
+ * CEO-triggered retirement. */
+export interface StrategyHallOfFameEntry {
+  id: string;
+  strategyId: string;
+  strategyName: string;
+  createdBy: AgentId;
+  description: string;
+  simDaysActive: number;
+  tradesExecuted: number;
+  winRate: number;
+  profitFactor: number;
+  maxDrawdownPct: number;
+  historicalReturnPct: number;
+  legacyNotes: string[];
+  retiredReason: string;
+  simDay: number;
+  inductedAt: string;
+}
+
+/** Every retirement that doesn't clear the Hall of Fame bar — never
+ * deleted, always kept as a real, citable lesson. */
+export interface FailedStrategyArchiveEntry {
+  id: string;
+  strategyId: string;
+  strategyName: string;
+  createdBy: AgentId;
+  failedAtStage: StrategyStage;
+  whatFailed: string[];
+  lessonsLearned: string[];
+  retiredReason: string;
+  simDay: number;
+  createdAt: string;
+}
+
+/** One named slot on the Executive Dashboard — metricValue is always
+ * 0.0 for "newest" (a date-based pick, not a magnitude). */
+export interface StrategyExecutiveDashboardEntry {
+  strategyId: string;
+  strategyName: string;
+  metricLabel: string;
+  metricValue: number;
+}
+
+/** Computed fresh on request (GET /api/sandbox/dashboard) — every count
+ * and named slot reads already-real Strategy/SimulationResult/review
+ * history, never a second source of truth. */
+export interface StrategyExecutiveDashboard {
+  activeCount: number;
+  inDevelopmentCount: number;
+  inValidationCount: number;
+  paperTradingCount: number;
+  approvedCount: number;
+  retiredCount: number;
+  hallOfFameCount: number;
+  failedArchiveCount: number;
+  bestStrategy: StrategyExecutiveDashboardEntry | null;
+  weakestStrategy: StrategyExecutiveDashboardEntry | null;
+  mostImprovedStrategy: StrategyExecutiveDashboardEntry | null;
+  newestStrategy: StrategyExecutiveDashboardEntry | null;
+  highestConfidenceStrategy: StrategyExecutiveDashboardEntry | null;
+  generatedAt: string;
 }
 
 export interface HallOfFameEntry {
@@ -2175,6 +2422,15 @@ export interface GameSaveState {
   simulationResults: SimulationResult[];
   strategyReports: StrategyReport[];
   strategyReviews: StrategyReview[];
+  // v0.7 Feature 52 (Part 1/2) — the Strategy Validation Laboratory.
+  strategyMonteCarloResults: StrategyMonteCarloResult[];
+  strategyRegimeTests: StrategyRegimeTestReport[];
+  strategyLiquidityValidations: StrategyLiquidityValidation[];
+  strategyExecutiveReviews: StrategyExecutiveReview[];
+  strategyFounderApprovals: StrategyFounderApproval[];
+  strategyHealthAssessments: StrategyHealthAssessment[];
+  strategyHallOfFame: StrategyHallOfFameEntry[];
+  strategyFailedArchive: FailedStrategyArchiveEntry[];
   hallOfFame: HallOfFameEntry[];
   coachReports: CoachReport[];
   companyScore: CompanyScore;

@@ -52,8 +52,16 @@ import type {
   SignalCalibrationState,
   SimulationResult,
   Strategy,
+  StrategyExecutiveReview,
+  StrategyFounderApproval,
+  StrategyHallOfFameEntry,
+  StrategyHealthAssessment,
+  StrategyLiquidityValidation,
+  StrategyMonteCarloResult,
+  StrategyRegimeTestReport,
   StrategyReport,
   StrategyReview,
+  FailedStrategyArchiveEntry,
   TalentState,
   Task,
   ThinkingProfile,
@@ -87,6 +95,14 @@ type ServerMessage =
       simulationResults: SimulationResult[];
       strategyReports: StrategyReport[];
       strategyReviews: StrategyReview[];
+      strategyMonteCarloResults: StrategyMonteCarloResult[];
+      strategyRegimeTests: StrategyRegimeTestReport[];
+      strategyLiquidityValidations: StrategyLiquidityValidation[];
+      strategyExecutiveReviews: StrategyExecutiveReview[];
+      strategyFounderApprovals: StrategyFounderApproval[];
+      strategyHealthAssessments: StrategyHealthAssessment[];
+      strategyHallOfFame: StrategyHallOfFameEntry[];
+      strategyFailedArchive: FailedStrategyArchiveEntry[];
       hallOfFame: HallOfFameEntry[];
       coachReports: CoachReport[];
       companyScore: CompanyScore;
@@ -207,6 +223,14 @@ export class GameSocket {
             simulationResults: msg.simulationResults,
             strategyReports: msg.strategyReports,
             strategyReviews: msg.strategyReviews,
+            strategyMonteCarloResults: msg.strategyMonteCarloResults,
+            strategyRegimeTests: msg.strategyRegimeTests,
+            strategyLiquidityValidations: msg.strategyLiquidityValidations,
+            strategyExecutiveReviews: msg.strategyExecutiveReviews,
+            strategyFounderApprovals: msg.strategyFounderApprovals,
+            strategyHealthAssessments: msg.strategyHealthAssessments,
+            strategyHallOfFame: msg.strategyHallOfFame,
+            strategyFailedArchive: msg.strategyFailedArchive,
             hallOfFame: msg.hallOfFame,
             coachReports: msg.coachReports,
             companyScore: msg.companyScore,

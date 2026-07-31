@@ -4339,6 +4339,108 @@ backend suite, `mypy`/`ruff` clean. Both parts' frontend remain
 deliberately deferred to a follow-up pass, per this project's
 backend-first discipline.
 
+### Strategy Validation Laboratory — frontend (both Feature 52 parts)
+
+One Command Center tab (`SANDBOX`), restructured into eight real
+sub-views under `frontend/src/ui/components/CommandCenter/panels/sandbox/`
+rather than eight more top-level tabs — this Command Center already
+carries 31 (`FullCommandCenter.tsx`'s own `TABS` array); the sub-tab bar
+pattern mirrors that same nav's visual language at a smaller scale.
+
+- **`SandboxPanel.tsx`** — the container. Owns `subTab`/`selectedId`
+  state so the CEO's current strategy selection persists across
+  sub-tabs. `STRATEGY_SCOPED` (PIPELINE/CERTIFICATION/HEALTH/EVOLUTION)
+  render the shared `StrategySidebarPanel` + a right-column detail view;
+  LIBRARY/HALL OF FAME/FAILED ARCHIVE/DASHBOARD render full-width,
+  company-wide views with no per-strategy sidebar.
+- **`StrategyPipelineView.tsx`** — the original Feature 45 Research
+  Sandbox content (queue backtests, walk the real CEO-authorized stage
+  checkpoints), plus a new Retirement card: a real, named-reason,
+  irreversible CEO action reachable from any non-terminal stage, wired
+  to `POST /api/sandbox/retire` via `NexusManager.setStrategyRetirementOutcome()`.
+- **`StrategyLibraryView.tsx`** — every strategy this company has ever
+  created, including retired ones, in one table with real aggregated
+  stats (avg return/win rate across that strategy's own `SimulationResult`
+  history) and a click-through into CERTIFICATION. Satisfies the brief's
+  "Strategy Library" section without a new backend artifact — every
+  field it asks for (creator/status/stage/description/historical
+  performance) already lives on the real `Strategy` object plus its own
+  history.
+- **`StrategyCertificationView.tsx`** — fetches the full real
+  `StrategyDossier` on request (`GET /api/sandbox/dossier`) and renders
+  Confidence Score, Monte Carlo Testing, Market Regime Testing,
+  Liquidity Validation, the 9-department Executive Review, and Founder
+  Approval — each section only rendered when that real artifact exists,
+  an honest empty state otherwise.
+- **`StrategyHealthView.tsx`** — an **honest reframe** of the brief's
+  "Live Performance Monitor." This codebase has no mechanism to
+  attribute a live/paper trade back to a specific `Strategy` object (see
+  `backend/app/sandbox.py`'s own module docstring) — there is no real
+  live P&L stream to monitor. The view states this directly in its own
+  header copy, then shows what IS real: `StrategyHealthAssessment`'s
+  recent-vs-lifetime trend read, plus a full history table.
+- **`StrategyEvolutionView.tsx`** — an **honest reframe** of "Strategy
+  Evolution." This codebase has no strategy revision/versioning
+  mechanism (no v1.0→v1.1→v2.0 parent/child links — see the Part 2
+  backend section's own cut table), so rather than fabricate a fake
+  version history, this shows the strategy's own real `stageHistory`
+  timeline (every stage it has actually earned, each backed by a real
+  signal) plus, for a retired strategy, its one real permanent
+  Hall of Fame/Failed Archive outcome.
+- **`StrategyHallOfFameView.tsx`** / **`StrategyFailedArchiveView.tsx`**
+  — the two permanent real retirement outcomes, read straight from
+  `strategyHallOfFame`/`strategyFailedArchive`.
+- **`StrategyExecutiveDashboardView.tsx`** — fetches the real,
+  computed-on-request `StrategyExecutiveDashboard` (`GET /api/sandbox/dashboard`)
+  on open and on a manual Refresh, rendering stage counts and the five
+  named best/weakest/most-improved/newest/highest-confidence slots, each
+  citing its real metric value (except "newest," a date-based pick —
+  its `metricValue` is honestly `0.0`, per the schema's own docstring).
+
+**Data-layer wiring** — all 8 new WS-broadcast state fields
+(`strategyMonteCarloResults`/`strategyRegimeTests`/
+`strategyLiquidityValidations`/`strategyExecutiveReviews`/
+`strategyFounderApprovals`/`strategyHealthAssessments`/
+`strategyHallOfFame`/`strategyFailedArchive`) were threaded end to end
+through `types.ts` (new interfaces mirroring every Part 1/2 backend
+schema 1:1, plus `"retired"` added to the `StrategyStage` union) →
+`net/socket.ts`'s `ServerMessage`/dispatch → `NexusManager.ts`'s
+`NexusSnapshot`/private fields/getters/`applyServerUpdate()`/
+`loadFromSave()` → `EventBus.ts`'s event map → `state/gameStore.ts`'s
+`GameUiState`/subscriptions — the exact same diff-and-emit pattern every
+existing field (e.g. `strategyReviews`) already uses, so no new data-flow
+concept was introduced. Two new `NexusManager` setters apply a CEO
+action's REST response immediately rather than waiting for the next WS
+tick, the same pattern `setSandboxState` already established:
+`setStrategyExecutiveOutcome()` (for `/request-review`'s richer
+response, which now also files a real `StrategyExecutiveReview`/
+`StrategyFounderApproval`) and `setStrategyRetirementOutcome()` (for
+`/retire`'s real, exactly-one-of-two outcome). New `net/api.ts`
+functions for `POST /sandbox/retire`, `GET /sandbox/dossier`,
+`GET /sandbox/dashboard`.
+
+**New `lib/derive.ts` tone helpers** — `strategyExecutiveActionTone`/
+`strategyRegimeVerdictTone`/`strategyLiquidityVerdictTone`/
+`strategyRiskRatingTone`/`strategyHealthTone` each map a real backend
+enum onto the existing green/cyan/amber/red `StatusPill` convention,
+mirroring `executiveActionTone`'s own precedent. The trade-scoped
+`executiveStanceTone` is reused as-is (not duplicated) for the Strategy
+Executive Review's department opinions, since `StrategyDepartmentOpinion.stance`
+and `DepartmentOpinion.stance` share the exact same real `ExecutiveStance`
+union. `STAGE_LABELS` (including the new `"retired"` entry) moved into
+`derive.ts` so it can be shared across every sandbox sub-view file
+without violating React Fast Refresh's one-component-per-file
+convention (`react-refresh/only-export-components`).
+
+**Verified**: `npx tsc -b --noEmit`/`npm run lint`/`npm run build` all
+clean. `sandbox.spec.ts` extended with a new Playwright test that opens
+every sub-tab against the live Vite + FastAPI stack, drills into a real
+Certification dossier via the Library's Open button, and opens/cancels
+the real Retire form — deliberately never confirms retirement, since
+that's a real, irreversible CEO action a test must not perform as a
+side effect against the shared dev backend. All three `sandbox.spec.ts`
+tests pass with zero console errors.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

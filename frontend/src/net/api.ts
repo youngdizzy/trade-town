@@ -33,8 +33,14 @@ import type {
   SignalChoice,
   BacktestSession,
   ConstitutionState,
+  FailedStrategyArchiveEntry,
   RiskLimits,
   Strategy,
+  StrategyDossier,
+  StrategyExecutiveDashboard,
+  StrategyExecutiveReview,
+  StrategyFounderApproval,
+  StrategyHallOfFameEntry,
   StrategyReview,
   TestScenario,
   TimeAdvanceTarget,
@@ -238,7 +244,12 @@ export const api = {
       body: JSON.stringify({ strategyId, amount }),
     }),
   requestSandboxCompanyReview: (strategyId: string) =>
-    request<{ strategies: Strategy[]; strategyReviews: StrategyReview[] }>("/sandbox/request-review", {
+    // v0.7 Feature 52 (Part 1) — this same CEO action also files the
+    // richer 9-department StrategyExecutiveReview and the Founder
+    // Council's real StrategyFounderApproval (see backend/app/state.py's
+    // request_strategy_company_review()); at most one of each comes
+    // back, since it's this one strategy's own new review moment.
+    request<{ strategies: Strategy[]; strategyReviews: StrategyReview[]; strategyExecutiveReviews: StrategyExecutiveReview[]; strategyFounderApprovals: StrategyFounderApproval[] }>("/sandbox/request-review", {
       method: "POST",
       body: JSON.stringify({ strategyId }),
     }),
@@ -247,6 +258,20 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ reviewId, approve }),
     }),
+  // v0.7 Feature 52 (Part 2) — the only real way a strategy's stage
+  // ever reaches "retired". Exactly one of strategyHallOfFameEntry/
+  // strategyFailedArchiveEntry comes back non-null.
+  retireSandboxStrategy: (strategyId: string, reason: string) =>
+    request<{ strategies: Strategy[]; strategyReviews: StrategyReview[]; strategyHallOfFameEntry: StrategyHallOfFameEntry | null; strategyFailedArchiveEntry: FailedStrategyArchiveEntry | null }>("/sandbox/retire", {
+      method: "POST",
+      body: JSON.stringify({ strategyId, reason }),
+    }),
+  // v0.7 Feature 52 (Part 1) — the brief's auto-generated "professional
+  // Strategy Report." Read-only, computed fresh every call.
+  getSandboxDossier: (strategyId: string) => request<StrategyDossier>(`/sandbox/dossier?strategyId=${encodeURIComponent(strategyId)}`),
+  // v0.7 Feature 52 (Part 2) — the brief's Executive Dashboard. Read-only,
+  // computed fresh every call.
+  getSandboxDashboard: () => request<StrategyExecutiveDashboard>("/sandbox/dashboard"),
   proposeConstitutionAmendment: (title: string, text: string) =>
     request<{ constitution: ConstitutionState }>("/constitution/propose", {
       method: "POST",

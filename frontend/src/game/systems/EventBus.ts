@@ -57,8 +57,16 @@ import type {
   SignalCalibrationState,
   SimulationResult,
   Strategy,
+  StrategyExecutiveReview,
+  StrategyFounderApproval,
+  StrategyHallOfFameEntry,
+  StrategyHealthAssessment,
+  StrategyLiquidityValidation,
+  StrategyMonteCarloResult,
+  StrategyRegimeTestReport,
   StrategyReport,
   StrategyReview,
+  FailedStrategyArchiveEntry,
   TalentState,
   Task,
   ThinkingProfile,
@@ -123,6 +131,17 @@ export interface GameEvents {
   "simulation:completed": SimulationResult;
   "strategyReports:updated": StrategyReport[];
   "strategyReviews:updated": StrategyReview[];
+  // v0.7 Feature 52 (Part 1/2) — the Strategy Validation Laboratory.
+  "strategyMonteCarloResults:updated": StrategyMonteCarloResult[];
+  "strategyRegimeTests:updated": StrategyRegimeTestReport[];
+  "strategyLiquidityValidations:updated": StrategyLiquidityValidation[];
+  "strategyExecutiveReviews:updated": StrategyExecutiveReview[];
+  "strategyFounderApprovals:updated": StrategyFounderApproval[];
+  "strategyHealthAssessments:updated": StrategyHealthAssessment[];
+  "strategyHallOfFame:updated": StrategyHallOfFameEntry[];
+  "strategyHallOfFame:entryAdded": StrategyHallOfFameEntry;
+  "strategyFailedArchive:updated": FailedStrategyArchiveEntry[];
+  "strategyFailedArchive:entryAdded": FailedStrategyArchiveEntry;
   "hallOfFame:updated": HallOfFameEntry[];
   "hallOfFame:entryAdded": HallOfFameEntry;
   "coach:reportReceived": CoachReport;

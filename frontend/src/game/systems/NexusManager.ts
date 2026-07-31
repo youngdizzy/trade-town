@@ -51,8 +51,16 @@ import type {
   SignalCalibrationState,
   SimulationResult,
   Strategy,
+  StrategyExecutiveReview,
+  StrategyFounderApproval,
+  StrategyHallOfFameEntry,
+  StrategyHealthAssessment,
+  StrategyLiquidityValidation,
+  StrategyMonteCarloResult,
+  StrategyRegimeTestReport,
   StrategyReport,
   StrategyReview,
+  FailedStrategyArchiveEntry,
   TalentState,
   Task,
   ThinkingProfile,
@@ -78,6 +86,14 @@ interface NexusSnapshot {
   simulationResults: SimulationResult[];
   strategyReports: StrategyReport[];
   strategyReviews: StrategyReview[];
+  strategyMonteCarloResults: StrategyMonteCarloResult[];
+  strategyRegimeTests: StrategyRegimeTestReport[];
+  strategyLiquidityValidations: StrategyLiquidityValidation[];
+  strategyExecutiveReviews: StrategyExecutiveReview[];
+  strategyFounderApprovals: StrategyFounderApproval[];
+  strategyHealthAssessments: StrategyHealthAssessment[];
+  strategyHallOfFame: StrategyHallOfFameEntry[];
+  strategyFailedArchive: FailedStrategyArchiveEntry[];
   hallOfFame: HallOfFameEntry[];
   coachReports: CoachReport[];
   companyScore: CompanyScore;
@@ -162,6 +178,14 @@ export class NexusManager {
   private static simulationResults: SimulationResult[] = [];
   private static strategyReports: StrategyReport[] = [];
   private static strategyReviews: StrategyReview[] = [];
+  private static strategyMonteCarloResults: StrategyMonteCarloResult[] = [];
+  private static strategyRegimeTests: StrategyRegimeTestReport[] = [];
+  private static strategyLiquidityValidations: StrategyLiquidityValidation[] = [];
+  private static strategyExecutiveReviews: StrategyExecutiveReview[] = [];
+  private static strategyFounderApprovals: StrategyFounderApproval[] = [];
+  private static strategyHealthAssessments: StrategyHealthAssessment[] = [];
+  private static strategyHallOfFame: StrategyHallOfFameEntry[] = [];
+  private static strategyFailedArchive: FailedStrategyArchiveEntry[] = [];
   private static hallOfFame: HallOfFameEntry[] = [];
   private static coachReports: CoachReport[] = [];
   private static companyScore: CompanyScore = {
@@ -378,6 +402,38 @@ export class NexusManager {
     return this.strategyReviews;
   }
 
+  static getStrategyMonteCarloResults(): StrategyMonteCarloResult[] {
+    return this.strategyMonteCarloResults;
+  }
+
+  static getStrategyRegimeTests(): StrategyRegimeTestReport[] {
+    return this.strategyRegimeTests;
+  }
+
+  static getStrategyLiquidityValidations(): StrategyLiquidityValidation[] {
+    return this.strategyLiquidityValidations;
+  }
+
+  static getStrategyExecutiveReviews(): StrategyExecutiveReview[] {
+    return this.strategyExecutiveReviews;
+  }
+
+  static getStrategyFounderApprovals(): StrategyFounderApproval[] {
+    return this.strategyFounderApprovals;
+  }
+
+  static getStrategyHealthAssessments(): StrategyHealthAssessment[] {
+    return this.strategyHealthAssessments;
+  }
+
+  static getStrategyHallOfFame(): StrategyHallOfFameEntry[] {
+    return this.strategyHallOfFame;
+  }
+
+  static getStrategyFailedArchive(): FailedStrategyArchiveEntry[] {
+    return this.strategyFailedArchive;
+  }
+
   /** Applies the immediate result of any /api/sandbox/* CEO action —
    * the same "don't wait for the next WS tick" pattern setPaperPortfolio
    * already uses, so a Sandbox click updates the UI right away. */
@@ -391,6 +447,41 @@ export class NexusManager {
   static setBacktestSessions(backtestSessions: BacktestSession[]): void {
     this.backtestSessions = backtestSessions;
     EventBus.emit("simulation:updated", { sessions: backtestSessions, results: this.simulationResults });
+  }
+
+  /** v0.7 Feature 52 (Part 1) — same immediate-response pattern as
+   * setSandboxState, for /api/sandbox/request-review's richer response
+   * (which also files a real StrategyExecutiveReview/StrategyFounderApproval
+   * in the same CEO action). */
+  static setStrategyExecutiveOutcome(strategies: Strategy[], strategyReviews: StrategyReview[], executiveReview: StrategyExecutiveReview | null, founderApproval: StrategyFounderApproval | null): void {
+    this.setSandboxState(strategies, strategyReviews);
+    if (executiveReview) {
+      this.strategyExecutiveReviews = [...this.strategyExecutiveReviews, executiveReview];
+      EventBus.emit("strategyExecutiveReviews:updated", this.strategyExecutiveReviews);
+    }
+    if (founderApproval) {
+      this.strategyFounderApprovals = [...this.strategyFounderApprovals, founderApproval];
+      EventBus.emit("strategyFounderApprovals:updated", this.strategyFounderApprovals);
+    }
+  }
+
+  /** v0.7 Feature 52 (Part 2) — /api/sandbox/retire's real, terminal
+   * outcome: exactly one of hallOfFameEntry/failedArchiveEntry is
+   * non-null (see backend/app/strategy_lab.py's
+   * generate_strategy_retirement_outcome()). */
+  static setStrategyRetirementOutcome(strategies: Strategy[], hallOfFameEntry: StrategyHallOfFameEntry | null, failedArchiveEntry: FailedStrategyArchiveEntry | null): void {
+    this.strategies = strategies;
+    EventBus.emit("strategies:updated", strategies);
+    if (hallOfFameEntry) {
+      this.strategyHallOfFame = [...this.strategyHallOfFame, hallOfFameEntry];
+      EventBus.emit("strategyHallOfFame:updated", this.strategyHallOfFame);
+      EventBus.emit("strategyHallOfFame:entryAdded", hallOfFameEntry);
+    }
+    if (failedArchiveEntry) {
+      this.strategyFailedArchive = [...this.strategyFailedArchive, failedArchiveEntry];
+      EventBus.emit("strategyFailedArchive:updated", this.strategyFailedArchive);
+      EventBus.emit("strategyFailedArchive:entryAdded", failedArchiveEntry);
+    }
   }
 
   static getHallOfFame(): HallOfFameEntry[] {
@@ -809,6 +900,38 @@ export class NexusManager {
     if (update.strategyReviews.length !== this.strategyReviews.length) EventBus.emit("strategyReviews:updated", update.strategyReviews);
     this.strategyReviews = update.strategyReviews;
 
+    if (update.strategyMonteCarloResults.length !== this.strategyMonteCarloResults.length) EventBus.emit("strategyMonteCarloResults:updated", update.strategyMonteCarloResults);
+    this.strategyMonteCarloResults = update.strategyMonteCarloResults;
+
+    if (update.strategyRegimeTests.length !== this.strategyRegimeTests.length) EventBus.emit("strategyRegimeTests:updated", update.strategyRegimeTests);
+    this.strategyRegimeTests = update.strategyRegimeTests;
+
+    if (update.strategyLiquidityValidations.length !== this.strategyLiquidityValidations.length) EventBus.emit("strategyLiquidityValidations:updated", update.strategyLiquidityValidations);
+    this.strategyLiquidityValidations = update.strategyLiquidityValidations;
+
+    if (update.strategyExecutiveReviews.length !== this.strategyExecutiveReviews.length) EventBus.emit("strategyExecutiveReviews:updated", update.strategyExecutiveReviews);
+    this.strategyExecutiveReviews = update.strategyExecutiveReviews;
+
+    if (update.strategyFounderApprovals.length !== this.strategyFounderApprovals.length) EventBus.emit("strategyFounderApprovals:updated", update.strategyFounderApprovals);
+    this.strategyFounderApprovals = update.strategyFounderApprovals;
+
+    if (update.strategyHealthAssessments.length !== this.strategyHealthAssessments.length) EventBus.emit("strategyHealthAssessments:updated", update.strategyHealthAssessments);
+    this.strategyHealthAssessments = update.strategyHealthAssessments;
+
+    if (update.strategyHallOfFame.length !== this.strategyHallOfFame.length) {
+      const newest = update.strategyHallOfFame[update.strategyHallOfFame.length - 1];
+      if (newest) EventBus.emit("strategyHallOfFame:entryAdded", newest);
+      EventBus.emit("strategyHallOfFame:updated", update.strategyHallOfFame);
+    }
+    this.strategyHallOfFame = update.strategyHallOfFame;
+
+    if (update.strategyFailedArchive.length !== this.strategyFailedArchive.length) {
+      const newest = update.strategyFailedArchive[update.strategyFailedArchive.length - 1];
+      if (newest) EventBus.emit("strategyFailedArchive:entryAdded", newest);
+      EventBus.emit("strategyFailedArchive:updated", update.strategyFailedArchive);
+    }
+    this.strategyFailedArchive = update.strategyFailedArchive;
+
     if (update.hallOfFame.length !== this.hallOfFame.length) {
       const newest = update.hallOfFame[update.hallOfFame.length - 1];
       if (newest) EventBus.emit("hallOfFame:entryAdded", newest);
@@ -1026,6 +1149,14 @@ export class NexusManager {
     this.simulationResults = save.simulationResults;
     this.strategyReports = save.strategyReports;
     this.strategyReviews = save.strategyReviews;
+    this.strategyMonteCarloResults = save.strategyMonteCarloResults;
+    this.strategyRegimeTests = save.strategyRegimeTests;
+    this.strategyLiquidityValidations = save.strategyLiquidityValidations;
+    this.strategyExecutiveReviews = save.strategyExecutiveReviews;
+    this.strategyFounderApprovals = save.strategyFounderApprovals;
+    this.strategyHealthAssessments = save.strategyHealthAssessments;
+    this.strategyHallOfFame = save.strategyHallOfFame;
+    this.strategyFailedArchive = save.strategyFailedArchive;
     this.hallOfFame = save.hallOfFame;
     this.coachReports = save.coachReports;
     this.companyScore = save.companyScore;

@@ -7,6 +7,82 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.7 Feature 52 frontend — the Strategy Validation Laboratory UI**:
+  one Command Center tab (`SANDBOX`), restructured into eight real
+  sub-views rather than eight more top-level tabs (this Command Center
+  already carries 31 — see `FullCommandCenter.tsx`'s own `TABS` array).
+  **PIPELINE** is the original Research Sandbox (queue backtests, walk
+  the real CEO-authorized stage checkpoints) plus the new v0.7 Feature
+  52 (Part 2) Retirement action — a real, deliberate, named-reason CEO
+  call, never automatic. **LIBRARY** lists every strategy this company
+  has ever created, including retired ones (nothing is ever deleted),
+  with real aggregated stats and a click-through into that strategy's
+  own dossier. **CERTIFICATION** renders the full real validation
+  dossier on request (`GET /api/sandbox/dossier`) — Monte Carlo Testing,
+  Market Regime Testing, Liquidity Validation, the 9-department
+  Executive Review, Founder Approval, and Confidence Score, each only
+  ever shown when real evidence exists. **HALL OF FAME** / **FAILED
+  ARCHIVE** are the two permanent real outcomes of a retirement.
+  **DASHBOARD** renders the real, computed-on-request Executive
+  Dashboard (`GET /api/sandbox/dashboard`) — stage counts and named
+  best/weakest/most-improved/newest/highest-confidence slots, each
+  citing its real metric value.
+
+  Two of the requested dashboards are **honest reframes**, not literal
+  builds of what their name suggests, matching this feature's own
+  backend honesty boundary: **HEALTH** stands in for the brief's "Live
+  Performance Monitor" — this codebase has no mechanism to attribute a
+  live/paper trade back to a specific `Strategy` object (see
+  `backend/app/sandbox.py`'s module docstring), so there is no real live
+  P&L stream to monitor; what's shown instead is real — a recent-vs-
+  lifetime trend read over the strategy's own Market Simulation history,
+  re-computed on every completed run. **EVOLUTION** stands in for
+  "Strategy Evolution" — this codebase has no strategy revision/
+  versioning mechanism (no v1.0→v1.1→v2.0 parent/child links), so rather
+  than fabricate a fake version history, this shows the strategy's own
+  real `stageHistory` timeline plus its real retirement outcome when
+  retired. Both reframes are stated directly in each view's own header
+  copy, not just in this changelog entry.
+
+  Full data-layer wiring for all 8 new WS-broadcast state fields
+  (`strategyMonteCarloResults`/`strategyRegimeTests`/
+  `strategyLiquidityValidations`/`strategyExecutiveReviews`/
+  `strategyFounderApprovals`/`strategyHealthAssessments`/
+  `strategyHallOfFame`/`strategyFailedArchive`) through `types.ts` →
+  `socket.ts` → `NexusManager.ts` → `EventBus.ts` → `gameStore.ts`,
+  matching every existing field's own diff-and-emit pattern exactly. Two
+  new `NexusManager` setters (`setStrategyExecutiveOutcome`/
+  `setStrategyRetirementOutcome`) apply a CEO action's REST response
+  immediately, the same "don't wait for the next WS tick" pattern
+  `setSandboxState` already established. New `api.ts` functions for
+  `POST /sandbox/retire`, `GET /sandbox/dossier`, `GET /sandbox/dashboard`.
+  New `derive.ts` tone helpers (`strategyExecutiveActionTone`/
+  `strategyHealthTone`/`strategyRegimeVerdictTone`/
+  `strategyLiquidityVerdictTone`/`strategyRiskRatingTone`) reuse the
+  existing green/amber/red/cyan `StatusPill` convention; the trade-scoped
+  `executiveStanceTone` is reused as-is for the Strategy Executive
+  Review's department opinions, since both share the same real
+  `ExecutiveStance` union.
+
+  Verified: `npx tsc -b --noEmit`/`npm run lint`/`npm run build` all
+  clean. Extended `sandbox.spec.ts` with a new Playwright test that
+  navigates every sub-tab against the live Vite + FastAPI stack and
+  opens/cancels the real Retire form (never confirms — a real,
+  irreversible CEO action a test must not perform as a side effect on
+  the shared dev backend) — passes with zero console errors. A full
+  ~65-test suite run against the live stack surfaced one real bug this
+  new test caught: `StrategyHealthAssessment.id` is only unique per
+  (strategy, sim day), not per completed run — a strategy that finishes
+  more than one real Market Simulation on the same day produces two
+  health assessments sharing an id, which `StrategyHealthView.tsx`'s
+  history table was keying on directly. Fixed by keying on `id` plus
+  array position instead of `id` alone; the four other failures in that
+  run (movement-hold timing, dialogue-render timing ×2, one Phaser
+  runtime error) are the exact same pre-existing flakes already
+  documented in this file's "Playwright test suite — popup resilience"
+  entry above, unrelated to this change, confirmed unaffected by
+  re-running them in isolation.
+
 - **v0.7 Feature 52 (Part 2) — "Living Strategies"**: a real, scoped
   subset of the brief's much larger Part 2 list, built on top of Part
   1's already-real artifacts. **Strategy Health** (`compute_strategy_health()`)
