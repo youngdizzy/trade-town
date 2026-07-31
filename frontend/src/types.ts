@@ -1974,6 +1974,100 @@ export interface CaseStudy {
   createdAt: string;
 }
 
+/** v0.7 Feature 54 (the brief self-numbered it "Feature 53," already used
+ * in this codebase's history for Company Certification) — the Decision
+ * Memory System's Decision Vault. One permanent record per closed trade,
+ * joining every real artifact already generated for it — see
+ * backend/app/decision_vault.py's module docstring for the full honesty
+ * boundary, including which brief-requested fields are deliberately not
+ * here (rMultiple, strategyId on ordinary trades). marketRegime/
+ * liquidityContext are "as of trade close," not "as of the original
+ * decision" — nothing in this codebase stamps either onto a proposal at
+ * decision time. */
+export interface DecisionVaultEntry {
+  id: string;
+  tradeId: string;
+  decisionId: string;
+  symbol: string;
+  simDay: number;
+  session: TradingSession;
+  strategyId: string | null;
+  marketRegime: MarketIntelligenceRegime;
+  marketRegimeLabel: string;
+  liquidityContext: LiquidityRead;
+  evidenceScore: number;
+  confidenceScore: number;
+  confidenceTier: ConfidenceTier;
+  capitalAllocationGrade: DecisionGrade;
+  decisionGrade: DecisionGrade;
+  decisionGradeScore: number;
+  disciplineTier: DisciplineTier;
+  disciplineScore: number;
+  patienceGrade: DecisionGrade;
+  positionSize: number;
+  entryPrice: number;
+  exitPrice: number;
+  pnl: number;
+  pnlPct: number;
+  holdDurationMinutes: number;
+  /** Always null — no stop-loss/initial-risk concept exists anywhere in
+   * this codebase's real risk engine (see backend/app/risk_engine.py's
+   * recommended_quantity()), so R-Multiple can't be honestly computed. */
+  rMultiple: number | null;
+  caseStudyId: string | null;
+  caseStudyCategory: CaseStudyCategory | null;
+  executiveNotes: string | null;
+  lessonsLearned: string;
+  companyDnaChange: string | null;
+  ceoOverride: boolean;
+  createdAt: string;
+}
+
+/** A pure relabeling of one DecisionVaultEntry's own real fields — see
+ * backend/app/decision_vault.py's compute_trade_report_card() for why
+ * Execution Grade/Psychology Grade aren't here (no real signal anywhere
+ * measures either), and why overallTradeQuality is deliberately the
+ * same value as decisionGrade rather than a third invented composite. */
+export interface TradeReportCard {
+  vaultEntryId: string;
+  symbol: string;
+  evidenceScore: number;
+  confidenceScore: number;
+  capitalAllocationGrade: DecisionGrade;
+  decisionGrade: DecisionGrade;
+  disciplineGrade: DisciplineTier;
+  patienceGrade: DecisionGrade;
+  overallTradeQuality: DecisionGrade;
+  wouldTakeAgain: boolean;
+  recommendation: string;
+}
+
+export interface SimilarTradeMatch {
+  vaultEntryId: string;
+  symbol: string;
+  simDay: number;
+  pnlPct: number;
+  decisionGrade: DecisionGrade;
+}
+
+/** The Decision Memory System's Similarity Engine — real, rule-based
+ * tiered bucket matching over the Decision Vault (never a fabricated
+ * similarity score). `matchedOn` names exactly which real dimensions
+ * produced the match, so it's never a black box. See
+ * backend/app/decision_vault.py's find_similar_vault_entries(). */
+export interface SimilarTradesSummary {
+  matchCount: number;
+  matchedOn: string[];
+  winRatePct: number;
+  avgPnlPct: number;
+  worstPnlPct: number;
+  bestRegime: MarketIntelligenceRegime | null;
+  worstRegime: MarketIntelligenceRegime | null;
+  mostCommonMistakeCategory: CaseStudyCategory | null;
+  warning: string | null;
+  examples: SimilarTradeMatch[];
+}
+
 // v0.7 Feature 29 — the Reasoning Lab (see backend/app/reasoning_lab.py).
 // A permanent ReasoningChallenge is filed periodically from the
 // company's most recent real AI Debate + its linked TradeDecision —
@@ -2514,6 +2608,7 @@ export interface GameSaveState {
   academyState: AcademyState;
   disciplineReviews: DisciplineReview[];
   caseStudies: CaseStudy[];
+  decisionVault: DecisionVaultEntry[];
   talent: TalentState;
   constitution: ConstitutionState;
   reasoningChallenges: ReasoningChallenge[];

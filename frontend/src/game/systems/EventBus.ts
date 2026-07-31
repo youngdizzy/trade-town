@@ -19,6 +19,7 @@ import type {
   ConstitutionState,
   DailyObjectiveStatus,
   Debate,
+  DecisionVaultEntry,
   DepartmentSelfEvaluation,
   DialogueHistoryEntry,
   DisciplineReview,
@@ -185,6 +186,7 @@ export interface GameEvents {
   "academyState:updated": AcademyState;
   "disciplineReviews:updated": DisciplineReview[];
   "caseStudies:updated": CaseStudy[];
+  "decisionVault:updated": DecisionVaultEntry[];
   "talent:updated": TalentState;
   "constitution:updated": ConstitutionState;
   "reasoningChallenges:updated": ReasoningChallenge[];

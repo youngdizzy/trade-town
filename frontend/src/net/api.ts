@@ -32,9 +32,12 @@ import type {
   SignalChallenge,
   SignalChoice,
   BacktestSession,
+  ConfidenceTier,
   ConstitutionState,
   FailedStrategyArchiveEntry,
+  MarketIntelligenceRegime,
   RiskLimits,
+  SimilarTradesSummary,
   Strategy,
   StrategyCertification,
   StrategyDossier,
@@ -47,6 +50,7 @@ import type {
   TimeAdvanceTarget,
   TradeDecision,
   TradeProposal,
+  TradeReportCard,
   TreasuryState,
   WhatIfSimulation,
 } from "@/types";
@@ -277,6 +281,16 @@ export const api = {
   // every call — `certified` is always a live read of current real
   // state (see StrategyCertification's own docstring in types.ts).
   getSandboxCertification: (strategyId: string) => request<StrategyCertification>(`/sandbox/certification?strategyId=${encodeURIComponent(strategyId)}`),
+  // v0.7 Feature 54 (the brief self-numbered it "Feature 53," already
+  // used above for Company Certification) — the Decision Memory
+  // System. Both read-only, computed fresh every call, mirroring the
+  // Sandbox certification/dossier convention exactly.
+  getDecisionVaultReportCard: (vaultEntryId: string) => request<TradeReportCard>(`/decision-vault/report-card?vaultEntryId=${encodeURIComponent(vaultEntryId)}`),
+  getDecisionVaultSimilar: (params: { symbol: string; marketRegime: MarketIntelligenceRegime; confidenceTier: ConfidenceTier; excludeId?: string }) => {
+    const query = new URLSearchParams({ symbol: params.symbol, marketRegime: params.marketRegime, confidenceTier: params.confidenceTier });
+    if (params.excludeId) query.set("excludeId", params.excludeId);
+    return request<SimilarTradesSummary>(`/decision-vault/similar?${query.toString()}`);
+  },
   proposeConstitutionAmendment: (title: string, text: string) =>
     request<{ constitution: ConstitutionState }>("/constitution/propose", {
       method: "POST",

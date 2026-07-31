@@ -16,6 +16,7 @@ import type {
   ConstitutionState,
   DailyObjectiveStatus,
   Debate,
+  DecisionVaultEntry,
   DepartmentSelfEvaluation,
   DisciplineReview,
   ExecutiveMeetingLogEntry,
@@ -122,6 +123,7 @@ interface NexusSnapshot {
   academyState: AcademyState;
   disciplineReviews: DisciplineReview[];
   caseStudies: CaseStudy[];
+  decisionVault: DecisionVaultEntry[];
   talent: TalentState;
   constitution: ConstitutionState;
   reasoningChallenges: ReasoningChallenge[];
@@ -305,6 +307,7 @@ export class NexusManager {
   };
   private static disciplineReviews: DisciplineReview[] = [];
   private static caseStudies: CaseStudy[] = [];
+  private static decisionVault: DecisionVaultEntry[] = [];
   private static talent: TalentState = { reports: [], viewedReportIds: [], updatedAt: new Date().toISOString() };
   private static constitution: ConstitutionState = { articles: [], citations: [], amendments: [], updatedAt: new Date().toISOString() };
   private static reasoningChallenges: ReasoningChallenge[] = [];
@@ -550,6 +553,10 @@ export class NexusManager {
 
   static getCaseStudies(): CaseStudy[] {
     return this.caseStudies;
+  }
+
+  static getDecisionVault(): DecisionVaultEntry[] {
+    return this.decisionVault;
   }
 
   static getTalent(): TalentState {
@@ -1048,6 +1055,9 @@ export class NexusManager {
     if (update.caseStudies.length !== this.caseStudies.length) EventBus.emit("caseStudies:updated", update.caseStudies);
     this.caseStudies = update.caseStudies;
 
+    if (update.decisionVault.length !== this.decisionVault.length) EventBus.emit("decisionVault:updated", update.decisionVault);
+    this.decisionVault = update.decisionVault;
+
     if (update.talent !== this.talent) EventBus.emit("talent:updated", update.talent);
     this.talent = update.talent;
 
@@ -1127,7 +1137,7 @@ export class NexusManager {
   // v0.7 — Save Architecture Redesign Phase 2: GET /api/load now returns
   // only the core modules (backend/app/save_modules.py); the archive
   // modules (trade_history/knowledge_archive/academy — decisions, debates,
-  // caseStudies, questionArchive, hallOfFame, academyCompletedProjects,
+  // caseStudies, decisionVault, questionArchive, hallOfFame, academyCompletedProjects,
   // agentKnowledge, ...) come back as real empty arrays/dicts, not omitted
   // fields, so every plain assignment below stays valid with no optional
   // handling needed. Those fields get their real data moments later from
@@ -1185,6 +1195,7 @@ export class NexusManager {
     this.academyState = save.academyState;
     this.disciplineReviews = save.disciplineReviews;
     this.caseStudies = save.caseStudies;
+    this.decisionVault = save.decisionVault;
     this.talent = save.talent;
     this.constitution = save.constitution;
     this.reasoningChallenges = save.reasoningChallenges;

@@ -18,6 +18,7 @@ import type {
   ConstitutionState,
   DailyObjectiveStatus,
   Debate,
+  DecisionVaultEntry,
   DepartmentSelfEvaluation,
   DisciplineReview,
   ExecutiveMeetingLogEntry,
@@ -142,6 +143,7 @@ export interface GameUiState {
   academyState: AcademyState;
   disciplineReviews: DisciplineReview[];
   caseStudies: CaseStudy[];
+  decisionVault: DecisionVaultEntry[];
   talent: TalentState;
   constitution: ConstitutionState;
   reasoningChallenges: ReasoningChallenge[];
@@ -354,6 +356,7 @@ class GameStore {
     academyState: { level: 1, levelLabel: "Training Room", totalPoints: 0, completedProjectCount: 0, updatedAt: new Date().toISOString() },
     disciplineReviews: [],
     caseStudies: [],
+    decisionVault: [],
     talent: { reports: [], viewedReportIds: [], updatedAt: new Date().toISOString() },
     constitution: { articles: [], citations: [], amendments: [], updatedAt: new Date().toISOString() },
     reasoningChallenges: [],
@@ -514,6 +517,7 @@ class GameStore {
     EventBus.on("academyState:updated", (academyState) => this.set({ academyState }));
     EventBus.on("disciplineReviews:updated", (disciplineReviews) => this.set({ disciplineReviews }));
     EventBus.on("caseStudies:updated", (caseStudies) => this.set({ caseStudies }));
+    EventBus.on("decisionVault:updated", (decisionVault) => this.set({ decisionVault }));
     EventBus.on("talent:updated", (talent) => this.set({ talent }));
     EventBus.on("constitution:updated", (constitution) => this.set({ constitution }));
     EventBus.on("reasoningChallenges:updated", (reasoningChallenges) => this.set({ reasoningChallenges }));
