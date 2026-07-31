@@ -221,10 +221,30 @@ def maybe_advance_after_result(strategy: Strategy, result: SimulationResult, sim
     return strategy
 
 
-def begin_paper_trial(strategy: Strategy, sim_day: int) -> tuple[Strategy | None, str | None]:
+def evaluate_risk_gate(strategy: Strategy, results: list[SimulationResult]) -> tuple[bool, str]:
+    """v0.7 Feature 52 (Part 1) — Guardian's own real average-drawdown
+    threshold, checked as its own standalone gate before Paper Trading —
+    honors the Strategy Validation Laboratory's brief's own stage order
+    (Risk Analysis before Paper Trading). Does not replace the richer
+    five-reviewer StrategyReview risk verdict `_risk_verdict` still runs
+    later at Company Review; this is an earlier, narrower real
+    checkpoint reusing the exact same real threshold."""
+    strategy_results = [r for r in results if r.strategy_id == strategy.id]
+    if not strategy_results:
+        return False, "Risk Department has no completed Market Simulation runs yet to evaluate."
+    avg_drawdown = sum(r.max_drawdown_pct for r in strategy_results) / len(strategy_results)
+    if avg_drawdown > RISK_MAX_AVG_DRAWDOWN:
+        return False, f"Risk Department rejects Paper Trading: average max drawdown {avg_drawdown:.1f}% exceeds the {RISK_MAX_AVG_DRAWDOWN:.0f}% comfort bar across {len(strategy_results)} real run(s)."
+    return True, f"Risk Department approves Paper Trading: average max drawdown {avg_drawdown:.1f}% is within bounds across {len(strategy_results)} real run(s)."
+
+
+def begin_paper_trial(strategy: Strategy, results: list[SimulationResult], sim_day: int) -> tuple[Strategy | None, str | None]:
     if strategy.stage != "market_simulation":
         return None, f'"{strategy.name}" must complete Market Simulation before Paper Trading (currently: {strategy.stage.replace("_", " ")}).'
-    return _advance(strategy, "paper_trading", "CEO authorized a real paper trading trial.", sim_day), None
+    risk_approved, risk_detail = evaluate_risk_gate(strategy, results)
+    if not risk_approved:
+        return None, risk_detail
+    return _advance(strategy, "paper_trading", f"CEO authorized a real paper trading trial. {risk_detail}", sim_day), None
 
 
 def begin_limited_live(strategy: Strategy, amount: float, sim_day: int) -> tuple[Strategy | None, str | None]:

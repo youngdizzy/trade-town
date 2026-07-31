@@ -4081,6 +4081,139 @@ Center spec — reproduced identically on unmodified, pre-existing spec
 files unrelated to this feature — a pre-existing environment flake, not
 a regression from this change.
 
+### Strategy Validation Laboratory — Feature 52 (Part 1), "Never Trade An Untested Idea"
+
+GOAL (from the brief): no strategy should ever be traded simply because an
+employee believes it works — every strategy earns its way to real capital
+through evidence, not opinion.
+
+**Researched first.** This codebase already had almost every real
+building block the brief's longer validation pipeline (Monte Carlo /
+Market Regime / Liquidity / Risk / 9-department Executive Review /
+Founder Approval) asks for — `app/sandbox.py`'s already-real 8-stage
+gated pipeline, `app/market_intelligence.py`'s regime/liquidity/structure
+engines, `app/whatif.py`'s Monte Carlo bootstrap pattern,
+`app/executive_intelligence.py`'s 9-department opinion machinery, and
+`app/founders.py`'s threshold-approval pattern — just not assembled into
+named, reported-on artifacts. New `app/strategy_lab.py` is that
+enrichment layer, not a rebuild.
+
+**Monte Carlo Testing** — `run_strategy_monte_carlo()` is a real
+trade-sequence bootstrap (200 simulated paths), distinct from
+`app/whatif.py`'s own Monte Carlo (which resamples *price paths* for a
+symbol, not a strategy's own trade sequence). Every generating number —
+win rate, average win %, average loss %, trades-per-path — is a real
+aggregate of the strategy's own already-real `SimulationResult` history;
+nothing is independently invented. Tracks median/10th/90th-percentile
+return, median/worst-case (5th-percentile) drawdown, probability of
+profit, and a real, explicitly-scoped **probability of ruin**: the share
+of this run's own 200 paths that breached a named `RUIN_DRAWDOWN_PCT`
+(50%) bar — never claimed as a true infinite-sample probability.
+
+**Market Regime Testing** — `compute_strategy_regime_test()` buckets a
+strategy's `SimulationResult` history by `TestScenario` (bull/bear/
+sideways/high_volatility/low_volatility/historical), since results are
+only ever tagged at that coarser 7-way grain. Each bucket is labeled with
+which of Feature 51's real 13-way `MarketIntelligenceRegime`s it covers
+(the reverse of `market_intelligence.py`'s own `_REGIME_TO_SCENARIO_KEYWORD`
+map) — an honest "here's what this bucket represents," never a claim of
+independently-tested 13-way granularity.
+
+**Liquidity Validation** — `validate_strategy_liquidity()` reuses Feature
+51's real `compute_liquidity()`/`compute_market_structure()` against the
+strategy's own live watchlist, as-is. No new liquidity math, and no claim
+beyond what those functions already claim (real equal-high/low
+clustering + a real sweep pattern, never real resting stop-order
+locations or institutional order flow).
+
+**Risk Analysis (a real, standalone gate)** — `sandbox.py`'s new
+`evaluate_risk_gate()` reuses Guardian's own `RISK_MAX_AVG_DRAWDOWN`
+threshold and now also gates Market Simulation → Paper Trading directly
+(`begin_paper_trial()` calls it first), honoring the brief's stage order
+(Risk Analysis before Paper Trading). This is an earlier, narrower real
+checkpoint — it does not replace the richer five-reviewer `StrategyReview`
+risk verdict still run later at Company Review.
+
+**Executive Review (9 departments)** — `generate_strategy_executive_review()`
+reuses the exact same nine real department seats as Feature 50's
+`ExecutiveDepartmentRole` (research/quant/risk/simulation/
+decision_intelligence/coach/founders/devils_advocate/market_intelligence).
+The brief's ninth seat, "Brain Room," is not a distinct department
+anywhere in this codebase (see `ExecutiveIntelPanel.tsx`'s own real/cut
+note) — reuses the same `devils_advocate` seat every other 9-role read in
+this codebase already does. Each department's opinion is a real read of
+already-real inputs (the `StrategyReview`'s own verdicts, the Monte Carlo
+result, the regime test, Coach reports, live Market Intelligence) — never
+an independently invented number. The nine opinions combine into a real
+`advance` / `request_more_evidence` / `hold_for_improvement` / `reject`
+recommendation (`StrategyExecutiveAction` — deliberately distinct from
+the trade-scoped `ExecutiveAction`, since strategy-lifecycle semantics
+differ from single-trade semantics): 2+ rejecting departments rejects
+outright, exactly 1 holds for improvement, 4+ departments wanting more
+evidence requests it, otherwise the strategy advances.
+
+**Founder Approval** — `generate_strategy_founder_approval()` is a new
+mode of `app/founders.py`'s existing threshold-approval pattern
+(previously only applied to Black Box Projects), applied to a strategy:
+approved only when the Executive Review both recommends `advance` and
+clears `FOUNDER_APPROVAL_CONFIDENCE_THRESHOLD` (60%).
+
+**Confidence Score** — `compute_strategy_confidence_score()` is a real
+composite (Executive Review confidence + Monte Carlo probability of
+profit, averaged) with real evidence/strengths/weaknesses pulled directly
+from the artifacts above, plus a real risk rating and a real recommended
+position size that scales down as real ruin risk rises. Computed fresh on
+request, never persisted — same reasoning as `ExecutiveRecommendation`/
+`WhatIfSimulation`: every input it reads already lives somewhere
+permanent.
+
+**Strategy Dossier** — `generate_strategy_dossier()` is the brief's
+"auto-generated professional report": assembles the latest
+`StrategyReport`/`StrategyReview`/Monte Carlo/regime test/liquidity
+validation/executive review/founder approval/confidence score for one
+strategy into a single read. Exposed at new
+`GET /api/sandbox/dossier?strategyId=` (no game-state lock needed,
+mirrors `GET /api/executive/intelligence`'s own compute-on-request
+pattern).
+
+**Integration** — `POST /api/sandbox/request-review` now files the
+`StrategyExecutiveReview` and `StrategyFounderApproval` in the same real
+CEO action as the existing `StrategyReview`: Company Review, Executive
+Review, and Founder Approval are one moment, not three separate CEO
+requests, per the brief's own stage ordering. `app/nexus.py`'s tick loop
+re-runs the Monte Carlo bootstrap, regime test, and liquidity validation
+automatically every time a Market Simulation run completes for a
+strategy, right alongside the existing `StrategyReport` generation. Five
+new capped (`MAX_STRATEGY_*_RESULTS/TESTS/VALIDATIONS/REVIEWS/APPROVALS`,
+40 each), permanent `GameSaveState` lists join the `company` save module
+right after `strategy_reviews`, and are broadcast over the WS tick
+alongside it.
+
+**Explicitly not built, and why**: a true infinite-sample probability of
+ruin (only ever a real share of this run's own simulated paths, clearly
+labeled); real institutional liquidity/retail stop clusters/market maker
+behavior (inherited directly from Feature 51's own honesty boundary, not
+re-litigated here); a second backtest/Monte Carlo engine (would repeat
+the exact "redundant re-measurement" trap `app/sandbox.py`'s own
+docstring already warns against — this module's bootstrap always reuses
+`SimulationResult`'s real generating statistics).
+
+**Verified**: new `backend/tests/test_strategy_lab.py` (17 tests
+covering the Monte Carlo bootstrap, regime bucketing, liquidity
+validation, all 9 executive department opinions, founder approval
+thresholds, confidence scoring, and dossier assembly) plus a new
+sandbox risk-gate rejection test — 793/793 full backend suite, `mypy`/
+`ruff` clean. Feature 52 Part 2 ("Living Strategies" — Strategy Library,
+Versioning, Health, Hall of Fame, Failed Strategy Archive, Competitions,
+Company DNA integration) and both parts' frontend are deliberately
+deferred to a follow-up pass — this codebase has no mechanism to
+attribute a live/paper trade back to a specific `Strategy` object
+(`strategy_id` exists only on `BacktestSession`/`SimulationResult`/
+`StrategyReport`/`StrategyReview`, never on `PaperTrade`/`TradeDecision`/
+`TradeProposal`), so Part 2's "Live Performance Monitor" will need an
+honest reframe around real `SimulationResult`/`StrategyReport` history
+rather than literal live-trade attribution when it's built.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

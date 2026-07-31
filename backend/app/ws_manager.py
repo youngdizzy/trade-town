@@ -39,6 +39,14 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         "simulationResults": [r.model_dump(by_alias=True) for r in state.simulation_results],
         "strategyReports": [r.model_dump(by_alias=True) for r in state.strategy_reports],
         "strategyReviews": [r.model_dump(by_alias=True) for r in state.strategy_reviews],
+        # v0.7 Feature 52 (Part 1) — Strategy Validation Laboratory.
+        # Already capped in strategy_lab.py's own cap_* helpers, send as-is
+        # like the other pre-bounded lists above.
+        "strategyMonteCarloResults": [r.model_dump(by_alias=True) for r in state.strategy_monte_carlo_results],
+        "strategyRegimeTests": [r.model_dump(by_alias=True) for r in state.strategy_regime_tests],
+        "strategyLiquidityValidations": [r.model_dump(by_alias=True) for r in state.strategy_liquidity_validations],
+        "strategyExecutiveReviews": [r.model_dump(by_alias=True) for r in state.strategy_executive_reviews],
+        "strategyFounderApprovals": [r.model_dump(by_alias=True) for r in state.strategy_founder_approvals],
         "hallOfFame": [h.model_dump(by_alias=True) for h in state.hall_of_fame],
         "coachReports": [c.model_dump(by_alias=True) for c in state.coach_reports],
         "companyScore": state.company_score.model_dump(by_alias=True),

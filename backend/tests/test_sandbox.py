@@ -143,16 +143,23 @@ class TestMaybeAdvanceAfterResult:
 class TestPipelineCeoActions:
     def test_begin_paper_trial_requires_market_simulation_stage(self) -> None:
         strategy = _strategy(stage="historical_backtest")
-        updated, error = begin_paper_trial(strategy, sim_day=9)
+        updated, error = begin_paper_trial(strategy, [_result(max_drawdown_pct=10.0)], sim_day=9)
         assert updated is None
         assert error is not None
 
     def test_begin_paper_trial_succeeds_from_market_simulation(self) -> None:
         strategy = _strategy(stage="market_simulation")
-        updated, error = begin_paper_trial(strategy, sim_day=9)
+        updated, error = begin_paper_trial(strategy, [_result(max_drawdown_pct=10.0)], sim_day=9)
         assert error is None
         assert updated is not None
         assert updated.stage == "paper_trading"
+
+    def test_begin_paper_trial_rejected_by_the_real_risk_gate_when_avg_drawdown_is_too_high(self) -> None:
+        strategy = _strategy(stage="market_simulation")
+        updated, error = begin_paper_trial(strategy, [_result(max_drawdown_pct=35.0)], sim_day=9)
+        assert updated is None
+        assert error is not None
+        assert "Risk Department rejects" in error
 
     def test_begin_limited_live_requires_paper_trading_stage(self) -> None:
         strategy = _strategy(stage="market_simulation")
@@ -161,14 +168,14 @@ class TestPipelineCeoActions:
         assert error is not None
 
     def test_begin_limited_live_rejects_a_cap_over_the_maximum(self) -> None:
-        strategy, _ = begin_paper_trial(_strategy(stage="market_simulation"), sim_day=9)
+        strategy, _ = begin_paper_trial(_strategy(stage="market_simulation"), [_result(max_drawdown_pct=10.0)], sim_day=9)
         assert strategy is not None
         updated, error = begin_limited_live(strategy, 999_999.0, sim_day=9)
         assert updated is None
         assert error is not None
 
     def test_begin_limited_live_sets_the_real_allocated_capital(self) -> None:
-        strategy, _ = begin_paper_trial(_strategy(stage="market_simulation"), sim_day=9)
+        strategy, _ = begin_paper_trial(_strategy(stage="market_simulation"), [_result(max_drawdown_pct=10.0)], sim_day=9)
         assert strategy is not None
         updated, error = begin_limited_live(strategy, 500.0, sim_day=10)
         assert error is None

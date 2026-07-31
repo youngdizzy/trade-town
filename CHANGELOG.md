@@ -7,6 +7,65 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.7 Feature 52 (Part 1) — Strategy Validation Laboratory, "Never Trade
+  An Untested Idea"**: enriches `app/sandbox.py`'s already-real 8-stage
+  Research Sandbox pipeline (Idea → Research → Historical Backtest →
+  Market Simulation → Paper Trading → Limited Live Capital → Company
+  Review → Approved) with the deeper validation artifacts the brief asks
+  for, without building a second measurement engine. New `app/strategy_lab.py`:
+  **Monte Carlo Testing** — a real trade-sequence bootstrap (200 simulated
+  paths) drawn from the strategy's own aggregated win rate and average
+  win/loss sizes (never re-rolls an independent backtest — a new, small,
+  purpose-built resample distinct from `app/whatif.py`'s own price-path
+  Monte Carlo, which answers a different question); **Market Regime
+  Testing** — since `SimulationResult` is only ever tagged at the coarser
+  7-way `TestScenario` grain, results are honestly bucketed at that grain
+  and each bucket is labeled with which of Feature 51's real 13-way
+  `MarketIntelligenceRegime`s it covers, never claimed as independently
+  tested 13 ways; **Liquidity Validation** — reuses Feature 51's real
+  `compute_liquidity()`/`compute_market_structure()` against the
+  strategy's own watched symbols, as-is; **Risk Analysis** — a new,
+  standalone `evaluate_risk_gate()` now also gates Market Simulation →
+  Paper Trading directly (Guardian's own `RISK_MAX_AVG_DRAWDOWN`), ahead
+  of the richer five-reviewer `StrategyReview` risk verdict still run
+  later at Company Review — an earlier real checkpoint, not a
+  replacement; **Executive Review** — a real 9-department opinion (the
+  same `ExecutiveDepartmentRole` seats as Feature 50, "Brain Room" reusing
+  the same `devils_advocate` seat every other 9-role read in this codebase
+  already does) with per-department stance/confidence/evidence/concerns/
+  suggested improvements, driving a real advance/request_more_evidence/
+  hold_for_improvement/reject recommendation; **Founder Approval** — a new
+  mode of `app/founders.py`'s existing threshold-approval pattern, applied
+  to a strategy instead of a Black Box Project; **Confidence Score** — a
+  composite built entirely from the artifacts above, computed fresh on
+  request rather than persisted (same reasoning as `ExecutiveRecommendation`/
+  `WhatIfSimulation`: every input already lives somewhere permanent); and
+  **Strategy Dossier** — the brief's "auto-generated professional report,"
+  assembling every real artifact above for one strategy, exposed at new
+  `GET /api/sandbox/dossier?strategyId=`. `POST /api/sandbox/request-review`
+  now files the `StrategyExecutiveReview` and `StrategyFounderApproval` in
+  the same real CEO action as the existing `StrategyReview` — Company
+  Review, Executive Review, and Founder Approval are one moment, not
+  three separate requests. Monte Carlo/Regime Test/Liquidity Validation
+  re-run automatically in `nexus.py`'s tick loop every time a Market
+  Simulation run completes, alongside the existing `StrategyReport`.
+  5 new capped, permanent `GameSaveState` lists (`strategyMonteCarloResults`,
+  `strategyRegimeTests`, `strategyLiquidityValidations`,
+  `strategyExecutiveReviews`, `strategyFounderApprovals`), broadcast over
+  the WS tick and persisted in the `company` save module. Explicitly not
+  built, and why: a true infinite-sample probability of ruin (only ever a
+  real share of this run's own simulated paths that breached a named
+  drawdown bar, clearly labeled); real institutional liquidity/retail
+  stop clusters/market maker behavior (inherited directly from Feature
+  51's own honesty boundary); a second backtest/Monte Carlo engine (would
+  repeat the "redundant re-measurement" trap `sandbox.py`'s own docstring
+  already warns against). New `backend/tests/test_strategy_lab.py` (17
+  tests) plus a new sandbox risk-gate rejection test; `mypy`/`ruff`/
+  `pytest` all clean (793 backend tests passing). Feature 52 Part 2
+  ("Living Strategies" — Strategy Library, Versioning, Health, Hall of
+  Fame, Failed Strategy Archive, Competitions, Company DNA integration)
+  and both parts' frontend are deliberately deferred to a follow-up pass.
+
 - **Playwright test suite — popup resilience**: this sim clock never
   stops ticking against one shared dev backend, so a real closed trade,
   a fresh TradeProposal, a Trade Gatekeeper veto, or a Founder-approved

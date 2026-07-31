@@ -84,6 +84,12 @@ from app.foundational_mentors import (
     skip_to_next_mentor,
 )
 from app.simulation import default_strategies, queue_backtest_now
+from app.strategy_lab import (
+    cap_strategy_executive_reviews,
+    cap_strategy_founder_approvals,
+    generate_strategy_executive_review,
+    generate_strategy_founder_approval,
+)
 from app.talent import mark_talent_report_viewed
 from app.watchlist import default_watchlist
 
@@ -144,6 +150,11 @@ def default_state() -> GameSaveState:
         simulationResults=[],
         strategyReports=[],
         strategyReviews=[],
+        strategyMonteCarloResults=[],
+        strategyRegimeTests=[],
+        strategyLiquidityValidations=[],
+        strategyExecutiveReviews=[],
+        strategyFounderApprovals=[],
         hallOfFame=[],
         coachReports=[],
         companyScore=compute_company_score([], default_portfolio(), [], [], []),
@@ -653,7 +664,7 @@ class GameState:
             strategy = self._find_strategy(strategy_id)
             if strategy is None:
                 return self.data, "No strategy found with that id."
-            updated, error = begin_paper_trial(strategy, self.data.time.day)
+            updated, error = begin_paper_trial(strategy, self.data.simulation_results, self.data.time.day)
             if error is not None or updated is None:
                 return self.data, error
             strategies = [updated if s.id == strategy_id else s for s in self.data.strategies]
@@ -676,7 +687,11 @@ class GameState:
         """Advances the strategy into "company_review" and files its real
         StrategyReview in one CEO action — see app/sandbox.py's
         generate_strategy_review() for exactly how each of the five real
-        reviewer verdicts is computed."""
+        reviewer verdicts is computed. v0.7 Feature 52 (Part 1) also files
+        the richer 9-department StrategyExecutiveReview and the Founder
+        Council's real StrategyFounderApproval in the same action —
+        Company Review, Executive Review, and Founder Approval are one
+        real CEO-triggered moment, not three separate requests."""
         async with self.lock:
             strategy = self._find_strategy(strategy_id)
             if strategy is None:
@@ -686,9 +701,25 @@ class GameState:
                 return self.data, error
             existing_count = sum(1 for r in self.data.strategy_reviews if r.strategy_id == strategy_id)
             review = generate_strategy_review(updated, self.data.simulation_results, self.data.research, existing_count, sim_day=self.data.time.day)
+            monte_carlo = next((r for r in reversed(self.data.strategy_monte_carlo_results) if r.strategy_id == strategy_id), None)
+            regime_test = next((r for r in reversed(self.data.strategy_regime_tests) if r.strategy_id == strategy_id), None)
+            existing_exec_count = sum(1 for r in self.data.strategy_executive_reviews if r.strategy_id == strategy_id)
+            executive_review = generate_strategy_executive_review(
+                updated, review, self.data.research, self.data.coach_reports, monte_carlo, regime_test, self.data.market_intelligence, existing_exec_count, sim_day=self.data.time.day
+            )
+            founder_approval = generate_strategy_founder_approval(updated, executive_review, sim_day=self.data.time.day)
             strategies = [updated if s.id == strategy_id else s for s in self.data.strategies]
             strategy_reviews = [*self.data.strategy_reviews, review]
-            self.data = self.data.model_copy(update={"strategies": strategies, "strategy_reviews": strategy_reviews})
+            strategy_executive_reviews = cap_strategy_executive_reviews([*self.data.strategy_executive_reviews, executive_review])
+            strategy_founder_approvals = cap_strategy_founder_approvals([*self.data.strategy_founder_approvals, founder_approval])
+            self.data = self.data.model_copy(
+                update={
+                    "strategies": strategies,
+                    "strategy_reviews": strategy_reviews,
+                    "strategy_executive_reviews": strategy_executive_reviews,
+                    "strategy_founder_approvals": strategy_founder_approvals,
+                }
+            )
             return self.data, None
 
     async def decide_strategy_review(self, review_id: str, approve: bool) -> tuple[GameSaveState, str | None]:

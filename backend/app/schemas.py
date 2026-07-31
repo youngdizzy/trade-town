@@ -1564,6 +1564,190 @@ class StrategyMatch(CamelModel):
     detail: str
 
 
+# --- v0.7 Feature 52 (Part 1) — the Strategy Validation Laboratory's
+# extension of the Research Sandbox pipeline (app/sandbox.py). Every
+# model below is real math over a strategy's own already-real
+# SimulationResult/StrategyReview/ResearchItem history, or a direct reuse
+# of Feature 51's real regime/liquidity engines — see app/strategy_lab.py's
+# module docstring for the full honesty boundary (what's a real bootstrap
+# over real generating inputs vs. a named proxy vs. explicitly not built).
+
+
+class StrategyMonteCarloResult(CamelModel):
+    """A real trade-sequence bootstrap: resamples win/loss draws using
+    the strategy's own real, aggregated win rate and average win/loss
+    sizes (from SimulationResult) as the generating probabilities — the
+    same 'real derived inputs, not fabricated statistics' discipline
+    app/simulation.py's own placeholder engine already established. See
+    app/strategy_lab.py's run_strategy_monte_carlo()."""
+
+    id: str
+    strategy_id: str = Field(alias="strategyId")
+    strategy_name: str = Field(alias="strategyName")
+    paths_simulated: int = Field(alias="pathsSimulated")
+    trades_per_path: int = Field(alias="tradesPerPath")
+    source_win_rate: float = Field(alias="sourceWinRate")
+    source_avg_win_pct: float = Field(alias="sourceAvgWinPct")
+    source_avg_loss_pct: float = Field(alias="sourceAvgLossPct")
+    median_return_pct: float = Field(alias="medianReturnPct")
+    return_range_low_pct: float = Field(alias="returnRangeLowPct")
+    return_range_high_pct: float = Field(alias="returnRangeHighPct")
+    median_max_drawdown_pct: float = Field(alias="medianMaxDrawdownPct")
+    worst_case_drawdown_pct: float = Field(alias="worstCaseDrawdownPct")
+    probability_of_profit_pct: float = Field(alias="probabilityOfProfitPct")
+    # "Probability Of Ruin" from the brief — a real share of the
+    # simulated paths whose drawdown breached RUIN_DRAWDOWN_PCT, not a
+    # true infinite-sample estimate; capitalSurvivalPct is its
+    # complement, named to match the brief's own "Capital Survival" term.
+    probability_of_ruin_pct: float = Field(alias="probabilityOfRuinPct")
+    capital_survival_pct: float = Field(alias="capitalSurvivalPct")
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
+class StrategyRegimeBucketPerformance(CamelModel):
+    """One real Testing Environment bucket (app/sandbox.py's TestScenario
+    — the actual granularity SimulationResult is tagged at) labeled with
+    which of Feature 51's 13 real MarketIntelligenceRegime values it
+    covers, via the same real regime->scenario keyword mapping
+    app/market_intelligence.py's compute_strategy_match() already uses —
+    never a fabricated 13-way independently-tested breakdown."""
+
+    scenario: TestScenario
+    regimes: list[MarketIntelligenceRegime]
+    tested: bool
+    run_count: int = Field(alias="runCount")
+    avg_return_pct: float = Field(alias="avgReturnPct")
+    avg_win_rate: float = Field(alias="avgWinRate")
+    verdict: Literal["strong", "neutral", "weak", "untested"]
+
+
+class StrategyRegimeTestReport(CamelModel):
+    id: str
+    strategy_id: str = Field(alias="strategyId")
+    strategy_name: str = Field(alias="strategyName")
+    buckets: list[StrategyRegimeBucketPerformance]
+    best_scenario: TestScenario | None = Field(default=None, alias="bestScenario")
+    worst_scenario: TestScenario | None = Field(default=None, alias="worstScenario")
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
+class StrategyLiquidityValidation(CamelModel):
+    """Reuses Feature 51's real LiquidityRead/MarketStructureRead as-is
+    against the strategy's own watched symbols — never claims more than
+    those models already claim (real equal-high/low clustering + a real
+    sweep-and-close-back pattern, not real resting stop-order locations
+    or institutional order flow — see app/market_intelligence.py's own
+    module docstring)."""
+
+    id: str
+    strategy_id: str = Field(alias="strategyId")
+    strategy_name: str = Field(alias="strategyName")
+    symbols_checked: list[str] = Field(default_factory=list, alias="symbolsChecked")
+    liquidity_reads: list[LiquidityRead] = Field(default_factory=list, alias="liquidityReads")
+    structure_reads: list[MarketStructureRead] = Field(default_factory=list, alias="structureReads")
+    real_sweep_rate_pct: float = Field(alias="realSweepRatePct")
+    verdict: Literal["favorable", "neutral", "unfavorable"]
+    detail: str
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
+# Distinct from the trade-scoped ExecutiveAction (trade_normally/
+# reduce_risk/wait/...) — a strategy graduating through the Validation
+# Laboratory needs strategy-lifecycle actions, not single-trade ones.
+StrategyExecutiveAction = Literal["advance", "request_more_evidence", "hold_for_improvement", "reject"]
+
+
+class StrategyDepartmentOpinion(CamelModel):
+    """Reuses the exact same 9 real department seats as Feature 50's
+    ExecutiveDepartmentRole/DepartmentOpinion (app/executive_intelligence.py)
+    — Strategy-scoped rather than TradeProposal-scoped, with a richer
+    evidence/concerns/suggestedImprovements field set per the brief. The
+    brief's 9th named seat, "Brain Room," is not a distinct department
+    anywhere in this codebase (see ExecutiveIntelPanel.tsx's own real/cut
+    note) — it reuses the same devils_advocate seat every other 9-role
+    read in this codebase already does."""
+
+    role: ExecutiveDepartmentRole
+    department_label: str = Field(alias="departmentLabel")
+    agent_id: AgentId | None = Field(default=None, alias="agentId")
+    stance: ExecutiveStance
+    confidence_pct: float = Field(alias="confidencePct")
+    evidence: list[str] = Field(default_factory=list)
+    concerns: list[str] = Field(default_factory=list)
+    suggested_improvements: list[str] = Field(default_factory=list, alias="suggestedImprovements")
+
+
+class StrategyExecutiveReview(CamelModel):
+    id: str
+    strategy_id: str = Field(alias="strategyId")
+    strategy_name: str = Field(alias="strategyName")
+    opinions: list[StrategyDepartmentOpinion]
+    overall_confidence_pct: float = Field(alias="overallConfidencePct")
+    recommendation: StrategyExecutiveAction
+    reason: str
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
+class StrategyFounderApproval(CamelModel):
+    """The Founder Council's real, checkable verdict on a strategy — a
+    new mode of the same real threshold-based approval pattern
+    app/founders.py's generate_breakthrough_review() already established
+    for Black Box Projects, applied here to a Strategy instead."""
+
+    id: str
+    strategy_id: str = Field(alias="strategyId")
+    strategy_name: str = Field(alias="strategyName")
+    sim_day: int = Field(alias="simDay")
+    evidence_summary: str = Field(alias="evidenceSummary")
+    confidence_pct: float = Field(alias="confidencePct")
+    verdict: Literal["approved", "rejected"]
+    verdict_reason: str = Field(alias="verdictReason")
+    created_at: str = Field(alias="createdAt")
+
+
+class StrategyConfidenceScore(CamelModel):
+    id: str
+    strategy_id: str = Field(alias="strategyId")
+    strategy_name: str = Field(alias="strategyName")
+    overall_confidence_pct: float = Field(alias="overallConfidencePct")
+    evidence: list[str] = Field(default_factory=list)
+    known_strengths: list[str] = Field(default_factory=list, alias="knownStrengths")
+    known_weaknesses: list[str] = Field(default_factory=list, alias="knownWeaknesses")
+    risk_rating: Literal["low", "moderate", "elevated", "high"] = Field(alias="riskRating")
+    recommended_position_size_pct: float = Field(alias="recommendedPositionSizePct")
+    recommended_market_conditions: list[str] = Field(default_factory=list, alias="recommendedMarketConditions")
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
+class StrategyDossier(CamelModel):
+    """The brief's 'professional Strategy Report' — an assembling read
+    over every other real Feature 52 artifact for this strategy, never a
+    second copy of their data. Generated fresh on request (see
+    app/strategy_lab.py's generate_strategy_dossier()), the same
+    'real inputs already live somewhere permanent, no new persistence
+    needed' reasoning as ExecutiveRecommendation/WhatIfSimulation."""
+
+    strategy_id: str = Field(alias="strategyId")
+    strategy_name: str = Field(alias="strategyName")
+    created_by: AgentId = Field(alias="createdBy")
+    purpose: str
+    stage: StrategyStage
+    latest_report: StrategyReport | None = Field(default=None, alias="latestReport")
+    latest_review: StrategyReview | None = Field(default=None, alias="latestReview")
+    monte_carlo: StrategyMonteCarloResult | None = Field(default=None, alias="monteCarlo")
+    regime_test: StrategyRegimeTestReport | None = Field(default=None, alias="regimeTest")
+    liquidity_validation: StrategyLiquidityValidation | None = Field(default=None, alias="liquidityValidation")
+    executive_review: StrategyExecutiveReview | None = Field(default=None, alias="executiveReview")
+    founder_approval: StrategyFounderApproval | None = Field(default=None, alias="founderApproval")
+    confidence: StrategyConfidenceScore | None = None
+    generated_at: str = Field(alias="generatedAt")
+
+
 class MarketIntelligenceReport(CamelModel):
     """The Executive Market Brief — one real, permanent snapshot per real
     in-game day (generated on the same evening cadence as CoachReport and
@@ -2950,6 +3134,17 @@ class GameSaveState(CamelModel):
     simulation_results: list[SimulationResult] = Field(default_factory=list, alias="simulationResults")
     strategy_reports: list[StrategyReport] = Field(default_factory=list, alias="strategyReports")
     strategy_reviews: list[StrategyReview] = Field(default_factory=list, alias="strategyReviews")
+    # v0.7 Feature 52 (Part 1) — the Strategy Validation Laboratory's
+    # extension of the Research Sandbox pipeline (app/strategy_lab.py).
+    # One real permanent record per strategy per real trigger point —
+    # nothing here is ever deleted, matching Part 2's own "strategies are
+    # company assets" ethos even though Part 2's fuller library/versioning
+    # is not yet built.
+    strategy_monte_carlo_results: list[StrategyMonteCarloResult] = Field(default_factory=list, alias="strategyMonteCarloResults")
+    strategy_regime_tests: list[StrategyRegimeTestReport] = Field(default_factory=list, alias="strategyRegimeTests")
+    strategy_liquidity_validations: list[StrategyLiquidityValidation] = Field(default_factory=list, alias="strategyLiquidityValidations")
+    strategy_executive_reviews: list[StrategyExecutiveReview] = Field(default_factory=list, alias="strategyExecutiveReviews")
+    strategy_founder_approvals: list[StrategyFounderApproval] = Field(default_factory=list, alias="strategyFounderApprovals")
     hall_of_fame: list[HallOfFameEntry] = Field(default_factory=list, alias="hallOfFame")
     coach_reports: list[CoachReport] = Field(default_factory=list, alias="coachReports")
     company_score: CompanyScore = Field(alias="companyScore")

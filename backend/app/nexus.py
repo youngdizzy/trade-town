@@ -87,6 +87,14 @@ from app.reasoning_lab import compute_reasoning_lab_state, generate_challenge, r
 from app.research import RESEARCHER_IDS, default_research, tick_research
 from app.risk_engine import compute_daily_objective_status, evaluate_guardian_exposure, evaluate_sentinel_risk, monitor_portfolio, recommended_quantity
 from app.sandbox import apply_review_decision, cap_strategy_reports, cap_strategy_reviews, generate_strategy_report, maybe_advance_after_research, maybe_advance_after_result
+from app.strategy_lab import (
+    cap_strategy_liquidity_validations,
+    cap_strategy_monte_carlo_results,
+    cap_strategy_regime_tests,
+    compute_strategy_regime_test,
+    run_strategy_monte_carlo,
+    validate_strategy_liquidity,
+)
 from app.scanner import tick_scanner
 from app.schedule import ScheduleBlock, block_for_hour
 from app.treasury import apply_monthly_savings_rules, record_monthly_report
@@ -911,6 +919,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     simulation_results = list(state.simulation_results)
     strategy_reports = list(state.strategy_reports)
     strategy_reviews = list(state.strategy_reviews)
+    strategy_monte_carlo_results = list(state.strategy_monte_carlo_results)
+    strategy_regime_tests = list(state.strategy_regime_tests)
+    strategy_liquidity_validations = list(state.strategy_liquidity_validations)
     constitution_citations = list(state.constitution.citations)
     # v0.7 Feature 48 — Company DNA Legacy: a small, permanent, capped
     # per-trait delta nudged by real one-time/rare company events (see
@@ -1366,6 +1377,26 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                     timestamp=_now_iso(),
                 )
             )
+            # v0.7 Feature 52 (Part 1) — Strategy Validation Laboratory.
+            # Every completed run also re-runs the strategy's own Monte
+            # Carlo trade-sequence bootstrap, its regime-bucketed
+            # performance table, and a real liquidity-conditions check
+            # against the live watchlist — see app/strategy_lab.py's
+            # module docstring for the honesty boundary each of these
+            # observes.
+            monte_carlo = run_strategy_monte_carlo(matching_strategy, simulation_results, sim_day=new_time.day)
+            if monte_carlo is not None:
+                strategy_monte_carlo_results.append(monte_carlo)
+            regime_test = compute_strategy_regime_test(matching_strategy, simulation_results, sim_day=new_time.day)
+            if regime_test is not None:
+                strategy_regime_tests.append(regime_test)
+            liquidity_validation = validate_strategy_liquidity(matching_strategy, watchlist, market_data_provider, sim_day=new_time.day)
+            if liquidity_validation is not None:
+                strategy_liquidity_validations.append(liquidity_validation)
+
+    cap_strategy_monte_carlo_results(strategy_monte_carlo_results)
+    cap_strategy_regime_tests(strategy_regime_tests)
+    cap_strategy_liquidity_validations(strategy_liquidity_validations)
 
     # v0.7 Feature 45 — Automation Mode governs the Company Review stage's
     # final CEO call exactly the way _apply_operating_mode already governs
@@ -1879,6 +1910,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "simulation_results": simulation_results,
             "strategy_reports": strategy_reports,
             "strategy_reviews": strategy_reviews,
+            "strategy_monte_carlo_results": strategy_monte_carlo_results,
+            "strategy_regime_tests": strategy_regime_tests,
+            "strategy_liquidity_validations": strategy_liquidity_validations,
             "constitution": state.constitution.model_copy(update={"citations": constitution_citations, "updated_at": _now_iso()}),
             "hall_of_fame": hall_of_fame,
             "coach_reports": coach_reports,
