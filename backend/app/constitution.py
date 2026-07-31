@@ -43,6 +43,18 @@ Researched first. Two halves, two very different builds:
   building one would mean inventing behavior-classification
   infrastructure this session's whole discipline exists to avoid.
 
+Articles IX-XIII — the Probability First Trading Philosophy. Not a
+feature: a permanent foundational principle documented in full in
+docs/DESIGN_BIBLE.md's "Probability First Trading Philosophy" section,
+seeded here verbatim exactly like Articles I-VIII, so every department,
+strategy, simulation, and future feature inherits it automatically
+without ever needing to redefine it. Deliberately scoped to the
+Articles themselves — no new "Live Enforcement" citation hooks were
+added for IX-XIII (that would be new detection engineering, which is
+explicitly out of scope for a documentation-driven addition); the
+existing six hooks above continue to cite only I-VIII, since those are
+the only Articles with a real, already-existing detector behind them.
+
 Amendments — the CEO may create new Articles; Founders debate them;
 Coach evaluates them; Employees vote (advisory only); approved Articles
 become permanent. Every step is a real, checkable computation over the
@@ -113,6 +125,21 @@ _ARTICLE_SEED: list[tuple[str, str, str]] = [
     ("VI", "Every mistake must teach something", "Every mistake must teach something."),
     ("VII", "Respect risk", "Respect risk."),
     ("VIII", "Continuous learning is mandatory", "Continuous learning is mandatory."),
+    # Articles IX-XIII — the Probability First Trading Philosophy (see
+    # docs/DESIGN_BIBLE.md's "Probability First Trading Philosophy"
+    # section). Not a feature: a permanent foundational principle,
+    # seeded verbatim exactly like Articles I-VIII above, that every
+    # department, strategy, and future feature inherits without ever
+    # needing to redefine it.
+    ("IX", "We trade probabilities, not predictions", "We trade probabilities, not predictions."),
+    ("X", "A single trade does not determine success", "A single trade does not determine success."),
+    ("XI", "Risk must be accepted before entry", "Risk must be accepted before entry."),
+    ("XII", "Process is more important than outcome", "Process is more important than outcome."),
+    (
+        "XIII",
+        "Statistics become meaningful only through consistent execution over a large sample of trades",
+        "Statistics become meaningful only through consistent execution over a large sample of trades.",
+    ),
 ]
 
 # app/mistakes.py's CaseStudyCategory (6 mistake categories) and

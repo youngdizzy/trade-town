@@ -7,6 +7,39 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Probability First Trading Philosophy — permanent company principle,
+  not a feature**: added to `docs/DESIGN_BIBLE.md` as a new subsection
+  of the top-level "Design Philosophy — The Self-Improving Company"
+  section (the document's own permanent, "never overwritten" umbrella),
+  and codified as five new permanent Constitution Articles (IX-XIII),
+  seeded verbatim in `_ARTICLE_SEED` (`backend/app/constitution.py`)
+  alongside the original eight: We Trade Probabilities Not Predictions;
+  A Single Trade Does Not Determine Success; Risk Must Be Accepted
+  Before Entry; Process Is More Important Than Outcome; Statistics
+  Become Meaningful Only Through Consistent Execution Over A Large
+  Sample Of Trades. `default_constitution()` now seeds 13 Articles for
+  every new game.
+
+  Deliberately scoped as documentation + Constitution content only, per
+  the explicit "this is not a feature" framing: no new Academy course,
+  no Foundational Mentor graduation gate, and no new "Live Enforcement"
+  citation hooks were built for IX-XIII — the existing six citation
+  hooks continue to cite only I-VIII, the Articles with a real detector
+  already behind them; building new detectors for the new Articles
+  would be new feature engineering, not a documentation addition. An
+  already-in-progress save's own persisted Constitution keeps whatever
+  Article count it had when it was created — this only changes seeded
+  content, not the `ConstitutionState` schema shape, so the
+  schema-mismatch migration path in `app/persistence.py` never
+  triggers; no retroactive backfill was built.
+
+  Updated 2 tests in `test_constitution.py` (seed count/text, and the
+  ratify-amendment test's expected next Roman numeral, now "XIV" instead
+  of "IX") and 1 Playwright assertion in `constitution.spec.ts` to match
+  the new 13-Article seed — 813/813 backend tests, `mypy`/`ruff` clean;
+  `tsc`/`eslint`/`vite build` clean, `constitution.spec.ts` passes
+  against the live stack.
+
 - **v0.7 Feature 53 (Slice 1) — Company Certification, frontend**: the
   existing CERTIFICATION sub-tab (`StrategyCertificationView.tsx`) now
   fetches `GET /api/sandbox/certification` alongside the existing dossier

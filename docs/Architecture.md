@@ -3785,6 +3785,29 @@ Trading, Every Mistake Must Teach Something, Respect Risk, Continuous
 Learning Is Mandatory — the brief's own text, seeded verbatim as
 Articles I-VIII.
 
+**Articles IX-XIII — the Probability First Trading Philosophy.** Added
+later as a documentation-driven, non-feature addition (see
+`docs/DESIGN_BIBLE.md`'s "Probability First Trading Philosophy"
+section, the fuller design document this codifies): We Trade
+Probabilities, Not Predictions; A Single Trade Does Not Determine
+Success; Risk Must Be Accepted Before Entry; Process Is More Important
+Than Outcome; Statistics Become Meaningful Only Through Consistent
+Execution Over A Large Sample Of Trades. Seeded verbatim in
+`_ARTICLE_SEED` exactly like I-VIII, so `default_constitution()` now
+returns 13 Articles for every new game. Deliberately scoped to the
+Articles themselves: no new "Live Enforcement" citation hooks were
+added for IX-XIII, since building new detectors for them would be new
+feature engineering, not a documentation addition — the existing six
+hooks continue to cite only I-VIII, the Articles with a real detector
+already behind them. Because this only changes seeded *content*, not
+the `ConstitutionState` schema shape, an existing in-progress save's own
+persisted Constitution (created before this change) keeps whatever
+Article count it already had — the schema-mismatch migration path in
+`app/persistence.py` only triggers on a genuine validation failure, not
+on stale-but-valid content, so no retroactive backfill was built for
+already-running saves. This mirrors how every other seed-only addition
+in this codebase behaves.
+
 **Live Enforcement — six real citation hooks, one shared mapping table.**
 `MISTAKE_ARTICLE_MAP` gives each of the 6 real `CaseStudyCategory`
 mistake types (and their 3 positive inversions from

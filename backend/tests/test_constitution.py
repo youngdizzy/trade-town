@@ -1,9 +1,11 @@
 """Covers app/constitution.py — v0.7 Feature 46, the Company
-Constitution. The 8 seeded Articles must match the brief verbatim, every
-citation must trace to a real source, and the amendment pipeline
-(Founder debate -> Coach evaluation -> Employee vote -> CEO ratification)
-must be real, checkable computations over the amendment's own real
-proposed text — never a fabricated debate transcript.
+Constitution. The 13 seeded Articles must match the brief verbatim
+(Articles I-VIII from the original brief, IX-XIII from the Probability
+First Trading Philosophy), every citation must trace to a real source,
+and the amendment pipeline (Founder debate -> Coach evaluation ->
+Employee vote -> CEO ratification) must be real, checkable computations
+over the amendment's own real proposed text — never a fabricated debate
+transcript.
 """
 from __future__ import annotations
 
@@ -45,11 +47,13 @@ def _health(**overrides: float) -> CompanyHealth:
 
 
 class TestDefaultConstitution:
-    def test_seeds_exactly_the_briefs_eight_articles(self) -> None:
+    def test_seeds_exactly_the_briefs_eight_articles_plus_the_five_probability_first_articles(self) -> None:
         constitution = default_constitution()
-        assert [a.id for a in constitution.articles] == ["I", "II", "III", "IV", "V", "VI", "VII", "VIII"]
+        assert [a.id for a in constitution.articles] == ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII"]
         assert constitution.articles[0].text == "Protect capital first."
-        assert constitution.articles[-1].text == "Continuous learning is mandatory."
+        assert constitution.articles[7].text == "Continuous learning is mandatory."
+        assert constitution.articles[8].text == "We trade probabilities, not predictions."
+        assert constitution.articles[-1].text == "Statistics become meaningful only through consistent execution over a large sample of trades."
         assert constitution.citations == []
         assert constitution.amendments == []
 
@@ -186,9 +190,9 @@ class TestAmendmentDecision:
         decided = decide_amendment(amendment, True, sim_day=20)
         assert decided.ceo_decision == "approved"
         articles, ratified = ratify_amendment(constitution.articles, decided, sim_day=20)
-        assert articles[-1].id == "IX"
+        assert articles[-1].id == "XIV"
         assert articles[-1].text == "A brand new company rule."
-        assert ratified.ratified_article_id == "IX"
+        assert ratified.ratified_article_id == "XIV"
         assert len(articles) == len(constitution.articles) + 1
 
     def test_rejection_never_touches_the_articles_list(self) -> None:

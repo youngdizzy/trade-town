@@ -72,6 +72,106 @@ TradeTown values:
 - Respectful Debate
 - Long-Term Thinking
 
+### Probability First Trading Philosophy
+
+TradeTown does not predict the market. TradeTown thinks in
+probabilities.
+
+This is the company's foundational trading philosophy — permanent,
+non-negotiable, and inherited automatically by every department,
+employee, AI agent, strategy, simulation, executive review, Academy
+lesson, and Mentor Track, present and future. No department ever needs
+to restate it; no future feature ever needs to redefine it. If a future
+feature's own design conflicts with it, the feature is redesigned, not
+this philosophy — the same rule the Design Philosophy above already
+applies to itself.
+
+**The core belief.** Nobody — not the company, not any employee, not any
+model — knows what the market will do next. TradeTown is not in the
+prediction business. It is in the probability business. The company
+never asks *"What will the market do?"* It asks *"Does this setup
+satisfy a validated statistical edge?"* Uncertainty is permanent and is
+never eliminated — only managed.
+
+**Evidence creates confidence. Confidence justifies capital allocation.**
+A trade is proposed only when real evidence — a validated strategy, a
+favorable market regime, acceptable risk, sufficient liquidity — is
+already on the table. Confidence is *calculated* from that evidence,
+never felt. Capital is allocated only to what the evidence has already
+earned, never to a hunch.
+
+**The process matters more than any single outcome.** Good decisions can
+still lose. Bad decisions can still win. TradeTown grades the *decision*
+— did it follow the validated framework, was risk accepted before entry,
+was the setup real — not the one trade's dollar result. A well-reasoned
+loss is a successful decision. A lucky, undisciplined win is a poor one.
+This is why the company already values "Process over Prediction" (see
+The Company Philosophy above) — Probability First Trading is that value
+made concrete and operational.
+
+**Statistics only mean something at scale.** One trade proves nothing.
+Ten trades mean very little. A strategy's real edge only becomes visible
+across a large sample — hundreds or thousands of trades. TradeTown
+never judges a strategy, a department, or an employee from a single
+result. It judges them from the distribution.
+
+**Risk is accepted before entry, never negotiated after.** Before any
+trade is proposed, its maximum loss must already be acceptable — in
+capital terms and in company-discipline terms. Once a trade is live, the
+risk has already been agreed to; the company does not renegotiate it out
+of fear, excitement, or a change of mood. Discipline before entry is
+what makes discipline after entry possible.
+
+**"No trade" is a valid, often correct, decision.** When a setup does
+not satisfy the company's validated framework, declining to trade is not
+a missed opportunity — it is the philosophy working exactly as intended.
+
+**Where this applies.** Every system that touches a trading decision
+inherits this philosophy without needing its own copy of it, including
+(non-exhaustively, since new departments inherit it automatically too):
+Market Intelligence, Research, Quant, Risk, Simulation, Decision
+Intelligence, the Strategy Validation Laboratory, the Academy, Mentor
+Tracks, Company DNA, the Executive Intelligence Network, and every
+department built after this one. Concretely, today:
+
+- **Coach** reinforces it directly with employees — reminding them that
+  one trade does not define them, that the process matters more than
+  today's result, and that validated statistics are trusted over
+  emotion.
+- **Quant** is this philosophy's home department — evaluating sample
+  size, expected value, win rate, variance, and drawdown, and training
+  the rest of the company to trust evidence over instinct.
+- **Decision Intelligence** grades whether a decision itself was
+  disciplined and probability-driven — not merely whether the trade it
+  produced happened to win.
+- **Risk** enforces that no trade proceeds until its risk has genuinely
+  been accepted in advance, matching Constitution Article XI below.
+- **The Strategy Validation Laboratory** exists specifically to build
+  the large-sample statistical evidence (Monte Carlo testing, regime
+  testing, expectancy) this philosophy requires before any strategy may
+  deploy real capital — see Feature 52/53's Company Certification.
+
+**Company Constitution.** This philosophy is codified as five permanent
+Articles (IX-XIII), seeded alongside the original eight from game start
+— see `backend/app/constitution.py`:
+
+> **Article IX.** We trade probabilities, not predictions.
+>
+> **Article X.** A single trade does not determine success.
+>
+> **Article XI.** Risk must be accepted before entry.
+>
+> **Article XII.** Process is more important than outcome.
+>
+> **Article XIII.** Statistics become meaningful only through consistent
+> execution over a large sample of trades.
+
+**The company motto.**
+
+> *We do not predict the market. We prepare for probabilities. We
+> protect capital. We execute our edge with discipline. Over time, the
+> statistics work in our favor.*
+
 ### The Player's Role
 
 The player is not simply controlling traders. The player is building an

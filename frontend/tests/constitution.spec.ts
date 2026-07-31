@@ -7,15 +7,16 @@ import { clickButton, clickExpand, clickTab, continueGame } from "./helpers";
  * + FastAPI stack, no mocking.
  */
 
-test("the Constitution's 8 real Articles are present in the backend state", async ({ page }) => {
+test("the Constitution's 13 real Articles (I-VIII plus the Probability First Trading Philosophy's IX-XIII) are present in the backend state", async ({ page }) => {
   await page.goto("/");
   const state = await page.evaluate(async () => {
     const res = await fetch("/api/load");
     return res.json();
   });
   expect(state.constitution).toBeTruthy();
-  expect(state.constitution.articles.map((a: { id: string }) => a.id)).toEqual(["I", "II", "III", "IV", "V", "VI", "VII", "VIII"]);
+  expect(state.constitution.articles.map((a: { id: string }) => a.id)).toEqual(["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X", "XI", "XII", "XIII"]);
   expect(state.constitution.articles[0].text).toBe("Protect capital first.");
+  expect(state.constitution.articles[8].text).toBe("We trade probabilities, not predictions.");
   expect(Array.isArray(state.constitution.citations)).toBe(true);
   expect(Array.isArray(state.constitution.amendments)).toBe(true);
 });
