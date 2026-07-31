@@ -813,6 +813,27 @@ export interface StrategyExecutiveDashboard {
   generatedAt: string;
 }
 
+export interface StrategyCertificationRequirement {
+  id: string;
+  label: string;
+  met: boolean;
+  detail: string;
+}
+
+/** v0.7 Feature 53 — Company Certification: a real 15-point checklist
+ * combining every real Feature 52 artifact, never a new measurement.
+ * `certified` is always a fresh read of the strategy's own real current
+ * state, so a real Strategy Health decline automatically revokes it the
+ * next time this is fetched — no separate "revoked" flag. See
+ * backend/app/strategy_lab.py's compute_strategy_certification(). */
+export interface StrategyCertification {
+  strategyId: string;
+  strategyName: string;
+  certified: boolean;
+  requirements: StrategyCertificationRequirement[];
+  generatedAt: string;
+}
+
 export interface HallOfFameEntry {
   id: string;
   category: HallOfFameCategory;

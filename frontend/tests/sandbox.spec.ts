@@ -85,9 +85,12 @@ test("Feature 52 (Part 1/2) — every Strategy Validation Laboratory sub-tab ope
 
   // CERTIFICATION — the real validation dossier (Monte Carlo/Regime
   // Test/Liquidity/Executive Review/Founder Approval/Confidence Score),
-  // computed fresh on request.
+  // computed fresh on request, plus the v0.7 Feature 53 15-point
+  // Company Certification checklist.
   await expect(page.getByRole("button", { name: "CERTIFICATION", exact: true })).toHaveClass(/text-cmd-cyan/, { timeout: 10_000 });
   await expect(page.getByText(/No real validation evidence on file yet|Confidence Score|Monte Carlo Testing/).first()).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(/Company Certification — 15 real requirements/)).toBeVisible({ timeout: 10_000 });
+  await expect(page.getByText(/^(CERTIFIED|NOT CERTIFIED)$/).first()).toBeVisible();
 
   // HEALTH — the honest "Live Performance Monitor" reframe.
   await clickRobust(page, () => page.getByRole("button", { name: "HEALTH", exact: true }), { label: "sub-tab HEALTH" });

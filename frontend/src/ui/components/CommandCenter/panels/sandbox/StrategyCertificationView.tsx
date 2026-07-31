@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { api } from "@/net/api";
-import type { Strategy, StrategyDossier } from "@/types";
+import type { Strategy, StrategyCertification, StrategyDossier } from "@/types";
 import { executiveStanceTone, strategyExecutiveActionTone, strategyLiquidityVerdictTone, strategyRegimeVerdictTone, strategyRiskRatingTone } from "../../lib/derive";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../../ui";
 
@@ -12,10 +12,15 @@ import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../../ui"
  * one real Strategy Dossier (GET /api/sandbox/dossier), computed fresh
  * every open — never a second source of truth. See
  * backend/app/strategy_lab.py's module docstring for the full honesty
- * boundary each artifact below observes.
+ * boundary each artifact below observes. v0.7 Feature 53 adds the real
+ * 15-point Company Certification checklist (GET /api/sandbox/certification)
+ * at the top — `certified` is always a fresh read of current real state,
+ * so a real Strategy Health decline automatically revokes it, visible
+ * the next time this tab is opened.
  */
 export function StrategyCertificationView({ selected }: { selected: Strategy }) {
   const [dossier, setDossier] = useState<StrategyDossier | null>(null);
+  const [certification, setCertification] = useState<StrategyCertification | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -23,10 +28,12 @@ export function StrategyCertificationView({ selected }: { selected: Strategy }) 
     let cancelled = false;
     setLoading(true);
     setError(null);
-    api
-      .getSandboxDossier(selected.id)
-      .then((res) => {
-        if (!cancelled) setDossier(res);
+    Promise.all([api.getSandboxDossier(selected.id), api.getSandboxCertification(selected.id)])
+      .then(([dossierRes, certificationRes]) => {
+        if (!cancelled) {
+          setDossier(dossierRes);
+          setCertification(certificationRes);
+        }
       })
       .catch((err) => {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
@@ -60,6 +67,30 @@ export function StrategyCertificationView({ selected }: { selected: Strategy }) 
 
   return (
     <div className="space-y-3">
+      {certification && (
+        <Glass className="p-3">
+          <div className="mb-1.5 flex items-center justify-between">
+            <TerminalLabel>Company Certification — 15 real requirements, always a live read of current state</TerminalLabel>
+            <StatusPill tone={certification.certified ? "green" : "red"}>{certification.certified ? "CERTIFIED" : "NOT CERTIFIED"}</StatusPill>
+          </div>
+          <p className="mb-2 text-[9px] text-cmd-textDim">
+            Only Certified strategies may deploy real company capital. Recomputed fresh every time this opens — a real decline in this strategy's own Health can revoke Certification
+            automatically, with no separate action needed.
+          </p>
+          <div className="grid grid-cols-1 gap-1 sm:grid-cols-2">
+            {certification.requirements.map((r) => (
+              <div key={r.id} className="flex items-start gap-1.5 text-[9px]">
+                <StatusPill tone={r.met ? "green" : "red"}>{r.met ? "✓" : "✗"}</StatusPill>
+                <div className="flex-1">
+                  <div className="text-cmd-text">{r.label}</div>
+                  <div className="text-cmd-textDim">{r.detail}</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Glass>
+      )}
+
       {!hasAnyEvidence && (
         <Glass className="p-3">
           <EmptyState>No real validation evidence on file yet — run Market Simulations and request a Company Review from the Pipeline tab first.</EmptyState>

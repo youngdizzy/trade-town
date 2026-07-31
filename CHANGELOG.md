@@ -7,6 +7,24 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.7 Feature 53 (Slice 1) — Company Certification, frontend**: the
+  existing CERTIFICATION sub-tab (`StrategyCertificationView.tsx`) now
+  fetches `GET /api/sandbox/certification` alongside the existing dossier
+  fetch and renders the real 15-point checklist above the dossier
+  sections — a CERTIFIED/NOT CERTIFIED pill plus every requirement's own
+  met/not-met status and detail string, straight from the backend's
+  `compute_strategy_certification()`. No new client-side derivation:
+  `certified` is displayed exactly as the backend computes it fresh on
+  every open, so the same real Strategy Health decline that flips it
+  server-side is visible here with no separate client logic. New
+  `StrategyCertification`/`StrategyCertificationRequirement` types
+  (`types.ts`) and `api.getSandboxCertification()` (`net/api.ts`)
+  following the same read-only, computed-on-request pattern as
+  `getSandboxDossier`/`getSandboxDashboard`. `sandbox.spec.ts` extended
+  to assert the checklist banner and CERTIFIED/NOT CERTIFIED pill render
+  on the live stack. `tsc`/`eslint`/`vite build` all clean; the 3
+  live-stack `sandbox.spec.ts` tests pass with zero console errors.
+
 - **v0.7 Feature 53 (Slice 1) — Company Certification, backend**: the
   brief's formal "no strategy may trade live capital without
   Certification" gate, built as a real checklist combining every

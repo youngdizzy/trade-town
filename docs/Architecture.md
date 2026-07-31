@@ -4530,6 +4530,36 @@ Frontend (surfacing the 15-point checklist on the CERTIFICATION
 sub-tab) is a separate, immediately-following commit per this project's
 backend-first discipline.
 
+### Company Certification — Feature 53 (Slice 1), frontend
+
+`StrategyCertificationView.tsx` (the CERTIFICATION sub-tab, already
+rendering the Feature 52 dossier) now also fetches
+`GET /api/sandbox/certification` in the same `Promise.all` as the
+existing dossier fetch, and renders the 15-point checklist as a new
+`Glass` panel above every dossier section — a `CERTIFIED`/`NOT
+CERTIFIED` `StatusPill`, then each `StrategyCertificationRequirement`'s
+own met/not-met pill, label, and detail string in a responsive grid. No
+new client-side interpretation of certification status: the component
+displays exactly what `compute_strategy_certification()` returned, so
+the backend's fresh-read revocation behavior (a real Health decline
+flipping `certified` to `false`) shows up here automatically the next
+time the tab is opened — nothing to keep in sync client-side.
+
+New `StrategyCertification`/`StrategyCertificationRequirement`
+interfaces in `types.ts`, mirroring the backend schemas field-for-field,
+and `api.getSandboxCertification(strategyId)` in `net/api.ts`, following
+the same read-only compute-on-request pattern already used for
+`getSandboxDossier`/`getSandboxDashboard` — no data-layer wiring through
+`socket.ts`/`NexusManager.ts`/`EventBus.ts`/`gameStore.ts`, since this
+is fetched directly into component-local state on open, not broadcast
+over the WS tick.
+
+**Verified**: `sandbox.spec.ts`'s existing CERTIFICATION assertion
+extended to also check for the new checklist banner text and the
+CERTIFIED/NOT CERTIFIED pill; `tsc -b --noEmit`, `eslint --max-warnings
+0`, and `vite build` all clean; all 3 `sandbox.spec.ts` tests pass
+against the live Vite + FastAPI stack with zero console errors.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

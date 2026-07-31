@@ -36,6 +36,7 @@ import type {
   FailedStrategyArchiveEntry,
   RiskLimits,
   Strategy,
+  StrategyCertification,
   StrategyDossier,
   StrategyExecutiveDashboard,
   StrategyExecutiveReview,
@@ -272,6 +273,10 @@ export const api = {
   // v0.7 Feature 52 (Part 2) — the brief's Executive Dashboard. Read-only,
   // computed fresh every call.
   getSandboxDashboard: () => request<StrategyExecutiveDashboard>("/sandbox/dashboard"),
+  // v0.7 Feature 53 — Company Certification. Read-only, computed fresh
+  // every call — `certified` is always a live read of current real
+  // state (see StrategyCertification's own docstring in types.ts).
+  getSandboxCertification: (strategyId: string) => request<StrategyCertification>(`/sandbox/certification?strategyId=${encodeURIComponent(strategyId)}`),
   proposeConstitutionAmendment: (title: string, text: string) =>
     request<{ constitution: ConstitutionState }>("/constitution/propose", {
       method: "POST",
