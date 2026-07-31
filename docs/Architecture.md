@@ -4441,6 +4441,95 @@ that's a real, irreversible CEO action a test must not perform as a
 side effect against the shared dev backend. All three `sandbox.spec.ts`
 tests pass with zero console errors.
 
+### Company Certification — Feature 53 (Slice 1), backend
+
+GOAL (from the brief): "Before ANY strategy is allowed to trade live
+capital, it must receive official Company Certification" — a formal
+gate combining a named list of 14 real requirements, revocable at any
+time if performance deteriorates.
+
+**Researched first.** Every one of the brief's 14 requirements already
+had a real, existing artifact behind it after Feature 52 — this slice's
+whole job was combining them into one explicit checklist, not measuring
+anything new: minimum sample size/expectancy/drawdown read off
+`SimulationResult` and `StrategyMonteCarloResult`; regime consistency
+off `StrategyRegimeTestReport`; the five named department approvals off
+`StrategyExecutiveReview.opinions` (checking `stance == "agree"` for the
+`risk`/`market_intelligence`/`quant`/`simulation`/`decision_intelligence`
+roles); Founder/CEO approval off `StrategyFounderApproval`/
+`StrategyReview.ceo_decision`. The one requirement with no obvious
+existing analog — "Successful Stress Testing," named as distinct from
+Monte Carlo Testing in the brief's own list — is honestly built by
+reusing existing Monte Carlo tail data (`return_range_low_pct`, the
+real 10th-percentile bootstrap return) plus the regime test's weak
+buckets under a new, brief-requested lens, rather than building a
+second bootstrap engine (`app/strategy_lab.py`'s own module docstring
+already warns against exactly that trap).
+
+**`compute_strategy_certification()`** (app/strategy_lab.py) returns a
+`StrategyCertification`: 15 real `StrategyCertificationRequirement`
+entries (the brief's 14, plus one this codebase adds — see below) and a
+`certified: bool` that's `True` only when every one passes. Computed
+fresh on request (`GET /api/sandbox/certification?strategyId=`), the
+same "every input already lives somewhere permanent" reasoning as
+`StrategyDossier`.
+
+**The 15th requirement, Health Standing, is how "may be revoked at any
+time" is honestly satisfied.** Rather than build a separate persisted
+"certified" flag with its own revocation event log, `certified` is
+*always* a fresh read of the strategy's own real current state — so the
+moment a certified strategy's `StrategyHealthAssessment.status` degrades
+to `"critical"`/`"retire_candidate"`, the Health Standing requirement
+fails on the very next `GET /api/sandbox/certification` call and
+`certified` flips to `false` automatically. No separate revocation
+mechanism, no stored history of "was certified, now isn't" — the
+current real state is the only source of truth, matching every other
+compute-on-request artifact in this codebase.
+
+**Two requirements — Founder Approval and Final CEO Approval — can
+only ever be real at `stage == "approved"`,** since both only exist
+once a strategy reaches Company Review, which in this codebase's real
+pipeline order comes *after* Limited Live Capital (paper_trading →
+limited_live_capital → company_review → approved). This creates a real
+ordering conflict with the brief's "before ANY strategy trades live
+capital" framing: full Certification literally cannot exist yet at the
+point real capital first gets allocated (`begin_limited_live_capital`).
+Rather than silently ignore this or restructure the whole pipeline
+order (a change far outside this slice's scope), the honest resolution
+is two-tiered:
+
+- **`evaluate_certification_readiness()`** — the real, ENFORCED subset
+  of the same checklist restricted to what's achievable *before* Company
+  Review (sample size, expectancy, Monte Carlo drawdown/ruin, stress
+  test, regime consistency) — now a hard gate on
+  `POST /api/sandbox/begin-limited-live` itself
+  (`app/state.py`'s `begin_strategy_limited_live()`), reusing the exact
+  same thresholds as the full checklist rather than a second set of
+  numbers. This is the real, literal answer to "before any strategy
+  trades live capital, it must clear real Certification checks."
+- **`compute_strategy_certification()`**'s full 15-point checklist
+  (including Founder/CEO approval) is the complete, transparent audit
+  shown once a strategy has progressed further — the authoritative
+  answer to "is this specific `stage == 'approved'` strategy backed by
+  every real requirement the brief asks for," which in practice isn't
+  automatically guaranteed by reaching "approved" alone (e.g. under
+  Assisted/Executive Automation Mode, a review can auto-resolve without
+  every enrichment artifact having been separately generated first) —
+  so Certification is a genuinely new, real transparency feature, not
+  a duplicate of the "approved" stage label.
+
+**Verified**: 6 new tests in `test_strategy_lab.py` — a strategy with
+strong real results across two regimes and every department opinion
+forced to a real "agree" stance passes all 15 requirements; a strategy
+with zero evidence fails all 15; a real health decline to "critical"
+flips a previously-met Health Standing requirement to failed; the
+readiness gate passes on a strong pre-Company-Review fixture and fails
+on both an empty-evidence fixture and a deliberately ruinous Monte
+Carlo fixture — 813/813 full backend suite, `mypy`/`ruff` clean.
+Frontend (surfacing the 15-point checklist on the CERTIFICATION
+sub-tab) is a separate, immediately-following commit per this project's
+backend-first discipline.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

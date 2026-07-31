@@ -11,6 +11,7 @@ from app.schemas import (
     BacktestSession,
     FailedStrategyArchiveEntry,
     Strategy,
+    StrategyCertification,
     StrategyDossier,
     StrategyExecutiveDashboard,
     StrategyExecutiveReview,
@@ -20,7 +21,7 @@ from app.schemas import (
     TestScenario,
 )
 from app.state import game_state
-from app.strategy_lab import compute_strategy_executive_dashboard, generate_strategy_dossier
+from app.strategy_lab import compute_strategy_certification, compute_strategy_executive_dashboard, generate_strategy_dossier
 
 router = APIRouter(prefix="/api/sandbox", tags=["sandbox"])
 
@@ -173,6 +174,28 @@ async def strategy_executive_dashboard() -> StrategyExecutiveDashboard:
         state.strategy_failed_archive,
         sim_day=state.time.day,
     )
+
+
+@router.get("/certification", response_model=StrategyCertification)
+async def strategy_certification(strategy_id: str = Query(..., alias="strategyId")) -> StrategyCertification:
+    """v0.7 Feature 53 — Company Certification. Read-only and computed
+    fresh every call (see app/strategy_lab.py's
+    compute_strategy_certification()): every requirement reads an
+    already-real Feature 52 artifact, so "certified" is always a live
+    read of the strategy's own current real state — including a real,
+    automatic drop to uncertified the moment its Health degrades. No
+    game-state lock needed — nothing here mutates the save."""
+    state = await game_state.snapshot()
+    strategy = next((s for s in state.strategies if s.id == strategy_id), None)
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="No strategy found with that id.")
+    review = next((r for r in reversed(state.strategy_reviews) if r.strategy_id == strategy_id), None)
+    monte_carlo = next((r for r in reversed(state.strategy_monte_carlo_results) if r.strategy_id == strategy_id), None)
+    regime_test = next((r for r in reversed(state.strategy_regime_tests) if r.strategy_id == strategy_id), None)
+    executive_review = next((r for r in reversed(state.strategy_executive_reviews) if r.strategy_id == strategy_id), None)
+    founder_approval = next((r for r in reversed(state.strategy_founder_approvals) if r.strategy_id == strategy_id), None)
+    health = next((r for r in reversed(state.strategy_health_assessments) if r.strategy_id == strategy_id), None)
+    return compute_strategy_certification(strategy, state.simulation_results, review, monte_carlo, regime_test, executive_review, founder_approval, health)
 
 
 @router.get("/dossier", response_model=StrategyDossier)

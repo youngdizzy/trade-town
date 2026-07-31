@@ -90,6 +90,7 @@ from app.strategy_lab import (
     cap_strategy_failed_archive,
     cap_strategy_founder_approvals,
     cap_strategy_hall_of_fame,
+    evaluate_certification_readiness,
     generate_strategy_executive_review,
     generate_strategy_founder_approval,
     generate_strategy_retirement_outcome,
@@ -679,10 +680,21 @@ class GameState:
             return self.data, None
 
     async def begin_strategy_limited_live(self, strategy_id: str, amount: float) -> tuple[GameSaveState, str | None]:
+        """v0.7 Feature 53 — Company Certification. Before any strategy
+        may commit real allocated capital, it must clear the real,
+        enforced readiness subset of the Certification checklist (see
+        app/strategy_lab.py's evaluate_certification_readiness() for
+        exactly which of the brief's thirteen requirements are honestly
+        checkable this early in the pipeline)."""
         async with self.lock:
             strategy = self._find_strategy(strategy_id)
             if strategy is None:
                 return self.data, "No strategy found with that id."
+            monte_carlo = next((r for r in reversed(self.data.strategy_monte_carlo_results) if r.strategy_id == strategy_id), None)
+            regime_test = next((r for r in reversed(self.data.strategy_regime_tests) if r.strategy_id == strategy_id), None)
+            ready, readiness_detail = evaluate_certification_readiness(strategy, self.data.simulation_results, monte_carlo, regime_test)
+            if not ready:
+                return self.data, readiness_detail
             updated, error = begin_limited_live(strategy, amount, self.data.time.day)
             if error is not None or updated is None:
                 return self.data, error

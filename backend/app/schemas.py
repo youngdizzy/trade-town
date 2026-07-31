@@ -1870,6 +1870,39 @@ class StrategyExecutiveDashboard(CamelModel):
     generated_at: str = Field(alias="generatedAt")
 
 
+class StrategyCertificationRequirement(CamelModel):
+    id: str
+    label: str
+    met: bool
+    detail: str
+
+
+class StrategyCertification(CamelModel):
+    """v0.7 Feature 53 — Company Certification: the brief's formal gate
+    combining every already-real Feature 52 artifact into one explicit
+    checklist, never a new measurement (see
+    app/strategy_lab.py's compute_strategy_certification()). Two of the
+    brief's thirteen requirements — Founder Approval and Final CEO
+    Approval — can only ever be real once a strategy reaches Company
+    Review (see app/sandbox.py's own pipeline order: paper_trading ->
+    limited_live_capital -> company_review -> approved), so `certified`
+    is only ever true at stage == "approved". Computed fresh on
+    request — same 'every input already lives somewhere permanent'
+    reasoning as StrategyDossier. 'Revocation' is real and automatic by
+    construction: since every requirement is recomputed from the
+    strategy's own real current state on every call, a strategy whose
+    real StrategyHealthAssessment later degrades to "critical" or
+    "retire_candidate" fails the Health Standing requirement and stops
+    being certified the next time this is computed — no separate
+    persisted "revoked" flag or event log needed."""
+
+    strategy_id: str = Field(alias="strategyId")
+    strategy_name: str = Field(alias="strategyName")
+    certified: bool
+    requirements: list[StrategyCertificationRequirement]
+    generated_at: str = Field(alias="generatedAt")
+
+
 class MarketIntelligenceReport(CamelModel):
     """The Executive Market Brief — one real, permanent snapshot per real
     in-game day (generated on the same evening cadence as CoachReport and

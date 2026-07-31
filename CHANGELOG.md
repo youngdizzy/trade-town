@@ -7,6 +7,52 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.7 Feature 53 (Slice 1) — Company Certification, backend**: the
+  brief's formal "no strategy may trade live capital without
+  Certification" gate, built as a real checklist combining every
+  already-real Feature 52 artifact — never a new measurement. New
+  `compute_strategy_certification()` (app/strategy_lab.py) checks all
+  14 of the brief's named requirements (minimum trade sample size,
+  positive expectancy, acceptable Monte Carlo worst-case drawdown,
+  consistent profitability across ≥2 tested Market Regimes with no weak
+  buckets, reaching Paper Trading, real Monte Carlo testing, a real
+  "Stress Testing" reading — the 10th-percentile Monte Carlo return
+  plus weak-regime buckets, reusing existing tail data under a
+  brief-requested new lens rather than a second engine — Risk/Market
+  Intelligence/Quant/Simulation/Decision Intelligence department
+  approval read from the real 9-department Executive Review, Founder
+  Approval, and Final CEO Approval) plus one added 15th requirement,
+  Health Standing, which is how "Certification may be revoked at any
+  time if performance deteriorates" is honestly satisfied: `certified`
+  is always recomputed fresh from the strategy's own real current state
+  (`GET /api/sandbox/certification`), so a real decline in
+  `StrategyHealthAssessment.status` to "critical"/"retire_candidate"
+  automatically fails that requirement on the very next read — no
+  separate persisted "revoked" flag or event log needed.
+
+  Two of the fourteen brief requirements — Founder Approval and Final
+  CEO Approval — can only ever be real once a strategy reaches Company
+  Review, which happens *after* Limited Live Capital in this codebase's
+  existing pipeline order (paper_trading → limited_live_capital →
+  company_review → approved) — so full `certified` status can only ever
+  be true at `stage == "approved"`. Rather than silently gate live
+  capital on a status that can't exist yet at that point in the
+  pipeline, new `evaluate_certification_readiness()` is the real,
+  ENFORCED subset of the same checklist (every requirement that *can*
+  honestly exist before Company Review), now a hard gate on
+  `POST /api/sandbox/begin-limited-live` itself
+  (`app/state.py`'s `begin_strategy_limited_live()`) — reusing the exact
+  same thresholds as the full checklist, not a second set of numbers.
+
+  New tests: 6 in `test_strategy_lab.py` (a fully-qualifying strategy
+  passes every one of the 15 requirements; an empty strategy fails all
+  of them; a real health decline automatically revokes a previously-met
+  Health Standing requirement; the readiness gate passes/fails on the
+  achievable pre-Company-Review subset) — 813/813 backend tests
+  passing, `mypy`/`ruff` clean. Frontend (surfacing the checklist on the
+  existing CERTIFICATION sub-tab) is a separate, immediately-following
+  commit per this project's backend-first discipline.
+
 - **v0.7 Feature 52 frontend — the Strategy Validation Laboratory UI**:
   one Command Center tab (`SANDBOX`), restructured into eight real
   sub-views rather than eight more top-level tabs (this Command Center

@@ -117,7 +117,7 @@ from datetime import datetime, timezone
 
 from app.market_data import Candle, MarketDataProvider
 from app.market_intelligence import _REGIME_TO_SCENARIO_KEYWORD, compute_liquidity, compute_market_structure
-from app.sandbox import RISK_MAX_AVG_DRAWDOWN, STRATEGY_DEVILS_ADVOCATES
+from app.sandbox import RISK_MAX_AVG_DRAWDOWN, STRATEGY_DEVILS_ADVOCATES, stage_index
 from app.schemas import (
     AgentId,
     CoachReport,
@@ -129,6 +129,8 @@ from app.schemas import (
     ResearchItem,
     SimulationResult,
     Strategy,
+    StrategyCertification,
+    StrategyCertificationRequirement,
     StrategyConfidenceScore,
     StrategyDepartmentOpinion,
     StrategyDossier,
@@ -188,6 +190,15 @@ HALL_OF_FAME_MIN_TRADE_COUNT = 30
 HALL_OF_FAME_MIN_WIN_RATE = 55.0
 HALL_OF_FAME_MIN_PROFIT_FACTOR = 1.5
 HALL_OF_FAME_MAX_AVG_DRAWDOWN = RISK_MAX_AVG_DRAWDOWN
+
+# v0.7 Feature 53 — Company Certification. A real, checkable bar —
+# deliberately looser than the Hall of Fame's own bar above, since
+# certification gates the *earlier* Limited Live Capital stage, not a
+# lifetime achievement judged at retirement.
+CERTIFICATION_MIN_TRADE_COUNT = 20
+CERTIFICATION_MAX_RUIN_PCT = 15.0
+CERTIFICATION_MAX_WORST_CASE_DRAWDOWN_PCT = 30.0
+CERTIFICATION_MIN_STRESS_RETURN_PCT = -50.0
 
 # Reverse of app/market_intelligence.py's real regime->scenario mapping —
 # which of the 13 real MarketIntelligenceRegime values each real
@@ -1003,3 +1014,185 @@ def compute_strategy_executive_dashboard(
         highestConfidenceStrategy=highest_confidence,
         generatedAt=_now_iso(),
     )
+
+
+# ---------------------------------------------------------------------
+# v0.7 Feature 53 — Company Certification. A real, formal checklist
+# combining every already-real Feature 52 artifact — never a new
+# measurement. Two of the brief's thirteen requirements (Founder
+# Approval, Final CEO Approval) can only ever be real once a strategy
+# reaches Company Review — see app/sandbox.py's own pipeline order
+# (paper_trading -> limited_live_capital -> company_review -> approved)
+# — so full `certified` status is only ever True at stage == "approved".
+# evaluate_certification_readiness() below is the real, ENFORCED subset
+# of this same checklist (only the requirements achievable before
+# Company Review) that gates begin_limited_live_capital itself — see
+# app/state.py's begin_strategy_limited_live().
+# ---------------------------------------------------------------------
+
+
+def _department_approved(executive_review: StrategyExecutiveReview | None, role: ExecutiveDepartmentRole) -> tuple[bool, str]:
+    if executive_review is None:
+        return False, "No real Executive Review on file yet."
+    opinion = next((o for o in executive_review.opinions if o.role == role), None)
+    if opinion is None:
+        return False, "No real opinion on file yet."
+    return opinion.stance == "agree", f"Real stance: {opinion.stance.replace('_', ' ')}."
+
+
+def compute_strategy_certification(
+    strategy: Strategy,
+    results: list[SimulationResult],
+    review: StrategyReview | None,
+    monte_carlo: StrategyMonteCarloResult | None,
+    regime_test: StrategyRegimeTestReport | None,
+    executive_review: StrategyExecutiveReview | None,
+    founder_approval: StrategyFounderApproval | None,
+    health: StrategyHealthAssessment | None,
+) -> StrategyCertification:
+    """`certified` is recomputed fresh from the strategy's own real
+    current state every call — so a real health decline after
+    certification (StrategyHealthAssessment.status turning "critical"/
+    "retire_candidate") automatically fails the Health Standing
+    requirement the next time this runs. No separate persisted "revoked"
+    flag or event log is needed for the brief's "may be revoked at any
+    time" rule — see this function's own StrategyCertification docstring
+    in app/schemas.py."""
+    strategy_results = [r for r in results if r.strategy_id == strategy.id]
+    trade_count = sum(r.trade_count for r in strategy_results)
+    expectancy = sum(r.expected_value_pct for r in strategy_results) / len(strategy_results) if strategy_results else 0.0
+    tested_buckets = [b for b in regime_test.buckets if b.tested] if regime_test else []
+    weak_buckets = [b for b in tested_buckets if b.verdict == "weak"]
+
+    risk_ok, risk_detail = _department_approved(executive_review, "risk")
+    market_intel_ok, market_intel_detail = _department_approved(executive_review, "market_intelligence")
+    quant_ok, quant_detail = _department_approved(executive_review, "quant")
+    simulation_ok, simulation_detail = _department_approved(executive_review, "simulation")
+    decision_intel_ok, decision_intel_detail = _department_approved(executive_review, "decision_intelligence")
+
+    requirements = [
+        StrategyCertificationRequirement(
+            id="sample_size",
+            label="Minimum Validated Trade Sample Size",
+            met=trade_count >= CERTIFICATION_MIN_TRADE_COUNT,
+            detail=f"{trade_count} real trade(s) across {len(strategy_results)} real run(s) (needs ≥{CERTIFICATION_MIN_TRADE_COUNT}).",
+        ),
+        StrategyCertificationRequirement(
+            id="expectancy",
+            label="Positive Expectancy Over A Statistically Significant Sample",
+            met=len(strategy_results) > 0 and expectancy > 0,
+            detail=f"Real expected value {expectancy:+.2f}% per trade across {len(strategy_results)} real run(s)." if strategy_results else "No real runs on file yet.",
+        ),
+        StrategyCertificationRequirement(
+            id="drawdown",
+            label="Acceptable Maximum Drawdown",
+            met=monte_carlo is not None and monte_carlo.worst_case_drawdown_pct <= CERTIFICATION_MAX_WORST_CASE_DRAWDOWN_PCT,
+            detail=(
+                f"Real worst-case (5th percentile) Monte Carlo drawdown {monte_carlo.worst_case_drawdown_pct:.1f}% (needs ≤{CERTIFICATION_MAX_WORST_CASE_DRAWDOWN_PCT:.0f}%)."
+                if monte_carlo
+                else "No real Monte Carlo run on file yet."
+            ),
+        ),
+        StrategyCertificationRequirement(
+            id="regime_consistency",
+            label="Consistent Profitability Across Multiple Market Regimes",
+            met=len(tested_buckets) >= 2 and not weak_buckets,
+            detail=(f"Tested in {len(tested_buckets)} real Testing Environment(s), {len(weak_buckets)} weak." if regime_test else "No real Market Regime Testing on file yet."),
+        ),
+        StrategyCertificationRequirement(
+            id="paper_trading",
+            label="Successful Paper Trading Phase",
+            met=stage_index(strategy.stage) >= stage_index("paper_trading"),
+            detail=f"Currently at real pipeline stage: {strategy.stage.replace('_', ' ')}.",
+        ),
+        StrategyCertificationRequirement(
+            id="monte_carlo",
+            label="Successful Monte Carlo Testing",
+            met=monte_carlo is not None and monte_carlo.probability_of_ruin_pct <= CERTIFICATION_MAX_RUIN_PCT,
+            detail=(
+                f"Real probability of ruin {monte_carlo.probability_of_ruin_pct:.1f}% across {monte_carlo.paths_simulated} simulated paths (needs ≤{CERTIFICATION_MAX_RUIN_PCT:.0f}%)."
+                if monte_carlo
+                else "No real Monte Carlo run on file yet."
+            ),
+        ),
+        StrategyCertificationRequirement(
+            id="stress_test",
+            label="Successful Stress Testing",
+            met=monte_carlo is not None and monte_carlo.return_range_low_pct > CERTIFICATION_MIN_STRESS_RETURN_PCT and not weak_buckets,
+            detail=(
+                f"Real 10th-percentile Monte Carlo return {monte_carlo.return_range_low_pct:+.1f}% with {len(weak_buckets)} weak real regime(s)."
+                if monte_carlo
+                else "No real Monte Carlo run on file yet — nothing real to stress-test."
+            ),
+        ),
+        StrategyCertificationRequirement(id="risk_approval", label="Risk Department Approval", met=risk_ok, detail=risk_detail),
+        StrategyCertificationRequirement(id="market_intelligence_approval", label="Market Intelligence Approval", met=market_intel_ok, detail=market_intel_detail),
+        StrategyCertificationRequirement(id="quant_approval", label="Quant Department Approval", met=quant_ok, detail=quant_detail),
+        StrategyCertificationRequirement(id="simulation_approval", label="Simulation Department Approval", met=simulation_ok, detail=simulation_detail),
+        StrategyCertificationRequirement(id="decision_intelligence_approval", label="Decision Intelligence Approval", met=decision_intel_ok, detail=decision_intel_detail),
+        StrategyCertificationRequirement(
+            id="founder_approval",
+            label="Founder Approval",
+            met=founder_approval is not None and founder_approval.verdict == "approved",
+            detail=founder_approval.verdict_reason if founder_approval else "No real Founder Approval on file yet.",
+        ),
+        StrategyCertificationRequirement(
+            id="ceo_approval",
+            label="Final CEO Approval",
+            met=review is not None and review.ceo_decision == "approved",
+            detail=(f"Real Company Review decision: {review.ceo_decision.replace('_', ' ')}." if review else "No real Company Review on file yet."),
+        ),
+        StrategyCertificationRequirement(
+            id="health_standing",
+            label="Health Standing Not Deteriorated",
+            met=health is None or health.status not in ("critical", "retire_candidate"),
+            detail=(f"Real current Strategy Health: {health.status.replace('_', ' ')}." if health else "No real Strategy Health assessment on file yet — treated as a pass by default."),
+        ),
+    ]
+
+    return StrategyCertification(
+        strategyId=strategy.id,
+        strategyName=strategy.name,
+        certified=all(r.met for r in requirements),
+        requirements=requirements,
+        generatedAt=_now_iso(),
+    )
+
+
+def evaluate_certification_readiness(strategy: Strategy, results: list[SimulationResult], monte_carlo: StrategyMonteCarloResult | None, regime_test: StrategyRegimeTestReport | None) -> tuple[bool, str]:
+    """The real, ENFORCED gate on begin_limited_live_capital — the brief's
+    'no strategy may trade live capital without Certification', narrowed
+    to exactly the checklist items that can honestly exist this early in
+    the real pipeline (Founder/CEO/Executive-Review approval only ever
+    happen later, at Company Review — see this module's own section
+    docstring above). Reuses the exact same real thresholds as
+    compute_strategy_certification() rather than a second set of
+    numbers."""
+    strategy_results = [r for r in results if r.strategy_id == strategy.id]
+    trade_count = sum(r.trade_count for r in strategy_results)
+    expectancy = sum(r.expected_value_pct for r in strategy_results) / len(strategy_results) if strategy_results else 0.0
+    tested_buckets = [b for b in regime_test.buckets if b.tested] if regime_test else []
+    weak_buckets = [b for b in tested_buckets if b.verdict == "weak"]
+
+    failures: list[str] = []
+    if trade_count < CERTIFICATION_MIN_TRADE_COUNT:
+        failures.append(f"only {trade_count} real trade(s) on file (needs ≥{CERTIFICATION_MIN_TRADE_COUNT})")
+    if not strategy_results or expectancy <= 0:
+        failures.append("no real positive expectancy on file yet")
+    if monte_carlo is None:
+        failures.append("no real Monte Carlo run on file yet")
+    else:
+        if monte_carlo.worst_case_drawdown_pct > CERTIFICATION_MAX_WORST_CASE_DRAWDOWN_PCT:
+            failures.append(f"worst-case Monte Carlo drawdown {monte_carlo.worst_case_drawdown_pct:.1f}% exceeds {CERTIFICATION_MAX_WORST_CASE_DRAWDOWN_PCT:.0f}%")
+        if monte_carlo.probability_of_ruin_pct > CERTIFICATION_MAX_RUIN_PCT:
+            failures.append(f"probability of ruin {monte_carlo.probability_of_ruin_pct:.1f}% exceeds {CERTIFICATION_MAX_RUIN_PCT:.0f}%")
+        if monte_carlo.return_range_low_pct <= CERTIFICATION_MIN_STRESS_RETURN_PCT:
+            failures.append(f"stress-case (10th percentile) return {monte_carlo.return_range_low_pct:+.1f}% fails real stress testing")
+    if len(tested_buckets) < 2:
+        failures.append("tested in fewer than 2 real Testing Environments yet")
+    elif weak_buckets:
+        failures.append(f"{len(weak_buckets)} real regime bucket(s) show weak performance")
+
+    if failures:
+        return False, f'"{strategy.name}" is not yet Certification-ready for live capital: {"; ".join(failures)}.'
+    return True, f'"{strategy.name}" clears every real Certification readiness check available at this stage.'

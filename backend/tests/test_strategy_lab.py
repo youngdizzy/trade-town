@@ -1,8 +1,8 @@
-"""Covers app/strategy_lab.py — v0.7 Feature 52, the Strategy Validation
-Laboratory (Parts 1 and 2). Every artifact here must trace to a real,
-already-generated source (a strategy's own aggregated SimulationResult
-stats, a real StrategyReview verdict, real market data) — never an
-independently invented number.
+"""Covers app/strategy_lab.py — v0.7 Feature 52 (Parts 1 and 2) and
+Feature 53 (Company Certification), the Strategy Validation Laboratory.
+Every artifact here must trace to a real, already-generated source (a
+strategy's own aggregated SimulationResult stats, a real StrategyReview
+verdict, real market data) — never an independently invented number.
 """
 from __future__ import annotations
 
@@ -11,13 +11,17 @@ from app.market_intelligence import default_market_intelligence_state
 from app.sandbox import generate_strategy_review
 from app.schemas import CoachReport, ResearchItem, SimulationResult, Strategy, StrategyStageEvent, WatchlistEntry
 from app.strategy_lab import (
+    CERTIFICATION_MAX_RUIN_PCT,
+    CERTIFICATION_MIN_TRADE_COUNT,
     HALL_OF_FAME_MIN_PROFIT_FACTOR,
     HALL_OF_FAME_MIN_TRADE_COUNT,
     HALL_OF_FAME_MIN_WIN_RATE,
+    compute_strategy_certification,
     compute_strategy_confidence_score,
     compute_strategy_executive_dashboard,
     compute_strategy_health,
     compute_strategy_regime_test,
+    evaluate_certification_readiness,
     generate_strategy_dossier,
     generate_strategy_executive_review,
     generate_strategy_founder_approval,
@@ -404,3 +408,132 @@ class TestComputeStrategyExecutiveDashboard:
         assert dashboard.newest_strategy is None
         assert dashboard.highest_confidence_strategy is None
         assert dashboard.active_count == 0
+
+
+def _strong_results(*, count: int = 3, scenario: str = "bull") -> list[SimulationResult]:
+    return [
+        _result(win_rate=75.0, profit_factor=2.5, max_drawdown_pct=8.0, avg_win_pct=6.0, avg_loss_pct=-2.0, total_return_pct=20.0, trade_count=CERTIFICATION_MIN_TRADE_COUNT, scenario=scenario).model_copy(
+            update={"id": f"result-{scenario}-{i}"}
+        )
+        for i in range(count)
+    ]
+
+
+class TestComputeStrategyCertification:
+    def test_a_strategy_with_every_real_requirement_met_is_certified(self) -> None:
+        strategy = _strategy(stage="approved")
+        results = [*_strong_results(scenario="bull"), *_strong_results(scenario="bear")]
+        review = generate_strategy_review(strategy, results, [_research_item()], 0, sim_day=10)
+        review = review.model_copy(update={"ceo_decision": "approved"})
+        monte_carlo = run_strategy_monte_carlo(strategy, results, sim_day=10)
+        regime_test = compute_strategy_regime_test(strategy, results, sim_day=10)
+        exec_review = generate_strategy_executive_review(strategy, review, [_research_item()], [_coach_report()], monte_carlo, regime_test, default_market_intelligence_state(), 0, sim_day=10)
+        # Force every real department opinion this checklist reads to a
+        # real "agree" stance so this fixture exercises the fully-passing
+        # path deterministically, the same way other tests here force a
+        # specific real outcome by editing the generated object's own
+        # already-real fields.
+        opinions = [o.model_copy(update={"stance": "agree"}) if o.role in ("risk", "market_intelligence", "quant", "simulation", "decision_intelligence") else o for o in exec_review.opinions]
+        exec_review = exec_review.model_copy(update={"opinions": opinions})
+        founder_approval = generate_strategy_founder_approval(strategy, exec_review, sim_day=10).model_copy(update={"verdict": "approved"})
+        health = compute_strategy_health(strategy, results, sim_day=10)
+
+        certification = compute_strategy_certification(strategy, results, review, monte_carlo, regime_test, exec_review, founder_approval, health)
+        failing = [r for r in certification.requirements if not r.met]
+        assert failing == [], f"unexpected failing requirements: {[(r.id, r.detail) for r in failing]}"
+        assert certification.certified is True
+
+    def test_no_evidence_at_all_is_not_certified(self) -> None:
+        certification = compute_strategy_certification(_strategy(stage="idea"), [], None, None, None, None, None, None)
+        assert certification.certified is False
+        # The brief's own 14 named requirements, plus this module's own
+        # added Health Standing requirement (see this function's
+        # docstring for why that's the real, automatic "may be revoked"
+        # mechanism).
+        assert len(certification.requirements) == 15
+
+    def test_a_real_health_decline_automatically_revokes_certification(self) -> None:
+        from app.schemas import StrategyHealthAssessment
+
+        strategy = _strategy(stage="approved")
+        results = [*_strong_results(scenario="bull"), *_strong_results(scenario="bear")]
+        review = generate_strategy_review(strategy, results, [_research_item()], 0, sim_day=10).model_copy(update={"ceo_decision": "approved"})
+        monte_carlo = run_strategy_monte_carlo(strategy, results, sim_day=10)
+        regime_test = compute_strategy_regime_test(strategy, results, sim_day=10)
+        exec_review = generate_strategy_executive_review(strategy, review, [], [_coach_report()], monte_carlo, regime_test, default_market_intelligence_state(), 0, sim_day=10)
+        opinions = [o.model_copy(update={"stance": "agree"}) if o.role in ("risk", "market_intelligence", "quant", "simulation", "decision_intelligence") else o for o in exec_review.opinions]
+        exec_review = exec_review.model_copy(update={"opinions": opinions})
+        founder_approval = generate_strategy_founder_approval(strategy, exec_review, sim_day=10).model_copy(update={"verdict": "approved"})
+        declining_health = StrategyHealthAssessment(
+            id="health-1",
+            strategyId=strategy.id,
+            strategyName=strategy.name,
+            status="critical",
+            trend="declining",
+            recentWinRate=20.0,
+            lifetimeWinRate=70.0,
+            recentAvgReturnPct=-15.0,
+            lifetimeAvgReturnPct=15.0,
+            recentAvgDrawdownPct=40.0,
+            lifetimeAvgDrawdownPct=10.0,
+            recentSampleSize=3,
+            lifetimeSampleSize=6,
+            reasoning=["Recent performance collapsed."],
+            simDay=10,
+            createdAt=_now_iso(),
+        )
+        certification = compute_strategy_certification(strategy, results, review, monte_carlo, regime_test, exec_review, founder_approval, declining_health)
+        health_req = next(r for r in certification.requirements if r.id == "health_standing")
+        assert health_req.met is False
+        assert certification.certified is False
+
+
+class TestEvaluateCertificationReadiness:
+    def test_ready_when_the_pre_company_review_checks_all_pass(self) -> None:
+        strategy = _strategy(stage="paper_trading")
+        results = [*_strong_results(scenario="bull"), *_strong_results(scenario="bear")]
+        monte_carlo = run_strategy_monte_carlo(strategy, results, sim_day=10)
+        regime_test = compute_strategy_regime_test(strategy, results, sim_day=10)
+        ready, detail = evaluate_certification_readiness(strategy, results, monte_carlo, regime_test)
+        assert ready is True
+        assert "clears every real Certification readiness check" in detail
+
+    def test_not_ready_with_no_real_evidence_at_all(self) -> None:
+        strategy = _strategy(stage="paper_trading")
+        ready, detail = evaluate_certification_readiness(strategy, [], None, None)
+        assert ready is False
+        assert "not yet Certification-ready" in detail
+
+    def test_not_ready_when_ruin_probability_is_too_high(self) -> None:
+        from app.schemas import StrategyMonteCarloResult
+
+        strategy = _strategy(stage="paper_trading")
+        bad_results = [_result(win_rate=20.0, avg_win_pct=1.0, avg_loss_pct=-10.0, trade_count=CERTIFICATION_MIN_TRADE_COUNT, scenario="bull")]
+        # A deterministic fixture (rather than run_strategy_monte_carlo's
+        # own real bootstrap, which is already covered by
+        # TestRunStrategyMonteCarlo above) so this test exercises the
+        # gate's own threshold check reliably, not the stochastic path.
+        ruinous_monte_carlo = StrategyMonteCarloResult(
+            id="montecarlo-1",
+            strategyId=strategy.id,
+            strategyName=strategy.name,
+            pathsSimulated=200,
+            tradesPerPath=20,
+            sourceWinRate=20.0,
+            sourceAvgWinPct=1.0,
+            sourceAvgLossPct=-10.0,
+            medianReturnPct=-30.0,
+            returnRangeLowPct=-60.0,
+            returnRangeHighPct=5.0,
+            medianMaxDrawdownPct=40.0,
+            worstCaseDrawdownPct=25.0,
+            probabilityOfProfitPct=15.0,
+            probabilityOfRuinPct=40.0,
+            capitalSurvivalPct=60.0,
+            simDay=10,
+            createdAt=_now_iso(),
+        )
+        assert ruinous_monte_carlo.probability_of_ruin_pct > CERTIFICATION_MAX_RUIN_PCT
+        ready, detail = evaluate_certification_readiness(strategy, bad_results, ruinous_monte_carlo, None)
+        assert ready is False
+        assert "probability of ruin" in detail
