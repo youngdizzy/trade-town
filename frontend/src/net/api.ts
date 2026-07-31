@@ -318,8 +318,27 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ agentId, mentorId }),
     }),
-  revokeAcademyGraduation: (agentId: AgentId, mentorId: FoundationalMentorId) =>
-    request<{ foundationalMentorState: FoundationalMentorState }>("/foundational-mentors/revoke-graduation", {
+  // Certification Management — full CEO controls over an earned
+  // certification (Current Certifications panel). See
+  // backend/app/foundational_mentors.py's "Certification Management"
+  // section for the real active/suspended/revoked lifecycle.
+  downgradeAcademyCertification: (agentId: AgentId, mentorId: FoundationalMentorId, reason: string) =>
+    request<{ foundationalMentorState: FoundationalMentorState }>("/foundational-mentors/certification/downgrade", {
+      method: "POST",
+      body: JSON.stringify({ agentId, mentorId, reason }),
+    }),
+  promoteAcademyCertification: (agentId: AgentId, mentorId: FoundationalMentorId, reason: string | null) =>
+    request<{ foundationalMentorState: FoundationalMentorState }>("/foundational-mentors/certification/promote", {
+      method: "POST",
+      body: JSON.stringify({ agentId, mentorId, reason }),
+    }),
+  revokeAcademyCertification: (agentId: AgentId, mentorId: FoundationalMentorId, reason: string) =>
+    request<{ foundationalMentorState: FoundationalMentorState }>("/foundational-mentors/certification/revoke", {
+      method: "POST",
+      body: JSON.stringify({ agentId, mentorId, reason }),
+    }),
+  resetAcademyCertificationProgress: (agentId: AgentId, mentorId: FoundationalMentorId) =>
+    request<{ foundationalMentorState: FoundationalMentorState }>("/foundational-mentors/certification/reset-progress", {
       method: "POST",
       body: JSON.stringify({ agentId, mentorId }),
     }),

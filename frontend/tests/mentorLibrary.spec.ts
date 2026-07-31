@@ -91,18 +91,18 @@ test("the MENTORLIB tab renders the Academy Dashboard and CEO Learning Mode reve
   expect(relevantErrors).toEqual([]);
 });
 
-test("an Employee Academy Report honestly shows no certifications yet, and no Revoke Graduation button, before any real graduation exists", async ({ page }) => {
-  // "Revoke Graduation" can only act on a real graduated employee, and
-  // reaching that state takes many real ticks plus a probabilistic real
-  // quiz pass through tick_employee_progress() — there is no test-only
-  // shortcut to force it (ClientSaveRequest, the real /api/save shape,
-  // only ever accepts player/settings/dialogueHistory, deliberately never
-  // foundationalMentorState — see app/schemas.py). The revoke logic
-  // itself (status reversion, real progress reset, the real Coach note,
-  // non-interference with other employees/the track's own status) is
-  // covered thoroughly by TestRevokeGraduation in
+test("Current Certifications honestly shows no certifications and no per-row actions before any real graduation exists", async ({ page }) => {
+  // Certification Management's Revoke/Downgrade/Promote can only act on
+  // a real earned CertificationRecord, and reaching one takes many real
+  // ticks plus a probabilistic real quiz pass through
+  // tick_employee_progress() — there is no test-only shortcut to force
+  // it (ClientSaveRequest, the real /api/save shape, only ever accepts
+  // player/settings/dialogueHistory, deliberately never
+  // foundationalMentorState — see app/schemas.py). The full lifecycle
+  // (revoke/downgrade/promote/reset progress, history preservation,
+  // re-earning) is covered thoroughly by TestCertificationManagement in
   // test_foundational_mentors.py; this test covers what's honestly
-  // reachable live: the empty state before any graduation exists.
+  // reachable live: the empty state before any certification exists.
   await page.goto("/");
   await continueGame(page);
 
@@ -114,10 +114,11 @@ test("an Employee Academy Report honestly shows no certifications yet, and no Re
     const res = await fetch("/api/load");
     return res.json();
   });
-  const certifications = Object.values(state.foundationalMentorState.progress as Record<string, Record<string, { graduationStatus: string }>>).flatMap((byMentor) => Object.values(byMentor)).filter((p) => p.graduationStatus === "graduated");
-  test.skip(certifications.length > 0, "a real employee has already graduated in this shared dev backend — the honest-empty-state case no longer applies");
+  const certifications = state.foundationalMentorState.certifications as unknown[];
+  test.skip(certifications.length > 0, "a real employee has already earned a certification in this shared dev backend — the honest-empty-state case no longer applies");
 
   await expect(page.getByText("Current Certifications")).toBeVisible();
   await expect(page.getByText("No certifications earned yet.")).toBeVisible();
-  await expect(page.getByRole("button", { name: "Revoke Graduation" })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Revoke", exact: true })).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Downgrade", exact: true })).toHaveCount(0);
 });

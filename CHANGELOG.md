@@ -7,6 +7,39 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Certification Management — full CEO controls (frontend)**: the
+  Current Certifications panel (`MentorLibraryPanel.tsx`) now reads
+  `foundationalMentorState.certifications` directly — the real,
+  independent, permanent registry — instead of a client-side
+  re-derivation from graduation status, so every certification is
+  reachable regardless of which mentor track is currently active. Each
+  row gets real inline controls: **View / History** (a detail modal
+  showing the full permanent `CertificationHistoryEntry` timeline),
+  **Downgrade**/**Promote** (Active ↔ Suspended, context-sensitive to
+  the row's own current status), and **Revoke**. A separate "Revoked
+  Certifications — awaiting re-earn" section lists revoked records with
+  **View / History** and **Reset Progress**.
+
+  The Revoke confirmation dialog matches the requested copy exactly:
+  "Are you sure you want to revoke {Agent}'s {Track} Certification?" /
+  "This will remove the active certification but preserve all
+  historical records." / Cancel / Revoke Certification, with a required
+  reason field. Downgrade/Reset Progress reuse the same modal shell with
+  lower-severity copy matching their own reversibility; Promote takes an
+  optional note.
+
+  Removed the old ad hoc "Revoke Graduation" button from the per-
+  employee Academy Report modal (superseded by the dedicated
+  Certification Management section) and the derived `certifications`
+  computation from `computeAcademyDashboard` (`lib/derive.ts`) — no
+  longer needed now that a real registry exists.
+
+  `tsc -b`/`eslint`/`vite build` all clean. Updated
+  `mentorLibrary.spec.ts`'s honest-empty-state test (no certifications,
+  no per-row Revoke/Downgrade buttons) to check the new real
+  `foundationalMentorState.certifications` signal instead of a
+  progress-derived one; verified passing against the live stack (3/3).
+
 - **Certification Management — full CEO controls (backend), a
   quality-of-life fix**: the bug — once a certification appeared under
   Current Certifications, the only Revoke path was clicking that

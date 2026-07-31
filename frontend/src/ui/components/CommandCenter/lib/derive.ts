@@ -9,6 +9,7 @@ import type {
   BlackBoxState,
   CaseStudy,
   CeoDecisionRecord,
+  CertificationStatus,
   ChallengeReport,
   CoachReport,
   CompanyHealth,
@@ -348,6 +349,19 @@ const STRATEGY_HEALTH_TONE: Record<StrategyHealthStatus, "green" | "cyan" | "amb
 
 export function strategyHealthTone(status: StrategyHealthStatus): "green" | "cyan" | "amber" | "red" {
   return STRATEGY_HEALTH_TONE[status];
+}
+
+// Certification Management — CertificationRecord's real three-state
+// lifecycle (see backend/app/schemas.py's CertificationStatus doc
+// comment for why "expired" isn't a fourth state here).
+const CERTIFICATION_STATUS_TONE: Record<CertificationStatus, "green" | "amber" | "red"> = {
+  active: "green",
+  suspended: "amber",
+  revoked: "red",
+};
+
+export function certificationStatusTone(status: CertificationStatus): "green" | "amber" | "red" {
+  return CERTIFICATION_STATUS_TONE[status];
 }
 
 // v0.7 Feature 50 (Part 2/3) — Decision Grade, a real process-quality
@@ -1213,13 +1227,6 @@ export interface AcademyStudentSummary {
   coachNote: string | null;
 }
 
-export interface AcademyCertification {
-  agentId: AgentId;
-  mentorId: FoundationalMentorId;
-  mentorName: string;
-  graduatedSimDay: number;
-}
-
 export interface AcademyRecommendation {
   agentId: AgentId;
   recommendation: "repeat_lesson" | "one_on_one_coaching";
@@ -1236,7 +1243,6 @@ export interface AcademyDashboard {
   upcomingGraduations: AcademyStudentSummary[];
   avgQuizScorePct: number;
   avgKnowledgeScore: number;
-  certifications: AcademyCertification[];
   recommendations: AcademyRecommendation[];
 }
 
@@ -1271,6 +1277,14 @@ function studentSummaryFor(agentId: AgentId, mentorId: FoundationalMentorId, fou
  * established, since every field here is computable from state already
  * broadcast over the WS tick (foundationalMentorState + agentKnowledge).
  * No new backend endpoint or schema exists for this dashboard shape.
+ *
+ * Certifications are NOT derived here (they used to be, from
+ * `graduationStatus === "graduated"`) — `foundationalMentorState.
+ * certifications` is now a real, independent, permanent registry (see
+ * backend/app/foundational_mentors.py's "Certification Management"
+ * section), so `MentorLibraryPanel.tsx` reads it directly instead of a
+ * client-side re-derivation that would drift from the real
+ * active/suspended/revoked lifecycle.
  */
 export function computeAcademyDashboard(foundationalMentorState: FoundationalMentorState, agentKnowledge: Record<AgentId, AgentKnowledgeState>): AcademyDashboard {
   const activeMentorId = foundationalMentorState.activeMentorId;
@@ -1292,20 +1306,6 @@ export function computeAcademyDashboard(foundationalMentorState: FoundationalMen
 
   const knowledgeScores = ACADEMY_STUDENT_AGENT_IDS.map((aid) => agentKnowledge[aid]?.points ?? 0);
   const avgKnowledgeScore = knowledgeScores.length > 0 ? knowledgeScores.reduce((a, b) => a + b, 0) / knowledgeScores.length : 0;
-
-  const certifications: AcademyCertification[] = [];
-  for (const agentId of ACADEMY_STUDENT_AGENT_IDS) {
-    const agentProgress = foundationalMentorState.progress[agentId];
-    if (!agentProgress) continue;
-    for (const mentorId of Object.keys(agentProgress) as FoundationalMentorId[]) {
-      const progress = agentProgress[mentorId];
-      if (progress?.graduationStatus === "graduated" && progress.graduatedSimDay !== null) {
-        const mentor = foundationalMentorState.mentors.find((m) => m.id === mentorId);
-        certifications.push({ agentId, mentorId, mentorName: mentor?.name ?? mentorId, graduatedSimDay: progress.graduatedSimDay });
-      }
-    }
-  }
-  certifications.sort((a, b) => b.graduatedSimDay - a.graduatedSimDay);
 
   // Real Coach recommendations — see COACH_ESCALATION_THRESHOLD's
   // backend twin for the full reasoning. Only "Repeat Lesson" and
@@ -1332,7 +1332,6 @@ export function computeAcademyDashboard(foundationalMentorState: FoundationalMen
     upcomingGraduations,
     avgQuizScorePct,
     avgKnowledgeScore,
-    certifications,
     recommendations,
   };
 }

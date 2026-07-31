@@ -2188,9 +2188,39 @@ export interface FoundationalMentorProgress {
   coachNote: string | null;
 }
 
+// Certification Management (quality-of-life fix) — a real, independent,
+// permanent registry, never derived from FoundationalMentorProgress
+// (which a revoke genuinely resets) and never deleted. "expired" is
+// deliberately not a status: it would need a real time-based renewal/
+// decay signal, which doesn't exist anywhere in this codebase — see
+// backend/app/schemas.py's CertificationStatus doc comment.
+export type CertificationStatus = "active" | "suspended" | "revoked";
+export type CertificationHistoryAction = "earned" | "suspended" | "reinstated" | "revoked" | "progress_reset";
+
+export interface CertificationHistoryEntry {
+  id: string;
+  action: CertificationHistoryAction;
+  reason: string | null;
+  simDay: number;
+  createdAt: string;
+}
+
+export interface CertificationRecord {
+  id: string;
+  agentId: AgentId;
+  mentorId: FoundationalMentorId;
+  mentorName: string;
+  status: CertificationStatus;
+  updatedSimDay: number;
+  history: CertificationHistoryEntry[];
+}
+
 export interface FoundationalMentorState {
   mentors: FoundationalMentorProfile[];
   progress: Partial<Record<AgentId, Partial<Record<FoundationalMentorId, FoundationalMentorProgress>>>>;
+  // The real, permanent Certification Management registry — see
+  // CertificationRecord's own doc comment above.
+  certifications: CertificationRecord[];
   ceoProgress: Partial<Record<FoundationalMentorId, FoundationalMentorProgress>>;
   activeMentorId: FoundationalMentorId | null;
   // The real, persisted sequential unlock order — the CEO's own

@@ -3166,16 +3166,28 @@ tick over the full accumulated list, so this entry gets folded into
 that same `MAX_NEWS_PER_CATEGORY` (8) cap on the very next tick, no
 duplicate trimming logic needed in `state.py`.
 
-Frontend: the Current Certifications section (`MentorLibraryPanel.tsx`)
-now reads directly from `foundationalMentorState.certifications` (the
-real, always-addressable source) instead of a derived-from-progress
-list, with View/Revoke/Downgrade/Promote/Reset Progress/History actions
-inline on every row — reachable regardless of which mentor track is
-currently active. A confirmation dialog gates Revoke, matching the
-brief's requested copy exactly ("Are you sure you want to revoke
-{Agent}'s {Track} Certification?" / "This will remove the active
-certification but preserve all historical records." / Cancel / Revoke
-Certification).
+**Frontend** (`MentorLibraryPanel.tsx`): a new `CurrentCertifications`
+component reads directly from `foundationalMentorState.certifications`
+(the real, always-addressable source) instead of the old derived-from-
+progress list, split into two sections — **Current Certifications**
+(active + suspended, with View/History, Downgrade-or-Promote depending
+on the row's own status, and Revoke) and **Revoked Certifications —
+awaiting re-earn** (revoked records, with View/History and Reset
+Progress). A single shared `CertificationActionDialog` renders every
+action's confirmation modal; Revoke's copy matches the brief's request
+exactly ("Are you sure you want to revoke {Agent}'s {Track}
+Certification?" / "This will remove the active certification but
+preserve all historical records." / Cancel / Revoke Certification), with
+a required reason field — Downgrade reuses the same shell with lower-
+severity copy and its own required reason, Promote takes an optional
+note, Reset Progress needs no reason at all. The old ad hoc "Revoke
+Graduation" button and its Certifications sub-section inside the per-
+employee Academy Report modal are removed (superseded); that modal now
+shows certifications read-only, pointing to the new dedicated section
+for actions. `computeAcademyDashboard`'s derived `certifications` field
+(`lib/derive.ts`) is removed entirely — no longer needed now that a real
+registry exists, and keeping it would have meant two sources of truth
+that could drift.
 
 **Verified**: `test_foundational_mentors.py`'s `TestCertificationManagement`
 (replacing the old `TestRevokeGraduation`) — 20 tests covering revoke
@@ -3189,7 +3201,11 @@ revoked certification (same record, appended history, never a second
 record) — plus a new `TestApproveGraduation` test confirming
 `approve_graduation` itself creates the permanent `CertificationRecord`
 with a real "earned" history entry — 826/826 full backend suite,
-mypy/ruff clean.
+mypy/ruff clean. Frontend: `tsc -b`/`eslint`/`vite build` clean;
+`mentorLibrary.spec.ts`'s honest-empty-state test updated to check the
+new real `foundationalMentorState.certifications` signal (rather than a
+progress-derived one) and assert no Revoke/Downgrade buttons render
+before any certification exists — 3/3 passing against the live stack.
 
 ### Executive Intelligence Network — Feature 50
 

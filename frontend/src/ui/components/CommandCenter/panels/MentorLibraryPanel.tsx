@@ -4,8 +4,8 @@ import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { SettingsManager } from "@/game/systems/SettingsManager";
 import { NexusManager } from "@/game/systems/NexusManager";
 import { api } from "@/net/api";
-import type { AgentId, FoundationalMentorId, FoundationalMentorLesson, FoundationalResourceType } from "@/types";
-import { ACADEMY_STUDENT_AGENT_IDS, computeAcademyDashboard, type AcademyStudentSummary } from "../lib/derive";
+import type { AgentId, CertificationRecord, FoundationalMentorId, FoundationalMentorLesson, FoundationalResourceType } from "@/types";
+import { ACADEMY_STUDENT_AGENT_IDS, certificationStatusTone, computeAcademyDashboard, type AcademyStudentSummary } from "../lib/derive";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../ui";
 
 const RESOURCE_TYPES: FoundationalResourceType[] = ["video", "book", "article", "pdf", "note"];
@@ -33,11 +33,16 @@ function studentToneFor(status: AcademyStudentSummary["graduationStatus"]): "neu
  * separate personal lesson browser below, entirely decoupled from real
  * employee progress.
  */
+type CertActionType = "revoke" | "downgrade" | "promote" | "reset" | "details";
+
 export function MentorLibraryPanel() {
   const { foundationalMentorState, agentKnowledge, settings, academyState } = useGameStore();
   const [selectedAgentId, setSelectedAgentId] = useState<AgentId | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [certAction, setCertAction] = useState<{ type: CertActionType; record: CertificationRecord } | null>(null);
+  const [certBusy, setCertBusy] = useState(false);
+  const [certError, setCertError] = useState<string | null>(null);
 
   const dashboard = computeAcademyDashboard(foundationalMentorState, agentKnowledge);
   const activeMentor = foundationalMentorState.mentors.find((m) => m.id === dashboard.activeMentorId) ?? null;
@@ -69,18 +74,27 @@ export function MentorLibraryPanel() {
     }
   };
 
-  const revoke = async (agentId: AgentId, mentorId: FoundationalMentorId) => {
-    setBusy(true);
-    setError(null);
+  // Certification Management — full CEO controls over an earned
+  // certification (Current Certifications, below). One shared runner so
+  // every dialog (Revoke/Downgrade/Promote/Reset Progress) closes itself
+  // and refreshes real state the same way on success.
+  const runCertAction = async (action: () => Promise<{ foundationalMentorState: typeof foundationalMentorState }>) => {
+    setCertBusy(true);
+    setCertError(null);
     try {
-      const res = await api.revokeAcademyGraduation(agentId, mentorId);
+      const res = await action();
       NexusManager.setFoundationalMentorState(res.foundationalMentorState);
+      setCertAction(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
+      setCertError(err instanceof Error ? err.message : String(err));
     } finally {
-      setBusy(false);
+      setCertBusy(false);
     }
   };
+  const doRevokeCertification = (record: CertificationRecord, reason: string) => runCertAction(() => api.revokeAcademyCertification(record.agentId, record.mentorId, reason));
+  const doDowngradeCertification = (record: CertificationRecord, reason: string) => runCertAction(() => api.downgradeAcademyCertification(record.agentId, record.mentorId, reason));
+  const doPromoteCertification = (record: CertificationRecord, reason: string | null) => runCertAction(() => api.promoteAcademyCertification(record.agentId, record.mentorId, reason));
+  const doResetCertificationProgress = (record: CertificationRecord) => runCertAction(() => api.resetAcademyCertificationProgress(record.agentId, record.mentorId));
 
   if (foundationalMentorState.mentors.length === 0) return <EmptyState>Loading Academy…</EmptyState>;
 
@@ -139,7 +153,7 @@ export function MentorLibraryPanel() {
           <DataRow label="Avg quiz score" value={`${dashboard.avgQuizScorePct.toFixed(0)}%`} />
           <DataRow label="Avg knowledge points" value={dashboard.avgKnowledgeScore.toFixed(1)} />
           <DataRow label="Students" value={ACADEMY_STUDENT_AGENT_IDS.length} />
-          <DataRow label="Certifications earned" value={dashboard.certifications.length} />
+          <DataRow label="Certifications earned" value={foundationalMentorState.certifications.length} />
         </Glass>
 
         <Glass className="p-3">
@@ -209,23 +223,7 @@ export function MentorLibraryPanel() {
         </Glass>
       )}
 
-      <Glass className="p-3">
-        <TerminalLabel>Current Certifications</TerminalLabel>
-        {dashboard.certifications.length === 0 ? (
-          <EmptyState>No certifications earned yet.</EmptyState>
-        ) : (
-          <div className="grid grid-cols-1 gap-1 sm:grid-cols-2 lg:grid-cols-3">
-            {dashboard.certifications.map((c) => (
-              <div key={`${c.agentId}-${c.mentorId}`} className="flex items-center justify-between gap-2 border-b border-cmd-border/60 py-1">
-                <span className="text-cmd-text">{AGENT_PROFILES[c.agentId].name}</span>
-                <span className="text-[9px] text-cmd-textDim">
-                  {c.mentorName} — Day {c.graduatedSimDay}
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-      </Glass>
+      <CurrentCertifications certifications={foundationalMentorState.certifications} onSelectAction={(type, record) => setCertAction({ type, record })} />
 
       <Glass className="p-3">
         <TerminalLabel>Mentor Roadmap</TerminalLabel>
@@ -238,11 +236,256 @@ export function MentorLibraryPanel() {
         </div>
       </Glass>
 
-      {selectedAgentId && (
-        <EmployeeAcademyReport agentId={selectedAgentId} mentorId={dashboard.activeMentorId} onClose={() => setSelectedAgentId(null)} onApprove={approve} onRevoke={revoke} busy={busy} />
+      {selectedAgentId && <EmployeeAcademyReport agentId={selectedAgentId} mentorId={dashboard.activeMentorId} onClose={() => setSelectedAgentId(null)} onApprove={approve} busy={busy} />}
+
+      {certAction && (
+        <CertificationActionDialog
+          type={certAction.type}
+          record={certAction.record}
+          busy={certBusy}
+          error={certError}
+          onClose={() => {
+            setCertAction(null);
+            setCertError(null);
+          }}
+          onRevoke={(reason) => void doRevokeCertification(certAction.record, reason)}
+          onDowngrade={(reason) => void doDowngradeCertification(certAction.record, reason)}
+          onPromote={(reason) => void doPromoteCertification(certAction.record, reason)}
+          onResetProgress={() => void doResetCertificationProgress(certAction.record)}
+        />
       )}
 
       {learningMode && <CeoPersonalLearning />}
+    </div>
+  );
+}
+
+/**
+ * Certification Management — full CEO controls (a quality-of-life fix).
+ * Reads `foundationalMentorState.certifications` directly — the real,
+ * permanent, independent registry (see backend/app/foundational_mentors.py's
+ * "Certification Management" section) — rather than a client-side
+ * re-derivation from graduation status, so every certification is
+ * reachable here regardless of which mentor track is currently active
+ * (the original bug: a certification on an already-completed track had
+ * no reachable Revoke button at all).
+ */
+function CurrentCertifications({ certifications, onSelectAction }: { certifications: CertificationRecord[]; onSelectAction: (type: CertActionType, record: CertificationRecord) => void }) {
+  const current = certifications.filter((c) => c.status === "active" || c.status === "suspended");
+  const revoked = certifications.filter((c) => c.status === "revoked");
+
+  return (
+    <>
+      <Glass className="p-3">
+        <TerminalLabel>Current Certifications</TerminalLabel>
+        {current.length === 0 ? (
+          <EmptyState>No certifications earned yet.</EmptyState>
+        ) : (
+          <div className="space-y-1.5">
+            {current.map((c) => (
+              <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-cmd-border/60 py-1.5 last:border-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-cmd-text">{AGENT_PROFILES[c.agentId].name}</span>
+                  <span className="text-[9px] text-cmd-textDim">{c.mentorName}</span>
+                  <StatusPill tone={certificationStatusTone(c.status)}>{c.status.toUpperCase()}</StatusPill>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  <button type="button" onClick={() => onSelectAction("details", c)} className="rounded-sm border border-cmd-border px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-cmd-textDim hover:border-cmd-cyan/50 hover:text-cmd-cyan">
+                    View / History
+                  </button>
+                  {c.status === "active" ? (
+                    <button type="button" onClick={() => onSelectAction("downgrade", c)} className="rounded-sm border border-cmd-amber/40 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-cmd-amber hover:bg-cmd-amber/10">
+                      Downgrade
+                    </button>
+                  ) : (
+                    <button type="button" onClick={() => onSelectAction("promote", c)} className="rounded-sm border border-cmd-green/40 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-cmd-green hover:bg-cmd-green/10">
+                      Promote
+                    </button>
+                  )}
+                  <button type="button" onClick={() => onSelectAction("revoke", c)} className="rounded-sm border border-cmd-red/40 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-cmd-red hover:bg-cmd-red/10">
+                    Revoke
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Glass>
+
+      {revoked.length > 0 && (
+        <Glass className="p-3">
+          <TerminalLabel>Revoked Certifications — awaiting re-earn</TerminalLabel>
+          <div className="space-y-1.5">
+            {revoked.map((c) => (
+              <div key={c.id} className="flex flex-wrap items-center justify-between gap-2 border-b border-cmd-border/60 py-1.5 last:border-0">
+                <div className="flex items-center gap-2">
+                  <span className="text-cmd-text">{AGENT_PROFILES[c.agentId].name}</span>
+                  <span className="text-[9px] text-cmd-textDim">{c.mentorName}</span>
+                  <StatusPill tone={certificationStatusTone(c.status)}>{c.status.toUpperCase()}</StatusPill>
+                </div>
+                <div className="flex flex-wrap gap-1">
+                  <button type="button" onClick={() => onSelectAction("details", c)} className="rounded-sm border border-cmd-border px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-cmd-textDim hover:border-cmd-cyan/50 hover:text-cmd-cyan">
+                    View / History
+                  </button>
+                  <button type="button" onClick={() => onSelectAction("reset", c)} className="rounded-sm border border-cmd-border px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-cmd-textDim hover:border-cmd-amber/50 hover:text-cmd-amber">
+                    Reset Progress
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Glass>
+      )}
+    </>
+  );
+}
+
+/**
+ * One shared modal for every Certification Management action — the
+ * Revoke copy matches the brief's requested wording exactly. Downgrade/
+ * Promote/Reset Progress reuse the same modal shell for a consistent
+ * confirm-before-you-act pattern, with lighter copy matching their own
+ * lower severity.
+ */
+function CertificationActionDialog({
+  type,
+  record,
+  busy,
+  error,
+  onClose,
+  onRevoke,
+  onDowngrade,
+  onPromote,
+  onResetProgress,
+}: {
+  type: CertActionType;
+  record: CertificationRecord;
+  busy: boolean;
+  error: string | null;
+  onClose: () => void;
+  onRevoke: (reason: string) => void;
+  onDowngrade: (reason: string) => void;
+  onPromote: (reason: string | null) => void;
+  onResetProgress: () => void;
+}) {
+  const [reason, setReason] = useState("");
+  const agentName = AGENT_PROFILES[record.agentId].name;
+
+  if (type === "details") {
+    return (
+      <div className="fixed inset-0 z-[70] flex items-center justify-center bg-cmd-bg/80 p-4 backdrop-blur-sm" onClick={onClose}>
+        <div onClick={(e) => e.stopPropagation()} className="w-full max-w-lg">
+          <Glass className="p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <TerminalLabel>
+                {agentName} — {record.mentorName} Certification
+              </TerminalLabel>
+              <button type="button" onClick={onClose} className="text-cmd-textDim hover:text-cmd-red">
+                ✕
+              </button>
+            </div>
+            <div className="mb-2 flex items-center gap-2">
+              <StatusPill tone={certificationStatusTone(record.status)}>{record.status.toUpperCase()}</StatusPill>
+              <span className="text-[9px] text-cmd-textDim">Last updated sim day {record.updatedSimDay}</span>
+            </div>
+            <div className="mt-2 border-t border-cmd-border/60 pt-2">
+              <TerminalLabel>Certification History — permanent, never edited or deleted</TerminalLabel>
+              <div className="mt-1 space-y-1">
+                {record.history.map((h) => (
+                  <div key={h.id} className="border-b border-cmd-border/40 py-1 text-[9px] last:border-0">
+                    <div className="flex items-center justify-between">
+                      <span className="uppercase tracking-wide text-cmd-text">{h.action.replace(/_/g, " ")}</span>
+                      <span className="text-cmd-textDim">Day {h.simDay}</span>
+                    </div>
+                    {h.reason && <div className="mt-0.5 text-cmd-textDim">Reason: {h.reason}</div>}
+                  </div>
+                ))}
+              </div>
+            </div>
+          </Glass>
+        </div>
+      </div>
+    );
+  }
+
+  if (type === "reset") {
+    return (
+      <div className="fixed inset-0 z-[70] flex items-center justify-center bg-cmd-bg/80 p-4 backdrop-blur-sm" onClick={onClose}>
+        <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md">
+          <Glass className="p-4">
+            <TerminalLabel>Reset {agentName}'s {record.mentorName} re-training progress?</TerminalLabel>
+            <p className="mt-2 text-[9px] text-cmd-textDim">This wipes any renewed lesson/quiz progress made since the revoke, restarting the repeat attempt from lesson one. The revoked certification's own history is preserved.</p>
+            {error && <div className="mt-2 text-cmd-red">{error}</div>}
+            <div className="mt-3 flex justify-end gap-2">
+              <button type="button" onClick={onClose} className="rounded-sm border border-cmd-border px-3 py-1 text-[10px] uppercase tracking-wider text-cmd-textDim hover:text-cmd-text">
+                Cancel
+              </button>
+              <button type="button" disabled={busy} onClick={onResetProgress} className="rounded-sm border border-cmd-amber/50 px-3 py-1 text-[10px] uppercase tracking-wider text-cmd-amber hover:bg-cmd-amber/10 disabled:opacity-40">
+                Reset Progress
+              </button>
+            </div>
+          </Glass>
+        </div>
+      </div>
+    );
+  }
+
+  if (type === "promote") {
+    return (
+      <div className="fixed inset-0 z-[70] flex items-center justify-center bg-cmd-bg/80 p-4 backdrop-blur-sm" onClick={onClose}>
+        <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md">
+          <Glass className="p-4">
+            <TerminalLabel>Reinstate {agentName}'s {record.mentorName} Certification?</TerminalLabel>
+            <p className="mt-2 text-[9px] text-cmd-textDim">This returns the certification to Active standing. Only offered while suspended.</p>
+            <label className="mt-2 block text-[9px] uppercase tracking-wide text-cmd-textDim">Note (optional)</label>
+            <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} className="mt-1 w-full rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-[10px] text-cmd-text outline-none focus:border-cmd-cyan/50" placeholder="Retrained and reviewed." />
+            {error && <div className="mt-2 text-cmd-red">{error}</div>}
+            <div className="mt-3 flex justify-end gap-2">
+              <button type="button" onClick={onClose} className="rounded-sm border border-cmd-border px-3 py-1 text-[10px] uppercase tracking-wider text-cmd-textDim hover:text-cmd-text">
+                Cancel
+              </button>
+              <button type="button" disabled={busy} onClick={() => onPromote(reason.trim() || null)} className="rounded-sm border border-cmd-green/50 px-3 py-1 text-[10px] uppercase tracking-wider text-cmd-green hover:bg-cmd-green/10 disabled:opacity-40">
+                Promote Certification
+              </button>
+            </div>
+          </Glass>
+        </div>
+      </div>
+    );
+  }
+
+  // "downgrade" and "revoke" both require a real, non-empty reason.
+  const isRevoke = type === "revoke";
+  return (
+    <div className="fixed inset-0 z-[70] flex items-center justify-center bg-cmd-bg/80 p-4 backdrop-blur-sm" onClick={onClose}>
+      <div onClick={(e) => e.stopPropagation()} className="w-full max-w-md">
+        <Glass className="p-4">
+          <TerminalLabel>
+            Are you sure you want to {isRevoke ? "revoke" : "downgrade"} {agentName}'s {record.mentorName} Certification?
+          </TerminalLabel>
+          <p className="mt-2 text-[9px] text-cmd-amber">
+            {isRevoke
+              ? "This will remove the active certification but preserve all historical records."
+              : "This suspends the certification (reversible via Promote) but does not touch the employee's underlying progress."}
+          </p>
+          <label className="mt-2 block text-[9px] uppercase tracking-wide text-cmd-textDim">Reason (required)</label>
+          <textarea value={reason} onChange={(e) => setReason(e.target.value)} rows={2} className="mt-1 w-full rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-[10px] text-cmd-text outline-none focus:border-cmd-cyan/50" placeholder="Manual reset for additional training." />
+          {error && <div className="mt-2 text-cmd-red">{error}</div>}
+          <div className="mt-3 flex justify-end gap-2">
+            <button type="button" onClick={onClose} className="rounded-sm border border-cmd-border px-3 py-1 text-[10px] uppercase tracking-wider text-cmd-textDim hover:text-cmd-text">
+              Cancel
+            </button>
+            <button
+              type="button"
+              disabled={busy || !reason.trim()}
+              onClick={() => (isRevoke ? onRevoke(reason.trim()) : onDowngrade(reason.trim()))}
+              className="rounded-sm border border-cmd-red/50 px-3 py-1 text-[10px] uppercase tracking-wider text-cmd-red hover:bg-cmd-red/10 disabled:opacity-40"
+            >
+              {isRevoke ? "Revoke Certification" : "Downgrade Certification"}
+            </button>
+          </div>
+        </Glass>
+      </div>
     </div>
   );
 }
@@ -272,20 +515,18 @@ function EmployeeAcademyReport({
   mentorId,
   onClose,
   onApprove,
-  onRevoke,
   busy,
 }: {
   agentId: AgentId;
   mentorId: FoundationalMentorId | null;
   onClose: () => void;
   onApprove: (agentId: AgentId, mentorId: FoundationalMentorId) => void;
-  onRevoke: (agentId: AgentId, mentorId: FoundationalMentorId) => void;
   busy: boolean;
 }) {
   const { foundationalMentorState, agentKnowledge } = useGameStore();
   const dashboard = computeAcademyDashboard(foundationalMentorState, agentKnowledge);
   const summary = mentorId ? [...dashboard.currentlyStudying, ...dashboard.graduationQueue, ...dashboard.needingHelp, ...dashboard.topStudents].find((s) => s.agentId === agentId) : null;
-  const certifications = dashboard.certifications.filter((c) => c.agentId === agentId);
+  const certifications = foundationalMentorState.certifications.filter((c) => c.agentId === agentId);
   const knowledge = agentKnowledge[agentId];
 
   return (
@@ -324,22 +565,14 @@ function EmployeeAcademyReport({
           )}
           <div className="mt-3 border-t border-cmd-border/60 pt-2">
             <TerminalLabel>Certifications</TerminalLabel>
+            <p className="mb-1 text-[9px] text-cmd-textDim">Full controls (View/Revoke/Downgrade/Promote/Reset Progress/History) live in Current Certifications, below.</p>
             {certifications.length === 0 ? (
               <EmptyState>None yet.</EmptyState>
             ) : (
               certifications.map((c) => (
-                <div key={c.mentorId} className="flex items-center justify-between gap-2 py-0.5 text-[9px] text-cmd-textDim">
-                  <span>
-                    {c.mentorName} — Day {c.graduatedSimDay}
-                  </span>
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => onRevoke(agentId, c.mentorId)}
-                    className="rounded-sm border border-cmd-red/40 px-1.5 py-0.5 text-[9px] uppercase tracking-wide text-cmd-red hover:bg-cmd-red/10 disabled:opacity-40"
-                  >
-                    Revoke Graduation
-                  </button>
+                <div key={c.id} className="flex items-center justify-between gap-2 py-0.5 text-[9px] text-cmd-textDim">
+                  <span>{c.mentorName}</span>
+                  <StatusPill tone={certificationStatusTone(c.status)}>{c.status.toUpperCase()}</StatusPill>
                 </div>
               ))
             )}
