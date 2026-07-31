@@ -3082,71 +3082,114 @@ active so the shared dev backend's state doesn't leak into other tests);
 `commandCenter.spec.ts`'s tab-count regression updated (29 → 30 tabs,
 `MENTORLAB` added to the tab list).
 
-### Revoke Graduation — a real Executive Action on the Academy
+### Certification Management — full CEO controls, a quality-of-life fix
 
-The mirror image of the Graduation Queue's Approve button
-(`approve_graduation`): a real CEO action, `revoke_employee_graduation`
-(`app/foundational_mentors.py`), reachable via
-`POST /api/foundational-mentors/revoke-graduation`. Explicitly scoped to
-match the brief's own bullet list, not expanded beyond it:
+**The bug this fixes.** The original "Revoke Graduation" design (below,
+superseded) derived a certification purely from
+`FoundationalMentorProgress.graduation_status == "graduated"` — there
+was no independent, permanent certification record. That created a real
+reachability bug: the Current Certifications list's only path to a
+Revoke action was through the CEO clicking that employee's name inside
+one of the *active* mentor track's own summary lists (Currently
+Studying/Top Students/Needing Help/Graduation Queue) — see
+`computeAcademyDashboard` (frontend `lib/derive.ts`), which derives
+those lists from `activeSummaries` only. Once the company progressed
+past a track, any employee whose certification lived on that
+now-inactive track could never appear in those lists again, and so
+their Revoke button became permanently unreachable — "once an agent
+appears under Current Certifications there is no way to revoke it."
 
-- **Certification removed / graduation status reverts**: the employee's
-  `graduation_status` flips from `"graduated"` back to `"in_progress"`
-  (the real enum value backing "In Training") and `graduated_sim_day`
-  clears. The Academy Dashboard's Certifications list is already
-  *derived* from `graduation_status == "graduated"`, never a separately
-  stored entity, so it updates automatically — nothing extra to remove.
-- **The employee repeats the required mentor modules**: their lesson/
-  quiz progress on this one track resets to a fresh
-  `FoundationalMentorProgress` — the same reset
-  `repeat_mentor_company_wide` already uses per student, reused here for
-  one employee instead of the whole cohort. Real auto-progression
-  (`tick_employee_progress`) picks it back up from lesson one on the
-  very next tick, the same as any other in-progress employee.
-- **The Coach creates a new improvement plan**: a real, deterministic
-  templated note (`coach_note`, a new field on `FoundationalMentorProgress`)
-  naming the track and the real sim day it was revoked — never a
-  fabricated free-form message. Cleared automatically the moment the
-  employee earns real re-approval.
-- **Company knowledge remains intact**: `academy_research.py`'s
-  company-wide Knowledge Points/project system was never gated by any
-  one employee's individual graduation in the first place, so nothing
-  there needed touching.
+**The fix: `CertificationRecord`, a real independent registry**
+(`schemas.py`, `FoundationalMentorState.certifications`) — one permanent
+record per (agent, mentor) pair that has ever been earned, keyed
+`cert-{agentId}-{mentorId}` so every certification is always directly
+addressable regardless of which track is currently active. Unlike
+`FoundationalMentorProgress` (which a revoke genuinely resets, so the
+employee can really repeat the track), a `CertificationRecord` is never
+deleted — only its `status` changes, with every transition permanently
+appended to `history` (`CertificationHistoryEntry`), so "View
+Certification History" always has the complete real timeline.
 
-**Deliberately narrow, matching the brief's own bullet list exactly**:
-only the one employee's own progress record changes. The mentor track's
-company-wide status (`graduated`/`active`/etc.) and roadmap position are
-untouched even if this was the graduation that had completed the whole
-cohort — reverting a track's company-wide state over one employee's
-revocation would be a much larger, unrequested side effect the brief
-never asked for. "Treated as remedial education rather than deleting
-progress" is why the reset goes through the same real
-`FoundationalMentorProgress()` fresh-state constructor `repeat_mentor_
-company_wide` already uses, rather than any kind of soft-delete or
-history-erasure.
+**A real three-state lifecycle** (`CertificationStatus`): **active**
+(currently qualified), **suspended** (temporarily disabled, reversible
+— Downgrade/Promote), **revoked** (permanently pulled until re-earned).
+`"expired"` is deliberately not built: it would need a real
+passage-of-time renewal/decay signal, and nothing in this codebase
+tracks certification age or renewal — a genuine future addition, not
+fabricated here to fill out a fourth status.
 
-Frontend: `MentorLibraryPanel.tsx`'s Employee Academy Report now shows a
-"Revoke Graduation" button next to each certification, and a real Coach
-improvement-plan note when one exists on the employee's current-track
-progress. No new WS payload fields needed beyond `coachNote` on
-`FoundationalMentorProgress`.
+**Six real actions, all in `app/foundational_mentors.py`'s
+"Certification Management" section:**
 
-**Verified**: `test_foundational_mentors.py` gains 9 new tests
-(`TestRevokeGraduation` — status reversion, real progress reset, the
-real Coach note's content, non-interference with the track's
-company-wide status and with other employees' progress, and the error
-paths) plus a 10th confirming `approve_graduation` clears any leftover
-note on real re-approval — 689/689 full suite, mypy/ruff clean.
-Frontend: `tsc -b`/eslint/build clean; new live Playwright test in
-`mentorLibrary.spec.ts` covering the honest empty state (no
-certifications, no Revoke button) before any real graduation exists —
-a full live graduate-then-revoke round trip isn't reachable within a
-test's time budget (reaching "graduated" takes many real ticks plus a
-probabilistic real quiz pass, and this codebase deliberately has no
-test-only shortcut to force it: `ClientSaveRequest`, the real
-`/api/save` shape, only ever accepts player/settings/dialogueHistory),
-so the revoke logic itself is verified by the 9 backend unit tests
-instead.
+- **View Certification / View Certification History** — no new mutation
+  needed; both read directly from the record already broadcast in
+  `FoundationalMentorState.certifications`, the same "already-broadcast
+  state" pattern the rest of this feature uses.
+- **`downgrade_certification`** — Active → Suspended. Requires a real
+  reason (this is a real personnel action). Deliberately does NOT touch
+  `FoundationalMentorProgress` — the employee's raw lesson/quiz record
+  stays exactly as it was, so Promote can cleanly reinstate without
+  re-earning anything.
+- **`promote_certification`** — Suspended → Active, the mirror image;
+  only "eligible" (offered at all) while suspended.
+- **`revoke_certification`** — Active or Suspended → Revoked. Requires a
+  real reason. Resets the employee's `FoundationalMentorProgress` to
+  fresh (the exact same reset `repeat_mentor_company_wide` already uses
+  per student) so they genuinely return to the Mentor Track and can
+  re-earn it — approving a later graduation on the same (agent, mentor)
+  pair reuses the *same* `CertificationRecord`, flipping it back to
+  `"active"` and appending a fresh `"earned"` entry, rather than
+  creating a second record — "they should be able to earn the
+  certification again later" without losing the first earning's history.
+- **`reset_certification_progress`** — only offered on an already-
+  revoked certification: wipes any renewed re-training headway made
+  *since* the revoke (a genuinely separate admin action from the revoke
+  itself, which already reset progress once).
+
+**Deliberately NOT built: "Downgrade"/"Promote" to a performance tier**
+(Bronze/Silver/Gold or similar). No tiered-certification concept exists
+anywhere in this codebase — Foundational Mentor graduation is a real
+pass/fail signal (every lesson correctly quizzed), never a graded scale
+— so Downgrade/Promote are real *standing* transitions (above) instead
+of an invented tier system with no real signal behind it.
+
+**Executive Log.** No generic "Executive Log" exists in this codebase;
+its real analog is the Newspaper's `NewsItem(category="company")` feed
+(`Newspaper.tsx`'s "Company News" section) — every prior `NewsItem` was
+generated inside `nexus.py`'s own tick loop, so this is the first
+direct-from-REST append (`GameState.revoke_academy_certification` in
+`state.py`). One real headline per revoke, matching the requested
+format exactly: `"Day {simDay} — {AgentName}'s {trackLabel}
+Certification revoked by CEO. Reason: {reason}"`. Capped the same lazy
+way every other news item is — `nexus.py`'s `_trim_news()` runs once per
+tick over the full accumulated list, so this entry gets folded into
+that same `MAX_NEWS_PER_CATEGORY` (8) cap on the very next tick, no
+duplicate trimming logic needed in `state.py`.
+
+Frontend: the Current Certifications section (`MentorLibraryPanel.tsx`)
+now reads directly from `foundationalMentorState.certifications` (the
+real, always-addressable source) instead of a derived-from-progress
+list, with View/Revoke/Downgrade/Promote/Reset Progress/History actions
+inline on every row — reachable regardless of which mentor track is
+currently active. A confirmation dialog gates Revoke, matching the
+brief's requested copy exactly ("Are you sure you want to revoke
+{Agent}'s {Track} Certification?" / "This will remove the active
+certification but preserve all historical records." / Cancel / Revoke
+Certification).
+
+**Verified**: `test_foundational_mentors.py`'s `TestCertificationManagement`
+(replacing the old `TestRevokeGraduation`) — 20 tests covering revoke
+(status reversion, real progress reset, the real Coach note's content
+including the CEO's own reason text, non-interference with the track's
+company-wide status and other employees' progress, history preservation
+instead of deletion, the required-reason and double-revoke error paths),
+downgrade/promote (suspend/reinstate, progress untouched, eligibility
+gates), reset progress (revoked-only gate, real wipe), and re-earning a
+revoked certification (same record, appended history, never a second
+record) — plus a new `TestApproveGraduation` test confirming
+`approve_graduation` itself creates the permanent `CertificationRecord`
+with a real "earned" history entry — 826/826 full backend suite,
+mypy/ruff clean.
 
 ### Executive Intelligence Network — Feature 50
 

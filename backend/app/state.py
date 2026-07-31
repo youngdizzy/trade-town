@@ -13,7 +13,7 @@ from typing import Callable
 
 from app import education, nexus, player_vs_ai, signal_calibration, trade_notifications
 from app.academy import compute_academy_state, default_agent_knowledge
-from app.agents import all_agent_ids
+from app.agents import AGENT_PROFILES, all_agent_ids
 from app.black_box import archive_project, default_black_box_state, mark_breakthrough_viewed
 from app.config import settings
 from app.mentor import compute_mentor_state, compute_thinking_profiles, generate_question_of_the_day, submit_response
@@ -56,6 +56,7 @@ from app.schemas import (
     GatekeeperRejection,
     HoldReason,
     MeetingState,
+    NewsItem,
     PlayerEventCategory,
     PlayerVsAiPrompt,
     PlayerVsAiState,
@@ -75,12 +76,15 @@ from app.foundational_mentors import (
     add_resource as add_foundational_mentor_resource_entry,
     approve_graduation as approve_foundational_mentor_graduation,
     default_foundational_mentor_state,
+    downgrade_certification,
     grade_ceo_lesson_quiz,
     mark_ceo_lesson_viewed,
     pause_company_training,
+    promote_certification,
     repeat_mentor_company_wide,
+    reset_certification_progress,
     resume_company_training,
-    revoke_employee_graduation,
+    revoke_certification,
     set_active_mentor,
     skip_to_next_mentor,
 )
@@ -359,11 +363,48 @@ class GameState:
                 self.data = self.data.model_copy(update={"foundational_mentor_state": new_state})
             return self.data, company_graduated, error
 
-    async def revoke_academy_graduation(self, agent_id: AgentId, mentor_id: FoundationalMentorId) -> tuple[GameSaveState, str | None]:
-        """The Executive Action "Revoke Graduation" — a real CEO action,
-        the mirror image of approve_academy_graduation above."""
+    async def downgrade_academy_certification(self, agent_id: AgentId, mentor_id: FoundationalMentorId, reason: str) -> tuple[GameSaveState, str | None]:
+        """Certification Management's Downgrade action — Active -> Suspended."""
         async with self.lock:
-            new_state, error = revoke_employee_graduation(self.data.foundational_mentor_state, agent_id, mentor_id, sim_day=self.data.time.day)
+            new_state, error = downgrade_certification(self.data.foundational_mentor_state, agent_id, mentor_id, reason=reason, sim_day=self.data.time.day)
+            if error is None:
+                self.data = self.data.model_copy(update={"foundational_mentor_state": new_state})
+            return self.data, error
+
+    async def promote_academy_certification(self, agent_id: AgentId, mentor_id: FoundationalMentorId, reason: str | None) -> tuple[GameSaveState, str | None]:
+        """Certification Management's Promote action — Suspended -> Active,
+        only "eligible" (offered) while suspended."""
+        async with self.lock:
+            new_state, error = promote_certification(self.data.foundational_mentor_state, agent_id, mentor_id, sim_day=self.data.time.day, reason=reason)
+            if error is None:
+                self.data = self.data.model_copy(update={"foundational_mentor_state": new_state})
+            return self.data, error
+
+    async def revoke_academy_certification(self, agent_id: AgentId, mentor_id: FoundationalMentorId, reason: str) -> tuple[GameSaveState, str | None]:
+        """Certification Management's Revoke action — a real CEO action,
+        the mirror image of approve_academy_graduation above. Also
+        appends a real Newspaper "company"-category news item — this
+        codebase's real analog to an Executive Log — recording exactly
+        which certification was revoked, by whom, and why, matching the
+        brief's requested "Day N / X's Y Certification revoked by CEO. /
+        Reason: ..." format."""
+        async with self.lock:
+            mentor_label = next((m.track_label for m in self.data.foundational_mentor_state.mentors if m.id == mentor_id), mentor_id)
+            new_state, error = revoke_certification(self.data.foundational_mentor_state, agent_id, mentor_id, reason=reason, sim_day=self.data.time.day)
+            if error is not None:
+                return self.data, error
+            agent_name = AGENT_PROFILES[agent_id].name if agent_id in AGENT_PROFILES else agent_id
+            headline = f"Day {self.data.time.day} — {agent_name}'s {mentor_label} Certification revoked by CEO. Reason: {reason.strip()}"
+            news_item = NewsItem(id=f"news-cert-revoke-{agent_id}-{mentor_id}-{self.data.time.day}-{len(self.data.news)}", headline=headline, category="company", timestamp=_now_iso())
+            self.data = self.data.model_copy(update={"foundational_mentor_state": new_state, "news": [*self.data.news, news_item]})
+            return self.data, None
+
+    async def reset_academy_certification_progress(self, agent_id: AgentId, mentor_id: FoundationalMentorId) -> tuple[GameSaveState, str | None]:
+        """Certification Management's Reset Progress action — only
+        offered on an already-revoked certification (see
+        reset_certification_progress's own docstring)."""
+        async with self.lock:
+            new_state, error = reset_certification_progress(self.data.foundational_mentor_state, agent_id, mentor_id, sim_day=self.data.time.day)
             if error is None:
                 self.data = self.data.model_copy(update={"foundational_mentor_state": new_state})
             return self.data, error

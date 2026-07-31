@@ -2890,6 +2890,16 @@ FoundationalResourceType = Literal["video", "book", "article", "pdf", "note"]
 # yet — see foundational_mentors.py's approve_graduation().
 FoundationalGraduationStatus = Literal["in_progress", "pending_approval", "graduated"]
 
+# Certification Management (v0.7 quality-of-life fix). A permanent
+# CertificationRecord's own real standing, independent of the raw
+# lesson/quiz progress that earned it — see foundational_mentors.py's
+# module docstring for the full lifecycle. "expired" is deliberately not
+# included: it would need a real passage-of-time renewal/decay signal,
+# which doesn't exist anywhere in this codebase yet — a genuine future
+# addition, not fabricated here.
+CertificationStatus = Literal["active", "suspended", "revoked"]
+CertificationHistoryAction = Literal["earned", "suspended", "reinstated", "revoked", "progress_reset"]
+
 
 class FoundationalMentorLesson(CamelModel):
     """Public shape — deliberately has no answer key, mirroring
@@ -2949,10 +2959,42 @@ class FoundationalMentorProgress(CamelModel):
     graduation_status: FoundationalGraduationStatus = Field(default="in_progress", alias="graduationStatus")
     graduated_sim_day: int | None = Field(default=None, alias="graduatedSimDay")
     # v0.7 Feature 50 addendum — "Revoke Graduation." Set by
-    # revoke_employee_graduation() to a real, deterministic templated
-    # note (never a fabricated free-form message); cleared automatically
-    # once the employee re-graduates via approve_graduation().
+    # revoke_certification() to a real, deterministic templated note
+    # (never a fabricated free-form message); cleared automatically once
+    # the employee re-graduates via approve_graduation().
     coach_note: str | None = Field(default=None, alias="coachNote")
+
+
+class CertificationHistoryEntry(CamelModel):
+    """One permanent, immutable audit line on a CertificationRecord —
+    never edited or deleted, only ever appended to. `reason` is the
+    CEO's own real typed text for a revoke/suspend action; None for
+    "earned"/"reinstated"/"progress_reset", which don't require one."""
+
+    id: str
+    action: CertificationHistoryAction
+    reason: str | None = None
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
+class CertificationRecord(CamelModel):
+    """A permanent record of one (agent, mentor track) certification's
+    real lifecycle — earned, possibly suspended/reinstated, possibly
+    revoked and re-earned, every transition kept in `history` forever.
+    Independent of `FoundationalMentorProgress`, whose lesson/quiz
+    counters do get reset by a revoke or a progress reset (see
+    foundational_mentors.py's revoke_certification/
+    reset_certification_progress) — this record is what survives that
+    reset, so "View Certification History" always has a real answer."""
+
+    id: str
+    agent_id: AgentId = Field(alias="agentId")
+    mentor_id: FoundationalMentorId = Field(alias="mentorId")
+    mentor_name: str = Field(alias="mentorName")
+    status: CertificationStatus
+    updated_sim_day: int = Field(alias="updatedSimDay")
+    history: list[CertificationHistoryEntry] = Field(default_factory=list)
 
 
 class FoundationalMentorState(CamelModel):
@@ -2960,8 +3002,17 @@ class FoundationalMentorState(CamelModel):
     # Real per-employee progress — the actual students. Keyed by the
     # employee's own AgentId, then by mentor id (an employee keeps every
     # mentor's progress record permanently, including already-graduated
-    # tracks, so "Current Certifications" needs no separate list).
+    # tracks).
     progress: dict[AgentId, dict[FoundationalMentorId, FoundationalMentorProgress]] = Field(default_factory=dict)
+    # v0.7 Certification Management quality-of-life fix. The permanent
+    # certification registry — one CertificationRecord per (agent,
+    # mentor) pair that has ever been earned, surviving a revoke (unlike
+    # `progress` above, which a revoke genuinely resets so the employee
+    # can really repeat the track). This is the real, authoritative
+    # source for "Current Certifications" (status active/suspended) and
+    # "View Certification History" (the full permanent record) — see
+    # foundational_mentors.py's Certification Management section.
+    certifications: list[CertificationRecord] = Field(default_factory=list)
     # The CEO's own entirely separate, optional personal progress —
     # only reachable when Settings.ceoAcademyLearningMode is on. Same
     # shape as an employee's per-mentor progress dict, never mixed with

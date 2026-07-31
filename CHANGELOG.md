@@ -7,6 +7,44 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Certification Management — full CEO controls (backend), a
+  quality-of-life fix**: the bug — once a certification appeared under
+  Current Certifications, the only Revoke path was clicking that
+  employee's name inside the *active* mentor track's own summary lists,
+  so a certification on any already-completed, no-longer-active track
+  became permanently unreachable. Fixed with a new, real, independent
+  `CertificationRecord` registry (`FoundationalMentorState.certifications`,
+  keyed `cert-{agentId}-{mentorId}`) that's never derived from
+  `FoundationalMentorProgress` (which a revoke genuinely resets) and
+  never deleted — every status transition permanently appended to a
+  `history` list. New real lifecycle: **active** / **suspended**
+  (Downgrade, reversible, progress untouched) / **revoked** (Revoke,
+  requires a real reason, resets progress so the employee can re-earn
+  it — re-approving reuses the *same* record rather than creating a
+  second one). New `downgrade_certification`/`promote_certification`/
+  `revoke_certification`/`reset_certification_progress`
+  (`app/foundational_mentors.py`), replacing the old
+  `revoke_employee_graduation`. New `POST
+  /api/foundational-mentors/certification/{downgrade,promote,revoke,reset-progress}`.
+
+  **Deliberately not built**: Downgrade/Promote to a performance tier
+  (Bronze/Silver/Gold) — no tiered-certification concept exists
+  anywhere in this codebase; graduation is a real pass/fail signal, so
+  inventing tier thresholds would be fabrication. "Expired" status —
+  no time-based renewal/decay signal exists to honestly back it.
+
+  Every revoke also appends a real Newspaper `"company"`-category news
+  item — this codebase's real analog to an Executive Log, since no
+  generic one exists — with the exact requested format ("Day {simDay}
+  — {Agent}'s {Track} Certification revoked by CEO. Reason: {reason}").
+
+  `test_foundational_mentors.py`'s new `TestCertificationManagement` (20
+  tests) plus a new `TestApproveGraduation` test — 826/826 backend
+  tests, mypy/ruff clean. Frontend (the Current Certifications panel's
+  new per-row controls and confirmation dialog) is a separate,
+  immediately-following commit per this project's backend-first
+  discipline.
+
 - **Probability First Trading Philosophy — permanent company principle,
   not a feature**: added to `docs/DESIGN_BIBLE.md` as a new subsection
   of the top-level "Design Philosophy — The Self-Improving Company"

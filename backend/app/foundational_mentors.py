@@ -88,6 +88,21 @@ the currently-active mentor, the company as a whole graduates that
 track (`company_graduated_sim_day`) and the next roadmap entry unlocks
 — "mastery before progression," per the brief.
 
+CERTIFICATION MANAGEMENT — a quality-of-life fix over the original
+"Approve Graduation only" gate: once a certification appears in Current
+Certifications, the CEO can View it, Revoke it (with a required reason,
+returning the employee to the track — see `revoke_certification`),
+Downgrade/Promote its standing (Active <-> Suspended — a real,
+reversible demotion short of full revocation, since no tiered
+Bronze/Silver/Gold concept exists anywhere in this codebase to
+"downgrade"/"promote" a performance level against), Reset Progress
+(only on an already-revoked certification, wiping any renewed re-
+training headway), and View its full permanent History. See the
+"Certification Management" section below (`CertificationRecord` in
+schemas.py is the new, independent, permanent registry this all reads
+and writes — never derived from `FoundationalMentorProgress`, which a
+revoke genuinely resets).
+
 MENTOR LAB REVISION — real, in-product mentor/lesson authoring is now
 built (`add_custom_mentor`, `add_custom_lesson`, `set_active_mentor`),
 no longer a code-only scope cut. `FoundationalMentorId` changed from a
@@ -152,6 +167,8 @@ from datetime import datetime, timezone
 
 from app.schemas import (
     AgentId,
+    CertificationHistoryEntry,
+    CertificationRecord,
     DisciplineReview,
     FoundationalMentorId,
     FoundationalMentorLesson,
@@ -680,9 +697,30 @@ def tick_employee_progress(
     return new_state, newly_pending
 
 
+def _certification_key(agent_id: AgentId, mentor_id: FoundationalMentorId) -> str:
+    return f"cert-{agent_id}-{mentor_id}"
+
+
+def _certification_by_key(state: FoundationalMentorState, agent_id: AgentId, mentor_id: FoundationalMentorId) -> CertificationRecord | None:
+    key = _certification_key(agent_id, mentor_id)
+    return next((c for c in state.certifications if c.id == key), None)
+
+
+def _append_certification_history(record: CertificationRecord, *, action: str, reason: str | None, sim_day: int) -> CertificationRecord:
+    """Appends one permanent history entry, bumping `updated_sim_day` —
+    never changes `status` itself, so every call site chains its own
+    `.model_copy(update={"status": ...})` to make that transition
+    explicit at the call site."""
+    entry = CertificationHistoryEntry(id=f"{record.id}-h{len(record.history)}", action=action, reason=reason, simDay=sim_day, createdAt=_now_iso())  # type: ignore[arg-type]
+    return record.model_copy(update={"updated_sim_day": sim_day, "history": [*record.history, entry]})
+
+
 def approve_graduation(state: FoundationalMentorState, agent_id: AgentId, mentor_id: FoundationalMentorId, *, sim_day: int) -> tuple[FoundationalMentorState, bool, str | None]:
     """A real CEO action — the Graduation Queue's Approve button. Returns
-    (state, company_just_graduated, error)."""
+    (state, company_just_graduated, error). Also upserts this employee's
+    permanent CertificationRecord (Certification Management, below) —
+    "active" status with a real "earned" history entry, whether this is
+    the first time or a real re-earning after an earlier revoke."""
     if agent_id not in STUDENT_AGENT_IDS:
         return state, False, "Unknown employee — not a real Academy student."
     mentor = _mentor_by_id(state, mentor_id)
@@ -695,7 +733,18 @@ def approve_graduation(state: FoundationalMentorState, agent_id: AgentId, mentor
     progress = progress.model_copy(update={"graduation_status": "graduated", "graduated_sim_day": sim_day, "coach_note": None})
     new_progress_map = {aid: dict(m) for aid, m in state.progress.items()}
     new_progress_map.setdefault(agent_id, {})[mentor_id] = progress
-    new_state = state.model_copy(update={"progress": new_progress_map, "updated_at": _now_iso()})
+
+    existing_cert = _certification_by_key(state, agent_id, mentor_id)
+    if existing_cert is None:
+        cert_id = _certification_key(agent_id, mentor_id)
+        entry = CertificationHistoryEntry(id=f"{cert_id}-h0", action="earned", reason=None, simDay=sim_day, createdAt=_now_iso())
+        new_cert = CertificationRecord(id=cert_id, agentId=agent_id, mentorId=mentor_id, mentorName=mentor.name, status="active", updatedSimDay=sim_day, history=[entry])
+        new_certifications = [*state.certifications, new_cert]
+    else:
+        updated_cert = _append_certification_history(existing_cert, action="earned", reason=None, sim_day=sim_day).model_copy(update={"status": "active"})
+        new_certifications = [updated_cert if c.id == existing_cert.id else c for c in state.certifications]
+
+    new_state = state.model_copy(update={"progress": new_progress_map, "certifications": new_certifications, "updated_at": _now_iso()})
 
     company_graduated = all(_employee_progress(new_state, aid, mentor_id).graduation_status == "graduated" for aid in STUDENT_AGENT_IDS)
     if not company_graduated:
@@ -711,37 +760,136 @@ def approve_graduation(state: FoundationalMentorState, agent_id: AgentId, mentor
     return new_state, True, None
 
 
-def revoke_employee_graduation(state: FoundationalMentorState, agent_id: AgentId, mentor_id: FoundationalMentorId, *, sim_day: int) -> tuple[FoundationalMentorState, str | None]:
-    """The mirror image of approve_graduation — a real CEO action, not
-    automatic. Treated as remedial education, never as deleting progress:
-    the employee's real lesson/quiz record on this track resets to fresh
-    (the same reset repeat_mentor_company_wide already uses per student),
-    their certification (the `graduation_status == "graduated"` read the
-    Academy Dashboard's Certifications list is already computed from) is
-    gone the moment `graduation_status` flips back to `"in_progress"`,
-    and the Coach's real, deterministic improvement-plan note explains
-    why. Deliberately narrow: only this one employee's own progress
-    record changes. The mentor track's own company-wide status/roadmap
-    position, and Company Knowledge (`academy_research.py`'s separate,
-    company-wide project system — never gated by any one employee's
-    individual graduation), are untouched — the brief's own bullet list
-    never asked for either, and reverting a whole track's roadmap
-    position over one employee's revocation would be a much larger,
-    unrequested side effect."""
+# --- Certification Management — full CEO controls over an earned certification ---
+#
+# A quality-of-life fix: previously, once an employee's certification
+# appeared in the Current Certifications list, the only way to revoke it
+# was to happen to find that employee in one of the ACTIVE mentor
+# track's own summary lists (Currently Studying/Top Students/Needing
+# Help) — impossible for a certification on an already-completed, no-
+# longer-active track. `CertificationRecord` (schemas.py) is now the
+# real, independent, permanent record every action below reads and
+# writes, so every certification — regardless of which track is
+# currently active — is always directly addressable.
+#
+# Deliberately NOT built: "Promote"/"Downgrade" to a performance tier
+# (Bronze/Silver/Gold or similar). No tiered-certification concept
+# exists anywhere in this codebase — Foundational Mentor graduation is a
+# real pass/fail signal (all lessons quizzed correctly), not a graded
+# scale, and inventing tier thresholds with no real signal behind them
+# would be exactly the kind of fabrication this codebase's own
+# established discipline avoids throughout. "Downgrade"/"Promote" are
+# instead real *standing* transitions — active <-> suspended — matching
+# a real, professional certification lifecycle: Active (currently
+# qualified), Suspended (temporarily disabled, reinstatable), Revoked
+# (permanently pulled, must re-earn). "Expired" (a natural, non-punitive
+# lapse) is also not built — it needs a real time-based renewal/decay
+# signal this codebase has none of yet.
+
+
+def downgrade_certification(state: FoundationalMentorState, agent_id: AgentId, mentor_id: FoundationalMentorId, *, reason: str, sim_day: int) -> tuple[FoundationalMentorState, str | None]:
+    """Suspends an active certification — a real, reversible demotion
+    short of full revocation. The employee's underlying lesson/quiz
+    progress is untouched (they're still nominally graduated on the raw
+    curriculum); only their certification's own standing changes, so
+    Promote can cleanly reinstate it without re-earning anything."""
+    record = _certification_by_key(state, agent_id, mentor_id)
+    if record is None:
+        return state, f"{agent_id} has no certification on {mentor_id} to downgrade."
+    if record.status != "active":
+        return state, f"Only an active certification can be downgraded (current status: {record.status})."
+    clean_reason = reason.strip()
+    if not clean_reason:
+        return state, "A reason is required to downgrade a certification."
+
+    updated = _append_certification_history(record, action="suspended", reason=clean_reason, sim_day=sim_day).model_copy(update={"status": "suspended"})
+    new_certifications = [updated if c.id == record.id else c for c in state.certifications]
+    return state.model_copy(update={"certifications": new_certifications, "updated_at": _now_iso()}), None
+
+
+def promote_certification(state: FoundationalMentorState, agent_id: AgentId, mentor_id: FoundationalMentorId, *, sim_day: int, reason: str | None = None) -> tuple[FoundationalMentorState, str | None]:
+    """Reinstates a suspended certification back to active — only
+    "eligible" (offered at all) when a certification is currently
+    suspended; the mirror image of downgrade_certification."""
+    record = _certification_by_key(state, agent_id, mentor_id)
+    if record is None:
+        return state, f"{agent_id} has no certification on {mentor_id} to promote."
+    if record.status != "suspended":
+        return state, f"Only a suspended certification is eligible for promotion (current status: {record.status})."
+
+    clean_reason = reason.strip() if reason else None
+    updated = _append_certification_history(record, action="reinstated", reason=clean_reason, sim_day=sim_day).model_copy(update={"status": "active"})
+    new_certifications = [updated if c.id == record.id else c for c in state.certifications]
+    return state.model_copy(update={"certifications": new_certifications, "updated_at": _now_iso()}), None
+
+
+def revoke_certification(state: FoundationalMentorState, agent_id: AgentId, mentor_id: FoundationalMentorId, *, reason: str, sim_day: int) -> tuple[FoundationalMentorState, str | None]:
+    """The full Revoke Certification action — a real CEO action, never
+    automatic. Treated as remedial education, never as deleting company
+    history: the CertificationRecord itself is never removed, only
+    flipped to "revoked" with a permanent, reasoned history entry (see
+    schemas.py's CertificationRecord/CertificationHistoryEntry) — so
+    "View Certification History" always shows the complete real
+    timeline. The employee's own lesson/quiz progress on this track
+    resets to fresh (the same reset repeat_mentor_company_wide already
+    uses per student) so they genuinely return to the Mentor Track and
+    can re-earn the certification later, and the Coach's real note
+    explains why. Deliberately narrow: only this one employee's own
+    progress record changes. The mentor track's own company-wide status/
+    roadmap position, and Company Knowledge (`academy_research.py`'s
+    separate, company-wide project system — never gated by any one
+    employee's individual graduation), are untouched — reverting a whole
+    track's roadmap position over one employee's revocation would be a
+    much larger, unrequested side effect. A reason is REQUIRED — this is
+    a permanent audit entry, never optional (see also the Newspaper's
+    "company" news category, this codebase's real analog to an
+    Executive Log, which state.py appends to alongside this call)."""
     if agent_id not in STUDENT_AGENT_IDS:
         return state, "Unknown employee — not a real Academy student."
     mentor = _mentor_by_id(state, mentor_id)
     if mentor is None:
         return state, "Unknown mentor track."
-    progress = _employee_progress(state, agent_id, mentor_id)
-    if progress.graduation_status != "graduated":
-        return state, f"{agent_id} is not currently graduated on {mentor_id} — nothing to revoke."
+    clean_reason = reason.strip()
+    if not clean_reason:
+        return state, "A reason is required to revoke a certification."
+    record = _certification_by_key(state, agent_id, mentor_id)
+    if record is None or record.status not in ("active", "suspended"):
+        return state, f"{agent_id} has no active or suspended certification on {mentor_id} to revoke."
 
-    note = f"Improvement plan: repeat {mentor.track_label}'s curriculum before re-attempting graduation. Revoked by the CEO on sim day {sim_day}."
+    updated_cert = _append_certification_history(record, action="revoked", reason=clean_reason, sim_day=sim_day).model_copy(update={"status": "revoked"})
+    new_certifications = [updated_cert if c.id == record.id else c for c in state.certifications]
+
+    note = f"Certification revoked by the CEO on sim day {sim_day}. Reason: {clean_reason} Repeat {mentor.track_label}'s curriculum to re-earn it."
     new_progress = FoundationalMentorProgress(mentorId=mentor_id, coachNote=note)
     new_progress_map = {aid: dict(m) for aid, m in state.progress.items()}
     new_progress_map.setdefault(agent_id, {})[mentor_id] = new_progress
-    return state.model_copy(update={"progress": new_progress_map, "updated_at": _now_iso()}), None
+
+    return state.model_copy(update={"progress": new_progress_map, "certifications": new_certifications, "updated_at": _now_iso()}), None
+
+
+def reset_certification_progress(state: FoundationalMentorState, agent_id: AgentId, mentor_id: FoundationalMentorId, *, sim_day: int) -> tuple[FoundationalMentorState, str | None]:
+    """Wipes any renewed lesson/quiz progress an employee has made toward
+    RE-earning a revoked certification, restarting their repeat attempt
+    from lesson one. Only offered on a "revoked" certification — a
+    revoke already resets progress once (see revoke_certification), so
+    this is specifically for zeroing out real headway made *since* that
+    revoke, a genuine, separate admin action, not a duplicate of revoke
+    itself. The CertificationRecord's own status/history is untouched
+    beyond a new "progress_reset" entry — this never changes standing."""
+    if agent_id not in STUDENT_AGENT_IDS:
+        return state, "Unknown employee — not a real Academy student."
+    record = _certification_by_key(state, agent_id, mentor_id)
+    if record is None or record.status != "revoked":
+        return state, f"{agent_id} has no revoked certification on {mentor_id} to reset progress for."
+
+    updated_cert = _append_certification_history(record, action="progress_reset", reason=None, sim_day=sim_day)
+    new_certifications = [updated_cert if c.id == record.id else c for c in state.certifications]
+
+    new_progress = FoundationalMentorProgress(mentorId=mentor_id)
+    new_progress_map = {aid: dict(m) for aid, m in state.progress.items()}
+    new_progress_map.setdefault(agent_id, {})[mentor_id] = new_progress
+
+    return state.model_copy(update={"progress": new_progress_map, "certifications": new_certifications, "updated_at": _now_iso()}), None
 
 
 def pause_company_training(state: FoundationalMentorState) -> tuple[FoundationalMentorState, str | None]:

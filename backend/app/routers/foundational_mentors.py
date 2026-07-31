@@ -63,6 +63,29 @@ class ApproveGraduationRequest(BaseModel):
     mentor_id: FoundationalMentorId = Field(alias="mentorId")
 
 
+class CertificationActionRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    agent_id: AgentId = Field(alias="agentId")
+    mentor_id: FoundationalMentorId = Field(alias="mentorId")
+    reason: str
+
+
+class CertificationOptionalReasonRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    agent_id: AgentId = Field(alias="agentId")
+    mentor_id: FoundationalMentorId = Field(alias="mentorId")
+    reason: str | None = None
+
+
+class CertificationNoReasonRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    agent_id: AgentId = Field(alias="agentId")
+    mentor_id: FoundationalMentorId = Field(alias="mentorId")
+
+
 class AddResourceRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -133,15 +156,51 @@ async def approve_graduation(payload: ApproveGraduationRequest) -> ApproveGradua
     return ApproveGraduationResponse(foundationalMentorState=state.foundational_mentor_state, companyGraduated=company_graduated)
 
 
-@router.post("/revoke-graduation", response_model=FoundationalMentorStateResponse)
-async def revoke_graduation(payload: ApproveGraduationRequest) -> FoundationalMentorStateResponse:
-    """The Executive Action "Revoke Graduation" — remedial education, not
-    deletion: the employee's certification and graduation status revert,
-    their lesson/quiz progress on this track resets so they genuinely
-    repeat it, and the Coach's real note explains why. Company Knowledge
+# --- Certification Management — full CEO controls over an earned certification ---
+# See app/foundational_mentors.py's own "Certification Management"
+# section for the full lifecycle (active/suspended/revoked) and why
+# Promote/Downgrade are real standing transitions, not a fabricated
+# performance tier.
+
+
+@router.post("/certification/downgrade", response_model=FoundationalMentorStateResponse)
+async def downgrade_certification_endpoint(payload: CertificationActionRequest) -> FoundationalMentorStateResponse:
+    state, error = await game_state.downgrade_academy_certification(payload.agent_id, payload.mentor_id, payload.reason)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    return FoundationalMentorStateResponse(foundationalMentorState=state.foundational_mentor_state)
+
+
+@router.post("/certification/promote", response_model=FoundationalMentorStateResponse)
+async def promote_certification_endpoint(payload: CertificationOptionalReasonRequest) -> FoundationalMentorStateResponse:
+    state, error = await game_state.promote_academy_certification(payload.agent_id, payload.mentor_id, payload.reason)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    return FoundationalMentorStateResponse(foundationalMentorState=state.foundational_mentor_state)
+
+
+@router.post("/certification/revoke", response_model=FoundationalMentorStateResponse)
+async def revoke_certification_endpoint(payload: CertificationActionRequest) -> FoundationalMentorStateResponse:
+    """Certification Management's Revoke action — remedial education, not
+    deletion: the CertificationRecord's own permanent history is never
+    removed, only marked "revoked" with the CEO's real reason; the
+    employee's lesson/quiz progress on this track resets so they
+    genuinely repeat it; and a real Newspaper "company"-category news
+    item (Executive Log analog) records the action. Company Knowledge
     (`academy_research.py`) and the mentor track's own company-wide
-    status are untouched — see revoke_employee_graduation's docstring."""
-    state, error = await game_state.revoke_academy_graduation(payload.agent_id, payload.mentor_id)
+    status are untouched — see revoke_certification's docstring."""
+    state, error = await game_state.revoke_academy_certification(payload.agent_id, payload.mentor_id, payload.reason)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    return FoundationalMentorStateResponse(foundationalMentorState=state.foundational_mentor_state)
+
+
+@router.post("/certification/reset-progress", response_model=FoundationalMentorStateResponse)
+async def reset_certification_progress_endpoint(payload: CertificationNoReasonRequest) -> FoundationalMentorStateResponse:
+    state, error = await game_state.reset_academy_certification_progress(payload.agent_id, payload.mentor_id)
     if error is not None:
         raise HTTPException(status_code=400, detail=error)
     persist_modules(state)

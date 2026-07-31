@@ -18,12 +18,15 @@ from app.foundational_mentors import (
     add_resource,
     approve_graduation,
     default_foundational_mentor_state,
+    downgrade_certification,
     grade_ceo_lesson_quiz,
     mark_ceo_lesson_viewed,
     pause_company_training,
+    promote_certification,
     repeat_mentor_company_wide,
+    reset_certification_progress,
     resume_company_training,
-    revoke_employee_graduation,
+    revoke_certification,
     set_active_mentor,
     skip_to_next_mentor,
     tick_employee_progress,
@@ -277,33 +280,53 @@ class TestApproveGraduation:
         state = _tick_until_all_students_pending(state)
         state, _, error = approve_graduation(state, "scout", "tjr", sim_day=7)  # type: ignore[arg-type]
         assert error is None
-        state, error = revoke_employee_graduation(state, "scout", "tjr", sim_day=8)  # type: ignore[arg-type]
+        state, error = revoke_certification(state, "scout", "tjr", reason="Manual reset for additional training.", sim_day=8)  # type: ignore[arg-type]
         assert error is None
         state = _tick_until_all_students_pending(state)
         state, _, error = approve_graduation(state, "scout", "tjr", sim_day=9)  # type: ignore[arg-type]
         assert error is None
         assert state.progress["scout"]["tjr"].coach_note is None
 
-
-class TestRevokeGraduation:
-    def test_revoke_reverts_status_and_clears_the_certification(self):
+    def test_approving_creates_a_permanent_certification_record_with_an_earned_history_entry(self):
         state = default_foundational_mentor_state()
         state = _tick_until_all_students_pending(state)
         state, _, error = approve_graduation(state, "scout", "tjr", sim_day=7)  # type: ignore[arg-type]
         assert error is None
-        state, error = revoke_employee_graduation(state, "scout", "tjr", sim_day=10)  # type: ignore[arg-type]
+        cert = next(c for c in state.certifications if c.agent_id == "scout" and c.mentor_id == "tjr")
+        assert cert.status == "active"
+        assert cert.mentor_name == "TJR"
+        assert len(cert.history) == 1
+        assert cert.history[0].action == "earned"
+        assert cert.history[0].sim_day == 7
+
+
+class TestCertificationManagement:
+    """Certification Management — the Current Certifications panel's
+    full CEO controls (View/Revoke/Downgrade/Promote/Reset Progress/
+    History). CertificationRecord is the real, permanent, independent
+    registry every action below reads and writes."""
+
+    def _graduate_scout(self, sim_day: int = 7):
+        state = default_foundational_mentor_state()
+        state = _tick_until_all_students_pending(state)
+        state, _, error = approve_graduation(state, "scout", "tjr", sim_day=sim_day)  # type: ignore[arg-type]
+        assert error is None
+        return state
+
+    # --- Revoke ---
+
+    def test_revoke_reverts_status_and_clears_the_certification(self):
+        state = self._graduate_scout()
+        state, error = revoke_certification(state, "scout", "tjr", reason="Manual reset for additional training.", sim_day=10)  # type: ignore[arg-type]
         assert error is None
         progress = state.progress["scout"]["tjr"]
         assert progress.graduation_status == "in_progress"
         assert progress.graduated_sim_day is None
 
     def test_revoke_resets_lesson_and_quiz_progress_for_a_real_repeat(self):
-        state = default_foundational_mentor_state()
-        state = _tick_until_all_students_pending(state)
-        state, _, error = approve_graduation(state, "scout", "tjr", sim_day=7)  # type: ignore[arg-type]
-        assert error is None
+        state = self._graduate_scout()
         assert state.progress["scout"]["tjr"].completed_lesson_ids != []
-        state, error = revoke_employee_graduation(state, "scout", "tjr", sim_day=10)  # type: ignore[arg-type]
+        state, error = revoke_certification(state, "scout", "tjr", reason="Manual reset for additional training.", sim_day=10)  # type: ignore[arg-type]
         assert error is None
         progress = state.progress["scout"]["tjr"]
         assert progress.completed_lesson_ids == []
@@ -313,16 +336,14 @@ class TestRevokeGraduation:
         assert progress.consecutive_quiz_failures == 0
 
     def test_revoke_gives_a_real_coach_improvement_plan_note(self):
-        state = default_foundational_mentor_state()
-        state = _tick_until_all_students_pending(state)
-        state, _, error = approve_graduation(state, "scout", "tjr", sim_day=7)  # type: ignore[arg-type]
-        assert error is None
-        state, error = revoke_employee_graduation(state, "scout", "tjr", sim_day=10)  # type: ignore[arg-type]
+        state = self._graduate_scout()
+        state, error = revoke_certification(state, "scout", "tjr", reason="Manual reset for additional training.", sim_day=10)  # type: ignore[arg-type]
         assert error is None
         note = state.progress["scout"]["tjr"].coach_note
         assert note is not None
         assert "TJR" in note
         assert "sim day 10" in note
+        assert "Manual reset for additional training." in note
 
     def test_revoke_does_not_touch_the_mentor_tracks_company_status(self):
         state = default_foundational_mentor_state()
@@ -332,37 +353,140 @@ class TestRevokeGraduation:
             assert error is None
         tjr_before = next(m for m in state.mentors if m.id == "tjr")
         assert tjr_before.status == "graduated"
-        state, error = revoke_employee_graduation(state, "scout", "tjr", sim_day=10)  # type: ignore[arg-type]
+        state, error = revoke_certification(state, "scout", "tjr", reason="Manual reset for additional training.", sim_day=10)  # type: ignore[arg-type]
         assert error is None
         tjr_after = next(m for m in state.mentors if m.id == "tjr")
         assert tjr_after.status == "graduated"
         assert tjr_after.company_graduated_sim_day == 7
 
     def test_revoke_does_not_touch_other_employees_progress(self):
-        state = default_foundational_mentor_state()
-        state = _tick_until_all_students_pending(state)
-        state, _, error = approve_graduation(state, "scout", "tjr", sim_day=7)  # type: ignore[arg-type]
-        assert error is None
+        state = self._graduate_scout()
         atlas_before = state.progress["atlas"]["tjr"]
-        state, error = revoke_employee_graduation(state, "scout", "tjr", sim_day=10)  # type: ignore[arg-type]
+        state, error = revoke_certification(state, "scout", "tjr", reason="Manual reset for additional training.", sim_day=10)  # type: ignore[arg-type]
         assert error is None
         assert state.progress["atlas"]["tjr"] == atlas_before
 
-    def test_cannot_revoke_without_an_existing_graduation(self):
+    def test_revoke_preserves_the_certification_record_and_its_history_instead_of_deleting_it(self):
+        state = self._graduate_scout()
+        state, error = revoke_certification(state, "scout", "tjr", reason="Manual reset for additional training.", sim_day=10)  # type: ignore[arg-type]
+        assert error is None
+        cert = next(c for c in state.certifications if c.agent_id == "scout" and c.mentor_id == "tjr")
+        assert cert.status == "revoked"
+        assert [h.action for h in cert.history] == ["earned", "revoked"]
+        assert cert.history[-1].reason == "Manual reset for additional training."
+        assert cert.history[-1].sim_day == 10
+
+    def test_revoke_requires_a_real_reason(self):
+        state = self._graduate_scout()
+        _, error = revoke_certification(state, "scout", "tjr", reason="   ", sim_day=10)  # type: ignore[arg-type]
+        assert error is not None
+
+    def test_cannot_revoke_without_an_existing_active_or_suspended_certification(self):
         state = default_foundational_mentor_state()
         state = _tick_until_all_students_pending(state)
-        _, error = revoke_employee_graduation(state, "scout", "tjr", sim_day=10)  # type: ignore[arg-type]
+        _, error = revoke_certification(state, "scout", "tjr", reason="Manual reset for additional training.", sim_day=10)  # type: ignore[arg-type]
+        assert error is not None
+
+    def test_cannot_revoke_an_already_revoked_certification_twice(self):
+        state = self._graduate_scout()
+        state, error = revoke_certification(state, "scout", "tjr", reason="First revoke.", sim_day=10)  # type: ignore[arg-type]
+        assert error is None
+        _, error = revoke_certification(state, "scout", "tjr", reason="Second revoke.", sim_day=11)  # type: ignore[arg-type]
         assert error is not None
 
     def test_rejects_unknown_agent(self):
         state = default_foundational_mentor_state()
-        _, error = revoke_employee_graduation(state, "not-a-real-agent", "tjr", sim_day=1)  # type: ignore[arg-type]
+        _, error = revoke_certification(state, "not-a-real-agent", "tjr", reason="Manual reset.", sim_day=1)  # type: ignore[arg-type]
         assert error is not None
 
     def test_rejects_unknown_mentor(self):
         state = default_foundational_mentor_state()
-        _, error = revoke_employee_graduation(state, "scout", "not-a-real-mentor", sim_day=1)  # type: ignore[arg-type]
+        _, error = revoke_certification(state, "scout", "not-a-real-mentor", reason="Manual reset.", sim_day=1)  # type: ignore[arg-type]
         assert error is not None
+
+    # --- Downgrade / Promote ---
+
+    def test_downgrade_suspends_an_active_certification_without_touching_progress(self):
+        state = self._graduate_scout()
+        progress_before = state.progress["scout"]["tjr"]
+        state, error = downgrade_certification(state, "scout", "tjr", reason="Policy violation.", sim_day=9)  # type: ignore[arg-type]
+        assert error is None
+        cert = next(c for c in state.certifications if c.agent_id == "scout" and c.mentor_id == "tjr")
+        assert cert.status == "suspended"
+        assert cert.history[-1].action == "suspended"
+        assert cert.history[-1].reason == "Policy violation."
+        assert state.progress["scout"]["tjr"] == progress_before
+
+    def test_downgrade_requires_a_real_reason(self):
+        state = self._graduate_scout()
+        _, error = downgrade_certification(state, "scout", "tjr", reason="", sim_day=9)  # type: ignore[arg-type]
+        assert error is not None
+
+    def test_cannot_downgrade_a_non_active_certification(self):
+        state = default_foundational_mentor_state()
+        state = _tick_until_all_students_pending(state)
+        _, error = downgrade_certification(state, "scout", "tjr", reason="Policy violation.", sim_day=9)  # type: ignore[arg-type]
+        assert error is not None
+
+    def test_promote_reinstates_a_suspended_certification(self):
+        state = self._graduate_scout()
+        state, error = downgrade_certification(state, "scout", "tjr", reason="Policy violation.", sim_day=9)  # type: ignore[arg-type]
+        assert error is None
+        state, error = promote_certification(state, "scout", "tjr", sim_day=12, reason="Retrained and reviewed.")  # type: ignore[arg-type]
+        assert error is None
+        cert = next(c for c in state.certifications if c.agent_id == "scout" and c.mentor_id == "tjr")
+        assert cert.status == "active"
+        assert [h.action for h in cert.history] == ["earned", "suspended", "reinstated"]
+
+    def test_cannot_promote_an_already_active_certification(self):
+        state = self._graduate_scout()
+        _, error = promote_certification(state, "scout", "tjr", sim_day=9, reason=None)  # type: ignore[arg-type]
+        assert error is not None
+
+    def test_cannot_promote_a_revoked_certification(self):
+        state = self._graduate_scout()
+        state, error = revoke_certification(state, "scout", "tjr", reason="Manual reset for additional training.", sim_day=10)  # type: ignore[arg-type]
+        assert error is None
+        _, error = promote_certification(state, "scout", "tjr", sim_day=12, reason=None)  # type: ignore[arg-type]
+        assert error is not None
+
+    # --- Reset Progress ---
+
+    def test_reset_progress_only_offered_on_a_revoked_certification(self):
+        state = self._graduate_scout()
+        _, error = reset_certification_progress(state, "scout", "tjr", sim_day=9)  # type: ignore[arg-type]
+        assert error is not None
+
+    def test_reset_progress_wipes_renewed_headway_after_a_revoke(self):
+        state = self._graduate_scout()
+        state, error = revoke_certification(state, "scout", "tjr", reason="Manual reset for additional training.", sim_day=10)  # type: ignore[arg-type]
+        assert error is None
+        # Some renewed re-training progress accrues (matching a real
+        # repeat attempt), then the CEO wants a hard restart.
+        state = state.model_copy(
+            update={"progress": {**state.progress, "scout": {**state.progress["scout"], "tjr": state.progress["scout"]["tjr"].model_copy(update={"current_lesson_study_pct": 40.0, "quiz_attempts": 2})}}}
+        )
+        state, error = reset_certification_progress(state, "scout", "tjr", sim_day=15)  # type: ignore[arg-type]
+        assert error is None
+        progress = state.progress["scout"]["tjr"]
+        assert progress.current_lesson_study_pct == 0.0
+        assert progress.quiz_attempts == 0
+        cert = next(c for c in state.certifications if c.agent_id == "scout" and c.mentor_id == "tjr")
+        assert cert.status == "revoked"
+        assert [h.action for h in cert.history] == ["earned", "revoked", "progress_reset"]
+
+    # --- Re-earning after revocation ---
+
+    def test_can_re_earn_a_revoked_certification(self):
+        state = self._graduate_scout()
+        state, error = revoke_certification(state, "scout", "tjr", reason="Manual reset for additional training.", sim_day=10)  # type: ignore[arg-type]
+        assert error is None
+        state = _tick_until_all_students_pending(state)
+        state, _, error = approve_graduation(state, "scout", "tjr", sim_day=20)  # type: ignore[arg-type]
+        assert error is None
+        cert = next(c for c in state.certifications if c.agent_id == "scout" and c.mentor_id == "tjr")
+        assert cert.status == "active"
+        assert [h.action for h in cert.history] == ["earned", "revoked", "earned"]
 
 
 class TestCompanyWideControls:
