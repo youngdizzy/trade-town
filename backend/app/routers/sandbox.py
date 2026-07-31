@@ -7,9 +7,20 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.persistence import persist_modules
-from app.schemas import BacktestSession, Strategy, StrategyDossier, StrategyExecutiveReview, StrategyFounderApproval, StrategyReview, TestScenario
+from app.schemas import (
+    BacktestSession,
+    FailedStrategyArchiveEntry,
+    Strategy,
+    StrategyDossier,
+    StrategyExecutiveDashboard,
+    StrategyExecutiveReview,
+    StrategyFounderApproval,
+    StrategyHallOfFameEntry,
+    StrategyReview,
+    TestScenario,
+)
 from app.state import game_state
-from app.strategy_lab import generate_strategy_dossier
+from app.strategy_lab import compute_strategy_executive_dashboard, generate_strategy_dossier
 
 router = APIRouter(prefix="/api/sandbox", tags=["sandbox"])
 
@@ -49,6 +60,13 @@ class DecideReviewRequest(BaseModel):
     approve: bool
 
 
+class RetireStrategyRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    strategy_id: str = Field(alias="strategyId")
+    reason: str
+
+
 class StrategyStateResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -60,6 +78,11 @@ class StrategyStateResponse(BaseModel):
     # action here leaves them empty rather than re-sending the whole list.
     strategy_executive_reviews: list[StrategyExecutiveReview] = Field(default_factory=list, alias="strategyExecutiveReviews")
     strategy_founder_approvals: list[StrategyFounderApproval] = Field(default_factory=list, alias="strategyFounderApprovals")
+    # v0.7 Feature 52 (Part 2) — only populated by /retire; exactly one of
+    # the two is ever non-empty for a given retirement (see
+    # app/strategy_lab.py's generate_strategy_retirement_outcome()).
+    strategy_hall_of_fame_entry: StrategyHallOfFameEntry | None = Field(default=None, alias="strategyHallOfFameEntry")
+    strategy_failed_archive_entry: FailedStrategyArchiveEntry | None = Field(default=None, alias="strategyFailedArchiveEntry")
 
 
 @router.post("/backtest", response_model=BacktestResponse)
@@ -112,6 +135,44 @@ async def decide_review(payload: DecideReviewRequest) -> StrategyStateResponse:
         raise HTTPException(status_code=400, detail=error)
     persist_modules(state)
     return StrategyStateResponse(strategies=state.strategies, strategyReviews=state.strategy_reviews)
+
+
+@router.post("/retire", response_model=StrategyStateResponse)
+async def retire_strategy(payload: RetireStrategyRequest) -> StrategyStateResponse:
+    """v0.7 Feature 52 (Part 2) — the only real way a strategy's stage
+    ever reaches "retired" (see app/state.py's retire_strategy())."""
+    state, error = await game_state.retire_strategy(payload.strategy_id, payload.reason)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    hall_of_fame_entry = next((e for e in reversed(state.strategy_hall_of_fame) if e.strategy_id == payload.strategy_id), None)
+    failed_archive_entry = next((e for e in reversed(state.strategy_failed_archive) if e.strategy_id == payload.strategy_id), None)
+    return StrategyStateResponse(
+        strategies=state.strategies,
+        strategyReviews=state.strategy_reviews,
+        strategyHallOfFameEntry=hall_of_fame_entry,
+        strategyFailedArchiveEntry=failed_archive_entry,
+    )
+
+
+@router.get("/dashboard", response_model=StrategyExecutiveDashboard)
+async def strategy_executive_dashboard() -> StrategyExecutiveDashboard:
+    """v0.7 Feature 52 (Part 2) — the brief's Executive Dashboard.
+    Read-only and computed fresh every call (see app/strategy_lab.py's
+    compute_strategy_executive_dashboard()), same reasoning as
+    GET /api/sandbox/dossier."""
+    state = await game_state.snapshot()
+    return compute_strategy_executive_dashboard(
+        state.strategies,
+        state.simulation_results,
+        state.strategy_reviews,
+        state.strategy_monte_carlo_results,
+        state.strategy_regime_tests,
+        state.strategy_executive_reviews,
+        state.strategy_hall_of_fame,
+        state.strategy_failed_archive,
+        sim_day=state.time.day,
+    )
 
 
 @router.get("/dossier", response_model=StrategyDossier)

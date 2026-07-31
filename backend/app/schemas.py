@@ -186,6 +186,13 @@ StrategyStage = Literal[
     "limited_live_capital",
     "company_review",
     "approved",
+    # v0.7 Feature 52 (Part 2) — the only terminal stage, reachable from
+    # any prior stage via a real, deliberate CEO action (never automatic
+    # — see app/sandbox.py's retire_strategy()). Placed last in
+    # app/sandbox.py's own STAGE_ORDER so it always compares as "furthest
+    # along," making every other stage-gated advance function a safe
+    # no-op once a strategy is retired, rather than a special case.
+    "retired",
 ]
 HallOfFameCategory = Literal[
     "best_strategy",
@@ -1748,6 +1755,121 @@ class StrategyDossier(CamelModel):
     generated_at: str = Field(alias="generatedAt")
 
 
+StrategyHealthStatus = Literal["excellent", "healthy", "stable", "needs_review", "declining", "critical", "retire_candidate"]
+StrategyHealthTrend = Literal["improving", "stable", "declining"]
+
+
+class StrategyHealthAssessment(CamelModel):
+    """v0.7 Feature 52 (Part 2) — a real recent-vs-lifetime trend read
+    over a strategy's own SimulationResult history (see
+    app/strategy_lab.py's compute_strategy_health()). Deliberately NOT
+    the brief's literal 'Live Performance Monitor' — this codebase has no
+    mechanism to attribute a live/paper trade back to a specific Strategy
+    object (see app/sandbox.py's own module docstring), so this reads the
+    real Market Simulation run history a strategy actually has, not
+    fabricated live P&L."""
+
+    id: str
+    strategy_id: str = Field(alias="strategyId")
+    strategy_name: str = Field(alias="strategyName")
+    status: StrategyHealthStatus
+    trend: StrategyHealthTrend
+    recent_win_rate: float = Field(alias="recentWinRate")
+    lifetime_win_rate: float = Field(alias="lifetimeWinRate")
+    recent_avg_return_pct: float = Field(alias="recentAvgReturnPct")
+    lifetime_avg_return_pct: float = Field(alias="lifetimeAvgReturnPct")
+    recent_avg_drawdown_pct: float = Field(alias="recentAvgDrawdownPct")
+    lifetime_avg_drawdown_pct: float = Field(alias="lifetimeAvgDrawdownPct")
+    recent_sample_size: int = Field(alias="recentSampleSize")
+    lifetime_sample_size: int = Field(alias="lifetimeSampleSize")
+    reasoning: list[str] = Field(default_factory=list)
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
+class StrategyHallOfFameEntry(CamelModel):
+    """v0.7 Feature 52 (Part 2) — the brief's Strategy Hall of Fame:
+    permanent, never evicted, only ever filed for a strategy that earned
+    real, checkable induction criteria at the moment of its own
+    retirement (see app/strategy_lab.py's
+    generate_strategy_retirement_outcome()). 'Historical return'/'avg R'
+    below are real SimulationResult aggregates, never fabricated live
+    P&L — see StrategyHealthAssessment's own docstring for why."""
+
+    id: str
+    strategy_id: str = Field(alias="strategyId")
+    strategy_name: str = Field(alias="strategyName")
+    created_by: AgentId = Field(alias="createdBy")
+    description: str
+    sim_days_active: int = Field(alias="simDaysActive")
+    trades_executed: int = Field(alias="tradesExecuted")
+    win_rate: float = Field(alias="winRate")
+    profit_factor: float = Field(alias="profitFactor")
+    max_drawdown_pct: float = Field(alias="maxDrawdownPct")
+    historical_return_pct: float = Field(alias="historicalReturnPct")
+    legacy_notes: list[str] = Field(default_factory=list, alias="legacyNotes")
+    retired_reason: str = Field(alias="retiredReason")
+    sim_day: int = Field(alias="simDay")
+    inducted_at: str = Field(alias="inductedAt")
+
+
+class FailedStrategyArchiveEntry(CamelModel):
+    """v0.7 Feature 52 (Part 2) — every strategy retirement that did not
+    clear the real Hall of Fame bar (see app/strategy_lab.py's
+    generate_strategy_retirement_outcome()) — never deleted, always kept
+    as a real, citable lesson. 'What failed'/'lessons learned' are pulled
+    from that strategy's own real StrategyReview verdicts and
+    StrategyExecutiveReview concerns, never invented after the fact."""
+
+    id: str
+    strategy_id: str = Field(alias="strategyId")
+    strategy_name: str = Field(alias="strategyName")
+    created_by: AgentId = Field(alias="createdBy")
+    failed_at_stage: StrategyStage = Field(alias="failedAtStage")
+    what_failed: list[str] = Field(default_factory=list, alias="whatFailed")
+    lessons_learned: list[str] = Field(default_factory=list, alias="lessonsLearned")
+    retired_reason: str = Field(alias="retiredReason")
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
+class StrategyExecutiveDashboardEntry(CamelModel):
+    """One named slot on the Executive Dashboard (best/weakest/most
+    improved/newest/highest confidence) — always cites the real strategy
+    and metric_label that earned it the slot. metric_value is the real
+    number behind every slot except "newest" (a date-based pick, not a
+    magnitude), which always reports 0.0 here — the real date lives on
+    the Strategy object's own createdAt."""
+
+    strategy_id: str = Field(alias="strategyId")
+    strategy_name: str = Field(alias="strategyName")
+    metric_label: str = Field(alias="metricLabel")
+    metric_value: float = Field(alias="metricValue")
+
+
+class StrategyExecutiveDashboard(CamelModel):
+    """v0.7 Feature 52 (Part 2) — the brief's Executive Dashboard.
+    Computed fresh on request (see app/strategy_lab.py's
+    compute_strategy_executive_dashboard()), the same 'every input
+    already lives somewhere permanent' reasoning as StrategyDossier —
+    never a second source of truth."""
+
+    active_count: int = Field(alias="activeCount")
+    in_development_count: int = Field(alias="inDevelopmentCount")
+    in_validation_count: int = Field(alias="inValidationCount")
+    paper_trading_count: int = Field(alias="paperTradingCount")
+    approved_count: int = Field(alias="approvedCount")
+    retired_count: int = Field(alias="retiredCount")
+    hall_of_fame_count: int = Field(alias="hallOfFameCount")
+    failed_archive_count: int = Field(alias="failedArchiveCount")
+    best_strategy: StrategyExecutiveDashboardEntry | None = Field(default=None, alias="bestStrategy")
+    weakest_strategy: StrategyExecutiveDashboardEntry | None = Field(default=None, alias="weakestStrategy")
+    most_improved_strategy: StrategyExecutiveDashboardEntry | None = Field(default=None, alias="mostImprovedStrategy")
+    newest_strategy: StrategyExecutiveDashboardEntry | None = Field(default=None, alias="newestStrategy")
+    highest_confidence_strategy: StrategyExecutiveDashboardEntry | None = Field(default=None, alias="highestConfidenceStrategy")
+    generated_at: str = Field(alias="generatedAt")
+
+
 class MarketIntelligenceReport(CamelModel):
     """The Executive Market Brief — one real, permanent snapshot per real
     in-game day (generated on the same evening cadence as CoachReport and
@@ -3145,6 +3267,16 @@ class GameSaveState(CamelModel):
     strategy_liquidity_validations: list[StrategyLiquidityValidation] = Field(default_factory=list, alias="strategyLiquidityValidations")
     strategy_executive_reviews: list[StrategyExecutiveReview] = Field(default_factory=list, alias="strategyExecutiveReviews")
     strategy_founder_approvals: list[StrategyFounderApproval] = Field(default_factory=list, alias="strategyFounderApprovals")
+    # v0.7 Feature 52 (Part 2) — "Living Strategies." strategy_health_assessments
+    # is a real, recurring trend read (re-run alongside Part 1's own
+    # per-completed-simulation artifacts). strategy_hall_of_fame/
+    # strategy_failed_archive are permanent, one-entry-per-retirement
+    # records — every real retire_strategy() CEO action files exactly one
+    # of the two, never both, never neither (see app/strategy_lab.py's
+    # generate_strategy_retirement_outcome()).
+    strategy_health_assessments: list[StrategyHealthAssessment] = Field(default_factory=list, alias="strategyHealthAssessments")
+    strategy_hall_of_fame: list[StrategyHallOfFameEntry] = Field(default_factory=list, alias="strategyHallOfFame")
+    strategy_failed_archive: list[FailedStrategyArchiveEntry] = Field(default_factory=list, alias="strategyFailedArchive")
     hall_of_fame: list[HallOfFameEntry] = Field(default_factory=list, alias="hallOfFame")
     coach_reports: list[CoachReport] = Field(default_factory=list, alias="coachReports")
     company_score: CompanyScore = Field(alias="companyScore")

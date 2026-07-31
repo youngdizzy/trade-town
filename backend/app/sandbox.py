@@ -180,6 +180,11 @@ STAGE_ORDER: tuple[StrategyStage, ...] = (
     "limited_live_capital",
     "company_review",
     "approved",
+    # v0.7 Feature 52 (Part 2) — always last so every stage-gated advance
+    # function above treats a retired strategy as "already furthest
+    # along" and safely no-ops, rather than needing a special case for
+    # every one of them.
+    "retired",
 )
 
 
@@ -423,6 +428,21 @@ def apply_review_decision(strategy: Strategy, review: StrategyReview, approve: b
     if not approve:
         return strategy.model_copy(update={"stage": "limited_live_capital", "stage_history": [*strategy.stage_history, StrategyStageEvent(id=f"stage-{strategy.id}-rejected-{review.id}", stage="limited_live_capital", detail=f"Company Review rejected ({review.overall_verdict}) — sent back for more evidence.", simDay=sim_day, createdAt=_now_iso())]})
     return _advance(strategy, "approved", f"Company Review passed ({review.overall_verdict}) — approved for full deployment.", sim_day)
+
+
+def retire_strategy(strategy: Strategy, reason: str, sim_day: int) -> tuple[Strategy | None, str | None]:
+    """v0.7 Feature 52 (Part 2) — the only real way a Strategy's stage
+    ever reaches "retired". Allowed from any non-terminal stage (a
+    strategy can be judged not worth pursuing further at any point in its
+    own real pipeline, not only after reaching "approved") — never
+    automatic: unlike Company Review's own Automation Mode auto-
+    resolution (see this module's docstring), retirement is always a
+    real, deliberate CEO call, expected to cite that strategy's own real
+    StrategyHealthAssessment (see app/strategy_lab.py's
+    compute_strategy_health()) as the reason."""
+    if strategy.stage == "retired":
+        return None, f'"{strategy.name}" is already retired.'
+    return _advance(strategy, "retired", reason, sim_day), None
 
 
 def cap_strategy_reports(reports: list[StrategyReport]) -> list[StrategyReport]:

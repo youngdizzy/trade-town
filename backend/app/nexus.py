@@ -88,9 +88,11 @@ from app.research import RESEARCHER_IDS, default_research, tick_research
 from app.risk_engine import compute_daily_objective_status, evaluate_guardian_exposure, evaluate_sentinel_risk, monitor_portfolio, recommended_quantity
 from app.sandbox import apply_review_decision, cap_strategy_reports, cap_strategy_reviews, generate_strategy_report, maybe_advance_after_research, maybe_advance_after_result
 from app.strategy_lab import (
+    cap_strategy_health_assessments,
     cap_strategy_liquidity_validations,
     cap_strategy_monte_carlo_results,
     cap_strategy_regime_tests,
+    compute_strategy_health,
     compute_strategy_regime_test,
     run_strategy_monte_carlo,
     validate_strategy_liquidity,
@@ -922,6 +924,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     strategy_monte_carlo_results = list(state.strategy_monte_carlo_results)
     strategy_regime_tests = list(state.strategy_regime_tests)
     strategy_liquidity_validations = list(state.strategy_liquidity_validations)
+    strategy_health_assessments = list(state.strategy_health_assessments)
     constitution_citations = list(state.constitution.citations)
     # v0.7 Feature 48 — Company DNA Legacy: a small, permanent, capped
     # per-trait delta nudged by real one-time/rare company events (see
@@ -1393,10 +1396,17 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             liquidity_validation = validate_strategy_liquidity(matching_strategy, watchlist, market_data_provider, sim_day=new_time.day)
             if liquidity_validation is not None:
                 strategy_liquidity_validations.append(liquidity_validation)
+            # v0.7 Feature 52 (Part 2) — Strategy Health's real
+            # recent-vs-lifetime trend read, refreshed on the exact same
+            # trigger as the three artifacts above.
+            health = compute_strategy_health(matching_strategy, simulation_results, sim_day=new_time.day)
+            if health is not None:
+                strategy_health_assessments.append(health)
 
     cap_strategy_monte_carlo_results(strategy_monte_carlo_results)
     cap_strategy_regime_tests(strategy_regime_tests)
     cap_strategy_liquidity_validations(strategy_liquidity_validations)
+    cap_strategy_health_assessments(strategy_health_assessments)
 
     # v0.7 Feature 45 — Automation Mode governs the Company Review stage's
     # final CEO call exactly the way _apply_operating_mode already governs
@@ -1913,6 +1923,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "strategy_monte_carlo_results": strategy_monte_carlo_results,
             "strategy_regime_tests": strategy_regime_tests,
             "strategy_liquidity_validations": strategy_liquidity_validations,
+            "strategy_health_assessments": strategy_health_assessments,
             "constitution": state.constitution.model_copy(update={"citations": constitution_citations, "updated_at": _now_iso()}),
             "hall_of_fame": hall_of_fame,
             "coach_reports": coach_reports,

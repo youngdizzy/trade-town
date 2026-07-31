@@ -23,7 +23,7 @@ from app.reasoning_lab import compute_reasoning_lab_state
 from app.wisdom import compute_wisdom_score
 from app.academy_research import default_academy_projects
 from app.agent_energy import default_agent_energy
-from app.company_dna import compute_company_dna
+from app.company_dna import STRATEGY_HALL_OF_FAME_NUDGE, compute_company_dna, nudge_legacy
 from app.company_health import compute_company_health
 from app.company_score import compute_company_score
 from app.constitution import decide_amendment, default_constitution, generate_coach_evaluation, generate_employee_votes, generate_founder_debate, propose_amendment, ratify_amendment
@@ -40,6 +40,7 @@ from app.portfolio import default_portfolio, sim_minutes
 from app.research import RESEARCHER_IDS, default_research
 from app.risk_engine import compute_daily_objective_status, default_risk_limits
 from app.sandbox import apply_review_decision, begin_company_review, begin_limited_live, begin_paper_trial, generate_strategy_review
+from app.sandbox import retire_strategy as retire_strategy_stage
 from app.scribe import record_ceo_decision, record_proposal_hold
 from app.schemas import (
     AgentId,
@@ -86,9 +87,12 @@ from app.foundational_mentors import (
 from app.simulation import default_strategies, queue_backtest_now
 from app.strategy_lab import (
     cap_strategy_executive_reviews,
+    cap_strategy_failed_archive,
     cap_strategy_founder_approvals,
+    cap_strategy_hall_of_fame,
     generate_strategy_executive_review,
     generate_strategy_founder_approval,
+    generate_strategy_retirement_outcome,
 )
 from app.talent import mark_talent_report_viewed
 from app.watchlist import default_watchlist
@@ -155,6 +159,9 @@ def default_state() -> GameSaveState:
         strategyLiquidityValidations=[],
         strategyExecutiveReviews=[],
         strategyFounderApprovals=[],
+        strategyHealthAssessments=[],
+        strategyHallOfFame=[],
+        strategyFailedArchive=[],
         hallOfFame=[],
         coachReports=[],
         companyScore=compute_company_score([], default_portfolio(), [], [], []),
@@ -739,6 +746,43 @@ class GameState:
             strategies = [updated_strategy if s.id == strategy.id else s for s in self.data.strategies]
             reviews = [r.model_copy(update={"ceo_decision": "approved" if approve else "rejected", "resolved_by": "ceo"}) if r.id == review_id else r for r in self.data.strategy_reviews]
             self.data = self.data.model_copy(update={"strategies": strategies, "strategy_reviews": reviews})
+            return self.data, None
+
+    async def retire_strategy(self, strategy_id: str, reason: str) -> tuple[GameSaveState, str | None]:
+        """v0.7 Feature 52 (Part 2) — the only real way a strategy's stage
+        ever reaches "retired" (see app/sandbox.py's retire_strategy()).
+        Files exactly one of a real StrategyHallOfFameEntry or a real
+        FailedStrategyArchiveEntry in the same CEO action (see
+        app/strategy_lab.py's generate_strategy_retirement_outcome()) —
+        only a Hall of Fame induction also nudges Company DNA's real
+        research_rigor Legacy trait (see app/company_dna.py's own module
+        docstring for why this is the one Legacy nudge fired here rather
+        than from nexus.py's tick loop)."""
+        async with self.lock:
+            strategy = self._find_strategy(strategy_id)
+            if strategy is None:
+                return self.data, "No strategy found with that id."
+            reason = reason.strip()
+            if not reason:
+                return self.data, "Retiring a strategy needs a real reason."
+            latest_review = next((r for r in reversed(self.data.strategy_reviews) if r.strategy_id == strategy_id), None)
+            latest_executive_review = next((r for r in reversed(self.data.strategy_executive_reviews) if r.strategy_id == strategy_id), None)
+            latest_founder_approval = next((a for a in reversed(self.data.strategy_founder_approvals) if a.strategy_id == strategy_id), None)
+            hall_of_fame_entry, failed_archive_entry = generate_strategy_retirement_outcome(
+                strategy, self.data.simulation_results, latest_review, latest_executive_review, latest_founder_approval, reason, sim_day=self.data.time.day
+            )
+            retired_strategy, error = retire_strategy_stage(strategy, reason, self.data.time.day)
+            if error is not None or retired_strategy is None:
+                return self.data, error
+            strategies = [retired_strategy if s.id == strategy_id else s for s in self.data.strategies]
+            update: dict[str, object] = {"strategies": strategies}
+            if hall_of_fame_entry is not None:
+                update["strategy_hall_of_fame"] = cap_strategy_hall_of_fame([*self.data.strategy_hall_of_fame, hall_of_fame_entry])
+                update["company_dna_legacy"] = nudge_legacy(dict(self.data.company_dna_legacy), "research_rigor", STRATEGY_HALL_OF_FAME_NUDGE)
+            else:
+                assert failed_archive_entry is not None
+                update["strategy_failed_archive"] = cap_strategy_failed_archive([*self.data.strategy_failed_archive, failed_archive_entry])
+            self.data = self.data.model_copy(update=update)
             return self.data, None
 
     async def propose_constitution_amendment(self, title: str, text: str) -> tuple[GameSaveState, str | None]:

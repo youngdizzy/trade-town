@@ -47,6 +47,13 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         "strategyLiquidityValidations": [r.model_dump(by_alias=True) for r in state.strategy_liquidity_validations],
         "strategyExecutiveReviews": [r.model_dump(by_alias=True) for r in state.strategy_executive_reviews],
         "strategyFounderApprovals": [r.model_dump(by_alias=True) for r in state.strategy_founder_approvals],
+        # v0.7 Feature 52 (Part 2) — Living Strategies. strategyHallOfFame/
+        # strategyFailedArchive are permanent, one-per-retirement records;
+        # strategyHealthAssessments is already capped like the Part 1
+        # lists above.
+        "strategyHealthAssessments": [r.model_dump(by_alias=True) for r in state.strategy_health_assessments],
+        "strategyHallOfFame": [r.model_dump(by_alias=True) for r in state.strategy_hall_of_fame],
+        "strategyFailedArchive": [r.model_dump(by_alias=True) for r in state.strategy_failed_archive],
         "hallOfFame": [h.model_dump(by_alias=True) for h in state.hall_of_fame],
         "coachReports": [c.model_dump(by_alias=True) for c in state.coach_reports],
         "companyScore": state.company_score.model_dump(by_alias=True),

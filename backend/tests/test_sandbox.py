@@ -17,6 +17,7 @@ from app.sandbox import (
     generate_strategy_review,
     maybe_advance_after_research,
     maybe_advance_after_result,
+    retire_strategy,
 )
 from app.schemas import ResearchItem, SimulationResult, Strategy
 
@@ -211,6 +212,29 @@ class TestApplyReviewDecision:
         updated = apply_review_decision(strategy, review, False, sim_day=12)
         assert updated.stage == "limited_live_capital"
         assert len(updated.stage_history) == 1
+
+
+class TestRetireStrategy:
+    def test_retires_from_any_non_terminal_stage(self) -> None:
+        for stage in ("idea", "research", "market_simulation", "approved"):
+            updated, error = retire_strategy(_strategy(stage=stage), "Not worth pursuing further.", sim_day=30)
+            assert error is None
+            assert updated is not None
+            assert updated.stage == "retired"
+            assert updated.stage_history[-1].detail == "Not worth pursuing further."
+
+    def test_rejects_retiring_an_already_retired_strategy(self) -> None:
+        updated, error = retire_strategy(_strategy(stage="retired"), "Already gone.", sim_day=30)
+        assert updated is None
+        assert error is not None
+        assert "already retired" in error
+
+    def test_a_retired_strategy_never_advances_further(self) -> None:
+        retired, _ = retire_strategy(_strategy(stage="approved"), "Retired.", sim_day=30)
+        assert retired is not None
+        still_retired = maybe_advance_after_result(retired, _result(scenario="bull"), sim_day=31)
+        assert still_retired.stage == "retired"
+        assert len(still_retired.stage_history) == len(retired.stage_history)
 
 
 class TestGenerateStrategyReview:

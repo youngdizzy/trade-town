@@ -1,21 +1,27 @@
-"""Covers app/strategy_lab.py — v0.7 Feature 52 (Part 1), the Strategy
-Validation Laboratory. Every artifact here must trace to a real, already-
-generated source (a strategy's own aggregated SimulationResult stats, a
-real StrategyReview verdict, real market data) — never an independently
-invented number.
+"""Covers app/strategy_lab.py — v0.7 Feature 52, the Strategy Validation
+Laboratory (Parts 1 and 2). Every artifact here must trace to a real,
+already-generated source (a strategy's own aggregated SimulationResult
+stats, a real StrategyReview verdict, real market data) — never an
+independently invented number.
 """
 from __future__ import annotations
 
 from app.market_data import MockMarketDataProvider
 from app.market_intelligence import default_market_intelligence_state
 from app.sandbox import generate_strategy_review
-from app.schemas import CoachReport, ResearchItem, SimulationResult, Strategy, WatchlistEntry
+from app.schemas import CoachReport, ResearchItem, SimulationResult, Strategy, StrategyStageEvent, WatchlistEntry
 from app.strategy_lab import (
+    HALL_OF_FAME_MIN_PROFIT_FACTOR,
+    HALL_OF_FAME_MIN_TRADE_COUNT,
+    HALL_OF_FAME_MIN_WIN_RATE,
     compute_strategy_confidence_score,
+    compute_strategy_executive_dashboard,
+    compute_strategy_health,
     compute_strategy_regime_test,
     generate_strategy_dossier,
     generate_strategy_executive_review,
     generate_strategy_founder_approval,
+    generate_strategy_retirement_outcome,
     run_strategy_monte_carlo,
     validate_strategy_liquidity,
 )
@@ -25,7 +31,7 @@ def _now_iso() -> str:
     return "2026-01-01T00:00:00+00:00"
 
 
-def _strategy(*, allocated_capital: float = 0.0) -> Strategy:
+def _strategy(*, allocated_capital: float = 0.0, stage: str = "market_simulation", stage_history: list[StrategyStageEvent] | None = None) -> Strategy:
     return Strategy(
         id="strategy-1",
         name="Momentum Breakout",
@@ -33,7 +39,8 @@ def _strategy(*, allocated_capital: float = 0.0) -> Strategy:
         createdBy="echo",  # type: ignore[arg-type]
         focusCategory="stock",  # type: ignore[arg-type]
         createdAt=_now_iso(),
-        stage="market_simulation",  # type: ignore[arg-type]
+        stage=stage,  # type: ignore[arg-type]
+        stageHistory=stage_history or [],
         allocatedCapital=allocated_capital,
     )
 
@@ -283,3 +290,117 @@ class TestGenerateStrategyDossier:
         assert dossier.executive_review is None
         assert dossier.founder_approval is None
         assert dossier.confidence is None
+
+
+class TestComputeStrategyHealth:
+    def test_returns_none_with_no_completed_results(self) -> None:
+        assert compute_strategy_health(_strategy(), [], sim_day=5) is None
+
+    def test_a_young_strategy_reads_recent_and_lifetime_as_identical(self) -> None:
+        results = [_result(win_rate=60.0, total_return_pct=10.0)]
+        health = compute_strategy_health(_strategy(), results, sim_day=5)
+        assert health is not None
+        assert health.recent_win_rate == health.lifetime_win_rate
+        assert health.recent_avg_return_pct == health.lifetime_avg_return_pct
+        assert health.trend == "stable"
+        assert health.recent_sample_size == health.lifetime_sample_size == 1
+
+    def test_a_strong_consistent_track_record_reads_excellent(self) -> None:
+        results = [_result(win_rate=70.0, total_return_pct=15.0, max_drawdown_pct=5.0, avg_win_pct=6.0, avg_loss_pct=-2.0) for _ in range(3)]
+        for i, r in enumerate(results):
+            results[i] = r.model_copy(update={"id": f"result-{i}"})
+        health = compute_strategy_health(_strategy(), results, sim_day=5)
+        assert health is not None
+        assert health.status == "excellent"
+
+    def test_a_recently_disastrous_run_reads_retire_candidate(self) -> None:
+        good = [_result(win_rate=70.0, total_return_pct=15.0).model_copy(update={"id": f"good-{i}"}) for i in range(3)]
+        bad = [_result(win_rate=15.0, total_return_pct=-25.0, max_drawdown_pct=40.0).model_copy(update={"id": f"bad-{i}"}) for i in range(3)]
+        health = compute_strategy_health(_strategy(), [*good, *bad], sim_day=5)
+        assert health is not None
+        assert health.status == "retire_candidate"
+        assert health.trend == "declining"
+
+    def test_ignores_results_from_other_strategies(self) -> None:
+        results = [_result(strategy_id="strategy-2")]
+        assert compute_strategy_health(_strategy(), results, sim_day=5) is None
+
+
+class TestGenerateStrategyRetirementOutcome:
+    def test_a_real_hall_of_fame_worthy_track_record_earns_induction(self) -> None:
+        strategy = _strategy(stage="approved", stage_history=[StrategyStageEvent(id="stage-0", stage="idea", detail="Created.", simDay=1, createdAt=_now_iso())])
+        results = [
+            _result(win_rate=HALL_OF_FAME_MIN_WIN_RATE + 5.0, profit_factor=HALL_OF_FAME_MIN_PROFIT_FACTOR + 0.5, max_drawdown_pct=5.0, trade_count=HALL_OF_FAME_MIN_TRADE_COUNT).model_copy(
+                update={"id": f"result-{i}"}
+            )
+            for i in range(3)
+        ]
+        review = generate_strategy_review(strategy, results, [], 0, sim_day=10)
+        monte_carlo = run_strategy_monte_carlo(strategy, results, sim_day=10)
+        exec_review = generate_strategy_executive_review(strategy, review, [], [], monte_carlo, None, default_market_intelligence_state(), 0, sim_day=10)
+        founder_approval = generate_strategy_founder_approval(strategy, exec_review, sim_day=10).model_copy(update={"verdict": "approved"})
+
+        hof_entry, failed_entry = generate_strategy_retirement_outcome(strategy, results, review, exec_review, founder_approval, "Retired at its peak.", sim_day=20)
+        assert failed_entry is None
+        assert hof_entry is not None
+        assert hof_entry.strategy_id == "strategy-1"
+        assert hof_entry.trades_executed == HALL_OF_FAME_MIN_TRADE_COUNT * 3
+        assert hof_entry.sim_days_active == 19
+        assert hof_entry.retired_reason == "Retired at its peak."
+
+    def test_a_weak_track_record_files_a_failed_archive_entry_instead(self) -> None:
+        strategy = _strategy(stage="limited_live_capital")
+        bad_result = _result(win_rate=20.0, max_drawdown_pct=45.0, avg_win_pct=1.0, avg_loss_pct=-8.0, profit_factor=0.3, total_return_pct=-30.0)
+        review = generate_strategy_review(strategy, [bad_result], [], 0, sim_day=10)
+        hof_entry, failed_entry = generate_strategy_retirement_outcome(strategy, [bad_result], review, None, None, "Never earned real trust.", sim_day=20)
+        assert hof_entry is None
+        assert failed_entry is not None
+        assert failed_entry.strategy_id == "strategy-1"
+        assert failed_entry.failed_at_stage == "limited_live_capital"
+        assert failed_entry.what_failed
+        assert failed_entry.retired_reason == "Never earned real trust."
+
+    def test_never_files_hall_of_fame_without_a_real_approved_founder_verdict(self) -> None:
+        strategy = _strategy(stage="approved")
+        results = [
+            _result(win_rate=90.0, profit_factor=3.0, max_drawdown_pct=2.0, trade_count=HALL_OF_FAME_MIN_TRADE_COUNT).model_copy(update={"id": f"result-{i}"}) for i in range(3)
+        ]
+        review = generate_strategy_review(strategy, results, [], 0, sim_day=10)
+        hof_entry, failed_entry = generate_strategy_retirement_outcome(strategy, results, review, None, None, "No founder approval on file.", sim_day=20)
+        assert hof_entry is None
+        assert failed_entry is not None
+
+
+class TestComputeStrategyExecutiveDashboard:
+    def test_counts_every_strategy_into_exactly_one_stage_bucket(self) -> None:
+        strategies = [
+            _strategy(stage="idea"),
+            _strategy(stage="paper_trading").model_copy(update={"id": "strategy-2"}),
+            _strategy(stage="approved").model_copy(update={"id": "strategy-3"}),
+            _strategy(stage="retired").model_copy(update={"id": "strategy-4"}),
+        ]
+        dashboard = compute_strategy_executive_dashboard(strategies, [], [], [], [], [], [], [], sim_day=5)
+        assert dashboard.active_count == 3
+        assert dashboard.in_development_count == 1
+        assert dashboard.paper_trading_count == 1
+        assert dashboard.approved_count == 1
+        assert dashboard.retired_count == 1
+
+    def test_best_and_weakest_strategy_reflect_real_average_returns(self) -> None:
+        strategies = [_strategy(), _strategy().model_copy(update={"id": "strategy-2", "name": "Value Fundamentals"})]
+        results = [
+            _result(strategy_id="strategy-1", total_return_pct=25.0),
+            _result(strategy_id="strategy-2", total_return_pct=-10.0).model_copy(update={"id": "result-2"}),
+        ]
+        dashboard = compute_strategy_executive_dashboard(strategies, results, [], [], [], [], [], [], sim_day=5)
+        assert dashboard.best_strategy is not None and dashboard.best_strategy.strategy_id == "strategy-1"
+        assert dashboard.weakest_strategy is not None and dashboard.weakest_strategy.strategy_id == "strategy-2"
+
+    def test_empty_company_reports_every_slot_as_honestly_none(self) -> None:
+        dashboard = compute_strategy_executive_dashboard([], [], [], [], [], [], [], [], sim_day=5)
+        assert dashboard.best_strategy is None
+        assert dashboard.weakest_strategy is None
+        assert dashboard.most_improved_strategy is None
+        assert dashboard.newest_strategy is None
+        assert dashboard.highest_confidence_strategy is None
+        assert dashboard.active_count == 0

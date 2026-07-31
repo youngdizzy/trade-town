@@ -4214,6 +4214,131 @@ attribute a live/paper trade back to a specific `Strategy` object
 honest reframe around real `SimulationResult`/`StrategyReport` history
 rather than literal live-trade attribution when it's built.
 
+### Strategy Validation Laboratory — Feature 52 (Part 2), "Living Strategies"
+
+GOAL (from the brief): a strategy should never become "finished" — the
+company's greatest asset is a growing library of validated strategies
+that evolve, prove themselves permanently, or teach real lessons when
+they fail.
+
+**Scoping decision, made explicit before any code was written.** Part
+2's brief is the largest single section of Feature 52 — Strategy
+Library, Version Control, Strategy Evolution, a Live Performance
+Monitor, Strategy Health, Automatic Revalidation, Strategy Retirement,
+a Strategy Hall of Fame, a Failed Strategy Archive, long-running
+Research Projects, Strategy Competitions, Knowledge Preservation, an
+Executive Dashboard, and Company DNA integration. Building all of it
+honestly in one pass would mean inventing a real strategy-versioning
+mechanism this codebase has never had (parent/child strategy links, a
+full pipeline re-run per revision) — a structural addition on the order
+of Part 1 itself, not a natural extension of what already exists. This
+pass builds the real, tractable subset that extends Part 1's own
+already-real artifacts, and explicitly documents every cut below rather
+than silently shipping a partial "Strategy Library."
+
+**Strategy Health** (`compute_strategy_health()`) — a real
+recent-vs-lifetime trend read over a strategy's own `SimulationResult`
+history: the last `HEALTH_RECENT_WINDOW` (3) real runs compared against
+the strategy's full real lifetime average (including those same recent
+runs, so a young strategy's recent and lifetime reads are honestly
+identical rather than dividing an already-thin sample in two). Lands on
+one of seven real statuses — Excellent/Healthy/Stable/Needs Review/
+Declining/Critical/Retire Candidate — from a fixed, deterministic ladder
+over real win-rate/return/drawdown deltas (reusing `sandbox.py`'s own
+real `RISK_MAX_AVG_DRAWDOWN` for the "critical" bar rather than a second
+invented threshold). Re-computed on the exact same per-completed-
+simulation trigger in `nexus.py`'s tick loop as Part 1's Monte Carlo/
+Regime Test/Liquidity Validation, capped and persisted the same way.
+Deliberately NOT the brief's literal "Live Performance Monitor" — see
+Part 1's own honesty-boundary note (this codebase cannot attribute a
+live/paper trade back to a specific `Strategy` object); this reads the
+real Market Simulation run history a strategy actually has.
+
+**Strategy Retirement** — the only genuinely new lifecycle mechanic in
+this pass. `StrategyStage` gains a terminal `"retired"` value, placed
+last in `sandbox.py`'s own `STAGE_ORDER` so every existing stage-gated
+advance function (`maybe_advance_after_research`/`maybe_advance_after_result`/
+`begin_paper_trial`/etc.) treats a retired strategy as "already furthest
+along" and safely no-ops — no special-casing needed anywhere else in the
+pipeline. New `retire_strategy()` (in `sandbox.py`, reusing `_advance`)
+is reachable from any non-terminal stage via a real, deliberate CEO
+action — `POST /api/sandbox/retire` — never automatic. This is a
+narrower interpretation than the brief's fully autonomous "Automatic
+Revalidation" workflow (Research Review → Backtest Review → ... →
+Continue/Modify/Suspend/Archive/Retire): every other terminal Research
+Sandbox decision in this codebase is already a real CEO call (Learning
+Mode's own precedent — see this doc's Feature 45 section), so retirement
+follows the same discipline rather than inventing a new autonomous
+decision loop. The CEO is expected to cite the strategy's own real
+`StrategyHealthAssessment` as the reason, though the field itself is
+just a required real string.
+
+**Strategy Hall of Fame / Failed Strategy Archive** — every real
+retirement files exactly one of these two permanent records, never both,
+never neither (`generate_strategy_retirement_outcome()`). Hall of Fame
+induction requires a real, strict bar checked only at the moment of
+retirement, never speculatively: ≥30 aggregated real trades, ≥55% win
+rate, ≥1.5 profit factor, ≤20% average drawdown (`sandbox.py`'s own
+`RISK_MAX_AVG_DRAWDOWN`), `stage == "approved"` immediately before
+retirement, and a real, on-file `StrategyFounderApproval` with
+`verdict == "approved"`. Every retirement that doesn't clear that bar
+becomes a Failed Strategy Archive entry instead — "what failed" pulled
+from the strategy's own real `StrategyReview` verdicts that didn't pass,
+"lessons learned" pulled from the real `concerns` every department filed
+in its last `StrategyExecutiveReview`, never invented after the fact
+(an honest fallback note when neither exists yet). Both records are
+permanent — nothing here is ever deleted, matching the brief's own
+"nothing is ever deleted" rule for the fuller Strategy Library this pass
+doesn't build.
+
+**Company DNA integration** — a Hall of Fame induction nudges Company
+DNA's real `research_rigor` Legacy trait up (`STRATEGY_HALL_OF_FAME_NUDGE`),
+a fifth real trigger alongside the four `app/company_dna.py`'s own module
+docstring already tracked (Black Box breakthroughs, Academy completions,
+success studies, Founder retirement). Fired synchronously inside
+`state.py`'s `retire_strategy()` CEO action rather than `nexus.py`'s tick
+loop, since retirement is itself a real, one-time CEO decision the tick
+loop never independently discovers — every other Legacy nudge fires from
+inside `tick()` because its own trigger (a completed research item, a
+filed success study) is something the tick loop notices, not something a
+CEO directly requests.
+
+**Executive Dashboard** (`compute_strategy_executive_dashboard()`,
+`GET /api/sandbox/dashboard`) — a real, computed-on-request aggregate,
+same no-lock-needed pattern as `GET /api/sandbox/dossier`: real stage
+counts (active/in-development/in-validation/paper-trading/approved/
+retired), real Hall of Fame/Failed Archive counts, and five named slots
+(best/weakest/most-improved/newest/highest-confidence strategy), each
+citing the real metric value that earned it the slot — average real
+return for best/weakest, a real recent-vs-lifetime return delta (reusing
+`compute_strategy_health()`) for most-improved, and a real confidence
+score (reusing Part 1's `compute_strategy_confidence_score()`) for
+highest-confidence. "Newest" is date-based rather than a magnitude, so
+its `metricValue` is honestly `0.0` — documented on
+`StrategyExecutiveDashboardEntry` itself rather than silently overloading
+the field's meaning.
+
+**Explicitly not built in this pass, and why**:
+
+| Brief section | Why cut |
+|---|---|
+| Version Control / Strategy Evolution | No strategy revision/parent-child mechanism exists anywhere in this codebase to extend — a real structural addition, not a data-honesty cut. Deferred to a dedicated follow-up. |
+| Strategy Competitions | Needs Version Control as a real prerequisite (comparing "v2.3 vs v2.4" requires versions to exist first). |
+| Automatic Revalidation as an autonomous workflow | Narrowed to a real, deliberate CEO retirement action instead — see "Strategy Retirement" above for why. |
+| Dedicated Research Projects | Already real and shipped as Black Box Projects (`app/black_box.py`) — long-running, multi-month, funded research efforts already exist under a different name; not duplicated. |
+| A literal "Strategy Library" UI concept | The existing `strategies` list plus Part 1's `StrategyDossier` already carries every real field the brief's Library section asks for (creator/status/stage/confidence/regimes/risk profile/description/historical performance/executive notes) — no new backend artifact needed; this is purely a frontend presentation concern, deferred with the rest of Feature 52's UI. |
+| Knowledge Preservation beyond what Failed Archive/Hall of Fame already carry | Without Version Control, "knowledge transfers forward on evolution" has no real forward-transfer event to hook into — the real lessons-learned text each retirement record carries already satisfies the brief's underlying goal (a citable, permanent lesson) without the transfer mechanic. |
+
+**Verified**: 11 new tests in `backend/tests/test_strategy_lab.py` (28
+total: Strategy Health status ladder, Hall of Fame induction/rejection
+paths, Failed Archive fallback lessons, Executive Dashboard stage
+counting and named slots) plus 3 new tests in `backend/tests/test_sandbox.py`
+(retirement from every non-terminal stage, rejecting a double retirement,
+confirming a retired strategy never advances further) — 807/807 full
+backend suite, `mypy`/`ruff` clean. Both parts' frontend remain
+deliberately deferred to a follow-up pass, per this project's
+backend-first discipline.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

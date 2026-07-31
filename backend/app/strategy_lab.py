@@ -117,12 +117,13 @@ from datetime import datetime, timezone
 
 from app.market_data import Candle, MarketDataProvider
 from app.market_intelligence import _REGIME_TO_SCENARIO_KEYWORD, compute_liquidity, compute_market_structure
-from app.sandbox import STRATEGY_DEVILS_ADVOCATES
+from app.sandbox import RISK_MAX_AVG_DRAWDOWN, STRATEGY_DEVILS_ADVOCATES
 from app.schemas import (
     AgentId,
     CoachReport,
     ExecutiveDepartmentRole,
     ExecutiveStance,
+    FailedStrategyArchiveEntry,
     MarketIntelligenceRegime,
     MarketIntelligenceState,
     ResearchItem,
@@ -132,8 +133,14 @@ from app.schemas import (
     StrategyDepartmentOpinion,
     StrategyDossier,
     StrategyExecutiveAction,
+    StrategyExecutiveDashboard,
+    StrategyExecutiveDashboardEntry,
     StrategyExecutiveReview,
     StrategyFounderApproval,
+    StrategyHallOfFameEntry,
+    StrategyHealthAssessment,
+    StrategyHealthStatus,
+    StrategyHealthTrend,
     StrategyLiquidityValidation,
     StrategyMonteCarloResult,
     StrategyRegimeBucketPerformance,
@@ -149,11 +156,38 @@ MAX_STRATEGY_REGIME_TESTS = 40
 MAX_STRATEGY_LIQUIDITY_VALIDATIONS = 40
 MAX_STRATEGY_EXECUTIVE_REVIEWS = 40
 MAX_STRATEGY_FOUNDER_APPROVALS = 40
+MAX_STRATEGY_HEALTH_ASSESSMENTS = 40
+MAX_STRATEGY_HALL_OF_FAME = 40
+MAX_STRATEGY_FAILED_ARCHIVE = 40
 
 MONTE_CARLO_PATHS = 200
 RUIN_DRAWDOWN_PCT = 50.0  # a real, named "the strategy is effectively dead" bar for this bootstrap's own paths
 
 FOUNDER_APPROVAL_CONFIDENCE_THRESHOLD = 60.0
+
+# v0.7 Feature 52 (Part 2) — Strategy Health's own recent-vs-lifetime
+# window and status thresholds. Reuses sandbox.py's real
+# RISK_MAX_AVG_DRAWDOWN for the "critical" bar rather than inventing a
+# second drawdown threshold.
+HEALTH_RECENT_WINDOW = 3
+HEALTH_RETIRE_CANDIDATE_WIN_RATE = 30.0
+HEALTH_RETIRE_CANDIDATE_RETURN_PCT = -10.0
+HEALTH_CRITICAL_WIN_RATE = 40.0
+HEALTH_DECLINING_RETURN_DELTA = -5.0
+HEALTH_NEEDS_REVIEW_WIN_RATE = 50.0
+HEALTH_EXCELLENT_WIN_RATE = 65.0
+HEALTH_EXCELLENT_MAX_DRAWDOWN = 10.0
+HEALTH_HEALTHY_WIN_RATE = 55.0
+HEALTH_HEALTHY_RETURN_DELTA = -2.0
+
+# v0.7 Feature 52 (Part 2) — Strategy Hall of Fame's own real, strict
+# induction bar: only ever checked at the moment of a real CEO retirement
+# decision (see generate_strategy_retirement_outcome() below), never
+# evaluated speculatively on an active strategy.
+HALL_OF_FAME_MIN_TRADE_COUNT = 30
+HALL_OF_FAME_MIN_WIN_RATE = 55.0
+HALL_OF_FAME_MIN_PROFIT_FACTOR = 1.5
+HALL_OF_FAME_MAX_AVG_DRAWDOWN = RISK_MAX_AVG_DRAWDOWN
 
 # Reverse of app/market_intelligence.py's real regime->scenario mapping —
 # which of the 13 real MarketIntelligenceRegime values each real
@@ -703,5 +737,269 @@ def generate_strategy_dossier(
         executiveReview=executive_review,
         founderApproval=founder_approval,
         confidence=confidence,
+        generatedAt=_now_iso(),
+    )
+
+
+# ---------------------------------------------------------------------
+# v0.7 Feature 52 (Part 2) — "Living Strategies." Strategy Health is a
+# real recent-vs-lifetime trend read; Hall of Fame / Failed Archive are
+# the two permanent outcomes of a real CEO retirement decision; the
+# Executive Dashboard is a computed aggregate over every artifact above.
+# See this module's own module docstring's honesty boundary — none of
+# this fabricates data app/sandbox.py's own docstring already explains
+# this codebase cannot honestly attribute (live/paper trade attribution).
+# ---------------------------------------------------------------------
+
+
+def compute_strategy_health(strategy: Strategy, results: list[SimulationResult], *, sim_day: int) -> StrategyHealthAssessment | None:
+    """None when the strategy has no completed runs yet — nothing real
+    to compare. 'Recent' is this strategy's own last HEALTH_RECENT_WINDOW
+    real SimulationResults; 'lifetime' is its full real history
+    (including those same recent runs, so a young strategy's recent and
+    lifetime reads are honestly identical rather than dividing an
+    already-thin sample in two)."""
+    strategy_results = [r for r in results if r.strategy_id == strategy.id]
+    if not strategy_results:
+        return None
+
+    recent = strategy_results[-HEALTH_RECENT_WINDOW:]
+    lifetime = strategy_results
+    recent_win_rate = sum(r.win_rate for r in recent) / len(recent)
+    lifetime_win_rate = sum(r.win_rate for r in lifetime) / len(lifetime)
+    recent_avg_return = sum(r.total_return_pct for r in recent) / len(recent)
+    lifetime_avg_return = sum(r.total_return_pct for r in lifetime) / len(lifetime)
+    recent_avg_drawdown = sum(r.max_drawdown_pct for r in recent) / len(recent)
+    lifetime_avg_drawdown = sum(r.max_drawdown_pct for r in lifetime) / len(lifetime)
+    return_delta = recent_avg_return - lifetime_avg_return
+
+    trend: StrategyHealthTrend = "improving" if return_delta > 1.0 else "declining" if return_delta < -1.0 else "stable"
+    reasoning = [f"Recent {len(recent)}-run average return {recent_avg_return:+.1f}% vs. this strategy's own lifetime average {lifetime_avg_return:+.1f}% across {len(lifetime)} real run(s)."]
+
+    status: StrategyHealthStatus
+    if recent_win_rate < HEALTH_RETIRE_CANDIDATE_WIN_RATE or recent_avg_return <= HEALTH_RETIRE_CANDIDATE_RETURN_PCT:
+        status = "retire_candidate"
+        reasoning.append(f"Recent win rate {recent_win_rate:.0f}% / recent average return {recent_avg_return:+.1f}% is a real, serious warning sign.")
+    elif recent_avg_drawdown > RISK_MAX_AVG_DRAWDOWN:
+        status = "critical"
+        reasoning.append(f"Recent average drawdown {recent_avg_drawdown:.1f}% exceeds the {RISK_MAX_AVG_DRAWDOWN:.0f}% comfort bar Risk already uses elsewhere in this pipeline.")
+    elif recent_win_rate < HEALTH_CRITICAL_WIN_RATE:
+        status = "critical"
+        reasoning.append(f"Recent win rate {recent_win_rate:.0f}% is critically low.")
+    elif return_delta < HEALTH_DECLINING_RETURN_DELTA:
+        status = "declining"
+        reasoning.append(f"Recent performance has fallen {abs(return_delta):.1f} points below this strategy's own lifetime average.")
+    elif return_delta < 0.0 and recent_win_rate < HEALTH_NEEDS_REVIEW_WIN_RATE:
+        status = "needs_review"
+        reasoning.append("Recent performance is below this strategy's own lifetime average and its recent win rate has slipped under 50%.")
+    elif recent_win_rate >= HEALTH_EXCELLENT_WIN_RATE and return_delta >= 0.0 and recent_avg_drawdown <= HEALTH_EXCELLENT_MAX_DRAWDOWN:
+        status = "excellent"
+        reasoning.append("Recent performance matches or beats this strategy's own lifetime average with a strong win rate and low drawdown.")
+    elif recent_win_rate >= HEALTH_HEALTHY_WIN_RATE and return_delta >= HEALTH_HEALTHY_RETURN_DELTA:
+        status = "healthy"
+        reasoning.append("Recent performance is holding close to or above this strategy's own lifetime average.")
+    else:
+        status = "stable"
+        reasoning.append("No strong real trend either way yet.")
+
+    return StrategyHealthAssessment(
+        id=f"health-{strategy.id}-{sim_day}",
+        strategyId=strategy.id,
+        strategyName=strategy.name,
+        status=status,
+        trend=trend,
+        recentWinRate=round(recent_win_rate, 1),
+        lifetimeWinRate=round(lifetime_win_rate, 1),
+        recentAvgReturnPct=round(recent_avg_return, 2),
+        lifetimeAvgReturnPct=round(lifetime_avg_return, 2),
+        recentAvgDrawdownPct=round(recent_avg_drawdown, 2),
+        lifetimeAvgDrawdownPct=round(lifetime_avg_drawdown, 2),
+        recentSampleSize=len(recent),
+        lifetimeSampleSize=len(lifetime),
+        reasoning=reasoning,
+        simDay=sim_day,
+        createdAt=_now_iso(),
+    )
+
+
+def cap_strategy_health_assessments(items: list[StrategyHealthAssessment]) -> list[StrategyHealthAssessment]:
+    if len(items) > MAX_STRATEGY_HEALTH_ASSESSMENTS:
+        del items[: len(items) - MAX_STRATEGY_HEALTH_ASSESSMENTS]
+    return items
+
+
+def generate_strategy_retirement_outcome(
+    strategy: Strategy,
+    results: list[SimulationResult],
+    latest_review: StrategyReview | None,
+    latest_executive_review: StrategyExecutiveReview | None,
+    latest_founder_approval: StrategyFounderApproval | None,
+    reason: str,
+    *,
+    sim_day: int,
+) -> tuple[StrategyHallOfFameEntry | None, FailedStrategyArchiveEntry | None]:
+    """Every real retirement produces exactly one of the two permanent
+    records below — never both, never neither. `strategy` is the
+    strategy's state right before retirement (still carrying its real
+    pre-retirement `stage`), since app/sandbox.py's retire_strategy()
+    only returns the already-retired copy."""
+    strategy_results = [r for r in results if r.strategy_id == strategy.id]
+    trade_count = sum(r.trade_count for r in strategy_results)
+    win_rate = sum(r.win_rate for r in strategy_results) / len(strategy_results) if strategy_results else 0.0
+    profit_factor = sum(r.profit_factor for r in strategy_results) / len(strategy_results) if strategy_results else 0.0
+    avg_drawdown = sum(r.max_drawdown_pct for r in strategy_results) / len(strategy_results) if strategy_results else 100.0
+    avg_return = sum(r.total_return_pct for r in strategy_results) / len(strategy_results) if strategy_results else 0.0
+    sim_days_active = max(0, sim_day - strategy.stage_history[0].sim_day) if strategy.stage_history else 0
+
+    qualifies_for_hall_of_fame = (
+        strategy.stage == "approved"
+        and trade_count >= HALL_OF_FAME_MIN_TRADE_COUNT
+        and win_rate >= HALL_OF_FAME_MIN_WIN_RATE
+        and profit_factor >= HALL_OF_FAME_MIN_PROFIT_FACTOR
+        and avg_drawdown <= HALL_OF_FAME_MAX_AVG_DRAWDOWN
+        and latest_founder_approval is not None
+        and latest_founder_approval.verdict == "approved"
+    )
+
+    if qualifies_for_hall_of_fame:
+        legacy_notes = ["Cleared every real validation stage in this pipeline and earned real Founder Approval before retirement."]
+        if latest_executive_review is not None:
+            legacy_notes.append(latest_executive_review.reason)
+        entry = StrategyHallOfFameEntry(
+            id=f"hof-strategy-{strategy.id}",
+            strategyId=strategy.id,
+            strategyName=strategy.name,
+            createdBy=strategy.created_by,
+            description=strategy.description,
+            simDaysActive=sim_days_active,
+            tradesExecuted=trade_count,
+            winRate=round(win_rate, 1),
+            profitFactor=round(profit_factor, 2),
+            maxDrawdownPct=round(avg_drawdown, 2),
+            historicalReturnPct=round(avg_return, 2),
+            legacyNotes=legacy_notes,
+            retiredReason=reason,
+            simDay=sim_day,
+            inductedAt=_now_iso(),
+        )
+        return entry, None
+
+    what_failed = [v.summary for v in latest_review.verdicts if v.verdict != "pass"] if latest_review is not None else []
+    lessons_learned: list[str] = []
+    if latest_executive_review is not None:
+        for opinion in latest_executive_review.opinions:
+            lessons_learned.extend(opinion.concerns)
+    if not what_failed:
+        what_failed = ["Retired before completing enough real validation stages to file specific findings."]
+    if not lessons_learned:
+        lessons_learned = ["No department ever filed a real concern against this strategy — it was retired for other reasons."]
+
+    archive_entry = FailedStrategyArchiveEntry(
+        id=f"failedarchive-{strategy.id}",
+        strategyId=strategy.id,
+        strategyName=strategy.name,
+        createdBy=strategy.created_by,
+        failedAtStage=strategy.stage,
+        whatFailed=what_failed,
+        lessonsLearned=lessons_learned,
+        retiredReason=reason,
+        simDay=sim_day,
+        createdAt=_now_iso(),
+    )
+    return None, archive_entry
+
+
+def cap_strategy_hall_of_fame(items: list[StrategyHallOfFameEntry]) -> list[StrategyHallOfFameEntry]:
+    if len(items) > MAX_STRATEGY_HALL_OF_FAME:
+        del items[: len(items) - MAX_STRATEGY_HALL_OF_FAME]
+    return items
+
+
+def cap_strategy_failed_archive(items: list[FailedStrategyArchiveEntry]) -> list[FailedStrategyArchiveEntry]:
+    if len(items) > MAX_STRATEGY_FAILED_ARCHIVE:
+        del items[: len(items) - MAX_STRATEGY_FAILED_ARCHIVE]
+    return items
+
+
+def compute_strategy_executive_dashboard(
+    strategies: list[Strategy],
+    results: list[SimulationResult],
+    reviews: list[StrategyReview],
+    monte_carlo_results: list[StrategyMonteCarloResult],
+    regime_tests: list[StrategyRegimeTestReport],
+    executive_reviews: list[StrategyExecutiveReview],
+    hall_of_fame: list[StrategyHallOfFameEntry],
+    failed_archive: list[FailedStrategyArchiveEntry],
+    *,
+    sim_day: int,
+) -> StrategyExecutiveDashboard:
+    """Real, computed-on-request aggregate — every count and named slot
+    below reads already-real Strategy/SimulationResult/review history,
+    never a second source of truth (same reasoning as
+    generate_strategy_dossier())."""
+    non_retired = [s for s in strategies if s.stage != "retired"]
+    in_development: list[Strategy] = [s for s in non_retired if s.stage in ("idea", "research")]
+    in_validation: list[Strategy] = [s for s in non_retired if s.stage in ("historical_backtest", "market_simulation", "limited_live_capital", "company_review")]
+    paper_trading: list[Strategy] = [s for s in non_retired if s.stage == "paper_trading"]
+    approved: list[Strategy] = [s for s in non_retired if s.stage == "approved"]
+    retired: list[Strategy] = [s for s in strategies if s.stage == "retired"]
+
+    def _avg_return(strategy: Strategy) -> float | None:
+        strategy_results = [r for r in results if r.strategy_id == strategy.id]
+        return sum(r.total_return_pct for r in strategy_results) / len(strategy_results) if strategy_results else None
+
+    scored = [(s, v) for s in strategies for v in [_avg_return(s)] if v is not None]
+    best_strategy = None
+    weakest_strategy = None
+    if scored:
+        best_s, best_v = max(scored, key=lambda pair: pair[1])
+        worst_s, worst_v = min(scored, key=lambda pair: pair[1])
+        best_strategy = StrategyExecutiveDashboardEntry(strategyId=best_s.id, strategyName=best_s.name, metricLabel="Average real return", metricValue=round(best_v, 2))
+        weakest_strategy = StrategyExecutiveDashboardEntry(strategyId=worst_s.id, strategyName=worst_s.name, metricLabel="Average real return", metricValue=round(worst_v, 2))
+
+    most_improved: StrategyExecutiveDashboardEntry | None = None
+    best_delta: float | None = None
+    for s in strategies:
+        health = compute_strategy_health(s, results, sim_day=sim_day)
+        if health is None:
+            continue
+        delta = health.recent_avg_return_pct - health.lifetime_avg_return_pct
+        if best_delta is None or delta > best_delta:
+            best_delta = delta
+            most_improved = StrategyExecutiveDashboardEntry(strategyId=s.id, strategyName=s.name, metricLabel="Recent vs. lifetime return delta", metricValue=round(delta, 2))
+
+    newest_strategy = None
+    if strategies:
+        newest = max(strategies, key=lambda s: s.created_at)
+        newest_strategy = StrategyExecutiveDashboardEntry(strategyId=newest.id, strategyName=newest.name, metricLabel="Most recently created", metricValue=0.0)
+
+    highest_confidence: StrategyExecutiveDashboardEntry | None = None
+    best_confidence: float | None = None
+    for s in strategies:
+        review = next((r for r in reversed(reviews) if r.strategy_id == s.id), None)
+        monte_carlo = next((r for r in reversed(monte_carlo_results) if r.strategy_id == s.id), None)
+        regime_test = next((r for r in reversed(regime_tests) if r.strategy_id == s.id), None)
+        executive_review = next((r for r in reversed(executive_reviews) if r.strategy_id == s.id), None)
+        if review is None and monte_carlo is None and executive_review is None:
+            continue
+        score = compute_strategy_confidence_score(s, review, monte_carlo, regime_test, executive_review, sim_day=sim_day)
+        if best_confidence is None or score.overall_confidence_pct > best_confidence:
+            best_confidence = score.overall_confidence_pct
+            highest_confidence = StrategyExecutiveDashboardEntry(strategyId=s.id, strategyName=s.name, metricLabel="Confidence score", metricValue=score.overall_confidence_pct)
+
+    return StrategyExecutiveDashboard(
+        activeCount=len(non_retired),
+        inDevelopmentCount=len(in_development),
+        inValidationCount=len(in_validation),
+        paperTradingCount=len(paper_trading),
+        approvedCount=len(approved),
+        retiredCount=len(retired),
+        hallOfFameCount=len(hall_of_fame),
+        failedArchiveCount=len(failed_archive),
+        bestStrategy=best_strategy,
+        weakestStrategy=weakest_strategy,
+        mostImprovedStrategy=most_improved,
+        newestStrategy=newest_strategy,
+        highestConfidenceStrategy=highest_confidence,
         generatedAt=_now_iso(),
     )

@@ -46,11 +46,11 @@ formulas or documented meaning:
   Legacy            - a small, permanent, capped delta layered on top of
                       the fresh historical-average score (never mixed
                       into the average itself, so the five formulas'
-                      documented meaning never changes). Nudged by
-                      exactly four real, one-time or rare company events
-                      this codebase already tracks: a ratified Black Box
-                      breakthrough and a completed Academy project each
-                      nudge `research_rigor` up (real completed research
+                      documented meaning never changes). Nudged by five
+                      real, one-time or rare company events this codebase
+                      already tracks: a ratified Black Box breakthrough
+                      and a completed Academy project each nudge
+                      `research_rigor` up (real completed research
                       effort); a filed `disciplined_process` success
                       study nudges `risk_appetite` down and a filed
                       `patient_execution` success study nudges `patience`
@@ -61,7 +61,18 @@ formulas or documented meaning:
                       `risk_appetite` down and `research_rigor` up at
                       once, since Keystone (risk) and Compass (learning)
                       retire together. See `nexus.py`'s `tick()` for
-                      exactly where each hook fires.
+                      exactly where each of those four hooks fires. v0.7
+                      Feature 52 (Part 2) adds a fifth: a Strategy earning
+                      real induction into the Strategy Hall of Fame (see
+                      `app/strategy_lab.py`'s
+                      `generate_strategy_retirement_outcome()`) nudges
+                      `research_rigor` up — a real, checkable validation
+                      effort the same as the other two `research_rigor`
+                      triggers — fired synchronously inside
+                      `state.py`'s `retire_strategy()` CEO action rather
+                      than `nexus.py`'s tick loop, since retirement is
+                      itself a real, one-time CEO decision, not something
+                      the tick loop discovers on its own.
 
   Explicit scope cut: this codebase is single-tenant (one company, one
   save slot — see `state.py`'s and `save_modules.py`'s own module
@@ -92,6 +103,7 @@ BLACK_BOX_BREAKTHROUGH_NUDGE = 2.0
 ACADEMY_COMPLETION_NUDGE = 0.5
 SUCCESS_STUDY_NUDGE = 1.0
 FOUNDER_RETIREMENT_NUDGE = 3.0
+STRATEGY_HALL_OF_FAME_NUDGE = 2.0
 
 
 def nudge_legacy(deltas: dict[str, float], trait_id: str, amount: float) -> dict[str, float]:

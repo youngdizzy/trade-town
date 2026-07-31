@@ -7,6 +7,50 @@ development milestones, not semver releases.
 
 ### Added
 
+- **v0.7 Feature 52 (Part 2) — "Living Strategies"**: a real, scoped
+  subset of the brief's much larger Part 2 list, built on top of Part
+  1's already-real artifacts. **Strategy Health** (`compute_strategy_health()`)
+  is a real recent-vs-lifetime trend read over a strategy's own
+  `SimulationResult` history — re-run on the same per-completed-simulation
+  trigger as Part 1's Monte Carlo/Regime Test/Liquidity Validation —
+  landing on one of seven real statuses (Excellent/Healthy/Stable/Needs
+  Review/Declining/Critical/Retire Candidate) from real win-rate/return/
+  drawdown deltas, never a fabricated score. **Strategy Retirement** is
+  new: `Strategy.stage` gains a terminal `"retired"` value, reachable
+  from any prior stage via a real, deliberate `POST /api/sandbox/retire`
+  CEO action (never automatic) that cites a real reason. Every real
+  retirement files exactly one of two new permanent records — a
+  **Strategy Hall of Fame** entry (real, strict induction bar: ≥30
+  aggregated trades, ≥55% win rate, ≥1.5 profit factor, ≤20% average
+  drawdown, `stage == "approved"`, and a real approved `StrategyFounderApproval`
+  on file) or a **Failed Strategy Archive** entry (every other
+  retirement, with "what failed"/"lessons learned" pulled from that
+  strategy's own real `StrategyReview` verdicts and `StrategyExecutiveReview`
+  concerns — never invented after the fact). A Hall of Fame induction
+  also nudges Company DNA's real `research_rigor` Legacy trait (a fifth
+  real trigger alongside the four `app/company_dna.py` already tracked).
+  New **Executive Dashboard** (`GET /api/sandbox/dashboard`) computes a
+  real aggregate on request: stage counts, Hall of Fame/Failed Archive
+  counts, and named best/weakest/most-improved/newest/highest-confidence
+  strategy slots, each citing the real metric that earned the slot.
+  **Explicitly cut from this pass, and why**: Version Control/Strategy
+  Evolution (this codebase has no strategy revision/parent-child
+  versioning mechanism to build on — a structural addition beyond this
+  slice's scope, not a data-honesty cut); Strategy Competitions (needs
+  Version Control as a prerequisite); a fully autonomous Automatic
+  Revalidation workflow (retirement stays a real, deliberate CEO call,
+  matching every other terminal Research Sandbox decision in this
+  codebase — Learning Mode's own precedent); dedicated multi-month
+  Research Projects (already real and shipped as Black Box Projects —
+  not duplicated); a literal Strategy Library UI concept (the existing
+  `strategies` list plus Part 1's `StrategyDossier` already carries every
+  real field the brief's Library section asks for — no new backend
+  artifact needed, this is a frontend-only concern deferred with the
+  rest of Feature 52's UI). New tests: 11 more in
+  `test_strategy_lab.py` (28 total) plus 3 in `test_sandbox.py` for the
+  new terminal stage and retirement gating — 807/807 backend tests
+  passing, `mypy`/`ruff` clean.
+
 - **v0.7 Feature 52 (Part 1) — Strategy Validation Laboratory, "Never Trade
   An Untested Idea"**: enriches `app/sandbox.py`'s already-real 8-stage
   Research Sandbox pipeline (Idea → Research → Historical Backtest →
