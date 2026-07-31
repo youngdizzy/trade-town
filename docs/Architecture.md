@@ -3115,8 +3115,9 @@ Certification History" always has the complete real timeline.
 — Downgrade/Promote), **revoked** (permanently pulled until re-earned).
 `"expired"` is deliberately not built: it would need a real
 passage-of-time renewal/decay signal, and nothing in this codebase
-tracks certification age or renewal — a genuine future addition, not
-fabricated here to fill out a fourth status.
+tracks certification age or renewal — **postponed to v1.0**
+(see `docs/ROADMAP.md`), not fabricated here to fill out a fourth
+status.
 
 **Six real actions, all in `app/foundational_mentors.py`'s
 "Certification Management" section:**

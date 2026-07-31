@@ -2192,8 +2192,9 @@ export interface FoundationalMentorProgress {
 // permanent registry, never derived from FoundationalMentorProgress
 // (which a revoke genuinely resets) and never deleted. "expired" is
 // deliberately not a status: it would need a real time-based renewal/
-// decay signal, which doesn't exist anywhere in this codebase — see
-// backend/app/schemas.py's CertificationStatus doc comment.
+// decay signal, which doesn't exist anywhere in this codebase —
+// postponed to v1.0 (see docs/ROADMAP.md). See backend/app/schemas.py's
+// CertificationStatus doc comment.
 export type CertificationStatus = "active" | "suspended" | "revoked";
 export type CertificationHistoryAction = "earned" | "suspended" | "reinstated" | "revoked" | "progress_reset";
 

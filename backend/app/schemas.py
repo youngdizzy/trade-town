@@ -2895,8 +2895,8 @@ FoundationalGraduationStatus = Literal["in_progress", "pending_approval", "gradu
 # lesson/quiz progress that earned it — see foundational_mentors.py's
 # module docstring for the full lifecycle. "expired" is deliberately not
 # included: it would need a real passage-of-time renewal/decay signal,
-# which doesn't exist anywhere in this codebase yet — a genuine future
-# addition, not fabricated here.
+# which doesn't exist anywhere in this codebase yet — postponed to
+# v1.0 (see docs/ROADMAP.md), not fabricated here.
 CertificationStatus = Literal["active", "suspended", "revoked"]
 CertificationHistoryAction = Literal["earned", "suspended", "reinstated", "revoked", "progress_reset"]
 

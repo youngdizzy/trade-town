@@ -784,7 +784,8 @@ def approve_graduation(state: FoundationalMentorState, agent_id: AgentId, mentor
 # qualified), Suspended (temporarily disabled, reinstatable), Revoked
 # (permanently pulled, must re-earn). "Expired" (a natural, non-punitive
 # lapse) is also not built — it needs a real time-based renewal/decay
-# signal this codebase has none of yet.
+# signal this codebase has none of yet. Postponed to v1.0 (see
+# docs/ROADMAP.md) rather than built here without one.
 
 
 def downgrade_certification(state: FoundationalMentorState, agent_id: AgentId, mentor_id: FoundationalMentorId, *, reason: str, sim_day: int) -> tuple[FoundationalMentorState, str | None]:

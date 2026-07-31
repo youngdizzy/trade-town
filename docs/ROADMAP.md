@@ -196,6 +196,15 @@ Calibration). **Stop condition:** this document does not pre-authorize
 brokerage code — that authorization is a separate, explicit decision
 made at v1.0's own kickoff, not implied by this roadmap entry existing.
 
+**Also postponed to this version (unrelated to the gated brokerage
+scope above):** Certification Expiration — a fourth `CertificationStatus`
+("expired," a natural, non-punitive lapse distinct from a CEO-driven
+Revoke) for Certification Management's Current Certifications panel
+(see `CHANGELOG.md`). Not built when Certification Management shipped
+because it needs a real passage-of-time renewal/decay signal that
+doesn't exist anywhere in this codebase yet — deferred here rather than
+fabricated.
+
 ---
 
 ## Version 1.x — Platform Era (directional, not yet scoped)

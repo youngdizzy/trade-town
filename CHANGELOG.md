@@ -64,7 +64,9 @@ development milestones, not semver releases.
   (Bronze/Silver/Gold) — no tiered-certification concept exists
   anywhere in this codebase; graduation is a real pass/fail signal, so
   inventing tier thresholds would be fabrication. "Expired" status —
-  no time-based renewal/decay signal exists to honestly back it.
+  no time-based renewal/decay signal exists to honestly back it;
+  **postponed to v1.0** (see `docs/ROADMAP.md`) rather than built
+  without one.
 
   Every revoke also appends a real Newspaper `"company"`-category news
   item — this codebase's real analog to an Executive Log, since no
