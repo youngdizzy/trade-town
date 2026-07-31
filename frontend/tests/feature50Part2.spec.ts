@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { clickExpand, clickTab, continueGame, dismissBlockingPopups } from "./helpers";
 
 /**
  * Browser tests for v0.7 Feature 50 (Part 2/3) — Decision Grade,
@@ -6,79 +7,6 @@ import { test, expect, type Page } from "@playwright/test";
  * redesign's Executive tier. Same real-app testing approach as
  * executiveVoting.spec.ts — exercises the live Vite + FastAPI stack.
  */
-async function continueGame(page: Page): Promise<void> {
-  const canvas = page.locator("canvas");
-  await expect(canvas).toBeVisible();
-  await page.waitForTimeout(800);
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error("canvas has no bounding box");
-    await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.5 + 44);
-    try {
-      await page.getByRole("button", { name: "Command ⌁" }).waitFor({ state: "attached", timeout: 3000 });
-      return;
-    } catch {
-      // not in-game yet — try again
-    }
-  }
-  throw new Error("continueGame: never reached an in-game scene after 5 click attempts");
-}
-
-async function dismissAutoPopups(page: Page): Promise<void> {
-  // Higher iteration count than the older executiveVoting.spec.ts helper
-  // this mirrors — this file's own runs landed while the shared dev
-  // backend was catching up from an unrelated pre-existing bug (see
-  // wisdom.py's _CATEGORY_TITLES fix) that had frozen its sim clock for
-  // a long real-world stretch, so real proposals/closed trades surfaced
-  // in an unusually dense burst once ticking resumed. Still real
-  // dismiss actions, never a shortcut.
-  for (let i = 0; i < 15; i++) {
-    const tradeBanner = page.getByTestId("trade-outcome-banner");
-    if (await tradeBanner.isVisible().catch(() => false)) {
-      await tradeBanner.getByText("Dismiss").click({ timeout: 3000 }).catch(() => {});
-      await page.waitForTimeout(300);
-      continue;
-    }
-    const votingPopup = page.getByTestId("executive-voting");
-    if (await votingPopup.isVisible().catch(() => false)) {
-      await votingPopup.getByText("Decide later").click({ timeout: 3000 }).catch(() => {});
-      await page.waitForTimeout(300);
-      continue;
-    }
-    break;
-  }
-}
-
-async function clickTab(page: Page, tab: string): Promise<void> {
-  for (let attempt = 0; attempt < 20; attempt++) {
-    await dismissAutoPopups(page);
-    try {
-      await page.getByRole("button", { name: tab, exact: true }).click({ timeout: 3000 });
-      return;
-    } catch {
-      // a popup intercepted the click — loop back and dismiss again
-    }
-  }
-  throw new Error(`clickTab: could not click "${tab}" after 20 attempts`);
-}
-
-/** The "EXPAND" click has the same intercepted-click risk as clickTab's
- * tab clicks — a live real popup can appear in the gap between
- * dismissAutoPopups() and the click itself, since the sim keeps ticking
- * in the background. Retries with a fresh dismiss pass each time, same
- * pattern as clickTab. */
-async function clickExpand(page: Page): Promise<void> {
-  for (let attempt = 0; attempt < 10; attempt++) {
-    await dismissAutoPopups(page);
-    try {
-      await page.getByText("EXPAND — FULL COMMAND CENTER").click({ timeout: 5000 });
-      return;
-    } catch {
-      // a popup intercepted the click — loop back and dismiss again
-    }
-  }
-  throw new Error(`clickExpand: could not click "EXPAND — FULL COMMAND CENTER" after 10 attempts`);
-}
 
 /** Same real research_boost mechanic executiveVoting.spec.ts already uses
  * — see that file's own doc comment for why this isn't a test-only
@@ -115,7 +43,7 @@ async function boostResearchToThreshold(page: Page): Promise<void> {
  * executiveVoting.spec.ts's own BUY test exercises. */
 async function ensureAtLeastOneRealDecision(page: Page): Promise<void> {
   await boostResearchToThreshold(page);
-  await dismissAutoPopups(page);
+  await dismissBlockingPopups(page);
   await page.keyboard.press("Tab");
   await clickExpand(page);
   await clickTab(page, "EXECUTIVE");
@@ -138,7 +66,7 @@ test("Company Health redesign shows the Executive tier alongside the original Op
   test.setTimeout(90000); // same rationale as commandCenter.spec.ts — real popups may need several dismiss rounds
   await page.goto("/");
   await continueGame(page);
-  await dismissAutoPopups(page);
+  await dismissBlockingPopups(page);
   await page.keyboard.press("Tab");
   await clickExpand(page);
   await clickTab(page, "COMPANY");
@@ -155,7 +83,7 @@ test("Risk dashboard shows the real Risk Governance metric", async ({ page }) =>
   test.setTimeout(90000);
   await page.goto("/");
   await continueGame(page);
-  await dismissAutoPopups(page);
+  await dismissBlockingPopups(page);
   await page.keyboard.press("Tab");
   await clickExpand(page);
   await clickTab(page, "RISK");
@@ -169,7 +97,7 @@ test("Executive Intelligence Network hub shows Weekly Self-Evaluation and the Ex
   await page.goto("/");
   await continueGame(page);
   await ensureAtLeastOneRealDecision(page);
-  await dismissAutoPopups(page);
+  await dismissBlockingPopups(page);
   await clickTab(page, "EXECINTEL");
 
   await expect(page.getByText("Weekly Self-Evaluation")).toBeVisible();
@@ -195,7 +123,7 @@ test("Decision Intelligence dashboard shows a Decision Grade column and distribu
   await page.goto("/");
   await continueGame(page);
   await ensureAtLeastOneRealDecision(page);
-  await dismissAutoPopups(page);
+  await dismissBlockingPopups(page);
   await clickTab(page, "DECISIONS");
 
   await expect(page.getByText(/Decision Log \(\d+ of \d+\)/)).toBeVisible();

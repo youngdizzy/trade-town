@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { clickExpand, clickTab, continueGame } from "./helpers";
 
 /**
  * Browser tests for v0.6.3 Feature 12 — Executive Voting (CEO Approval).
@@ -24,49 +25,6 @@ import { test, expect, type Page } from "@playwright/test";
  * research_boost energy action (see its own doc comment below) instead
  * of waiting on organic completion.
  */
-async function continueGame(page: Page): Promise<void> {
-  const canvas = page.locator("canvas");
-  await expect(canvas).toBeVisible();
-  await page.waitForTimeout(800);
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error("canvas has no bounding box");
-    await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.5 + 44);
-    try {
-      await page.getByRole("button", { name: "Command ⌁" }).waitFor({ state: "attached", timeout: 3000 });
-      return;
-    } catch {
-      // not in-game yet — try again
-    }
-  }
-  throw new Error("continueGame: never reached an in-game scene after 5 click attempts");
-}
-
-/**
- * Dismisses whatever trade-outcome banner / Executive Voting popup
- * auto-opened while this page was already live (see the module doc
- * comment above on the `hydrated` guard — a proposal or closed trade
- * that appears mid-test can genuinely pop these up over whatever the
- * test is about to click next). Idempotent and safe to call even when
- * nothing is open.
- */
-async function dismissAutoPopups(page: Page): Promise<void> {
-  for (let i = 0; i < 5; i++) {
-    const tradeBanner = page.getByTestId("trade-outcome-banner");
-    if (await tradeBanner.isVisible().catch(() => false)) {
-      await tradeBanner.getByText("Dismiss").click();
-      await page.waitForTimeout(300);
-      continue;
-    }
-    const votingPopup = page.getByTestId("executive-voting");
-    if (await votingPopup.isVisible().catch(() => false)) {
-      await votingPopup.getByText("Decide later").click();
-      await page.waitForTimeout(300);
-      continue;
-    }
-    break;
-  }
-}
 
 /**
  * Pushes a real in-progress research item over the trade-confidence
@@ -114,10 +72,9 @@ test("Executive Voting popup shows real analyst votes and a BUY submits a real C
   // that can genuinely happen mid-test on a long-running dev backend, so
   // dismiss it first the same way a real player would before opening the
   // EXECUTIVE panel's own pending-proposal list.
-  await dismissAutoPopups(page);
   await page.keyboard.press("Tab");
-  await page.getByText("EXPAND — FULL COMMAND CENTER").click();
-  await page.getByRole("button", { name: "EXECUTIVE", exact: true }).click();
+  await clickExpand(page);
+  await clickTab(page, "EXECUTIVE");
 
   const pendingRow = page.locator("button").filter({ hasText: /% confidence/ }).first();
   await expect(pendingRow).toBeVisible({ timeout: 20000 });
@@ -147,11 +104,9 @@ test("Request More Research holds a proposal without resolving it, and caps out 
   await page.goto("/");
   await continueGame(page);
   await boostResearchToThreshold(page);
-  await dismissAutoPopups(page);
-
   await page.keyboard.press("Tab");
-  await page.getByText("EXPAND — FULL COMMAND CENTER").click();
-  await page.getByRole("button", { name: "EXECUTIVE", exact: true }).click();
+  await clickExpand(page);
+  await clickTab(page, "EXECUTIVE");
 
   const pendingRow = page.locator("button").filter({ hasText: /% confidence/ }).first();
   await expect(pendingRow).toBeVisible({ timeout: 20000 });
@@ -188,11 +143,9 @@ test("Devil's Advocate Challenge Report shows a real assigned employee and sever
   await page.goto("/");
   await continueGame(page);
   await boostResearchToThreshold(page);
-  await dismissAutoPopups(page);
-
   await page.keyboard.press("Tab");
-  await page.getByText("EXPAND — FULL COMMAND CENTER").click();
-  await page.getByRole("button", { name: "EXECUTIVE", exact: true }).click();
+  await clickExpand(page);
+  await clickTab(page, "EXECUTIVE");
 
   const pendingRow = page.locator("button").filter({ hasText: /% confidence/ }).first();
   await expect(pendingRow).toBeVisible({ timeout: 20000 });
@@ -235,11 +188,9 @@ test("Executive Intelligence Network panel synthesizes real department opinions 
   await page.goto("/");
   await continueGame(page);
   await boostResearchToThreshold(page);
-  await dismissAutoPopups(page);
-
   await page.keyboard.press("Tab");
-  await page.getByText("EXPAND — FULL COMMAND CENTER").click();
-  await page.getByRole("button", { name: "EXECUTIVE", exact: true }).click();
+  await clickExpand(page);
+  await clickTab(page, "EXECUTIVE");
 
   const pendingRow = page.locator("button").filter({ hasText: /% confidence/ }).first();
   await expect(pendingRow).toBeVisible({ timeout: 20000 });
@@ -266,11 +217,9 @@ test("Executive Intelligence Network panel synthesizes real department opinions 
 test("Executive panel in the Command Center lists pending proposals and CEO track record", async ({ page }) => {
   await page.goto("/");
   await continueGame(page);
-  await dismissAutoPopups(page);
-
   await page.keyboard.press("Tab");
-  await page.getByText("EXPAND — FULL COMMAND CENTER").click();
-  await page.getByRole("button", { name: "EXECUTIVE" }).click();
+  await clickExpand(page);
+  await clickTab(page, "EXECUTIVE");
 
   await expect(page.getByText("CEO Track Record")).toBeVisible();
   await expect(page.getByText(/Pending Proposals/)).toBeVisible();

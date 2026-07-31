@@ -7,6 +7,48 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Playwright test suite — popup resilience**: this sim clock never
+  stops ticking against one shared dev backend, so a real closed trade,
+  a fresh TradeProposal, a Trade Gatekeeper veto, or a Founder-approved
+  breakthrough can pop up over whatever any test is doing at any moment
+  — correct, honest gameplay behavior that used to fail unrelated tests
+  outright. New `frontend/tests/helpers.ts` centralizes what used to be
+  ~17 slightly-drifted copies of the same title-screen/popup-dismissal
+  helpers (some of which, on inspection, never actually dismissed
+  anything — a real resilience gap, not just duplication): `dismissBlockingPopups()`
+  now knows all four real gameplay-triggered overlays (Executive Voting,
+  the Trade Gatekeeper's rejection screen, the trade-outcome banner, and
+  the Eureka! Breakthrough Moment — the last two of which no prior helper
+  handled), and `clickRobust()`/`clickButton()`/`clickTab()`/`clickExpand()`
+  wrap a click in a dismiss-then-retry loop so a popup intercepting a
+  click gets cleared and retried instead of failing the test. A popup
+  that genuinely can't be dismissed still fails loudly — every
+  `tryDismiss*` function throws if its own dismiss action doesn't
+  actually close the popup, which is the real "cannot be dismissed /
+  behaves incorrectly" case that should fail. (A background auto-dismiss
+  fixture polling independently of the test body was tried and reverted
+  — it raced with foreground retries and could hang past a test's
+  timeout during teardown, breaking previously-passing tests; the
+  dismiss-then-retry pattern on each real click is the one that holds up
+  under a real ~11-minute full-suite run against a live, actively-ticking
+  backend.) `executiveVoting.spec.ts`/`feature50Part2.spec.ts` deliberately
+  keep dismissing manually rather than importing a blanket fixture, since
+  their own tests directly interact with the Executive Voting popup as
+  the subject under test. Also fixed along the way: `campusMap.spec.ts`'s
+  hardcoded employee count (now reads the real live count, the roster
+  having grown twice since that assertion was written) and two of
+  `marketIntel.spec.ts`'s own assertions (a `TerminalLabel`'s CSS
+  `uppercase` never changes the underlying DOM text Playwright's
+  `getByText` actually matches; a broad `/predicted/` regex needs
+  `.first()` once the shared backend has more than one real graded day
+  on record). Verified via three full ~60-70-test suite runs against the
+  live stack; the same set of popup-interception failures does not
+  recur. Six unrelated, pre-existing flakes surfaced during verification
+  (movement-hold timing, dialogue-render timing, Devil's Advocate
+  rotation determinism on a small pool, one strict-mode text ambiguity,
+  one Phaser runtime error) — none involve a popup, and are left for a
+  separate pass rather than scope-creeping this one.
+
 - **v0.7 Feature 51 — Market Intelligence Department, "the company's eyes"**:
   before any trade proposal is generated, the company now
   computes a real, always-current read of the market it's operating in.

@@ -4081,6 +4081,82 @@ Center spec — reproduced identically on unmodified, pre-existing spec
 files unrelated to this feature — a pre-existing environment flake, not
 a regression from this change.
 
+## Test suite popup resilience
+
+`frontend/tests/helpers.ts` is the shared home for what every one of the
+suite's 17 spec files previously carried its own slightly-drifted copy
+of. The problem it fixes: this app's sim clock keeps ticking in real
+time against one shared dev backend for the whole length of every spec
+file's run, so a genuinely new `TradeProposal`, a real closed
+`PaperTrade`, a Trade Gatekeeper veto, or a Founder-approved
+`BlackBoxReview` can pop a real overlay up over whatever a test is doing
+at any moment — correct, honest gameplay behavior, not a test-only
+quirk, and a test should never fail because one showed up.
+
+`dismissBlockingPopups()` knows all four real overlays this can produce:
+`executive-voting` (Feature 12, closed via "Decide later" — the one
+real exit that neither submits a decision nor can chain anywhere),
+`gatekeeper-rejection` (Feature 20's veto screen, closed via
+"ACKNOWLEDGE"), the `trade-outcome-banner` (closed via "Dismiss"), and
+`BreakthroughMoment` (the Eureka! system — no `data-testid`, matched by
+its own dismiss button's accessible name). Auditing the pre-existing
+per-file copies found two of these four were never handled anywhere
+(`gatekeeper-rejection`, `BreakthroughMoment`), and some files'
+`continueGame()` never dismissed anything at all — real resilience
+gaps, not just duplication. `clickRobust()` (and the `clickButton()`/
+`clickTab()`/`clickExpand()` wrappers built on it) turn any click into a
+dismiss-then-retry loop, so a popup intercepting a click gets cleared
+and the click retried rather than failing the test outright. A popup
+that genuinely can't be dismissed still fails loudly: each
+`tryDismiss*` function throws if clicking its own dismiss control
+doesn't actually close it — the real "cannot be dismissed / behaves
+incorrectly" case the brief for this change asked to keep failing.
+
+**A background auto-dismiss fixture was tried and reverted.** The
+idea — a `test.extend()` fixture polling `dismissBlockingPopups()`
+independently of the test body's own control flow, so no call site
+would ever need to remember to dismiss first — sounded like the more
+scalable fix. In practice it raced with the foreground's own
+dismiss-then-retry clicks over the same page, and its teardown (`await`ing
+the background loop's current in-flight iteration after the test
+finished) could itself exceed the test's timeout budget, which broke
+two previously-passing `campusMap.spec.ts` tests that had nothing to do
+with popups. Verified via a live suite run that reintroduced exactly
+those two failures, then via a second run confirming they were gone
+once the fixture was reverted back to the manual, per-click retry
+pattern. `executiveVoting.spec.ts` and `feature50Part2.spec.ts`'s
+`ensureAtLeastOneRealDecision()` deliberately don't use even the manual
+helpers' `continueGame()`-level auto-dismissal in the same blanket way —
+those tests' own subject is directly interacting with the
+`executive-voting` popup (BUY/SELL/hold/Devil's Advocate/...), so they
+dismiss explicitly at the points where a bystander popup could
+plausibly appear, never reflexively on the one they're testing.
+
+Two other real bugs surfaced and were fixed while verifying this:
+`campusMap.spec.ts` had a hardcoded employee-count assertion ("13")
+that had already gone stale once before (per its own now-removed
+comment) and had gone stale again with the CIO/Quant hires — it now
+reads the real live count from `GET /api/load` instead. `marketIntel.spec.ts`
+had two assertion bugs unrelated to popups: a case-sensitive regex
+matching against `TerminalLabel`'s rendered text, which is uppercase
+only via CSS `text-transform` (the DOM text `getByText` actually
+matches stays title-case); and a `.or()` locator with a broad
+`/predicted/` pattern that becomes strict-mode-ambiguous once the
+shared backend has accumulated more than one real graded Learning Loop
+entry, fixed with `.first()`.
+
+**Verified**: three full ~60-70-test suite runs against the live Vite +
+FastAPI stack (each ~11 minutes, exercising a real, continuously-ticking
+backend) confirmed the same set of popup-interception failures does not
+recur across runs. Six failures surfaced during verification that are
+unrelated to popups and pre-existing — a movement-hold timing flake, a
+dialogue-render timing flake (both in `interaction.spec.ts`), Devil's
+Advocate assignee-rotation determinism on a small eligible-employee
+pool, one strict-mode text ambiguity (the word "Coach" matching both a
+department label and an agent name), and one Phaser runtime
+`TypeError` — deliberately left alone rather than folded into this
+change, since none of them involve a popup.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

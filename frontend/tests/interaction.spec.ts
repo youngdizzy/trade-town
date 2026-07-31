@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { continueGame, setPlayerScene } from "./helpers";
 
 /**
  * v0.7 — Input Priority fix, Part 2: "Press E to Talk" and the underlying
@@ -47,39 +48,6 @@ async function findPopulatedRoom(page: Page): Promise<{ scene: string; x: number
   throw new Error("findPopulatedRoom: no agent is currently in any RoomScene-backed location — nothing to walk toward");
 }
 
-async function setPlayerScene(page: Page, scene: string, x: number, y: number): Promise<void> {
-  const state = await page.evaluate(async () => {
-    const res = await fetch("/api/load");
-    return res.json();
-  });
-  state.player = { ...state.player, scene, x, y, facing: "down" };
-  await page.evaluate(async (s) => {
-    await fetch("/api/save", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(s),
-    });
-  }, state);
-}
-
-async function clickContinueOnTitleScreen(page: Page): Promise<void> {
-  const canvas = page.locator("canvas");
-  await expect(canvas).toBeVisible();
-  await page.waitForTimeout(800);
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error("canvas has no bounding box");
-    await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.5 + 44);
-    try {
-      await page.getByRole("button", { name: "Command ⌁" }).waitFor({ state: "attached", timeout: 3000 });
-      return;
-    } catch {
-      // not in-game yet — try again
-    }
-  }
-  throw new Error("clickContinueOnTitleScreen: never reached an in-game scene after 5 click attempts");
-}
-
 const PROMPT_PATTERN = /Talk to/;
 
 /** Walks the player in a small ring around their current position,
@@ -111,7 +79,7 @@ test.describe("Press E to Talk", () => {
     await page.goto("/");
     const room = await findPopulatedRoom(page);
     await setPlayerScene(page, room.scene, room.x, room.y);
-    await clickContinueOnTitleScreen(page);
+    await continueGame(page);
 
     await sweepForPrompt(page);
     const promptText = await page.getByText(PROMPT_PATTERN).textContent();
@@ -136,7 +104,7 @@ test.describe("Press E to Talk", () => {
     await page.goto("/");
     const room = await findPopulatedRoom(page);
     await setPlayerScene(page, room.scene, room.x, room.y);
-    await clickContinueOnTitleScreen(page);
+    await continueGame(page);
 
     await sweepForPrompt(page);
     await expect(page.getByText(PROMPT_PATTERN)).toBeVisible();

@@ -1,4 +1,5 @@
-import { test, expect, type Page } from "@playwright/test";
+import { test, expect } from "@playwright/test";
+import { clickButton, clickExpand, clickTab, continueGame } from "./helpers";
 
 /**
  * v0.7 Feature 49 (Phase 3, revised) — the Foundational Mentor Program /
@@ -8,60 +9,6 @@ import { test, expect, type Page } from "@playwright/test";
  * real-app testing approach as dailyObjectives.spec.ts — exercises the
  * live Vite + FastAPI stack, no mocking.
  */
-
-async function clickContinueOnTitleScreen(page: Page): Promise<void> {
-  const canvas = page.locator("canvas");
-  await expect(canvas).toBeVisible();
-  await page.waitForTimeout(800);
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error("canvas has no bounding box");
-    await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.5 + 44);
-    try {
-      await page.getByRole("button", { name: "Command ⌁" }).waitFor({ state: "attached", timeout: 3000 });
-      return;
-    } catch {
-      // not in-game yet — try again
-    }
-  }
-  throw new Error("clickContinueOnTitleScreen: never reached an in-game scene after 5 click attempts");
-}
-
-async function dismissTradeOutcomePopups(page: Page): Promise<void> {
-  for (let i = 0; i < 5; i++) {
-    const tradeBanner = page.getByTestId("trade-outcome-banner");
-    if (await tradeBanner.isVisible().catch(() => false)) {
-      await tradeBanner.getByText("Dismiss").click();
-      await tradeBanner.waitFor({ state: "hidden", timeout: 3000 }).catch(() => {});
-      continue;
-    }
-    const votingPopup = page.getByTestId("executive-voting");
-    if (await votingPopup.isVisible().catch(() => false)) {
-      await votingPopup.getByText("Decide later").click();
-      await votingPopup.waitFor({ state: "hidden", timeout: 3000 }).catch(() => {});
-      continue;
-    }
-    return;
-  }
-}
-
-async function continueGame(page: Page): Promise<void> {
-  await clickContinueOnTitleScreen(page);
-  await dismissTradeOutcomePopups(page);
-}
-
-async function clickTab(page: Page, tab: string): Promise<void> {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    await dismissTradeOutcomePopups(page);
-    try {
-      await page.getByRole("button", { name: tab, exact: true }).click({ timeout: 5000 });
-      return;
-    } catch {
-      // a popup intercepted the click — loop back and dismiss again
-    }
-  }
-  throw new Error(`clickTab: could not click "${tab}" after 5 attempts`);
-}
 
 test("the backend auto-progresses real employee students, not the CEO, through the active mentor track", async ({ page }) => {
   await page.goto("/");
@@ -118,16 +65,8 @@ test("the MENTORLIB tab renders the Academy Dashboard and CEO Learning Mode reve
   await page.goto("/");
   await continueGame(page);
 
-  for (let attempt = 0; attempt < 5; attempt++) {
-    await dismissTradeOutcomePopups(page);
-    try {
-      await page.getByRole("button", { name: "Command ⌁" }).click({ timeout: 5000 });
-      break;
-    } catch {
-      // a popup intercepted the click — loop back and dismiss again
-    }
-  }
-  await page.getByRole("button", { name: "EXPAND — FULL COMMAND CENTER" }).click();
+  await clickButton(page, "Command ⌁");
+  await clickExpand(page);
   await clickTab(page, "MENTORLIB");
 
   await expect(page.getByText("Professional Academy")).toBeVisible();
@@ -137,15 +76,7 @@ test("the MENTORLIB tab renders the Academy Dashboard and CEO Learning Mode reve
   // Personal learning is hidden until CEO Learning Mode is switched on.
   await expect(page.getByTestId("ceo-personal-learning")).toHaveCount(0);
 
-  for (let attempt = 0; attempt < 5; attempt++) {
-    await dismissTradeOutcomePopups(page);
-    try {
-      await page.getByRole("button", { name: /CEO Learning Mode: OFF/ }).click({ timeout: 5000 });
-      break;
-    } catch {
-      // a popup intercepted the click — loop back and dismiss again
-    }
-  }
+  await clickButton(page, /CEO Learning Mode: OFF/);
   await expect(page.getByTestId("ceo-personal-learning")).toBeVisible();
 
   await page.getByText("1. Trading Psychology: Process Over Outcome").click();
@@ -175,16 +106,8 @@ test("an Employee Academy Report honestly shows no certifications yet, and no Re
   await page.goto("/");
   await continueGame(page);
 
-  for (let attempt = 0; attempt < 5; attempt++) {
-    await dismissTradeOutcomePopups(page);
-    try {
-      await page.getByRole("button", { name: "Command ⌁" }).click({ timeout: 5000 });
-      break;
-    } catch {
-      // a popup intercepted the click — loop back and dismiss again
-    }
-  }
-  await page.getByRole("button", { name: "EXPAND — FULL COMMAND CENTER" }).click();
+  await clickButton(page, "Command ⌁");
+  await clickExpand(page);
   await clickTab(page, "MENTORLIB");
 
   const state = await page.evaluate(async () => {

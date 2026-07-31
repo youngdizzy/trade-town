@@ -1,4 +1,5 @@
 import { test, expect, type Page } from "@playwright/test";
+import { clickButton, clickContinueOnTitleScreen, clickExpand, clickRobust, clickTab, continueGame, dismissBlockingPopups, enableDebugOverlay, readDebug, setPlayerScene } from "./helpers";
 
 /**
  * Browser tests for the v0.6.1 Global Command Center. These exercise the
@@ -13,129 +14,12 @@ import { test, expect, type Page } from "@playwright/test";
  * after closing the tab, not a test-only shortcut, so it's a legitimate
  * way to start a test in an arbitrary room without needing to script
  * pixel-perfect physics-based navigation through doors.
+ *
+ * Popup dismissal (a real closed trade, a fresh TradeProposal, a
+ * Gatekeeper veto, a Founder-approved breakthrough — this sim clock
+ * keeps ticking in real time for the whole file) is centralized in
+ * ./helpers — see that module's own doc comment for why.
  */
-
-async function setPlayerScene(page: Page, scene: string, x: number, y: number): Promise<void> {
-  const state = await page.evaluate(async () => {
-    const res = await fetch("/api/load");
-    return res.json();
-  });
-  state.player = { ...state.player, scene, x, y, facing: "down" };
-  await page.evaluate(async (s) => {
-    await fetch("/api/save", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(s),
-    });
-  }, state);
-}
-
-/** The raw title-screen "Continue" click sequence, with no popup handling — shared by continueGame() and any test that needs to inspect a popup right as it appears. */
-async function clickContinueOnTitleScreen(page: Page): Promise<void> {
-  const canvas = page.locator("canvas");
-  await expect(canvas).toBeVisible();
-  // Preload (asset loading + PreloadScene -> MainMenuScene handoff) can
-  // take a moment after the canvas element itself first appears — click
-  // too early and the pointerdown lands on nothing.
-  await page.waitForTimeout(800);
-
-  // "Continue" is the second title-screen button, drawn at
-  // (width/2, height*0.5 + 44) in MainMenuScene.ts's own layout math.
-  // Retry the click: under load, the very first click can land before
-  // MainMenuScene's interactive text objects are registered.
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const box = await canvas.boundingBox();
-    if (!box) throw new Error("canvas has no bounding box");
-    await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.5 + 44);
-    try {
-      await page.getByRole("button", { name: "Command ⌁" }).waitFor({ state: "attached", timeout: 3000 });
-      return;
-    } catch {
-      // not in-game yet — try again
-    }
-  }
-  throw new Error("clickContinueOnTitleScreen: never reached an in-game scene after 5 click attempts");
-}
-
-async function continueGame(page: Page): Promise<void> {
-  await clickContinueOnTitleScreen(page);
-  await dismissTradeOutcomePopups(page);
-}
-
-/**
- * This long-running test file shares one real dev backend, whose paper
- * trading and research pipeline have been running continuously since the
- * file started — a real closed trade or a fresh v0.6.3 TradeProposal may
- * already be waiting with a banner/popup by the time any given test loads
- * (or appear mid-test). That's correct, honest behavior (see
- * TradeOutcomeBanner.tsx / ExecutiveVoting.tsx), not a test-only quirk, so
- * tests clear both the same way a real player would: click Dismiss /
- * "Decide later". The v0.7 trade outcome banner is non-blocking, but
- * tests still clear it so it can't cover an element a later step needs to
- * click. Loops briefly in case dismissing one reveals another queued
- * behind it.
- */
-async function dismissTradeOutcomePopups(page: Page): Promise<void> {
-  // 12 rather than a smaller number: the longer this shared dev backend
-  // has been running, the more real decisions can be queued up behind
-  // one another, and each is dismissed one at a time, same as a player.
-  for (let i = 0; i < 12; i++) {
-    const tradeBanner = page.getByTestId("trade-outcome-banner");
-    if (await tradeBanner.isVisible().catch(() => false)) {
-      await tradeBanner.getByText("Dismiss").click();
-      await tradeBanner.waitFor({ state: "hidden", timeout: 3000 }).catch(() => {});
-      continue;
-    }
-    const votingPopup = page.getByTestId("executive-voting");
-    if (await votingPopup.isVisible().catch(() => false)) {
-      await votingPopup.getByText("Decide later").click();
-      await votingPopup.waitFor({ state: "hidden", timeout: 3000 }).catch(() => {});
-      continue;
-    }
-    return;
-  }
-}
-
-/** Clicks a Command Center tab, retrying if a popup that appeared in the
- * instant between dismissing and clicking (a genuinely new proposal or
- * closed trade — the sim keeps ticking in real time throughout this
- * file) intercepts the click, rather than a one-shot dismiss-then-click
- * that can lose that race. */
-async function clickTab(page: Page, tab: string): Promise<void> {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    await dismissTradeOutcomePopups(page);
-    try {
-      await page.getByRole("button", { name: tab, exact: true }).click({ timeout: 5000 });
-      return;
-    } catch {
-      // a popup intercepted the click — loop back and dismiss again
-    }
-  }
-  throw new Error(`clickTab: could not click "${tab}" after 5 attempts`);
-}
-
-async function clickButton(page: Page, name: string | RegExp): Promise<void> {
-  for (let attempt = 0; attempt < 5; attempt++) {
-    await dismissTradeOutcomePopups(page);
-    try {
-      await page.getByRole("button", { name }).click({ timeout: 5000 });
-      return;
-    } catch {
-      // a popup intercepted the click — loop back and dismiss again
-    }
-  }
-  throw new Error(`clickButton: could not click "${String(name)}" after 5 attempts`);
-}
-
-async function enableDebugOverlay(page: Page): Promise<void> {
-  await clickButton(page, "Settings");
-  const checkbox = page.getByRole("checkbox");
-  if (!(await checkbox.isChecked())) {
-    await dismissTradeOutcomePopups(page);
-    await checkbox.check();
-  }
-  await clickButton(page, "Close");
-}
 
 /** Holds a movement key down, then confirms the player's real x actually
  * changed — retrying the hold a few times before giving up, since
@@ -153,14 +37,6 @@ async function expectMovement(page: Page, key: string, before: { x: number; scen
     if (after.x !== before.x) return after;
   }
   throw new Error(`expectMovement: player.x never changed from ${before.x} after 3 attempts holding "${key}"`);
-}
-
-/** Reads DebugOverlay's live "FPS — Scene (x, y)" readout. */
-async function readDebug(page: Page): Promise<{ scene: string; x: number; y: number }> {
-  const text = await page.locator("text=/FPS — /").textContent();
-  const match = text?.match(/FPS — (\S+) \((-?\d+), (-?\d+)\)/);
-  if (!match) throw new Error(`could not parse debug overlay: ${text}`);
-  return { scene: match[1]!, x: Number(match[2]), y: Number(match[3]) };
 }
 
 test.describe("Global Command Center", () => {
@@ -193,13 +69,13 @@ test.describe("Global Command Center", () => {
     const before = await readDebug(page);
     expect(before.scene).toBe("BrainRoomScene");
 
-    await page.getByRole("button", { name: "Command ⌁" }).click();
+    await clickButton(page, "Command ⌁");
     await expect(page.getByText("COMMAND CENTER", { exact: true })).toBeVisible();
 
     const after = await readDebug(page);
     expect(after).toEqual(before);
 
-    await page.getByRole("button", { name: "CLOSE" }).click();
+    await clickButton(page, "CLOSE");
     await expect(page.getByText("COMMAND CENTER", { exact: true })).toHaveCount(0);
   });
 
@@ -225,7 +101,7 @@ test.describe("Global Command Center", () => {
     // and does legitimately block input, unlike the Command Center's own
     // translucent backdrop this test is actually verifying, so clear it
     // first the same way a real player would.
-    await dismissTradeOutcomePopups(page);
+    await dismissBlockingPopups(page);
 
     const movedWhileOpen = await expectMovement(page, "d", before);
     expect(movedWhileOpen.scene).toBe(before.scene); // no door/interaction fired — the scene never changed
@@ -233,10 +109,9 @@ test.describe("Global Command Center", () => {
     // Expand to the Full Command Center and focus a real text field
     // (Calendar's custom-event title input) — WASD must type into it
     // instead of moving the player while it has focus.
-    await dismissTradeOutcomePopups(page);
-    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickExpand(page);
     await clickTab(page, "CALENDAR");
-    await dismissTradeOutcomePopups(page);
+    await dismissBlockingPopups(page);
 
     const titleInput = page.getByTestId("calendar-event-title");
     await titleInput.click();
@@ -267,6 +142,7 @@ test.describe("Global Command Center", () => {
   });
 
   test("expands to the Full Command Center and renders all 31 tabs with graceful empty states", async ({ page }) => {
+    test.setTimeout(120000); // the longest-running test in the file — 31 real tab clicks, each dismissing real popups along the way
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);
     await continueGame(page);
@@ -278,8 +154,7 @@ test.describe("Global Command Center", () => {
     // instant between continueGame() returning and this click, the same
     // race clickTab() below already guards against — so this one dismiss
     // immediately before clicking closes that same window.
-    await dismissTradeOutcomePopups(page);
-    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickExpand(page);
 
     // This is the longest-running test in the file — with the real sim
     // ticking throughout, a genuine trade or trade proposal can appear
@@ -309,13 +184,13 @@ test.describe("Global Command Center", () => {
   });
 
   test("renders a real candlestick chart on Overview, labeled SIMULATED, with working timeframe switching", async ({ page }) => {
+    test.setTimeout(60000); // clickButton retries through a real popup that can intercept the "1d" click
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);
     await continueGame(page);
 
     await page.keyboard.press("Tab");
-    await dismissTradeOutcomePopups(page);
-    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickExpand(page);
     await expect(page.getByText("Market Chart")).toBeVisible();
 
     // Never claim simulated data is live — the badge must say so explicitly.
@@ -329,20 +204,20 @@ test.describe("Global Command Center", () => {
     await expect(chartCanvas).toBeVisible();
     const before = await chartCanvas.screenshot();
 
-    await page.getByRole("button", { name: "1d", exact: true }).click();
+    await clickButton(page, "1d");
     await page.waitForTimeout(500);
     const after = await chartCanvas.screenshot();
     expect(Buffer.compare(before, after)).not.toBe(0); // switching timeframe actually redraws different data
   });
 
   test("Agent Energy widget spends real energy for a real effect (watch_symbol) via POST /api/energy/spend", async ({ page }) => {
+    test.setTimeout(60000); // clickRobust retries through a real popup that can intercept the Watch New Symbol click
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);
     await continueGame(page);
 
     await page.keyboard.press("Tab");
-    await dismissTradeOutcomePopups(page);
-    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickExpand(page);
     const widget = page.getByTestId("agent-energy-widget");
     await expect(widget).toBeVisible();
 
@@ -354,7 +229,7 @@ test.describe("Global Command Center", () => {
 
     const watchButton = widget.getByRole("button", { name: /Watch New Symbol/ });
     await expect(watchButton).toBeEnabled();
-    await watchButton.click();
+    await clickRobust(page, () => widget.getByRole("button", { name: /Watch New Symbol/ }), { label: "Watch New Symbol" });
 
     // The action either succeeds (energy drops by exactly the real cost) or
     // the extra-symbol pool is already exhausted from an earlier test run
@@ -373,9 +248,8 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
-    await dismissTradeOutcomePopups(page);
-    await page.getByRole("button", { name: /EXPAND/ }).click();
-    await page.getByRole("button", { name: "TRAINING", exact: true }).click();
+    await clickExpand(page);
+    await clickTab(page, "TRAINING");
 
     const round = page.getByTestId("calibration-round");
     await expect(round).toBeVisible();
@@ -400,9 +274,8 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
-    await dismissTradeOutcomePopups(page);
-    await page.getByRole("button", { name: /EXPAND/ }).click();
-    await page.getByRole("button", { name: "PVAI", exact: true }).click();
+    await clickExpand(page);
+    await clickTab(page, "PVAI");
 
     const round = page.getByTestId("player-vs-ai-round");
     await expect(round).toBeVisible();
@@ -429,9 +302,8 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
-    await dismissTradeOutcomePopups(page);
-    await page.getByRole("button", { name: /EXPAND/ }).click();
-    await page.getByRole("button", { name: "ACADEMY", exact: true }).click();
+    await clickExpand(page);
+    await clickTab(page, "ACADEMY");
 
     const lessonPane = page.getByTestId("education-lesson");
     await expect(lessonPane).toBeVisible();
@@ -452,8 +324,8 @@ test.describe("Global Command Center", () => {
     await expect(lessonPane.getByText(/CORRECT|NOT QUITE/)).toBeVisible({ timeout: 5000 });
 
     // RISK panel's "Need Help?" must jump straight into a real lesson.
-    await page.getByRole("button", { name: "RISK", exact: true }).click();
-    await page.getByRole("button", { name: "Need Help?" }).click();
+    await clickTab(page, "RISK");
+    await clickButton(page, "Need Help?");
     await expect(page.getByRole("button", { name: "ACADEMY", exact: true })).toHaveClass(/text-cmd-cyan/);
     await expect(page.getByTestId("education-lesson").getByText("Risk/Reward Ratio", { exact: true })).toBeVisible();
   });
@@ -515,8 +387,7 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
-    await dismissTradeOutcomePopups(page);
-    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickExpand(page);
     await clickTab(page, "COMPANY");
 
     // Company Health: a real overall score/tier and all ten sub-metrics.
@@ -560,8 +431,7 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
-    await dismissTradeOutcomePopups(page);
-    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickExpand(page);
     await clickTab(page, "KNOWLEDGE");
 
     // Academy Progression: a real level (1-5) and its named tier.
@@ -604,12 +474,11 @@ test.describe("Global Command Center", () => {
     // so a genuine trade proposal can pop up in the instant before this
     // click — dismiss it first, the same guard the "renders all N tabs"
     // test above already uses.
-    await dismissTradeOutcomePopups(page);
-    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickExpand(page);
     await clickTab(page, "KNOWLEDGE");
 
     await expect(page.getByText("Company Knowledge Graph", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: /Open Knowledge Graph/ }).click();
+    await clickButton(page, /Open Knowledge Graph/);
 
     // The header's live node/edge count is real — it comes straight from
     // the fetched KnowledgeGraph, not a placeholder.
@@ -637,8 +506,7 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
-    await dismissTradeOutcomePopups(page);
-    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickExpand(page);
     await clickTab(page, "DISCIPLINE");
 
     await expect(page.getByText("Discipline Chamber", { exact: true })).toBeVisible();
@@ -659,8 +527,7 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
-    await dismissTradeOutcomePopups(page);
-    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickExpand(page);
     await clickTab(page, "REASONING");
 
     await expect(page.getByText("Reasoning Lab", { exact: true })).toBeVisible();
@@ -682,8 +549,7 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
-    await dismissTradeOutcomePopups(page);
-    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickExpand(page);
     await clickTab(page, "REFLECTION");
 
     await expect(page.getByText("Company Wisdom", { exact: true })).toBeVisible();
@@ -705,8 +571,7 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
-    await dismissTradeOutcomePopups(page);
-    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickExpand(page);
     await clickTab(page, "MENTOR");
 
     await expect(page.getByText("Question of the Day", { exact: true })).toBeVisible();
@@ -728,8 +593,7 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
-    await dismissTradeOutcomePopups(page);
-    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickExpand(page);
     await clickTab(page, "FOUNDERS");
 
     await expect(page.getByText("Legendary Status", { exact: true })).toBeVisible();
@@ -755,8 +619,7 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
-    await dismissTradeOutcomePopups(page);
-    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickExpand(page);
     await clickTab(page, "TREASURY");
 
     await expect(page.getByText("CEO Treasury", { exact: true })).toBeVisible();
@@ -773,7 +636,7 @@ test.describe("Global Command Center", () => {
 
     const amountInput = page.locator('input[type="number"]').first();
     await amountInput.fill("500");
-    await page.getByRole("button", { name: /Deposit/ }).click();
+    await clickButton(page, /Deposit/);
 
     await expect(async () => {
       const treasuryAfter = await readDollar(treasuryBalance);
@@ -806,8 +669,7 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
-    await dismissTradeOutcomePopups(page);
-    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickExpand(page);
     await clickTab(page, "COMPANY");
 
     // Matched by its own description text, not just "RESEARCH" — the
@@ -823,8 +685,7 @@ test.describe("Global Command Center", () => {
     await page.reload();
     await clickContinueOnTitleScreen(page);
     await page.keyboard.press("Tab");
-    await dismissTradeOutcomePopups(page);
-    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickExpand(page);
     await clickTab(page, "COMPANY");
     await expect(page.getByRole("button", { name: /Active research items gain confidence/ })).toHaveClass(/border-cmd-purple/);
 
@@ -842,8 +703,7 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
-    await dismissTradeOutcomePopups(page);
-    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickExpand(page);
     await clickTab(page, "COMPANY");
 
     const headerTime = page.getByText(/^Day \d+ · \d{2}:\d{2}$/);
@@ -879,9 +739,8 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
-    await dismissTradeOutcomePopups(page);
-    await page.getByRole("button", { name: /EXPAND/ }).click();
-    await dismissTradeOutcomePopups(page);
+    await clickExpand(page);
+    await dismissBlockingPopups(page);
 
     // Tab 9 is "COMPANY" per FullCommandCenter.tsx's own TABS order.
     await page.keyboard.press("9");
@@ -909,8 +768,7 @@ test.describe("Global Command Center", () => {
     await continueGame(page);
 
     await page.keyboard.press("Tab");
-    await dismissTradeOutcomePopups(page);
-    await page.getByRole("button", { name: /EXPAND/ }).click();
+    await clickExpand(page);
     await clickTab(page, "CALENDAR");
 
     await expect(page.getByText("Executive View", { exact: true })).toBeVisible();
@@ -927,7 +785,7 @@ test.describe("Global Command Center", () => {
     // Live Schedule: switching agents shows that real agent's own full
     // daily schedule (the same real blocks app/schedule.py drives).
     await expect(page.getByText("Live Schedule", { exact: true })).toBeVisible();
-    await page.getByRole("button", { name: "Atlas", exact: true }).click();
+    await clickButton(page, "Atlas");
     await expect(page.getByText("Atlas's Real Daily Schedule")).toBeVisible();
     await expect(page.getByText("Reviewing overnight strategy")).toBeVisible();
 
@@ -943,7 +801,7 @@ test.describe("Global Command Center", () => {
 
     const uniqueTitle = `Playwright test event ${Date.now()}`;
     await page.getByTestId("calendar-event-title").fill(uniqueTitle);
-    await page.getByRole("button", { name: "Schedule Event", exact: true }).click();
+    await clickButton(page, "Schedule Event");
 
     const eventRow = page.getByText(uniqueTitle, { exact: true });
     await expect(eventRow).toBeVisible({ timeout: 5000 });
