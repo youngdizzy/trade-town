@@ -2610,6 +2610,148 @@ class CaseStudy(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
+# v0.7 — the Decision Memory System / Decision Vault. One permanent,
+# immutable record per closed trade, JOINING every real artifact this
+# codebase already generates for that trade (TradeDecision, PaperTrade,
+# DisciplineReview, CaseStudy, ExecutiveMeetingLogEntry, CeoDecisionRecord)
+# plus two genuinely new context snapshots computed fresh at the moment
+# the trade closes: market regime and liquidity context. Both are
+# honestly "as of trade close," not "as of the original decision," since
+# neither is stamped onto anything at proposal time anywhere in this
+# codebase — see app/decision_vault.py's module docstring for the full
+# honesty boundary, including the fields the brief asked for that are
+# deliberately NOT here (rMultiple — no stop-loss/initial-risk concept
+# exists anywhere in this codebase's real risk engine; strategyId — no
+# ordinary Trading Floor trade links to a Strategy object).
+class SimilarTradeMatch(CamelModel):
+    vault_entry_id: str = Field(alias="vaultEntryId")
+    symbol: str
+    sim_day: int = Field(alias="simDay")
+    pnl_pct: float = Field(alias="pnlPct")
+    decision_grade: DecisionGrade = Field(alias="decisionGrade")
+
+
+class SimilarTradesSummary(CamelModel):
+    """The Decision Memory System's Similarity Engine. Real, rule-based
+    bucket matching over the Decision Vault (never a fabricated
+    similarity score) — see find_similar_vault_entries()'s own docstring
+    for the exact tiered matching rule and why."""
+
+    match_count: int = Field(alias="matchCount")
+    # Which real dimensions the match tier used — e.g. ["symbol",
+    # "marketRegime", "confidenceTier"] — so the CEO can see exactly why
+    # these trades were considered "similar," never a black box.
+    matched_on: list[str] = Field(alias="matchedOn")
+    win_rate_pct: float = Field(alias="winRatePct")
+    avg_pnl_pct: float = Field(alias="avgPnlPct")
+    worst_pnl_pct: float = Field(alias="worstPnlPct")
+    best_regime: MarketIntelligenceRegime | None = Field(default=None, alias="bestRegime")
+    worst_regime: MarketIntelligenceRegime | None = Field(default=None, alias="worstRegime")
+    # Real: the most common CaseStudyCategory among the matched trades'
+    # own linked case studies, only when it's a real mistake category
+    # (never a success category) shared by at least MISTAKE_WARNING_SHARE
+    # of matches — the Decision Memory System's "Mistake Prevention"
+    # warning signal. None when no such pattern is real/significant.
+    most_common_mistake_category: CaseStudyCategory | None = Field(default=None, alias="mostCommonMistakeCategory")
+    warning: str | None = None
+    examples: list[SimilarTradeMatch] = Field(default_factory=list)
+
+
+class DecisionVaultEntry(CamelModel):
+    id: str
+    trade_id: str = Field(alias="tradeId")
+    decision_id: str = Field(alias="decisionId")
+    symbol: str
+    sim_day: int = Field(alias="simDay")
+    session: TradingSession
+    # Always None today — no ordinary Trading Floor trade links back to a
+    # specific Strategy object (only Research Sandbox-tested strategies
+    # do — see app/sandbox.py). A genuine future addition if that ever
+    # changes, not fabricated here.
+    strategy_id: str | None = Field(default=None, alias="strategyId")
+    market_regime: MarketIntelligenceRegime = Field(alias="marketRegime")
+    market_regime_label: str = Field(alias="marketRegimeLabel")
+    liquidity_context: LiquidityRead = Field(alias="liquidityContext")
+    # A real sub-aggregate of DecisionConfidence's own evidence-oriented
+    # factors (Technical Alignment, Research Confidence, News/Macro/
+    # Sentiment), renormalized over just those three's own real weights
+    # — see decision_vault.py's compute_evidence_score(). Deliberately
+    # distinct from confidenceScore below (the full composite, which
+    # also includes Multi-Agent Agreement/Risk Conditions/Portfolio
+    # Exposure) so the two numbers mean genuinely different things.
+    evidence_score: float = Field(alias="evidenceScore")
+    confidence_score: float = Field(alias="confidenceScore")
+    confidence_tier: ConfidenceTier = Field(alias="confidenceTier")
+    # Real: the position_sizing_discipline DisciplineFactor's own score,
+    # converted to a letter grade via the same GRADE_THRESHOLDS
+    # app/executive.py's Decision Grade already uses.
+    capital_allocation_grade: DecisionGrade = Field(alias="capitalAllocationGrade")
+    decision_grade: DecisionGrade = Field(alias="decisionGrade")
+    decision_grade_score: float = Field(alias="decisionGradeScore")
+    discipline_tier: DisciplineTier = Field(alias="disciplineTier")
+    discipline_score: float = Field(alias="disciplineScore")
+    # Real: the patience DisciplineFactor's own score, same conversion.
+    patience_grade: DecisionGrade = Field(alias="patienceGrade")
+    position_size: float = Field(alias="positionSize")
+    entry_price: float = Field(alias="entryPrice")
+    exit_price: float = Field(alias="exitPrice")
+    pnl: float
+    pnl_pct: float = Field(alias="pnlPct")
+    hold_duration_minutes: int = Field(alias="holdDurationMinutes")
+    # Always None — no stop-loss/initial-risk basis exists anywhere in
+    # this codebase's real risk engine (recommended_quantity() sizes
+    # directly off equity%, never a stop distance) to honestly compute
+    # an R-multiple from. Never backfilled with a fabricated value.
+    r_multiple: float | None = Field(default=None, alias="rMultiple")
+    # The real CaseStudy (mistake OR success) filed for this exact trade,
+    # if any — mistakes.py/successes.py only ever file one per trade.
+    case_study_id: str | None = Field(default=None, alias="caseStudyId")
+    case_study_category: CaseStudyCategory | None = Field(default=None, alias="caseStudyCategory")
+    # ExecutiveMeetingLogEntry.recommendationReason for this trade's own
+    # proposal, if a matching entry exists — real, never authored fresh.
+    executive_notes: str | None = Field(default=None, alias="executiveNotes")
+    lessons_learned: str = Field(alias="lessonsLearned")
+    # Real: set only when a Company DNA Legacy nudge fired specifically
+    # because of THIS trade's own success study (disciplined_process /
+    # patient_execution) — see app/company_dna.py's nudge_legacy(). None
+    # for the overwhelming majority of trades, which don't fire a nudge.
+    company_dna_change: str | None = Field(default=None, alias="companyDnaChange")
+    # Real: True only when a matching CeoDecisionRecord exists and
+    # agreedWithAi is False (the CEO overrode the AI's recommendation).
+    ceo_override: bool = Field(alias="ceoOverride")
+    created_at: str = Field(alias="createdAt")
+
+
+class TradeReportCard(CamelModel):
+    """The Decision Memory System's Trade Report Card — a pure
+    relabeling of a DecisionVaultEntry's own real fields into the
+    brief's named grades, never a second measurement. See
+    app/decision_vault.py's compute_trade_report_card(). Deliberately
+    does NOT include an Execution Grade or Psychology Grade the brief
+    also named: no real signal anywhere in this codebase measures order-
+    execution quality separately from the decision itself, and no
+    emotion/psychology signal exists anywhere (confirmed repeatedly
+    elsewhere in this codebase, e.g. the Probability First Trading
+    Philosophy's own "TradeTown honestly can't read literal emotion").
+    """
+
+    vault_entry_id: str = Field(alias="vaultEntryId")
+    symbol: str
+    evidence_score: float = Field(alias="evidenceScore")
+    confidence_score: float = Field(alias="confidenceScore")
+    capital_allocation_grade: DecisionGrade = Field(alias="capitalAllocationGrade")
+    decision_grade: DecisionGrade = Field(alias="decisionGrade")
+    discipline_grade: DisciplineTier = Field(alias="disciplineGrade")
+    patience_grade: DecisionGrade = Field(alias="patienceGrade")
+    # Deliberately the same value as decisionGrade, restated under the
+    # brief's own name — see this class's own docstring for why a third,
+    # separately-computed composite would be redundant-metric
+    # proliferation this codebase's discipline avoids throughout.
+    overall_trade_quality: DecisionGrade = Field(alias="overallTradeQuality")
+    would_take_again: bool = Field(alias="wouldTakeAgain")
+    recommendation: str
+
+
 # v0.7 Feature 29 — the Reasoning Lab (app/reasoning_lab.py). A permanent
 # ReasoningChallenge is filed periodically from the company's most recent
 # real AI Debate + its linked TradeDecision — practicing the REASONING
@@ -3437,6 +3579,12 @@ class GameSaveState(CamelModel):
     # v0.7 Feature 27 — the Library of Mistakes (app/mistakes.py). One
     # capped, permanent CaseStudy per detected real process-gap mistake.
     case_studies: list[CaseStudy] = Field(default_factory=list, alias="caseStudies")
+    # v0.7 — the Decision Memory System's Decision Vault
+    # (app/decision_vault.py). One capped, permanent DecisionVaultEntry
+    # per closed paper trade, joining every real artifact already
+    # generated for that trade — see DecisionVaultEntry's own doc
+    # comment above for the exact honesty boundary.
+    decision_vault: list[DecisionVaultEntry] = Field(default_factory=list, alias="decisionVault")
     # v0.7 Feature 29 — the Reasoning Lab (app/reasoning_lab.py). One
     # capped, permanent ReasoningChallenge filed periodically from the
     # company's most recent real AI Debate; `reasoning_lab_state` is the

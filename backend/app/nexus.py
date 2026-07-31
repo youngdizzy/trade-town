@@ -44,6 +44,7 @@ from app.company_score import compute_company_score
 from app.config import settings
 from app.constitution import MISTAKE_ARTICLE_MAP, cite_article
 from app.debate import generate_debate
+from app.decision_vault import build_vault_entry, record_vault_entry
 from app.devils_advocate import MAX_CHALLENGE_REPORTS, generate_challenge_report
 from app.discipline import generate_discipline_review, record_review as record_discipline_review_entry
 from app.discussion import generate_discussion
@@ -134,6 +135,7 @@ from app.schemas import (
     CoachReport,
     CompanyPriority,
     Debate,
+    DecisionVaultEntry,
     DepartmentSelfEvaluation,
     DisciplineReview,
     EntityTransform,
@@ -978,6 +980,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # v0.7 Feature 51 — Market Intelligence Department (app/market_intelligence.py).
     market_intelligence_reports: list[MarketIntelligenceReport] = list(state.market_intelligence_reports)
     market_intelligence_learning: list[MarketIntelligenceLearningEntry] = list(state.market_intelligence_learning)
+    # v0.7 — the Decision Memory System's Decision Vault (app/decision_vault.py).
+    decision_vault: list[DecisionVaultEntry] = list(state.decision_vault)
 
     agents = {aid: _tick_agent(aid, agent, new_time, minutes, tasks, resting=resting) for aid, agent in state.agents.items()}
 
@@ -1291,6 +1295,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             )
             discipline_reviews = record_discipline_review_entry(discipline_reviews, discipline_review)
             record_discipline_review(memory, discipline_review)
+            trade_case_studies: list[CaseStudy] = []
+            company_dna_change: str | None = None
 
             # v0.7 Feature 27 — the Library of Mistakes. Only a real loss
             # can produce a case study (see app/mistakes.py's module
@@ -1299,6 +1305,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             if trade.pnl <= 0:
                 new_case_studies = generate_case_studies(decision, debate, trade, discipline_review, id_prefix=f"case-{trade.id}")
                 case_studies = record_case_studies(case_studies, new_case_studies)
+                trade_case_studies = new_case_studies
                 for case_study in new_case_studies:
                     record_case_study(memory, case_study)
                     news.append(
@@ -1325,6 +1332,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             elif trade.pnl > 0:
                 new_success_studies = generate_success_studies(decision, debate, trade, discipline_review, id_prefix=f"case-{trade.id}")
                 case_studies = record_success_studies(case_studies, new_success_studies)
+                trade_case_studies = new_success_studies
                 for success_study in new_success_studies:
                     record_case_study(memory, success_study)
                     news.append(
@@ -1347,8 +1355,33 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                     # Legacy nudge.
                     if success_study.category == "disciplined_process":
                         company_dna_legacy = nudge_legacy(company_dna_legacy, "risk_appetite", -SUCCESS_STUDY_NUDGE)
+                        company_dna_change = f"Legacy risk_appetite nudged -{SUCCESS_STUDY_NUDGE} after a disciplined_process win on {trade.symbol}."
                     elif success_study.category == "patient_execution":
                         company_dna_legacy = nudge_legacy(company_dna_legacy, "patience", SUCCESS_STUDY_NUDGE)
+                        company_dna_change = f"Legacy patience nudged +{SUCCESS_STUDY_NUDGE} after a patient_execution win on {trade.symbol}."
+
+            # v0.7 — the Decision Memory System's Decision Vault
+            # (app/decision_vault.py). One permanent record joining this
+            # trade with everything already computed above for it —
+            # market regime/liquidity are stamped fresh "as of trade
+            # close" (see build_vault_entry's own docstring on why).
+            meeting_log_entry = next((e for e in reversed(meeting_log) if e.proposal_id == proposal_id), None)
+            ceo_decision = next((c for c in reversed(ceo_decisions) if c.decision_id == decision.id), None)
+            vault_entry = build_vault_entry(
+                entry_id=f"vault-{trade.id}",
+                trade=trade,
+                decision=decision,
+                discipline_review=discipline_review,
+                market_regime=market_intelligence.regime,
+                market_regime_label=market_intelligence.regime_label,
+                provider=market_data_provider,
+                case_study=trade_case_studies[0] if trade_case_studies else None,
+                meeting_log_entry=meeting_log_entry,
+                ceo_decision=ceo_decision,
+                company_dna_change=company_dna_change,
+                sim_day=new_time.day,
+            )
+            decision_vault = record_vault_entry(decision_vault, vault_entry)
 
     backtest_sessions, simulation_results, newly_completed_sims = tick_simulation_lab(
         backtest_sessions, simulation_results, strategies, watchlist, RESEARCHER_IDS, new_time
@@ -1952,6 +1985,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "academy_state": academy_state,
             "discipline_reviews": discipline_reviews,
             "case_studies": case_studies,
+            "decision_vault": decision_vault,
             "reasoning_challenges": reasoning_challenges,
             "reasoning_lab_state": reasoning_lab_state,
             "reflection_sessions": reflection_sessions,

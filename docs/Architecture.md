@@ -4643,6 +4643,156 @@ CERTIFIED/NOT CERTIFIED pill; `tsc -b --noEmit`, `eslint --max-warnings
 0`, and `vite build` all clean; all 3 `sandbox.spec.ts` tests pass
 against the live Vite + FastAPI stack with zero console errors.
 
+### The Decision Memory System — Feature 54 (Feature 53 in the brief), backend
+
+GOAL (from the brief): "TradeTown should never make the same mistake
+twice... every meaningful trading decision is automatically archived...
+Nothing should ever be deleted." Paired with a companion Performance
+Analytics brief asking for a per-trade Trade Report Card and a
+Similarity Engine ("this setup closely matches N historical trades").
+
+**Naming collision, resolved up front.** The brief self-numbers itself
+"Feature 53," but that number is already permanently in use in this
+codebase's own history for Company Certification (the section directly
+above this one). Rather than silently overwrite that number or leave the
+collision unaddressed, this slice is referred to as **Feature 54**
+everywhere it appears — code comments, commit history, this document —
+while the module docstring still notes the brief's own self-numbering
+for anyone cross-referencing the original brief text.
+
+**Researched first.** Before any code was written, every existing
+trade/decision-review system in this codebase was mapped end to end. The
+overwhelming majority of the brief's asks already exist as real,
+separate artifacts — this table is the full accounting:
+
+| Brief asks for | Already real, as |
+|---|---|
+| Decision Grade | `app/executive.py`'s `compute_decision_grade()` |
+| Discipline / Patience score | `app/discipline.py`'s `DisciplineReview` |
+| Evidence / Confidence | `app/confidence.py`'s `DecisionConfidence` |
+| Mistake detection | `app/mistakes.py`'s `CaseStudy` |
+| Lessons learned | `app/journal.py`'s `PaperTrade.lessonsLearned` |
+| Executive notes | `app/executive_intelligence.py`'s `ExecutiveMeetingLogEntry` |
+| Company DNA update | `app/company_dna.py`'s `nudge_legacy()` |
+
+This slice's real, novel job is exactly the two things the brief asked
+for that genuinely did not exist anywhere: a permanent **Decision
+Vault** that JOINS all of the above into one addressable record per
+closed trade, and a **Similarity Engine** that can honestly answer "have
+we seen this before."
+
+**`build_vault_entry()`** (`app/decision_vault.py`) constructs one
+permanent `DecisionVaultEntry` per closed trade, joining its
+`TradeDecision`, `PaperTrade`, `DisciplineReview`, any filed `CaseStudy`,
+`ExecutiveMeetingLogEntry`, and `CeoDecisionRecord` — plus two genuinely
+new context fields, computed fresh at the moment the trade closes:
+
+- **`marketRegime`** reuses `app/market_intelligence.py`'s own
+  already-live `MarketIntelligenceState.regime` — the same regime a
+  `TradeProposal` and the Trade Gatekeeper actually read.
+- **`liquidityContext`** calls `compute_liquidity()` fresh for the
+  trade's own symbol, using the same `PROPOSAL_TIMEFRAME`/
+  `PROPOSAL_CANDLE_COUNT` convention `app/devils_advocate.py` already
+  established, never a second liquidity engine.
+
+Both are honestly documented as "as of trade close," not "as of the
+original decision" — nothing in this codebase stamps either onto a
+proposal or decision at the moment it's made, so claiming otherwise
+would misrepresent what's actually being measured.
+
+**Evidence Score vs. Confidence Score are genuinely different numbers,
+not two labels for the same one.** `DecisionConfidence` has 6 weighted
+factors; `compute_evidence_score()` is a real renormalized weighted
+average over just the 3 evidence-oriented ones (Technical Alignment,
+Research Confidence, News/Macro/Sentiment — 45 of the original 100
+weight), deliberately excluding the consensus/portfolio-state factors
+(Multi-Agent Agreement, Risk Conditions, Portfolio Exposure).
+`confidenceScore` remains the full, unmodified `DecisionConfidence.score`
+composite.
+
+**Capital Allocation Grade and Patience Grade reuse the existing A+–F
+scale rather than inventing a second one.** `app/executive.py`'s
+previously-private `_GRADE_THRESHOLDS`/`_grade_for_score` were made
+public (`GRADE_THRESHOLDS`/`grade_for_score`) and applied to the
+`DisciplineReview`'s own `position_sizing_discipline`/`patience` factor
+scores.
+
+**`compute_trade_report_card()`** is a pure relabeling of one vault
+entry's own real fields — Evidence/Confidence/Capital
+Allocation/Decision/Discipline/Patience grades, `overallTradeQuality`
+(deliberately the same value as `decisionGrade`, not a third invented
+composite), `wouldTakeAgain`, and a templated `recommendation`.
+`wouldTakeAgain` is a real, checkable rule: `true` only when Decision
+Grade clears the company's B- bar (the same `GRADE_THRESHOLDS` band)
+AND no real non-success `CaseStudy` was filed against this exact trade
+— never a vibe, and three distinct recommendation strings cover which
+condition (if any) failed.
+
+**`find_similar_vault_entries()` is the Similarity Engine** — real,
+rule-based tiered bucket matching, never a fabricated "94% similar"
+score. It tries three tiers in order, using the first with at least
+`MIN_SIMILAR_MATCHES` (3) real matches: (1) same symbol AND same market
+regime AND same confidence tier; (2) same market regime AND same
+confidence tier, any symbol; (3) same confidence tier alone. The
+returned `matchedOn: list[str]` names exactly which real dimensions
+produced the match, so the CEO always sees why trades were considered
+"similar," never a black box. `summarize_similarity()` computes real win
+rate, average/worst P&L, and best/worst regime by average P&L over the
+matched set, and folds Mistake Prevention directly into the same result
+— a `warning` (and `mostCommonMistakeCategory`) fires only when one real
+non-success `CaseStudyCategory` accounts for at least
+`MISTAKE_WARNING_SHARE` (30%) of the matched trades' own linked case
+studies, reusing the same match set rather than a separate mechanism.
+
+**New read-only endpoints** (`app/routers/decision_vault.py`, mirroring
+`routers/sandbox.py`'s `/certification` convention exactly — `await
+game_state.snapshot()`, no lock, computed fresh every call, nothing
+mutates the save): `GET /api/decision-vault/report-card?vaultEntryId=`
+and `GET /api/decision-vault/similar?symbol=&marketRegime=&confidenceTier=`
+(with an optional `excludeId` so a just-closed trade's own vault entry
+can compare itself against everything before it).
+
+**Wiring** (`app/nexus.py`): `build_vault_entry()`/`record_vault_entry()`
+run inside the existing closed-trade loop, right after that trade's
+`DisciplineReview` and case-study/success-study are generated — so a
+vault entry always has a real process trail to join, and never runs for
+a trade with no matched `decision_id` (the same precondition Feature 26
+already established). `decision_vault` is capped at
+`MAX_DECISION_VAULT_ENTRIES` (200), oldest evicted first, and was added
+to `save_modules.py`'s `knowledge_archive` module — the same category as
+`case_studies`, a permanent, only-growing archive excluded from `GET
+/api/load` and hydrated live from the WS broadcast instead.
+
+**What's deliberately NOT here, and why:**
+
+| Brief asks for | Why it's not built |
+|---|---|
+| R-Multiple | No stop-loss/initial-risk concept exists anywhere in this codebase's real risk engine — confirmed by directly reading `app/risk_engine.py`'s `recommended_quantity()`, which sizes purely off `equity * risk_per_trade_pct / 100`. (An Academy lesson's own prose claimed otherwise; checked against the actual function body and found inaccurate.) `rMultiple` is always `None`, never backfilled with a fabricated value. |
+| `strategyId` on ordinary trades | Only Research Sandbox-tested strategies link back to a `Strategy` object (`app/sandbox.py`) — an ordinary Trading Floor trade never does. Always `None`. |
+| Execution Grade, Psychology Grade | No real signal anywhere in this codebase measures order-execution quality separately from the decision itself, or reads literal emotion — the same honesty boundary the Probability First Trading Philosophy work already established. Not on `TradeReportCard`. |
+| True NLP / natural-language search | No LLM/HTTP client dependency exists anywhere (`backend/requirements.txt`: `fastapi, uvicorn, sqlalchemy, pydantic, python-dotenv, websockets` only). A frontend built on real structured filters (symbol/regime/confidence tier/grade/date range) is the honest substitute. |
+| True vector/embedding similarity | Same dependency gap — `find_similar_vault_entries()`'s real rule-based bucket matching is the honest substitute. |
+
+**Deferred to a later slice** (each already has a real signal to build
+on — this slice doesn't duplicate them, a later one can surface them):
+a continuous per-employee Improvement Profile trajectory; Recurring
+Mistake Detection as a real frequency/trend signal (today's `wisdom.py`
+only has a plain most-common-category count, not a trend); a dedicated
+Executive After-Action Review view and CEO Dashboard view (the
+underlying numbers already exist in `app/company_health.py`'s Executive
+tier and `app/executive_review.py`/`app/founders.py`).
+
+**Verified**: new `tests/test_decision_vault.py` — 26 tests covering
+evidence-score renormalization (including the empty-factor-list
+zero-division guard), vault-entry joining/grade-fallback/cap-at-200
+behavior, all three Trade Report Card recommendation branches, all
+three Similarity Engine tiers plus the empty-vault fallback and
+`excludeId` behavior, and the Mistake Prevention warning's share
+threshold. 852/852 full backend suite passing, `mypy`/`ruff` clean.
+Frontend (a Command Center surface for the Trade Report Card and
+Similarity Engine) is a separate, immediately-following commit per this
+project's backend-first discipline.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

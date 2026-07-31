@@ -102,7 +102,10 @@ MAX_PROPOSAL_HOLDS = 2
 # Decision Confidence Engine's own score (process quality), the real
 # multi-agent agreement rate among the six analyst votes, and whether
 # the trade actually cleared the Trade Gatekeeper.
-_GRADE_THRESHOLDS: tuple[tuple[float, DecisionGrade], ...] = (
+# Public (no leading underscore) — app/decision_vault.py reuses this
+# exact scale for Capital Allocation Grade / Patience Grade, rather than
+# defining a second, possibly-drifting letter-grade scale.
+GRADE_THRESHOLDS: tuple[tuple[float, DecisionGrade], ...] = (
     (97.0, "A+"),
     (93.0, "A"),
     (90.0, "A-"),
@@ -117,8 +120,8 @@ _GRADE_THRESHOLDS: tuple[tuple[float, DecisionGrade], ...] = (
 )
 
 
-def _grade_for_score(score: float) -> DecisionGrade:
-    for threshold, grade in _GRADE_THRESHOLDS:
+def grade_for_score(score: float) -> DecisionGrade:
+    for threshold, grade in GRADE_THRESHOLDS:
         if score >= threshold:
             return grade
     return "F"
@@ -136,7 +139,7 @@ def compute_decision_grade(proposal: TradeProposal, gatekeeper_verdict: Gatekeep
     agreement_component = agreeing / total_votes * 100.0
     gatekeeper_component = 100.0 if gatekeeper_verdict is None or gatekeeper_verdict.approved else 40.0
     score = confidence_component * 0.5 + agreement_component * 0.25 + gatekeeper_component * 0.25
-    return _grade_for_score(score), round(score, 1)
+    return grade_for_score(score), round(score, 1)
 
 
 def _now_iso() -> str:
