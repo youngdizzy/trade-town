@@ -68,6 +68,7 @@ Every chapter in this volume must contain, in this order:
 | 55 | Executive Decision Simulator (War Room) | Pending — real backend + frontend already shipped, chapter not yet written |
 | 56 | Enterprise Portfolio Intelligence | Pending — real backend + frontend already shipped, chapter not yet written |
 | 57 | [Institutional Position Sizing & Capital Deployment Engine](chapter-57-position-sizing-capital-deployment.md) | Fully implemented (backend `app/position_sizing.py` + frontend WARROOM/RISK surfacing) |
+| 58 | [Institutional Trade Filter & Opportunity Gatekeeper](chapter-58-trade-filter-opportunity-gatekeeper.md) | Chapter written — target design; no implementation yet |
 
 Every other real, shipped system in this codebase (Executive Intelligence
 Network, Trade Gatekeeper, Discipline Chamber, Reasoning Lab, Reflection

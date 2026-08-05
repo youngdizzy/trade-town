@@ -7,6 +7,38 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Design Bible Chapter 58 — Institutional Trade Filter & Opportunity
+  Gatekeeper** (`docs/DesignBible/volumes/09-departments/chapter-58-trade-filter-opportunity-gatekeeper.md`):
+  a target-design chapter, not yet implemented, per Appendix G's "Design
+  Bible updated before implementation" policy. Researched first: almost
+  every real signal this chapter needs already exists — Chapter 55's
+  War Room already computes a real 0–100 composite (`DecisionScoreBreakdown.overall`,
+  checked against `DECISION_SCORE_THRESHOLD = 70.0`) that is exactly the
+  brief's "Trade Quality Score," and a real Expected Value read.
+  **The real gap** this chapter identifies: today those real scores are
+  computed only *after* a candidate already became a CEO-facing
+  `TradeProposal` (`app/nexus.py`'s only real pre-proposal filter is a
+  single confidence threshold) — they're informational, never a gate.
+  Feature 20's existing `app/gatekeeper.py` is a real, separate,
+  *later*-stage check (after the CEO's own buy/sell choice, against a
+  different checklist) that this chapter doesn't replace. The chapter's
+  genuinely new design: move the existing Decision Score/Expected Value
+  computation earlier in the tick to gate candidates *before* CEO
+  visibility, a CEO-configurable minimum-quality threshold (today's
+  70-point bar is a fixed constant), a new honestly-separate pre-proposal
+  rejection record (graded the same real would-have-won/would-have-lost
+  way Feature 20's rejections already are), and a real Opportunity Queue
+  ranking pending proposals by their already-computed score. Explicitly
+  out of scope until other gaps close: News/Volatility Sensitivity
+  controls (no real economic calendar exists) and Maximum Swing/Day
+  Position controls (no real distinct trading modes exist yet). Flagged
+  directly: the brief's named dependencies "Chapter 53 — Probabilistic
+  Trading Philosophy" and "Chapter 56 — Institutional Risk Authority" (as
+  numbered/titled in the brief) don't exist anywhere in this codebase or
+  Design Bible — checked directly rather than assumed, the same way
+  Features 54–56's own non-existent "Feature 57–67" precedent was
+  checked earlier. Added as the fifth row in Volume 9's chapter table.
+
 - **Chapter 57 frontend — Institutional Position Sizing & Capital
   Deployment Engine** (`frontend/src/types.ts`,
   `WarRoomPanel.tsx`, `RiskPanel.tsx`): mirrors `TierAllocationLimits`,
