@@ -12,16 +12,28 @@ their own always-fresh reads.
 Milestone Tracking (v0.7 Design Bible Chapter 64, second pass) extends
 this same `Goal` object with real, fixed intermediate checkpoints
 (MILESTONE_THRESHOLDS below) rather than introducing a second tracking
-concept — the "next honest slice" this chapter's own Implementation
-Notes named, deliberately sequenced ahead of the Executive Priority
-Engine and Resource Allocation (both still explicitly out of scope: an
-Executive Priority Engine ranking goals against each other — Chapter
-59's own trade-proposal Priority Score is a structurally different
-object, not reused here — and Resource Allocation recommendations,
-which depend on the other two existing first). A goal is always "reach
-at least targetValue" — every real metric below is a "higher is better"
-number, so a reduce-below-X goal type would need its own honest design,
-not invented here.
+concept.
+
+The Executive Priority Engine (v0.7 Design Bible Chapter 64, third pass)
+ranks active goals by a real, named formula — `compute_goal_priority()`
+below — combining two real signals every `Goal` already carries:
+distance-to-target (`100 - progress_pct`) and, when a real deadline
+exists, the real pace required to hit it (`remaining_pct / days
+remaining`). This is deliberately NOT a reuse of Chapter 59's
+trade-proposal Priority Score (`app/capital_priority.py`'s
+`rank_trade_proposals()`) — that engine reads `WarRoomSession.decisionScore`,
+a composite built entirely from trade-specific signals (Expected Value,
+Evidence, Risk, Portfolio Compatibility, ...) that don't exist for a
+goal. A goal's own real priority is a structurally different
+computation over structurally different inputs, per this chapter's own
+Decision Logic section.
+
+Resource Allocation remains explicitly out of scope: it depends on this
+Priority Engine existing first to have anything real to allocate
+against, and no real capital-to-goal linkage has been designed yet. A
+goal is always "reach at least targetValue" — every real metric below
+is a "higher is better" number, so a reduce-below-X goal type would need
+its own honest design, not invented here.
 """
 from __future__ import annotations
 
@@ -34,6 +46,7 @@ from app.schemas import (
     Goal,
     GoalCategory,
     GoalMetric,
+    GoalPriority,
     Milestone,
     PaperPortfolio,
 )
@@ -222,3 +235,52 @@ def record_goal(goals: list[Goal], goal: Goal) -> list[Goal]:
 def cancel_goal(goals: list[Goal], goal_id: str) -> list[Goal]:
     now = _now_iso()
     return [g.model_copy(update={"status": "cancelled", "updated_at": now}) if g.id == goal_id and g.status == "active" else g for g in goals]
+
+
+# v0.7 Design Bible Chapter 64 (third pass) — the Executive Priority
+# Engine's own real, stated urgency ceiling: a goal needing 5 or more
+# percentage points of real progress per real remaining day to hit its
+# deadline reads as maximally urgent (a real score of 100). Below that
+# pace, urgency scales down linearly and transparently — never a hidden
+# weighting, the same "no black-box composite" convention every other
+# scoring engine in this codebase already follows.
+MAX_URGENCY_PACE_PCT_PER_DAY = 5.0
+
+
+def compute_goal_priority(goal: Goal, *, sim_day: int) -> GoalPriority | None:
+    """The real Executive Priority Score for one ACTIVE goal — None for
+    any other status, since a completed/expired/cancelled goal has
+    nothing left to prioritize. Two real cases, both built entirely from
+    fields the goal already carries:
+
+    - No real deadline: scored purely by how much real distance is left
+      (`100 - progress_pct`) — an open-ended goal still deserves
+      attention proportional to how far it has to go, just with no time
+      pressure driving it.
+    - A real deadline: scored by the real pace required to hit it —
+      remaining_pct divided by real days left — clamped against
+      MAX_URGENCY_PACE_PCT_PER_DAY and scaled into the same 0-100 range,
+      so a goal running out of runway always reads as urgent regardless
+      of how much distance remains.
+    """
+    if goal.status != "active":
+        return None
+    remaining_pct = round(max(0.0, 100.0 - goal.progress_pct), 1)
+    if goal.deadline_sim_day is None:
+        return GoalPriority(goalId=goal.id, score=remaining_pct, remainingPct=remaining_pct, daysRemaining=None)
+    days_remaining = max(0, goal.deadline_sim_day - sim_day)
+    pace_required = remaining_pct / max(days_remaining, 1)
+    score = round(min(100.0, pace_required / MAX_URGENCY_PACE_PCT_PER_DAY * 100.0), 1)
+    return GoalPriority(goalId=goal.id, score=score, remainingPct=remaining_pct, daysRemaining=days_remaining)
+
+
+def rank_goals_by_priority(goals: list[Goal], *, sim_day: int) -> list[GoalPriority]:
+    """Every active goal's real GoalPriority, highest score first —
+    the Executive Priority Engine's real, checkable ranking. Non-active
+    goals are simply excluded, the same way Chapter 59's own
+    `rank_trade_proposals()` never ranks anything outside its own real
+    pending-queue scope."""
+    priorities = [compute_goal_priority(g, sim_day=sim_day) for g in goals]
+    real_priorities = [p for p in priorities if p is not None]
+    real_priorities.sort(key=lambda p: p.score, reverse=True)
+    return real_priorities

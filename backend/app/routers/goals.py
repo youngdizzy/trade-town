@@ -10,8 +10,9 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.goals import rank_goals_by_priority
 from app.persistence import persist_modules
-from app.schemas import Goal, GoalCategory, GoalMetric
+from app.schemas import Goal, GoalCategory, GoalMetric, GoalPriority
 from app.state import game_state
 
 router = APIRouter(prefix="/api/goals", tags=["goals"])
@@ -61,3 +62,13 @@ async def cancel_goal(payload: CancelGoalRequest) -> GoalsResponse:
         raise HTTPException(status_code=400, detail=error)
     persist_modules(state)
     return GoalsResponse(goals=state.goals)
+
+
+@router.get("/priorities", response_model=list[GoalPriority])
+async def goal_priorities() -> list[GoalPriority]:
+    """Design Bible Chapter 64 (third pass) — the Executive Priority
+    Engine. Computed fresh per request from the current real goals and
+    sim day, never a second persisted/driftable copy — see
+    app/goals.py's rank_goals_by_priority()."""
+    state = await game_state.snapshot()
+    return rank_goals_by_priority(state.goals, sim_day=state.time.day)

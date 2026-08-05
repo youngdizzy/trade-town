@@ -7,7 +7,9 @@ randomized or fabricated.
 from __future__ import annotations
 
 from app.goals import (
+    compute_goal_priority,
     create_goal,
+    rank_goals_by_priority,
     record_goal,
     resolve_metric_value,
     tick_goal,
@@ -246,3 +248,65 @@ class TestMilestoneTracking:
         cancelled = cancel_goal_entry([goal], goal.id)[0]
         unchanged = tick_goal(cancelled, current_value=90.0, sim_day=2)
         assert unchanged.milestones == cancelled.milestones
+
+
+class TestComputeGoalPriority:
+    """v0.7 Design Bible Chapter 64 (third pass) — the Executive
+    Priority Engine's real, named formula over real fields only."""
+
+    def test_none_for_a_non_active_goal(self) -> None:
+        goal = _goal(target_value=100.0, current_value=50.0)
+        cancelled = cancel_goal_entry([goal], goal.id)[0]
+        assert compute_goal_priority(cancelled, sim_day=5) is None
+
+    def test_no_deadline_scores_by_remaining_distance_alone(self) -> None:
+        goal = _goal(target_value=100.0, current_value=40.0, deadline_sim_day=None)
+        priority = compute_goal_priority(goal, sim_day=5)
+        assert priority is not None
+        assert priority.score == 60.0
+        assert priority.remaining_pct == 60.0
+        assert priority.days_remaining is None
+
+    def test_a_tight_deadline_reads_as_maximally_urgent(self) -> None:
+        # 50% remaining with only 1 real day left is a 50%/day pace,
+        # far above the real MAX_URGENCY_PACE_PCT_PER_DAY ceiling (5.0)
+        # — the score clamps at the real maximum, 100.
+        goal = _goal(target_value=100.0, current_value=50.0, deadline_sim_day=6)
+        priority = compute_goal_priority(goal, sim_day=5)
+        assert priority is not None
+        assert priority.score == 100.0
+        assert priority.days_remaining == 1
+
+    def test_a_generous_deadline_reads_as_low_urgency(self) -> None:
+        # 10% remaining over 100 real days is a 0.1%/day pace — a real,
+        # low fraction of the 5.0%/day ceiling.
+        goal = _goal(target_value=100.0, current_value=90.0, deadline_sim_day=105)
+        priority = compute_goal_priority(goal, sim_day=5)
+        assert priority is not None
+        assert priority.score == 2.0
+        assert priority.days_remaining == 100
+
+    def test_a_passed_deadline_still_computes_a_real_score(self) -> None:
+        # days_remaining floors at 0, never negative — the pace
+        # calculation still produces a real, maximally-urgent number
+        # rather than dividing by a negative/zero day count.
+        goal = _goal(target_value=100.0, current_value=50.0, deadline_sim_day=3)
+        priority = compute_goal_priority(goal, sim_day=5)
+        assert priority is not None
+        assert priority.days_remaining == 0
+        assert priority.score == 100.0
+
+
+class TestRankGoalsByPriority:
+    def test_ranks_by_score_descending(self) -> None:
+        urgent = _goal(goal_id="urgent", target_value=100.0, current_value=50.0, deadline_sim_day=6)
+        relaxed = _goal(goal_id="relaxed", target_value=100.0, current_value=90.0, deadline_sim_day=105)
+        ranked = rank_goals_by_priority([relaxed, urgent], sim_day=5)
+        assert [p.goal_id for p in ranked] == ["urgent", "relaxed"]
+
+    def test_excludes_non_active_goals(self) -> None:
+        active = _goal(goal_id="active", target_value=100.0, current_value=50.0)
+        cancelled_goal = _goal(goal_id="gone", target_value=100.0, current_value=50.0)
+        cancelled = cancel_goal_entry([cancelled_goal], cancelled_goal.id)[0]
+        ranked = rank_goals_by_priority([active, cancelled], sim_day=5)
+        assert [p.goal_id for p in ranked] == ["active"]

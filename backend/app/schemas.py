@@ -4209,6 +4209,24 @@ class Goal(CamelModel):
     milestones: list[Milestone] = Field(default_factory=list)
 
 
+# v0.7 Design Bible Chapter 64 (third pass) — the Executive Priority
+# Engine. A real, named formula over two real signals already on every
+# Goal (progress_pct, deadline_sim_day) and the real current sim day —
+# structurally distinct from Chapter 59's trade-proposal Priority Score
+# (app/capital_priority.py), per this chapter's own Decision Logic
+# section, since a goal and a trade proposal are different objects with
+# different real signals available. Computed fresh per request, never
+# persisted — see app/goals.py's compute_goal_priority().
+class GoalPriority(CamelModel):
+    goal_id: str = Field(alias="goalId")
+    score: float
+    remaining_pct: float = Field(alias="remainingPct")
+    # None when the goal has no real deadline — an open-ended goal
+    # carries no real time pressure to compute a days-remaining figure
+    # from.
+    days_remaining: int | None = Field(default=None, alias="daysRemaining")
+
+
 class GameSaveState(CamelModel):
     version: Literal["0.6"] = "0.6"
     player: EntityTransform
