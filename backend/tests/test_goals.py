@@ -7,11 +7,14 @@ randomized or fabricated.
 from __future__ import annotations
 
 from app.goals import (
+    MAX_STRATEGIC_REVIEWS,
     compute_goal_priority,
     compute_resource_allocation,
     create_goal,
+    generate_strategic_review,
     rank_goals_by_priority,
     record_goal,
+    record_strategic_review,
     resolve_metric_value,
     tick_goal,
     tick_goals,
@@ -19,7 +22,7 @@ from app.goals import (
 )
 from app.goals import cancel_goal as cancel_goal_entry
 from app.portfolio import default_portfolio
-from app.schemas import AcademyState, CompanyHealth, CompanyScore, Goal
+from app.schemas import AcademyState, CompanyHealth, CompanyScore, Goal, StrategicReview, TimeState
 
 
 def _now_iso() -> str:
@@ -351,3 +354,131 @@ class TestComputeResourceAllocation:
         maxed_b = _goal(goal_id="maxed-b", target_value=100.0, current_value=100.0)
         allocations = compute_resource_allocation([maxed_a, maxed_b], sim_day=5)
         assert {a.allocation_pct for a in allocations} == {50.0}
+
+
+def _time(day: int = 30) -> TimeState:
+    return TimeState(day=day, hour=20, minute=0)
+
+
+def _completed_goal(goal_id: str, *, completed_at: str, title: str = "Completed goal") -> Goal:
+    return Goal(
+        id=goal_id,
+        title=title,
+        category="growth",
+        targetMetric="company_score_overall",
+        targetValue=80.0,
+        currentValue=80.0,
+        progressPct=100.0,
+        createdSimDay=1,
+        deadlineSimDay=None,
+        status="completed",
+        createdAt="2026-01-01T00:00:00+00:00",
+        updatedAt=completed_at,
+        completedAt=completed_at,
+        milestones=[],
+    )
+
+
+def _expired_goal(goal_id: str, *, updated_at: str, title: str = "Expired goal") -> Goal:
+    return Goal(
+        id=goal_id,
+        title=title,
+        category="growth",
+        targetMetric="company_score_overall",
+        targetValue=80.0,
+        currentValue=40.0,
+        progressPct=50.0,
+        createdSimDay=1,
+        deadlineSimDay=5,
+        status="expired",
+        createdAt="2026-01-01T00:00:00+00:00",
+        updatedAt=updated_at,
+        completedAt=None,
+        milestones=[],
+    )
+
+
+class TestGenerateStrategicReview:
+    """v0.7 Design Bible Chapter 64 (fifth pass) — the Strategic Review
+    Cycle. Every field is a real derivation from Goal/Milestone/
+    GoalPriority — no fabricated period-over-period number."""
+
+    def test_no_previous_review_counts_active_goals(self) -> None:
+        active = _goal(goal_id="active-1", target_value=100.0, current_value=50.0)
+        review = generate_strategic_review([active], sim_day=5, new_time=_time(), previous_review_created_at=None)
+        assert review.active_goal_count == 1
+        assert review.id == "strategic-review-30-20-0"
+
+    def test_no_previous_review_includes_every_real_completion_and_expiry(self) -> None:
+        completed = _completed_goal("done-1", completed_at="2026-01-05T00:00:00+00:00", title="Reach elite score")
+        expired = _expired_goal("gone-1", updated_at="2026-01-05T00:00:00+00:00", title="Missed deadline goal")
+        review = generate_strategic_review([completed, expired], sim_day=5, new_time=_time(), previous_review_created_at=None)
+        assert review.completed_since_last_review == ["Reach elite score"]
+        assert review.expired_since_last_review == ["Missed deadline goal"]
+
+    def test_excludes_completions_and_expiries_from_before_the_previous_review(self) -> None:
+        previous_review_at = "2026-02-01T00:00:00+00:00"
+        old_completion = _completed_goal("old-done", completed_at="2026-01-05T00:00:00+00:00", title="Old completion")
+        new_completion = _completed_goal("new-done", completed_at="2026-02-15T00:00:00+00:00", title="New completion")
+        old_expiry = _expired_goal("old-expired", updated_at="2026-01-05T00:00:00+00:00", title="Old expiry")
+        review = generate_strategic_review(
+            [old_completion, new_completion, old_expiry], sim_day=5, new_time=_time(), previous_review_created_at=previous_review_at
+        )
+        assert review.completed_since_last_review == ["New completion"]
+        assert review.expired_since_last_review == []
+
+    def test_counts_milestones_reached_since_the_previous_review(self) -> None:
+        previous_review_at = "2026-02-01T00:00:00+00:00"
+        goal = _goal(goal_id="milestone-goal", target_value=100.0, current_value=10.0)
+        goal = tick_goal(goal, current_value=80.0, sim_day=5)  # crosses 25/50/75 in one tick, all reached "now"
+        review = generate_strategic_review([goal], sim_day=5, new_time=_time(), previous_review_created_at=previous_review_at)
+        assert review.milestones_reached_since_last_review == 3
+
+    def test_top_priority_reflects_the_real_priority_engine(self) -> None:
+        urgent = _goal(goal_id="urgent", target_value=100.0, current_value=50.0, deadline_sim_day=6)
+        relaxed = _goal(goal_id="relaxed", target_value=100.0, current_value=90.0, deadline_sim_day=105)
+        review = generate_strategic_review([relaxed, urgent], sim_day=5, new_time=_time(), previous_review_created_at=None)
+        assert review.top_priority_goal_id == "urgent"
+        assert review.top_priority_score == 100.0
+
+    def test_no_goals_at_all_produces_an_honest_empty_review(self) -> None:
+        review = generate_strategic_review([], sim_day=5, new_time=_time(), previous_review_created_at=None)
+        assert review.active_goal_count == 0
+        assert review.top_priority_goal_id is None
+        assert "No goal activity to report" in review.summary
+
+
+class TestRecordStrategicReview:
+    def test_appends_a_review(self) -> None:
+        review = StrategicReview(
+            id="strategic-review-1-0-0",
+            createdAt="2026-01-01T00:00:00+00:00",
+            activeGoalCount=1,
+            completedSinceLastReview=[],
+            expiredSinceLastReview=[],
+            milestonesReachedSinceLastReview=0,
+            topPriorityGoalId=None,
+            topPriorityScore=None,
+            summary="1 active goal(s) this period.",
+        )
+        updated = record_strategic_review([], review)
+        assert updated == [review]
+
+    def test_caps_at_max_strategic_reviews_evicting_oldest_first(self) -> None:
+        reviews: list[StrategicReview] = []
+        for i in range(MAX_STRATEGIC_REVIEWS + 5):
+            review = StrategicReview(
+                id=f"strategic-review-{i}",
+                createdAt=f"2026-01-{(i % 28) + 1:02d}T00:00:00+00:00",
+                activeGoalCount=0,
+                completedSinceLastReview=[],
+                expiredSinceLastReview=[],
+                milestonesReachedSinceLastReview=0,
+                topPriorityGoalId=None,
+                topPriorityScore=None,
+                summary="",
+            )
+            reviews = record_strategic_review(reviews, review)
+        assert len(reviews) == MAX_STRATEGIC_REVIEWS
+        assert reviews[0].id == "strategic-review-5"
+        assert reviews[-1].id == f"strategic-review-{MAX_STRATEGIC_REVIEWS + 4}"

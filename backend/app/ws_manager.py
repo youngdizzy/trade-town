@@ -117,6 +117,7 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         # (app/goals.py), recomputed every tick alongside companyHealth/
         # companyScore above.
         "goals": [g.model_dump(by_alias=True) for g in state.goals],
+        "strategicReviews": [r.model_dump(by_alias=True) for r in state.strategic_reviews],
         "agentKnowledge": {aid: k.model_dump(by_alias=True) for aid, k in state.agent_knowledge.items()},
         "academyState": state.academy_state.model_dump(by_alias=True),
         "disciplineReviews": [r.model_dump(by_alias=True) for r in state.discipline_reviews],

@@ -40,6 +40,17 @@ Recommend-only, computed fresh per request, never persisted — the same
 boundary and convention every other scoring engine in this chapter and
 Chapter 59/60 already respect.
 
+The Strategic Review Cycle (v0.7 Design Bible Chapter 64, fifth pass) is
+`generate_strategic_review()` below — mirrors `app/executive_review.py`'s
+own monthly `ExecutiveReview` structure, generated on the same monthly
+cadence in `app/nexus.py`'s `tick()`, but asks a different question: not
+"how is the company performing" but "how is CEO-authored goal progress
+moving." Every field is a real, checkable derivation from `Goal`/
+`Milestone`/`GoalPriority` — which goals completed or expired, and which
+milestones were newly reached, since the previous review (by real ISO
+timestamp comparison, the same monotonic ordering `_now_iso()` already
+guarantees) — never a fabricated period-over-period number.
+
 A goal is always "reach at least targetValue" — every real metric below
 is a "higher is better" number, so a reduce-below-X goal type would need
 its own honest design, not invented here.
@@ -59,6 +70,8 @@ from app.schemas import (
     GoalPriority,
     Milestone,
     PaperPortfolio,
+    StrategicReview,
+    TimeState,
 )
 
 # CEO-authored, not automatically generated — capped the same way every
@@ -317,3 +330,72 @@ def compute_resource_allocation(goals: list[Goal], *, sim_day: int) -> list[Goal
         even_share = round(100.0 / len(priorities), 1)
         return [GoalAllocation(goalId=p.goal_id, score=p.score, allocationPct=even_share) for p in priorities]
     return [GoalAllocation(goalId=p.goal_id, score=p.score, allocationPct=round(p.score / total_score * 100.0, 1)) for p in priorities]
+
+
+# v0.7 Design Bible Chapter 64 (fifth pass) — the Strategic Review
+# Cycle's own real cap, matching `app/executive_review.py`'s
+# MAX_EXECUTIVE_REVIEWS convention for the same kind of periodic-report
+# list.
+MAX_STRATEGIC_REVIEWS = 20
+
+_MAX_NAMED_GOALS_PER_SECTION = 5
+
+
+def generate_strategic_review(
+    goals: list[Goal],
+    *,
+    sim_day: int,
+    new_time: TimeState,
+    previous_review_created_at: str | None,
+) -> StrategicReview:
+    """The real Strategic Review Cycle report — see module docstring.
+    `previous_review_created_at` is the prior `StrategicReview.created_at`
+    (None for the first review ever), used to find what genuinely
+    changed since then via real ISO timestamp comparison against each
+    goal's own `updated_at`/`completed_at` and each milestone's own
+    `reached_at` — never a fabricated delta."""
+    active = [g for g in goals if g.status == "active"]
+
+    def _since(timestamp: str | None) -> bool:
+        if timestamp is None:
+            return False
+        return previous_review_created_at is None or timestamp > previous_review_created_at
+
+    completed_since = [g.title for g in goals if g.status == "completed" and _since(g.completed_at)][:_MAX_NAMED_GOALS_PER_SECTION]
+    expired_since = [g.title for g in goals if g.status == "expired" and _since(g.updated_at)][:_MAX_NAMED_GOALS_PER_SECTION]
+    milestones_reached_since = sum(1 for g in goals for m in g.milestones if m.reached and _since(m.reached_at))
+
+    priorities = rank_goals_by_priority(goals, sim_day=sim_day)
+    top = priorities[0] if priorities else None
+    top_title = next((g.title for g in goals if g.id == top.goal_id), top.goal_id) if top else None
+
+    summary = f"{len(active)} active goal(s) this period."
+    if completed_since:
+        summary += f" {len(completed_since)} completed: {', '.join(completed_since)}."
+    if expired_since:
+        summary += f" {len(expired_since)} expired unmet: {', '.join(expired_since)}."
+    if milestones_reached_since:
+        summary += f" {milestones_reached_since} milestone(s) newly reached."
+    if top is not None and top_title is not None:
+        summary += f' Highest priority this period: "{top_title}" (urgency {top.score:.0f}/100).'
+    if not active and not completed_since and not expired_since:
+        summary += " No goal activity to report."
+
+    return StrategicReview(
+        id=f"strategic-review-{new_time.day}-{new_time.hour}-{new_time.minute}",
+        createdAt=_now_iso(),
+        activeGoalCount=len(active),
+        completedSinceLastReview=completed_since,
+        expiredSinceLastReview=expired_since,
+        milestonesReachedSinceLastReview=milestones_reached_since,
+        topPriorityGoalId=top.goal_id if top is not None else None,
+        topPriorityScore=top.score if top is not None else None,
+        summary=summary,
+    )
+
+
+def record_strategic_review(reviews: list[StrategicReview], review: StrategicReview) -> list[StrategicReview]:
+    updated = [*reviews, review]
+    if len(updated) > MAX_STRATEGIC_REVIEWS:
+        del updated[: len(updated) - MAX_STRATEGIC_REVIEWS]
+    return updated

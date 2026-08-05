@@ -4239,6 +4239,40 @@ class GoalAllocation(CamelModel):
     allocation_pct: float = Field(alias="allocationPct")
 
 
+class StrategicReview(CamelModel):
+    """v0.7 Design Bible Chapter 64 (fifth pass) — the Strategic Review
+    Cycle. Mirrors Chapter 63's own monthly `ExecutiveReview` structure
+    (see `app/executive_review.py`) but asks a different question: not
+    "how is the company performing" but "how is CEO-authored goal
+    progress moving." Every field here is real and derived directly
+    from `Goal`/`Milestone`/`GoalPriority` — no fabricated numbers."""
+
+    id: str
+    created_at: str = Field(alias="createdAt")
+    active_goal_count: int = Field(alias="activeGoalCount")
+    # Real titles of goals that transitioned to `completed`/`expired`
+    # since the previous review (by real `updatedAt`/`completedAt`
+    # comparison) — capped the same way ExecutiveReview's own
+    # `majorEvents` is, never every goal ever.
+    completed_since_last_review: list[str] = Field(
+        default_factory=list, alias="completedSinceLastReview"
+    )
+    expired_since_last_review: list[str] = Field(
+        default_factory=list, alias="expiredSinceLastReview"
+    )
+    # Real count of Milestone objects across all goals whose real
+    # `reachedAt` falls after the previous review.
+    milestones_reached_since_last_review: int = Field(
+        alias="milestonesReachedSinceLastReview"
+    )
+    # The single highest-urgency active goal this period, per the real
+    # Executive Priority Engine (`compute_goal_priority()`) — None if no
+    # active goal exists to prioritize.
+    top_priority_goal_id: str | None = Field(default=None, alias="topPriorityGoalId")
+    top_priority_score: float | None = Field(default=None, alias="topPriorityScore")
+    summary: str
+
+
 class GameSaveState(CamelModel):
     version: Literal["0.6"] = "0.6"
     player: EntityTransform
@@ -4514,6 +4548,13 @@ class GameSaveState(CamelModel):
     # (app/goals.py). Capped and append-only like every other real list
     # in this codebase — see MAX_GOALS.
     goals: list[Goal] = Field(default_factory=list)
+    # v0.7 Design Bible Chapter 64 (fifth pass) — the Strategic Review
+    # Cycle, generated on the same monthly cadence as Chapter 63's own
+    # ExecutiveReview but over CEO-authored goals (app/goals.py). Capped
+    # like every other periodic-report list — see MAX_STRATEGIC_REVIEWS.
+    strategic_reviews: list[StrategicReview] = Field(
+        default_factory=list, alias="strategicReviews"
+    )
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(

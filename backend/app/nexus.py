@@ -61,7 +61,7 @@ from app.executive import (
 from app.executive_intelligence import generate_meeting_log_entry, generate_weekly_self_evaluations, record_meeting_log_entry, record_self_evaluations
 from app.executive_review import generate_executive_review, record_review
 from app.founders import compute_founder_state, generate_breakthrough_review, generate_council_session, generate_founder_log_entry, record_council_session, record_founder_log
-from app.goals import tick_goals
+from app.goals import generate_strategic_review, record_strategic_review, tick_goals
 from app.foundational_mentors import tick_employee_progress
 from app.gatekeeper import grade_gatekeeper_rejections
 from app.hall_of_fame import evaluate_hall_of_fame
@@ -172,6 +172,7 @@ from app.schemas import (
     ReflectionSession,
     ResearchItem,
     RiskLimits,
+    StrategicReview,
     RiskWarning,
     ScannerAlert,
     TalentReport,
@@ -1001,6 +1002,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     academy_completed_projects: list[AcademyProject] = list(state.academy_completed_projects)
     # v0.7 Design Bible Chapter 64 — CEO-authored company goals.
     goals: list[Goal] = list(state.goals)
+    # v0.7 Design Bible Chapter 64 (fifth pass) — the Strategic Review
+    # Cycle's own real report history.
+    strategic_reviews: list[StrategicReview] = list(state.strategic_reviews)
     agent_knowledge: dict[AgentId, AgentKnowledgeState] = state.agent_knowledge or default_agent_knowledge()
     discipline_reviews: list[DisciplineReview] = list(state.discipline_reviews)
     case_studies: list[CaseStudy] = list(state.case_studies)
@@ -1807,6 +1811,19 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         executive_reviews = record_review(executive_reviews, review)
         record_executive_review(memory, review, max_records=effective_risk_limits.max_memory_records)
 
+        # v0.7 Design Bible Chapter 64 (fifth pass) — the Strategic
+        # Review Cycle, generated on the same monthly cadence as the
+        # Executive Review above but over CEO-authored goals (see
+        # app/goals.py's module docstring).
+        previous_strategic_review_created_at = strategic_reviews[-1].created_at if strategic_reviews else None
+        strategic_review = generate_strategic_review(
+            goals,
+            sim_day=new_time.day,
+            new_time=new_time,
+            previous_review_created_at=previous_strategic_review_created_at,
+        )
+        strategic_reviews = record_strategic_review(strategic_reviews, strategic_review)
+
         # v0.7 Feature 39 — the Founder Council. Real monthly sit-down
         # between the Coach and both Founders, generated alongside the
         # monthly CoachReport above (`latest_report`) — see
@@ -2163,6 +2180,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "academy_projects": academy_projects,
             "academy_completed_projects": academy_completed_projects,
             "goals": goals,
+            "strategic_reviews": strategic_reviews,
             "agent_knowledge": agent_knowledge,
             "academy_state": academy_state,
             "discipline_reviews": discipline_reviews,
