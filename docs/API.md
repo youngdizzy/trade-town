@@ -1222,6 +1222,42 @@ effect on the very next generated `TradeProposal` — see
 Position Sizing" / "Institutional Trade Filter" sections for exactly
 how each limit is enforced.
 
+Design Bible Chapters 61/62/63 each added further optional fields to
+this same endpoint's body (not all listed in the example above):
+`minSimilarMatches`, `mistakeWarningSharePct`, `maxDecisionVaultEntries`,
+`maxMemoryRecords`, `maxLimitedLiveCapital` (Chapters 61/62), and
+`companyHealthExcellentThreshold`/`GoodThreshold`/`StableThreshold`/
+`NeedsAttentionThreshold` (Chapter 63 — see
+`app/company_health.py`'s `compute_company_health()`). The four Company
+Health thresholds are validated together against the fully-merged
+candidate (not just the fields a given call touches) to always stay
+strictly descending; `400` with `"Company Health tier thresholds must
+stay in strictly descending order..."` otherwise.
+
+### `POST /api/goals/create` / `POST /api/goals/cancel`
+
+Design Bible Chapter 64 — the CEO's Goal write path (`app/goals.py`).
+`create`'s body: `{ "title": "Reach elite Company Score", "category":
+"growth", "targetMetric": "company_score_overall", "targetValue": 85.0,
+"deadlineSimDay": null }`. `category` is one of `growth`/`risk`/
+`research`/`trading`/`operations`; `targetMetric` is one of
+`company_health_combined`/`company_score_overall`/`portfolio_return_pct`/
+`academy_level` — each maps to one real, already-computed number (see
+`app/goals.py`'s `resolve_metric_value()`). `400` for an empty/too-long
+title, a non-positive target, a target above that metric's own real
+ceiling (100 for the two composite scores, 5 for Academy level,
+uncapped for portfolio return), or a deadline that isn't a future sim
+day. Both endpoints return `{ "goals": [ ... ] }`, the full current list.
+`cancel`'s body: `{ "goalId": "goal-12-14-0-3" }`; `400` for an unknown
+id or a goal that isn't currently `active`. Real progress is never sent
+by the client — `app/nexus.py`'s `tick()` recomputes every active
+goal's `currentValue`/`progressPct`/`status` every tick via
+`tick_goals()`, transitioning it to `completed` (target reached) or
+`expired` (deadline passed unmet), both permanent per
+`app/hall_of_fame.py`'s "a crossed milestone stays crossed" convention.
+Capped at `MAX_GOALS = 20`, oldest evicted first, same as every other
+real CEO-authored list in this codebase.
+
 ### `POST /api/foundational-mentors/*`
 
 v0.7 Feature 49 (Phase 3, revised) — the Foundational Mentor Program /
@@ -1339,6 +1375,7 @@ never needs to trim anything itself:
 | `executiveReviews` | last 20 (`MAX_EXECUTIVE_REVIEWS`) | the CIO's Monthly Executive Review — v0.7 Feature 24 |
 | `academyProjects` | uncapped, but always exactly one active | the Academy's one company-wide knowledge project — v0.7 Feature 25 |
 | `academyCompletedProjects` | last 50 (`MAX_ACADEMY_LIBRARY`) | the permanent Company Knowledge Library — v0.7 Feature 25 |
+| `goals` | last 20 (`MAX_GOALS`) | CEO-authored company goals, oldest evicted first regardless of status — Design Bible Chapter 64 |
 | `disciplineReviews` | last 60 (`MAX_DISCIPLINE_REVIEWS`) | one per closed trade — v0.7 Feature 26 |
 | `caseStudies` | last 60 (`MAX_CASE_STUDIES`) | one per detected real process-gap mistake — v0.7 Feature 27 |
 | `reasoningChallenges` | last 60 (`MAX_REASONING_CHALLENGES`) | one per real AI Debate practiced, on a fixed cadence — v0.7 Feature 29 |

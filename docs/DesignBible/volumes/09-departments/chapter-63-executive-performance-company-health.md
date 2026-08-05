@@ -5,14 +5,15 @@
 (`app/company_score.py`), Department Scorecards (`app/executive_intelligence.py`'s
 Weekly Self-Evaluation), and the Performance Review Cycle
 (`app/executive_review.py`'s monthly Executive Review) are all real,
-backend and frontend, and predate this chapter — this pass is
-documentation-only, no code changes. Two sections are genuine, partial
-gaps: Early Warning System (a few real signals exist but no dedicated
-proactive-alert subsystem unifies them) and Benchmarking (one real
-period-over-period delta exists; historical-period and industry-standard
-comparison do not). See [Volume 9's chapter template](README.md) for
-what every section below must contain, and the Implementation Notes at
-the bottom for exactly what's real today.
+backend and frontend, and predate this chapter. A follow-up
+implementation pass then closed two of the chapter's real CEO Controls
+gaps: Company Health tier thresholds are now CEO-configurable
+(backend + frontend), and a real, honestly-scoped Benchmarking slice
+(multi-period comparison, frontend-only — the data already existed
+client-side) now exists. Early Warning consolidation remains a genuine,
+unbuilt gap. See [Volume 9's chapter template](README.md) for what every
+section below must contain, and the Implementation Notes at the bottom
+for exactly what's real today.
 
 ## Executive Summary
 
@@ -154,17 +155,19 @@ of their own inputs).
 | Control | Status |
 |---|---|
 | Company Health visibility | **Already real** — the COMPANY tab, always on, no configuration needed. |
-| Weekly Self-Evaluation cadence | **Not built** — the 7-sim-day window (`SELF_EVAL_WINDOW_DAYS`) is a fixed constant, matching the Reflection Chamber's own weekly cadence. A real, closeable "promote a constant" candidate, same pattern as Chapters 61/62's own CEO Controls passes, not attempted here. |
-| Executive Review cadence | **Not built** — fixed monthly, tied to the same cadence gate as the Coach's own monthly report. |
-| Company Health tier thresholds | **Not built** — `_TIER_THRESHOLDS` (85/70/50/30) are fixed constants in `app/company_health.py`. A real, closeable "promote a constant" candidate. |
+| Weekly Self-Evaluation cadence | **Not built** — the 7-sim-day window (`SELF_EVAL_WINDOW_DAYS`) is a fixed constant, matching the Reflection Chamber's own weekly cadence, and is a cross-cutting constant shared with Coach Reports/Reflection Sessions rather than a Chapter-63-only value — a real future slice, deliberately not attempted here given that broader blast radius. |
+| Executive Review cadence | **Not built** — same cross-cutting reasoning as above (`MONTHLY_INTERVAL_DAYS` is shared with the Coach's own monthly report and the Founder Council). |
+| Company Health tier thresholds | **Built** — `RiskLimits.companyHealth{Excellent,Good,Stable,NeedsAttention}Threshold`, all four defaulting to the exact prior fixed constants (85/70/50/30) so existing behavior — including the Founders' real "excellent" Legendary Status trigger — is unchanged until the CEO adjusts them. Validated together to stay strictly descending. A real CEO-facing control card in the COMPANY tab. |
 | Early Warning thresholds | **Not built** — see Early Warning System below; no dedicated threshold-crossing alert subsystem exists to configure. |
-| Benchmark period selection | **Not built** — see Benchmarking below; only one fixed period-over-period comparison exists today. |
+| Benchmark period selection | **Built** — a real 1x/3x/6x/12x period selector in the COMPANY tab's new Benchmarking card, computing a real delta against a CEO-chosen prior monthly `ExecutiveReview` (see Benchmarking below). |
 
-Every "Not built" row above is a genuine, buildable future slice in the
-exact same pattern Chapters 57–62 already used to close comparable gaps
-— none require inventing a signal this codebase doesn't have, just
-promoting an existing fixed constant to a CEO-configurable `RiskLimits`
-field.
+The two remaining "Not built" rows share the same real blast-radius
+reason: `WEEKLY_INTERVAL_DAYS`/`MONTHLY_INTERVAL_DAYS` are shared,
+company-wide cadence constants consumed by several other real systems
+(Coach Reports, Reflection Sessions, the Founder Council), not narrow,
+single-purpose values like every other "promote a constant" control this
+codebase has closed so far — promoting them would need its own careful,
+scoped pass that considers every consumer, not just this chapter's own.
 
 ## Learning System
 
@@ -219,20 +222,22 @@ it would consume already exists — not attempted in this pass.
 
 ## Benchmarking
 
-**Mostly not real — do not overstate this.** The one genuine benchmark
-this codebase computes is `ExecutiveReview.companyScoreChange`: a real
-delta against the *immediately previous* monthly review's own stored
-score. That is the entire real benchmarking surface today. **Not real:**
-comparison against a chosen historical period (e.g., "this month vs. 3
-months ago" — no review is ever selected by anything other than "most
-recent"); comparison against any industry standard or external
-benchmark (no such data source exists anywhere in this codebase, the
-same absence Chapter 61's own Future Expansion section already
-documented for vector/semantic search — nothing external is fabricated
-here either). A genuine future slice would extend `generate_executive_review()`
-to accept an arbitrary prior review from `ExecutiveReview` history (already
-retained up to `MAX_EXECUTIVE_REVIEWS = 20`) rather than only ever the
-immediately-previous one — real data already exists to build this from.
+**Built — a real, honestly-scoped multi-period comparison.** In addition
+to `ExecutiveReview.companyScoreChange` (the immediately-previous-period
+delta, computed server-side), the COMPANY tab's Benchmarking card lets
+the CEO pick 1/3/6/12 periods back and see a real delta against that
+specific prior monthly `ExecutiveReview` — `lib/derive.ts`'s
+`computeScoreBenchmark()`, a pure frontend function over the
+`ExecutiveReview` history already retained (server-side, up to
+`MAX_EXECUTIVE_REVIEWS = 20`) and already loaded into the client on
+every save/tick. No new backend endpoint was needed: the real data was
+already present client-side, this only needed a real read over it. An
+honest empty state ("Not enough monthly Executive Review history yet")
+covers a fresh company or a period deeper than real history goes. **Still
+not real, and not attempted:** comparison against any industry standard
+or external benchmark — no such data source exists anywhere in this
+codebase, the same absence Chapter 61's own Future Expansion section
+already documented for vector/semantic search.
 
 ## Safety Systems
 
@@ -295,21 +300,66 @@ code was written for this chapter — it is a documentation-only pass,
 consistent with this session's convention of writing a Design Bible
 chapter first and waiting for an explicit implementation instruction.
 
-**What's genuinely and honestly incomplete:** a unified Early Warning
-feed (today's warnings are real but scattered across the Executive
-Review's flags and Sentinel/Guardian's RiskWarnings, never consolidated);
-genuine multi-period or industry-standard Benchmarking (today only one
-real immediately-previous-period delta exists); five CEO Controls rows
-that are real, closeable "promote a constant" candidates in the exact
-pattern already used for Chapters 57–62, not yet attempted (Weekly
-Self-Evaluation cadence, Executive Review cadence, Company Health tier
-thresholds, Early Warning thresholds, Benchmark period selection).
+**What was actually built (Company Health tier thresholds — backend +
+frontend):** four new `RiskLimits` fields
+(`companyHealthExcellentThreshold`/`GoodThreshold`/`StableThreshold`/
+`NeedsAttentionThreshold`), all defaulting to the exact prior fixed
+constants (85/70/50/30) so existing behavior — including the Founders'
+real "excellent" Legendary Status trigger — is unchanged until the CEO
+adjusts them. `app/company_health.py`'s `_tier()` and
+`compute_company_health()` both gained an optional `thresholds`/four
+threshold parameters (defaulting to the module constants), applied
+identically to `tier`, `executiveTier`, and `combinedTier`.
+`POST /api/risk-limits` extended with all four fields; `app/state.py`'s
+`update_risk_limits()` validates the fully-merged candidate stays
+strictly descending regardless of which subset a call changes (the same
+pattern `tier_allocation`'s own four-way check already used). Frontend:
+a new "Company Health Tier Thresholds" card in the COMPANY tab (four
+number inputs, save button, real validation error display). Verified:
+4 new `compute_company_health()` unit tests (one caught a real bug this
+pass introduced and then fixed — `executiveTier`/`combinedTier` were
+still reading the hardcoded module constant instead of the CEO-passed
+thresholds until a test caught it), 4 new CEO write-path tests, 91
+new/updated backend tests total across this chapter and Chapter 64
+together, `mypy`/`ruff` clean, full backend suite 1073/1073 passing,
+`tsc`/`eslint`/`vite build` clean, and live browser verification of both
+the descending-order rejection and a successful save.
+
+**What was actually built (Benchmarking — frontend only):**
+`lib/derive.ts`'s `computeScoreBenchmark()`, a pure function over the
+already-loaded `ExecutiveReview` history computing a real delta against
+a CEO-chosen 1x/3x/6x/12x prior period, with an honest empty state when
+history is too short. No backend change was needed — the real
+`ExecutiveReview` history was already retained server-side
+(`MAX_EXECUTIVE_REVIEWS = 20`) and already loaded into the frontend on
+every save/tick; this was a real read, not a new computation. Surfaced
+as a new "Benchmarking" card in the COMPANY tab. Verified live against
+the running dev server (empty state on a fresh company, per the
+screenshot-equivalent live check).
+
+**A real bug found and fixed along the way, not scope:**
+`app/ws_manager.py` builds its per-tick WebSocket broadcast as an
+explicit field-by-field dict (the same convention every other real list
+in `GameSaveState` already follows) rather than a full `model_dump()` —
+Chapter 64's new `goals` field (see below) was added everywhere else
+(the schema, `GET /api/load`, `tick()`) but missed here, so the
+frontend's `goals` state silently went from its real initial `[]`
+default to `undefined` the moment the first live WS tick landed,
+crashing the COMPANY tab's Goals card. Found via live Playwright
+verification, not any automated test (no test exercised a live WS
+tick's `goals` field specifically) — fixed in its own commit before the
+frontend work that surfaced it.
+
+**What's genuinely and honestly still incomplete:** a unified Early
+Warning feed (today's warnings are real but scattered across the
+Executive Review's flags and Sentinel/Guardian's RiskWarnings, never
+consolidated); Weekly Self-Evaluation cadence and Executive Review
+cadence remain fixed constants, deliberately not promoted to CEO
+controls in this pass because they're shared, cross-cutting values (see
+CEO Controls above) rather than narrow, single-purpose ones.
 
 **Before implementation begins:** per Appendix G's Permanent Development
-Policy, this chapter is the required design-first step, satisfied by
-this pass. Given how much of this chapter is already real, a future
-implementation pass would likely be small — the CEO Controls
-"promote a constant" rows first (lowest risk, established pattern),
-Benchmarking's multi-period extension second (real data already
-retained, no new storage needed), and the Early Warning consolidation
-last (the only piece requiring a genuinely new subsystem, however small).
+Policy, this chapter is the required design-first step, satisfied
+before this second pass began. The Early Warning consolidation remains
+the one real, scoped, not-yet-attempted future slice — every underlying
+signal it would consume already exists.

@@ -5817,6 +5817,106 @@ Experiment Tier boundary, and that the larger-magnitude side drives the
 classification). `mypy`/`ruff` clean; full backend suite 1039/1039
 passing; `tsc --noEmit`/`eslint`/`vite build` all clean.
 
+### Company Health tier thresholds and Benchmarking — Design Bible Chapter 63
+
+Researched first (see the chapter's own Executive Summary): almost the
+entire brief was already real (Company Health Score, Company Score,
+Department Scorecards, the monthly Executive Review). This pass closed
+two of the chapter's remaining CEO Controls gaps.
+
+**Tier thresholds (backend + frontend).** `app/company_health.py`'s
+`_TIER_THRESHOLDS` (85/70/50/30) are now four `RiskLimits` fields
+(`companyHealthExcellentThreshold`/`GoodThreshold`/`StableThreshold`/
+`NeedsAttentionThreshold`), threaded through `compute_company_health()`'s
+new optional threshold parameters and applied identically to `tier`,
+`executiveTier`, and `combinedTier`. `app/state.py`'s
+`update_risk_limits()` validates the fully-merged candidate stays
+strictly descending regardless of which subset a given call changes
+(the same whole-object check `tierAllocation` already used). A real bug
+surfaced and was fixed while wiring this up: the first pass only
+threaded the new thresholds into `tier`, leaving `executiveTier`/
+`combinedTier` still reading the old hardcoded constants — caught by a
+new unit test (`TestCeoConfiguredTierThresholds::test_thresholds_apply_identically_to_executive_and_combined_tiers`)
+before it ever reached the frontend. `CompanyPanel.tsx` gained a real
+"Company Health Tier Thresholds" card (four number inputs, save,
+validation-error display).
+
+**Benchmarking (frontend only).** `lib/derive.ts`'s
+`computeScoreBenchmark()` computes a real delta between the current and
+a CEO-chosen 1x/3x/6x/12x-periods-back `ExecutiveReview.companyScore`,
+reading straight off the `executiveReviews` history already retained
+server-side (`MAX_EXECUTIVE_REVIEWS = 20`) and already loaded into the
+client. No backend change was needed. Surfaced as a new "Benchmarking"
+card in the COMPANY tab with an honest empty state when history is too
+short.
+
+**Verified**: 4 new `compute_company_health()` unit tests, 4 new CEO
+write-path tests (single-field update, out-of-range rejection,
+descending-order rejection, a full valid reordering in one call),
+`mypy`/`ruff` clean, full backend suite 1073/1073 passing,
+`tsc`/`eslint`/`vite build` clean, and live browser verification
+(`TestClient` for the backend write path; a scripted Playwright session
+for the frontend save/validation-error round trip).
+
+### Company Goals — Design Bible Chapter 64
+
+The opposite research outcome from Chapter 63: a genuine, mostly-unbuilt
+gap (see the chapter's own Executive Summary — `CompanyPriority`, the
+Capital Priority Engine, and `_long_term_goals()` are all real but
+explicitly not substitutes). Implemented the chapter's own recommended
+smallest real, independently-useful slice.
+
+A new `app/goals.py` module: `create_goal()` builds a `Goal` from CEO
+input; `validate_target_value()` rejects a non-positive target or one
+above its metric's own real ceiling (100 for the two composite scores,
+5 for Academy level, uncapped for portfolio return);
+`resolve_metric_value()` reads the one real number each of four offered
+metrics maps to (`company_health_combined`, `company_score_overall`,
+`portfolio_return_pct`, `academy_level`); `tick_goal()`/`tick_goals()`
+recompute every active goal's real progress every tick (wired into
+`app/nexus.py`'s `tick()` right after `academy_state` is computed,
+alongside `company_health`/`company_score`), transitioning a goal to
+`completed` (target reached) or `expired` (deadline passed unmet) — both
+permanent, matching `app/hall_of_fame.py`'s "a crossed milestone stays
+crossed" convention; `cancel_goal()` lets the CEO withdraw an active
+one. `POST /api/goals/create` / `POST /api/goals/cancel`
+(`app/routers/goals.py`), capped at `MAX_GOALS = 20`. `CompanyPanel.tsx`
+gained a "Company Goals" card (create form, real progress bars, cancel
+control). Full data-layer plumbing across `types.ts`, `api.ts`,
+`NexusManager.ts` (including a new `setGoals()`), `EventBus.ts`,
+`socket.ts`, and `gameStore.ts` — the `goals` field threaded through the
+shared `NexusSnapshot` interface used for both the initial `/api/load`
+and every live WS tick.
+
+**A real bug found via live verification, not any automated test:**
+`app/ws_manager.py` builds its per-tick broadcast as an explicit
+field-by-field dict, the same convention every other real list already
+follows — `goals` was added to the schema, `GET /api/load` (via
+`save_modules.py`'s generic module serialization), and `tick()`, but
+missed here. The frontend's `goals` store field silently went from its
+real initial `[]` default to `undefined` the moment the first live WS
+tick landed, crashing the new Goals card with `Cannot read properties
+of undefined (reading 'length')`. Diagnosed by adding temporary
+`pageerror`/`console` listeners to a live Playwright session (the
+screenshot alone only showed a black canvas, the same symptom this
+codebase has previously traced to zombie dev-server processes — this
+time it was a real code bug, confirmed by checking `ps aux` showed no
+stale processes before concluding it wasn't). Fixed in its own commit
+before the frontend commit that surfaced it, per this project's
+backend-before-frontend discipline.
+
+Explicitly not built, per this chapter's own scope: an Executive
+Priority Engine ranking goals against each other, Resource Allocation
+recommendations, and Milestone Tracking.
+
+**Verified**: 18 new `app/goals.py` unit tests, 8 new CEO write-path
+tests (`create`/`cancel`, including the empty-title, non-positive-target,
+past-deadline, and duplicate-cancel rejections), `mypy`/`ruff` clean,
+full backend suite 1073/1073 passing, `tsc`/`eslint`/`vite build`
+clean, and a live scripted Playwright session confirming goal creation,
+cancellation, and the target-ceiling validation error all round-trip
+correctly against the real running dev stack.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

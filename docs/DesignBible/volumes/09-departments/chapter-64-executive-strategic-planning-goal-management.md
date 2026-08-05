@@ -1,12 +1,14 @@
 # Chapter 64 — Executive Strategic Planning & Goal Management Engine
 
-**Status:** Target design. Not yet implemented as a dedicated system —
-three real, partial building blocks already exist and are named exactly
-where they overlap below, but no code in this repository tracks a goal,
-a milestone, a deadline, or a resource allocation against one. See
+**Status:** Smallest real slice implemented (backend + frontend), per
+this chapter's own Implementation Notes recommendation: a CEO-authored
+`Goal` naming one real, already-computed metric and a target value, with
+real progress recomputed every tick — no Executive Priority Engine,
+Resource Allocation, or Milestone Tracking yet (all three remain
+explicitly out of scope, named below). See
 [Volume 9's chapter template](README.md) for what every section below
 must contain, and the Implementation Notes at the bottom for exactly
-what's real today versus new here.
+what's real today versus still target design.
 
 ## Executive Summary
 
@@ -80,23 +82,34 @@ no storage, no input surface exists yet.
 
 ## Outputs
 
-None today. A real future implementation would produce: a `Goal`/`SmartObjective`
-schema (title, category, target metric, deadline, progress), a ranked
-list of active goals (the real Executive Priority Engine), a Resource
-Allocation recommendation, and Milestone events.
+**Built:** a real `Goal` object (title, category, target metric, target
+value, current value, progress %, created/deadline sim day, status,
+timestamps) — see `app/goals.py`. **Not built:** a ranked list of active
+goals (the Executive Priority Engine), a Resource Allocation
+recommendation, and Milestone events — all three remain explicitly out
+of scope, per this chapter's own recommended smallest-slice-first
+sequencing.
 
 ## Internal Workflow
 
-Not real yet — there is no workflow to document against actual code, per
-this volume's own template rule ("documented against the real code path,
-not an idealized one"). A future implementation's honest workflow would
-need, at minimum: CEO defines a goal with a real target metric → the
-engine picks which already-real number in this codebase maps to that
-metric (Company Health sub-score, Company Score metric, portfolio
-return, Academy level, etc. — not every conceivable goal has a real
-metric to attach to) → progress is read fresh each tick/review cycle from
-that real number → the Strategic Review Cycle reports honest progress or
-an honest "off track."
+**Built, matching the honest workflow this section originally
+described:** CEO defines a goal naming one real target metric
+(`app/goals.py`'s `create_goal()`, validated by `validate_target_value()`
+against that metric's own real ceiling) → `resolve_metric_value()`
+reads the one already-real number that metric maps to (Company Health
+combined score, Company Score, portfolio return %, or Academy level —
+not every conceivable goal has a real metric to attach to, so only these
+four are offered) → `tick_goals()` recomputes every active goal's real
+progress every tick, alongside `company_health`/`company_score` in
+`app/nexus.py`'s `tick()` → a goal transitions to `completed` the moment
+its real current value reaches its target, or to `expired` if a real
+deadline passes unmet — both permanent, one-way transitions, the same
+"a crossed milestone stays crossed" convention `app/hall_of_fame.py`
+already establishes. **Not built:** the Strategic Review Cycle itself
+(a periodic report over goal progress) — today's real workflow updates
+every goal silently every tick; nothing yet surfaces a periodic summary
+of that progress the way Chapter 63's monthly Executive Review does for
+company performance.
 
 ## Decision Logic
 
@@ -124,12 +137,13 @@ underneath Chapter 59's softer, opt-in reserve target.
 
 | Control | Status |
 |---|---|
-| Goal Categories / SMART Objective authoring | **Not built** — no schema, no input surface. |
-| Executive Priority Engine (goal ranking) | **Not built** — see Ownership for why Chapter 59's engine is not a substitute. |
+| Goal Categories / SMART Objective authoring | **Built** — a real "Company Goals" card in the COMPANY tab: title, category (growth/risk/research/trading/operations), one of four real target metrics, target value, optional deadline. `POST /api/goals/create`, validated server-side (`app/goals.py`'s `validate_target_value()`; a positive target within that metric's own real ceiling, a future deadline). |
+| Cancel an active goal | **Built** — `POST /api/goals/cancel`, a real ✕ control per active goal in the same card. |
+| Executive Priority Engine (goal ranking) | **Not built** — see Ownership for why Chapter 59's engine is not a substitute; deliberately deferred per this chapter's own smallest-slice-first sequencing. |
 | Resource Allocation targets | **Not built** — no goal-level capital-allocation concept exists. |
-| Milestone definitions | **Not built** — no milestone object exists anywhere. |
-| Strategic Review cadence | **Not built** — no review cycle exists for this chapter's own concept (distinct from Chapter 63's real monthly Executive Review, which reviews company *performance*, not CEO-authored *goals*). |
-| Company Priority (existing four-value stance) | **Already real** — `SettingsState.companyPriority`, CEO-configurable today via the existing RISK/Company panel, unrelated to this chapter's own not-yet-built goal system except as a possible future input. |
+| Milestone definitions | **Not built** — no milestone object exists anywhere; a goal today is a single target, not a series of checkpoints. |
+| Strategic Review cadence | **Not built** — no periodic review report exists for this chapter's own concept yet (distinct from Chapter 63's real monthly Executive Review, which reviews company *performance*, not CEO-authored *goals*). |
+| Company Priority (existing four-value stance) | **Already real** — `SettingsState.companyPriority`, CEO-configurable today via the existing RISK/Company panel, unrelated to this chapter's own goal system except as a possible future input. |
 
 ## Learning System
 
@@ -142,12 +156,13 @@ to.
 
 ## KPIs
 
-Not honestly computable today — there is nothing to measure. Once real,
-the honest candidates are: Goal Completion Rate (a real check against
-each goal's own real target metric), Milestone Hit Rate (real,
-timestamped, checkable), Resource Allocation Efficiency (would require
-the same kind of real before/after portfolio comparison Chapter 60's own
-KPIs section already flags as needing a new ledger).
+**Built:** Goal Completion Rate is now honestly computable — every
+`Goal`'s own real `status` (`completed` vs. `expired`/`cancelled`) is a
+real, checkable outcome, and `progressPct` is a real, continuously
+updated number. **Still not honestly computable:** Milestone Hit Rate
+(no milestone object exists); Resource Allocation Efficiency (would
+require the same kind of real before/after portfolio comparison Chapter
+60's own KPIs section already flags as needing a new ledger).
 
 ## Reports
 
@@ -212,28 +227,63 @@ CEO-configurable four-value operating stance biasing real levers —
 `PRIORITY_RESEARCH_SPEED_MULTIPLIER`); Chapter 59's own real Capital
 Priority Engine (ranks trade proposals, not goals);
 `app/executive_review.py`'s `_long_term_goals()` (real, regenerated
-monthly, but static text with no tracking). None of the three is a
-substitute for this chapter's actual scope, and none was extended or
-modified in writing this chapter — this is a documentation-only pass, no
-code changes.
+monthly, but static text with no tracking). None of the three was
+extended or reused to build the goal system below — each remains a
+real, separate, structurally-different system.
 
-**What's genuinely new and not yet built, and it is substantial:** the
-entire goal/objective data model (nothing like it exists — no `Goal`
-schema, no storage, no CEO input surface); the Executive Priority Engine
-for ranking goals (structurally distinct from Chapter 59's, per
-Ownership — cannot be built by extending that module); Resource
-Allocation recommendations at the goal level; Milestone Tracking; the
-Strategic Review Cycle. This is comparable in size to Chapter 60's own
-flagged "largest real gap" — honest scoping here matters as much as it
-did there.
+**What was actually built (the smallest real slice — backend +
+frontend):** a real `Goal` schema (`app/schemas.py`) and `app/goals.py`
+module: `create_goal()` builds a new goal from CEO input;
+`validate_target_value()` rejects a non-positive target or one above
+its metric's own real ceiling (100 for the two composite scores, 5 for
+Academy level, uncapped for portfolio return); `resolve_metric_value()`
+reads the one real number each of the four offered metrics maps to;
+`tick_goal()`/`tick_goals()` recompute every active goal's real progress
+every tick (wired into `app/nexus.py`'s `tick()` alongside
+`company_health`/`company_score`/`academy_state`), transitioning a goal
+to `completed` (target reached) or `expired` (deadline passed unmet) —
+both permanent, one-way, matching `app/hall_of_fame.py`'s "a crossed
+milestone stays crossed" convention; `cancel_goal()` lets the CEO
+withdraw an active goal. `POST /api/goals/create` and
+`POST /api/goals/cancel` (`app/routers/goals.py`), capped at
+`MAX_GOALS = 20` like every other real CEO-authored list in this
+codebase. Frontend: a real "Company Goals" card in the COMPANY tab —
+create form (title, category, metric, target, optional deadline), a
+real progress bar per goal, cancel control, honest validation-error
+display. Full data-layer plumbing: `types.ts`'s `Goal`/`GoalCategory`/
+`GoalMetric`/`GoalStatus`, `api.ts`'s `createGoal`/`cancelGoal`,
+`NexusManager.setGoals()`, the `goals:updated` EventBus event, and the
+`goals` field threaded through the shared `NexusSnapshot` interface in
+both `NexusManager.ts` and `socket.ts` so it survives the initial
+`/api/load` and every live WS tick.
 
-**Before implementation begins:** per Appendix G's Permanent Development
-Policy, this chapter is the required design-first step, satisfied by
-this pass. Given the size of the real gap, a future implementation
-should likely start with the smallest real, independently-useful slice —
-a `Goal` schema plus manual CEO authoring and one real progress metric
-per goal (reusing Company Health/Company Score directly, no new ranking
-engine yet) — before attempting the Executive Priority Engine or
-Resource Allocation, the same "smallest real slice first" sequencing
-Chapter 60's own Implementation Notes already recommend for a
-comparably-sized gap.
+**What's genuinely still not built, and it remains substantial:** the
+Executive Priority Engine for ranking goals against each other
+(structurally distinct from Chapter 59's, per Ownership — cannot be
+built by extending that module); Resource Allocation recommendations at
+the goal level; Milestone Tracking (a goal today is a single target, not
+a series of checkpoints); the Strategic Review Cycle (a periodic report
+over goal progress, distinct from Chapter 63's own company-performance
+Executive Review). All three were deliberately deferred, per this
+chapter's own "smallest real slice first" sequencing below.
+
+**A real bug found and fixed along the way, not scope:**
+`app/ws_manager.py` builds its per-tick WebSocket broadcast as an
+explicit field-by-field dict rather than a full `model_dump()` of
+`GameSaveState` — the new `goals` field was added to the schema,
+`GET /api/load` (via the generic module-based serialization), and
+`tick()`, but was missed in this one explicit-list spot, so the
+frontend's `goals` store field silently went from its real initial `[]`
+default to `undefined` the moment the first live WS tick landed,
+crashing the new Goals card. Found via live Playwright verification of
+the running dev stack, not by any automated test (no test exercised a
+live WS tick's `goals` field specifically) — fixed in its own commit.
+
+**Before implementation begins for the remaining pieces:** per Appendix
+G's Permanent Development Policy, this chapter's design-first step was
+satisfied before this implementation pass began. The next honest slice
+in sequence would be Milestone Tracking (extends the existing `Goal`
+object with real checkpoints rather than introducing a second ranking
+concept), followed by the Executive Priority Engine, with Resource
+Allocation last (it depends on the other two existing first to have
+anything real to allocate against).

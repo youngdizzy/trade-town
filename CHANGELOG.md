@@ -7,6 +7,54 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 63 backend + frontend — Company Health tier thresholds and
+  Benchmarking**
+  (`app/schemas.py`, `app/company_health.py`, `app/nexus.py`,
+  `app/state.py`, `app/routers/risk.py`, `app/ws_manager.py`,
+  `frontend/src/types.ts`, `frontend/src/net/api.ts`,
+  `frontend/src/ui/components/CommandCenter/lib/derive.ts`,
+  `CompanyPanel.tsx`): Company Health's `_TIER_THRESHOLDS`
+  (85/70/50/30) are now four CEO-configurable `RiskLimits` fields,
+  defaulting to the exact prior constants so existing behavior —
+  including the Founders' "excellent" Legendary Status trigger — is
+  unchanged until adjusted, validated together to stay strictly
+  descending. A new Benchmarking card computes a real delta against a
+  CEO-chosen 1x/3x/6x/12x prior monthly Executive Review, entirely from
+  already-loaded data (no new backend endpoint). Fixed a real bug this
+  pass introduced along the way: `executiveTier`/`combinedTier` were
+  still reading the old hardcoded thresholds instead of the CEO-passed
+  ones, caught by a new unit test. 91 new/updated backend tests,
+  `mypy`/`ruff` clean, full backend suite 1073/1073 passing,
+  `tsc`/`eslint`/`vite build` clean, and live verification of both the
+  save path and the descending-order validation error.
+
+- **Chapter 64 backend + frontend — Company Goals (smallest real
+  slice)** (`app/schemas.py`, `app/goals.py` (new), `app/nexus.py`,
+  `app/state.py`, `app/routers/goals.py` (new), `app/main.py`,
+  `app/save_modules.py`, `frontend/src/types.ts`,
+  `frontend/src/net/api.ts`, `NexusManager.ts`, `EventBus.ts`,
+  `socket.ts`, `gameStore.ts`, `CompanyPanel.tsx`): a CEO-authored
+  `Goal` naming one real, already-computed metric (Company Health
+  combined score, Company Score, portfolio return %, or Academy level)
+  and a target value. Real progress recomputed every tick
+  (`tick_goals()`, alongside `company_health`/`company_score` in
+  `nexus.py`'s `tick()`), transitioning to `completed` or `expired` —
+  both permanent, matching `app/hall_of_fame.py`'s "a crossed milestone
+  stays crossed" convention. `POST /api/goals/create` /
+  `POST /api/goals/cancel`, capped at `MAX_GOALS = 20`. A new "Company
+  Goals" card in the COMPANY tab (create form, real progress bars,
+  cancel control). No Executive Priority Engine, Resource Allocation,
+  or Milestone Tracking yet — all three explicitly deferred per this
+  chapter's own recommended sequencing.
+
+- **Bug fix — WebSocket broadcast never included the new `goals`
+  field** (`app/ws_manager.py`): found via live Playwright verification
+  of the new Goals UI (a real black-canvas React crash reading
+  `goals.length` on `undefined`), not caught by any automated test.
+  `ws_manager.py` builds its per-tick broadcast as an explicit
+  field-by-field dict, and `goals` was added everywhere else (the
+  schema, `GET /api/load`, `tick()`) but missed here.
+
 - **Chapters 63 and 64 — Design Bible chapters (documentation-only, no
   code changes)**
   (`docs/DesignBible/volumes/09-departments/chapter-63-executive-performance-company-health.md`,
