@@ -21,6 +21,20 @@ request should be scoped against its nine-part structure (GOAL /
 REQUIREMENTS / SYSTEM BEHAVIOR / PLAYER ACTIONS / EMPLOYEE ACTIONS / UI /
 RULES / DO NOT / SUCCESS CRITERIA) before code gets written.
 
+## The Design Bible
+
+**[`docs/DesignBible/`](docs/DesignBible/README.md) is the emerging
+single source of truth for the whole company** — 14 volumes plus
+appendices, one institutional chapter per department/feature. It is
+being built one volume at a time, not all at once: today it is a real
+folder structure and Table of Contents with most volumes still an
+outline pointing at where their real content currently lives (scattered
+across the docs below and the codebase itself). As each volume is
+actually written, it absorbs and supersedes the overlapping parts of the
+older documents rather than duplicating them. Check
+`docs/DesignBible/README.md`'s status table before assuming a volume is
+fully written — several are still stubs.
+
 ## Other canonical docs
 
 - [`docs/Architecture.md`](docs/Architecture.md) — what's actually

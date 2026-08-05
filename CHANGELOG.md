@@ -7,6 +7,31 @@ development milestones, not semver releases.
 
 ### Added
 
+- **The Design Bible** (`docs/DesignBible/`) — the emerging single
+  source of truth for the whole company: 14 volumes plus 7 appendices,
+  scaffolded as a real folder structure and Table of Contents
+  (`docs/DesignBible/README.md`), built one volume at a time rather than
+  all at once. Every volume stub documents both its target outline and
+  exactly where its real content lives *today* (a specific module,
+  schema, or existing doc), rather than describing systems that don't
+  exist yet — several volumes (Live Trading/Charles Schwab, real
+  Security controls, a formal Performance Benchmark suite) explicitly
+  say so. Volume 9 (Departments) defines the permanent 20-section
+  chapter template every feature will eventually be documented under
+  (Executive Summary, Mission, Philosophy, Responsibilities, Ownership,
+  Inputs, Outputs, Internal Workflow, Decision Logic, Department
+  Cooperation, CEO Controls, Learning System, KPIs, Reports, Safety
+  Systems, Dependencies, Connected Features, Future Expansion, Company
+  Principle, Implementation Notes) and lists Features 54–56 (Decision
+  Vault, War Room, Portfolio Intelligence) as its first three pending
+  chapters — checked directly against the full repository and every
+  remote branch, no "Feature 57–67" precedent exists yet to match, so
+  these three chapters will set the bar rather than follow one.
+  `CLAUDE.md` now points to it alongside `docs/DEVELOPMENT_RULES.md`.
+  Existing docs (`docs/DESIGN_BIBLE.md`, `docs/AI_AGENT_BIBLE.md`, etc.)
+  are not deleted or invalidated — each volume absorbs its overlapping
+  content only once that volume is actually written.
+
 - **v0.7 Features 55 & 56 — Executive Decision Simulator (War Room) and
   Enterprise Portfolio Intelligence, frontend**: mirrors every new schema
   in `types.ts` (`ExpectedValueAnalysis`, `ContingencyStep`,
