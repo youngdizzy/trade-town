@@ -7,6 +7,34 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 67 written — TradeTown Operating System (TTOS)**
+  (`docs/DesignBible/volumes/09-departments/chapter-67-tradetown-operating-system.md`):
+  researched first, per this volume's own convention. Unlike every
+  other Volume 9 chapter, TTOS describes navigation/UX architecture,
+  not a trading department. Research (a dedicated Explore pass over the
+  whole frontend) confirmed the Command Center has grown to 34 real,
+  independently-shipped tabs rendered as one flat, ungrouped,
+  horizontally-scrolling button row (`FullCommandCenter.tsx`'s `TABS`
+  constant); a real global toolbar (`BottomToolbar.tsx`) exposes 8
+  one-click actions plus Work Mode, but Operating Mode and Time
+  Controls stay buried inside the COMPANY tab; a real but narrow,
+  non-tiered toast system (`CyberNotifications.tsx`) exists, where
+  every notification behaves identically and nothing ever interrupts;
+  and two real, narrow, already-loaded-state client-side search filters
+  exist (`CompanyMemory.tsx`, `KnowledgeGraphView.tsx`), backed by two
+  real backend search functions no REST endpoint currently calls
+  (`app/memory.py:search()`, `app/knowledge.py:search_knowledge()`).
+  The genuine gaps the brief's five defining mechanisms name — universal
+  search, a command palette, 7-section grouped navigation,
+  dockable/saved workspaces, and priority-tiered notifications — do not
+  exist anywhere in this codebase today, confirmed directly (no
+  windowing/docking library in `frontend/package.json`, no
+  confirmation-dialog pattern for critical actions, no navigation/UX
+  telemetry of any kind, so none of the brief's proposed KPIs/Reports
+  are honestly computable yet). Not yet implemented (chapter written,
+  target design) — no "implement" instruction has been given for this
+  chapter.
+
 - **Chapters 65/66 written — Market Regime Detection & Adaptive
   Strategy Engine, Institutional Safety, Capital Protection & Failsafe
   Framework** (`docs/DesignBible/volumes/09-departments/chapter-65-market-regime-adaptive-strategy.md`,
