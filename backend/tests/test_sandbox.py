@@ -184,6 +184,25 @@ class TestPipelineCeoActions:
         assert updated.stage == "limited_live_capital"
         assert updated.allocated_capital == 500.0
 
+    def test_ceo_configured_max_capital_allows_a_higher_ceiling(self) -> None:
+        # v0.7 Chapter 62 — Innovation Budget. 5000 exceeds the default
+        # MAX_LIMITED_LIVE_CAPITAL (2000) but not a CEO-raised ceiling.
+        strategy, _ = begin_paper_trial(_strategy(stage="market_simulation"), [_result(max_drawdown_pct=10.0)], sim_day=9)
+        assert strategy is not None
+        updated, error = begin_limited_live(strategy, 5000.0, sim_day=10, max_capital=10_000.0)
+        assert error is None
+        assert updated is not None
+        assert updated.allocated_capital == 5000.0
+
+    def test_ceo_configured_max_capital_rejects_a_lower_ceiling(self) -> None:
+        # 1500 is under the default MAX_LIMITED_LIVE_CAPITAL (2000) but
+        # over a CEO-lowered one.
+        strategy, _ = begin_paper_trial(_strategy(stage="market_simulation"), [_result(max_drawdown_pct=10.0)], sim_day=9)
+        assert strategy is not None
+        updated, error = begin_limited_live(strategy, 1500.0, sim_day=10, max_capital=1000.0)
+        assert updated is None
+        assert error is not None
+
     def test_begin_company_review_requires_limited_live_capital_stage(self) -> None:
         strategy = _strategy(stage="paper_trading")
         updated, error = begin_company_review(strategy, sim_day=11)

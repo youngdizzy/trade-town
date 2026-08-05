@@ -1009,6 +1009,12 @@ class RiskLimits(CamelModel):
     # unchanged until the CEO adjusts them.
     max_decision_vault_entries: int = Field(default=200, alias="maxDecisionVaultEntries")
     max_memory_records: int = Field(default=200, alias="maxMemoryRecords")
+    # v0.7 Design Bible Chapter 62's "Innovation Budget" CEO control
+    # (Institutional Innovation Lab & Continuous Improvement Engine).
+    # Default matches the fixed constant it replaces
+    # (app/sandbox.py's MAX_LIMITED_LIVE_CAPITAL) so existing behavior is
+    # unchanged until the CEO adjusts it.
+    max_limited_live_capital: float = Field(default=2000.0, alias="maxLimitedLiveCapital")
 
 
 class RiskWarning(CamelModel):
@@ -1956,6 +1962,14 @@ class StrategyConfidenceScore(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
+# Design Bible Chapter 62 — the Innovation Lab's Experiment
+# Classification. A real read over the strategy's own Monte Carlo
+# projections (see app/strategy_lab.py's compute_experiment_tier()) —
+# only ever set once a real StrategyMonteCarloResult exists, never
+# guessed beforehand.
+ExperimentTier = Literal["minor", "moderate", "major", "transformational"]
+
+
 class StrategyDossier(CamelModel):
     """The brief's 'professional Strategy Report' — an assembling read
     over every other real Feature 52 artifact for this strategy, never a
@@ -1987,6 +2001,10 @@ class StrategyDossier(CamelModel):
         default=None, alias="founderApproval"
     )
     confidence: StrategyConfidenceScore | None = None
+    # Design Bible Chapter 62 — Experiment Tiering. Both None until a
+    # real Monte Carlo result exists for this strategy.
+    experiment_tier: ExperimentTier | None = Field(default=None, alias="experimentTier")
+    experiment_tier_rationale: str | None = Field(default=None, alias="experimentTierRationale")
     generated_at: str = Field(alias="generatedAt")
 
 

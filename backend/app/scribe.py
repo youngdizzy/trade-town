@@ -28,6 +28,7 @@ from app.schemas import (
     DisciplineReview,
     DiscussionMessage,
     ExecutiveReview,
+    FailedStrategyArchiveEntry,
     HallOfFameEntry,
     HoldReason,
     MemoryRecord,
@@ -39,6 +40,7 @@ from app.schemas import (
     ResearchItem,
     ScannerAlert,
     SimulationResult,
+    StrategyHallOfFameEntry,
     TimeState,
     TradeDecision,
     TradeProposal,
@@ -256,5 +258,33 @@ def record_reflection_session(memory: list[MemoryRecord], session: ReflectionSes
         "reflection",
         f"{session.cadence.title()} Reflection Session",
         f"Company Wisdom stands at {session.wisdom_score:.0f}/100. {session.questions[0].answer if session.questions else ''}",
+        max_records=max_records,
+    )
+
+
+# Design Bible Chapter 62 — the Innovation Lab's Knowledge Integration
+# section. `strategy` has been a real MemoryCategory (and already
+# included in app/knowledge.py's KNOWLEDGE_CATEGORIES for the Company
+# Knowledge Library) since it was first declared, but nothing ever
+# actually recorded one — closing that real, pre-existing gap.
+def record_strategy_hall_of_fame_entry(memory: list[MemoryRecord], entry: StrategyHallOfFameEntry, max_records: int = MAX_MEMORY_RECORDS) -> None:
+    record(
+        memory,
+        "strategy",
+        f"Strategy Hall of Fame: {entry.strategy_name}",
+        f"{AGENT_PROFILES[entry.created_by].name}'s \"{entry.strategy_name}\" earned induction into the Strategy Hall "
+        f"of Fame after {entry.trades_executed} trades over {entry.sim_days_active} sim days. {entry.description}",
+        max_records=max_records,
+    )
+
+
+def record_strategy_failed_archive_entry(memory: list[MemoryRecord], entry: FailedStrategyArchiveEntry, max_records: int = MAX_MEMORY_RECORDS) -> None:
+    what_failed = "; ".join(entry.what_failed) if entry.what_failed else "no specific failure reason recorded"
+    record(
+        memory,
+        "strategy",
+        f"Strategy retired: {entry.strategy_name}",
+        f"{AGENT_PROFILES[entry.created_by].name}'s \"{entry.strategy_name}\" was retired at the {entry.failed_at_stage.replace('_', ' ')} "
+        f"stage ({entry.retired_reason}). What failed: {what_failed}.",
         max_records=max_records,
     )

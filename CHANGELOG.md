@@ -7,6 +7,33 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 62 backend + frontend — Innovation Lab (Knowledge
+  Integration, Innovation Budget, Experiment Tiering)**
+  (`app/scribe.py`, `app/state.py`, `app/schemas.py`, `app/sandbox.py`,
+  `app/routers/risk.py`, `app/strategy_lab.py`,
+  `frontend/src/types.ts`, `StrategyCertificationView.tsx`,
+  `frontend/src/ui/components/CommandCenter/lib/derive.ts`): the three
+  pieces Chapter 62's own research named as genuinely new (almost the
+  entire brief was already real — see the chapter's Executive Summary).
+  **Knowledge Integration**: every strategy retirement now also files a
+  real `MemoryRecord` under the pre-existing but never-populated
+  `"strategy"` `MemoryCategory` (`record_strategy_hall_of_fame_entry()`/
+  `record_strategy_failed_archive_entry()`), alongside the pre-existing
+  Company DNA nudge. **Innovation Budget**: `RiskLimits.maxLimitedLiveCapital`
+  (default $2,000, matching the prior fixed `MAX_LIMITED_LIVE_CAPITAL`)
+  threaded through `begin_limited_live()`. **Experiment Tiering**:
+  `compute_experiment_tier()` classifies a strategy's own real Monte
+  Carlo magnitude (larger of projected upside or downside) into
+  minor/moderate/major/transformational against three honest, declared
+  thresholds — `None` until a real Monte Carlo result exists, never
+  guessed — exposed as `StrategyDossier.experimentTier` and shown as a
+  badge in the Strategy Lab's Certification view. 13 new backend tests,
+  `mypy`/`ruff` clean, full backend suite 1039/1039 passing,
+  `tsc`/`eslint`/`vite build` clean, and live verification against the
+  running dev server for all three pieces (a real retirement, a real
+  CEO risk-limit write, and a real dossier read all confirmed working
+  with no server errors).
+
 - **Chapter 61 backend + frontend — Knowledge Quality Score**
   (`app/schemas.py`, `app/decision_vault.py`, `app/routers/decision_vault.py`,
   `frontend/src/types.ts`, `frontend/src/net/api.ts`,

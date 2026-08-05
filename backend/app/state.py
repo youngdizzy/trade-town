@@ -42,7 +42,7 @@ from app.research import RESEARCHER_IDS, default_research
 from app.risk_engine import compute_daily_objective_status, default_risk_limits
 from app.sandbox import apply_review_decision, begin_company_review, begin_limited_live, begin_paper_trial, generate_strategy_review
 from app.sandbox import retire_strategy as retire_strategy_stage
-from app.scribe import record_ceo_decision, record_proposal_hold
+from app.scribe import record_ceo_decision, record_proposal_hold, record_strategy_failed_archive_entry, record_strategy_hall_of_fame_entry
 from app.schemas import (
     AgentId,
     BlackBoxPriority,
@@ -516,6 +516,7 @@ class GameState:
         mistake_warning_share_pct: float | None = None,
         max_decision_vault_entries: int | None = None,
         max_memory_records: int | None = None,
+        max_limited_live_capital: float | None = None,
     ) -> tuple[GameSaveState, str | None]:
         """v0.7 Feature 49 — the CEO's Daily Trading Objectives — extended
         by v0.7 Chapter 57 with four of the six new Position Sizing
@@ -537,7 +538,10 @@ class GameState:
         Retention Rules control, both slices (`max_decision_vault_entries`
         — see app/decision_vault.py's record_vault_entry;
         `max_memory_records` — see app/memory.py's record(), threaded
-        through every app/scribe.py wrapper).
+        through every app/scribe.py wrapper), and by v0.7 Design Bible
+        Chapter 62 with the Innovation Lab's Innovation Budget control
+        (`max_limited_live_capital` — see app/sandbox.py's
+        begin_limited_live()).
         Every field is optional so a single call can update just one
         limit; each provided value is validated before being merged into
         the real RiskLimits object app/risk_engine.py,
@@ -618,6 +622,10 @@ class GameState:
                 if max_memory_records < 1:
                     return self.data, "Maximum Memory Records must be at least 1."
                 updates["max_memory_records"] = max_memory_records
+            if max_limited_live_capital is not None:
+                if max_limited_live_capital <= 0:
+                    return self.data, "Maximum Limited Live Capital must be a positive amount."
+                updates["max_limited_live_capital"] = max_limited_live_capital
             if not updates:
                 return self.data, "No risk limit changes were provided."
             new_limits = self.data.risk_limits.model_copy(update=updates)
@@ -814,7 +822,10 @@ class GameState:
         enforced readiness subset of the Certification checklist (see
         app/strategy_lab.py's evaluate_certification_readiness() for
         exactly which of the brief's thirteen requirements are honestly
-        checkable this early in the pipeline)."""
+        checkable this early in the pipeline). v0.7 Design Bible
+        Chapter 62's Innovation Budget CEO control — the CEO's real,
+        current `RiskLimits.maxLimitedLiveCapital` gates the ceiling
+        here, defaulting to the exact prior fixed constant."""
         async with self.lock:
             strategy = self._find_strategy(strategy_id)
             if strategy is None:
@@ -824,7 +835,7 @@ class GameState:
             ready, readiness_detail = evaluate_certification_readiness(strategy, self.data.simulation_results, monte_carlo, regime_test)
             if not ready:
                 return self.data, readiness_detail
-            updated, error = begin_limited_live(strategy, amount, self.data.time.day)
+            updated, error = begin_limited_live(strategy, amount, self.data.time.day, max_capital=self.data.risk_limits.max_limited_live_capital)
             if error is not None or updated is None:
                 return self.data, error
             strategies = [updated if s.id == strategy_id else s for s in self.data.strategies]
@@ -898,7 +909,12 @@ class GameState:
         only a Hall of Fame induction also nudges Company DNA's real
         research_rigor Legacy trait (see app/company_dna.py's own module
         docstring for why this is the one Legacy nudge fired here rather
-        than from nexus.py's tick loop)."""
+        than from nexus.py's tick loop). v0.7 Design Bible Chapter 62's
+        Knowledge Integration — every retirement also files a real
+        MemoryRecord under the "strategy" category (see app/scribe.py's
+        record_strategy_hall_of_fame_entry/record_strategy_failed_archive_entry),
+        a real MemoryCategory this codebase declared long ago but never
+        actually populated until now."""
         async with self.lock:
             strategy = self._find_strategy(strategy_id)
             if strategy is None:
@@ -916,13 +932,17 @@ class GameState:
             if error is not None or retired_strategy is None:
                 return self.data, error
             strategies = [retired_strategy if s.id == strategy_id else s for s in self.data.strategies]
+            memory = list(self.data.memory)
             update: dict[str, object] = {"strategies": strategies}
             if hall_of_fame_entry is not None:
                 update["strategy_hall_of_fame"] = cap_strategy_hall_of_fame([*self.data.strategy_hall_of_fame, hall_of_fame_entry])
                 update["company_dna_legacy"] = nudge_legacy(dict(self.data.company_dna_legacy), "research_rigor", STRATEGY_HALL_OF_FAME_NUDGE)
+                record_strategy_hall_of_fame_entry(memory, hall_of_fame_entry, max_records=self.data.risk_limits.max_memory_records)
             else:
                 assert failed_archive_entry is not None
                 update["strategy_failed_archive"] = cap_strategy_failed_archive([*self.data.strategy_failed_archive, failed_archive_entry])
+                record_strategy_failed_archive_entry(memory, failed_archive_entry, max_records=self.data.risk_limits.max_memory_records)
+            update["memory"] = memory
             self.data = self.data.model_copy(update=update)
             return self.data, None
 

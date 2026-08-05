@@ -123,6 +123,7 @@ from app.schemas import (
     CoachReport,
     ExecutiveDepartmentRole,
     ExecutiveStance,
+    ExperimentTier,
     FailedStrategyArchiveEntry,
     MarketIntelligenceRegime,
     MarketIntelligenceState,
@@ -199,6 +200,16 @@ CERTIFICATION_MIN_TRADE_COUNT = 20
 CERTIFICATION_MAX_RUIN_PCT = 15.0
 CERTIFICATION_MAX_WORST_CASE_DRAWDOWN_PCT = 30.0
 CERTIFICATION_MIN_STRESS_RETURN_PCT = -50.0
+
+# Design Bible Chapter 62 — Experiment Tiering. Real, but honestly
+# arbitrary thresholds (the same "conservative but arbitrary" resolution
+# app/schemas.py's own RiskLimits docstring already uses for its default
+# values) over the strategy's own real Monte Carlo magnitude — how big a
+# swing this strategy represents, upside or downside, not a fabricated
+# risk score.
+EXPERIMENT_TIER_MODERATE_PCT = 10.0
+EXPERIMENT_TIER_MAJOR_PCT = 25.0
+EXPERIMENT_TIER_TRANSFORMATIONAL_PCT = 50.0
 
 # Reverse of app/market_intelligence.py's real regime->scenario mapping —
 # which of the 13 real MarketIntelligenceRegime values each real
@@ -705,6 +716,24 @@ def compute_strategy_confidence_score(
     )
 
 
+def compute_experiment_tier(monte_carlo: StrategyMonteCarloResult) -> tuple[ExperimentTier, str]:
+    """Design Bible Chapter 62 — Experiment Classification. Real
+    magnitude, not a fabricated risk score: the larger of the strategy's
+    own projected upside (`medianReturnPct`) or realized downside
+    (`worstCaseDrawdownPct`) from its own real Monte Carlo bootstrap,
+    bucketed against EXPERIMENT_TIER_*_PCT. A strategy is only ever
+    classified once it has a real Monte Carlo result to classify —
+    callers never invoke this speculatively."""
+    magnitude = max(abs(monte_carlo.median_return_pct), abs(monte_carlo.worst_case_drawdown_pct))
+    if magnitude >= EXPERIMENT_TIER_TRANSFORMATIONAL_PCT:
+        return "transformational", f"Projected magnitude of {magnitude:.1f}% (median return vs. worst-case drawdown) is large enough to meaningfully reshape company performance if deployed at scale."
+    if magnitude >= EXPERIMENT_TIER_MAJOR_PCT:
+        return "major", f"Projected magnitude of {magnitude:.1f}% represents a significant swing, upside or downside, for a single strategy."
+    if magnitude >= EXPERIMENT_TIER_MODERATE_PCT:
+        return "moderate", f"Projected magnitude of {magnitude:.1f}% is a real but contained swing."
+    return "minor", f"Projected magnitude of {magnitude:.1f}% is small — a low-stakes, incremental experiment."
+
+
 # ---------------------------------------------------------------------
 # Strategy Dossier — the brief's "professional Strategy Report,"
 # assembled from every real artifact above.
@@ -733,6 +762,7 @@ def generate_strategy_dossier(
         if (latest_review or monte_carlo or executive_review)
         else None
     )
+    experiment_tier, experiment_tier_rationale = compute_experiment_tier(monte_carlo) if monte_carlo is not None else (None, None)
 
     return StrategyDossier(
         strategyId=strategy.id,
@@ -748,6 +778,8 @@ def generate_strategy_dossier(
         executiveReview=executive_review,
         founderApproval=founder_approval,
         confidence=confidence,
+        experimentTier=experiment_tier,
+        experimentTierRationale=experiment_tier_rationale,
         generatedAt=_now_iso(),
     )
 

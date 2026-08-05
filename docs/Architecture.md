@@ -5751,6 +5751,72 @@ defaults now list every real `RiskLimits` field with its actual backend
 default value. Going forward, `npm run build` — not just `npx tsc
 --noEmit` — is the check that actually catches this class of error.
 
+### Institutional Innovation Lab — Design Bible Chapter 62
+
+Chapter 62's own research (like Chapter 61's) found the brief describes
+a system that's almost entirely already real: the full 8-stage gated
+pipeline (`app/sandbox.py`), Monte Carlo/Regime/Liquidity/Risk/
+9-department Executive Review/Founder Approval/Certification
+(`app/strategy_lab.py`), and a fully shipped 8-view Strategy Lab
+frontend all predate this pass. Three pieces were genuinely new,
+implemented here.
+
+**Knowledge Integration.** `app/state.py`'s `retire_strategy()` already
+nudged Company DNA on a Hall of Fame induction; it now also calls two
+new `app/scribe.py` wrappers — `record_strategy_hall_of_fame_entry()`
+and `record_strategy_failed_archive_entry()` — writing a real
+`MemoryRecord` under the `"strategy"` `MemoryCategory` for *every*
+retirement, Hall of Fame or Failed Archive alike. `"strategy"` has been
+a declared category (and already listed in `app/knowledge.py`'s
+`KNOWLEDGE_CATEGORIES` for the Company Knowledge Library) since long
+before this chapter — nothing had ever actually recorded one. Verified
+live: `POST /api/sandbox/retire` against one of the game's four seeded
+strategies produced a real Failed Archive entry and a matching
+`"strategy"`-category `MemoryRecord`, confirmed via `GET
+/api/load/archive/knowledge_archive` (the `memory` field lives in the
+`knowledge_archive` archive module — `GET /api/load` alone deliberately
+returns only core modules, per that endpoint's own docstring, so
+checking the wrong endpoint first briefly looked like a missing write
+before this was traced to the right one).
+
+**Innovation Budget CEO control.** `RiskLimits.maxLimitedLiveCapital`
+(default $2,000, matching the prior fixed `MAX_LIMITED_LIVE_CAPITAL`)
+threaded through `app/sandbox.py`'s `begin_limited_live()`, whose one
+real call site (`app/state.py`'s `begin_strategy_limited_live()`)
+already had `self.data.risk_limits` in scope. `POST /api/risk-limits`
+extended and validated (> 0). Verified live: a CEO write to $500
+persisted and echoed back correctly; a write of `0` was rejected with
+"Maximum Limited Live Capital must be a positive amount."
+
+**Experiment Tiering.** `app/strategy_lab.py`'s
+`compute_experiment_tier()` classifies a strategy's own real Monte Carlo
+projection — the larger in magnitude of `medianReturnPct` (upside) or
+`worstCaseDrawdownPct` (downside) — into minor/moderate/major/
+transformational against three honestly-arbitrary-but-declared
+thresholds (`EXPERIMENT_TIER_MODERATE_PCT`/`_MAJOR_PCT`/
+`_TRANSFORMATIONAL_PCT` = 10%/25%/50%), the same "conservative but
+arbitrary" resolution `RiskLimits`' own docstring already uses for its
+defaults. Wired into `generate_strategy_dossier()` so
+`StrategyDossier.experimentTier`/`experimentTierRationale` are real
+whenever a Monte Carlo result exists for that strategy, and `None`
+otherwise — never guessed ahead of real evidence. `StrategyCertificationView.tsx`
+shows it as a tone-coded badge (`experimentTierTone()` in `derive.ts`)
+next to the Monte Carlo Testing card. Verified live: `GET
+/api/sandbox/dossier` for a strategy with a real (placeholder-sourced,
+per this codebase's own honesty boundary on backtest data) Monte Carlo
+result returned `"transformational"` with a rationale citing the real
+641.2% magnitude driving it.
+
+**Verified overall**: 13 new backend tests across
+`tests/test_scribe.py` (Hall of Fame/Failed Archive entries become real
+`"strategy"` memories, `maxMemoryRecords` respected), `tests/test_state.py`
+(the retirement integration end-to-end, the Innovation Budget CEO write
+path), `tests/test_sandbox.py` (Innovation Budget's ceiling behavior at
+a CEO-raised/lowered cap), and `tests/test_strategy_lab.py` (each
+Experiment Tier boundary, and that the larger-magnitude side drives the
+classification). `mypy`/`ruff` clean; full backend suite 1039/1039
+passing; `tsc --noEmit`/`eslint`/`vite build` all clean.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

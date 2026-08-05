@@ -252,7 +252,11 @@ def begin_paper_trial(strategy: Strategy, results: list[SimulationResult], sim_d
     return _advance(strategy, "paper_trading", f"CEO authorized a real paper trading trial. {risk_detail}", sim_day), None
 
 
-def begin_limited_live(strategy: Strategy, amount: float, sim_day: int) -> tuple[Strategy | None, str | None]:
+def begin_limited_live(strategy: Strategy, amount: float, sim_day: int, *, max_capital: float = MAX_LIMITED_LIVE_CAPITAL) -> tuple[Strategy | None, str | None]:
+    """`max_capital` defaults to the module constant but is a real,
+    CEO-configurable read (v0.7 Design Bible Chapter 62's Innovation
+    Budget control — see RiskLimits.maxLimitedLiveCapital) — every other
+    caller keeps today's exact default behavior."""
     if strategy.stage != "paper_trading":
         return None, f'"{strategy.name}" must complete a Paper Trading trial before Limited Live Capital (currently: {strategy.stage.replace("_", " ")}).'
     trial_start = next((e for e in strategy.stage_history if e.stage == "paper_trading"), None)
@@ -260,8 +264,8 @@ def begin_limited_live(strategy: Strategy, amount: float, sim_day: int) -> tuple
         return None, f"The Paper Trading trial needs at least {MIN_PAPER_TRIAL_SIM_DAYS} full in-game day of real observation first."
     if amount <= 0:
         return None, "Allocated capital must be positive."
-    if amount > MAX_LIMITED_LIVE_CAPITAL:
-        return None, f"Can't allocate more than ${MAX_LIMITED_LIVE_CAPITAL:,.0f} to a strategy still in Limited Live Capital."
+    if amount > max_capital:
+        return None, f"Can't allocate more than ${max_capital:,.0f} to a strategy still in Limited Live Capital."
     strategy = strategy.model_copy(update={"allocated_capital": amount})
     return _advance(strategy, "limited_live_capital", f"CEO allocated ${amount:,.0f} in limited live capital.", sim_day), None
 

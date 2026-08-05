@@ -1,9 +1,16 @@
 # Chapter 62 — Institutional Innovation Lab & Continuous Improvement Engine
 
-**Status:** Target design. Not yet implemented. See [Volume 9's chapter
-template](README.md) for what every section below must contain, and the
-Implementation Notes at the bottom of this chapter for exactly what's
-real today versus new here.
+**Status:** Partially implemented. All three pieces this chapter's own
+research named as "genuinely new" are real: Knowledge Integration (every
+strategy retirement now files a real Company Memory entry, not just the
+existing Company DNA nudge), the Innovation Budget CEO control
+(`RiskLimits.maxLimitedLiveCapital`), and Experiment Tiering
+(`StrategyDossier.experimentTier`, computed from the strategy's own real
+Monte Carlo projections). The rest of CEO Controls (Pilot Duration,
+Automatic Promotion Rules) remain target design — see CEO Controls below
+for why. See [Volume 9's chapter template](README.md) for what every
+section below must contain, and the Implementation Notes at the bottom
+of this chapter for exactly what's real today.
 
 ## Executive Summary
 
@@ -123,12 +130,19 @@ honestly represent — see Design Bible Integration, below.
 
 ## Experiment Classification
 
-**Not built.** No `Strategy`/`StrategyReview` carries anything like the
-brief's Tier 1–4 (Minor/Moderate/Major/Transformational) classification
-today. A real tier could reasonably reuse the strategy's own already-real
-`StrategyMonteCarloResult`/projected-capital-at-risk as its basis (larger
-projected capital or a larger Company DNA nudge on success implies a
-higher tier) — a genuine, scoped design direction, not built here.
+**Built** — `app/strategy_lab.py`'s `compute_experiment_tier()`, exposed
+as `StrategyDossier.experimentTier`/`experimentTierRationale`
+(`GET /api/sandbox/dossier`). Real magnitude, not a fabricated risk
+score: the larger of the strategy's own projected upside
+(`medianReturnPct`) or realized downside (`worstCaseDrawdownPct`) from
+its own real Monte Carlo bootstrap, bucketed against three real (if
+honestly arbitrary — the same "conservative but arbitrary" resolution
+`RiskLimits`' own docstring already uses) thresholds:
+`EXPERIMENT_TIER_MODERATE_PCT` (10%), `EXPERIMENT_TIER_MAJOR_PCT` (25%),
+`EXPERIMENT_TIER_TRANSFORMATIONAL_PCT` (50%). Only ever set once a real
+`StrategyMonteCarloResult` exists for that strategy — `None` before
+then, never guessed. Surfaced in `StrategyCertificationView.tsx` as a
+badge alongside the Monte Carlo Testing card.
 
 ## Validation Requirements
 
@@ -148,21 +162,33 @@ strategy cannot reach `limited_live_capital` without first clearing
 
 ## Knowledge Integration
 
-**Partially real today.** A retired strategy that becomes a Hall of Fame
-entry already nudges Company DNA (`app/state.py`'s retirement flow calls
-`nudge_legacy(..., "research_rigor", STRATEGY_HALL_OF_FAME_NUDGE)`) — a
-real, checked example of "successful innovations automatically update
-Company DNA." **Not yet real:** an equivalent update to Company Memory,
-the Knowledge Graph, or "Training Materials" specifically — a Hall of
-Fame entry is stored in its own real list but isn't yet also written as
-a `MemoryRecord` or a Knowledge Graph node the way this chapter's own
-Chapter 61 dependency would make possible.
+**Real today, on both fronts named in the brief.** A retired strategy
+that becomes a Hall of Fame entry already nudges Company DNA
+(`app/state.py`'s retirement flow calls `nudge_legacy(...,
+"research_rigor", STRATEGY_HALL_OF_FAME_NUDGE)`) — a real, checked
+example of "successful innovations automatically update Company DNA."
+**Now also real:** every retirement — Hall of Fame induction or Failed
+Archive filing alike — writes a real `MemoryRecord` under the
+`"strategy"` `MemoryCategory` (see `app/scribe.py`'s
+`record_strategy_hall_of_fame_entry()`/`record_strategy_failed_archive_entry()`,
+called from `app/state.py`'s `retire_strategy()`). `"strategy"` has been
+a declared `MemoryCategory` — and already included in
+`app/knowledge.py`'s `KNOWLEDGE_CATEGORIES` for the Company Knowledge
+Library — since long before this chapter, but nothing ever actually
+recorded one; this closes that real, pre-existing gap rather than
+inventing a new category. **Still not real:** a Knowledge Graph node for
+a retired strategy specifically documenting its Hall of Fame/Failed
+Archive outcome — though a retired `Strategy` already becomes a real
+`strategy`-type Knowledge Graph node via Chapter 61's own extension
+(any non-`idea`-stage strategy qualifies, retired included), so the
+graph already reflects retirement, just not yet the outcome split
+itself as a separate, dedicated relation.
 
 ## CEO Controls
 
 | Control | Status |
 |---|---|
-| Innovation Budget | **Not built** — `MAX_LIMITED_LIVE_CAPITAL` ($2,000) is a fixed constant, not CEO-configurable. |
+| Innovation Budget | **Built** — `RiskLimits.maxLimitedLiveCapital` (default $2,000, matching the prior fixed `MAX_LIMITED_LIVE_CAPITAL`) is now a real CEO-configurable field, threaded through `app/sandbox.py`'s `begin_limited_live()`. |
 | Research Priority | **Overlaps** with `ResearchItem.priority`, already real — not a new control this chapter adds. |
 | Experiment Approval | **Already real** — `apply_review_decision()` at Company Review is a genuine CEO approve/reject gate. |
 | Pilot Duration | **Not built** — no minimum/maximum time-in-stage exists for `limited_live_capital`. |
@@ -289,27 +315,77 @@ distinct Strategy Lab views. Like Chapter 61, this chapter's research
 finding is that the brief describes a system that is already, in very
 large part, built.
 
-**What's genuinely new in this chapter:** Experiment Tiering (Tier
-1–4), scoped from the strategy's own already-real Monte Carlo/
-capital-at-risk signals; promoting the named fixed constants
-(`MAX_LIMITED_LIVE_CAPITAL`, pilot duration, automatic promotion) to
-real CEO-configurable controls; extending the retirement flow's existing
-Company DNA nudge to also write a real Company Memory entry and (once
-Chapter 61's graph extension exists) a real Knowledge Graph node, so a
-retired strategy's outcome becomes genuinely cross-referenceable, not
-just a private list entry.
+**What was actually built (Knowledge Integration):** every strategy
+retirement — Hall of Fame induction or Failed Archive filing alike — now
+also files a real `MemoryRecord` under the pre-existing but never-before
+-populated `"strategy"` `MemoryCategory`. Two new `app/scribe.py`
+wrappers (`record_strategy_hall_of_fame_entry()`,
+`record_strategy_failed_archive_entry()`), called from `app/state.py`'s
+`retire_strategy()` alongside the pre-existing Company DNA nudge — no
+new persistence, no new category invented, closing a real, pre-existing
+gap (the category already lived in `app/knowledge.py`'s
+`KNOWLEDGE_CATEGORIES` for the Company Knowledge Library, with nothing
+ever writing to it). Verified: 3 new tests confirming both entry types
+become real `"strategy"`-category memories and respect the CEO's
+`maxMemoryRecords`
+(`tests/test_scribe.py`), 1 integration test confirming
+`GameState.retire_strategy()` actually writes the memory end-to-end
+(`tests/test_state.py`), and a live retirement (`POST
+/api/sandbox/retire`) against the running dev server confirming the real
+`MemoryRecord` appears in `GET /api/load/archive/knowledge_archive`
+(the `memory` field lives in the `knowledge_archive` archive module, not
+`GET /api/load`'s core response — a real detail this verification
+surfaced, not a bug).
 
-**What's explicitly out of scope until named gaps close:** "Innovation
-Success Rate" as the brief frames it (would need to track abandoned
-ideas that never became a real `Strategy` object — fabrication, not
-analysis); an actual automated Design Bible-writing capability (see
-Design Bible Integration, above — a category error, not a missing
-feature); Academic Research/external-data ingestion (no such dependency
-exists in this codebase).
+**What was actually built (Innovation Budget CEO control):** one new
+`RiskLimits` field, `maxLimitedLiveCapital` (default $2,000, matching
+the exact prior fixed constant `MAX_LIMITED_LIVE_CAPITAL`), threaded
+through `app/sandbox.py`'s `begin_limited_live()` (its one real call
+site, `app/state.py`'s `begin_strategy_limited_live()`). `POST
+/api/risk-limits` extended with the field, validated (> 0). Verified: 2
+new tests for the Sandbox's own ceiling behavior at a CEO-raised/
+lowered cap (`tests/test_sandbox.py`), 2 CEO write-path tests
+(`tests/test_state.py`), and a live `POST /api/risk-limits` call
+confirming both the accepted value and the rejected one (`0` →
+"Maximum Limited Live Capital must be a positive amount.").
+
+**What was actually built (Experiment Tiering):** `app/strategy_lab.py`'s
+`compute_experiment_tier()`, wired into `generate_strategy_dossier()` so
+`StrategyDossier.experimentTier`/`experimentTierRationale` are real
+whenever a Monte Carlo result exists (`None` otherwise — never guessed).
+Real magnitude — the larger of projected upside or realized downside
+from the strategy's own Monte Carlo bootstrap — bucketed against three
+honestly-arbitrary-but-declared thresholds (10%/25%/50%), not a
+fabricated risk score. Surfaced in `StrategyCertificationView.tsx` as a
+tone-coded badge next to the Monte Carlo Testing card. Verified: 5 new
+backend tests covering each tier boundary and confirming the larger-
+magnitude side (upside vs. downside) drives the classification
+(`tests/test_strategy_lab.py`), 2 dossier-level tests confirming
+`experimentTier` is real when Monte Carlo exists and `None` when it
+doesn't, `tsc`/`eslint`/`vite build` clean, and a live
+`GET /api/sandbox/dossier` call against the running dev server returning
+a real tier and rationale for a strategy with a real Monte Carlo result.
+
+Across all three pieces: `mypy`/`ruff` clean, full backend suite
+1039/1039 passing.
+
+**What's explicitly out of scope until named gaps close:** Pilot
+Duration and Automatic Promotion Rules (both would require new
+state-tracking mechanisms — a real stage-entry timestamp check and a
+background auto-advance path through `app/nexus.py`'s `tick()` — bigger,
+riskier changes than a constant promotion, deliberately not attempted
+alongside the three pieces above); "Innovation Success Rate" as the
+brief frames it (would need to track abandoned ideas that never became a
+real `Strategy` object — fabrication, not analysis); an actual automated
+Design Bible-writing capability (see Design Bible Integration, above —
+a category error, not a missing feature); Academic Research/
+external-data ingestion (no such dependency exists in this codebase); a
+dedicated Knowledge Graph relation for a retired strategy's specific
+Hall of Fame/Failed Archive outcome (the strategy itself already becomes
+a real graph node via Chapter 61's own extension — see Knowledge
+Integration, above).
 
 **Before implementation begins:** per Appendix G's Permanent Development
-Policy, this chapter is the required design-first step. Given how much
-of the pipeline already exists and is already enforced, implementation
-should be scoped narrowly to Experiment Tiering, the named CEO controls,
-and the retirement-to-Knowledge-Graph link — not a re-implementation of
-`app/sandbox.py`/`app/strategy_lab.py`'s already-working gates.
+Policy, this chapter is the required design-first step, satisfied before
+this pass began. The remaining CEO controls are a well-scoped, separate
+future follow-up.

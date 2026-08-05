@@ -9,13 +9,17 @@ from __future__ import annotations
 from app.market_data import MockMarketDataProvider
 from app.market_intelligence import default_market_intelligence_state
 from app.sandbox import generate_strategy_review
-from app.schemas import CoachReport, ResearchItem, SimulationResult, Strategy, StrategyStageEvent, WatchlistEntry
+from app.schemas import CoachReport, ResearchItem, SimulationResult, Strategy, StrategyMonteCarloResult, StrategyStageEvent, WatchlistEntry
 from app.strategy_lab import (
     CERTIFICATION_MAX_RUIN_PCT,
     CERTIFICATION_MIN_TRADE_COUNT,
+    EXPERIMENT_TIER_MAJOR_PCT,
+    EXPERIMENT_TIER_MODERATE_PCT,
+    EXPERIMENT_TIER_TRANSFORMATIONAL_PCT,
     HALL_OF_FAME_MIN_PROFIT_FACTOR,
     HALL_OF_FAME_MIN_TRADE_COUNT,
     HALL_OF_FAME_MIN_WIN_RATE,
+    compute_experiment_tier,
     compute_strategy_certification,
     compute_strategy_confidence_score,
     compute_strategy_executive_dashboard,
@@ -283,6 +287,7 @@ class TestGenerateStrategyDossier:
         assert dossier.executive_review is not None and dossier.executive_review.id == exec_review.id
         assert dossier.founder_approval is not None and dossier.founder_approval.id == approval.id
         assert dossier.confidence is not None
+        assert dossier.experiment_tier is not None
 
     def test_leaves_every_optional_field_none_with_no_history_at_all(self) -> None:
         dossier = generate_strategy_dossier(_strategy(), [], [], [], [], [], [], [])
@@ -294,6 +299,62 @@ class TestGenerateStrategyDossier:
         assert dossier.executive_review is None
         assert dossier.founder_approval is None
         assert dossier.confidence is None
+        assert dossier.experiment_tier is None
+        assert dossier.experiment_tier_rationale is None
+
+
+def _monte_carlo(*, median_return_pct: float = 0.0, worst_case_drawdown_pct: float = 0.0) -> StrategyMonteCarloResult:
+    return StrategyMonteCarloResult(
+        id="montecarlo-1",
+        strategyId="strategy-1",
+        strategyName="Momentum Breakout",
+        pathsSimulated=200,
+        tradesPerPath=20,
+        sourceWinRate=55.0,
+        sourceAvgWinPct=2.0,
+        sourceAvgLossPct=-1.0,
+        medianReturnPct=median_return_pct,
+        returnRangeLowPct=median_return_pct - 5.0,
+        returnRangeHighPct=median_return_pct + 5.0,
+        medianMaxDrawdownPct=abs(worst_case_drawdown_pct) / 2,
+        worstCaseDrawdownPct=worst_case_drawdown_pct,
+        probabilityOfProfitPct=60.0,
+        probabilityOfRuinPct=5.0,
+        capitalSurvivalPct=95.0,
+        simDay=10,
+        createdAt=_now_iso(),
+    )
+
+
+class TestComputeExperimentTier:
+    """Design Bible Chapter 62 — Experiment Classification. Real
+    magnitude (the larger of projected upside or realized downside from
+    the strategy's own Monte Carlo bootstrap), bucketed against
+    EXPERIMENT_TIER_*_PCT — never a fabricated risk score."""
+
+    def test_small_magnitude_is_minor(self) -> None:
+        tier, rationale = compute_experiment_tier(_monte_carlo(median_return_pct=3.0, worst_case_drawdown_pct=-4.0))
+        assert tier == "minor"
+        assert "4.0%" in rationale
+
+    def test_at_the_moderate_threshold_is_moderate(self) -> None:
+        tier, _ = compute_experiment_tier(_monte_carlo(median_return_pct=EXPERIMENT_TIER_MODERATE_PCT, worst_case_drawdown_pct=0.0))
+        assert tier == "moderate"
+
+    def test_at_the_major_threshold_is_major(self) -> None:
+        tier, _ = compute_experiment_tier(_monte_carlo(median_return_pct=0.0, worst_case_drawdown_pct=-EXPERIMENT_TIER_MAJOR_PCT))
+        assert tier == "major"
+
+    def test_at_the_transformational_threshold_is_transformational(self) -> None:
+        tier, _ = compute_experiment_tier(_monte_carlo(median_return_pct=EXPERIMENT_TIER_TRANSFORMATIONAL_PCT, worst_case_drawdown_pct=0.0))
+        assert tier == "transformational"
+
+    def test_uses_whichever_of_upside_or_downside_is_larger_in_magnitude(self) -> None:
+        # Downside (-40%) is larger in magnitude than upside (+8%), so the
+        # tier must be driven by the drawdown, not the return.
+        tier, rationale = compute_experiment_tier(_monte_carlo(median_return_pct=8.0, worst_case_drawdown_pct=-40.0))
+        assert tier == "major"
+        assert "40.0%" in rationale
 
 
 class TestComputeStrategyHealth:

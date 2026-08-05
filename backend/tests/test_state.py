@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 
-from app.schemas import ClientSaveRequest, DialogueHistoryEntry, EntityTransform, SettingsState, TierAllocationLimits
+from app.schemas import ClientSaveRequest, DialogueHistoryEntry, EntityTransform, SettingsState, Strategy, TierAllocationLimits
 from app.state import MAX_DIALOGUE_HISTORY, GameState
 
 
@@ -322,6 +322,20 @@ class TestUpdateRiskLimits:
         assert error is not None
         assert saved.risk_limits.max_memory_records != 0
 
+    # v0.7 Design Bible Chapter 62 — the Innovation Lab's Innovation
+    # Budget CEO control.
+    def test_updates_max_limited_live_capital(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(max_limited_live_capital=5000.0))
+        assert error is None
+        assert saved.risk_limits.max_limited_live_capital == 5000.0
+
+    def test_rejects_max_limited_live_capital_at_or_below_zero(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(max_limited_live_capital=0.0))
+        assert error is not None
+        assert saved.risk_limits.max_limited_live_capital != 0.0
+
     def test_extra_fields_on_the_wire_are_ignored_not_rejected(self) -> None:
         """ClientSaveRequest inherits CamelModel's default extra="ignore", so
         an older client still POSTing a full legacy GameSaveState-shaped body
@@ -341,3 +355,37 @@ class TestUpdateRiskLimits:
             }
         )
         assert payload.player.scene == "LobbyScene"
+
+
+class TestRetireStrategy:
+    """Design Bible Chapter 62 — retirement now also files a real
+    MemoryRecord under the "strategy" category (see app/scribe.py's
+    record_strategy_hall_of_fame_entry/record_strategy_failed_archive_entry),
+    alongside the pre-existing Company DNA nudge and Hall of
+    Fame/Failed Archive filing."""
+
+    def test_a_strategy_with_no_qualifying_history_is_archived_and_remembered(self) -> None:
+        # No stage="approved", no simulation results, no founder approval
+        # — guaranteed to miss the real Hall of Fame bar and land in the
+        # Failed Archive instead (see generate_strategy_retirement_outcome()).
+        state = GameState()
+        strategy = Strategy(
+            id="strategy-1",
+            name="Momentum Breakout",
+            description="Follows short-term price momentum.",
+            createdBy="echo",  # type: ignore[arg-type]
+            focusCategory="stock",  # type: ignore[arg-type]
+            createdAt="2026-01-01T00:00:00+00:00",
+            stage="research",  # type: ignore[arg-type]
+            allocatedCapital=0.0,
+        )
+        state.data = state.data.model_copy(update={"strategies": [strategy]})
+
+        saved, error = asyncio.run(state.retire_strategy("strategy-1", "Not showing promise."))
+
+        assert error is None
+        assert len(saved.strategy_failed_archive) == 1
+        assert len(saved.strategy_hall_of_fame) == 0
+        strategy_memories = [m for m in saved.memory if m.category == "strategy"]
+        assert len(strategy_memories) == 1
+        assert "Momentum Breakout" in strategy_memories[0].title

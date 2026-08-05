@@ -45,6 +45,9 @@ class UpdateRiskLimitsRequest(BaseModel):
     mistake_warning_share_pct: float | None = Field(default=None, alias="mistakeWarningSharePct")
     max_decision_vault_entries: int | None = Field(default=None, alias="maxDecisionVaultEntries")
     max_memory_records: int | None = Field(default=None, alias="maxMemoryRecords")
+    # v0.7 Design Bible Chapter 62 — the Innovation Lab's Innovation
+    # Budget CEO control.
+    max_limited_live_capital: float | None = Field(default=None, alias="maxLimitedLiveCapital")
 
 
 class RiskLimitsResponse(BaseModel):
@@ -74,6 +77,7 @@ async def update_risk_limits(payload: UpdateRiskLimitsRequest) -> RiskLimitsResp
         mistake_warning_share_pct=payload.mistake_warning_share_pct,
         max_decision_vault_entries=payload.max_decision_vault_entries,
         max_memory_records=payload.max_memory_records,
+        max_limited_live_capital=payload.max_limited_live_capital,
     )
     if error is not None:
         raise HTTPException(status_code=400, detail=error)

@@ -72,7 +72,7 @@ Every chapter in this volume must contain, in this order:
 | 59 | [Capital Priority & Opportunity Cost Engine](chapter-59-capital-priority-opportunity-cost.md) | Fully implemented (backend `app/capital_priority.py` + frontend EXECUTIVE/RISK surfacing) |
 | 60 | [Institutional Portfolio Rebalancing & Adaptive Capital Rotation](chapter-60-portfolio-rebalancing-capital-rotation.md) | Chapter written — target design; no implementation yet |
 | 61 | [Institutional Knowledge Graph & Company Memory Engine](chapter-61-knowledge-graph-company-memory.md) | Substantially implemented — Knowledge Graph extension, Pattern Detection Sensitivity, both Knowledge Retention Rules slices, and the Knowledge Quality Score all shipped backend + frontend; 5 minor CEO Controls rows (Archive Policies, Learning Sensitivity, Memory Weighting, Historical Search Depth, Knowledge Validation Rules) remain target design |
-| 62 | [Institutional Innovation Lab & Continuous Improvement Engine](chapter-62-innovation-lab-continuous-improvement.md) | Chapter written — target design; almost entirely already real (see chapter's own Implementation Notes) |
+| 62 | [Institutional Innovation Lab & Continuous Improvement Engine](chapter-62-innovation-lab-continuous-improvement.md) | Partially implemented — Knowledge Integration, Innovation Budget CEO control, and Experiment Tiering all shipped backend + frontend; Pilot Duration and Automatic Promotion Rules remain target design |
 
 Every other real, shipped system in this codebase (Executive Intelligence
 Network, Trade Gatekeeper, Discipline Chamber, Reasoning Lab, Reflection
