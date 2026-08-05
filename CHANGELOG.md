@@ -7,6 +7,36 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapters 65/66 written — Market Regime Detection & Adaptive
+  Strategy Engine, Institutional Safety, Capital Protection & Failsafe
+  Framework** (`docs/DesignBible/volumes/09-departments/chapter-65-market-regime-adaptive-strategy.md`,
+  `chapter-66-institutional-safety-capital-protection.md`): researched
+  first, per this volume's own convention. Chapter 65 found two
+  independent, real, indicator-driven regime classifiers already exist
+  (`app/market_environment.py`'s 5-way, `app/market_intelligence.py`'s
+  13-way, the latter with a real Regime Confidence Score) — the genuine
+  gap is Adaptive Strategy Profiles and Automatic Adaptation. Chapter 66
+  found a real, live, mechanically-enforced daily circuit breaker and a
+  real multi-stage pre-trade veto pipeline already function as the
+  brief's "Trade Quality Override" — the genuine gaps are the named
+  Safety Pyramid vocabulary, enforcing the real-but-inert
+  `pause_trading` disagreement signal, weekly/monthly-scoped limits, and
+  a CEO manual override control.
+
+- **Chapter 66 backend — AI Consensus Safety enforcement** (`app/nexus.py`):
+  the one precise, high-value gap Chapter 66's own research found —
+  `ExecutiveRecommendation.action == "pause_trading"` (2+ departments
+  actively oppose, or Market Intelligence reads `avoid_trading`) was a
+  real, already-computed signal with no code path enforcing it.
+  `_apply_operating_mode()` now keeps a proposal pending whenever this
+  signal fires, in BOTH Assisted and Executive mode — the same real
+  safety-constraint precedent the existing cash-reserve check already
+  established, a genuine behavioral change to what Executive Mode used
+  to auto-resolve unconditionally. No new frontend code needed: the
+  CEO's existing Executive Voting popup already renders any
+  `ExecutiveRecommendation` generically. 3 new backend tests,
+  `mypy`/`ruff` clean, full backend suite 1102/1102 passing.
+
 - **Chapter 64 backend + frontend — Strategic Review Cycle** (`app/schemas.py`,
   `app/goals.py`, `app/nexus.py`, `app/save_modules.py`, `app/ws_manager.py`,
   `frontend/src/types.ts`, `frontend/src/net/socket.ts`,

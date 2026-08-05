@@ -1,13 +1,15 @@
 # Chapter 66 — Institutional Safety, Capital Protection & Failsafe Framework
 
-**Status:** Chapter written — target design, researched first. The
-finding here matches Chapter 65's own pattern: real, substantial safety
-machinery already exists in this codebase, under different names, and
-this chapter's job is to describe it honestly rather than re-propose it
-— while naming the precise, narrower gaps that are genuinely open. See
-[Volume 9's chapter template](README.md) for what every section below
-must contain, and the Implementation Notes at the bottom for the exact
-honesty boundary.
+**Status:** One real slice implemented (backend). The finding here
+matches Chapter 65's own pattern: real, substantial safety machinery
+already existed in this codebase, under different names — this
+chapter's job was to describe it honestly rather than re-propose it,
+then close the single precise gap its own research found: AI Consensus
+Safety's `pause_trading` signal was real and already computed, but
+nothing enforced it. That enforcement is now real, in both Assisted and
+Executive mode. See [Volume 9's chapter template](README.md) for what
+every section below must contain, and the Implementation Notes at the
+bottom for exactly what was built.
 
 ## Executive Summary
 
@@ -56,7 +58,7 @@ honestly, organized by the brief's own vocabulary:
 |---|---|---|
 | "Circuit Breakers" | Sentinel (`app/risk_engine.py`'s `evaluate_sentinel_risk()`) + `DailyObjectiveStatus` (`compute_daily_objective_status()`) | Checks, in order: equity ≤ 0 → daily loss limit → daily profit target → daily trade count → lifetime drawdown → open-position count → single-position cap. First violation produces a `critical` `RiskWarning`. Real, live, checked every relevant tick. |
 | "Trade Quality Override / final veto authority" | Chapter 58's Trade Gatekeeper (`app/gatekeeper.py`'s `evaluate_gatekeeper()`) | Eight checks, ALL must pass, run unconditionally whenever the CEO resolves a proposal: confidence, Sentinel's own risk vote, analyst agreement (&gt;50%), debate outcome, exposure, correlation (`MAX_CORRELATED_POSITIONS = 2`, not yet CEO-configurable), active risk warnings, market quality. A failed check means the order never places — **no CEO override is mechanically possible today**, which is precisely the brief's "Safety Framework always has final authority." |
-| "AI Consensus Safety" (execution pauses on department disagreement) | `app/executive_intelligence.py`'s `compute_executive_recommendation()` | Already sets `action = "pause_trading"` when 2+ departments actively oppose a stance, or Market Intelligence reads `avoid_trading` — a real, already-computed signal. **But nothing enforces it** — grep-confirmed zero code paths check `ExecutiveRecommendation.action` before `resolve_proposal()` or the Gatekeeper run. The detection is real; the pause is not. |
+| "AI Consensus Safety" (execution pauses on department disagreement) | `app/executive_intelligence.py`'s `compute_executive_recommendation()`, enforced by `app/nexus.py`'s `_apply_operating_mode()` | `compute_executive_recommendation()` sets `action = "pause_trading"` when 2+ departments actively oppose a stance, or Market Intelligence reads `avoid_trading`. **Now enforced**: `_apply_operating_mode()` checks this signal before every auto-resolution and keeps the proposal pending if it fires — in both Assisted and Executive mode, the same real safety-constraint precedent the existing cash-reserve check already established. The CEO's own Executive Voting popup already renders the real reason via its existing, generic `ExecutiveIntelligencePanel` — no new UI was needed. |
 | "Broker Failsafe" | *(genuinely does not exist)* | `app/broker.py`'s own module docstring: no brokerage SDK import, no API key, no code path reaching a real execution endpoint anywhere in this codebase. `app/market_data.py` confirms the same for the data feed — only a `"mock"` provider is implemented. `Candle.data_status`'s `stale`/`error`/`no_data` literal values exist but are never produced or checked. There is no real broker or data feed to fail, so this cannot be honestly built as "monitoring an unreliable dependency" — it would have to be a structural placeholder against a dependency that doesn't exist yet. |
 | "Disaster Recovery" | `app/persistence.py` | Real automatic backup-on-write (`SaveBackup` rows, `reason="periodic"`, capped at `MAX_PERIODIC_BACKUPS = 20`), real automatic recovery-on-corruption (`_migrate_dict()`/`_deep_merge_defaults()`, deep-merges a broken save onto real defaults before ever discarding it), real permanent retention of failure-triggered backups (`reason="pre_fresh_fallback"`, never deleted), real per-module fault isolation (SHA-256-hashed `SaveModule` rows, each in its own SAVEPOINT). **Genuinely missing:** no encryption, no CEO-facing restore/rollback endpoint or UI (a `SaveBackup` row can only be read by a developer querying the DB directly), no versioned "roll back N days" concept. |
 | "Recovery Protocol" (root-cause review after a major loss) | Chapter 60's Discipline Chamber (`app/discipline.py`) | Real, permanent, per-trade process review (never outcome-graded) with a genuine `PostDecisionReview` — what went well, mistakes made, information overlooked, which specific dissenting analyst was overridden and turned out right. **Real overlap, different shape:** this is per-trade, not triggered by or scoped to a portfolio-level "major loss" event, and has no effect on subsequent trading behavior — each review is independent. |
@@ -88,13 +90,18 @@ history.
 **Real today:** proposal created → `evaluate_sentinel_risk()`/
 `evaluate_guardian_exposure()` run every relevant tick → a critical
 `RiskWarning` fires on the first real violation → CEO resolves (or, in
-Assisted/Executive mode, auto-resolves per `is_significant_proposal()`)
-→ `evaluate_gatekeeper()`'s eight checks run unconditionally → a failed
-check blocks the order regardless of CEO intent. **Genuinely not
-built:** any step where `ExecutiveRecommendation.action == "pause_trading"`
-forces the proposal into the significant/escalated path the same way a
-low-confidence or oversized proposal already does — the detection
-happens, but the workflow never branches on it.
+Assisted/Executive mode, `_apply_operating_mode()` auto-resolves per
+`is_significant_proposal()`, unless the cash reserve or, now, AI
+Consensus Safety keeps it pending — see below) →
+`evaluate_gatekeeper()`'s eight checks run unconditionally → a failed
+check blocks the order regardless of CEO intent. **Now real, closing
+this section's own previously-named gap:** before auto-resolving,
+`_apply_operating_mode()` computes the same real department opinions
+`generate_department_opinions()` already builds and checks
+`compute_executive_recommendation(...).action == "pause_trading"` — if
+it fires, the proposal stays pending in BOTH modes, the exact same real
+safety-constraint branch the cash-reserve check already used as
+precedent.
 
 ## Decision Logic
 
@@ -170,13 +177,11 @@ for their own domains.
 
 This chapter *is* the Safety Systems section for every other chapter in
 this volume, so its own honesty here matters most: never claim a
-circuit breaker exists where only a label does. The one real,
-precise, load-bearing distinction this chapter makes is between
-`ExecutiveRecommendation.action == "pause_trading"` (real signal,
-unenforced) and the Trade Gatekeeper's eight checks (real signal,
-already enforced, unconditionally, with no CEO override possible) —
-conflating the two would be dishonest about what actually protects
-capital today.
+circuit breaker exists where only a label does. `ExecutiveRecommendation.action
+== "pause_trading"` (real signal, now real enforcement — see Internal
+Workflow) and the Trade Gatekeeper's eight checks (real signal, already
+enforced, unconditionally, with no CEO override possible) are now both
+genuinely load-bearing, not just one of the two.
 
 ## Dependencies
 
@@ -204,10 +209,11 @@ foundation for yet.
 
 TradeTown will always choose disciplined survival over reckless growth
 — and, per this chapter's own research, it already mostly does, under
-names like Sentinel, Guardian, and the Trade Gatekeeper. What remains
-is naming that discipline honestly in one place, closing the one real
-enforcement gap (department disagreement that currently only labels
-itself), and giving the CEO a manual override that does not yet exist.
+names like Sentinel, Guardian, and the Trade Gatekeeper. Department
+disagreement no longer just labels itself: it pauses execution, the
+same real discipline every other circuit breaker in this chapter
+already respects. What remains is naming that discipline in one place
+and giving the CEO a manual override that does not yet exist.
 
 ## Implementation Notes
 
@@ -218,31 +224,48 @@ possible, self-clearing at the next sim day); a real multi-stage
 pre-trade veto pipeline (Position Sizing's cash-reserve floor,
 Opportunity Gatekeeper's pre-proposal veto, Trade Gatekeeper's
 eight-check final authority) that already **is** the brief's "Trade
-Quality Override"; a real department-disagreement *detection* signal
-(`ExecutiveRecommendation.action == "pause_trading"`) that is currently
-inert; a real, working automatic backup/recovery system with no
-encryption and no CEO-facing restore; and a real per-trade root-cause
-review (Discipline Chamber) that doesn't yet scale to a portfolio-level
-event. None of this needed to be rebuilt, and this chapter does not
-claim otherwise.
+Quality Override"; a real, working automatic backup/recovery system
+with no encryption and no CEO-facing restore; and a real per-trade
+root-cause review (Discipline Chamber) that doesn't yet scale to a
+portfolio-level event. None of this needed to be rebuilt, and this
+chapter does not claim otherwise.
 
-**What's genuinely not built, and what a real future implementation
-would need to design first (per Appendix G's Permanent Development
-Policy):** enforcing the existing `pause_trading` signal against actual
-execution (the smallest, most precise, and highest-value real gap
-found — the detection already exists; only the enforcement branch is
-missing); a named Safety Level or Capital Defense Mode state machine
-combining the real signals that already exist independently (daily
-halt, Company Health tier, Market Quality tier); weekly/monthly-scoped
-loss limits and a consecutive-loss counter; a CEO manual
-pause/resume/lockdown control (currently absent in both backend and
-frontend); a CEO-facing backup restore path. Broker/API failsafe
-monitoring is explicitly **not** a buildable slice today — there is no
-real broker or data feed with a failure mode to monitor, and fabricating
-one would violate this project's own no-fabrication discipline. The
-smallest honest first slice, if implementation is requested, is
-enforcing `pause_trading`: forcing a proposal into the CEO's own
-existing significant-proposal / Executive Review path whenever 2+
-departments oppose or Market Intelligence reads `avoid_trading`, the
-same "recommend, never silently act" pattern Chapter 64's Resource
-Allocation and Chapter 65's own Automatic Adaptation are built around.
+**What was actually built (AI Consensus Safety enforcement — backend
+only, this chapter's real slice):** the one precise, high-value gap
+this chapter's own research found — a real department-disagreement
+*detection* signal (`ExecutiveRecommendation.action == "pause_trading"`)
+existed but was completely inert; nothing checked it before a proposal
+auto-resolved. `app/nexus.py`'s `_apply_operating_mode()` now computes
+the same real department opinions `generate_department_opinions()`
+already builds and keeps a proposal pending whenever
+`compute_executive_recommendation(...).action == "pause_trading"` fires
+— in BOTH Assisted and Executive mode, the same "real safety constraint,
+not a mode-dependent judgment call" precedent the existing cash-reserve
+check already established (a real, honest change to what Executive
+Mode's own docstring used to claim: it no longer auto-resolves
+*everything*, only everything not caught by a real safety constraint).
+No new frontend code was needed: the CEO's existing Executive Voting
+popup already renders any `ExecutiveRecommendation` generically via
+`ExecutiveIntelligencePanel`, including `pause_trading`'s own real
+action label and reason text, so a now-pending proposal is already
+fully explained the moment the CEO opens it. Verified: 3 new backend
+tests (an otherwise non-significant proposal stays pending under an
+`avoid_trading` regime in Assisted mode, the same proposal stays
+pending in Executive mode too — the real behavioral change — and a
+normal regime still auto-resolves in Executive mode, confirming the
+gate is regime-specific, not a blanket block), `mypy`/`ruff` clean,
+full backend suite 1102/1102 passing.
+
+**What's genuinely still not built, and what a real future
+implementation would need to design first (per Appendix G's Permanent
+Development Policy):** a named Safety Level or Capital Defense Mode
+state machine combining the real signals that already exist
+independently (daily halt, Company Health tier, Market Quality tier);
+weekly/monthly-scoped loss limits and a consecutive-loss counter; a CEO
+manual pause/resume/lockdown control (currently absent in both backend
+and frontend, and not overlapping with this pass's own work, which
+enforces an existing automatic signal rather than adding a manual one);
+a CEO-facing backup restore path. Broker/API failsafe monitoring is
+explicitly **not** a buildable slice — there is no real broker or data
+feed with a failure mode to monitor, and fabricating one would violate
+this project's own no-fabrication discipline.

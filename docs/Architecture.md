@@ -6099,6 +6099,86 @@ dev stack — advancing time to a real month boundary via
 4 milestones newly reached) whose exact real summary text rendered
 correctly in the Command Center.
 
+### Chapters 65/66 — Market Regime Detection & Institutional Safety
+
+Written per this volume's own research-first convention, from two
+parallel research passes rather than assumption. Chapter 65 (Market
+Regime Detection & Adaptive Strategy Engine) found two independent,
+real, indicator-driven regime classifiers already exist —
+`app/market_environment.py`'s 5-way threshold classifier and
+`app/market_intelligence.py`'s 13-way multi-factor classifier, the
+latter already computing a real `MarketQualityScore.confidence_pct`
+(a genuine Regime Confidence Score) and real regime-vs-strategy
+evidence matching via `app/strategy_lab.py`'s `StrategyRegimeTestReport`.
+Neither engine is CEO-configurable, and neither reconciles with the
+other. The chapter's own scoped real gap: Adaptive Strategy Profiles
+per regime and an Automatic Adaptation mechanism — nothing today lets a
+detected regime move any real `RiskLimits` lever. Not yet implemented
+(chapter written, target design).
+
+Chapter 66 (Institutional Safety, Capital Protection & Failsafe
+Framework) found a real, live, mechanically-enforced daily circuit
+breaker (Sentinel → `RiskWarning` → Trade Gatekeeper, no CEO override
+possible) and a real multi-stage pre-trade veto pipeline (Position
+Sizing's cash-reserve floor, Opportunity Gatekeeper's pre-proposal
+veto, Trade Gatekeeper's eight-check final authority) that already
+functions as the brief's "Trade Quality Override." One precise gap was
+implemented this pass — see below.
+
+### AI Consensus Safety enforcement — Design Bible Chapter 66
+
+`app/executive_intelligence.py`'s `compute_executive_recommendation()`
+already set `ExecutiveRecommendation.action = "pause_trading"` when 2+
+departments actively oppose a stance, or Market Intelligence reads
+`avoid_trading` — a real, already-computed signal. Chapter 66's own
+research confirmed, via grep, that zero code paths checked this signal
+before a proposal auto-resolved: the detection was real, the pause was
+not.
+
+`app/nexus.py`'s `_apply_operating_mode()` now closes that gap. Before
+auto-resolving any non-"wait" proposal, it looks up the same real
+`ChallengeReport` the router's own recommendation endpoint uses,
+builds the same real department opinions via
+`generate_department_opinions()`, and checks
+`compute_executive_recommendation(proposal, opinions).action ==
+"pause_trading"`. If it fires, the proposal stays pending — in BOTH
+Assisted and Executive mode. This mirrors the exact precedent the
+existing cash-reserve check (`cash_reserve_breached()`) already
+established: a real safety constraint applies regardless of how
+hands-off the CEO's chosen Operating Mode is, never just a
+mode-dependent significance judgment. It is a genuine, honest change to
+what Executive Mode's own docstring used to claim ("auto-resolves
+everything") — the docstring was updated to say so.
+
+No new frontend code was needed. The CEO's existing Executive Voting
+popup (`ExecutiveVoting.tsx`) already fetches and renders any
+`ExecutiveRecommendation` generically via its `ExecutiveIntelligencePanel`
+— `EXECUTIVE_ACTION_LABEL`/`executiveActionTone` already cover every
+`ExecutiveAction` value, `pause_trading` included, and the panel
+already shows the real `reason` text and the real supporting/opposing
+department breakdown. A proposal that now stays pending because of
+this new gate is therefore already fully explained the moment the CEO
+opens it — this component predates this pass and needed no changes.
+
+**Verified**: 3 new backend tests
+(`tests/test_nexus.py::TestApplyOperatingModePauseTrading` — an
+otherwise non-"significant" proposal stays pending under an
+`avoid_trading` regime in Assisted mode; the same proposal stays
+pending in Executive mode too, the real behavioral change this pass
+makes; a normal regime still auto-resolves in Executive mode, confirming
+the gate is regime-specific rather than a blanket block), `mypy`/`ruff`
+clean, full backend suite 1102/1102 passing. Frontend regression-checked
+via the existing `executiveVoting.spec.ts` suite against a freshly
+restarted dev stack (4/5 passed on the first run; the one failure was a
+pre-existing, content-dependent strict-mode text collision in an
+unrelated assertion — confirmed non-deterministic and unrelated to this
+change by passing cleanly on an immediate retry). Forcing the exact
+`avoid_trading`/2+-opposing condition through the live UI was not
+attempted, deliberately: no real CEO-facing control exists to force
+that state (correctly, per this chapter's own honesty boundary), so the
+3 backend unit tests are the more precise and more honest verification
+of this exact branch than a contrived live click-through would be.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the
