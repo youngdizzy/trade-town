@@ -588,6 +588,15 @@ export function CompanyPanel() {
                   </span>
                 </div>
                 <Meter value={g.progressPct} tone={g.status === "completed" ? "green" : "cyan"} />
+                {g.milestones.length > 0 && (
+                  <div className="mt-1 flex items-center gap-2">
+                    {g.milestones.map((m) => (
+                      <span key={m.id} title={`${m.thresholdPct.toFixed(0)}% milestone${m.reached ? " — reached" : ""}`} className={`flex items-center gap-0.5 ${m.reached ? "text-cmd-green" : "text-cmd-textDim"}`}>
+                        {m.reached ? "●" : "○"} {m.thresholdPct.toFixed(0)}%
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             ))
           )}

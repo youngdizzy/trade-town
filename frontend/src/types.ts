@@ -1924,6 +1924,17 @@ export const GOAL_CATEGORY_LABEL: Record<GoalCategory, string> = {
   operations: "Operations",
 };
 
+// Design Bible Chapter 64 (second pass) — Milestone Tracking. Real,
+// fixed checkpoints (25/50/75%) on a Goal's own real progress — see
+// backend/app/goals.py's MILESTONE_THRESHOLDS. reached/reachedAt only
+// ever go from unreached to reached (a crossed milestone stays crossed).
+export interface Milestone {
+  id: string;
+  thresholdPct: number;
+  reached: boolean;
+  reachedAt: string | null;
+}
+
 export interface Goal {
   id: string;
   title: string;
@@ -1938,6 +1949,7 @@ export interface Goal {
   createdAt: string;
   updatedAt: string;
   completedAt: string | null;
+  milestones: Milestone[];
 }
 
 // v0.7 Feature 25 — AI Academy & Knowledge Network (see
