@@ -113,6 +113,10 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         # (MAX_ACADEMY_LIBRARY), the permanent Knowledge Library.
         "academyProjects": [p.model_dump(by_alias=True) for p in state.academy_projects],
         "academyCompletedProjects": [p.model_dump(by_alias=True) for p in state.academy_completed_projects],
+        # Design Bible Chapter 64 — CEO-authored company goals
+        # (app/goals.py), recomputed every tick alongside companyHealth/
+        # companyScore above.
+        "goals": [g.model_dump(by_alias=True) for g in state.goals],
         "agentKnowledge": {aid: k.model_dump(by_alias=True) for aid, k in state.agent_knowledge.items()},
         "academyState": state.academy_state.model_dump(by_alias=True),
         "disciplineReviews": [r.model_dump(by_alias=True) for r in state.discipline_reviews],
