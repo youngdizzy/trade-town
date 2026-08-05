@@ -5351,7 +5351,7 @@ Opportunity Gatekeeper controls round-trip a real save, one confirms
 the EXECUTIVE tab renders either a real rejection or the honest empty
 state.
 
-### Capital Priority & Opportunity Cost Engine — Design Bible Chapter 59, backend
+### Capital Priority & Opportunity Cost Engine — Design Bible Chapter 59
 
 GOAL (from `docs/DesignBible/volumes/09-departments/chapter-59-capital-priority-opportunity-cost.md`,
 written first per Appendix G's "design before code" policy): "Good
@@ -5440,9 +5440,38 @@ real `cash_reserve_breached()` holds (31 of 56 checks true in one run) —
 not merely reachable code paths, but observed to actually fire during
 ordinary simulated play.
 
-**Frontend not yet built** — the ranked Opportunity Queue view and the
-two new RISK tab controls are a separate, following pass, per this
-project's backend-first discipline (`docs/DEVELOPMENT_RULES.md`).
+#### Frontend
+
+`types.ts` mirrors the two new `RiskLimits` fields (`minPriorityScore`,
+`capitalReservePct`); `net/api.ts`'s `updateRiskLimits()` accepts both.
+
+The **EXECUTIVE tab**'s Pending Proposals list (`ExecutivePanel.tsx`)
+required no client-side re-sort — the WS payload's `tradeProposals` is
+the exact same list `app/nexus.py` already sorted server-side via
+`rank_trade_proposals()`, so displaying it in arrival order from the
+server *is* displaying it in Priority Score order. This adds a rank
+number and each proposal's real Priority Score, read through a new
+`priorityScoreFor()` helper (`CommandCenter/lib/derive.ts`) that mirrors
+the backend's own `capital_priority.py`'s `priority_score()` lookup
+exactly — matching by `proposalId` against `warRoomSessions` (already
+wired through the full data-layer pipeline since Feature 55) and
+reading the same `decisionScore.overall`, never a second,
+independently-computed number. A proposal with no linked session (should
+not happen in practice — see the backend's own note) shows the honest
+"Priority N/A" rather than a fabricated score.
+
+The **RISK tab** (`RiskPanel.tsx`) gained a "Capital Priority —
+Opportunity Cost" panel with controls for the two new fields, following
+the exact same per-section state/save-button/error pattern every other
+RISK tab control (Chapters 57/58, Daily Trading Objectives) already
+uses.
+
+**Verified**: `tsc --noEmit`, `eslint --max-warnings 0`, and `vite
+build` all clean. Two new Playwright tests against the live Vite +
+FastAPI stack (`frontend/tests/commandCenter.spec.ts`): one confirms the
+RISK tab's Capital Priority controls round-trip a real save, one
+confirms the EXECUTIVE tab's Pending Proposals queue always renders
+either a real Priority Score or the honest empty state.
 
 ## Test suite popup resilience
 

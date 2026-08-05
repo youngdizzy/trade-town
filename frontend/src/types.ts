@@ -942,6 +942,11 @@ export interface RiskLimits {
   // value, but is a genuinely separate, independently-adjustable field.
   minTradeQualityScore: number;
   minExpectedValuePct: number;
+  // v0.7 Chapter 59 — Capital Priority & Opportunity Cost Engine (see
+  // backend/app/capital_priority.py). Both default to 0 — opt-in,
+  // currently a no-op until the CEO raises them.
+  minPriorityScore: number;
+  capitalReservePct: number;
 }
 
 // v0.7 Feature 49 — a real-time readout of today's real trading activity

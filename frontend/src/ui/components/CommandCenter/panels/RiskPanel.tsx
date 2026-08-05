@@ -111,6 +111,31 @@ export function RiskPanel({ onNeedHelp }: { onNeedHelp?: (lessonId: EducationTop
     }
   };
 
+  // v0.7 Chapter 59 — the Capital Priority & Opportunity Cost Engine's
+  // two new CEO controls. Both default to 0 (no-op) — see
+  // backend/app/capital_priority.py.
+  const [minPriorityScore, setMinPriorityScore] = useState(String(riskLimits.minPriorityScore));
+  const [capitalReservePct, setCapitalReservePct] = useState(String(riskLimits.capitalReservePct));
+  const [priorityBusy, setPriorityBusy] = useState(false);
+  const [priorityError, setPriorityError] = useState<string | null>(null);
+
+  const saveCapitalPriority = async () => {
+    if (priorityBusy) return;
+    setPriorityBusy(true);
+    setPriorityError(null);
+    try {
+      const res = await api.updateRiskLimits({
+        minPriorityScore: Number(minPriorityScore),
+        capitalReservePct: Number(capitalReservePct),
+      });
+      NexusManager.setRiskLimits(res.riskLimits);
+    } catch (err) {
+      setPriorityError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setPriorityBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-3">
       <Glass className={`border p-4 ${RISK_BANNER[level]}`}>
@@ -360,6 +385,54 @@ export function RiskPanel({ onNeedHelp }: { onNeedHelp?: (lessonId: EducationTop
           {gateBusy ? "Saving…" : "Save Opportunity Gatekeeper Controls"}
         </button>
         {gateError && <div className="mt-1.5 text-cmd-red">{gateError}</div>}
+      </Glass>
+
+      <Glass className="p-3">
+        <div className="mb-1.5 flex items-center justify-between">
+          <TerminalLabel>Capital Priority — Opportunity Cost</TerminalLabel>
+          <span className="text-[8px] uppercase tracking-wide text-cmd-textDim">v0.7 Chapter 59</span>
+        </div>
+        <div className="text-[9px] text-cmd-textDim">
+          Good trades deserve consideration. Great trades deserve capital. Both controls default to off — see EXECUTIVE for the real, ranked Pending Proposals queue.
+        </div>
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <label className="flex flex-col gap-1 text-[9px] text-cmd-textDim">
+            Minimum Priority Score (0-100)
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="1"
+              value={minPriorityScore}
+              onChange={(e) => setMinPriorityScore(e.target.value)}
+              className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-cmd-text outline-none focus:border-cmd-cyan/50"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[9px] text-cmd-textDim">
+            Capital Reserve (%)
+            <input
+              type="number"
+              min="0"
+              max="99.9"
+              step="0.1"
+              value={capitalReservePct}
+              onChange={(e) => setCapitalReservePct(e.target.value)}
+              className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-cmd-text outline-none focus:border-cmd-cyan/50"
+            />
+          </label>
+        </div>
+        <div className="mt-2 text-[9px] text-cmd-textDim">
+          Minimum Priority Score (0 = off) keeps a below-floor proposal pending for you in Assisted Mode, the same way low confidence already does. Capital Reserve (0 = off) is additive to the Position Sizing tab&apos;s hard Cash Reserve floor above — a voluntary target that halts further auto-approved BUYs in every mode once cash falls to it.
+        </div>
+        <button
+          type="button"
+          onClick={() => void saveCapitalPriority()}
+          disabled={priorityBusy}
+          className="mt-3 rounded-sm border border-cmd-cyan/50 px-3 py-1 text-[9px] uppercase tracking-wider text-cmd-cyan hover:bg-cmd-cyan/10 disabled:opacity-40"
+        >
+          {priorityBusy ? "Saving…" : "Save Capital Priority Controls"}
+        </button>
+        {priorityError && <div className="mt-1.5 text-cmd-red">{priorityError}</div>}
       </Glass>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">

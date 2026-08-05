@@ -325,6 +325,10 @@ export const api = {
       // v0.7 Chapter 58 — the Opportunity Gatekeeper's two new CEO controls.
       minTradeQualityScore: number;
       minExpectedValuePct: number;
+      // v0.7 Chapter 59 — the Capital Priority & Opportunity Cost Engine's
+      // two new CEO controls.
+      minPriorityScore: number;
+      capitalReservePct: number;
     }>,
   ) =>
     request<{ riskLimits: RiskLimits }>("/risk-limits", {

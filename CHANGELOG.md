@@ -35,10 +35,29 @@ development milestones, not semver releases.
   `tests/test_executive.py` and `tests/test_state.py`); `mypy`/`ruff`
   clean; verified with a live 400-tick simulation confirming the queue
   stays sorted every tick and both new gates produce real, observable
-  holds. Frontend (ranked Opportunity Queue view, RISK tab controls) is
-  a separate, following pass — not built in this change. See the
-  chapter's own Implementation Notes for the full design-vs-built
-  breakdown: `docs/DesignBible/volumes/09-departments/chapter-59-capital-priority-opportunity-cost.md`.
+  holds. See the chapter's own Implementation Notes for the full
+  design-vs-built breakdown: `docs/DesignBible/volumes/09-departments/chapter-59-capital-priority-opportunity-cost.md`.
+
+- **Chapter 59 frontend — Capital Priority & Opportunity Cost Engine**
+  (`frontend/src/types.ts`, `net/api.ts`, `RiskPanel.tsx`,
+  `ExecutivePanel.tsx`, `CommandCenter/lib/derive.ts`): mirrors the two
+  new `RiskLimits` fields end to end. The **EXECUTIVE tab**'s Pending
+  Proposals list required no re-sorting on the client — the WS payload's
+  `tradeProposals` already arrives in the exact order
+  `app/capital_priority.py`'s `rank_trade_proposals()` sorted it
+  server-side — so this only adds a rank number and each proposal's real
+  Priority Score, read via a new `priorityScoreFor()` helper that mirrors
+  the backend's own `proposalId` lookup against `WarRoomSession.
+  decisionScore.overall` exactly (never a second, independently-computed
+  score). The **RISK tab** gained a "Capital Priority — Opportunity
+  Cost" panel with controls for `minPriorityScore`/`capitalReservePct`,
+  the same per-section save-button pattern every other RISK tab control
+  already uses. `tsc --noEmit`, `eslint --max-warnings 0`, and `vite
+  build` all clean. Two new Playwright tests against the live Vite +
+  FastAPI stack: one confirms the RISK tab's Capital Priority controls
+  round-trip a real save, one confirms the EXECUTIVE tab renders either
+  a real Priority Score or the honest "N/A" for a proposal with no
+  linked session.
 
 - **Design Bible Chapters 59 & 60 — Capital Priority & Opportunity Cost
   Engine, and Institutional Portfolio Rebalancing & Adaptive Capital

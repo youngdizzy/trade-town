@@ -1,7 +1,7 @@
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { CONFIDENCE_TIER_LABEL } from "@/types";
 import { EventBus } from "@/game/systems/EventBus";
-import { computeCeoStats, computeGatekeeperStats, computeOpportunityGatekeeperStats, confidenceTierTone, mistakeTagForCeoDecision } from "../lib/derive";
+import { computeCeoStats, computeGatekeeperStats, computeOpportunityGatekeeperStats, confidenceTierTone, mistakeTagForCeoDecision, priorityScoreFor } from "../lib/derive";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../ui";
 
 const CHOICE_TONE: Record<string, "green" | "red" | "amber"> = { buy: "green", sell: "red", wait: "amber" };
@@ -31,7 +31,7 @@ const GK_OUTCOME_LABEL: Record<string, string> = {
  * own doc comment for why overrides can't grade the AI itself.
  */
 export function ExecutivePanel() {
-  const { tradeProposals, ceoDecisions, decisions, gatekeeperRejections, opportunityRejections } = useGameStore();
+  const { tradeProposals, ceoDecisions, decisions, gatekeeperRejections, opportunityRejections, warRoomSessions } = useGameStore();
   const stats = computeCeoStats(ceoDecisions);
   const recent = [...ceoDecisions].reverse().slice(0, 12);
   const gkStats = computeGatekeeperStats(decisions, gatekeeperRejections);
@@ -141,26 +141,32 @@ export function ExecutivePanel() {
         <Glass className="p-3">
           <div className="mb-1.5 flex items-center justify-between">
             <TerminalLabel>Pending Proposals ({tradeProposals.length})</TerminalLabel>
+            <span className="text-[8px] uppercase tracking-wide text-cmd-textDim">Ranked by Priority Score · v0.7 Chapter 59</span>
           </div>
           {tradeProposals.length === 0 ? (
             <EmptyState>No trade proposals awaiting a decision.</EmptyState>
           ) : (
             <div className="space-y-1.5">
-              {tradeProposals.map((p) => (
-                <button
-                  key={p.id}
-                  type="button"
-                  onClick={() => EventBus.emit("ui:executiveVoting", { open: true, proposalId: p.id })}
-                  className="flex w-full items-center justify-between gap-2 rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2 text-left transition-colors hover:border-cmd-cyan/40"
-                >
-                  <span className="font-cmdmono text-cmd-cyan">{p.symbol}</span>
-                  <span className="text-[9px] text-cmd-textDim">{Math.round(p.confidence)}% confidence</span>
-                  <StatusPill tone={confidenceTierTone(p.confidenceEngine.tier)}>
-                    {CONFIDENCE_TIER_LABEL[p.confidenceEngine.tier]} · {Math.round(p.confidenceEngine.score)}
-                  </StatusPill>
-                  <StatusPill tone={CHOICE_TONE[p.overallRecommendation]}>{p.overallRecommendation.toUpperCase()}</StatusPill>
-                </button>
-              ))}
+              {tradeProposals.map((p, i) => {
+                const score = priorityScoreFor(p, warRoomSessions);
+                return (
+                  <button
+                    key={p.id}
+                    type="button"
+                    onClick={() => EventBus.emit("ui:executiveVoting", { open: true, proposalId: p.id })}
+                    className="flex w-full items-center justify-between gap-2 rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2 text-left transition-colors hover:border-cmd-cyan/40"
+                  >
+                    <span className="font-cmdmono text-cmd-textDim">#{i + 1}</span>
+                    <span className="font-cmdmono text-cmd-cyan">{p.symbol}</span>
+                    <span className="text-[9px] text-cmd-textDim">{score === null ? "Priority N/A" : `Priority ${Math.round(score)}/100`}</span>
+                    <span className="text-[9px] text-cmd-textDim">{Math.round(p.confidence)}% confidence</span>
+                    <StatusPill tone={confidenceTierTone(p.confidenceEngine.tier)}>
+                      {CONFIDENCE_TIER_LABEL[p.confidenceEngine.tier]} · {Math.round(p.confidenceEngine.score)}
+                    </StatusPill>
+                    <StatusPill tone={CHOICE_TONE[p.overallRecommendation]}>{p.overallRecommendation.toUpperCase()}</StatusPill>
+                  </button>
+                );
+              })}
             </div>
           )}
         </Glass>

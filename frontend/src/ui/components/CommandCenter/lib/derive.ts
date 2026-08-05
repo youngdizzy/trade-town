@@ -50,6 +50,7 @@ import type {
   StrategyStage,
   TradeDecision,
   TradeProposal,
+  WarRoomSession,
   WatchlistEntry,
 } from "@/types";
 import { AGENT_IDS, ROLE_TO_AGENT } from "@/types";
@@ -794,6 +795,20 @@ export function computeOpportunityGatekeeperStats(rejections: OpportunityRejecti
     wouldHaveLost,
     rejectionAccuracy: resolved.length ? (wouldHaveLost / resolved.length) * 100 : null,
   };
+}
+
+// v0.7 Chapter 59 — Capital Priority & Opportunity Cost Engine. The
+// pending queue itself already arrives pre-ranked by
+// backend/app/capital_priority.py's rank_trade_proposals() (the WS
+// payload's tradeProposals is the same list order the CEO's real
+// auto-resolution pipeline works top-down), so this is purely a read —
+// the same reused decisionScore.overall shown throughout WARROOM, never
+// a second computed score. Mirrors the backend's own priority_score()
+// lookup-by-proposalId exactly, including its honest `null` for a
+// proposal with no linked session.
+export function priorityScoreFor(proposal: TradeProposal, warRoomSessions: WarRoomSession[]): number | null {
+  const session = warRoomSessions.find((s) => s.proposalId === proposal.id);
+  return session ? session.decisionScore.overall : null;
 }
 
 // --- v0.7 Feature 43 — Executive Intelligence Dashboard --------------------

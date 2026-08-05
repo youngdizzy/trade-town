@@ -394,6 +394,47 @@ test.describe("Global Command Center", () => {
     }
   });
 
+  test("RISK panel's Capital Priority controls save real CEO-set limits (v0.7 Chapter 59)", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await clickExpand(page);
+    await clickTab(page, "RISK");
+
+    await expect(page.getByText("Capital Priority — Opportunity Cost", { exact: true })).toBeVisible();
+
+    const minPriorityInput = page.locator("label", { hasText: "Minimum Priority Score" }).locator("input");
+    await minPriorityInput.fill("65");
+    const capitalReserveInput = page.locator("label", { hasText: "Capital Reserve" }).locator("input");
+    await capitalReserveInput.fill("15");
+    await clickButton(page, "Save Capital Priority Controls");
+
+    await expect(page.getByRole("button", { name: "Save Capital Priority Controls", exact: true })).toBeEnabled();
+    await expect(page.getByText("must be a percentage from 0", { exact: false })).toHaveCount(0);
+    await expect(minPriorityInput).toHaveValue("65");
+    await expect(capitalReserveInput).toHaveValue("15");
+  });
+
+  test("EXECUTIVE tab's Pending Proposals queue shows a real Priority Score or the honest N/A, always real content or an honest empty state (v0.7 Chapter 59)", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await clickExpand(page);
+    await clickTab(page, "EXECUTIVE");
+
+    await expect(page.getByText("Ranked by Priority Score", { exact: false })).toBeVisible();
+    const hasEmptyState = await page.getByText(/No trade proposals awaiting a decision/).count();
+    if (hasEmptyState === 0) {
+      await expect(page.getByText(/Priority (N\/A|\d+\/100)/).first()).toBeVisible();
+    } else {
+      expect(hasEmptyState).toBeGreaterThan(0);
+    }
+  });
+
   test("Trade outcome banner shows a real closed trade's win/loss non-blockingly, and dismissal persists", async ({ page }) => {
     test.setTimeout(60000); // polls up to 45s for a real trade to close naturally
     await page.goto("/");

@@ -1,13 +1,13 @@
 # Chapter 59 — Capital Priority & Opportunity Cost Engine
 
-**Status:** Backend implemented (`app/capital_priority.py`, wired into
-`app/nexus.py`'s post-Chapter-58 approved-candidate loop and
-`app/executive.py`'s `is_significant_proposal`); frontend not yet wired
-(the ranked queue and the two new RISK tab controls are not yet surfaced
-in the Command Center — see this chapter's own Implementation Notes).
-See [Volume 9's chapter template](README.md) for what every section
-below must contain, and the Implementation Notes at the bottom of this
-chapter for exactly what's real today versus new here.
+**Status:** Fully implemented — backend (`app/capital_priority.py`,
+wired into `app/nexus.py`'s post-Chapter-58 approved-candidate loop and
+`app/executive.py`'s `is_significant_proposal`) and frontend (the
+EXECUTIVE tab's ranked Pending Proposals queue, and the RISK tab's two
+new CEO controls). See [Volume 9's chapter template](README.md) for
+what every section below must contain, and the Implementation Notes at
+the bottom of this chapter for exactly what's real today versus new
+here.
 
 ## Executive Summary
 
@@ -342,9 +342,22 @@ stability, the missing-session case, both new CEO controls' boundaries,
 and a live 400-tick simulation smoke test confirming the queue stays
 sorted every tick and both gates produce real, observable holds.
 
-**What's explicitly not yet built:** the frontend. The ranked Opportunity
-Queue and the two new RISK tab controls (Minimum Priority Score, Capital
-Reserve %) are not yet surfaced anywhere in the Command Center — this
-chapter's own backend-first discipline (per `docs/DEVELOPMENT_RULES.md`)
-treats that as a separate, following pass, the same way Chapters 57/58
-did.
+**What was actually built (frontend):** `types.ts` mirrors the two new
+`RiskLimits` fields; `net/api.ts`'s `updateRiskLimits()` accepts both.
+The **EXECUTIVE tab**'s Pending Proposals list — already receiving the
+queue in its real, backend-ranked order (the WS payload's
+`tradeProposals` is the exact same list `rank_trade_proposals()` sorts
+server-side, so no client-side re-sort was needed) — now shows each
+proposal's rank number and its real Priority Score, read via a new
+`priorityScoreFor()` helper (`derive.ts`) that looks up the same
+`WarRoomSession.decisionScore.overall` by `proposalId` the backend's own
+`priority_score()` reads, mirrored exactly rather than re-derived. The
+**RISK tab** gained a "Capital Priority — Opportunity Cost" panel with
+controls for `minPriorityScore`/`capitalReservePct`, following the same
+per-section save-button pattern every other RISK tab control already
+uses. Verified with `tsc --noEmit`, `eslint --max-warnings 0`, and
+`vite build` all clean, plus two new Playwright tests against the live
+Vite + FastAPI stack: one confirms the RISK tab's Capital Priority
+controls round-trip a real save, one confirms the EXECUTIVE tab renders
+either a real Priority Score or the honest "N/A" for an unlinked
+proposal.
