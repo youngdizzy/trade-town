@@ -979,6 +979,12 @@ export interface RiskLimits {
   companyHealthNeedsAttentionThreshold: number;
 }
 
+// Design Bible Chapter 67 (TTOS) Part 3 — the real Global Emergency Stop.
+export interface EmergencyStopState {
+  active: boolean;
+  activatedAt: string | null;
+}
+
 // v0.7 Feature 49 — a real-time readout of today's real trading activity
 // against the CEO's configured Daily Trading Objectives, computed fresh
 // every tick (see backend/app/risk_engine.py's
@@ -3012,6 +3018,7 @@ export interface GameSaveState {
   performanceSnapshots: PerformanceSnapshot[];
   riskLimits: RiskLimits;
   riskWarnings: RiskWarning[];
+  emergencyStop: EmergencyStopState;
   scannerAlerts: ScannerAlert[];
   decisions: TradeDecision[];
   tradeProposals: TradeProposal[];

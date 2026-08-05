@@ -23,6 +23,7 @@ import type {
   DepartmentSelfEvaluation,
   DialogueHistoryEntry,
   DisciplineReview,
+  EmergencyStopState,
   ExecutiveMeetingLogEntry,
   ExecutiveReview,
   FounderState,
@@ -159,8 +160,10 @@ export interface GameEvents {
   "ui:commandCenter": { open: boolean; mode?: "quick" | "full" };
   "ui:campusMap": { open: boolean };
   "ui:breakthrough": { open: boolean };
+  "ui:emergencyStopConfirm": { pending: "activate" | "resume" | null };
   "riskLimits:updated": RiskLimits;
   "riskWarnings:updated": RiskWarning[];
+  "emergencyStop:updated": EmergencyStopState;
   "scannerAlerts:updated": ScannerAlert[];
   "scanner:alertDetected": ScannerAlert;
   "decisions:updated": TradeDecision[];

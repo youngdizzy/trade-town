@@ -2,6 +2,7 @@ import { useGameStore } from "@/ui/hooks/useGameStore";
 import { TimeManager } from "@/game/systems/TimeManager";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { AGENT_IDS } from "@/types";
+import { EmergencyStopControl } from "./EmergencyStopControl";
 
 export function TopStatusBar() {
   const { time, agents, meeting, netConnected, currentScene } = useGameStore();
@@ -35,12 +36,16 @@ export function TopStatusBar() {
         </div>
       )}
 
-      <div className="pointer-events-auto flex items-center gap-2 rounded bg-panel/80 px-3 py-1.5 shadow-pixel">
-        <span
-          className={`h-2 w-2 rounded-full ${netConnected ? "bg-bullish" : "bg-bearish"}`}
-          title={netConnected ? "Connected to backend" : "Offline (local simulation)"}
-        />
-        <span className="opacity-70">{netConnected ? "Live" : "Offline"}</span>
+      <div className="flex items-center gap-2">
+        <div className="pointer-events-auto flex items-center gap-2 rounded bg-panel/80 px-3 py-1.5 shadow-pixel">
+          <span
+            className={`h-2 w-2 rounded-full ${netConnected ? "bg-bullish" : "bg-bearish"}`}
+            title={netConnected ? "Connected to backend" : "Offline (local simulation)"}
+          />
+          <span className="opacity-70">{netConnected ? "Live" : "Offline"}</span>
+        </div>
+
+        <EmergencyStopControl />
       </div>
     </div>
   );

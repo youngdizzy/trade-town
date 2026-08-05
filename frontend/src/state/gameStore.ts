@@ -21,6 +21,7 @@ import type {
   DecisionVaultEntry,
   DepartmentSelfEvaluation,
   DisciplineReview,
+  EmergencyStopState,
   ExecutiveMeetingLogEntry,
   ExecutiveReview,
   FounderState,
@@ -126,6 +127,7 @@ export interface GameUiState {
   performanceSnapshots: PerformanceSnapshot[];
   riskLimits: RiskLimits;
   riskWarnings: RiskWarning[];
+  emergencyStop: EmergencyStopState;
   scannerAlerts: ScannerAlert[];
   decisions: TradeDecision[];
   tradeProposals: TradeProposal[];
@@ -290,6 +292,7 @@ class GameStore {
       companyHealthNeedsAttentionThreshold: 30,
     },
     riskWarnings: [],
+    emergencyStop: { active: false, activatedAt: null },
     scannerAlerts: [],
     decisions: [],
     tradeProposals: [],
@@ -540,6 +543,7 @@ class GameStore {
     EventBus.on("performanceSnapshots:updated", (performanceSnapshots) => this.set({ performanceSnapshots }));
     EventBus.on("riskLimits:updated", (riskLimits) => this.set({ riskLimits }));
     EventBus.on("riskWarnings:updated", (riskWarnings) => this.set({ riskWarnings }));
+    EventBus.on("emergencyStop:updated", (emergencyStop) => this.set({ emergencyStop }));
     EventBus.on("scannerAlerts:updated", (scannerAlerts) => this.set({ scannerAlerts }));
     EventBus.on("decisions:updated", (decisions) => this.set({ decisions }));
     EventBus.on("tradeProposals:updated", (tradeProposals) => this.set({ tradeProposals }));

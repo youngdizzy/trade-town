@@ -12,6 +12,7 @@ import type {
   Debate,
   EducationLesson,
   EducationProgress,
+  EmergencyStopState,
   ExecutiveRecommendation,
   FoundationalMentorId,
   FoundationalMentorState,
@@ -176,6 +177,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ amount }),
     }),
+  // Design Bible Chapter 67 (TTOS) Part 3 — the real Global Emergency Stop.
+  activateEmergencyStop: () =>
+    request<{ emergencyStop: EmergencyStopState }>("/emergency-stop/activate", { method: "POST" }),
+  resumeTradingAfterEmergencyStop: () =>
+    request<{ emergencyStop: EmergencyStopState }>("/emergency-stop/resume", { method: "POST" }),
   createSavingsRule: (ruleType: SavingsRuleType, percent: number, reserveTarget: number | null) =>
     request<{ treasury: TreasuryState }>("/treasury/rules/create", {
       method: "POST",

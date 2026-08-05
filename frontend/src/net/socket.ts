@@ -21,6 +21,7 @@ import type {
   DecisionVaultEntry,
   DepartmentSelfEvaluation,
   DisciplineReview,
+  EmergencyStopState,
   ExecutiveMeetingLogEntry,
   ExecutiveReview,
   FounderState,
@@ -115,6 +116,7 @@ type ServerMessage =
       performanceSnapshots: PerformanceSnapshot[];
       riskLimits: RiskLimits;
       riskWarnings: RiskWarning[];
+      emergencyStop: EmergencyStopState;
       scannerAlerts: ScannerAlert[];
       decisions: TradeDecision[];
       tradeProposals: TradeProposal[];
@@ -249,6 +251,7 @@ export class GameSocket {
             performanceSnapshots: msg.performanceSnapshots,
             riskLimits: msg.riskLimits,
             riskWarnings: msg.riskWarnings,
+            emergencyStop: msg.emergencyStop,
             scannerAlerts: msg.scannerAlerts,
             decisions: msg.decisions,
             tradeProposals: msg.tradeProposals,

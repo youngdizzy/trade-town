@@ -19,6 +19,7 @@ import type {
   DecisionVaultEntry,
   DepartmentSelfEvaluation,
   DisciplineReview,
+  EmergencyStopState,
   ExecutiveMeetingLogEntry,
   ExecutiveReview,
   FounderState,
@@ -106,6 +107,7 @@ interface NexusSnapshot {
   performanceSnapshots: PerformanceSnapshot[];
   riskLimits: RiskLimits;
   riskWarnings: RiskWarning[];
+  emergencyStop: EmergencyStopState;
   scannerAlerts: ScannerAlert[];
   decisions: TradeDecision[];
   tradeProposals: TradeProposal[];
@@ -242,6 +244,7 @@ export class NexusManager {
     companyHealthNeedsAttentionThreshold: 30,
   };
   private static riskWarnings: RiskWarning[] = [];
+  private static emergencyStop: EmergencyStopState = { active: false, activatedAt: null };
   private static scannerAlerts: ScannerAlert[] = [];
   private static decisions: TradeDecision[] = [];
   private static tradeProposals: TradeProposal[] = [];
@@ -765,6 +768,18 @@ export class NexusManager {
     return this.riskWarnings;
   }
 
+  /** Design Bible Chapter 67 (TTOS) Part 3 — applies the result of
+   * POST /api/emergency-stop/activate or /resume immediately, the same
+   * "don't wait for the next WS tick" pattern setRiskLimits above uses. */
+  static setEmergencyStop(emergencyStop: EmergencyStopState): void {
+    this.emergencyStop = emergencyStop;
+    EventBus.emit("emergencyStop:updated", emergencyStop);
+  }
+
+  static getEmergencyStop(): EmergencyStopState {
+    return this.emergencyStop;
+  }
+
   static getScannerAlerts(): ScannerAlert[] {
     return this.scannerAlerts;
   }
@@ -1039,6 +1054,9 @@ export class NexusManager {
     if (update.riskWarnings !== this.riskWarnings) EventBus.emit("riskWarnings:updated", update.riskWarnings);
     this.riskWarnings = update.riskWarnings;
 
+    if (update.emergencyStop !== this.emergencyStop) EventBus.emit("emergencyStop:updated", update.emergencyStop);
+    this.emergencyStop = update.emergencyStop;
+
     if (update.scannerAlerts.length !== this.scannerAlerts.length) {
       const newest = update.scannerAlerts[update.scannerAlerts.length - 1];
       if (newest) EventBus.emit("scanner:alertDetected", newest);
@@ -1262,6 +1280,7 @@ export class NexusManager {
     this.performanceSnapshots = save.performanceSnapshots;
     this.riskLimits = save.riskLimits;
     this.riskWarnings = save.riskWarnings;
+    this.emergencyStop = save.emergencyStop;
     this.scannerAlerts = save.scannerAlerts;
     this.decisions = save.decisions;
     this.tradeProposals = save.tradeProposals;

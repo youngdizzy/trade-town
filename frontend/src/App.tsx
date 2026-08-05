@@ -17,6 +17,7 @@ import { ExecutiveVoting } from "@/ui/components/CommandCenter/ExecutiveVoting";
 import { CyberNotifications } from "@/ui/components/CommandCenter/CyberNotifications";
 import { TradeOutcomeBanner } from "@/ui/components/TradeOutcomeBanner";
 import { BreakthroughMoment } from "@/ui/components/BreakthroughMoment";
+import { EmergencyStopConfirm } from "@/ui/components/EmergencyStopConfirm";
 
 export default function App() {
   return (
@@ -40,6 +41,7 @@ export default function App() {
       <CyberNotifications />
       <TradeOutcomeBanner />
       <BreakthroughMoment />
+      <EmergencyStopConfirm />
     </div>
   );
 }
