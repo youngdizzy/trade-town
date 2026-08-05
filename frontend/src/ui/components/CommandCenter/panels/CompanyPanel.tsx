@@ -1,11 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { SettingsManager } from "@/game/systems/SettingsManager";
 import { SaveManager } from "@/game/systems/SaveManager";
 import { NexusManager } from "@/game/systems/NexusManager";
 import { api } from "@/net/api";
 import { GOAL_CATEGORY_LABEL, GOAL_METRIC_LABEL } from "@/types";
-import type { CompanyHealthTier, CompanyPriority, GoalCategory, GoalMetric, MarketEnvironmentRegime, OperatingMode, TimeAdvanceTarget } from "@/types";
+import type { CompanyHealthTier, CompanyPriority, Goal, GoalCategory, GoalMetric, GoalPriority, MarketEnvironmentRegime, OperatingMode, TimeAdvanceTarget } from "@/types";
 import { computeScoreBenchmark } from "../lib/derive";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
 
@@ -74,6 +74,12 @@ const BENCHMARK_PERIODS: number[] = [1, 3, 6, 12];
 const GOAL_METRIC_OPTIONS: GoalMetric[] = ["company_health_combined", "company_score_overall", "portfolio_return_pct", "academy_level"];
 const GOAL_CATEGORY_OPTIONS: GoalCategory[] = ["growth", "risk", "research", "trading", "operations"];
 const GOAL_STATUS_TONE: Record<string, "green" | "cyan" | "amber" | "red"> = { active: "cyan", completed: "green", cancelled: "amber", expired: "red" };
+
+// Design Bible Chapter 64 (third pass) — the Executive Priority Engine's
+// real 0-100 score (see backend/app/goals.py's compute_goal_priority()).
+function priorityTone(score: number): "green" | "amber" | "red" {
+  return score >= 70 ? "red" : score >= 35 ? "amber" : "green";
+}
 
 /**
  * v0.7 Features 21-23 — Company Operating Modes, Market Environment
@@ -165,6 +171,31 @@ export function CompanyPanel() {
       // source of truth either way.
     }
   };
+
+  // Design Bible Chapter 64 (third pass) — the Executive Priority
+  // Engine. Refetched whenever the real goals list changes (a create,
+  // cancel, or tick-driven status/progress change all shift real
+  // rankings), computed fresh server-side, never a client-computed
+  // number.
+  const [priorities, setPriorities] = useState<GoalPriority[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getGoalPriorities()
+      .then((res) => {
+        if (!cancelled) setPriorities(res);
+      })
+      .catch(() => {
+        // An honest empty state (no ranking shown) beats a stale one.
+        if (!cancelled) setPriorities([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [goals]);
+
+  const priorityByGoalId = new Map(priorities.map((p) => [p.goalId, p]));
+  const rankedGoals = orderGoalsByPriority(goals, priorityByGoalId);
 
   const runAdvance = async (target: TimeAdvanceTarget, hours?: number) => {
     if (advancing) return;
@@ -566,39 +597,44 @@ export function CompanyPanel() {
           {goals.length === 0 ? (
             <EmptyState>No company goals set yet.</EmptyState>
           ) : (
-            [...goals].reverse().map((g) => (
-              <div key={g.id} className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-2 text-[9px]">
-                <div className="flex items-center justify-between gap-2">
-                  <span className="truncate text-cmd-text">{g.title}</span>
-                  <div className="flex flex-none items-center gap-1.5">
-                    <StatusPill tone={GOAL_STATUS_TONE[g.status]}>{g.status.toUpperCase()}</StatusPill>
-                    {g.status === "active" && (
-                      <button type="button" onClick={() => void cancelGoal(g.id)} className="text-cmd-textDim hover:text-cmd-red">
-                        ✕
-                      </button>
-                    )}
+            rankedGoals.map((g) => {
+              const priority = priorityByGoalId.get(g.id);
+              return (
+                <div key={g.id} className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-2 text-[9px]">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="truncate text-cmd-text">{g.title}</span>
+                    <div className="flex flex-none items-center gap-1.5">
+                      {priority && <StatusPill tone={priorityTone(priority.score)}>PRIORITY {priority.score.toFixed(0)}</StatusPill>}
+                      <StatusPill tone={GOAL_STATUS_TONE[g.status]}>{g.status.toUpperCase()}</StatusPill>
+                      {g.status === "active" && (
+                        <button type="button" onClick={() => void cancelGoal(g.id)} className="text-cmd-textDim hover:text-cmd-red">
+                          ✕
+                        </button>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <div className="mt-1 flex items-center justify-between text-cmd-textDim">
-                  <span>
-                    {GOAL_CATEGORY_LABEL[g.category]} · {GOAL_METRIC_LABEL[g.targetMetric]}
-                  </span>
-                  <span className="tabular-nums">
-                    {g.currentValue.toFixed(1)} / {g.targetValue.toFixed(1)}
-                  </span>
-                </div>
-                <Meter value={g.progressPct} tone={g.status === "completed" ? "green" : "cyan"} />
-                {g.milestones.length > 0 && (
-                  <div className="mt-1 flex items-center gap-2">
-                    {g.milestones.map((m) => (
-                      <span key={m.id} title={`${m.thresholdPct.toFixed(0)}% milestone${m.reached ? " — reached" : ""}`} className={`flex items-center gap-0.5 ${m.reached ? "text-cmd-green" : "text-cmd-textDim"}`}>
-                        {m.reached ? "●" : "○"} {m.thresholdPct.toFixed(0)}%
-                      </span>
-                    ))}
+                  <div className="mt-1 flex items-center justify-between text-cmd-textDim">
+                    <span>
+                      {GOAL_CATEGORY_LABEL[g.category]} · {GOAL_METRIC_LABEL[g.targetMetric]}
+                      {priority?.daysRemaining !== undefined && priority?.daysRemaining !== null && ` · ${priority.daysRemaining}d left`}
+                    </span>
+                    <span className="tabular-nums">
+                      {g.currentValue.toFixed(1)} / {g.targetValue.toFixed(1)}
+                    </span>
                   </div>
-                )}
-              </div>
-            ))
+                  <Meter value={g.progressPct} tone={g.status === "completed" ? "green" : "cyan"} />
+                  {g.milestones.length > 0 && (
+                    <div className="mt-1 flex items-center gap-2">
+                      {g.milestones.map((m) => (
+                        <span key={m.id} title={`${m.thresholdPct.toFixed(0)}% milestone${m.reached ? " — reached" : ""}`} className={`flex items-center gap-0.5 ${m.reached ? "text-cmd-green" : "text-cmd-textDim"}`}>
+                          {m.reached ? "●" : "○"} {m.thresholdPct.toFixed(0)}%
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })
           )}
         </div>
       </Glass>
@@ -626,6 +662,18 @@ export function CompanyPanel() {
       </Glass>
     </div>
   );
+}
+
+// Design Bible Chapter 64 (third pass) — real Executive Priority order:
+// active goals ranked by their real priority score (highest first, via
+// GET /api/goals/priorities), followed by every non-active goal in
+// most-recently-updated order — nothing left to prioritize once a goal
+// is completed/expired/cancelled, so those simply keep the old
+// most-recent-first ordering this card always used.
+function orderGoalsByPriority(goals: Goal[], priorityByGoalId: Map<string, GoalPriority>): Goal[] {
+  const active = goals.filter((g) => g.status === "active").sort((a, b) => (priorityByGoalId.get(b.id)?.score ?? 0) - (priorityByGoalId.get(a.id)?.score ?? 0));
+  const inactive = goals.filter((g) => g.status !== "active").reverse();
+  return [...active, ...inactive];
 }
 
 function HealthCell({ label, value }: { label: string; value: number }) {

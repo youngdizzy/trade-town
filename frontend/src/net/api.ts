@@ -20,6 +20,7 @@ import type {
   Goal,
   GoalCategory,
   GoalMetric,
+  GoalPriority,
   HoldReason,
   GatekeeperRejection,
   InnovationState,
@@ -362,6 +363,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ goalId }),
     }),
+  getGoalPriorities: () => request<GoalPriority[]>("/goals/priorities"),
   // The CEO's own entirely optional personal Learning Mode — never
   // touches real employee progress. See FoundationalMentorState's own
   // doc comment in types.ts.

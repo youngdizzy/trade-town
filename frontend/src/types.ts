@@ -1952,6 +1952,19 @@ export interface Goal {
   milestones: Milestone[];
 }
 
+// Design Bible Chapter 64 (third pass) — the Executive Priority Engine.
+// A real, named formula over two real signals every Goal already
+// carries (see backend/app/goals.py's compute_goal_priority()) —
+// structurally distinct from Chapter 59's trade-proposal Priority
+// Score, never a reuse of it. Computed fresh per request, never
+// persisted.
+export interface GoalPriority {
+  goalId: string;
+  score: number;
+  remainingPct: number;
+  daysRemaining: number | null;
+}
+
 // v0.7 Feature 25 — AI Academy & Knowledge Network (see
 // backend/app/academy.py, backend/app/academy_research.py).
 export type AcademyTopic = "market_history" | "trading_psychology" | "economic_concepts" | "visualization_tools" | "decision_biases" | "trading_philosophies";
