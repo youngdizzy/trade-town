@@ -157,6 +157,18 @@ def record_ceo_decision(memory: list[MemoryRecord], decision: TradeDecision, max
     record(memory, "decision", f"CEO decision: {decision.symbol}", decision.final_reasoning, max_records=max_records)
 
 
+def record_emergency_stop_event(memory: list[MemoryRecord], *, activated: bool, max_records: int = MAX_MEMORY_RECORDS) -> None:
+    """Design Bible Chapter 67 (TTOS) Part 3 — this record IS the
+    Emergency Stop's "incident report": the brief asks for one, and
+    rather than inventing a second, parallel incident-log object, the
+    permanent, already-searchable Company Memory record is it (see
+    app/emergency_stop.py's module docstring)."""
+    if activated:
+        record(memory, "emergency", "Emergency Stop activated", "The CEO halted all new trading. Research, monitoring, and dashboards continue; only the CEO can resume trading.", max_records=max_records)
+    else:
+        record(memory, "emergency", "Trading resumed", "The CEO resumed trading after an Emergency Stop.", max_records=max_records)
+
+
 def record_proposal_hold(memory: list[MemoryRecord], proposal: TradeProposal, reason: HoldReason, max_records: int = MAX_MEMORY_RECORDS) -> None:
     """v0.7 Feature 40.5 — Request More Research / Delay Decision. Not a
     final call (see app/executive.py's hold_proposal()), but still a

@@ -189,6 +189,9 @@ MemoryCategory = Literal[
     # v0.7 Feature 30 — a weekly/monthly Reflection Session (see
     # app/wisdom.py).
     "reflection",
+    # Design Bible Chapter 67 (TTOS) Part 3 — a CEO-triggered Emergency
+    # Stop activation or resume (see app/emergency_stop.py).
+    "emergency",
 ]
 
 # --- v0.5: paper trading, simulation, coaching, and scoring ---------------
@@ -1036,6 +1039,21 @@ class RiskWarning(CamelModel):
     severity: AlertSeverity
     message: str
     created_at: str = Field(alias="createdAt")
+
+
+# Design Bible Chapter 67 (TTOS) Part 3 — a real, CEO-triggered halt,
+# distinct from RiskLimits above (which are CEO-configured thresholds
+# the risk/gatekeeper engines evaluate against) and distinct from
+# Chapter 66's `pause_trading` (a computed signal, never CEO-triggerable
+# — see app/nexus.py's _apply_operating_mode()). Deliberately minimal: a
+# single boolean plus when it was activated, not a parallel "incident"
+# object — the real incident record is the MemoryRecord this state
+# transition writes (see app/emergency_stop.py), matching this
+# codebase's "reuse, don't duplicate" convention rather than inventing a
+# second persisted history of the same event.
+class EmergencyStopState(CamelModel):
+    active: bool = False
+    activated_at: str | None = Field(default=None, alias="activatedAt")
 
 
 # v0.7 Feature 49 — Professional Day Trading Program's Daily Trading
@@ -4385,6 +4403,8 @@ class GameSaveState(CamelModel):
     )
     risk_limits: RiskLimits = Field(default_factory=RiskLimits, alias="riskLimits")
     risk_warnings: list[RiskWarning] = Field(default_factory=list, alias="riskWarnings")
+    # Design Bible Chapter 67 (TTOS) Part 3.
+    emergency_stop: EmergencyStopState = Field(default_factory=EmergencyStopState, alias="emergencyStop")
     scanner_alerts: list[ScannerAlert] = Field(
         default_factory=list, alias="scannerAlerts"
     )

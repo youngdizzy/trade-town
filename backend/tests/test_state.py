@@ -10,8 +10,26 @@ from __future__ import annotations
 
 import asyncio
 
-from app.schemas import ClientSaveRequest, DialogueHistoryEntry, EntityTransform, SettingsState, Strategy, TierAllocationLimits
+from app.schemas import AnalystVote, ClientSaveRequest, DecisionConfidence, DialogueHistoryEntry, EntityTransform, SettingsState, Strategy, TierAllocationLimits, TradeProposal
 from app.state import MAX_DIALOGUE_HISTORY, GameState
+
+
+def _pending_proposal() -> TradeProposal:
+    return TradeProposal(
+        id="proposal-1",
+        symbol="NEXA",
+        category="stock",
+        quantity=1.0,
+        price=100.0,
+        confidence=96.0,
+        analystVotes=[AnalystVote(role="risk", agentId="sentinel", choice="buy", reasoning="Position sized within limits.", evidence=["Real risk read"])],  # type: ignore[arg-type]
+        overallRecommendation="buy",
+        researchSummary="Nova's research backs this setup with a completed research item.",
+        riskSummary="Within all configured risk limits.",
+        confidenceEngine=DecisionConfidence(score=96.0, tier="elite", summary="A well-supported setup.", factors=[]),  # type: ignore[arg-type]
+        createdAt="2026-01-01T00:00:00+00:00",
+        createdSimMinutes=0,
+    )
 
 
 def _client_request(*, x: float = 999.0, dialogue_lines: int = 0) -> ClientSaveRequest:
@@ -497,3 +515,74 @@ class TestRetireStrategy:
         strategy_memories = [m for m in saved.memory if m.category == "strategy"]
         assert len(strategy_memories) == 1
         assert "Momentum Breakout" in strategy_memories[0].title
+
+
+class TestActivateAndResumeEmergencyStop:
+    """Design Bible Chapter 67 (TTOS) Part 3 — the CEO's real Global
+    Emergency Stop."""
+
+    def test_activate_sets_active_and_records_a_real_memory_entry(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.activate_emergency_stop())
+        assert error is None
+        assert saved.emergency_stop.active is True
+        assert saved.emergency_stop.activated_at is not None
+        emergency_memories = [m for m in saved.memory if m.category == "emergency"]
+        assert len(emergency_memories) == 1
+        assert "activated" in emergency_memories[0].title.lower()
+
+    def test_activating_twice_is_rejected(self) -> None:
+        state = GameState()
+        asyncio.run(state.activate_emergency_stop())
+        saved, error = asyncio.run(state.activate_emergency_stop())
+        assert error is not None
+        assert saved.emergency_stop.active is True
+
+    def test_resume_clears_active_and_records_a_real_memory_entry(self) -> None:
+        state = GameState()
+        asyncio.run(state.activate_emergency_stop())
+        saved, error = asyncio.run(state.resume_trading())
+        assert error is None
+        assert saved.emergency_stop.active is False
+        assert saved.emergency_stop.activated_at is None
+        emergency_memories = [m for m in saved.memory if m.category == "emergency"]
+        assert len(emergency_memories) == 2  # activation + resume
+
+    def test_resuming_when_not_active_is_rejected(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.resume_trading())
+        assert error is not None
+        assert saved.emergency_stop.active is False
+
+
+class TestSubmitCeoDecisionEmergencyStopGuard:
+    """Design Bible Chapter 67 (TTOS) Part 3 — Emergency Stop blocks the
+    CEO's own manual buy/sell call too, not just automation; declining a
+    trade ("wait") is still allowed."""
+
+    def _state_with_pending_proposal(self) -> GameState:
+        state = GameState()
+        state.data = state.data.model_copy(update={"trade_proposals": [_pending_proposal()]})
+        return state
+
+    def test_buy_is_rejected_while_emergency_stop_is_active(self) -> None:
+        state = self._state_with_pending_proposal()
+        asyncio.run(state.activate_emergency_stop())
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy"))
+        assert error is not None
+        assert "halted" in error.lower()
+        # The proposal is untouched — still pending, not resolved.
+        assert [p.id for p in saved.trade_proposals] == ["proposal-1"]
+
+    def test_wait_is_still_allowed_while_emergency_stop_is_active(self) -> None:
+        state = self._state_with_pending_proposal()
+        asyncio.run(state.activate_emergency_stop())
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "wait"))
+        assert error is None
+        assert saved.trade_proposals == []
+
+    def test_buy_resolves_normally_once_emergency_stop_is_not_active(self) -> None:
+        state = self._state_with_pending_proposal()
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy"))
+        assert error is None
+        assert saved.trade_proposals == []

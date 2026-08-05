@@ -29,6 +29,8 @@ from app.company_score import compute_company_score
 from app.constitution import decide_amendment, default_constitution, generate_coach_evaluation, generate_employee_votes, generate_founder_debate, propose_amendment, ratify_amendment
 from app.debate import generate_debate
 from app.devils_advocate import MAX_CHALLENGE_REPORTS, generate_challenge_report
+from app.emergency_stop import activate_emergency_stop as _activate_emergency_stop
+from app.emergency_stop import resume_trading as _resume_trading
 from app.executive import MAX_CEO_DECISIONS, MAX_PROPOSAL_HOLDS, AnalystChoice, hold_proposal, resolve_proposal
 from app.executive_intelligence import generate_meeting_log_entry, record_meeting_log_entry
 from app.goals import cancel_goal as cancel_goal_entry
@@ -44,7 +46,7 @@ from app.research import RESEARCHER_IDS, default_research
 from app.risk_engine import compute_daily_objective_status, default_risk_limits
 from app.sandbox import apply_review_decision, begin_company_review, begin_limited_live, begin_paper_trial, generate_strategy_review
 from app.sandbox import retire_strategy as retire_strategy_stage
-from app.scribe import record_ceo_decision, record_proposal_hold, record_strategy_failed_archive_entry, record_strategy_hall_of_fame_entry
+from app.scribe import record_ceo_decision, record_emergency_stop_event, record_proposal_hold, record_strategy_failed_archive_entry, record_strategy_hall_of_fame_entry
 from app.schemas import (
     AgentId,
     BlackBoxPriority,
@@ -670,6 +672,31 @@ class GameState:
             self.data = self.data.model_copy(update={"risk_limits": new_limits})
             return self.data, None
 
+    async def activate_emergency_stop(self) -> tuple[GameSaveState, str | None]:
+        """Design Bible Chapter 67 (TTOS) Part 3 — the CEO's real Global
+        Emergency Stop. See app/emergency_stop.py's module docstring for
+        exactly what this does and does not block."""
+        async with self.lock:
+            new_state, error = _activate_emergency_stop(self.data.emergency_stop, now_iso=_now_iso())
+            if error is not None:
+                return self.data, error
+            memory = list(self.data.memory)
+            record_emergency_stop_event(memory, activated=True, max_records=self.data.risk_limits.max_memory_records)
+            self.data = self.data.model_copy(update={"emergency_stop": new_state, "memory": memory})
+            return self.data, None
+
+    async def resume_trading(self) -> tuple[GameSaveState, str | None]:
+        """Design Bible Chapter 67 (TTOS) Part 3 — only the CEO can resume
+        trading after an Emergency Stop; there is no automatic timeout."""
+        async with self.lock:
+            new_state, error = _resume_trading(self.data.emergency_stop)
+            if error is not None:
+                return self.data, error
+            memory = list(self.data.memory)
+            record_emergency_stop_event(memory, activated=False, max_records=self.data.risk_limits.max_memory_records)
+            self.data = self.data.model_copy(update={"emergency_stop": new_state, "memory": memory})
+            return self.data, None
+
     async def create_goal(
         self,
         *,
@@ -1156,6 +1183,13 @@ class GameState:
             proposal = next((p for p in self.data.trade_proposals if p.id == proposal_id), None)
             if proposal is None:
                 return self.data, f"No pending trade proposal with id {proposal_id!r}."
+            # Design Bible Chapter 67 (TTOS) Part 3 — Emergency Stop blocks
+            # every trade execution, including the CEO's own manual call;
+            # "wait" (declining the trade) is still allowed since it never
+            # executes anything. See app/emergency_stop.py's module
+            # docstring for the full enforcement boundary.
+            if self.data.emergency_stop.active and choice != "wait":
+                return self.data, "Trading is halted — Emergency Stop is active. Resume trading first."
 
             watchlist_item = next((w for w in self.data.watchlist if w.symbol == proposal.symbol), None)
             current_price = watchlist_item.last_price if watchlist_item else None

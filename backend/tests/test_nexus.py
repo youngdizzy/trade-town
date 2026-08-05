@@ -148,3 +148,47 @@ class TestApplyOperatingModePauseTrading:
         # blanket block on every proposal.
         remaining, _, _ = self._call(operating_mode="executive", market_intelligence=default_market_intelligence_state())
         assert remaining == []
+
+
+class TestApplyOperatingModeEmergencyStop:
+    """Design Bible Chapter 67 (TTOS) Part 3 — a CEO-triggered Emergency
+    Stop keeps every pending proposal pending, in both Assisted and
+    Executive mode, checked before every other significance/safety
+    check (see app/emergency_stop.py)."""
+
+    def _call(self, *, operating_mode: str, emergency_stop_active: bool):
+        return _apply_operating_mode(
+            operating_mode,
+            [_proposal()],
+            [],  # debates
+            default_portfolio(),
+            RiskLimits(),
+            [],  # risk_warnings
+            {"NEXA": 100.0},  # prices
+            0,  # now_sim_minutes
+            [],  # memory
+            [],  # decisions
+            [],  # ceo_decisions
+            [],  # gatekeeper_rejections
+            [],  # news
+            [],  # challenge_reports
+            [],  # coach_reports
+            [],  # meeting_log
+            1,  # sim_day
+            default_market_intelligence_state(),
+            [],  # war_room_sessions
+            emergency_stop_active=emergency_stop_active,
+        )
+
+    def test_emergency_stop_keeps_an_otherwise_non_significant_proposal_pending_in_assisted_mode(self) -> None:
+        remaining, _, _ = self._call(operating_mode="assisted", emergency_stop_active=True)
+        assert [p.id for p in remaining] == ["proposal-1"]
+
+    def test_emergency_stop_keeps_the_same_proposal_pending_even_in_executive_mode(self) -> None:
+        remaining, _, _ = self._call(operating_mode="executive", emergency_stop_active=True)
+        assert [p.id for p in remaining] == ["proposal-1"]
+
+    def test_inactive_emergency_stop_still_auto_resolves_normally_in_executive_mode(self) -> None:
+        # Control: confirms the new gate only fires when actually active.
+        remaining, _, _ = self._call(operating_mode="executive", emergency_stop_active=False)
+        assert remaining == []

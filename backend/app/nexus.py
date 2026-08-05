@@ -801,6 +801,7 @@ def _apply_operating_mode(
     sim_day: int,
     market_intelligence: MarketIntelligenceState,
     war_room_sessions: list[WarRoomSession],
+    emergency_stop_active: bool = False,
 ) -> tuple[list[TradeProposal], PaperPortfolio, list[ExecutiveMeetingLogEntry]]:
     """v0.7 Feature 21 — Company Operating Modes. Learning Mode never
     calls this (every proposal stays pending, the pre-Feature-21
@@ -826,23 +827,31 @@ def _apply_operating_mode(
     Mode's whole point is auto-resolving everything not gated by a real
     safety constraint).
 
-    Two real safety constraints apply in BOTH modes, never just a
-    significance judgment, so neither can be silently bypassed by
+    Three real safety constraints apply in BOTH modes, never just a
+    significance judgment, so none can be silently bypassed by
     choosing a more hands-off mode: once cash as a % of equity reaches
     the CEO's voluntary `capitalReservePct` reserve, further BUY
     proposals stay pending (mirroring Chapter 57's own hard
-    `cashReservePct` floor, which likewise applies unconditionally); and
-    — v0.7 Design Bible Chapter 66, AI Consensus Safety — a real
-    `pause_trading` recommendation (2+ departments actively oppose, or
-    Market Intelligence reads avoid_trading — see
+    `cashReservePct` floor, which likewise applies unconditionally); a
+    real `pause_trading` recommendation (v0.7 Design Bible Chapter 66,
+    AI Consensus Safety — 2+ departments actively oppose, or Market
+    Intelligence reads avoid_trading — see
     app/executive_intelligence.py's compute_executive_recommendation())
-    also keeps the proposal pending. Both real, checkable facts, never a
-    mode-dependent judgment call."""
+    also keeps the proposal pending; and — Design Bible Chapter 67
+    (TTOS) Part 3 — a CEO-triggered `emergency_stop_active` keeps every
+    proposal pending, checked first since it's the CEO's own explicit
+    override of every other signal here (see app/emergency_stop.py).
+    All three are real, checkable facts, never a mode-dependent
+    judgment call."""
     if operating_mode == "learning" or not trade_proposals:
         return trade_proposals, portfolio, meeting_log
 
     still_pending: list[TradeProposal] = []
     for proposal in trade_proposals:
+        if emergency_stop_active:
+            still_pending.append(proposal)
+            continue
+
         score = priority_score(proposal, war_room_sessions)
         significant, reasons = is_significant_proposal(proposal, portfolio, risk_limits, risk_warnings, score)
         if operating_mode == "assisted" and significant:
@@ -1215,7 +1224,13 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # display) keeps showing the player's own actually-configured numbers,
     # never the priority-derived ones, so nothing displayed misattributes
     # a threshold the player didn't set.
-    candidate_proposals = _generate_trade_proposals(trade_proposals, completed, prices, effective_risk_limits, paper_portfolio, news, scanner_alerts, now_sim_minutes, market_intelligence)
+    # Design Bible Chapter 67 (TTOS) Part 3 — Emergency Stop blocks new
+    # trade proposal generation entirely (existing pending proposals are
+    # handled by _apply_operating_mode()'s own emergency_stop_active
+    # check below; research/monitoring above this line are untouched).
+    candidate_proposals = (
+        [] if state.emergency_stop.active else _generate_trade_proposals(trade_proposals, completed, prices, effective_risk_limits, paper_portfolio, news, scanner_alerts, now_sim_minutes, market_intelligence)
+    )
     # v0.7 Design Bible Chapter 58 — the Institutional Trade Filter &
     # Opportunity Gatekeeper. Every candidate above is only a raw,
     # confidence-filtered TradeProposal so far — this loop builds its
@@ -1375,6 +1390,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         new_time.day,
         market_intelligence,
         war_room_sessions,
+        emergency_stop_active=state.emergency_stop.active,
     )
 
     trade_proposals, expired_proposals = expire_stale_proposals(trade_proposals, now_sim_minutes)

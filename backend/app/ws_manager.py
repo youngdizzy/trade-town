@@ -66,6 +66,8 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         # pre-bounded lists above.
         "riskLimits": state.risk_limits.model_dump(by_alias=True),
         "riskWarnings": [w.model_dump(by_alias=True) for w in state.risk_warnings],
+        # Design Bible Chapter 67 (TTOS) Part 3.
+        "emergencyStop": state.emergency_stop.model_dump(by_alias=True),
         "scannerAlerts": [a.model_dump(by_alias=True) for a in state.scanner_alerts],
         "decisions": [d.model_dump(by_alias=True) for d in state.decisions],
         "agentEnergy": state.agent_energy.model_dump(by_alias=True),
