@@ -10,9 +10,9 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
-from app.goals import rank_goals_by_priority
+from app.goals import compute_resource_allocation, rank_goals_by_priority
 from app.persistence import persist_modules
-from app.schemas import Goal, GoalCategory, GoalMetric, GoalPriority
+from app.schemas import Goal, GoalAllocation, GoalCategory, GoalMetric, GoalPriority
 from app.state import game_state
 
 router = APIRouter(prefix="/api/goals", tags=["goals"])
@@ -72,3 +72,15 @@ async def goal_priorities() -> list[GoalPriority]:
     app/goals.py's rank_goals_by_priority()."""
     state = await game_state.snapshot()
     return rank_goals_by_priority(state.goals, sim_day=state.time.day)
+
+
+@router.get("/allocations", response_model=list[GoalAllocation])
+async def goal_allocations() -> list[GoalAllocation]:
+    """Design Bible Chapter 64 (fourth pass) — Resource Allocation. A
+    recommend-only share of executive ATTENTION across active goals,
+    computed fresh per request from the same real Priority Engine
+    scores above — never a second persisted/driftable copy, and never a
+    claim about real capital movement. See app/goals.py's
+    compute_resource_allocation() for why."""
+    state = await game_state.snapshot()
+    return compute_resource_allocation(state.goals, sim_day=state.time.day)

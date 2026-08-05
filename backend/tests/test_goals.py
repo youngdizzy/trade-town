@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from app.goals import (
     compute_goal_priority,
+    compute_resource_allocation,
     create_goal,
     rank_goals_by_priority,
     record_goal,
@@ -310,3 +311,43 @@ class TestRankGoalsByPriority:
         cancelled = cancel_goal_entry([cancelled_goal], cancelled_goal.id)[0]
         ranked = rank_goals_by_priority([active, cancelled], sim_day=5)
         assert [p.goal_id for p in ranked] == ["active"]
+
+
+class TestComputeResourceAllocation:
+    """v0.7 Design Bible Chapter 64 (fourth pass) — Resource Allocation.
+    A recommend-only share of executive attention normalized from the
+    same real Priority Engine scores, never a claim about capital."""
+
+    def test_empty_for_no_active_goals(self) -> None:
+        assert compute_resource_allocation([], sim_day=5) == []
+
+    def test_single_active_goal_gets_full_allocation(self) -> None:
+        goal = _goal(goal_id="solo", target_value=100.0, current_value=50.0)
+        allocations = compute_resource_allocation([goal], sim_day=5)
+        assert len(allocations) == 1
+        assert allocations[0].goal_id == "solo"
+        assert allocations[0].allocation_pct == 100.0
+
+    def test_allocations_sum_to_100_and_favor_the_more_urgent_goal(self) -> None:
+        urgent = _goal(goal_id="urgent", target_value=100.0, current_value=50.0, deadline_sim_day=6)
+        relaxed = _goal(goal_id="relaxed", target_value=100.0, current_value=90.0, deadline_sim_day=105)
+        allocations = compute_resource_allocation([relaxed, urgent], sim_day=5)
+        assert [a.goal_id for a in allocations] == ["urgent", "relaxed"]
+        assert sum(a.allocation_pct for a in allocations) == 100.0
+        assert allocations[0].allocation_pct > allocations[1].allocation_pct
+
+    def test_excludes_non_active_goals(self) -> None:
+        active = _goal(goal_id="active", target_value=100.0, current_value=50.0)
+        cancelled_goal = _goal(goal_id="gone", target_value=100.0, current_value=50.0)
+        cancelled = cancel_goal_entry([cancelled_goal], cancelled_goal.id)[0]
+        allocations = compute_resource_allocation([active, cancelled], sim_day=5)
+        assert [a.goal_id for a in allocations] == ["active"]
+
+    def test_even_split_when_every_active_goal_has_zero_urgency(self) -> None:
+        # A goal created with current_value already at/above target_value
+        # stays "active" until the next tick marks it completed — a
+        # real, honest edge case, not a fabricated scenario.
+        maxed_a = _goal(goal_id="maxed-a", target_value=100.0, current_value=100.0)
+        maxed_b = _goal(goal_id="maxed-b", target_value=100.0, current_value=100.0)
+        allocations = compute_resource_allocation([maxed_a, maxed_b], sim_day=5)
+        assert {a.allocation_pct for a in allocations} == {50.0}

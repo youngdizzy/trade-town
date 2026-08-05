@@ -28,10 +28,19 @@ goal. A goal's own real priority is a structurally different
 computation over structurally different inputs, per this chapter's own
 Decision Logic section.
 
-Resource Allocation remains explicitly out of scope: it depends on this
-Priority Engine existing first to have anything real to allocate
-against, and no real capital-to-goal linkage has been designed yet. A
-goal is always "reach at least targetValue" — every real metric below
+Resource Allocation (v0.7 Design Bible Chapter 64, fourth pass) is
+`compute_resource_allocation()` below. Goals have no real per-goal
+capital pool anywhere in this codebase — a Goal tracks a company-wide
+metric (Company Health, Company Score, portfolio return, Academy
+level), not a set of open positions with its own real cash behind it —
+so this recommends a share of executive ATTENTION across active goals,
+not a movement of real capital, reusing `rank_goals_by_priority()`'s own
+real urgency score directly rather than inventing a second composite.
+Recommend-only, computed fresh per request, never persisted — the same
+boundary and convention every other scoring engine in this chapter and
+Chapter 59/60 already respect.
+
+A goal is always "reach at least targetValue" — every real metric below
 is a "higher is better" number, so a reduce-below-X goal type would need
 its own honest design, not invented here.
 """
@@ -44,6 +53,7 @@ from app.schemas import (
     CompanyHealth,
     CompanyScore,
     Goal,
+    GoalAllocation,
     GoalCategory,
     GoalMetric,
     GoalPriority,
@@ -284,3 +294,26 @@ def rank_goals_by_priority(goals: list[Goal], *, sim_day: int) -> list[GoalPrior
     real_priorities = [p for p in priorities if p is not None]
     real_priorities.sort(key=lambda p: p.score, reverse=True)
     return real_priorities
+
+
+def compute_resource_allocation(goals: list[Goal], *, sim_day: int) -> list[GoalAllocation]:
+    """Chapter 64's own Resource Allocation recommendation, at last
+    honestly buildable now that the Priority Engine exists to allocate
+    against (see module docstring for why this is an ATTENTION
+    allocation, not a capital one). Each active goal's real
+    `GoalPriority.score` is normalized against the sum of every active
+    goal's score, so the recommendation always sums to ~100% across
+    whatever active goals exist — a transparent, checkable share, never
+    a hidden weighting. If every active goal's real urgency score is 0
+    (the only case: a goal that just crossed 100% progress but hasn't
+    been ticked to `completed` yet), attention is split evenly rather
+    than dividing by zero — an honest fallback, not a fabricated
+    number."""
+    priorities = rank_goals_by_priority(goals, sim_day=sim_day)
+    if not priorities:
+        return []
+    total_score = sum(p.score for p in priorities)
+    if total_score <= 0:
+        even_share = round(100.0 / len(priorities), 1)
+        return [GoalAllocation(goalId=p.goal_id, score=p.score, allocationPct=even_share) for p in priorities]
+    return [GoalAllocation(goalId=p.goal_id, score=p.score, allocationPct=round(p.score / total_score * 100.0, 1)) for p in priorities]

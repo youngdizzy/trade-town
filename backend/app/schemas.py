@@ -4227,6 +4227,18 @@ class GoalPriority(CamelModel):
     days_remaining: int | None = Field(default=None, alias="daysRemaining")
 
 
+class GoalAllocation(CamelModel):
+    goal_id: str = Field(alias="goalId")
+    score: float
+    # A recommend-only share of executive attention, 0-100, normalized
+    # across all active goals' real GoalPriority scores so they sum to
+    # ~100 — never a claim about real capital movement (see
+    # `app/goals.py`'s `compute_resource_allocation()` for why goals
+    # have no real per-goal capital pool to allocate in the first
+    # place).
+    allocation_pct: float = Field(alias="allocationPct")
+
+
 class GameSaveState(CamelModel):
     version: Literal["0.6"] = "0.6"
     player: EntityTransform
