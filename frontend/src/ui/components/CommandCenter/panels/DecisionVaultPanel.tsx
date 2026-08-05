@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { api } from "@/net/api";
-import type { DecisionVaultEntry, SimilarTradesSummary, TradeReportCard } from "@/types";
+import type { DecisionVaultEntry, KnowledgeQualityScore, SimilarTradesSummary, TradeReportCard } from "@/types";
 import { decisionGradeTone } from "../lib/derive";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../ui";
 
@@ -76,6 +76,7 @@ function VaultEntryRow({ entry, selected, onSelect }: { entry: DecisionVaultEntr
 function VaultEntryDetail({ entry }: { entry: DecisionVaultEntry }) {
   const [reportCard, setReportCard] = useState<TradeReportCard | null>(null);
   const [similar, setSimilar] = useState<SimilarTradesSummary | null>(null);
+  const [qualityScore, setQualityScore] = useState<KnowledgeQualityScore | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -86,11 +87,13 @@ function VaultEntryDetail({ entry }: { entry: DecisionVaultEntry }) {
     Promise.all([
       api.getDecisionVaultReportCard(entry.id),
       api.getDecisionVaultSimilar({ symbol: entry.symbol, marketRegime: entry.marketRegime, confidenceTier: entry.confidenceTier, excludeId: entry.id }),
+      api.getDecisionVaultQualityScore(entry.id),
     ])
-      .then(([reportCardRes, similarRes]) => {
+      .then(([reportCardRes, similarRes, qualityScoreRes]) => {
         if (!cancelled) {
           setReportCard(reportCardRes);
           setSimilar(similarRes);
+          setQualityScore(qualityScoreRes);
         }
       })
       .catch((err) => {
@@ -197,6 +200,25 @@ function VaultEntryDetail({ entry }: { entry: DecisionVaultEntry }) {
               </div>
             </>
           )}
+        </Glass>
+      )}
+
+      {qualityScore && (
+        <Glass className="p-3">
+          <div className="mb-1.5 flex items-center justify-between">
+            <TerminalLabel>Knowledge Quality Score</TerminalLabel>
+            <StatusPill tone={qualityScore.overallScore >= 60 ? "green" : qualityScore.overallScore >= 35 ? "amber" : "red"}>{qualityScore.overallScore.toFixed(0)}/100</StatusPill>
+          </div>
+          {qualityScore.patternFrequency === 0 ? (
+            <EmptyState>No comparable Vault entry exists yet — this reads as pure Relevance until history builds up.</EmptyState>
+          ) : (
+            <div className="grid grid-cols-2 gap-x-4 sm:grid-cols-3">
+              <DataRow label="Historical Success" value={`${(qualityScore.historicalSuccessPct ?? 0).toFixed(0)}%`} />
+              <DataRow label="Pattern Frequency" value={`${qualityScore.patternFrequency} seen`} />
+              <DataRow label="Relevance" value={`${qualityScore.relevancePct.toFixed(0)}%`} />
+            </div>
+          )}
+          <p className="mt-1.5 text-[8px] text-cmd-textDim">Pattern Frequency counts other Vault entries sharing this trade's own real profile — a proxy for how often this kind of situation has recurred, not a literal usage log.</p>
         </Glass>
       )}
     </>

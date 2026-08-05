@@ -225,6 +225,12 @@ export class NexusManager {
     emergencyReductionHeatPct: 75,
     minTradeQualityScore: 70,
     minExpectedValuePct: 0,
+    minPriorityScore: 0,
+    capitalReservePct: 0,
+    minSimilarMatches: 3,
+    mistakeWarningSharePct: 30,
+    maxDecisionVaultEntries: 200,
+    maxMemoryRecords: 200,
   };
   private static riskWarnings: RiskWarning[] = [];
   private static scannerAlerts: ScannerAlert[] = [];

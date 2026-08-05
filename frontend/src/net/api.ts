@@ -35,6 +35,7 @@ import type {
   ConfidenceTier,
   ConstitutionState,
   FailedStrategyArchiveEntry,
+  KnowledgeQualityScore,
   MarketIntelligenceRegime,
   RiskLimits,
   SimilarTradesSummary,
@@ -292,6 +293,9 @@ export const api = {
     if (params.excludeId) query.set("excludeId", params.excludeId);
     return request<SimilarTradesSummary>(`/decision-vault/similar?${query.toString()}`);
   },
+  // Design Bible Chapter 61 — Knowledge Quality Score. Same computed-
+  // fresh, read-only convention as the two calls above.
+  getDecisionVaultQualityScore: (vaultEntryId: string) => request<KnowledgeQualityScore>(`/decision-vault/quality-score?vaultEntryId=${encodeURIComponent(vaultEntryId)}`),
   proposeConstitutionAmendment: (title: string, text: string) =>
     request<{ constitution: ConstitutionState }>("/constitution/propose", {
       method: "POST",

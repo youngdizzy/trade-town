@@ -947,6 +947,16 @@ export interface RiskLimits {
   // currently a no-op until the CEO raises them.
   minPriorityScore: number;
   capitalReservePct: number;
+  // Design Bible Chapter 61 — Institutional Knowledge Graph & Company
+  // Memory Engine. Pattern Detection Sensitivity (see
+  // backend/app/decision_vault.py's Similarity Engine) and Knowledge
+  // Retention Rules, both slices (see backend/app/decision_vault.py's
+  // record_vault_entry and backend/app/memory.py's record()). All four
+  // default to the exact fixed constants they replace.
+  minSimilarMatches: number;
+  mistakeWarningSharePct: number;
+  maxDecisionVaultEntries: number;
+  maxMemoryRecords: number;
 }
 
 // v0.7 Feature 49 — a real-time readout of today's real trading activity
@@ -2149,6 +2159,22 @@ export interface SimilarTradesSummary {
   mostCommonMistakeCategory: CaseStudyCategory | null;
   warning: string | null;
   examples: SimilarTradeMatch[];
+}
+
+/** Design Bible Chapter 61's Knowledge Quality Score. Computed fresh per
+ * request (never persisted) from three real signals over the Similarity
+ * Engine — see backend/app/decision_vault.py's
+ * compute_knowledge_quality_score() for the full honesty boundary,
+ * including why patternFrequency is a real proxy, not a literal usage
+ * counter, and why the brief's Accuracy/Usefulness/Validation dimensions
+ * aren't here at all. */
+export interface KnowledgeQualityScore {
+  vaultEntryId: string;
+  matchedOn: string[];
+  historicalSuccessPct: number | null;
+  patternFrequency: number;
+  relevancePct: number;
+  overallScore: number;
 }
 
 /** v0.7 Feature 55 (the brief self-numbered it "Feature 54," already used
