@@ -374,7 +374,20 @@ def resolve_proposal(
     gatekeeper_verdict: GatekeeperVerdict | None = None
 
     if ceo_choice in ("buy", "sell"):
-        quantity = recommended_quantity(risk_limits, portfolio, price)
+        # v0.7 Design Bible Chapter 57 — the Institutional Position Sizing
+        # & Capital Deployment Engine (app/position_sizing.py) already
+        # narrowed proposal.quantity down from this same ceiling formula
+        # at proposal-creation time, using real evidence/confidence/
+        # portfolio-context this function has no access to. Re-deriving
+        # the ceiling fresh here (never trusting a possibly-stale one)
+        # and taking the smaller of the two preserves both real
+        # properties at once: the engine's evidence-based narrowing
+        # survives, and a portfolio that's shrunk since the proposal was
+        # created still gets a genuinely fresh, tighter cap — the same
+        # "recompute fresh, never stale" guarantee this function already
+        # made before this engine existed.
+        ceiling_quantity = recommended_quantity(risk_limits, portfolio, price)
+        quantity = min(ceiling_quantity, proposal.quantity)
         if quantity <= 0:
             # Sized to zero (portfolio too small / budget floor) — falls
             # back to "wait" honestly rather than pretending a trade of

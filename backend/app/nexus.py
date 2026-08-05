@@ -85,6 +85,7 @@ from app.talent import generate_talent_reports, record_talent_reports
 from app.paper_trading import tick_paper_trading
 from app.portfolio import sim_minutes
 from app.portfolio_intelligence import compute_portfolio_intelligence
+from app.position_sizing import build_position_sizing
 from app.reasoning_lab import compute_reasoning_lab_state, generate_challenge, record_challenge
 from app.research import RESEARCHER_IDS, default_research, tick_research
 from app.risk_engine import compute_daily_objective_status, evaluate_guardian_exposure, evaluate_sentinel_risk, monitor_portfolio, recommended_quantity
@@ -1163,7 +1164,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # established just above. Appended one at a time (rather than a list
     # comprehension like debates) so each new report's rotating assignment
     # sees the reports generated earlier in this same tick.
-    for proposal in new_proposals:
+    for proposal_index, proposal in enumerate(new_proposals):
         new_challenge_report = generate_challenge_report(proposal, provider=market_data_provider, case_studies=case_studies, existing_count=len(challenge_reports))
         challenge_reports.append(new_challenge_report)
         # v0.7 Feature 46 — "Devil's Advocate references it": the whole
@@ -1198,7 +1199,35 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             correlated_open_positions=correlated_open_positions,
             candles=war_room_candles,
         )
+
+        # v0.7 Design Bible Chapter 57 — the Institutional Position
+        # Sizing & Capital Deployment Engine. Runs the instant this
+        # session's own Expected Value/Decision Score exist to size
+        # against — `proposal.quantity` up to this point was
+        # recommended_quantity()'s flat ceiling (see
+        # _generate_trade_proposals() above); this narrows it (never
+        # widens it) to the real, evidence-justified amount. Portfolio
+        # Heat is deliberately this tick's entering `state.portfolio_
+        # intelligence` (one tick stale — see build_position_sizing()'s
+        # own docstring for why that's an accepted, documented tradeoff).
+        position_sizing = build_position_sizing(
+            proposal,
+            ceiling_quantity=proposal.quantity,
+            expected_value=war_room_session.expected_value,
+            decision_score=war_room_session.decision_score,
+            portfolio=paper_portfolio,
+            portfolio_heat=state.portfolio_intelligence.heat,
+            risk_limits=effective_risk_limits,
+            risk_warnings=risk_warnings,
+            sim_day=now_sim_minutes // 1440,
+        )
+        war_room_session = war_room_session.model_copy(update={"position_sizing": position_sizing})
+        proposal = proposal.model_copy(update={"quantity": position_sizing.final_quantity})
+        new_proposals[proposal_index] = proposal
+
         war_room_sessions = record_war_room_session(war_room_sessions, war_room_session)
+    if new_proposals:
+        trade_proposals[len(trade_proposals) - len(new_proposals) :] = new_proposals
     if len(challenge_reports) > MAX_CHALLENGE_REPORTS:
         del challenge_reports[: len(challenge_reports) - MAX_CHALLENGE_REPORTS]
     for proposal in new_proposals:

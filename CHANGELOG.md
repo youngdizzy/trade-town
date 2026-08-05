@@ -7,6 +7,41 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 57 backend — Institutional Position Sizing & Capital
+  Deployment Engine** (`backend/app/position_sizing.py`): implements the
+  target design below as real code. `build_position_sizing()` narrows
+  (never widens) `app/risk_engine.py`'s existing `recommended_quantity()`
+  ceiling through four independent real constraints — a Position Tier's
+  evidence-based fraction of the ceiling (`TIER_FRACTION`, reusing War
+  Room's own `DecisionScoreBreakdown.overall` as the Sizing Score rather
+  than a second composite), the tier's own absolute per-tier cap (a
+  separate CEO guardrail via the new `TierAllocationLimits`), a real
+  spendable weekly Risk Budget (`RiskLimits.max_weekly_deployment_pct`,
+  computed fresh from real `trade_history` and open `positions` in a
+  trailing 7-sim-day window — genuinely new, `max_daily_loss_pct` was
+  always a static realized-loss ceiling, never a decrementing deployment
+  budget), an optional CEO-set Portfolio Heat cap
+  (`RiskLimits.portfolio_heat_cap_pct`, `None` by default — unchanged
+  read-only behavior otherwise, staying inside the v0.8 "no auto-hedging"
+  stop condition), and the CEO's cash reserve requirement. Wired into
+  `app/nexus.py`'s proposal-creation loop (result stored on the new
+  `WarRoomSession.position_sizing`) and `app/executive.py`'s
+  `resolve_proposal()`, which was fixed to actually consult the resized
+  `proposal.quantity` instead of silently recomputing the flat ceiling
+  from scratch and discarding it. A live-simulation smoke test caught a
+  real calibration flaw before ship (an absolute per-tier cap alone can
+  never bind below Institutional if a CEO's `risk_per_trade_pct` is
+  already tighter, making "weaker evidence, smaller position" a no-op) —
+  fixed by scaling the ceiling by tier first, so evidence quality always
+  has a visible, monotonic effect. Explicitly not built: Position
+  Scaling/Reduction on already-open positions (would need each
+  position's entry-time evidence score, which `PaperPosition` doesn't
+  store), Day/Swing/Hybrid allocation splits (this codebase has one real
+  trading mode), and any auto-executed reduction. Covered by
+  `backend/tests/test_position_sizing.py` (25 tests); full backend suite
+  (936 tests) and `mypy`/`ruff` clean. Frontend work (Command Center
+  surfacing, CEO controls UI) not yet started.
+
 - **Design Bible Chapter 57 — Institutional Position Sizing & Capital
   Deployment Engine** (`docs/DesignBible/volumes/09-departments/chapter-57-position-sizing-capital-deployment.md`):
   a target-design chapter, not yet implemented, per Appendix G's

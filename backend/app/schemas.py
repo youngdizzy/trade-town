@@ -852,6 +852,20 @@ class PerformanceSnapshot(CamelModel):
     computed_at: str = Field(alias="computedAt")
 
 
+class TierAllocationLimits(CamelModel):
+    """The CEO's own per-tier ceiling, each a % of equity — real caps
+    app/position_sizing.py's tier assignment must respect alongside the
+    existing max_position_pct/risk_per_trade_pct ceiling (the smaller of
+    the two always wins, the same convention recommended_quantity()
+    already established). Defaults are conservative but arbitrary, the
+    same honest note RiskLimits' own docstring already makes."""
+
+    tier1_pct: float = Field(default=2.0, alias="tier1Pct")
+    tier2_pct: float = Field(default=5.0, alias="tier2Pct")
+    tier3_pct: float = Field(default=8.0, alias="tier3Pct")
+    tier4_pct: float = Field(default=10.0, alias="tier4Pct")
+
+
 class RiskLimits(CamelModel):
     """Sentinel's configurable risk boundaries (v0.6 brief, Risk Engine).
     Defaults are conservative but arbitrary — there's no real capital or
@@ -871,6 +885,22 @@ class RiskLimits(CamelModel):
     # mechanism.
     daily_profit_target_pct: float = Field(default=3.0, alias="dailyProfitTargetPct")
     max_trades_per_day: int = Field(default=6, alias="maxTradesPerDay")
+    # v0.7 Chapter 57 — Institutional Position Sizing & Capital Deployment
+    # Engine (app/position_sizing.py). All six new CEO controls that
+    # engine's own Design Bible chapter asks for; every existing field
+    # above stays exactly as-is, this engine only ever narrows what it's
+    # already allowed to size, never widens it.
+    max_weekly_deployment_pct: float = Field(default=15.0, alias="maxWeeklyDeploymentPct")
+    # None = no hard cap (today's behavior — Portfolio Heat stays a pure
+    # reading, per Chapter 56's own honesty boundary). A real number is a
+    # CEO-set, CEO-triggered ceiling, never a system-triggered one — see
+    # app/position_sizing.py's module docstring for why that stays inside
+    # the v0.8 stop condition.
+    portfolio_heat_cap_pct: float | None = Field(default=None, alias="portfolioHeatCapPct")
+    cash_reserve_pct: float = Field(default=10.0, alias="cashReservePct")
+    tier_allocation: TierAllocationLimits = Field(default_factory=TierAllocationLimits, alias="tierAllocation")
+    scaling_aggressiveness_pct: float = Field(default=100.0, alias="scalingAggressivenessPct")
+    emergency_reduction_heat_pct: float = Field(default=75.0, alias="emergencyReductionHeatPct")
 
 
 class RiskWarning(CamelModel):
@@ -2836,6 +2866,37 @@ class ScenarioOutcomeComparison(CamelModel):
     detail: str
 
 
+# v0.7 Chapter 57 — Institutional Position Sizing & Capital Deployment
+# Engine (app/position_sizing.py). Four real tiers, ordered narrowest to
+# widest allowed allocation — see that module's own docstring for the
+# exact assignment rule and PortfolioIntelligenceState honesty boundary.
+PositionTier = Literal["exploratory", "standard", "high_conviction", "institutional"]
+
+
+class PositionSizingResult(CamelModel):
+    """The Position Sizing Engine's real, logged justification for one
+    proposal's final quantity — never a bare number with no trail (see
+    app/position_sizing.py's module docstring). `final_quantity` is
+    always <= `ceiling_quantity`: this engine only ever narrows what
+    app/risk_engine.py's recommended_quantity() already allows, never
+    widens it."""
+
+    tier: PositionTier
+    tier_label: str = Field(alias="tierLabel")
+    sizing_score: float = Field(alias="sizingScore")
+    ceiling_quantity: float = Field(alias="ceilingQuantity")
+    tier_cap_quantity: float = Field(alias="tierCapQuantity")
+    final_quantity: float = Field(alias="finalQuantity")
+    capital_deployed_pct: float = Field(alias="capitalDeployedPct")
+    weekly_deployment_pct: float = Field(alias="weeklyDeploymentPct")
+    weekly_deployment_cap_pct: float = Field(alias="weeklyDeploymentCapPct")
+    cash_reserve_ok: bool = Field(alias="cashReserveOk")
+    portfolio_heat_cap_ok: bool = Field(alias="portfolioHeatCapOk")
+    institutional_gates_passed: bool = Field(alias="institutionalGatesPassed")
+    reduced_from_ceiling: bool = Field(alias="reducedFromCeiling")
+    detail: str
+
+
 class WarRoomSession(CamelModel):
     id: str
     proposal_id: str = Field(alias="proposalId")
@@ -2847,6 +2908,12 @@ class WarRoomSession(CamelModel):
     expected_value: ExpectedValueAnalysis = Field(alias="expectedValue")
     decision_score: DecisionScoreBreakdown = Field(alias="decisionScore")
     contingency_plan: list[ContingencyStep] = Field(default_factory=list, alias="contingencyPlan")
+    # v0.7 Chapter 57 — filled in by app/nexus.py right after this session
+    # is built, once a ceiling quantity and this session's own real
+    # Expected Value/Decision Score exist to size against. Optional only
+    # for the brief instant during construction before that step runs —
+    # every session actually appended to war_room_sessions has this set.
+    position_sizing: PositionSizingResult | None = Field(default=None, alias="positionSizing")
     # Always True by construction, not a separate check: Evidence Score
     # is a strict renormalized subset average of Confidence Score's own
     # factors (see app/decision_vault.py's compute_evidence_score()), so

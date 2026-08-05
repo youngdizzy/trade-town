@@ -5056,6 +5056,99 @@ test already uses. `tsc -b --noEmit`, `eslint --max-warnings 0`, and
 and the extended 34-tab sweep) pass against the live Vite + FastAPI
 stack.
 
+### Institutional Position Sizing & Capital Deployment Engine — Design Bible Chapter 57, backend
+
+GOAL (from `docs/DesignBible/volumes/09-departments/chapter-57-position-sizing-capital-deployment.md`,
+written first per Appendix G's "design before code" policy): position
+size should be justified by evidence, probability, and portfolio
+context — never emotion, confidence alone, or a flat percentage.
+
+**Researched first.** Position sizing was exactly two flat
+percent-of-equity numbers (`app/risk_engine.py`'s
+`recommended_quantity()`: `min(risk_per_trade_pct, max_position_pct)` of
+equity), with no regard for how strong the evidence behind a specific
+trade actually was. That function is not duplicated — its output becomes
+this engine's ceiling, a hard cap `app/position_sizing.py`'s new
+`build_position_sizing()` only ever narrows, never widens. Every input it
+reads already exists elsewhere: the Sizing Score is War Room's own
+`DecisionScoreBreakdown.overall` (Feature 55), Portfolio Heat is Feature
+56's `PortfolioHeat` (the entering tick's already-computed reading — one
+tick, 5 sim-minutes, stale by the time a same-tick proposal is sized, the
+same tradeoff every other same-tick consumer of a recomputed-fresh signal
+in this codebase already accepts), and risk warnings are Sentinel/
+Guardian's existing `RiskWarning` severity.
+
+**Four real, independent constraints**, each named honestly in the
+result's `detail` string when it binds:
+
+1. **Position Tier fraction** — a four-tier system (`exploratory` /
+   `standard` / `high_conviction` / `institutional`, gated by Sizing
+   Score plus Expected Value's `positive_expectancy` plus Portfolio
+   Heat's tier, with Institutional additionally requiring
+   `decision_score.passed` and no active critical risk warning for the
+   symbol) scales the ceiling by `TIER_FRACTION` (0.35 / 0.70 / 0.90 /
+   1.0). **Design correction made before shipping**: an earlier version
+   scaled by an *absolute* per-tier percentage
+   (`RiskLimits.tier_allocation`) competing via `min()` against the
+   ceiling — but that can only ever bind if a CEO happens to set it below
+   `risk_per_trade_pct`'s own ceiling, which silently made "weaker
+   evidence, smaller position" a no-op for every tier below
+   Institutional. A live-simulation smoke test (2000 ticks, Executive
+   mode) surfaced this directly. Fixed by scaling the ceiling
+   *multiplicatively* by tier first; the absolute `tier_allocation`
+   per-tier cap remains underneath as a separate, real, independently-
+   meaningful CEO guardrail.
+2. **Real spendable weekly Risk Budget** — `RiskLimits.max_weekly_deployment_pct`
+   (new, default 15%), checked against `_capital_deployed_pct_in_window()`:
+   real capital newly committed (both closed `trade_history` and still-
+   open `positions`) in a trailing 7-sim-day window, as % of equity.
+   Genuinely new — `max_daily_loss_pct` was always a static realized-loss
+   halt threshold, never a decrementing deployment budget.
+3. **Optional CEO-set Portfolio Heat cap** — `RiskLimits.portfolio_heat_cap_pct`
+   (new, `None` by default — today's read-only-heat behavior is
+   unchanged). Deliberately CEO-set and CEO-triggered only, never
+   system-triggered or auto-corrective, to stay inside the documented
+   v0.8 stop condition ("risk is measured and displayed, never
+   auto-hedged... without the player").
+4. **Cash reserve requirement** — `RiskLimits.cash_reserve_pct` (new,
+   default 10%): the engine never proposes spending into the reserve.
+
+**Integration bug found and fixed.** `recommended_quantity()` is called
+from two places: `app/nexus.py`'s `_generate_trade_proposals()` (the
+initial ceiling at proposal-creation time, where `build_position_sizing()`
+is now also called and the result stored on the new
+`WarRoomSession.position_sizing`) and `app/executive.py`'s
+`resolve_proposal()` (a fresh ceiling recomputed at execution/approval
+time, since portfolio state may have changed). `resolve_proposal()` was
+recomputing quantity from scratch and completely ignoring the resized
+`proposal.quantity` — the whole engine had zero real effect on actually
+executed trades until fixed to `min(fresh_ceiling, proposal.quantity)`,
+which preserves both the evidence-based narrowing and the pre-existing
+"always recompute fresh, never trust a stale number" guarantee an
+existing test (`test_zero_quantity_falls_back_to_wait`) relies on.
+
+**Explicitly not built** (see the chapter's own Implementation Notes for
+the full reasoning): Position Scaling/Reduction on already-open positions
+(would need each position's entry-time evidence score stored, which
+`PaperPosition` has no field for — separate future work); Day/Swing/
+Hybrid allocation splits (this codebase has one real trading mode; a
+control that changes a label but nothing behavioral would violate the
+"no placeholder systems" rule); auto-executing any reduction.
+
+**Verified**: `backend/tests/test_position_sizing.py` (25 tests — the
+weekly-window's boundaries and both trade/position sources, every tier
+gate individually including the critical-warning override and all three
+Institutional gates failing independently, and `build_position_sizing()`
+end-to-end: the ceiling never widened, each of the four constraints
+independently binding and correctly named, the tier-fraction
+monotonicity guarantee itself, and the zero-equity/zero-ceiling early
+return). Full backend suite: 936/936 passing (confirming the
+`executive.py` fix didn't regress anything else), `mypy`/`ruff` clean.
+Frontend (Command Center surfacing on `WarRoomSession.positionSizing`,
+CEO controls UI for the six new `RiskLimits`/`TierAllocationLimits`
+fields) is separate, not-yet-started work per this project's
+backend-first discipline.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

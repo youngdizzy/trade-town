@@ -1,6 +1,8 @@
 # Chapter 57 — Institutional Position Sizing & Capital Deployment Engine
 
-**Status:** Target design. Not yet implemented. See [Volume 9's chapter
+**Status:** Backend implemented (`app/position_sizing.py`, wired into
+`app/nexus.py` and `app/executive.py`). Frontend (Command Center
+surfacing, CEO controls UI) not yet built. See [Volume 9's chapter
 template](README.md) for what every section below must contain, and the
 Implementation Notes at the bottom of this chapter for exactly what's
 real today versus new here.
@@ -344,9 +346,51 @@ a literal position-sizing formula (a specific, tested weighting function
 is implementation work, not something this design document should
 invent and then treat as settled).
 
-**Before implementation begins:** per Appendix G's Permanent Development
-Policy, this chapter is the required design-first step. Implementation
-would extend `app/risk_engine.py` rather than create a competing sizing
-path, and should ship with the same rigor as Chapters 54–56 — real
-tests, an honest scope-cut list, `mypy`/`ruff` clean, before any
-frontend work begins.
+**Before implementation began:** per Appendix G's Permanent Development
+Policy, this chapter was written as the required design-first step
+before any code.
+
+**What was actually built:** `app/position_sizing.py`'s
+`build_position_sizing()` — the engine's one real entry point, called
+once per new proposal from `app/nexus.py`'s `_generate_trade_proposals()`
+alongside the existing War Room session build, and stored on
+`WarRoomSession.position_sizing`. It narrows (never widens)
+`app/risk_engine.py`'s existing `recommended_quantity()` ceiling through
+four independent, real constraints: the Position Tier's evidence-based
+fraction of the ceiling (`TIER_FRACTION`, not a competing absolute cap —
+see below), the tier's own absolute `tier_allocation` cap (a separate CEO
+guardrail), the real spendable weekly Risk Budget
+(`max_weekly_deployment_pct`, computed fresh from real `trade_history` and
+open `positions` in a trailing 7-sim-day window), the optional CEO-set
+Portfolio Heat cap (`portfolio_heat_cap_pct`, `None` by default —
+unchanged read-only behavior), and the CEO's cash reserve requirement.
+`app/executive.py`'s `resolve_proposal()` was fixed to actually consult
+the resized `proposal.quantity` (`min(fresh_ceiling, proposal.quantity)`)
+rather than recomputing the flat ceiling from scratch and discarding it —
+without this fix the engine computed a real result that never affected an
+actual executed trade.
+
+Live-simulation testing (2000 ticks, Executive mode) surfaced one real
+calibration flaw before it shipped: an absolute `tier_allocation_pct`
+cap can only ever bind if a CEO happens to set it below
+`risk_per_trade_pct`'s own ceiling, which made "weaker evidence, smaller
+position" silently do nothing for every tier below Institutional. Fixed
+by scaling the ceiling by `TIER_FRACTION` (0.35 / 0.70 / 0.90 / 1.0)
+first, so evidence quality always has a real, visible, monotonic effect;
+the absolute per-tier cap remains underneath it as a separate, real
+guardrail that binds only when a CEO has deliberately set it tighter.
+
+Verified via `backend/tests/test_position_sizing.py` (25 tests — the
+weekly-window boundary, every tier gate individually, the four ceiling-
+narrowing constraints each independently binding and named in `detail`,
+the zero-equity/zero-ceiling early return, and the tier-fraction
+monotonicity guarantee itself), the full backend suite (936 tests, all
+passing, confirming the `executive.py` fix didn't regress anything else),
+and `mypy`/`ruff` clean on every touched file.
+
+**Still explicitly out of scope** (unchanged from the target design):
+Position Scaling/Reduction on already-open positions; Day/Swing/Hybrid
+allocation splits; Institutional Allocation Tier's cross-department
+approval workflow; auto-executing any reduction. Frontend work (Command
+Center surfacing on `WarRoomSession.positionSizing`, CEO controls for the
+six new `RiskLimits` fields) has not started.
