@@ -7,6 +7,44 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Design Bible Chapters 61 & 62 — Institutional Knowledge Graph &
+  Company Memory Engine, and Institutional Innovation Lab & Continuous
+  Improvement Engine**
+  (`docs/DesignBible/volumes/09-departments/chapter-61-knowledge-graph-company-memory.md`,
+  `chapter-62-innovation-lab-continuous-improvement.md`): two
+  target-design chapters, written per Appendix G's "Design Bible updated
+  before implementation" policy. **Unlike every prior chapter in this
+  volume, the research finding here is that both briefs already describe
+  systems that are, in overwhelming part, already real** — this
+  codebase already has `app/memory.py` (Company Memory), `app/knowledge.py`
+  (v0.5 Feature 9's knowledge derivation), `app/knowledge_graph.py` (a
+  real, already-shipped node-edge graph with a working frontend),
+  `app/decision_vault.py` (Decision Vault, Trade Report Card, and a real
+  rule-based Similarity Engine), `app/mistakes.py`/`app/successes.py`
+  (Pattern Recognition), `app/wisdom.py` (Institutional Learning), and
+  `app/company_dna.py` (the real behavioral-learning loop) for Chapter
+  61; and `app/sandbox.py`'s real 8-stage gated pipeline plus
+  `app/strategy_lab.py`'s Monte Carlo/Market Regime/Risk/9-department
+  Executive Review/Founder Approval/Certification enrichment layer — already
+  matching the brief's own Innovation Pipeline stage-for-stage, with a
+  fully shipped 8-view frontend — for Chapter 62. **Chapter 61's real,
+  closeable gap:** the Knowledge Graph's node types (today: agent,
+  branch, research, academy project, executive review, coach report,
+  hall of fame) don't yet include trades, decisions, case studies, or
+  strategies, the exact node types the brief's own worked example names.
+  **Chapter 62's real, closeable gap:** Experiment Tiering (Tier 1-4)
+  doesn't exist, and a confirmed-real Company DNA nudge on a Hall of
+  Fame strategy retirement (`app/state.py`'s retirement flow) doesn't
+  yet also write a Company Memory entry or Knowledge Graph node. Both
+  chapters flag a naming collision each — Chapter 62 explicitly notes
+  this codebase's own `app/innovation.py` (Feature 41, an individual
+  agent's Devil's Advocate skill ladder) is unrelated to what the brief
+  means by "Innovation Lab"; both flag that "Chapter 53 — Probabilistic
+  Trading Philosophy" still does not exist anywhere in this codebase or
+  Design Bible, the same non-existent reference already checked in
+  Chapters 58/59. Added as the eighth and ninth rows in Volume 9's
+  chapter table.
+
 - **Chapter 59 backend — Capital Priority & Opportunity Cost Engine**
   (`app/capital_priority.py`, wired into `app/nexus.py` and
   `app/executive.py`): closes the exact gap Chapter 58's own
