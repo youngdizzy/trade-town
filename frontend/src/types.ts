@@ -1795,6 +1795,28 @@ export interface MarketEnvironmentState {
   timeline: MarketEnvironmentEntry[];
 }
 
+// Design Bible Chapter 65 — Market Regime Detection & Adaptive Strategy
+// Engine. Reconciles the two real regime engines above/below
+// (MarketEnvironmentState's 5-way, MarketIntelligenceState's 13-way)
+// into one CEO-facing read, plus a read-only posture recommendation —
+// never an automatic change to any real risk limit (see
+// backend/app/regime_reconciliation.py). Computed fresh per request,
+// never persisted.
+export type RegimeAgreement = "aligned" | "diverging";
+export type RegimePosture = "cautious" | "normal" | "opportunistic";
+
+export interface RegimeReconciliation {
+  environmentRegime: MarketEnvironmentRegime;
+  environmentLabel: string;
+  intelligenceRegime: MarketIntelligenceRegime;
+  intelligenceLabel: string;
+  qualityTier: MarketQualityTier;
+  confidencePct: number;
+  agreement: RegimeAgreement;
+  posture: RegimePosture;
+  rationale: string;
+}
+
 // v0.7 Feature 23 — Company Health & Stability System. Ten real,
 // documented sub-scores (see backend/app/company_health.py) — a
 // different question from v0.5's CompanyScore ("is the company healthy

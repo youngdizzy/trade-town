@@ -511,6 +511,13 @@ test.describe("Global Command Center", () => {
       await expect(page.getByText(metric, { exact: true }).first()).toBeVisible();
     }
 
+    // Regime Reconciliation (Design Bible Chapter 65) — reconciles the
+    // two real regime engines into one aligned/diverging read plus a
+    // cautious/normal/opportunistic posture recommendation.
+    await expect(page.getByText("Regime Reconciliation", { exact: true })).toBeVisible();
+    await expect(page.getByText(/ALIGNED|DIVERGING/).first()).toBeVisible();
+    await expect(page.getByText(/CAUTIOUS|NORMAL|OPPORTUNISTIC/).first()).toBeVisible();
+
     // Market Environment: a real regime pill plus its own detail text.
     // (The regime label can also repeat in the historical timeline below,
     // so `.first()` avoids a strict-mode ambiguity — any match confirms

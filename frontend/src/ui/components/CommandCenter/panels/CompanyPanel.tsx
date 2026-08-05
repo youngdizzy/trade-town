@@ -5,7 +5,7 @@ import { SaveManager } from "@/game/systems/SaveManager";
 import { NexusManager } from "@/game/systems/NexusManager";
 import { api } from "@/net/api";
 import { GOAL_CATEGORY_LABEL, GOAL_METRIC_LABEL } from "@/types";
-import type { CompanyHealthTier, CompanyPriority, Goal, GoalAllocation, GoalCategory, GoalMetric, GoalPriority, MarketEnvironmentRegime, OperatingMode, TimeAdvanceTarget } from "@/types";
+import type { CompanyHealthTier, CompanyPriority, Goal, GoalAllocation, GoalCategory, GoalMetric, GoalPriority, MarketEnvironmentRegime, OperatingMode, RegimeAgreement, RegimePosture, RegimeReconciliation, TimeAdvanceTarget } from "@/types";
 import { computeScoreBenchmark } from "../lib/derive";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
 
@@ -59,6 +59,13 @@ const REGIME_TONE: Record<MarketEnvironmentRegime, "green" | "red" | "amber" | "
   high_volatility: "amber",
   low_volatility: "cyan",
 };
+
+// Design Bible Chapter 65 — real, transparent categories off
+// MarketQualityScore.tier + confidencePct alone (see
+// backend/app/regime_reconciliation.py) — never a numeric override of
+// any CEO-configured RiskLimits field.
+const POSTURE_TONE: Record<RegimePosture, "green" | "amber" | "cyan"> = { cautious: "amber", normal: "cyan", opportunistic: "green" };
+const AGREEMENT_TONE: Record<RegimeAgreement, "green" | "amber"> = { aligned: "green", diverging: "amber" };
 
 function metricTone(score: number): "green" | "amber" | "red" {
   return score >= 70 ? "green" : score >= 40 ? "amber" : "red";
@@ -219,6 +226,28 @@ export function CompanyPanel() {
     };
   }, [goals]);
   const allocationByGoalId = new Map(allocations.map((a) => [a.goalId, a]));
+
+  // Design Bible Chapter 65 — Market Regime Detection & Adaptive
+  // Strategy Engine. Reconciles the two real regime engines (this
+  // panel's own Market Environment card below, and the MARKETINTEL
+  // tab's richer 13-way read) into one CEO-facing answer, plus a
+  // read-only posture recommendation — never an automatic change to
+  // any real risk limit. Refetched whenever the live regime updates.
+  const [regimeReconciliation, setRegimeReconciliation] = useState<RegimeReconciliation | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getRegimeReconciliation()
+      .then((res) => {
+        if (!cancelled) setRegimeReconciliation(res);
+      })
+      .catch(() => {
+        if (!cancelled) setRegimeReconciliation(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [marketEnvironment]);
 
   const runAdvance = async (target: TimeAdvanceTarget, hours?: number) => {
     if (advancing) return;
@@ -694,6 +723,28 @@ export function CompanyPanel() {
               </div>
             ))}
           </div>
+        )}
+      </Glass>
+
+      <Glass className="p-3 lg:col-span-3">
+        <div className="mb-1.5 flex items-center justify-between">
+          <TerminalLabel>Regime Reconciliation</TerminalLabel>
+          <span className="text-[9px] uppercase tracking-wide text-cmd-textDim">Design Bible Chapter 65</span>
+        </div>
+        {regimeReconciliation === null ? (
+          <EmptyState>Reconciling the two live regime reads…</EmptyState>
+        ) : (
+          <>
+            <div className="mb-2 flex flex-wrap items-center gap-1.5">
+              <StatusPill tone={REGIME_TONE[regimeReconciliation.environmentRegime]}>{regimeReconciliation.environmentLabel}</StatusPill>
+              <span className="text-[9px] text-cmd-textDim">vs.</span>
+              <StatusPill tone="cyan">{regimeReconciliation.intelligenceLabel}</StatusPill>
+              <StatusPill tone={AGREEMENT_TONE[regimeReconciliation.agreement]}>{regimeReconciliation.agreement.toUpperCase()}</StatusPill>
+              <StatusPill tone={POSTURE_TONE[regimeReconciliation.posture]}>{regimeReconciliation.posture.toUpperCase()}</StatusPill>
+              <span className="text-[9px] text-cmd-textDim">{Math.round(regimeReconciliation.confidencePct)}% confidence</span>
+            </div>
+            <div className="text-[9px] text-cmd-textDim">{regimeReconciliation.rationale}</div>
+          </>
         )}
       </Glass>
 

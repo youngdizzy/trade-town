@@ -42,6 +42,7 @@ import type {
   FailedStrategyArchiveEntry,
   KnowledgeQualityScore,
   MarketIntelligenceRegime,
+  RegimeReconciliation,
   RiskLimits,
   SimilarTradesSummary,
   Strategy,
@@ -97,6 +98,7 @@ export const api = {
   getCandles: (symbol: string, timeframe: string, limit = 150) =>
     request<Candle[]>(`/market/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&limit=${limit}`),
   getTimeframes: () => request<string[]>("/market/timeframes"),
+  getRegimeReconciliation: () => request<RegimeReconciliation>("/market/regime-reconciliation"),
   spendEnergy: (action: string, researchId?: string) =>
     request<{ agentEnergy: AgentEnergy }>("/energy/spend", {
       method: "POST",
