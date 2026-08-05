@@ -65,6 +65,7 @@ import type {
   StrategyRegimeTestReport,
   StrategyReport,
   StrategyReview,
+  StrategicReview,
   FailedStrategyArchiveEntry,
   TalentState,
   Task,
@@ -145,6 +146,7 @@ export interface GameUiState {
   academyProjects: AcademyProject[];
   academyCompletedProjects: AcademyProject[];
   goals: Goal[];
+  strategicReviews: StrategicReview[];
   agentKnowledge: Record<AgentId, AgentKnowledgeState>;
   academyState: AcademyState;
   disciplineReviews: DisciplineReview[];
@@ -380,6 +382,7 @@ class GameStore {
     executiveReviews: [],
     academyProjects: [],
     goals: [],
+    strategicReviews: [],
     academyCompletedProjects: [],
     agentKnowledge: {} as Record<AgentId, AgentKnowledgeState>,
     academyState: { level: 1, levelLabel: "Training Room", totalPoints: 0, completedProjectCount: 0, updatedAt: new Date().toISOString() },
@@ -556,6 +559,7 @@ class GameStore {
     EventBus.on("executiveReviews:updated", (executiveReviews) => this.set({ executiveReviews }));
     EventBus.on("academyProjects:updated", (academyProjects) => this.set({ academyProjects }));
     EventBus.on("goals:updated", (goals) => this.set({ goals }));
+    EventBus.on("strategicReviews:updated", (strategicReviews) => this.set({ strategicReviews }));
     EventBus.on("academyCompletedProjects:updated", (academyCompletedProjects) => this.set({ academyCompletedProjects }));
     EventBus.on("agentKnowledge:updated", (agentKnowledge) => this.set({ agentKnowledge }));
     EventBus.on("academyState:updated", (academyState) => this.set({ academyState }));

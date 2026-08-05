@@ -1977,6 +1977,22 @@ export interface GoalAllocation {
   allocationPct: number;
 }
 
+// Design Bible Chapter 64 (fifth pass) — the Strategic Review Cycle.
+// Mirrors ExecutiveReview's own monthly structure but over CEO-authored
+// goals (see backend/app/goals.py's generate_strategic_review()). Every
+// field is a real derivation from Goal/Milestone/GoalPriority state.
+export interface StrategicReview {
+  id: string;
+  createdAt: string;
+  activeGoalCount: number;
+  completedSinceLastReview: string[];
+  expiredSinceLastReview: string[];
+  milestonesReachedSinceLastReview: number;
+  topPriorityGoalId: string | null;
+  topPriorityScore: number | null;
+  summary: string;
+}
+
 // v0.7 Feature 25 — AI Academy & Knowledge Network (see
 // backend/app/academy.py, backend/app/academy_research.py).
 export type AcademyTopic = "market_history" | "trading_psychology" | "economic_concepts" | "visualization_tools" | "decision_biases" | "trading_philosophies";
@@ -2997,6 +3013,7 @@ export interface GameSaveState {
   academyProjects: AcademyProject[];
   academyCompletedProjects: AcademyProject[];
   goals: Goal[];
+  strategicReviews: StrategicReview[];
   agentKnowledge: Record<AgentId, AgentKnowledgeState>;
   academyState: AcademyState;
   disciplineReviews: DisciplineReview[];

@@ -92,7 +92,7 @@ function priorityTone(score: number): "green" | "amber" | "red" {
  * path every other player preference (music/SFX/showFps) already uses.
  */
 export function CompanyPanel() {
-  const { settings, companyHealth, marketEnvironment, riskLimits, executiveReviews, goals, time } = useGameStore();
+  const { settings, companyHealth, marketEnvironment, riskLimits, executiveReviews, goals, strategicReviews, time } = useGameStore();
   const [advancing, setAdvancing] = useState<TimeAdvanceTarget | null>(null);
   const [customHours, setCustomHours] = useState("6");
   const [timeError, setTimeError] = useState<string | null>(null);
@@ -670,6 +670,31 @@ export function CompanyPanel() {
             })
           )}
         </div>
+      </Glass>
+
+      <Glass className="p-3 lg:col-span-3">
+        <div className="mb-1.5 flex items-center justify-between">
+          <TerminalLabel>Strategic Review Cycle</TerminalLabel>
+          <span className="text-[9px] uppercase tracking-wide text-cmd-textDim">Design Bible Chapter 64</span>
+        </div>
+        <div className="mb-3 text-[9px] text-cmd-textDim">
+          Generated monthly alongside the Executive Review — a real, checkable snapshot of what changed for CEO-authored goals since the previous cycle.
+        </div>
+        {strategicReviews.length === 0 ? (
+          <EmptyState>No strategic review yet — the first one generates at the end of this month.</EmptyState>
+        ) : (
+          <div className="space-y-1.5">
+            {[...strategicReviews].reverse().map((review) => (
+              <div key={review.id} className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-2 text-[9px]">
+                <div className="flex items-center justify-between gap-2 text-cmd-textDim">
+                  <span className="uppercase tracking-wide">{review.activeGoalCount} active goal(s)</span>
+                  <span className="tabular-nums">{new Date(review.createdAt).toLocaleDateString()}</span>
+                </div>
+                <div className="mt-1 text-cmd-text">{review.summary}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </Glass>
 
       <Glass className="p-3 lg:col-span-3">

@@ -518,6 +518,11 @@ test.describe("Global Command Center", () => {
     await expect(page.getByText("Market Environment", { exact: true })).toBeVisible();
     await expect(page.getByText(/BULL MARKET|BEAR MARKET|SIDEWAYS|HIGH VOLATILITY|LOW VOLATILITY/).first()).toBeVisible();
 
+    // Strategic Review Cycle (Design Bible Chapter 64, fifth pass) — the
+    // card always renders, with either a real review or an honest empty
+    // state (no review has generated yet on a fresh save).
+    await expect(page.getByText("Strategic Review Cycle", { exact: true })).toBeVisible();
+
     // Operating Mode toggle: defaults to LEARNING; switching to ASSISTED
     // both highlights the new selection and persists across a reload
     // (settings are client-authoritative, merged into the next save).

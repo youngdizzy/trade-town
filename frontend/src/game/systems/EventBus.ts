@@ -27,6 +27,7 @@ import type {
   ExecutiveReview,
   FounderState,
   Goal,
+  StrategicReview,
   FoundationalMentorState,
   GameSaveState,
   GatekeeperRejection,
@@ -188,6 +189,7 @@ export interface GameEvents {
   "academyProjects:updated": AcademyProject[];
   "academyCompletedProjects:updated": AcademyProject[];
   "goals:updated": Goal[];
+  "strategicReviews:updated": StrategicReview[];
   "agentKnowledge:updated": Record<AgentId, AgentKnowledgeState>;
   "academyState:updated": AcademyState;
   "disciplineReviews:updated": DisciplineReview[];

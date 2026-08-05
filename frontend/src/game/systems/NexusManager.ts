@@ -64,6 +64,7 @@ import type {
   StrategyRegimeTestReport,
   StrategyReport,
   StrategyReview,
+  StrategicReview,
   FailedStrategyArchiveEntry,
   TalentState,
   Task,
@@ -125,6 +126,7 @@ interface NexusSnapshot {
   academyProjects: AcademyProject[];
   academyCompletedProjects: AcademyProject[];
   goals: Goal[];
+  strategicReviews: StrategicReview[];
   agentKnowledge: Record<AgentId, AgentKnowledgeState>;
   academyState: AcademyState;
   disciplineReviews: DisciplineReview[];
@@ -325,6 +327,7 @@ export class NexusManager {
   private static executiveReviews: ExecutiveReview[] = [];
   private static academyProjects: AcademyProject[] = [];
   private static goals: Goal[] = [];
+  private static strategicReviews: StrategicReview[] = [];
   private static academyCompletedProjects: AcademyProject[] = [];
   private static agentKnowledge: Record<AgentId, AgentKnowledgeState> = {} as Record<AgentId, AgentKnowledgeState>;
   private static academyState: AcademyState = {
@@ -579,6 +582,10 @@ export class NexusManager {
 
   static getGoals(): Goal[] {
     return this.goals;
+  }
+
+  static getStrategicReviews(): StrategicReview[] {
+    return this.strategicReviews;
   }
 
   static getAcademyCompletedProjects(): AcademyProject[] {
@@ -1109,6 +1116,9 @@ export class NexusManager {
     if (update.goals !== this.goals) EventBus.emit("goals:updated", update.goals);
     this.goals = update.goals;
 
+    if (update.strategicReviews.length !== this.strategicReviews.length) EventBus.emit("strategicReviews:updated", update.strategicReviews);
+    this.strategicReviews = update.strategicReviews;
+
     if (update.academyCompletedProjects.length !== this.academyCompletedProjects.length) {
       EventBus.emit("academyCompletedProjects:updated", update.academyCompletedProjects);
     }
@@ -1272,6 +1282,7 @@ export class NexusManager {
     this.academyProjects = save.academyProjects;
     this.academyCompletedProjects = save.academyCompletedProjects;
     this.goals = save.goals;
+    this.strategicReviews = save.strategicReviews;
     this.agentKnowledge = save.agentKnowledge;
     this.academyState = save.academyState;
     this.disciplineReviews = save.disciplineReviews;

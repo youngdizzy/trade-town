@@ -65,6 +65,7 @@ import type {
   StrategyRegimeTestReport,
   StrategyReport,
   StrategyReview,
+  StrategicReview,
   FailedStrategyArchiveEntry,
   TalentState,
   Task,
@@ -134,6 +135,7 @@ type ServerMessage =
       academyProjects: AcademyProject[];
       academyCompletedProjects: AcademyProject[];
       goals: Goal[];
+      strategicReviews: StrategicReview[];
       agentKnowledge: Record<AgentId, AgentKnowledgeState>;
       academyState: AcademyState;
       disciplineReviews: DisciplineReview[];
@@ -267,6 +269,7 @@ export class GameSocket {
             academyProjects: msg.academyProjects,
             academyCompletedProjects: msg.academyCompletedProjects,
             goals: msg.goals,
+            strategicReviews: msg.strategicReviews,
             agentKnowledge: msg.agentKnowledge,
             academyState: msg.academyState,
             disciplineReviews: msg.disciplineReviews,
