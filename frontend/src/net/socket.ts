@@ -39,6 +39,7 @@ import type {
   NewsItem,
   PaperPortfolio,
   PerformanceSnapshot,
+  PortfolioIntelligence,
   QuestionOfTheDay,
   ResearchItem,
   TreasuryState,
@@ -69,6 +70,7 @@ import type {
   TimeState,
   TradeDecision,
   TradeProposal,
+  WarRoomSession,
   WatchlistEntry,
   WisdomState,
 } from "@/types";
@@ -133,6 +135,8 @@ type ServerMessage =
       disciplineReviews: DisciplineReview[];
       caseStudies: CaseStudy[];
       decisionVault: DecisionVaultEntry[];
+      warRoomSessions: WarRoomSession[];
+      portfolioIntelligence: PortfolioIntelligence;
       talent: TalentState;
       constitution: ConstitutionState;
       reasoningChallenges: ReasoningChallenge[];
@@ -262,6 +266,8 @@ export class GameSocket {
             disciplineReviews: msg.disciplineReviews,
             caseStudies: msg.caseStudies,
             decisionVault: msg.decisionVault,
+            warRoomSessions: msg.warRoomSessions,
+            portfolioIntelligence: msg.portfolioIntelligence,
             talent: msg.talent,
             constitution: msg.constitution,
             reasoningChallenges: msg.reasoningChallenges,

@@ -141,8 +141,8 @@ test.describe("Global Command Center", () => {
     await expectMovement(page, "d", closedBefore);
   });
 
-  test("expands to the Full Command Center and renders all 32 tabs with graceful empty states", async ({ page }) => {
-    test.setTimeout(120000); // the longest-running test in the file — 32 real tab clicks, each dismissing real popups along the way
+  test("expands to the Full Command Center and renders all 34 tabs with graceful empty states", async ({ page }) => {
+    test.setTimeout(120000); // the longest-running test in the file — 34 real tab clicks, each dismissing real popups along the way
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);
     await continueGame(page);
@@ -160,7 +160,7 @@ test.describe("Global Command Center", () => {
     // ticking throughout, a genuine trade or trade proposal can appear
     // (and pop up) mid-test. clickTab() dismisses and retries rather
     // than losing the race to a popup that appears in that instant.
-    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "REPLAY", "RISK", "AGENTS", "RESEARCH", "COMPANY", "EXECINTEL", "MARKETINTEL", "KNOWLEDGE", "DISCIPLINE", "VAULT", "REASONING", "REFLECTION", "MENTOR", "MENTORLIB", "MENTORLAB", "TALENT", "SANDBOX", "CONSTITUTION", "OPS", "FOUNDERS", "TREASURY", "CALENDAR", "BLACKBOX", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
+    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "REPLAY", "RISK", "AGENTS", "RESEARCH", "COMPANY", "EXECINTEL", "MARKETINTEL", "KNOWLEDGE", "DISCIPLINE", "VAULT", "WARROOM", "PORTFOLIO", "REASONING", "REFLECTION", "MENTOR", "MENTORLIB", "MENTORLAB", "TALENT", "SANDBOX", "CONSTITUTION", "OPS", "FOUNDERS", "TREASURY", "CALENDAR", "BLACKBOX", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
     for (const tab of tabs) {
       await clickTab(page, tab);
       await expect(page.getByRole("button", { name: tab, exact: true })).toHaveClass(/text-cmd-cyan/);
@@ -539,6 +539,52 @@ test.describe("Global Command Center", () => {
     if (hasEmptyState === 0) {
       await expect(page.getByText("Trade Report Card", { exact: false }).first()).toBeVisible();
       await expect(page.getByText("Similarity Engine", { exact: false }).first()).toBeVisible();
+    } else {
+      expect(hasEmptyState).toBeGreaterThan(0);
+    }
+  });
+
+  test("WARROOM tab shows the Digital War Room, and selecting a session shows its real Decision Score, Expected Value, and Contingency Plan, always real content or an honest empty state", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await clickExpand(page);
+    await clickTab(page, "WARROOM");
+
+    await expect(page.getByText("War Room", { exact: true })).toBeVisible();
+
+    // Either the honest "no proposal has entered the War Room yet" empty
+    // state, or at least one real session with its Decision Score,
+    // Expected Value, and Contingency Plan — never a blank panel either way.
+    const hasEmptyState = await page.getByText(/No proposal has entered the War Room yet/).count();
+    if (hasEmptyState === 0) {
+      await expect(page.getByText("Decision Score", { exact: false }).first()).toBeVisible();
+      await expect(page.getByText("Expected Value", { exact: false }).first()).toBeVisible();
+      await expect(page.getByText("Contingency Plan", { exact: false }).first()).toBeVisible();
+    } else {
+      expect(hasEmptyState).toBeGreaterThan(0);
+    }
+  });
+
+  test("PORTFOLIO tab shows real Capital Allocation, Portfolio Heat, and Category Exposure, always real content or an honest empty state", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await clickExpand(page);
+    await clickTab(page, "PORTFOLIO");
+
+    await expect(page.getByText("Capital Allocation", { exact: true })).toBeVisible();
+    await expect(page.getByText(/COOL|WARM|HOT|OVERHEATED/)).toBeVisible();
+
+    // Either real open-position category exposure, or the honest "no open
+    // positions" empty state — never a blank panel either way.
+    const hasEmptyState = await page.getByText(/No open positions — nothing to break down by category yet/).count();
+    if (hasEmptyState === 0) {
+      await expect(page.getByText(/position/).first()).toBeVisible();
     } else {
       expect(hasEmptyState).toBeGreaterThan(0);
     }

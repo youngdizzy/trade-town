@@ -39,6 +39,7 @@ import type {
   NewsItem,
   PaperPortfolio,
   PerformanceSnapshot,
+  PortfolioIntelligence,
   QuestionOfTheDay,
   ResearchItem,
   RiskLimits,
@@ -70,6 +71,7 @@ import type {
   TradeDecision,
   TradeProposal,
   TreasuryState,
+  WarRoomSession,
   WatchlistEntry,
   WisdomState,
 } from "@/types";
@@ -144,6 +146,8 @@ export interface GameUiState {
   disciplineReviews: DisciplineReview[];
   caseStudies: CaseStudy[];
   decisionVault: DecisionVaultEntry[];
+  warRoomSessions: WarRoomSession[];
+  portfolioIntelligence: PortfolioIntelligence;
   talent: TalentState;
   constitution: ConstitutionState;
   reasoningChallenges: ReasoningChallenge[];
@@ -357,6 +361,19 @@ class GameStore {
     disciplineReviews: [],
     caseStudies: [],
     decisionVault: [],
+    warRoomSessions: [],
+    portfolioIntelligence: {
+      equity: 0,
+      cashBalance: 0,
+      cashPctOfEquity: 100,
+      deployedPctOfEquity: 0,
+      categoryExposure: [],
+      correlationPairs: [],
+      heat: { totalCapitalAtRiskPct: 0, unrealizedDrawdownPct: 0, largestPositionPct: 0, hottestCategory: null, hottestCategoryPct: 0, tier: "cool" },
+      capitalEfficiency: { profitPerDollar: 0, profitPerDollarHour: 0, tradesMeasured: 0 },
+      opportunityCost: "No data yet.",
+      updatedAt: new Date().toISOString(),
+    },
     talent: { reports: [], viewedReportIds: [], updatedAt: new Date().toISOString() },
     constitution: { articles: [], citations: [], amendments: [], updatedAt: new Date().toISOString() },
     reasoningChallenges: [],
@@ -518,6 +535,8 @@ class GameStore {
     EventBus.on("disciplineReviews:updated", (disciplineReviews) => this.set({ disciplineReviews }));
     EventBus.on("caseStudies:updated", (caseStudies) => this.set({ caseStudies }));
     EventBus.on("decisionVault:updated", (decisionVault) => this.set({ decisionVault }));
+    EventBus.on("warRoomSessions:updated", (warRoomSessions) => this.set({ warRoomSessions }));
+    EventBus.on("portfolioIntelligence:updated", (portfolioIntelligence) => this.set({ portfolioIntelligence }));
     EventBus.on("talent:updated", (talent) => this.set({ talent }));
     EventBus.on("constitution:updated", (constitution) => this.set({ constitution }));
     EventBus.on("reasoningChallenges:updated", (reasoningChallenges) => this.set({ reasoningChallenges }));

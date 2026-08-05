@@ -42,6 +42,7 @@ import type {
   NewsItem,
   PaperPortfolio,
   PerformanceSnapshot,
+  PortfolioIntelligence,
   QuestionOfTheDay,
   ResearchItem,
   TreasuryState,
@@ -74,6 +75,7 @@ import type {
   TimeState,
   TradeDecision,
   TradeProposal,
+  WarRoomSession,
   WatchlistEntry,
   WisdomState,
 } from "@/types";
@@ -187,6 +189,8 @@ export interface GameEvents {
   "disciplineReviews:updated": DisciplineReview[];
   "caseStudies:updated": CaseStudy[];
   "decisionVault:updated": DecisionVaultEntry[];
+  "warRoomSessions:updated": WarRoomSession[];
+  "portfolioIntelligence:updated": PortfolioIntelligence;
   "talent:updated": TalentState;
   "constitution:updated": ConstitutionState;
   "reasoningChallenges:updated": ReasoningChallenge[];

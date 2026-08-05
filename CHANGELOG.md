@@ -8,6 +8,47 @@ development milestones, not semver releases.
 ### Added
 
 - **v0.7 Features 55 & 56 — Executive Decision Simulator (War Room) and
+  Enterprise Portfolio Intelligence, frontend**: mirrors every new schema
+  in `types.ts` (`ExpectedValueAnalysis`, `ContingencyStep`,
+  `DecisionScoreBreakdown`, `ScenarioOutcomeComparison`, `WarRoomSession`,
+  `CategoryExposure`, `CorrelationPair`, `PortfolioHeat`,
+  `CapitalEfficiency`, `PortfolioIntelligence`) and wires both new fields
+  through the full data-layer pipeline (`socket.ts` -> `NexusManager.ts`
+  -> `EventBus.ts` -> `gameStore.ts`) — `warRoomSessions` follows the
+  capped-archive diff-and-emit pattern `decisionVault` already uses,
+  `portfolioIntelligence` follows the recomputed-every-tick pattern
+  `companyHealth`/`marketIntelligence` already use.
+
+  New **WARROOM** tab (`WarRoomPanel.tsx`): browse every session (newest
+  first), select one to see its full read — the Decision Score's 7 real
+  sub-scores against the shared 70-point bar, the Expected Value/edge/
+  risk-to-reward numbers, the real Contingency Plan with a live
+  "TRIGGERED NOW" flag on any condition currently true, the Institutional
+  Knowledge Graph's similar-trade summary, department opinions, and —
+  once the linked trade closes — the real predicted-vs-actual outcome
+  comparison.
+
+  New **PORTFOLIO** tab (`PortfolioIntelPanel.tsx`): Capital Allocation
+  (equity/cash/deployed split and the real opportunity-cost read),
+  Portfolio Heat (a color-coded reading across the four real tiers —
+  cool/warm/hot/overheated — never a control that acts on the portfolio),
+  Category Exposure (this codebase's honest "sector" stand-in, as a real
+  per-category meter), Correlation Intelligence (real Pearson-correlated
+  pairs among currently-held symbols only, honestly empty when none
+  clear the threshold), and Capital Efficiency (real profit-per-dollar/
+  profit-per-dollar-hour over actually-closed trades).
+
+  `commandCenter.spec.ts`'s existing "renders all N tabs" sweep extended
+  to 34 tabs, plus two new dedicated tests: WARROOM (asserts either the
+  honest empty state or a real session's Decision Score/Expected
+  Value/Contingency Plan) and PORTFOLIO (asserts Capital Allocation, a
+  real heat tier, and either real category exposure or the honest empty
+  state) — same "always real content or an honest empty state" pattern
+  every other archive/derived-state tab test already follows. `tsc -b
+  --noEmit`, `eslint --max-warnings 0`, and `vite build` all clean; all
+  3 targeted Playwright tests pass against the live Vite + FastAPI stack.
+
+- **v0.7 Features 55 & 56 — Executive Decision Simulator (War Room) and
   Enterprise Portfolio Intelligence, backend**: two briefs pasted in the
   same session. Brief 1 self-numbered itself "Feature 54"; brief 2 didn't
   number itself but called itself "Feature 55" in its own title — both

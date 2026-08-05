@@ -37,6 +37,7 @@ import type {
   NewsItem,
   PaperPortfolio,
   PerformanceSnapshot,
+  PortfolioIntelligence,
   QuestionOfTheDay,
   ResearchItem,
   CalendarState,
@@ -67,6 +68,7 @@ import type {
   ThinkingProfile,
   TradeDecision,
   TradeProposal,
+  WarRoomSession,
   WatchlistEntry,
   WisdomState,
 } from "@/types";
@@ -124,6 +126,8 @@ interface NexusSnapshot {
   disciplineReviews: DisciplineReview[];
   caseStudies: CaseStudy[];
   decisionVault: DecisionVaultEntry[];
+  warRoomSessions: WarRoomSession[];
+  portfolioIntelligence: PortfolioIntelligence;
   talent: TalentState;
   constitution: ConstitutionState;
   reasoningChallenges: ReasoningChallenge[];
@@ -308,6 +312,19 @@ export class NexusManager {
   private static disciplineReviews: DisciplineReview[] = [];
   private static caseStudies: CaseStudy[] = [];
   private static decisionVault: DecisionVaultEntry[] = [];
+  private static warRoomSessions: WarRoomSession[] = [];
+  private static portfolioIntelligence: PortfolioIntelligence = {
+    equity: 0,
+    cashBalance: 0,
+    cashPctOfEquity: 100,
+    deployedPctOfEquity: 0,
+    categoryExposure: [],
+    correlationPairs: [],
+    heat: { totalCapitalAtRiskPct: 0, unrealizedDrawdownPct: 0, largestPositionPct: 0, hottestCategory: null, hottestCategoryPct: 0, tier: "cool" },
+    capitalEfficiency: { profitPerDollar: 0, profitPerDollarHour: 0, tradesMeasured: 0 },
+    opportunityCost: "No data yet.",
+    updatedAt: new Date().toISOString(),
+  };
   private static talent: TalentState = { reports: [], viewedReportIds: [], updatedAt: new Date().toISOString() };
   private static constitution: ConstitutionState = { articles: [], citations: [], amendments: [], updatedAt: new Date().toISOString() };
   private static reasoningChallenges: ReasoningChallenge[] = [];
@@ -557,6 +574,14 @@ export class NexusManager {
 
   static getDecisionVault(): DecisionVaultEntry[] {
     return this.decisionVault;
+  }
+
+  static getWarRoomSessions(): WarRoomSession[] {
+    return this.warRoomSessions;
+  }
+
+  static getPortfolioIntelligence(): PortfolioIntelligence {
+    return this.portfolioIntelligence;
   }
 
   static getTalent(): TalentState {
@@ -1058,6 +1083,12 @@ export class NexusManager {
     if (update.decisionVault.length !== this.decisionVault.length) EventBus.emit("decisionVault:updated", update.decisionVault);
     this.decisionVault = update.decisionVault;
 
+    if (update.warRoomSessions.length !== this.warRoomSessions.length) EventBus.emit("warRoomSessions:updated", update.warRoomSessions);
+    this.warRoomSessions = update.warRoomSessions;
+
+    if (update.portfolioIntelligence !== this.portfolioIntelligence) EventBus.emit("portfolioIntelligence:updated", update.portfolioIntelligence);
+    this.portfolioIntelligence = update.portfolioIntelligence;
+
     if (update.talent !== this.talent) EventBus.emit("talent:updated", update.talent);
     this.talent = update.talent;
 
@@ -1196,6 +1227,8 @@ export class NexusManager {
     this.disciplineReviews = save.disciplineReviews;
     this.caseStudies = save.caseStudies;
     this.decisionVault = save.decisionVault;
+    this.warRoomSessions = save.warRoomSessions;
+    this.portfolioIntelligence = save.portfolioIntelligence;
     this.talent = save.talent;
     this.constitution = save.constitution;
     this.reasoningChallenges = save.reasoningChallenges;

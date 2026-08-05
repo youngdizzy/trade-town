@@ -5007,6 +5007,55 @@ clean. Frontend (Command Center surfaces for the War Room and a Portfolio
 Intelligence dashboard) is a separate, immediately-following commit per
 this project's backend-first discipline.
 
+#### Frontend
+
+`types.ts` mirrors every new schema (`ExpectedValueAnalysis`,
+`ContingencyStep`, `DecisionScoreBreakdown`, `ScenarioOutcomeComparison`,
+`WarRoomSession`, `CategoryExposure`, `CorrelationPair`, `PortfolioHeat`,
+`CapitalEfficiency`, `PortfolioIntelligence`), and both new fields are
+wired through the full data-layer pipeline (`socket.ts` ->
+`NexusManager.ts` -> `EventBus.ts` -> `gameStore.ts`) — `warRoomSessions`
+follows the same capped-archive diff-and-emit pattern `decisionVault`
+already uses (only emits when the array length changes), while
+`portfolioIntelligence` follows the same recomputed-every-tick pattern
+`companyHealth`/`marketIntelligence` already use (emits on reference
+change).
+
+**WARROOM tab** (`WarRoomPanel.tsx`): a session list (newest first) next
+to a detail view showing the Decision Score's 7 real sub-scores against
+the shared 70-point bar (with `strategyHealthScore` honestly rendered as
+"n/a — not a tested strategy" rather than a fake number), the Expected
+Value/edge/risk-to-reward numbers, the real Contingency Plan (each step
+shows a live "TRIGGERED NOW" pill when its real condition is currently
+true), the Institutional Knowledge Graph's similar-trade summary, every
+department's real opinion, and — once the linked trade closes — the real
+predicted-vs-actual outcome comparison.
+
+**PORTFOLIO tab** (`PortfolioIntelPanel.tsx`): Capital Allocation
+(equity/cash/deployed split plus the real opportunity-cost read),
+Portfolio Heat (a color-coded reading across the four real tiers, with
+an explicit "a reading, never an automatic action" label so the CEO
+never mistakes it for a control), Category Exposure (a real per-category
+meter, this codebase's honest "sector" stand-in), Correlation
+Intelligence (real Pearson-correlated pairs among currently-held symbols
+only — an explicit, honest empty state when none clear the threshold,
+worded as "this portfolio's real exposure is genuinely diversified right
+now" rather than a blank list), and Capital Efficiency (real
+profit-per-dollar / profit-per-dollar-hour over actually-closed trades
+only).
+
+**Verified**: `commandCenter.spec.ts`'s existing "renders all N tabs"
+sweep extended to 34 tabs (was 32), plus two new dedicated tests —
+WARROOM (asserts either the honest empty state or a real session's
+Decision Score/Expected Value/Contingency Plan) and PORTFOLIO (asserts
+Capital Allocation, a real heat tier, and either real category exposure
+or the honest empty state) — following the same "always real content or
+an honest empty state" pattern every other archive/derived-state tab
+test already uses. `tsc -b --noEmit`, `eslint --max-warnings 0`, and
+`vite build` all clean; targeted Playwright tests (WARROOM, PORTFOLIO,
+and the extended 34-tab sweep) pass against the live Vite + FastAPI
+stack.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

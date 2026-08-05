@@ -2068,6 +2068,155 @@ export interface SimilarTradesSummary {
   examples: SimilarTradeMatch[];
 }
 
+/** v0.7 Feature 55 (the brief self-numbered it "Feature 54," already used
+ * above for the Decision Memory System) — the Executive Decision
+ * Simulator's War Room. A real, probability-weighted read over
+ * WhatIfSimulation's own 12 real scenarios, never a fabricated forecast.
+ * riskToReward is deliberately labeled that, not "R-Multiple" — no
+ * stop-loss/initial-risk unit exists anywhere in this codebase to
+ * measure R against (see DecisionVaultEntry.rMultiple above). */
+export interface ExpectedValueAnalysis {
+  expectedValuePct: number;
+  edgePct: number;
+  riskToReward: number;
+  positiveExpectancy: boolean;
+  detail: string;
+}
+
+/** One real IF/THEN contingency step, tied to a real signal already
+ * computed for this symbol this tick — never an invented playbook.
+ * `triggered` reports whether that condition is true right now. */
+export interface ContingencyStep {
+  condition: string;
+  action: string;
+  triggered: boolean;
+}
+
+/** A composite over 7 real sub-scores (strategyHealthScore is always
+ * null for an ordinary Trading Floor proposal — no proposal links back
+ * to a tested Strategy), checked against the same 70-point "good
+ * decision" bar app/discipline.py's tier_for_score() already uses.
+ * `passed` is a real, visible flag the CEO sees — never an automatic
+ * veto (see backend/app/war_room.py's module docstring). */
+export interface DecisionScoreBreakdown {
+  evidenceScore: number;
+  confidenceScore: number;
+  riskScore: number;
+  expectedValueScore: number;
+  strategyHealthScore: number | null;
+  marketQualityScore: number;
+  liquidityQualityScore: number;
+  portfolioCompatibilityScore: number;
+  overall: number;
+  threshold: number;
+  passed: boolean;
+}
+
+/** Filled in once a WarRoomSession's linked trade actually closes — the
+ * real scenario whose predicted range midpoint sits closest to what
+ * actually happened, and whether the real outcome landed inside that
+ * scenario's own predicted range. Never a claim the scenario "predicted"
+ * the trade, only an honest after-the-fact comparison. */
+export interface ScenarioOutcomeComparison {
+  matchedScenario: ScenarioType;
+  matchedLabel: string;
+  predictedRangeLowPct: number;
+  predictedRangeHighPct: number;
+  actualPnlPct: number;
+  withinPredictedRange: boolean;
+  detail: string;
+}
+
+/** One permanent record per new TradeProposal, joining every real
+ * artifact already generated for it — department opinions, the
+ * executive recommendation, the What-If simulation, the Decision
+ * Vault's similarity summary, expected value, decision score, and
+ * contingency plan. Built eagerly the instant the proposal is created
+ * (see backend/app/war_room.py's build_war_room_session()), the same
+ * convention Debate/ChallengeReport already use. */
+export interface WarRoomSession {
+  id: string;
+  proposalId: string;
+  symbol: string;
+  departmentOpinions: DepartmentOpinion[];
+  recommendation: ExecutiveRecommendation;
+  scenarioSimulation: WhatIfSimulation;
+  similarTrades: SimilarTradesSummary;
+  expectedValue: ExpectedValueAnalysis;
+  decisionScore: DecisionScoreBreakdown;
+  contingencyPlan: ContingencyStep[];
+  /** Always true by construction — see backend/app/war_room.py's
+   * evidence_never_exceeds_confidence(). Computed, not hardcoded, so a
+   * future change that ever broke the invariant would show up honestly. */
+  confidenceValidated: boolean;
+  outcomeComparison: ScenarioOutcomeComparison | null;
+  createdAt: string;
+}
+
+/** v0.7 Feature 56 — Enterprise Portfolio Intelligence. "Category" is
+ * this codebase's honest stand-in for "sector" — there is no real
+ * sector taxonomy, only each symbol's ResearchCategory (see
+ * backend/app/watchlist.py's SYMBOL_CATEGORY). */
+export interface CategoryExposure {
+  category: ResearchCategory;
+  positionCount: number;
+  value: number;
+  pctOfEquity: number;
+}
+
+/** A real Pearson correlation coefficient between two currently-held
+ * symbols' own recent candle-to-candle returns — never an invented
+ * relationship. Only reported once |correlation| clears a real
+ * threshold, so a portfolio of genuinely unrelated positions reports
+ * none (see backend/app/portfolio_intelligence.py's
+ * CORRELATION_CLUSTER_THRESHOLD). */
+export interface CorrelationPair {
+  symbolA: string;
+  symbolB: string;
+  correlation: number;
+  direction: "positive" | "negative";
+}
+
+/** A real, visible READING across four tiers — never an automatic
+ * corrective action (docs/ROADMAP.md's own v0.8 stop condition: "risk is
+ * measured and displayed, never auto-hedged or auto-corrected without
+ * the player"). Nothing reads this and places, closes, or resizes an
+ * order. */
+export interface PortfolioHeat {
+  totalCapitalAtRiskPct: number;
+  unrealizedDrawdownPct: number;
+  largestPositionPct: number;
+  hottestCategory: ResearchCategory | null;
+  hottestCategoryPct: number;
+  tier: "cool" | "warm" | "hot" | "overheated";
+}
+
+/** Real profit-per-dollar / profit-per-dollar-hour, averaged only over
+ * actually-closed trades — never a forward-looking prediction. */
+export interface CapitalEfficiency {
+  profitPerDollar: number;
+  profitPerDollarHour: number;
+  tradesMeasured: number;
+}
+
+/** Recomputed fresh every tick, the same "cheap, always current, never a
+ * stale second copy" convention companyHealth/marketIntelligence already
+ * use. See backend/app/portfolio_intelligence.py's module docstring for
+ * the full honesty boundary, including why Max Drawdown is deliberately
+ * not duplicated here (see PerformanceSnapshot.maxDrawdownPct instead). */
+export interface PortfolioIntelligence {
+  equity: number;
+  cashBalance: number;
+  cashPctOfEquity: number;
+  deployedPctOfEquity: number;
+  categoryExposure: CategoryExposure[];
+  correlationPairs: CorrelationPair[];
+  heat: PortfolioHeat;
+  capitalEfficiency: CapitalEfficiency;
+  opportunityCost: string;
+  updatedAt: string;
+}
+
 // v0.7 Feature 29 — the Reasoning Lab (see backend/app/reasoning_lab.py).
 // A permanent ReasoningChallenge is filed periodically from the
 // company's most recent real AI Debate + its linked TradeDecision —
@@ -2609,6 +2758,8 @@ export interface GameSaveState {
   disciplineReviews: DisciplineReview[];
   caseStudies: CaseStudy[];
   decisionVault: DecisionVaultEntry[];
+  warRoomSessions: WarRoomSession[];
+  portfolioIntelligence: PortfolioIntelligence;
   talent: TalentState;
   constitution: ConstitutionState;
   reasoningChallenges: ReasoningChallenge[];
