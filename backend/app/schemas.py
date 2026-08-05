@@ -901,6 +901,15 @@ class RiskLimits(CamelModel):
     tier_allocation: TierAllocationLimits = Field(default_factory=TierAllocationLimits, alias="tierAllocation")
     scaling_aggressiveness_pct: float = Field(default=100.0, alias="scalingAggressivenessPct")
     emergency_reduction_heat_pct: float = Field(default=75.0, alias="emergencyReductionHeatPct")
+    # v0.7 Chapter 58 — Institutional Trade Filter & Opportunity
+    # Gatekeeper (app/opportunity_gatekeeper.py). The two real CEO
+    # controls that engine's own Design Bible chapter asks for; default
+    # values match the fixed constants they replace (app/war_room.py's
+    # own DECISION_SCORE_THRESHOLD stays exactly as-is for its existing
+    # consumers — this is a genuinely separate, CEO-adjustable gate, not
+    # a change to that constant's own semantics).
+    min_trade_quality_score: float = Field(default=70.0, alias="minTradeQualityScore")
+    min_expected_value_pct: float = Field(default=0.0, alias="minExpectedValuePct")
 
 
 class RiskWarning(CamelModel):
@@ -2110,6 +2119,34 @@ class GatekeeperRejection(CamelModel):
     symbol: str
     ceo_choice: AnalystChoice = Field(alias="ceoChoice")
     reasons: list[str] = Field(default_factory=list)
+    price_at_rejection: float = Field(alias="priceAtRejection")
+    rejected_sim_minutes: int = Field(alias="rejectedSimMinutes")
+    outcome: GatekeeperOutcome = "pending"
+    resolved_price_change_pct: float | None = Field(default=None, alias="resolvedPriceChangePct")
+    created_at: str = Field(alias="createdAt")
+    resolved_at: str | None = Field(default=None, alias="resolvedAt")
+
+
+# v0.7 Chapter 58 — Institutional Trade Filter & Opportunity Gatekeeper
+# (app/opportunity_gatekeeper.py). A distinct, earlier-stage sibling to
+# GatekeeperRejection above: this candidate never became a real
+# TradeProposal the CEO could see, so there is no ceoChoice to record —
+# wouldHaveRecommended is the six-agent desk's own overallRecommendation
+# instead. Graded the exact same honest way (no order was ever placed —
+# outcome resolves once OPPORTUNITY_EVAL_WINDOW_MINUTES of simulated
+# time has passed, purely from the real difference between the symbol's
+# watchlist price then and now).
+class OpportunityRejection(CamelModel):
+    id: str
+    symbol: str
+    would_have_recommended: AnalystChoice = Field(alias="wouldHaveRecommended")
+    reasons: list[str] = Field(default_factory=list)
+    # The real Decision Score / Expected Value that failed the gate —
+    # kept on the record itself so the rejection is self-explanatory
+    # without needing to cross-reference a WarRoomSession that (by
+    # design) was never permanently stored for a rejected candidate.
+    decision_score_at_rejection: float = Field(alias="decisionScoreAtRejection")
+    expected_value_at_rejection_pct: float = Field(alias="expectedValueAtRejectionPct")
     price_at_rejection: float = Field(alias="priceAtRejection")
     rejected_sim_minutes: int = Field(alias="rejectedSimMinutes")
     outcome: GatekeeperOutcome = "pending"
@@ -3777,6 +3814,13 @@ class GameSaveState(CamelModel):
     # blocked, capped at MAX_GATEKEEPER_REJECTIONS like every other list
     # here; see app/gatekeeper.py.
     gatekeeper_rejections: list[GatekeeperRejection] = Field(default_factory=list, alias="gatekeeperRejections")
+    # v0.7 Chapter 58 — Institutional Trade Filter & Opportunity
+    # Gatekeeper. Every candidate rejected BEFORE it ever became a real
+    # TradeProposal, capped at MAX_OPPORTUNITY_REJECTIONS like every
+    # other list here; see app/opportunity_gatekeeper.py. A distinct,
+    # earlier-stage sibling to gatekeeper_rejections above, not a
+    # replacement for it.
+    opportunity_rejections: list[OpportunityRejection] = Field(default_factory=list, alias="opportunityRejections")
     # v0.7 Feature 22 — Market Environment Simulation (app/market_environment.py).
     market_environment: MarketEnvironmentState = Field(alias="marketEnvironment")
     # v0.7 Feature 51 — Market Intelligence Department (app/market_intelligence.py).

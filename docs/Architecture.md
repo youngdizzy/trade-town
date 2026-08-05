@@ -5199,6 +5199,116 @@ controls round-trip a real save (enables the heat cap, changes the
 weekly deployment budget, saves, confirms no validation error and the
 value persists).
 
+### Institutional Trade Filter & Opportunity Gatekeeper — Design Bible Chapter 58, backend
+
+GOAL (from `docs/DesignBible/volumes/09-departments/chapter-58-trade-filter-opportunity-gatekeeper.md`,
+written first per Appendix G's "design before code" policy): TradeTown
+should never feel pressured to trade — reject poor opportunities before
+they ever reach the CEO, not just filter what the CEO already sees.
+
+**Researched first — this is not a new scoring engine.** Chapter 55's
+War Room already computes exactly the 0-100 "Trade Quality Score"
+composite the chapter's brief calls for
+(`app/war_room.py`'s `DecisionScoreBreakdown.overall`, checked against
+a real threshold) and a real, probability-weighted Expected Value read.
+**The real gap**: both were purely informational — computed only
+*after* a candidate already became a CEO-facing `TradeProposal`, with
+`app/nexus.py`'s only real pre-proposal filter being a single
+confidence threshold. Feature 20's existing `app/gatekeeper.py` is a
+real, separate, *later*-stage check (after the CEO's own buy/sell
+choice, against a different checklist) — this chapter adds a new,
+*earlier* sibling in the same pipeline, not a replacement.
+
+**`app/opportunity_gatekeeper.py`'s `evaluate_opportunity()`** is the
+engine's one real decision: gate on `decision_score.overall` and
+`expected_value.expected_value_pct` (both already computed by War Room)
+against two new `RiskLimits` fields — `min_trade_quality_score` (default
+70.0, matching today's fixed bar's own default value, but a genuinely
+separate CEO-adjustable field; `DECISION_SCORE_THRESHOLD` itself is
+untouched, keeping its existing meaning for every other consumer) and
+`min_expected_value_pct` (default 0.0, equivalent to requiring
+`positive_expectancy` at default settings, but a real floor the CEO can
+raise) — plus the existing Market Quality `avoid_trading` tier.
+
+**Wired into `app/nexus.py`'s restructured per-candidate loop.**
+Previously, `trade_proposals`/`debates` were appended/generated
+*before* each candidate's Challenge Report and War Room session were
+even built. Now the loop, for each raw candidate: generates its
+Challenge Report and full War Room session first (unchanged from
+before this chapter — department opinions, the 12-scenario simulation,
+Decision Score, Expected Value, all real), then calls
+`evaluate_opportunity()` using that session's own real
+`decisionScore`/`expectedValue`. A rejection builds a new
+`OpportunityRejection` and the loop `continue`s — the candidate is never
+appended to `trade_proposals`, never gets a Debate, and its Challenge
+Report/WarRoomSession are simply discarded rather than persisted (the
+CEO never sees it, so keeping an orphan record referencing a proposal
+that doesn't exist would serve no purpose). `trade_proposals`,
+`debates`, and the "new trade proposal" news items are now built once,
+after the loop, only over the approved candidates.
+
+**Design decision: gate after the session is built, not before.**
+Building the full War Room session (department opinions, a Devil's
+Advocate Challenge Report) for a candidate that might get rejected is a
+small, bounded, accepted CPU cost — the alternative, a second
+lighter-weight computation of Expected Value used only for gating,
+would risk drifting from the "official" number shown in the WARROOM tab
+for an approved candidate: `app/whatif.py`'s bootstrap resampling is
+genuinely randomized per call (no fixed seed), so calling it twice for
+the same candidate could legitimately produce two different Expected
+Value reads. Computing it exactly once and either keeping or discarding
+the result is the only way to guarantee the gate's number and the
+CEO-visible number are always identical. This is the same "cheap, close
+enough, documented" tradeoff precedent Chapter 57's own Portfolio Heat
+staleness note already established for this codebase.
+
+**A new, honestly-separate rejection record.** `OpportunityRejection`
+(`app/schemas.py`) mirrors Feature 20's `GatekeeperRejection` shape but
+cannot reuse it directly — a rejected candidate here never had a real
+CEO choice (`GatekeeperRejection.ceoChoice`), so `OpportunityRejection`
+records the desk's own `overallRecommendation` as
+`wouldHaveRecommended` instead, plus the real Decision Score/Expected
+Value that failed the gate (kept on the record itself, since no
+WarRoomSession survives for a rejected candidate to cross-reference).
+Graded by `grade_opportunity_rejections()` — the exact same real
+would-have-won/would-have-lost logic
+`app/gatekeeper.py`'s own `grade_gatekeeper_rejections()` already uses
+(reusing its `GATEKEEPER_EVAL_WINDOW_MINUTES` directly rather than a
+second magic number), purely from the symbol's own real subsequent
+watchlist price movement, never a fabricated P&L. A `wouldHaveRecommended`
+of `"wait"` has no real direction to grade against and is deliberately
+left `"pending"` forever rather than arbitrarily treated as a `"sell"`.
+
+**Explicitly not built in this pass**: promoting
+`app/gatekeeper.py`'s hardcoded `MAX_CORRELATED_POSITIONS` to a real
+CEO-configurable field (a genuinely separate, small change to Feature
+20's own module, not required to close this chapter's specific gap);
+News/Volatility Sensitivity controls (no real economic calendar
+exists); Maximum Swing/Day Position controls (no real distinct trading
+modes exist); a real "Capital Saved Through Rejections" dollar figure
+beyond an honestly-labeled estimate.
+
+**Verified**: `backend/tests/test_opportunity_gatekeeper.py` (16 tests —
+every gate branch individually including multiple simultaneous
+failures, the CEO-configured thresholds actually being consulted rather
+than hardcoded, real field mapping on the rejection record, and every
+grading branch: the window boundary, both buy/sell directions, the
+"wait" no-op, a missing watchlist price, and an already-resolved
+rejection left untouched). Full backend suite: 963/963 passing,
+`mypy`/`ruff` clean. A live-simulation smoke test (2000 ticks, Executive
+mode) confirmed the real effect: `war_room_sessions`/`debates`/
+`challenge_reports` stayed in exact 1:1 sync (60/60/60 — proving no
+orphaned records for rejected candidates), 100 real
+`OpportunityRejection`s accumulated and were correctly capped, grading
+correctly resolved buy/sell directions while leaving every "wait"
+permanently pending, and Feature 20's own separate `gatekeeperRejections`
+kept firing independently and unaffected (5 in the same run) —
+confirming the two gates genuinely coexist rather than one silently
+replacing the other. Frontend (Command Center surfacing of
+`OpportunityRejection`s, CEO controls UI for the two new `RiskLimits`
+fields) is separate, not-yet-started work per this project's
+backend-first discipline.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

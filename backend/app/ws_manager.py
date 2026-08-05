@@ -90,6 +90,8 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         "debates": [d.model_dump(by_alias=True) for d in state.debates],
         # v0.7 Feature 20 — already capped (MAX_GATEKEEPER_REJECTIONS) like debates above.
         "gatekeeperRejections": [r.model_dump(by_alias=True) for r in state.gatekeeper_rejections],
+        # v0.7 Chapter 58 — already capped (MAX_OPPORTUNITY_REJECTIONS) like gatekeeperRejections above.
+        "opportunityRejections": [r.model_dump(by_alias=True) for r in state.opportunity_rejections],
         # v0.7 Feature 22 — a single live reading (not a log); its own
         # timeline is already capped (MAX_MARKET_ENVIRONMENT_HISTORY).
         "marketEnvironment": state.market_environment.model_dump(by_alias=True),

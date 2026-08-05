@@ -7,6 +7,43 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 58 backend — Institutional Trade Filter & Opportunity
+  Gatekeeper** (`backend/app/opportunity_gatekeeper.py`): implements the
+  target design below as real code. `evaluate_opportunity()` gates every
+  new trade candidate on its already-computed real Decision Score
+  (`app/war_room.py`'s `build_decision_score()`) and Expected Value
+  against two new CEO-configurable `RiskLimits` fields
+  (`minTradeQualityScore`, default 70.0 — a genuinely separate,
+  CEO-adjustable gate from the existing fixed `DECISION_SCORE_THRESHOLD`,
+  which keeps its own unchanged meaning everywhere else it's used;
+  `minExpectedValuePct`, default 0.0) plus the existing Market Quality
+  `avoid_trading` tier. Wired into `app/nexus.py`'s per-candidate loop
+  immediately after the full War Room session (department opinions,
+  Devil's Advocate challenge report, Decision Score, Expected Value) is
+  built — a candidate that fails the gate is recorded as a new
+  `OpportunityRejection` and never enters `trade_proposals`, never gets
+  a Debate, and its Challenge Report/WarRoomSession are discarded, never
+  persisted — the CEO never sees it. `trade_proposals`/`debates`/news
+  generation, previously built eagerly for every raw candidate, now run
+  only over the approved list. Graded the exact same real
+  would-have-won/would-have-lost way Feature 20's own
+  `GatekeeperRejection` already is (reusing the same
+  `GATEKEEPER_EVAL_WINDOW_MINUTES` rather than a second magic number); a
+  "wait" desk recommendation is left permanently "pending" rather than
+  arbitrarily graded as a sell. A live-simulation smoke test (2000
+  ticks) confirmed `war_room_sessions`/`debates`/`challenge_reports`
+  stayed in exact 1:1 sync with the approved list (no orphaned records
+  for rejected candidates) and that Feature 20's separate, later-stage
+  Gatekeeper kept firing independently and unaffected. Explicitly not
+  built: promoting `app/gatekeeper.py`'s hardcoded
+  `MAX_CORRELATED_POSITIONS` to a real CEO control (a genuinely separate
+  small change, not required to close this chapter's real gap); News/
+  Volatility Sensitivity controls (no real economic calendar exists);
+  Maximum Swing/Day Position controls (no real distinct trading modes
+  exist). Covered by 16 new tests in `test_opportunity_gatekeeper.py`;
+  full backend suite (963 tests) and `mypy`/`ruff` clean. Frontend work
+  not yet started.
+
 - **Design Bible Chapter 58 — Institutional Trade Filter & Opportunity
   Gatekeeper** (`docs/DesignBible/volumes/09-departments/chapter-58-trade-filter-opportunity-gatekeeper.md`):
   a target-design chapter, not yet implemented, per Appendix G's "Design

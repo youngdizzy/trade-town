@@ -1,9 +1,11 @@
 # Chapter 58 — Institutional Trade Filter & Opportunity Gatekeeper
 
-**Status:** Target design. Not yet implemented. See [Volume 9's chapter
-template](README.md) for what every section below must contain, and the
-Implementation Notes at the bottom of this chapter for exactly what's
-real today versus new here.
+**Status:** Backend implemented (`app/opportunity_gatekeeper.py`, wired
+into `app/nexus.py`). Frontend (Command Center surfacing, CEO controls
+UI) not yet built. See [Volume 9's chapter template](README.md) for
+what every section below must contain, and the Implementation Notes at
+the bottom of this chapter for exactly what's real today versus new
+here.
 
 ## Executive Summary
 
@@ -325,29 +327,59 @@ and its `GatekeeperRejection` would-have-won/would-have-lost grading
 pattern; `RiskLimits.maxTradesPerDay`; `app/company_dna.py`'s five real
 traits (read-only, not yet wired as a filter input).
 
-**What's genuinely new in this chapter:** moving the Decision Score /
-Expected Value computation earlier in `app/nexus.py`'s tick — computed
-once, immediately after `generate_proposal()`, and used as a real
-pre-proposal gate — rather than only after a candidate is already
-CEO-visible; a CEO-configurable Minimum Trade Quality / Minimum Expected
-Value threshold (today's 70-point bar is a fixed constant); a new,
-honestly-separate pre-proposal rejection record (not a forced reuse of
-`GatekeeperRejection`, which assumes a `TradeProposal` and a real CEO
-choice already exist); the real Opportunity Queue ranking of pending
-proposals by their already-computed Decision Score; promoting
-`MAX_CORRELATED_POSITIONS` from a hardcoded constant to a real CEO
-control.
+**What was actually built:** `app/opportunity_gatekeeper.py`'s
+`evaluate_opportunity()` — the engine's one real decision, gating on
+`app/war_room.py`'s already-computed `DecisionScoreBreakdown.overall`
+and `ExpectedValueAnalysis.expected_value_pct` against two new
+CEO-configurable `RiskLimits` fields (`minTradeQualityScore`, default
+70.0 — a genuinely separate, CEO-adjustable gate from
+`DECISION_SCORE_THRESHOLD`, which keeps its own existing meaning
+everywhere else; `minExpectedValuePct`, default 0.0) plus the existing
+Market Quality `avoid_trading` tier. Wired into `app/nexus.py`'s
+per-candidate loop right after `build_war_room_session()` computes the
+real session (department opinions, Devil's Advocate challenge report,
+Decision Score, Expected Value, and all): a candidate that fails the
+gate is recorded as a new `OpportunityRejection` (see Ownership above)
+and the loop `continue`s — it never enters `trade_proposals`, never gets
+a Debate, and its Challenge Report/WarRoomSession are simply discarded,
+never persisted. `trade_proposals`/`debates`/news generation, previously
+built eagerly for every raw candidate, now run only over the filtered,
+approved list. Graded the same real way Feature 20's own
+`GatekeeperRejection` already is
+(`grade_opportunity_rejections()`, reusing `GATEKEEPER_EVAL_WINDOW_MINUTES`
+directly rather than a second magic number) — a "wait" desk
+recommendation has no real direction to grade against and is left
+"pending" forever rather than arbitrarily treated as a sell.
 
-**What's explicitly out of scope until named gaps close:** News/
-Volatility Sensitivity controls (no real economic calendar exists);
-Maximum Swing/Day Position controls (no real distinct trading modes
-exist); a real "Capital Saved Through Rejections" dollar figure beyond
-an honestly-labeled estimate.
+Live-simulation testing (2000 ticks, Executive mode) confirmed the real
+effect: `war_room_sessions`/`debates`/`challenge_reports` stayed in
+exact 1:1 sync (60/60/60 — proving no orphaned records for rejected
+candidates), 100 real `OpportunityRejection`s accumulated and were
+correctly capped, grading correctly resolved buy/sell directions while
+leaving every "wait" permanently pending, and Feature 20's own separate
+`gatekeeper_rejections` kept firing independently and unaffected (5 in
+the same run) — confirming the two gates coexist as designed rather
+than one silently replacing the other.
 
-**Before implementation begins:** per Appendix G's Permanent Development
-Policy, this chapter is the required design-first step. Implementation
-should extend `app/nexus.py`'s existing proposal-generation loop and
-reuse `app/war_room.py`'s scoring functions directly, never compute a
-second, competing Trade Quality Score — and should ship with the same
-rigor as Chapter 57: real tests, an honest scope-cut list, `mypy`/`ruff`
-clean, backend committed and verified before any frontend work begins.
+**Verified via** `backend/tests/test_opportunity_gatekeeper.py` (16
+tests — every gate branch individually, the CEO-configured thresholds
+actually being consulted rather than hardcoded, real field mapping on
+the rejection record, and every grading branch including the window
+boundary, both directions, the "wait" no-op, a missing watchlist price,
+and an already-resolved rejection being left untouched), the full
+backend suite (947 tests, all passing), and `mypy`/`ruff` clean on
+every touched file.
+
+**What's explicitly out of scope, not built in this pass** (unchanged
+from the target design, plus one item discovered during implementation):
+News/Volatility Sensitivity controls (no real economic calendar
+exists); Maximum Swing/Day Position controls (no real distinct trading
+modes exist); a real "Capital Saved Through Rejections" dollar figure
+beyond an honestly-labeled estimate; promoting
+`app/gatekeeper.py`'s hardcoded `MAX_CORRELATED_POSITIONS` to a real
+CEO-configurable field (a genuinely separate, small change to Feature
+20's own module, not required to close the specific gap this chapter
+targets — Evidence/Expected Value/Market Quality never gating proposal
+creation at all). Frontend work (Command Center surfacing of
+`OpportunityRejection`s, CEO controls UI for the two new `RiskLimits`
+fields) has not started.

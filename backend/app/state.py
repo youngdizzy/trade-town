@@ -182,6 +182,7 @@ def default_state() -> GameSaveState:
         ceoDecisions=[],
         debates=[],
         gatekeeperRejections=[],
+        opportunityRejections=[],
         marketEnvironment=default_market_environment(),
         marketIntelligence=compute_market_intelligence_state(watchlist, [], [], market_data_provider),
         marketIntelligenceReports=[],

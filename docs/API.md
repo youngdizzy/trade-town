@@ -612,7 +612,14 @@ perspective and exists purely to detect disconnects
     "maxWeeklyDeploymentPct": 15.0, "portfolioHeatCapPct": null,
     "cashReservePct": 10.0,
     "tierAllocation": { "tier1Pct": 2.0, "tier2Pct": 5.0, "tier3Pct": 8.0, "tier4Pct": 10.0 },
-    "scalingAggressivenessPct": 100.0, "emergencyReductionHeatPct": 75.0
+    "scalingAggressivenessPct": 100.0, "emergencyReductionHeatPct": 75.0,
+    // v0.7 Chapter 58 — Institutional Trade Filter & Opportunity
+    // Gatekeeper (backend/app/opportunity_gatekeeper.py). Two new real
+    // CEO controls that engine reads. minTradeQualityScore's default
+    // (70.0) matches war_room.py's own fixed DECISION_SCORE_THRESHOLD
+    // value, but is a genuinely separate, independently-adjustable
+    // field — changing one never changes the other.
+    "minTradeQualityScore": 70.0, "minExpectedValuePct": 0.0
   },
   "riskWarnings": [
     // Guardian's *current* standing watch — refreshed every tick from
@@ -724,6 +731,26 @@ perspective and exists purely to detect disconnects
       "symbol": "AAPL", "ceoChoice": "buy",
       "reasons": ["Decision Confidence: 42/100 — below the required 55 minimum."],
       "priceAtRejection": 471.87, "rejectedSimMinutes": 1560,
+      "outcome": "pending", // pending | would_have_won | would_have_lost
+      "resolvedPriceChangePct": null, "createdAt": "...", "resolvedAt": null
+    }
+  ],
+  "opportunityRejections": [
+    // v0.7 Chapter 58 — every candidate the Opportunity Gatekeeper
+    // rejected BEFORE it ever became a real TradeProposal (see
+    // app/opportunity_gatekeeper.py) — a distinct, EARLIER-stage
+    // sibling to gatekeeperRejections above, not a replacement for it.
+    // No CEO ever saw this candidate, so there is no ceoChoice —
+    // wouldHaveRecommended is the six-agent desk's own
+    // overallRecommendation instead. Graded the same honest way, except
+    // a "wait" recommendation has no real direction to grade against
+    // and stays "pending" forever.
+    {
+      "id": "oppreject-proposal-research-echo-QQQ-...", "symbol": "QQQ",
+      "wouldHaveRecommended": "buy",
+      "reasons": ["Expected Value -1.27% is below the required +0.00% minimum.", "Trade Quality Score 60/100 is below the required 70 minimum."],
+      "decisionScoreAtRejection": 59.7, "expectedValueAtRejectionPct": -1.27,
+      "priceAtRejection": 240.19, "rejectedSimMinutes": 2025,
       "outcome": "pending", // pending | would_have_won | would_have_lost
       "resolvedPriceChangePct": null, "createdAt": "...", "resolvedAt": null
     }
@@ -1180,12 +1207,19 @@ from "CEO wants to disable the cap" (both look like `null`/absent), so
 `clearPortfolioHeatCap: true` is the explicit way to set it back to
 `null`; it wins even if `portfolioHeatCapPct` is also present in the
 same body. `scalingAggressivenessPct`/`emergencyReductionHeatPct` are
-not writable here — see `RiskLimits`' own note above for why. Takes
-effect on the very next generated `TradeProposal` — see
-`app/risk_engine.py`'s `evaluate_sentinel_risk`,
-`app/position_sizing.py`'s `build_position_sizing`, and
-`docs/Architecture.md`'s "Daily Trading Objectives" / "Institutional
-Position Sizing" sections for exactly how each limit is enforced.
+not writable here — see `RiskLimits`' own note above for why. Chapter
+58's two new fields (`minTradeQualityScore`, `minExpectedValuePct`) are
+likewise not yet writable here — that CEO write-path extension is
+deferred to Chapter 58's own frontend pass, the same backend-then-
+frontend split Chapter 57 followed; both fields are real and already
+consulted every tick by `app/opportunity_gatekeeper.py`, just not yet
+CEO-configurable through this endpoint. Takes effect on the very next
+generated `TradeProposal` — see `app/risk_engine.py`'s
+`evaluate_sentinel_risk`, `app/position_sizing.py`'s
+`build_position_sizing`, `app/opportunity_gatekeeper.py`'s
+`evaluate_opportunity`, and `docs/Architecture.md`'s "Daily Trading
+Objectives" / "Institutional Position Sizing" / "Institutional Trade
+Filter" sections for exactly how each limit is enforced.
 
 ### `POST /api/foundational-mentors/*`
 

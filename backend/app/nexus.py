@@ -80,6 +80,7 @@ from app.market_intelligence import (
 )
 from app.mentor import compute_mentor_state, compute_thinking_profiles, generate_question_of_the_day, record_question
 from app.mistakes import generate_case_studies, record_case_studies
+from app.opportunity_gatekeeper import build_opportunity_rejection, evaluate_opportunity, grade_opportunity_rejections
 from app.successes import generate_success_studies, record_success_studies
 from app.talent import generate_talent_reports, record_talent_reports
 from app.paper_trading import tick_paper_trading
@@ -158,6 +159,7 @@ from app.schemas import (
     MeetingMinutes,
     MeetingState,
     NewsItem,
+    OpportunityRejection,
     PaperPortfolio,
     PaperTrade,
     QuestionOfTheDay,
@@ -214,6 +216,11 @@ MAX_DEBATES = 60
 # vetoes (see app/state.py's submit_ceo_decision); capped the same way
 # every other per-proposal record here is.
 MAX_GATEKEEPER_REJECTIONS = 100
+# v0.7 Chapter 58 — one OpportunityRejection per candidate the
+# Opportunity Gatekeeper rejects before it ever became a real
+# TradeProposal (see app/opportunity_gatekeeper.py); capped the same
+# way every other per-proposal record here is.
+MAX_OPPORTUNITY_REJECTIONS = 100
 # v0.7 Feature 22 — one MarketEnvironmentEntry per real regime change
 # (see app/market_environment.py) — a meaningful timeline stays small on
 # its own, but still capped like every other history list here.
@@ -960,6 +967,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     ceo_decisions = list(state.ceo_decisions)
     debates: list[Debate] = list(state.debates)
     gatekeeper_rejections: list[GatekeeperRejection] = list(state.gatekeeper_rejections)
+    opportunity_rejections: list[OpportunityRejection] = list(state.opportunity_rejections)
     agent_energy = state.agent_energy
     operating_mode = state.settings.operating_mode
     executive_reviews: list[ExecutiveReview] = list(state.executive_reviews)
@@ -1149,39 +1157,34 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # display) keeps showing the player's own actually-configured numbers,
     # never the priority-derived ones, so nothing displayed misattributes
     # a threshold the player didn't set.
-    new_proposals = _generate_trade_proposals(trade_proposals, completed, prices, effective_risk_limits, paper_portfolio, news, scanner_alerts, now_sim_minutes, market_intelligence)
-    trade_proposals = [*trade_proposals, *new_proposals]
-    # v0.7 Feature 17 — every new proposal gets a full committee debate
-    # (app/debate.py) generated up front, over the same real analyst
-    # votes the proposal already carries, so it's ready the instant the
-    # CEO opens Executive Voting rather than generated on demand.
-    debates = [*debates, *(generate_debate(p) for p in new_proposals)]
-    if len(debates) > MAX_DEBATES:
-        del debates[: len(debates) - MAX_DEBATES]
-    # v0.7 Feature 41 — every new proposal also gets a Devil's Advocate
-    # Challenge Report generated up front, the same "ready the instant
-    # Executive Voting opens" convention Feature 17's Debate already
-    # established just above. Appended one at a time (rather than a list
-    # comprehension like debates) so each new report's rotating assignment
-    # sees the reports generated earlier in this same tick.
-    for proposal_index, proposal in enumerate(new_proposals):
+    candidate_proposals = _generate_trade_proposals(trade_proposals, completed, prices, effective_risk_limits, paper_portfolio, news, scanner_alerts, now_sim_minutes, market_intelligence)
+    # v0.7 Design Bible Chapter 58 — the Institutional Trade Filter &
+    # Opportunity Gatekeeper. Every candidate above is only a raw,
+    # confidence-filtered TradeProposal so far — this loop builds its
+    # full committee/War Room evaluation (unchanged from before this
+    # chapter) and then decides, using that same real Decision Score and
+    # Expected Value, whether it earns the right to become CEO-visible
+    # at all. Rejected candidates never enter `trade_proposals`, never
+    # get a Debate, and never keep a Challenge Report or WarRoomSession
+    # on the permanent record — see app/opportunity_gatekeeper.py's own
+    # module docstring for why the (already-computed) War Room session
+    # is built before the gate runs rather than a second, lighter-weight
+    # pre-check.
+    new_proposals: list[TradeProposal] = []
+    for proposal in candidate_proposals:
+        # v0.7 Feature 41 — every candidate gets a Devil's Advocate
+        # Challenge Report generated up front, the same "ready the
+        # instant Executive Voting opens" convention Feature 17's Debate
+        # below already establishes for approved candidates.
         new_challenge_report = generate_challenge_report(proposal, provider=market_data_provider, case_studies=case_studies, existing_count=len(challenge_reports))
-        challenge_reports.append(new_challenge_report)
-        # v0.7 Feature 46 — "Devil's Advocate references it": the whole
-        # job of a ChallengeReport is challenging assumptions (Article
-        # III); when it also finds real missing evidence, that's a
-        # second, distinct real citation (Article IV).
-        constitution_citations = cite_article(constitution_citations, "III", "devils_advocate", f'Challenge report filed for {proposal.symbol} — attempting to break the trade thesis.', new_time.day)
-        if new_challenge_report.missing_evidence:
-            constitution_citations = cite_article(constitution_citations, "IV", "devils_advocate", f"{proposal.symbol}: {len(new_challenge_report.missing_evidence)} vote(s) with no supporting evidence on record.", new_time.day)
 
         # v0.7 Feature 55 — the Executive Decision Simulator's Digital
-        # War Room. Built eagerly for every new proposal, the same "ready
-        # the instant Executive Voting opens" convention Debate/Challenge
-        # Report above already establish — joins the department opinions
-        # network, the Devil's Advocate report just generated above, a
-        # fresh 12-scenario simulation, and the Similarity Engine's own
-        # real historical comparison into one permanent record.
+        # War Room. Built eagerly for every candidate — joins the
+        # department opinions network, the Devil's Advocate report just
+        # generated above, a fresh 12-scenario simulation, and the
+        # Similarity Engine's own real historical comparison into one
+        # record. Its real decisionScore/expectedValue are exactly what
+        # the Chapter 58 gate below decides on.
         category = SYMBOL_CATEGORY.get(proposal.symbol)
         correlated_open_positions = sum(1 for p in paper_portfolio.positions if SYMBOL_CATEGORY.get(p.symbol) == category) if category else 0
         try:
@@ -1199,6 +1202,38 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             correlated_open_positions=correlated_open_positions,
             candles=war_room_candles,
         )
+
+        approved, reject_reasons = evaluate_opportunity(
+            decision_score=war_room_session.decision_score,
+            expected_value=war_room_session.expected_value,
+            market_intelligence=market_intelligence,
+            risk_limits=effective_risk_limits,
+        )
+        if not approved:
+            opportunity_rejections.append(
+                build_opportunity_rejection(
+                    proposal,
+                    decision_score=war_room_session.decision_score,
+                    expected_value=war_room_session.expected_value,
+                    reasons=reject_reasons,
+                    price_at_rejection=prices.get(proposal.symbol) or proposal.price,
+                    now_sim_minutes=now_sim_minutes,
+                )
+            )
+            if len(opportunity_rejections) > MAX_OPPORTUNITY_REJECTIONS:
+                del opportunity_rejections[: len(opportunity_rejections) - MAX_OPPORTUNITY_REJECTIONS]
+            continue
+
+        challenge_reports.append(new_challenge_report)
+        # v0.7 Feature 46 — "Devil's Advocate references it": the whole
+        # job of a ChallengeReport is challenging assumptions (Article
+        # III); when it also finds real missing evidence, that's a
+        # second, distinct real citation (Article IV). Only cited for
+        # approved candidates — the CEO never sees a rejected one, so
+        # there is nothing real to cite it against.
+        constitution_citations = cite_article(constitution_citations, "III", "devils_advocate", f'Challenge report filed for {proposal.symbol} — attempting to break the trade thesis.', new_time.day)
+        if new_challenge_report.missing_evidence:
+            constitution_citations = cite_article(constitution_citations, "IV", "devils_advocate", f"{proposal.symbol}: {len(new_challenge_report.missing_evidence)} vote(s) with no supporting evidence on record.", new_time.day)
 
         # v0.7 Design Bible Chapter 57 — the Institutional Position
         # Sizing & Capital Deployment Engine. Runs the instant this
@@ -1223,11 +1258,20 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         )
         war_room_session = war_room_session.model_copy(update={"position_sizing": position_sizing})
         proposal = proposal.model_copy(update={"quantity": position_sizing.final_quantity})
-        new_proposals[proposal_index] = proposal
+        new_proposals.append(proposal)
 
         war_room_sessions = record_war_room_session(war_room_sessions, war_room_session)
-    if new_proposals:
-        trade_proposals[len(trade_proposals) - len(new_proposals) :] = new_proposals
+
+    trade_proposals = [*trade_proposals, *new_proposals]
+    # v0.7 Feature 17 — every approved proposal gets a full committee
+    # debate (app/debate.py) generated up front, over the same real
+    # analyst votes the proposal already carries, so it's ready the
+    # instant the CEO opens Executive Voting rather than generated on
+    # demand. Only for approved proposals — a rejected candidate never
+    # reaches the CEO, so there is nothing for a debate to prepare for.
+    debates = [*debates, *(generate_debate(p) for p in new_proposals)]
+    if len(debates) > MAX_DEBATES:
+        del debates[: len(debates) - MAX_DEBATES]
     if len(challenge_reports) > MAX_CHALLENGE_REPORTS:
         del challenge_reports[: len(challenge_reports) - MAX_CHALLENGE_REPORTS]
     for proposal in new_proposals:
@@ -1322,6 +1366,11 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     gatekeeper_rejections = grade_gatekeeper_rejections(gatekeeper_rejections, watchlist, now_sim_minutes)
     if len(gatekeeper_rejections) > MAX_GATEKEEPER_REJECTIONS:
         del gatekeeper_rejections[: len(gatekeeper_rejections) - MAX_GATEKEEPER_REJECTIONS]
+    # v0.7 Chapter 58 — the same real grading, applied to the earlier
+    # pre-proposal rejection stage (see app/opportunity_gatekeeper.py).
+    opportunity_rejections = grade_opportunity_rejections(opportunity_rejections, watchlist, now_sim_minutes)
+    if len(opportunity_rejections) > MAX_OPPORTUNITY_REJECTIONS:
+        del opportunity_rejections[: len(opportunity_rejections) - MAX_OPPORTUNITY_REJECTIONS]
     for trade in closed_trades:
         record_paper_trade(memory, trade)
         outcome = "gained" if trade.pnl > 0 else "lost"
@@ -2047,6 +2096,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "ceo_decisions": ceo_decisions,
             "debates": debates,
             "gatekeeper_rejections": gatekeeper_rejections,
+            "opportunity_rejections": opportunity_rejections,
             "market_environment": market_environment,
             "market_intelligence": market_intelligence,
             "market_intelligence_reports": market_intelligence_reports,
