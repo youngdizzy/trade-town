@@ -37,6 +37,7 @@ from app.market_environment import default_market_environment
 from app.market_intelligence import compute_market_intelligence_state
 from app.nexus import MAX_DEBATES, MAX_DECISIONS, MAX_GATEKEEPER_REJECTIONS
 from app.portfolio import default_portfolio, sim_minutes
+from app.portfolio_intelligence import compute_portfolio_intelligence
 from app.research import RESEARCHER_IDS, default_research
 from app.risk_engine import compute_daily_objective_status, default_risk_limits
 from app.sandbox import apply_review_decision, begin_company_review, begin_limited_live, begin_paper_trial, generate_strategy_review
@@ -248,6 +249,8 @@ def default_state() -> GameSaveState:
         blackBox=default_black_box_state(),
         talent=TalentState(reports=[], viewedReportIds=[], updatedAt=_now_iso()),
         constitution=default_constitution(),
+        warRoomSessions=[],
+        portfolioIntelligence=compute_portfolio_intelligence(default_portfolio(), market_data_provider, pending_proposal_count=0),
         updatedAt=_now_iso(),
     )
 

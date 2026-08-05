@@ -2752,6 +2752,180 @@ class TradeReportCard(CamelModel):
     recommendation: str
 
 
+# v0.7 Feature 55 (the brief self-numbered it "Feature 54," already used
+# above for the Decision Memory System — see app/war_room.py's module
+# docstring for the collision note) — the Executive Decision Simulator's
+# "Digital War Room." One permanent record per new TradeProposal, joining
+# every department-level analysis this codebase already generates
+# (DepartmentOpinion/ExecutiveRecommendation from app/executive_intelligence.py,
+# WhatIfSimulation from app/whatif.py, SimilarTradesSummary from
+# app/decision_vault.py) plus three genuinely new pieces: a combined
+# Decision Score, an Expected Value read over the real 12-scenario
+# simulation, and a real, signal-grounded Contingency Plan. See
+# app/war_room.py's module docstring for the full honesty boundary,
+# including why literal "R-Multiple" is deliberately not here (same gap
+# DecisionVaultEntry.rMultiple already documents — no stop-loss/initial-
+# risk concept exists anywhere in this codebase's real risk engine).
+class ExpectedValueAnalysis(CamelModel):
+    """A real, probability-weighted read over WhatIfSimulation's own 12
+    real bootstrap scenarios — never a fabricated forecast. `edgePct` is
+    the expected value above the organic, unbiased baseline scenario
+    (the same "no scenario bias" resample WhatIfSimulation.baseline
+    already is), so it isolates whatever real skew the scenario mix adds
+    over doing nothing special. `riskToReward` is a real ratio of
+    reward-range to typical-drawdown magnitude — deliberately labeled
+    Risk-to-Reward, not "R-Multiple," since no stop-loss/initial-risk
+    unit exists anywhere in this codebase to measure R against."""
+
+    expected_value_pct: float = Field(alias="expectedValuePct")
+    edge_pct: float = Field(alias="edgePct")
+    risk_to_reward: float = Field(alias="riskToReward")
+    positive_expectancy: bool = Field(alias="positiveExpectancy")
+    detail: str
+
+
+class ContingencyStep(CamelModel):
+    """One real IF/THEN response, grounded in a real signal already
+    computed for this symbol this tick (a liquidity sweep, an elevated
+    news-risk read, a regime shift) — never an invented playbook item.
+    `triggered` is a real, checkable read of whether that condition is
+    true right now, not a hypothetical."""
+
+    condition: str
+    action: str
+    triggered: bool
+
+
+class DecisionScoreBreakdown(CamelModel):
+    """Every sub-score here already exists as a real signal elsewhere in
+    this codebase (see app/war_room.py's build_decision_score() for the
+    exact source of each) — this class only combines them. Sub-scores
+    with no real data available for this specific proposal (most often
+    `strategyHealthScore` — no ordinary Trading Floor trade links back to
+    a tested Strategy, see app/decision_vault.py's own established gap)
+    are `null`, and the composite renormalizes over only the sub-scores
+    that are actually real for this proposal, never substituting a
+    fabricated placeholder."""
+
+    evidence_score: float = Field(alias="evidenceScore")
+    confidence_score: float = Field(alias="confidenceScore")
+    risk_score: float = Field(alias="riskScore")
+    expected_value_score: float = Field(alias="expectedValueScore")
+    strategy_health_score: float | None = Field(default=None, alias="strategyHealthScore")
+    market_quality_score: float = Field(alias="marketQualityScore")
+    liquidity_quality_score: float = Field(alias="liquidityQualityScore")
+    portfolio_compatibility_score: float = Field(alias="portfolioCompatibilityScore")
+    overall: float
+    threshold: float
+    passed: bool
+
+
+class ScenarioOutcomeComparison(CamelModel):
+    """Filled in once the linked trade actually closes (see app/nexus.py's
+    closed-trade loop) — a real comparison of WhatIfSimulation's own
+    stored predicted range for whichever scenario the real outcome fell
+    closest to, against what actually happened. Never a claim that the
+    scenario "predicted" the trade — see detail's own wording."""
+
+    matched_scenario: ScenarioType = Field(alias="matchedScenario")
+    matched_label: str = Field(alias="matchedLabel")
+    predicted_range_low_pct: float = Field(alias="predictedRangeLowPct")
+    predicted_range_high_pct: float = Field(alias="predictedRangeHighPct")
+    actual_pnl_pct: float = Field(alias="actualPnlPct")
+    within_predicted_range: bool = Field(alias="withinPredictedRange")
+    detail: str
+
+
+class WarRoomSession(CamelModel):
+    id: str
+    proposal_id: str = Field(alias="proposalId")
+    symbol: str
+    department_opinions: list[DepartmentOpinion] = Field(alias="departmentOpinions")
+    recommendation: ExecutiveRecommendation
+    scenario_simulation: WhatIfSimulation = Field(alias="scenarioSimulation")
+    similar_trades: SimilarTradesSummary = Field(alias="similarTrades")
+    expected_value: ExpectedValueAnalysis = Field(alias="expectedValue")
+    decision_score: DecisionScoreBreakdown = Field(alias="decisionScore")
+    contingency_plan: list[ContingencyStep] = Field(default_factory=list, alias="contingencyPlan")
+    # Always True by construction, not a separate check: Evidence Score
+    # is a strict renormalized subset average of Confidence Score's own
+    # factors (see app/decision_vault.py's compute_evidence_score()), so
+    # evidence can never exceed confidence structurally. Surfaced here
+    # honestly as what it is — a standing invariant, not a check that can
+    # meaningfully fail — rather than fabricating scenarios where it could.
+    confidence_validated: bool = Field(alias="confidenceValidated")
+    outcome_comparison: ScenarioOutcomeComparison | None = Field(default=None, alias="outcomeComparison")
+    created_at: str = Field(alias="createdAt")
+
+
+# v0.7 Feature 56 — Enterprise Portfolio Intelligence (app/portfolio_intelligence.py).
+# Computed fresh every tick, the same "cheap to recompute, no permanence
+# requirement" convention app/company_health.py and app/company_dna.py
+# already use — never a persisted, driftable second copy of the
+# portfolio's own real state. See app/portfolio_intelligence.py's module
+# docstring for the full honesty boundary, including why "sector" is
+# named "category" throughout (this codebase has no real sector taxonomy
+# — see app/risk_engine.py's evaluate_guardian_exposure() for the
+# identical, already-established honesty note) and why Portfolio Heat is
+# a real warning signal, never an auto-corrective action (ROADMAP.md's
+# own stop condition: "risk is measured and displayed, never auto-hedged
+# or auto-corrected without the player").
+class CategoryExposure(CamelModel):
+    category: ResearchCategory
+    position_count: int = Field(alias="positionCount")
+    value: float
+    pct_of_equity: float = Field(alias="pctOfEquity")
+
+
+class CorrelationPair(CamelModel):
+    """A real Pearson correlation coefficient computed from the two
+    symbols' own real recent candle returns — never a fabricated
+    relationship. Only surfaced when |correlation| clears
+    CORRELATION_CLUSTER_THRESHOLD, so a portfolio with only loosely-
+    related positions reports no pairs at all."""
+
+    symbol_a: str = Field(alias="symbolA")
+    symbol_b: str = Field(alias="symbolB")
+    correlation: float
+    direction: Literal["positive", "negative"]
+
+
+class PortfolioHeat(CamelModel):
+    total_capital_at_risk_pct: float = Field(alias="totalCapitalAtRiskPct")
+    unrealized_drawdown_pct: float = Field(alias="unrealizedDrawdownPct")
+    largest_position_pct: float = Field(alias="largestPositionPct")
+    hottest_category: ResearchCategory | None = Field(default=None, alias="hottestCategory")
+    hottest_category_pct: float = Field(default=0.0, alias="hottestCategoryPct")
+    tier: Literal["cool", "warm", "hot", "overheated"]
+
+
+class CapitalEfficiency(CamelModel):
+    """Real profit generated per dollar of capital committed, averaged
+    over closed trades — capital_locked is each trade's own real
+    entry_price * quantity, hold_time is its own real duration_minutes.
+    A trade with no capital committed (shouldn't exist, guarded for
+    completeness) is excluded rather than divided-by-zero."""
+
+    profit_per_dollar: float = Field(alias="profitPerDollar")
+    profit_per_dollar_hour: float = Field(alias="profitPerDollarHour")
+    trades_measured: int = Field(alias="tradesMeasured")
+
+
+class PortfolioIntelligence(CamelModel):
+    equity: float
+    cash_balance: float = Field(alias="cashBalance")
+    cash_pct_of_equity: float = Field(alias="cashPctOfEquity")
+    deployed_pct_of_equity: float = Field(alias="deployedPctOfEquity")
+    category_exposure: list[CategoryExposure] = Field(default_factory=list, alias="categoryExposure")
+    correlation_pairs: list[CorrelationPair] = Field(default_factory=list, alias="correlationPairs")
+    heat: PortfolioHeat
+    capital_efficiency: CapitalEfficiency = Field(alias="capitalEfficiency")
+    # A real, specific "what's the alternative" read — never generic
+    # filler. See app/portfolio_intelligence.py's _opportunity_cost().
+    opportunity_cost: str = Field(alias="opportunityCost")
+    updated_at: str = Field(alias="updatedAt")
+
+
 # v0.7 Feature 29 — the Reasoning Lab (app/reasoning_lab.py). A permanent
 # ReasoningChallenge is filed periodically from the company's most recent
 # real AI Debate + its linked TradeDecision — practicing the REASONING
@@ -3635,6 +3809,15 @@ class GameSaveState(CamelModel):
     talent: TalentState = Field(alias="talent")
     # v0.7 Feature 46 — the Company Constitution (app/constitution.py).
     constitution: ConstitutionState = Field(alias="constitution")
+    # v0.7 Feature 55 — the Executive Decision Simulator's Digital War
+    # Room (app/war_room.py). One capped, permanent WarRoomSession per
+    # new TradeProposal, same convention as `challenge_reports` above.
+    war_room_sessions: list[WarRoomSession] = Field(default_factory=list, alias="warRoomSessions")
+    # v0.7 Feature 56 — Enterprise Portfolio Intelligence
+    # (app/portfolio_intelligence.py). Recomputed fresh every tick from
+    # the portfolio's own real current state, same convention as
+    # `company_health`/`company_dna` — never a persisted, driftable copy.
+    portfolio_intelligence: PortfolioIntelligence = Field(alias="portfolioIntelligence")
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(default_factory=list, alias="dialogueHistory")

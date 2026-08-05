@@ -84,6 +84,7 @@ from app.successes import generate_success_studies, record_success_studies
 from app.talent import generate_talent_reports, record_talent_reports
 from app.paper_trading import tick_paper_trading
 from app.portfolio import sim_minutes
+from app.portfolio_intelligence import compute_portfolio_intelligence
 from app.reasoning_lab import compute_reasoning_lab_state, generate_challenge, record_challenge
 from app.research import RESEARCHER_IDS, default_research, tick_research
 from app.risk_engine import compute_daily_objective_status, evaluate_guardian_exposure, evaluate_sentinel_risk, monitor_portfolio, recommended_quantity
@@ -176,10 +177,14 @@ from app.schemas import (
     TradeDecision,
     TradeProposal,
     TreasuryState,
+    WarRoomSession,
     WisdomState,
 )
 from app.simulation import default_strategies, queue_backtest_now, tick_simulation_lab
-from app.watchlist import add_symbol_to_watchlist, default_watchlist, tick_watchlist
+from app.war_room import PROPOSAL_CANDLE_COUNT as WAR_ROOM_CANDLE_COUNT
+from app.war_room import PROPOSAL_TIMEFRAME as WAR_ROOM_TIMEFRAME
+from app.war_room import build_war_room_session, compare_scenario_to_outcome, record_war_room_session
+from app.watchlist import SYMBOL_CATEGORY, add_symbol_to_watchlist, default_watchlist, tick_watchlist
 from app.wisdom import compute_wisdom_score, generate_reflection_session
 from app.wisdom import record_session as record_reflection_session_entry
 
@@ -982,6 +987,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     market_intelligence_learning: list[MarketIntelligenceLearningEntry] = list(state.market_intelligence_learning)
     # v0.7 — the Decision Memory System's Decision Vault (app/decision_vault.py).
     decision_vault: list[DecisionVaultEntry] = list(state.decision_vault)
+    # v0.7 Feature 55 — the Executive Decision Simulator's War Room (app/war_room.py).
+    war_room_sessions: list[WarRoomSession] = list(state.war_room_sessions)
 
     agents = {aid: _tick_agent(aid, agent, new_time, minutes, tasks, resting=resting) for aid, agent in state.agents.items()}
 
@@ -1166,6 +1173,32 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         constitution_citations = cite_article(constitution_citations, "III", "devils_advocate", f'Challenge report filed for {proposal.symbol} — attempting to break the trade thesis.', new_time.day)
         if new_challenge_report.missing_evidence:
             constitution_citations = cite_article(constitution_citations, "IV", "devils_advocate", f"{proposal.symbol}: {len(new_challenge_report.missing_evidence)} vote(s) with no supporting evidence on record.", new_time.day)
+
+        # v0.7 Feature 55 — the Executive Decision Simulator's Digital
+        # War Room. Built eagerly for every new proposal, the same "ready
+        # the instant Executive Voting opens" convention Debate/Challenge
+        # Report above already establish — joins the department opinions
+        # network, the Devil's Advocate report just generated above, a
+        # fresh 12-scenario simulation, and the Similarity Engine's own
+        # real historical comparison into one permanent record.
+        category = SYMBOL_CATEGORY.get(proposal.symbol)
+        correlated_open_positions = sum(1 for p in paper_portfolio.positions if SYMBOL_CATEGORY.get(p.symbol) == category) if category else 0
+        try:
+            war_room_candles = market_data_provider.get_candles(proposal.symbol, WAR_ROOM_TIMEFRAME, WAR_ROOM_CANDLE_COUNT)
+        except ValueError:
+            war_room_candles = []
+        war_room_session = build_war_room_session(
+            f"warroom-{proposal.id}",
+            proposal,
+            challenge_report=new_challenge_report,
+            coach_reports=coach_reports,
+            market_intelligence=market_intelligence,
+            decision_vault=decision_vault,
+            risk_warnings=risk_warnings,
+            correlated_open_positions=correlated_open_positions,
+            candles=war_room_candles,
+        )
+        war_room_sessions = record_war_room_session(war_room_sessions, war_room_session)
     if len(challenge_reports) > MAX_CHALLENGE_REPORTS:
         del challenge_reports[: len(challenge_reports) - MAX_CHALLENGE_REPORTS]
     for proposal in new_proposals:
@@ -1383,6 +1416,18 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             )
             decision_vault = record_vault_entry(decision_vault, vault_entry)
 
+            # v0.7 Feature 55 — the Executive Decision Simulator's War
+            # Room. Once this trade's originating proposal's own
+            # WarRoomSession is found, fill in a real predicted-vs-actual
+            # scenario comparison against its already-stored
+            # WhatIfSimulation (see compare_scenario_to_outcome's own
+            # docstring — never a claim the scenario "predicted" this).
+            war_room_index = next((i for i, s in enumerate(war_room_sessions) if s.proposal_id == proposal_id), None)
+            if war_room_index is not None:
+                session = war_room_sessions[war_room_index]
+                comparison = compare_scenario_to_outcome(session.scenario_simulation, trade)
+                war_room_sessions[war_room_index] = session.model_copy(update={"outcome_comparison": comparison})
+
     backtest_sessions, simulation_results, newly_completed_sims = tick_simulation_lab(
         backtest_sessions, simulation_results, strategies, watchlist, RESEARCHER_IDS, new_time
     )
@@ -1537,6 +1582,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # v0.7 Feature 25 — cheap to recompute every tick, same reasoning as
     # company_health above (feeds a live-updating Academy readout).
     academy_state = compute_academy_state(agent_knowledge, len(academy_completed_projects))
+    # v0.7 Feature 56 — Enterprise Portfolio Intelligence. Cheap to
+    # recompute every tick, same reasoning as company_health above.
+    portfolio_intelligence = compute_portfolio_intelligence(paper_portfolio, market_data_provider, pending_proposal_count=len(trade_proposals))
 
     is_evening = new_time.hour == EVENING_REVIEW_HOUR and new_time.minute == 0
     is_midnight = new_time.hour == 0 and new_time.minute == 0
@@ -1986,6 +2034,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "discipline_reviews": discipline_reviews,
             "case_studies": case_studies,
             "decision_vault": decision_vault,
+            "war_room_sessions": war_room_sessions,
+            "portfolio_intelligence": portfolio_intelligence,
             "reasoning_challenges": reasoning_challenges,
             "reasoning_lab_state": reasoning_lab_state,
             "reflection_sessions": reflection_sessions,

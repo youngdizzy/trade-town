@@ -4793,6 +4793,220 @@ Frontend (a Command Center surface for the Trade Report Card and
 Similarity Engine) is a separate, immediately-following commit per this
 project's backend-first discipline.
 
+### Executive Decision Simulator (War Room) & Enterprise Portfolio Intelligence — Features 55 & 56, backend
+
+GOAL (from the briefs): before risking company capital, every significant
+decision should be stress-tested by a "Digital War Room" of independent
+department perspectives, scored on real expected value, challenged by a
+Devil's Advocate, and given a contingency plan (Feature 55) — and
+TradeTown should manage its capital like a professional hedge fund: real
+category/correlation exposure, a continuous portfolio-heat read, and
+capital-efficiency tracking rather than one trade at a time (Feature 56).
+
+**Naming collision, resolved up front, same pattern as Feature 54 above.**
+Brief 1 self-numbers itself "Feature 54" (already in use — the Decision
+Memory System, previous section); brief 2 calls itself "Feature 55" in
+its own title. Both are renumbered here and in commit history —
+**Feature 55** for the War Room, **Feature 56** for Portfolio
+Intelligence — to avoid the collision.
+
+**A stale local git checkout briefly caused rework, not data loss.**
+Mid-session, the local branch fell behind `origin` without it being
+obvious, and an entire CIO + AI Academy backend was rebuilt from scratch
+before a rejected `git push` surfaced that the real, more advanced
+implementation already existed upstream. Recovered via `git reset --hard`
+onto the real remote tip after explicit user confirmation (including a
+requested side-by-side diff showing the rebuilt modules added no unique
+value). Nothing of the rebuilt work had been pushed, so nothing genuine
+was lost — noted here only because it's why this slice starts cleanly
+from the real `2c5f74b` history.
+
+#### Feature 55 — War Room (`app/war_room.py`, new)
+
+**Researched first.** Nearly everything the brief asks for already
+exists as a real, separate system:
+
+| Brief asks for | Already real, as |
+|---|---|
+| Digital War Room department analysis | `app/executive_intelligence.py`'s `generate_department_opinions()` / `compute_executive_recommendation()` (9 real department seats) |
+| Devil's Advocate | `app/devils_advocate.py`'s `generate_challenge_report()` (already assigns one real employee per proposal) |
+| 12-scenario multi-scenario simulation | `app/whatif.py`'s `run_whatif_simulation()` (12 real bootstrap-resampled scenarios) |
+| Historical comparison / "Institutional Knowledge Graph" | `app/decision_vault.py`'s `find_similar_vault_entries()` / `summarize_similarity()` |
+| Evidence Score vs. Confidence Score | `app/decision_vault.py`'s `compute_evidence_score()` + `app/confidence.py`'s `DecisionConfidence` — "confidence may never exceed evidence" already holds by construction |
+
+**Scenario mapping.** The brief names 12 scenarios; `app/whatif.py`
+already has 12, built for the identical "stress-test a trade candidate"
+purpose. Rather than build a second scenario engine (exactly the kind of
+duplication this codebase's own rule forbids), they're mapped directly:
+
+| Brief's scenario | whatif.py's real equivalent |
+|---|---|
+| Best Case | `best_case_scenario` (whichever real scenario has the highest reward range) |
+| Expected Case | `baseline` (organic, unbiased resample) |
+| Worst Case / Difficult Case | `worst_case_scenario` / `bearish_reversal` |
+| Black Swan | `flash_crash` |
+| High Volatility | `high_volatility` |
+| Low Liquidity | `liquidity_sweep` |
+| Trend Continuation | `bullish_continuation` |
+| Trend Reversal | `trend_failure` |
+| Range Expansion | `breakout_confirmation` |
+| Range Compression | `sideways_consolidation` |
+| News Shock | `news_shock` |
+
+(`whatif.py` additionally has `low_volatility`/`gap_up`/`gap_down`, real
+extras beyond the brief's own list — kept, not trimmed, since cutting a
+working real signal to match a brief's exact count would be its own kind
+of dishonesty.)
+
+**This slice's real, novel job** is exactly three things that genuinely
+didn't exist anywhere:
+
+1. A permanent **`WarRoomSession`** (`build_war_room_session()`) that
+   JOINS all of the above into one addressable record per new
+   `TradeProposal` — department opinions, the executive recommendation,
+   the What-If simulation, the Decision Vault similarity summary,
+   expected value, decision score, and contingency plan, all in one
+   place.
+2. A real **Expected Value / Statistical Edge / Risk-to-Reward** read
+   (`build_expected_value_analysis()`) — the probability-weighted
+   midpoint of every one of the 12 real scenarios' reward ranges, edge
+   measured against the organic unbiased baseline, and Risk-to-Reward as
+   a real reward/drawdown-magnitude ratio. Deliberately labeled
+   **Risk-to-Reward, not "R-Multiple"** — no stop-loss/initial-risk basis
+   exists anywhere in this codebase's real risk engine to measure R
+   against (`app/risk_engine.py`'s `recommended_quantity()` sizes purely
+   off equity%, the same gap `DecisionVaultEntry.rMultiple` already
+   documents).
+3. A real, signal-grounded **Contingency Plan**
+   (`build_contingency_plan()`) — 5 IF/THEN steps, each tied to a real
+   signal already computed for this symbol this tick (Guardian's
+   liquidity-sweep read, market regime, news risk level, Market Quality
+   tier), each carrying a real `triggered` flag for whether that
+   condition is live right now, never an invented playbook.
+
+**Decision Score** (`build_decision_score()`) is a composite over 7 real
+sub-scores — Evidence, Confidence, Risk (tiered off Guardian's own
+per-symbol warnings), Expected Value (a bounded linear map off Expected
+Value %), Market Quality, Liquidity Quality, and Portfolio Compatibility
+(penalized per already-open correlated position, reusing the same
+category-concentration signal `app/gatekeeper.py`'s `_correlation_check()`
+already computes) — checked against `DECISION_SCORE_THRESHOLD` (70.0),
+the same "good decision" bar `app/discipline.py`'s `tier_for_score()` and
+`app/executive.py`'s `compute_decision_grade()` already use.
+`strategyHealthScore` is always `null`: no ordinary Trading Floor
+proposal links back to a tested Strategy, so the composite renormalizes
+over only the 7 real sub-scores that exist rather than substituting a
+fabricated placeholder.
+
+`evidence_never_exceeds_confidence()` computes (not hardcodes) the
+"confidence may never exceed evidence" invariant, so a future change that
+ever broke it would show up honestly. `compare_scenario_to_outcome()`
+fills in `WarRoomSession.outcomeComparison` once the linked trade
+actually closes — finds whichever real scenario's predicted range
+midpoint sits numerically closest to what actually happened, then reports
+whether the real outcome landed inside that scenario's own predicted
+range. Never a claim that the scenario "predicted" the trade — only a
+real, honest after-the-fact comparison.
+
+**What's deliberately NOT here, and why:**
+
+| Brief asks for | Why it's not built |
+|---|---|
+| Literal R-Multiple | Same gap as `DecisionVaultEntry.rMultiple` — no stop-loss/initial-risk unit exists anywhere in the real risk engine. |
+| Historical Expectancy per ordinary trade | Only exists at the Strategy-aggregate level (`app/strategy_lab.py`'s expectancy); no ordinary Trading Floor proposal links to a tested Strategy. |
+| Auto-failing negative-EV trades / any automatic corrective action | `docs/ROADMAP.md`'s own documented v0.8 stop condition: "risk is measured and displayed, never auto-hedged or auto-corrected without the player." `DecisionScoreBreakdown.passed` is a real, visible flag the CEO sees, never an automatic veto. |
+| LLM-generated analysis text | No LLM/HTTP client dependency exists anywhere (`backend/requirements.txt` has none) — every string is templated from real computed values, the same convention every other module in this codebase uses. |
+
+**Wiring** (`app/nexus.py`): a `WarRoomSession` is built eagerly inside
+the existing per-new-proposal loop, the same "ready the instant Executive
+Voting opens" convention `Debate` (Feature 17) and `ChallengeReport`
+(Feature 41) already use — never computed lazily on request. Once a
+linked trade closes, the closed-trades loop finds that proposal's session
+and fills in its `outcomeComparison`. `war_room_sessions` is capped at
+`MAX_WAR_ROOM_SESSIONS` (60), oldest evicted first, and added to
+`save_modules.py`'s `knowledge_archive` module alongside `decision_vault`.
+
+#### Feature 56 — Enterprise Portfolio Intelligence (`app/portfolio_intelligence.py`, new)
+
+**Researched first.** `app/portfolio.py`'s `PaperPortfolio` has no
+sector/correlation/heat field anywhere; `app/risk_engine.py`'s
+`evaluate_guardian_exposure()`/`monitor_portfolio()` cover per-symbol
+concentration and drawdown-limit breaches, and `app/gatekeeper.py`'s
+`_correlation_check()` is a real but narrow category-co-occurrence gate —
+none of it is a real correlation coefficient, a heat score, or a
+capital-efficiency read. This slice is almost entirely genuinely new,
+built on top of those existing signals.
+
+"Sector" is called **"category"** throughout — this codebase has no real
+sector taxonomy (the same honest note `app/risk_engine.py`'s
+`evaluate_guardian_exposure()` docstring already makes); every symbol's
+only real classification is its `ResearchCategory`
+(`app/watchlist.py`'s `SYMBOL_CATEGORY`, reused directly rather than
+inventing a second taxonomy).
+
+**Correlation Intelligence** (`_correlation_pairs()`) is a **real
+Pearson correlation coefficient** (`statistics.correlation()`), computed
+from each pair of currently-held symbols' own real recent
+candle-to-candle returns — the same `Candle` series every other
+technical read in this codebase already uses. Only pairs clearing
+`CORRELATION_CLUSTER_THRESHOLD` (0.6) are reported, so a portfolio of
+genuinely unrelated positions honestly reports none — never an invented
+relationship.
+
+**Portfolio Heat** (`_heat()`) is a real, visible **reading** across four
+tiers (cool/warm/hot/overheated), driven by real total-capital-at-risk,
+largest-position%, and category concentration — never an automatic
+corrective action, per the same v0.8 stop condition Feature 55 cites
+above. Nothing in this module places, closes, or resizes an order.
+
+**Capital Efficiency** (`_capital_efficiency()`) is real profit-per-dollar
+and profit-per-dollar-hour, averaged only over
+`portfolio.trade_history`'s actually-closed trades — never a
+forward-looking prediction. **Max Drawdown is deliberately NOT
+duplicated here**: `app/analytics.py`'s `PerformanceSnapshot.max_drawdown_pct`
+already computes this per period (daily/weekly/monthly/all_time) from the
+same trade history — a future Executive Portfolio Dashboard should read
+that existing field, not a second one computed here.
+`PortfolioHeat.unrealizedDrawdownPct` is a distinct, live/current-tick
+reading (`abs(total_pnl_pct)` when negative), not a re-implementation of
+historical max drawdown.
+
+**Opportunity Cost** (`_opportunity_cost()`) is four real templated
+branches off cash percentage and pending-proposal count — high cash with
+pending proposals names the real count; high cash with none reads as
+deliberate patience; low cash warns about little room to act; the
+balanced middle reports no immediate concern. Never generic filler.
+
+**Wiring** (`app/nexus.py`): `portfolio_intelligence` is recomputed fresh
+every tick, right after `academy_state`, the same "cheap to recompute,
+never a stale second copy" convention `company_health`/`market_intelligence`
+already use. Added to `save_modules.py`'s `derived` module.
+
+**No new API router for either feature.** Unlike Decision Vault's
+report-card/similar-trades endpoints (parametrized, on-demand lookups
+over an existing archive), a `WarRoomSession` and `PortfolioIntelligence`
+are each already fully computed and present in the regular WS tick
+broadcast — there's no additional query shape either feature needs
+served separately. `ws_manager.py`'s `build_state_message()` and
+`save_modules.py`'s module map were both updated proactively in the same
+edit pass as the schema changes, having already been bitten once by
+exactly this class of wiring gap (see Feature 54's frontend work).
+
+**Verified**: new `tests/test_war_room.py` (27 tests: expected-value/
+edge/risk-to-reward math, decision-score composite and threshold
+behavior, all 5 contingency-plan branches, the confidence-never-exceeds-
+evidence invariant, predicted-vs-actual outcome comparison in both the
+in-range and out-of-range cases, end-to-end session assembly, and session
+capping) and `tests/test_portfolio_intelligence.py` (32 tests: real
+Pearson correlation including the &lt;3-points and zero-variance guards,
+category-exposure grouping/sorting, all four Portfolio Heat tiers,
+capital-efficiency averaging including the zero-capital-locked guard, all
+four opportunity-cost branches, and an end-to-end computation with real
+correlated open positions). 911/911 backend tests passing, `mypy`/`ruff`
+clean. Frontend (Command Center surfaces for the War Room and a Portfolio
+Intelligence dashboard) is a separate, immediately-following commit per
+this project's backend-first discipline.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the
