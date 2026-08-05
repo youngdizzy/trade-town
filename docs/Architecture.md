@@ -5906,8 +5906,8 @@ before the frontend commit that surfaced it, per this project's
 backend-before-frontend discipline.
 
 Explicitly not built, per this chapter's own scope: an Executive
-Priority Engine ranking goals against each other, Resource Allocation
-recommendations, and Milestone Tracking.
+Priority Engine ranking goals against each other, and Resource
+Allocation recommendations.
 
 **Verified**: 18 new `app/goals.py` unit tests, 8 new CEO write-path
 tests (`create`/`cancel`, including the empty-title, non-positive-target,
@@ -5916,6 +5916,44 @@ full backend suite 1073/1073 passing, `tsc`/`eslint`/`vite build`
 clean, and a live scripted Playwright session confirming goal creation,
 cancellation, and the target-ceiling validation error all round-trip
 correctly against the real running dev stack.
+
+### Milestone Tracking — Design Bible Chapter 64 (second pass)
+
+The "next honest slice" that chapter's own Implementation Notes named,
+extending the existing `Goal` object with real checkpoints rather than
+introducing a second tracking concept. A new `Milestone` schema (id,
+`thresholdPct`, `reached`, `reachedAt`) and `Goal.milestones`.
+`app/goals.py`'s `_build_milestones()` generates three fixed checkpoints
+per goal (`MILESTONE_THRESHOLDS = (25.0, 50.0, 75.0)`) — no milestone
+for 100%, since goal completion already tracks that real fact via
+`status`. `_mark_reached_milestones()` marks a milestone permanently
+reached the moment real `progress_pct` crosses it, checked both at
+`create_goal()` (a goal can honestly start past a milestone if the CEO
+sets a target the company already exceeds part of the way to) and every
+`tick_goal()` call. A reached milestone never reverts, matching every
+other "a crossed milestone stays crossed" convention already documented
+in this file. `CompanyPanel.tsx`'s Goal cards render each milestone as
+a filled/hollow marker with a tooltip.
+
+A real bug surfaced and was fixed via a new test before it ever reached
+the frontend: `_mark_reached_milestones()`'s first version called
+`m.model_copy(update={"reached": True, "reachedAt": now})` — but
+`model_copy()`'s `update` dict keys must be the model's actual Python
+field names (`reached_at`), not the wire alias (`reachedAt`); the
+unrecognized key was silently dropped, so `reached` flipped to `True`
+while `reached_at` stayed `None` forever.
+`test_tick_marks_a_newly_crossed_milestone_reached` caught it by
+asserting `reached_at is not None`, the same class of "assert every
+field a real state transition should touch, not just the obvious one"
+discipline this test suite already practices elsewhere.
+
+**Verified**: 6 new backend tests (creation-time milestone state,
+mid-tick crossing, permanence once reached, all-reached-on-completion,
+frozen-once-inactive), `mypy`/`ruff` clean, full backend suite
+1079/1079 passing, `tsc`/`eslint`/`vite build` clean, and a live
+scripted Playwright session confirming all three milestone percentages
+render correctly for a freshly-created goal against the real running
+dev stack.
 
 ## Test suite popup resilience
 

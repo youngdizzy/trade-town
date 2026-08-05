@@ -7,6 +7,24 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 64 backend + frontend — Milestone Tracking** (`app/schemas.py`,
+  `app/goals.py`, `frontend/src/types.ts`, `CompanyPanel.tsx`): the
+  "next honest slice" that chapter's own Implementation Notes named,
+  extending the existing `Goal` object with three real, fixed
+  checkpoints (25%/50%/75% of real progress) rather than a second
+  tracking concept — no milestone for 100%, since goal completion
+  already tracks that via `status`. A milestone is marked permanently
+  reached the moment real progress crosses it, checked both at goal
+  creation (honestly handles a goal that starts past a milestone) and
+  every tick. Each Goal card in the COMPANY tab now shows its three
+  milestones as filled/hollow markers. Caught a real bug via a new test
+  before it reached the frontend: the first version passed the wire
+  alias (`"reachedAt"`) instead of the actual field name
+  (`"reached_at"`) to `model_copy()`, which silently dropped the
+  update. 6 new backend tests, `mypy`/`ruff` clean, full backend suite
+  1079/1079 passing, `tsc`/`eslint`/`vite build` clean, live
+  verification against the running dev stack.
+
 - **Chapter 63 backend + frontend — Company Health tier thresholds and
   Benchmarking**
   (`app/schemas.py`, `app/company_health.py`, `app/nexus.py`,
