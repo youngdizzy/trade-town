@@ -1,17 +1,17 @@
 # Chapter 64 — Executive Strategic Planning & Goal Management Engine
 
-**Status:** Four real slices implemented (backend + frontend), following
-this chapter's own recommended sequencing: a CEO-authored `Goal` naming
-one real, already-computed metric and a target value, with real
-progress recomputed every tick; Milestone Tracking, three real 25/50/75%
-checkpoints on that same progress; the Executive Priority Engine,
-ranking active goals by a real urgency formula; and Resource Allocation,
-a recommend-only share of executive attention normalized from that same
-Priority Engine. Only the Strategic Review Cycle remains explicitly out
-of scope, named below. See
-[Volume 9's chapter template](README.md) for what every section below
-must contain, and the Implementation Notes at the bottom for exactly
-what's real today versus still target design.
+**Status:** Fully implemented (backend + frontend) — five real slices,
+following this chapter's own recommended sequencing: a CEO-authored
+`Goal` naming one real, already-computed metric and a target value,
+with real progress recomputed every tick; Milestone Tracking, three
+real 25/50/75% checkpoints on that same progress; the Executive
+Priority Engine, ranking active goals by a real urgency formula;
+Resource Allocation, a recommend-only share of executive attention
+normalized from that same Priority Engine; and the Strategic Review
+Cycle, a real monthly report over what genuinely changed for CEO-
+authored goals. See [Volume 9's chapter template](README.md) for what
+every section below must contain, and the Implementation Notes at the
+bottom for exactly what was built and how.
 
 ## Executive Summary
 
@@ -61,15 +61,19 @@ recompute them).
 
 ## Ownership
 
-`app/goals.py` (`Goal`, `Milestone`, `GoalPriority`, `GoalAllocation`
-schemas; `create_goal()`, `tick_goal()`/`tick_goals()`, `cancel_goal()`,
-`compute_goal_priority()`, `rank_goals_by_priority()`,
-`compute_resource_allocation()`), `app/routers/goals.py`
+`app/goals.py` (`Goal`, `Milestone`, `GoalPriority`, `GoalAllocation`,
+`StrategicReview` schemas; `create_goal()`, `tick_goal()`/`tick_goals()`,
+`cancel_goal()`, `compute_goal_priority()`, `rank_goals_by_priority()`,
+`compute_resource_allocation()`, `generate_strategic_review()`,
+`record_strategic_review()`), `app/routers/goals.py`
 (`POST /api/goals/create`, `POST /api/goals/cancel`,
-`GET /api/goals/priorities`, `GET /api/goals/allocations`), and the
-COMPANY tab's Company Goals card (`CompanyPanel.tsx`) are now real and
-authoritative over everything this chapter owns. Three real, adjacent
-systems were checked first and remain explicitly separate, not reused:
+`GET /api/goals/priorities`, `GET /api/goals/allocations`), the monthly
+Strategic Review generation wired into `app/nexus.py`'s `tick()`
+alongside Chapter 63's Executive Review, and the COMPANY tab's Company
+Goals and Strategic Review Cycle cards (`CompanyPanel.tsx`) are now real
+and authoritative over everything this chapter owns. Three real,
+adjacent systems were checked first and remain explicitly separate, not
+reused:
 
 | Brief concept | Closest real system | Why it is NOT the same thing |
 |---|---|---|
@@ -98,8 +102,11 @@ priority scores (`GoalPriority`, via `GET /api/goals/priorities`); a
 real Resource Allocation recommendation (`GoalAllocation`, via
 `GET /api/goals/allocations`) — a normalized share of executive
 ATTENTION across active goals, never a claim about moving real capital
-(see Decision Logic) — see `app/goals.py`. **Not built:** a Strategic
-Review Cycle report — see Internal Workflow.
+(see Decision Logic); and a real monthly Strategic Review
+(`StrategicReview`, broadcast alongside every other real save-state
+field) — active goal count, which goals completed/expired and which
+milestones were newly reached since the previous review, the current
+top-priority goal, and a real summary sentence — see `app/goals.py`.
 
 ## Internal Workflow
 
@@ -116,11 +123,13 @@ progress every tick, alongside `company_health`/`company_score` in
 its real current value reaches its target, or to `expired` if a real
 deadline passes unmet — both permanent, one-way transitions, the same
 "a crossed milestone stays crossed" convention `app/hall_of_fame.py`
-already establishes. **Not built:** the Strategic Review Cycle itself
-(a periodic report over goal progress) — today's real workflow updates
-every goal silently every tick; nothing yet surfaces a periodic summary
-of that progress the way Chapter 63's monthly Executive Review does for
-company performance.
+already establishes → on the same monthly boundary as Chapter 63's
+Executive Review, `generate_strategic_review()` runs, comparing every
+goal's real `updated_at`/`completed_at` and every milestone's real
+`reached_at` against the previous review's own real `created_at` to
+find what genuinely changed this period, then `record_strategic_review()`
+appends it to the capped review history — the same "compute once,
+append, cap" pattern the Executive Review itself already uses.
 
 ## Decision Logic
 
@@ -176,7 +185,7 @@ underneath Chapter 59's softer, opt-in reserve target.
 | Executive Priority Engine (goal ranking) | **Built** — `GET /api/goals/priorities` returns every active goal's real `GoalPriority` (score, remaining %, days left), computed fresh per request (`app/goals.py`'s `rank_goals_by_priority()`), never a reuse of Chapter 59's engine (see Ownership/Decision Logic). The COMPANY tab's Company Goals card now orders active goals by this real score and shows a PRIORITY badge plus real days-remaining per goal. |
 | Resource Allocation targets | **Built** — `GET /api/goals/allocations` returns every active goal's real `GoalAllocation` (score, allocation %), normalized from the same Priority Engine scores so they sum to ~100% (`app/goals.py`'s `compute_resource_allocation()`). Recommend-only, an ATTENTION share not a capital one (see Decision Logic). The COMPANY tab's Company Goals card renders a "Recommended attention" bar with a real % under each active goal's progress meter. |
 | Milestone definitions | **Built** — every goal automatically gets three real checkpoints at 25%/50%/75% of its own real progress (`app/goals.py`'s `MILESTONE_THRESHOLDS`), each permanently marked reached the moment real progress crosses it (checked both at creation, so a goal can honestly start past a milestone, and on every tick). Rendered as filled/hollow markers on each Goal card. No CEO configuration of the thresholds themselves yet — a real future "promote a constant" candidate, same pattern as Chapter 63's tier thresholds. |
-| Strategic Review cadence | **Not built** — no periodic review report exists for this chapter's own concept yet (distinct from Chapter 63's real monthly Executive Review, which reviews company *performance*, not CEO-authored *goals*). |
+| Strategic Review cadence | **Built** — a real monthly `StrategicReview` generates on the same evening/monthly boundary as Chapter 63's Executive Review (`app/goals.py`'s `generate_strategic_review()`, wired into `app/nexus.py`'s `tick()`), reviewing CEO-authored *goal* progress — distinct from Chapter 63's own Executive Review, which reviews company *performance*. The COMPANY tab's own "Strategic Review Cycle" card lists every real review newest-first with its own real summary. |
 | Company Priority (existing four-value stance) | **Already real** — `SettingsState.companyPriority`, CEO-configurable today via the existing RISK/Company panel, unrelated to this chapter's own goal system except as a possible future input. |
 
 ## Learning System
@@ -202,9 +211,14 @@ ledger).
 
 ## Reports
 
-Not real yet. A Strategic Review Report is the natural first real
-report, mirroring Chapter 63's monthly `ExecutiveReview` structure but
-over CEO-authored goals instead of overall company performance.
+**Built.** The Strategic Review Report — a real `StrategicReview`
+generated monthly, mirroring Chapter 63's `ExecutiveReview` structure
+but over CEO-authored goals: active goal count, which goals genuinely
+completed or expired since the previous review, how many milestones
+were newly reached, the current top-priority goal, and a real summary
+sentence built entirely from those fields. Capped at
+`MAX_STRATEGIC_REVIEWS = 20` like every other periodic-report list in
+this codebase.
 
 ## Safety Systems
 
@@ -233,13 +247,15 @@ and it is no more real here than there.
 
 ## Connected Features
 
-Chapter 63 (would supply the real metrics most goals are measured
-against). Chapter 60 (Portfolio Rebalancing — itself still target
-design; a future Resource Allocation recommendation here and a future
-Capital Rotation recommendation there would both ultimately compete for
-the same real, limited capital, and should be designed to cooperate
-rather than issue conflicting CEO-facing recommendations once both
-exist).
+Chapter 63 (supplies the real metrics every goal is measured against —
+Company Health, Company Score — and shares this chapter's own monthly
+review cadence). Chapter 60 (Portfolio Rebalancing — itself still
+target design; its own future Capital Rotation recommendation would
+compete for real, limited capital in a way this chapter's Resource
+Allocation deliberately does not, since this chapter's recommendation
+is an ATTENTION share, never a capital one — see Decision Logic/Safety
+Systems — so the two can coexist without issuing conflicting CEO-facing
+capital recommendations).
 
 ## Future Expansion
 
@@ -369,10 +385,39 @@ clean, and live Playwright verification against the running dev stack
 confirming two active goals both showing a correctly normalized 50%
 allocation bar.
 
-**What's genuinely still not built:** the Strategic Review Cycle (a
-periodic report over goal progress, distinct from Chapter 63's own
-company-performance Executive Review) — the only piece from this
-chapter's original scope that remains target design.
+**What was actually built (Strategic Review Cycle — backend + frontend,
+a fifth and final pass):** the last piece this chapter's own
+Implementation Notes had flagged as target design, closing out this
+chapter's real, honest scope entirely. Mirrors Chapter 63's monthly
+`ExecutiveReview` structure but asks a different question: not "how is
+the company performing" but "how is CEO-authored goal progress moving."
+A new `StrategicReview` schema (id, createdAt, activeGoalCount,
+completedSinceLastReview, expiredSinceLastReview,
+milestonesReachedSinceLastReview, topPriorityGoalId, topPriorityScore,
+summary). `app/goals.py`'s `generate_strategic_review()` finds what
+genuinely changed since the previous review by comparing each goal's
+real `updatedAt`/`completedAt` and each milestone's real `reachedAt`
+against the previous review's own real `createdAt` — a real, monotonic
+ISO-timestamp comparison, never a fabricated delta — and reuses the
+Executive Priority Engine's own top-ranked goal directly rather than a
+second ranking. Generated on the exact same monthly boundary as the
+Executive Review in `app/nexus.py`'s `tick()`
+(`record_strategic_review()`, capped at `MAX_STRATEGIC_REVIEWS = 20`).
+Frontend: a new "Strategic Review Cycle" card on the COMPANY tab lists
+every real review newest-first with its own real summary sentence, an
+honest empty state before the first monthly review generates. Verified:
+8 new backend tests, `mypy`/`ruff` clean, full backend suite 1099/1099
+passing, `tsc`/`eslint`/`vite build` clean, and live verification
+against the running dev stack — advancing time to a real month boundary
+via `POST /api/time/advance` produced a real review (2 goals expired,
+4 milestones newly reached) that rendered correctly in the Command
+Center.
+
+**Nothing from this chapter's original scope remains target design.**
+Every piece named in the Executive Summary, Mission, and CEO Controls —
+Goal authoring, Milestone Tracking, the Executive Priority Engine,
+Resource Allocation, and the Strategic Review Cycle — is real, tested,
+and shipped backend + frontend.
 
 **A real bug found and fixed along the way, not scope (first pass):**
 `app/ws_manager.py` builds its per-tick WebSocket broadcast as an
@@ -386,10 +431,11 @@ crashing the new Goals card. Found via live Playwright verification of
 the running dev stack, not by any automated test (no test exercised a
 live WS tick's `goals` field specifically) — fixed in its own commit.
 
-**Before implementation begins for the remaining piece:** per Appendix
-G's Permanent Development Policy, this chapter's design-first step was
-satisfied before this implementation pass began. The Strategic Review
-Cycle is the one remaining honest slice — it would need its own real
-design for a periodic report structure, mirroring Chapter 63's monthly
-`ExecutiveReview` but over CEO-authored goals instead of overall company
-performance.
+Per Appendix G's Permanent Development Policy, this chapter's
+design-first step was satisfied before each of its five implementation
+passes began, and each pass's own real design decision is recorded
+above rather than assumed. With the Strategic Review Cycle now real,
+this chapter has no further pass to design against — any genuinely new
+capability (e.g. CEO-configurable milestone thresholds, promoted from a
+constant the same way Chapter 63's tier thresholds were) would be a new
+chapter revision, not a continuation of this one's original scope.

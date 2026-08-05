@@ -1406,6 +1406,7 @@ never needs to trim anything itself:
 | `academyProjects` | uncapped, but always exactly one active | the Academy's one company-wide knowledge project — v0.7 Feature 25 |
 | `academyCompletedProjects` | last 50 (`MAX_ACADEMY_LIBRARY`) | the permanent Company Knowledge Library — v0.7 Feature 25 |
 | `goals` | last 20 (`MAX_GOALS`) | CEO-authored company goals, oldest evicted first regardless of status — Design Bible Chapter 64 |
+| `strategicReviews` | last 20 (`MAX_STRATEGIC_REVIEWS`) | one real `StrategicReview` per monthly cycle, over CEO-authored goal progress — Design Bible Chapter 64 (fifth pass) |
 | `disciplineReviews` | last 60 (`MAX_DISCIPLINE_REVIEWS`) | one per closed trade — v0.7 Feature 26 |
 | `caseStudies` | last 60 (`MAX_CASE_STUDIES`) | one per detected real process-gap mistake — v0.7 Feature 27 |
 | `reasoningChallenges` | last 60 (`MAX_REASONING_CHALLENGES`) | one per real AI Debate practiced, on a fixed cadence — v0.7 Feature 29 |

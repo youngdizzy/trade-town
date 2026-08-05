@@ -6048,6 +6048,57 @@ helpers from `tests/helpers.ts`, deleted after use) confirming two real
 active goals against the live running dev stack both rendered a
 correctly normalized 50% "Recommended attention" bar.
 
+### Strategic Review Cycle for goals — Design Bible Chapter 64 (fifth and final pass)
+
+The last piece named in this chapter's own Implementation Notes,
+closing out its real scope entirely. Mirrors Chapter 63's own monthly
+`ExecutiveReview` structure (`app/executive_review.py`) but asks a
+different question: not "how is the company performing" but "how is
+CEO-authored goal progress moving."
+
+New `StrategicReview` schema (id, createdAt, activeGoalCount,
+completedSinceLastReview, expiredSinceLastReview,
+milestonesReachedSinceLastReview, topPriorityGoalId, topPriorityScore,
+summary). `app/goals.py`'s `generate_strategic_review()` finds what
+genuinely changed since the previous review by comparing each real
+`Goal.updatedAt`/`completedAt` and each real `Milestone.reachedAt`
+against the previous review's own real `createdAt` — a monotonic
+ISO-8601 string comparison (the same timestamp format `_now_iso()`
+already guarantees), never a fabricated period-over-period number.
+Reuses `rank_goals_by_priority()`'s own top-ranked active goal directly
+for the "current top priority" field rather than a second ranking.
+`record_strategic_review()` appends the new review and caps the list at
+`MAX_STRATEGIC_REVIEWS = 20`, the same convention `MAX_EXECUTIVE_REVIEWS`
+already uses.
+
+Generated on the exact same monthly evening boundary as the Executive
+Review, right after it, in `app/nexus.py`'s `tick()`
+(`if is_evening and new_time.day % MONTHLY_INTERVAL_DAYS == 0:`).
+Wired through `app/save_modules.py`'s `"company"` module and
+`app/ws_manager.py`'s explicit per-tick broadcast dict (the same spot
+whose omission caused the Chapter 64 first-pass `goals` bug above —
+added correctly this time). Frontend: full data-layer plumbing
+(`types.ts`, `socket.ts`, `NexusManager.ts`, `EventBus.ts`,
+`gameStore.ts`) and a new "Strategic Review Cycle" card on the COMPANY
+tab, listing every real review newest-first with its own real summary
+sentence — an honest empty state before the first monthly review
+generates (no CEO write path exists for this report, matching
+`ExecutiveReview`'s own read-only nature).
+
+**Verified**: 8 new backend tests (no-previous-review baseline,
+completion/expiry inclusion with no previous review, exclusion of
+completions/expiries from before the previous review, milestone
+counting since the previous review, top-priority reflects the real
+Priority Engine, an honest empty review when no goals exist at all,
+`record_strategic_review()` appending and capping), `mypy`/`ruff`
+clean, full backend suite 1099/1099 passing, `tsc`/`eslint`/`vite
+build` clean, a real assertion added to `commandCenter.spec.ts`'s
+existing Company tab test, and live verification against the running
+dev stack — advancing time to a real month boundary via
+`POST /api/time/advance` produced a real review (2 goals expired unmet,
+4 milestones newly reached) whose exact real summary text rendered
+correctly in the Command Center.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

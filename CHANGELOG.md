@@ -7,6 +7,27 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 64 backend + frontend — Strategic Review Cycle** (`app/schemas.py`,
+  `app/goals.py`, `app/nexus.py`, `app/save_modules.py`, `app/ws_manager.py`,
+  `frontend/src/types.ts`, `frontend/src/net/socket.ts`,
+  `NexusManager.ts`, `EventBus.ts`, `gameStore.ts`, `CompanyPanel.tsx`):
+  the fifth and final Chapter 64 slice, closing out this chapter's real
+  scope entirely. Mirrors Chapter 63's monthly `ExecutiveReview`
+  structure but over CEO-authored goals — a new `StrategicReview`
+  schema; `generate_strategic_review()` finds what genuinely changed
+  since the previous review via real ISO-timestamp comparison against
+  each goal's `updatedAt`/`completedAt` and each milestone's
+  `reachedAt` (never a fabricated delta), and reuses the Executive
+  Priority Engine's own top-ranked goal directly. Generated on the
+  same monthly boundary as the Executive Review in `app/nexus.py`'s
+  `tick()`, capped at `MAX_STRATEGIC_REVIEWS = 20`. The COMPANY tab
+  now shows a "Strategic Review Cycle" card listing every real review
+  newest-first with its own real summary. 8 new backend tests,
+  `mypy`/`ruff` clean, full backend suite 1099/1099 passing,
+  `tsc`/`eslint`/`vite build` clean, live verification confirming a
+  real review (2 expired goals, 4 milestones reached) rendered
+  correctly after advancing time to a real month boundary.
+
 - **Chapter 64 backend + frontend — Resource Allocation** (`app/schemas.py`,
   `app/goals.py`, `app/routers/goals.py`, `frontend/src/types.ts`,
   `frontend/src/net/api.ts`, `CompanyPanel.tsx`): the last piece that
