@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { api } from "@/net/api";
 import type { Strategy, StrategyCertification, StrategyDossier } from "@/types";
-import { executiveStanceTone, strategyExecutiveActionTone, strategyLiquidityVerdictTone, strategyRegimeVerdictTone, strategyRiskRatingTone } from "../../lib/derive";
+import { executiveStanceTone, experimentTierTone, strategyExecutiveActionTone, strategyLiquidityVerdictTone, strategyRegimeVerdictTone, strategyRiskRatingTone } from "../../lib/derive";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../../ui";
 
 /**
@@ -62,7 +62,7 @@ export function StrategyCertificationView({ selected }: { selected: Strategy }) 
   }
   if (!dossier) return null;
 
-  const { monteCarlo, regimeTest, liquidityValidation, executiveReview, founderApproval, confidence } = dossier;
+  const { monteCarlo, regimeTest, liquidityValidation, executiveReview, founderApproval, confidence, experimentTier, experimentTierRationale } = dossier;
   const hasAnyEvidence = monteCarlo || regimeTest || liquidityValidation || executiveReview || founderApproval || confidence;
 
   return (
@@ -128,7 +128,11 @@ export function StrategyCertificationView({ selected }: { selected: Strategy }) 
 
       {monteCarlo && (
         <Glass className="p-3">
-          <TerminalLabel>Monte Carlo Testing — {monteCarlo.pathsSimulated} simulated trade sequences, real generating statistics</TerminalLabel>
+          <div className="mb-1.5 flex items-center justify-between">
+            <TerminalLabel>Monte Carlo Testing — {monteCarlo.pathsSimulated} simulated trade sequences, real generating statistics</TerminalLabel>
+            {experimentTier && <StatusPill tone={experimentTierTone(experimentTier)}>{experimentTier.toUpperCase()} EXPERIMENT</StatusPill>}
+          </div>
+          {experimentTierRationale && <p className="mb-1.5 text-[8px] italic text-cmd-textDim">{experimentTierRationale}</p>}
           <div className="grid grid-cols-2 gap-x-4 sm:grid-cols-3">
             <DataRow label="Median Return" value={`${monteCarlo.medianReturnPct >= 0 ? "+" : ""}${monteCarlo.medianReturnPct.toFixed(1)}%`} valueClassName={monteCarlo.medianReturnPct >= 0 ? "text-cmd-green" : "text-cmd-red"} />
             <DataRow label="Return Range (10th–90th)" value={`${monteCarlo.returnRangeLowPct.toFixed(1)}% – ${monteCarlo.returnRangeHighPct.toFixed(1)}%`} />

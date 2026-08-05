@@ -279,6 +279,7 @@ class GameStore {
       mistakeWarningSharePct: 30,
       maxDecisionVaultEntries: 200,
       maxMemoryRecords: 200,
+      maxLimitedLiveCapital: 2000,
     },
     riskWarnings: [],
     scannerAlerts: [],

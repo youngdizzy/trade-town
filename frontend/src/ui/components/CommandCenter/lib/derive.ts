@@ -337,6 +337,19 @@ export function strategyRiskRatingTone(rating: "low" | "moderate" | "elevated" |
   return STRATEGY_RISK_RATING_TONE[rating];
 }
 
+// Design Bible Chapter 62 — Experiment Tiering (see
+// backend/app/strategy_lab.py's compute_experiment_tier()).
+const EXPERIMENT_TIER_TONE: Record<"minor" | "moderate" | "major" | "transformational", "green" | "cyan" | "amber" | "red"> = {
+  minor: "green",
+  moderate: "cyan",
+  major: "amber",
+  transformational: "red",
+};
+
+export function experimentTierTone(tier: "minor" | "moderate" | "major" | "transformational"): "green" | "cyan" | "amber" | "red" {
+  return EXPERIMENT_TIER_TONE[tier];
+}
+
 // v0.7 Feature 52 (Part 2) — Strategy Health's seven-status ladder (see
 // backend/app/strategy_lab.py's compute_strategy_health()).
 const STRATEGY_HEALTH_TONE: Record<StrategyHealthStatus, "green" | "cyan" | "amber" | "red"> = {

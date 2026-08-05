@@ -702,6 +702,12 @@ export interface StrategyConfidenceScore {
  * assembling read over every other real Feature 52 artifact for this
  * strategy, computed fresh on request (GET /api/sandbox/dossier), never
  * a second copy of their data. */
+// Design Bible Chapter 62 — the Innovation Lab's Experiment
+// Classification. Real read over the strategy's own Monte Carlo
+// projections — see backend/app/strategy_lab.py's
+// compute_experiment_tier() for the exact magnitude thresholds.
+export type ExperimentTier = "minor" | "moderate" | "major" | "transformational";
+
 export interface StrategyDossier {
   strategyId: string;
   strategyName: string;
@@ -716,6 +722,8 @@ export interface StrategyDossier {
   executiveReview: StrategyExecutiveReview | null;
   founderApproval: StrategyFounderApproval | null;
   confidence: StrategyConfidenceScore | null;
+  experimentTier: ExperimentTier | null;
+  experimentTierRationale: string | null;
   generatedAt: string;
 }
 
@@ -957,6 +965,10 @@ export interface RiskLimits {
   mistakeWarningSharePct: number;
   maxDecisionVaultEntries: number;
   maxMemoryRecords: number;
+  // Design Bible Chapter 62 — the Innovation Lab's Innovation Budget CEO
+  // control (see backend/app/sandbox.py's begin_limited_live()).
+  // Defaults to the exact fixed constant it replaces.
+  maxLimitedLiveCapital: number;
 }
 
 // v0.7 Feature 49 — a real-time readout of today's real trading activity
