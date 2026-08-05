@@ -1271,6 +1271,23 @@ request from the current real goals and sim day
 — never a second persisted copy, the same convention as
 `GET /api/decision-vault/quality-score`.
 
+### `GET /api/goals/allocations`
+
+Design Bible Chapter 64's Resource Allocation (fourth pass) —
+read-only, no body. Returns `[{ "goalId": "goal-12-14-0-3", "score":
+84.2, "allocationPct": 63.4 }, ...]`, one `GoalAllocation` per ACTIVE
+goal, same order as `GET /api/goals/priorities` (score descending).
+`allocationPct` is each goal's real `score` normalized against the sum
+of every active goal's score, so the full list always sums to ~100%
+(falls back to an even split across goals only if every active goal's
+score is 0). This is a recommend-only share of executive ATTENTION, not
+a claim about real capital — a `Goal` tracks a company-wide metric, not
+a capital pool, so nothing here moves money or reads/writes
+`PaperPortfolio`/`PaperBroker`. Computed fresh per request from the
+current real goals and sim day (`app/goals.py`'s
+`compute_resource_allocation()`, itself built directly on
+`rank_goals_by_priority()`) — never a second persisted copy.
+
 ### `POST /api/foundational-mentors/*`
 
 v0.7 Feature 49 (Phase 3, revised) — the Foundational Mentor Program /

@@ -6001,6 +6001,53 @@ helpers from `tests/helpers.ts`, deleted after use) confirming a goal
 with a 2-real-day deadline correctly ranked above an open-ended
 Academy-level goal against the live running dev stack.
 
+### Resource Allocation for goals — Design Bible Chapter 64 (fourth pass)
+
+The last piece that chapter's own Implementation Notes had deferred
+pending the Priority Engine above. The real design question, once
+actually addressed: what "resource" a `Goal` even has to allocate. A
+goal tracks a company-wide metric (Company Health, Company Score,
+portfolio return, Academy level), not a set of open positions with a
+real capital pool behind it — Chapter 56/59/60's real capital machinery
+has no concept of "this goal's share of the portfolio," so inventing
+one would have meant fabricating a number nothing in this codebase
+tracks. The honest slice instead: a normalized share of executive
+ATTENTION, not capital.
+
+New `GoalAllocation` schema (goalId, score, allocationPct).
+`app/goals.py`'s `compute_resource_allocation()` reuses
+`rank_goals_by_priority()`'s own real scores directly — no second
+composite — and normalizes each active goal's score against the sum of
+every active goal's score, so the recommendation always sums to ~100%
+across whatever active goals exist. The one real edge case (every
+active goal's urgency score is exactly 0 — possible only in the narrow
+window where a goal's `current_value` already meets its target but the
+next tick hasn't yet flipped its `status` to `completed`) falls back to
+an even split across goals rather than dividing by zero — an honest
+fallback, not a fabricated number.
+
+New read-only `GET /api/goals/allocations` (`app/routers/goals.py`),
+computed fresh per request from `game_state.snapshot()`'s current real
+goals and sim day — same convention as `GET /api/goals/priorities`,
+never a second persisted/driftable copy, and never a claim about
+moving real capital (`compute_resource_allocation()` never reads or
+writes `PaperPortfolio`/`PaperBroker` — the same recommend-only
+boundary Chapter 59's Priority Score and Chapter 60's Capital Rotation
+already respect). Frontend: each active goal's card in the COMPANY tab
+now renders a "Recommended attention" progress bar with a real %
+underneath its progress meter, fetched via a `useEffect` keyed on the
+`goals` array — the same refetch trigger already used for priorities.
+
+**Verified**: 5 new backend tests (empty goal list, a single active
+goal gets 100%, allocations sum to 100% and favor the more urgent goal,
+non-active goals excluded, the even-split fallback when every active
+goal's urgency score is 0), `mypy`/`ruff` clean, full backend suite
+1091/1091 passing, `tsc`/`eslint`/`vite build` clean, and a temporary
+Playwright spec (reusing the project's own real popup-dismissal
+helpers from `tests/helpers.ts`, deleted after use) confirming two real
+active goals against the live running dev stack both rendered a
+correctly normalized 50% "Recommended attention" bar.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

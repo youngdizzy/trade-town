@@ -7,6 +7,28 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 64 backend + frontend — Resource Allocation** (`app/schemas.py`,
+  `app/goals.py`, `app/routers/goals.py`, `frontend/src/types.ts`,
+  `frontend/src/net/api.ts`, `CompanyPanel.tsx`): the last piece that
+  chapter's own Implementation Notes had deferred pending the Priority
+  Engine. Honestly scoped once actually designed — a `Goal` tracks a
+  company-wide metric, not a set of open positions with a real capital
+  pool behind it, so there was never a real per-goal capital pool to
+  allocate. The real slice instead: a normalized share of executive
+  ATTENTION. New `GoalAllocation` schema; `compute_resource_allocation()`
+  reuses the Priority Engine's own real scores directly (no second
+  composite) and normalizes each active goal's score against the sum of
+  all of them so the recommendation sums to ~100%, falling back to an
+  even split only in the one real edge case where every active goal's
+  urgency score is 0. New read-only `GET /api/goals/allocations`,
+  computed fresh per request, never a claim about moving real capital —
+  same recommend-only boundary Chapter 59/60 already respect. Each
+  active goal's card in the COMPANY tab now shows a "Recommended
+  attention" bar with a real %. 5 new backend tests, `mypy`/`ruff`
+  clean, full backend suite 1091/1091 passing, `tsc`/`eslint`/`vite
+  build` clean, live Playwright verification confirming two active
+  goals both render a correctly normalized 50% allocation bar.
+
 - **Chapter 64 backend + frontend — Executive Priority Engine**
   (`app/schemas.py`, `app/goals.py`, `app/routers/goals.py`,
   `frontend/src/types.ts`, `frontend/src/net/api.ts`,

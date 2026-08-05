@@ -1,13 +1,14 @@
 # Chapter 64 — Executive Strategic Planning & Goal Management Engine
 
-**Status:** Three real slices implemented (backend + frontend), following
+**Status:** Four real slices implemented (backend + frontend), following
 this chapter's own recommended sequencing: a CEO-authored `Goal` naming
 one real, already-computed metric and a target value, with real
 progress recomputed every tick; Milestone Tracking, three real 25/50/75%
-checkpoints on that same progress; and the Executive Priority Engine,
-ranking active goals by a real urgency formula. Only Resource Allocation
-remains explicitly out of scope, named below — it depends on the
-Priority Engine existing first. See
+checkpoints on that same progress; the Executive Priority Engine,
+ranking active goals by a real urgency formula; and Resource Allocation,
+a recommend-only share of executive attention normalized from that same
+Priority Engine. Only the Strategic Review Cycle remains explicitly out
+of scope, named below. See
 [Volume 9's chapter template](README.md) for what every section below
 must contain, and the Implementation Notes at the bottom for exactly
 what's real today versus still target design.
@@ -60,11 +61,13 @@ recompute them).
 
 ## Ownership
 
-`app/goals.py` (`Goal`, `Milestone`, `GoalPriority` schemas; `create_goal()`,
-`tick_goal()`/`tick_goals()`, `cancel_goal()`, `compute_goal_priority()`,
-`rank_goals_by_priority()`), `app/routers/goals.py` (`POST /api/goals/create`,
-`POST /api/goals/cancel`, `GET /api/goals/priorities`), and the COMPANY
-tab's Company Goals card (`CompanyPanel.tsx`) are now real and
+`app/goals.py` (`Goal`, `Milestone`, `GoalPriority`, `GoalAllocation`
+schemas; `create_goal()`, `tick_goal()`/`tick_goals()`, `cancel_goal()`,
+`compute_goal_priority()`, `rank_goals_by_priority()`,
+`compute_resource_allocation()`), `app/routers/goals.py`
+(`POST /api/goals/create`, `POST /api/goals/cancel`,
+`GET /api/goals/priorities`, `GET /api/goals/allocations`), and the
+COMPANY tab's Company Goals card (`CompanyPanel.tsx`) are now real and
 authoritative over everything this chapter owns. Three real, adjacent
 systems were checked first and remain explicitly separate, not reused:
 
@@ -91,11 +94,12 @@ no storage, no input surface exists yet.
 **Built:** a real `Goal` object (title, category, target metric, target
 value, current value, progress %, created/deadline sim day, status,
 timestamps, milestones); a real ranked list of active goals with real
-priority scores (`GoalPriority`, via `GET /api/goals/priorities`) — see
-`app/goals.py`. **Not built:** a Resource Allocation recommendation —
-it depends on the Priority Engine existing first to have anything real
-to allocate against, per this chapter's own recommended
-smallest-slice-first sequencing.
+priority scores (`GoalPriority`, via `GET /api/goals/priorities`); a
+real Resource Allocation recommendation (`GoalAllocation`, via
+`GET /api/goals/allocations`) — a normalized share of executive
+ATTENTION across active goals, never a claim about moving real capital
+(see Decision Logic) — see `app/goals.py`. **Not built:** a Strategic
+Review Cycle report — see Internal Workflow.
 
 ## Internal Workflow
 
@@ -136,6 +140,21 @@ urgent) and scaled into the same 0-100 range as the no-deadline case.
 Never a hidden weighting — the same "no black-box composite" convention
 every other scoring engine in this codebase already follows.
 
+**Also built.** `app/goals.py`'s `compute_resource_allocation()` is the
+real Resource Allocation recommendation this chapter's Mission always
+named — but honestly scoped to what a `Goal` actually is: a company-wide
+metric, not a set of open positions with a real capital pool behind it.
+So the "resource" being allocated is executive ATTENTION, not capital —
+each active goal's real `GoalPriority.score` (above) normalized against
+the sum of every active goal's score, so the recommendation always sums
+to ~100% across whatever active goals exist. Reuses the Priority
+Engine's own score directly rather than inventing a second composite,
+the same "don't duplicate a real number" discipline this chapter's own
+Ownership table already applies to Chapter 59. Recommend-only,
+computed fresh per request, never persisted — the same boundary and
+convention every other scoring engine in this chapter and Chapter 59/60
+already respect (see Safety Systems).
+
 ## Department Cooperation
 
 **Would receive from:** Chapter 63 (Company Health/Company Score as real
@@ -155,7 +174,7 @@ underneath Chapter 59's softer, opt-in reserve target.
 | Goal Categories / SMART Objective authoring | **Built** — a real "Company Goals" card in the COMPANY tab: title, category (growth/risk/research/trading/operations), one of four real target metrics, target value, optional deadline. `POST /api/goals/create`, validated server-side (`app/goals.py`'s `validate_target_value()`; a positive target within that metric's own real ceiling, a future deadline). |
 | Cancel an active goal | **Built** — `POST /api/goals/cancel`, a real ✕ control per active goal in the same card. |
 | Executive Priority Engine (goal ranking) | **Built** — `GET /api/goals/priorities` returns every active goal's real `GoalPriority` (score, remaining %, days left), computed fresh per request (`app/goals.py`'s `rank_goals_by_priority()`), never a reuse of Chapter 59's engine (see Ownership/Decision Logic). The COMPANY tab's Company Goals card now orders active goals by this real score and shows a PRIORITY badge plus real days-remaining per goal. |
-| Resource Allocation targets | **Not built** — no goal-level capital-allocation concept exists; was the one piece still explicitly deferred, since it depends on the Priority Engine existing first. |
+| Resource Allocation targets | **Built** — `GET /api/goals/allocations` returns every active goal's real `GoalAllocation` (score, allocation %), normalized from the same Priority Engine scores so they sum to ~100% (`app/goals.py`'s `compute_resource_allocation()`). Recommend-only, an ATTENTION share not a capital one (see Decision Logic). The COMPANY tab's Company Goals card renders a "Recommended attention" bar with a real % under each active goal's progress meter. |
 | Milestone definitions | **Built** — every goal automatically gets three real checkpoints at 25%/50%/75% of its own real progress (`app/goals.py`'s `MILESTONE_THRESHOLDS`), each permanently marked reached the moment real progress crosses it (checked both at creation, so a goal can honestly start past a milestone, and on every tick). Rendered as filled/hollow markers on each Goal card. No CEO configuration of the thresholds themselves yet — a real future "promote a constant" candidate, same pattern as Chapter 63's tier thresholds. |
 | Strategic Review cadence | **Not built** — no periodic review report exists for this chapter's own concept yet (distinct from Chapter 63's real monthly Executive Review, which reviews company *performance*, not CEO-authored *goals*). |
 | Company Priority (existing four-value stance) | **Already real** — `SettingsState.companyPriority`, CEO-configurable today via the existing RISK/Company panel, unrelated to this chapter's own goal system except as a possible future input. |
@@ -189,13 +208,14 @@ over CEO-authored goals instead of overall company performance.
 
 ## Safety Systems
 
-Not real yet, but the discipline is already established by every other
-chapter in this volume: any future Resource Allocation *recommendation*
-this chapter produces must never auto-move capital — the same
-recommend-only boundary Chapter 60's Capital Rotation and Chapter 59's
-Priority Score both already respect. No goal should ever be marked
-complete by anything other than a real, checkable metric crossing its
-real target.
+**Built and respected.** `compute_resource_allocation()` never writes to
+or reads from `PaperPortfolio`, never touches `PaperBroker`, and is
+called only from a `GET` endpoint — the same recommend-only boundary
+Chapter 60's Capital Rotation and Chapter 59's Priority Score both
+already respect, made real rather than just stated. No goal is ever
+marked complete by anything other than a real, checkable metric crossing
+its real target (`tick_goal()`'s own `current_value >= target_value`
+check).
 
 ## Dependencies
 
@@ -320,11 +340,39 @@ Playwright verification (using the project's own real popup-dismissal
 helpers) confirming a goal with a tight real deadline correctly ranks
 above an open-ended one against the running dev stack.
 
-**What's genuinely still not built:** Resource Allocation recommendations
-at the goal level (the one piece that depended on the Priority Engine
-existing first, now real); the Strategic Review Cycle (a periodic
-report over goal progress, distinct from Chapter 63's own
-company-performance Executive Review).
+**What was actually built (Resource Allocation — backend + frontend, a
+fourth pass):** the last piece this chapter's own Implementation Notes
+had named as depending on the Priority Engine — now that it exists, the
+real design question was what a "resource" even is for a `Goal`. A goal
+tracks a company-wide metric (Company Health, Company Score, portfolio
+return, Academy level), not a set of open positions with a real capital
+pool behind it, so there was never a real per-goal capital pool to
+allocate — inventing one would have meant fabricating a number Chapter
+56/59/60's real capital machinery doesn't actually track per goal. The
+honest slice instead: a normalized share of executive ATTENTION. A new
+`GoalAllocation` schema (goalId, score, allocationPct).
+`app/goals.py`'s `compute_resource_allocation()` reuses
+`rank_goals_by_priority()`'s own real scores directly — no second
+composite — and normalizes each active goal's score against the sum of
+all of them, so the recommendation always sums to ~100%. The one real
+edge case (every active goal's urgency score is exactly 0 — possible
+only in the narrow window where a goal's `current_value` already meets
+its target but the next tick hasn't yet flipped it to `completed`) falls
+back to an even split rather than dividing by zero. New
+`GET /api/goals/allocations` (read-only, computed fresh per request,
+same convention as the Priority Engine). Frontend: each active goal's
+card in the COMPANY tab now renders a "Recommended attention" bar with
+a real % underneath its progress meter, refetched on the same real
+triggers as priorities. Verified: 5 new backend tests, `mypy`/`ruff`
+clean, full backend suite 1091/1091 passing, `tsc`/`eslint`/`vite build`
+clean, and live Playwright verification against the running dev stack
+confirming two active goals both showing a correctly normalized 50%
+allocation bar.
+
+**What's genuinely still not built:** the Strategic Review Cycle (a
+periodic report over goal progress, distinct from Chapter 63's own
+company-performance Executive Review) — the only piece from this
+chapter's original scope that remains target design.
 
 **A real bug found and fixed along the way, not scope (first pass):**
 `app/ws_manager.py` builds its per-tick WebSocket broadcast as an
@@ -338,9 +386,10 @@ crashing the new Goals card. Found via live Playwright verification of
 the running dev stack, not by any automated test (no test exercised a
 live WS tick's `goals` field specifically) — fixed in its own commit.
 
-**Before implementation begins for the remaining pieces:** per Appendix
+**Before implementation begins for the remaining piece:** per Appendix
 G's Permanent Development Policy, this chapter's design-first step was
-satisfied before this implementation pass began. Resource Allocation is
-the one remaining honest slice — it would need its own real design for
-how a goal-level recommendation interacts with Chapter 56/59/60's
-existing, real capital-allocation machinery without duplicating it.
+satisfied before this implementation pass began. The Strategic Review
+Cycle is the one remaining honest slice — it would need its own real
+design for a periodic report structure, mirroring Chapter 63's monthly
+`ExecutiveReview` but over CEO-authored goals instead of overall company
+performance.
