@@ -72,7 +72,11 @@ test("Company Health redesign shows the Executive tier alongside the original Op
   await clickTab(page, "COMPANY");
 
   await expect(page.getByText("Company Health", { exact: true })).toBeVisible();
-  await expect(page.getByText("Executive Health")).toBeVisible();
+  // .first() — Design Bible Chapter 63's Tier Thresholds card
+  // (CompanyPanel.tsx) also mentions "Executive Health" in its own
+  // descriptive text, so a non-exact match resolves to two elements;
+  // any match confirms the real Executive Health card rendered.
+  await expect(page.getByText("Executive Health").first()).toBeVisible();
   for (const label of ["Decision Quality", "Exec Alignment", "Risk Governance", "Sim Coverage", "Dept Consensus", "Self-Eval Health", "Institutional Memory", "Innovation Velocity", "Talent Development", "Founder Oversight"]) {
     await expect(page.getByText(label, { exact: true })).toBeVisible();
   }
