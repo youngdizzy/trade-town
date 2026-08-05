@@ -510,6 +510,8 @@ class GameState:
         tier_allocation: TierAllocationLimits | None = None,
         min_trade_quality_score: float | None = None,
         min_expected_value_pct: float | None = None,
+        min_priority_score: float | None = None,
+        capital_reserve_pct: float | None = None,
     ) -> tuple[GameSaveState, str | None]:
         """v0.7 Feature 49 — the CEO's Daily Trading Objectives — extended
         by v0.7 Chapter 57 with four of the six new Position Sizing
@@ -518,9 +520,12 @@ class GameState:
         own honesty boundary; those two fields have no real consumer
         until Position Scaling/Reduction on already-open positions is
         built, and a control that changes a number nothing reads would
-        be a placeholder), and by v0.7 Chapter 58 with the Opportunity
+        be a placeholder), by v0.7 Chapter 58 with the Opportunity
         Gatekeeper's two new controls (`min_trade_quality_score`,
-        `min_expected_value_pct` — see app/opportunity_gatekeeper.py).
+        `min_expected_value_pct` — see app/opportunity_gatekeeper.py),
+        and by v0.7 Chapter 59 with the Capital Priority & Opportunity
+        Cost Engine's two new controls (`min_priority_score`,
+        `capital_reserve_pct` — see app/capital_priority.py).
         Every field is optional so a single call can update just one
         limit; each provided value is validated before being merged into
         the real RiskLimits object app/risk_engine.py,
@@ -577,6 +582,14 @@ class GameState:
                 updates["min_trade_quality_score"] = min_trade_quality_score
             if min_expected_value_pct is not None:
                 updates["min_expected_value_pct"] = min_expected_value_pct
+            if min_priority_score is not None:
+                if min_priority_score < 0 or min_priority_score > 100:
+                    return self.data, "Minimum Priority Score must be a percentage from 0 to 100."
+                updates["min_priority_score"] = min_priority_score
+            if capital_reserve_pct is not None:
+                if capital_reserve_pct < 0 or capital_reserve_pct >= 100:
+                    return self.data, "Capital Reserve must be a percentage from 0 up to (not including) 100."
+                updates["capital_reserve_pct"] = capital_reserve_pct
             if not updates:
                 return self.data, "No risk limit changes were provided."
             new_limits = self.data.risk_limits.model_copy(update=updates)

@@ -477,11 +477,19 @@ def is_significant_proposal(
     portfolio: PaperPortfolio,
     risk_limits: RiskLimits,
     risk_warnings: list[RiskWarning],
+    priority_score: float | None = None,
 ) -> tuple[bool, list[str]]:
     """Returns (significant, reasons) — reasons is always the real,
     explainable cause, mirroring app/gatekeeper.py's own check style. A
     "wait" recommendation is never significant (nothing to interrupt the
-    player over — there's no trade to auto-approve either way)."""
+    player over — there's no trade to auto-approve either way).
+
+    `priority_score` is v0.7 Design Bible Chapter 59's real Minimum
+    Priority Score control (app/capital_priority.py's `priority_score`,
+    the same reused `decisionScore.overall` shown everywhere else — never
+    a second read). Optional and defaulting to None/no-check keeps every
+    existing caller honest: a caller with no War Room session to look up
+    a score from simply can't apply a floor it has no real number for."""
     if proposal.overall_recommendation == "wait":
         return False, []
 
@@ -495,6 +503,8 @@ def is_significant_proposal(
         notional_pct = proposal.quantity * proposal.price / equity * 100
         if notional_pct >= risk_limits.max_position_pct:
             reasons.append(f"Position size is {notional_pct:.0f}% of portfolio equity — at or above the {risk_limits.max_position_pct:.0f}% max position limit.")
+    if priority_score is not None and risk_limits.min_priority_score > 0 and priority_score < risk_limits.min_priority_score:
+        reasons.append(f"Priority Score is only {priority_score:.0f}/100 — below the CEO's {risk_limits.min_priority_score:.0f} minimum allocation floor.")
     return len(reasons) > 0, reasons
 
 

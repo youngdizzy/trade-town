@@ -910,6 +910,14 @@ class RiskLimits(CamelModel):
     # a change to that constant's own semantics).
     min_trade_quality_score: float = Field(default=70.0, alias="minTradeQualityScore")
     min_expected_value_pct: float = Field(default=0.0, alias="minExpectedValuePct")
+    # v0.7 Chapter 59 — Capital Priority & Opportunity Cost Engine
+    # (app/capital_priority.py). Two real CEO controls that engine's own
+    # Design Bible chapter asks for. Both default to 0 (no-op): unlike
+    # Chapter 58's min_trade_quality_score, which matched an existing
+    # fixed constant, neither of these replaces prior behavior — they're
+    # opt-in floors the CEO raises above zero to actually engage them.
+    min_priority_score: float = Field(default=0.0, alias="minPriorityScore")
+    capital_reserve_pct: float = Field(default=0.0, alias="capitalReservePct")
 
 
 class RiskWarning(CamelModel):

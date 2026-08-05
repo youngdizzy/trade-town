@@ -217,6 +217,53 @@ class TestUpdateRiskLimits:
         assert error is None
         assert saved.risk_limits.min_expected_value_pct == -1.0
 
+    # v0.7 Chapter 59 — the Capital Priority & Opportunity Cost Engine's
+    # two new CEO controls.
+    def test_updates_min_priority_score(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(min_priority_score=65.0))
+        assert error is None
+        assert saved.risk_limits.min_priority_score == 65.0
+
+    def test_rejects_min_priority_score_below_zero(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(min_priority_score=-1.0))
+        assert error is not None
+        assert saved.risk_limits.min_priority_score != -1.0
+
+    def test_rejects_min_priority_score_above_100(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(min_priority_score=101.0))
+        assert error is not None
+        assert saved.risk_limits.min_priority_score != 101.0
+
+    def test_accepts_min_priority_score_boundaries(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(min_priority_score=0.0))
+        assert error is None
+        assert saved.risk_limits.min_priority_score == 0.0
+        saved, error = asyncio.run(state.update_risk_limits(min_priority_score=100.0))
+        assert error is None
+        assert saved.risk_limits.min_priority_score == 100.0
+
+    def test_updates_capital_reserve_pct(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(capital_reserve_pct=25.0))
+        assert error is None
+        assert saved.risk_limits.capital_reserve_pct == 25.0
+
+    def test_rejects_capital_reserve_pct_below_zero(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(capital_reserve_pct=-1.0))
+        assert error is not None
+        assert saved.risk_limits.capital_reserve_pct != -1.0
+
+    def test_rejects_capital_reserve_pct_at_or_above_100(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(capital_reserve_pct=100.0))
+        assert error is not None
+        assert saved.risk_limits.capital_reserve_pct != 100.0
+
     def test_extra_fields_on_the_wire_are_ignored_not_rejected(self) -> None:
         """ClientSaveRequest inherits CamelModel's default extra="ignore", so
         an older client still POSTing a full legacy GameSaveState-shaped body

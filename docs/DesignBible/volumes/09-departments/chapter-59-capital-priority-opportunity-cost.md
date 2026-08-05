@@ -1,9 +1,13 @@
 # Chapter 59 — Capital Priority & Opportunity Cost Engine
 
-**Status:** Target design. Not yet implemented. See [Volume 9's chapter
-template](README.md) for what every section below must contain, and the
-Implementation Notes at the bottom of this chapter for exactly what's
-real today versus new here.
+**Status:** Backend implemented (`app/capital_priority.py`, wired into
+`app/nexus.py`'s post-Chapter-58 approved-candidate loop and
+`app/executive.py`'s `is_significant_proposal`); frontend not yet wired
+(the ranked queue and the two new RISK tab controls are not yet surfaced
+in the Command Center — see this chapter's own Implementation Notes).
+See [Volume 9's chapter template](README.md) for what every section
+below must contain, and the Implementation Notes at the bottom of this
+chapter for exactly what's real today versus new here.
 
 ## Executive Summary
 
@@ -303,11 +307,44 @@ trading modes exist); "Missed Opportunity Rate" as the brief frames it
 (would require knowledge of opportunities that were never real
 candidates at all — fabrication, not analysis).
 
-**Before implementation begins:** per Appendix G's Permanent Development
-Policy, this chapter is the required design-first step. Implementation
-should extend `app/nexus.py`'s existing post-Chapter-58 approved-
-candidate loop to sort before appending to `trade_proposals`, reuse
-`app/war_room.py`'s existing Decision Score directly, and ship with the
-same rigor as Chapters 57/58: real tests, an honest scope-cut list,
-`mypy`/`ruff` clean, backend committed and verified before any frontend
-work begins.
+**What was actually built (backend):** a new `app/capital_priority.py`
+module with three functions — `priority_score()` (looks up a proposal's
+own `WarRoomSession.decisionScore.overall` by `proposalId`, the same
+reused number shown everywhere else — never a second composite),
+`rank_trade_proposals()` (a stable sort of the pending queue, highest
+score first, unscored proposals sort last rather than crashing), and
+`cash_reserve_breached()` (true once cash as a % of equity is at or
+below the CEO's `capitalReservePct`, additive to Chapter 57's hard
+`cashReservePct` floor). Two new `RiskLimits` fields —
+`minPriorityScore` and `capitalReservePct` — both default to `0.0`
+(no-op/opt-in, since neither replaces prior fixed behavior), writable
+via the existing `POST /api/risk-limits` endpoint
+(`app/routers/risk.py`, `app/state.py`'s `update_risk_limits`), each
+validated to a `0`–`100` percentage range the same way
+`minTradeQualityScore`/`cashReservePct` already are. `app/nexus.py` now
+re-sorts the *entire* pending queue by Priority Score every tick right
+after new proposals are appended (not just the tick's new arrivals), so
+switching CEO controls mid-game re-orders the existing backlog too.
+`_apply_operating_mode()` gained two new real gates in its per-proposal
+loop: a proposal below `minPriorityScore` is "significant" the same way
+a low-confidence one already is (`app/executive.py`'s
+`is_significant_proposal()` grew a new optional `priority_score`
+parameter) — Assisted Mode only, since Executive Mode's whole point is
+auto-resolving everything unconditionally; and once
+`cash_reserve_breached()` is true, further BUY proposals stay pending in
+**both** modes, since a real capital constraint (unlike a significance
+judgment) applies regardless of how hands-off the CEO wants to be —
+mirroring how Chapter 57's own hard `cashReservePct` floor already
+applies unconditionally. Verified with `mypy`/`ruff` clean, 23 new unit
+tests (`tests/test_capital_priority.py`, plus new cases in
+`tests/test_executive.py` and `tests/test_state.py`) covering ranking,
+stability, the missing-session case, both new CEO controls' boundaries,
+and a live 400-tick simulation smoke test confirming the queue stays
+sorted every tick and both gates produce real, observable holds.
+
+**What's explicitly not yet built:** the frontend. The ranked Opportunity
+Queue and the two new RISK tab controls (Minimum Priority Score, Capital
+Reserve %) are not yet surfaced anywhere in the Command Center — this
+chapter's own backend-first discipline (per `docs/DEVELOPMENT_RULES.md`)
+treats that as a separate, following pass, the same way Chapters 57/58
+did.

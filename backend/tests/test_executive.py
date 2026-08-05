@@ -479,6 +479,33 @@ class TestIsSignificantProposal:
         assert significant is True
         assert any("Position size" in r for r in reasons)
 
+    def test_priority_score_below_ceo_floor_is_significant(self) -> None:
+        # v0.7 Chapter 59 — a real, CEO-raised Minimum Priority Score.
+        proposal = self._proposal(confidence_score=95.0, quantity=1.0, price=10.0)
+        significant, reasons = is_significant_proposal(proposal, default_portfolio(), RiskLimits(minPriorityScore=70.0), [], 55.0)
+        assert significant is True
+        assert any("Priority Score" in r for r in reasons)
+
+    def test_priority_score_at_or_above_ceo_floor_is_not_significant(self) -> None:
+        proposal = self._proposal(confidence_score=95.0, quantity=1.0, price=10.0)
+        significant, reasons = is_significant_proposal(proposal, default_portfolio(), RiskLimits(minPriorityScore=70.0), [], 70.0)
+        assert significant is False
+        assert reasons == []
+
+    def test_default_priority_floor_of_zero_never_flags_a_real_score(self) -> None:
+        proposal = self._proposal(confidence_score=95.0, quantity=1.0, price=10.0)
+        significant, reasons = is_significant_proposal(proposal, default_portfolio(), RiskLimits(), [], 1.0)
+        assert significant is False
+        assert reasons == []
+
+    def test_missing_priority_score_is_never_flagged(self) -> None:
+        # No War Room session to look a score up from — is_significant_
+        # proposal never fabricates one; the check simply doesn't run.
+        proposal = self._proposal(confidence_score=95.0, quantity=1.0, price=10.0)
+        significant, reasons = is_significant_proposal(proposal, default_portfolio(), RiskLimits(minPriorityScore=70.0), [], None)
+        assert significant is False
+        assert reasons == []
+
 
 def _grade_proposal(*, score: float = 90.0, agreeing_votes: int = 6, total_votes: int = 6) -> TradeProposal:
     """v0.7 Feature 50 (Part 2/3) — a deterministic TradeProposal for

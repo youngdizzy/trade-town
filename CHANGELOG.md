@@ -7,12 +7,47 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 59 backend — Capital Priority & Opportunity Cost Engine**
+  (`app/capital_priority.py`, wired into `app/nexus.py` and
+  `app/executive.py`): closes the exact gap Chapter 58's own
+  Implementation Notes flagged — pending `TradeProposal`s now sort by a
+  real Priority Score (reusing each proposal's own linked
+  `WarRoomSession.decisionScore.overall` directly, never a second
+  composite) instead of arrival order, re-sorted every tick right after
+  new proposals are appended so the full backlog re-orders too, not just
+  the tick's new arrivals. Two new CEO controls on `RiskLimits`
+  (`minPriorityScore`, `capitalReservePct`, both defaulting to `0.0` —
+  opt-in, no-op until raised): a proposal below the Minimum Priority
+  Score floor is now "significant" the same way a low-confidence one
+  already was (`is_significant_proposal()` gained an optional
+  `priority_score` parameter), holding it pending for the CEO in
+  Assisted Mode — Executive Mode still auto-resolves everything
+  unconditionally, unchanged; and once cash as a % of equity reaches the
+  CEO's own voluntary Capital Reserve % (additive to Chapter 57's
+  existing hard `cashReservePct` floor — Position Sizing still never
+  spends into that), further BUY proposals stay pending in *both* modes,
+  since a real capital constraint applies regardless of how hands-off
+  the CEO wants to be. Extended `POST /api/risk-limits`
+  (`app/routers/risk.py`, `app/state.py`) with both new fields, each
+  validated to a `[0, 100)`/`[0, 100]` range matching the existing
+  `minTradeQualityScore`/`cashReservePct` controls. 23 new backend
+  tests (`tests/test_capital_priority.py` plus new cases in
+  `tests/test_executive.py` and `tests/test_state.py`); `mypy`/`ruff`
+  clean; verified with a live 400-tick simulation confirming the queue
+  stays sorted every tick and both new gates produce real, observable
+  holds. Frontend (ranked Opportunity Queue view, RISK tab controls) is
+  a separate, following pass — not built in this change. See the
+  chapter's own Implementation Notes for the full design-vs-built
+  breakdown: `docs/DesignBible/volumes/09-departments/chapter-59-capital-priority-opportunity-cost.md`.
+
 - **Design Bible Chapters 59 & 60 — Capital Priority & Opportunity Cost
   Engine, and Institutional Portfolio Rebalancing & Adaptive Capital
   Rotation** (`docs/DesignBible/volumes/09-departments/chapter-59-capital-priority-opportunity-cost.md`,
   `chapter-60-portfolio-rebalancing-capital-rotation.md`): two
-  target-design chapters, not yet implemented, per Appendix G's "Design
-  Bible updated before implementation" policy. Researched first, with a
+  target-design chapters, written per Appendix G's "Design Bible updated
+  before implementation" policy, ahead of and separate from any
+  implementation work (Chapter 59's backend is implemented — see the
+  entry above; Chapter 60 remains design-only). Researched first, with a
   clean division matching both briefs' own stated department
   boundaries: **Chapter 59** ranks the *pending* proposal queue —
   Chapter 58's own Implementation Notes already flagged that pending

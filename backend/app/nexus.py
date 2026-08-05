@@ -36,6 +36,7 @@ from app.analytics import compute_performance_snapshot, confidence_accuracy, per
 from app.black_box import archive_project, default_black_box_state, generate_project_challenge, record_review as record_breakthrough_review, tick_black_box_daily
 from app.broker import tick_broker
 from app.calendar import compute_system_events
+from app.capital_priority import cash_reserve_breached, priority_score, rank_trade_proposals
 from app.coach import generate_report as generate_coach_report
 from app.coach import record_report as record_coach_report_entry
 from app.company_dna import ACADEMY_COMPLETION_NUDGE, BLACK_BOX_BREAKTHROUGH_NUDGE, FOUNDER_RETIREMENT_NUDGE, SUCCESS_STUDY_NUDGE, compute_company_dna, nudge_legacy
@@ -794,6 +795,7 @@ def _apply_operating_mode(
     meeting_log: list[ExecutiveMeetingLogEntry],
     sim_day: int,
     market_intelligence: MarketIntelligenceState,
+    war_room_sessions: list[WarRoomSession],
 ) -> tuple[list[TradeProposal], PaperPortfolio, list[ExecutiveMeetingLogEntry]]:
     """v0.7 Feature 21 — Company Operating Modes. Learning Mode never
     calls this (every proposal stays pending, the pre-Feature-21
@@ -806,14 +808,34 @@ def _apply_operating_mode(
     resolved_by="auto" for honest provenance — including the v0.7
     Feature 50 Executive Meeting Log entry it now also generates,
     exactly like a real CEO decision does (see app/state.py's
-    submit_ceo_decision)."""
+    submit_ceo_decision).
+
+    v0.7 Design Bible Chapter 59 — Capital Priority & Opportunity Cost
+    Engine. `trade_proposals` arrives already ranked by Priority Score
+    (see the caller's `rank_trade_proposals` call), so this loop works
+    the queue top-down, honestly favoring higher-quality candidates when
+    capital is limited rather than first-come-first-served. Two new real
+    gates: a proposal below the CEO's `minPriorityScore` floor is
+    "significant" the same way a low-confidence one already is (Assisted
+    Mode only — Executive Mode's whole point is auto-resolving
+    everything); and once cash as a % of equity reaches the CEO's
+    voluntary `capitalReservePct` reserve, further BUY proposals stay
+    pending in BOTH modes — a real capital constraint, not a
+    significance judgment, so it applies regardless of how hands-off the
+    CEO wants to be (mirroring Chapter 57's own hard `cashReservePct`
+    floor, which likewise applies unconditionally)."""
     if operating_mode == "learning" or not trade_proposals:
         return trade_proposals, portfolio, meeting_log
 
     still_pending: list[TradeProposal] = []
     for proposal in trade_proposals:
-        significant, reasons = is_significant_proposal(proposal, portfolio, risk_limits, risk_warnings)
+        score = priority_score(proposal, war_room_sessions)
+        significant, reasons = is_significant_proposal(proposal, portfolio, risk_limits, risk_warnings, score)
         if operating_mode == "assisted" and significant:
+            still_pending.append(proposal)
+            continue
+
+        if proposal.overall_recommendation == "buy" and cash_reserve_breached(portfolio, risk_limits):
             still_pending.append(proposal)
             continue
 
@@ -1263,6 +1285,14 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         war_room_sessions = record_war_room_session(war_room_sessions, war_room_session)
 
     trade_proposals = [*trade_proposals, *new_proposals]
+    # v0.7 Design Bible Chapter 59 — Capital Priority & Opportunity Cost
+    # Engine (app/capital_priority.py). Re-sorts the FULL pending queue
+    # (not just this tick's new arrivals) by Priority Score every tick,
+    # highest first — closes the exact gap Chapter 58's own
+    # Implementation Notes flagged as unbuilt. Reuses
+    # decisionScore.overall directly via each proposal's own
+    # WarRoomSession; never a second, competing composite.
+    trade_proposals = rank_trade_proposals(trade_proposals, war_room_sessions)
     # v0.7 Feature 17 — every approved proposal gets a full committee
     # debate (app/debate.py) generated up front, over the same real
     # analyst votes the proposal already carries, so it's ready the
@@ -1307,6 +1337,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         meeting_log,
         new_time.day,
         market_intelligence,
+        war_room_sessions,
     )
 
     trade_proposals, expired_proposals = expire_stale_proposals(trade_proposals, now_sim_minutes)

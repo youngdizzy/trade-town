@@ -5351,6 +5351,99 @@ Opportunity Gatekeeper controls round-trip a real save, one confirms
 the EXECUTIVE tab renders either a real rejection or the honest empty
 state.
 
+### Capital Priority & Opportunity Cost Engine — Design Bible Chapter 59, backend
+
+GOAL (from `docs/DesignBible/volumes/09-departments/chapter-59-capital-priority-opportunity-cost.md`,
+written first per Appendix G's "design before code" policy): "Good
+trades deserve consideration. Great trades deserve capital." Chapter 58
+already decides whether a candidate earns a `TradeProposal` at all;
+this chapter decides the *order* capital is offered to the ones that
+did — highest quality first, never first-come-first-served, closing the
+exact gap Chapter 58's own Implementation Notes flagged as unbuilt.
+
+**Researched first — reuses, does not duplicate.** The brief's own
+Priority Score factor list (Expected Value, Evidence, Risk, Portfolio
+Compatibility, Market Quality, Liquidity...) is, factor-for-factor, the
+same real composite `app/war_room.py`'s `DecisionScoreBreakdown.overall`
+already is. The honest design is to reuse it directly rather than invent
+a second, competing composite from the same underlying signals — the
+same reuse precedent Chapters 57 and 58 already established.
+
+**`app/capital_priority.py`** is the new module, three functions:
+`priority_score()` looks up a proposal's own linked `WarRoomSession` by
+`proposalId` (the same lookup pattern `app/nexus.py`'s outcome-comparison
+step already uses) and returns its `decisionScore.overall`, or `None` if
+somehow unlinked. `rank_trade_proposals()` stable-sorts the pending
+queue by that score, highest first, with any unscored proposal (should
+never happen — every proposal reaching `trade_proposals` is appended
+alongside its own `record_war_room_session()` call) sorting last rather
+than crashing. `cash_reserve_breached()` is true once cash as a % of
+equity is at or below a new CEO-set `RiskLimits.capitalReservePct` —
+additive to, and layered on top of, Chapter 57's existing hard
+`cashReservePct` floor (`app/position_sizing.py` still never spends into
+that floor regardless of this engine; this is the CEO's own *voluntary*
+choice to hold back even more).
+
+**Wired into `app/nexus.py`'s post-Chapter-58 approved-candidate loop.**
+Right after `trade_proposals = [*trade_proposals, *new_proposals]`, the
+*entire* pending queue (not just this tick's new arrivals) is re-sorted
+by `rank_trade_proposals()` every tick — so switching CEO controls or a
+new high-quality candidate arriving mid-game re-orders the existing
+backlog too, not just future proposals.
+
+**Two new real gates in `_apply_operating_mode()`'s per-proposal loop**,
+processed top-down over the now-ranked queue: `is_significant_proposal()`
+(`app/executive.py`) gained an optional `priority_score` parameter — a
+proposal scoring below the CEO's `minPriorityScore` floor is now
+"significant" the same way a low-confidence one or an oversized position
+already was, keeping it pending for the CEO in **Assisted Mode only**
+(Executive Mode's whole point, unchanged, is auto-resolving everything
+unconditionally — extending the gate there would contradict that mode's
+own documented contract). Separately, once `cash_reserve_breached()` is
+true, further BUY proposals stay pending in **both** modes — a real
+capital constraint, not a significance judgment, so it applies
+regardless of how hands-off the CEO wants to be, mirroring how Chapter
+57's own hard `cashReservePct` floor already applies unconditionally
+in both modes.
+
+**Both new `RiskLimits` fields default to `0.0`** — unlike Chapter 58's
+`minTradeQualityScore` (which matched an existing fixed constant's
+default), neither `minPriorityScore` nor `capitalReservePct` replaces
+prior behavior, so `0.0` is the honest "opt-in, currently a no-op" default
+rather than one chosen to silently preserve some other pre-existing
+number.
+
+**Explicitly not built in this pass** (all named directly in the
+chapter's own Implementation Notes): Replacement Analysis against
+already-open positions (Chapter 60's job entirely — this queue only ever
+holds *pending*, not-yet-capitalized proposals); Swing vs. Day
+allocation ratio (no real distinct trading modes exist); "Missed
+Opportunity Rate" as the brief frames it (would require knowledge of
+opportunities that were never real candidates at all — fabrication, not
+analysis).
+
+**Verified**: `backend/tests/test_capital_priority.py` (12 tests —
+`priority_score`'s real lookup and honest `None` for an unlinked
+proposal, `rank_trade_proposals`'s sort order/stability/unscored-last
+behavior, and `cash_reserve_breached`'s boundary at exactly the
+reserve target plus the zero-equity edge case), plus new cases in
+`backend/tests/test_executive.py` (4 — the new `priority_score` gate on
+`is_significant_proposal`, including the "no score to check" honest
+no-op) and `backend/tests/test_state.py` (7 — both new fields' update
+and validation boundaries). Full backend suite: 985/985 passing,
+`mypy`/`ruff` clean. A live 400-tick simulation smoke test with both
+controls raised well above their no-op defaults confirmed real, observed
+effects: the pending queue's real Priority Scores stayed sorted on every
+single tick checked, proposals scoring below a raised `minPriorityScore`
+were repeatedly held pending, and a raised `capitalReservePct` produced
+real `cash_reserve_breached()` holds (31 of 56 checks true in one run) —
+not merely reachable code paths, but observed to actually fire during
+ordinary simulated play.
+
+**Frontend not yet built** — the ranked Opportunity Queue view and the
+two new RISK tab controls are a separate, following pass, per this
+project's backend-first discipline (`docs/DEVELOPMENT_RULES.md`).
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the
