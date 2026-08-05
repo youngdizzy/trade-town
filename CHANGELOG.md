@@ -7,6 +7,34 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapters 63 and 64 — Design Bible chapters (documentation-only, no
+  code changes)**
+  (`docs/DesignBible/volumes/09-departments/chapter-63-executive-performance-company-health.md`,
+  `chapter-64-executive-strategic-planning-goal-management.md`):
+  **Chapter 63 (Executive Performance & Company Health Engine)** —
+  researched first, and like Chapters 61/62 found almost the entire
+  brief already real and predating this chapter: the two-tier Company
+  Health Score (`app/company_health.py`), the seven-metric Company Score
+  (`app/company_score.py`), Department Scorecards via Weekly
+  Self-Evaluation (`app/executive_intelligence.py`), and the monthly
+  Executive Review (`app/executive_review.py`). Two sections are
+  honestly scoped as partial gaps rather than claimed complete: a
+  unified Early Warning feed (today's warnings are real but scattered
+  across the Executive Review's flags and Sentinel/Guardian's
+  RiskWarnings, never consolidated) and genuine multi-period or
+  industry-standard Benchmarking (today only one real
+  immediately-previous-period delta exists). **Chapter 64 (Executive
+  Strategic Planning & Goal Management Engine)** — the opposite research
+  outcome: a genuine, mostly-unbuilt gap, written as target design like
+  Chapter 60. Three real, adjacent systems were checked and explicitly
+  found *not* to be substitutes — `CompanyPriority` (a real four-value
+  operating stance, not CEO-authored goals), Chapter 59's Capital
+  Priority Engine (ranks trade proposals, not company goals), and
+  `_long_term_goals()` (real but static, regenerated text with no
+  tracking). No goal/objective/milestone data model exists anywhere in
+  this codebase today. Both chapters' status rows added to
+  `docs/DesignBible/volumes/09-departments/README.md`.
+
 - **Chapter 62 backend + frontend — Innovation Lab (Knowledge
   Integration, Innovation Budget, Experiment Tiering)**
   (`app/scribe.py`, `app/state.py`, `app/schemas.py`, `app/sandbox.py`,
