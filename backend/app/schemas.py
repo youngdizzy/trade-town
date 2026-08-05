@@ -1003,15 +1003,12 @@ class RiskLimits(CamelModel):
     min_similar_matches: int = Field(default=3, alias="minSimilarMatches")
     mistake_warning_share_pct: float = Field(default=30.0, alias="mistakeWarningSharePct")
     # v0.7 Design Bible Chapter 61's "Knowledge Retention Rules" CEO
-    # control — the Decision Vault slice only. Default matches the fixed
-    # constant it replaces (app/decision_vault.py's
-    # MAX_DECISION_VAULT_ENTRIES) so existing behavior is unchanged until
-    # the CEO adjusts it. The Company Memory side of the same control
-    # (MAX_MEMORY_RECORDS) is NOT included here — that constant is read
-    # from 14 separate app/scribe.py call sites rather than one, a larger
-    # change deliberately left for a separate pass (see Chapter 61's own
-    # Implementation Notes).
+    # control, both slices. Both defaults match the fixed constants they
+    # replace (app/decision_vault.py's MAX_DECISION_VAULT_ENTRIES,
+    # app/memory.py's MAX_MEMORY_RECORDS) so existing behavior is
+    # unchanged until the CEO adjusts them.
     max_decision_vault_entries: int = Field(default=200, alias="maxDecisionVaultEntries")
+    max_memory_records: int = Field(default=200, alias="maxMemoryRecords")
 
 
 class RiskWarning(CamelModel):

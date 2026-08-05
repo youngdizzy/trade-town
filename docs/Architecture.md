@@ -5612,6 +5612,61 @@ both the accepted value (`maxDecisionVaultEntries: 50` echoed back) and
 the rejected one (`0` → "Maximum Decision Vault Entries must be at
 least 1.").
 
+### Knowledge Retention Rules CEO control (Company Memory slice) — Design Bible Chapter 61
+
+The change the previous section deferred as "larger, riskier" —
+implemented in a separate, careful pass since it touches `app/nexus.py`'s
+core `tick()` loop across many more call sites than the Decision Vault
+slice did. One new `RiskLimits` field, `maxMemoryRecords` (default
+200), matching the exact prior fixed constant
+(`app/memory.py`'s `MAX_MEMORY_RECORDS`) so existing behavior is
+unchanged until the CEO adjusts it.
+
+**`app/memory.py`'s `record()`** gained an optional `max_records`
+parameter defaulting to the module constant. **Every one of
+`app/scribe.py`'s 18 wrapper functions** — the codebase's real "one
+writer gateway" callers (`record_research_completions`,
+`record_meeting`, `record_paper_trade`, and so on — see that module's
+own docstring) — gained the same optional `max_records` parameter,
+passed straight through to every internal `record()` call each wrapper
+makes (some, like `record_research_completions`, call it up to three
+times per invocation).
+
+**Threading it through `app/nexus.py`** turned out to need one more
+step than the Decision Vault slice: of the 20 real call sites across
+these 18 wrappers, 18 sit directly inside `tick()`, where
+`effective_risk_limits` was already in scope (the same pattern the
+Decision Vault and Pattern Detection Sensitivity controls used). The
+remaining 2 — `record_meeting` inside `_maybe_call_meeting`, and
+`record_ceo_decision` inside `_apply_operating_mode` — live in helper
+functions that run *outside* `tick()`'s own scope. `_apply_operating_mode`
+already receives `risk_limits` as a parameter (used for other real gates
+like the cash-reserve check), so its call needed no new plumbing, just
+`risk_limits.max_memory_records`. `_maybe_call_meeting` gained a new
+`max_memory_records: int = MAX_MEMORY_RECORDS` parameter, and its one
+call site (inside `tick()`) now passes
+`effective_risk_limits.max_memory_records` through. **`POST
+/api/risk-limits`** extended with the field, validated to ≥ 1.
+
+**Verified**: 3 new tests for `record()`'s own capping behavior at a
+CEO-lowered and CEO-raised ceiling, in a new `backend/tests/test_memory.py`
+(no test file existed for `app/memory.py` before this pass); 2 new
+tests confirming a representative wrapper (`record_scanner_alert`)
+actually passes its `max_records` argument through to `record()` rather
+than silently keeping the module default, in a new
+`backend/tests/test_scribe.py` (likewise the first test file for that
+module); 2 new tests for the CEO write path's validation boundary
+(`backend/tests/test_state.py`). `mypy`/`ruff` clean; full backend
+suite 1021/1021 passing. A live simulation was the most important check
+here, given how many real `tick()` code paths this change touches: a
+`POST /api/risk-limits` call set the CEO's `maxMemoryRecords` to 20,
+then a 48-simulated-hour `POST /api/time/advance` run against the
+running dev server exercised research, discovery, future-trade
+flagging, meetings, discussion, mentorship, Academy projects, scanner
+alerts, and simulation results — the memory log came back capped at
+exactly 20 real entries across nine different categories, with no
+errors anywhere in the server log across the whole run.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

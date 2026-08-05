@@ -310,6 +310,18 @@ class TestUpdateRiskLimits:
         assert error is not None
         assert saved.risk_limits.max_decision_vault_entries != 0
 
+    def test_updates_max_memory_records(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(max_memory_records=50))
+        assert error is None
+        assert saved.risk_limits.max_memory_records == 50
+
+    def test_rejects_max_memory_records_below_one(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(max_memory_records=0))
+        assert error is not None
+        assert saved.risk_limits.max_memory_records != 0
+
     def test_extra_fields_on_the_wire_are_ignored_not_rejected(self) -> None:
         """ClientSaveRequest inherits CamelModel's default extra="ignore", so
         an older client still POSTing a full legacy GameSaveState-shaped body

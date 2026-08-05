@@ -79,6 +79,7 @@ from app.market_intelligence import (
     record_learning_entry,
     record_market_intelligence_report,
 )
+from app.memory import MAX_MEMORY_RECORDS
 from app.mentor import compute_mentor_state, compute_thinking_profiles, generate_question_of_the_day, record_question
 from app.mistakes import generate_case_studies, record_case_studies
 from app.opportunity_gatekeeper import build_opportunity_rejection, evaluate_opportunity, grade_opportunity_rejections
@@ -635,6 +636,7 @@ def _maybe_call_meeting(
     memory: list[MemoryRecord],
     meeting_minutes: list[MeetingMinutes],
     resting: bool = False,
+    max_memory_records: int = MAX_MEMORY_RECORDS,
 ) -> tuple[dict[AgentId, AgentState], MeetingState]:
     if meeting.active:
         still_meeting = [aid for aid in meeting.participants if (override := agents[aid].override) is not None and override.reason == "meeting"]
@@ -643,7 +645,7 @@ def _maybe_call_meeting(
             meeting_minutes.append(minutes)
             if len(meeting_minutes) > MAX_MEETING_MINUTES:
                 del meeting_minutes[: len(meeting_minutes) - MAX_MEETING_MINUTES]
-            record_meeting(memory, minutes)
+            record_meeting(memory, minutes, max_records=max_memory_records)
             news.append(
                 NewsItem(
                     id=f"news-meeting-end-{new_time.day}-{new_time.hour}-{new_time.minute}",
@@ -852,7 +854,7 @@ def _apply_operating_mode(
             risk_warnings=risk_warnings,
             resolved_by="auto",
         )
-        record_ceo_decision(memory, decision)
+        record_ceo_decision(memory, decision, max_records=risk_limits.max_memory_records)
         decisions.append(decision)
         ceo_decisions.append(record)
 
@@ -1028,7 +1030,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # and whatever confidence an in-progress item had simply holds until
     # Work Mode resumes.
     research, completed = (research, []) if resting else tick_research(research, speed_multiplier=research_speed_multiplier)
-    record_research_completions(memory, completed)
+    record_research_completions(memory, completed, max_records=effective_risk_limits.max_memory_records)
     for item in completed:
         news.append(
             NewsItem(
@@ -1042,7 +1044,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         # assigned agent real Knowledge Points (app/academy.py).
         agent_knowledge, tier_up = award_points(agent_knowledge, item.assigned_agent, RESEARCH_COMPLETION_POINTS * knowledge_multiplier)
         if tier_up is not None:
-            record_knowledge_tier_up(memory, tier_up)
+            record_knowledge_tier_up(memory, tier_up, max_records=effective_risk_limits.max_memory_records)
 
     # v0.7 Feature 45 — the Research Sandbox. An "idea"-stage strategy
     # advances to "research" the moment real completed research backs its
@@ -1060,10 +1062,10 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         academy_completed_projects.append(newly_completed_project)
         if len(academy_completed_projects) > MAX_ACADEMY_LIBRARY:
             del academy_completed_projects[: len(academy_completed_projects) - MAX_ACADEMY_LIBRARY]
-        record_academy_project(memory, newly_completed_project)
+        record_academy_project(memory, newly_completed_project, max_records=effective_risk_limits.max_memory_records)
         agent_knowledge, tier_up = award_points(agent_knowledge, newly_completed_project.assigned_agent, ACADEMY_PROJECT_POINTS * knowledge_multiplier)
         if tier_up is not None:
-            record_knowledge_tier_up(memory, tier_up)
+            record_knowledge_tier_up(memory, tier_up, max_records=effective_risk_limits.max_memory_records)
         news.append(
             NewsItem(
                 id=f"news-academy-{newly_completed_project.id}",
@@ -1115,7 +1117,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # (gaps/breakouts) are worth a news headline too.
     scanner_alerts, new_scanner_alerts = tick_scanner(scanner_alerts, watchlist, market_data_provider)
     for alert in new_scanner_alerts:
-        record_scanner_alert(memory, alert)
+        record_scanner_alert(memory, alert, max_records=effective_risk_limits.max_memory_records)
         if alert.alert_type in ("gap_up", "gap_down", "breakout"):
             news.append(
                 NewsItem(
@@ -1353,7 +1355,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             market_intelligence=market_intelligence,
             resolved_by="auto",
         )
-        record_ceo_decision(memory, expired_decision)
+        record_ceo_decision(memory, expired_decision, max_records=effective_risk_limits.max_memory_records)
         decisions.append(expired_decision)
         ceo_decisions.append(expired_record)
         expired_challenge_report = next((c for c in reversed(challenge_reports) if c.proposal_id == expired.id), None)
@@ -1404,7 +1406,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     if len(opportunity_rejections) > MAX_OPPORTUNITY_REJECTIONS:
         del opportunity_rejections[: len(opportunity_rejections) - MAX_OPPORTUNITY_REJECTIONS]
     for trade in closed_trades:
-        record_paper_trade(memory, trade)
+        record_paper_trade(memory, trade, max_records=effective_risk_limits.max_memory_records)
         outcome = "gained" if trade.pnl > 0 else "lost"
         news.append(
             NewsItem(
@@ -1437,7 +1439,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                 created_at=_now_iso(),
             )
             discipline_reviews = record_discipline_review_entry(discipline_reviews, discipline_review)
-            record_discipline_review(memory, discipline_review)
+            record_discipline_review(memory, discipline_review, max_records=effective_risk_limits.max_memory_records)
             trade_case_studies: list[CaseStudy] = []
             company_dna_change: str | None = None
 
@@ -1450,7 +1452,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                 case_studies = record_case_studies(case_studies, new_case_studies)
                 trade_case_studies = new_case_studies
                 for case_study in new_case_studies:
-                    record_case_study(memory, case_study)
+                    record_case_study(memory, case_study, max_records=effective_risk_limits.max_memory_records)
                     news.append(
                         NewsItem(
                             id=f"news-case-study-{case_study.id}",
@@ -1477,7 +1479,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                 case_studies = record_success_studies(case_studies, new_success_studies)
                 trade_case_studies = new_success_studies
                 for success_study in new_success_studies:
-                    record_case_study(memory, success_study)
+                    record_case_study(memory, success_study, max_records=effective_risk_limits.max_memory_records)
                     news.append(
                         NewsItem(
                             id=f"news-case-study-{success_study.id}",
@@ -1544,7 +1546,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         backtest_sessions, simulation_results, strategies, watchlist, RESEARCHER_IDS, new_time
     )
     for result in newly_completed_sims:
-        record_simulation_result(memory, result)
+        record_simulation_result(memory, result, max_records=effective_risk_limits.max_memory_records)
         news.append(
             NewsItem(
                 id=f"news-sim-{result.id}",
@@ -1630,7 +1632,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     cap_strategy_reviews(strategy_reviews)
 
     mm_count_before_meeting = len(meeting_minutes)
-    agents, meeting = _maybe_call_meeting(agents, state.meeting, research, new_time, news, tasks, memory, meeting_minutes, resting=resting)
+    agents, meeting = _maybe_call_meeting(
+        agents, state.meeting, research, new_time, news, tasks, memory, meeting_minutes, resting=resting, max_memory_records=effective_risk_limits.max_memory_records
+    )
     # v0.7 Feature 25 — every agent who actually attended a real meeting
     # earns a small real Knowledge Points bonus (app/academy.py) —
     # "collaboration" grounded in the meeting system that already exists.
@@ -1638,7 +1642,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         for attendee in meeting_minutes[-1].participants:
             agent_knowledge, tier_up = award_points(agent_knowledge, attendee, MEETING_ATTENDANCE_POINTS * knowledge_multiplier)
             if tier_up is not None:
-                record_knowledge_tier_up(memory, tier_up)
+                record_knowledge_tier_up(memory, tier_up, max_records=effective_risk_limits.max_memory_records)
 
     if random.random() < 0.04:
         news.append(
@@ -1731,7 +1735,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     if is_evening and new_time.day % WEEKLY_INTERVAL_DAYS == 0:
         latest_report = generate_coach_report("weekly", research, paper_portfolio, company_score, RESEARCHER_IDS, new_time, ceo_decisions=ceo_decisions, decisions=decisions)
         coach_reports = record_coach_report_entry(coach_reports, latest_report)
-        record_coach_report(memory, latest_report)
+        record_coach_report(memory, latest_report, max_records=effective_risk_limits.max_memory_records)
         performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("weekly", paper_portfolio, research, new_time))
         # v0.7 Feature 46 — "Coach quotes it": the most recent real
         # CaseStudy on record names the specific Article this week's
@@ -1745,7 +1749,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     if is_evening and new_time.day % MONTHLY_INTERVAL_DAYS == 0:
         latest_report = generate_coach_report("monthly", research, paper_portfolio, company_score, RESEARCHER_IDS, new_time, ceo_decisions=ceo_decisions, decisions=decisions)
         coach_reports = record_coach_report_entry(coach_reports, latest_report)
-        record_coach_report(memory, latest_report)
+        record_coach_report(memory, latest_report, max_records=effective_risk_limits.max_memory_records)
         performance_snapshots = record_snapshot(performance_snapshots, compute_performance_snapshot("monthly", paper_portfolio, research, new_time))
         if latest_report.common_mistakes and case_studies:
             recent_category = case_studies[-1].category
@@ -1785,7 +1789,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             new_time=new_time,
         )
         executive_reviews = record_review(executive_reviews, review)
-        record_executive_review(memory, review)
+        record_executive_review(memory, review, max_records=effective_risk_limits.max_memory_records)
 
         # v0.7 Feature 39 — the Founder Council. Real monthly sit-down
         # between the Coach and both Founders, generated alongside the
@@ -1816,7 +1820,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         agent_knowledge, pairing = maybe_run_mentorship(agent_knowledge)
         if pairing is not None:
             mentor_id, mentee_id = pairing
-            record_mentorship_session(memory, agent_knowledge, mentor_id, mentee_id)
+            record_mentorship_session(memory, agent_knowledge, mentor_id, mentee_id, max_records=effective_risk_limits.max_memory_records)
 
     # v0.7 Feature 29 — the Reasoning Lab. Files one real ReasoningChallenge
     # from the company's most recent real AI Debate + its linked
@@ -1841,7 +1845,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                 created_at=_now_iso(),
             )
             reasoning_challenges = record_challenge(reasoning_challenges, challenge)
-            record_reasoning_challenge(memory, challenge)
+            record_reasoning_challenge(memory, challenge, max_records=effective_risk_limits.max_memory_records)
 
     reasoning_lab_state = compute_reasoning_lab_state(len(reasoning_challenges))
 
@@ -1877,7 +1881,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             new_time=new_time,
         )
         reflection_sessions = record_reflection_session_entry(reflection_sessions, reflection_session)
-        record_reflection_session(memory, reflection_session)
+        record_reflection_session(memory, reflection_session, max_records=effective_risk_limits.max_memory_records)
 
     # v0.7 Feature 50 (Part 2/3) — Weekly Self-Evaluation, one real entry
     # per Executive Intelligence Network department, built from that
@@ -2061,7 +2065,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         new_time=new_time,
     )
     for entry in hall_of_fame[hof_before:]:
-        record_hall_of_fame_entry(memory, entry)
+        record_hall_of_fame_entry(memory, entry, max_records=effective_risk_limits.max_memory_records)
 
     # v0.7 Feature 36 — the CEO Calendar. system_events is recomputed
     # fresh every tick from real current data (cheap — see calendar.py's

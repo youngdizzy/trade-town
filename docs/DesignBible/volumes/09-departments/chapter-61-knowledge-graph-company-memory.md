@@ -3,16 +3,15 @@
 **Status:** Partially implemented — the Knowledge Graph extension
 (`app/knowledge_graph.py`, three new node types), the Pattern
 Detection Sensitivity CEO controls (`RiskLimits.minSimilarMatches`/
-`mistakeWarningSharePct`), and the Decision Vault slice of Knowledge
-Retention Rules (`RiskLimits.maxDecisionVaultEntries`) are all real,
+`mistakeWarningSharePct`), and both slices of Knowledge Retention Rules
+(`RiskLimits.maxDecisionVaultEntries`/`maxMemoryRecords`) are all real,
 backend and frontend for the first (the existing `KnowledgeGraphView.tsx`
 renders it unchanged, since the graph shape was already generic). The
-Company Memory slice of Knowledge Retention Rules, the rest of CEO
-Controls, and the Knowledge Quality Score section below remain target
-design, not yet implemented. See [Volume 9's chapter template](README.md)
-for what every section below must contain, and the Implementation Notes
-at the bottom of this chapter for exactly what's real today versus new
-here.
+rest of CEO Controls and the Knowledge Quality Score section below
+remain target design, not yet implemented. See
+[Volume 9's chapter template](README.md) for what every section below
+must contain, and the Implementation Notes at the bottom of this
+chapter for exactly what's real today versus new here.
 
 ## Executive Summary
 
@@ -169,7 +168,7 @@ would need its own scoping pass the way Chapter 59's Priority Score did.
 
 | Control | Status |
 |---|---|
-| Knowledge Retention Rules | **Partially built** — `RiskLimits.maxDecisionVaultEntries` is now a real CEO-configurable field (default 200, matching the prior fixed `MAX_DECISION_VAULT_ENTRIES`), threaded through `record_vault_entry()`. `MAX_MEMORY_RECORDS` (`app/memory.py`) remains a fixed constant — it is read from 14 separate `app/scribe.py` call sites rather than one, a larger change deliberately left for a separate pass. |
+| Knowledge Retention Rules | **Built** — both slices are real CEO-configurable fields, each defaulting to the exact prior fixed constant. `RiskLimits.maxDecisionVaultEntries` (default 200, matching `MAX_DECISION_VAULT_ENTRIES`) is threaded through `record_vault_entry()`. `RiskLimits.maxMemoryRecords` (default 200, matching `MAX_MEMORY_RECORDS`) is threaded through `app/memory.py`'s `record()` and every one of `app/scribe.py`'s 18 wrapper functions. |
 | Archive Policies | **Not built** — evicted entries are simply dropped, never archived to a second, longer-term store. |
 | Learning Sensitivity | **Not built** — `app/wisdom.py`'s reflection cadence (weekly/monthly) is fixed. |
 | Memory Weighting | **Not built** — no signal is weighted differently by recency or importance anywhere in Company Memory. |
@@ -180,9 +179,9 @@ would need its own scoping pass the way Chapter 59's Priority Score did.
 
 Every remaining "Not built" row above names the exact same kind of
 fixed constant Chapters 57–59 already promoted to real `RiskLimits`
-fields, and Pattern Detection Sensitivity's own two constants and
-Knowledge Retention Rules' Decision Vault slice already were, above —
-the same closeable pattern, not yet applied to the rest.
+fields, and Pattern Detection Sensitivity's own two constants and both
+Knowledge Retention Rules slices already were, above — the same
+closeable pattern, not yet applied to the rest.
 
 ## KPIs
 
@@ -368,21 +367,45 @@ both the accepted value (`maxDecisionVaultEntries: 50` echoed back in
 the response) and the rejected one (`0` → "Maximum Decision Vault
 Entries must be at least 1.").
 
-**What's explicitly not yet built:** the Company Memory slice of
-Knowledge Retention Rules and the Knowledge Quality Score both remain
-target design only. Promoting `MAX_MEMORY_RECORDS` (`app/memory.py`) to
-a real `RiskLimits` field — unlike `MAX_DECISION_VAULT_ENTRIES` above,
-consumed in exactly one place — would require threading a
-CEO-configurable limit through `app/scribe.py`'s 14 separate `record()`
-call sites — the codebase's real, deliberate "one writer gateway"
-design (see `app/memory.py`'s own module docstring) — a larger, riskier
-change than any piece built in this pass and deliberately not attempted
-alongside it. True vector/semantic search or natural-language queries
-stay out of scope entirely (no embedding/LLM dependency exists in this
-codebase — see Future Expansion above); Duplicate Knowledge Reduction as
-a KPI (no dedup logic exists to measure against); a proposal-time
-Cross-Reference search over research/simulations (today's Similarity
-Engine only looks backward over closed trades).
+**What was actually built (Knowledge Retention Rules — Company Memory
+slice):** the change flagged above as "larger, riskier" and deferred —
+done in a separate, careful pass. One new `RiskLimits` field,
+`maxMemoryRecords` (default 200), matching the exact prior fixed
+constant `MAX_MEMORY_RECORDS` (`app/memory.py`) so existing behavior is
+unchanged until the CEO adjusts it. `app/memory.py`'s `record()` gained
+an optional `max_records` parameter defaulting to the module constant.
+Every one of `app/scribe.py`'s 18 wrapper functions (the real "one
+writer gateway" callers — see that module's own docstring) gained the
+same optional `max_records` parameter, passed straight through to every
+internal `record()` call. Two of `app/nexus.py`'s tick helpers
+(`_maybe_call_meeting`, `_apply_operating_mode`) needed the value
+threaded one level in, since they run outside `tick()`'s own scope
+where `effective_risk_limits` lives; every other of the 20 real call
+sites inside `tick()` itself already had it in scope. `POST
+/api/risk-limits` extended with the field, validated
+(`maxMemoryRecords` ≥ 1). Verified: 3 new tests for `record()`'s own
+capping behavior at a CEO-lowered/raised ceiling
+(`tests/test_memory.py` — a new file, since none existed for
+`app/memory.py` before this pass), 2 new tests confirming a
+representative `app/scribe.py` wrapper (`record_scanner_alert`) passes
+its `max_records` straight through rather than silently keeping the
+default (`tests/test_scribe.py` — also new), 2 new tests for the CEO
+write path (`tests/test_state.py`), `mypy`/`ruff` clean, full backend
+suite 1021/1021 passing, and a live 48-simulated-hour `POST
+/api/time/advance` run against the running dev server (CEO
+`maxMemoryRecords` set to 20 beforehand) confirming the memory log
+capped at exactly 20 real entries across research, discovery,
+future-trade, meeting, discussion, mentorship, academy, alert, and
+simulation record paths, with no errors in the server log.
+
+**What's explicitly not yet built:** the Knowledge Quality Score
+remains target design only. True vector/semantic search or
+natural-language queries stay out of scope entirely (no embedding/LLM
+dependency exists in this codebase — see Future Expansion above);
+Duplicate Knowledge Reduction as a KPI (no dedup logic exists to measure
+against); a proposal-time Cross-Reference search over research/
+simulations (today's Similarity Engine only looks backward over closed
+trades).
 
 **Before implementation begins:** per Appendix G's Permanent Development
 Policy, this chapter is the required design-first step, satisfied before

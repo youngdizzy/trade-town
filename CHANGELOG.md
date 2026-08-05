@@ -7,6 +7,32 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 61 backend — Knowledge Retention Rules CEO control (Company
+  Memory slice)** (`app/schemas.py`, `app/memory.py`, `app/scribe.py`,
+  `app/nexus.py`, `app/state.py`, `app/routers/risk.py`): the change
+  flagged in the previous entry as "larger, riskier" and deferred — done
+  in a separate pass. One new `RiskLimits` field, `maxMemoryRecords`
+  (default 200), matching the exact prior fixed constant
+  (`MAX_MEMORY_RECORDS`) so existing behavior is unchanged until the CEO
+  adjusts it. `app/memory.py`'s `record()` gained an optional
+  `max_records` parameter; all 18 of `app/scribe.py`'s wrapper functions
+  (the codebase's real "one writer gateway" callers) gained the same
+  parameter, passed straight through. Two of `app/nexus.py`'s tick
+  helpers needed the value threaded in one level
+  (`_maybe_call_meeting`, `_apply_operating_mode`, both outside
+  `tick()`'s own scope); the other 20 real call sites already had
+  `effective_risk_limits` in scope. `POST /api/risk-limits` extended
+  with the field (`maxMemoryRecords` ≥ 1). 7 new backend tests (3 for
+  `record()`'s own capping behavior in a new `tests/test_memory.py`, 2
+  confirming a representative `app/scribe.py` wrapper passes
+  `max_records` through rather than silently defaulting, in a new
+  `tests/test_scribe.py`, 2 CEO write-path validation cases), `mypy`/
+  `ruff` clean, full backend suite 1021/1021 passing, and a live
+  48-simulated-hour `POST /api/time/advance` run against the running dev
+  server (CEO `maxMemoryRecords` set to 20 beforehand) confirming the
+  memory log capped at exactly 20 real entries across nine different
+  record categories with no server errors.
+
 - **Chapter 61 backend — Knowledge Retention Rules CEO control (Decision
   Vault slice)** (`app/schemas.py`, `app/decision_vault.py`,
   `app/nexus.py`, `app/state.py`, `app/routers/risk.py`): one new

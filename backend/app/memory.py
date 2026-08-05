@@ -20,11 +20,13 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def record(memory: list[MemoryRecord], category: MemoryCategory, title: str, body: str) -> None:
+def record(
+    memory: list[MemoryRecord], category: MemoryCategory, title: str, body: str, max_records: int = MAX_MEMORY_RECORDS
+) -> None:
     now = _now_iso()
     memory.append(MemoryRecord(id=f"memory-{category}-{now}", category=category, title=title, body=body, timestamp=now))
-    if len(memory) > MAX_MEMORY_RECORDS:
-        del memory[: len(memory) - MAX_MEMORY_RECORDS]
+    if len(memory) > max_records:
+        del memory[: len(memory) - max_records]
 
 
 def search(memory: list[MemoryRecord], query: str = "", category: MemoryCategory | None = None) -> list[MemoryRecord]:

@@ -515,6 +515,7 @@ class GameState:
         min_similar_matches: int | None = None,
         mistake_warning_share_pct: float | None = None,
         max_decision_vault_entries: int | None = None,
+        max_memory_records: int | None = None,
     ) -> tuple[GameSaveState, str | None]:
         """v0.7 Feature 49 — the CEO's Daily Trading Objectives — extended
         by v0.7 Chapter 57 with four of the six new Position Sizing
@@ -533,9 +534,10 @@ class GameState:
         Engine's Pattern Detection Sensitivity controls
         (`min_similar_matches`, `mistake_warning_share_pct` — see
         app/decision_vault.py's Similarity Engine) and its Knowledge
-        Retention Rules control (`max_decision_vault_entries` — the
-        Decision Vault side only; see app/decision_vault.py's
-        record_vault_entry).
+        Retention Rules control, both slices (`max_decision_vault_entries`
+        — see app/decision_vault.py's record_vault_entry;
+        `max_memory_records` — see app/memory.py's record(), threaded
+        through every app/scribe.py wrapper).
         Every field is optional so a single call can update just one
         limit; each provided value is validated before being merged into
         the real RiskLimits object app/risk_engine.py,
@@ -612,6 +614,10 @@ class GameState:
                 if max_decision_vault_entries < 1:
                     return self.data, "Maximum Decision Vault Entries must be at least 1."
                 updates["max_decision_vault_entries"] = max_decision_vault_entries
+            if max_memory_records is not None:
+                if max_memory_records < 1:
+                    return self.data, "Maximum Memory Records must be at least 1."
+                updates["max_memory_records"] = max_memory_records
             if not updates:
                 return self.data, "No risk limit changes were provided."
             new_limits = self.data.risk_limits.model_copy(update=updates)
