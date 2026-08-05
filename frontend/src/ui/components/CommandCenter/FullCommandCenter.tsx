@@ -4,6 +4,7 @@ import { useGameStore } from "@/ui/hooks/useGameStore";
 import { EventBus } from "@/game/systems/EventBus";
 import type { EducationTopic, TradeDecision } from "@/types";
 import { aiStatus, riskLevel } from "./lib/derive";
+import { groupTabsBySection } from "./lib/navigation";
 import { RiskDot, StatusPill } from "./ui";
 import { OverviewPanel } from "./panels/OverviewPanel";
 import { OpportunitiesPanel } from "./panels/OpportunitiesPanel";
@@ -41,6 +42,16 @@ import { CalendarPanel } from "./panels/CalendarPanel";
 import { BlackBoxPanel } from "./panels/BlackBoxPanel";
 import { DecisionDetail } from "./DecisionDetail";
 
+// Design Bible Chapter 67 (TradeTown Operating System) — Phase 1: the
+// 34 tabs below now render grouped into TTOS's 7 permanent sections
+// (see ./lib/navigation.ts for the section mapping and the reasoning
+// behind each judgment call). This TABS array itself, and every tab's
+// button text, are intentionally untouched by that change — the
+// number-key 1-9 shortcut below indexes into this array positionally,
+// and frontend/tests/helpers.ts's clickTab() looks buttons up by exact
+// accessible name, so renaming or reordering anything here would ripple
+// into the whole Playwright suite for zero real user benefit.
+//
 // Note: "ACADEMY" (below) is the pre-existing v0.6.2 Trading Academy tab
 // (EducationPanel — lesson/quiz curriculum). v0.7 Feature 25's AI Academy
 // & Knowledge Network is a different system entirely (per-agent
@@ -186,18 +197,23 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
         </div>
       </header>
 
-      <nav className="flex gap-1 overflow-x-auto border-b border-cmd-border bg-cmd-panel/60 px-3 py-1.5">
-        {TABS.map((t) => (
-          <button
-            key={t}
-            type="button"
-            onClick={() => setTab(t)}
-            className={`whitespace-nowrap rounded-sm px-3 py-1.5 tracking-wide transition-colors ${
-              tab === t ? "border border-cmd-cyan/40 bg-cmd-cyan/10 text-cmd-cyan shadow-cmd-cyan" : "border border-transparent text-cmd-textDim hover:text-cmd-text"
-            }`}
-          >
-            {t}
-          </button>
+      <nav className="flex flex-col gap-1 overflow-y-auto border-b border-cmd-border bg-cmd-panel/60 px-3 py-1.5">
+        {groupTabsBySection(TABS).map(({ section, tabs }) => (
+          <div key={section} className="flex flex-wrap items-center gap-1">
+            <span className="mr-1 w-[104px] shrink-0 text-[10px] tracking-[0.15em] text-cmd-textDim/70">{section}</span>
+            {tabs.map((t) => (
+              <button
+                key={t}
+                type="button"
+                onClick={() => setTab(t)}
+                className={`whitespace-nowrap rounded-sm px-3 py-1.5 tracking-wide transition-colors ${
+                  tab === t ? "border border-cmd-cyan/40 bg-cmd-cyan/10 text-cmd-cyan shadow-cmd-cyan" : "border border-transparent text-cmd-textDim hover:text-cmd-text"
+                }`}
+              >
+                {t}
+              </button>
+            ))}
+          </div>
         ))}
       </nav>
 

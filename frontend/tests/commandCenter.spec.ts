@@ -166,6 +166,15 @@ test.describe("Global Command Center", () => {
       await expect(page.getByRole("button", { name: tab, exact: true })).toHaveClass(/text-cmd-cyan/);
     }
 
+    // Design Bible Chapter 67 (TTOS) Phase 1 — the 34 tabs above now
+    // render grouped under 7 real section labels rather than one flat
+    // row; `.first()` since a couple of these strings also match a tab
+    // button's own name (e.g. the RESEARCH section label vs. the
+    // RESEARCH tab button) — any match confirms the real label rendered.
+    for (const section of ["HEADQUARTERS", "MARKETS", "AI WORKFORCE", "RESEARCH", "PORTFOLIO", "OPERATIONS", "ARCHIVE"]) {
+      await expect(page.getByText(section, { exact: true }).first()).toBeVisible();
+    }
+
     // The backend keeps ticking in real time across this whole test file,
     // so by this point it may honestly have accumulated real decisions —
     // either way the panel must render something truthful, never a blank
