@@ -6290,6 +6290,111 @@ labels render with every original tab intact), a real assertion added
 to `commandCenter.spec.ts`'s existing 34-tab test for the 7 section
 labels, full `commandCenter.spec.ts` regression run.
 
+### TTOS Part 3 — real Global Emergency Stop, Design Bible Chapter 67
+
+Part 3's own brief asked for a Global Emergency Stop, a Safety Settings
+page, a global status bar, the Quick Action Dock, a priority-tiered
+Alert Center, executive dashboard/navigation polish, and command
+palette expansion. Before writing code, a dedicated research pass (a
+background Explore agent covering broker integration, the tick loop's
+trading/research separability, `RiskLimits`' real circuit-breaker
+coverage, and every command-palette example) confirmed everything past
+Emergency Stop is greenfield with no real backing feature anywhere:
+`app/broker.py`'s own module docstring is explicit that trading is
+"completely simulated... no such adapter exists or is wired in v0.6,"
+so "Open Charles Schwab" has no real destination; no "Swing Trading
+Mode" or "Day Trading Mode" exists under any name; `RiskLimits` has
+exactly one loss-based circuit breaker (daily-scoped) and no weekly/
+monthly limit. Only Part 3's own Primary Objective — the Emergency
+Stop — was implemented this pass.
+
+**Backend** (`app/emergency_stop.py`, new): `activate_emergency_stop()`/
+`resume_trading()` are pure functions transitioning a new
+`EmergencyStopState` (`active`, `activatedAt`) on `GameSaveState`,
+registered in `save_modules.py`'s `"company"` module. Enforcement
+threads through three real sites, all in `app/nexus.py`/`app/state.py`:
+`tick()` skips `_generate_trade_proposals()` entirely while active
+(`nexus.py`); `_apply_operating_mode()` gained a third hard-block
+condition — checked *first*, before the existing cash-reserve and
+Chapter 66 `pause_trading` checks, since it's the CEO's own explicit
+override of every other signal — keeping every pending proposal frozen
+in Assisted/Executive mode; and `submit_ceo_decision()` in `app/state.py`
+now rejects the CEO's own manual `"buy"`/`"sell"` call too (only
+`"wait"` — declining a trade — is still allowed), since the brief's
+"only the CEO can resume trading" reads as "nothing executes, at all,
+until they explicitly resume," not just an automation-only halt.
+Activating/resuming both call a new `record_emergency_stop_event()`
+wrapper in `app/scribe.py`, writing a real, permanent, capped Company
+Memory entry under a new `"emergency"` category — deliberately reused
+as the brief's own "incident report" requirement rather than a second,
+parallel record of the same event (this codebase's "reuse, don't
+duplicate" convention). Two new endpoints,
+`POST /api/emergency-stop/activate` and `/resume`
+(`app/routers/emergency.py`), mirroring the exact
+request/response/persist shape `app/routers/treasury.py`'s
+deposit/withdraw already established.
+
+Deliberately narrower than the brief on two points, both explicit scope
+cuts rather than oversights: already-pending proposals are left
+pending, never auto-cancelled — the brief's own "Cancel pending orders
+(configurable)" line is treated as out of scope for this pass, since
+force-resolving a proposal to a decision the CEO didn't actually make
+is a real behavioral choice that deserves its own scoping, not a
+byproduct of this one; and already-placed broker orders are never
+force-closed — `tick_broker()` is untouched, so any fill already in
+flight before the stop settles normally, since yanking a resting order
+mid-flight risks leaving the paper portfolio in a state nothing in this
+codebase was built to reconcile.
+
+**Frontend**: a new, permanent, always-visible red "EMERGENCY STOP"
+button in `TopStatusBar.tsx` — nested inside the same right-side flex
+group as the existing connection-status badge (not appended as a 4th
+top-level flex child, which would have broken the row's `justify-between`
+layout) — never inside a Command Center tab, matching the brief's own
+"must not live inside a tab" requirement. Clicking it emits a
+`"ui:emergencyStopConfirm"` EventBus event rather than rendering its own
+dialog inline: an `absolute inset-0` confirmation dialog needs a
+full-viewport positioned ancestor, which `TopStatusBar.tsx`'s own small
+flex row is not, so the actual dialog (`ConfirmDialog.tsx` — the first
+reusable confirm-before-you-act component in this codebase; research
+confirmed no such pattern existed anywhere, every other destructive/
+high-stakes action here still fires immediately) is owned by a new
+top-level `EmergencyStopConfirm.tsx`, rendered as an `App.tsx` sibling
+alongside `CommandCenter`/`ExecutiveVoting`, the same "trigger event
+from anywhere, top-level component owns the actual overlay" pattern
+those already use. While active, the button becomes a pulsing
+"EMERGENCY — RESUME TRADING" badge. Full data-layer wiring matches the
+existing `RiskLimits` pattern exactly: `types.ts`, `api.ts` client
+methods, an `EventBus` event + type, `NexusManager`'s static
+field/getter/setter (both the immediate-update path used right after
+each API call, and the two WS-tick/save-load sync paths inside
+`applyServerUpdate()`/`loadFromSave()`), and `gameStore.ts`'s state +
+listener + default.
+
+**Verified**: 14 new/extended backend tests
+(`tests/test_emergency_stop.py`'s 4 pure-function tests;
+`tests/test_state.py`'s `TestActivateAndResumeEmergencyStop` (4) and
+`TestSubmitCeoDecisionEmergencyStopGuard` (3); `tests/test_nexus.py`'s
+`TestApplyOperatingModeEmergencyStop` (3), mirroring the existing
+`pause_trading` test class), `mypy`/`ruff` clean, full backend suite
+1124/1124 passing. `tsc`/`eslint`/`vite build` clean. Live-verified
+against a freshly restarted dev stack via a temporary Playwright script
+— first pass caught a real bug: the badge's active-state label
+("EMERGENCY MODE — RESUME TRADING") overflowed past the viewport's
+right edge, because appending `<EmergencyStopControl />` as a 4th
+top-level child of `TopStatusBar.tsx`'s 3-way `justify-between` row
+distorted the whole row's layout — fixed by nesting it inside the
+existing connection-status group instead, and by shortening the label.
+A new `frontend/tests/emergencyStop.spec.ts` exercises the real running
+app end-to-end (open dialog, cancel, activate for real, confirm the
+button stays visible with the Command Center open, resume for real).
+`executiveVoting.spec.ts` (5/5) and the full `commandCenter.spec.ts`
+regression (30/32, run sequentially against the shared dev backend —
+concurrent runs were tried first and correctly abandoned once found to
+race against the same backend state) both passed; the one failure in
+each run is the already-confirmed pre-existing flaky movement-key test,
+unrelated to this change.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

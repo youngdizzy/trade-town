@@ -1306,6 +1306,22 @@ request from the current real `MarketEnvironmentState`/
 `compute_regime_reconciliation()`) — never a second persisted copy, the
 same convention as `GET /api/goals/priorities`.
 
+### `POST /api/emergency-stop/activate` / `POST /api/emergency-stop/resume`
+
+Design Bible Chapter 67 (TTOS) Part 3 — the real Global Emergency Stop.
+No body on either call. Returns `{ "emergencyStop": EmergencyStopState }`
+(`active: bool`, `activatedAt: string | null`). `/activate` errors 400
+if already active; `/resume` errors 400 if not active. Activating
+blocks new trade proposal generation entirely, keeps every pending
+proposal frozen through `_apply_operating_mode()` regardless of
+Operating Mode, and rejects the CEO's own manual buy/sell call via
+`POST /api/executive/decide` (only a `"wait"` choice is still allowed).
+Already-pending proposals are never auto-cancelled and already-placed
+broker orders are never force-closed — see `app/emergency_stop.py`'s
+module docstring for the exact enforcement boundary. Both calls write a
+real, permanent Company Memory entry (category `"emergency"`) — this is
+the feature's own "incident report," not a second parallel record.
+
 ### `POST /api/foundational-mentors/*`
 
 v0.7 Feature 49 (Phase 3, revised) — the Foundational Mentor Program /

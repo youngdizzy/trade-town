@@ -7,6 +7,48 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 67 Part 3 — TTOS real Global Emergency Stop**
+  (`backend/app/emergency_stop.py`, `app/schemas.py`, `app/nexus.py`,
+  `app/state.py`, `app/scribe.py`, `app/routers/emergency.py`,
+  `frontend/src/ui/components/EmergencyStopControl.tsx`,
+  `EmergencyStopConfirm.tsx`, `ConfirmDialog.tsx`, `TopStatusBar.tsx`):
+  before writing code, research confirmed the rest of Part 3's brief
+  (a Safety Settings page, a global status bar, the Quick Action Dock,
+  a priority-tiered Alert Center, and several command-palette example
+  commands with zero real backing feature — no broker integration
+  exists anywhere for "Open Charles Schwab," no "Swing/Day Trading
+  Mode" exists under any name) is entirely greenfield, so only Part
+  3's own Primary Objective — a real Emergency Stop — was implemented
+  this pass. New `EmergencyStopState` (active, activatedAt) on
+  `GameSaveState`; new `POST /api/emergency-stop/activate`/`/resume`.
+  Enforcement threaded through three real sites: `tick()` skips new
+  proposal generation entirely while active; `_apply_operating_mode()`
+  gained a third hard-block condition (checked first, before the
+  cash-reserve and Chapter 66 `pause_trading` checks already there)
+  keeping every pending proposal frozen in Assisted/Executive mode;
+  `submit_ceo_decision()` also rejects the CEO's own manual buy/sell
+  (only "wait" still allowed) — "only the CEO can resume trading"
+  was read as "nothing executes until they explicitly do," not just
+  an automation-only halt. Activating/resuming both write a real,
+  permanent Company Memory entry, deliberately reused as the brief's
+  own "incident report" rather than a second parallel record.
+  Deliberately narrower than the brief on two points, both documented
+  as explicit scope cuts: pending proposals are left pending, never
+  auto-cancelled (the brief's own "(configurable)" qualifier); already-
+  placed broker orders are never force-closed. A new, permanent,
+  always-visible red button in `TopStatusBar.tsx` (never inside a
+  Command Center tab), gated behind `ConfirmDialog.tsx` — the first
+  reusable confirm-before-you-act component in this codebase (research
+  confirmed none existed; every other destructive/high-stakes action
+  here still fires immediately). 14 new/extended backend tests,
+  `mypy`/`ruff` clean, full backend suite 1124/1124 passing,
+  `tsc`/`eslint`/`vite build` clean, a new `emergencyStop.spec.ts`
+  exercising the real running app end-to-end, live-verified against
+  the running dev stack, `executiveVoting.spec.ts` and the full
+  `commandCenter.spec.ts` regression both passing (the one unrelated
+  failure is the already-confirmed pre-existing flaky movement-key
+  test).
+
 - **Chapter 67 Phase 1 — TTOS 7-section grouped navigation**
   (`frontend/src/ui/components/CommandCenter/lib/navigation.ts`,
   `FullCommandCenter.tsx`): before writing any code, a full audit +

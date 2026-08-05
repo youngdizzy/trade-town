@@ -1,23 +1,24 @@
 # Chapter 67 — TradeTown Operating System (TTOS)
 
-**Status:** Phase 1 implemented (7-section grouped navigation). This
-chapter is structurally different from every other chapter in this
+**Status:** Phase 1 (7-section grouped navigation) and Part 3's own
+primary objective (a real Global Emergency Stop) are both implemented.
+This chapter is structurally different from every other chapter in this
 volume: it does not describe a trading/research/risk department with
 its own real backend module. It describes the *navigation and UX
 architecture* that organizes all 34 of those departments' existing
-Command Center surfaces into one system. Research found real, working
-navigation infrastructure — a fixed Command Center overlay with two
-distinct "home" screens, a global always-visible toolbar, and a scoped
-non-blocking toast system — and, before any code was written, a full
-migration plan was presented and approved, explicitly scoping this
-first pass down to the single smallest honest slice: grouping the
-existing 34 tabs into TTOS's 7 permanent sections, as a purely additive
-rendering-layer change with zero tab renames and zero new data
-dependencies. Universal search, the command palette, workspace docking,
-priority-tiered notifications, a real Emergency Stop, the Quick Action
-Dock, and navigation analytics all remain genuinely unbuilt — see the
-Implementation Notes at the bottom for the full phased plan and the
-exact honesty boundary for this slice.
+Command Center surfaces into one system, plus (as of Part 3) the one
+genuinely new safety control this Design Bible's own research found had
+no real backing anywhere: a CEO-triggerable halt on all new trading.
+Before any Part 3 code was written, a research pass confirmed the rest
+of that brief — a Safety Settings page, a global status bar, the Quick
+Action Dock, a priority-tiered Alert Center, and several command-palette
+examples (a specific broker name, "Swing/Day Trading Mode") — has no
+real backing feature anywhere in this codebase, so only Emergency Stop
+was implemented this pass; everything else remains genuinely unbuilt.
+Universal search, the command palette itself, workspace docking,
+priority-tiered notifications, and navigation analytics all remain
+genuinely unbuilt — see the Implementation Notes at the bottom for the
+full phased plan and the exact honesty boundary for each slice.
 
 ## Executive Summary
 
@@ -168,7 +169,8 @@ risk output to, because it never produces any.
 | Command Palette | **Not built** — no "type a command, press Enter" UI exists anywhere. |
 | Workspace layouts (dockable/saved) | **Not built** — the Command Center is one fixed, non-resizable, non-dockable overlay; `frontend/package.json` carries no windowing/docking library of any kind. |
 | Notification priority tiers | **Not built** — `CyberNotifications.tsx`'s `ToastKind` is a color category (trade/research/volatility/alert/save), not a severity level; every toast behaves identically (auto-dismiss, non-blocking, capped to 4 visible); nothing ever interrupts today because nothing is marked as needing to. |
-| Quick Action bar (Pause Trading / Emergency Stop / Resume) | **Not built as a unified surface.** The real global toolbar (`BottomToolbar.tsx`) exposes Work Mode and a game-level Pause/Resume (the sim clock, not trading specifically) — genuinely real and genuinely global. Operating Mode (Learning/Assisted/Executive) and Time Controls are real but buried inside the COMPANY tab, not global. "Emergency Stop" does not exist under any name anywhere in this codebase — Chapter 66's `pause_trading` signal is real but is computed automatically and enforced only inside the auto-resolve tick loop; it is never CEO-triggerable through any API route or button (confirmed: no pause/stop/emergency route exists in `app/main.py`). |
+| Emergency Stop | **Built (Part 3).** A permanent, always-visible button in `TopStatusBar.tsx`, never inside a Command Center tab. Requires confirmation (`ConfirmDialog.tsx`, the first reusable confirm-before-you-act component in this codebase). Calls `POST /api/emergency-stop/activate`/`/resume`. Blocks new proposal generation, pending-proposal auto-resolution in Assisted/Executive mode, and the CEO's own manual buy/sell — only "wait" is still allowed. Only the CEO can resume; no automatic timeout. |
+| Quick Action bar (Pause Trading / Resume, unified) | **Not built as a unified surface.** The real global toolbar (`BottomToolbar.tsx`) exposes Work Mode and a game-level Pause/Resume (the sim clock, not trading specifically), and TopStatusBar now exposes Emergency Stop — but these live in two separate global surfaces, not one unified dock. Operating Mode (Learning/Assisted/Executive) and Time Controls are real but still buried inside the COMPANY tab, not global. |
 | Themes | **Not built as a CEO control** — the dark cyberpunk visual language is real and consistent (see Chapter 65/66's own Command Center surfacing), but it is fixed in code, not a CEO-selectable option. |
 | Widget/dashboard customization | **Not built** — OverviewPanel and QuickView both show a fixed, code-defined set of cards; no CEO-facing widget picker or layout editor exists. |
 
@@ -204,19 +206,25 @@ generate any of them today.
 
 ## Safety Systems
 
-**Real today, narrowly:** `BottomToolbar.tsx`'s global Pause/Resume
-halts the sim clock (not trading specifically); the Work Mode toggle is
-a real, global, always-visible, one-click control. **Genuinely not
-built:** a confirmation step before any "critical" action anywhere in
-this codebase — no confirmation-dialog pattern exists for any
-destructive or high-stakes CEO action (checked directly: no such
-component or pattern found in `frontend/src/ui/components`); an
-Emergency Stop specifically for trading (distinct from the general game
-pause); an always-visible broker-status/risk-status/capital-status/
-company-health strip (today, Risk Status, Company Health, and Market
-Environment are all real but only shown inside OverviewPanel/QuickView,
-not as a persistent global strip visible from every scene the way
-`BottomToolbar.tsx` is).
+**Real today:** `BottomToolbar.tsx`'s global Pause/Resume halts the sim
+clock (not trading specifically); the Work Mode toggle is a real,
+global, always-visible, one-click control; and (Part 3) a real,
+global, always-visible Emergency Stop specifically for trading, with a
+real confirmation step before it fires — `ConfirmDialog.tsx`, the first
+confirm-before-you-act pattern anywhere in this codebase (every other
+destructive/high-stakes action here still fires immediately, e.g.
+Founders retirement, order cancellation, Treasury withdrawals — that
+gap is unchanged by this pass, only Emergency Stop gained the pattern).
+**Genuinely still not built:** an always-visible broker-status/
+risk-status/capital-status/company-health strip (today, Risk Status,
+Company Health, and Market Environment are all real but only shown
+inside OverviewPanel/QuickView, not as a persistent global strip
+visible from every scene the way `BottomToolbar.tsx` is); Safety
+Settings (daily/weekly/monthly loss limits beyond the one existing
+daily-scoped limit, circuit breakers, Black Swan Protection, Broker
+Failover — none of these exist under any name); "cancel pending
+orders" as part of Emergency Stop (deliberately deferred — see
+Implementation Notes).
 
 ## Dependencies
 
@@ -321,15 +329,34 @@ remaining phases:**
   existing toast system, built on the real precedent
   `ExecutiveVoting.tsx`'s trade-proposal modal already establishes for
   an interrupting "Critical" tier.
-- **Phase 4** — a real, CEO-triggerable Emergency Stop. This is
-  explicitly *not* a navigation-only change: "freeze AI trading while
-  keeping research active" requires new backend enforcement (Chapter 66
-  territory — `pause_trading` today is automatic-only, never
-  CEO-triggerable) and whether trading/research are even cleanly
-  separable at the scheduling level in `app/nexus.py` is unverified.
-  TTOS would only ever surface the button, never own the underlying
-  pause authority. The unified Quick Action Dock depends on this
-  landing first.
+- **Phase 4 — built (Part 3).** A real, CEO-triggerable Emergency Stop:
+  `app/emergency_stop.py`'s `activate_emergency_stop()`/`resume_trading()`
+  pure state-transition functions, a new `EmergencyStopState` on
+  `GameSaveState`, and enforcement threaded through three real sites —
+  `app/nexus.py`'s `tick()` skips `_generate_trade_proposals()` entirely
+  while active; `_apply_operating_mode()` gained a third hard-block
+  condition (checked first, before the cash-reserve and `pause_trading`
+  checks already there) that keeps every pending proposal frozen in
+  Assisted/Executive mode; `app/state.py`'s `submit_ceo_decision()`
+  rejects the CEO's own manual buy/sell too — "freeze AI trading" was
+  read as "freeze all new trade execution," including the CEO's own,
+  since the brief's "only the CEO can resume trading" implies nothing
+  executes until they explicitly do. Activating/resuming both write a
+  real, permanent Company Memory entry (`record_emergency_stop_event()`
+  in `app/scribe.py`) — deliberately reused as this chapter's own
+  "incident report," not a second parallel record. `TopStatusBar.tsx`
+  gained the permanent button (never inside a Command Center tab) and
+  `ConfirmDialog.tsx` (the first reusable confirm-before-you-act
+  component in this codebase). Deliberately narrower than the brief on
+  two points: pending proposals are left pending, never auto-cancelled
+  (the brief's own "(configurable)" qualifier on that behavior is
+  treated as this pass's explicit scope cut); already-placed broker
+  orders are never force-closed, since yanking a resting fill mid-flight
+  risks an unreconciled portfolio state nothing in this codebase was
+  built to recover from. The unified Quick Action Dock — which would
+  surface this same button alongside Pause/Resume/others in one
+  dock — remains unbuilt; Emergency Stop lives only in TopStatusBar for
+  now.
 - **Phase 5** — dockable/resizable/saved-layout workspaces (this
   codebase has no windowing library today — adopting one is a real,
   non-trivial dependency decision not made unilaterally) and navigation
@@ -351,3 +378,24 @@ for all future chapters (checked directly against `README.md`'s current
 "Dependencies," item #16, already exists under that exact name today).
 None of these were assumed to follow automatically from Phase 1 —
 each remains its own separable slice awaiting its own go-ahead.
+
+**Part 3's own remaining scope, researched but not implemented this
+pass:** a Safety Settings page (Operations → Safety & Capital
+Protection) — weekly/monthly loss limits, a second/third circuit
+breaker, Black Swan Protection, Broker Failover, and recovery
+procedures all genuinely don't exist (`RiskLimits` has exactly one
+daily-scoped loss limit and a lifetime drawdown cap, confirmed by
+direct read of `backend/app/schemas.py`); a global always-visible
+status bar (Broker Status/Market Status/Automation Status/Risk
+Level/Portfolio Health/Capital Deployment) beyond the real clock/agent/
+connection dot `TopStatusBar.tsx` already showed; the unified Quick
+Action Dock; a priority-tiered Executive Alert Center; and Command
+Palette expansion — the palette itself remains Phase 2's own unbuilt
+scope, and two of the brief's own example commands have no real
+destination to open at all: "Open Charles Schwab" (confirmed zero real
+broker integration exists anywhere — `app/broker.py`'s own module
+docstring: "Completely simulated... no such adapter exists or is wired
+in v0.6") and "Swing Trading Mode"/"Day Trading Mode" (confirmed no
+such mode exists under any name — `RiskLimits`' day-trading-adjacent
+fields, `dailyProfitTargetPct`/`maxTradesPerDay`, are risk-limit
+configuration, not a selectable trading-style mode).
