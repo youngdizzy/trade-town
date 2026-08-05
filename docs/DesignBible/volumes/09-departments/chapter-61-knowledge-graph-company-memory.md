@@ -1,15 +1,18 @@
 # Chapter 61 — Institutional Knowledge Graph & Company Memory Engine
 
 **Status:** Partially implemented — the Knowledge Graph extension
-(`app/knowledge_graph.py`, three new node types) and the Pattern
+(`app/knowledge_graph.py`, three new node types), the Pattern
 Detection Sensitivity CEO controls (`RiskLimits.minSimilarMatches`/
-`mistakeWarningSharePct`) are both real, backend and frontend for the
-former (the existing `KnowledgeGraphView.tsx` renders it unchanged,
-since the graph shape was already generic). The rest of CEO Controls
-and the Knowledge Quality Score section below remain target design, not
-yet implemented. See [Volume 9's chapter template](README.md) for what
-every section below must contain, and the Implementation Notes at the
-bottom of this chapter for exactly what's real today versus new here.
+`mistakeWarningSharePct`), and the Decision Vault slice of Knowledge
+Retention Rules (`RiskLimits.maxDecisionVaultEntries`) are all real,
+backend and frontend for the first (the existing `KnowledgeGraphView.tsx`
+renders it unchanged, since the graph shape was already generic). The
+Company Memory slice of Knowledge Retention Rules, the rest of CEO
+Controls, and the Knowledge Quality Score section below remain target
+design, not yet implemented. See [Volume 9's chapter template](README.md)
+for what every section below must contain, and the Implementation Notes
+at the bottom of this chapter for exactly what's real today versus new
+here.
 
 ## Executive Summary
 
@@ -166,7 +169,7 @@ would need its own scoping pass the way Chapter 59's Priority Score did.
 
 | Control | Status |
 |---|---|
-| Knowledge Retention Rules | **Not built** — `MAX_MEMORY_RECORDS`/`MAX_DECISION_VAULT_ENTRIES` are fixed constants (200 each), not CEO-configurable. |
+| Knowledge Retention Rules | **Partially built** — `RiskLimits.maxDecisionVaultEntries` is now a real CEO-configurable field (default 200, matching the prior fixed `MAX_DECISION_VAULT_ENTRIES`), threaded through `record_vault_entry()`. `MAX_MEMORY_RECORDS` (`app/memory.py`) remains a fixed constant — it is read from 14 separate `app/scribe.py` call sites rather than one, a larger change deliberately left for a separate pass. |
 | Archive Policies | **Not built** — evicted entries are simply dropped, never archived to a second, longer-term store. |
 | Learning Sensitivity | **Not built** — `app/wisdom.py`'s reflection cadence (weekly/monthly) is fixed. |
 | Memory Weighting | **Not built** — no signal is weighted differently by recency or importance anywhere in Company Memory. |
@@ -177,8 +180,9 @@ would need its own scoping pass the way Chapter 59's Priority Score did.
 
 Every remaining "Not built" row above names the exact same kind of
 fixed constant Chapters 57–59 already promoted to real `RiskLimits`
-fields, and Pattern Detection Sensitivity's own two constants already
-were, above — the same closeable pattern, not yet applied to the rest.
+fields, and Pattern Detection Sensitivity's own two constants and
+Knowledge Retention Rules' Decision Vault slice already were, above —
+the same closeable pattern, not yet applied to the rest.
 
 ## KPIs
 
@@ -344,23 +348,41 @@ Similarity Engine's own tiering/threshold behavior
 values flow through to real `WarRoomSession.similarTrades` reads
 without error.
 
-**What's explicitly not yet built:** Knowledge Retention Rules and the
-Knowledge Quality Score both remain target design only. Promoting
-`MAX_MEMORY_RECORDS` (`app/memory.py`)/`MAX_DECISION_VAULT_ENTRIES`
-(`app/decision_vault.py`) to real `RiskLimits` fields — unlike the two
-Similarity Engine constants above, both consumed in exactly one place —
-`MAX_MEMORY_RECORDS` specifically would require threading a
+**What was actually built (Knowledge Retention Rules — Decision Vault
+slice):** one new `RiskLimits` field, `maxDecisionVaultEntries` (default
+200), matching the exact prior fixed constant so existing behavior is
+unchanged until the CEO adjusts it. `app/decision_vault.py`'s
+`record_vault_entry()` gained an optional `max_entries` parameter
+defaulting to the module constant `MAX_DECISION_VAULT_ENTRIES` — its one
+real call site (`app/nexus.py`, immediately after a trade closes) now
+passes `effective_risk_limits.max_decision_vault_entries`, the same
+`effective_risk_limits` already in scope at that point in the tick for
+the Opportunity Gatekeeper call right after it, so no new plumbing was
+needed. `POST /api/risk-limits` extended with the field, validated
+(`maxDecisionVaultEntries` ≥ 1). Verified: 2 new backend tests for the
+lower/higher CEO-configured ceiling (`tests/test_decision_vault.py`), 2
+new tests for the CEO write path (`tests/test_state.py`), `mypy`/`ruff`
+clean, full backend suite 1014/1014 passing, and a live
+`POST /api/risk-limits` call against the running dev server confirming
+both the accepted value (`maxDecisionVaultEntries: 50` echoed back in
+the response) and the rejected one (`0` → "Maximum Decision Vault
+Entries must be at least 1.").
+
+**What's explicitly not yet built:** the Company Memory slice of
+Knowledge Retention Rules and the Knowledge Quality Score both remain
+target design only. Promoting `MAX_MEMORY_RECORDS` (`app/memory.py`) to
+a real `RiskLimits` field — unlike `MAX_DECISION_VAULT_ENTRIES` above,
+consumed in exactly one place — would require threading a
 CEO-configurable limit through `app/scribe.py`'s 14 separate `record()`
 call sites — the codebase's real, deliberate "one writer gateway"
 design (see `app/memory.py`'s own module docstring) — a larger, riskier
-change than either piece built in this pass and deliberately not
-attempted alongside it. True vector/semantic search or
-natural-language queries stay out of scope entirely (no embedding/LLM
-dependency exists in this codebase — see Future Expansion above);
-Duplicate Knowledge Reduction as a KPI (no dedup logic exists to measure
-against); a proposal-time Cross-Reference search over research/
-simulations (today's Similarity Engine only looks backward over closed
-trades).
+change than any piece built in this pass and deliberately not attempted
+alongside it. True vector/semantic search or natural-language queries
+stay out of scope entirely (no embedding/LLM dependency exists in this
+codebase — see Future Expansion above); Duplicate Knowledge Reduction as
+a KPI (no dedup logic exists to measure against); a proposal-time
+Cross-Reference search over research/simulations (today's Similarity
+Engine only looks backward over closed trades).
 
 **Before implementation begins:** per Appendix G's Permanent Development
 Policy, this chapter is the required design-first step, satisfied before

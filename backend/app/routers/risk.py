@@ -39,9 +39,11 @@ class UpdateRiskLimitsRequest(BaseModel):
     min_priority_score: float | None = Field(default=None, alias="minPriorityScore")
     capital_reserve_pct: float | None = Field(default=None, alias="capitalReservePct")
     # v0.7 Chapter 61 — the Knowledge Graph & Company Memory Engine's
-    # Pattern Detection Sensitivity controls.
+    # Pattern Detection Sensitivity controls, plus the Decision Vault
+    # side of Knowledge Retention Rules.
     min_similar_matches: int | None = Field(default=None, alias="minSimilarMatches")
     mistake_warning_share_pct: float | None = Field(default=None, alias="mistakeWarningSharePct")
+    max_decision_vault_entries: int | None = Field(default=None, alias="maxDecisionVaultEntries")
 
 
 class RiskLimitsResponse(BaseModel):
@@ -69,6 +71,7 @@ async def update_risk_limits(payload: UpdateRiskLimitsRequest) -> RiskLimitsResp
         capital_reserve_pct=payload.capital_reserve_pct,
         min_similar_matches=payload.min_similar_matches,
         mistake_warning_share_pct=payload.mistake_warning_share_pct,
+        max_decision_vault_entries=payload.max_decision_vault_entries,
     )
     if error is not None:
         raise HTTPException(status_code=400, detail=error)

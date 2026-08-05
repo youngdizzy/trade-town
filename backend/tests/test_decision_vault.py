@@ -422,6 +422,51 @@ class TestRecordVaultEntry:
         assert vault[-1].id == f"vault-{MAX_DECISION_VAULT_ENTRIES + 9}"
         assert vault[0].id == "vault-10"
 
+    def test_ceo_configured_max_entries_caps_at_a_lower_real_ceiling(self) -> None:
+        vault: list[DecisionVaultEntry] = []
+        base = build_vault_entry(
+            entry_id="vault-0",
+            trade=_trade(),
+            decision=_decision(),
+            discipline_review=_discipline_review(),
+            market_regime="sideways_range",
+            market_regime_label="Sideways Range",
+            provider=MockMarketDataProvider(),
+            case_study=None,
+            meeting_log_entry=None,
+            ceo_decision=None,
+            company_dna_change=None,
+            sim_day=1,
+        )
+        for i in range(15):
+            entry = base.model_copy(update={"id": f"vault-{i}"})
+            vault = record_vault_entry(vault, entry, max_entries=5)
+        assert len(vault) == 5
+        assert vault[-1].id == "vault-14"
+        assert vault[0].id == "vault-10"
+
+    def test_ceo_configured_max_entries_allows_a_higher_real_ceiling(self) -> None:
+        vault: list[DecisionVaultEntry] = []
+        base = build_vault_entry(
+            entry_id="vault-0",
+            trade=_trade(),
+            decision=_decision(),
+            discipline_review=_discipline_review(),
+            market_regime="sideways_range",
+            market_regime_label="Sideways Range",
+            provider=MockMarketDataProvider(),
+            case_study=None,
+            meeting_log_entry=None,
+            ceo_decision=None,
+            company_dna_change=None,
+            sim_day=1,
+        )
+        for i in range(MAX_DECISION_VAULT_ENTRIES + 10):
+            entry = base.model_copy(update={"id": f"vault-{i}"})
+            vault = record_vault_entry(vault, entry, max_entries=MAX_DECISION_VAULT_ENTRIES + 5)
+        assert len(vault) == MAX_DECISION_VAULT_ENTRIES + 5
+        assert vault[0].id == "vault-5"
+
 
 def _vault_entry(
     *,

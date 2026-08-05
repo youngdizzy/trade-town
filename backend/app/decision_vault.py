@@ -260,14 +260,18 @@ def build_vault_entry(
     )
 
 
-def record_vault_entry(vault: list[DecisionVaultEntry], entry: DecisionVaultEntry) -> list[DecisionVaultEntry]:
-    """Appends and caps at MAX_DECISION_VAULT_ENTRIES — the same
-    "permanent, but a real memory ceiling" resolution every other capped
-    history list in this codebase already uses (CaseStudy, CeoDecisionRecord,
-    ...), oldest evicted first."""
+def record_vault_entry(
+    vault: list[DecisionVaultEntry], entry: DecisionVaultEntry, max_entries: int = MAX_DECISION_VAULT_ENTRIES
+) -> list[DecisionVaultEntry]:
+    """Appends and caps at max_entries (Design Bible Chapter 61's
+    Knowledge Retention Rules CEO control, RiskLimits.maxDecisionVaultEntries
+    — defaults to the module constant so every other caller keeps today's
+    exact behavior) — the same "permanent, but a real memory ceiling"
+    resolution every other capped history list in this codebase already
+    uses (CaseStudy, CeoDecisionRecord, ...), oldest evicted first."""
     updated = [*vault, entry]
-    if len(updated) > MAX_DECISION_VAULT_ENTRIES:
-        del updated[: len(updated) - MAX_DECISION_VAULT_ENTRIES]
+    if len(updated) > max_entries:
+        del updated[: len(updated) - max_entries]
     return updated
 
 

@@ -7,6 +7,27 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 61 backend — Knowledge Retention Rules CEO control (Decision
+  Vault slice)** (`app/schemas.py`, `app/decision_vault.py`,
+  `app/nexus.py`, `app/state.py`, `app/routers/risk.py`): one new
+  `RiskLimits` field, `maxDecisionVaultEntries` (default 200), matching
+  the exact prior fixed constant (`MAX_DECISION_VAULT_ENTRIES`) so
+  existing behavior is unchanged until the CEO adjusts it.
+  `record_vault_entry()` gained an optional `max_entries` parameter
+  defaulting to the module constant; its one real call site
+  (`app/nexus.py`, right after a trade closes) already had
+  `effective_risk_limits` in scope, so no new plumbing was needed.
+  `POST /api/risk-limits` extended with the field (`maxDecisionVaultEntries`
+  ≥ 1). The Company Memory slice of this same control
+  (`MAX_MEMORY_RECORDS`) is deliberately NOT included — that constant is
+  read from 14 separate `app/scribe.py` call sites, a larger, riskier
+  change left for a separate pass (see the chapter's own Implementation
+  Notes). 4 new backend tests (2 Decision Vault ceiling cases, 2 CEO
+  write-path validation cases), `mypy`/`ruff` clean, full backend suite
+  1014/1014 passing, and a live `POST /api/risk-limits` call against the
+  running dev server confirming both the accepted value and the rejected
+  one (`0` → "Maximum Decision Vault Entries must be at least 1.").
+
 - **Chapter 61 backend — Pattern Detection Sensitivity CEO controls**
   (`app/schemas.py`, `app/decision_vault.py`, `app/war_room.py`,
   `app/nexus.py`, `app/state.py`, `app/routers/risk.py`): two new

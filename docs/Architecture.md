@@ -5577,6 +5577,41 @@ controls set away from their defaults) confirmed the configured values
 flow through to real `WarRoomSession.similarTrades` reads without
 error.
 
+### Knowledge Retention Rules CEO control (Decision Vault slice) — Design Bible Chapter 61
+
+The Decision Vault half of Chapter 61's Knowledge Retention Rules
+control: one new `RiskLimits` field, `maxDecisionVaultEntries` (default
+200), matching the exact prior fixed constant
+(`app/decision_vault.py`'s `MAX_DECISION_VAULT_ENTRIES`) so existing
+behavior is unchanged until the CEO adjusts it.
+
+**`record_vault_entry()`** gained an optional `max_entries` parameter
+defaulting to the module constant — every other caller keeps today's
+exact behavior unless it explicitly opts in. Its one real call site
+(`app/nexus.py`, immediately after a trade closes and the vault entry
+is built) already had `effective_risk_limits` in scope for the
+Opportunity Gatekeeper call right after it, so no new plumbing was
+needed. **`POST /api/risk-limits`** extended with
+`maxDecisionVaultEntries`, validated to ≥ 1.
+
+The Company Memory half of the same control
+(`app/memory.py`'s `MAX_MEMORY_RECORDS`) was deliberately NOT built in
+this pass: unlike `record_vault_entry()`'s single real call site,
+`app/memory.py`'s `record()` is called from 14 separate places inside
+`app/scribe.py` — the codebase's real "one writer gateway" design (see
+`app/memory.py`'s own module docstring) — so making that ceiling
+CEO-configurable would mean threading the value through all 14 sites, a
+larger, riskier change left for a separate pass.
+
+**Verified**: 2 new tests covering the Decision Vault's own capping
+behavior at a CEO-lowered and CEO-raised ceiling; 2 new tests for the
+CEO write path's validation boundary (`backend/tests/test_state.py`).
+`mypy`/`ruff` clean; full backend suite 1014/1014 passing. A live
+`POST /api/risk-limits` call against the running dev server confirmed
+both the accepted value (`maxDecisionVaultEntries: 50` echoed back) and
+the rejected one (`0` → "Maximum Decision Vault Entries must be at
+least 1.").
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

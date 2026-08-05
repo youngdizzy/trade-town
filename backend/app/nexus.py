@@ -1524,7 +1524,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                 company_dna_change=company_dna_change,
                 sim_day=new_time.day,
             )
-            decision_vault = record_vault_entry(decision_vault, vault_entry)
+            decision_vault = record_vault_entry(
+                decision_vault, vault_entry, max_entries=effective_risk_limits.max_decision_vault_entries
+            )
 
             # v0.7 Feature 55 — the Executive Decision Simulator's War
             # Room. Once this trade's originating proposal's own
