@@ -502,8 +502,13 @@ test.describe("Global Command Center", () => {
     // strict-mode ambiguity — any match confirms a real tier rendered.)
     await expect(page.getByText("Company Health", { exact: true })).toBeVisible();
     await expect(page.getByText(/EXCELLENT|GOOD|STABLE|NEEDS ATTENTION|CRITICAL/).first()).toBeVisible();
+    // .first() here too: Design Bible Chapter 64's Company Goals card
+    // (below, same tab) adds a real category dropdown whose own
+    // <option>Research</option> text is also matched by getByText, the
+    // same legitimate multi-match case as the tier vocabulary above —
+    // any match confirms the real Company Health label rendered.
     for (const metric of ["Stability", "Efficiency", "Morale", "Research", "Capital", "Resources", "Reputation", "Technology", "Office", "Education"]) {
-      await expect(page.getByText(metric, { exact: true })).toBeVisible();
+      await expect(page.getByText(metric, { exact: true }).first()).toBeVisible();
     }
 
     // Market Environment: a real regime pill plus its own detail text.

@@ -837,6 +837,37 @@ export interface ExecutivePriority {
   source: "Company Health" | "Coach Report" | "Executive Review";
 }
 
+// Design Bible Chapter 63 — Benchmarking. The one real multi-period
+// comparison this codebase's data supports today: the CEO picks how
+// many monthly ExecutiveReviews back to compare against, and this reads
+// straight off the already-retained history (up to
+// MAX_EXECUTIVE_REVIEWS=20 real reviews server-side) — never a
+// fabricated industry benchmark (no such data source exists anywhere in
+// this codebase; see Chapter 63's own Benchmarking section).
+export interface ScoreBenchmark {
+  currentScore: number;
+  comparisonScore: number;
+  delta: number;
+  periodsBack: number;
+  comparisonLabel: string;
+}
+
+export function computeScoreBenchmark(executiveReviews: ExecutiveReview[], periodsBack: number): ScoreBenchmark | null {
+  if (executiveReviews.length === 0) return null;
+  const comparisonIndex = executiveReviews.length - 1 - periodsBack;
+  if (comparisonIndex < 0) return null;
+  const current = executiveReviews[executiveReviews.length - 1];
+  const comparison = executiveReviews[comparisonIndex];
+  if (!current || !comparison) return null;
+  return {
+    currentScore: current.companyScore,
+    comparisonScore: comparison.companyScore,
+    delta: Math.round((current.companyScore - comparison.companyScore) * 10) / 10,
+    periodsBack,
+    comparisonLabel: periodsBack === 1 ? "1 review ago" : `${periodsBack} reviews ago`,
+  };
+}
+
 /**
  * The brief's "Executive Priorities" is a single AI-ranked list; this
  * codebase already generates three separate, real recommendation lists

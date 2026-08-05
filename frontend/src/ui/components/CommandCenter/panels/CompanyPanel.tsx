@@ -2,8 +2,11 @@ import { useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { SettingsManager } from "@/game/systems/SettingsManager";
 import { SaveManager } from "@/game/systems/SaveManager";
+import { NexusManager } from "@/game/systems/NexusManager";
 import { api } from "@/net/api";
-import type { CompanyHealthTier, CompanyPriority, MarketEnvironmentRegime, OperatingMode, TimeAdvanceTarget } from "@/types";
+import { GOAL_CATEGORY_LABEL, GOAL_METRIC_LABEL } from "@/types";
+import type { CompanyHealthTier, CompanyPriority, GoalCategory, GoalMetric, MarketEnvironmentRegime, OperatingMode, TimeAdvanceTarget } from "@/types";
+import { computeScoreBenchmark } from "../lib/derive";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
 
 const MODE_LABEL: Record<OperatingMode, string> = { learning: "LEARNING", assisted: "ASSISTED", executive: "EXECUTIVE" };
@@ -61,6 +64,17 @@ function metricTone(score: number): "green" | "amber" | "red" {
   return score >= 70 ? "green" : score >= 40 ? "amber" : "red";
 }
 
+// Design Bible Chapter 63 — Benchmarking period options. Real, retained
+// ExecutiveReview history caps at 20 monthly reviews server-side, so
+// "12 reviews ago" is the deepest honest comparison available.
+const BENCHMARK_PERIODS: number[] = [1, 3, 6, 12];
+
+// Design Bible Chapter 64 — every option here maps to a real, already-
+// computed metric (see backend/app/goals.py's resolve_metric_value()).
+const GOAL_METRIC_OPTIONS: GoalMetric[] = ["company_health_combined", "company_score_overall", "portfolio_return_pct", "academy_level"];
+const GOAL_CATEGORY_OPTIONS: GoalCategory[] = ["growth", "risk", "research", "trading", "operations"];
+const GOAL_STATUS_TONE: Record<string, "green" | "cyan" | "amber" | "red"> = { active: "cyan", completed: "green", cancelled: "amber", expired: "red" };
+
 /**
  * v0.7 Features 21-23 — Company Operating Modes, Market Environment
  * Simulation, and the Company Health & Stability System, co-located in
@@ -72,10 +86,85 @@ function metricTone(score: number): "green" | "amber" | "red" {
  * path every other player preference (music/SFX/showFps) already uses.
  */
 export function CompanyPanel() {
-  const { settings, companyHealth, marketEnvironment } = useGameStore();
+  const { settings, companyHealth, marketEnvironment, riskLimits, executiveReviews, goals, time } = useGameStore();
   const [advancing, setAdvancing] = useState<TimeAdvanceTarget | null>(null);
   const [customHours, setCustomHours] = useState("6");
   const [timeError, setTimeError] = useState<string | null>(null);
+
+  // Design Bible Chapter 63 — Company Health tier thresholds. Defaults
+  // match the exact fixed constants they replace (85/70/50/30); the
+  // server validates they stay strictly descending regardless of which
+  // subset this call changes.
+  const [excellentThreshold, setExcellentThreshold] = useState(String(riskLimits.companyHealthExcellentThreshold));
+  const [goodThreshold, setGoodThreshold] = useState(String(riskLimits.companyHealthGoodThreshold));
+  const [stableThreshold, setStableThreshold] = useState(String(riskLimits.companyHealthStableThreshold));
+  const [needsAttentionThreshold, setNeedsAttentionThreshold] = useState(String(riskLimits.companyHealthNeedsAttentionThreshold));
+  const [thresholdBusy, setThresholdBusy] = useState(false);
+  const [thresholdError, setThresholdError] = useState<string | null>(null);
+
+  const saveTierThresholds = async () => {
+    if (thresholdBusy) return;
+    setThresholdBusy(true);
+    setThresholdError(null);
+    try {
+      const res = await api.updateRiskLimits({
+        companyHealthExcellentThreshold: Number(excellentThreshold),
+        companyHealthGoodThreshold: Number(goodThreshold),
+        companyHealthStableThreshold: Number(stableThreshold),
+        companyHealthNeedsAttentionThreshold: Number(needsAttentionThreshold),
+      });
+      NexusManager.setRiskLimits(res.riskLimits);
+    } catch (err) {
+      setThresholdError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setThresholdBusy(false);
+    }
+  };
+
+  // Design Bible Chapter 63 — Benchmarking. Real comparison against a
+  // CEO-chosen prior monthly ExecutiveReview, not just the immediately-
+  // previous one (see lib/derive.ts's computeScoreBenchmark).
+  const [benchmarkPeriods, setBenchmarkPeriods] = useState(1);
+  const benchmark = computeScoreBenchmark(executiveReviews, benchmarkPeriods);
+
+  // Design Bible Chapter 64 — Goal creation form. Deliberately the
+  // smallest real slice: title + category + one real metric + target +
+  // optional deadline. Progress is never entered by the CEO — it's
+  // computed server-side.
+  const [goalTitle, setGoalTitle] = useState("");
+  const [goalCategory, setGoalCategory] = useState<GoalCategory>("growth");
+  const [goalMetric, setGoalMetric] = useState<GoalMetric>("company_score_overall");
+  const [goalTarget, setGoalTarget] = useState("80");
+  const [goalDeadline, setGoalDeadline] = useState("");
+  const [goalBusy, setGoalBusy] = useState(false);
+  const [goalError, setGoalError] = useState<string | null>(null);
+
+  const createGoal = async () => {
+    if (goalBusy) return;
+    setGoalBusy(true);
+    setGoalError(null);
+    try {
+      const deadlineSimDay = goalDeadline.trim() === "" ? null : Number(goalDeadline);
+      const res = await api.createGoal({ title: goalTitle, category: goalCategory, targetMetric: goalMetric, targetValue: Number(goalTarget), deadlineSimDay });
+      NexusManager.setGoals(res.goals);
+      setGoalTitle("");
+    } catch (err) {
+      setGoalError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setGoalBusy(false);
+    }
+  };
+
+  const cancelGoal = async (goalId: string) => {
+    try {
+      const res = await api.cancelGoal(goalId);
+      NexusManager.setGoals(res.goals);
+    } catch {
+      // A failed cancel leaves the goal exactly as it was — nothing to
+      // reconcile client-side; the next real tick's WS update is the
+      // source of truth either way.
+    }
+  };
 
   const runAdvance = async (target: TimeAdvanceTarget, hours?: number) => {
     if (advancing) return;
@@ -296,6 +385,213 @@ export function CompanyPanel() {
             ))}
           </div>
         )}
+      </Glass>
+
+      <Glass className="p-3 lg:col-span-2">
+        <div className="mb-1.5 flex items-center justify-between">
+          <TerminalLabel>Company Health Tier Thresholds</TerminalLabel>
+          <span className="text-[8px] uppercase tracking-wide text-cmd-textDim">Design Bible Chapter 63</span>
+        </div>
+        <div className="text-[9px] text-cmd-textDim">
+          Where each real tier begins, for Company Health, Executive Health, and Combined alike. Must stay strictly descending — Excellent &gt; Good &gt; Stable &gt; Needs Attention.
+        </div>
+        <div className="mt-3 grid grid-cols-2 gap-2 sm:grid-cols-4">
+          <label className="flex flex-col gap-1 text-[9px] text-cmd-textDim">
+            Excellent ≥
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="1"
+              value={excellentThreshold}
+              onChange={(e) => setExcellentThreshold(e.target.value)}
+              className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-cmd-text outline-none focus:border-cmd-cyan/50"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[9px] text-cmd-textDim">
+            Good ≥
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="1"
+              value={goodThreshold}
+              onChange={(e) => setGoodThreshold(e.target.value)}
+              className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-cmd-text outline-none focus:border-cmd-cyan/50"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[9px] text-cmd-textDim">
+            Stable ≥
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="1"
+              value={stableThreshold}
+              onChange={(e) => setStableThreshold(e.target.value)}
+              className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-cmd-text outline-none focus:border-cmd-cyan/50"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[9px] text-cmd-textDim">
+            Needs Attention ≥
+            <input
+              type="number"
+              min="0"
+              max="100"
+              step="1"
+              value={needsAttentionThreshold}
+              onChange={(e) => setNeedsAttentionThreshold(e.target.value)}
+              className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-cmd-text outline-none focus:border-cmd-cyan/50"
+            />
+          </label>
+        </div>
+        <button
+          type="button"
+          onClick={() => void saveTierThresholds()}
+          disabled={thresholdBusy}
+          className="mt-3 rounded-sm border border-cmd-cyan/50 px-3 py-1 text-[9px] uppercase tracking-wider text-cmd-cyan hover:bg-cmd-cyan/10 disabled:opacity-40"
+        >
+          {thresholdBusy ? "Saving…" : "Save Tier Thresholds"}
+        </button>
+        {thresholdError && <div className="mt-1.5 text-[9px] text-cmd-red">{thresholdError}</div>}
+      </Glass>
+
+      <Glass className="p-3">
+        <div className="mb-1.5 flex items-center justify-between">
+          <TerminalLabel>Benchmarking</TerminalLabel>
+          <span className="text-[8px] uppercase tracking-wide text-cmd-textDim">Design Bible Chapter 63</span>
+        </div>
+        <div className="mb-2 flex gap-1">
+          {BENCHMARK_PERIODS.map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setBenchmarkPeriods(p)}
+              className={`flex-1 rounded-sm border px-1.5 py-1 text-[9px] transition-colors ${
+                benchmarkPeriods === p ? "border-cmd-cyan/50 bg-cmd-cyan/10 text-cmd-cyan" : "border-cmd-border/60 bg-cmd-bg/40 text-cmd-textDim hover:border-cmd-cyan/30"
+              }`}
+            >
+              {p}x
+            </button>
+          ))}
+        </div>
+        {benchmark === null ? (
+          <EmptyState>Not enough monthly Executive Review history yet — check back after a few more real months pass.</EmptyState>
+        ) : (
+          <>
+            <div className="flex items-baseline justify-between">
+              <span className="font-cmdmono text-lg text-cmd-cyan">{benchmark.currentScore.toFixed(1)}</span>
+              <span className={`font-cmdmono text-[10px] ${benchmark.delta >= 0 ? "text-cmd-green" : "text-cmd-red"}`}>
+                {benchmark.delta >= 0 ? "+" : ""}
+                {benchmark.delta.toFixed(1)}
+              </span>
+            </div>
+            <div className="mt-1 text-[9px] text-cmd-textDim">
+              vs. {benchmark.comparisonScore.toFixed(1)} ({benchmark.comparisonLabel})
+            </div>
+          </>
+        )}
+      </Glass>
+
+      <Glass className="p-3 lg:col-span-3">
+        <div className="mb-1.5 flex items-center justify-between">
+          <TerminalLabel>Company Goals</TerminalLabel>
+          <span className="text-[8px] uppercase tracking-wide text-cmd-textDim">Design Bible Chapter 64</span>
+        </div>
+        <div className="mb-3 text-[9px] text-cmd-textDim">
+          Name a real objective against one already-tracked company metric. Progress is computed fresh every tick — never entered by hand.
+        </div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-5">
+          <input
+            type="text"
+            placeholder="Goal title"
+            value={goalTitle}
+            onChange={(e) => setGoalTitle(e.target.value)}
+            className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-[9px] text-cmd-text outline-none focus:border-cmd-cyan/50 sm:col-span-2"
+          />
+          <select
+            value={goalCategory}
+            onChange={(e) => setGoalCategory(e.target.value as GoalCategory)}
+            className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-[9px] text-cmd-text outline-none focus:border-cmd-cyan/50"
+          >
+            {GOAL_CATEGORY_OPTIONS.map((c) => (
+              <option key={c} value={c}>
+                {GOAL_CATEGORY_LABEL[c]}
+              </option>
+            ))}
+          </select>
+          <select
+            value={goalMetric}
+            onChange={(e) => setGoalMetric(e.target.value as GoalMetric)}
+            className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-[9px] text-cmd-text outline-none focus:border-cmd-cyan/50"
+          >
+            {GOAL_METRIC_OPTIONS.map((m) => (
+              <option key={m} value={m}>
+                {GOAL_METRIC_LABEL[m]}
+              </option>
+            ))}
+          </select>
+          <input
+            type="number"
+            placeholder="Target"
+            value={goalTarget}
+            onChange={(e) => setGoalTarget(e.target.value)}
+            className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-[9px] text-cmd-text outline-none focus:border-cmd-cyan/50"
+          />
+        </div>
+        <div className="mt-2 flex items-center gap-2">
+          <label className="flex items-center gap-1.5 text-[9px] text-cmd-textDim">
+            Deadline (sim day, optional — currently day {time.day})
+            <input
+              type="number"
+              min={time.day + 1}
+              placeholder="none"
+              value={goalDeadline}
+              onChange={(e) => setGoalDeadline(e.target.value)}
+              className="w-20 rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-cmd-text outline-none focus:border-cmd-cyan/50"
+            />
+          </label>
+          <button
+            type="button"
+            onClick={() => void createGoal()}
+            disabled={goalBusy || goalTitle.trim() === ""}
+            className="ml-auto flex-none rounded-sm border border-cmd-cyan/50 px-3 py-1 text-[9px] uppercase tracking-wider text-cmd-cyan hover:bg-cmd-cyan/10 disabled:opacity-40"
+          >
+            {goalBusy ? "Creating…" : "Create Goal"}
+          </button>
+        </div>
+        {goalError && <div className="mt-1.5 text-[9px] text-cmd-red">{goalError}</div>}
+
+        <div className="mt-3 space-y-1.5 border-t border-cmd-border/50 pt-2">
+          {goals.length === 0 ? (
+            <EmptyState>No company goals set yet.</EmptyState>
+          ) : (
+            [...goals].reverse().map((g) => (
+              <div key={g.id} className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-2 text-[9px]">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="truncate text-cmd-text">{g.title}</span>
+                  <div className="flex flex-none items-center gap-1.5">
+                    <StatusPill tone={GOAL_STATUS_TONE[g.status]}>{g.status.toUpperCase()}</StatusPill>
+                    {g.status === "active" && (
+                      <button type="button" onClick={() => void cancelGoal(g.id)} className="text-cmd-textDim hover:text-cmd-red">
+                        ✕
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="mt-1 flex items-center justify-between text-cmd-textDim">
+                  <span>
+                    {GOAL_CATEGORY_LABEL[g.category]} · {GOAL_METRIC_LABEL[g.targetMetric]}
+                  </span>
+                  <span className="tabular-nums">
+                    {g.currentValue.toFixed(1)} / {g.targetValue.toFixed(1)}
+                  </span>
+                </div>
+                <Meter value={g.progressPct} tone={g.status === "completed" ? "green" : "cyan"} />
+              </div>
+            ))
+          )}
+        </div>
       </Glass>
 
       <Glass className="p-3 lg:col-span-3">

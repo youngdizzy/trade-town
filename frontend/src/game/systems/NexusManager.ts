@@ -22,6 +22,7 @@ import type {
   ExecutiveMeetingLogEntry,
   ExecutiveReview,
   FounderState,
+  Goal,
   FoundationalMentorState,
   GatekeeperRejection,
   HallOfFameEntry,
@@ -123,6 +124,7 @@ interface NexusSnapshot {
   executiveReviews: ExecutiveReview[];
   academyProjects: AcademyProject[];
   academyCompletedProjects: AcademyProject[];
+  goals: Goal[];
   agentKnowledge: Record<AgentId, AgentKnowledgeState>;
   academyState: AcademyState;
   disciplineReviews: DisciplineReview[];
@@ -232,6 +234,10 @@ export class NexusManager {
     maxDecisionVaultEntries: 200,
     maxMemoryRecords: 200,
     maxLimitedLiveCapital: 2000,
+    companyHealthExcellentThreshold: 85,
+    companyHealthGoodThreshold: 70,
+    companyHealthStableThreshold: 50,
+    companyHealthNeedsAttentionThreshold: 30,
   };
   private static riskWarnings: RiskWarning[] = [];
   private static scannerAlerts: ScannerAlert[] = [];
@@ -318,6 +324,7 @@ export class NexusManager {
   };
   private static executiveReviews: ExecutiveReview[] = [];
   private static academyProjects: AcademyProject[] = [];
+  private static goals: Goal[] = [];
   private static academyCompletedProjects: AcademyProject[] = [];
   private static agentKnowledge: Record<AgentId, AgentKnowledgeState> = {} as Record<AgentId, AgentKnowledgeState>;
   private static academyState: AcademyState = {
@@ -570,6 +577,10 @@ export class NexusManager {
     return this.academyProjects;
   }
 
+  static getGoals(): Goal[] {
+    return this.goals;
+  }
+
   static getAcademyCompletedProjects(): AcademyProject[] {
     return this.academyCompletedProjects;
   }
@@ -623,6 +634,13 @@ export class NexusManager {
   static setRiskLimits(riskLimits: RiskLimits): void {
     this.riskLimits = riskLimits;
     EventBus.emit("riskLimits:updated", riskLimits);
+  }
+
+  /** Design Bible Chapter 64 — applies the result of POST /api/goals/create
+   * or /api/goals/cancel. */
+  static setGoals(goals: Goal[]): void {
+    this.goals = goals;
+    EventBus.emit("goals:updated", goals);
   }
 
   /** Applies the result of POST /api/talent/ack-report, the same "seen"
@@ -1088,6 +1106,9 @@ export class NexusManager {
     if (update.academyProjects !== this.academyProjects) EventBus.emit("academyProjects:updated", update.academyProjects);
     this.academyProjects = update.academyProjects;
 
+    if (update.goals !== this.goals) EventBus.emit("goals:updated", update.goals);
+    this.goals = update.goals;
+
     if (update.academyCompletedProjects.length !== this.academyCompletedProjects.length) {
       EventBus.emit("academyCompletedProjects:updated", update.academyCompletedProjects);
     }
@@ -1250,6 +1271,7 @@ export class NexusManager {
     this.executiveReviews = save.executiveReviews;
     this.academyProjects = save.academyProjects;
     this.academyCompletedProjects = save.academyCompletedProjects;
+    this.goals = save.goals;
     this.agentKnowledge = save.agentKnowledge;
     this.academyState = save.academyState;
     this.disciplineReviews = save.disciplineReviews;

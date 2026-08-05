@@ -24,6 +24,7 @@ import type {
   ExecutiveMeetingLogEntry,
   ExecutiveReview,
   FounderState,
+  Goal,
   FoundationalMentorState,
   GatekeeperRejection,
   HallOfFameEntry,
@@ -143,6 +144,7 @@ export interface GameUiState {
   executiveReviews: ExecutiveReview[];
   academyProjects: AcademyProject[];
   academyCompletedProjects: AcademyProject[];
+  goals: Goal[];
   agentKnowledge: Record<AgentId, AgentKnowledgeState>;
   academyState: AcademyState;
   disciplineReviews: DisciplineReview[];
@@ -280,6 +282,10 @@ class GameStore {
       maxDecisionVaultEntries: 200,
       maxMemoryRecords: 200,
       maxLimitedLiveCapital: 2000,
+      companyHealthExcellentThreshold: 85,
+      companyHealthGoodThreshold: 70,
+      companyHealthStableThreshold: 50,
+      companyHealthNeedsAttentionThreshold: 30,
     },
     riskWarnings: [],
     scannerAlerts: [],
@@ -373,6 +379,7 @@ class GameStore {
     },
     executiveReviews: [],
     academyProjects: [],
+    goals: [],
     academyCompletedProjects: [],
     agentKnowledge: {} as Record<AgentId, AgentKnowledgeState>,
     academyState: { level: 1, levelLabel: "Training Room", totalPoints: 0, completedProjectCount: 0, updatedAt: new Date().toISOString() },
@@ -548,6 +555,7 @@ class GameStore {
     EventBus.on("dailyObjectiveStatus:updated", (dailyObjectiveStatus) => this.set({ dailyObjectiveStatus }));
     EventBus.on("executiveReviews:updated", (executiveReviews) => this.set({ executiveReviews }));
     EventBus.on("academyProjects:updated", (academyProjects) => this.set({ academyProjects }));
+    EventBus.on("goals:updated", (goals) => this.set({ goals }));
     EventBus.on("academyCompletedProjects:updated", (academyCompletedProjects) => this.set({ academyCompletedProjects }));
     EventBus.on("agentKnowledge:updated", (agentKnowledge) => this.set({ agentKnowledge }));
     EventBus.on("academyState:updated", (academyState) => this.set({ academyState }));

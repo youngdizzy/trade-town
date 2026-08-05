@@ -969,6 +969,14 @@ export interface RiskLimits {
   // control (see backend/app/sandbox.py's begin_limited_live()).
   // Defaults to the exact fixed constant it replaces.
   maxLimitedLiveCapital: number;
+  // Design Bible Chapter 63 — Company Health tier thresholds (see
+  // backend/app/company_health.py's compute_company_health()). Defaults
+  // to the exact fixed constants they replace (85/70/50/30). Always
+  // stay strictly descending: Excellent > Good > Stable > Needs Attention.
+  companyHealthExcellentThreshold: number;
+  companyHealthGoodThreshold: number;
+  companyHealthStableThreshold: number;
+  companyHealthNeedsAttentionThreshold: number;
 }
 
 // v0.7 Feature 49 — a real-time readout of today's real trading activity
@@ -1889,6 +1897,47 @@ export interface ExecutiveReview {
   knowledgeConnections: string[];
   summary: string;
   createdAt: string;
+}
+
+// Design Bible Chapter 64 — Executive Strategic Planning & Goal
+// Management Engine (see backend/app/goals.py). Deliberately the
+// smallest real slice: a CEO-authored goal against one real,
+// already-computed metric. No Executive Priority Engine, Resource
+// Allocation, or Milestone Tracking yet — see that chapter's own
+// Implementation Notes for the honest scope cut.
+export type GoalCategory = "growth" | "risk" | "research" | "trading" | "operations";
+export type GoalMetric = "company_health_combined" | "company_score_overall" | "portfolio_return_pct" | "academy_level";
+export type GoalStatus = "active" | "completed" | "cancelled" | "expired";
+
+export const GOAL_METRIC_LABEL: Record<GoalMetric, string> = {
+  company_health_combined: "Company Health (Combined)",
+  company_score_overall: "Company Score",
+  portfolio_return_pct: "Portfolio Return %",
+  academy_level: "Academy Level",
+};
+
+export const GOAL_CATEGORY_LABEL: Record<GoalCategory, string> = {
+  growth: "Growth",
+  risk: "Risk",
+  research: "Research",
+  trading: "Trading",
+  operations: "Operations",
+};
+
+export interface Goal {
+  id: string;
+  title: string;
+  category: GoalCategory;
+  targetMetric: GoalMetric;
+  targetValue: number;
+  currentValue: number;
+  progressPct: number;
+  createdSimDay: number;
+  deadlineSimDay: number | null;
+  status: GoalStatus;
+  createdAt: string;
+  updatedAt: string;
+  completedAt: string | null;
 }
 
 // v0.7 Feature 25 — AI Academy & Knowledge Network (see
@@ -2910,6 +2959,7 @@ export interface GameSaveState {
   executiveReviews: ExecutiveReview[];
   academyProjects: AcademyProject[];
   academyCompletedProjects: AcademyProject[];
+  goals: Goal[];
   agentKnowledge: Record<AgentId, AgentKnowledgeState>;
   academyState: AcademyState;
   disciplineReviews: DisciplineReview[];

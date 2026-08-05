@@ -24,6 +24,7 @@ import type {
   ExecutiveMeetingLogEntry,
   ExecutiveReview,
   FounderState,
+  Goal,
   FoundationalMentorState,
   GatekeeperRejection,
   HallOfFameEntry,
@@ -132,6 +133,7 @@ type ServerMessage =
       executiveReviews: ExecutiveReview[];
       academyProjects: AcademyProject[];
       academyCompletedProjects: AcademyProject[];
+      goals: Goal[];
       agentKnowledge: Record<AgentId, AgentKnowledgeState>;
       academyState: AcademyState;
       disciplineReviews: DisciplineReview[];
@@ -264,6 +266,7 @@ export class GameSocket {
             executiveReviews: msg.executiveReviews,
             academyProjects: msg.academyProjects,
             academyCompletedProjects: msg.academyCompletedProjects,
+            goals: msg.goals,
             agentKnowledge: msg.agentKnowledge,
             academyState: msg.academyState,
             disciplineReviews: msg.disciplineReviews,

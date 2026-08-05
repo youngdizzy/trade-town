@@ -17,6 +17,9 @@ import type {
   FoundationalMentorState,
   FoundationalResourceType,
   GameSaveState,
+  Goal,
+  GoalCategory,
+  GoalMetric,
   HoldReason,
   GatekeeperRejection,
   InnovationState,
@@ -333,11 +336,31 @@ export const api = {
       // two new CEO controls.
       minPriorityScore: number;
       capitalReservePct: number;
+      // Design Bible Chapter 63 — Company Health tier thresholds. Always
+      // stay strictly descending (Excellent > Good > Stable > Needs
+      // Attention) — validated together server-side.
+      companyHealthExcellentThreshold: number;
+      companyHealthGoodThreshold: number;
+      companyHealthStableThreshold: number;
+      companyHealthNeedsAttentionThreshold: number;
     }>,
   ) =>
     request<{ riskLimits: RiskLimits }>("/risk-limits", {
       method: "POST",
       body: JSON.stringify(updates),
+    }),
+  // Design Bible Chapter 64 — the CEO's Goal creation/cancellation write
+  // path. Real progress is never sent by the client; it's recomputed
+  // server-side every tick (see backend/app/goals.py's tick_goals()).
+  createGoal: (goal: { title: string; category: GoalCategory; targetMetric: GoalMetric; targetValue: number; deadlineSimDay?: number | null }) =>
+    request<{ goals: Goal[] }>("/goals/create", {
+      method: "POST",
+      body: JSON.stringify(goal),
+    }),
+  cancelGoal: (goalId: string) =>
+    request<{ goals: Goal[] }>("/goals/cancel", {
+      method: "POST",
+      body: JSON.stringify({ goalId }),
     }),
   // The CEO's own entirely optional personal Learning Mode — never
   // touches real employee progress. See FoundationalMentorState's own
