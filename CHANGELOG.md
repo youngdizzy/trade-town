@@ -7,6 +7,28 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Design Bible Chapter 57 — Institutional Position Sizing & Capital
+  Deployment Engine** (`docs/DesignBible/volumes/09-departments/chapter-57-position-sizing-capital-deployment.md`):
+  a target-design chapter, not yet implemented, per Appendix G's
+  "Design Bible updated before implementation" policy. Researched
+  first: `app/risk_engine.py`'s real `recommended_quantity()` sizes
+  every position off exactly two flat percent-of-equity limits today,
+  with no evidence, confidence, or portfolio-context input at all —
+  this chapter's real, novel design is an evidence-and-confidence-
+  weighted model that replaces (not duplicates) that flat calculation,
+  built entirely on real existing signals (Decision Vault evidence
+  score, War Room Expected Value/Decision Score, Portfolio Intelligence
+  heat/correlation) rather than inventing new upstream systems. A
+  four-tier Position Tier system, real Position Scaling/Reduction
+  trigger rules, a spendable (not just static-ceiling) Risk Budget, and
+  new CEO controls (Weekly Risk cap, an optional Portfolio Heat hard
+  cap, Day/Swing/Hybrid allocation split) are the chapter's genuinely
+  new asks. Explicitly out of scope until other volumes catch up: the
+  Institutional Tier's cross-department approval workflow (no real
+  approval-routing mechanism exists yet) and real multi-broker/
+  multi-account deployment (Volume 10 is still "no live broker exists
+  today"). Added as the fourth row in Volume 9's chapter table.
+
 - **The Design Bible** (`docs/DesignBible/`) — the emerging single
   source of truth for the whole company: 14 volumes plus 7 appendices,
   scaffolded as a real folder structure and Table of Contents
