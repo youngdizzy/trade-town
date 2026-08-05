@@ -1965,6 +1965,18 @@ export interface GoalPriority {
   daysRemaining: number | null;
 }
 
+// Design Bible Chapter 64 (fourth pass) — Resource Allocation. A
+// recommend-only share of executive ATTENTION across active goals,
+// normalized from the same real GoalPriority scores above so it sums
+// to ~100% — never a claim about real capital movement (see
+// backend/app/goals.py's compute_resource_allocation()). Computed
+// fresh per request, never persisted.
+export interface GoalAllocation {
+  goalId: string;
+  score: number;
+  allocationPct: number;
+}
+
 // v0.7 Feature 25 — AI Academy & Knowledge Network (see
 // backend/app/academy.py, backend/app/academy_research.py).
 export type AcademyTopic = "market_history" | "trading_psychology" | "economic_concepts" | "visualization_tools" | "decision_biases" | "trading_philosophies";

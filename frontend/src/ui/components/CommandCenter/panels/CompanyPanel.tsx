@@ -5,7 +5,7 @@ import { SaveManager } from "@/game/systems/SaveManager";
 import { NexusManager } from "@/game/systems/NexusManager";
 import { api } from "@/net/api";
 import { GOAL_CATEGORY_LABEL, GOAL_METRIC_LABEL } from "@/types";
-import type { CompanyHealthTier, CompanyPriority, Goal, GoalCategory, GoalMetric, GoalPriority, MarketEnvironmentRegime, OperatingMode, TimeAdvanceTarget } from "@/types";
+import type { CompanyHealthTier, CompanyPriority, Goal, GoalAllocation, GoalCategory, GoalMetric, GoalPriority, MarketEnvironmentRegime, OperatingMode, TimeAdvanceTarget } from "@/types";
 import { computeScoreBenchmark } from "../lib/derive";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
 
@@ -196,6 +196,29 @@ export function CompanyPanel() {
 
   const priorityByGoalId = new Map(priorities.map((p) => [p.goalId, p]));
   const rankedGoals = orderGoalsByPriority(goals, priorityByGoalId);
+
+  // Design Bible Chapter 64 (fourth pass) — Resource Allocation. A
+  // recommend-only share of executive ATTENTION across active goals,
+  // normalized from the same real Priority Engine scores above —
+  // fetched the same way, refetched on the same real triggers, never a
+  // claim about moving real capital (see backend/app/goals.py's
+  // compute_resource_allocation()).
+  const [allocations, setAllocations] = useState<GoalAllocation[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getGoalAllocations()
+      .then((res) => {
+        if (!cancelled) setAllocations(res);
+      })
+      .catch(() => {
+        if (!cancelled) setAllocations([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [goals]);
+  const allocationByGoalId = new Map(allocations.map((a) => [a.goalId, a]));
 
   const runAdvance = async (target: TimeAdvanceTarget, hours?: number) => {
     if (advancing) return;
@@ -599,6 +622,7 @@ export function CompanyPanel() {
           ) : (
             rankedGoals.map((g) => {
               const priority = priorityByGoalId.get(g.id);
+              const allocation = allocationByGoalId.get(g.id);
               return (
                 <div key={g.id} className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-2 text-[9px]">
                   <div className="flex items-center justify-between gap-2">
@@ -623,6 +647,15 @@ export function CompanyPanel() {
                     </span>
                   </div>
                   <Meter value={g.progressPct} tone={g.status === "completed" ? "green" : "cyan"} />
+                  {allocation && (
+                    <div className="mt-1 flex items-center gap-1.5 text-cmd-textDim">
+                      <span className="uppercase tracking-wide">Recommended attention</span>
+                      <div className="h-1 flex-1 overflow-hidden rounded-full bg-cmd-bg/80">
+                        <div className="h-full rounded-full bg-cmd-purple/70" style={{ width: `${allocation.allocationPct}%` }} />
+                      </div>
+                      <span className="tabular-nums text-cmd-text">{allocation.allocationPct.toFixed(0)}%</span>
+                    </div>
+                  )}
                   {g.milestones.length > 0 && (
                     <div className="mt-1 flex items-center gap-2">
                       {g.milestones.map((m) => (

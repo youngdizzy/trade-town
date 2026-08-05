@@ -18,6 +18,7 @@ import type {
   FoundationalResourceType,
   GameSaveState,
   Goal,
+  GoalAllocation,
   GoalCategory,
   GoalMetric,
   GoalPriority,
@@ -364,6 +365,7 @@ export const api = {
       body: JSON.stringify({ goalId }),
     }),
   getGoalPriorities: () => request<GoalPriority[]>("/goals/priorities"),
+  getGoalAllocations: () => request<GoalAllocation[]>("/goals/allocations"),
   // The CEO's own entirely optional personal Learning Mode — never
   // touches real employee progress. See FoundationalMentorState's own
   // doc comment in types.ts.
