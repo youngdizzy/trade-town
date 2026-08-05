@@ -68,6 +68,7 @@ from app.schemas import (
     Strategy,
     TalentState,
     TestScenario,
+    TierAllocationLimits,
     TimeAdvanceTarget,
     TimeState,
 )
@@ -501,18 +502,31 @@ class GameState:
         max_trades_per_day: int | None = None,
         risk_per_trade_pct: float | None = None,
         max_open_positions: int | None = None,
+        max_weekly_deployment_pct: float | None = None,
+        portfolio_heat_cap_pct: float | None = None,
+        clear_portfolio_heat_cap: bool = False,
+        cash_reserve_pct: float | None = None,
+        tier_allocation: TierAllocationLimits | None = None,
     ) -> tuple[GameSaveState, str | None]:
-        """v0.7 Feature 49 — the CEO's Daily Trading Objectives. The
-        first real CEO-facing write path for RiskLimits (previously
-        display-only — see app/risk_engine.py's module docstring). Every
-        field is optional so a single call can update just one limit;
-        each provided value is validated positive before being merged
-        into the real RiskLimits object app/risk_engine.py's
-        evaluate_sentinel_risk already enforces every tick — no separate
-        "pending CEO settings" object, the change takes effect on the
-        very next generated trade proposal."""
+        """v0.7 Feature 49 — the CEO's Daily Trading Objectives — extended
+        by v0.7 Chapter 57 with four of the six new Position Sizing
+        controls (`scaling_aggressiveness_pct`/`emergency_reduction_
+        heat_pct` are not writable here — see app/position_sizing.py's
+        own honesty boundary; those two fields have no real consumer
+        until Position Scaling/Reduction on already-open positions is
+        built, and a control that changes a number nothing reads would
+        be a placeholder). Every field is optional so a single call can
+        update just one limit; each provided value is validated before
+        being merged into the real RiskLimits object app/risk_engine.py
+        and app/position_sizing.py already enforce every tick — no
+        separate "pending CEO settings" object, the change takes effect
+        on the very next generated trade proposal. `clear_portfolio_heat_
+        cap` is a separate explicit flag (not just passing `None`) so
+        "field omitted" and "CEO wants to disable the cap" are
+        distinguishable — the same ambiguity `float | None` alone can't
+        resolve."""
         async with self.lock:
-            updates: dict[str, float | int] = {}
+            updates: dict[str, float | int | TierAllocationLimits | None] = {}
             if daily_profit_target_pct is not None:
                 if daily_profit_target_pct <= 0:
                     return self.data, "Daily profit target must be a positive percentage."
@@ -533,6 +547,24 @@ class GameState:
                 if max_open_positions <= 0:
                     return self.data, "Maximum open positions must be a positive whole number."
                 updates["max_open_positions"] = max_open_positions
+            if max_weekly_deployment_pct is not None:
+                if max_weekly_deployment_pct <= 0:
+                    return self.data, "Maximum weekly deployment must be a positive percentage."
+                updates["max_weekly_deployment_pct"] = max_weekly_deployment_pct
+            if clear_portfolio_heat_cap:
+                updates["portfolio_heat_cap_pct"] = None
+            elif portfolio_heat_cap_pct is not None:
+                if portfolio_heat_cap_pct <= 0:
+                    return self.data, "Portfolio Heat cap must be a positive percentage."
+                updates["portfolio_heat_cap_pct"] = portfolio_heat_cap_pct
+            if cash_reserve_pct is not None:
+                if cash_reserve_pct < 0 or cash_reserve_pct >= 100:
+                    return self.data, "Cash reserve must be a percentage from 0 up to (not including) 100."
+                updates["cash_reserve_pct"] = cash_reserve_pct
+            if tier_allocation is not None:
+                if min(tier_allocation.tier1_pct, tier_allocation.tier2_pct, tier_allocation.tier3_pct, tier_allocation.tier4_pct) <= 0:
+                    return self.data, "Every Position Tier allocation must be a positive percentage."
+                updates["tier_allocation"] = tier_allocation
             if not updates:
                 return self.data, "No risk limit changes were provided."
             new_limits = self.data.risk_limits.model_copy(update=updates)

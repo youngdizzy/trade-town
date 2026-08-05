@@ -215,6 +215,12 @@ export class NexusManager {
     riskPerTradePct: 2,
     dailyProfitTargetPct: 3,
     maxTradesPerDay: 6,
+    maxWeeklyDeploymentPct: 15,
+    portfolioHeatCapPct: null,
+    cashReservePct: 10,
+    tierAllocation: { tier1Pct: 2, tier2Pct: 5, tier3Pct: 8, tier4Pct: 10 },
+    scalingAggressivenessPct: 100,
+    emergencyReductionHeatPct: 75,
   };
   private static riskWarnings: RiskWarning[] = [];
   private static scannerAlerts: ScannerAlert[] = [];

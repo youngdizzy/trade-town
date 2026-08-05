@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import asyncio
 
-from app.schemas import ClientSaveRequest, DialogueHistoryEntry, EntityTransform, SettingsState
+from app.schemas import ClientSaveRequest, DialogueHistoryEntry, EntityTransform, SettingsState, TierAllocationLimits
 from app.state import MAX_DIALOGUE_HISTORY, GameState
 
 
@@ -105,6 +105,77 @@ class TestUpdateRiskLimits:
         saved, error = asyncio.run(state.update_risk_limits())
         assert error == "No risk limit changes were provided."
         assert saved is state.data
+
+    # v0.7 Chapter 57 — four of the engine's six new CEO controls.
+    def test_updates_max_weekly_deployment_pct(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(max_weekly_deployment_pct=25.0))
+        assert error is None
+        assert saved.risk_limits.max_weekly_deployment_pct == 25.0
+
+    def test_rejects_non_positive_max_weekly_deployment_pct(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(max_weekly_deployment_pct=0.0))
+        assert error is not None
+        assert saved.risk_limits.max_weekly_deployment_pct != 0.0
+
+    def test_sets_portfolio_heat_cap_pct(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(portfolio_heat_cap_pct=40.0))
+        assert error is None
+        assert saved.risk_limits.portfolio_heat_cap_pct == 40.0
+
+    def test_clear_portfolio_heat_cap_flag_disables_it(self) -> None:
+        state = GameState()
+        saved, _ = asyncio.run(state.update_risk_limits(portfolio_heat_cap_pct=40.0))
+        assert saved.risk_limits.portfolio_heat_cap_pct == 40.0
+        saved, error = asyncio.run(state.update_risk_limits(clear_portfolio_heat_cap=True))
+        assert error is None
+        assert saved.risk_limits.portfolio_heat_cap_pct is None
+
+    def test_clear_flag_wins_even_if_a_value_is_also_provided(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(portfolio_heat_cap_pct=40.0, clear_portfolio_heat_cap=True))
+        assert error is None
+        assert saved.risk_limits.portfolio_heat_cap_pct is None
+
+    def test_rejects_non_positive_portfolio_heat_cap_pct(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(portfolio_heat_cap_pct=0.0))
+        assert error is not None
+        assert saved.risk_limits.portfolio_heat_cap_pct is None
+
+    def test_updates_cash_reserve_pct(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(cash_reserve_pct=15.0))
+        assert error is None
+        assert saved.risk_limits.cash_reserve_pct == 15.0
+
+    def test_rejects_cash_reserve_pct_of_100_or_more(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(cash_reserve_pct=100.0))
+        assert error is not None
+        assert saved.risk_limits.cash_reserve_pct != 100.0
+
+    def test_accepts_cash_reserve_pct_of_zero(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(cash_reserve_pct=0.0))
+        assert error is None
+        assert saved.risk_limits.cash_reserve_pct == 0.0
+
+    def test_updates_tier_allocation(self) -> None:
+        state = GameState()
+        new_allocation = TierAllocationLimits(tier1Pct=3.0, tier2Pct=6.0, tier3Pct=9.0, tier4Pct=12.0)
+        saved, error = asyncio.run(state.update_risk_limits(tier_allocation=new_allocation))
+        assert error is None
+        assert saved.risk_limits.tier_allocation == new_allocation
+
+    def test_rejects_tier_allocation_with_a_non_positive_tier(self) -> None:
+        state = GameState()
+        bad_allocation = TierAllocationLimits(tier1Pct=2.0, tier2Pct=0.0, tier3Pct=8.0, tier4Pct=10.0)
+        saved, error = asyncio.run(state.update_risk_limits(tier_allocation=bad_allocation))
+        assert error is not None
+        assert saved.risk_limits.tier_allocation != bad_allocation
 
     def test_extra_fields_on_the_wire_are_ignored_not_rejected(self) -> None:
         """ClientSaveRequest inherits CamelModel's default extra="ignore", so

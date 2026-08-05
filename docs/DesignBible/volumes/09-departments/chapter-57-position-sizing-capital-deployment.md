@@ -1,11 +1,11 @@
 # Chapter 57 — Institutional Position Sizing & Capital Deployment Engine
 
-**Status:** Backend implemented (`app/position_sizing.py`, wired into
-`app/nexus.py` and `app/executive.py`). Frontend (Command Center
-surfacing, CEO controls UI) not yet built. See [Volume 9's chapter
-template](README.md) for what every section below must contain, and the
-Implementation Notes at the bottom of this chapter for exactly what's
-real today versus new here.
+**Status:** Fully implemented — backend (`app/position_sizing.py`, wired
+into `app/nexus.py` and `app/executive.py`) and frontend (the WARROOM
+tab's Position Sizing block, and the RISK tab's four new CEO controls).
+See [Volume 9's chapter template](README.md) for what every section
+below must contain, and the Implementation Notes at the bottom of this
+chapter for exactly what's real today versus new here.
 
 ## Executive Summary
 
@@ -388,9 +388,37 @@ monotonicity guarantee itself), the full backend suite (936 tests, all
 passing, confirming the `executive.py` fix didn't regress anything else),
 and `mypy`/`ruff` clean on every touched file.
 
+**Frontend.** `types.ts` mirrors `TierAllocationLimits`, the six new
+`RiskLimits` fields, `PositionTier`, and `PositionSizingResult`;
+`WarRoomSession.positionSizing` flows through the existing generic
+pass-through pipeline (`socket.ts` -> `NexusManager.ts` -> `EventBus.ts`
+-> `gameStore.ts`) with no per-field plumbing needed, since the whole
+session object is already forwarded as one unit. The **WARROOM tab**
+gained a Position Sizing block per session — tier pill, Sizing Score,
+risk-ceiling-vs-final-quantity meter, weekly-deployment-budget meter,
+and cash-reserve/heat-cap gate pills, all reading `positionSizing`
+directly, never recomputed client-side. The **RISK tab** gained a
+Position Sizing controls panel covering four of the six new `RiskLimits`
+fields (`maxWeeklyDeploymentPct`, `portfolioHeatCapPct` with an explicit
+enable/disable toggle, `cashReservePct`, and the four `tierAllocation`
+caps) — `scalingAggressivenessPct`/`emergencyReductionHeatPct` are
+deliberately NOT exposed as controls, since neither has a real consumer
+yet (Position Scaling/Reduction on already-open positions isn't built —
+a slider that changes a number nothing reads would be exactly the
+placeholder-control anti-pattern this codebase forbids). The write path
+(`POST /api/risk-limits`, extended in `app/routers/risk.py` and
+`app/state.py`'s `update_risk_limits()`) validates each field for real
+(percentages positive, `cashReservePct` in `[0, 100)`, every tier
+allocation positive) and uses an explicit `clearPortfolioHeatCap` flag
+rather than overloading `null`, since "field omitted" and "CEO wants to
+disable the cap" are otherwise indistinguishable on the wire. Verified
+via 11 new `backend/tests/test_state.py` cases (full suite: 947/947
+passing), `tsc`/`eslint`/`vite build` clean, and two Playwright tests
+against the live stack (`frontend/tests/commandCenter.spec.ts`) — one
+confirming the WARROOM Position Sizing block renders for a real session,
+one confirming the RISK panel's controls round-trip a real save.
+
 **Still explicitly out of scope** (unchanged from the target design):
 Position Scaling/Reduction on already-open positions; Day/Swing/Hybrid
 allocation splits; Institutional Allocation Tier's cross-department
-approval workflow; auto-executing any reduction. Frontend work (Command
-Center surfacing on `WarRoomSession.positionSizing`, CEO controls for the
-six new `RiskLimits` fields) has not started.
+approval workflow; auto-executing any reduction.

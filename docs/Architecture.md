@@ -5144,10 +5144,60 @@ independently binding and correctly named, the tier-fraction
 monotonicity guarantee itself, and the zero-equity/zero-ceiling early
 return). Full backend suite: 936/936 passing (confirming the
 `executive.py` fix didn't regress anything else), `mypy`/`ruff` clean.
-Frontend (Command Center surfacing on `WarRoomSession.positionSizing`,
-CEO controls UI for the six new `RiskLimits`/`TierAllocationLimits`
-fields) is separate, not-yet-started work per this project's
-backend-first discipline.
+
+#### Frontend
+
+`types.ts` mirrors `TierAllocationLimits`, the six new `RiskLimits`
+fields, `PositionTier`, and `PositionSizingResult`.
+`WarRoomSession.positionSizing` needed no new data-layer plumbing —
+`WarRoomSession` already flows through `socket.ts` -> `NexusManager.ts`
+-> `EventBus.ts` -> `gameStore.ts` as one whole object per session, so
+adding a field to the interface was sufficient.
+
+The **WARROOM tab** (`WarRoomPanel.tsx`) gained a Position Sizing block
+per session, shown whenever `positionSizing` is present: a tier pill
+(exploratory/standard/high_conviction/institutional, color-coded), the
+Sizing Score, a meter comparing `finalQuantity` against `ceilingQuantity`
+(color-coded amber when narrowed, green when sized at the full ceiling —
+this engine only ever narrows it, never widens it), a second meter for
+the real weekly capital deployment budget used, and pills for the cash
+reserve and Portfolio Heat cap gates. Every number is read directly off
+`positionSizing`, nothing is recomputed client-side.
+
+The **RISK tab** (`RiskPanel.tsx`) gained a "Position Sizing — Capital
+Deployment" panel with controls for four of the six new `RiskLimits`
+fields: `maxWeeklyDeploymentPct`, `portfolioHeatCapPct` (with an
+explicit Enabled/Disabled checkbox, since `null` disabled vs. a real
+cap enabled needs a real UI distinction, not just an empty input),
+`cashReservePct`, and the four `tierAllocation` per-tier caps.
+`scalingAggressivenessPct`/`emergencyReductionHeatPct` are deliberately
+NOT exposed as controls — see the backend section above for why (no
+real consumer exists yet, so a control that changed them would be a
+placeholder).
+
+**Backend write path extended.** `POST /api/risk-limits`
+(`app/routers/risk.py`, `app/state.py`'s `update_risk_limits()`) gained
+four new optional fields plus an explicit `clearPortfolioHeatCap`
+boolean flag — needed because `portfolioHeatCapPct: number | null` alone
+can't distinguish "this field was omitted from the request" from "the
+CEO wants to disable the cap" (both look identical on the wire); the
+flag resolves the ambiguity and wins even if a value is also present in
+the same request. Validation: `maxWeeklyDeploymentPct`/
+`portfolioHeatCapPct` must be positive when provided, `cashReservePct`
+must be `>= 0` and `< 100`, every `tierAllocation` tier must be
+positive.
+
+**Verified**: 11 new `backend/tests/test_state.py` cases covering each
+new field, the clear-flag's precedence over a same-request value, and
+each validation boundary — full backend suite 947/947 passing,
+`mypy`/`ruff` clean. `tsc --noEmit`, `eslint --max-warnings 0`, and
+`vite build` all clean. Two new Playwright tests against the live Vite +
+FastAPI stack: one confirms the WARROOM tab's Position Sizing block
+renders for a real session (extending the existing WARROOM test rather
+than duplicating it), one confirms the RISK tab's Position Sizing
+controls round-trip a real save (enables the heat cap, changes the
+weekly deployment budget, saves, confirms no validation error and the
+value persists).
 
 ## Test suite popup resilience
 

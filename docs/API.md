@@ -598,7 +598,21 @@ perspective and exists purely to detect disconnects
     // of these are new. CEO-configurable via POST /api/risk-limits (see
     // "Daily Trading Objectives" below) — the first real write path
     // RiskLimits has ever had.
-    "dailyProfitTargetPct": 3.0, "maxTradesPerDay": 6
+    "dailyProfitTargetPct": 3.0, "maxTradesPerDay": 6,
+    // v0.7 Chapter 57 — Institutional Position Sizing & Capital
+    // Deployment Engine (backend/app/position_sizing.py). All six new
+    // real inputs that engine reads. portfolioHeatCapPct null = no hard
+    // cap (today's behavior unchanged — Portfolio Heat stays a pure
+    // reading). scalingAggressivenessPct/emergencyReductionHeatPct are
+    // stored but have no real consumer yet — Position Scaling/Reduction
+    // on already-open positions isn't built (see the engine's own
+    // honesty boundary) — so they're deliberately not exposed as a CEO
+    // control in the Command Center yet, only readable/writable via this
+    // endpoint for forward compatibility.
+    "maxWeeklyDeploymentPct": 15.0, "portfolioHeatCapPct": null,
+    "cashReservePct": 10.0,
+    "tierAllocation": { "tier1Pct": 2.0, "tier2Pct": 5.0, "tier3Pct": 8.0, "tier4Pct": 10.0 },
+    "scalingAggressivenessPct": 100.0, "emergencyReductionHeatPct": 75.0
   },
   "riskWarnings": [
     // Guardian's *current* standing watch — refreshed every tick from
@@ -1149,16 +1163,29 @@ v0.7 Feature 46 — the Company Constitution. All three return
 ### `POST /api/risk-limits`
 
 v0.7 Feature 49 — the first real CEO write path for `RiskLimits`
-(previously display-only, with no endpoint at all). Body: any subset of
-`{ "dailyProfitTargetPct": 3.0, "maxDailyLossPct": 5.0, "maxTradesPerDay": 6,
-"riskPerTradePct": 2.0, "maxOpenPositions": 8 }` — every field optional,
-so a single call can update just one limit. Returns
-`{ "riskLimits": { ... } }` with the full, current `RiskLimits`. `400`
-if a provided value isn't positive, or if no fields were provided at
-all. Takes effect on the very next generated `TradeProposal` — see
-`app/risk_engine.py`'s `evaluate_sentinel_risk` and
-`docs/Architecture.md`'s "Daily Trading Objectives" section for exactly
-how each limit is enforced.
+(previously display-only, with no endpoint at all); extended by v0.7
+Chapter 57 with four of the Position Sizing engine's six new controls.
+Body: any subset of `{ "dailyProfitTargetPct": 3.0, "maxDailyLossPct": 5.0,
+"maxTradesPerDay": 6, "riskPerTradePct": 2.0, "maxOpenPositions": 8,
+"maxWeeklyDeploymentPct": 15.0, "portfolioHeatCapPct": 40.0,
+"clearPortfolioHeatCap": false, "cashReservePct": 10.0,
+"tierAllocation": { "tier1Pct": 2.0, "tier2Pct": 5.0, "tier3Pct": 8.0, "tier4Pct": 10.0 } }`
+— every field optional, so a single call can update just one limit.
+Returns `{ "riskLimits": { ... } }` with the full, current `RiskLimits`.
+`400` if a provided value fails validation (most fields must be
+positive; `cashReservePct` must be `>= 0` and `< 100`; every
+`tierAllocation` tier must be positive), or if no fields were provided
+at all. `portfolioHeatCapPct` alone can't distinguish "field omitted"
+from "CEO wants to disable the cap" (both look like `null`/absent), so
+`clearPortfolioHeatCap: true` is the explicit way to set it back to
+`null`; it wins even if `portfolioHeatCapPct` is also present in the
+same body. `scalingAggressivenessPct`/`emergencyReductionHeatPct` are
+not writable here — see `RiskLimits`' own note above for why. Takes
+effect on the very next generated `TradeProposal` — see
+`app/risk_engine.py`'s `evaluate_sentinel_risk`,
+`app/position_sizing.py`'s `build_position_sizing`, and
+`docs/Architecture.md`'s "Daily Trading Objectives" / "Institutional
+Position Sizing" sections for exactly how each limit is enforced.
 
 ### `POST /api/foundational-mentors/*`
 

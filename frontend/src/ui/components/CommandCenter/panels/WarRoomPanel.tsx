@@ -1,9 +1,16 @@
 import { useMemo, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
-import { EXECUTIVE_ACTION_LABEL, EXECUTIVE_STANCE_LABEL, type WarRoomSession } from "@/types";
+import { EXECUTIVE_ACTION_LABEL, EXECUTIVE_STANCE_LABEL, type PositionTier, type WarRoomSession } from "@/types";
 import { executiveActionTone, executiveStanceTone } from "../lib/derive";
-import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../ui";
+import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
+
+const TIER_TONE: Record<PositionTier, "neutral" | "cyan" | "purple" | "green"> = {
+  exploratory: "neutral",
+  standard: "cyan",
+  high_conviction: "purple",
+  institutional: "green",
+};
 
 /**
  * v0.7 Feature 55 (the brief self-numbered it "Feature 54," already used
@@ -113,6 +120,42 @@ function SessionDetail({ session }: { session: WarRoomSession }) {
         </div>
         <p className="mt-1.5 text-[9px] text-cmd-textDim">{session.expectedValue.detail}</p>
       </Glass>
+
+      {session.positionSizing && (
+        <Glass className="p-3">
+          <div className="mb-1.5 flex items-center justify-between">
+            <TerminalLabel>Position Sizing — Capital Deployment Engine</TerminalLabel>
+            <StatusPill tone={TIER_TONE[session.positionSizing.tier]}>{session.positionSizing.tierLabel}</StatusPill>
+          </div>
+          <div className="grid grid-cols-2 gap-x-4 sm:grid-cols-3">
+            <DataRow label="Sizing Score" value={`${session.positionSizing.sizingScore.toFixed(0)}/100`} />
+            <DataRow label="Risk Ceiling" value={session.positionSizing.ceilingQuantity.toFixed(4)} />
+            <DataRow label="Final Quantity" value={session.positionSizing.finalQuantity.toFixed(4)} valueClassName={session.positionSizing.reducedFromCeiling ? "text-cmd-amber" : "text-cmd-green"} />
+          </div>
+          <div className="mt-2">
+            <div className="mb-0.5 flex items-center justify-between text-[9px] text-cmd-textDim">
+              <span>Final vs. risk ceiling — this engine only ever narrows it, never widens it</span>
+              <span className="tabular-nums">{session.positionSizing.ceilingQuantity > 0 ? ((session.positionSizing.finalQuantity / session.positionSizing.ceilingQuantity) * 100).toFixed(0) : "0"}%</span>
+            </div>
+            <Meter value={session.positionSizing.finalQuantity} max={Math.max(session.positionSizing.ceilingQuantity, session.positionSizing.finalQuantity, 1e-9)} tone={session.positionSizing.reducedFromCeiling ? "amber" : "green"} />
+          </div>
+          <div className="mt-2">
+            <div className="mb-0.5 flex items-center justify-between text-[9px] text-cmd-textDim">
+              <span>Weekly capital deployment budget used</span>
+              <span className="tabular-nums">
+                {session.positionSizing.weeklyDeploymentPct.toFixed(1)}% / {session.positionSizing.weeklyDeploymentCapPct.toFixed(1)}%
+              </span>
+            </div>
+            <Meter value={session.positionSizing.weeklyDeploymentPct} max={session.positionSizing.weeklyDeploymentCapPct} tone={session.positionSizing.weeklyDeploymentPct >= session.positionSizing.weeklyDeploymentCapPct ? "red" : "cyan"} />
+          </div>
+          <div className="mt-2 flex flex-wrap gap-1.5">
+            <StatusPill tone={session.positionSizing.cashReserveOk ? "green" : "red"}>Cash reserve {session.positionSizing.cashReserveOk ? "OK" : "BINDING"}</StatusPill>
+            <StatusPill tone={session.positionSizing.portfolioHeatCapOk ? "green" : "red"}>Heat cap {session.positionSizing.portfolioHeatCapOk ? "OK" : "BINDING"}</StatusPill>
+            {session.positionSizing.institutionalGatesPassed && <StatusPill tone="green">All 3 Institutional gates passed</StatusPill>}
+          </div>
+          <p className="mt-1.5 text-[9px] text-cmd-textDim">{session.positionSizing.detail}</p>
+        </Glass>
+      )}
 
       <Glass className="p-3">
         <TerminalLabel>Contingency Plan — real IF/THEN, tied to live signals</TerminalLabel>

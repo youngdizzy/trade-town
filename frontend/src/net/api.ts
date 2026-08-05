@@ -42,6 +42,7 @@ import type {
   StrategyCertification,
   StrategyDossier,
   StrategyExecutiveDashboard,
+  TierAllocationLimits,
   StrategyExecutiveReview,
   StrategyFounderApproval,
   StrategyHallOfFameEntry,
@@ -307,7 +308,21 @@ export const api = {
       body: JSON.stringify({ amendmentId, approve }),
     }),
   updateRiskLimits: (
-    updates: Partial<{ dailyProfitTargetPct: number; maxDailyLossPct: number; maxTradesPerDay: number; riskPerTradePct: number; maxOpenPositions: number }>,
+    updates: Partial<{
+      dailyProfitTargetPct: number;
+      maxDailyLossPct: number;
+      maxTradesPerDay: number;
+      riskPerTradePct: number;
+      maxOpenPositions: number;
+      // v0.7 Chapter 57 — four of the Position Sizing engine's six new
+      // CEO controls. clearPortfolioHeatCap is the explicit way to set
+      // portfolioHeatCapPct back to null (see backend/app/routers/risk.py).
+      maxWeeklyDeploymentPct: number;
+      portfolioHeatCapPct: number;
+      clearPortfolioHeatCap: boolean;
+      cashReservePct: number;
+      tierAllocation: TierAllocationLimits;
+    }>,
   ) =>
     request<{ riskLimits: RiskLimits }>("/risk-limits", {
       method: "POST",

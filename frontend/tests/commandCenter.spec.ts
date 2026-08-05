@@ -330,6 +330,32 @@ test.describe("Global Command Center", () => {
     await expect(page.getByTestId("education-lesson").getByText("Risk/Reward Ratio", { exact: true })).toBeVisible();
   });
 
+  test("RISK panel's Position Sizing controls save real CEO-set limits (v0.7 Chapter 57)", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await clickExpand(page);
+    await clickTab(page, "RISK");
+
+    await expect(page.getByText("Position Sizing — Capital Deployment", { exact: true })).toBeVisible();
+    await expect(page.getByText("Position Tier allocation caps (% of equity)", { exact: true })).toBeVisible();
+
+    // Enable the Portfolio Heat cap (off by default — see RiskLimits'
+    // own docstring on why null is the honest default) and change the
+    // weekly deployment budget, then save and confirm no error surfaces.
+    const heatCapCheckbox = page.getByRole("checkbox");
+    await heatCapCheckbox.check();
+    const weeklyDeploymentInput = page.locator("label", { hasText: "Max weekly deployment" }).locator("input");
+    await weeklyDeploymentInput.fill("20");
+    await clickButton(page, "Save Position Sizing Controls");
+
+    await expect(page.getByRole("button", { name: "Save Position Sizing Controls", exact: true })).toBeEnabled();
+    await expect(page.getByText("must be a positive percentage", { exact: false })).toHaveCount(0);
+    await expect(weeklyDeploymentInput).toHaveValue("20");
+  });
+
   test("Trade outcome banner shows a real closed trade's win/loss non-blockingly, and dismissal persists", async ({ page }) => {
     test.setTimeout(60000); // polls up to 45s for a real trade to close naturally
     await page.goto("/");
@@ -563,6 +589,10 @@ test.describe("Global Command Center", () => {
       await expect(page.getByText("Decision Score", { exact: false }).first()).toBeVisible();
       await expect(page.getByText("Expected Value", { exact: false }).first()).toBeVisible();
       await expect(page.getByText("Contingency Plan", { exact: false }).first()).toBeVisible();
+      // v0.7 Chapter 57 — every session created after the engine landed
+      // carries a real positionSizing result; only a save from before
+      // Chapter 57 existed would lack one.
+      await expect(page.getByText("Position Sizing — Capital Deployment Engine", { exact: true }).first()).toBeVisible();
     } else {
       expect(hasEmptyState).toBeGreaterThan(0);
     }

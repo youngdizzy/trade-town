@@ -7,6 +7,34 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 57 frontend — Institutional Position Sizing & Capital
+  Deployment Engine** (`frontend/src/types.ts`,
+  `WarRoomPanel.tsx`, `RiskPanel.tsx`): mirrors `TierAllocationLimits`,
+  the six new `RiskLimits` fields, `PositionTier`, and
+  `PositionSizingResult`; `WarRoomSession.positionSizing` flows through
+  the existing generic session pass-through, no per-field plumbing
+  needed. The **WARROOM tab** gained a Position Sizing block per
+  session (tier pill, Sizing Score, a risk-ceiling-vs-final-quantity
+  meter, a weekly-deployment-budget meter, cash-reserve/heat-cap gate
+  pills) reading `positionSizing` directly, never recomputed
+  client-side. The **RISK tab** gained controls for four of the six new
+  fields (`maxWeeklyDeploymentPct`, `portfolioHeatCapPct` with an
+  explicit enable/disable toggle, `cashReservePct`, the four
+  `tierAllocation` caps); `scalingAggressivenessPct`/
+  `emergencyReductionHeatPct` are deliberately not exposed as controls
+  since neither has a real consumer yet (Position Scaling/Reduction on
+  already-open positions isn't built — a control with no real effect
+  would be a placeholder). `POST /api/risk-limits`
+  (`backend/app/routers/risk.py`, `backend/app/state.py`) extended to
+  accept and validate all four, with an explicit
+  `clearPortfolioHeatCap` flag so "field omitted" and "CEO wants to
+  disable the cap" are distinguishable on the wire (a bare `null` can't
+  tell them apart). Verified: 11 new `backend/tests/test_state.py`
+  cases (full backend suite 947/947 passing), `tsc`/`eslint`/`vite
+  build` clean, and two new Playwright tests against the live stack
+  (WARROOM's Position Sizing block renders for a real session; RISK's
+  controls round-trip a real save).
+
 - **Chapter 57 backend — Institutional Position Sizing & Capital
   Deployment Engine** (`backend/app/position_sizing.py`): implements the
   target design below as real code. `build_position_sizing()` narrows

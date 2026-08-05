@@ -900,6 +900,17 @@ export interface PerformanceSnapshot {
 }
 
 /** Sentinel's configurable risk boundaries (v0.6 brief, Risk Engine). */
+// v0.7 Chapter 57 — the CEO's own per-tier ceiling, each a % of equity —
+// real caps app/position_sizing.py's tier assignment must respect
+// alongside the existing maxPositionPct/riskPerTradePct ceiling (the
+// smaller of the two always wins).
+export interface TierAllocationLimits {
+  tier1Pct: number;
+  tier2Pct: number;
+  tier3Pct: number;
+  tier4Pct: number;
+}
+
 export interface RiskLimits {
   maxPositionPct: number;
   maxDailyLossPct: number;
@@ -911,6 +922,19 @@ export interface RiskLimits {
   // already existed; these two are new.
   dailyProfitTargetPct: number;
   maxTradesPerDay: number;
+  // v0.7 Chapter 57 — Institutional Position Sizing & Capital Deployment
+  // Engine (see backend/app/position_sizing.py). All six new CEO
+  // controls that engine's own Design Bible chapter asks for; every
+  // field above stays exactly as-is, this engine only ever narrows what
+  // it's already allowed to size, never widens it.
+  maxWeeklyDeploymentPct: number;
+  // null = no hard cap (today's behavior — Portfolio Heat stays a pure
+  // reading, never an auto-corrective action).
+  portfolioHeatCapPct: number | null;
+  cashReservePct: number;
+  tierAllocation: TierAllocationLimits;
+  scalingAggressivenessPct: number;
+  emergencyReductionHeatPct: number;
 }
 
 // v0.7 Feature 49 — a real-time readout of today's real trading activity
@@ -2151,6 +2175,41 @@ export interface WarRoomSession {
   confidenceValidated: boolean;
   outcomeComparison: ScenarioOutcomeComparison | null;
   createdAt: string;
+  /** v0.7 Chapter 57 — null only for sessions saved before this field
+   * existed (pre-Chapter 57), never for a real session created after. */
+  positionSizing: PositionSizingResult | null;
+}
+
+/** v0.7 Chapter 57 — Institutional Position Sizing & Capital Deployment
+ * Engine. Four gates, each combining the Sizing Score (this session's own
+ * decisionScore.overall, reused directly rather than a second composite)
+ * with real portfolio-health/expected-value context — never Sizing Score
+ * alone. Institutional additionally requires decisionScore.passed, real
+ * positive expected value, cool Portfolio Heat, and no active critical
+ * risk warning for the symbol. */
+export type PositionTier = "exploratory" | "standard" | "high_conviction" | "institutional";
+
+/** The engine's real, logged justification for one proposal's final
+ * quantity — never a bare number with no trail. finalQuantity is always
+ * <= ceilingQuantity: this engine only ever narrows what
+ * backend/app/risk_engine.py's recommended_quantity() already allows,
+ * never widens it (see backend/app/position_sizing.py's module
+ * docstring). */
+export interface PositionSizingResult {
+  tier: PositionTier;
+  tierLabel: string;
+  sizingScore: number;
+  ceilingQuantity: number;
+  tierCapQuantity: number;
+  finalQuantity: number;
+  capitalDeployedPct: number;
+  weeklyDeploymentPct: number;
+  weeklyDeploymentCapPct: number;
+  cashReserveOk: boolean;
+  portfolioHeatCapOk: boolean;
+  institutionalGatesPassed: boolean;
+  reducedFromCeiling: boolean;
+  detail: string;
 }
 
 /** v0.7 Feature 56 — Enterprise Portfolio Intelligence. "Category" is

@@ -8,7 +8,7 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.persistence import persist_modules
-from app.schemas import RiskLimits
+from app.schemas import RiskLimits, TierAllocationLimits
 from app.state import game_state
 
 router = APIRouter(prefix="/api/risk-limits", tags=["risk"])
@@ -22,6 +22,15 @@ class UpdateRiskLimitsRequest(BaseModel):
     max_trades_per_day: int | None = Field(default=None, alias="maxTradesPerDay")
     risk_per_trade_pct: float | None = Field(default=None, alias="riskPerTradePct")
     max_open_positions: int | None = Field(default=None, alias="maxOpenPositions")
+    # v0.7 Chapter 57 — four of the engine's six new CEO controls.
+    # portfolio_heat_cap_pct is float|None already (None = disabled), but
+    # that alone can't distinguish "field omitted" from "CEO wants to
+    # disable the cap" — clear_portfolio_heat_cap resolves that.
+    max_weekly_deployment_pct: float | None = Field(default=None, alias="maxWeeklyDeploymentPct")
+    portfolio_heat_cap_pct: float | None = Field(default=None, alias="portfolioHeatCapPct")
+    clear_portfolio_heat_cap: bool = Field(default=False, alias="clearPortfolioHeatCap")
+    cash_reserve_pct: float | None = Field(default=None, alias="cashReservePct")
+    tier_allocation: TierAllocationLimits | None = Field(default=None, alias="tierAllocation")
 
 
 class RiskLimitsResponse(BaseModel):
@@ -38,6 +47,11 @@ async def update_risk_limits(payload: UpdateRiskLimitsRequest) -> RiskLimitsResp
         max_trades_per_day=payload.max_trades_per_day,
         risk_per_trade_pct=payload.risk_per_trade_pct,
         max_open_positions=payload.max_open_positions,
+        max_weekly_deployment_pct=payload.max_weekly_deployment_pct,
+        portfolio_heat_cap_pct=payload.portfolio_heat_cap_pct,
+        clear_portfolio_heat_cap=payload.clear_portfolio_heat_cap,
+        cash_reserve_pct=payload.cash_reserve_pct,
+        tier_allocation=payload.tier_allocation,
     )
     if error is not None:
         raise HTTPException(status_code=400, detail=error)

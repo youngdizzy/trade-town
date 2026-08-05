@@ -53,6 +53,41 @@ export function RiskPanel({ onNeedHelp }: { onNeedHelp?: (lessonId: EducationTop
     }
   };
 
+  // v0.7 Chapter 57 — the Position Sizing engine's four writable CEO
+  // controls (scalingAggressivenessPct/emergencyReductionHeatPct are
+  // deliberately not exposed here — see backend/app/routers/risk.py's
+  // own note on why: they have no real consumer until Position Scaling/
+  // Reduction on already-open positions is built).
+  const [maxWeeklyDeploymentPct, setMaxWeeklyDeploymentPct] = useState(String(riskLimits.maxWeeklyDeploymentPct));
+  const [heatCapEnabled, setHeatCapEnabled] = useState(riskLimits.portfolioHeatCapPct !== null);
+  const [portfolioHeatCapPct, setPortfolioHeatCapPct] = useState(String(riskLimits.portfolioHeatCapPct ?? 40));
+  const [cashReservePct, setCashReservePct] = useState(String(riskLimits.cashReservePct));
+  const [tier1Pct, setTier1Pct] = useState(String(riskLimits.tierAllocation.tier1Pct));
+  const [tier2Pct, setTier2Pct] = useState(String(riskLimits.tierAllocation.tier2Pct));
+  const [tier3Pct, setTier3Pct] = useState(String(riskLimits.tierAllocation.tier3Pct));
+  const [tier4Pct, setTier4Pct] = useState(String(riskLimits.tierAllocation.tier4Pct));
+  const [sizingBusy, setSizingBusy] = useState(false);
+  const [sizingError, setSizingError] = useState<string | null>(null);
+
+  const savePositionSizing = async () => {
+    if (sizingBusy) return;
+    setSizingBusy(true);
+    setSizingError(null);
+    try {
+      const res = await api.updateRiskLimits({
+        maxWeeklyDeploymentPct: Number(maxWeeklyDeploymentPct),
+        cashReservePct: Number(cashReservePct),
+        tierAllocation: { tier1Pct: Number(tier1Pct), tier2Pct: Number(tier2Pct), tier3Pct: Number(tier3Pct), tier4Pct: Number(tier4Pct) },
+        ...(heatCapEnabled ? { portfolioHeatCapPct: Number(portfolioHeatCapPct) } : { clearPortfolioHeatCap: true }),
+      });
+      NexusManager.setRiskLimits(res.riskLimits);
+    } catch (err) {
+      setSizingError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSizingBusy(false);
+    }
+  };
+
   return (
     <div className="space-y-3">
       <Glass className={`border p-4 ${RISK_BANNER[level]}`}>
@@ -142,6 +177,120 @@ export function RiskPanel({ onNeedHelp }: { onNeedHelp?: (lessonId: EducationTop
           {busy ? "Saving…" : "Save Objectives"}
         </button>
         {error && <div className="mt-1.5 text-cmd-red">{error}</div>}
+      </Glass>
+
+      <Glass className="p-3">
+        <div className="mb-1.5 flex items-center justify-between">
+          <TerminalLabel>Position Sizing — Capital Deployment</TerminalLabel>
+          <span className="text-[8px] uppercase tracking-wide text-cmd-textDim">v0.7 Chapter 57</span>
+        </div>
+        <div className="text-[9px] text-cmd-textDim">
+          These only ever narrow the existing risk ceiling, never widen it — see the WARROOM tab for how each proposal was actually sized.
+        </div>
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-3">
+          <label className="flex flex-col gap-1 text-[9px] text-cmd-textDim">
+            Max weekly deployment (%)
+            <input
+              type="number"
+              min="0.1"
+              step="0.1"
+              value={maxWeeklyDeploymentPct}
+              onChange={(e) => setMaxWeeklyDeploymentPct(e.target.value)}
+              className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-cmd-text outline-none focus:border-cmd-cyan/50"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[9px] text-cmd-textDim">
+            Cash reserve (%)
+            <input
+              type="number"
+              min="0"
+              max="99.9"
+              step="0.1"
+              value={cashReservePct}
+              onChange={(e) => setCashReservePct(e.target.value)}
+              className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-cmd-text outline-none focus:border-cmd-cyan/50"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[9px] text-cmd-textDim">
+            <span className="flex items-center justify-between">
+              Portfolio Heat cap (%)
+              <span className="flex items-center gap-1 normal-case tracking-normal">
+                <input type="checkbox" checked={heatCapEnabled} onChange={(e) => setHeatCapEnabled(e.target.checked)} className="accent-cmd-cyan" />
+                Enabled
+              </span>
+            </span>
+            <input
+              type="number"
+              min="0.1"
+              step="0.1"
+              value={portfolioHeatCapPct}
+              disabled={!heatCapEnabled}
+              onChange={(e) => setPortfolioHeatCapPct(e.target.value)}
+              className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-cmd-text outline-none focus:border-cmd-cyan/50 disabled:opacity-40"
+            />
+          </label>
+        </div>
+        <div className="mt-2 text-[9px] text-cmd-textDim">
+          Disabled = no hard cap; Portfolio Heat stays a pure reading (Chapter 56). Enabled = a real ceiling the engine treats as a pass/fail gate — the CEO's own choice, never system-triggered.
+        </div>
+        <div className="mt-3 border-t border-cmd-border/50 pt-3">
+          <TerminalLabel>Position Tier allocation caps (% of equity)</TerminalLabel>
+          <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-4">
+            <label className="flex flex-col gap-1 text-[9px] text-cmd-textDim">
+              Exploratory
+              <input
+                type="number"
+                min="0.1"
+                step="0.1"
+                value={tier1Pct}
+                onChange={(e) => setTier1Pct(e.target.value)}
+                className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-cmd-text outline-none focus:border-cmd-cyan/50"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-[9px] text-cmd-textDim">
+              Standard
+              <input
+                type="number"
+                min="0.1"
+                step="0.1"
+                value={tier2Pct}
+                onChange={(e) => setTier2Pct(e.target.value)}
+                className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-cmd-text outline-none focus:border-cmd-cyan/50"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-[9px] text-cmd-textDim">
+              High Conviction
+              <input
+                type="number"
+                min="0.1"
+                step="0.1"
+                value={tier3Pct}
+                onChange={(e) => setTier3Pct(e.target.value)}
+                className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-cmd-text outline-none focus:border-cmd-cyan/50"
+              />
+            </label>
+            <label className="flex flex-col gap-1 text-[9px] text-cmd-textDim">
+              Institutional
+              <input
+                type="number"
+                min="0.1"
+                step="0.1"
+                value={tier4Pct}
+                onChange={(e) => setTier4Pct(e.target.value)}
+                className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-cmd-text outline-none focus:border-cmd-cyan/50"
+              />
+            </label>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={() => void savePositionSizing()}
+          disabled={sizingBusy}
+          className="mt-3 rounded-sm border border-cmd-cyan/50 px-3 py-1 text-[9px] uppercase tracking-wider text-cmd-cyan hover:bg-cmd-cyan/10 disabled:opacity-40"
+        >
+          {sizingBusy ? "Saving…" : "Save Position Sizing Controls"}
+        </button>
+        {sizingError && <div className="mt-1.5 text-cmd-red">{sizingError}</div>}
       </Glass>
 
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
