@@ -12,8 +12,10 @@ from app.decision_vault import (
     MAX_DECISION_VAULT_ENTRIES,
     MIN_SIMILAR_MATCHES,
     MISTAKE_WARNING_SHARE,
+    PATTERN_FREQUENCY_CAP,
     build_vault_entry,
     compute_evidence_score,
+    compute_knowledge_quality_score,
     compute_trade_report_card,
     find_similar_vault_entries,
     record_vault_entry,
@@ -825,6 +827,70 @@ class TestSummarizeSimilarity:
         summary = summarize_similarity(matches, ["symbol"])
         assert summary.most_common_mistake_category is None
         assert summary.warning is None
+
+
+class TestComputeKnowledgeQualityScore:
+    def test_no_comparable_entries_falls_back_to_relevance_alone(self) -> None:
+        entry = _vault_entry(entry_id="target", sim_day=10)
+        score = compute_knowledge_quality_score(entry, [entry], current_sim_day=10)
+        assert score.pattern_frequency == 0
+        assert score.historical_success_pct is None
+        assert score.matched_on == []
+        assert score.relevance_pct == 100.0
+        assert score.overall_score == score.relevance_pct
+
+    def test_composite_averages_real_historical_success_frequency_and_relevance(
+        self,
+    ) -> None:
+        entry = _vault_entry(entry_id="target", symbol="NEXA", market_regime="sideways_range", confidence_tier="strong", sim_day=10)
+        m1 = _vault_entry(entry_id="m1", symbol="NEXA", market_regime="sideways_range", confidence_tier="strong", sim_day=5, pnl=10.0, pnl_pct=2.0)
+        m2 = _vault_entry(entry_id="m2", symbol="NEXA", market_regime="sideways_range", confidence_tier="strong", sim_day=5, pnl=-5.0, pnl_pct=-1.0)
+        m3 = _vault_entry(entry_id="m3", symbol="NEXA", market_regime="sideways_range", confidence_tier="strong", sim_day=5, pnl=5.0, pnl_pct=1.0)
+        vault = [entry, m1, m2, m3]
+
+        score = compute_knowledge_quality_score(entry, vault, current_sim_day=20)
+
+        assert score.matched_on == ["symbol", "marketRegime", "confidenceTier"]
+        assert score.pattern_frequency == 3
+        assert score.historical_success_pct == 66.7  # 2 of 3 matches are wins
+        assert score.relevance_pct == 33.3  # oldest=day5, span=15, age=10 -> (1 - 10/15) * 100
+        assert score.overall_score == 43.3  # round((66.7 + 30.0 + 33.3) / 3, 1)
+
+    def test_excludes_the_entry_itself_from_its_own_comparison(self) -> None:
+        entry = _vault_entry(entry_id="target", symbol="NEXA", sim_day=10)
+        score = compute_knowledge_quality_score(entry, [entry], current_sim_day=10)
+        assert score.pattern_frequency == 0
+
+    def test_pattern_frequency_reports_the_real_uncapped_count_while_overall_score_stays_bounded(
+        self,
+    ) -> None:
+        entry = _vault_entry(entry_id="target", symbol="NEXA", market_regime="sideways_range", confidence_tier="strong", sim_day=10)
+        matches = [
+            _vault_entry(entry_id=f"m{i}", symbol="NEXA", market_regime="sideways_range", confidence_tier="strong", sim_day=10, pnl=10.0, pnl_pct=2.0)
+            for i in range(PATTERN_FREQUENCY_CAP + 2)
+        ]
+        vault = [entry, *matches]
+
+        score = compute_knowledge_quality_score(entry, vault, current_sim_day=10)
+
+        assert score.pattern_frequency == PATTERN_FREQUENCY_CAP + 2
+        assert score.overall_score <= 100.0
+
+    def test_ceo_lowered_min_matches_lets_a_thin_tier1_win(self) -> None:
+        entry = _vault_entry(entry_id="target", symbol="NEXA", market_regime="sideways_range", confidence_tier="strong", sim_day=10)
+        thin_tier1 = [
+            _vault_entry(entry_id="t1", symbol="NEXA", market_regime="sideways_range", confidence_tier="strong", sim_day=5, pnl=10.0, pnl_pct=2.0),
+            _vault_entry(entry_id="t2", symbol="NEXA", market_regime="sideways_range", confidence_tier="strong", sim_day=5, pnl=10.0, pnl_pct=2.0),
+        ]
+        broader_tier2 = [_vault_entry(entry_id=f"b{i}", symbol="OTHR", market_regime="sideways_range", confidence_tier="strong", sim_day=5) for i in range(3)]
+        vault = [entry, *thin_tier1, *broader_tier2]
+
+        default_score = compute_knowledge_quality_score(entry, vault, current_sim_day=10)
+        assert default_score.matched_on == ["marketRegime", "confidenceTier"]
+
+        lowered_score = compute_knowledge_quality_score(entry, vault, current_sim_day=10, min_matches=2)
+        assert lowered_score.matched_on == ["symbol", "marketRegime", "confidenceTier"]
+        assert lowered_score.pattern_frequency == 2
 
     def test_examples_are_capped_at_ten_and_sorted_most_recent_first(self) -> None:
         matches = [_vault_entry(entry_id=f"v{i}", sim_day=i) for i in range(15)]

@@ -10,8 +10,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
-from app.decision_vault import find_similar_vault_entries, compute_trade_report_card, summarize_similarity
-from app.schemas import ConfidenceTier, MarketIntelligenceRegime, SimilarTradesSummary, TradeReportCard
+from app.decision_vault import compute_knowledge_quality_score, find_similar_vault_entries, compute_trade_report_card, summarize_similarity
+from app.schemas import ConfidenceTier, KnowledgeQualityScore, MarketIntelligenceRegime, SimilarTradesSummary, TradeReportCard
 from app.state import game_state
 
 router = APIRouter(prefix="/api/decision-vault", tags=["decision-vault"])
@@ -53,3 +53,16 @@ async def similar_trades(
         exclude_id=exclude_id,
     )
     return summarize_similarity(matches, matched_on)
+
+
+@router.get("/quality-score", response_model=KnowledgeQualityScore)
+async def quality_score(vault_entry_id: str = Query(..., alias="vaultEntryId")) -> KnowledgeQualityScore:
+    """Design Bible Chapter 61's Knowledge Quality Score — see
+    compute_knowledge_quality_score()'s own docstring for exactly which
+    of the brief's named dimensions are real here and why the rest
+    aren't fabricated."""
+    state = await game_state.snapshot()
+    entry = next((e for e in state.decision_vault if e.id == vault_entry_id), None)
+    if entry is None:
+        raise HTTPException(status_code=404, detail="No Decision Vault entry found with that id.")
+    return compute_knowledge_quality_score(entry, state.decision_vault, state.time.day, min_matches=state.risk_limits.min_similar_matches)

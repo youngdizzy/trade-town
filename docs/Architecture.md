@@ -5667,6 +5667,90 @@ alerts, and simulation results — the memory log came back capped at
 exactly 20 real entries across nine different categories, with no
 errors anywhere in the server log across the whole run.
 
+### Knowledge Quality Score — Design Bible Chapter 61
+
+Chapter 61's last remaining major piece: a real, three-part composite
+score over a closed trade's own Decision Vault entry, computed fresh
+per request (`app/decision_vault.py`'s `compute_knowledge_quality_score()`,
+exposed via `GET /api/decision-vault/quality-score`) — never persisted,
+matching the same "no second driftable copy" discipline the Knowledge
+Graph extension already established.
+
+**Historical Success** reuses the exact same three-tier Similarity
+Engine bucket match the War Room already uses
+(`find_similar_vault_entries()`), excluding the entry from its own
+comparison — the real win rate of every *other* Vault entry sharing
+this entry's own symbol/marketRegime/confidenceTier profile.
+**Pattern Frequency** is that same bucket's match count — an honest
+proxy for "how often has this kind of situation recurred," deliberately
+NOT a literal usage counter, since nothing in this codebase tracks how
+many times a specific entry was actually shown to the CEO in a real War
+Room session (`SimilarTradesSummary` is computed fresh per request,
+never logged anywhere). **Relevance** is this entry's age relative to
+the Vault's own real span (oldest entry's simDay to the current sim
+day) rather than an arbitrary fixed decay window — a genuinely derived
+number, not a second invented constant.
+
+`overallScore` averages whichever of the three are real numbers;
+`PATTERN_FREQUENCY_CAP = 10` (reusing the exact figure
+`summarize_similarity()` already uses for `SimilarTradesSummary.examples`,
+rather than inventing a new one) normalizes Pattern Frequency's
+contribution to the composite while the field itself still reports the
+real, uncapped count. When no comparable entry exists at all (Pattern
+Frequency 0), Historical Success is honestly `None` by construction —
+the score falls back to Relevance alone rather than letting an empty
+cohort read as poor quality, since "no precedent yet" means "not enough
+evidence," not "bad."
+
+`GET /api/decision-vault/quality-score` honors the CEO's
+`RiskLimits.minSimilarMatches` — notably, the older, pre-existing
+`GET /api/decision-vault/similar` endpoint in the same router does NOT
+(it still reads the module's fixed default). This was left as-is rather
+than "fixed": that endpoint is dead code on the frontend today
+(`net/api.ts`'s `getDecisionVaultSimilar` is never called from any
+component — the real `SimilarTradesSummary` reads all flow through
+`WarRoomSession.similarTrades`, which already does honor the CEO
+setting), so changing its behavior carries real risk for zero real
+benefit.
+
+**Frontend**: `types.ts` gained the mirrored `KnowledgeQualityScore`
+interface; `net/api.ts` gained `getDecisionVaultQualityScore()`;
+`DecisionVaultPanel.tsx` gained a new card, fetched alongside the
+existing Trade Report Card and Similarity Engine reads, showing the
+three components and the overall score (color-coded green/amber/red),
+with an honest empty state when no comparable entry exists yet.
+
+**Verified**: 6 new backend tests — no-comparable-entry fallback, the
+full composite's exact arithmetic worked through by hand, the entry
+excluding itself from its own comparison, Pattern Frequency staying
+honest (uncapped) while `overallScore` stays bounded even with more
+matches than the normalization cap, and a CEO-lowered
+`minSimilarMatches` changing which Similarity Engine tier wins
+(`backend/tests/test_decision_vault.py`). `mypy`/`ruff` clean; full
+backend suite 1026/1026 passing. `tsc --noEmit`/`eslint`/`vite build`
+all clean. A live simulation (Executive mode, 120 simulated hours
+across two `POST /api/time/advance` calls) against the running dev
+server confirmed real, internally-consistent scores for both an older
+and a just-closed Vault entry (relevance correctly higher for the more
+recent one), and a clean 404 for an unknown vault entry id, with no
+server errors anywhere in the log.
+
+**Bug found and fixed along the way**: verifying this feature's full
+`npm run build` (not just `npx tsc --noEmit`, which the team had been
+running alone and which does not exercise the project-reference build
+check `tsc -b` performs) surfaced two real, pre-existing type errors.
+`frontend/src/types.ts`'s `RiskLimits` interface was missing all four
+fields the two prior Chapter 61 passes had already added to the backend
+(`minSimilarMatches`, `mistakeWarningSharePct`, `maxDecisionVaultEntries`,
+`maxMemoryRecords`) — a gap in this session's own prior work, now
+closed. Fixing that revealed a second, older, unrelated bug that
+predates this session entirely: `NexusManager.ts`'s and `gameStore.ts`'s
+static default `RiskLimits` objects were both already missing two
+Chapter 59 fields (`minPriorityScore`, `capitalReservePct`). Both
+defaults now list every real `RiskLimits` field with its actual backend
+default value. Going forward, `npm run build` — not just `npx tsc
+--noEmit` — is the check that actually catches this class of error.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

@@ -1,17 +1,25 @@
 # Chapter 61 — Institutional Knowledge Graph & Company Memory Engine
 
-**Status:** Partially implemented — the Knowledge Graph extension
+**Status:** Substantially implemented. The Knowledge Graph extension
 (`app/knowledge_graph.py`, three new node types), the Pattern
 Detection Sensitivity CEO controls (`RiskLimits.minSimilarMatches`/
-`mistakeWarningSharePct`), and both slices of Knowledge Retention Rules
-(`RiskLimits.maxDecisionVaultEntries`/`maxMemoryRecords`) are all real,
-backend and frontend for the first (the existing `KnowledgeGraphView.tsx`
-renders it unchanged, since the graph shape was already generic). The
-rest of CEO Controls and the Knowledge Quality Score section below
-remain target design, not yet implemented. See
+`mistakeWarningSharePct`), both slices of Knowledge Retention Rules
+(`RiskLimits.maxDecisionVaultEntries`/`maxMemoryRecords`), and the
+Knowledge Quality Score (`GET /api/decision-vault/quality-score`) are
+all real, backend and frontend where a real UI surface applies (the
+Knowledge Graph's existing `KnowledgeGraphView.tsx` renders it
+unchanged, since the graph shape was already generic; the Knowledge
+Quality Score has a new card in `DecisionVaultPanel.tsx`). Five CEO
+Controls rows remain honestly out of scope — Archive Policies, Memory
+Weighting, and Knowledge Validation Rules each require inventing a new
+subsystem this codebase has no real signal to back (see CEO Controls
+below for exactly why each one specifically can't be closed the same
+"promote a constant" way the others were); Learning Sensitivity and
+Historical Search Depth are both genuine, buildable future slices in
+that same pattern, just not attempted in this pass. See
 [Volume 9's chapter template](README.md) for what every section below
 must contain, and the Implementation Notes at the bottom of this
-chapter for exactly what's real today versus new here.
+chapter for exactly what's real today.
 
 ## Executive Summary
 
@@ -154,15 +162,34 @@ logic) is a real, scoped candidate for a future implementation slice.
 
 ## Knowledge Quality Score
 
-**Not built.** No `MemoryRecord`, `KnowledgeNode`, or `DecisionVaultEntry`
-carries anything like the brief's Accuracy/Usefulness/Validation/
-Historical Success/Relevance/Frequency-of-Use composite today. A
-"quality score" over already-real signals (a `DecisionVaultEntry`'s own
-real win rate when matched by the Similarity Engine could stand in for
-"Historical Success"; how often a given entry appears in a
-`SimilarTradesSummary.examples` list could stand in for "Frequency of
-Use") is a real, honest design direction — not invented here, since it
-would need its own scoping pass the way Chapter 59's Priority Score did.
+**Built** — `app/decision_vault.py`'s `compute_knowledge_quality_score()`,
+exposed via `GET /api/decision-vault/quality-score`. A real, three-part
+composite, computed fresh per request (never persisted, matching the
+Knowledge Graph's own "no second driftable copy" convention), over
+`DecisionVaultEntry`. Deliberately does NOT attempt the brief's
+Accuracy/Usefulness/Validation dimensions — no signal anywhere in this
+codebase measures any of those:
+
+- **Historical Success** — the real win rate of every other Vault entry
+  sharing this entry's own symbol/marketRegime/confidenceTier profile,
+  reusing the exact same three-tier Similarity Engine bucket match the
+  War Room already uses.
+- **Pattern Frequency** — how many other Vault entries share that same
+  profile. An honest proxy for "how often has this kind of situation
+  recurred," explicitly NOT a literal usage counter — nothing in this
+  codebase tracks how many times a specific entry was actually shown to
+  the CEO in a real War Room session (`SimilarTradesSummary` is computed
+  fresh per request, never logged).
+- **Relevance** — how recent this entry is relative to the Vault's own
+  real age span (its oldest entry's simDay to the current sim day), not
+  an arbitrary fixed decay window.
+
+`overallScore` averages whichever of the three are real; when no
+comparable entry exists at all, Historical Success is honestly `None`
+and the score falls back to Relevance alone rather than letting an
+empty cohort look like poor quality. Surfaced in
+`DecisionVaultPanel.tsx` as a new card alongside the existing Trade
+Report Card and Similarity Engine reads.
 
 ## CEO Controls
 
@@ -398,16 +425,58 @@ capped at exactly 20 real entries across research, discovery,
 future-trade, meeting, discussion, mentorship, academy, alert, and
 simulation record paths, with no errors in the server log.
 
-**What's explicitly not yet built:** the Knowledge Quality Score
-remains target design only. True vector/semantic search or
-natural-language queries stay out of scope entirely (no embedding/LLM
-dependency exists in this codebase — see Future Expansion above);
-Duplicate Knowledge Reduction as a KPI (no dedup logic exists to measure
-against); a proposal-time Cross-Reference search over research/
-simulations (today's Similarity Engine only looks backward over closed
-trades).
+**What was actually built (Knowledge Quality Score — backend +
+frontend):** `app/decision_vault.py`'s `compute_knowledge_quality_score()`,
+computed fresh per request from the Similarity Engine's own three-tier
+bucket match — see the Knowledge Quality Score section above for the
+exact Historical Success/Pattern Frequency/Relevance composite and its
+honesty boundary. Exposed via `GET /api/decision-vault/quality-score`
+(mirroring the existing `report-card`/`similar` read-only convention in
+`app/routers/decision_vault.py`), honoring the CEO's
+`RiskLimits.minSimilarMatches` the way the standalone `/similar`
+endpoint does not (a pre-existing gap in that older endpoint, left
+as-is since it's unreachable dead code on the frontend today — see
+Known Issues below). `types.ts`/`net/api.ts` gained the mirrored type
+and client call; `DecisionVaultPanel.tsx` gained a new card rendered
+alongside the existing Trade Report Card and Similarity Engine reads.
+Verified: 6 new backend tests covering the no-comparable-entry
+fallback, the full composite's exact arithmetic, the entry excluding
+itself from its own comparison, the Pattern Frequency cap staying
+bounded while the raw count stays honest, and CEO-lowered
+`minSimilarMatches` changing which tier wins
+(`tests/test_decision_vault.py`), `mypy`/`ruff` clean, full backend
+suite 1026/1026 passing, `tsc`/`eslint`/`vite build` clean, and a live
+simulation (Executive mode, 120 simulated hours) confirming the
+endpoint returns real, internally-consistent numbers for both an old
+and a newly-closed Vault entry, and a clean 404 for an unknown id.
+
+**Known Issues found and fixed along the way (bugs, not scope):**
+`frontend/src/types.ts`'s `RiskLimits` interface was missing all four
+fields Chapter 61's own earlier passes added to the backend
+(`minSimilarMatches`, `mistakeWarningSharePct`, `maxDecisionVaultEntries`,
+`maxMemoryRecords`) — a real gap, now fixed. Discovered because fixing
+it surfaced a second, older, unrelated bug: `NexusManager.ts`'s and
+`gameStore.ts`'s static default `RiskLimits` objects were already
+missing two Chapter 59 fields (`minPriorityScore`, `capitalReservePct`)
+before this pass ever touched the file — a real pre-existing TypeScript
+error that `npx tsc --noEmit` alone did not catch (only the full `npm
+run build`'s `tsc -b --noEmit` project-reference build check does).
+Both defaults now include every real `RiskLimits` field with its actual
+backend default value.
+
+**What's explicitly not yet built:** five CEO Controls rows — Archive
+Policies, Learning Sensitivity, Memory Weighting, Historical Search
+Depth, and Knowledge Validation Rules (see CEO Controls above for which
+of those are genuinely buildable in a future pass versus which would
+require inventing a signal this codebase doesn't have). True
+vector/semantic search or natural-language queries stay out of scope
+entirely (no embedding/LLM dependency exists in this codebase — see
+Future Expansion above); Duplicate Knowledge Reduction as a KPI (no
+dedup logic exists to measure against); a proposal-time Cross-Reference
+search over research/simulations (today's Similarity Engine only looks
+backward over closed trades).
 
 **Before implementation begins:** per Appendix G's Permanent Development
 Policy, this chapter is the required design-first step, satisfied before
-this pass began. The remaining CEO controls and Quality Score are a
+this pass began. The remaining CEO controls are a
 well-scoped, separate follow-up.

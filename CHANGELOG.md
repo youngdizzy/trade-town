@@ -7,6 +7,43 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 61 backend + frontend — Knowledge Quality Score**
+  (`app/schemas.py`, `app/decision_vault.py`, `app/routers/decision_vault.py`,
+  `frontend/src/types.ts`, `frontend/src/net/api.ts`,
+  `DecisionVaultPanel.tsx`): a real, three-part composite computed fresh
+  per request (never persisted) — Historical Success (the real win rate
+  of every other Vault entry sharing this entry's own symbol/regime/
+  confidence-tier profile, reusing the Similarity Engine's own bucket
+  match), Pattern Frequency (how many other entries share that profile —
+  an honest recurrence proxy, explicitly NOT a literal usage counter,
+  since nothing tracks how often an entry was actually shown to the CEO),
+  and Relevance (recency relative to the Vault's own real age span, not
+  an arbitrary fixed window). Deliberately does not attempt the brief's
+  Accuracy/Usefulness/Validation dimensions — no signal anywhere in this
+  codebase measures those. New `GET /api/decision-vault/quality-score`
+  endpoint, honoring the CEO's `minSimilarMatches` control. New card in
+  `DecisionVaultPanel.tsx` alongside the existing Trade Report Card and
+  Similarity Engine reads. 6 new backend tests, `mypy`/`ruff` clean, full
+  backend suite 1026/1026 passing, `tsc`/`eslint`/`vite build` clean, and
+  a live 120-simulated-hour run confirming real, internally-consistent
+  scores for both an old and a newly-closed Vault entry.
+
+- **Bug fix — frontend `RiskLimits` type/defaults out of sync with
+  backend** (`frontend/src/types.ts`, `frontend/src/game/systems/NexusManager.ts`,
+  `frontend/src/state/gameStore.ts`): found while verifying the Knowledge
+  Quality Score work — a full `npm run build` (which runs `tsc -b
+  --noEmit`, the project-reference build check) failed with two
+  pre-existing errors that a bare `npx tsc --noEmit` alone had not
+  caught. `types.ts`'s `RiskLimits` interface was missing all four
+  fields Chapter 61's own earlier passes had already added to the
+  backend (`minSimilarMatches`, `mistakeWarningSharePct`,
+  `maxDecisionVaultEntries`, `maxMemoryRecords`) — fixed by adding them.
+  Fixing that surfaced a second, older, unrelated bug already present
+  before this session: `NexusManager.ts`'s and `gameStore.ts`'s static
+  default `RiskLimits` objects were both missing two Chapter 59 fields
+  (`minPriorityScore`, `capitalReservePct`) — fixed by adding every real
+  field with its actual backend default value to both.
+
 - **Chapter 61 backend — Knowledge Retention Rules CEO control (Company
   Memory slice)** (`app/schemas.py`, `app/memory.py`, `app/scribe.py`,
   `app/nexus.py`, `app/state.py`, `app/routers/risk.py`): the change

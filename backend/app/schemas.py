@@ -3106,6 +3106,24 @@ class TradeReportCard(CamelModel):
     recommendation: str
 
 
+# v0.7 Design Bible Chapter 61's Knowledge Quality Score. Computed fresh
+# per request (never persisted, never a second driftable copy — the same
+# discipline app/knowledge_graph.py already follows), from three real,
+# checkable signals over the Decision Vault's own Similarity Engine.
+# Deliberately does NOT include the brief's Accuracy/Usefulness/
+# Validation dimensions — no signal anywhere in this codebase measures
+# those (see compute_knowledge_quality_score()'s own docstring for the
+# full honesty boundary, including why "Pattern Frequency" below is a
+# real proxy rather than a literal usage counter).
+class KnowledgeQualityScore(CamelModel):
+    vault_entry_id: str = Field(alias="vaultEntryId")
+    matched_on: list[str] = Field(alias="matchedOn")
+    historical_success_pct: float | None = Field(default=None, alias="historicalSuccessPct")
+    pattern_frequency: int = Field(alias="patternFrequency")
+    relevance_pct: float = Field(alias="relevancePct")
+    overall_score: float = Field(alias="overallScore")
+
+
 # v0.7 Feature 55 (the brief self-numbered it "Feature 54," already used
 # above for the Decision Memory System — see app/war_room.py's module
 # docstring for the collision note) — the Executive Decision Simulator's

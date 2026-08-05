@@ -119,6 +119,7 @@ from app.schemas import (
     DecisionVaultEntry,
     DisciplineReview,
     ExecutiveMeetingLogEntry,
+    KnowledgeQualityScore,
     LiquidityRead,
     MarketIntelligenceRegime,
     PaperTrade,
@@ -144,6 +145,12 @@ MIN_SIMILAR_MATCHES = 3
 # for at least this share of the matched trades' own linked case studies
 # — high enough that a single unlucky trade never triggers a warning.
 MISTAKE_WARNING_SHARE = 0.3
+
+# The Knowledge Quality Score's Pattern Frequency component normalizes
+# against this cap — reusing the exact same "top 10" figure
+# summarize_similarity() already uses for SimilarTradesSummary.examples,
+# rather than inventing a new arbitrary number.
+PATTERN_FREQUENCY_CAP = 10
 
 PROPOSAL_TIMEFRAME = "1h"
 PROPOSAL_CANDLE_COUNT = 30
@@ -419,4 +426,80 @@ def summarize_similarity(matches: list[DecisionVaultEntry], matched_on: list[str
         mostCommonMistakeCategory=most_common_mistake,
         warning=warning,
         examples=examples,
+    )
+
+
+def compute_knowledge_quality_score(
+    entry: DecisionVaultEntry,
+    vault: list[DecisionVaultEntry],
+    current_sim_day: int,
+    *,
+    min_matches: int = MIN_SIMILAR_MATCHES,
+) -> KnowledgeQualityScore:
+    """Design Bible Chapter 61's Knowledge Quality Score. Three real,
+    checkable signals — never the brief's own Accuracy/Usefulness/
+    Validation dimensions, since no signal anywhere in this codebase
+    measures any of those:
+
+      Historical Success — the real win rate of every OTHER Vault entry
+      sharing this entry's own symbol/marketRegime/confidenceTier
+      profile, reusing the exact same three-tier Similarity Engine bucket
+      match the War Room already uses (find_similar_vault_entries()).
+      None when the Vault has no comparable entry at all.
+
+      Pattern Frequency — how many other Vault entries share that same
+      profile (the match count itself). This is a real proxy for "how
+      often has this kind of situation recurred," NOT a literal usage
+      counter — nothing in this codebase tracks how many times a
+      specific entry was actually shown to the CEO in a real War Room
+      session (SimilarTradesSummary is computed fresh per request, never
+      logged). Normalized against PATTERN_FREQUENCY_CAP for the
+      composite below; the raw count is still returned unnormalized.
+
+      Relevance — how recent this entry is relative to the Vault's own
+      real age span (its oldest entry's simDay to `current_sim_day`),
+      not an arbitrary fixed decay window.
+
+    overallScore averages whichever of the three are real. When Pattern
+    Frequency is 0 (no comparable entry exists at all), Historical
+    Success is also None by construction (the Similarity Engine has
+    nothing to compute a win rate over) — overallScore falls back to
+    Relevance alone rather than letting an empty cohort drag the score
+    down, since "no precedent yet" honestly means "not enough evidence,"
+    not "poor quality."
+    """
+    matches, matched_on = find_similar_vault_entries(
+        vault,
+        symbol=entry.symbol,
+        market_regime=entry.market_regime,
+        confidence_tier=entry.confidence_tier,
+        exclude_id=entry.id,
+        min_matches=min_matches,
+    )
+    summary = summarize_similarity(matches, matched_on)
+
+    oldest_sim_day = min((e.sim_day for e in vault), default=entry.sim_day)
+    span = max(current_sim_day - oldest_sim_day, 1)
+    age = max(current_sim_day - entry.sim_day, 0)
+    relevance_pct = round(max(0.0, min(1.0, 1 - age / span)) * 100, 1)
+
+    if summary.match_count == 0:
+        return KnowledgeQualityScore(
+            vaultEntryId=entry.id,
+            matchedOn=[],
+            historicalSuccessPct=None,
+            patternFrequency=0,
+            relevancePct=relevance_pct,
+            overallScore=relevance_pct,
+        )
+
+    frequency_component = min(summary.match_count, PATTERN_FREQUENCY_CAP) / PATTERN_FREQUENCY_CAP * 100
+    overall_score = round((summary.win_rate_pct + frequency_component + relevance_pct) / 3, 1)
+    return KnowledgeQualityScore(
+        vaultEntryId=entry.id,
+        matchedOn=matched_on,
+        historicalSuccessPct=summary.win_rate_pct,
+        patternFrequency=summary.match_count,
+        relevancePct=relevance_pct,
+        overallScore=overall_score,
     )
