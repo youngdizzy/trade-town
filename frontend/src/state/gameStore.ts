@@ -37,6 +37,7 @@ import type {
   MemoryRecord,
   MentorState,
   NewsItem,
+  OpportunityRejection,
   PaperPortfolio,
   PerformanceSnapshot,
   PortfolioIntelligence,
@@ -131,6 +132,7 @@ export interface GameUiState {
   challengeReports: ChallengeReport[];
   innovationState: Record<AgentId, InnovationState>;
   gatekeeperRejections: GatekeeperRejection[];
+  opportunityRejections: OpportunityRejection[];
   marketEnvironment: MarketEnvironmentState;
   marketIntelligence: MarketIntelligenceState;
   marketIntelligenceReports: MarketIntelligenceReport[];
@@ -269,6 +271,8 @@ class GameStore {
       tierAllocation: { tier1Pct: 2, tier2Pct: 5, tier3Pct: 8, tier4Pct: 10 },
       scalingAggressivenessPct: 100,
       emergencyReductionHeatPct: 75,
+      minTradeQualityScore: 70,
+      minExpectedValuePct: 0,
     },
     riskWarnings: [],
     scannerAlerts: [],
@@ -279,6 +283,7 @@ class GameStore {
     challengeReports: [],
     innovationState: {} as Record<AgentId, InnovationState>,
     gatekeeperRejections: [],
+    opportunityRejections: [],
     marketEnvironment: {
       current: "sideways",
       label: "SIDEWAYS",
@@ -526,6 +531,7 @@ class GameStore {
     EventBus.on("challengeReports:updated", (challengeReports) => this.set({ challengeReports }));
     EventBus.on("innovationState:updated", (innovationState) => this.set({ innovationState }));
     EventBus.on("gatekeeperRejections:updated", (gatekeeperRejections) => this.set({ gatekeeperRejections }));
+    EventBus.on("opportunityRejections:updated", (opportunityRejections) => this.set({ opportunityRejections }));
     EventBus.on("marketEnvironment:updated", (marketEnvironment) => this.set({ marketEnvironment }));
     EventBus.on("marketIntelligence:updated", (marketIntelligence) => this.set({ marketIntelligence }));
     EventBus.on("marketIntelligenceReports:updated", (marketIntelligenceReports) => this.set({ marketIntelligenceReports }));

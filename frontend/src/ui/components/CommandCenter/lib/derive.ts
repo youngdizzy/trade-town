@@ -33,6 +33,7 @@ import type {
   MarketIntelligenceReport,
   MarketQualityTier,
   MomentumRead,
+  OpportunityRejection,
   PaperOrder,
   PaperPortfolio,
   PaperTrade,
@@ -759,6 +760,39 @@ export function computeGatekeeperStats(decisions: TradeDecision[], rejections: G
     wouldHaveWon,
     wouldHaveLost,
     vetoAccuracy: resolved.length ? (wouldHaveLost / resolved.length) * 100 : null,
+  };
+}
+
+/** v0.7 Chapter 58 — the Opportunity Gatekeeper's own real record. There
+ * is no "approved" count here the way computeGatekeeperStats has —
+ * approved candidates simply become an ordinary TradeProposal with no
+ * distinguishing marker, so only rejections (the one thing this engine
+ * actually persists) are counted, never estimated. */
+export interface OpportunityGatekeeperStats {
+  totalRejected: number;
+  resolvedRejections: number;
+  pendingRejections: number;
+  wouldHaveWon: number;
+  wouldHaveLost: number;
+  /** % of *resolved* rejections where the candidate would actually have
+   * lost — this engine's own batting average, the same real "would it
+   * have worked?" self-evaluation computeGatekeeperStats' vetoAccuracy
+   * already establishes for Feature 20's later-stage rejections. Null
+   * until at least one rejection has resolved. */
+  rejectionAccuracy: number | null;
+}
+
+export function computeOpportunityGatekeeperStats(rejections: OpportunityRejection[]): OpportunityGatekeeperStats {
+  const resolved = rejections.filter((r) => r.outcome !== "pending");
+  const wouldHaveWon = resolved.filter((r) => r.outcome === "would_have_won").length;
+  const wouldHaveLost = resolved.filter((r) => r.outcome === "would_have_lost").length;
+  return {
+    totalRejected: rejections.length,
+    resolvedRejections: resolved.length,
+    pendingRejections: rejections.length - resolved.length,
+    wouldHaveWon,
+    wouldHaveLost,
+    rejectionAccuracy: resolved.length ? (wouldHaveLost / resolved.length) * 100 : null,
   };
 }
 

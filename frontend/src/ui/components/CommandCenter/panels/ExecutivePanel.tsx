@@ -1,7 +1,7 @@
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { CONFIDENCE_TIER_LABEL } from "@/types";
 import { EventBus } from "@/game/systems/EventBus";
-import { computeCeoStats, computeGatekeeperStats, confidenceTierTone, mistakeTagForCeoDecision } from "../lib/derive";
+import { computeCeoStats, computeGatekeeperStats, computeOpportunityGatekeeperStats, confidenceTierTone, mistakeTagForCeoDecision } from "../lib/derive";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../ui";
 
 const CHOICE_TONE: Record<string, "green" | "red" | "amber"> = { buy: "green", sell: "red", wait: "amber" };
@@ -31,11 +31,13 @@ const GK_OUTCOME_LABEL: Record<string, string> = {
  * own doc comment for why overrides can't grade the AI itself.
  */
 export function ExecutivePanel() {
-  const { tradeProposals, ceoDecisions, decisions, gatekeeperRejections } = useGameStore();
+  const { tradeProposals, ceoDecisions, decisions, gatekeeperRejections, opportunityRejections } = useGameStore();
   const stats = computeCeoStats(ceoDecisions);
   const recent = [...ceoDecisions].reverse().slice(0, 12);
   const gkStats = computeGatekeeperStats(decisions, gatekeeperRejections);
   const recentRejections = [...gatekeeperRejections].reverse().slice(0, 8);
+  const oppStats = computeOpportunityGatekeeperStats(opportunityRejections);
+  const recentOppRejections = [...opportunityRejections].reverse().slice(0, 8);
 
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
@@ -88,6 +90,43 @@ export function ExecutivePanel() {
                         {r.symbol} · {r.ceoChoice.toUpperCase()}
                       </span>
                       <StatusPill tone={GK_OUTCOME_TONE[r.outcome]}>{GK_OUTCOME_LABEL[r.outcome]}</StatusPill>
+                    </div>
+                    {r.reasons[0] && <div className="text-cmd-textDim">{r.reasons[0]}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Glass>
+
+        <Glass className="p-3">
+          <TerminalLabel>Opportunity Gatekeeper</TerminalLabel>
+          <div className="mb-1.5 text-[9px] text-cmd-textDim">
+            &quot;What deserves to be traded today?&quot; Every candidate is scored on real Decision Score and Expected Value before it ever reaches the CEO — a rejected one never becomes a trade proposal at all.
+          </div>
+          <DataRow label="Total rejected" value={oppStats.totalRejected} valueClassName="text-cmd-red" />
+          <DataRow label="Rejection accuracy" value={oppStats.rejectionAccuracy === null ? "N/A" : `${Math.round(oppStats.rejectionAccuracy)}%`} />
+          <DataRow label="Would have won" value={oppStats.wouldHaveWon} valueClassName="text-cmd-amber" />
+          <DataRow label="Would have lost" value={oppStats.wouldHaveLost} valueClassName="text-cmd-green" />
+          <DataRow label="Awaiting resolution" value={oppStats.pendingRejections} />
+
+          <div className="mt-3">
+            <div className="mb-1 text-[9px] uppercase tracking-wide text-cmd-textDim">Recent Rejections</div>
+            {recentOppRejections.length === 0 ? (
+              <div className="text-cmd-textDim">No opportunities rejected yet.</div>
+            ) : (
+              <div className="space-y-1.5">
+                {recentOppRejections.map((r) => (
+                  <div key={r.id} className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-1.5 text-[9px]">
+                    <div className="mb-0.5 flex items-center justify-between gap-2">
+                      <span className="font-cmdmono text-cmd-cyan">
+                        {r.symbol} · would have {r.wouldHaveRecommended.toUpperCase()}
+                      </span>
+                      <StatusPill tone={GK_OUTCOME_TONE[r.outcome]}>{GK_OUTCOME_LABEL[r.outcome]}</StatusPill>
+                    </div>
+                    <div className="text-cmd-textDim">
+                      Score {r.decisionScoreAtRejection.toFixed(0)}/100 · EV {r.expectedValueAtRejectionPct >= 0 ? "+" : ""}
+                      {r.expectedValueAtRejectionPct.toFixed(1)}%
                     </div>
                     {r.reasons[0] && <div className="text-cmd-textDim">{r.reasons[0]}</div>}
                   </div>

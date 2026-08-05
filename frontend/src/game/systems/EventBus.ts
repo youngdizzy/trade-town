@@ -40,6 +40,7 @@ import type {
   MemoryRecord,
   MentorState,
   NewsItem,
+  OpportunityRejection,
   PaperPortfolio,
   PerformanceSnapshot,
   PortfolioIntelligence,
@@ -174,6 +175,7 @@ export interface GameEvents {
   "challengeReports:updated": ChallengeReport[];
   "innovationState:updated": Record<AgentId, InnovationState>;
   "gatekeeperRejections:updated": GatekeeperRejection[];
+  "opportunityRejections:updated": OpportunityRejection[];
   "marketEnvironment:updated": MarketEnvironmentState;
   "marketIntelligence:updated": MarketIntelligenceState;
   "marketIntelligenceReports:updated": MarketIntelligenceReport[];

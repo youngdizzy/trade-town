@@ -356,6 +356,44 @@ test.describe("Global Command Center", () => {
     await expect(weeklyDeploymentInput).toHaveValue("20");
   });
 
+  test("RISK panel's Opportunity Gatekeeper controls save real CEO-set limits (v0.7 Chapter 58)", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await clickExpand(page);
+    await clickTab(page, "RISK");
+
+    await expect(page.getByText("Opportunity Gatekeeper", { exact: true })).toBeVisible();
+
+    const minQualityInput = page.locator("label", { hasText: "Minimum Trade Quality Score" }).locator("input");
+    await minQualityInput.fill("75");
+    await clickButton(page, "Save Opportunity Gatekeeper Controls");
+
+    await expect(page.getByRole("button", { name: "Save Opportunity Gatekeeper Controls", exact: true })).toBeEnabled();
+    await expect(page.getByText("must be a percentage from 0 to 100", { exact: false })).toHaveCount(0);
+    await expect(minQualityInput).toHaveValue("75");
+  });
+
+  test("EXECUTIVE tab shows the Opportunity Gatekeeper's real rejection record, always real content or an honest empty state", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await clickExpand(page);
+    await clickTab(page, "EXECUTIVE");
+
+    await expect(page.getByText("Opportunity Gatekeeper", { exact: true })).toBeVisible();
+    const hasEmptyState = await page.getByText(/No opportunities rejected yet/).count();
+    if (hasEmptyState === 0) {
+      await expect(page.getByText(/would have (BUY|SELL|WAIT)/).first()).toBeVisible();
+    } else {
+      expect(hasEmptyState).toBeGreaterThan(0);
+    }
+  });
+
   test("Trade outcome banner shows a real closed trade's win/loss non-blockingly, and dismissal persists", async ({ page }) => {
     test.setTimeout(60000); // polls up to 45s for a real trade to close naturally
     await page.goto("/");

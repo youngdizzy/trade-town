@@ -37,6 +37,7 @@ import type {
   MemoryRecord,
   MentorState,
   NewsItem,
+  OpportunityRejection,
   PaperPortfolio,
   PerformanceSnapshot,
   PortfolioIntelligence,
@@ -120,6 +121,7 @@ type ServerMessage =
       challengeReports: ChallengeReport[];
       innovationState: Record<AgentId, InnovationState>;
       gatekeeperRejections: GatekeeperRejection[];
+      opportunityRejections: OpportunityRejection[];
       marketEnvironment: MarketEnvironmentState;
       marketIntelligence: MarketIntelligenceState;
       marketIntelligenceReports: MarketIntelligenceReport[];
@@ -251,6 +253,7 @@ export class GameSocket {
             challengeReports: msg.challengeReports,
             innovationState: msg.innovationState,
             gatekeeperRejections: msg.gatekeeperRejections,
+            opportunityRejections: msg.opportunityRejections,
             marketEnvironment: msg.marketEnvironment,
             marketIntelligence: msg.marketIntelligence,
             marketIntelligenceReports: msg.marketIntelligenceReports,

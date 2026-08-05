@@ -5304,10 +5304,52 @@ correctly resolved buy/sell directions while leaving every "wait"
 permanently pending, and Feature 20's own separate `gatekeeperRejections`
 kept firing independently and unaffected (5 in the same run) —
 confirming the two gates genuinely coexist rather than one silently
-replacing the other. Frontend (Command Center surfacing of
-`OpportunityRejection`s, CEO controls UI for the two new `RiskLimits`
-fields) is separate, not-yet-started work per this project's
-backend-first discipline.
+replacing the other.
+
+#### Frontend
+
+`types.ts` mirrors `OpportunityRejection` and the two new `RiskLimits`
+fields (`minTradeQualityScore`, `minExpectedValuePct`).
+`opportunityRejections` was wired through the full data-layer pipeline
+(`socket.ts` -> `NexusManager.ts` -> `EventBus.ts` -> `gameStore.ts`),
+the same capped-archive diff-and-emit pattern `gatekeeperRejections`
+already uses.
+
+The **EXECUTIVE tab** (`ExecutivePanel.tsx`) gained a new "Opportunity
+Gatekeeper" panel alongside the existing "Trade Gatekeeper" one. A new
+`computeOpportunityGatekeeperStats()` (`derive.ts`) is a deliberately
+separate function from the existing `computeGatekeeperStats()` — there
+is no "approved" count to report the way Feature 20's stats have one,
+since an approved candidate simply becomes an ordinary `TradeProposal`
+with no distinguishing marker; only rejections (the one thing this
+engine actually persists) are counted. The panel shows real total/
+resolved/pending counts, a rejection-accuracy percentage (the same real
+"would it have worked?" self-evaluation Feature 20's own veto accuracy
+already establishes), and a recent-rejections list showing the desk's
+own `wouldHaveRecommended` direction, the real Decision Score/Expected
+Value at rejection time, and the top failed reason.
+
+The **RISK tab** (`RiskPanel.tsx`) gained a "Opportunity Gatekeeper"
+panel with controls for the two new `RiskLimits` fields.
+
+**Backend write path extended.** `POST /api/risk-limits`
+(`app/routers/risk.py`, `app/state.py`'s `update_risk_limits()`) gained
+the two new fields as part of this same pass (unlike Chapter 57's own
+two fields, which were deferred to their own frontend pass — Chapter
+58's write path was small enough to build alongside the UI).
+`minTradeQualityScore` is validated into `[0, 100]`;
+`minExpectedValuePct` deliberately has no range check — a CEO can
+legitimately set it negative to relax the gate below "merely positive",
+and 0 or lower is a real, intentional configuration, not an error.
+
+**Verified**: 6 new `backend/tests/test_state.py` cases covering both
+new fields and their validation boundaries — full backend suite
+969/969 passing, `mypy`/`ruff` clean. `tsc --noEmit`, `eslint
+--max-warnings 0`, and `vite build` all clean. Two new Playwright tests
+against the live Vite + FastAPI stack: one confirms the RISK tab's
+Opportunity Gatekeeper controls round-trip a real save, one confirms
+the EXECUTIVE tab renders either a real rejection or the honest empty
+state.
 
 ## Test suite popup resilience
 

@@ -322,6 +322,9 @@ export const api = {
       clearPortfolioHeatCap: boolean;
       cashReservePct: number;
       tierAllocation: TierAllocationLimits;
+      // v0.7 Chapter 58 — the Opportunity Gatekeeper's two new CEO controls.
+      minTradeQualityScore: number;
+      minExpectedValuePct: number;
     }>,
   ) =>
     request<{ riskLimits: RiskLimits }>("/risk-limits", {

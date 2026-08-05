@@ -1,11 +1,11 @@
 # Chapter 58 — Institutional Trade Filter & Opportunity Gatekeeper
 
-**Status:** Backend implemented (`app/opportunity_gatekeeper.py`, wired
-into `app/nexus.py`). Frontend (Command Center surfacing, CEO controls
-UI) not yet built. See [Volume 9's chapter template](README.md) for
-what every section below must contain, and the Implementation Notes at
-the bottom of this chapter for exactly what's real today versus new
-here.
+**Status:** Fully implemented — backend (`app/opportunity_gatekeeper.py`,
+wired into `app/nexus.py`) and frontend (the EXECUTIVE tab's Opportunity
+Gatekeeper block, and the RISK tab's two new CEO controls). See
+[Volume 9's chapter template](README.md) for what every section below
+must contain, and the Implementation Notes at the bottom of this
+chapter for exactly what's real today versus new here.
 
 ## Executive Summary
 
@@ -380,6 +380,29 @@ beyond an honestly-labeled estimate; promoting
 CEO-configurable field (a genuinely separate, small change to Feature
 20's own module, not required to close the specific gap this chapter
 targets — Evidence/Expected Value/Market Quality never gating proposal
-creation at all). Frontend work (Command Center surfacing of
-`OpportunityRejection`s, CEO controls UI for the two new `RiskLimits`
-fields) has not started.
+creation at all).
+
+**Frontend.** `types.ts` mirrors `OpportunityRejection` and the two new
+`RiskLimits` fields; `opportunityRejections` was wired through the full
+data-layer pipeline (`socket.ts` -> `NexusManager.ts` -> `EventBus.ts`
+-> `gameStore.ts`), the same capped-archive diff-and-emit pattern
+`gatekeeperRejections` already uses. The **EXECUTIVE tab** gained a new
+"Opportunity Gatekeeper" panel alongside the existing "Trade Gatekeeper"
+one — real rejection/resolution counts (`computeOpportunityGatekeeperStats()`,
+a genuinely separate function from `computeGatekeeperStats()` since
+there is no "approved" count to report here — an approved candidate
+becomes an ordinary `TradeProposal` with no distinguishing marker) and
+a recent-rejections list showing the desk's own `wouldHaveRecommended`,
+the real Decision Score/Expected Value at rejection time, and the
+top failed reason. The **RISK tab** gained controls for the two new
+`RiskLimits` fields (`minTradeQualityScore`, `minExpectedValuePct`).
+The backend CEO write path (`POST /api/risk-limits`, extended in
+`app/routers/risk.py` and `app/state.py`'s `update_risk_limits()`) was
+built as part of this same pass, validating `minTradeQualityScore` into
+`[0, 100]` and deliberately not range-checking `minExpectedValuePct`
+(a CEO can legitimately set it negative to relax the gate below
+"merely positive"). Verified via 6 new `backend/tests/test_state.py`
+cases (full backend suite: 969/969 passing), `tsc`/`eslint`/`vite
+build` clean, and two new Playwright tests against the live stack (the
+RISK controls round-trip a real save; the EXECUTIVE panel renders
+either a real rejection or the honest empty state).

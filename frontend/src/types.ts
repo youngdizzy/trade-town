@@ -935,6 +935,13 @@ export interface RiskLimits {
   tierAllocation: TierAllocationLimits;
   scalingAggressivenessPct: number;
   emergencyReductionHeatPct: number;
+  // v0.7 Chapter 58 — Institutional Trade Filter & Opportunity
+  // Gatekeeper (see backend/app/opportunity_gatekeeper.py). Two real
+  // CEO controls that engine reads. minTradeQualityScore's default
+  // (70.0) matches war_room.py's own fixed DECISION_SCORE_THRESHOLD
+  // value, but is a genuinely separate, independently-adjustable field.
+  minTradeQualityScore: number;
+  minExpectedValuePct: number;
 }
 
 // v0.7 Feature 49 — a real-time readout of today's real trading activity
@@ -1587,6 +1594,28 @@ export interface GatekeeperRejection {
   symbol: string;
   ceoChoice: AnalystChoice;
   reasons: string[];
+  priceAtRejection: number;
+  rejectedSimMinutes: number;
+  outcome: GatekeeperOutcome;
+  resolvedPriceChangePct: number | null;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+/** v0.7 Chapter 58 — Institutional Trade Filter & Opportunity
+ * Gatekeeper. A distinct, EARLIER-stage sibling to GatekeeperRejection
+ * above: this candidate never became a real TradeProposal the CEO could
+ * see, so there is no ceoChoice to record — wouldHaveRecommended is the
+ * six-agent desk's own overallRecommendation instead. Graded the same
+ * honest way, except a "wait" recommendation has no real direction to
+ * grade against and stays "pending" forever. */
+export interface OpportunityRejection {
+  id: string;
+  symbol: string;
+  wouldHaveRecommended: AnalystChoice;
+  reasons: string[];
+  decisionScoreAtRejection: number;
+  expectedValueAtRejectionPct: number;
   priceAtRejection: number;
   rejectedSimMinutes: number;
   outcome: GatekeeperOutcome;
@@ -2799,6 +2828,7 @@ export interface GameSaveState {
   challengeReports: ChallengeReport[];
   innovationState: Record<AgentId, InnovationState>;
   gatekeeperRejections: GatekeeperRejection[];
+  opportunityRejections: OpportunityRejection[];
   marketEnvironment: MarketEnvironmentState;
   /** v0.7 Feature 51 — the always-current "eyes," recomputed every tick.
    * marketIntelligenceReports/marketIntelligenceLearning are the

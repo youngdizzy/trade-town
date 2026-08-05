@@ -508,6 +508,8 @@ class GameState:
         clear_portfolio_heat_cap: bool = False,
         cash_reserve_pct: float | None = None,
         tier_allocation: TierAllocationLimits | None = None,
+        min_trade_quality_score: float | None = None,
+        min_expected_value_pct: float | None = None,
     ) -> tuple[GameSaveState, str | None]:
         """v0.7 Feature 49 — the CEO's Daily Trading Objectives — extended
         by v0.7 Chapter 57 with four of the six new Position Sizing
@@ -516,16 +518,19 @@ class GameState:
         own honesty boundary; those two fields have no real consumer
         until Position Scaling/Reduction on already-open positions is
         built, and a control that changes a number nothing reads would
-        be a placeholder). Every field is optional so a single call can
-        update just one limit; each provided value is validated before
-        being merged into the real RiskLimits object app/risk_engine.py
-        and app/position_sizing.py already enforce every tick — no
-        separate "pending CEO settings" object, the change takes effect
-        on the very next generated trade proposal. `clear_portfolio_heat_
-        cap` is a separate explicit flag (not just passing `None`) so
-        "field omitted" and "CEO wants to disable the cap" are
-        distinguishable — the same ambiguity `float | None` alone can't
-        resolve."""
+        be a placeholder), and by v0.7 Chapter 58 with the Opportunity
+        Gatekeeper's two new controls (`min_trade_quality_score`,
+        `min_expected_value_pct` — see app/opportunity_gatekeeper.py).
+        Every field is optional so a single call can update just one
+        limit; each provided value is validated before being merged into
+        the real RiskLimits object app/risk_engine.py,
+        app/position_sizing.py, and app/opportunity_gatekeeper.py already
+        enforce every tick — no separate "pending CEO settings" object,
+        the change takes effect on the very next generated trade
+        proposal. `clear_portfolio_heat_cap` is a separate explicit flag
+        (not just passing `None`) so "field omitted" and "CEO wants to
+        disable the cap" are distinguishable — the same ambiguity
+        `float | None` alone can't resolve."""
         async with self.lock:
             updates: dict[str, float | int | TierAllocationLimits | None] = {}
             if daily_profit_target_pct is not None:
@@ -566,6 +571,12 @@ class GameState:
                 if min(tier_allocation.tier1_pct, tier_allocation.tier2_pct, tier_allocation.tier3_pct, tier_allocation.tier4_pct) <= 0:
                     return self.data, "Every Position Tier allocation must be a positive percentage."
                 updates["tier_allocation"] = tier_allocation
+            if min_trade_quality_score is not None:
+                if min_trade_quality_score < 0 or min_trade_quality_score > 100:
+                    return self.data, "Minimum Trade Quality Score must be a percentage from 0 to 100."
+                updates["min_trade_quality_score"] = min_trade_quality_score
+            if min_expected_value_pct is not None:
+                updates["min_expected_value_pct"] = min_expected_value_pct
             if not updates:
                 return self.data, "No risk limit changes were provided."
             new_limits = self.data.risk_limits.model_copy(update=updates)

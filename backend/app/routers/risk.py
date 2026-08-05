@@ -31,6 +31,9 @@ class UpdateRiskLimitsRequest(BaseModel):
     clear_portfolio_heat_cap: bool = Field(default=False, alias="clearPortfolioHeatCap")
     cash_reserve_pct: float | None = Field(default=None, alias="cashReservePct")
     tier_allocation: TierAllocationLimits | None = Field(default=None, alias="tierAllocation")
+    # v0.7 Chapter 58 — the Opportunity Gatekeeper's two new CEO controls.
+    min_trade_quality_score: float | None = Field(default=None, alias="minTradeQualityScore")
+    min_expected_value_pct: float | None = Field(default=None, alias="minExpectedValuePct")
 
 
 class RiskLimitsResponse(BaseModel):
@@ -52,6 +55,8 @@ async def update_risk_limits(payload: UpdateRiskLimitsRequest) -> RiskLimitsResp
         clear_portfolio_heat_cap=payload.clear_portfolio_heat_cap,
         cash_reserve_pct=payload.cash_reserve_pct,
         tier_allocation=payload.tier_allocation,
+        min_trade_quality_score=payload.min_trade_quality_score,
+        min_expected_value_pct=payload.min_expected_value_pct,
     )
     if error is not None:
         raise HTTPException(status_code=400, detail=error)

@@ -35,6 +35,7 @@ import type {
   MemoryRecord,
   MentorState,
   NewsItem,
+  OpportunityRejection,
   PaperPortfolio,
   PerformanceSnapshot,
   PortfolioIntelligence,
@@ -111,6 +112,7 @@ interface NexusSnapshot {
   challengeReports: ChallengeReport[];
   innovationState: Record<AgentId, InnovationState>;
   gatekeeperRejections: GatekeeperRejection[];
+  opportunityRejections: OpportunityRejection[];
   marketEnvironment: MarketEnvironmentState;
   marketIntelligence: MarketIntelligenceState;
   marketIntelligenceReports: MarketIntelligenceReport[];
@@ -221,6 +223,8 @@ export class NexusManager {
     tierAllocation: { tier1Pct: 2, tier2Pct: 5, tier3Pct: 8, tier4Pct: 10 },
     scalingAggressivenessPct: 100,
     emergencyReductionHeatPct: 75,
+    minTradeQualityScore: 70,
+    minExpectedValuePct: 0,
   };
   private static riskWarnings: RiskWarning[] = [];
   private static scannerAlerts: ScannerAlert[] = [];
@@ -231,6 +235,7 @@ export class NexusManager {
   private static challengeReports: ChallengeReport[] = [];
   private static innovationState: Record<AgentId, InnovationState> = {} as Record<AgentId, InnovationState>;
   private static gatekeeperRejections: GatekeeperRejection[] = [];
+  private static opportunityRejections: OpportunityRejection[] = [];
   private static marketEnvironment: MarketEnvironmentState = {
     current: "sideways",
     label: "SIDEWAYS",
@@ -787,6 +792,10 @@ export class NexusManager {
     return this.gatekeeperRejections;
   }
 
+  static getOpportunityRejections(): OpportunityRejection[] {
+    return this.opportunityRejections;
+  }
+
   /** Applies the result of a direct POST /api/executive/decide call
    * immediately, the same reasoning as setAgentEnergy below — no need to
    * wait for the next sim-tick WS broadcast to see the proposal resolved.
@@ -1036,6 +1045,11 @@ export class NexusManager {
     }
     this.gatekeeperRejections = update.gatekeeperRejections;
 
+    if (update.opportunityRejections.length !== this.opportunityRejections.length) {
+      EventBus.emit("opportunityRejections:updated", update.opportunityRejections);
+    }
+    this.opportunityRejections = update.opportunityRejections;
+
     if (update.marketEnvironment !== this.marketEnvironment) EventBus.emit("marketEnvironment:updated", update.marketEnvironment);
     this.marketEnvironment = update.marketEnvironment;
 
@@ -1218,6 +1232,7 @@ export class NexusManager {
     this.challengeReports = save.challengeReports;
     this.innovationState = save.innovationState;
     this.gatekeeperRejections = save.gatekeeperRejections;
+    this.opportunityRejections = save.opportunityRejections;
     this.marketEnvironment = save.marketEnvironment;
     this.marketIntelligence = save.marketIntelligence;
     this.marketIntelligenceReports = save.marketIntelligenceReports;

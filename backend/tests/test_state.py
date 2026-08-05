@@ -177,6 +177,46 @@ class TestUpdateRiskLimits:
         assert error is not None
         assert saved.risk_limits.tier_allocation != bad_allocation
 
+    # v0.7 Chapter 58 — the Opportunity Gatekeeper's two new CEO controls.
+    def test_updates_min_trade_quality_score(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(min_trade_quality_score=80.0))
+        assert error is None
+        assert saved.risk_limits.min_trade_quality_score == 80.0
+
+    def test_rejects_min_trade_quality_score_below_zero(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(min_trade_quality_score=-1.0))
+        assert error is not None
+        assert saved.risk_limits.min_trade_quality_score != -1.0
+
+    def test_rejects_min_trade_quality_score_above_100(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(min_trade_quality_score=101.0))
+        assert error is not None
+        assert saved.risk_limits.min_trade_quality_score != 101.0
+
+    def test_accepts_min_trade_quality_score_boundaries(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(min_trade_quality_score=0.0))
+        assert error is None
+        assert saved.risk_limits.min_trade_quality_score == 0.0
+        saved, error = asyncio.run(state.update_risk_limits(min_trade_quality_score=100.0))
+        assert error is None
+        assert saved.risk_limits.min_trade_quality_score == 100.0
+
+    def test_updates_min_expected_value_pct(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(min_expected_value_pct=0.5))
+        assert error is None
+        assert saved.risk_limits.min_expected_value_pct == 0.5
+
+    def test_allows_a_negative_min_expected_value_pct_to_relax_the_gate(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(min_expected_value_pct=-1.0))
+        assert error is None
+        assert saved.risk_limits.min_expected_value_pct == -1.0
+
     def test_extra_fields_on_the_wire_are_ignored_not_rejected(self) -> None:
         """ClientSaveRequest inherits CamelModel's default extra="ignore", so
         an older client still POSTing a full legacy GameSaveState-shaped body

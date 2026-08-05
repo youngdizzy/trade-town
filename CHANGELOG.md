@@ -7,6 +7,32 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 58 frontend — Institutional Trade Filter & Opportunity
+  Gatekeeper** (`frontend/src/types.ts`, `ExecutivePanel.tsx`,
+  `RiskPanel.tsx`, `app/routers/risk.py`, `app/state.py`): mirrors
+  `OpportunityRejection` and the two new `RiskLimits` fields;
+  `opportunityRejections` flows through the full data-layer pipeline
+  (`socket.ts` -> `NexusManager.ts` -> `EventBus.ts` -> `gameStore.ts`),
+  the same capped-archive diff-and-emit pattern `gatekeeperRejections`
+  already uses. The **EXECUTIVE tab** gained a new "Opportunity
+  Gatekeeper" panel next to the existing "Trade Gatekeeper" one — real
+  rejection/resolution counts (`computeOpportunityGatekeeperStats()`,
+  genuinely separate from `computeGatekeeperStats()` since there's no
+  "approved" count to report — an approved candidate becomes an
+  ordinary `TradeProposal` with no distinguishing marker) and a
+  recent-rejections list showing the desk's own `wouldHaveRecommended`,
+  the real Decision Score/Expected Value at rejection time, and the top
+  failed reason. The **RISK tab** gained controls for the two new
+  `RiskLimits` fields (`minTradeQualityScore`, `minExpectedValuePct`).
+  `POST /api/risk-limits` extended to accept and validate both
+  (`minTradeQualityScore` in `[0, 100]`; `minExpectedValuePct`
+  deliberately has no range check — a CEO can legitimately set it
+  negative to relax the gate below "merely positive"). Verified: 6 new
+  `backend/tests/test_state.py` cases (full backend suite 969/969
+  passing), `tsc`/`eslint`/`vite build` clean, and two new Playwright
+  tests against the live stack (RISK controls round-trip a real save;
+  EXECUTIVE renders a real rejection or the honest empty state).
+
 - **Chapter 58 backend — Institutional Trade Filter & Opportunity
   Gatekeeper** (`backend/app/opportunity_gatekeeper.py`): implements the
   target design below as real code. `evaluate_opportunity()` gates every
