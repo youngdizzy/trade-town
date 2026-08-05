@@ -9,16 +9,19 @@ real progress against it every tick, the same "cheap, always current"
 convention `app/company_health.py`/`app/company_dna.py` already use for
 their own always-fresh reads.
 
-Explicitly NOT built here, per Chapter 64's own honest scoping — see
-that chapter's Ownership/CEO Controls sections for why each is a
-separate, larger future slice: an Executive Priority Engine ranking
-goals against each other (Chapter 59's own trade-proposal Priority Score
-is a structurally different object, not reused here); Resource
-Allocation recommendations; Milestone Tracking (a goal here is a single
-target, not a series of checkpoints). A goal is always "reach at least
-targetValue" — every real metric below is a "higher is better" number,
-so a reduce-below-X goal type would need its own honest design, not
-invented here.
+Milestone Tracking (v0.7 Design Bible Chapter 64, second pass) extends
+this same `Goal` object with real, fixed intermediate checkpoints
+(MILESTONE_THRESHOLDS below) rather than introducing a second tracking
+concept — the "next honest slice" this chapter's own Implementation
+Notes named, deliberately sequenced ahead of the Executive Priority
+Engine and Resource Allocation (both still explicitly out of scope: an
+Executive Priority Engine ranking goals against each other — Chapter
+59's own trade-proposal Priority Score is a structurally different
+object, not reused here — and Resource Allocation recommendations,
+which depend on the other two existing first). A goal is always "reach
+at least targetValue" — every real metric below is a "higher is better"
+number, so a reduce-below-X goal type would need its own honest design,
+not invented here.
 """
 from __future__ import annotations
 
@@ -31,6 +34,7 @@ from app.schemas import (
     Goal,
     GoalCategory,
     GoalMetric,
+    Milestone,
     PaperPortfolio,
 )
 
@@ -58,6 +62,13 @@ _METRIC_MAX_TARGET: dict[GoalMetric, float | None] = {
     "portfolio_return_pct": None,
     "academy_level": 5.0,
 }
+
+# v0.7 Design Bible Chapter 64 — Milestone Tracking. Three fixed,
+# real checkpoints on the way to a goal's own real 100% (goal
+# completion itself already tracks the 100% point via `status`, so no
+# milestone is generated for it — that would just be a second read of
+# the same real fact).
+MILESTONE_THRESHOLDS: tuple[float, ...] = (25.0, 50.0, 75.0)
 
 
 def _now_iso() -> str:
@@ -97,6 +108,10 @@ def resolve_metric_value(
     return float(academy_state.level)
 
 
+def _build_milestones(goal_id: str) -> list[Milestone]:
+    return [Milestone(id=f"{goal_id}-milestone-{int(threshold)}", thresholdPct=threshold) for threshold in MILESTONE_THRESHOLDS]
+
+
 def create_goal(
     *,
     goal_id: str,
@@ -109,6 +124,7 @@ def create_goal(
     current_value: float,
 ) -> Goal:
     now = _now_iso()
+    initial_progress = _progress_pct(current_value, target_value)
     return Goal(
         id=goal_id,
         title=title,
@@ -116,13 +132,22 @@ def create_goal(
         targetMetric=target_metric,
         targetValue=target_value,
         currentValue=round(current_value, 2),
-        progressPct=_progress_pct(current_value, target_value),
+        progressPct=initial_progress,
         createdSimDay=created_sim_day,
         deadlineSimDay=deadline_sim_day,
         status="active",
         createdAt=now,
         updatedAt=now,
+        # A goal can honestly start past a milestone (e.g. the CEO sets
+        # a target the company already exceeds part of the way to) — the
+        # real starting progress is checked here too, not just on every
+        # later tick.
+        milestones=_mark_reached_milestones(_build_milestones(goal_id), initial_progress, now),
     )
+
+
+def _mark_reached_milestones(milestones: list[Milestone], progress_pct: float, now: str) -> list[Milestone]:
+    return [m.model_copy(update={"reached": True, "reached_at": now}) if not m.reached and progress_pct >= m.threshold_pct else m for m in milestones]
 
 
 def _progress_pct(current_value: float, target_value: float) -> float:
@@ -132,15 +157,18 @@ def _progress_pct(current_value: float, target_value: float) -> float:
 
 
 def tick_goal(goal: Goal, *, current_value: float, sim_day: int) -> Goal:
-    """Recomputes one goal's real progress. A goal that's already
-    completed or cancelled never changes again — the same "a crossed
-    milestone stays crossed" convention `app/hall_of_fame.py` and
-    `app/founders.py` already establish for their own permanent
-    records."""
+    """Recomputes one goal's real progress, including which real
+    milestones it has now crossed. A goal that's already completed or
+    cancelled never changes again — the same "a crossed milestone stays
+    crossed" convention `app/hall_of_fame.py` and `app/founders.py`
+    already establish for their own permanent records (and, at the
+    per-milestone level, that this goal's own `milestones` list already
+    follows)."""
     if goal.status != "active":
         return goal
     progress_pct = _progress_pct(current_value, goal.target_value)
     now = _now_iso()
+    milestones = _mark_reached_milestones(goal.milestones, progress_pct, now)
     if current_value >= goal.target_value:
         return goal.model_copy(
             update={
@@ -149,6 +177,7 @@ def tick_goal(goal: Goal, *, current_value: float, sim_day: int) -> Goal:
                 "status": "completed",
                 "completed_at": now,
                 "updated_at": now,
+                "milestones": milestones,
             }
         )
     if goal.deadline_sim_day is not None and sim_day > goal.deadline_sim_day:
@@ -158,9 +187,10 @@ def tick_goal(goal: Goal, *, current_value: float, sim_day: int) -> Goal:
                 "progress_pct": progress_pct,
                 "status": "expired",
                 "updated_at": now,
+                "milestones": milestones,
             }
         )
-    return goal.model_copy(update={"current_value": round(current_value, 2), "progress_pct": progress_pct, "updated_at": now})
+    return goal.model_copy(update={"current_value": round(current_value, 2), "progress_pct": progress_pct, "updated_at": now, "milestones": milestones})
 
 
 def tick_goals(

@@ -4167,6 +4167,21 @@ GoalMetric = Literal[
 GoalStatus = Literal["active", "completed", "cancelled", "expired"]
 
 
+# v0.7 Design Bible Chapter 64 — Milestone Tracking, the "next honest
+# slice" that chapter's own Implementation Notes named. A milestone is a
+# real, fixed checkpoint on a goal's own real progress_pct (see
+# app/goals.py's MILESTONE_THRESHOLDS) — never a second, independently
+# invented tracking concept. `reached`/`reached_at` only ever go from
+# unreached to reached, matching every other "a crossed milestone stays
+# crossed" convention in this codebase (app/hall_of_fame.py,
+# FounderState.retired, a Goal's own completed/expired status below).
+class Milestone(CamelModel):
+    id: str
+    threshold_pct: float = Field(alias="thresholdPct")
+    reached: bool = False
+    reached_at: str | None = Field(default=None, alias="reachedAt")
+
+
 class Goal(CamelModel):
     id: str
     title: str
@@ -4187,6 +4202,11 @@ class Goal(CamelModel):
     created_at: str = Field(alias="createdAt")
     updated_at: str = Field(alias="updatedAt")
     completed_at: str | None = Field(default=None, alias="completedAt")
+    # Real intermediate checkpoints on the way to target_value — see
+    # app/goals.py's _build_milestones()/tick_goal(). Defaults to an
+    # empty list so a save from before this field existed still
+    # validates during load.
+    milestones: list[Milestone] = Field(default_factory=list)
 
 
 class GameSaveState(CamelModel):

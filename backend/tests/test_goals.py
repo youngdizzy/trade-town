@@ -193,3 +193,56 @@ class TestCancelGoal:
         updated = cancel_goal_entry([a, b], "a")
         assert updated[0].status == "cancelled"
         assert updated[1].status == "active"
+
+
+class TestMilestoneTracking:
+    """v0.7 Design Bible Chapter 64 (second pass) — real, fixed
+    checkpoints (25/50/75%) on a goal's own real progress, never a
+    second independently-tracked concept."""
+
+    def test_a_new_goal_starts_with_three_unreached_milestones(self) -> None:
+        goal = _goal(target_value=100.0, current_value=0.0)
+        assert [m.threshold_pct for m in goal.milestones] == [25.0, 50.0, 75.0]
+        assert all(not m.reached and m.reached_at is None for m in goal.milestones)
+
+    def test_a_goal_can_start_past_a_milestone(self) -> None:
+        # Real starting progress is checked at creation too, not just on
+        # the next tick — e.g. the CEO sets a target the company is
+        # already 40% of the way to.
+        goal = _goal(target_value=100.0, current_value=40.0)
+        reached = {m.threshold_pct: m.reached for m in goal.milestones}
+        assert reached[25.0] is True
+        assert reached[50.0] is False
+        assert reached[75.0] is False
+
+    def test_tick_marks_a_newly_crossed_milestone_reached(self) -> None:
+        goal = _goal(target_value=100.0, current_value=10.0)
+        updated = tick_goal(goal, current_value=30.0, sim_day=2)
+        milestone_25 = next(m for m in updated.milestones if m.threshold_pct == 25.0)
+        assert milestone_25.reached is True
+        assert milestone_25.reached_at is not None
+        milestone_50 = next(m for m in updated.milestones if m.threshold_pct == 50.0)
+        assert milestone_50.reached is False
+
+    def test_a_reached_milestone_never_reverts(self) -> None:
+        goal = _goal(target_value=100.0, current_value=10.0)
+        crossed = tick_goal(goal, current_value=30.0, sim_day=2)
+        milestone_25_first = next(m for m in crossed.milestones if m.threshold_pct == 25.0)
+        # A later tick where the metric happens to dip back down must not
+        # un-reach an already-crossed milestone.
+        dipped = tick_goal(crossed, current_value=20.0, sim_day=3)
+        milestone_25_after = next(m for m in dipped.milestones if m.threshold_pct == 25.0)
+        assert milestone_25_after.reached is True
+        assert milestone_25_after.reached_at == milestone_25_first.reached_at
+
+    def test_completion_marks_every_milestone_reached(self) -> None:
+        goal = _goal(target_value=100.0, current_value=10.0)
+        completed = tick_goal(goal, current_value=100.0, sim_day=2)
+        assert completed.status == "completed"
+        assert all(m.reached for m in completed.milestones)
+
+    def test_milestones_never_change_once_a_goal_is_no_longer_active(self) -> None:
+        goal = _goal(target_value=100.0, current_value=10.0)
+        cancelled = cancel_goal_entry([goal], goal.id)[0]
+        unchanged = tick_goal(cancelled, current_value=90.0, sim_day=2)
+        assert unchanged.milestones == cancelled.milestones
