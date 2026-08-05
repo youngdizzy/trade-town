@@ -7,6 +7,37 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Design Bible Chapters 59 & 60 — Capital Priority & Opportunity Cost
+  Engine, and Institutional Portfolio Rebalancing & Adaptive Capital
+  Rotation** (`docs/DesignBible/volumes/09-departments/chapter-59-capital-priority-opportunity-cost.md`,
+  `chapter-60-portfolio-rebalancing-capital-rotation.md`): two
+  target-design chapters, not yet implemented, per Appendix G's "Design
+  Bible updated before implementation" policy. Researched first, with a
+  clean division matching both briefs' own stated department
+  boundaries: **Chapter 59** ranks the *pending* proposal queue —
+  Chapter 58's own Implementation Notes already flagged that pending
+  `TradeProposal`s sit in a flat, first-approved-first-shown list, never
+  ranked by their own already-computed Decision Score; Chapter 59
+  closes that exact gap by reusing `DecisionScoreBreakdown.overall`
+  directly as a real Priority Score rather than inventing a second
+  composite. **Chapter 60** continuously re-evaluates *already-open*
+  positions — the largest real gap found in this Design Bible's trading
+  pipeline so far: every position in this codebase closes today for
+  exactly one reason (a flat random-chance roll once past a minimum
+  hold, `app/paper_trading.py`'s `CLOSE_CHANCE_PER_TICK`), with the
+  recorded "reason" chosen purely from whether P&L is currently positive
+  or negative — no code anywhere re-scores an open position against its
+  own original thesis or a currently-better opportunity, and
+  `PaperPosition` has no field recording its own entry-time Decision
+  Score to even compare against. Honest scoping flags this as
+  substantially larger than any prior chapter's real implementation gap.
+  Flagged directly, same as Chapter 58's own note: the briefs' named
+  "Chapter 53" dependency doesn't exist anywhere in this codebase, and
+  both briefs' own numbering runs one behind this Design Bible's real
+  numbering for the Executive Decision Simulator/Enterprise Portfolio
+  Intelligence chapters. Added as the sixth and seventh rows in Volume
+  9's chapter table.
+
 - **Chapter 58 frontend — Institutional Trade Filter & Opportunity
   Gatekeeper** (`frontend/src/types.ts`, `ExecutivePanel.tsx`,
   `RiskPanel.tsx`, `app/routers/risk.py`, `app/state.py`): mirrors
