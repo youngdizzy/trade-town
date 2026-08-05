@@ -58,7 +58,7 @@ from app.executive import (
     is_significant_proposal,
     resolve_proposal,
 )
-from app.executive_intelligence import generate_meeting_log_entry, generate_weekly_self_evaluations, record_meeting_log_entry, record_self_evaluations
+from app.executive_intelligence import compute_executive_recommendation, generate_department_opinions, generate_meeting_log_entry, generate_weekly_self_evaluations, record_meeting_log_entry, record_self_evaluations
 from app.executive_review import generate_executive_review, record_review
 from app.founders import compute_founder_state, generate_breakthrough_review, generate_council_session, generate_founder_log_entry, record_council_session, record_founder_log
 from app.goals import generate_strategic_review, record_strategic_review, tick_goals
@@ -806,29 +806,38 @@ def _apply_operating_mode(
     calls this (every proposal stays pending, the pre-Feature-21
     default). Assisted Mode auto-resolves every non-"significant"
     proposal (see executive.is_significant_proposal) and leaves the rest
-    pending for the CEO. Executive Mode auto-resolves everything —
-    "the player reviews reports, not individual trades." Every
-    auto-resolution is the exact same real resolve_proposal() call a
-    genuine CEO click would make (Gatekeeper included), just tagged
-    resolved_by="auto" for honest provenance — including the v0.7
-    Feature 50 Executive Meeting Log entry it now also generates,
-    exactly like a real CEO decision does (see app/state.py's
-    submit_ceo_decision).
+    pending for the CEO. Executive Mode auto-resolves nearly everything
+    — "the player reviews reports, not individual trades" — except the
+    same real safety constraints described below, which apply
+    regardless of mode. Every auto-resolution is the exact same real
+    resolve_proposal() call a genuine CEO click would make (Gatekeeper
+    included), just tagged resolved_by="auto" for honest provenance —
+    including the v0.7 Feature 50 Executive Meeting Log entry it now
+    also generates, exactly like a real CEO decision does (see
+    app/state.py's submit_ceo_decision).
 
     v0.7 Design Bible Chapter 59 — Capital Priority & Opportunity Cost
     Engine. `trade_proposals` arrives already ranked by Priority Score
     (see the caller's `rank_trade_proposals` call), so this loop works
     the queue top-down, honestly favoring higher-quality candidates when
-    capital is limited rather than first-come-first-served. Two new real
-    gates: a proposal below the CEO's `minPriorityScore` floor is
-    "significant" the same way a low-confidence one already is (Assisted
-    Mode only — Executive Mode's whole point is auto-resolving
-    everything); and once cash as a % of equity reaches the CEO's
-    voluntary `capitalReservePct` reserve, further BUY proposals stay
-    pending in BOTH modes — a real capital constraint, not a
-    significance judgment, so it applies regardless of how hands-off the
-    CEO wants to be (mirroring Chapter 57's own hard `cashReservePct`
-    floor, which likewise applies unconditionally)."""
+    capital is limited rather than first-come-first-served. A proposal
+    below the CEO's `minPriorityScore` floor is "significant" the same
+    way a low-confidence one already is (Assisted Mode only — Executive
+    Mode's whole point is auto-resolving everything not gated by a real
+    safety constraint).
+
+    Two real safety constraints apply in BOTH modes, never just a
+    significance judgment, so neither can be silently bypassed by
+    choosing a more hands-off mode: once cash as a % of equity reaches
+    the CEO's voluntary `capitalReservePct` reserve, further BUY
+    proposals stay pending (mirroring Chapter 57's own hard
+    `cashReservePct` floor, which likewise applies unconditionally); and
+    — v0.7 Design Bible Chapter 66, AI Consensus Safety — a real
+    `pause_trading` recommendation (2+ departments actively oppose, or
+    Market Intelligence reads avoid_trading — see
+    app/executive_intelligence.py's compute_executive_recommendation())
+    also keeps the proposal pending. Both real, checkable facts, never a
+    mode-dependent judgment call."""
     if operating_mode == "learning" or not trade_proposals:
         return trade_proposals, portfolio, meeting_log
 
@@ -843,6 +852,23 @@ def _apply_operating_mode(
         if proposal.overall_recommendation == "buy" and cash_reserve_breached(portfolio, risk_limits):
             still_pending.append(proposal)
             continue
+
+        # v0.7 Design Bible Chapter 66 — AI Consensus Safety. A real
+        # pause_trading recommendation (2+ departments actively oppose,
+        # or Market Intelligence reads avoid_trading — see
+        # app/executive_intelligence.py's compute_executive_recommendation())
+        # is a safety constraint, not a mode-dependent significance
+        # judgment, so it applies in BOTH Assisted and Executive mode —
+        # the same way the cash-reserve check above already does. This
+        # closes the one real, precise gap Chapter 66's own research
+        # found: the signal already existed (ExecutiveRecommendation.action),
+        # nothing previously enforced it.
+        if proposal.overall_recommendation != "wait":
+            pre_resolve_challenge_report = next((c for c in reversed(challenge_reports) if c.proposal_id == proposal.id), None)
+            opinions = generate_department_opinions(proposal, pre_resolve_challenge_report, coach_reports, market_intelligence)
+            if compute_executive_recommendation(proposal, opinions).action == "pause_trading":
+                still_pending.append(proposal)
+                continue
 
         debate = next((d for d in reversed(debates) if d.proposal_id == proposal.id), None)
         portfolio, decision, record = resolve_proposal(
