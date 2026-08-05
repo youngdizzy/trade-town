@@ -1223,6 +1223,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             risk_warnings=risk_warnings,
             correlated_open_positions=correlated_open_positions,
             candles=war_room_candles,
+            risk_limits=effective_risk_limits,
         )
 
         approved, reject_reasons = evaluate_opportunity(

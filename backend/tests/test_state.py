@@ -264,6 +264,38 @@ class TestUpdateRiskLimits:
         assert error is not None
         assert saved.risk_limits.capital_reserve_pct != 100.0
 
+    # v0.7 Chapter 61 — the Knowledge Graph & Company Memory Engine's
+    # Pattern Detection Sensitivity controls.
+    def test_updates_min_similar_matches(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(min_similar_matches=5))
+        assert error is None
+        assert saved.risk_limits.min_similar_matches == 5
+
+    def test_rejects_min_similar_matches_below_one(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(min_similar_matches=0))
+        assert error is not None
+        assert saved.risk_limits.min_similar_matches != 0
+
+    def test_updates_mistake_warning_share_pct(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(mistake_warning_share_pct=15.0))
+        assert error is None
+        assert saved.risk_limits.mistake_warning_share_pct == 15.0
+
+    def test_rejects_mistake_warning_share_pct_at_zero(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(mistake_warning_share_pct=0.0))
+        assert error is not None
+        assert saved.risk_limits.mistake_warning_share_pct != 0.0
+
+    def test_rejects_mistake_warning_share_pct_above_100(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(mistake_warning_share_pct=101.0))
+        assert error is not None
+        assert saved.risk_limits.mistake_warning_share_pct != 101.0
+
     def test_extra_fields_on_the_wire_are_ignored_not_rejected(self) -> None:
         """ClientSaveRequest inherits CamelModel's default extra="ignore", so
         an older client still POSTing a full legacy GameSaveState-shaped body

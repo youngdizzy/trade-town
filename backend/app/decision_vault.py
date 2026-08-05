@@ -318,18 +318,23 @@ def find_similar_vault_entries(
     market_regime: MarketIntelligenceRegime,
     confidence_tier: ConfidenceTier,
     exclude_id: str | None = None,
+    min_matches: int = MIN_SIMILAR_MATCHES,
 ) -> tuple[list[DecisionVaultEntry], list[str]]:
     """The Similarity Engine — real, rule-based bucket matching, never a
     fabricated similarity score. Tries three tiers, from most to least
-    specific, stopping at the first tier with at least
-    MIN_SIMILAR_MATCHES real matches (falling through to a broader tier
-    only when the narrower one is too thin to be statistically
-    meaningful):
+    specific, stopping at the first tier with at least `min_matches`
+    real matches (falling through to a broader tier only when the
+    narrower one is too thin to be statistically meaningful):
 
       1. same symbol AND same market regime AND same confidence tier
       2. same market regime AND same confidence tier (any symbol)
       3. same confidence tier alone (broadest — only reached if 1 and 2
          both come up short)
+
+    `min_matches` defaults to the module constant but is a real,
+    CEO-configurable read (v0.7 Design Bible Chapter 61's Pattern
+    Detection Sensitivity control — see RiskLimits.minSimilarMatches) —
+    every other caller keeps today's exact default behavior.
 
     Returns (matches, matchedOn) — matchedOn names exactly which real
     dimensions this tier used, so the CEO always sees why these trades
@@ -337,11 +342,11 @@ def find_similar_vault_entries(
     pool = [e for e in vault if e.id != exclude_id]
 
     tier1 = [e for e in pool if e.symbol == symbol and e.market_regime == market_regime and e.confidence_tier == confidence_tier]
-    if len(tier1) >= MIN_SIMILAR_MATCHES:
+    if len(tier1) >= min_matches:
         return tier1, ["symbol", "marketRegime", "confidenceTier"]
 
     tier2 = [e for e in pool if e.market_regime == market_regime and e.confidence_tier == confidence_tier]
-    if len(tier2) >= MIN_SIMILAR_MATCHES:
+    if len(tier2) >= min_matches:
         return tier2, ["marketRegime", "confidenceTier"]
 
     tier3 = [e for e in pool if e.confidence_tier == confidence_tier]
@@ -353,12 +358,15 @@ def find_similar_vault_entries(
     return tier1, ["symbol", "marketRegime", "confidenceTier"]
 
 
-def summarize_similarity(matches: list[DecisionVaultEntry], matched_on: list[str]) -> SimilarTradesSummary:
+def summarize_similarity(matches: list[DecisionVaultEntry], matched_on: list[str], *, mistake_warning_share: float = MISTAKE_WARNING_SHARE) -> SimilarTradesSummary:
     """Real aggregate statistics over the Similarity Engine's own match
     set — win rate, average/worst P&L, which regime performed best and
     worst among the matches, and a real Mistake Prevention warning when
     one mistake category dominates the matched trades' own linked case
-    studies (see MISTAKE_WARNING_SHARE)."""
+    studies. `mistake_warning_share` defaults to the module constant but
+    is a real, CEO-configurable read (v0.7 Design Bible Chapter 61's
+    Pattern Detection Sensitivity control — see
+    RiskLimits.mistakeWarningSharePct)."""
     if not matches:
         return SimilarTradesSummary(matchCount=0, matchedOn=matched_on, winRatePct=0.0, avgPnlPct=0.0, worstPnlPct=0.0, examples=[])
 
@@ -387,7 +395,7 @@ def summarize_similarity(matches: list[DecisionVaultEntry], matched_on: list[str
             counts[c] = counts.get(c, 0) + 1
         top_category = max(counts, key=lambda c: counts[c])
         share = counts[top_category] / len(matches)
-        if share >= MISTAKE_WARNING_SHARE:
+        if share >= mistake_warning_share:
             most_common_mistake = top_category
             warning = f'{counts[top_category]} of {len(matches)} similar past trades ({share * 100:.0f}%) were "{top_category.replace("_", " ")}" mistakes. Review before proceeding.'
 

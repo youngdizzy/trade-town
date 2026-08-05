@@ -5531,15 +5531,51 @@ the new code) confirmed the same, and the existing Knowledge Graph
 Playwright test passed unchanged against it.
 
 **Not built in this pass** (see the chapter's own Implementation Notes):
-the CEO Controls (Pattern Detection Sensitivity, Knowledge Retention
-Rules) and Knowledge Quality Score sections remain target design.
-Promoting `app/decision_vault.py`'s `MIN_SIMILAR_MATCHES`/
-`MISTAKE_WARNING_SHARE` to real `RiskLimits` fields is straightforward
-(both are consumed in exactly one place); `MAX_MEMORY_RECORDS`
-(`app/memory.py`) is a larger, separate change, since it would require
-threading a CEO-configurable limit through `app/scribe.py`'s 14 separate
-`record()` call sites — the codebase's real, deliberate "one writer
-gateway" design — deliberately not attempted alongside this pass.
+Knowledge Retention Rules and Knowledge Quality Score remain target
+design (Pattern Detection Sensitivity was built in a following pass —
+see below). `MAX_MEMORY_RECORDS` (`app/memory.py`) specifically is a
+larger, separate change than promoting the Similarity Engine's own
+constants, since it would require threading a CEO-configurable limit
+through `app/scribe.py`'s 14 separate `record()` call sites — the
+codebase's real, deliberate "one writer gateway" design.
+
+### Pattern Detection Sensitivity CEO controls — Design Bible Chapter 61
+
+The remaining piece of Chapter 61's CEO Controls table flagged as
+"straightforward" above: two new `RiskLimits` fields,
+`minSimilarMatches` (default 3) and `mistakeWarningSharePct` (default
+30.0), each defaulting to the exact prior fixed constant
+(`app/decision_vault.py`'s `MIN_SIMILAR_MATCHES`/`MISTAKE_WARNING_SHARE`)
+so existing behavior is unchanged until the CEO adjusts them — the same
+"default preserves prior behavior" pattern Chapter 58's own
+`minTradeQualityScore` already established.
+
+**`find_similar_vault_entries()` and `summarize_similarity()`** each
+gained an optional parameter (`min_matches`, `mistake_warning_share`)
+defaulting to the module constant — every other caller (including the
+test suite's own direct calls) keeps today's exact behavior unless it
+explicitly opts in. **`build_war_room_session()`** gained a required
+`risk_limits` parameter threading the CEO's real, current values
+through to both calls; the one real call site (`app/nexus.py`) already
+had `effective_risk_limits` in scope for the Opportunity Gatekeeper
+call immediately after building the session, so no new plumbing was
+needed to reach it. **`POST /api/risk-limits`** extended with both
+fields: `minSimilarMatches` validated to ≥ 1; `mistakeWarningSharePct`
+validated to `(0, 100]` — 0% is rejected rather than silently accepted,
+since a 0% threshold would fire a Mistake Prevention warning on zero
+real mistakes, a meaningless "always warn" state rather than an honest
+sensitivity setting.
+
+**Verified**: 4 new tests covering the Similarity Engine's own tiering
+behavior at a CEO-lowered/raised match floor (a thin tier1 winning that
+would normally fall through, and vice versa) and the mistake-warning
+threshold catching a share that clears a CEO-lowered bar but not the
+default one; 5 new tests for the CEO write path's validation boundaries
+(`backend/tests/test_state.py`). `mypy`/`ruff` clean; full backend
+suite 1010/1010 passing. A live simulation (Executive mode, CEO
+controls set away from their defaults) confirmed the configured values
+flow through to real `WarRoomSession.similarTrades` reads without
+error.
 
 ## Test suite popup resilience
 

@@ -1,11 +1,13 @@
 # Chapter 61 — Institutional Knowledge Graph & Company Memory Engine
 
 **Status:** Partially implemented — the Knowledge Graph extension
-(`app/knowledge_graph.py`, three new node types) is real, backend and
-frontend (the existing `KnowledgeGraphView.tsx` renders it unchanged,
-since the graph shape was already generic); the CEO Controls and
-Knowledge Quality Score sections below remain target design, not yet
-implemented. See [Volume 9's chapter template](README.md) for what
+(`app/knowledge_graph.py`, three new node types) and the Pattern
+Detection Sensitivity CEO controls (`RiskLimits.minSimilarMatches`/
+`mistakeWarningSharePct`) are both real, backend and frontend for the
+former (the existing `KnowledgeGraphView.tsx` renders it unchanged,
+since the graph shape was already generic). The rest of CEO Controls
+and the Knowledge Quality Score section below remain target design, not
+yet implemented. See [Volume 9's chapter template](README.md) for what
 every section below must contain, and the Implementation Notes at the
 bottom of this chapter for exactly what's real today versus new here.
 
@@ -169,13 +171,14 @@ would need its own scoping pass the way Chapter 59's Priority Score did.
 | Learning Sensitivity | **Not built** — `app/wisdom.py`'s reflection cadence (weekly/monthly) is fixed. |
 | Memory Weighting | **Not built** — no signal is weighted differently by recency or importance anywhere in Company Memory. |
 | Historical Search Depth | **Not built** — the Similarity Engine always searches the full capped Vault; no configurable lookback window. |
-| Pattern Detection Sensitivity | **Not built** — `MIN_SIMILAR_MATCHES`/`MISTAKE_WARNING_SHARE` are fixed constants. |
+| Pattern Detection Sensitivity | **Built** — `RiskLimits.minSimilarMatches`/`mistakeWarningSharePct` are now real CEO-configurable fields, both defaulting to the exact prior fixed constants so existing behavior is unchanged until the CEO adjusts them. |
 | Knowledge Validation Rules | **Not built** — no entry is ever marked "validated" vs. "unvalidated." |
 | Research Priority | **Overlaps** with `app/research.py`'s existing `ResearchItem.priority` field — already real, not a new control this chapter would add. |
 
-Every "Not built" row above names the exact same kind of fixed constant
-Chapters 57–59 already promoted to real `RiskLimits` fields — the same
-closeable pattern, not yet applied here.
+Every remaining "Not built" row above names the exact same kind of
+fixed constant Chapters 57–59 already promoted to real `RiskLimits`
+fields, and Pattern Detection Sensitivity's own two constants already
+were, above — the same closeable pattern, not yet applied to the rest.
 
 ## KPIs
 
@@ -318,20 +321,40 @@ relations appear with real data via a direct `GET /api/knowledge-graph`
 call against the running dev server, plus the existing Knowledge Graph
 Playwright test passing unchanged against the updated backend.
 
-**What's explicitly not yet built:** the CEO Controls (Pattern
-Detection Sensitivity, Knowledge Retention Rules) and the Knowledge
-Quality Score both remain target design only. Promoting
-`MIN_SIMILAR_MATCHES`/`MISTAKE_WARNING_SHARE`
-(`app/decision_vault.py`) and `MAX_MEMORY_RECORDS`
-(`app/memory.py`)/`MAX_DECISION_VAULT_ENTRIES`
-(`app/decision_vault.py`) to real `RiskLimits` fields is straightforward
-for the Similarity Engine's two constants (both consumed in exactly one
-place), but `MAX_MEMORY_RECORDS` specifically would require threading a
+**What was actually built (Pattern Detection Sensitivity CEO
+controls):** two new `RiskLimits` fields, `minSimilarMatches` (default
+3) and `mistakeWarningSharePct` (default 30.0), each defaulting to the
+exact prior fixed constant so existing behavior is unchanged until the
+CEO adjusts them. `app/decision_vault.py`'s `find_similar_vault_entries()`
+and `summarize_similarity()` both gained an optional parameter
+(`min_matches`, `mistake_warning_share`) defaulting to the module
+constant — every other caller keeps today's exact behavior.
+`app/war_room.py`'s `build_war_room_session()` gained a required
+`risk_limits` parameter threading the CEO's real, current values through
+to both calls — the same real, single call site (`app/nexus.py`) already
+had `effective_risk_limits` in scope for the Opportunity Gatekeeper call
+immediately after, so no new plumbing was needed there. `POST
+/api/risk-limits` extended with both fields, validated (`minSimilarMatches`
+≥ 1; `mistakeWarningSharePct` in `(0, 100]`, since 0% would fire a
+warning on zero real mistakes). Verified: 4 new backend tests for the
+Similarity Engine's own tiering/threshold behavior
+(`tests/test_decision_vault.py`), 5 new tests for the CEO write path
+(`tests/test_state.py`), `mypy`/`ruff` clean, full backend suite
+1010/1010 passing, and a live simulation confirming the CEO-configured
+values flow through to real `WarRoomSession.similarTrades` reads
+without error.
+
+**What's explicitly not yet built:** Knowledge Retention Rules and the
+Knowledge Quality Score both remain target design only. Promoting
+`MAX_MEMORY_RECORDS` (`app/memory.py`)/`MAX_DECISION_VAULT_ENTRIES`
+(`app/decision_vault.py`) to real `RiskLimits` fields — unlike the two
+Similarity Engine constants above, both consumed in exactly one place —
+`MAX_MEMORY_RECORDS` specifically would require threading a
 CEO-configurable limit through `app/scribe.py`'s 14 separate `record()`
 call sites — the codebase's real, deliberate "one writer gateway"
 design (see `app/memory.py`'s own module docstring) — a larger, riskier
-change than the Knowledge Graph extension and deliberately not
-attempted in this same pass. True vector/semantic search or
+change than either piece built in this pass and deliberately not
+attempted alongside it. True vector/semantic search or
 natural-language queries stay out of scope entirely (no embedding/LLM
 dependency exists in this codebase — see Future Expansion above);
 Duplicate Knowledge Reduction as a KPI (no dedup logic exists to measure

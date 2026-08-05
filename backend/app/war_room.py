@@ -138,6 +138,7 @@ from app.schemas import (
     LiquidityRead,
     MarketIntelligenceState,
     PaperTrade,
+    RiskLimits,
     RiskWarning,
     ScenarioOutcomeComparison,
     TradeProposal,
@@ -302,6 +303,7 @@ def build_war_room_session(
     risk_warnings: list[RiskWarning],
     correlated_open_positions: int,
     candles: list,
+    risk_limits: RiskLimits,
 ) -> WarRoomSession:
     opinions = generate_department_opinions(proposal, challenge_report, coach_reports, market_intelligence)
     recommendation = compute_executive_recommendation(proposal, opinions)
@@ -321,9 +323,13 @@ def build_war_room_session(
     contingency_plan = build_contingency_plan(market_intelligence, liquidity)
 
     matches, matched_on = find_similar_vault_entries(
-        decision_vault, symbol=proposal.symbol, market_regime=market_intelligence.regime, confidence_tier=proposal.confidence_engine.tier
+        decision_vault,
+        symbol=proposal.symbol,
+        market_regime=market_intelligence.regime,
+        confidence_tier=proposal.confidence_engine.tier,
+        min_matches=risk_limits.min_similar_matches,
     )
-    similar_trades = summarize_similarity(matches, matched_on)
+    similar_trades = summarize_similarity(matches, matched_on, mistake_warning_share=risk_limits.mistake_warning_share_pct / 100)
 
     return WarRoomSession(
         id=session_id,

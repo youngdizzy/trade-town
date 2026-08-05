@@ -993,6 +993,15 @@ class RiskLimits(CamelModel):
     # opt-in floors the CEO raises above zero to actually engage them.
     min_priority_score: float = Field(default=0.0, alias="minPriorityScore")
     capital_reserve_pct: float = Field(default=0.0, alias="capitalReservePct")
+    # v0.7 Design Bible Chapter 61 — Institutional Knowledge Graph &
+    # Company Memory Engine's "Pattern Detection Sensitivity" CEO
+    # control. Both defaults match the fixed constants they replace
+    # (app/decision_vault.py's MIN_SIMILAR_MATCHES/MISTAKE_WARNING_SHARE)
+    # so existing behavior is unchanged until the CEO adjusts them —
+    # the same "default preserves prior behavior" pattern Chapter 58's
+    # min_trade_quality_score already established.
+    min_similar_matches: int = Field(default=3, alias="minSimilarMatches")
+    mistake_warning_share_pct: float = Field(default=30.0, alias="mistakeWarningSharePct")
 
 
 class RiskWarning(CamelModel):

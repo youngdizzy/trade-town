@@ -5,15 +5,29 @@ same real Priority Score shown everywhere else (never a fabricated
 second read), and the CEO's own voluntary capital reserve is genuinely
 respected rather than decorative.
 """
+
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.capital_priority import cash_reserve_breached, priority_score, rank_trade_proposals
+from app.capital_priority import (
+    cash_reserve_breached,
+    priority_score,
+    rank_trade_proposals,
+)
 from app.market_data import Candle
 from app.market_intelligence import default_market_intelligence_state
 from app.portfolio import default_portfolio
-from app.schemas import AnalystVote, ConfidenceFactor, DecisionConfidence, PaperPortfolio, PaperPosition, RiskLimits, TradeProposal, WarRoomSession
+from app.schemas import (
+    AnalystVote,
+    ConfidenceFactor,
+    DecisionConfidence,
+    PaperPortfolio,
+    PaperPosition,
+    RiskLimits,
+    TradeProposal,
+    WarRoomSession,
+)
 from app.war_room import build_war_room_session
 
 
@@ -26,12 +40,16 @@ _DEFAULT_FACTORS = [
     ConfidenceFactor(name="Technical Alignment", score=80.0, weight=0.20, detail="d"),
     ConfidenceFactor(name="Risk Conditions", score=80.0, weight=0.20, detail="d"),
     ConfidenceFactor(name="Research Confidence", score=80.0, weight=0.15, detail="d"),
-    ConfidenceFactor(name="News, Macro & Sentiment", score=80.0, weight=0.10, detail="d"),
+    ConfidenceFactor(
+        name="News, Macro & Sentiment", score=80.0, weight=0.10, detail="d"
+    ),
     ConfidenceFactor(name="Portfolio Exposure", score=80.0, weight=0.05, detail="d"),
 ]
 
 
-def _proposal(*, proposal_id: str = "proposal-1", symbol: str = "NEXA", overall: str = "buy") -> TradeProposal:
+def _proposal(
+    *, proposal_id: str = "proposal-1", symbol: str = "NEXA", overall: str = "buy"
+) -> TradeProposal:
     return TradeProposal(
         id=proposal_id,
         symbol=symbol,
@@ -39,18 +57,44 @@ def _proposal(*, proposal_id: str = "proposal-1", symbol: str = "NEXA", overall:
         quantity=1.0,
         price=100.0,
         confidence=80.0,
-        analystVotes=[AnalystVote(role="risk", agentId="sentinel", choice="buy", reasoning="Within limits.", evidence=["Real risk read"])],  # type: ignore[arg-type]
+        analystVotes=[
+            AnalystVote(
+                role="risk",
+                agentId="sentinel",
+                choice="buy",
+                reasoning="Within limits.",
+                evidence=["Real risk read"],
+            )
+        ],  # type: ignore[arg-type]
         overallRecommendation=overall,  # type: ignore[arg-type]
         researchSummary="Nova's research backs this setup.",
         riskSummary="Within all configured risk limits.",
-        confidenceEngine=DecisionConfidence(score=80.0, tier="strong", summary="A well-supported setup.", factors=_DEFAULT_FACTORS),  # type: ignore[arg-type]
+        confidenceEngine=DecisionConfidence(
+            score=80.0,
+            tier="strong",
+            summary="A well-supported setup.",
+            factors=_DEFAULT_FACTORS,
+        ),  # type: ignore[arg-type]
         createdAt=_now_iso(),
         createdSimMinutes=0,
     )
 
 
 def _candles(symbol: str = "NEXA") -> list[Candle]:
-    return [Candle(symbol=symbol, timeframe="1h", timestamp=f"2026-01-01T{i:02d}:00:00Z", open=100.0, high=101.0, low=99.0, close=100.0, volume=1000.0, data_status="simulated") for i in range(30)]
+    return [
+        Candle(
+            symbol=symbol,
+            timeframe="1h",
+            timestamp=f"2026-01-01T{i:02d}:00:00Z",
+            open=100.0,
+            high=101.0,
+            low=99.0,
+            close=100.0,
+            volume=1000.0,
+            data_status="simulated",
+        )
+        for i in range(30)
+    ]
 
 
 def _session(proposal: TradeProposal, *, overall: float) -> WarRoomSession:
@@ -69,8 +113,15 @@ def _session(proposal: TradeProposal, *, overall: float) -> WarRoomSession:
         risk_warnings=[],
         correlated_open_positions=0,
         candles=_candles(proposal.symbol),
+        risk_limits=RiskLimits(),
     )
-    return base.model_copy(update={"decision_score": base.decision_score.model_copy(update={"overall": overall})})
+    return base.model_copy(
+        update={
+            "decision_score": base.decision_score.model_copy(
+                update={"overall": overall}
+            )
+        }
+    )
 
 
 def _portfolio(*, cash: float, position_value: float = 0.0) -> PaperPortfolio:
@@ -99,7 +150,9 @@ def _portfolio(*, cash: float, position_value: float = 0.0) -> PaperPortfolio:
             )
         ]
     )
-    return default_portfolio().model_copy(update={"cash_balance": cash, "positions": positions})
+    return default_portfolio().model_copy(
+        update={"cash_balance": cash, "positions": positions}
+    )
 
 
 class TestPriorityScore:
@@ -125,7 +178,11 @@ class TestRankTradeProposals:
         low = _proposal(proposal_id="low")
         high = _proposal(proposal_id="high")
         mid = _proposal(proposal_id="mid")
-        sessions = [_session(low, overall=30.0), _session(high, overall=95.0), _session(mid, overall=60.0)]
+        sessions = [
+            _session(low, overall=30.0),
+            _session(high, overall=95.0),
+            _session(mid, overall=60.0),
+        ]
         ranked = rank_trade_proposals([low, high, mid], sessions)
         assert [p.id for p in ranked] == ["high", "mid", "low"]
 
@@ -155,18 +212,28 @@ class TestCashReserveBreached:
     def test_false_when_cash_is_comfortably_above_the_reserve_target(self) -> None:
         # $50k cash on $100k equity = 50% cash, well above a 20% target.
         portfolio = _portfolio(cash=50_000.0, position_value=50_000.0)
-        assert cash_reserve_breached(portfolio, RiskLimits(capitalReservePct=20.0)) is False
+        assert (
+            cash_reserve_breached(portfolio, RiskLimits(capitalReservePct=20.0))
+            is False
+        )
 
     def test_true_when_cash_pct_has_fallen_to_the_reserve_target(self) -> None:
         # $20k cash on $100k equity = exactly 20%.
         portfolio = _portfolio(cash=20_000.0, position_value=80_000.0)
-        assert cash_reserve_breached(portfolio, RiskLimits(capitalReservePct=20.0)) is True
+        assert (
+            cash_reserve_breached(portfolio, RiskLimits(capitalReservePct=20.0)) is True
+        )
 
     def test_true_when_cash_pct_has_fallen_below_the_reserve_target(self) -> None:
         # $5k cash on $100k equity = 5%, below a 20% target.
         portfolio = _portfolio(cash=5_000.0, position_value=95_000.0)
-        assert cash_reserve_breached(portfolio, RiskLimits(capitalReservePct=20.0)) is True
+        assert (
+            cash_reserve_breached(portfolio, RiskLimits(capitalReservePct=20.0)) is True
+        )
 
     def test_zero_equity_does_not_crash(self) -> None:
         portfolio = _portfolio(cash=0.0, position_value=0.0)
-        assert cash_reserve_breached(portfolio, RiskLimits(capitalReservePct=20.0)) is False
+        assert (
+            cash_reserve_breached(portfolio, RiskLimits(capitalReservePct=20.0))
+            is False
+        )

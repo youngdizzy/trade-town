@@ -7,6 +7,28 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 61 backend — Pattern Detection Sensitivity CEO controls**
+  (`app/schemas.py`, `app/decision_vault.py`, `app/war_room.py`,
+  `app/nexus.py`, `app/state.py`, `app/routers/risk.py`): two new
+  `RiskLimits` fields, `minSimilarMatches` (default 3) and
+  `mistakeWarningSharePct` (default 30.0), each defaulting to the exact
+  prior fixed constant (`MIN_SIMILAR_MATCHES`, `MISTAKE_WARNING_SHARE`)
+  so existing behavior is unchanged until the CEO adjusts them.
+  `find_similar_vault_entries()`/`summarize_similarity()` both gained an
+  optional parameter defaulting to the module constant; every other
+  caller keeps today's exact behavior. `build_war_room_session()` gained
+  a required `risk_limits` parameter threading the CEO's real values
+  through — the one real call site (`app/nexus.py`) already had
+  `effective_risk_limits` in scope for the Opportunity Gatekeeper call
+  immediately after, so no new plumbing was needed. `POST
+  /api/risk-limits` extended with both fields (`minSimilarMatches` ≥ 1;
+  `mistakeWarningSharePct` in `(0, 100]`, since 0% would fire a warning
+  on zero real mistakes). 9 new backend tests (4 Similarity Engine
+  tiering/threshold cases, 5 CEO write-path validation cases),
+  `mypy`/`ruff` clean, full backend suite 1010/1010 passing, and a live
+  simulation confirming CEO-configured values flow through to real
+  `WarRoomSession.similarTrades` reads without error.
+
 - **Chapter 61 backend + frontend — Knowledge Graph extension**
   (`app/knowledge_graph.py`, `app/routers/knowledge_graph.py`,
   `app/schemas.py`, `frontend/src/types.ts`, `KnowledgeGraphView.tsx`):

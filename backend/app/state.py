@@ -512,6 +512,8 @@ class GameState:
         min_expected_value_pct: float | None = None,
         min_priority_score: float | None = None,
         capital_reserve_pct: float | None = None,
+        min_similar_matches: int | None = None,
+        mistake_warning_share_pct: float | None = None,
     ) -> tuple[GameSaveState, str | None]:
         """v0.7 Feature 49 — the CEO's Daily Trading Objectives — extended
         by v0.7 Chapter 57 with four of the six new Position Sizing
@@ -523,9 +525,13 @@ class GameState:
         be a placeholder), by v0.7 Chapter 58 with the Opportunity
         Gatekeeper's two new controls (`min_trade_quality_score`,
         `min_expected_value_pct` — see app/opportunity_gatekeeper.py),
-        and by v0.7 Chapter 59 with the Capital Priority & Opportunity
+        by v0.7 Chapter 59 with the Capital Priority & Opportunity
         Cost Engine's two new controls (`min_priority_score`,
-        `capital_reserve_pct` — see app/capital_priority.py).
+        `capital_reserve_pct` — see app/capital_priority.py), and by
+        v0.7 Chapter 61 with the Knowledge Graph & Company Memory
+        Engine's Pattern Detection Sensitivity controls
+        (`min_similar_matches`, `mistake_warning_share_pct` — see
+        app/decision_vault.py's Similarity Engine).
         Every field is optional so a single call can update just one
         limit; each provided value is validated before being merged into
         the real RiskLimits object app/risk_engine.py,
@@ -590,6 +596,14 @@ class GameState:
                 if capital_reserve_pct < 0 or capital_reserve_pct >= 100:
                     return self.data, "Capital Reserve must be a percentage from 0 up to (not including) 100."
                 updates["capital_reserve_pct"] = capital_reserve_pct
+            if min_similar_matches is not None:
+                if min_similar_matches < 1:
+                    return self.data, "Minimum Similar Matches must be at least 1."
+                updates["min_similar_matches"] = min_similar_matches
+            if mistake_warning_share_pct is not None:
+                if mistake_warning_share_pct <= 0 or mistake_warning_share_pct > 100:
+                    return self.data, "Mistake Warning Share must be a percentage from 0 (exclusive) to 100."
+                updates["mistake_warning_share_pct"] = mistake_warning_share_pct
             if not updates:
                 return self.data, "No risk limit changes were provided."
             new_limits = self.data.risk_limits.model_copy(update=updates)
