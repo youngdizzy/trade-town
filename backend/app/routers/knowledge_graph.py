@@ -2,6 +2,7 @@
 app/knowledge_graph.py's module docstring for what's real vs. explicitly
 not built.
 """
+
 from __future__ import annotations
 
 from fastapi import APIRouter
@@ -29,4 +30,7 @@ async def knowledge_graph() -> KnowledgeGraph:
         executive_reviews=state.executive_reviews,
         coach_reports=state.coach_reports,
         hall_of_fame=state.hall_of_fame,
+        decision_vault=state.decision_vault,
+        case_studies=state.case_studies,
+        strategies=state.strategies,
     )

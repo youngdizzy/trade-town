@@ -1910,8 +1910,33 @@ export interface AcademyState {
 // GET /api/knowledge-graph call, the same "expensive-ish to compute,
 // cheap to re-derive, never persisted" convention WhatIfSimulation
 // already uses — not part of GameSaveState.
-export type KnowledgeNodeType = "agent" | "branch" | "research" | "academy_project" | "executive_review" | "coach_report" | "hall_of_fame";
-export type KnowledgeEdgeRelation = "researched" | "completed" | "has_branch" | "builds_on" | "featured_in" | "ranked_top_agent" | "achieved";
+// v0.7 Design Bible Chapter 61 — three new node types (trade, case_study,
+// strategy) and four new edge relations, each backed by an already-real
+// object (DecisionVaultEntry, CaseStudy, Strategy) — see
+// backend/app/knowledge_graph.py's module docstring.
+export type KnowledgeNodeType =
+  | "agent"
+  | "branch"
+  | "research"
+  | "academy_project"
+  | "executive_review"
+  | "coach_report"
+  | "hall_of_fame"
+  | "trade"
+  | "case_study"
+  | "strategy";
+export type KnowledgeEdgeRelation =
+  | "researched"
+  | "completed"
+  | "has_branch"
+  | "builds_on"
+  | "featured_in"
+  | "ranked_top_agent"
+  | "achieved"
+  | "documented_by"
+  | "same_symbol"
+  | "same_category"
+  | "created";
 
 export interface KnowledgeNode {
   id: string;

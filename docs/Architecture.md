@@ -5473,6 +5473,74 @@ RISK tab's Capital Priority controls round-trip a real save, one
 confirms the EXECUTIVE tab's Pending Proposals queue always renders
 either a real Priority Score or the honest empty state.
 
+### Knowledge Graph extension — Design Bible Chapter 61
+
+GOAL (from `docs/DesignBible/volumes/09-departments/chapter-61-knowledge-graph-company-memory.md`,
+written first per Appendix G's "design before code" policy): unify this
+codebase's already-extensive, already-real institutional memory into one
+connected graph. **Researched first, and the finding was the opposite of
+most prior chapters in this volume**: Company Memory, the Decision
+Vault/Trade Report Card/Similarity Engine, Pattern Recognition for both
+mistakes and successes, Institutional Learning, and Company DNA's
+behavioral loop were all already real — only the Knowledge Graph's own
+node/edge coverage was narrower than the chapter's worked example.
+
+**`app/knowledge_graph.py`'s `build_knowledge_graph()`** gained three
+new node types, each backed by an already-real, already-persisted object
+this codebase generates elsewhere — never a second, competing store:
+`trade` (`DecisionVaultEntry`, one per closed trade), `case_study`
+(`CaseStudy`, filed by both `app/mistakes.py` and `app/successes.py`),
+and `strategy` (`Strategy`, excluding any still in the raw `idea` stage
+— mirroring the existing "only `completed` research becomes a node"
+filter, since an unstarted idea has no real work behind it yet). Four
+new edge relations, each traced to one real, checkable field: `documented_by`
+(a trade's own real `caseStudyId`, already a direct 1:1 link — matched
+against the case-study id set so a trade whose linked case study was
+evicted from the capped list never gets a dangling edge),
+`same_symbol` (a trade and a completed research item sharing the real
+symbol field — deliberately labeled descriptively, never claimed as "this
+research caused this trade," since no field anywhere links a specific
+ResearchItem to a specific trade), `same_category` (a Strategy and
+completed research sharing the real `focusCategory`/`category`, the same
+non-causal honesty boundary), and `created` (a Strategy's own real
+`createdBy` agent — a literal fact, not an inference).
+
+**Frontend needed no structural change.** `KnowledgeGraphView.tsx`'s
+rendering logic is already generic over `KnowledgeNodeType` — only its
+`TYPE_COLORS`/`TYPE_LABELS`/`NODE_RADIUS` lookup maps (and `types.ts`'s
+mirrored `KnowledgeNodeType`/`KnowledgeEdgeRelation` unions) needed the
+three new node types and four new relations added, each with a distinct
+color (`trade` teal, `case_study` red, `strategy` blue) so they read at
+a glance against the existing seven.
+
+**Verified**: 8 new backend tests
+(`backend/tests/test_knowledge_graph.py`'s
+`TestKnowledgeGraphChapter61Extension` — each new node type appearing,
+the `documented_by` edge firing only for a case study id that actually
+exists in the current (capped) list, both `same_symbol`/`same_category`
+matching and non-matching cases, and the `idea`-stage strategy filter).
+`mypy`/`ruff` clean; full backend suite 1002/1002 passing. `tsc
+--noEmit`, `eslint --max-warnings 0`, and `vite build` all clean. A live
+400-tick simulation (Executive mode, to force real trades to actually
+close rather than sit pending forever in the default Learning mode)
+confirmed all three new node types and all four new edge relations
+appear with real data via a direct in-process call to
+`build_knowledge_graph()`; a second check against the running dev
+server's real `GET /api/knowledge-graph` endpoint (restarted to pick up
+the new code) confirmed the same, and the existing Knowledge Graph
+Playwright test passed unchanged against it.
+
+**Not built in this pass** (see the chapter's own Implementation Notes):
+the CEO Controls (Pattern Detection Sensitivity, Knowledge Retention
+Rules) and Knowledge Quality Score sections remain target design.
+Promoting `app/decision_vault.py`'s `MIN_SIMILAR_MATCHES`/
+`MISTAKE_WARNING_SHARE` to real `RiskLimits` fields is straightforward
+(both are consumed in exactly one place); `MAX_MEMORY_RECORDS`
+(`app/memory.py`) is a larger, separate change, since it would require
+threading a CEO-configurable limit through `app/scribe.py`'s 14 separate
+`record()` call sites — the codebase's real, deliberate "one writer
+gateway" design — deliberately not attempted alongside this pass.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

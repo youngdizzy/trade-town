@@ -12,6 +12,10 @@ const TYPE_COLORS: Record<KnowledgeNodeType, string> = {
   executive_review: "#d4af37",
   coach_report: "#ffb443",
   hall_of_fame: "#ff6ec7",
+  // v0.7 Design Bible Chapter 61
+  trade: "#5eead4",
+  case_study: "#f87171",
+  strategy: "#60a5fa",
 };
 
 const TYPE_LABELS: Record<KnowledgeNodeType, string> = {
@@ -22,6 +26,9 @@ const TYPE_LABELS: Record<KnowledgeNodeType, string> = {
   executive_review: "Executive Review",
   coach_report: "Coach Report",
   hall_of_fame: "Hall of Fame",
+  trade: "Trade",
+  case_study: "Case Study",
+  strategy: "Strategy",
 };
 
 const ALL_TYPES = Object.keys(TYPE_COLORS) as KnowledgeNodeType[];
@@ -33,6 +40,9 @@ const NODE_RADIUS: Record<KnowledgeNodeType, number> = {
   executive_review: 10,
   coach_report: 9,
   hall_of_fame: 9,
+  trade: 8,
+  case_study: 8,
+  strategy: 10,
 };
 
 function nodeColor(node: KnowledgeNode): string {

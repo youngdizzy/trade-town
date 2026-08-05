@@ -71,7 +71,7 @@ Every chapter in this volume must contain, in this order:
 | 58 | [Institutional Trade Filter & Opportunity Gatekeeper](chapter-58-trade-filter-opportunity-gatekeeper.md) | Fully implemented (backend `app/opportunity_gatekeeper.py` + frontend EXECUTIVE/RISK surfacing) |
 | 59 | [Capital Priority & Opportunity Cost Engine](chapter-59-capital-priority-opportunity-cost.md) | Fully implemented (backend `app/capital_priority.py` + frontend EXECUTIVE/RISK surfacing) |
 | 60 | [Institutional Portfolio Rebalancing & Adaptive Capital Rotation](chapter-60-portfolio-rebalancing-capital-rotation.md) | Chapter written — target design; no implementation yet |
-| 61 | [Institutional Knowledge Graph & Company Memory Engine](chapter-61-knowledge-graph-company-memory.md) | Chapter written — target design; almost entirely already real (see chapter's own Implementation Notes) |
+| 61 | [Institutional Knowledge Graph & Company Memory Engine](chapter-61-knowledge-graph-company-memory.md) | Partially implemented — Knowledge Graph extension shipped (backend `app/knowledge_graph.py` + frontend); CEO Controls and Quality Score still target design |
 | 62 | [Institutional Innovation Lab & Continuous Improvement Engine](chapter-62-innovation-lab-continuous-improvement.md) | Chapter written — target design; almost entirely already real (see chapter's own Implementation Notes) |
 
 Every other real, shipped system in this codebase (Executive Intelligence

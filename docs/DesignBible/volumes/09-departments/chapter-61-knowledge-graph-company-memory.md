@@ -1,9 +1,13 @@
 # Chapter 61 — Institutional Knowledge Graph & Company Memory Engine
 
-**Status:** Target design. Not yet implemented. See [Volume 9's chapter
-template](README.md) for what every section below must contain, and the
-Implementation Notes at the bottom of this chapter for exactly what's
-real today versus new here.
+**Status:** Partially implemented — the Knowledge Graph extension
+(`app/knowledge_graph.py`, three new node types) is real, backend and
+frontend (the existing `KnowledgeGraphView.tsx` renders it unchanged,
+since the graph shape was already generic); the CEO Controls and
+Knowledge Quality Score sections below remain target design, not yet
+implemented. See [Volume 9's chapter template](README.md) for what
+every section below must contain, and the Implementation Notes at the
+bottom of this chapter for exactly what's real today versus new here.
 
 ## Executive Summary
 
@@ -286,17 +290,49 @@ Knowledge Graph with working frontend (`app/knowledge_graph.py`,
 opposite research outcome from most prior chapters in this volume: the
 brief describes a system that is already, in large part, built.
 
-**What's genuinely new in this chapter:** extending the Knowledge
-Graph's node/edge types to include trades, decisions, case studies, and
-strategies — the exact gap the brief's own worked example names, and the
-single largest real, closeable piece of work here; promoting the
-handful of fixed constants named under CEO Controls to real,
-CEO-configurable `RiskLimits`-style fields, the same pattern Chapters
-57–59 already established; and a real Knowledge Quality Score, scoped
-from already-real signals rather than fabricated.
+**What was actually built (Knowledge Graph extension — backend + frontend):**
+the single largest real, closeable piece of work this chapter named —
+`app/knowledge_graph.py`'s `build_knowledge_graph()` gained three new
+node types, each backed by an already-real, already-persisted object:
+`trade` (`DecisionVaultEntry`), `case_study` (`CaseStudy` — mistakes and
+successes alike), and `strategy` (`Strategy`, excluding those still in
+the raw `idea` stage, mirroring the existing "only completed research
+becomes a node" filter). Four new, honestly-labeled edge relations:
+`documented_by` (a trade's own real `caseStudyId` link), `same_symbol`
+(a trade and completed research sharing a real symbol — descriptive,
+never claimed as causal, since no field anywhere links a specific
+ResearchItem to a specific trade), `same_category` (a Strategy and
+completed research sharing a real `focusCategory`/`category`, same
+non-causal honesty boundary), and `created` (a Strategy's own real
+`createdBy` agent — a literal fact, not an inference). `KnowledgeGraphView.tsx`
+needed no structural change (the graph shape was already generic) — only
+its `TYPE_COLORS`/`TYPE_LABELS`/`NODE_RADIUS` maps and `types.ts`'s
+mirrored `KnowledgeNodeType`/`KnowledgeEdgeRelation` unions gained the
+three new node types and four new relations. Verified: 8 new backend
+unit tests (`tests/test_knowledge_graph.py`'s
+`TestKnowledgeGraphChapter61Extension`), `mypy`/`ruff` clean, full
+backend suite 1002/1002 passing, `tsc`/`eslint`/`vite build` clean, and
+a live 400-tick simulation (Executive mode, to force real trades to
+close) confirming all three new node types and all four new edge
+relations appear with real data via a direct `GET /api/knowledge-graph`
+call against the running dev server, plus the existing Knowledge Graph
+Playwright test passing unchanged against the updated backend.
 
-**What's explicitly out of scope until named gaps close:** true
-vector/semantic search or natural-language queries (no embedding/LLM
+**What's explicitly not yet built:** the CEO Controls (Pattern
+Detection Sensitivity, Knowledge Retention Rules) and the Knowledge
+Quality Score both remain target design only. Promoting
+`MIN_SIMILAR_MATCHES`/`MISTAKE_WARNING_SHARE`
+(`app/decision_vault.py`) and `MAX_MEMORY_RECORDS`
+(`app/memory.py`)/`MAX_DECISION_VAULT_ENTRIES`
+(`app/decision_vault.py`) to real `RiskLimits` fields is straightforward
+for the Similarity Engine's two constants (both consumed in exactly one
+place), but `MAX_MEMORY_RECORDS` specifically would require threading a
+CEO-configurable limit through `app/scribe.py`'s 14 separate `record()`
+call sites — the codebase's real, deliberate "one writer gateway"
+design (see `app/memory.py`'s own module docstring) — a larger, riskier
+change than the Knowledge Graph extension and deliberately not
+attempted in this same pass. True vector/semantic search or
+natural-language queries stay out of scope entirely (no embedding/LLM
 dependency exists in this codebase — see Future Expansion above);
 Duplicate Knowledge Reduction as a KPI (no dedup logic exists to measure
 against); a proposal-time Cross-Reference search over research/
@@ -304,8 +340,6 @@ simulations (today's Similarity Engine only looks backward over closed
 trades).
 
 **Before implementation begins:** per Appendix G's Permanent Development
-Policy, this chapter is the required design-first step. Given how much
-is already real, implementation should be scoped narrowly to the three
-genuinely-new items above — the Knowledge Graph extension, the CEO
-controls, and the Quality Score — rather than re-touching any of the
-already-working systems this chapter documents.
+Policy, this chapter is the required design-first step, satisfied before
+this pass began. The remaining CEO controls and Quality Score are a
+well-scoped, separate follow-up.

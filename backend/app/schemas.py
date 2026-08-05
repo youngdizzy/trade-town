@@ -30,6 +30,7 @@ ScannerAlert is Pulse's continuous watchlist-scanning output. Still
 entirely simulated — see app/broker.py's module docstring for the same
 boundary restated for v0.6's order book.
 """
+
 from __future__ import annotations
 
 from typing import Literal
@@ -71,8 +72,38 @@ SceneId = Literal[
 # a "Quant Lab"; that room is real content layered onto the existing
 # backtesting room (see black_box.py's module docstring for the full
 # list of what this feature extends rather than duplicates).
-AgentId = Literal["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio", "sage", "keystone", "compass", "quant"]
-AGENT_IDS: tuple[AgentId, ...] = ("scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio", "sage", "keystone", "compass", "quant")
+AgentId = Literal[
+    "scout",
+    "atlas",
+    "echo",
+    "nova",
+    "scribe",
+    "coach",
+    "sentinel",
+    "pulse",
+    "guardian",
+    "cio",
+    "sage",
+    "keystone",
+    "compass",
+    "quant",
+]
+AGENT_IDS: tuple[AgentId, ...] = (
+    "scout",
+    "atlas",
+    "echo",
+    "nova",
+    "scribe",
+    "coach",
+    "sentinel",
+    "pulse",
+    "guardian",
+    "cio",
+    "sage",
+    "keystone",
+    "compass",
+    "quant",
+)
 
 # Every room an agent's schedule (or a meeting/break override) can place them in.
 AgentLocation = Literal[
@@ -113,7 +144,9 @@ NewsCategory = Literal["company", "discovery", "market"]
 # exist because a research item can be about a specific ticker (stock) or
 # about the company behind it (company) — kept distinct since the brief
 # lists them separately, even though in practice most seed items use "stock".
-ResearchCategory = Literal["stock", "etf", "index", "economy", "gold", "bitcoin", "company", "sector"]
+ResearchCategory = Literal[
+    "stock", "etf", "index", "economy", "gold", "bitcoin", "company", "sector"
+]
 ResearchStatus = Literal["queued", "in_progress", "completed"]
 MemoryCategory = Literal[
     "research",
@@ -172,7 +205,15 @@ SimulationStatus = Literal["queued", "running", "completed", "failed"]
 # included: no earnings calendar or economic-event data source exists
 # anywhere in this codebase (see app/calendar.py's own real/cut boundary)
 # — see app/sandbox.py's module docstring.
-TestScenario = Literal["historical", "bull", "bear", "sideways", "high_volatility", "low_volatility", "custom"]
+TestScenario = Literal[
+    "historical",
+    "bull",
+    "bear",
+    "sideways",
+    "high_volatility",
+    "low_volatility",
+    "custom",
+]
 
 # v0.7 Feature 45 — the Research Sandbox pipeline. Strategies cannot skip
 # stages (see app/sandbox.py); each transition requires a real, checkable
@@ -228,7 +269,9 @@ DecisionOutcome = Literal["trade", "no_trade"]
 # (app/market_data.py) only ever produces "simulated"; the rest of the
 # literal exists so a future real provider can express itself through
 # this exact same Candle shape without anything downstream changing.
-DataStatus = Literal["live", "delayed", "historical", "simulated", "stale", "error", "no_data"]
+DataStatus = Literal[
+    "live", "delayed", "historical", "simulated", "stale", "error", "no_data"
+]
 
 
 class CamelModel(BaseModel):
@@ -321,7 +364,9 @@ class SettingsState(CamelModel):
     operating_mode: OperatingMode = Field(default="learning", alias="operatingMode")
     # v0.7 Feature 34 — same client-authoritative mechanism as
     # operating_mode above.
-    company_priority: CompanyPriority = Field(default="balanced", alias="companyPriority")
+    company_priority: CompanyPriority = Field(
+        default="balanced", alias="companyPriority"
+    )
     # v0.7 Feature 37 — same client-authoritative mechanism as
     # operating_mode/company_priority above.
     work_mode: WorkMode = Field(default="work", alias="workMode")
@@ -330,7 +375,9 @@ class SettingsState(CamelModel):
     # Program regardless of this setting; it only gates whether the CEO
     # may ALSO voluntarily take the same lessons personally (never
     # required — see app/foundational_mentors.py's module docstring).
-    ceo_academy_learning_mode: bool = Field(default=False, alias="ceoAcademyLearningMode")
+    ceo_academy_learning_mode: bool = Field(
+        default=False, alias="ceoAcademyLearningMode"
+    )
 
 
 class DialogueHistoryEntry(CamelModel):
@@ -593,7 +640,9 @@ class PaperTrade(CamelModel):
     confidence: float
     reason: str
     market_conditions: str = Field(alias="marketConditions")
-    supporting_agents: list[AgentId] = Field(default_factory=list, alias="supportingAgents")
+    supporting_agents: list[AgentId] = Field(
+        default_factory=list, alias="supportingAgents"
+    )
     opposing_agents: list[AgentId] = Field(default_factory=list, alias="opposingAgents")
     coach_review: str | None = Field(default=None, alias="coachReview")
     lessons_learned: str | None = Field(default=None, alias="lessonsLearned")
@@ -662,7 +711,9 @@ class Strategy(CamelModel):
     # "idea" and only ever advances forward through stage_history's real,
     # gated transitions — see app/sandbox.py.
     stage: StrategyStage = "idea"
-    stage_history: list[StrategyStageEvent] = Field(default_factory=list, alias="stageHistory")
+    stage_history: list[StrategyStageEvent] = Field(
+        default_factory=list, alias="stageHistory"
+    )
     # A real, CEO-chosen authorization ceiling set on entering
     # limited_live_capital (POST /api/sandbox/begin-limited-live) — see
     # app/sandbox.py's module docstring for why this is a tracked
@@ -743,9 +794,13 @@ class StrategyReport(CamelModel):
     executive_summary: str = Field(alias="executiveSummary")
     strengths: list[str] = Field(default_factory=list)
     weaknesses: list[str] = Field(default_factory=list)
-    failure_conditions: list[str] = Field(default_factory=list, alias="failureConditions")
+    failure_conditions: list[str] = Field(
+        default_factory=list, alias="failureConditions"
+    )
     best_market_environment: str = Field(alias="bestMarketEnvironment")
-    recommended_improvements: list[str] = Field(default_factory=list, alias="recommendedImprovements")
+    recommended_improvements: list[str] = Field(
+        default_factory=list, alias="recommendedImprovements"
+    )
     sim_day: int = Field(alias="simDay")
     created_at: str = Field(alias="createdAt")
 
@@ -755,7 +810,9 @@ class StrategyReport(CamelModel):
 # Devil's Advocate), each computed from that strategy's own real,
 # aggregated SimulationResult and ResearchItem history — see
 # app/sandbox.py's generate_strategy_review().
-StrategyReviewerRole = Literal["quant", "risk", "technical", "fundamental", "devils_advocate"]
+StrategyReviewerRole = Literal[
+    "quant", "risk", "technical", "fundamental", "devils_advocate"
+]
 StrategyVerdict = Literal["pass", "concern", "fail"]
 
 
@@ -772,7 +829,9 @@ class StrategyReview(CamelModel):
     strategy_name: str = Field(alias="strategyName")
     verdicts: list[StrategyReviewVerdict]
     overall_verdict: StrategyVerdict = Field(alias="overallVerdict")
-    ceo_decision: Literal["pending", "approved", "rejected"] = Field(default="pending", alias="ceoDecision")
+    ceo_decision: Literal["pending", "approved", "rejected"] = Field(
+        default="pending", alias="ceoDecision"
+    )
     resolved_by: Literal["ceo", "auto"] | None = Field(default=None, alias="resolvedBy")
     sim_day: int = Field(alias="simDay")
     created_at: str = Field(alias="createdAt")
@@ -792,7 +851,9 @@ class HallOfFameEntry(CamelModel):
     # best-metric leaderboard entry has no real timeline/evidence/impact
     # to show.
     discovery_timeline: str | None = Field(default=None, alias="discoveryTimeline")
-    supporting_evidence: list[str] = Field(default_factory=list, alias="supportingEvidence")
+    supporting_evidence: list[str] = Field(
+        default_factory=list, alias="supportingEvidence"
+    )
     company_impact: str | None = Field(default=None, alias="companyImpact")
 
 
@@ -809,7 +870,9 @@ class CoachReport(CamelModel):
     id: str
     period: ReportPeriod
     company_score: float = Field(alias="companyScore")
-    agent_rankings: list[AgentScore] = Field(default_factory=list, alias="agentRankings")
+    agent_rankings: list[AgentScore] = Field(
+        default_factory=list, alias="agentRankings"
+    )
     research_accuracy: float = Field(alias="researchAccuracy")
     win_rate: float = Field(alias="winRate")
     loss_rate: float = Field(alias="lossRate")
@@ -876,7 +939,9 @@ class RiskLimits(CamelModel):
     max_daily_loss_pct: float = Field(default=5.0, alias="maxDailyLossPct")
     max_drawdown_pct: float = Field(default=20.0, alias="maxDrawdownPct")
     max_open_positions: int = Field(default=8, alias="maxOpenPositions")
-    max_sector_concentration_pct: float = Field(default=30.0, alias="maxSectorConcentrationPct")
+    max_sector_concentration_pct: float = Field(
+        default=30.0, alias="maxSectorConcentrationPct"
+    )
     risk_per_trade_pct: float = Field(default=2.0, alias="riskPerTradePct")
     # v0.7 Feature 49 — Professional Day Trading Program's Daily Trading
     # Objectives. `max_daily_loss_pct` above already existed; these two
@@ -890,17 +955,27 @@ class RiskLimits(CamelModel):
     # engine's own Design Bible chapter asks for; every existing field
     # above stays exactly as-is, this engine only ever narrows what it's
     # already allowed to size, never widens it.
-    max_weekly_deployment_pct: float = Field(default=15.0, alias="maxWeeklyDeploymentPct")
+    max_weekly_deployment_pct: float = Field(
+        default=15.0, alias="maxWeeklyDeploymentPct"
+    )
     # None = no hard cap (today's behavior — Portfolio Heat stays a pure
     # reading, per Chapter 56's own honesty boundary). A real number is a
     # CEO-set, CEO-triggered ceiling, never a system-triggered one — see
     # app/position_sizing.py's module docstring for why that stays inside
     # the v0.8 stop condition.
-    portfolio_heat_cap_pct: float | None = Field(default=None, alias="portfolioHeatCapPct")
+    portfolio_heat_cap_pct: float | None = Field(
+        default=None, alias="portfolioHeatCapPct"
+    )
     cash_reserve_pct: float = Field(default=10.0, alias="cashReservePct")
-    tier_allocation: TierAllocationLimits = Field(default_factory=TierAllocationLimits, alias="tierAllocation")
-    scaling_aggressiveness_pct: float = Field(default=100.0, alias="scalingAggressivenessPct")
-    emergency_reduction_heat_pct: float = Field(default=75.0, alias="emergencyReductionHeatPct")
+    tier_allocation: TierAllocationLimits = Field(
+        default_factory=TierAllocationLimits, alias="tierAllocation"
+    )
+    scaling_aggressiveness_pct: float = Field(
+        default=100.0, alias="scalingAggressivenessPct"
+    )
+    emergency_reduction_heat_pct: float = Field(
+        default=75.0, alias="emergencyReductionHeatPct"
+    )
     # v0.7 Chapter 58 — Institutional Trade Filter & Opportunity
     # Gatekeeper (app/opportunity_gatekeeper.py). The two real CEO
     # controls that engine's own Design Bible chapter asks for; default
@@ -982,7 +1057,9 @@ class TradeDecision(CamelModel):
     technical_summary: str = Field(alias="technicalSummary")
     fundamental_summary: str = Field(alias="fundamentalSummary")
     risk_summary: str = Field(alias="riskSummary")
-    supporting_agents: list[AgentId] = Field(default_factory=list, alias="supportingAgents")
+    supporting_agents: list[AgentId] = Field(
+        default_factory=list, alias="supportingAgents"
+    )
     opposing_agents: list[AgentId] = Field(default_factory=list, alias="opposingAgents")
     confidence: float
     final_reasoning: str = Field(alias="finalReasoning")
@@ -993,14 +1070,18 @@ class TradeDecision(CamelModel):
     # resolve_proposal) so Post-Trade Review can compare it against the
     # trade's real realized outcome even after the proposal itself is
     # gone. None only for decisions predating this field.
-    confidence_engine: "DecisionConfidence | None" = Field(default=None, alias="confidenceEngine")
+    confidence_engine: "DecisionConfidence | None" = Field(
+        default=None, alias="confidenceEngine"
+    )
     # v0.7 Feature 20 — the Trade Gatekeeper's final-approval verdict
     # (see app/gatekeeper.py). Only ever set when the CEO chose buy/sell
     # (a WAIT never reaches the gatekeeper); None for decisions predating
     # this field. A rejected verdict here is exactly what makes
     # `order_id` None even though `ceo_choice` on the linked
     # CeoDecisionRecord was buy/sell, not wait.
-    gatekeeper_verdict: "GatekeeperVerdict | None" = Field(default=None, alias="gatekeeperVerdict")
+    gatekeeper_verdict: "GatekeeperVerdict | None" = Field(
+        default=None, alias="gatekeeperVerdict"
+    )
     # v0.7 Feature 50 (Part 2/3) — the real process-quality Decision Grade
     # (see app/executive.py's compute_decision_grade), set at the moment
     # resolve_proposal() builds this record. None only for decisions that
@@ -1123,7 +1204,9 @@ class EducationProgress(CamelModel):
     save; see education.py)."""
 
     viewed_lesson_ids: list[str] = Field(default_factory=list, alias="viewedLessonIds")
-    completed_lesson_ids: list[str] = Field(default_factory=list, alias="completedLessonIds")
+    completed_lesson_ids: list[str] = Field(
+        default_factory=list, alias="completedLessonIds"
+    )
     quiz_attempts: int = Field(default=0, alias="quizAttempts")
     correct_quiz_attempts: int = Field(default=0, alias="correctQuizAttempts")
 
@@ -1221,7 +1304,9 @@ class TradeProposal(CamelModel):
     # brief's own rule: "No department may recommend a trade without first
     # explaining the current market environment." Defaults to None only
     # for proposals that predate this feature (old saves).
-    market_intelligence_summary: str | None = Field(default=None, alias="marketIntelligenceSummary")
+    market_intelligence_summary: str | None = Field(
+        default=None, alias="marketIntelligenceSummary"
+    )
 
 
 # v0.7 Feature 17 — AI Debate Room. Every turn's substance is a real
@@ -1286,13 +1371,17 @@ class ChallengeReport(CamelModel):
     # Titles of real past CaseStudies (Library of Mistakes) for this same
     # symbol, if any — an honest empty list otherwise, never a fabricated
     # "this looks like a past mistake."
-    historical_comparisons: list[str] = Field(default_factory=list, alias="historicalComparisons")
+    historical_comparisons: list[str] = Field(
+        default_factory=list, alias="historicalComparisons"
+    )
     # One line drawn from the What-If Simulation Lab's own real worst
     # named scenario (app/whatif.py) — never the full simulation, which
     # this codebase has already been bitten once by persisting unbounded
     # computed data (see nexus.py's MAX_DECISIONS history).
     worst_case_scenario: str = Field(alias="worstCaseScenario")
-    suggested_improvements: list[str] = Field(default_factory=list, alias="suggestedImprovements")
+    suggested_improvements: list[str] = Field(
+        default_factory=list, alias="suggestedImprovements"
+    )
     severity: ChallengeSeverity
     final_recommendation: str = Field(alias="finalRecommendation")
     # v0.7 Feature 47 — Company Operating System's "Real-Time Guidance":
@@ -1318,9 +1407,33 @@ class ChallengeReport(CamelModel):
 # app/executive_intelligence.py's module docstring for how it plugs into
 # the same generic opinion/self-evaluation/meeting-log machinery the
 # original eight already use, with zero changes needed to that machinery.
-ExecutiveDepartmentRole = Literal["research", "quant", "risk", "simulation", "decision_intelligence", "coach", "founders", "devils_advocate", "market_intelligence"]
-ExecutiveStance = Literal["agree", "disagree", "request_more_research", "recommend_waiting", "recommend_position_change", "recommend_rejecting"]
-ExecutiveAction = Literal["trade_normally", "reduce_risk", "wait", "research_more", "pause_trading", "focus_on_simulation"]
+ExecutiveDepartmentRole = Literal[
+    "research",
+    "quant",
+    "risk",
+    "simulation",
+    "decision_intelligence",
+    "coach",
+    "founders",
+    "devils_advocate",
+    "market_intelligence",
+]
+ExecutiveStance = Literal[
+    "agree",
+    "disagree",
+    "request_more_research",
+    "recommend_waiting",
+    "recommend_position_change",
+    "recommend_rejecting",
+]
+ExecutiveAction = Literal[
+    "trade_normally",
+    "reduce_risk",
+    "wait",
+    "research_more",
+    "pause_trading",
+    "focus_on_simulation",
+]
 
 
 class DepartmentOpinion(CamelModel):
@@ -1355,7 +1468,9 @@ class ExecutiveRecommendation(CamelModel):
 # same "process over outcome" convention app/discipline.py's Discipline
 # Score already established), so it's available immediately at decision
 # time, not just once a trade closes.
-DecisionGrade = Literal["A+", "A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D+", "D", "F"]
+DecisionGrade = Literal[
+    "A+", "A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D+", "D", "F"
+]
 
 
 class ExecutiveMeetingLogEntry(CamelModel):
@@ -1442,9 +1557,20 @@ MarketQualityTier = Literal["excellent", "good", "average", "poor", "avoid_tradi
 # Candle.timestamp already is (app/market_data.py), not TradeTown's
 # simulated clock: a "session" is about when real markets are open, not
 # an in-game concept.
-TradingSession = Literal["asian", "london", "london_ny_overlap", "new_york", "ny_lunch_hour", "market_open", "market_close", "closed"]
+TradingSession = Literal[
+    "asian",
+    "london",
+    "london_ny_overlap",
+    "new_york",
+    "ny_lunch_hour",
+    "market_open",
+    "market_close",
+    "closed",
+]
 
-MarketDebateSpecialist = Literal["liquidity", "price_action", "momentum", "quant", "risk"]
+MarketDebateSpecialist = Literal[
+    "liquidity", "price_action", "momentum", "quant", "risk"
+]
 
 
 class LiquidityZone(CamelModel):
@@ -1470,7 +1596,9 @@ class LiquidityRead(CamelModel):
     symbol: str
     zones: list[LiquidityZone] = Field(default_factory=list)
     sweep_detected: bool = Field(alias="sweepDetected")
-    sweep_direction: Literal["above_highs", "below_lows", "none"] = Field(alias="sweepDirection")
+    sweep_direction: Literal["above_highs", "below_lows", "none"] = Field(
+        alias="sweepDirection"
+    )
     liquidity_score: float = Field(alias="liquidityScore")  # 0-100
     detail: str
 
@@ -1485,8 +1613,16 @@ class MarketStructureRead(CamelModel):
     symbol: str
     swing_highs: list[float] = Field(default_factory=list, alias="swingHighs")
     swing_lows: list[float] = Field(default_factory=list, alias="swingLows")
-    last_break_of_structure: Literal["bullish", "bearish", "none"] = Field(alias="lastBreakOfStructure")
-    structure_state: Literal["trend_continuation", "trend_reversal", "consolidation", "expansion", "compression"] = Field(alias="structureState")
+    last_break_of_structure: Literal["bullish", "bearish", "none"] = Field(
+        alias="lastBreakOfStructure"
+    )
+    structure_state: Literal[
+        "trend_continuation",
+        "trend_reversal",
+        "consolidation",
+        "expansion",
+        "compression",
+    ] = Field(alias="structureState")
     detail: str
 
 
@@ -1501,7 +1637,9 @@ class VolatilityRead(CamelModel):
     current_pct: float = Field(alias="currentPct")
     historical_avg_pct: float = Field(alias="historicalAvgPct")
     session_pct: float = Field(alias="sessionPct")
-    percentile: float  # 0-100, current vs. this same fetched window's own historical average
+    percentile: (
+        float  # 0-100, current vs. this same fetched window's own historical average
+    )
     expected_pct: float = Field(alias="expectedPct")
     detail: str
 
@@ -1514,7 +1652,9 @@ class SessionRead(CamelModel):
 
 
 class MomentumRead(CamelModel):
-    roc_pct: float = Field(alias="rocPct")  # rate of change over the current sampled window
+    roc_pct: float = Field(
+        alias="rocPct"
+    )  # rate of change over the current sampled window
     strength: Literal["accelerating", "steady", "decelerating", "exhausted"]
     detail: str
 
@@ -1528,7 +1668,9 @@ class InstitutionalActivityRead(CamelModel):
     when guessing at large-participant activity on ordinary OHLCV data —
     it is not verified knowledge of who is actually trading."""
 
-    volume_price_divergence_score: float = Field(alias="volumePriceDivergenceScore")  # 0-100
+    volume_price_divergence_score: float = Field(
+        alias="volumePriceDivergenceScore"
+    )  # 0-100
     absorption_detected: bool = Field(alias="absorptionDetected")
     symbols_flagged: list[str] = Field(default_factory=list, alias="symbolsFlagged")
     detail: str
@@ -1576,7 +1718,9 @@ class MarketIntelligenceState(CamelModel):
     volatility: VolatilityRead
     session: SessionRead
     momentum: MomentumRead
-    institutional_activity: InstitutionalActivityRead = Field(alias="institutionalActivity")
+    institutional_activity: InstitutionalActivityRead = Field(
+        alias="institutionalActivity"
+    )
     news_risk: NewsRiskRead = Field(alias="newsRisk")
     liquidity: list[LiquidityRead] = Field(default_factory=list)
     structure: list[MarketStructureRead] = Field(default_factory=list)
@@ -1612,9 +1756,15 @@ class StrategyMatch(CamelModel):
     (app/sandbox.py) is consistent with today's regime — never a
     fabricated recommendation for a strategy with no track record."""
 
-    recommended_strategy_ids: list[str] = Field(default_factory=list, alias="recommendedStrategyIds")
-    avoided_strategy_ids: list[str] = Field(default_factory=list, alias="avoidedStrategyIds")
-    recommended_risk_level: Literal["minimal", "reduced", "normal", "elevated"] = Field(alias="recommendedRiskLevel")
+    recommended_strategy_ids: list[str] = Field(
+        default_factory=list, alias="recommendedStrategyIds"
+    )
+    avoided_strategy_ids: list[str] = Field(
+        default_factory=list, alias="avoidedStrategyIds"
+    )
+    recommended_risk_level: Literal["minimal", "reduced", "normal", "elevated"] = Field(
+        alias="recommendedRiskLevel"
+    )
     detail: str
 
 
@@ -1699,8 +1849,12 @@ class StrategyLiquidityValidation(CamelModel):
     strategy_id: str = Field(alias="strategyId")
     strategy_name: str = Field(alias="strategyName")
     symbols_checked: list[str] = Field(default_factory=list, alias="symbolsChecked")
-    liquidity_reads: list[LiquidityRead] = Field(default_factory=list, alias="liquidityReads")
-    structure_reads: list[MarketStructureRead] = Field(default_factory=list, alias="structureReads")
+    liquidity_reads: list[LiquidityRead] = Field(
+        default_factory=list, alias="liquidityReads"
+    )
+    structure_reads: list[MarketStructureRead] = Field(
+        default_factory=list, alias="structureReads"
+    )
     real_sweep_rate_pct: float = Field(alias="realSweepRatePct")
     verdict: Literal["favorable", "neutral", "unfavorable"]
     detail: str
@@ -1711,7 +1865,9 @@ class StrategyLiquidityValidation(CamelModel):
 # Distinct from the trade-scoped ExecutiveAction (trade_normally/
 # reduce_risk/wait/...) — a strategy graduating through the Validation
 # Laboratory needs strategy-lifecycle actions, not single-trade ones.
-StrategyExecutiveAction = Literal["advance", "request_more_evidence", "hold_for_improvement", "reject"]
+StrategyExecutiveAction = Literal[
+    "advance", "request_more_evidence", "hold_for_improvement", "reject"
+]
 
 
 class StrategyDepartmentOpinion(CamelModel):
@@ -1731,7 +1887,9 @@ class StrategyDepartmentOpinion(CamelModel):
     confidence_pct: float = Field(alias="confidencePct")
     evidence: list[str] = Field(default_factory=list)
     concerns: list[str] = Field(default_factory=list)
-    suggested_improvements: list[str] = Field(default_factory=list, alias="suggestedImprovements")
+    suggested_improvements: list[str] = Field(
+        default_factory=list, alias="suggestedImprovements"
+    )
 
 
 class StrategyExecutiveReview(CamelModel):
@@ -1771,9 +1929,13 @@ class StrategyConfidenceScore(CamelModel):
     evidence: list[str] = Field(default_factory=list)
     known_strengths: list[str] = Field(default_factory=list, alias="knownStrengths")
     known_weaknesses: list[str] = Field(default_factory=list, alias="knownWeaknesses")
-    risk_rating: Literal["low", "moderate", "elevated", "high"] = Field(alias="riskRating")
+    risk_rating: Literal["low", "moderate", "elevated", "high"] = Field(
+        alias="riskRating"
+    )
     recommended_position_size_pct: float = Field(alias="recommendedPositionSizePct")
-    recommended_market_conditions: list[str] = Field(default_factory=list, alias="recommendedMarketConditions")
+    recommended_market_conditions: list[str] = Field(
+        default_factory=list, alias="recommendedMarketConditions"
+    )
     sim_day: int = Field(alias="simDay")
     created_at: str = Field(alias="createdAt")
 
@@ -1793,16 +1955,34 @@ class StrategyDossier(CamelModel):
     stage: StrategyStage
     latest_report: StrategyReport | None = Field(default=None, alias="latestReport")
     latest_review: StrategyReview | None = Field(default=None, alias="latestReview")
-    monte_carlo: StrategyMonteCarloResult | None = Field(default=None, alias="monteCarlo")
-    regime_test: StrategyRegimeTestReport | None = Field(default=None, alias="regimeTest")
-    liquidity_validation: StrategyLiquidityValidation | None = Field(default=None, alias="liquidityValidation")
-    executive_review: StrategyExecutiveReview | None = Field(default=None, alias="executiveReview")
-    founder_approval: StrategyFounderApproval | None = Field(default=None, alias="founderApproval")
+    monte_carlo: StrategyMonteCarloResult | None = Field(
+        default=None, alias="monteCarlo"
+    )
+    regime_test: StrategyRegimeTestReport | None = Field(
+        default=None, alias="regimeTest"
+    )
+    liquidity_validation: StrategyLiquidityValidation | None = Field(
+        default=None, alias="liquidityValidation"
+    )
+    executive_review: StrategyExecutiveReview | None = Field(
+        default=None, alias="executiveReview"
+    )
+    founder_approval: StrategyFounderApproval | None = Field(
+        default=None, alias="founderApproval"
+    )
     confidence: StrategyConfidenceScore | None = None
     generated_at: str = Field(alias="generatedAt")
 
 
-StrategyHealthStatus = Literal["excellent", "healthy", "stable", "needs_review", "declining", "critical", "retire_candidate"]
+StrategyHealthStatus = Literal[
+    "excellent",
+    "healthy",
+    "stable",
+    "needs_review",
+    "declining",
+    "critical",
+    "retire_candidate",
+]
 StrategyHealthTrend = Literal["improving", "stable", "declining"]
 
 
@@ -1909,11 +2089,21 @@ class StrategyExecutiveDashboard(CamelModel):
     retired_count: int = Field(alias="retiredCount")
     hall_of_fame_count: int = Field(alias="hallOfFameCount")
     failed_archive_count: int = Field(alias="failedArchiveCount")
-    best_strategy: StrategyExecutiveDashboardEntry | None = Field(default=None, alias="bestStrategy")
-    weakest_strategy: StrategyExecutiveDashboardEntry | None = Field(default=None, alias="weakestStrategy")
-    most_improved_strategy: StrategyExecutiveDashboardEntry | None = Field(default=None, alias="mostImprovedStrategy")
-    newest_strategy: StrategyExecutiveDashboardEntry | None = Field(default=None, alias="newestStrategy")
-    highest_confidence_strategy: StrategyExecutiveDashboardEntry | None = Field(default=None, alias="highestConfidenceStrategy")
+    best_strategy: StrategyExecutiveDashboardEntry | None = Field(
+        default=None, alias="bestStrategy"
+    )
+    weakest_strategy: StrategyExecutiveDashboardEntry | None = Field(
+        default=None, alias="weakestStrategy"
+    )
+    most_improved_strategy: StrategyExecutiveDashboardEntry | None = Field(
+        default=None, alias="mostImprovedStrategy"
+    )
+    newest_strategy: StrategyExecutiveDashboardEntry | None = Field(
+        default=None, alias="newestStrategy"
+    )
+    highest_confidence_strategy: StrategyExecutiveDashboardEntry | None = Field(
+        default=None, alias="highestConfidenceStrategy"
+    )
     generated_at: str = Field(alias="generatedAt")
 
 
@@ -1981,14 +2171,22 @@ class MarketIntelligenceReport(CamelModel):
 # counting the same real signal under two names — the exact duplication
 # this session's convention exists to avoid — so those are deliberately
 # not wired here.
-InnovationTierName = Literal["research_contributor", "research_specialist", "innovation_leader", "chief_innovator", "legendary_innovator"]
+InnovationTierName = Literal[
+    "research_contributor",
+    "research_specialist",
+    "innovation_leader",
+    "chief_innovator",
+    "legendary_innovator",
+]
 
 
 class InnovationState(CamelModel):
     agent_id: AgentId = Field(alias="agentId")
     points: float = 0.0
     tier: int = 0  # 0-4, index into app/innovation.py's tier tables
-    tier_name: InnovationTierName = Field(default="research_contributor", alias="tierName")
+    tier_name: InnovationTierName = Field(
+        default="research_contributor", alias="tierName"
+    )
 
 
 # v0.7 — the Advanced Quantitative Research Division (app/black_box.py).
@@ -2010,7 +2208,9 @@ BlackBoxCategory = Literal[
     "portfolio_optimization",
     "academy_improvement",
 ]
-BlackBoxProjectStatus = Literal["active", "paused", "under_review", "completed", "failed"]
+BlackBoxProjectStatus = Literal[
+    "active", "paused", "under_review", "completed", "failed"
+]
 BlackBoxPriority = Literal["low", "normal", "high"]
 
 
@@ -2087,7 +2287,9 @@ class BlackBoxState(CamelModel):
     # revisitable) — no second, separate failed-research schema needed.
     archive: list[BlackBoxProject] = Field(default_factory=list)
     reviews: list[BreakthroughReview] = Field(default_factory=list)
-    viewed_breakthrough_ids: list[str] = Field(default_factory=list, alias="viewedBreakthroughIds")
+    viewed_breakthrough_ids: list[str] = Field(
+        default_factory=list, alias="viewedBreakthroughIds"
+    )
     updated_at: str = Field(alias="updatedAt")
 
 
@@ -2130,7 +2332,9 @@ class GatekeeperRejection(CamelModel):
     price_at_rejection: float = Field(alias="priceAtRejection")
     rejected_sim_minutes: int = Field(alias="rejectedSimMinutes")
     outcome: GatekeeperOutcome = "pending"
-    resolved_price_change_pct: float | None = Field(default=None, alias="resolvedPriceChangePct")
+    resolved_price_change_pct: float | None = Field(
+        default=None, alias="resolvedPriceChangePct"
+    )
     created_at: str = Field(alias="createdAt")
     resolved_at: str | None = Field(default=None, alias="resolvedAt")
 
@@ -2158,7 +2362,9 @@ class OpportunityRejection(CamelModel):
     price_at_rejection: float = Field(alias="priceAtRejection")
     rejected_sim_minutes: int = Field(alias="rejectedSimMinutes")
     outcome: GatekeeperOutcome = "pending"
-    resolved_price_change_pct: float | None = Field(default=None, alias="resolvedPriceChangePct")
+    resolved_price_change_pct: float | None = Field(
+        default=None, alias="resolvedPriceChangePct"
+    )
     created_at: str = Field(alias="createdAt")
     resolved_at: str | None = Field(default=None, alias="resolvedAt")
 
@@ -2258,7 +2464,9 @@ class CeoDecisionRecord(CamelModel):
 # trending_down/ranging, Player vs AI's per-symbol regime read) — a
 # different concept: this one is a whole-market, five-way classification
 # including volatility, not a single symbol's trend direction.
-MarketEnvironmentRegime = Literal["bull", "bear", "sideways", "high_volatility", "low_volatility"]
+MarketEnvironmentRegime = Literal[
+    "bull", "bear", "sideways", "high_volatility", "low_volatility"
+]
 
 
 class MarketEnvironmentEntry(CamelModel):
@@ -2308,7 +2516,9 @@ class MarketIntelligenceLearningEntry(CamelModel):
     for_sim_day: int = Field(alias="forSimDay")
     predicted_regime: MarketIntelligenceRegime = Field(alias="predictedRegime")
     predicted_quality_tier: MarketQualityTier = Field(alias="predictedQualityTier")
-    actual_environment_regime: MarketEnvironmentRegime | None = Field(default=None, alias="actualEnvironmentRegime")
+    actual_environment_regime: MarketEnvironmentRegime | None = Field(
+        default=None, alias="actualEnvironmentRegime"
+    )
     regime_consistent: bool | None = Field(default=None, alias="regimeConsistent")
     trades_closed_that_day: int = Field(alias="tradesClosedThatDay")
     trades_win_rate_pct: float | None = Field(default=None, alias="tradesWinRatePct")
@@ -2325,7 +2535,9 @@ class MarketIntelligenceLearningEntry(CamelModel):
 # (e.g. Employee Morale reuses the same real agent-mood average
 # CompanyScore's Team Coordination does) rather than inventing two
 # divergent readings of the same underlying number.
-CompanyHealthTier = Literal["excellent", "good", "stable", "needs_attention", "critical"]
+CompanyHealthTier = Literal[
+    "excellent", "good", "stable", "needs_attention", "critical"
+]
 
 
 class CompanyHealth(CamelModel):
@@ -2424,7 +2636,9 @@ class ExecutiveReview(CamelModel):
     company_score: float = Field(alias="companyScore")
     company_score_change: float = Field(alias="companyScoreChange")
     company_health_tier: CompanyHealthTier = Field(alias="companyHealthTier")
-    department_activity: list[DepartmentActivity] = Field(default_factory=list, alias="departmentActivity")
+    department_activity: list[DepartmentActivity] = Field(
+        default_factory=list, alias="departmentActivity"
+    )
     research_completed: int = Field(alias="researchCompleted")
     # Count of Academy knowledge projects completed to date (capped
     # library) — see app/academy_research.py. Not a points total, to
@@ -2446,7 +2660,9 @@ class ExecutiveReview(CamelModel):
     # the two real titles involved (see app/executive_review.py's
     # _knowledge_connections). Empty when nothing yet has a real
     # predecessor to reference.
-    knowledge_connections: list[str] = Field(default_factory=list, alias="knowledgeConnections")
+    knowledge_connections: list[str] = Field(
+        default_factory=list, alias="knowledgeConnections"
+    )
     summary: str
     created_at: str = Field(alias="createdAt")
 
@@ -2486,7 +2702,9 @@ class AcademyProject(CamelModel):
 # old bare 0-3 `tier` number with an honest label — `tier` (0-6) is kept
 # as the underlying int so existing ordering/threshold code and tests
 # don't need to change shape, `level` is the same value's real name.
-KnowledgeLevel = Literal["novice", "beginner", "intermediate", "advanced", "expert", "master", "mentor"]
+KnowledgeLevel = Literal[
+    "novice", "beginner", "intermediate", "advanced", "expert", "master", "mentor"
+]
 
 
 class AgentKnowledgeState(CamelModel):
@@ -2512,8 +2730,35 @@ class AcademyState(CamelModel):
 # (research/academy_completed_projects/executive_reviews/coach_reports/
 # hall_of_fame/agent_knowledge) are already persisted and capped
 # elsewhere, so this is a derived view, not a second store.
-KnowledgeNodeType = Literal["agent", "branch", "research", "academy_project", "executive_review", "coach_report", "hall_of_fame"]
-KnowledgeEdgeRelation = Literal["researched", "completed", "has_branch", "builds_on", "featured_in", "ranked_top_agent", "achieved"]
+# v0.7 Design Bible Chapter 61 — three new real node types, each backed
+# by an already-real, already-persisted object (DecisionVaultEntry,
+# CaseStudy, Strategy) — see app/knowledge_graph.py's module docstring
+# for exactly which real field backs each new node/edge.
+KnowledgeNodeType = Literal[
+    "agent",
+    "branch",
+    "research",
+    "academy_project",
+    "executive_review",
+    "coach_report",
+    "hall_of_fame",
+    "trade",
+    "case_study",
+    "strategy",
+]
+KnowledgeEdgeRelation = Literal[
+    "researched",
+    "completed",
+    "has_branch",
+    "builds_on",
+    "featured_in",
+    "ranked_top_agent",
+    "achieved",
+    "documented_by",
+    "same_symbol",
+    "same_category",
+    "created",
+]
 
 
 class KnowledgeNode(CamelModel):
@@ -2579,10 +2824,16 @@ class PostDecisionReview(CamelModel):
 
     what_we_did_well: list[str] = Field(default_factory=list, alias="whatWeDidWell")
     mistakes_made: list[str] = Field(default_factory=list, alias="mistakesMade")
-    information_overlooked: list[str] = Field(default_factory=list, alias="informationOverlooked")
-    assumptions_incorrect: list[str] = Field(default_factory=list, alias="assumptionsIncorrect")
+    information_overlooked: list[str] = Field(
+        default_factory=list, alias="informationOverlooked"
+    )
+    assumptions_incorrect: list[str] = Field(
+        default_factory=list, alias="assumptionsIncorrect"
+    )
     what_to_repeat: list[str] = Field(default_factory=list, alias="whatToRepeat")
-    what_to_never_repeat: list[str] = Field(default_factory=list, alias="whatToNeverRepeat")
+    what_to_never_repeat: list[str] = Field(
+        default_factory=list, alias="whatToNeverRepeat"
+    )
     how_to_improve: list[str] = Field(default_factory=list, alias="howToImprove")
 
 
@@ -2671,13 +2922,17 @@ class CaseStudy(CamelModel):
     decision_process: str = Field(alias="decisionProcess")
     # Each entry is one real analyst's own real vote reasoning — never
     # invented dialogue.
-    department_opinions: list[str] = Field(default_factory=list, alias="departmentOpinions")
+    department_opinions: list[str] = Field(
+        default_factory=list, alias="departmentOpinions"
+    )
     missed_information: str = Field(alias="missedInformation")
     lessons_learned: str = Field(alias="lessonsLearned")
     recommended_improvements: str = Field(alias="recommendedImprovements")
     # Real, already-configured company thresholds (RiskLimits, the Trade
     # Gatekeeper's own checks) — never invented aspirational principles.
-    related_principles: list[str] = Field(default_factory=list, alias="relatedPrinciples")
+    related_principles: list[str] = Field(
+        default_factory=list, alias="relatedPrinciples"
+    )
     trade_pnl_pct: float = Field(alias="tradePnlPct")
     # The real in-game day this case study was filed — see
     # DisciplineReview.sim_day above for why.
@@ -2720,14 +2975,20 @@ class SimilarTradesSummary(CamelModel):
     win_rate_pct: float = Field(alias="winRatePct")
     avg_pnl_pct: float = Field(alias="avgPnlPct")
     worst_pnl_pct: float = Field(alias="worstPnlPct")
-    best_regime: MarketIntelligenceRegime | None = Field(default=None, alias="bestRegime")
-    worst_regime: MarketIntelligenceRegime | None = Field(default=None, alias="worstRegime")
+    best_regime: MarketIntelligenceRegime | None = Field(
+        default=None, alias="bestRegime"
+    )
+    worst_regime: MarketIntelligenceRegime | None = Field(
+        default=None, alias="worstRegime"
+    )
     # Real: the most common CaseStudyCategory among the matched trades'
     # own linked case studies, only when it's a real mistake category
     # (never a success category) shared by at least MISTAKE_WARNING_SHARE
     # of matches — the Decision Memory System's "Mistake Prevention"
     # warning signal. None when no such pattern is real/significant.
-    most_common_mistake_category: CaseStudyCategory | None = Field(default=None, alias="mostCommonMistakeCategory")
+    most_common_mistake_category: CaseStudyCategory | None = Field(
+        default=None, alias="mostCommonMistakeCategory"
+    )
     warning: str | None = None
     examples: list[SimilarTradeMatch] = Field(default_factory=list)
 
@@ -2781,7 +3042,9 @@ class DecisionVaultEntry(CamelModel):
     # The real CaseStudy (mistake OR success) filed for this exact trade,
     # if any — mistakes.py/successes.py only ever file one per trade.
     case_study_id: str | None = Field(default=None, alias="caseStudyId")
-    case_study_category: CaseStudyCategory | None = Field(default=None, alias="caseStudyCategory")
+    case_study_category: CaseStudyCategory | None = Field(
+        default=None, alias="caseStudyCategory"
+    )
     # ExecutiveMeetingLogEntry.recommendationReason for this trade's own
     # proposal, if a matching entry exists — real, never authored fresh.
     executive_notes: str | None = Field(default=None, alias="executiveNotes")
@@ -2886,7 +3149,9 @@ class DecisionScoreBreakdown(CamelModel):
     confidence_score: float = Field(alias="confidenceScore")
     risk_score: float = Field(alias="riskScore")
     expected_value_score: float = Field(alias="expectedValueScore")
-    strategy_health_score: float | None = Field(default=None, alias="strategyHealthScore")
+    strategy_health_score: float | None = Field(
+        default=None, alias="strategyHealthScore"
+    )
     market_quality_score: float = Field(alias="marketQualityScore")
     liquidity_quality_score: float = Field(alias="liquidityQualityScore")
     portfolio_compatibility_score: float = Field(alias="portfolioCompatibilityScore")
@@ -2952,13 +3217,17 @@ class WarRoomSession(CamelModel):
     similar_trades: SimilarTradesSummary = Field(alias="similarTrades")
     expected_value: ExpectedValueAnalysis = Field(alias="expectedValue")
     decision_score: DecisionScoreBreakdown = Field(alias="decisionScore")
-    contingency_plan: list[ContingencyStep] = Field(default_factory=list, alias="contingencyPlan")
+    contingency_plan: list[ContingencyStep] = Field(
+        default_factory=list, alias="contingencyPlan"
+    )
     # v0.7 Chapter 57 — filled in by app/nexus.py right after this session
     # is built, once a ceiling quantity and this session's own real
     # Expected Value/Decision Score exist to size against. Optional only
     # for the brief instant during construction before that step runs —
     # every session actually appended to war_room_sessions has this set.
-    position_sizing: PositionSizingResult | None = Field(default=None, alias="positionSizing")
+    position_sizing: PositionSizingResult | None = Field(
+        default=None, alias="positionSizing"
+    )
     # Always True by construction, not a separate check: Evidence Score
     # is a strict renormalized subset average of Confidence Score's own
     # factors (see app/decision_vault.py's compute_evidence_score()), so
@@ -2966,7 +3235,9 @@ class WarRoomSession(CamelModel):
     # honestly as what it is — a standing invariant, not a check that can
     # meaningfully fail — rather than fabricating scenarios where it could.
     confidence_validated: bool = Field(alias="confidenceValidated")
-    outcome_comparison: ScenarioOutcomeComparison | None = Field(default=None, alias="outcomeComparison")
+    outcome_comparison: ScenarioOutcomeComparison | None = Field(
+        default=None, alias="outcomeComparison"
+    )
     created_at: str = Field(alias="createdAt")
 
 
@@ -3006,7 +3277,9 @@ class PortfolioHeat(CamelModel):
     total_capital_at_risk_pct: float = Field(alias="totalCapitalAtRiskPct")
     unrealized_drawdown_pct: float = Field(alias="unrealizedDrawdownPct")
     largest_position_pct: float = Field(alias="largestPositionPct")
-    hottest_category: ResearchCategory | None = Field(default=None, alias="hottestCategory")
+    hottest_category: ResearchCategory | None = Field(
+        default=None, alias="hottestCategory"
+    )
     hottest_category_pct: float = Field(default=0.0, alias="hottestCategoryPct")
     tier: Literal["cool", "warm", "hot", "overheated"]
 
@@ -3028,8 +3301,12 @@ class PortfolioIntelligence(CamelModel):
     cash_balance: float = Field(alias="cashBalance")
     cash_pct_of_equity: float = Field(alias="cashPctOfEquity")
     deployed_pct_of_equity: float = Field(alias="deployedPctOfEquity")
-    category_exposure: list[CategoryExposure] = Field(default_factory=list, alias="categoryExposure")
-    correlation_pairs: list[CorrelationPair] = Field(default_factory=list, alias="correlationPairs")
+    category_exposure: list[CategoryExposure] = Field(
+        default_factory=list, alias="categoryExposure"
+    )
+    correlation_pairs: list[CorrelationPair] = Field(
+        default_factory=list, alias="correlationPairs"
+    )
     heat: PortfolioHeat
     capital_efficiency: CapitalEfficiency = Field(alias="capitalEfficiency")
     # A real, specific "what's the alternative" read — never generic
@@ -3081,7 +3358,9 @@ class ReasoningSolution(CamelModel):
     reasoning_lab.py's _solution()."""
 
     what_we_know: list[str] = Field(default_factory=list, alias="whatWeKnow")
-    what_we_do_not_know: list[str] = Field(default_factory=list, alias="whatWeDoNotKnow")
+    what_we_do_not_know: list[str] = Field(
+        default_factory=list, alias="whatWeDoNotKnow"
+    )
     assumptions: list[str] = Field(default_factory=list)
     why_reasonable: str = Field(alias="whyReasonable")
     confidence: float
@@ -3158,8 +3437,12 @@ class ReflectionSession(CamelModel):
     insights: list[ReflectionInsight] = Field(default_factory=list)
     key_discoveries: list[str] = Field(default_factory=list, alias="keyDiscoveries")
     lessons_learned: list[str] = Field(default_factory=list, alias="lessonsLearned")
-    important_questions: list[str] = Field(default_factory=list, alias="importantQuestions")
-    recommended_future_projects: list[str] = Field(default_factory=list, alias="recommendedFutureProjects")
+    important_questions: list[str] = Field(
+        default_factory=list, alias="importantQuestions"
+    )
+    recommended_future_projects: list[str] = Field(
+        default_factory=list, alias="recommendedFutureProjects"
+    )
     # The real Company Wisdom Score at the moment this session closed —
     # see WisdomState below; never a trade-pnl-derived number.
     wisdom_score: float = Field(alias="wisdomScore")
@@ -3183,7 +3466,13 @@ WisdomFactorId = Literal[
     "complete_research",
     "support_collaboration",
 ]
-WisdomTier = Literal["young_company", "developing_judgment", "institutional_memory", "seasoned_wisdom", "enduring_wisdom"]
+WisdomTier = Literal[
+    "young_company",
+    "developing_judgment",
+    "institutional_memory",
+    "seasoned_wisdom",
+    "enduring_wisdom",
+]
 
 
 class WisdomFactor(CamelModel):
@@ -3326,7 +3615,9 @@ FoundationalGraduationStatus = Literal["in_progress", "pending_approval", "gradu
 # which doesn't exist anywhere in this codebase yet — postponed to
 # v1.0 (see docs/ROADMAP.md), not fabricated here.
 CertificationStatus = Literal["active", "suspended", "revoked"]
-CertificationHistoryAction = Literal["earned", "suspended", "reinstated", "revoked", "progress_reset"]
+CertificationHistoryAction = Literal[
+    "earned", "suspended", "reinstated", "revoked", "progress_reset"
+]
 
 
 class FoundationalMentorLesson(CamelModel):
@@ -3365,7 +3656,9 @@ class FoundationalMentorProfile(CamelModel):
     # Company-wide graduation — set once every real student (see
     # STUDENT_AGENT_IDS) has an individually-approved graduation on this
     # track. None while the track is planned/active/paused.
-    company_graduated_sim_day: int | None = Field(default=None, alias="companyGraduatedSimDay")
+    company_graduated_sim_day: int | None = Field(
+        default=None, alias="companyGraduatedSimDay"
+    )
 
 
 class FoundationalMentorProgress(CamelModel):
@@ -3374,7 +3667,9 @@ class FoundationalMentorProgress(CamelModel):
 
     mentor_id: FoundationalMentorId = Field(alias="mentorId")
     viewed_lesson_ids: list[str] = Field(default_factory=list, alias="viewedLessonIds")
-    completed_lesson_ids: list[str] = Field(default_factory=list, alias="completedLessonIds")
+    completed_lesson_ids: list[str] = Field(
+        default_factory=list, alias="completedLessonIds"
+    )
     # Real tick-accrued study progress (0-100) toward the current
     # in-flight (first not-yet-completed) lesson — the honest "how far
     # through this lesson" bar the Academy Dashboard shows per employee.
@@ -3384,7 +3679,9 @@ class FoundationalMentorProgress(CamelModel):
     # Resets to 0 on any correct answer — drives the Coach's real
     # "Repeat Lesson" / "One-on-One Coaching" recommendation escalation.
     consecutive_quiz_failures: int = Field(default=0, alias="consecutiveQuizFailures")
-    graduation_status: FoundationalGraduationStatus = Field(default="in_progress", alias="graduationStatus")
+    graduation_status: FoundationalGraduationStatus = Field(
+        default="in_progress", alias="graduationStatus"
+    )
     graduated_sim_day: int | None = Field(default=None, alias="graduatedSimDay")
     # v0.7 Feature 50 addendum — "Revoke Graduation." Set by
     # revoke_certification() to a real, deterministic templated note
@@ -3431,7 +3728,9 @@ class FoundationalMentorState(CamelModel):
     # employee's own AgentId, then by mentor id (an employee keeps every
     # mentor's progress record permanently, including already-graduated
     # tracks).
-    progress: dict[AgentId, dict[FoundationalMentorId, FoundationalMentorProgress]] = Field(default_factory=dict)
+    progress: dict[AgentId, dict[FoundationalMentorId, FoundationalMentorProgress]] = (
+        Field(default_factory=dict)
+    )
     # v0.7 Certification Management quality-of-life fix. The permanent
     # certification registry — one CertificationRecord per (agent,
     # mentor) pair that has ever been earned, surviving a revoke (unlike
@@ -3445,23 +3744,31 @@ class FoundationalMentorState(CamelModel):
     # only reachable when Settings.ceoAcademyLearningMode is on. Same
     # shape as an employee's per-mentor progress dict, never mixed with
     # real employee records.
-    ceo_progress: dict[FoundationalMentorId, FoundationalMentorProgress] = Field(default_factory=dict, alias="ceoProgress")
+    ceo_progress: dict[FoundationalMentorId, FoundationalMentorProgress] = Field(
+        default_factory=dict, alias="ceoProgress"
+    )
     # Company-wide — "the Academy studies one mentor at a time" (every
     # employee works the same track; company_graduated_sim_day above
     # advances it once every student has an approved graduation).
-    active_mentor_id: FoundationalMentorId | None = Field(default=None, alias="activeMentorId")
+    active_mentor_id: FoundationalMentorId | None = Field(
+        default=None, alias="activeMentorId"
+    )
     # The real sequential unlock order — persisted (not a hardcoded
     # module constant) specifically so the CEO can really append new
     # custom mentors to it via add_custom_mentor() and have them
     # eventually come up for company-wide study, same as the original 6.
-    roadmap_order: list[FoundationalMentorId] = Field(default_factory=list, alias="roadmapOrder")
+    roadmap_order: list[FoundationalMentorId] = Field(
+        default_factory=list, alias="roadmapOrder"
+    )
     # Hidden answer keys for CEO-authored custom lessons (lesson id ->
     # correct option index) — the runtime equivalent of the built-in
     # curriculum's module-level `_LessonSpec.correct_index`, which can't
     # be used here since custom lesson content only exists at runtime.
     # `FoundationalMentorLesson`'s own public shape never carries this,
     # matching the built-in convention.
-    custom_lesson_answers: dict[str, int] = Field(default_factory=dict, alias="customLessonAnswers")
+    custom_lesson_answers: dict[str, int] = Field(
+        default_factory=dict, alias="customLessonAnswers"
+    )
     updated_at: str = Field(alias="updatedAt")
 
 
@@ -3514,7 +3821,9 @@ class ConstitutionArticle(CamelModel):
 # v0.7 Feature 46 — "Live Enforcement." A permanent, real log of every
 # actual moment some other real system's own event invoked a specific
 # Article — never a fabricated quote attributed to nobody.
-ConstitutionCitationSource = Literal["case_study", "devils_advocate", "risk_department", "academy", "founders", "coach"]
+ConstitutionCitationSource = Literal[
+    "case_study", "devils_advocate", "risk_department", "academy", "founders", "coach"
+]
 
 
 class ConstitutionCitation(CamelModel):
@@ -3529,7 +3838,9 @@ class ConstitutionCitation(CamelModel):
 class ConstitutionFounderVerdict(CamelModel):
     founder_id: FounderId = Field(alias="founderId")
     verdict: str
-    redundant_with_article_id: str | None = Field(default=None, alias="redundantWithArticleId")
+    redundant_with_article_id: str | None = Field(
+        default=None, alias="redundantWithArticleId"
+    )
 
 
 class ConstitutionEmployeeVote(CamelModel):
@@ -3543,10 +3854,16 @@ class ConstitutionAmendment(CamelModel):
     proposed_title: str = Field(alias="proposedTitle")
     proposed_text: str = Field(alias="proposedText")
     status: Literal["proposed", "debated", "evaluated", "voted", "approved", "rejected"]
-    founder_verdicts: list[ConstitutionFounderVerdict] = Field(default_factory=list, alias="founderVerdicts")
+    founder_verdicts: list[ConstitutionFounderVerdict] = Field(
+        default_factory=list, alias="founderVerdicts"
+    )
     coach_evaluation: str | None = Field(default=None, alias="coachEvaluation")
-    employee_votes: list[ConstitutionEmployeeVote] = Field(default_factory=list, alias="employeeVotes")
-    ceo_decision: Literal["pending", "approved", "rejected"] = Field(default="pending", alias="ceoDecision")
+    employee_votes: list[ConstitutionEmployeeVote] = Field(
+        default_factory=list, alias="employeeVotes"
+    )
+    ceo_decision: Literal["pending", "approved", "rejected"] = Field(
+        default="pending", alias="ceoDecision"
+    )
     ratified_article_id: str | None = Field(default=None, alias="ratifiedArticleId")
     sim_day: int = Field(alias="simDay")
     created_at: str = Field(alias="createdAt")
@@ -3606,7 +3923,9 @@ class FounderState(CamelModel):
     retired: bool = False
     retired_at: str | None = Field(default=None, alias="retiredAt")
     log: list[FounderLogEntry] = Field(default_factory=list)
-    council_sessions: list[FounderCouncilSession] = Field(default_factory=list, alias="councilSessions")
+    council_sessions: list[FounderCouncilSession] = Field(
+        default_factory=list, alias="councilSessions"
+    )
     updated_at: str = Field(alias="updatedAt")
 
 
@@ -3675,8 +3994,12 @@ class TreasuryState(CamelModel):
     # Timeline" (each entry's balanceAfter plotted over time) rather than
     # a second, redundant stored series of the same real numbers.
     transactions: list[TreasuryTransaction] = Field(default_factory=list)
-    savings_rules: list[SmartSavingsRule] = Field(default_factory=list, alias="savingsRules")
-    monthly_reports: list[TreasuryMonthlyReport] = Field(default_factory=list, alias="monthlyReports")
+    savings_rules: list[SmartSavingsRule] = Field(
+        default_factory=list, alias="savingsRules"
+    )
+    monthly_reports: list[TreasuryMonthlyReport] = Field(
+        default_factory=list, alias="monthlyReports"
+    )
     updated_at: str = Field(alias="updatedAt")
 
 
@@ -3745,8 +4068,12 @@ class CalendarState(CamelModel):
     # Recomputed fresh every tick from real current data — the same
     # "cheap, always current" reasoning company_health/academy_state
     # already use — so system_events is never persisted stale.
-    system_events: list[CalendarEvent] = Field(default_factory=list, alias="systemEvents")
-    player_events: list[CalendarEvent] = Field(default_factory=list, alias="playerEvents")
+    system_events: list[CalendarEvent] = Field(
+        default_factory=list, alias="systemEvents"
+    )
+    player_events: list[CalendarEvent] = Field(
+        default_factory=list, alias="playerEvents"
+    )
     updated_at: str = Field(alias="updatedAt")
 
 
@@ -3761,24 +4088,44 @@ class GameSaveState(CamelModel):
     research: list[ResearchItem] = Field(default_factory=list)
     watchlist: list[WatchlistEntry] = Field(default_factory=list)
     memory: list[MemoryRecord] = Field(default_factory=list)
-    meeting_minutes: list[MeetingMinutes] = Field(default_factory=list, alias="meetingMinutes")
+    meeting_minutes: list[MeetingMinutes] = Field(
+        default_factory=list, alias="meetingMinutes"
+    )
     paper_portfolio: PaperPortfolio = Field(alias="paperPortfolio")
     strategies: list[Strategy] = Field(default_factory=list)
-    backtest_sessions: list[BacktestSession] = Field(default_factory=list, alias="backtestSessions")
-    simulation_results: list[SimulationResult] = Field(default_factory=list, alias="simulationResults")
-    strategy_reports: list[StrategyReport] = Field(default_factory=list, alias="strategyReports")
-    strategy_reviews: list[StrategyReview] = Field(default_factory=list, alias="strategyReviews")
+    backtest_sessions: list[BacktestSession] = Field(
+        default_factory=list, alias="backtestSessions"
+    )
+    simulation_results: list[SimulationResult] = Field(
+        default_factory=list, alias="simulationResults"
+    )
+    strategy_reports: list[StrategyReport] = Field(
+        default_factory=list, alias="strategyReports"
+    )
+    strategy_reviews: list[StrategyReview] = Field(
+        default_factory=list, alias="strategyReviews"
+    )
     # v0.7 Feature 52 (Part 1) — the Strategy Validation Laboratory's
     # extension of the Research Sandbox pipeline (app/strategy_lab.py).
     # One real permanent record per strategy per real trigger point —
     # nothing here is ever deleted, matching Part 2's own "strategies are
     # company assets" ethos even though Part 2's fuller library/versioning
     # is not yet built.
-    strategy_monte_carlo_results: list[StrategyMonteCarloResult] = Field(default_factory=list, alias="strategyMonteCarloResults")
-    strategy_regime_tests: list[StrategyRegimeTestReport] = Field(default_factory=list, alias="strategyRegimeTests")
-    strategy_liquidity_validations: list[StrategyLiquidityValidation] = Field(default_factory=list, alias="strategyLiquidityValidations")
-    strategy_executive_reviews: list[StrategyExecutiveReview] = Field(default_factory=list, alias="strategyExecutiveReviews")
-    strategy_founder_approvals: list[StrategyFounderApproval] = Field(default_factory=list, alias="strategyFounderApprovals")
+    strategy_monte_carlo_results: list[StrategyMonteCarloResult] = Field(
+        default_factory=list, alias="strategyMonteCarloResults"
+    )
+    strategy_regime_tests: list[StrategyRegimeTestReport] = Field(
+        default_factory=list, alias="strategyRegimeTests"
+    )
+    strategy_liquidity_validations: list[StrategyLiquidityValidation] = Field(
+        default_factory=list, alias="strategyLiquidityValidations"
+    )
+    strategy_executive_reviews: list[StrategyExecutiveReview] = Field(
+        default_factory=list, alias="strategyExecutiveReviews"
+    )
+    strategy_founder_approvals: list[StrategyFounderApproval] = Field(
+        default_factory=list, alias="strategyFounderApprovals"
+    )
     # v0.7 Feature 52 (Part 2) — "Living Strategies." strategy_health_assessments
     # is a real, recurring trend read (re-run alongside Part 1's own
     # per-completed-simulation artifacts). strategy_hall_of_fame/
@@ -3786,20 +4133,36 @@ class GameSaveState(CamelModel):
     # records — every real retire_strategy() CEO action files exactly one
     # of the two, never both, never neither (see app/strategy_lab.py's
     # generate_strategy_retirement_outcome()).
-    strategy_health_assessments: list[StrategyHealthAssessment] = Field(default_factory=list, alias="strategyHealthAssessments")
-    strategy_hall_of_fame: list[StrategyHallOfFameEntry] = Field(default_factory=list, alias="strategyHallOfFame")
-    strategy_failed_archive: list[FailedStrategyArchiveEntry] = Field(default_factory=list, alias="strategyFailedArchive")
-    hall_of_fame: list[HallOfFameEntry] = Field(default_factory=list, alias="hallOfFame")
+    strategy_health_assessments: list[StrategyHealthAssessment] = Field(
+        default_factory=list, alias="strategyHealthAssessments"
+    )
+    strategy_hall_of_fame: list[StrategyHallOfFameEntry] = Field(
+        default_factory=list, alias="strategyHallOfFame"
+    )
+    strategy_failed_archive: list[FailedStrategyArchiveEntry] = Field(
+        default_factory=list, alias="strategyFailedArchive"
+    )
+    hall_of_fame: list[HallOfFameEntry] = Field(
+        default_factory=list, alias="hallOfFame"
+    )
     coach_reports: list[CoachReport] = Field(default_factory=list, alias="coachReports")
     company_score: CompanyScore = Field(alias="companyScore")
-    performance_snapshots: list[PerformanceSnapshot] = Field(default_factory=list, alias="performanceSnapshots")
+    performance_snapshots: list[PerformanceSnapshot] = Field(
+        default_factory=list, alias="performanceSnapshots"
+    )
     risk_limits: RiskLimits = Field(default_factory=RiskLimits, alias="riskLimits")
     risk_warnings: list[RiskWarning] = Field(default_factory=list, alias="riskWarnings")
-    scanner_alerts: list[ScannerAlert] = Field(default_factory=list, alias="scannerAlerts")
+    scanner_alerts: list[ScannerAlert] = Field(
+        default_factory=list, alias="scannerAlerts"
+    )
     decisions: list[TradeDecision] = Field(default_factory=list)
     agent_energy: AgentEnergy = Field(alias="agentEnergy")
-    signal_calibration: SignalCalibrationState = Field(default_factory=SignalCalibrationState, alias="signalCalibration")
-    player_vs_ai: PlayerVsAiState = Field(default_factory=PlayerVsAiState, alias="playerVsAi")
+    signal_calibration: SignalCalibrationState = Field(
+        default_factory=SignalCalibrationState, alias="signalCalibration"
+    )
+    player_vs_ai: PlayerVsAiState = Field(
+        default_factory=PlayerVsAiState, alias="playerVsAi"
+    )
     education: EducationProgress = Field(default_factory=EducationProgress)
     # v0.6.2 Phase 10: which PaperTrade ids have already had their trade
     # outcome popup shown/dismissed — see app/routers/trades.py. Persisted
@@ -3807,13 +4170,19 @@ class GameSaveState(CamelModel):
     # the player already saw. Real progress, not regenerable — capped like
     # every other list here (see portfolio.py's own MAX_TRADE_HISTORY,
     # which this tracks against).
-    viewed_trade_notification_ids: list[str] = Field(default_factory=list, alias="viewedTradeNotificationIds")
+    viewed_trade_notification_ids: list[str] = Field(
+        default_factory=list, alias="viewedTradeNotificationIds"
+    )
     # Feature 12 — Executive Voting System. trade_proposals holds only
     # currently-pending proposals (removed the moment the CEO decides);
     # ceo_decisions is the permanent, capped history behind the CEO/AI
     # accuracy stats (see app/executive.py).
-    trade_proposals: list[TradeProposal] = Field(default_factory=list, alias="tradeProposals")
-    ceo_decisions: list[CeoDecisionRecord] = Field(default_factory=list, alias="ceoDecisions")
+    trade_proposals: list[TradeProposal] = Field(
+        default_factory=list, alias="tradeProposals"
+    )
+    ceo_decisions: list[CeoDecisionRecord] = Field(
+        default_factory=list, alias="ceoDecisions"
+    )
     # v0.7 Feature 17 — AI Debate Room. One Debate per proposal (with the
     # newest replacing prior ones for the same proposal if "request
     # another debate" was used), capped like every other list here.
@@ -3821,14 +4190,18 @@ class GameSaveState(CamelModel):
     # v0.7 Feature 20 — Trade Gatekeeper. Every trade the gatekeeper
     # blocked, capped at MAX_GATEKEEPER_REJECTIONS like every other list
     # here; see app/gatekeeper.py.
-    gatekeeper_rejections: list[GatekeeperRejection] = Field(default_factory=list, alias="gatekeeperRejections")
+    gatekeeper_rejections: list[GatekeeperRejection] = Field(
+        default_factory=list, alias="gatekeeperRejections"
+    )
     # v0.7 Chapter 58 — Institutional Trade Filter & Opportunity
     # Gatekeeper. Every candidate rejected BEFORE it ever became a real
     # TradeProposal, capped at MAX_OPPORTUNITY_REJECTIONS like every
     # other list here; see app/opportunity_gatekeeper.py. A distinct,
     # earlier-stage sibling to gatekeeper_rejections above, not a
     # replacement for it.
-    opportunity_rejections: list[OpportunityRejection] = Field(default_factory=list, alias="opportunityRejections")
+    opportunity_rejections: list[OpportunityRejection] = Field(
+        default_factory=list, alias="opportunityRejections"
+    )
     # v0.7 Feature 22 — Market Environment Simulation (app/market_environment.py).
     market_environment: MarketEnvironmentState = Field(alias="marketEnvironment")
     # v0.7 Feature 51 — Market Intelligence Department (app/market_intelligence.py).
@@ -3839,8 +4212,12 @@ class GameSaveState(CamelModel):
     # `market_intelligence_learning` is the Learning Loop's own permanent
     # history, capped at MAX_MARKET_INTELLIGENCE_LEARNING.
     market_intelligence: MarketIntelligenceState = Field(alias="marketIntelligence")
-    market_intelligence_reports: list[MarketIntelligenceReport] = Field(default_factory=list, alias="marketIntelligenceReports")
-    market_intelligence_learning: list[MarketIntelligenceLearningEntry] = Field(default_factory=list, alias="marketIntelligenceLearning")
+    market_intelligence_reports: list[MarketIntelligenceReport] = Field(
+        default_factory=list, alias="marketIntelligenceReports"
+    )
+    market_intelligence_learning: list[MarketIntelligenceLearningEntry] = Field(
+        default_factory=list, alias="marketIntelligenceLearning"
+    )
     # v0.7 Feature 23 — Company Health & Stability System (app/company_health.py).
     company_health: CompanyHealth = Field(alias="companyHealth")
     # v0.7 Feature 43 — Company DNA (app/company_dna.py).
@@ -3850,25 +4227,37 @@ class GameSaveState(CamelModel):
     # company_dna's own fresh historical-average score every time it's
     # recomputed, never mixed into the five traits' own formulas. Keyed
     # by trait id (e.g. "risk_appetite").
-    company_dna_legacy: dict[str, float] = Field(default_factory=dict, alias="companyDnaLegacy")
+    company_dna_legacy: dict[str, float] = Field(
+        default_factory=dict, alias="companyDnaLegacy"
+    )
     # v0.7 Feature 49 — Daily Trading Objectives (app/risk_engine.py's
     # compute_daily_objective_status).
     daily_objective_status: DailyObjectiveStatus = Field(alias="dailyObjectiveStatus")
     # v0.7 Feature 24 — the CIO's Monthly Executive Review (app/executive_review.py).
-    executive_reviews: list[ExecutiveReview] = Field(default_factory=list, alias="executiveReviews")
+    executive_reviews: list[ExecutiveReview] = Field(
+        default_factory=list, alias="executiveReviews"
+    )
     # v0.7 Feature 25 — AI Academy. `academy_projects` holds the one
     # currently-active knowledge project (company-wide, not per-agent);
     # `academy_completed_projects` is the permanent, capped Knowledge
     # Library (app/academy_research.py). `agent_knowledge` is every
     # agent's own real points/tier (app/academy.py); `academy_state` is
     # the company-wide progression level derived from both.
-    academy_projects: list[AcademyProject] = Field(default_factory=list, alias="academyProjects")
-    academy_completed_projects: list[AcademyProject] = Field(default_factory=list, alias="academyCompletedProjects")
-    agent_knowledge: dict[AgentId, AgentKnowledgeState] = Field(default_factory=dict, alias="agentKnowledge")
+    academy_projects: list[AcademyProject] = Field(
+        default_factory=list, alias="academyProjects"
+    )
+    academy_completed_projects: list[AcademyProject] = Field(
+        default_factory=list, alias="academyCompletedProjects"
+    )
+    agent_knowledge: dict[AgentId, AgentKnowledgeState] = Field(
+        default_factory=dict, alias="agentKnowledge"
+    )
     academy_state: AcademyState = Field(alias="academyState")
     # v0.7 Feature 26 — the Discipline Chamber (app/discipline.py). One
     # capped, permanent DisciplineReview per closed paper trade.
-    discipline_reviews: list[DisciplineReview] = Field(default_factory=list, alias="disciplineReviews")
+    discipline_reviews: list[DisciplineReview] = Field(
+        default_factory=list, alias="disciplineReviews"
+    )
     # v0.7 Feature 27 — the Library of Mistakes (app/mistakes.py). One
     # capped, permanent CaseStudy per detected real process-gap mistake.
     case_studies: list[CaseStudy] = Field(default_factory=list, alias="caseStudies")
@@ -3877,30 +4266,42 @@ class GameSaveState(CamelModel):
     # per closed paper trade, joining every real artifact already
     # generated for that trade — see DecisionVaultEntry's own doc
     # comment above for the exact honesty boundary.
-    decision_vault: list[DecisionVaultEntry] = Field(default_factory=list, alias="decisionVault")
+    decision_vault: list[DecisionVaultEntry] = Field(
+        default_factory=list, alias="decisionVault"
+    )
     # v0.7 Feature 29 — the Reasoning Lab (app/reasoning_lab.py). One
     # capped, permanent ReasoningChallenge filed periodically from the
     # company's most recent real AI Debate; `reasoning_lab_state` is the
     # company-wide progression level derived from the challenge count.
-    reasoning_challenges: list[ReasoningChallenge] = Field(default_factory=list, alias="reasoningChallenges")
+    reasoning_challenges: list[ReasoningChallenge] = Field(
+        default_factory=list, alias="reasoningChallenges"
+    )
     reasoning_lab_state: ReasoningLabState = Field(alias="reasoningLabState")
     # v0.7 Feature 30 — the Reflection Chamber (app/wisdom.py). One
     # capped, permanent ReflectionSession per weekly/monthly cycle;
     # `wisdom_state` is the company-wide Wisdom Score, updated only when
     # a session is generated (see WisdomState's own docstring for why).
-    reflection_sessions: list[ReflectionSession] = Field(default_factory=list, alias="reflectionSessions")
+    reflection_sessions: list[ReflectionSession] = Field(
+        default_factory=list, alias="reflectionSessions"
+    )
     wisdom_state: WisdomState = Field(alias="wisdomState")
     # v0.7 Feature 32 — the Socratic Mentor (app/mentor.py). One capped,
     # permanent QuestionOfTheDay per in-game morning; `thinking_profiles`
     # is every agent's purely-computed readout; `mentor_state` is the
     # company-wide progression level derived from the archive's length.
-    question_archive: list[QuestionOfTheDay] = Field(default_factory=list, alias="questionArchive")
-    thinking_profiles: dict[AgentId, ThinkingProfile] = Field(default_factory=dict, alias="thinkingProfiles")
+    question_archive: list[QuestionOfTheDay] = Field(
+        default_factory=list, alias="questionArchive"
+    )
+    thinking_profiles: dict[AgentId, ThinkingProfile] = Field(
+        default_factory=dict, alias="thinkingProfiles"
+    )
     mentor_state: MentorState = Field(alias="mentorState")
     # v0.7 Feature 49 (Phase 3) — the Foundational Mentor Program
     # (app/foundational_mentors.py). See FoundationalMentorState's own
     # docstring for how this differs from mentor_state above.
-    foundational_mentor_state: FoundationalMentorState = Field(alias="foundationalMentorState")
+    foundational_mentor_state: FoundationalMentorState = Field(
+        alias="foundationalMentorState"
+    )
     # v0.7 Feature 39 — the Original Founders (app/founders.py).
     founder_state: FounderState = Field(alias="founderState")
     # v0.7 Feature 41 — the Intelligent Devil's Advocate System. One
@@ -3909,8 +4310,12 @@ class GameSaveState(CamelModel):
     # review" was used), same convention as `debates` above.
     # `innovation_state` is every agent's own real points/tier earned
     # through their Devil's Advocate track record (app/innovation.py).
-    challenge_reports: list[ChallengeReport] = Field(default_factory=list, alias="challengeReports")
-    innovation_state: dict[AgentId, InnovationState] = Field(default_factory=dict, alias="innovationState")
+    challenge_reports: list[ChallengeReport] = Field(
+        default_factory=list, alias="challengeReports"
+    )
+    innovation_state: dict[AgentId, InnovationState] = Field(
+        default_factory=dict, alias="innovationState"
+    )
     # v0.7 Feature 33 — the CEO Treasury (app/treasury.py). See
     # TreasuryState's own docstring for the structural "never touched by
     # any automatic system" guarantee.
@@ -3922,8 +4327,12 @@ class GameSaveState(CamelModel):
     # v0.7 Feature 50 (Part 2/3) — the Executive Meeting Log and Weekly
     # Self-Evaluation. Both are real permanent history (grow, never
     # recomputed from scratch) — see app/executive_intelligence.py.
-    executive_meeting_log: list[ExecutiveMeetingLogEntry] = Field(default_factory=list, alias="executiveMeetingLog")
-    department_self_evaluations: list[DepartmentSelfEvaluation] = Field(default_factory=list, alias="departmentSelfEvaluations")
+    executive_meeting_log: list[ExecutiveMeetingLogEntry] = Field(
+        default_factory=list, alias="executiveMeetingLog"
+    )
+    department_self_evaluations: list[DepartmentSelfEvaluation] = Field(
+        default_factory=list, alias="departmentSelfEvaluations"
+    )
     # v0.7 Feature 44 — Talent Discovery System (app/talent.py).
     talent: TalentState = Field(alias="talent")
     # v0.7 Feature 46 — the Company Constitution (app/constitution.py).
@@ -3931,7 +4340,9 @@ class GameSaveState(CamelModel):
     # v0.7 Feature 55 — the Executive Decision Simulator's Digital War
     # Room (app/war_room.py). One capped, permanent WarRoomSession per
     # new TradeProposal, same convention as `challenge_reports` above.
-    war_room_sessions: list[WarRoomSession] = Field(default_factory=list, alias="warRoomSessions")
+    war_room_sessions: list[WarRoomSession] = Field(
+        default_factory=list, alias="warRoomSessions"
+    )
     # v0.7 Feature 56 — Enterprise Portfolio Intelligence
     # (app/portfolio_intelligence.py). Recomputed fresh every tick from
     # the portfolio's own real current state, same convention as
@@ -3939,7 +4350,9 @@ class GameSaveState(CamelModel):
     portfolio_intelligence: PortfolioIntelligence = Field(alias="portfolioIntelligence")
     time: TimeState
     settings: SettingsState
-    dialogue_history: list[DialogueHistoryEntry] = Field(default_factory=list, alias="dialogueHistory")
+    dialogue_history: list[DialogueHistoryEntry] = Field(
+        default_factory=list, alias="dialogueHistory"
+    )
     updated_at: str = Field(alias="updatedAt")
 
 
@@ -3959,7 +4372,9 @@ class GameSaveState(CamelModel):
 class ClientSaveRequest(CamelModel):
     player: EntityTransform
     settings: SettingsState
-    dialogue_history: list[DialogueHistoryEntry] = Field(default_factory=list, alias="dialogueHistory")
+    dialogue_history: list[DialogueHistoryEntry] = Field(
+        default_factory=list, alias="dialogueHistory"
+    )
 
 
 class ModuleWriteResult(CamelModel):

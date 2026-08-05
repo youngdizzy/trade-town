@@ -7,6 +7,31 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 61 backend + frontend — Knowledge Graph extension**
+  (`app/knowledge_graph.py`, `app/routers/knowledge_graph.py`,
+  `app/schemas.py`, `frontend/src/types.ts`, `KnowledgeGraphView.tsx`):
+  the single largest real, closeable gap Chapter 61's own research
+  named. Three new Knowledge Graph node types, each backed by an
+  already-real, already-persisted object — `trade`
+  (`DecisionVaultEntry`), `case_study` (`CaseStudy`, covering both
+  mistakes and successes), `strategy` (`Strategy`, excluding those still
+  in the raw `idea` stage, mirroring the existing completed-research-only
+  filter). Four new, honestly-labeled edge relations: `documented_by` (a
+  trade's own real `caseStudyId`), `same_symbol` and `same_category`
+  (descriptive, non-causal matches — never claimed as "this research
+  caused this trade/strategy," since no field anywhere links them
+  directly), and `created` (a Strategy's own real `createdBy` agent, a
+  literal fact). `KnowledgeGraphView.tsx` needed no structural change —
+  only its type/color/label/radius maps grew three entries. 8 new
+  backend tests, `mypy`/`ruff`/`tsc`/`eslint`/`vite build` all clean,
+  full backend suite 1002/1002 passing, and a live 400-tick simulation
+  (Executive mode) confirming all three new node types and all four new
+  edge relations appear with real data via a direct API call. The CEO
+  Controls and Knowledge Quality Score sections of Chapter 61 remain
+  target design — not built in this pass (see the chapter's own
+  Implementation Notes for why `MAX_MEMORY_RECORDS` specifically is a
+  larger, separate change than the two Similarity Engine constants).
+
 - **Design Bible Chapters 61 & 62 — Institutional Knowledge Graph &
   Company Memory Engine, and Institutional Innovation Lab & Continuous
   Improvement Engine**
