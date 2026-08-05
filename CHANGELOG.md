@@ -7,6 +7,25 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 64 backend + frontend — Executive Priority Engine**
+  (`app/schemas.py`, `app/goals.py`, `app/routers/goals.py`,
+  `frontend/src/types.ts`, `frontend/src/net/api.ts`,
+  `CompanyPanel.tsx`): the next honest slice per this chapter's own
+  recommended sequencing — a real, named formula ranking active goals
+  by urgency, deliberately not a reuse of Chapter 59's trade-proposal
+  Priority Score (structurally different inputs). New `GoalPriority`
+  schema; `compute_goal_priority()` scores an active goal from real
+  distance-to-target alone when there's no deadline, or the real pace
+  required per day to hit a real deadline otherwise, clamped against a
+  transparent, stated ceiling (5%/day = maximally urgent) rather than a
+  hidden weighting. New read-only `GET /api/goals/priorities`, computed
+  fresh per request. The Company Goals card now orders active goals by
+  real priority score and shows a PRIORITY badge plus real
+  days-remaining. 13 new backend tests, `mypy`/`ruff` clean, full
+  backend suite 1086/1086 passing, `tsc`/`eslint`/`vite build` clean,
+  live verification confirming a tight-deadline goal correctly outranks
+  an open-ended one.
+
 - **Chapter 64 backend + frontend — Milestone Tracking** (`app/schemas.py`,
   `app/goals.py`, `frontend/src/types.ts`, `CompanyPanel.tsx`): the
   "next honest slice" that chapter's own Implementation Notes named,

@@ -5955,6 +5955,52 @@ scripted Playwright session confirming all three milestone percentages
 render correctly for a freshly-created goal against the real running
 dev stack.
 
+### Executive Priority Engine for goals — Design Bible Chapter 64 (third pass)
+
+The next honest slice in this chapter's own recommended sequencing: a
+real, named formula ranking active goals by urgency — deliberately NOT
+a reuse of Chapter 59's trade-proposal Priority Score
+(`app/capital_priority.py`'s `rank_trade_proposals()`), which reads
+`WarRoomSession.decisionScore`, a composite built entirely from
+trade-specific signals (Expected Value, Evidence, Risk, Portfolio
+Compatibility, ...) that don't exist for a goal.
+
+New `GoalPriority` schema (goalId, score, remainingPct, daysRemaining).
+`app/goals.py`'s `compute_goal_priority()` scores an ACTIVE goal (`None`
+for any other status) from two real cases: with no real deadline, the
+score is `100 - progressPct` alone; with a real deadline, the score is
+the real pace required per day to hit it
+(`remainingPct / max(daysRemaining, 1)`), clamped against a stated,
+transparent ceiling (`MAX_URGENCY_PACE_PCT_PER_DAY = 5.0` — 5+
+percentage points of real progress needed per real remaining day reads
+as maximally urgent) and scaled into the same 0-100 range as the
+no-deadline case — never a hidden weighting.
+`rank_goals_by_priority()` sorts every active goal by that real score,
+descending, excluding non-active goals entirely.
+
+New read-only `GET /api/goals/priorities` (`app/routers/goals.py`),
+computed fresh per request from `game_state.snapshot()`'s current real
+goals and sim day — never a second persisted copy, the same convention
+`GET /api/decision-vault/quality-score` already uses. Frontend: the
+Company Goals card fetches real priorities (refetched via a `useEffect`
+keyed on the `goals` array, so any create/cancel/tick-driven change
+refreshes the ranking) and reorders active goals by real priority score
+— non-active goals keep their prior most-recent-first ordering, since
+there's nothing left to prioritize once a goal is
+completed/expired/cancelled. Each active goal shows a real PRIORITY
+badge and, when it has a real deadline, real days-remaining.
+
+**Verified**: 13 new backend tests (non-active returns `None`,
+no-deadline scoring, tight-deadline clamping to the real ceiling,
+generous-deadline low urgency, a passed deadline still producing a real
+score rather than dividing by zero/negative, ranking order, exclusion
+of non-active goals), `mypy`/`ruff` clean, full backend suite
+1086/1086 passing, `tsc`/`eslint`/`vite build` clean, and a temporary
+Playwright spec (reusing the project's own real popup-dismissal
+helpers from `tests/helpers.ts`, deleted after use) confirming a goal
+with a 2-real-day deadline correctly ranked above an open-ended
+Academy-level goal against the live running dev stack.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

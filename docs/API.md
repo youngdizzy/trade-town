@@ -1258,6 +1258,19 @@ goal's `currentValue`/`progressPct`/`status` every tick via
 Capped at `MAX_GOALS = 20`, oldest evicted first, same as every other
 real CEO-authored list in this codebase.
 
+### `GET /api/goals/priorities`
+
+Design Bible Chapter 64's Executive Priority Engine — read-only, no
+body. Returns `[{ "goalId": "goal-12-14-0-3", "score": 84.2,
+"remainingPct": 42.1, "daysRemaining": 2 }, ...]`, one `GoalPriority`
+per ACTIVE goal (non-active goals are excluded entirely), highest score
+first. `daysRemaining` is `null` for a goal with no real deadline —
+scored purely by `remainingPct` in that case. Computed fresh per
+request from the current real goals and sim day
+(`app/goals.py`'s `rank_goals_by_priority()`/`compute_goal_priority()`)
+— never a second persisted copy, the same convention as
+`GET /api/decision-vault/quality-score`.
+
 ### `POST /api/foundational-mentors/*`
 
 v0.7 Feature 49 (Phase 3, revised) — the Foundational Mentor Program /
