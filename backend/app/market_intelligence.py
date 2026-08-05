@@ -204,13 +204,17 @@ _REGIME_TO_SCENARIO_KEYWORD: dict[MarketIntelligenceRegime, str] = {
     "low_volatility": "low volatility",
 }
 
-# The Learning Loop's real, documented direction-only comparison against
+# The real, documented direction-only comparison against
 # app/market_environment.py's simpler five-way regime — several of this
 # module's thirteen regimes are honestly ambiguous against that coarser
 # scale (e.g. "expansion" could resolve to a bull, bear, or high-vol
 # environment), so those map to more than one acceptable real outcome
-# rather than a fabricated single "correct" answer.
-_REGIME_CONSISTENCY_MAP: dict[MarketIntelligenceRegime, frozenset[MarketEnvironmentRegime]] = {
+# rather than a fabricated single "correct" answer. Originally private
+# to the Learning Loop below; promoted to public (v0.7 Design Bible
+# Chapter 65) once app/regime_reconciliation.py needed the exact same
+# real mapping to reconcile the two engines' regime reads — reused
+# directly, never a second, competing map.
+REGIME_CONSISTENCY_MAP: dict[MarketIntelligenceRegime, frozenset[MarketEnvironmentRegime]] = {
     "strong_bull_trend": frozenset({"bull"}),
     "weak_uptrend": frozenset({"bull"}),
     "accumulation": frozenset({"bull", "sideways"}),
@@ -755,7 +759,7 @@ def filter_environment_entries_for_day(timeline: list[MarketEnvironmentEntry], s
 
 def generate_learning_entry(report: MarketIntelligenceReport, environment_entries_that_day: list[MarketEnvironmentEntry], trades_closed_that_day: list[PaperTrade]) -> MarketIntelligenceLearningEntry:
     actual = environment_entries_that_day[-1].regime if environment_entries_that_day else None
-    consistent = (actual in _REGIME_CONSISTENCY_MAP[report.snapshot.regime]) if actual is not None else None
+    consistent = (actual in REGIME_CONSISTENCY_MAP[report.snapshot.regime]) if actual is not None else None
 
     win_rate: float | None = None
     if trades_closed_that_day:

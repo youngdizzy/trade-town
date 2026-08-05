@@ -9,7 +9,9 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 
 from app.market_data import TIMEFRAME_ORDER, market_data_provider
-from app.schemas import Candle
+from app.regime_reconciliation import compute_regime_reconciliation
+from app.schemas import Candle, RegimeReconciliation
+from app.state import game_state
 
 router = APIRouter(prefix="/api/market", tags=["market"])
 
@@ -37,3 +39,16 @@ async def get_candles(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     return [Candle.model_validate(c.__dict__) for c in candles]
+
+
+@router.get("/regime-reconciliation", response_model=RegimeReconciliation)
+async def get_regime_reconciliation() -> RegimeReconciliation:
+    """Design Bible Chapter 65 — reconciles app/market_environment.py's
+    real 5-way regime read with app/market_intelligence.py's real 13-way
+    read (and its own real Regime Confidence Score) into one CEO-facing
+    answer, plus a read-only posture recommendation. Computed fresh per
+    request from the current real state — never a second persisted
+    copy, and never a write to any RiskLimits field (see
+    app/regime_reconciliation.py's own module docstring)."""
+    state = await game_state.snapshot()
+    return compute_regime_reconciliation(state.market_environment, state.market_intelligence)

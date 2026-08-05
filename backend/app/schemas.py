@@ -2540,6 +2540,43 @@ class MarketEnvironmentState(CamelModel):
     timeline: list[MarketEnvironmentEntry] = Field(default_factory=list)
 
 
+# v0.7 Design Bible Chapter 65 — Market Regime Detection & Adaptive
+# Strategy Engine. "aligned" means app/market_intelligence.py's real
+# 13-way regime falls within app/market_intelligence.py's own
+# REGIME_CONSISTENCY_MAP entry for the current app/market_environment.py
+# 5-way regime — the exact same real mapping the Learning Loop already
+# uses to grade a prior day's regime call, reused directly here rather
+# than a second, competing definition of "agreement."
+RegimeAgreement = Literal["aligned", "diverging"]
+
+# A real, transparent, three-way categorical read off MarketQualityScore
+# alone (tier + confidence_pct) — never a numeric override of any
+# CEO-configured RiskLimits field. See app/regime_reconciliation.py's
+# compute_regime_reconciliation() for the exact, checkable rule.
+RegimePosture = Literal["cautious", "normal", "opportunistic"]
+
+
+class RegimeReconciliation(CamelModel):
+    """The one real gap Chapter 65's own research found: two independent
+    regime engines (app/market_environment.py's 5-way,
+    app/market_intelligence.py's 13-way) exist, neither reads the other,
+    and neither is reconciled anywhere in this codebase. This is a
+    read-only, computed-fresh-per-request reconciliation — never a
+    third, competing regime classifier, and never an automatic write to
+    any real RiskLimits field (see that chapter's own Safety Systems
+    section)."""
+
+    environment_regime: MarketEnvironmentRegime = Field(alias="environmentRegime")
+    environment_label: str = Field(alias="environmentLabel")
+    intelligence_regime: MarketIntelligenceRegime = Field(alias="intelligenceRegime")
+    intelligence_label: str = Field(alias="intelligenceLabel")
+    quality_tier: MarketQualityTier = Field(alias="qualityTier")
+    confidence_pct: float = Field(alias="confidencePct")
+    agreement: RegimeAgreement
+    posture: RegimePosture
+    rationale: str
+
+
 # v0.7 Feature 51 — the Market Intelligence Department's Learning Loop.
 # Defined here (rather than alongside the rest of Feature 51's models
 # above) because it directly references MarketEnvironmentRegime, and this
