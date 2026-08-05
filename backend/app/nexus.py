@@ -61,6 +61,7 @@ from app.executive import (
 from app.executive_intelligence import generate_meeting_log_entry, generate_weekly_self_evaluations, record_meeting_log_entry, record_self_evaluations
 from app.executive_review import generate_executive_review, record_review
 from app.founders import compute_founder_state, generate_breakthrough_review, generate_council_session, generate_founder_log_entry, record_council_session, record_founder_log
+from app.goals import tick_goals
 from app.foundational_mentors import tick_employee_progress
 from app.gatekeeper import grade_gatekeeper_rejections
 from app.hall_of_fame import evaluate_hall_of_fame
@@ -151,6 +152,7 @@ from app.schemas import (
     FounderLogEntry,
     GameSaveState,
     GatekeeperRejection,
+    Goal,
     HallOfFameEntry,
     InnovationState,
     MarketIntelligenceLearningEntry,
@@ -997,6 +999,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     executive_reviews: list[ExecutiveReview] = list(state.executive_reviews)
     academy_projects: list[AcademyProject] = state.academy_projects or default_academy_projects()
     academy_completed_projects: list[AcademyProject] = list(state.academy_completed_projects)
+    # v0.7 Design Bible Chapter 64 — CEO-authored company goals.
+    goals: list[Goal] = list(state.goals)
     agent_knowledge: dict[AgentId, AgentKnowledgeState] = state.agent_knowledge or default_agent_knowledge()
     discipline_reviews: list[DisciplineReview] = list(state.discipline_reviews)
     case_studies: list[CaseStudy] = list(state.case_studies)
@@ -1686,6 +1690,13 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         foundational_mentor_state=foundational_mentor_state,
         founder_council_sessions=founder_council_sessions,
         gatekeeper_rejections=gatekeeper_rejections,
+        # v0.7 Design Bible Chapter 63 — CEO-configurable Company Health
+        # tier thresholds, threaded the same way every other Chapter
+        # 57-62 CEO control already is at this point in the tick.
+        excellent_threshold=effective_risk_limits.company_health_excellent_threshold,
+        good_threshold=effective_risk_limits.company_health_good_threshold,
+        stable_threshold=effective_risk_limits.company_health_stable_threshold,
+        needs_attention_threshold=effective_risk_limits.company_health_needs_attention_threshold,
     )
     # v0.7 Feature 43 — Company DNA. Cheap to recompute (a handful of
     # linear scans over already-in-memory lists), same "always current"
@@ -1698,6 +1709,11 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # v0.7 Feature 25 — cheap to recompute every tick, same reasoning as
     # company_health above (feeds a live-updating Academy readout).
     academy_state = compute_academy_state(agent_knowledge, len(academy_completed_projects))
+    # v0.7 Design Bible Chapter 64 — real progress against every active
+    # CEO-authored goal, recomputed fresh every tick from the same real
+    # readings already computed above (company_score, company_health,
+    # academy_state) plus the current portfolio.
+    goals = tick_goals(goals, company_health=company_health, company_score=company_score, portfolio=paper_portfolio, academy_state=academy_state, sim_day=new_time.day)
     # v0.7 Feature 56 — Enterprise Portfolio Intelligence. Cheap to
     # recompute every tick, same reasoning as company_health above.
     portfolio_intelligence = compute_portfolio_intelligence(paper_portfolio, market_data_provider, pending_proposal_count=len(trade_proposals))
@@ -2146,6 +2162,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "executive_reviews": executive_reviews,
             "academy_projects": academy_projects,
             "academy_completed_projects": academy_completed_projects,
+            "goals": goals,
             "agent_knowledge": agent_knowledge,
             "academy_state": academy_state,
             "discipline_reviews": discipline_reviews,

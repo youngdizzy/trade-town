@@ -87,6 +87,7 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         "strategy_health_assessments",
         "strategy_hall_of_fame",
         "strategy_failed_archive",
+        "goals",
     ),
     "research": ("research", "watchlist", "black_box"),
     # foundational_mentor_state lives here (not in `derived`) because,

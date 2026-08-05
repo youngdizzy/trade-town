@@ -336,6 +336,43 @@ class TestUpdateRiskLimits:
         assert error is not None
         assert saved.risk_limits.max_limited_live_capital != 0.0
 
+    # v0.7 Design Bible Chapter 63 — Company Health tier thresholds.
+    def test_updates_a_single_company_health_threshold(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(company_health_excellent_threshold=90.0))
+        assert error is None
+        assert saved.risk_limits.company_health_excellent_threshold == 90.0
+        # Every other threshold is untouched, still real defaults.
+        assert saved.risk_limits.company_health_good_threshold == 70.0
+
+    def test_rejects_a_threshold_outside_zero_to_one_hundred(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(company_health_stable_threshold=101.0))
+        assert error is not None
+        assert saved.risk_limits.company_health_stable_threshold != 101.0
+
+    def test_rejects_thresholds_that_would_break_descending_order(self) -> None:
+        state = GameState()
+        # Raising Needs Attention above the real Stable default (50.0)
+        # without also raising Stable would collapse the ordering.
+        saved, error = asyncio.run(state.update_risk_limits(company_health_needs_attention_threshold=60.0))
+        assert error is not None
+        assert saved.risk_limits.company_health_needs_attention_threshold != 60.0
+
+    def test_accepts_a_full_consistent_reordering_in_one_call(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(
+            state.update_risk_limits(
+                company_health_excellent_threshold=95.0,
+                company_health_good_threshold=80.0,
+                company_health_stable_threshold=60.0,
+                company_health_needs_attention_threshold=40.0,
+            )
+        )
+        assert error is None
+        assert saved.risk_limits.company_health_excellent_threshold == 95.0
+        assert saved.risk_limits.company_health_needs_attention_threshold == 40.0
+
     def test_extra_fields_on_the_wire_are_ignored_not_rejected(self) -> None:
         """ClientSaveRequest inherits CamelModel's default extra="ignore", so
         an older client still POSTing a full legacy GameSaveState-shaped body
@@ -355,6 +392,77 @@ class TestUpdateRiskLimits:
             }
         )
         assert payload.player.scene == "LobbyScene"
+
+
+class TestCreateGoal:
+    """v0.7 Design Bible Chapter 64 — the CEO's Goal creation write path."""
+
+    def test_creates_a_real_active_goal_with_computed_progress(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(
+            state.create_goal(title="Grow the Company Score", category="growth", target_metric="company_score_overall", target_value=90.0, deadline_sim_day=None)
+        )
+        assert error is None
+        assert len(saved.goals) == 1
+        goal = saved.goals[0]
+        assert goal.status == "active"
+        assert goal.title == "Grow the Company Score"
+        assert goal.target_value == 90.0
+        # A fresh game's real Company Score is on record — progress is a
+        # real computed number, never a placeholder.
+        assert goal.current_value == saved.company_score.overall
+
+    def test_rejects_an_empty_title(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.create_goal(title="   ", category="growth", target_metric="company_score_overall", target_value=90.0, deadline_sim_day=None))
+        assert error is not None
+        assert saved.goals == []
+
+    def test_rejects_a_non_positive_target_value(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.create_goal(title="Bad Goal", category="growth", target_metric="company_score_overall", target_value=0.0, deadline_sim_day=None))
+        assert error is not None
+        assert saved.goals == []
+
+    def test_rejects_a_deadline_that_is_not_in_the_future(self) -> None:
+        state = GameState()
+        current_day = state.data.time.day
+        saved, error = asyncio.run(state.create_goal(title="Bad Deadline", category="growth", target_metric="company_score_overall", target_value=90.0, deadline_sim_day=current_day))
+        assert error is not None
+        assert saved.goals == []
+
+    def test_second_goal_gets_a_distinct_id(self) -> None:
+        state = GameState()
+        asyncio.run(state.create_goal(title="First", category="growth", target_metric="company_score_overall", target_value=90.0, deadline_sim_day=None))
+        saved, error = asyncio.run(state.create_goal(title="Second", category="research", target_metric="academy_level", target_value=5.0, deadline_sim_day=None))
+        assert error is None
+        assert len(saved.goals) == 2
+        assert saved.goals[0].id != saved.goals[1].id
+
+
+class TestCancelGoal:
+    def test_cancels_a_real_active_goal(self) -> None:
+        state = GameState()
+        created, _ = asyncio.run(state.create_goal(title="Cancel Me", category="growth", target_metric="company_score_overall", target_value=90.0, deadline_sim_day=None))
+        goal_id = created.goals[0].id
+        saved, error = asyncio.run(state.cancel_goal(goal_id))
+        assert error is None
+        assert saved.goals[0].status == "cancelled"
+
+    def test_rejects_an_unknown_goal_id(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.cancel_goal("no-such-goal"))
+        assert error is not None
+        assert saved.goals == []
+
+    def test_rejects_cancelling_an_already_cancelled_goal(self) -> None:
+        state = GameState()
+        created, _ = asyncio.run(state.create_goal(title="Double Cancel", category="growth", target_metric="company_score_overall", target_value=90.0, deadline_sim_day=None))
+        goal_id = created.goals[0].id
+        asyncio.run(state.cancel_goal(goal_id))
+        saved, error = asyncio.run(state.cancel_goal(goal_id))
+        assert error is not None
+        assert saved.goals[0].status == "cancelled"
 
 
 class TestRetireStrategy:

@@ -132,8 +132,8 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _tier(overall: float) -> CompanyHealthTier:
-    for threshold, tier in _TIER_THRESHOLDS:
+def _tier(overall: float, thresholds: list[tuple[float, CompanyHealthTier]] = _TIER_THRESHOLDS) -> CompanyHealthTier:
+    for threshold, tier in thresholds:
         if overall >= threshold:
             return tier
     return "critical"
@@ -313,7 +313,22 @@ def compute_company_health(
     foundational_mentor_state: FoundationalMentorState,
     founder_council_sessions: list[FounderCouncilSession],
     gatekeeper_rejections: list[GatekeeperRejection],
+    # v0.7 Design Bible Chapter 63 — CEO-configurable tier thresholds
+    # (RiskLimits.companyHealth*Threshold), defaulting to the exact
+    # module constants above so existing behavior is unchanged until the
+    # CEO adjusts them. Always passed together (see app/state.py's
+    # update_risk_limits for the descending-order validation).
+    excellent_threshold: float = 85.0,
+    good_threshold: float = 70.0,
+    stable_threshold: float = 50.0,
+    needs_attention_threshold: float = 30.0,
 ) -> CompanyHealth:
+    tier_thresholds: list[tuple[float, CompanyHealthTier]] = [
+        (excellent_threshold, "excellent"),
+        (good_threshold, "good"),
+        (stable_threshold, "stable"),
+        (needs_attention_threshold, "needs_attention"),
+    ]
     metrics = {
         "operational_stability": _operational_stability(risk_warnings),
         "department_efficiency": _department_efficiency(agents),
@@ -354,7 +369,7 @@ def compute_company_health(
 
     return CompanyHealth(
         overall=round(overall, 1),
-        tier=_tier(overall),
+        tier=_tier(overall, tier_thresholds),
         operationalStability=round(metrics["operational_stability"], 1),
         departmentEfficiency=round(metrics["department_efficiency"], 1),
         employeeMorale=round(metrics["employee_morale"], 1),
@@ -379,7 +394,7 @@ def compute_company_health(
         talentDevelopment=round(executive_metrics["talent_development"], 1),
         founderOversight=round(executive_metrics["founder_oversight"], 1),
         executiveOverall=round(executive_overall, 1),
-        executiveTier=_tier(executive_overall),
+        executiveTier=_tier(executive_overall, tier_thresholds),
         combinedOverall=round(combined_overall, 1),
-        combinedTier=_tier(combined_overall),
+        combinedTier=_tier(combined_overall, tier_thresholds),
     )

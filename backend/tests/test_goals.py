@@ -1,0 +1,195 @@
+"""Covers app/goals.py — v0.7 Design Bible Chapter 64's smallest real
+slice: a CEO-authored goal tracking one real, already-computed metric.
+Every metric reading here comes from an already-real object
+(CompanyHealth/CompanyScore/PaperPortfolio/AcademyState) — nothing is
+randomized or fabricated.
+"""
+from __future__ import annotations
+
+from app.goals import (
+    create_goal,
+    record_goal,
+    resolve_metric_value,
+    tick_goal,
+    tick_goals,
+    validate_target_value,
+)
+from app.goals import cancel_goal as cancel_goal_entry
+from app.portfolio import default_portfolio
+from app.schemas import AcademyState, CompanyHealth, CompanyScore, Goal
+
+
+def _now_iso() -> str:
+    return "2026-01-01T00:00:00+00:00"
+
+
+def _company_score(overall: float = 65.0) -> CompanyScore:
+    return CompanyScore(
+        overall=overall,
+        researchQuality=60.0,
+        decisionQuality=60.0,
+        riskManagement=60.0,
+        paperTradingPerformance=60.0,
+        teamCoordination=60.0,
+        knowledgeGrowth=60.0,
+        simulationSuccess=60.0,
+        updatedAt=_now_iso(),
+    )
+
+
+def _company_health(combined_overall: float = 60.0) -> CompanyHealth:
+    return CompanyHealth(
+        overall=60.0,
+        tier="stable",
+        operationalStability=60.0,
+        departmentEfficiency=60.0,
+        employeeMorale=60.0,
+        researchProgress=60.0,
+        capitalHealth=60.0,
+        resourceUsage=60.0,
+        reputation=60.0,
+        technologyLevel=60.0,
+        officeExpansion=60.0,
+        educationProgress=60.0,
+        combinedOverall=combined_overall,
+        updatedAt=_now_iso(),
+    )
+
+
+def _academy_state(level: int = 2) -> AcademyState:
+    return AcademyState(level=level, levelLabel="Research Library", totalPoints=50.0, completedProjectCount=5, updatedAt=_now_iso())
+
+
+def _goal(**overrides) -> Goal:
+    defaults = dict(
+        goal_id="goal-1",
+        title="Reach a Company Score of 80",
+        category="growth",
+        target_metric="company_score_overall",
+        target_value=80.0,
+        deadline_sim_day=None,
+        created_sim_day=1,
+        current_value=65.0,
+    )
+    defaults.update(overrides)
+    return create_goal(**defaults)
+
+
+class TestValidateTargetValue:
+    def test_rejects_a_non_positive_target(self) -> None:
+        assert validate_target_value("company_score_overall", 0.0) is not None
+        assert validate_target_value("company_score_overall", -5.0) is not None
+
+    def test_rejects_a_target_above_the_real_ceiling(self) -> None:
+        assert validate_target_value("company_health_combined", 101.0) is not None
+        assert validate_target_value("academy_level", 6.0) is not None
+
+    def test_accepts_a_real_achievable_target(self) -> None:
+        assert validate_target_value("company_score_overall", 85.0) is None
+        assert validate_target_value("academy_level", 5.0) is None
+
+    def test_portfolio_return_has_no_upper_ceiling(self) -> None:
+        assert validate_target_value("portfolio_return_pct", 500.0) is None
+
+
+class TestResolveMetricValue:
+    def test_reads_the_real_combined_company_health(self) -> None:
+        value = resolve_metric_value("company_health_combined", company_health=_company_health(72.5), company_score=_company_score(), portfolio=default_portfolio(), academy_state=_academy_state())
+        assert value == 72.5
+
+    def test_reads_the_real_company_score(self) -> None:
+        value = resolve_metric_value("company_score_overall", company_health=_company_health(), company_score=_company_score(88.0), portfolio=default_portfolio(), academy_state=_academy_state())
+        assert value == 88.0
+
+    def test_reads_the_real_portfolio_return(self) -> None:
+        portfolio = default_portfolio().model_copy(update={"total_pnl_pct": 12.3})
+        value = resolve_metric_value("portfolio_return_pct", company_health=_company_health(), company_score=_company_score(), portfolio=portfolio, academy_state=_academy_state())
+        assert value == 12.3
+
+    def test_reads_the_real_academy_level(self) -> None:
+        value = resolve_metric_value("academy_level", company_health=_company_health(), company_score=_company_score(), portfolio=default_portfolio(), academy_state=_academy_state(level=4))
+        assert value == 4.0
+
+
+class TestCreateGoal:
+    def test_builds_a_real_active_goal_with_computed_progress(self) -> None:
+        goal = _goal(target_value=80.0, current_value=40.0)
+        assert goal.status == "active"
+        assert goal.current_value == 40.0
+        assert goal.progress_pct == 50.0
+        assert goal.completed_at is None
+
+
+class TestTickGoal:
+    def test_stays_active_while_below_target(self) -> None:
+        goal = _goal(target_value=100.0, current_value=50.0)
+        updated = tick_goal(goal, current_value=60.0, sim_day=5)
+        assert updated.status == "active"
+        assert updated.current_value == 60.0
+        assert updated.progress_pct == 60.0
+
+    def test_completes_once_current_value_reaches_target(self) -> None:
+        goal = _goal(target_value=80.0, current_value=40.0)
+        updated = tick_goal(goal, current_value=85.0, sim_day=5)
+        assert updated.status == "completed"
+        assert updated.completed_at is not None
+        assert updated.progress_pct == 100.0
+
+    def test_expires_past_an_unmet_deadline(self) -> None:
+        goal = _goal(target_value=100.0, current_value=40.0, deadline_sim_day=10)
+        updated = tick_goal(goal, current_value=50.0, sim_day=11)
+        assert updated.status == "expired"
+
+    def test_a_completed_goal_never_changes_again(self) -> None:
+        goal = _goal(target_value=80.0, current_value=40.0)
+        completed = tick_goal(goal, current_value=85.0, sim_day=5)
+        unchanged = tick_goal(completed, current_value=10.0, sim_day=6)
+        assert unchanged.status == "completed"
+        assert unchanged.current_value == completed.current_value
+
+    def test_a_cancelled_goal_never_changes_again(self) -> None:
+        goal = _goal(target_value=80.0, current_value=40.0)
+        cancelled = cancel_goal_entry([goal], goal.id)[0]
+        unchanged = tick_goal(cancelled, current_value=90.0, sim_day=6)
+        assert unchanged.status == "cancelled"
+        assert unchanged.current_value == 40.0
+
+
+class TestTickGoals:
+    def test_recomputes_every_active_goal_from_real_current_state(self) -> None:
+        health_goal = _goal(goal_id="g1", target_metric="company_health_combined", target_value=90.0, current_value=50.0)
+        score_goal = _goal(goal_id="g2", target_metric="company_score_overall", target_value=90.0, current_value=50.0)
+        updated = tick_goals(
+            [health_goal, score_goal],
+            company_health=_company_health(combined_overall=75.0),
+            company_score=_company_score(overall=95.0),
+            portfolio=default_portfolio(),
+            academy_state=_academy_state(),
+            sim_day=2,
+        )
+        assert updated[0].current_value == 75.0
+        assert updated[0].status == "active"
+        assert updated[1].current_value == 95.0
+        assert updated[1].status == "completed"
+
+
+class TestRecordGoal:
+    def test_caps_at_max_goals_evicting_the_oldest(self) -> None:
+        goals = [_goal(goal_id=f"g{i}") for i in range(20)]
+        overflowed = record_goal(goals, _goal(goal_id="g20"))
+        assert len(overflowed) == 20
+        assert overflowed[0].id == "g1"
+        assert overflowed[-1].id == "g20"
+
+
+class TestCancelGoal:
+    def test_cancels_an_active_goal(self) -> None:
+        goal = _goal()
+        updated = cancel_goal_entry([goal], goal.id)
+        assert updated[0].status == "cancelled"
+
+    def test_leaves_other_goals_untouched(self) -> None:
+        a, b = _goal(goal_id="a"), _goal(goal_id="b")
+        updated = cancel_goal_entry([a, b], "a")
+        assert updated[0].status == "cancelled"
+        assert updated[1].status == "active"

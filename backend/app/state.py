@@ -31,6 +31,8 @@ from app.debate import generate_debate
 from app.devils_advocate import MAX_CHALLENGE_REPORTS, generate_challenge_report
 from app.executive import MAX_CEO_DECISIONS, MAX_PROPOSAL_HOLDS, AnalystChoice, hold_proposal, resolve_proposal
 from app.executive_intelligence import generate_meeting_log_entry, record_meeting_log_entry
+from app.goals import cancel_goal as cancel_goal_entry
+from app.goals import create_goal, record_goal, resolve_metric_value, validate_target_value
 from app.innovation import compute_innovation_state
 from app.market_data import market_data_provider
 from app.market_environment import default_market_environment
@@ -55,6 +57,8 @@ from app.schemas import (
     FoundationalResourceType,
     GameSaveState,
     GatekeeperRejection,
+    GoalCategory,
+    GoalMetric,
     HoldReason,
     MeetingState,
     NewsItem,
@@ -517,6 +521,10 @@ class GameState:
         max_decision_vault_entries: int | None = None,
         max_memory_records: int | None = None,
         max_limited_live_capital: float | None = None,
+        company_health_excellent_threshold: float | None = None,
+        company_health_good_threshold: float | None = None,
+        company_health_stable_threshold: float | None = None,
+        company_health_needs_attention_threshold: float | None = None,
     ) -> tuple[GameSaveState, str | None]:
         """v0.7 Feature 49 — the CEO's Daily Trading Objectives — extended
         by v0.7 Chapter 57 with four of the six new Position Sizing
@@ -626,10 +634,98 @@ class GameState:
                 if max_limited_live_capital <= 0:
                     return self.data, "Maximum Limited Live Capital must be a positive amount."
                 updates["max_limited_live_capital"] = max_limited_live_capital
+            if company_health_excellent_threshold is not None:
+                if company_health_excellent_threshold < 0 or company_health_excellent_threshold > 100:
+                    return self.data, "Company Health Excellent threshold must be a score from 0 to 100."
+                updates["company_health_excellent_threshold"] = company_health_excellent_threshold
+            if company_health_good_threshold is not None:
+                if company_health_good_threshold < 0 or company_health_good_threshold > 100:
+                    return self.data, "Company Health Good threshold must be a score from 0 to 100."
+                updates["company_health_good_threshold"] = company_health_good_threshold
+            if company_health_stable_threshold is not None:
+                if company_health_stable_threshold < 0 or company_health_stable_threshold > 100:
+                    return self.data, "Company Health Stable threshold must be a score from 0 to 100."
+                updates["company_health_stable_threshold"] = company_health_stable_threshold
+            if company_health_needs_attention_threshold is not None:
+                if company_health_needs_attention_threshold < 0 or company_health_needs_attention_threshold > 100:
+                    return self.data, "Company Health Needs Attention threshold must be a score from 0 to 100."
+                updates["company_health_needs_attention_threshold"] = company_health_needs_attention_threshold
             if not updates:
                 return self.data, "No risk limit changes were provided."
             new_limits = self.data.risk_limits.model_copy(update=updates)
+            # v0.7 Design Bible Chapter 63 — the four Company Health tier
+            # thresholds classify the same score into one of four tiers in
+            # order, so they must stay strictly descending regardless of
+            # which subset of them this call actually changed (checked
+            # against the fully-merged candidate, not just the fields this
+            # call touched, the same way tier_allocation's own four-way
+            # check above validates the whole object at once).
+            if not (
+                new_limits.company_health_excellent_threshold
+                > new_limits.company_health_good_threshold
+                > new_limits.company_health_stable_threshold
+                > new_limits.company_health_needs_attention_threshold
+            ):
+                return self.data, "Company Health tier thresholds must stay in strictly descending order: Excellent > Good > Stable > Needs Attention."
             self.data = self.data.model_copy(update={"risk_limits": new_limits})
+            return self.data, None
+
+    async def create_goal(
+        self,
+        *,
+        title: str,
+        category: GoalCategory,
+        target_metric: GoalMetric,
+        target_value: float,
+        deadline_sim_day: int | None,
+    ) -> tuple[GameSaveState, str | None]:
+        """v0.7 Design Bible Chapter 64 — the CEO authors a goal naming one
+        real metric and a target. Validated the same way every other CEO
+        write path in this class is (return (state, error), never raise);
+        the goal's own `currentValue`/`progressPct` are computed once here
+        from the company's real current state, then kept fresh every tick
+        by `app/nexus.py`'s own `tick_goals()` call."""
+        async with self.lock:
+            title = title.strip()
+            if not title:
+                return self.data, "Goal title cannot be empty."
+            if len(title) > 120:
+                return self.data, "Goal title must be 120 characters or fewer."
+            value_error = validate_target_value(target_metric, target_value)
+            if value_error is not None:
+                return self.data, value_error
+            if deadline_sim_day is not None and deadline_sim_day <= self.data.time.day:
+                return self.data, "Goal deadline must be a future simulation day."
+            current_value = resolve_metric_value(
+                target_metric,
+                company_health=self.data.company_health,
+                company_score=self.data.company_score,
+                portfolio=self.data.paper_portfolio,
+                academy_state=self.data.academy_state,
+            )
+            time = self.data.time
+            goal_id = f"goal-{time.day}-{time.hour}-{time.minute}-{len(self.data.goals)}"
+            goal = create_goal(
+                goal_id=goal_id,
+                title=title,
+                category=category,
+                target_metric=target_metric,
+                target_value=target_value,
+                deadline_sim_day=deadline_sim_day,
+                created_sim_day=time.day,
+                current_value=current_value,
+            )
+            self.data = self.data.model_copy(update={"goals": record_goal(self.data.goals, goal)})
+            return self.data, None
+
+    async def cancel_goal(self, goal_id: str) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            existing = next((g for g in self.data.goals if g.id == goal_id), None)
+            if existing is None:
+                return self.data, "No goal found with that id."
+            if existing.status != "active":
+                return self.data, "Only an active goal can be cancelled."
+            self.data = self.data.model_copy(update={"goals": cancel_goal_entry(self.data.goals, goal_id)})
             return self.data, None
 
     async def deposit_treasury(self, amount: float) -> tuple[GameSaveState, str | None]:

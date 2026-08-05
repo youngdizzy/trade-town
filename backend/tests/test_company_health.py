@@ -527,3 +527,33 @@ class TestExecutiveTier:
     def test_combined_overall_is_the_equal_blend_of_both_tiers(self) -> None:
         health = _health(**_strong_executive_overrides())
         assert health.combined_overall == round((health.overall + health.executive_overall) / 2.0, 1)
+
+
+class TestCeoConfiguredTierThresholds:
+    """v0.7 Design Bible Chapter 63 — Company Health tier thresholds are
+    now CEO-configurable, defaulting to the exact prior fixed constants
+    (85/70/50/30) so existing behavior is unchanged until the CEO
+    adjusts them."""
+
+    def test_default_thresholds_match_the_prior_fixed_constants(self) -> None:
+        # A pure, near-neutral company (default _health()) reads "stable"
+        # under both the old fixed constants and the new defaults.
+        health = _health()
+        assert health.tier == "stable"
+
+    def test_ceo_lowered_excellent_threshold_reclassifies_the_same_score(self) -> None:
+        default_health = _health()
+        lowered = _health(excellent_threshold=default_health.overall)
+        assert lowered.tier == "excellent"
+        assert default_health.tier != "excellent"
+
+    def test_ceo_raised_stable_threshold_reclassifies_the_same_score(self) -> None:
+        default_health = _health()
+        raised = _health(stable_threshold=default_health.overall + 1.0, needs_attention_threshold=default_health.overall - 1.0)
+        assert raised.tier == "needs_attention"
+
+    def test_thresholds_apply_identically_to_executive_and_combined_tiers(self) -> None:
+        health = _health(excellent_threshold=0.0, good_threshold=-1.0, stable_threshold=-2.0, needs_attention_threshold=-3.0)
+        assert health.tier == "excellent"
+        assert health.executive_tier == "excellent"
+        assert health.combined_tier == "excellent"

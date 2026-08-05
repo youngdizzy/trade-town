@@ -48,6 +48,12 @@ class UpdateRiskLimitsRequest(BaseModel):
     # v0.7 Design Bible Chapter 62 — the Innovation Lab's Innovation
     # Budget CEO control.
     max_limited_live_capital: float | None = Field(default=None, alias="maxLimitedLiveCapital")
+    # v0.7 Design Bible Chapter 63 — the Executive Performance & Company
+    # Health Engine's Company Health tier threshold controls.
+    company_health_excellent_threshold: float | None = Field(default=None, alias="companyHealthExcellentThreshold")
+    company_health_good_threshold: float | None = Field(default=None, alias="companyHealthGoodThreshold")
+    company_health_stable_threshold: float | None = Field(default=None, alias="companyHealthStableThreshold")
+    company_health_needs_attention_threshold: float | None = Field(default=None, alias="companyHealthNeedsAttentionThreshold")
 
 
 class RiskLimitsResponse(BaseModel):
@@ -78,6 +84,10 @@ async def update_risk_limits(payload: UpdateRiskLimitsRequest) -> RiskLimitsResp
         max_decision_vault_entries=payload.max_decision_vault_entries,
         max_memory_records=payload.max_memory_records,
         max_limited_live_capital=payload.max_limited_live_capital,
+        company_health_excellent_threshold=payload.company_health_excellent_threshold,
+        company_health_good_threshold=payload.company_health_good_threshold,
+        company_health_stable_threshold=payload.company_health_stable_threshold,
+        company_health_needs_attention_threshold=payload.company_health_needs_attention_threshold,
     )
     if error is not None:
         raise HTTPException(status_code=400, detail=error)

@@ -1015,6 +1015,19 @@ class RiskLimits(CamelModel):
     # (app/sandbox.py's MAX_LIMITED_LIVE_CAPITAL) so existing behavior is
     # unchanged until the CEO adjusts it.
     max_limited_live_capital: float = Field(default=2000.0, alias="maxLimitedLiveCapital")
+    # v0.7 Design Bible Chapter 63 — Executive Performance & Company
+    # Health Engine's "Company Health tier thresholds" CEO control. All
+    # four defaults match the fixed constants they replace
+    # (app/company_health.py's _TIER_THRESHOLDS) so existing behavior —
+    # including the Founders' real "excellent" Legendary Status trigger
+    # — is unchanged until the CEO adjusts them. Validated together (see
+    # app/state.py's update_risk_limits) to always stay strictly
+    # descending, since they classify the same score into one of four
+    # tiers in order.
+    company_health_excellent_threshold: float = Field(default=85.0, alias="companyHealthExcellentThreshold")
+    company_health_good_threshold: float = Field(default=70.0, alias="companyHealthGoodThreshold")
+    company_health_stable_threshold: float = Field(default=50.0, alias="companyHealthStableThreshold")
+    company_health_needs_attention_threshold: float = Field(default=30.0, alias="companyHealthNeedsAttentionThreshold")
 
 
 class RiskWarning(CamelModel):
@@ -4129,6 +4142,53 @@ class CalendarState(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# v0.7 Design Bible Chapter 64 — Executive Strategic Planning & Goal
+# Management Engine (app/goals.py). Per that chapter's own Implementation
+# Notes, this is deliberately the smallest real, independently-useful
+# slice: a CEO-authored goal with one real progress metric, no ranking
+# engine, no resource allocation, no milestones yet. A goal is always
+# "reach at least targetValue" — every real metric this can track
+# (Company Health, Company Score, portfolio return, Academy level) is a
+# "higher is better" number, so a reduce-below-X goal type is not
+# fabricated here; see app/goals.py's own module docstring.
+GoalCategory = Literal["growth", "risk", "research", "trading", "operations"]
+
+# Every value here maps to one already-real, already-computed number —
+# see app/goals.py's resolve_metric_value(). No goal metric is invented;
+# each is chosen because a genuine CEO-visible number already exists to
+# track it against.
+GoalMetric = Literal[
+    "company_health_combined",
+    "company_score_overall",
+    "portfolio_return_pct",
+    "academy_level",
+]
+
+GoalStatus = Literal["active", "completed", "cancelled", "expired"]
+
+
+class Goal(CamelModel):
+    id: str
+    title: str
+    category: GoalCategory
+    target_metric: GoalMetric = Field(alias="targetMetric")
+    target_value: float = Field(alias="targetValue")
+    # The real metric reading the last time this goal was recomputed
+    # (every tick, alongside Company Health/Company Score — see
+    # app/nexus.py's tick()). Never a fabricated forecast.
+    current_value: float = Field(alias="currentValue")
+    # 0-100, current_value as a % of target_value, clamped — an honest
+    # "how far along" reading, not a time-based estimate.
+    progress_pct: float = Field(alias="progressPct")
+    created_sim_day: int = Field(alias="createdSimDay")
+    # None = no deadline; the CEO's choice, not a required field.
+    deadline_sim_day: int | None = Field(default=None, alias="deadlineSimDay")
+    status: GoalStatus = "active"
+    created_at: str = Field(alias="createdAt")
+    updated_at: str = Field(alias="updatedAt")
+    completed_at: str | None = Field(default=None, alias="completedAt")
+
+
 class GameSaveState(CamelModel):
     version: Literal["0.6"] = "0.6"
     player: EntityTransform
@@ -4400,6 +4460,10 @@ class GameSaveState(CamelModel):
     # the portfolio's own real current state, same convention as
     # `company_health`/`company_dna` — never a persisted, driftable copy.
     portfolio_intelligence: PortfolioIntelligence = Field(alias="portfolioIntelligence")
+    # v0.7 Design Bible Chapter 64 — CEO-authored company goals
+    # (app/goals.py). Capped and append-only like every other real list
+    # in this codebase — see MAX_GOALS.
+    goals: list[Goal] = Field(default_factory=list)
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(
