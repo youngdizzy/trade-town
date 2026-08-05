@@ -6226,6 +6226,70 @@ that state (correctly, per this chapter's own honesty boundary), so the
 3 backend unit tests are the more precise and more honest verification
 of this exact branch than a contrived live click-through would be.
 
+### TTOS Phase 1 — 7-section grouped navigation, Design Bible Chapter 67
+
+Chapter 67 (TradeTown Operating System) is structurally different from
+every other Volume 9 chapter: it describes navigation/UX architecture,
+not a trading department. A dedicated research pass confirmed the
+Command Center had grown to 34 real, independently-shipped tabs
+rendered as one flat, ungrouped, horizontally-scrolling button row
+(`FullCommandCenter.tsx`'s `TABS` constant), with three independently-
+built "company overview" dashboards (QuickView, OverviewPanel,
+BrainRoomHud's toolbar pull-up) and 5 more standalone overlays (Newspaper,
+Company Memory, Coach Dashboard, Brain Room HUD, Campus Map) living
+entirely outside the Command Center's own navigation.
+
+Before any code was written, a full audit and migration plan was
+presented — every existing tab, overlay, toolbar action, and
+notification inventoried; duplicate screens named explicitly; breaking
+changes flagged (renaming the 34 `Tab` identifiers would break every
+`clickTab()` call across the Playwright suite; a real Emergency Stop
+requires new backend enforcement, not a UI button; workspace docking
+requires a new frontend dependency this codebase doesn't have) — and
+approved before implementation began, per this chapter's brief's own
+explicit "stop and wait for approval on breaking changes" requirement.
+
+**What was built (Phase 1, the smallest slice from that plan):**
+`frontend/src/ui/components/CommandCenter/lib/navigation.ts`'s new
+`TAB_SECTION` record maps every one of the 34 real `Tab` identifiers to
+one of TTOS's 7 permanent sections (Headquarters/Markets/AI Workforce/
+Research/Portfolio/Operations/Archive); `groupTabsBySection()` groups
+them in that order. `FullCommandCenter.tsx`'s `<nav>` now renders 7
+labeled section rows instead of one flat row. Deliberately additive,
+not a restructure: the `TABS` array, every `Tab` string, and every
+button's visible accessible name are byte-for-byte unchanged, so
+`clickTab()` (which looks buttons up by exact accessible name) and the
+number-key 1-9 shortcut (which indexes into `TABS` positionally) both
+keep working exactly as before — the chosen alternative to a true
+identifier restructure, specifically to avoid rippling into the whole
+Playwright suite for zero real user benefit.
+
+Several tab placements are genuine judgment calls, documented directly
+in `navigation.ts`'s own module docstring: TREASURY sits under
+Headquarters rather than Portfolio because it's explicitly CEO-*personal*
+capital (`TreasuryPanel.tsx`'s own "isolated second account" framing),
+distinct from the company's own trading portfolio; OPS sits under
+Research despite its name colliding with the Operations section,
+because its real content (`KnowledgeBasePanel.tsx`'s Knowledge
+Absorption feed) is a learning-source feed, not infrastructure.
+Operations ends up real but thin — LOGS only — because Automation,
+Integrations, Infrastructure, and Broker Configuration have no backing
+feature anywhere in this codebase; per the chapter's own "no
+placeholder pages" constraint, no stub tabs were added to fill it out.
+
+**Deferred to their own approved phases, not assumed to follow
+automatically from this slice:** dashboard consolidation (the 3
+overview screens found above), universal search, the command palette,
+priority-tiered notifications, a real backend-enforced Emergency Stop
+(explicitly Chapter 66 territory, not a navigation change), the unified
+Quick Action Dock, workspace docking, and navigation analytics.
+
+**Verified**: `tsc`/`eslint`/`vite build` clean, live-verified against
+a freshly restarted dev stack (screenshot confirming all 7 section
+labels render with every original tab intact), a real assertion added
+to `commandCenter.spec.ts`'s existing 34-tab test for the 7 section
+labels, full `commandCenter.spec.ts` regression run.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

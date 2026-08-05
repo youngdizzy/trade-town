@@ -7,6 +7,36 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 67 Phase 1 — TTOS 7-section grouped navigation**
+  (`frontend/src/ui/components/CommandCenter/lib/navigation.ts`,
+  `FullCommandCenter.tsx`): before writing any code, a full audit +
+  migration plan was presented (every existing tab/overlay/toolbar/
+  notification, duplicate screens found, breaking changes flagged) and
+  approved. Implemented the smallest honest slice from that plan: the
+  34 real Command Center tabs now render grouped under TTOS's 7
+  permanent sections (Headquarters/Markets/AI Workforce/Research/
+  Portfolio/Operations/Archive) via a new `TAB_SECTION` map, instead of
+  one flat button row. Deliberately additive, not a restructure — every
+  `Tab` string identifier and button's accessible name are unchanged,
+  so `clickTab()` and the number-key 1-9 shortcut keep working exactly
+  as before across the whole Playwright suite, avoiding the wide test
+  breakage a true identifier rename would have caused. Several
+  placements are documented judgment calls (TREASURY under Headquarters
+  since it's CEO-*personal* capital, not the company's own portfolio;
+  OPS under Research despite its name colliding with the Operations
+  section). Operations is real but thin (LOGS only) — Automation,
+  Integrations, Infrastructure, and Broker Configuration have no
+  backing feature anywhere in this codebase, so no placeholder tabs
+  were added. Dashboard consolidation (3 independently-built overview
+  screens found: QuickView, OverviewPanel, BrainRoomHud's toolbar
+  pull-up), universal search, the command palette, a real Emergency
+  Stop, workspace docking, and navigation analytics are all deferred to
+  their own approved phases per the migration plan — not assumed to
+  follow automatically from this slice. `tsc`/`eslint`/`vite build`
+  clean, live-verified against the running dev stack, a real assertion
+  added to `commandCenter.spec.ts`'s existing 34-tab test for the 7
+  section labels, full `commandCenter.spec.ts` regression passing.
+
 - **Chapter 67 written — TradeTown Operating System (TTOS)**
   (`docs/DesignBible/volumes/09-departments/chapter-67-tradetown-operating-system.md`):
   researched first, per this volume's own convention. Unlike every

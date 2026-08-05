@@ -1,21 +1,23 @@
 # Chapter 67 — TradeTown Operating System (TTOS)
 
-**Status:** Chapter written — target design, researched first. This
+**Status:** Phase 1 implemented (7-section grouped navigation). This
 chapter is structurally different from every other chapter in this
 volume: it does not describe a trading/research/risk department with
 its own real backend module. It describes the *navigation and UX
-architecture* that would organize all 34 of those departments' existing
+architecture* that organizes all 34 of those departments' existing
 Command Center surfaces into one system. Research found real, working
 navigation infrastructure — a fixed Command Center overlay with two
 distinct "home" screens, a global always-visible toolbar, and a scoped
-non-blocking toast system — but none of TTOS's five defining mechanisms
-(universal search, a command palette, 7-section grouped navigation,
-dockable/saved workspaces, priority-tiered notifications) exist
-anywhere in this codebase today. See
-[Volume 9's chapter template](README.md) for what every section below
-must contain, and the Implementation Notes at the bottom for the exact
-honesty boundary between what's real today and what a future
-implementation would add.
+non-blocking toast system — and, before any code was written, a full
+migration plan was presented and approved, explicitly scoping this
+first pass down to the single smallest honest slice: grouping the
+existing 34 tabs into TTOS's 7 permanent sections, as a purely additive
+rendering-layer change with zero tab renames and zero new data
+dependencies. Universal search, the command palette, workspace docking,
+priority-tiered notifications, a real Emergency Stop, the Quick Action
+Dock, and navigation analytics all remain genuinely unbuilt — see the
+Implementation Notes at the bottom for the full phased plan and the
+exact honesty boundary for this slice.
 
 ## Executive Summary
 
@@ -82,7 +84,7 @@ Real, already-shipped navigation infrastructure this chapter does
 | Real system | What it already does | Where it lives |
 |---|---|---|
 | `CommandCenter.tsx` | Top-level fixed overlay; renders either Quick View or Full Command Center depending on `commandCenterMode` | `frontend/src/ui/components/CommandCenter/CommandCenter.tsx` |
-| `FullCommandCenter.tsx` | The 34-tab interface — one flat, horizontally-scrolling `<nav>`, no grouping, no sections; a single `useState<Tab>` shows exactly one tab at a time (no split view) | `frontend/src/ui/components/CommandCenter/FullCommandCenter.tsx` (`TABS` constant, lines 68-103) |
+| `FullCommandCenter.tsx` | The 34-tab interface — now grouped into 7 labeled TTOS section rows (`lib/navigation.ts`'s `groupTabsBySection()`, Phase 1); a single `useState<Tab>` still shows exactly one tab at a time (no split view) | `frontend/src/ui/components/CommandCenter/FullCommandCenter.tsx` (`TABS` constant), `frontend/src/ui/components/CommandCenter/lib/navigation.ts` (`TAB_SECTION`) |
 | `QuickView.tsx` | A second, separate "home" screen shown by default on Tab-press — Portfolio, Market Regime, Top Opportunity, Risk Alerts, System Recommendation | `frontend/src/ui/components/CommandCenter/QuickView.tsx` |
 | `OverviewPanel.tsx` | A third, distinct "home"-like screen — the default tab inside the Full Command Center, its own doc comment calling itself "the landing tab" | `frontend/src/ui/components/CommandCenter/panels/OverviewPanel.tsx` |
 | `BottomToolbar.tsx` | The one real always-visible global control surface: Save/Load/Memory/Coach/Dashboard/Command/Settings/game-level Pause, plus the Work Mode toggle and save-status indicator | `frontend/src/ui/components/BottomToolbar.tsx` |
@@ -161,7 +163,7 @@ risk output to, because it never produces any.
 
 | Control | Status |
 |---|---|
-| Navigation grouping (7 sections) | **Not built** — all 34 tabs render flat today, no CEO-facing grouping or collapsing exists. |
+| Navigation grouping (7 sections) | **Built (Phase 1)** — `lib/navigation.ts`'s `TAB_SECTION` map and `groupTabsBySection()` group all 34 tabs under 7 labeled section rows (Headquarters/Markets/AI Workforce/Research/Portfolio/Operations/Archive) in the Full Command Center's nav. Not CEO-customizable — the mapping is fixed in code, same as every other real navigation structure in this codebase. |
 | Universal Search | **Not built** — the only search anywhere in this codebase is two narrow, already-loaded-state client-side filters (`CompanyMemory.tsx`'s memory search, `KnowledgeGraphView.tsx`'s node search); neither is global, and no backend search endpoint is ever called from the frontend despite two real backend search functions existing (`app/memory.py`'s `search()`, `app/knowledge.py`'s `search_knowledge()`). |
 | Command Palette | **Not built** — no "type a command, press Enter" UI exists anywhere. |
 | Workspace layouts (dockable/saved) | **Not built** — the Command Center is one fixed, non-resizable, non-dockable overlay; `frontend/package.json` carries no windowing/docking library of any kind. |
@@ -281,34 +283,71 @@ split confusingly across two components (QuickView, OverviewPanel).
 None of this needed to be rebuilt, and this chapter does not claim
 otherwise.
 
+**What was built (Phase 1 — the smallest honest slice, per the
+approved migration plan):** `frontend/src/ui/components/CommandCenter/lib/navigation.ts`'s
+`TAB_SECTION` map assigns every one of the 34 real `Tab` identifiers to
+exactly one of TTOS's 7 sections, and `groupTabsBySection()` groups them
+in that order for rendering. `FullCommandCenter.tsx`'s nav now renders
+7 labeled section rows instead of one flat button row. Deliberately
+**not** a tab-identifier restructure: every `Tab` string and every
+button's visible accessible name are byte-for-byte unchanged, so
+`frontend/tests/helpers.ts`'s `clickTab()` and the number-key 1-9
+shortcut (which indexes into the original `TABS` array positionally)
+both continue to work exactly as before across the whole Playwright
+suite — the migration plan's explicit alternative to a true identifier
+restructure, chosen specifically to avoid that breakage. Several
+placements are real judgment calls, documented directly in
+`navigation.ts`'s own module docstring rather than silently baked into
+JSX: TREASURY under Headquarters (CEO-personal capital, not the
+company's own portfolio); OPS under Research (a learning-source feed,
+despite its name colliding with the Operations section); DISCIPLINE and
+PERFORMANCE each plausibly fitting two sections. Operations is real but
+thin — LOGS only — because Automation, Integrations, Infrastructure,
+and Broker Configuration have no backing feature anywhere in this
+codebase; per this chapter's own "no placeholder pages" constraint, no
+stub tabs were added to fill it out.
+
 **What's genuinely not built, and what a real future implementation
 would need to design first (per Appendix G's Permanent Development
-Policy — design before code):** the 7-section grouped navigation and
-its own explicit tab-to-section mapping; a real universal search (most
-honestly built first as a client-side index over already-loaded state,
-the same pattern `CompanyMemory.tsx` already established, before any
-new backend search endpoint is considered); a command palette; any
-dockable/resizable/saved-layout workspace system (this codebase has no
-windowing library today — adopting one is a real, non-trivial
-dependency decision this chapter does not make unilaterally); a
-priority-tiered notification center distinct from the existing toast
-system; a single unified Quick Action bar (which would need Chapter 66
-to first build the actual Emergency Stop / manual pause-trading control
-this chapter would only ever surface, never own); CEO-facing themes and
-widget customization; and any navigation/UX telemetry to honestly back
-the KPIs and Reports this chapter names. Also genuinely new: the
-"declare Navigation Location / Quick Actions / Search Tags /
-Notifications / Dashboard Widgets" integration-contract requirement
-this chapter's brief proposes for all future chapters — checked
-directly against `README.md`'s current 20-item chapter template, and
-confirmed this is a real, new addition (only "Dependencies," item #16,
-already exists under that exact name today). The smallest honest first
-slice, if implementation is requested, is almost certainly the 7-section
-grouped navigation itself — a pure reorganization of the existing 34
-tabs with zero new data dependencies — matching this Design Bible's own
-repeated "smallest independently-useful slice first" convention (see
-Chapters 61, 63, 64, and 65, all of which started with the smallest
-real, checkable piece rather than the full brief at once). Universal
-Search, the Command Palette, and Workspace Management are each
-substantially larger, separable slices that should not be assumed to
-follow automatically from an "implement" on this chapter alone.
+Policy — design before code), per the approved migration plan's
+remaining phases:**
+
+- **Phase 2** — a real universal search (most honestly built first as a
+  client-side index over already-loaded state, the same pattern
+  `CompanyMemory.tsx` already established, before any new backend
+  search endpoint is considered) and a command palette (Cmd/Ctrl+K)
+  over that same index.
+- **Phase 3** — a priority-tiered notification center distinct from the
+  existing toast system, built on the real precedent
+  `ExecutiveVoting.tsx`'s trade-proposal modal already establishes for
+  an interrupting "Critical" tier.
+- **Phase 4** — a real, CEO-triggerable Emergency Stop. This is
+  explicitly *not* a navigation-only change: "freeze AI trading while
+  keeping research active" requires new backend enforcement (Chapter 66
+  territory — `pause_trading` today is automatic-only, never
+  CEO-triggerable) and whether trading/research are even cleanly
+  separable at the scheduling level in `app/nexus.py` is unverified.
+  TTOS would only ever surface the button, never own the underlying
+  pause authority. The unified Quick Action Dock depends on this
+  landing first.
+- **Phase 5** — dockable/resizable/saved-layout workspaces (this
+  codebase has no windowing library today — adopting one is a real,
+  non-trivial dependency decision not made unilaterally) and navigation
+  analytics (requires new client-side event logging, and a real backend
+  persistence path if it's meant to survive reloads, per this project's
+  own no-fabricated-numbers rule).
+
+Also still genuinely new and unbuilt: consolidating the three
+independently-built "company overview" dashboards (QuickView,
+OverviewPanel, BrainRoomHud's toolbar-triggered pull-up) into one
+Executive Dashboard, folding the 5 standalone overlays (Newspaper,
+Company Memory, Coach Dashboard, Brain Room HUD, Campus Map) into TTOS
+navigation, renaming "ACADEMY"/"OPS" to resolve their naming collisions,
+CEO-facing themes and widget customization, and the "declare Navigation
+Location / Quick Actions / Search Tags / Notifications / Dashboard
+Widgets" integration-contract requirement this chapter's brief proposes
+for all future chapters (checked directly against `README.md`'s current
+20-item chapter template — confirmed a real, new addition; only
+"Dependencies," item #16, already exists under that exact name today).
+None of these were assumed to follow automatically from Phase 1 —
+each remains its own separable slice awaiting its own go-ahead.
