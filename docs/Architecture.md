@@ -6111,10 +6111,11 @@ latter already computing a real `MarketQualityScore.confidence_pct`
 (a genuine Regime Confidence Score) and real regime-vs-strategy
 evidence matching via `app/strategy_lab.py`'s `StrategyRegimeTestReport`.
 Neither engine is CEO-configurable, and neither reconciles with the
-other. The chapter's own scoped real gap: Adaptive Strategy Profiles
-per regime and an Automatic Adaptation mechanism — nothing today lets a
-detected regime move any real `RiskLimits` lever. Not yet implemented
-(chapter written, target design).
+other. The chapter's smallest honest slice — reconciling the two into
+one CEO-facing read — was implemented this pass; see below. Adaptive
+Strategy Profiles per regime and an Automatic Adaptation mechanism
+remain not yet built — nothing today lets a detected regime move any
+real `RiskLimits` lever.
 
 Chapter 66 (Institutional Safety, Capital Protection & Failsafe
 Framework) found a real, live, mechanically-enforced daily circuit
@@ -6124,6 +6125,52 @@ Sizing's cash-reserve floor, Opportunity Gatekeeper's pre-proposal
 veto, Trade Gatekeeper's eight-check final authority) that already
 functions as the brief's "Trade Quality Override." One precise gap was
 implemented this pass — see below.
+
+### Regime Reconciliation — Design Bible Chapter 65
+
+`app/regime_reconciliation.py`'s `compute_regime_reconciliation()`
+closes Chapter 65's own scoped gap: the two real regime engines never
+cross-referenced each other, and neither had a CEO-facing confidence
+read to act on. The new function takes the current
+`MarketEnvironmentState` and `MarketIntelligenceState` and returns an
+`agreement` (`aligned`/`diverging`) by checking whether the
+intelligence engine's live regime falls in the environment regime's
+bucket of the existing `REGIME_CONSISTENCY_MAP` — the same mapping
+`app/market_intelligence.py`'s own regime-learning loop already used
+internally, promoted from a private `_REGIME_CONSISTENCY_MAP` to a
+public constant rather than duplicated. It also returns a read-only
+`posture` recommendation (`cautious`/`normal`/`opportunistic`): the
+`avoid_trading` and `poor` `MarketQualityScore.tier`s are always
+cautious regardless of confidence; `excellent`/`good` tiers become
+`opportunistic` only once `confidence_pct` clears a fixed
+`OPPORTUNISTIC_MIN_CONFIDENCE_PCT = 70.0` threshold; everything else
+stays `normal`. A plain-language `rationale` names both engines' real
+labels and the real quality tier, never a fabricated sentence.
+
+Exposed via new `GET /api/market/regime-reconciliation`
+(`app/routers/market.py`), computed fresh from `game_state.snapshot()`
+on every request — never persisted as a second driftable copy of
+either source engine's own state, matching this codebase's established
+convention (`GoalPriority`/`GoalAllocation`, Chapter 63's Benchmarking).
+Nothing writes the posture to any `RiskLimits` field — recommend-only,
+the same boundary Chapter 64's Resource Allocation established.
+
+The Command Center's Company tab now shows a "Regime Reconciliation"
+card (`CompanyPanel.tsx`) directly above the existing Market
+Environment card: both engines' regime labels side by side, an
+agreement pill, a posture pill, the real confidence percentage, and the
+rationale — fetched via a new `getRegimeReconciliation()` client method,
+re-fetched whenever `marketEnvironment` changes. 8 new backend tests
+(including a completeness guard over every real `MarketIntelligenceRegime`
+value via `typing.get_args`), `mypy`/`ruff` clean, full backend suite
+1110/1110 passing, `tsc`/`eslint`/`vite build` clean, a real assertion
+added to `commandCenter.spec.ts`'s existing Company tab test, and live
+verification against the running dev stack confirming the card renders
+real reconciled data. The full `commandCenter.spec.ts` regression run
+had one unrelated failure (a movement-key test, line 82) that
+reproduces identically against the pre-Chapter-65 baseline with none of
+this pass's changes present — confirmed pre-existing flakiness, not a
+regression.
 
 ### AI Consensus Safety enforcement — Design Bible Chapter 66
 

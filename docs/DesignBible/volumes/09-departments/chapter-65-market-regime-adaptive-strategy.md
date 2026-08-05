@@ -1,13 +1,17 @@
 # Chapter 65 — Market Regime Detection & Adaptive Strategy Engine
 
-**Status:** Chapter written — target design, researched first. Unlike a
-blank-slate chapter, this one describes a real, substantial overlap: two
-independent, already-real, indicator-driven regime classifiers exist in
-this codebase today, each with a historical timeline, and one of them
-already computes a genuine Regime Confidence Score. What does not exist
-anywhere is the layer this brief actually asks for — CEO-configurable
-Adaptive Strategy Profiles per regime, and an Automatic Adaptation
-mechanism that lets a detected regime move any real company lever. See
+**Status:** One real slice implemented (backend + Command Center card).
+Unlike a blank-slate chapter, this one describes a real, substantial
+overlap: two independent, already-real, indicator-driven regime
+classifiers exist in this codebase today, each with a historical
+timeline, and one of them already computes a genuine Regime Confidence
+Score. This chapter's smallest honest slice — reconciling the two into
+one CEO-facing read, plus a read-only posture recommendation — is now
+real, via `GET /api/market/regime-reconciliation` and the Company tab's
+new Regime Reconciliation card. What still does not exist is the rest of
+the brief's ask — CEO-configurable Adaptive Strategy Profiles per
+regime, and an Automatic Adaptation mechanism that lets a detected
+regime move any real company lever. See
 [Volume 9's chapter template](README.md) for what every section below
 must contain, and the Implementation Notes at the bottom for the exact
 honesty boundary between what's real today and what a future
@@ -82,12 +86,17 @@ at review time only. `app/gatekeeper.py` and
 == "avoid_trading"` as a binary pass/fail — real, but binary, never
 graduated by confidence.
 
-A future implementation of this chapter would own: a reconciliation
-read (one canonical regime + confidence, built from the two real
-sources above, never a third invented classifier), `AdaptiveStrategyProfile`
-schemas per regime, and the automatic-adaptation write path (which
-would still only ever call the *existing* `POST /api/risk-limits`
-endpoint — never a new, parallel write path to `RiskLimits`).
+**Now real:** a reconciliation read (`app/regime_reconciliation.py`'s
+`compute_regime_reconciliation()`) — one canonical `agreement`
+(aligned/diverging) and `posture` (cautious/normal/opportunistic) read,
+built entirely from the two real sources above via the existing
+`REGIME_CONSISTENCY_MAP` (promoted from `market_intelligence.py`'s
+private `_REGIME_CONSISTENCY_MAP`, never a third invented classifier),
+computed fresh per request and never persisted. **Still not built:**
+`AdaptiveStrategyProfile` schemas per regime, and the automatic-adaptation
+write path (which would still only ever call the *existing*
+`POST /api/risk-limits` endpoint — never a new, parallel write path to
+`RiskLimits`).
 
 ## Inputs
 
@@ -108,10 +117,13 @@ labeled as *proxies*, not the real thing the brief names).
 
 **Real today:** `MarketEnvironmentState` (current regime + timeline),
 `MarketIntelligenceState` (regime, `MarketQualityScore`,
-`StrategyMatch`), `StrategyRegimeTestReport`. **Not built:** a
-reconciled single regime+confidence read, an `AdaptiveStrategyProfile`
-object per regime, any automatically-applied change to a real
-`RiskLimits` field.
+`StrategyMatch`), `StrategyRegimeTestReport`, and now
+`RegimeReconciliation` (`environmentRegime`/`environmentLabel`,
+`intelligenceRegime`/`intelligenceLabel`, `qualityTier`,
+`confidencePct`, `agreement`, `posture`, a plain-language `rationale`)
+via `GET /api/market/regime-reconciliation`. **Not built:** an
+`AdaptiveStrategyProfile` object per regime, any automatically-applied
+change to a real `RiskLimits` field.
 
 ## Internal Workflow
 
@@ -165,8 +177,8 @@ path this chapter owns).
 | Control | Status |
 |---|---|
 | Regime Sensitivity | **Not built** — neither existing regime engine exposes a threshold knob. |
-| Minimum Confidence floor | **Not built** — `MarketQualityScore.confidence_pct` is real, read-only telemetry; no CEO-set floor exists to gate on it. |
-| Automatic Adaptation (toggle) | **Not built** — nothing in this codebase auto-adjusts any real lever from a detected regime today; `SettingsState.company_priority` is the closest existing "profile" concept, and it is CEO-set only, with zero wiring to either regime engine. |
+| Minimum Confidence floor | **Not built as a CEO-set control** — `MarketQualityScore.confidence_pct` now feeds a fixed, code-level `OPPORTUNISTIC_MIN_CONFIDENCE_PCT = 70.0` threshold inside `compute_regime_reconciliation()`'s posture read; no CEO-facing floor exists to change it. |
+| Automatic Adaptation (toggle) | **Not built** — nothing in this codebase auto-adjusts any real lever from a detected regime today; the new posture recommendation is read-only, never applied to any `RiskLimits` field automatically. `SettingsState.company_priority` remains the closest existing "profile" concept, still CEO-set only. |
 | Strategy Profiles (per-regime editor) | **Not built.** |
 | Risk Multipliers (per-regime) | **Not built** — the one existing multiplier concept, `PRIORITY_RISK_TIGHTEN_FACTOR = 0.8` for `company_priority == "risk_reduction"`, is manually chosen by the CEO, not regime-driven. |
 | Manual Override | **Already real in spirit** — the CEO's existing Operating Mode (learning/assisted/executive) and every `RiskLimits` field remain the CEO's own manual controls regardless of what any future regime recommendation says; nothing in this codebase can override a CEO's manual `POST /api/risk-limits` call. |
@@ -281,20 +293,28 @@ already-real Command Center surfaces (COMPANY tab's Market Environment
 card, the dedicated MARKETINTEL tab) showing all of it. None of this
 needed to be rebuilt, and this chapter does not claim otherwise.
 
-**What's genuinely not built, and what a real future implementation
-would need to design first (per Appendix G's Permanent Development
-Policy — design before code):** a reconciliation read combining both
-engines into one CEO-facing regime + confidence (the two currently use
-different names for overlapping concepts and are never cross-referenced);
-an `AdaptiveStrategyProfile` object per regime; an Automatic Adaptation
-toggle and its own real, transparent, bounded formula for translating
-regime + confidence into a recommended change to already-CEO-configurable
-`RiskLimits` fields; and CEO Controls for sensitivity, minimum
-confidence, per-regime profiles, and risk multipliers. The smallest
-honest first slice, if implementation is requested, is almost certainly
-the reconciliation read plus a read-only recommendation (no automatic
-write) — matching this Design Bible's own repeated "smallest
-independently-useful slice first" convention (see Chapters 61's Pattern
-Detection Sensitivity, 63's tier thresholds, and 64's Goal system, all
-of which started with the smallest real, checkable piece rather than
-the full brief at once).
+**What was built (the smallest honest first slice):**
+`app/regime_reconciliation.py`'s `compute_regime_reconciliation()`
+combines `MarketEnvironmentState` and `MarketIntelligenceState` into one
+`RegimeReconciliation` read — `agreement` (`aligned`/`diverging`,
+computed by checking the intelligence engine's regime against the
+existing `REGIME_CONSISTENCY_MAP`, promoted from
+`market_intelligence.py`'s private `_REGIME_CONSISTENCY_MAP` rather than
+duplicated) and `posture` (`cautious`/`normal`/`opportunistic`, derived
+from `MarketQualityScore.tier` and `confidence_pct` against a fixed
+`OPPORTUNISTIC_MIN_CONFIDENCE_PCT` threshold — `avoid_trading`/`poor`
+tiers are always cautious regardless of confidence). Exposed via
+`GET /api/market/regime-reconciliation`, computed fresh per request,
+never persisted as a second driftable copy. Surfaced on the Command
+Center's Company tab as a new "Regime Reconciliation" card, above the
+existing Market Environment card. The posture is a read-only
+recommendation only — nothing writes it to any `RiskLimits` field.
+
+**What's still genuinely not built, and what a real future
+implementation would need to design first (per Appendix G's Permanent
+Development Policy — design before code):** an `AdaptiveStrategyProfile`
+object per regime; an Automatic Adaptation toggle and its own real,
+transparent, bounded formula for translating regime + confidence into a
+recommended change to already-CEO-configurable `RiskLimits` fields; and
+CEO Controls for sensitivity, a CEO-facing minimum-confidence floor,
+per-regime profiles, and risk multipliers.

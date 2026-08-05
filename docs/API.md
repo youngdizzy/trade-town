@@ -1288,6 +1288,24 @@ current real goals and sim day (`app/goals.py`'s
 `compute_resource_allocation()`, itself built directly on
 `rank_goals_by_priority()`) — never a second persisted copy.
 
+### `GET /api/market/regime-reconciliation`
+
+Design Bible Chapter 65's Regime Reconciliation — read-only, no body.
+Returns one `RegimeReconciliation`: `environmentRegime`/`environmentLabel`
+(from `app/market_environment.py`'s 5-way classifier),
+`intelligenceRegime`/`intelligenceLabel`/`qualityTier`/`confidencePct`
+(from `app/market_intelligence.py`'s 13-way classifier and its
+`MarketQualityScore`), `agreement` (`"aligned"` or `"diverging"` — is
+the intelligence engine's live regime a real member of the environment
+regime's bucket in `REGIME_CONSISTENCY_MAP`), `posture`
+(`"cautious"`/`"normal"`/`"opportunistic"`, a read-only recommendation
+derived from `qualityTier` + `confidencePct` — never written to
+`RiskLimits`), and a plain-language `rationale`. Computed fresh per
+request from the current real `MarketEnvironmentState`/
+`MarketIntelligenceState` (`app/regime_reconciliation.py`'s
+`compute_regime_reconciliation()`) — never a second persisted copy, the
+same convention as `GET /api/goals/priorities`.
+
 ### `POST /api/foundational-mentors/*`
 
 v0.7 Feature 49 (Phase 3, revised) — the Foundational Mentor Program /

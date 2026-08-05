@@ -23,6 +23,31 @@ development milestones, not semver releases.
   `pause_trading` disagreement signal, weekly/monthly-scoped limits, and
   a CEO manual override control.
 
+- **Chapter 65 backend + frontend — Regime Reconciliation** (`app/schemas.py`,
+  `app/market_intelligence.py`, `app/regime_reconciliation.py`,
+  `app/routers/market.py`, `frontend/src/types.ts`, `frontend/src/net/api.ts`,
+  `CompanyPanel.tsx`): the smallest honest first slice Chapter 65's own
+  research scoped — reconciling the two real, independent regime
+  classifiers into one CEO-facing read. `compute_regime_reconciliation()`
+  combines `MarketEnvironmentState` and `MarketIntelligenceState` into an
+  `agreement` (aligned/diverging, via the existing regime-consistency
+  mapping — promoted from `market_intelligence.py`'s private
+  `_REGIME_CONSISTENCY_MAP` to a public `REGIME_CONSISTENCY_MAP` rather
+  than duplicated) and a read-only `posture` recommendation
+  (cautious/normal/opportunistic, from `MarketQualityScore.tier` +
+  `confidence_pct` against a fixed `OPPORTUNISTIC_MIN_CONFIDENCE_PCT`
+  threshold — `avoid_trading`/`poor` tiers are always cautious regardless
+  of confidence). Exposed via new `GET /api/market/regime-reconciliation`,
+  computed fresh per request, never persisted. The Company tab now shows
+  a "Regime Reconciliation" card above Market Environment. Nothing writes
+  the posture to any `RiskLimits` field — recommend-only, matching
+  Chapter 64's Resource Allocation precedent. 8 new backend tests,
+  `mypy`/`ruff` clean, full backend suite 1110/1110 passing,
+  `tsc`/`eslint`/`vite build` clean, live-verified against the running
+  dev stack, full `commandCenter.spec.ts` regression passing (one
+  unrelated pre-existing flaky movement-key test, confirmed by
+  reproducing it identically against the pre-Chapter-65 baseline).
+
 - **Chapter 66 backend — AI Consensus Safety enforcement** (`app/nexus.py`):
   the one precise, high-value gap Chapter 66's own research found —
   `ExecutiveRecommendation.action == "pause_trading"` (2+ departments
