@@ -164,6 +164,21 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         # v0.7 Feature 33 — already capped (MAX_TREASURY_TRANSACTIONS/
         # MAX_TREASURY_MONTHLY_REPORTS) like questionArchive above.
         "treasury": state.treasury.model_dump(by_alias=True),
+        # Design Bible Chapter 69 Part 1 — Multi-Account & Fund Management.
+        # BUG FIX: these two fields existed on GameSaveState and were
+        # already consumed by the frontend's WS message type/NexusManager
+        # (see frontend/src/net/socket.ts, applyServerUpdate) but were
+        # never actually included in this broadcast payload — every tick
+        # silently overwrote the client's real `accounts` with
+        # `undefined`, crashing TreasuryPanel's AccountsSection
+        # (`accounts.length` on undefined) the moment any tick landed
+        # after the initial GET /api/load. REST responses from the
+        # account endpoints (create/allocate/deallocate/close/switch)
+        # always returned the real list, which is why the panel could
+        # briefly look correct immediately after an action, only to go
+        # blank again on the very next tick.
+        "accounts": [a.model_dump(by_alias=True) for a in state.accounts],
+        "activeAccountId": state.active_account_id,
         "calendar": state.calendar.model_dump(by_alias=True),
         # v0.7 — the Advanced Quantitative Research Division. archive/reviews
         # are already capped (MAX_ARCHIVE/MAX_REVIEWS) like questionArchive above.
