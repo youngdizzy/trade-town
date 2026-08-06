@@ -2,27 +2,30 @@
 
 **Status:** Phase 1 (7-section grouped navigation) and Part 3's own
 primary objective (a real Global Emergency Stop) are both implemented,
-plus two more Part 3 slices: real weekly/monthly loss circuit breakers
-(Safety Settings core) and a real Global Status Bar (Risk/Company
-Health/Portfolio/Market/Automation/Deployed/Broker). This chapter is
-structurally different from every other chapter in this volume: it does
-not describe a trading/research/risk department with its own real
-backend module. It describes the *navigation and UX architecture* that
-organizes all 34 of those departments' existing Command Center surfaces
-into one system, plus (as of Part 3) several genuinely new safety
-controls this Design Bible's own research found had no real backing
-anywhere: a CEO-triggerable halt on all new trading, two more real
-loss-limit circuit breakers beyond the pre-existing daily one, and a
-persistent global strip surfacing real risk/health/deployment status
-from every scene. Before any Part 3 code was written, a research pass
-confirmed the rest of that brief — the Quick Action Dock, a
-priority-tiered Alert Center, and several command-palette examples (a
-specific broker name, "Swing/Day Trading Mode") — has no real backing
-feature anywhere in this codebase, so everything beyond Emergency Stop,
-the weekly/monthly loss limits, and the Global Status Bar remains
-genuinely unbuilt. Universal search, the command palette itself,
-workspace docking, priority-tiered notifications, and navigation
-analytics all remain genuinely unbuilt — see the Implementation Notes
+plus three more Part 3 slices: real weekly/monthly loss circuit
+breakers (Safety Settings core), a real Global Status Bar (Risk/Company
+Health/Portfolio/Market/Automation/Deployed/Broker), and a real Quick
+Action Dock (Automation Mode cycling + quick-jumps to RISK/COMPANY/
+PORTFOLIO/EXECUTIVE). This chapter is structurally different from every
+other chapter in this volume: it does not describe a trading/research/
+risk department with its own real backend module. It describes the
+*navigation and UX architecture* that organizes all 34 of those
+departments' existing Command Center surfaces into one system, plus (as
+of Part 3) several genuinely new safety and navigation controls this
+Design Bible's own research found had no real backing anywhere: a
+CEO-triggerable halt on all new trading, two more real loss-limit
+circuit breakers beyond the pre-existing daily one, a persistent global
+strip surfacing real risk/health/deployment status from every scene,
+and a global dock that makes Automation Mode and tab quick-jumps
+reachable without opening the Full Command Center first. Before any
+Part 3 code was written, a research pass confirmed the rest of that
+brief — a priority-tiered Alert Center and several command-palette
+examples (a specific broker name, "Swing/Day Trading Mode") — has no
+real backing feature anywhere in this codebase, so everything beyond
+those four slices remains genuinely unbuilt. Universal search, the
+command palette itself, workspace docking, priority-tiered
+notifications, and navigation analytics all remain genuinely unbuilt —
+see the Implementation Notes
 at the bottom for the full phased plan and the exact honesty boundary
 for each slice.
 
@@ -178,7 +181,7 @@ risk output to, because it never produces any.
 | Emergency Stop | **Built (Part 3).** A permanent, always-visible button in `TopStatusBar.tsx`, never inside a Command Center tab. Requires confirmation (`ConfirmDialog.tsx`, the first reusable confirm-before-you-act component in this codebase). Calls `POST /api/emergency-stop/activate`/`/resume`. Blocks new proposal generation, pending-proposal auto-resolution in Assisted/Executive mode, and the CEO's own manual buy/sell — only "wait" is still allowed. Only the CEO can resume; no automatic timeout. |
 | Safety Settings — weekly/monthly loss limits | **Built (Part 3, core slice).** `RiskLimits.maxWeeklyLossPct`/`maxMonthlyLossPct` (defaults 10%/15%, between the pre-existing daily 5% and lifetime drawdown 20%), enforced by `app/risk_engine.py`'s `weekly_realized_pnl_pct()`/`monthly_realized_pnl_pct()` inside `evaluate_sentinel_risk()` — the same real hard-reject path the existing daily loss limit already used, just scoped to the current sim week (7 days) / sim month (30 days) instead of today. CEO-editable via `POST /api/risk-limits` and a new "Safety & Capital Protection" block in the RISK tab (`RiskPanel.tsx`), which also surfaces live Emergency Stop status. Not built in this slice: Black Swan Protection, Broker Failover, Emergency Contacts, recovery procedures (see Safety Systems below). |
 | Global Status Bar | **Built (Part 3).** `GlobalStatusBar.tsx`, a second row under `TopStatusBar.tsx`, visible from every scene: real Risk Level (reuses `lib/derive.ts`'s own `riskLevel()`), Company Health (overall score + tier), Portfolio Heat (honestly labeled by what it measures, not renamed to "Health"), Market Regime (`marketEnvironment`'s real label), Automation (the real Operating Mode), Capital Deployed % of equity, and an honestly-static "SIMULATED" Broker Status (no live broker integration exists — see `app/broker.py`). Connection status stays in `TopStatusBar.tsx`'s own dot, not duplicated. |
-| Quick Action bar (Pause Trading / Resume, unified) | **Not built as a unified surface.** The real global toolbar (`BottomToolbar.tsx`) exposes Work Mode and a game-level Pause/Resume (the sim clock, not trading specifically), and TopStatusBar now exposes Emergency Stop — but these live in two separate global surfaces, not one unified dock. Operating Mode (Learning/Assisted/Executive) and Time Controls are real but still buried inside the COMPANY tab, not global. |
+| Quick Action Dock | **Built (Part 3), partially unified.** `QuickActionDock.tsx`: Automation Mode (Operating Mode) can now be cycled from anywhere — previously reachable only inside the COMPANY tab — and four quick-jump buttons open the Command Center directly on RISK/COMPANY/PORTFOLIO/EXECUTIVE instead of always defaulting to OVERVIEW (new `pendingCommandCenterTab` gameStore field + `"ui:commandCenterJump"` event, mirroring the existing `pendingInspectDecision` pattern). Pause/Resume+Work Mode (`BottomToolbar.tsx`) and Emergency Stop (`TopStatusBar.tsx`) are deliberately left in their existing real, global, always-visible locations rather than physically merged into this dock — reuse over duplication, and merging three independently-tested components for a cosmetic-only change risked the same layout regressions this chapter's Part 3 already hit twice with `TopStatusBar.tsx`. Time Controls remain buried inside the COMPANY tab, not global. |
 | Themes | **Not built as a CEO control** — the dark cyberpunk visual language is real and consistent (see Chapter 65/66's own Command Center surfacing), but it is fixed in code, not a CEO-selectable option. |
 | Widget/dashboard customization | **Not built** — OverviewPanel and QuickView both show a fixed, code-defined set of cards; no CEO-facing widget picker or layout editor exists. |
 
@@ -418,6 +421,38 @@ remaining phases:**
   `.first()` in both places, the same fix pattern this session already
   used for the "RESUME TRADING" collision in Part 3's Emergency Stop
   slice, never by removing the real duplicate content itself.
+- **Phase 4d — built (Part 3), partially unified.** The Quick Action
+  Dock: `QuickActionDock.tsx`, always visible from every scene. Two
+  genuinely new global controls: Automation Mode (Operating Mode) can
+  now be cycled with one click from anywhere, previously reachable only
+  by opening the Full Command Center and clicking into COMPANY; and four
+  quick-jump buttons open the Command Center directly on RISK/COMPANY/
+  PORTFOLIO/EXECUTIVE instead of always defaulting to OVERVIEW. The
+  quick-jump plumbing (`pendingCommandCenterTab` on gameStore, a new
+  `"ui:commandCenterJump"` EventBus event, a consuming effect in
+  `FullCommandCenter.tsx`) mirrors the existing `pendingInspectDecision`
+  pattern the Trade Outcome Banner's "View Trade" button already
+  established, rather than inventing a second mechanism for the same
+  "request a jump, the Command Center consumes and clears it" shape.
+  Deliberately **not** a full physical consolidation: Pause/Resume+Work
+  Mode (`BottomToolbar.tsx`) and Emergency Stop (`TopStatusBar.tsx`) stay
+  in their existing real, global, always-visible locations rather than
+  being duplicated into this dock — this codebase's own "reuse, don't
+  duplicate" convention, and merging three independently-tested
+  components into one for a cosmetic-only change risked the exact
+  layout regressions this chapter's own Part 3 already hit twice with
+  `TopStatusBar.tsx`. Because this dock (like the Global Status Bar
+  above) is always mounted rather than conditionally rendered per tab,
+  its first draft's plain labels ("LEARNING", "Risk", "Company Health")
+  created three real strict-mode collisions against already-correct
+  content elsewhere in the 34-tab Command Center (CompanyPanel's own
+  Operating Mode buttons, RiskPanel's own heading, CompanyPanel's own
+  "Company Health" label) — fixed at the source by giving the dock
+  distinct visible labels ("→ Risk", not bare "Risk") and an
+  `aria-label`-based accessible name for the mode-cycle button, rather
+  than patching every downstream test, since a generic label on an
+  always-mounted global surface was always going to keep colliding with
+  real content somewhere in a 34-tab app.
 - **Phase 5** — dockable/resizable/saved-layout workspaces (this
   codebase has no windowing library today — adopting one is a real,
   non-trivial dependency decision not made unilaterally) and navigation
@@ -443,11 +478,13 @@ each remains its own separable slice awaiting its own go-ahead.
 **Part 3's own remaining scope, still not implemented:** Black Swan
 Protection, Broker Failover, Emergency Contacts, and recovery
 procedures all genuinely don't exist and are not fabricated (weekly/
-monthly loss limits and the global status bar — the rest of the
-original Safety Settings/status-bar scope — are now built, per Phases
-4b/4c above); the unified Quick Action Dock; a priority-tiered
-Executive Alert Center; and Command Palette expansion — the palette
-itself remains Phase 2's
+monthly loss limits, the global status bar, and Automation Mode
+cycling + tab quick-jumps — the rest of the original Safety Settings/
+status-bar/Quick Action Dock scope — are now built, per Phases 4b/4c/4d
+above; the Dock is deliberately *partially*, not fully, unified — see
+4d's own note on why Pause/Resume/Emergency Stop weren't physically
+merged into it); a priority-tiered Executive Alert Center; and Command
+Palette expansion — the palette itself remains Phase 2's
 own unbuilt scope, and two of the brief's own example commands have no
 real destination to open at all: "Open Charles Schwab" (confirmed zero
 real broker integration exists anywhere — `app/broker.py`'s own module

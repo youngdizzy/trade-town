@@ -104,6 +104,37 @@ development milestones, not semver releases.
   movement-key test failed both times, plus one live-backend-flakiness
   TREASURY failure confirmed to pass standalone).
 
+- **Chapter 67 Part 3 — TTOS real Quick Action Dock**
+  (`frontend/src/ui/components/QuickActionDock.tsx`, `EventBus.ts`,
+  `state/gameStore.ts`, `CommandCenter/FullCommandCenter.tsx`): two
+  genuinely new global controls — Automation Mode can now be cycled
+  from anywhere (previously reachable only inside the COMPANY tab), and
+  four quick-jump buttons open the Command Center directly on
+  RISK/COMPANY/PORTFOLIO/EXECUTIVE instead of always defaulting to
+  OVERVIEW. New `pendingCommandCenterTab` gameStore field +
+  `"ui:commandCenterJump"` EventBus event mirror the existing
+  `pendingInspectDecision`/`"trade:inspect"` pattern the Trade Outcome
+  Banner already established, rather than inventing a second mechanism
+  for the same shape. Deliberately not a full physical consolidation:
+  Pause/Resume+Work Mode (`BottomToolbar.tsx`) and Emergency Stop
+  (`TopStatusBar.tsx`) stay in their existing real, global,
+  always-visible locations rather than being duplicated into this dock
+  — reuse over duplication, and merging three independently-tested
+  components for a cosmetic-only change risked the same layout
+  regressions this chapter's own Part 3 already hit twice with
+  `TopStatusBar.tsx`. Because this dock is always mounted (like
+  GlobalStatusBar), its first draft's plain labels ("LEARNING", "Risk",
+  "Company Health") caused three real strict-mode collisions against
+  already-correct content elsewhere in the 34-tab Command Center —
+  fixed at the source with distinct visible labels ("→ Risk", not bare
+  "Risk") and an `aria-label`-based accessible name for the mode-cycle
+  button, rather than patching every downstream test. `tsc`/`eslint`/
+  `vite build` clean, a new `quickActionDock.spec.ts` exercising the
+  real running app end-to-end, full `commandCenter.spec.ts` regression
+  clean except the already-confirmed pre-existing flaky movement-key
+  test; `emergencyStop.spec.ts` and `globalStatusBar.spec.ts` also
+  verified passing.
+
 - **Chapter 67 Phase 1 — TTOS 7-section grouped navigation**
   (`frontend/src/ui/components/CommandCenter/lib/navigation.ts`,
   `FullCommandCenter.tsx`): before writing any code, a full audit +

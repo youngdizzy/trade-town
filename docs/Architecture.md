@@ -6529,6 +6529,100 @@ trade landing between the test's own balance reads — unrelated to this
 change, since nothing in this slice touches Treasury or portfolio
 balances).
 
+### TTOS Quick Action Dock — Automation Mode cycling + tab quick-jumps, Design Bible Chapter 67
+
+Part 3's brief asked for one dock consolidating Pause/Resume (Work
+Mode), Automation Mode, Emergency Stop, and quick-jumps to Risk/Company
+Health/Portfolio/Executive. Two of those four pieces (Pause/Resume+Work
+Mode in `BottomToolbar.tsx`, Emergency Stop in `TopStatusBar.tsx` from
+this chapter's own earlier Part 3 slice) were already real, global,
+always-visible controls; this slice builds the two pieces that weren't:
+Automation Mode as a global one-click cycle, and real quick-jump
+buttons.
+
+**Frontend only** — no new backend fields or endpoints; Operating Mode
+already had a real, working write path (`SettingsManager.update({
+operatingMode })`), this dock just surfaces a second entry point to it.
+`QuickActionDock.tsx` (new), positioned `absolute bottom-16 right-3` —
+a corner cluster deliberately chosen to avoid `BottomToolbar.tsx`'s own
+already-crowded centered row and `TopStatusBar.tsx`'s own right-side
+group, both of which have already caused real layout regressions this
+session when a 4th/5th element was appended to them. Two rows: a
+"MODE" pill whose button cycles `learning → assisted → executive →
+learning` on click (same `SettingsManager.update()` call
+`CompanyPanel.tsx`'s own Operating Mode buttons already make), and a
+"JUMP" row of four buttons.
+
+**Quick-jump plumbing** mirrors `pendingInspectDecision` exactly (the
+mechanism the Trade Outcome Banner's "View Trade"/"Analyze" buttons
+already use to jump the Command Center to a specific decision), rather
+than inventing a second "request an action, a listener consumes and
+clears it" shape: a new `"ui:commandCenterJump": { tab: string }`
+EventBus event (the payload is a bare string, not `FullCommandCenter`'s
+own `Tab` union, since `EventBus.ts` can't import a type back from a
+file that already imports `EventBus` — a real circular-import
+constraint, not an arbitrary choice); `gameStore.ts`'s constructor
+listens for it, setting a new `pendingCommandCenterTab: string | null`
+field and opening the Command Center in full mode (mirroring
+`"trade:inspect"`'s own listener exactly, including the
+`world:interactionBlocked` emit); `FullCommandCenter.tsx` gained a
+`useEffect` that validates the string against the real `TABS` constant
+before calling `setTab()`, then clears it via a new
+`gameStore.clearPendingCommandCenterTab()` — the same
+validate-then-clear shape `pendingInspectDecision`'s own consuming
+effect already uses.
+
+**A real regression, caught and fixed at the source, not worked
+around**: because `QuickActionDock` (like `GlobalStatusBar`) is always
+mounted rather than conditionally rendered per Command Center tab, its
+first draft's plain labels — a bare "LEARNING"/"ASSISTED"/"EXECUTIVE"
+mode button, and jump buttons literally labeled "Risk"/"Company
+Health"/"Portfolio"/"Executive" — collided with already-correct content
+elsewhere in the 34-tab Command Center the moment both were
+simultaneously in the DOM (Playwright's `getByText`/`getByRole` match
+by content regardless of `z-index`/visual occlusion, so a full-screen
+Command Center overlay sitting on top of the dock doesn't exempt the
+dock's own elements from strict-mode ambiguity). Three real regressions
+surfaced this way in the existing suite: `commandCenter.spec.ts`'s
+Company tab test (`getByText("Company Health", { exact: true })` now
+matched both `CompanyPanel.tsx`'s own label and the dock's jump button;
+`getByRole("button", { name: /^ASSISTED/ })` would have matched both
+`CompanyPanel.tsx`'s own Operating Mode button and the dock's mode
+button once mode actually became "assisted"), and
+`globalStatusBar.spec.ts`'s own "AUTOMATION"/"LEARNING" checks (the
+dock's structural "AUTOMATION" label duplicated `GlobalStatusBar.tsx`'s
+own, and its "LEARNING" value text duplicated `GlobalStatusBar.tsx`'s
+own span). Given how many of the dock's natural labels — "Risk",
+"Portfolio", "Executive", "Company Health", every Operating Mode name —
+are common real headings/values reused throughout a 34-tab app, patching
+every downstream test individually was judged less robust than fixing
+the labels at the source: the dock's structural label was renamed
+"AUTOMATION" → "MODE" (a legitimate distinction — one is a read-only
+glance, the other an actionable control); the mode-cycle button's
+accessible name was set via `aria-label` (`"Cycle Automation Mode
+(currently LEARNING)"`) so `getByRole` queries elsewhere never match it
+by bare mode name, while its *visible* text still shows the plain mode
+name for compactness; and the four jump buttons' visible text was
+changed to an arrow-prefixed form ("→ Risk", not bare "Risk") so
+`getByText(exact)` queries against real headings elsewhere never match
+them either. `globalStatusBar.spec.ts`'s own single remaining "LEARNING"
+check needed `.first()` (that value text is now legitimately real in
+two always-mounted places at once — GlobalStatusBar's span and the
+dock's own button — the same "second correct instance" reasoning
+already applied to the NORMAL/COOL collisions in this chapter's Global
+Status Bar slice above).
+
+**Verified**: `tsc`/`eslint`/`vite build` clean. A new
+`quickActionDock.spec.ts` exercises the real running app end-to-end:
+cycling the mode button through a real `SettingsManager` write, and two
+separate quick-jumps (RISK, then COMPANY) each confirmed by checking
+the resulting active tab's own `text-cmd-cyan` highlight class — proof
+the jump lands on the real requested tab, not just that the Command
+Center opened. Full `commandCenter.spec.ts` regression clean except the
+already-confirmed pre-existing flaky movement-key test;
+`emergencyStop.spec.ts` and `globalStatusBar.spec.ts` reverified
+passing after the label fixes above.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the
