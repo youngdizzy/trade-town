@@ -7,6 +7,18 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 67 Part 3 — final TTOS Compliance Scorecard**
+  (`docs/DesignBible/volumes/09-departments/chapter-67-tradetown-operating-system.md`):
+  a new closing section scoring the brief's own nine pillars
+  (Navigation/Search/Command Palette/Workspace Manager/Quick
+  Actions/Notifications/Emergency Stop/Executive Dashboard/Navigation
+  Intelligence) honestly against what this codebase actually does
+  today, plus what's genuinely built or still unbuilt beyond those
+  nine. Closes out Part 3's own buildable scope as researched and
+  scoped at the start of this pass — every remaining "unbuilt" item was
+  checked against the real codebase, not assumed from the original
+  brief. Documentation only, no code changes.
+
 - **Chapter 67 Part 3 — TTOS Navigation polish**
   (`frontend/src/ui/components/CommandPalette.tsx`,
   `CommandCenter/panels/OverviewPanel.tsx`): two real, low-risk fixes.

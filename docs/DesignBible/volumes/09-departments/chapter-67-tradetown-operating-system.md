@@ -1,36 +1,26 @@
 # Chapter 67 — TradeTown Operating System (TTOS)
 
-**Status:** Phase 1 (7-section grouped navigation) and Part 3's own
-primary objective (a real Global Emergency Stop) are both implemented,
-plus five more Part 3 slices: real weekly/monthly loss circuit breakers
-(Safety Settings core), a real Global Status Bar (Risk/Company
-Health/Portfolio/Market/Automation/Deployed/Broker), a real Quick
-Action Dock (Automation Mode cycling + quick-jumps to RISK/COMPANY/
-PORTFOLIO/EXECUTIVE), a real Command Palette (Ctrl/Cmd+K), and real
-Universal Search (built into that same palette rather than a second
-overlay). This chapter is structurally different from every other
-chapter in this volume: it does not describe a trading/research/risk
-department with its own real backend module. It describes the
-*navigation and UX architecture* that organizes all 34 of those
-departments' existing Command Center surfaces into one system, plus (as
-of Part 3) several genuinely new safety and navigation controls this
-Design Bible's own research found had no real backing anywhere: a
-CEO-triggerable halt on all new trading, two more real loss-limit
-circuit breakers beyond the pre-existing daily one, a persistent global
-strip surfacing real risk/health/deployment status from every scene, a
-global dock that makes Automation Mode and tab quick-jumps reachable
-without opening the Full Command Center first, and a keyboard-driven
-command palette over every real global action, all 34 real tabs, and
-real search across employees/trades/research/Company Memory. Before any
-Part 3 code was written, a research pass confirmed the rest of that
-brief — a priority-tiered Alert Center and two of the command palette's
-own example commands ("Open Charles Schwab," "Swing/Day Trading Mode")
-— has no real backing feature anywhere in this codebase, so everything
-beyond those six slices remains genuinely unbuilt. Workspace docking,
-priority-tiered notifications, and navigation analytics all remain
-genuinely unbuilt — see the Implementation Notes at the bottom for the
-full phased plan and the exact honesty boundary
-for each slice.
+**Status:** Phase 1 (7-section grouped navigation) and every genuinely
+buildable piece of Part 3's own brief are now implemented: a real
+Global Emergency Stop, weekly/monthly loss circuit breakers (Safety
+Settings core), a real Global Status Bar, a real Quick Action Dock, a
+real Command Palette (Ctrl/Cmd+K) with Universal Search built into it,
+Smart Notification priority tiers with a real Executive Alert Center,
+an Executive Dashboard data-layer consolidation, and Navigation
+polish (overlay parity + one naming-collision fix). This chapter is
+structurally different from every other chapter in this volume: it
+does not describe a trading/research/risk department with its own real
+backend module. It describes the *navigation and UX architecture* that
+organizes all 34 of those departments' existing Command Center surfaces
+into one system, plus (as of Part 3) several genuinely new safety and
+navigation controls this Design Bible's own research found had no real
+backing anywhere. What's still genuinely unbuilt, and why, is
+inventoried in full in the **TTOS Compliance Scorecard** at the bottom
+of this chapter — Black Swan Protection, Broker Failover, Emergency
+Contacts, workspace docking, navigation analytics, CEO-facing themes,
+widget customization, folding all 6 standalone overlays into TTOS's own
+7-section structure, and the OPS tab's own naming collision all remain
+real, undone work, not silently dropped.
 
 ## Executive Summary
 
@@ -628,3 +618,42 @@ in v0.6") and "Swing Trading Mode"/"Day Trading Mode" (confirmed no
 such mode exists under any name — `RiskLimits`' day-trading-adjacent
 fields, `dailyProfitTargetPct`/`maxTradesPerDay`, are risk-limit
 configuration, not a selectable trading-style mode).
+
+## TTOS Compliance Scorecard (Final, Part 3)
+
+The brief's own nine pillars, scored honestly against what this
+codebase actually does today — not what any prior phase's ambition
+implied. "Built" means live, real, and Playwright-verified against the
+running app; "Partial" means a real slice exists but the pillar's full
+scope doesn't; "Not built" means no real backing feature exists
+anywhere and nothing here fakes one.
+
+| Pillar | Status | Evidence |
+|---|---|---|
+| Navigation | **Partial.** The 34-tab grouping (Phase 1) and Command Palette overlay-parity/naming fix (Navigation polish) are real. Folding all 6 standalone overlays into the 7-section structure itself, and the OPS tab's own section-placement naming collision, remain unbuilt — both explicitly deferred in `navigation.ts`'s own comments, not overlooked. |
+| Search | **Built.** Universal Search, inside the Command Palette — real employees/trades/research/Company Memory, capped render (`MAX_RESULTS`) over an uncapped real index, no fabricated results. |
+| Command Palette | **Built.** Ctrl/Cmd+K, every real global action + all 34 "Go to X" tab jumps + all 6 overlays, two brief example commands ("Open Charles Schwab," "Swing/Day Trading Mode") deliberately excluded — confirmed zero real backing. |
+| Workspace Manager | **Not built.** No windowing/docking library exists in `frontend/package.json`; the Command Center is one fixed, non-resizable overlay. Adopting one is a real dependency decision, not made unilaterally in this pass. |
+| Quick Actions | **Built, partially unified.** The Quick Action Dock cycles Automation Mode and jumps to RISK/COMPANY/PORTFOLIO/EXECUTIVE from anywhere. Pause/Resume/Work Mode and Emergency Stop deliberately stay in their own existing global locations (BottomToolbar/TopStatusBar) rather than being physically merged in — reuse over a cosmetic-only merge that would risk real layout regressions. |
+| Notifications | **Built.** Real priority tiers (critical/high/normal) on every toast, derived from the same field already driving each toast's own copy; critical Risk Warnings and Emergency Stop activation now produce sticky, non-auto-dismissing interrupts that previously didn't exist at all. |
+| Emergency Stop | **Built.** Part 3's own primary objective — a real, permanent, confirmation-gated halt on all new trading, including the CEO's own manual calls; only the CEO can resume, no automatic timeout. |
+| Executive Dashboard | **Partial.** QuickView and OverviewPanel now share one canonical data hook (`useDashboardData()`) instead of independently recomputing the same derivations — a real, non-cosmetic duplication removed, zero data points lost. `BrainRoomHud`'s own toolbar pull-up remains a third, separate "company overview" surface, not folded into either the data layer or the two components' visual presentation. |
+| Navigation Intelligence | **Not built.** No navigation/UX telemetry of any kind exists in this codebase — no click log, no "frequently used pages" tracking. Building it would require new client-side event logging and a real backend persistence path to survive reloads; inventing numbers for it would violate this Design Bible's own no-fabrication rule (see this chapter's own Learning System/KPIs/Reports sections above).
+
+**Also genuinely built this pass, beyond the nine named pillars:**
+Safety Settings' weekly/monthly loss circuit breakers (Phase 4b) and
+the Global Status Bar (Phase 4c) — both real Part 3 scope, surfaced in
+the CEO Controls table above.
+
+**Also genuinely still unbuilt, beyond the nine pillars:** Black Swan
+Protection, Broker Failover, Emergency Contacts, and recovery
+procedures (no real backing feature exists for any of them anywhere in
+this codebase); CEO-facing themes; widget/dashboard customization; and
+the "declare Navigation Location / Quick Actions / Search Tags /
+Notifications / Dashboard Widgets" integration-contract requirement
+this chapter's own brief proposes for all future chapters.
+
+This closes out Part 3's own buildable scope as researched and scoped
+at the start of this pass. Every item above that remains unbuilt was
+checked against the real codebase before being called unbuilt — none
+are assumptions carried over from the brief without verification.
