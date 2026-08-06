@@ -161,6 +161,27 @@ development milestones, not semver releases.
   jump, close), full `commandCenter.spec.ts` regression clean except
   the already-confirmed pre-existing flaky movement-key test.
 
+- **Chapter 67 Part 3 — TTOS real Universal Search, built into the
+  Command Palette** (`frontend/src/ui/components/CommandPalette.tsx`):
+  rather than a second Ctrl+K-shaped overlay competing for the same
+  interaction pattern, the existing palette's own input now also
+  searches real, already-loaded entities — the same "index of what we
+  already have, never a new source of truth" pattern `CompanyMemory
+  .tsx`'s own client-side filter already established, no new backend
+  endpoint. Real employees (14, via `AGENT_IDS`/`AGENT_PROFILES`, jumps
+  to AGENTS), closed trades (`paperPortfolio.tradeHistory`, jumps to
+  REPLAY), research items (jumps to RESEARCH), and Company Memory
+  records (opens the real Company Memory overlay rather than
+  reimplementing its own search a second time) are all searchable
+  alongside commands. Rendered results are capped at 50 (`MAX_RESULTS`)
+  so a broad query against a mature save's full history stays
+  scrollable — the underlying search still runs across every real
+  record, only the render is capped. `tsc`/`eslint`/`vite build` clean,
+  a new Universal Search test verifies a real employee result and
+  confirms it jumps to the real AGENTS tab, full `commandCenter.spec.ts`
+  regression clean except the already-confirmed pre-existing flaky
+  movement-key test.
+
 - **Chapter 67 Phase 1 — TTOS 7-section grouped navigation**
   (`frontend/src/ui/components/CommandCenter/lib/navigation.ts`,
   `FullCommandCenter.tsx`): before writing any code, a full audit +
