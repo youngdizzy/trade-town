@@ -18,11 +18,15 @@ from app.black_box import archive_project, default_black_box_state, mark_breakth
 from app.config import settings
 from app.mentor import compute_mentor_state, compute_thinking_profiles, generate_question_of_the_day, submit_response
 from app.calendar import create_player_event, default_calendar, delete_player_event
+from app.accounts import add_custom_rule as add_custom_rule_fn
 from app.accounts import allocate_capital as allocate_capital_fn
 from app.accounts import close_account as close_account_fn
 from app.accounts import configure_prop_firm_rules as configure_prop_firm_rules_fn
 from app.accounts import create_account as create_account_fn
 from app.accounts import deallocate_capital as deallocate_capital_fn
+from app.accounts import remove_custom_rule as remove_custom_rule_fn
+from app.accounts import toggle_custom_rule as toggle_custom_rule_fn
+from app.rule_engine import evaluate_rules
 from app.treasury import create_rule, default_treasury, deposit, pause_all_rules, toggle_rule, withdraw
 from app.reasoning_lab import compute_reasoning_lab_state
 from app.wisdom import compute_wisdom_score
@@ -51,10 +55,12 @@ from app.research import RESEARCHER_IDS, default_research
 from app.risk_engine import compute_daily_objective_status, default_risk_limits
 from app.sandbox import apply_review_decision, begin_company_review, begin_limited_live, begin_paper_trial, generate_strategy_review
 from app.sandbox import retire_strategy as retire_strategy_stage
-from app.scribe import record_ceo_decision, record_emergency_stop_event, record_proposal_hold, record_proposal_modify, record_strategy_failed_archive_entry, record_strategy_hall_of_fame_entry
+from app.scribe import record_ceo_decision, record_emergency_stop_event, record_proposal_hold, record_proposal_modify, record_rule_violation, record_strategy_failed_archive_entry, record_strategy_hall_of_fame_entry
 from app.schemas import (
     AccountType,
     AgentId,
+    RuleType,
+    Weekday,
     BlackBoxPriority,
     BlackBoxProject,
     ClientSaveRequest,
@@ -891,6 +897,54 @@ class GameState:
             if account_id is not None and not any(a.id == account_id for a in self.data.accounts):
                 return self.data, f"No account with id {account_id!r}."
             self.data = self.data.model_copy(update={"active_account_id": account_id})
+            return self.data, None
+
+    async def add_custom_rule(self, account_id: str, *, rule_type: RuleType, label: str, limit: float, weekday: Weekday | None) -> tuple[GameSaveState, str | None]:
+        """Design Bible Chapter 69 Part 3 — Custom Rule Builder. Real,
+        structured rule authored by the CEO, added to one account's own
+        rule list — no code change required to add a *rule*, only to add
+        a new *rule type* (see app/rule_engine.py's module docstring for
+        the honest boundary that draws)."""
+        async with self.lock:
+            rule_id = f"rule-{account_id}-{len(next((a.custom_rules for a in self.data.accounts if a.id == account_id), []))}-{_now_iso()}"
+            accounts, error = add_custom_rule_fn(self.data.accounts, account_id, rule_type=rule_type, label=label, limit=limit, weekday=weekday, rule_id=rule_id)
+            if error is None:
+                self.data = self.data.model_copy(update={"accounts": accounts})
+            return self.data, error
+
+    async def remove_custom_rule(self, account_id: str, rule_id: str) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            accounts, error = remove_custom_rule_fn(self.data.accounts, account_id, rule_id)
+            if error is None:
+                self.data = self.data.model_copy(update={"accounts": accounts})
+            return self.data, error
+
+    async def toggle_custom_rule(self, account_id: str, rule_id: str, enabled: bool) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            accounts, error = toggle_custom_rule_fn(self.data.accounts, account_id, rule_id, enabled)
+            if error is None:
+                self.data = self.data.model_copy(update={"accounts": accounts})
+            return self.data, error
+
+    async def evaluate_account_rules(self, account_id: str) -> tuple[GameSaveState, str | None]:
+        """Design Bible Chapter 69 Part 3 — the Institutional Rule
+        Engine's one centralized evaluator (app/rule_engine.py),
+        applied under the same lock every other state mutation uses so
+        a real violation's Company Memory record (three of the brief's
+        own four required behaviors on a rule failure: block, explain,
+        record — see that module's own docstring) is written
+        atomically with everything else. Read access to the result
+        itself is via GET /api/accounts/rules/evaluate (no lock
+        needed); this locked version exists so the CEO can trigger a
+        real, permanently-recorded evaluation on demand."""
+        async with self.lock:
+            account = next((a for a in self.data.accounts if a.id == account_id), None)
+            if account is None:
+                return self.data, f"No account with id {account_id!r}."
+            result = evaluate_rules(account, sim_day=self.data.time.day)
+            memory = list(self.data.memory)
+            record_rule_violation(memory, account.name, result)
+            self.data = self.data.model_copy(update={"memory": memory})
             return self.data, None
 
     async def create_savings_rule(self, rule_type: SavingsRuleType, percent: float, reserve_target: float | None) -> tuple[GameSaveState, str | None]:

@@ -36,6 +36,8 @@ import type {
   PlayerVsAiState,
   PropFirmStatus,
   QuestionOfTheDay,
+  RuleEvaluationResult,
+  RuleType,
   SaveResponse,
   SavingsRuleType,
   SignalCalibrationState,
@@ -65,6 +67,7 @@ import type {
   TradeProposal,
   TradeReportCard,
   TreasuryState,
+  Weekday,
   WhatIfSimulation,
 } from "@/types";
 
@@ -252,6 +255,28 @@ export const api = {
       body: JSON.stringify({ accountId, ...rules }),
     }),
   getPropFirmStatus: (accountId: string) => request<PropFirmStatus>(`/accounts/prop-firm/status?account_id=${encodeURIComponent(accountId)}`),
+  // Design Bible Chapter 69 Part 3 — Institutional Rule Engine.
+  addCustomRule: (accountId: string, ruleType: RuleType, label: string, limit: number, weekday: Weekday | null) =>
+    request<{ accounts: Account[] }>("/accounts/rules/add", {
+      method: "POST",
+      body: JSON.stringify({ accountId, ruleType, label, limit, weekday }),
+    }),
+  removeCustomRule: (accountId: string, ruleId: string) =>
+    request<{ accounts: Account[] }>("/accounts/rules/remove", {
+      method: "POST",
+      body: JSON.stringify({ accountId, ruleId }),
+    }),
+  toggleCustomRule: (accountId: string, ruleId: string, enabled: boolean) =>
+    request<{ accounts: Account[] }>("/accounts/rules/toggle", {
+      method: "POST",
+      body: JSON.stringify({ accountId, ruleId, enabled }),
+    }),
+  evaluateAccountRules: (accountId: string) => request<RuleEvaluationResult>(`/accounts/rules/evaluate?account_id=${encodeURIComponent(accountId)}`),
+  evaluateAndRecordAccountRules: (accountId: string) =>
+    request<RuleEvaluationResult>("/accounts/rules/evaluate-and-record", {
+      method: "POST",
+      body: JSON.stringify({ accountId }),
+    }),
   advanceTime: (target: TimeAdvanceTarget, hours?: number) =>
     request<GameSaveState>("/time/advance", {
       method: "POST",

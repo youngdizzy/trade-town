@@ -2,8 +2,17 @@ import { useMemo, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { NexusManager } from "@/game/systems/NexusManager";
 import { api } from "@/net/api";
-import type { Account, AccountType, PropFirmStatus, SavingsRuleType, TreasuryTransaction } from "@/types";
-import { ACCOUNT_TYPE_LABEL } from "@/types";
+import type {
+  Account,
+  AccountType,
+  PropFirmStatus,
+  RuleEvaluationResult,
+  RuleType,
+  SavingsRuleType,
+  TreasuryTransaction,
+  Weekday,
+} from "@/types";
+import { ACCOUNT_TYPE_LABEL, RULE_TYPE_LABEL } from "@/types";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../ui";
 
 const RULE_LABEL: Record<SavingsRuleType, string> = {
@@ -463,6 +472,7 @@ function AccountsSection({ accounts, activeAccountId }: { accounts: Account[]; a
                   </button>
                 </div>
                 {account.accountType === "prop_firm" && <PropFirmCard account={account} />}
+                <CustomRulesCard account={account} />
               </div>
             );
           })}
@@ -669,6 +679,209 @@ function PropFirmCard({ account }: { account: Account }) {
                 )}
               </div>
               <div className="text-cmd-textDim">{status.leverageNote}</div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const RULE_TYPES: RuleType[] = [
+  "max_daily_loss_pct",
+  "max_drawdown_pct",
+  "max_position_pct",
+  "max_open_positions",
+  "max_risk_per_trade_pct",
+  "trailing_drawdown_pct",
+  "consistency_pct",
+  "no_trading_on_weekday",
+];
+const WEEKDAYS: Weekday[] = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+
+/**
+ * Design Bible Chapter 69 Part 3 — Institutional Rule Engine. Every
+ * account (not just Prop Firm-typed ones) can carry its own real,
+ * structured Custom Rules here, evaluated by the one centralized
+ * backend/app/rule_engine.py — a closed set of named rule types, never
+ * free-text (no rule parser exists in this codebase; see that module's
+ * own docstring for the honest boundary).
+ */
+function CustomRulesCard({ account }: { account: Account }) {
+  const [showRules, setShowRules] = useState(false);
+  const [ruleType, setRuleType] = useState<RuleType>("max_position_pct");
+  const [label, setLabel] = useState("");
+  const [limit, setLimit] = useState("10");
+  const [weekday, setWeekday] = useState<Weekday>("saturday");
+  const [busy, setBusy] = useState(false);
+  const [evaluation, setEvaluation] = useState<RuleEvaluationResult | null>(null);
+  const [evaluating, setEvaluating] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const addRule = async () => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.addCustomRule(account.id, ruleType, label.trim() || RULE_TYPE_LABEL[ruleType], Number(limit), ruleType === "no_trading_on_weekday" ? weekday : null);
+      NexusManager.setAccounts(res.accounts);
+      setLabel("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const removeRule = async (ruleId: string) => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.removeCustomRule(account.id, ruleId);
+      NexusManager.setAccounts(res.accounts);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const toggleRule = async (ruleId: string, enabled: boolean) => {
+    if (busy) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await api.toggleCustomRule(account.id, ruleId, enabled);
+      NexusManager.setAccounts(res.accounts);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const runEvaluation = async () => {
+    if (evaluating) return;
+    setEvaluating(true);
+    setError(null);
+    try {
+      const res = await api.evaluateAndRecordAccountRules(account.id);
+      setEvaluation(res);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setEvaluating(false);
+    }
+  };
+
+  return (
+    <div className="mt-1.5 border-t border-cmd-border/40 pt-1.5">
+      <button type="button" onClick={() => setShowRules(!showRules)} className="text-[9px] text-cmd-cyan underline-offset-2 hover:underline">
+        {showRules ? "Hide Custom Rules ▲" : `Custom Rules (${account.customRules.length}) ▼`}
+      </button>
+      {showRules && (
+        <div className="mt-1.5 space-y-1.5 text-[9px]">
+          {account.customRules.length === 0 ? (
+            <div className="text-cmd-textDim">No custom rules yet.</div>
+          ) : (
+            <div className="space-y-1">
+              {account.customRules.map((rule) => (
+                <div key={rule.id} className="flex items-center justify-between gap-2 rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-1.5">
+                  <span className="flex-1">
+                    <span className="text-cmd-text">{rule.label}</span>{" "}
+                    <span className="text-cmd-textDim">
+                      ({RULE_TYPE_LABEL[rule.ruleType]}
+                      {rule.ruleType === "no_trading_on_weekday" ? `: ${rule.weekday}` : `: ${rule.limit}%`})
+                    </span>
+                  </span>
+                  <StatusPill tone={rule.enabled ? "green" : "neutral"}>{rule.enabled ? "ON" : "OFF"}</StatusPill>
+                  <button type="button" onClick={() => void toggleRule(rule.id, !rule.enabled)} className="text-cmd-cyan underline-offset-2 hover:underline">
+                    {rule.enabled ? "Disable" : "Enable"}
+                  </button>
+                  <button type="button" onClick={() => void removeRule(rule.id)} className="text-cmd-red underline-offset-2 hover:underline">
+                    Remove
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+
+          <div className="flex flex-wrap items-center gap-1.5">
+            <select
+              value={ruleType}
+              onChange={(e) => setRuleType(e.target.value as RuleType)}
+              className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-1.5 py-1 text-cmd-text focus:border-cmd-cyan/50 focus:outline-none"
+            >
+              {RULE_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {RULE_TYPE_LABEL[t]}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={label}
+              onChange={(e) => setLabel(e.target.value)}
+              placeholder="Label (optional)"
+              className="w-28 rounded-sm border border-cmd-border bg-cmd-bg/60 px-1.5 py-1 text-cmd-text placeholder:text-cmd-textDim/60 focus:border-cmd-cyan/50 focus:outline-none"
+            />
+            {ruleType === "no_trading_on_weekday" ? (
+              <select
+                value={weekday}
+                onChange={(e) => setWeekday(e.target.value as Weekday)}
+                className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-1.5 py-1 text-cmd-text focus:border-cmd-cyan/50 focus:outline-none"
+              >
+                {WEEKDAYS.map((d) => (
+                  <option key={d} value={d}>
+                    {d}
+                  </option>
+                ))}
+              </select>
+            ) : (
+              <input
+                type="number"
+                min={0}
+                value={limit}
+                onChange={(e) => setLimit(e.target.value)}
+                className="w-16 rounded-sm border border-cmd-border bg-cmd-bg/60 px-1.5 py-1 text-cmd-text focus:border-cmd-cyan/50 focus:outline-none"
+              />
+            )}
+            <button
+              type="button"
+              onClick={() => void addRule()}
+              disabled={busy}
+              className="rounded-sm border border-cmd-cyan/50 px-2 py-1 text-cmd-cyan transition-colors hover:enabled:bg-cmd-cyan/10 disabled:opacity-40"
+            >
+              {busy ? "…" : "Add Rule"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void runEvaluation()}
+              disabled={evaluating || account.customRules.length === 0}
+              className="ml-auto rounded-sm border border-cmd-purple/50 px-2 py-1 text-cmd-purple transition-colors hover:enabled:bg-cmd-purple/10 disabled:opacity-40"
+            >
+              {evaluating ? "…" : "Evaluate Now"}
+            </button>
+          </div>
+          {error && <div className="text-cmd-red">{error}</div>}
+
+          {evaluation && (
+            <div className="space-y-1 rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-cmd-textDim">Rule Engine Result</span>
+                <StatusPill tone={evaluation.allPassed ? "green" : "red"}>{evaluation.allPassed ? "ALL PASS" : "VIOLATION"}</StatusPill>
+              </div>
+              {evaluation.checks.map((c) => (
+                <div key={c.ruleId} className="flex items-start gap-2">
+                  <span className={c.passed ? "text-cmd-green" : "text-cmd-red"}>{c.passed ? "✓" : "✗"}</span>
+                  <div>
+                    <div className={c.passed ? "text-cmd-text" : "text-cmd-red"}>{c.label}</div>
+                    <div className="text-cmd-textDim">{c.detail}</div>
+                    {c.correctiveAction && <div className="text-cmd-amber">Corrective action: {c.correctiveAction}</div>}
+                  </div>
+                </div>
+              ))}
             </div>
           )}
         </div>

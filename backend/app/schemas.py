@@ -738,6 +738,11 @@ class Account(CamelModel):
     challenge_start_sim_day: int | None = Field(default=None, alias="challengeStartSimDay")
     challenge_duration_days: int | None = Field(default=None, alias="challengeDurationDays")
     challenge_profit_target_pct: float | None = Field(default=None, alias="challengeProfitTargetPct")
+    # Design Bible Chapter 69 Part 3 — Institutional Rule Engine. This
+    # account's own real Custom Rules, evaluated by the one centralized
+    # app/rule_engine.py rather than a second, account-specific
+    # enforcement path — see that module's own docstring.
+    custom_rules: list[Rule] = Field(default_factory=list, alias="customRules")
 
 
 # Design Bible Chapter 69 Part 2 — the Weekday-Aware Time System. Real,
@@ -837,6 +842,71 @@ class PropFirmStatus(CamelModel):
     # with no margin field anywhere (confirmed by Chapter 68's own
     # research). Stated honestly here rather than fabricating a number.
     leverage_note: str = Field(alias="leverageNote")
+
+
+# Design Bible Chapter 69 Part 3 — Institutional Rule Engine (IRE).
+# Grep-confirmed before this: no Rule/RuleProfile/RuleEngine class
+# existed anywhere in this codebase. Deliberately a closed, named set of
+# rule types rather than a free-text DSL or natural-language parser —
+# the honest scope this Design Bible's own research settled on: real,
+# CEO-authored, data-driven rules (no code change needed to add one),
+# while preserving the same transparent, individually-inspectable check
+# per rule the existing hardcoded RiskLimits checks already have (this
+# codebase's "no black-box composite" convention, restated once more
+# here because it's the one principle a rule engine must not break).
+# `trailing_drawdown_pct`/`consistency_pct` reuse Part 2's own real
+# app/prop_firm.py computations; `no_trading_on_weekday` reuses Part 2's
+# own real weekday_for() — never a second, competing computation.
+RuleType = Literal[
+    "max_daily_loss_pct",
+    "max_drawdown_pct",
+    "max_position_pct",
+    "max_open_positions",
+    "max_risk_per_trade_pct",
+    "trailing_drawdown_pct",
+    "consistency_pct",
+    "no_trading_on_weekday",
+]
+
+
+class Rule(CamelModel):
+    """One real, structured, CEO-authored rule — the honest shape of
+    this codebase's Custom Rule Builder (see app/rule_engine.py's module
+    docstring for exactly which of the brief's six named examples this
+    does and doesn't cover). `limit` is unused (0) for
+    `no_trading_on_weekday`, which instead reads `weekday`; every other
+    rule type reads `limit` and ignores `weekday`."""
+
+    id: str
+    rule_type: RuleType = Field(alias="ruleType")
+    label: str
+    limit: float = 0.0
+    weekday: Weekday | None = None
+    enabled: bool = True
+
+
+class RuleCheckResult(CamelModel):
+    rule_id: str = Field(alias="ruleId")
+    label: str
+    passed: bool
+    detail: str
+    # Real only when a check actually fails — a static, per-rule-type
+    # corrective-action template (see app/rule_engine.py's
+    # CORRECTIVE_ACTIONS), never a fabricated AI-generated suggestion.
+    corrective_action: str | None = Field(default=None, alias="correctiveAction")
+
+
+class RuleEvaluationResult(CamelModel):
+    """The Institutional Rule Engine's real, computed-fresh (never
+    persisted — same convention as ExecutiveRecommendation/WhatIf)
+    output for one account: every enabled custom rule, checked
+    individually and transparently, never combined into a hidden
+    composite pass/fail."""
+
+    account_id: str = Field(alias="accountId")
+    sim_day: int = Field(alias="simDay")
+    checks: list[RuleCheckResult] = Field(default_factory=list)
+    all_passed: bool = Field(alias="allPassed")
 
 
 class StrategyStageEvent(CamelModel):

@@ -32,7 +32,7 @@ trading. See the Design Bible chapter's own Future Expansion section.
 from __future__ import annotations
 
 from app.risk_engine import portfolio_equity
-from app.schemas import Account, AccountType, PaperPortfolio, RiskLimits, TreasuryState
+from app.schemas import Account, AccountType, PaperPortfolio, RiskLimits, Rule, RuleType, TreasuryState, Weekday
 from app.treasury import deposit as treasury_deposit
 from app.treasury import withdraw as treasury_withdraw
 
@@ -206,4 +206,49 @@ def configure_prop_firm_rules(
             "challenge_profit_target_pct": challenge_profit_target_pct,
         }
     )
+    return [updated if a.id == account_id else a for a in accounts], None
+
+
+MAX_CUSTOM_RULES_PER_ACCOUNT = 20
+
+
+def add_custom_rule(
+    accounts: list[Account], account_id: str, *, rule_type: RuleType, label: str, limit: float, weekday: Weekday | None, rule_id: str
+) -> tuple[list[Account], str | None]:
+    """Design Bible Chapter 69 Part 3 — Custom Rule Builder (structured,
+    not free-text — see app/rule_engine.py's module docstring for the
+    honest scope). Adds one real Rule to this account's own list,
+    evaluated by the one centralized app/rule_engine.py."""
+    account = next((a for a in accounts if a.id == account_id), None)
+    if account is None:
+        return accounts, f"No account with id {account_id!r}."
+    if len(account.custom_rules) >= MAX_CUSTOM_RULES_PER_ACCOUNT:
+        return accounts, f"{account.name} already has the maximum of {MAX_CUSTOM_RULES_PER_ACCOUNT} custom rules."
+    if rule_type != "no_trading_on_weekday" and limit <= 0:
+        return accounts, "Rule limit must be greater than 0."
+    if rule_type == "no_trading_on_weekday" and weekday is None:
+        return accounts, "A weekday is required for a No Trading On Weekday rule."
+    rule = Rule(id=rule_id, ruleType=rule_type, label=label, limit=limit, weekday=weekday, enabled=True)
+    updated = account.model_copy(update={"custom_rules": [*account.custom_rules, rule]})
+    return [updated if a.id == account_id else a for a in accounts], None
+
+
+def remove_custom_rule(accounts: list[Account], account_id: str, rule_id: str) -> tuple[list[Account], str | None]:
+    account = next((a for a in accounts if a.id == account_id), None)
+    if account is None:
+        return accounts, f"No account with id {account_id!r}."
+    if not any(r.id == rule_id for r in account.custom_rules):
+        return accounts, f"No rule with id {rule_id!r} on {account.name}."
+    updated = account.model_copy(update={"custom_rules": [r for r in account.custom_rules if r.id != rule_id]})
+    return [updated if a.id == account_id else a for a in accounts], None
+
+
+def toggle_custom_rule(accounts: list[Account], account_id: str, rule_id: str, enabled: bool) -> tuple[list[Account], str | None]:
+    account = next((a for a in accounts if a.id == account_id), None)
+    if account is None:
+        return accounts, f"No account with id {account_id!r}."
+    if not any(r.id == rule_id for r in account.custom_rules):
+        return accounts, f"No rule with id {rule_id!r} on {account.name}."
+    updated_rules = [r.model_copy(update={"enabled": enabled}) if r.id == rule_id else r for r in account.custom_rules]
+    updated = account.model_copy(update={"custom_rules": updated_rules})
     return [updated if a.id == account_id else a for a in accounts], None

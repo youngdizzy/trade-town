@@ -10,7 +10,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.persistence import persist_modules
 from app.prop_firm import compute_prop_firm_status
-from app.schemas import Account, AccountType, PropFirmStatus, TreasuryState
+from app.rule_engine import evaluate_rules
+from app.schemas import Account, AccountType, PropFirmStatus, RuleEvaluationResult, RuleType, TreasuryState, Weekday
 from app.state import game_state
 
 router = APIRouter(prefix="/api/accounts", tags=["accounts"])
@@ -149,3 +150,83 @@ async def prop_firm_status(account_id: str) -> PropFirmStatus:
     if account is None:
         raise HTTPException(status_code=404, detail=f"No account with id {account_id!r}.")
     return compute_prop_firm_status(account, sim_day=state.time.day)
+
+
+# Design Bible Chapter 69 Part 3 — Institutional Rule Engine (IRE).
+class AddCustomRuleRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    account_id: str = Field(alias="accountId")
+    rule_type: RuleType = Field(alias="ruleType")
+    label: str
+    limit: float = 0.0
+    weekday: Weekday | None = None
+
+
+class RuleIdRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    account_id: str = Field(alias="accountId")
+    rule_id: str = Field(alias="ruleId")
+
+
+class ToggleCustomRuleRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    account_id: str = Field(alias="accountId")
+    rule_id: str = Field(alias="ruleId")
+    enabled: bool
+
+
+@router.post("/rules/add", response_model=AccountsResponse)
+async def add_custom_rule(payload: AddCustomRuleRequest) -> AccountsResponse:
+    state, error = await game_state.add_custom_rule(payload.account_id, rule_type=payload.rule_type, label=payload.label, limit=payload.limit, weekday=payload.weekday)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    return AccountsResponse(accounts=state.accounts)
+
+
+@router.post("/rules/remove", response_model=AccountsResponse)
+async def remove_custom_rule(payload: RuleIdRequest) -> AccountsResponse:
+    state, error = await game_state.remove_custom_rule(payload.account_id, payload.rule_id)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    return AccountsResponse(accounts=state.accounts)
+
+
+@router.post("/rules/toggle", response_model=AccountsResponse)
+async def toggle_custom_rule(payload: ToggleCustomRuleRequest) -> AccountsResponse:
+    state, error = await game_state.toggle_custom_rule(payload.account_id, payload.rule_id, payload.enabled)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    return AccountsResponse(accounts=state.accounts)
+
+
+@router.get("/rules/evaluate", response_model=RuleEvaluationResult)
+async def evaluate_account_rules(account_id: str) -> RuleEvaluationResult:
+    """Read-only and computed fresh (same convention as prop_firm_status
+    above) — every enabled Custom Rule on this account, checked
+    individually and transparently by the one centralized
+    app/rule_engine.py. No game-state lock needed."""
+    state = await game_state.snapshot()
+    account = next((a for a in state.accounts if a.id == account_id), None)
+    if account is None:
+        raise HTTPException(status_code=404, detail=f"No account with id {account_id!r}.")
+    return evaluate_rules(account, sim_day=state.time.day)
+
+
+@router.post("/rules/evaluate-and-record", response_model=RuleEvaluationResult)
+async def evaluate_and_record_account_rules(payload: AccountIdRequest) -> RuleEvaluationResult:
+    """The locked, permanent-recording counterpart to GET
+    /rules/evaluate above — writes a real Company Memory record for any
+    real violation found (see app/state.py's evaluate_account_rules),
+    then returns the same real evaluation that was just recorded."""
+    state, error = await game_state.evaluate_account_rules(payload.account_id)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    account = next(a for a in state.accounts if a.id == payload.account_id)
+    return evaluate_rules(account, sim_day=state.time.day)

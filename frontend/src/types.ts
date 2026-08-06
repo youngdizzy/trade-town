@@ -504,6 +504,8 @@ export interface Account {
   challengeStartSimDay: number | null;
   challengeDurationDays: number | null;
   challengeProfitTargetPct: number | null;
+  // Design Bible Chapter 69 Part 3 — Institutional Rule Engine.
+  customRules: Rule[];
 }
 
 // Design Bible Chapter 69 Part 2 — the Weekday-Aware Time System. Real,
@@ -563,6 +565,55 @@ export interface PropFirmStatus {
   challenge: ChallengeProgressStatus;
   complianceScore: PropFirmComplianceScore;
   leverageNote: string;
+}
+
+// Design Bible Chapter 69 Part 3 — Institutional Rule Engine (IRE). A
+// closed, named set of rule types (never a free-text DSL — no rule
+// parser exists anywhere in this codebase) — see
+// backend/app/rule_engine.py's module docstring for the honest scope.
+export type RuleType =
+  | "max_daily_loss_pct"
+  | "max_drawdown_pct"
+  | "max_position_pct"
+  | "max_open_positions"
+  | "max_risk_per_trade_pct"
+  | "trailing_drawdown_pct"
+  | "consistency_pct"
+  | "no_trading_on_weekday";
+
+export const RULE_TYPE_LABEL: Record<RuleType, string> = {
+  max_daily_loss_pct: "Max Daily Loss",
+  max_drawdown_pct: "Max Drawdown",
+  max_position_pct: "Max Position Size",
+  max_open_positions: "Max Open Positions",
+  max_risk_per_trade_pct: "Max Risk Per Trade",
+  trailing_drawdown_pct: "Trailing Drawdown",
+  consistency_pct: "Consistency Limit",
+  no_trading_on_weekday: "No Trading On Weekday",
+};
+
+export interface Rule {
+  id: string;
+  ruleType: RuleType;
+  label: string;
+  limit: number;
+  weekday: Weekday | null;
+  enabled: boolean;
+}
+
+export interface RuleCheckResult {
+  ruleId: string;
+  label: string;
+  passed: boolean;
+  detail: string;
+  correctiveAction: string | null;
+}
+
+export interface RuleEvaluationResult {
+  accountId: string;
+  simDay: number;
+  checks: RuleCheckResult[];
+  allPassed: boolean;
 }
 
 // v0.7 Feature 45 — the Research Sandbox. TestScenario reuses the exact

@@ -38,6 +38,7 @@ from app.schemas import (
     ReasoningChallenge,
     ReflectionSession,
     ResearchItem,
+    RuleEvaluationResult,
     ScannerAlert,
     SimulationResult,
     StrategyHallOfFameEntry,
@@ -312,5 +313,24 @@ def record_strategy_failed_archive_entry(memory: list[MemoryRecord], entry: Fail
         f"Strategy retired: {entry.strategy_name}",
         f"{AGENT_PROFILES[entry.created_by].name}'s \"{entry.strategy_name}\" was retired at the {entry.failed_at_stage.replace('_', ' ')} "
         f"stage ({entry.retired_reason}). What failed: {what_failed}.",
+        max_records=max_records,
+    )
+
+
+def record_rule_violation(memory: list[MemoryRecord], account_name: str, result: RuleEvaluationResult, max_records: int = MAX_MEMORY_RECORDS) -> None:
+    """Design Bible Chapter 69 Part 3 — Institutional Rule Engine. One
+    real, permanent Company Memory record per real rule violation on an
+    account, the same "record every real risk event" convention
+    app/scribe.py already follows for every other risk signal in this
+    codebase — never a fabricated audit trail."""
+    failed = [c for c in result.checks if not c.passed]
+    if not failed:
+        return
+    summary = "; ".join(f"{c.label} ({c.detail})" for c in failed)
+    record(
+        memory,
+        "alert",
+        f"Rule violation on {account_name}",
+        f"{len(failed)} custom rule(s) failed: {summary}",
         max_records=max_records,
     )
