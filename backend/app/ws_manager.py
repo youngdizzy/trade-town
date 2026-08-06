@@ -129,6 +129,11 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         "warRoomSessions": [w.model_dump(by_alias=True) for w in state.war_room_sessions],
         # v0.7 Feature 56 — recomputed every tick like companyHealth above.
         "portfolioIntelligence": state.portfolio_intelligence.model_dump(by_alias=True),
+        # Design Bible Chapter 71 — recomputed every tick like
+        # portfolioIntelligence above; economicIntelligenceReports is the
+        # permanent, capped daily history (MAX_ECONOMIC_INTELLIGENCE_REPORTS).
+        "economicIntelligence": state.economic_intelligence.model_dump(by_alias=True),
+        "economicIntelligenceReports": [r.model_dump(by_alias=True) for r in state.economic_intelligence_reports],
         "talent": state.talent.model_dump(by_alias=True),
         "reasoningChallenges": [r.model_dump(by_alias=True) for r in state.reasoning_challenges],
         "reasoningLabState": state.reasoning_lab_state.model_dump(by_alias=True),

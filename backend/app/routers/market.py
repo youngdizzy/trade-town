@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.market_data import TIMEFRAME_ORDER, market_data_provider
 from app.regime_reconciliation import compute_regime_reconciliation
-from app.schemas import Candle, RegimeReconciliation
+from app.schemas import Candle, EconomicIntelligenceReport, EconomicIntelligenceState, RegimeReconciliation
 from app.state import game_state
 
 router = APIRouter(prefix="/api/market", tags=["market"])
@@ -52,3 +52,23 @@ async def get_regime_reconciliation() -> RegimeReconciliation:
     app/regime_reconciliation.py's own module docstring)."""
     state = await game_state.snapshot()
     return compute_regime_reconciliation(state.market_environment, state.market_intelligence)
+
+
+@router.get("/economic-intelligence", response_model=EconomicIntelligenceState)
+async def get_economic_intelligence() -> EconomicIntelligenceState:
+    """Design Bible Chapter 71 — the Economic Intelligence Center's
+    always-current cross-signal read (recomputed every tick, already on
+    the game state snapshot — never a second copy computed here). See
+    app/economic_intelligence.py's module docstring for the full honesty
+    boundary: a real synthesis of Market Environment/Market Intelligence/
+    Portfolio Intelligence, never a real macro data feed."""
+    state = await game_state.snapshot()
+    return state.economic_intelligence
+
+
+@router.get("/economic-intelligence/reports", response_model=list[EconomicIntelligenceReport])
+async def get_economic_intelligence_reports() -> list[EconomicIntelligenceReport]:
+    """The permanent daily Economic Intelligence Brief history, oldest
+    first, capped at MAX_ECONOMIC_INTELLIGENCE_REPORTS."""
+    state = await game_state.snapshot()
+    return state.economic_intelligence_reports

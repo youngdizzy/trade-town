@@ -7,6 +7,45 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 71 — Economic Intelligence Center (backend)**
+  (`app/economic_intelligence.py` new, `app/schemas.py`, `app/state.py`,
+  `app/nexus.py`, `app/save_modules.py`, `app/ws_manager.py`,
+  `app/routers/market.py`): the brief asked for a full macro-economic
+  intelligence system — central bank tracking, a real economic calendar,
+  global event intelligence, real inflation/rate/GDP forecasts, a
+  sector impact engine, scenario planning. This codebase has zero real
+  macroeconomic data anywhere (no API keys, no live feed — the same gap
+  `app/market_data.py` and `app/market_intelligence.py` already
+  documented), so every one of those sections is an explicit, documented
+  cut, not a partial build. What shipped instead is real: a new
+  `EconomicHealthScore` synthesizing five already-real signals that had
+  no shared read until now — Regime Favorability (Market Environment,
+  Ch. 65), Market Quality and News Risk (Market Intelligence),
+  Correlation Clustering and Concentration (Portfolio Intelligence, Ch.
+  56) — each its own named, published factor, never a black-box blend.
+  An `EconomicConfidenceRead` wraps it honestly (confidence, evidence
+  quality, named supporting/contradicting evidence, a computed
+  alternative-outcome statement) so the read is never presented as fact.
+  A Market Narrative Engine diffs each real in-game evening's read
+  against the last stored daily report and cites only real, computed
+  deltas — verified by a test that the narrative text never contains
+  "fed", "interest rate", "inflation", "gdp", or "central bank". A
+  Daily Economic Intelligence Brief records once per evening (mirroring
+  Market Intelligence's own daily cadence), capped at
+  `MAX_ECONOMIC_INTELLIGENCE_REPORTS = 60`. Exposed via
+  `GET /api/market/economic-intelligence` and `.../reports`. Deliberately
+  not a 10th Executive Board vote (would structurally near-duplicate
+  Market Intelligence's own regime read) and not wired into the Trade
+  Gatekeeper this pass — see the Chapter 70 Part 3 addendum for the
+  precedent that governs doing so later, as an explicit follow-up. 21
+  new tests, including two real end-to-end nexus tests proving the daily
+  cadence fires via `GameState.advance_time("workday_end", ...)`. Full
+  honesty boundary and every cut documented in
+  `docs/DesignBible/volumes/09-departments/chapter-71-economic-
+  intelligence-center.md`. Backend only in this entry, per this repo's
+  commit-backend-first discipline — frontend surfacing follows as a
+  separate commit.
+
 - **Chapter 70 Part 3 addendum — Weighted Executive Decision Engine
   wired into the Trade Gatekeeper (advisory only)**
   (`app/gatekeeper.py`, `app/executive.py`, `app/state.py`,

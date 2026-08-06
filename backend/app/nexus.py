@@ -68,6 +68,11 @@ from app.executive_intelligence import (
     record_self_evaluations,
 )
 from app.weighted_decisions import compute_weighted_recommendation
+from app.economic_intelligence import (
+    compute_economic_intelligence,
+    generate_economic_intelligence_report,
+    record_economic_intelligence_report,
+)
 from app.executive_review import generate_executive_review, record_review
 from app.founders import compute_founder_state, generate_breakthrough_review, generate_council_session, generate_founder_log_entry, record_council_session, record_founder_log
 from app.goals import generate_strategic_review, record_strategic_review, tick_goals
@@ -153,6 +158,7 @@ from app.schemas import (
     DecisionVaultEntry,
     DepartmentSelfEvaluation,
     DisciplineReview,
+    EconomicIntelligenceReport,
     EntityTransform,
     ExecutiveDepartmentRole,
     ExecutiveMeetingLogEntry,
@@ -1098,6 +1104,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # v0.7 Feature 51 — Market Intelligence Department (app/market_intelligence.py).
     market_intelligence_reports: list[MarketIntelligenceReport] = list(state.market_intelligence_reports)
     market_intelligence_learning: list[MarketIntelligenceLearningEntry] = list(state.market_intelligence_learning)
+    # Design Bible Chapter 71 — Economic Intelligence Center (app/economic_intelligence.py).
+    economic_intelligence_reports: list[EconomicIntelligenceReport] = list(state.economic_intelligence_reports)
     # v0.7 — the Decision Memory System's Decision Vault (app/decision_vault.py).
     decision_vault: list[DecisionVaultEntry] = list(state.decision_vault)
     # v0.7 Feature 55 — the Executive Decision Simulator's War Room (app/war_room.py).
@@ -1803,6 +1811,11 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # v0.7 Feature 56 — Enterprise Portfolio Intelligence. Cheap to
     # recompute every tick, same reasoning as company_health above.
     portfolio_intelligence = compute_portfolio_intelligence(paper_portfolio, market_data_provider, pending_proposal_count=len(trade_proposals))
+    # Design Bible Chapter 71 — Economic Intelligence Center. The
+    # always-current cross-signal synthesis (app/economic_intelligence.py),
+    # cheap to recompute every tick over the three real reads already
+    # computed above, same reasoning as company_health/portfolio_intelligence.
+    economic_intelligence = compute_economic_intelligence(market_environment, market_intelligence, portfolio_intelligence)
 
     is_evening = new_time.hour == EVENING_REVIEW_HOUR and new_time.minute == 0
     is_midnight = new_time.hour == 0 and new_time.minute == 0
@@ -1833,6 +1846,15 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             market_intelligence_learning = record_learning_entry(
                 market_intelligence_learning, generate_learning_entry(yesterday_report, yesterday_environment_entries, yesterday_trades)
             )
+
+        # Design Bible Chapter 71 — Economic Intelligence Center's Daily
+        # Brief. Same is_evening/once-per-real-day cadence as the Market
+        # Intelligence brief above; the narrative diffs against the most
+        # recently stored EIC report (see economic_intelligence.py's
+        # generate_market_narrative()), never the same day's own read.
+        previous_eic_report = economic_intelligence_reports[-1] if economic_intelligence_reports else None
+        economic_intelligence_report = generate_economic_intelligence_report(economic_intelligence, previous_eic_report, sim_day=new_time.day)
+        economic_intelligence_reports = record_economic_intelligence_report(economic_intelligence_reports, economic_intelligence_report)
 
     if is_evening and new_time.day % WEEKLY_INTERVAL_DAYS == 0:
         latest_report = generate_coach_report("weekly", research, paper_portfolio, company_score, RESEARCHER_IDS, new_time, ceo_decisions=ceo_decisions, decisions=decisions)
@@ -2270,6 +2292,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "decision_vault": decision_vault,
             "war_room_sessions": war_room_sessions,
             "portfolio_intelligence": portfolio_intelligence,
+            "economic_intelligence": economic_intelligence,
+            "economic_intelligence_reports": economic_intelligence_reports,
             "reasoning_challenges": reasoning_challenges,
             "reasoning_lab_state": reasoning_lab_state,
             "reflection_sessions": reflection_sessions,

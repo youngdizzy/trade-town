@@ -52,6 +52,7 @@ from app.goals import cancel_goal as cancel_goal_entry
 from app.goals import create_goal, record_goal, resolve_metric_value, validate_target_value
 from app.innovation import compute_innovation_state
 from app.weighted_decisions import compute_weighted_recommendation
+from app.economic_intelligence import compute_economic_intelligence
 from app.market_data import market_data_provider
 from app.market_environment import default_market_environment
 from app.market_intelligence import compute_market_intelligence_state
@@ -278,6 +279,12 @@ def default_state() -> GameSaveState:
         constitution=default_constitution(),
         warRoomSessions=[],
         portfolioIntelligence=compute_portfolio_intelligence(default_portfolio(), market_data_provider, pending_proposal_count=0),
+        economicIntelligence=compute_economic_intelligence(
+            default_market_environment(),
+            compute_market_intelligence_state(watchlist, [], [], market_data_provider),
+            compute_portfolio_intelligence(default_portfolio(), market_data_provider, pending_proposal_count=0),
+        ),
+        economicIntelligenceReports=[],
         updatedAt=_now_iso(),
     )
 

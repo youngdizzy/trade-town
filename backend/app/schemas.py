@@ -3793,6 +3793,107 @@ class PortfolioIntelligence(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# Design Bible Chapter 71 — Economic Intelligence Center (app/economic_
+# intelligence.py). See that module's own docstring for the full honesty
+# boundary: this codebase has no real macroeconomic data source anywhere
+# (no API keys, no live feed — app/market_data.py's own docstring already
+# establishes this), so EIC is a real cross-signal SYNTHESIS layer over
+# already-real state (MarketEnvironment's regime, MarketIntelligence's
+# quality/news-risk reads, PortfolioIntelligence's correlation/category/
+# heat reads) rather than a tracker of real central banks, real economic
+# calendars, or real global events — none of which are fabricated here.
+EconomicHealthTier = Literal["thriving", "stable", "cautious", "stressed", "critical"]
+
+
+class EconomicSignalFactor(CamelModel):
+    """One real, named, published-formula input into the Economic Health
+    Score — never a blended/hidden number, the same "no black-box
+    composite" convention CompanyHealth/PropFirmComplianceScore/
+    WeightedExecutiveRecommendation already established."""
+
+    name: str
+    score: float  # 0-100, higher = healthier
+    weight: float
+    detail: str
+
+
+class EconomicHealthScore(CamelModel):
+    overall: float  # 0-100, a real weighted average of `factors` below
+    tier: EconomicHealthTier
+    factors: list[EconomicSignalFactor] = Field(default_factory=list)
+    reasoning: str
+
+
+class EconomicConfidenceRead(CamelModel):
+    """The brief's own "Economic Confidence Engine" requirement: every
+    macro conclusion ships with confidence, evidence quality, and named
+    supporting/contradicting evidence rather than being presented as
+    fact — the same convention app/confidence.py's DecisionConfidence
+    already established for trade decisions, applied here to the
+    company's own synthesized environment read."""
+
+    confidence_pct: float = Field(alias="confidencePct")
+    evidence_quality: Literal["thin", "moderate", "strong"] = Field(
+        alias="evidenceQuality"
+    )
+    supporting_evidence: list[str] = Field(
+        default_factory=list, alias="supportingEvidence"
+    )
+    contradicting_evidence: list[str] = Field(
+        default_factory=list, alias="contradictingEvidence"
+    )
+    key_assumptions: list[str] = Field(default_factory=list, alias="keyAssumptions")
+    alternative_outcome: str = Field(alias="alternativeOutcome")
+
+
+class MarketNarrativeEntry(CamelModel):
+    """A real, evidence-cited explanation — never "the Fed cut rates" (no
+    real Fed data exists here), always a diff against this company's own
+    last stored EconomicIntelligenceReport, naming the specific real
+    signal(s) that actually moved. See economic_intelligence.py's
+    generate_market_narrative()."""
+
+    id: str
+    headline: str
+    body: str
+    evidence: list[str] = Field(default_factory=list)
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
+class EconomicIntelligenceState(CamelModel):
+    """The always-current cross-signal read — recomputed fresh every
+    tick from real already-computed state, same "cheap, never a stale
+    second copy" convention as company_health/market_intelligence."""
+
+    regime: MarketEnvironmentRegime
+    regime_label: str = Field(alias="regimeLabel")
+    market_quality_tier: MarketQualityTier = Field(alias="marketQualityTier")
+    health: EconomicHealthScore
+    confidence: EconomicConfidenceRead
+    correlation_pairs: list[CorrelationPair] = Field(
+        default_factory=list, alias="correlationPairs"
+    )
+    category_exposure: list[CategoryExposure] = Field(
+        default_factory=list, alias="categoryExposure"
+    )
+    news_risk: NewsRiskRead = Field(alias="newsRisk")
+    updated_at: str = Field(alias="updatedAt")
+
+
+class EconomicIntelligenceReport(CamelModel):
+    """One real, permanent snapshot per real in-game day (the Daily Macro
+    Brief), generated on the same evening cadence as Market Intelligence's
+    own Executive Market Brief — see app/nexus.py. Embeds that day's real
+    EconomicIntelligenceState plus a real, diffed MarketNarrativeEntry."""
+
+    id: str
+    sim_day: int = Field(alias="simDay")
+    snapshot: EconomicIntelligenceState
+    narrative: MarketNarrativeEntry
+    created_at: str = Field(alias="createdAt")
+
+
 # v0.7 Feature 29 — the Reasoning Lab (app/reasoning_lab.py). A permanent
 # ReasoningChallenge is filed periodically from the company's most recent
 # real AI Debate + its linked TradeDecision — practicing the REASONING
@@ -4959,6 +5060,18 @@ class GameSaveState(CamelModel):
     # the portfolio's own real current state, same convention as
     # `company_health`/`company_dna` — never a persisted, driftable copy.
     portfolio_intelligence: PortfolioIntelligence = Field(alias="portfolioIntelligence")
+    # Design Bible Chapter 71 — Economic Intelligence Center
+    # (app/economic_intelligence.py). `economic_intelligence` is the
+    # always-current cross-signal read, recomputed fresh every tick like
+    # `portfolio_intelligence` above. `economic_intelligence_reports` is
+    # the permanent once-daily Economic Intelligence Brief history,
+    # capped at MAX_ECONOMIC_INTELLIGENCE_REPORTS.
+    economic_intelligence: EconomicIntelligenceState = Field(
+        alias="economicIntelligence"
+    )
+    economic_intelligence_reports: list[EconomicIntelligenceReport] = Field(
+        default_factory=list, alias="economicIntelligenceReports"
+    )
     # v0.7 Design Bible Chapter 64 — CEO-authored company goals
     # (app/goals.py). Capped and append-only like every other real list
     # in this codebase — see MAX_GOALS.

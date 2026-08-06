@@ -1315,6 +1315,30 @@ request from the current real `MarketEnvironmentState`/
 `compute_regime_reconciliation()`) — never a second persisted copy, the
 same convention as `GET /api/goals/priorities`.
 
+### `GET /api/market/economic-intelligence` / `GET /api/market/economic-intelligence/reports`
+
+Design Bible Chapter 71 — the Economic Intelligence Center. Read-only, no
+body on either call. `/economic-intelligence` returns the always-current
+`EconomicIntelligenceState`: `regime`/`regimeLabel` (Market Environment,
+Chapter 65), `marketQualityTier` (Market Intelligence), `health`
+(`EconomicHealthScore` — `overall` 0-100, `tier`, and `factors`: five
+named `EconomicSignalFactor` entries — Regime Favorability, Market
+Quality, News Risk, Correlation Clustering, Concentration — each its own
+score/weight/detail, never a black-box blend), `confidence`
+(`EconomicConfidenceRead` — `confidencePct`, `evidenceQuality`,
+`supportingEvidence`/`contradictingEvidence`, `keyAssumptions`,
+`alternativeOutcome`), plus the current `correlationPairs`/
+`categoryExposure`/`newsRisk` (all reused directly from Portfolio/Market
+Intelligence, never recomputed). `/economic-intelligence/reports` returns
+the permanent daily `EconomicIntelligenceReport[]` history (oldest first,
+capped at `MAX_ECONOMIC_INTELLIGENCE_REPORTS = 60`), each embedding that
+day's `snapshot` plus a real, evidence-cited `narrative`
+(`MarketNarrativeEntry`) diffed against the previous day's report. Both
+already computed on the game state (never a second copy computed by the
+endpoint) — see `app/economic_intelligence.py`'s module docstring for the
+full honesty boundary: this is a synthesis of already-real trading
+signals, never a real macroeconomic data feed (this codebase has none).
+
 ### `POST /api/emergency-stop/activate` / `POST /api/emergency-stop/resume`
 
 Design Bible Chapter 67 (TTOS) Part 3 — the real Global Emergency Stop.
