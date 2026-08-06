@@ -5,6 +5,37 @@ development milestones, not semver releases.
 
 ## Unreleased
 
+### Added
+
+- **Chapter 70, Part 2 — Executive Consensus Meter**
+  (`docs/DesignBible/volumes/09-departments/chapter-70-executive-board-ceo-intelligence-system.md`):
+  Chapter 70 is now two parts — the base Board & CEO Intelligence brief
+  stays Part 1, and this addendum (per-recommendation, department-by-
+  department transparency into how the board reached a call) is added
+  as Part 2. Researched first, and the match is unusually direct:
+  `DepartmentOpinion` + `compute_executive_recommendation()`
+  (`app/executive_intelligence.py`) already are a real, live Executive
+  Consensus Meter — 9 real departments each returning a real stance,
+  confidence percentage, and reasoning, combined by a transparent,
+  named, priority-ordered rule chain (never a black-box blend),
+  rendered today in `ExecutiveVoting.tsx`'s Executive Intelligence
+  Network panel and permanently recorded via `ExecutiveMeetingLogEntry`
+  (which stores the full per-department opinion breakdown, not just a
+  summary) on every real trade decision. A real, separate, company-wide
+  `department_consensus` KPI (`app/company_health.py`) already tracks
+  agreement rate over time. Genuinely unbuilt: a distinct Consensus %
+  apart from average confidence, Institutional Risk/Opportunity Scores,
+  merging the What-If Simulation Lab's real Probability/Return/Risk
+  numbers into the same panel, structured per-opinion Evidence/
+  Concerns/Benefits/Risks/Alternatives fields (today one free-text
+  summary carries all of it), an auto-synthesized disagreement
+  paragraph, Modify/Delegate as CEO actions, and any real outcome-
+  linked Executive Accuracy Score — the last of which runs into a
+  genuine, pre-existing design tension with this codebase's own
+  explicit refusal (`app/coach.py`, `app/player_vs_ai.py`) to fabricate
+  counterfactual "would have" trade outcomes, not just a missing
+  feature. No code was written against this section.
+
 ### Changed
 
 - **Chapter 69 restructured to three parts (correcting the previous

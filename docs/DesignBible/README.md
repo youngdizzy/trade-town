@@ -58,7 +58,7 @@ will eventually absorb remains the real, current reference.
 | 6 | [Trading Operating System](volumes/06-trading-operating-system.md) | Outline |
 | 7 | [AI Workforce](volumes/07-ai-workforce.md) | Outline |
 | 8 | [Research Division](volumes/08-research-division.md) | Outline |
-| 9 | [Departments](volumes/09-departments/README.md) | 12 chapters written (57–67, 70) — chapter template defined |
+| 9 | [Departments](volumes/09-departments/README.md) | 12 chapters written (57–67, 70; 70 in two parts — Board & CEO Intelligence, Executive Consensus Meter) — chapter template defined |
 | 10 | [Broker & Live Trading](volumes/10-broker-live-trading/README.md) | Chapters 68–69 written (69 in three parts: MAFMS, Prop Firm Rule Engine, Institutional Rule Engine) — pure architecture, no implementation, gated by Appendix G's Live Trading Gate |
 | 11 | [Testing & Quality Assurance](volumes/11-testing-quality-assurance.md) | Outline |
 | 12 | [Security](volumes/12-security.md) | Outline |
