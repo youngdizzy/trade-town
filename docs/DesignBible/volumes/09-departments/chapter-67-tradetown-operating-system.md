@@ -542,10 +542,31 @@ remaining phases:**
   persistence path if it's meant to survive reloads, per this project's
   own no-fabricated-numbers rule).
 
-Also still genuinely new and unbuilt: consolidating the three
-independently-built "company overview" dashboards (QuickView,
-OverviewPanel, BrainRoomHud's toolbar-triggered pull-up) into one
-Executive Dashboard, folding the 5 standalone overlays (Newspaper,
+**Executive Dashboard consolidation — built (Part 3), data layer only.**
+QuickView (the collapsed glance view) and OverviewPanel (the OVERVIEW
+tab in the expanded Command Center) independently recomputed
+`riskLevel()`, `latestDecision()`, and `computeNoTradeStats()` from the
+same gameStore fields — real, non-cosmetic duplication. A new
+`useDashboardData()` hook (`CommandCenter/lib/useDashboardData.ts`) is
+now the one canonical place those shared derivations run, covering
+every real data point either component shows (Account Value/Month
+P&L/Top Opportunity from QuickView; the working-agent count from
+OverviewPanel included alongside); both components consume it instead
+of repeating the calls, with zero data points lost either direction.
+Deliberately **not** a literal single-component merge: a compact
+always-visible glance and a full landing tab serve genuinely different
+real contexts, the same "reuse the data, don't force-merge different UI
+contexts" call this chapter's own Quick Action Dock slice already made
+for Pause/Resume/Emergency Stop — forcing them into one render tree
+would have been a cosmetic-only change risking the same layout
+regressions that slice's own note already warns about. Still genuinely
+new and unbuilt: `BrainRoomHud`'s own toolbar-triggered pull-up remains
+a third, separate "company overview"-shaped surface, not folded into
+this data layer or the other two's visual presentation — a real,
+undone piece of the brief's full three-way consolidation, not silently
+dropped.
+
+Also still genuinely new and unbuilt: folding the 5 standalone overlays (Newspaper,
 Company Memory, Coach Dashboard, Brain Room HUD, Campus Map) into TTOS
 navigation, renaming "ACADEMY"/"OPS" to resolve their naming collisions,
 CEO-facing themes and widget customization, and the "declare Navigation

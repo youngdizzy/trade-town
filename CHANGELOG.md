@@ -7,6 +7,31 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 67 Part 3 — TTOS Executive Dashboard consolidation (data layer)**
+  (`frontend/src/ui/components/CommandCenter/lib/useDashboardData.ts`,
+  `QuickView.tsx`, `panels/OverviewPanel.tsx`): `QuickView` (the
+  collapsed glance view) and `OverviewPanel` (the OVERVIEW tab) were
+  independently recomputing `riskLevel()`, `latestDecision()`, and
+  `computeNoTradeStats()` from the same gameStore fields — real,
+  non-cosmetic duplication. A new `useDashboardData()` hook is now the
+  one canonical place those shared derivations run, covering every real
+  data point either component shows (Account Value/Month P&L/Top
+  Opportunity from QuickView; the working-agent count from
+  OverviewPanel), with zero data points lost either direction.
+  Deliberately not a literal single-component merge — a compact
+  always-visible glance and a full landing tab serve genuinely
+  different real contexts, the same "reuse the data, don't force-merge
+  different UI contexts" call this chapter's own Quick Action Dock
+  slice already made for Pause/Resume/Emergency Stop. `BrainRoomHud`'s
+  own toolbar pull-up remains a third, separate "company overview"
+  surface, not folded in — a real, undone piece of the brief's full
+  three-way consolidation, documented as such rather than silently
+  dropped. `tsc`/`eslint`/`vite build` clean, full
+  `commandCenter.spec.ts` regression passing (31/33, one skipped, the
+  one failure the already-confirmed pre-existing flaky movement-key
+  test) — live-verified no visual or behavioral change to either
+  QuickView or OverviewPanel.
+
 - **Chapter 67 Part 3 — TTOS real Global Emergency Stop**
   (`backend/app/emergency_stop.py`, `app/schemas.py`, `app/nexus.py`,
   `app/state.py`, `app/scribe.py`, `app/routers/emergency.py`,
