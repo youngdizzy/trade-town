@@ -7,6 +7,56 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 73 — Compliance, Audit & Governance System (CAGS) (backend)**
+  (`app/audit_log.py` new, `app/schemas.py`, `app/routers/audit.py` new,
+  `app/main.py`, `tests/test_audit_log.py`): the brief asks for
+  per-event Broker/User/Software-Version fields, an encrypted-
+  credentials Security section, a mutable Incident open/resolved
+  workflow with CEO-editable corrective actions, an in-game Version
+  History browser, and — in a companion "Institutional Time Machine"
+  addendum — full point-in-time reconstruction of the whole company's
+  state (market data, portfolio, news, Knowledge Graph, Company Memory,
+  all simultaneously) at any arbitrary historical instant. This codebase
+  has one player, one 100%-simulated broker (`app/broker.py`'s own
+  docstring: "no code path that reaches a real order-execution
+  endpoint"), no credentials of any kind, no historical version tag per
+  event, and takes no periodic full-state snapshots — so all five
+  sections are explicit, documented cuts, not partial builds. What
+  shipped instead is real: a unified Audit Log (`compute_audit_log()`)
+  synthesizing nine already-real, already-persisted source types — CEO
+  Decisions (including real overrides, reusing Chapter 70 Part 2's own
+  `agreedWithAi` field rather than inventing new override tracking),
+  Executive Meeting Log, Gatekeeper/Opportunity Rejections, critical
+  Risk Warnings, weak/reckless Discipline Reviews, Emergency Stop,
+  Defensive Mode and Crisis Briefings (Chapter 72), and failed
+  Institutional Rule Engine checks (Chapter 69 Part 3, real corrective-
+  action text reused verbatim, never fabricated) — into one searchable,
+  category/severity/keyword-filterable log, computed fresh per request
+  with **no new GameSaveState field and no WS broadcast change**, the
+  identical read-only-synthesis convention `app/knowledge_graph.py` and
+  `app/regime_reconciliation.py` already established. A real Incident
+  view is a pure severity filter over that same log (never a second,
+  independently-built list that could drift). `GOVERNANCE_LAYERS` is a
+  disclosed, static description of the real 13-step order
+  `app/gatekeeper.py::evaluate_gatekeeper()` already checks a trade
+  candidate in — not a new authority chain, and honest that the
+  Institutional Rule Engine is real but still disconnected from live
+  execution for non-primary accounts. A Compliance Overview reuses
+  Chapter 70 Part 2's real Executive Accuracy Score verbatim and adds
+  one new, disclosed Compliance Score formula (`100 - min(60, 5 × open
+  incidents)`, floored at 40 — conservative but arbitrary, the same
+  honesty note `RiskLimits` itself already carries). The Institutional
+  Time Machine addendum ships as this same Audit Log's own chronological
+  order — a real, steppable history browser over every moment this
+  codebase actually recorded, honestly short of an omniscient rewind to
+  an arbitrary instant nothing was ever snapshotted at. `GET
+  /api/audit/log|incidents|governance|overview|overrides`. 23 new tests.
+  Verified: `mypy app/` clean, `ruff check app/ tests/` clean, full
+  `pytest -q` — 1221 passed (1198 pre-existing + 23 new), zero
+  regressions. See
+  `docs/DesignBible/volumes/09-departments/chapter-73-compliance-audit-governance-system.md`
+  for the complete honesty boundary.
+
 - **Chapter 72 — Black Swan Intelligence & Resilience System (frontend)**
   (`frontend/src/types.ts`, `frontend/src/net/socket.ts`,
   `frontend/src/net/api.ts`, `frontend/src/game/systems/EventBus.ts`,

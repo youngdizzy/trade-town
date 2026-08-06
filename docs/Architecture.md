@@ -6923,6 +6923,48 @@ Inserting BLACKSWAN shifted every later tab's number-key (1-9) shortcut
 down one position; the two affected Playwright assertions in
 `commandCenter.spec.ts` were updated to match.
 
+### Compliance, Audit & Governance System (CAGS) — Design Bible Chapter 73
+
+A real, read-only audit synthesis layer, backend only, with **no new
+persisted state** — no `GameSaveState` field, no WS broadcast change, no
+`app/nexus.py` wiring. The brief asks for per-event Broker/User/Software-
+Version fields, encrypted credentials, a mutable Incident open/resolved
+workflow, an in-game Version History browser, and an Institutional Time
+Machine that reconstructs the whole company's state at any arbitrary
+instant. This codebase has one player, one 100%-simulated broker, no
+credentials, and no periodic full-state snapshots to reconstruct an
+arbitrary instant from — so all five are explicit, documented cuts; see
+`docs/DesignBible/volumes/09-departments/chapter-73-compliance-audit-governance-system.md`
+for the complete reasoning.
+
+What's real: `app/audit_log.py`'s `compute_audit_log()` merges nine
+already-real, already-persisted source types — CEO Decisions (including
+real overrides, off the existing `agreedWithAi` field), Gatekeeper/
+Opportunity Rejections, critical Risk Warnings, weak/reckless Discipline
+Reviews, Emergency Stop, Defensive Mode (Chapter 72), Crisis Briefings
+(Chapter 72), and failed Institutional Rule Engine checks (Chapter 69
+Part 3, real corrective-action text reused verbatim) — into one
+searchable, filterable `AuditEntry` list, computed fresh per request,
+the identical convention `app/knowledge_graph.py` and
+`app/regime_reconciliation.py` already established. `compute_incidents()`
+is a pure severity filter over that same list. `GOVERNANCE_LAYERS` is a
+disclosed, static description of the real 13-step order
+`app/gatekeeper.py::evaluate_gatekeeper()` already checks a trade
+candidate in — never a new authority chain, and honest that the
+Institutional Rule Engine sits outside live execution today.
+`compute_compliance_overview()` reuses Chapter 70 Part 2's real
+Executive Accuracy Score verbatim and computes one new, disclosed
+Compliance Score formula (`100 - min(60, 5 × open incidents)`, floored
+at 40). The Institutional Time Machine addendum ships as this same Audit
+Log's own chronological order — a real history browser over every
+moment this codebase actually recorded, honestly short of an omniscient
+full-state rewind.
+
+`app/audit_log.py`, `app/routers/audit.py`
+(`GET /api/audit/log|incidents|governance|overview|overrides`, see
+`docs/API.md`). 23 new tests (`tests/test_audit_log.py`). Deliberately
+adds no new Trade Gatekeeper check and no new persisted state this pass.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

@@ -4223,6 +4223,99 @@ class BlackSwanEventRecord(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
+# Design Bible Chapter 73 — Compliance, Audit & Governance System
+# (app/audit_log.py). Computed fresh per request from state this
+# codebase already persists — never a second, parallel logging system,
+# and never a new GameSaveState field. See that module's own docstring
+# for the full honesty boundary: no per-event Broker/User/Software-
+# Version fields (this codebase has one simulated broker, one player,
+# and no historical version tag), no mutable incident-management
+# workflow (every incident here is resolved-by-construction the instant
+# it's recorded).
+AuditEventCategory = Literal[
+    "ceo_decision",
+    "gatekeeper_rejection",
+    "opportunity_rejection",
+    "risk_warning",
+    "discipline_review",
+    "emergency_stop",
+    "defensive_mode",
+    "crisis_briefing",
+    "rule_violation",
+]
+
+
+class AuditEntry(CamelModel):
+    """One real event, built from one real already-persisted record's own
+    fields — never a templated narrative. `relatedId` links back to the
+    real source record (a proposal id, a decision id, an account id) so
+    the CEO can cross-reference the original, not just this summary."""
+
+    id: str
+    timestamp: str
+    sim_day: int = Field(alias="simDay")
+    category: AuditEventCategory
+    severity: AlertSeverity
+    department: str
+    summary: str
+    detail: str
+    related_id: str | None = Field(default=None, alias="relatedId")
+
+
+class GovernanceLayer(CamelModel):
+    """One real, disclosed layer of the actual decision pipeline this
+    codebase enforces every tick — never a new authority chain. `order`
+    is the real position app/gatekeeper.py::evaluate_gatekeeper() checks
+    it in; `wired` is false only for the Institutional Rule Engine, which
+    is real but not yet routed into live trade execution for non-primary
+    accounts (Chapter 69 Part 3's own documented gap)."""
+
+    order: int
+    name: str
+    module: str
+    description: str
+    wired: bool
+
+
+class ComplianceOverview(CamelModel):
+    """The Compliance Dashboard's real aggregate — every number here is
+    either a direct count over the real Audit Log or a value reused
+    verbatim from an already-real computed source (Executive Accuracy,
+    Defensive Mode status), never a new blended score beyond the one
+    disclosed Compliance Score formula itself."""
+
+    compliance_score: float = Field(alias="complianceScore")
+    open_incident_count: int = Field(alias="openIncidentCount")
+    critical_incident_count: int = Field(alias="criticalIncidentCount")
+    total_audit_entries: int = Field(alias="totalAuditEntries")
+    ceo_override_count: int = Field(alias="ceoOverrideCount")
+    ceo_override_rate_pct: float = Field(alias="ceoOverrideRatePct")
+    defensive_mode_active: bool = Field(alias="defensiveModeActive")
+    emergency_stop_active: bool = Field(alias="emergencyStopActive")
+    # Reused verbatim from Chapter 70 Part 2's own real, already-computed
+    # per-department accuracy — never recomputed here.
+    executive_accuracy: list[ExecutiveAccuracyScore] = Field(
+        default_factory=list, alias="executiveAccuracy"
+    )
+    updated_at: str = Field(alias="updatedAt")
+
+
+class CeoOverrideRecord(CamelModel):
+    """One real CEO decision that disagreed with the AI's own
+    recommendation — sourced directly from CeoDecisionRecord.agreedWithAi
+    (Chapter 70 Part 2, real since that chapter), never a new tracking
+    mechanism. `outcome` is the same real "pending"/"correct"/
+    "incorrect"/"undecidable" grading that record already carries."""
+
+    id: str
+    proposal_id: str = Field(alias="proposalId")
+    symbol: str
+    ai_recommendation: AnalystChoice = Field(alias="aiRecommendation")
+    ceo_decision: AnalystChoice = Field(alias="ceoDecision")
+    outcome: Literal["pending", "correct", "incorrect", "undecidable"]
+    created_at: str = Field(alias="createdAt")
+
+
 # v0.7 Feature 29 — the Reasoning Lab (app/reasoning_lab.py). A permanent
 # ReasoningChallenge is filed periodically from the company's most recent
 # real AI Debate + its linked TradeDecision — practicing the REASONING

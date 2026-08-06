@@ -1431,6 +1431,56 @@ a live health score. `/events` returns the permanent
 `BlackSwanEventRecord[]` Post-Event Analysis history (oldest first,
 capped at `MAX_BLACK_SWAN_EVENTS = 40`).
 
+### `GET /api/audit/log`
+
+Design Bible Chapter 73 — the Compliance, Audit & Governance System
+(CAGS). Query params: `category` (one of `AuditEventCategory`),
+`severity` (`info`/`warning`/`critical`), `search` (keyword, matched
+against summary/detail/department), `limit` (default 200, max 500). The
+unified, real, searchable Audit Log — every real event this company
+already produces (CEO decisions including real overrides, Gatekeeper/
+Opportunity rejections, critical Risk Warnings, weak/reckless Discipline
+Reviews, Emergency Stop, Defensive Mode, Crisis Briefings, failed Rule
+Engine checks), newest first. Computed fresh per request from state
+already on the game state — never a second, persisted logging system.
+See `app/audit_log.py`'s module docstring for the full honesty boundary:
+no per-event Broker/User/Software-Version field (this codebase has one
+simulated broker, one player, no historical version tag).
+
+### `GET /api/audit/incidents`
+
+The same Audit Log, filtered to `warning`/`critical` severity only — a
+pure filter, never a second, independently-built list that could drift
+from `/api/audit/log`.
+
+### `GET /api/audit/governance`
+
+The real, disclosed order `app/gatekeeper.py::evaluate_gatekeeper()`
+checks a trade candidate in (13 named `GovernanceLayer` entries,
+`order`/`name`/`module`/`description`/`wired`), plus the Institutional
+Rule Engine's real position — `wired: false`, since Chapter 69 Part 3's
+Custom Rules are not yet routed into live trade execution for
+non-primary accounts. Never a new authority chain; this endpoint
+describes, never enforces.
+
+### `GET /api/audit/overview`
+
+The Compliance Dashboard's real aggregate: `complianceScore` (a
+disclosed formula — `100 - min(60, 5 × open incident count)`, floored at
+40), `openIncidentCount`/`criticalIncidentCount`/`totalAuditEntries`,
+`ceoOverrideCount`/`ceoOverrideRatePct` (real, off `CeoDecisionRecord.
+agreedWithAi`), `defensiveModeActive`/`emergencyStopActive` (reused
+verbatim from Chapters 72/67), and `executiveAccuracy` (reused verbatim
+from Chapter 70 Part 2's `compute_executive_accuracy_scores()`, never
+recomputed here).
+
+### `GET /api/audit/overrides`
+
+Every real `CeoOverrideRecord` — a CEO decision where `agreedWithAi` is
+false, with its real `outcome` once graded. Sourced directly from
+`CeoDecisionRecord`, the same real field Chapter 70 Part 2 already
+tracks for CEO Accuracy.
+
 ### `POST /api/emergency-stop/activate` / `POST /api/emergency-stop/resume`
 
 Design Bible Chapter 67 (TTOS) Part 3 — the real Global Emergency Stop.
