@@ -1,6 +1,7 @@
 import { GameCanvas } from "@/ui/components/GameCanvas";
 import { TopStatusBar } from "@/ui/components/TopStatusBar";
 import { GlobalStatusBar } from "@/ui/components/GlobalStatusBar";
+import { QuickActionDock } from "@/ui/components/QuickActionDock";
 import { BottomToolbar } from "@/ui/components/BottomToolbar";
 import { DialogueBox } from "@/ui/components/DialogueBox";
 import { InteractionPrompt } from "@/ui/components/InteractionPrompt";
@@ -35,6 +36,7 @@ export default function App() {
       <CompanyMemory />
       <CoachDashboard />
       <BottomToolbar />
+      <QuickActionDock />
       <PauseMenu />
       <SettingsMenu />
       <CommandCenter />

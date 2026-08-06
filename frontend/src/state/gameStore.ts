@@ -199,6 +199,10 @@ export interface GameUiState {
    * "Analyze" buttons request the Command Center jump to a specific
    * decision; FullCommandCenter consumes and clears this. */
   pendingInspectDecision: { decisionId: string; openDetail: boolean; nonce: number } | null;
+  /** Design Bible Chapter 67 (TTOS) Part 3 — the Quick Action Dock's
+   * quick-jump buttons request the Command Center jump to a specific
+   * tab; FullCommandCenter consumes and clears this. */
+  pendingCommandCenterTab: string | null;
   netConnected: boolean;
   save: SaveUiState;
   currentScene: string;
@@ -443,6 +447,7 @@ class GameStore {
     executiveVotingOpen: false,
     executiveVotingProposalId: null,
     pendingInspectDecision: null,
+    pendingCommandCenterTab: null,
     netConnected: false,
     save: { status: "idle", lastSavedAt: null, error: null },
     currentScene: "MainMenuScene",
@@ -609,6 +614,13 @@ class GameStore {
       // excluded from the movement-blocking signal.
       EventBus.emit("world:interactionBlocked", { blocked: true });
     });
+    // Design Bible Chapter 67 (TTOS) Part 3 — the Quick Action Dock's
+    // quick-jump buttons, same "request a jump, FullCommandCenter
+    // consumes and clears it" pattern trade:inspect above already uses.
+    EventBus.on("ui:commandCenterJump", ({ tab }) => {
+      this.set({ pendingCommandCenterTab: tab, commandCenterOpen: true, commandCenterMode: "full" });
+      EventBus.emit("world:interactionBlocked", { blocked: true });
+    });
     EventBus.on("agentEnergy:updated", (agentEnergy) => this.set({ agentEnergy }));
     EventBus.on("signalCalibration:updated", (signalCalibration) => this.set({ signalCalibration }));
     EventBus.on("playerVsAi:updated", (playerVsAi) => this.set({ playerVsAi }));
@@ -646,6 +658,11 @@ class GameStore {
   /** FullCommandCenter calls this once it has acted on a pendingInspectDecision request. */
   clearPendingInspectDecision(): void {
     this.set({ pendingInspectDecision: null });
+  }
+
+  /** FullCommandCenter calls this once it has acted on a pendingCommandCenterTab request. */
+  clearPendingCommandCenterTab(): void {
+    this.set({ pendingCommandCenterTab: null });
   }
 }
 

@@ -28,7 +28,9 @@ test.describe("Global Status Bar", () => {
     // RESTRICTED (never blank) and AUTOMATION always shows the current
     // Operating Mode (learning by default on a fresh save).
     await expect(page.getByText(/NORMAL|ELEVATED|RESTRICTED/).first()).toBeVisible();
-    await expect(page.getByText("LEARNING", { exact: true })).toBeVisible();
+    // .first() since Design Bible Chapter 67's Quick Action Dock also
+    // shows this same real Operating Mode value from every scene.
+    await expect(page.getByText("LEARNING", { exact: true }).first()).toBeVisible();
 
     // Still visible from inside the Command Center — a global strip,
     // never scoped to one scene or overlay.

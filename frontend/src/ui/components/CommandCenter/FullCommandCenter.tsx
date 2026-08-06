@@ -115,7 +115,7 @@ const TABS = [
 type Tab = (typeof TABS)[number];
 
 export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => void; onClose: () => void }) {
-  const { time, riskWarnings, research, agents, decisions, pendingInspectDecision } = useGameStore();
+  const { time, riskWarnings, research, agents, decisions, pendingInspectDecision, pendingCommandCenterTab } = useGameStore();
   const [tab, setTab] = useState<Tab>("OVERVIEW");
   const [inspecting, setInspecting] = useState<TradeDecision | null>(null);
   const [helpLessonId, setHelpLessonId] = useState<EducationTopic | null>(null);
@@ -131,6 +131,19 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
     }
     gameStore.clearPendingInspectDecision();
   }, [pendingInspectDecision, decisions]);
+
+  // Design Bible Chapter 67 (TTOS) Part 3 — the Quick Action Dock's
+  // quick-jump buttons request a jump straight to a tab via gameStore,
+  // same pattern as pendingInspectDecision above. Validated against the
+  // real TABS list since the event payload is a bare string, not this
+  // file's own Tab union (see EventBus.ts's own note on why).
+  useEffect(() => {
+    if (!pendingCommandCenterTab) return;
+    if ((TABS as readonly string[]).includes(pendingCommandCenterTab)) {
+      setTab(pendingCommandCenterTab as Tab);
+    }
+    gameStore.clearPendingCommandCenterTab();
+  }, [pendingCommandCenterTab]);
 
   // v0.7 Feature 34 — number keys 1-9 jump straight to the first nine
   // tabs, the same real switch-tab action clicking one already performs.

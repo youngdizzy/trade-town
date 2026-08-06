@@ -161,6 +161,13 @@ export interface GameEvents {
   "ui:campusMap": { open: boolean };
   "ui:breakthrough": { open: boolean };
   "ui:emergencyStopConfirm": { pending: "activate" | "resume" | null };
+  // Design Bible Chapter 67 (TTOS) Part 3 — the Quick Action Dock's
+  // quick-jump buttons. `tab` is a bare string (not FullCommandCenter's
+  // own `Tab` union) to avoid a circular import — FullCommandCenter
+  // already imports EventBus, so EventBus can't import a type back from
+  // it. FullCommandCenter validates the string against its real TABS
+  // list before acting on it.
+  "ui:commandCenterJump": { tab: string };
   "riskLimits:updated": RiskLimits;
   "riskWarnings:updated": RiskWarning[];
   "emergencyStop:updated": EmergencyStopState;
