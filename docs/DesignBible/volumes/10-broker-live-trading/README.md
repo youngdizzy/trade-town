@@ -1,7 +1,11 @@
 # Volume 10 — Broker & Live Trading
 
-**Status:** Chapter 68 written — pure target architecture, no
-implementation. See [the master Table of Contents](../../README.md).
+**Status:** Chapters 68–69 written — pure target architecture, no
+implementation. See [the master Table of Contents](../../README.md)
+and [Appendix G's Live Trading
+Gate](../../appendices/appendix-g-permanent-development-policy.md) for
+the standing policy on exactly when this volume moves from
+architecture to a real connection.
 
 Every real order this codebase has ever placed has gone to exactly one
 destination: `backend/app/broker.py`'s `PaperBroker`, a fully simulated
@@ -18,7 +22,8 @@ already established.
 
 | Feature | Title | Status |
 |---|---|---|
-| 68 | [Institutional Broker Management System (IBMS)](chapter-68-institutional-broker-management-system.md) | Pure architecture — no implementation. `app/broker.py`'s `PaperBroker` (a real, fully simulated order-book engine) and `app/market_data.py`'s `MarketDataProvider` adapter-interface pattern (proven out for market data, never for execution) are the only real precedents. Broker connections, authentication, encrypted credentials, account synchronization, buying power beyond a cash-reserve floor, position reconciliation, broker health monitoring, a multi-account model, and Charles Schwab v1.0 itself are all genuinely unbuilt. |
+| 68 | [Institutional Broker Management System (IBMS)](chapter-68-institutional-broker-management-system.md) | Pure architecture — no implementation. `app/broker.py`'s `PaperBroker` (a real, fully simulated order-book engine) and `app/market_data.py`'s `MarketDataProvider` adapter-interface pattern (proven out for market data, never for execution) are the only real precedents. Broker connections, authentication, encrypted credentials, account synchronization, buying power beyond a cash-reserve floor, position reconciliation, broker health monitoring, a multi-account model, and Charles Schwab v1.0 itself are all genuinely unbuilt. Gated by the Live Trading Gate — see Appendix G. |
+| 69 | [Multi-Account & Fund Management System (MAFMS)](chapter-69-multi-account-fund-management-system.md) | Pure architecture — no implementation. `PaperPortfolio` (the company's trading account) and `TreasuryState` (the CEO's personal capital) are two real, genuinely isolated capital pools — the one real precedent this chapter's own architecture generalizes from. A generalized N-account model, account types, per-account permissions/risk profiles, account switching, cross-account aggregation, Fund Mode, and Client Mode are all genuinely unbuilt. Depends on Chapter 68 becoming real first. |
 
 ## Where the real content lives today
 

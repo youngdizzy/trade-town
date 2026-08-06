@@ -7,6 +7,26 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 69 — Multi-Account & Fund Management System (MAFMS)**
+  (`docs/DesignBible/volumes/10-broker-live-trading/`): a new Design
+  Bible chapter, pure target architecture — no code was written against
+  it. Before writing, research confirmed this codebase's real
+  multi-account footprint: exactly two hardcoded, genuinely isolated
+  capital pools (`PaperPortfolio`, the company's trading account, and
+  `TreasuryState`, the CEO's personal capital), each with its own real
+  transaction history, moved between only via an explicit deposit/
+  withdraw call. A generalized N-account model, account types, account
+  IDs/owners/permissions, account switching, account groups,
+  cross-account aggregation, Fund Mode, and Client Mode are all
+  confirmed genuinely unbuilt. One real, notable exception: the Prop
+  Firm account profile's own named special rules (daily loss limit,
+  max drawdown, position size limits) are already real, working
+  machinery in `RiskLimits`/`risk_engine.py` — just scoped globally to
+  the one account that exists, not as an assignable per-account
+  profile. Depends on Chapter 68 (Institutional Broker Management
+  System), and is gated by the same Live Trading Gate (Appendix G).
+  Documentation only, no code changes.
+
 - **Appendix G — the Live Trading Gate**
   (`docs/DesignBible/appendices/appendix-g-permanent-development-policy.md`,
   cross-referenced from Chapter 68): records, as permanent policy, the
