@@ -10,7 +10,7 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.executive import PROPOSAL_CANDLE_COUNT, PROPOSAL_TIMEFRAME, AnalystChoice
-from app.executive_intelligence import compute_executive_recommendation, generate_department_opinions
+from app.executive_intelligence import compute_executive_accuracy_scores, compute_executive_recommendation, generate_department_opinions
 from app.market_data import market_data_provider
 from app.persistence import persist_modules
 from app.schemas import (
@@ -18,6 +18,7 @@ from app.schemas import (
     CeoDecisionRecord,
     ChallengeReport,
     Debate,
+    ExecutiveAccuracyScore,
     ExecutiveRecommendation,
     GatekeeperRejection,
     HoldReason,
@@ -38,6 +39,14 @@ class SubmitCeoDecisionRequest(BaseModel):
 
     proposal_id: str = Field(alias="proposalId")
     choice: AnalystChoice
+    # Design Bible Chapter 70 Part 2 — "Delegate to the Executive Board."
+    # True only when the CEO explicitly clicked Delegate; `choice` is
+    # still required and should be the Executive Intelligence Network's
+    # own recommended action (mapped client-side from GET
+    # /api/executive/intelligence) so this endpoint never has to guess
+    # what "delegate" means — it only changes what gets recorded about
+    # who decided.
+    delegated: bool = False
 
 
 class SubmitCeoDecisionResponse(BaseModel):
@@ -55,7 +64,7 @@ class SubmitCeoDecisionResponse(BaseModel):
 
 @router.post("/decide", response_model=SubmitCeoDecisionResponse)
 async def decide(payload: SubmitCeoDecisionRequest) -> SubmitCeoDecisionResponse:
-    state, error = await game_state.submit_ceo_decision(payload.proposal_id, payload.choice)
+    state, error = await game_state.submit_ceo_decision(payload.proposal_id, payload.choice, delegated=payload.delegated)
     if error is not None:
         raise HTTPException(status_code=400, detail=error)
     persist_modules(state)
@@ -90,6 +99,31 @@ async def hold(payload: HoldProposalRequest) -> HoldProposalResponse:
         raise HTTPException(status_code=400, detail=error)
     persist_modules(state)
     return HoldProposalResponse(tradeProposals=state.trade_proposals)
+
+
+class ModifyProposalRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    proposal_id: str = Field(alias="proposalId")
+    quantity: float
+
+
+class ModifyProposalResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    trade_proposals: list[TradeProposal] = Field(alias="tradeProposals")
+
+
+@router.post("/modify", response_model=ModifyProposalResponse)
+async def modify(payload: ModifyProposalRequest) -> ModifyProposalResponse:
+    """Design Bible Chapter 70 Part 2 — "Modify" as a real CEO decision
+    action. Downsize-only; the proposal stays pending. See
+    app/state.py's modify_trade_proposal."""
+    state, error = await game_state.modify_trade_proposal(payload.proposal_id, payload.quantity)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    return ModifyProposalResponse(tradeProposals=state.trade_proposals)
 
 
 class RegenerateDebateRequest(BaseModel):
@@ -163,11 +197,43 @@ async def executive_intelligence(proposal_id: str = Query(..., alias="proposalId
     Read-only and computed fresh (see app/executive_intelligence.py's
     module docstring for why: every input already lives somewhere
     permanent, so this is a synthesis, not a second source of truth).
-    No game-state lock needed — nothing here mutates the save."""
+    No game-state lock needed — nothing here mutates the save.
+
+    Design Bible Chapter 70 Part 2 — merges in the What-If Simulation
+    Lab's own real Probability of Success / Estimated Return / Estimated
+    Risk numbers (the same real bootstrap sim GET /api/executive/whatif
+    already computes) rather than inventing a parallel Institutional
+    Risk/Opportunity Score; left None (never fabricated) if the symbol's
+    candles aren't available."""
     state = await game_state.snapshot()
     proposal = next((p for p in state.trade_proposals if p.id == proposal_id), None)
     if proposal is None:
         raise HTTPException(status_code=404, detail="Unknown or already-resolved proposal.")
     challenge_report = next((c for c in reversed(state.challenge_reports) if c.proposal_id == proposal_id), None)
     opinions = generate_department_opinions(proposal, challenge_report, state.coach_reports, state.market_intelligence)
-    return compute_executive_recommendation(proposal, opinions)
+    recommendation = compute_executive_recommendation(proposal, opinions)
+    try:
+        candles = market_data_provider.get_candles(proposal.symbol, PROPOSAL_TIMEFRAME, PROPOSAL_CANDLE_COUNT)
+        whatif = run_whatif_simulation(proposal.symbol, candles)
+        recommendation = recommendation.model_copy(
+            update={
+                "probability_of_success_pct": whatif.baseline.probability_of_profit_pct,
+                "estimated_return_pct": whatif.baseline.most_likely_pct,
+                "estimated_risk_pct": whatif.baseline.typical_drawdown_pct,
+            }
+        )
+    except ValueError:
+        pass
+    return recommendation
+
+
+@router.get("/accuracy", response_model=list[ExecutiveAccuracyScore])
+async def executive_accuracy() -> list[ExecutiveAccuracyScore]:
+    """Design Bible Chapter 70 Part 2 — Executive Accuracy Score.
+    Read-only and computed fresh from the permanent Executive Meeting
+    Log + CEO Decision Records (see app/executive_intelligence.py's
+    compute_executive_accuracy_scores for the honesty boundary: scored
+    only over trades actually taken and since closed with a real
+    outcome). No game-state lock needed — nothing here mutates the save."""
+    state = await game_state.snapshot()
+    return compute_executive_accuracy_scores(state.executive_meeting_log, state.ceo_decisions)

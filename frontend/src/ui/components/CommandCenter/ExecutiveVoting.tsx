@@ -5,6 +5,8 @@ import type {
   AnalystVote,
   ChallengeSeverity,
   DebateTurn,
+  ExecutiveAccuracyScore,
+  ExecutiveAction,
   ExecutiveRecommendation,
   GatekeeperVerdict,
   HoldReason,
@@ -22,6 +24,18 @@ import { confidenceTierTone, executiveActionTone, executiveStanceTone, formatMon
 import { AnimatedGrid, DataRow, Glass, Meter, StatusPill, TerminalLabel } from "./ui";
 
 const CHOICE_TONE: Record<AnalystChoice, "green" | "red" | "amber"> = { buy: "green", sell: "red", wait: "amber" };
+
+// Design Bible Chapter 70 Part 2 — maps the Executive Intelligence
+// Network's 6-value ExecutiveAction onto the real 3-way AnalystChoice a
+// "Delegate to the Executive Board" click actually submits.
+// trade_normally/reduce_risk both mean "the network is fine with a
+// trade happening" — direction still comes from the analyst desk's own
+// overallRecommendation (the network never invents a buy/sell direction
+// of its own); every other action means "don't force a trade."
+function delegatedChoice(action: ExecutiveAction, deskRecommendation: AnalystChoice): AnalystChoice {
+  if (action === "trade_normally" || action === "reduce_risk") return deskRecommendation;
+  return "wait";
+}
 
 // v0.7 Feature 40.5 — mirrors backend/app/executive.py's MAX_PROPOSAL_HOLDS.
 const MAX_PROPOSAL_HOLDS = 2;
@@ -82,6 +96,22 @@ export function ExecutiveVoting() {
   const [regenerating, setRegenerating] = useState(false);
   const [regeneratingChallenge, setRegeneratingChallenge] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Design Bible Chapter 70 Part 2 — "Modify" as a real CEO decision
+  // action (downsize-only, stays pending).
+  const [modifyQuantity, setModifyQuantity] = useState("");
+  const [modifying, setModifying] = useState(false);
+  // Design Bible Chapter 70 Part 2 — "Delegate to the Executive Board":
+  // asks the Executive Intelligence Network's own recommendation to
+  // decide, mapped client-side (see delegatedChoice below) then
+  // submitted through the same /executive/decide endpoint, tagged
+  // resolved_by="delegated".
+  const [delegating, setDelegating] = useState(false);
+  // Design Bible Chapter 70 Part 2 — Executive Accuracy Score, real and
+  // company-wide (not proposal-scoped), fetched fresh on open.
+  const [showAccuracy, setShowAccuracy] = useState(false);
+  const [accuracy, setAccuracy] = useState<ExecutiveAccuracyScore[] | null>(null);
+  const [accuracyLoading, setAccuracyLoading] = useState(false);
+  const [accuracyError, setAccuracyError] = useState<string | null>(null);
   // v0.7 Feature 20 — set only when the Trade Gatekeeper vetoes the CEO's
   // real BUY/SELL call; holds the proposals list the backend already
   // returned so acknowledging can advance to the next one without a
@@ -151,6 +181,30 @@ export function ExecutiveVoting() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showExecIntel, proposal?.id]);
 
+  // Design Bible Chapter 70 Part 2 — Executive Accuracy Score, fetched
+  // fresh whenever the section is opened; company-wide, so not keyed on
+  // the active proposal the way the two effects above are.
+  useEffect(() => {
+    if (!showAccuracy) return;
+    let cancelled = false;
+    setAccuracyLoading(true);
+    setAccuracyError(null);
+    api
+      .getExecutiveAccuracy()
+      .then((res) => {
+        if (!cancelled) setAccuracy(res);
+      })
+      .catch((err) => {
+        if (!cancelled) setAccuracyError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setAccuracyLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [showAccuracy]);
+
   // Same reasoning as TradeOutcomeBanner's own MainMenuScene guard: the
   // WebSocket connects independent of the title screen, so never render
   // a full-screen popup over it. A pending gatekeeperRejection keeps this
@@ -178,12 +232,12 @@ export function ExecutiveVoting() {
     }
   };
 
-  const decide = async (choice: AnalystChoice) => {
+  const decide = async (choice: AnalystChoice, delegated = false) => {
     if (submitting || !proposal) return;
     setSubmitting(choice);
     setError(null);
     try {
-      const res = await api.submitCeoDecision(proposal.id, choice);
+      const res = await api.submitCeoDecision(proposal.id, choice, delegated);
       NexusManager.setExecutiveDecisionResult(res.tradeProposals, res.ceoDecisions, res.decisions, res.paperPortfolio, res.gatekeeperRejections);
       setExpandedAgent(null);
       setShowAnalysis(false);
@@ -203,6 +257,62 @@ export function ExecutiveVoting() {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
       setSubmitting(null);
+    }
+  };
+
+  // Design Bible Chapter 70 Part 2 — "Delegate to the Executive Board."
+  // Fetches the network's real recommendation (reusing the already-open
+  // panel's data if it's for this proposal, otherwise a fresh fetch),
+  // maps it to a real buy/sell/wait, then submits exactly like decide()
+  // above but tagged delegated=true.
+  const delegate = async () => {
+    if (submitting || holding || delegating || !proposal) return;
+    setDelegating(true);
+    setError(null);
+    try {
+      const recommendation = execIntel && execIntel.proposalId === proposal.id ? execIntel : await api.getExecutiveIntelligence(proposal.id);
+      const choice = delegatedChoice(recommendation.action, proposal.overallRecommendation);
+      const res = await api.submitCeoDecision(proposal.id, choice, true);
+      NexusManager.setExecutiveDecisionResult(res.tradeProposals, res.ceoDecisions, res.decisions, res.paperPortfolio, res.gatekeeperRejections);
+      setExpandedAgent(null);
+      setShowAnalysis(false);
+      setShowWhatIf(false);
+      setShowExecIntel(false);
+      setExpandedScenario(null);
+      const resolvedDecision = res.decisions.find((d) => d.id === `decision-${proposal.id}`);
+      if (resolvedDecision?.gatekeeperVerdict && !resolvedDecision.gatekeeperVerdict.approved) {
+        setGatekeeperRejection({ symbol: proposal.symbol, choice, verdict: resolvedDecision.gatekeeperVerdict, nextProposals: res.tradeProposals });
+        return;
+      }
+      advanceOrClose(res.tradeProposals);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setDelegating(false);
+    }
+  };
+
+  // Design Bible Chapter 70 Part 2 — "Modify" as a real CEO decision
+  // action. Downsize-only (see backend/app/executive.py's
+  // modify_proposal()) — the proposal stays pending, so there's no
+  // advanceOrClose() call here, same as hold() below.
+  const modify = async () => {
+    if (modifying || submitting || holding || !proposal) return;
+    const quantity = Number(modifyQuantity);
+    if (!Number.isFinite(quantity) || quantity <= 0) {
+      setError("Enter a valid resized quantity greater than 0.");
+      return;
+    }
+    setModifying(true);
+    setError(null);
+    try {
+      const res = await api.modifyProposal(proposal.id, quantity);
+      NexusManager.setTradeProposals(res.tradeProposals);
+      setModifyQuantity("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setModifying(false);
     }
   };
 
@@ -554,6 +664,26 @@ export function ExecutiveVoting() {
 
           <button
             type="button"
+            onClick={() => setShowAccuracy(!showAccuracy)}
+            className="w-full rounded-sm border border-cmd-border px-3 py-1.5 text-cmd-textDim transition-colors hover:border-cmd-purple/50 hover:text-cmd-purple"
+          >
+            {showAccuracy ? "HIDE EXECUTIVE ACCURACY SCORE ▲" : "OPEN EXECUTIVE ACCURACY SCORE ▼"}
+          </button>
+
+          {showAccuracy && (
+            <Glass className="p-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <TerminalLabel>Executive Accuracy Score</TerminalLabel>
+                <span className="text-[9px] text-cmd-textDim">Company-wide, not just {proposal.symbol}.</span>
+              </div>
+              {accuracyLoading && <div className="text-[9px] text-cmd-textDim">Reviewing closed trades…</div>}
+              {accuracyError && <div className="text-[9px] text-cmd-red">{accuracyError}</div>}
+              {!accuracyLoading && accuracy && <ExecutiveAccuracyPanel scores={accuracy} />}
+            </Glass>
+          )}
+
+          <button
+            type="button"
             onClick={() => setShowAnalysis(!showAnalysis)}
             className="w-full rounded-sm border border-cmd-border px-3 py-1.5 text-cmd-textDim transition-colors hover:border-cmd-purple/50 hover:text-cmd-purple"
           >
@@ -617,6 +747,30 @@ export function ExecutiveVoting() {
 
           {error && <div className="text-[9px] text-cmd-red">{error}</div>}
 
+          {/* Design Bible Chapter 70 Part 2 — "Modify": resize the pending
+              proposal downward before deciding. Never sizes up (see
+              backend/app/executive.py's modify_proposal for why). */}
+          <div className="flex items-center gap-2 text-[9px]">
+            <input
+              type="number"
+              min={0}
+              max={proposal.quantity}
+              step="0.01"
+              value={modifyQuantity}
+              onChange={(e) => setModifyQuantity(e.target.value)}
+              placeholder={`Resize (currently ${proposal.quantity.toFixed(2)})`}
+              className="flex-1 rounded-sm border border-cmd-border bg-cmd-bg/40 px-2 py-1.5 text-cmd-text placeholder:text-cmd-textDim/60 focus:border-cmd-cyan/50 focus:outline-none"
+            />
+            <button
+              type="button"
+              disabled={modifying || submitting !== null || holding !== null || !modifyQuantity}
+              onClick={() => void modify()}
+              className="rounded-sm border border-cmd-border px-3 py-1.5 text-cmd-textDim transition-colors hover:enabled:border-cmd-cyan/50 hover:enabled:text-cmd-cyan disabled:opacity-40"
+            >
+              {modifying ? "…" : "MODIFY"}
+            </button>
+          </div>
+
           <div className="grid grid-cols-3 gap-2">
             <ActionButton
               label="BUY"
@@ -658,6 +812,19 @@ export function ExecutiveVoting() {
               REJECT (no trade)
             </button>
           </div>
+          {/* Design Bible Chapter 70 Part 2 — "Delegate to the Executive
+              Board": distinct from APPROVE above, which follows the
+              6-analyst desk's own pick — this follows the 9-department
+              Executive Intelligence Network's real recommendation
+              instead, which can (and does) disagree with the desk. */}
+          <button
+            type="button"
+            disabled={submitting !== null || holding !== null || delegating}
+            onClick={() => void delegate()}
+            className="w-full rounded-sm border border-cmd-purple/50 py-1.5 text-[9px] text-cmd-purple transition-colors hover:enabled:bg-cmd-purple/10 disabled:opacity-40"
+          >
+            {delegating ? "…" : "DELEGATE TO EXECUTIVE BOARD"}
+          </button>
           {/* v0.7 Feature 40.5 — Expert Consultation System's two real CEO
               actions beyond buy/sell/wait: both just reset the proposal's own
               expiry clock (see hold() above), capped at MAX_PROPOSAL_HOLDS so
@@ -926,6 +1093,8 @@ function WhatIfPanel({
  * rule-based synthesis of those opinions, never a fabricated score.
  */
 function ExecutiveIntelligencePanel({ recommendation }: { recommendation: ExecutiveRecommendation }) {
+  const [expandedRole, setExpandedRole] = useState<string | null>(null);
+  const hasWhatIf = recommendation.probabilityOfSuccessPct !== null || recommendation.estimatedReturnPct !== null || recommendation.estimatedRiskPct !== null;
   return (
     <div className="space-y-2">
       <div className="rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2">
@@ -942,24 +1111,154 @@ function ExecutiveIntelligencePanel({ recommendation }: { recommendation: Execut
         </div>
       </div>
 
-      <div className="space-y-1">
-        {recommendation.opinions.map((op) => (
-          <div key={op.role} className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-2 text-[9px]">
-            <div className="mb-1 flex items-center justify-between gap-2">
-              <span className="flex items-center gap-1.5">
-                <span className="text-cmd-text">{op.departmentLabel}</span>
-                {op.agentId && <span className="text-cmd-textDim">{AGENT_PROFILES[op.agentId].name}</span>}
-              </span>
-              <StatusPill tone={executiveStanceTone(op.stance)}>{EXECUTIVE_STANCE_LABEL[op.stance]}</StatusPill>
-            </div>
-            <div className="text-cmd-textDim">{op.summary}</div>
-            <div className="mt-1 text-[8px] text-cmd-textDim">{Math.round(op.confidencePct)}% confidence</div>
+      {/* Design Bible Chapter 70 Part 2 — Executive Consensus Meter's
+          headline row. Consensus % (share of departments that plainly
+          agree) is deliberately shown apart from Confidence % above
+          (their average conviction) — two real, different numbers. */}
+      <div className="grid grid-cols-2 gap-2 text-[9px]">
+        <div className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-2">
+          <div className="text-cmd-textDim">CONSENSUS</div>
+          <div className="text-cmd-cyan">{Math.round(recommendation.consensusPct)}%</div>
+        </div>
+        <div className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-2">
+          <div className="text-cmd-textDim">CONFIDENCE</div>
+          <div className="text-cmd-cyan">{Math.round(recommendation.confidencePct)}%</div>
+        </div>
+      </div>
+
+      {hasWhatIf && (
+        <div className="grid grid-cols-3 gap-2 text-[9px]">
+          <div className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-2">
+            <div className="text-cmd-textDim">PROB. OF SUCCESS</div>
+            <div className="text-cmd-text">{recommendation.probabilityOfSuccessPct !== null ? `${recommendation.probabilityOfSuccessPct.toFixed(0)}%` : "—"}</div>
           </div>
-        ))}
+          <div className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-2">
+            <div className="text-cmd-textDim">EST. RETURN</div>
+            <div className="text-cmd-text">{recommendation.estimatedReturnPct !== null ? formatPct(recommendation.estimatedReturnPct) : "—"}</div>
+          </div>
+          <div className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-2">
+            <div className="text-cmd-textDim">EST. RISK</div>
+            <div className="text-cmd-text">{recommendation.estimatedRiskPct !== null ? formatPct(recommendation.estimatedRiskPct) : "—"}</div>
+          </div>
+        </div>
+      )}
+      {hasWhatIf && <div className="text-[8px] text-cmd-textDim">Probability/Return/Risk sourced live from the What-If Simulation Lab — never a fabricated composite.</div>}
+
+      {/* Disagreement Analysis — a real, generated paragraph over the
+          same opinions shown card-by-card below, not a separate claim. */}
+      <div className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-2 text-[9px]">
+        <div className="mb-1 text-cmd-textDim">DISAGREEMENT ANALYSIS</div>
+        <div className="text-cmd-text">{recommendation.disagreementSummary}</div>
+      </div>
+
+      <div className="space-y-1">
+        {recommendation.opinions.map((op) => {
+          const expanded = expandedRole === op.role;
+          const hasDetail = op.evidence.length > 0 || op.concerns.length > 0 || op.benefits.length > 0 || op.alternative;
+          return (
+            <button
+              key={op.role}
+              type="button"
+              onClick={() => hasDetail && setExpandedRole(expanded ? null : op.role)}
+              className="w-full rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-2 text-left text-[9px] transition-colors hover:border-cmd-cyan/40"
+            >
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <span className="flex items-center gap-1.5">
+                  <span className="text-cmd-text">{op.departmentLabel}</span>
+                  {op.agentId && <span className="text-cmd-textDim">{AGENT_PROFILES[op.agentId].name}</span>}
+                </span>
+                <StatusPill tone={executiveStanceTone(op.stance)}>{EXECUTIVE_STANCE_LABEL[op.stance]}</StatusPill>
+              </div>
+              <div className="text-cmd-textDim">{op.summary}</div>
+              <div className="mt-1 text-[8px] text-cmd-textDim">{Math.round(op.confidencePct)}% confidence</div>
+              {expanded && (
+                <div className="mt-1.5 space-y-1.5 border-t border-cmd-border/50 pt-1.5 text-[8px]">
+                  {op.evidence.length > 0 && (
+                    <div>
+                      <div className="text-cmd-cyan">Supporting Evidence</div>
+                      <ul className="list-disc space-y-0.5 pl-3 text-cmd-textDim">
+                        {op.evidence.map((e, i) => (
+                          <li key={i}>{e}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {op.benefits.length > 0 && (
+                    <div>
+                      <div className="text-cmd-green">Expected Benefits</div>
+                      <ul className="list-disc space-y-0.5 pl-3 text-cmd-textDim">
+                        {op.benefits.map((b, i) => (
+                          <li key={i}>{b}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {op.concerns.length > 0 && (
+                    <div>
+                      <div className="text-cmd-amber">Primary Concerns</div>
+                      <ul className="list-disc space-y-0.5 pl-3 text-cmd-textDim">
+                        {op.concerns.map((c, i) => (
+                          <li key={i}>{c}</li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {op.alternative && (
+                    <div>
+                      <div className="text-cmd-purple">Alternative Recommendation</div>
+                      <div className="text-cmd-textDim">{op.alternative}</div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </button>
+          );
+        })}
       </div>
       <div className="text-[8px] text-cmd-textDim">
         Generated {new Date(recommendation.generatedAt).toLocaleTimeString()} — recomputed fresh each time this panel opens, not stored.
       </div>
+    </div>
+  );
+}
+
+/**
+ * Design Bible Chapter 70 Part 2 — Executive Accuracy Score. Scored only
+ * over trades the CEO actually took and that have since closed with a
+ * real outcome (see backend/app/executive_intelligence.py's
+ * compute_executive_accuracy_scores) — a department with 0 decisions
+ * tracked has simply had nothing real to score yet, not a 0% grade.
+ */
+function ExecutiveAccuracyPanel({ scores }: { scores: ExecutiveAccuracyScore[] }) {
+  const tracked = scores.filter((s) => s.decisionsTracked > 0);
+  const untracked = scores.filter((s) => s.decisionsTracked === 0);
+  return (
+    <div className="space-y-1.5">
+      {tracked.length === 0 && (
+        <div className="text-[9px] text-cmd-textDim">No closed, tracked trades yet — every department's accuracy is still unscored.</div>
+      )}
+      {tracked
+        .slice()
+        .sort((a, b) => b.accuracyPct - a.accuracyPct)
+        .map((s) => (
+          <div key={s.role} className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-2 text-[9px]">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <span className="text-cmd-text">{s.departmentLabel}</span>
+              <span className={s.accuracyPct >= 60 ? "text-cmd-green" : s.accuracyPct >= 40 ? "text-cmd-amber" : "text-cmd-red"}>
+                {s.accuracyPct.toFixed(0)}%
+              </span>
+            </div>
+            <Meter value={s.accuracyPct} tone={s.accuracyPct >= 60 ? "green" : s.accuracyPct >= 40 ? "amber" : "red"} />
+            <div className="mt-1 text-[8px] text-cmd-textDim">
+              {s.correctCount}/{s.decisionsTracked} closed, real trades called correctly.
+            </div>
+          </div>
+        ))}
+      {untracked.length > 0 && (
+        <div className="text-[8px] text-cmd-textDim">
+          Not yet scored (no closed, directional trades tracked): {untracked.map((s) => s.departmentLabel).join(", ")}.
+        </div>
+      )}
     </div>
   );
 }

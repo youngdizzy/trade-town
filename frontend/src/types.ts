@@ -1273,6 +1273,11 @@ export interface DepartmentOpinion {
   stance: ExecutiveStance;
   summary: string;
   confidencePct: number;
+  // Design Bible Chapter 70 Part 2 — Executive Consensus Meter.
+  evidence: string[];
+  concerns: string[];
+  benefits: string[];
+  alternative: string | null;
 }
 
 export interface ExecutiveRecommendation {
@@ -1284,6 +1289,23 @@ export interface ExecutiveRecommendation {
   opposing: ExecutiveDepartmentRole[];
   opinions: DepartmentOpinion[];
   generatedAt: string;
+  // Design Bible Chapter 70 Part 2 — Executive Consensus Meter.
+  consensusPct: number;
+  disagreementSummary: string;
+  probabilityOfSuccessPct: number | null;
+  estimatedReturnPct: number | null;
+  estimatedRiskPct: number | null;
+}
+
+// Design Bible Chapter 70 Part 2 — Executive Accuracy Score. Scored only
+// over trades actually taken and since closed with a real outcome; see
+// backend/app/executive_intelligence.py's compute_executive_accuracy_scores.
+export interface ExecutiveAccuracyScore {
+  role: ExecutiveDepartmentRole;
+  departmentLabel: string;
+  decisionsTracked: number;
+  correctCount: number;
+  accuracyPct: number;
 }
 
 export const EXECUTIVE_DEPARTMENT_LABEL: Record<ExecutiveDepartmentRole, string> = {
@@ -1331,7 +1353,7 @@ export interface ExecutiveMeetingLogEntry {
   networkAgreed: boolean;
   decisionGrade: DecisionGrade;
   decisionGradeScore: number;
-  resolvedBy: "ceo" | "auto";
+  resolvedBy: "ceo" | "auto" | "delegated";
   createdAt: string;
 }
 
@@ -1750,9 +1772,12 @@ export interface CeoDecisionRecord {
   /** v0.7 Feature 21 — "ceo" is a real player click via
    * /api/executive/decide; "auto" is a Company Operating Mode
    * auto-resolution or a stale-proposal expiry (see backend/app/nexus.py)
-   * — neither was ever a real CEO decision. Defaults to "ceo" on records
-   * predating this field, which were all real clicks. */
-  resolvedBy: "ceo" | "auto";
+   * — neither was ever a real CEO decision. "delegated" (Design Bible
+   * Chapter 70 Part 2) is a real player click that explicitly asked the
+   * Executive Intelligence Network's own recommendation to decide.
+   * Defaults to "ceo" on records predating this field, which were all
+   * real clicks. */
+  resolvedBy: "ceo" | "auto" | "delegated";
   createdAt: string;
   resolvedAt: string | null;
 }

@@ -9,7 +9,7 @@ from __future__ import annotations
 
 import asyncio
 from datetime import datetime, timezone
-from typing import Callable
+from typing import Callable, Literal
 
 from app import education, nexus, player_vs_ai, signal_calibration, trade_notifications
 from app.academy import compute_academy_state, default_agent_knowledge
@@ -31,7 +31,7 @@ from app.debate import generate_debate
 from app.devils_advocate import MAX_CHALLENGE_REPORTS, generate_challenge_report
 from app.emergency_stop import activate_emergency_stop as _activate_emergency_stop
 from app.emergency_stop import resume_trading as _resume_trading
-from app.executive import MAX_CEO_DECISIONS, MAX_PROPOSAL_HOLDS, AnalystChoice, hold_proposal, resolve_proposal
+from app.executive import MAX_CEO_DECISIONS, MAX_PROPOSAL_HOLDS, AnalystChoice, hold_proposal, modify_proposal, resolve_proposal
 from app.executive_intelligence import generate_meeting_log_entry, record_meeting_log_entry
 from app.goals import cancel_goal as cancel_goal_entry
 from app.goals import create_goal, record_goal, resolve_metric_value, validate_target_value
@@ -46,7 +46,7 @@ from app.research import RESEARCHER_IDS, default_research
 from app.risk_engine import compute_daily_objective_status, default_risk_limits
 from app.sandbox import apply_review_decision, begin_company_review, begin_limited_live, begin_paper_trial, generate_strategy_review
 from app.sandbox import retire_strategy as retire_strategy_stage
-from app.scribe import record_ceo_decision, record_emergency_stop_event, record_proposal_hold, record_strategy_failed_archive_entry, record_strategy_hall_of_fame_entry
+from app.scribe import record_ceo_decision, record_emergency_stop_event, record_proposal_hold, record_proposal_modify, record_strategy_failed_archive_entry, record_strategy_hall_of_fame_entry
 from app.schemas import (
     AgentId,
     BlackBoxPriority,
@@ -1184,7 +1184,9 @@ class GameState:
                 self.data = self.data.model_copy(update={"viewed_trade_notification_ids": updated})
             return self.data.viewed_trade_notification_ids
 
-    async def submit_ceo_decision(self, proposal_id: str, choice: AnalystChoice) -> tuple[GameSaveState, str | None]:
+    async def submit_ceo_decision(
+        self, proposal_id: str, choice: AnalystChoice, *, delegated: bool = False
+    ) -> tuple[GameSaveState, str | None]:
         """Feature 12 — the CEO's (the player's) real buy/sell/wait call on
         a pending TradeProposal, applied under the same lock every other
         state mutation uses. Returns (state, error) — error is None on
@@ -1192,7 +1194,15 @@ class GameState:
         broker order, this is a live player action, not a tick-driven
         fill) and appends both the resulting TradeDecision and
         CeoDecisionRecord, capped the same way tick()'s own decisions
-        list is."""
+        list is.
+
+        `delegated` (Design Bible Chapter 70 Part 2) — the CEO explicitly
+        clicked "Delegate to the Executive Board" rather than hand-picking
+        `choice`; the caller (see routers/executive.py) is responsible for
+        deriving `choice` from the Executive Intelligence Network's own
+        real recommendation before calling this. The trade itself executes
+        identically either way — this only changes what gets recorded
+        about who decided it (resolved_by="delegated" instead of "ceo")."""
         async with self.lock:
             proposal = next((p for p in self.data.trade_proposals if p.id == proposal_id), None)
             if proposal is None:
@@ -1212,6 +1222,7 @@ class GameState:
             # proposal (regenerate_debate can append more than one), fed
             # into the Gatekeeper's own debate-outcome check below.
             debate = next((d for d in reversed(self.data.debates) if d.proposal_id == proposal_id), None)
+            resolved_by: Literal["ceo", "auto", "delegated"] = "delegated" if delegated else "ceo"
 
             portfolio, decision, ceo_record = resolve_proposal(
                 proposal,
@@ -1223,6 +1234,7 @@ class GameState:
                 market_intelligence=self.data.market_intelligence,
                 debate=debate,
                 risk_warnings=self.data.risk_warnings,
+                resolved_by=resolved_by,
             )
 
             memory = list(self.data.memory)
@@ -1240,7 +1252,7 @@ class GameState:
             meeting_log = record_meeting_log_entry(
                 list(self.data.executive_meeting_log),
                 generate_meeting_log_entry(
-                    proposal, decision, ceo_record.ceo_decision, challenge_report, self.data.coach_reports, self.data.market_intelligence, sim_day=self.data.time.day, resolved_by="ceo"
+                    proposal, decision, ceo_record.ceo_decision, challenge_report, self.data.coach_reports, self.data.market_intelligence, sim_day=self.data.time.day, resolved_by=resolved_by
                 ),
             )
 
@@ -1350,6 +1362,34 @@ class GameState:
             self.data = self.data.model_copy(
                 update={
                     "trade_proposals": [held if p.id == proposal_id else p for p in self.data.trade_proposals],
+                    "memory": memory,
+                    "updated_at": _now_iso(),
+                }
+            )
+            return self.data, None
+
+    async def modify_trade_proposal(self, proposal_id: str, new_quantity: float) -> tuple[GameSaveState, str | None]:
+        """Design Bible Chapter 70 Part 2 — "Modify" as a real CEO
+        decision action, distinct from buy/sell/wait/hold. Downsize-only
+        (see app/executive.py's modify_proposal()) — the proposal stays
+        pending afterward, same as hold_trade_proposal above: Modify
+        resizes the trade, it doesn't decide it."""
+        async with self.lock:
+            proposal = next((p for p in self.data.trade_proposals if p.id == proposal_id), None)
+            if proposal is None:
+                return self.data, f"No pending trade proposal with id {proposal_id!r}."
+
+            old_quantity = proposal.quantity
+            modified = modify_proposal(proposal, new_quantity)
+            if modified is None:
+                return self.data, f"Invalid resize — quantity must be greater than 0 and no larger than the proposal's own {old_quantity:.2f}-share ceiling."
+
+            memory = list(self.data.memory)
+            record_proposal_modify(memory, modified, old_quantity)
+
+            self.data = self.data.model_copy(
+                update={
+                    "trade_proposals": [modified if p.id == proposal_id else p for p in self.data.trade_proposals],
                     "memory": memory,
                     "updated_at": _now_iso(),
                 }

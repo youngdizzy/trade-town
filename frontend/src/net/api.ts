@@ -13,6 +13,7 @@ import type {
   EducationLesson,
   EducationProgress,
   EmergencyStopState,
+  ExecutiveAccuracyScore,
   ExecutiveRecommendation,
   FoundationalMentorId,
   FoundationalMentorState,
@@ -133,7 +134,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ tradeId }),
     }),
-  submitCeoDecision: (proposalId: string, choice: AnalystChoice) =>
+  submitCeoDecision: (proposalId: string, choice: AnalystChoice, delegated = false) =>
     request<{
       tradeProposals: TradeProposal[];
       ceoDecisions: CeoDecisionRecord[];
@@ -142,7 +143,7 @@ export const api = {
       gatekeeperRejections: GatekeeperRejection[];
     }>("/executive/decide", {
       method: "POST",
-      body: JSON.stringify({ proposalId, choice }),
+      body: JSON.stringify({ proposalId, choice, delegated }),
     }),
   regenerateDebate: (proposalId: string) =>
     request<{ debates: Debate[] }>("/executive/debate/regenerate", {
@@ -154,6 +155,13 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ proposalId, reason }),
     }),
+  // Design Bible Chapter 70 Part 2 — "Modify" as a real CEO decision
+  // action. Downsize-only; the proposal stays pending afterward.
+  modifyProposal: (proposalId: string, quantity: number) =>
+    request<{ tradeProposals: TradeProposal[] }>("/executive/modify", {
+      method: "POST",
+      body: JSON.stringify({ proposalId, quantity }),
+    }),
   regenerateChallengeReport: (proposalId: string) =>
     request<{ challengeReports: ChallengeReport[]; innovationState: Record<AgentId, InnovationState> }>("/executive/challenge/regenerate", {
       method: "POST",
@@ -161,6 +169,8 @@ export const api = {
     }),
   getWhatIfSimulation: (symbol: string) => request<WhatIfSimulation>(`/executive/whatif?symbol=${encodeURIComponent(symbol)}`),
   getExecutiveIntelligence: (proposalId: string) => request<ExecutiveRecommendation>(`/executive/intelligence?proposalId=${encodeURIComponent(proposalId)}`),
+  // Design Bible Chapter 70 Part 2 — Executive Accuracy Score.
+  getExecutiveAccuracy: () => request<ExecutiveAccuracyScore[]>("/executive/accuracy"),
   getKnowledgeGraph: () => request<KnowledgeGraph>("/knowledge-graph"),
   submitQotdResponse: (questionId: string, response: string) =>
     request<{ question: QuestionOfTheDay }>("/mentor/qotd/respond", {

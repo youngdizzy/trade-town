@@ -354,7 +354,7 @@ def resolve_proposal(
     market_intelligence: MarketIntelligenceState,
     debate: Debate | None = None,
     risk_warnings: list[RiskWarning] | None = None,
-    resolved_by: Literal["ceo", "auto"] = "ceo",
+    resolved_by: Literal["ceo", "auto", "delegated"] = "ceo",
 ) -> tuple[PaperPortfolio, TradeDecision, CeoDecisionRecord]:
     """Applies the CEO's real decision: buy opens a real long, sell opens
     a real short, wait does nothing — subject to the Trade Gatekeeper's
@@ -365,9 +365,11 @@ def resolve_proposal(
     CeoDecisionRecord (the accuracy-tracking side of this feature).
     `resolved_by` is honest provenance (v0.7 Feature 21) — "auto" for a
     Company Operating Mode auto-resolution or a stale-proposal expiry
-    (see app/nexus.py), "ceo" only for a real POST /api/executive/decide
-    click; it never changes what actually happens, only what gets
-    recorded about who decided it."""
+    (see app/nexus.py), "ceo" for a real POST /api/executive/decide
+    click, "delegated" (Design Bible Chapter 70 Part 2) for a CEO click
+    that explicitly asked the Executive Intelligence Network's own
+    recommendation to decide; it never changes what actually happens,
+    only what gets recorded about who decided it."""
     decision_id = f"decision-{proposal.id}"
     order_id: str | None = None
     price = current_price if current_price and current_price > 0 else proposal.price
@@ -545,6 +547,24 @@ def hold_proposal(proposal: TradeProposal, *, now_sim_minutes: int) -> TradeProp
     if proposal.hold_count >= MAX_PROPOSAL_HOLDS:
         return None
     return proposal.model_copy(update={"created_sim_minutes": now_sim_minutes, "hold_count": proposal.hold_count + 1})
+
+
+# Design Bible Chapter 70 Part 2 — "Modify" as a real CEO decision
+# action, distinct from buy/sell/wait/hold. Downsize-only, on purpose:
+# app/position_sizing.py's Institutional Position Sizing & Capital
+# Deployment Engine (Chapter 57) already narrowed proposal.quantity down
+# from its own real evidence-based ceiling at proposal-creation time —
+# letting the CEO size *up* here would let a hand-typed number bypass
+# that real ceiling. The proposal stays pending afterward (same as
+# hold_proposal below) — Modify resizes the trade, it doesn't decide it;
+# the CEO still buys/sells/waits on the resized proposal separately.
+def modify_proposal(proposal: TradeProposal, new_quantity: float) -> TradeProposal | None:
+    """Returns None for an invalid resize (non-positive, or larger than
+    the proposal's own already-computed ceiling) — the caller must
+    reject the request rather than silently clamping it."""
+    if new_quantity <= 0 or new_quantity > proposal.quantity:
+        return None
+    return proposal.model_copy(update={"quantity": new_quantity})
 
 
 def expire_stale_proposals(proposals: list[TradeProposal], now_sim_minutes: int) -> tuple[list[TradeProposal], list[TradeProposal]]:

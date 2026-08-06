@@ -78,11 +78,13 @@ from typing import Literal
 
 from app.schemas import (
     AnalystChoice,
+    CeoDecisionRecord,
     ChallengeReport,
     CoachReport,
     DecisionConfidence,
     DepartmentOpinion,
     DepartmentSelfEvaluation,
+    ExecutiveAccuracyScore,
     ExecutiveAction,
     ExecutiveDepartmentRole,
     ExecutiveMeetingLogEntry,
@@ -156,6 +158,10 @@ def _research_opinion(proposal: TradeProposal) -> DepartmentOpinion:
         stance=stance,
         summary=proposal.research_summary,
         confidencePct=round(effective, 1),
+        evidence=[proposal.research_summary, f"Research confidence factor: {effective:.0f}/100."],
+        concerns=[] if effective >= 60 else ["Research confidence factor is below the 60/100 bar this department votes to agree at."],
+        benefits=[f"Research confidence factor at {effective:.0f}/100."] if effective >= 60 else [],
+        alternative="Wait for a stronger research read before committing capital." if effective < 60 else None,
     )
 
 
@@ -166,7 +172,18 @@ def _quant_opinion(proposal: TradeProposal) -> DepartmentOpinion:
     summary = " — ".join(p for p in parts if p) or "No real statistical factors available yet for this proposal."
     avg = sum(v for v in (technical, research) if v is not None) / max(1, sum(1 for v in (technical, research) if v is not None)) if (technical is not None or research is not None) else 50.0
     stance: ExecutiveStance = "agree" if avg >= 60 else "disagree" if avg < 40 else "request_more_research"
-    return DepartmentOpinion(role="quant", departmentLabel=_DEPARTMENT_LABELS["quant"], stance=stance, summary=summary, confidencePct=round(avg, 1))
+    evidence = [p for p in parts if p]
+    return DepartmentOpinion(
+        role="quant",
+        departmentLabel=_DEPARTMENT_LABELS["quant"],
+        stance=stance,
+        summary=summary,
+        confidencePct=round(avg, 1),
+        evidence=evidence,
+        concerns=["Combined statistical read is below 40/100."] if avg < 40 else [],
+        benefits=[f"Combined statistical read at {avg:.0f}/100."] if avg >= 60 else [],
+        alternative="A smaller position sizes the same statistical edge more conservatively." if 40 <= avg < 60 else None,
+    )
 
 
 def _risk_opinion(proposal: TradeProposal) -> DepartmentOpinion:
@@ -178,21 +195,43 @@ def _risk_opinion(proposal: TradeProposal) -> DepartmentOpinion:
     is_wait = risk_vote is not None and risk_vote.choice == "wait"
     stance: ExecutiveStance = "disagree" if is_wait else ("recommend_position_change" if avg < 50 else "agree")
     summary = proposal.risk_summary if proposal.risk_summary else (risk_vote.reasoning if risk_vote else "No real risk read available yet.")
-    return DepartmentOpinion(role="risk", departmentLabel=_DEPARTMENT_LABELS["risk"], agentId=risk_vote.agent_id if risk_vote else None, stance=stance, summary=summary, confidencePct=round(avg, 1))
+    return DepartmentOpinion(
+        role="risk",
+        departmentLabel=_DEPARTMENT_LABELS["risk"],
+        agentId=risk_vote.agent_id if risk_vote else None,
+        stance=stance,
+        summary=summary,
+        confidencePct=round(avg, 1),
+        evidence=(risk_vote.evidence if risk_vote else []) or [summary],
+        concerns=[summary] if stance != "agree" else [],
+        benefits=[f"Risk/exposure read at {avg:.0f}/100."] if stance == "agree" else [],
+        alternative="Reduce position size before proceeding." if stance == "recommend_position_change" else None,
+    )
 
 
 def _simulation_opinion(challenge_report: ChallengeReport | None) -> DepartmentOpinion:
     if challenge_report is None:
-        return DepartmentOpinion(role="simulation", departmentLabel=_DEPARTMENT_LABELS["simulation"], stance="request_more_research", summary="Not yet stress-tested — request a Devil's Advocate review to generate a real What-If Simulation read.", confidencePct=50.0)
+        return DepartmentOpinion(
+            role="simulation",
+            departmentLabel=_DEPARTMENT_LABELS["simulation"],
+            stance="request_more_research",
+            summary="Not yet stress-tested — request a Devil's Advocate review to generate a real What-If Simulation read.",
+            confidencePct=50.0,
+            concerns=["No real stress test exists yet for this proposal."],
+        )
     severity_conf = {"none_found": 80.0, "minor": 55.0, "major": 30.0}[challenge_report.severity]
     stance: ExecutiveStance = "agree" if challenge_report.severity == "none_found" else "recommend_waiting" if challenge_report.severity == "minor" else "disagree"
+    worst_case = f"Worst case simulated: {challenge_report.worst_case_scenario}" if challenge_report.worst_case_scenario else "No worst-case scenario recorded."
     return DepartmentOpinion(
         role="simulation",
         departmentLabel=_DEPARTMENT_LABELS["simulation"],
         agentId=challenge_report.assigned_agent,
         stance=stance,
-        summary=f"Worst case simulated: {challenge_report.worst_case_scenario}" if challenge_report.worst_case_scenario else "No worst-case scenario recorded.",
+        summary=worst_case,
         confidencePct=severity_conf,
+        evidence=[worst_case],
+        concerns=[worst_case] if stance != "agree" else [],
+        benefits=["No weaknesses found in the stress test."] if stance == "agree" else [],
     )
 
 
@@ -200,7 +239,16 @@ def _decision_intelligence_opinion(proposal: TradeProposal) -> DepartmentOpinion
     confidence = proposal.confidence_engine
     tier_stances: dict[str, ExecutiveStance] = {"elite": "agree", "strong": "agree", "good": "agree", "moderate": "request_more_research", "weak": "disagree", "poor": "recommend_rejecting"}
     stance: ExecutiveStance = tier_stances.get(confidence.tier, "request_more_research")
-    return DepartmentOpinion(role="decision_intelligence", departmentLabel=_DEPARTMENT_LABELS["decision_intelligence"], stance=stance, summary=confidence.summary, confidencePct=round(confidence.score, 1))
+    return DepartmentOpinion(
+        role="decision_intelligence",
+        departmentLabel=_DEPARTMENT_LABELS["decision_intelligence"],
+        stance=stance,
+        summary=confidence.summary,
+        confidencePct=round(confidence.score, 1),
+        evidence=[f"{f.name}: {f.score:.0f}/100 — {f.detail}" for f in confidence.factors],
+        concerns=[confidence.summary] if stance in ("disagree", "recommend_rejecting") else [],
+        benefits=[confidence.summary] if stance == "agree" else [],
+    )
 
 
 def _coach_opinion(coach_reports: list[CoachReport]) -> DepartmentOpinion:
@@ -210,14 +258,32 @@ def _coach_opinion(coach_reports: list[CoachReport]) -> DepartmentOpinion:
     notes = latest.recommendations or latest.strengths or latest.common_mistakes
     summary = notes[0] if notes else f"Company Score {latest.company_score:.0f}/100 as of the last report."
     stance: ExecutiveStance = "agree" if latest.company_score >= 60 else "request_more_research"
-    return DepartmentOpinion(role="coach", departmentLabel=_DEPARTMENT_LABELS["coach"], stance=stance, summary=summary, confidencePct=round(latest.company_score, 1))
+    return DepartmentOpinion(
+        role="coach",
+        departmentLabel=_DEPARTMENT_LABELS["coach"],
+        stance=stance,
+        summary=summary,
+        confidencePct=round(latest.company_score, 1),
+        evidence=[f"Company Score {latest.company_score:.0f}/100 as of the last Coach report."],
+        concerns=list(latest.common_mistakes[:2]) if stance != "agree" else [],
+        benefits=list(latest.strengths[:2]) if stance == "agree" else [],
+    )
 
 
 def _founders_opinion(challenge_report: ChallengeReport | None) -> DepartmentOpinion:
     comparisons = challenge_report.historical_comparisons if challenge_report else []
     if not comparisons:
         return DepartmentOpinion(role="founders", departmentLabel=_DEPARTMENT_LABELS["founders"], stance="agree", summary="No past company history on this symbol yet — nothing to caution against.", confidencePct=60.0)
-    return DepartmentOpinion(role="founders", departmentLabel=_DEPARTMENT_LABELS["founders"], stance="recommend_waiting", summary=f"We've been here before: {comparisons[0]}", confidencePct=40.0)
+    return DepartmentOpinion(
+        role="founders",
+        departmentLabel=_DEPARTMENT_LABELS["founders"],
+        stance="recommend_waiting",
+        summary=f"We've been here before: {comparisons[0]}",
+        confidencePct=40.0,
+        evidence=list(comparisons),
+        concerns=[comparisons[0]],
+        alternative="Review the Library of Mistakes entry before repeating this setup.",
+    )
 
 
 def _devils_advocate_opinion(challenge_report: ChallengeReport | None) -> DepartmentOpinion:
@@ -225,7 +291,18 @@ def _devils_advocate_opinion(challenge_report: ChallengeReport | None) -> Depart
         return DepartmentOpinion(role="devils_advocate", departmentLabel=_DEPARTMENT_LABELS["devils_advocate"], stance="request_more_research", summary="Not yet challenged — request a Devil's Advocate report.", agentId=None, confidencePct=50.0)
     severity_stances: dict[str, ExecutiveStance] = {"none_found": "agree", "minor": "recommend_waiting", "major": "recommend_rejecting"}
     stance: ExecutiveStance = severity_stances[challenge_report.severity]
-    return DepartmentOpinion(role="devils_advocate", departmentLabel=_DEPARTMENT_LABELS["devils_advocate"], agentId=challenge_report.assigned_agent, stance=stance, summary=challenge_report.final_recommendation, confidencePct={"none_found": 80.0, "minor": 55.0, "major": 25.0}[challenge_report.severity])
+    return DepartmentOpinion(
+        role="devils_advocate",
+        departmentLabel=_DEPARTMENT_LABELS["devils_advocate"],
+        agentId=challenge_report.assigned_agent,
+        stance=stance,
+        summary=challenge_report.final_recommendation,
+        confidencePct={"none_found": 80.0, "minor": 55.0, "major": 25.0}[challenge_report.severity],
+        evidence=list(challenge_report.missing_evidence),
+        concerns=list(challenge_report.hidden_risks) + list(challenge_report.weak_assumptions),
+        benefits=["No hidden risks or weak assumptions found."] if challenge_report.severity == "none_found" else [],
+        alternative=challenge_report.suggested_improvements[0] if challenge_report.suggested_improvements else None,
+    )
 
 
 # v0.7 Feature 51 — Market Intelligence's own opinion, real and
@@ -244,7 +321,16 @@ def _market_intelligence_opinion(market_intelligence: MarketIntelligenceState) -
     quality = market_intelligence.quality
     stance = stance_by_tier[quality.tier]
     summary = f"{market_intelligence.regime_label} — {quality.reasoning}"
-    return DepartmentOpinion(role="market_intelligence", departmentLabel=_DEPARTMENT_LABELS["market_intelligence"], stance=stance, summary=summary, confidencePct=quality.confidence_pct)
+    return DepartmentOpinion(
+        role="market_intelligence",
+        departmentLabel=_DEPARTMENT_LABELS["market_intelligence"],
+        stance=stance,
+        summary=summary,
+        confidencePct=quality.confidence_pct,
+        evidence=[market_intelligence.regime_label, quality.reasoning],
+        concerns=[quality.reasoning] if stance in ("recommend_waiting", "recommend_rejecting") else [],
+        benefits=[quality.reasoning] if stance == "agree" else [],
+    )
 
 
 def generate_department_opinions(proposal: TradeProposal, challenge_report: ChallengeReport | None, coach_reports: list[CoachReport], market_intelligence: MarketIntelligenceState) -> list[DepartmentOpinion]:
@@ -302,6 +388,16 @@ def compute_executive_recommendation(proposal: TradeProposal, opinions: list[Dep
         reason = "No department raised a real concern serious enough to change course."
 
     confidence_pct = round(sum(o.confidence_pct for o in opinions) / len(opinions), 1) if opinions else 50.0
+    # Design Bible Chapter 70 Part 2 — Consensus % is a deliberately
+    # different, real number from Confidence % above: the share of
+    # departments that plainly AGREE, not their average conviction.
+    # A proposal every department "agrees" with at low confidence reads
+    # high consensus / low confidence; a proposal one department
+    # passionately opposes and eight mildly agree with reads high
+    # confidence / imperfect consensus. Both are real and worth showing
+    # separately, matching the brief's own two-number example.
+    consensus_pct = round(len(supporting) / len(opinions) * 100.0, 1) if opinions else 0.0
+    disagreement_summary = _build_disagreement_summary(opinions)
 
     return ExecutiveRecommendation(
         proposalId=proposal.id,
@@ -312,7 +408,30 @@ def compute_executive_recommendation(proposal: TradeProposal, opinions: list[Dep
         opposing=opposing,
         opinions=opinions,
         generatedAt=_now_iso(),
+        consensusPct=consensus_pct,
+        disagreementSummary=disagreement_summary,
     )
+
+
+# Design Bible Chapter 70 Part 2 — Disagreement Analysis. A real,
+# generated paragraph over the same opinions the panel already shows
+# card-by-card — never a fabricated synthesis, just naming what's
+# already there in one place instead of leaving the CEO to assemble it.
+def _build_disagreement_summary(opinions: list[DepartmentOpinion]) -> str:
+    non_agreeing = [o for o in opinions if o.stance != "agree"]
+    if not non_agreeing:
+        return "Every department agrees — no disagreement to explain."
+    parts = [f"{o.department_label} {EXECUTIVE_STANCE_PHRASING.get(o.stance, o.stance)} ({o.confidence_pct:.0f}% confidence): {o.summary}" for o in non_agreeing]
+    return " ".join(parts)
+
+
+EXECUTIVE_STANCE_PHRASING: dict[str, str] = {
+    "disagree": "disagrees",
+    "request_more_research": "wants more research before deciding",
+    "recommend_waiting": "recommends waiting",
+    "recommend_position_change": "recommends changing position size",
+    "recommend_rejecting": "recommends rejecting",
+}
 
 
 # v0.7 Feature 50 (Part 2/3) — the Executive Meeting Log. Makes Part 1's
@@ -329,7 +448,7 @@ def generate_meeting_log_entry(
     market_intelligence: MarketIntelligenceState,
     *,
     sim_day: int,
-    resolved_by: Literal["ceo", "auto"],
+    resolved_by: Literal["ceo", "auto", "delegated"],
 ) -> ExecutiveMeetingLogEntry:
     opinions = generate_department_opinions(proposal, challenge_report, coach_reports, market_intelligence)
     recommendation = compute_executive_recommendation(proposal, opinions)
@@ -425,3 +544,50 @@ def record_self_evaluations(history: list[DepartmentSelfEvaluation], new_entries
     if len(updated) > MAX_SELF_EVAL_HISTORY:
         del updated[: len(updated) - MAX_SELF_EVAL_HISTORY]
     return updated
+
+
+# Design Bible Chapter 70 Part 2 — Executive Accuracy Score. Scored ONLY
+# over trades the CEO actually took AND that have since closed with a
+# real, known outcome (CeoDecisionRecord.outcome resolved to "correct"/
+# "incorrect" by app/executive.py's grade_ceo_decisions once the linked
+# PaperTrade closes with a real realized P&L) — never a counterfactual
+# judgment about a trade that was never placed, matching this codebase's
+# existing, explicit refusal to fabricate what a never-taken trade
+# "would have" done (app/coach.py, app/player_vs_ai.py). A department's
+# hedged stances (recommend_waiting/request_more_research/recommend_
+# position_change) never took a clear directional position on the
+# trade's own success, so they're excluded from this binary score
+# rather than counted either way.
+_DIRECTIONAL_STANCE_PREDICTS_PROFIT: dict[str, bool] = {
+    "agree": True,
+    "disagree": False,
+    "recommend_rejecting": False,
+}
+
+
+def compute_executive_accuracy_scores(
+    meeting_log: list[ExecutiveMeetingLogEntry], ceo_decisions: list[CeoDecisionRecord]
+) -> list[ExecutiveAccuracyScore]:
+    resolved_by_proposal: dict[str, bool] = {
+        r.proposal_id: r.outcome == "correct" for r in ceo_decisions if r.outcome in ("correct", "incorrect")
+    }
+    scores: list[ExecutiveAccuracyScore] = []
+    for role in _ALL_DEPARTMENT_ROLES:
+        tracked = 0
+        correct = 0
+        for entry in meeting_log:
+            was_profitable = resolved_by_proposal.get(entry.proposal_id)
+            if was_profitable is None:
+                continue
+            opinion = next((o for o in entry.opinions if o.role == role), None)
+            if opinion is None or opinion.stance not in _DIRECTIONAL_STANCE_PREDICTS_PROFIT:
+                continue
+            predicted_profitable = _DIRECTIONAL_STANCE_PREDICTS_PROFIT[opinion.stance]
+            tracked += 1
+            if predicted_profitable == was_profitable:
+                correct += 1
+        accuracy = round(correct / tracked * 100.0, 1) if tracked else 0.0
+        scores.append(
+            ExecutiveAccuracyScore(role=role, departmentLabel=_DEPARTMENT_LABELS[role], decisionsTracked=tracked, correctCount=correct, accuracyPct=accuracy)
+        )
+    return scores

@@ -1506,6 +1506,17 @@ class DepartmentOpinion(CamelModel):
     stance: ExecutiveStance
     summary: str
     confidence_pct: float = Field(alias="confidencePct")
+    # Design Bible Chapter 70 Part 2 — Executive Consensus Meter.
+    # Structured, real fields alongside the existing free-text `summary`
+    # (kept for every existing consumer) — mirrors
+    # StrategyDepartmentOpinion's own real evidence/concerns field
+    # pattern (below) rather than inventing a second shape. Populated
+    # from each department's own already-real inputs in
+    # app/executive_intelligence.py; never fabricated.
+    evidence: list[str] = Field(default_factory=list)
+    concerns: list[str] = Field(default_factory=list)
+    benefits: list[str] = Field(default_factory=list)
+    alternative: str | None = Field(default=None)
 
 
 class ExecutiveRecommendation(CamelModel):
@@ -1523,6 +1534,30 @@ class ExecutiveRecommendation(CamelModel):
     opposing: list[ExecutiveDepartmentRole] = Field(default_factory=list)
     opinions: list[DepartmentOpinion] = Field(default_factory=list)
     generated_at: str = Field(alias="generatedAt")
+    # Design Bible Chapter 70 Part 2 — Executive Consensus Meter.
+    # `consensus_pct` is deliberately a different real number from
+    # `confidence_pct` above: the share of departments that plainly
+    # AGREE, vs. confidence_pct's average conviction across all of them
+    # (a proposal every department "agrees" with at low confidence reads
+    # high consensus / low confidence — a real, honest distinction the
+    # brief's own example draws between the two numbers). See
+    # compute_executive_recommendation() for the exact formula.
+    consensus_pct: float = Field(default=0.0, alias="consensusPct")
+    # A real, generated (never fabricated) paragraph naming every
+    # opposing/hedging department and its own real reason — the
+    # "why do executives disagree" the brief asks TradeTown to explain
+    # automatically, built entirely from the opinions list above.
+    disagreement_summary: str = Field(default="", alias="disagreementSummary")
+    # Merged in by the /api/executive/intelligence router from the
+    # already-real, already-separate What-If Simulation Lab
+    # (app/whatif.py) — never recomputed here, and left None when no
+    # real What-If read is available rather than fabricated. This is
+    # the brief's Probability of Success / Estimated Return / Estimated
+    # Risk row, honestly sourced from the one real system that already
+    # computes those three numbers, not a new composite.
+    probability_of_success_pct: float | None = Field(default=None, alias="probabilityOfSuccessPct")
+    estimated_return_pct: float | None = Field(default=None, alias="estimatedReturnPct")
+    estimated_risk_pct: float | None = Field(default=None, alias="estimatedRiskPct")
 
 
 # v0.7 Feature 50 (Part 2/3) — a real, rule-based process-quality grade
@@ -1557,7 +1592,13 @@ class ExecutiveMeetingLogEntry(CamelModel):
     network_agreed: bool = Field(alias="networkAgreed")
     decision_grade: DecisionGrade = Field(alias="decisionGrade")
     decision_grade_score: float = Field(alias="decisionGradeScore")
-    resolved_by: Literal["ceo", "auto"] = Field(alias="resolvedBy")
+    # "delegated" (Design Bible Chapter 70 Part 2) — the CEO explicitly
+    # asked the Executive Intelligence Network's own recommendation to
+    # decide, distinct from "auto" (a Company Operating Mode
+    # auto-resolution the CEO never saw) and "ceo" (a hand-picked
+    # buy/sell/wait). The trade itself executes identically either way —
+    # only provenance changes.
+    resolved_by: Literal["ceo", "auto", "delegated"] = Field(alias="resolvedBy")
     created_at: str = Field(alias="createdAt")
 
 
@@ -1579,6 +1620,24 @@ class DepartmentSelfEvaluation(CamelModel):
     strengths: list[str] = Field(default_factory=list)
     improvement_areas: list[str] = Field(default_factory=list, alias="improvementAreas")
     created_at: str = Field(alias="createdAt")
+
+
+# Design Bible Chapter 70 Part 2 — Executive Accuracy Score. Deliberately
+# narrower than the brief's own six named metrics (Prediction Accuracy,
+# Risk Prevention Accuracy, Profit Contribution, Forecast Reliability,
+# Decision Quality, Consistency): this codebase already has a standing,
+# explicit refusal to fabricate what a hypothetical/never-taken trade
+# "would have" done (see app/coach.py, app/player_vs_ai.py), so this
+# score is computed ONLY over trades the CEO actually took and that have
+# since closed with a real, known P&L (see
+# compute_executive_accuracy_scores() in app/executive_intelligence.py)
+# — never a counterfactual judgment about a trade that never happened.
+class ExecutiveAccuracyScore(CamelModel):
+    role: ExecutiveDepartmentRole
+    department_label: str = Field(alias="departmentLabel")
+    decisions_tracked: int = Field(alias="decisionsTracked")
+    correct_count: int = Field(alias="correctCount")
+    accuracy_pct: float = Field(alias="accuracyPct")
 
 
 # v0.7 Feature 51 — Market Intelligence Department, "the company's eyes."
@@ -2523,8 +2582,10 @@ class CeoDecisionRecord(CamelModel):
     # app/nexus.py's expire_stale_proposals loop) — neither was ever a
     # real CEO decision, so this field is honest about it. Defaults to
     # "ceo" for records predating this field, which were all real CEO
-    # clicks (auto-resolution didn't exist yet).
-    resolved_by: Literal["ceo", "auto"] = Field(default="ceo", alias="resolvedBy")
+    # clicks (auto-resolution didn't exist yet). "delegated" (Design
+    # Bible Chapter 70 Part 2) — the CEO explicitly asked the Executive
+    # Intelligence Network's own recommendation to decide.
+    resolved_by: Literal["ceo", "auto", "delegated"] = Field(default="ceo", alias="resolvedBy")
     created_at: str = Field(alias="createdAt")
     resolved_at: str | None = Field(default=None, alias="resolvedAt")
 

@@ -184,6 +184,20 @@ def record_proposal_hold(memory: list[MemoryRecord], proposal: TradeProposal, re
     )
 
 
+def record_proposal_modify(memory: list[MemoryRecord], proposal: TradeProposal, old_quantity: float, max_records: int = MAX_MEMORY_RECORDS) -> None:
+    """Design Bible Chapter 70 Part 2 — "Modify" as a real CEO decision
+    action. Not a final call (the proposal stays pending — see
+    app/executive.py's modify_proposal()), but still a real, permanent
+    record of when and how the CEO resized a pending proposal."""
+    record(
+        memory,
+        "decision",
+        f"CEO resized: {proposal.symbol}",
+        f"CEO reduced the pending {proposal.symbol} proposal from {old_quantity:.2f} to {proposal.quantity:.2f} shares.",
+        max_records=max_records,
+    )
+
+
 def record_order_placed(memory: list[MemoryRecord], order: PaperOrder, max_records: int = MAX_MEMORY_RECORDS) -> None:
     record(
         memory,
