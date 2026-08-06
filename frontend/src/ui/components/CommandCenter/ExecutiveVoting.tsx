@@ -246,7 +246,7 @@ export function ExecutiveVoting() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showWeighted, proposal?.id, previewProfile]);
 
-  // Same reasoning as TradeOutcomeBanner's own MainMenuScene guard: the
+  // Same reasoning as CyberNotifications' own MainMenuScene guard: the
   // WebSocket connects independent of the title screen, so never render
   // a full-screen popup over it. A pending gatekeeperRejection keeps this
   // window open even though its proposal has already been resolved and

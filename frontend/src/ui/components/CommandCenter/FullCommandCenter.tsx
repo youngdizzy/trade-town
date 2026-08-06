@@ -31,6 +31,7 @@ import { DecisionVaultPanel } from "./panels/DecisionVaultPanel";
 import { WarRoomPanel } from "./panels/WarRoomPanel";
 import { PortfolioIntelPanel } from "./panels/PortfolioIntelPanel";
 import { EconomicIntelPanel } from "./panels/EconomicIntelPanel";
+import { PanelErrorBoundary } from "./PanelErrorBoundary";
 import { ReasoningLabPanel } from "./panels/ReasoningLabPanel";
 import { ReflectionPanel } from "./panels/ReflectionPanel";
 import { MentorPanel } from "./panels/MentorPanel";
@@ -233,6 +234,7 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
       </nav>
 
       <div className="flex-1 overflow-y-auto p-4">
+        <PanelErrorBoundary key={tab} panelName={tab}>
         {tab === "OVERVIEW" && <OverviewPanel onInspect={setInspecting} onNavigate={setTab} />}
         {tab === "OPPORTUNITIES" && <OpportunitiesPanel onInspect={setInspecting} />}
         {tab === "EXECUTIVE" && <ExecutivePanel />}
@@ -268,6 +270,7 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
         {tab === "ACADEMY" && <EducationPanel openLessonId={helpLessonId} />}
         {tab === "PERFORMANCE" && <PerformancePanel />}
         {tab === "LOGS" && <LogsPanel />}
+        </PanelErrorBoundary>
       </div>
 
       {inspecting !== null && <DecisionDetail decision={inspecting} onClose={() => setInspecting(null)} />}

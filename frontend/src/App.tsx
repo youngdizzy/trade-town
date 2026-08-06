@@ -19,7 +19,6 @@ import { CommandCenter } from "@/ui/components/CommandCenter/CommandCenter";
 import { CampusMap } from "@/ui/components/CampusMap/CampusMap";
 import { ExecutiveVoting } from "@/ui/components/CommandCenter/ExecutiveVoting";
 import { CyberNotifications } from "@/ui/components/CommandCenter/CyberNotifications";
-import { TradeOutcomeBanner } from "@/ui/components/TradeOutcomeBanner";
 import { BreakthroughMoment } from "@/ui/components/BreakthroughMoment";
 import { EmergencyStopConfirm } from "@/ui/components/EmergencyStopConfirm";
 
@@ -46,7 +45,6 @@ export default function App() {
       <CampusMap />
       <ExecutiveVoting />
       <CyberNotifications />
-      <TradeOutcomeBanner />
       <BreakthroughMoment />
       <EmergencyStopConfirm />
       <CommandPalette />

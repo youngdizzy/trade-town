@@ -142,21 +142,30 @@ const tryDismissExecutiveVoting: PopupDismisser = async (page) => {
   return true;
 };
 
-/** A real closed PaperTrade's notification banner (TradeOutcomeBanner.tsx,
- * testid "trade-outcome-banner"). Its container is pointer-events-none
- * (only the card itself is clickable) so it's non-blocking by design,
- * but tests still dismiss it so it can't visually cover an element a
- * later step needs to click — same reasoning as the component's own doc
- * comment. Banners queue, so dismissing one can reveal the next. */
+/** A real closed PaperTrade's win/loss notification (UI Polish Sprint —
+ * moved from the old center-screen TradeOutcomeBanner.tsx into
+ * CyberNotifications.tsx's real right-side toast stack, testid
+ * "trade-outcome-toast"). Non-blocking by design (a small corner card,
+ * not a modal), but tests still dismiss it so it can't visually cover an
+ * element a later step needs to click. Multiple can be visible
+ * simultaneously now (the whole point of the redesign — real stacking,
+ * not one-at-a-time queueing), so this closes the first one found each
+ * pass and the outer dismiss loop naturally revisits for any more. */
 const tryDismissTradeOutcomeBanner: PopupDismisser = async (page) => {
-  const banner = page.getByTestId("trade-outcome-banner");
-  if (!(await banner.isVisible().catch(() => false))) return false;
-  await banner.getByText("Dismiss").click();
-  const stillThere = await banner
-    .waitFor({ state: "hidden", timeout: 5000 })
+  const toasts = page.getByTestId("trade-outcome-toast");
+  const countBefore = await toasts.count();
+  if (countBefore === 0) return false;
+  await toasts.first().getByText("✕").click();
+  // Multiple can be visible at once now, so — unlike the old single-
+  // instance banner — this waits for the *count* to drop rather than one
+  // specific element to hide (a `.first()` locator re-resolves to
+  // whatever remains after the dismissed one unmounts, which would
+  // otherwise still be visible and falsely look "stuck").
+  const stillThere = await expect(toasts)
+    .toHaveCount(countBefore - 1, { timeout: 5000 })
     .then(() => false)
     .catch(() => true);
-  if (stillThere) throw new Error('dismissBlockingPopups: Trade Outcome banner did not close after clicking "Dismiss"');
+  if (stillThere) throw new Error("dismissBlockingPopups: Trade Closed notification did not close after clicking its dismiss button");
   return true;
 };
 

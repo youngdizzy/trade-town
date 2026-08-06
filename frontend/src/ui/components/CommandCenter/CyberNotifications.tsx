@@ -1,7 +1,10 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { EventBus } from "@/game/systems/EventBus";
+import { NexusManager } from "@/game/systems/NexusManager";
+import { api } from "@/net/api";
 import { gameStore } from "@/state/gameStore";
-import type { EmergencyStopState, NotificationTier, ResearchItem, RiskWarning, ScannerAlert, TradeProposal } from "@/types";
+import { useGameStore } from "@/ui/hooks/useGameStore";
+import type { EmergencyStopState, NotificationTier, PaperTrade, ResearchItem, RiskWarning, ScannerAlert, TradeProposal } from "@/types";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 
 type ToastKind = "trade" | "research" | "volatility" | "alert" | "save" | "risk";
@@ -11,6 +14,12 @@ interface Toast {
   kind: ToastKind;
   title: string;
   body: string;
+  leaving: boolean;
+}
+
+interface TradeToast {
+  id: string; // trade id
+  trade: PaperTrade;
   leaving: boolean;
 }
 
@@ -24,17 +33,41 @@ const KIND_STYLE: Record<ToastKind, { border: string; label: string; dot: string
 };
 
 const AUTO_DISMISS_MS = 6000;
+// UI Polish Sprint — the win/loss card carries more real information than
+// a one-line toast (P&L, %, holding time, downstream-update note), so it
+// gets a beat longer to read before auto-dismissing, still inside the
+// brief's own "6-8 seconds" window.
+const TRADE_AUTO_DISMISS_MS = 8000;
+
+function formatMoney(value: number): string {
+  const sign = value >= 0 ? "+" : "-";
+  return `${sign}$${Math.abs(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function formatHoldingTime(minutes: number): string {
+  if (minutes < 60) return `${Math.round(minutes)}m`;
+  const hours = Math.floor(minutes / 60);
+  const rest = Math.round(minutes % 60);
+  return rest === 0 ? `${hours}h` : `${hours}h ${rest}m`;
+}
 
 /**
  * Feature 14 — futuristic corner toasts for events that don't already
- * have a dedicated modal. TRADE WON / TRADE LOST from the spec's example
- * list are deliberately NOT duplicated here — TradeOutcomeBanner.tsx
- * already gives a closed trade its own full-treatment celebration/shake
- * moment, and a second toast for the same event would just be noise on
- * top of it. AGENT LEVEL UP is also not implemented: TradeTown agents
- * have no leveling mechanic to report on, and inventing one here would
- * fabricate a signal the backend doesn't produce. Everything else below
- * is a real EventBus event already emitted elsewhere in the app.
+ * have a dedicated modal, plus (UI Polish Sprint) the real Trade Closed
+ * win/loss notifications, moved here from the old center-screen
+ * TradeOutcomeBanner.tsx. That banner interrupted gameplay at top-center
+ * — the exact bug this sprint was asked to fix. Every trade toast below
+ * renders in the same right-side stack as every other toast (one shared
+ * stack, so nothing can ever overlap a second notification system), uses
+ * the same real slide-in-from-the-right/fade `cmd-toast-in`/`cmd-toast-
+ * out` animation this component already had, and reuses the exact same
+ * ack/unviewed-trade bookkeeping (app/state.py's viewedTradeNotificationIds)
+ * the old banner used — a trade is marked viewed only once its toast is
+ * actually dismissed (auto or manual), never the instant it's shown, so a
+ * mid-display page reload still re-shows it rather than silently losing
+ * it. Nothing here is capped/evicted the way the simpler event toasts
+ * below are (`.slice(-3)`) — every closed trade gets its own real toast,
+ * queued (not fabricated, not dropped) if several close at once.
  *
  * Design Bible Chapter 67 (TTOS) Part 3 — Smart Notification priority
  * tiers. Every toast is also recorded into gameStore's `alertHistory`
@@ -57,10 +90,13 @@ const AUTO_DISMISS_MS = 6000;
  * already made, just made explicit.
  */
 export function CyberNotifications() {
+  const { paperPortfolio, viewedTradeNotificationIds, currentScene } = useGameStore();
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [tradeToasts, setTradeToasts] = useState<TradeToast[]>([]);
   const timers = useRef<Map<string, number>>(new Map());
   const priorRiskWarningIds = useRef<Set<string> | null>(null);
   const notifiedEmergencyStopAt = useRef<string | null | undefined>(undefined);
+  const queuedTradeIds = useRef<Set<string>>(new Set());
 
   const dismiss = useCallback((id: string) => {
     setToasts((prev) => prev.map((t) => (t.id === id ? { ...t, leaving: true } : t)));
@@ -82,6 +118,50 @@ export function CyberNotifications() {
     },
     [dismiss],
   );
+
+  const dismissTrade = useCallback((tradeId: string) => {
+    setTradeToasts((prev) => prev.map((t) => (t.id === tradeId ? { ...t, leaving: true } : t)));
+    const handle = timers.current.get(`trade-${tradeId}`);
+    if (handle) window.clearTimeout(handle);
+    timers.current.delete(`trade-${tradeId}`);
+    window.setTimeout(() => {
+      setTradeToasts((prev) => prev.filter((t) => t.id !== tradeId));
+      void api
+        .ackTradeNotification(tradeId)
+        .then((res) => NexusManager.setViewedTradeNotificationIds(res.viewedTradeNotificationIds))
+        .catch(() => undefined);
+    }, 250);
+  }, []);
+
+  const inspectTrade = useCallback(
+    (trade: PaperTrade) => {
+      if (trade.decisionId) {
+        EventBus.emit("trade:inspect", { decisionId: trade.decisionId, openDetail: true, nonce: Date.now() });
+      }
+      dismissTrade(trade.id);
+    },
+    [dismissTrade],
+  );
+
+  // Every real closed-but-unviewed trade gets a real, queued toast — never
+  // re-pushed twice for the same trade (queuedTradeIds dedups across
+  // re-renders), never silently dropped (no cap/eviction on this array).
+  useEffect(() => {
+    const unviewed = paperPortfolio.tradeHistory.filter((t) => !viewedTradeNotificationIds.includes(t.id) && !queuedTradeIds.current.has(t.id));
+    if (unviewed.length === 0) return;
+    for (const trade of unviewed) queuedTradeIds.current.add(trade.id);
+    setTradeToasts((prev) => [...prev, ...unviewed.map((trade) => ({ id: trade.id, trade, leaving: false }))]);
+  }, [paperPortfolio.tradeHistory, viewedTradeNotificationIds]);
+
+  // Fresh auto-dismiss timer for every newly-added trade toast.
+  useEffect(() => {
+    for (const t of tradeToasts) {
+      if (t.leaving || timers.current.has(`trade-${t.id}`)) continue;
+      const handle = window.setTimeout(() => dismissTrade(t.id), TRADE_AUTO_DISMISS_MS);
+      timers.current.set(`trade-${t.id}`, handle);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tradeToasts]);
 
   useEffect(() => {
     const onProposal = (proposal: TradeProposal) =>
@@ -158,10 +238,60 @@ export function CyberNotifications() {
     };
   }, [push]);
 
-  if (toasts.length === 0) return null;
+  if (currentScene === "MainMenuScene" || (toasts.length === 0 && tradeToasts.length === 0)) return null;
 
   return (
-    <div className="pointer-events-none absolute right-3 top-14 z-[70] flex w-72 flex-col gap-2">
+    <div className="pointer-events-none absolute right-3 top-14 z-[70] flex w-80 flex-col gap-2">
+      {tradeToasts.map(({ id, trade, leaving }) => {
+        const win = trade.pnl > 0;
+        const loss = trade.pnl < 0;
+        const accent = win ? "border-cmd-green/60 shadow-cmd-green" : loss ? "border-cmd-red/60 shadow-cmd-red" : "border-cmd-cyan/50 shadow-cmd-cyan";
+        const amountClass = win ? "text-cmd-green" : loss ? "text-cmd-red" : "text-cmd-cyan";
+        return (
+          <div
+            key={id}
+            data-testid="trade-outcome-toast"
+            role="button"
+            tabIndex={0}
+            onClick={() => inspectTrade(trade)}
+            onKeyDown={(e) => e.key === "Enter" && inspectTrade(trade)}
+            className={`pointer-events-auto cursor-pointer rounded-sm border bg-cmd-panel/90 p-2.5 font-cmdmono text-[10px] text-cmd-text backdrop-blur-md transition-colors hover:bg-cmd-panel ${accent} ${
+              leaving ? "motion-safe:animate-cmd-toast-out" : "motion-safe:animate-cmd-toast-in"
+            }`}
+          >
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <span className={`flex items-center gap-1.5 uppercase tracking-wider ${amountClass}`}>
+                <span className={`inline-block h-1.5 w-1.5 rounded-full ${win ? "bg-cmd-green" : loss ? "bg-cmd-red" : "bg-cmd-cyan"}`} />
+                Trade Closed — {win ? "Profit" : loss ? "Loss" : "Breakeven"}
+              </span>
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  dismissTrade(id);
+                }}
+                className="text-cmd-textDim hover:text-cmd-text"
+              >
+                ✕
+              </button>
+            </div>
+            <div className={`text-base tabular-nums ${amountClass}`}>{formatMoney(trade.pnl)}</div>
+            <div className="mt-1 flex items-center justify-between text-cmd-textDim">
+              <span className="text-cmd-text">
+                {trade.symbol} · {trade.side === "buy" ? "Long" : "Short"}
+              </span>
+              <span className={amountClass}>
+                {trade.pnlPct >= 0 ? "+" : ""}
+                {trade.pnlPct.toFixed(2)}%
+              </span>
+            </div>
+            <div className="mt-0.5 flex items-center justify-between text-cmd-textDim">
+              <span>Holding Time {formatHoldingTime(trade.durationMinutes)}</span>
+              <span>{win ? "Portfolio Updated" : "Risk Updated"}</span>
+            </div>
+          </div>
+        );
+      })}
       {toasts.map((t) => {
         const style = KIND_STYLE[t.kind];
         return (

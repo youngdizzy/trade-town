@@ -484,7 +484,12 @@ test.describe("Global Command Center", () => {
     }
   });
 
-  test("Trade outcome banner shows a real closed trade's win/loss non-blockingly, and dismissal persists", async ({ page }) => {
+  test("Trade Closed notification shows a real closed trade's win/loss non-blockingly, and dismissal persists", async ({ page }) => {
+    // UI Polish Sprint — this used to cover TradeOutcomeBanner.tsx's
+    // center-screen modal-style card; that component was replaced by a
+    // real right-side stacking toast in CyberNotifications.tsx (the
+    // user-reported "interrupts gameplay" bug this sprint fixed), so this
+    // test now covers the real testid/markup that replaced it.
     test.setTimeout(60000); // polls up to 45s for a real trade to close naturally
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);
@@ -497,41 +502,32 @@ test.describe("Global Command Center", () => {
     // on the real live WS feed for the sim's own paper-trading engine to
     // actually close one — the same "real backend, real timing" approach
     // this whole test file already uses everywhere else.
-    const banner = page.getByTestId("trade-outcome-banner");
+    const toast = page.getByTestId("trade-outcome-toast").first();
     let appeared = true;
     try {
-      await expect(banner).toBeVisible({ timeout: 45000 });
+      await expect(toast).toBeVisible({ timeout: 45000 });
     } catch {
       appeared = false;
     }
     test.skip(!appeared, "no new real trade closed within the poll window");
 
-    // The banner must be non-blocking — gameplay behind it stays clickable.
+    // The toast must be non-blocking — gameplay behind it stays clickable.
     await expect(page.getByRole("button", { name: "Command ⌁" })).toBeEnabled();
 
-    const status = banner.getByTestId("trade-outcome-status");
-    await expect(status).toHaveText(/TRADE WON|TRADE LOST|TRADE CLOSED/);
+    await expect(toast).toHaveText(/Trade Closed — (Profit|Loss|Breakeven)/);
 
-    // A real win must celebrate (glow) and a real loss must shake — assert
-    // whichever this actual trade's real outcome produced.
-    const outcomeText = await status.innerText();
-    if (outcomeText.includes("WON")) {
-      await expect(banner).toHaveClass(/animate-cmd-glow-pulse/);
-    } else if (outcomeText.includes("LOST")) {
-      await expect(banner).toHaveClass(/animate-cmd-shake/);
-    }
+    const symbol = (await toast.innerText()).match(/^([A-Z.]+) ·/m)?.[1] ?? null;
+    await toast.getByText("✕").click();
+    await expect(toast).not.toBeVisible();
 
-    const symbol = await banner.getByTestId("trade-outcome-symbol").innerText();
-    await banner.getByText("Dismiss").click();
-    await expect(banner).not.toBeVisible();
-
-    // Dismissal must persist — reloading must never re-show a banner for
+    // Dismissal must persist — reloading must never re-show a toast for
     // that same trade (a fresh one for a *different*, later trade closing
     // in the meantime is fine and expected).
     await page.reload();
     await clickContinueOnTitleScreen(page);
-    if (await banner.isVisible().catch(() => false)) {
-      await expect(banner.getByTestId("trade-outcome-symbol")).not.toHaveText(symbol);
+    const reloadedToast = page.getByTestId("trade-outcome-toast").first();
+    if (symbol && (await reloadedToast.isVisible().catch(() => false))) {
+      await expect(reloadedToast).not.toContainText(symbol);
     }
   });
 
@@ -880,7 +876,14 @@ test.describe("Global Command Center", () => {
     const treasuryBefore = await readDollar(treasuryBalance);
     const operatingBefore = await readDollar(operatingBalance);
 
-    const amountInput = page.locator('input[type="number"]').first();
+    // BUG FIX (UI Polish Sprint): this used to grab
+    // `input[type="number"]').first()`, which broke silently the moment
+    // Chapter 69 Part 1's AccountsSection (its own "Starting Balance"
+    // number input) started rendering above this Deposit/Withdraw card —
+    // the test was filling the wrong field and asserting on whatever
+    // stale default ("1000") the real Deposit button still held. Scoped
+    // to the real field's own testid now, added alongside this fix.
+    const amountInput = page.getByTestId("treasury-amount-input");
     await amountInput.fill("500");
     await clickButton(page, /Deposit/);
 
@@ -1001,7 +1004,9 @@ test.describe("Global Command Center", () => {
     // typing a digit into its real amount field does NOT trigger a tab
     // switch away from it.
     await clickTab(page, "TREASURY");
-    const amountInput = page.locator('input[type="number"]').first();
+    // See the deposit/withdraw test above for why this must be scoped to
+    // the real field's own testid rather than `.first()`.
+    const amountInput = page.getByTestId("treasury-amount-input");
     await amountInput.fill("");
     await amountInput.type("2");
     await expect(page.getByRole("button", { name: "TREASURY", exact: true })).toHaveClass(/text-cmd-cyan/);

@@ -144,6 +144,7 @@ export function TreasuryPanel() {
           min={1}
           value={amount}
           onChange={(e) => setAmount(e.target.value)}
+          data-testid="treasury-amount-input"
           className="mb-2 w-full rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1.5 text-[10px] text-cmd-text focus:border-cmd-cyan/50 focus:outline-none"
         />
         <div className="flex gap-2">

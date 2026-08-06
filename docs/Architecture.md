@@ -812,8 +812,11 @@ source:
   it) and a new `_strengths` function, both folded into the existing
   weekly/monthly `CoachReport` pipeline rather than a parallel journal
   system.
-- `frontend/src/ui/components/TradeOutcomeBanner.tsx` — the Premium
-  Trade Outcome Banner (Feature 19): replaces the old blocking
+- `frontend/src/ui/components/TradeOutcomeBanner.tsx` (Feature 19,
+  since superseded and deleted — see `CHANGELOG.md`'s "UI Polish & Bug
+  Fix Sprint" entry: its real win/loss-notification logic now lives in
+  `CyberNotifications.tsx`'s real right-side toast stack instead of a
+  center-screen banner) — originally replaced the old blocking
   `TradeOutcomePopup.tsx` (deleted) with a non-blocking, top-center,
   queued banner. Purely a frontend/presentation change — no new backend
   module.

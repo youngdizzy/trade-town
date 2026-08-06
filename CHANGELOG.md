@@ -296,6 +296,81 @@ development milestones, not semver releases.
   counterfactual "would have" trade outcomes, not just a missing
   feature. No code was written against this section.
 
+### Fixed
+
+- **UI Polish & Bug Fix Sprint — Treasury black-screen crash, root-caused
+  and fixed** (`backend/app/ws_manager.py`,
+  `frontend/src/ui/components/CommandCenter/PanelErrorBoundary.tsx` new,
+  `frontend/src/ui/components/CommandCenter/FullCommandCenter.tsx`,
+  `frontend/src/ui/components/CommandCenter/panels/TreasuryPanel.tsx`):
+  entering the TREASURY tab went black moments after load. Root cause:
+  Design Bible Chapter 69 Part 1 (Multi-Account & Fund Management) added
+  `accounts`/`activeAccountId` to `GameSaveState` and every REST account
+  endpoint, and the frontend (types.ts/socket.ts/NexusManager.ts/
+  gameStore.ts) was already wired to consume them from the WebSocket
+  broadcast — but `ws_manager.py`'s periodic full-state push never
+  actually included those two fields. Every tick silently overwrote the
+  client's real `accounts` array with `undefined`, and `AccountsSection`
+  crashed the instant it read `accounts.length`, taking down the whole
+  React tree with no error boundary anywhere in the codebase to catch
+  it — confirmed by reverting to the pre-Chapter-71 commit with a fresh
+  database and reproducing the identical crash, ruling out every other
+  recent change as the cause. Fixed at the source (`ws_manager.py` now
+  broadcasts both fields), plus a real, general fix for the underlying
+  fragility: the codebase's first React error boundary
+  (`PanelErrorBoundary`), wrapping the Command Center's tab content so
+  any future undefined-access bug in any of the 35 panels degrades to a
+  visible "Panel Error" card with a Retry button — never a black screen
+  — instead of crashing the entire app. A cross-check of all 90
+  `GameSaveState` fields against the WS broadcast confirmed no other
+  field has this same gap (the other apparent gaps — `settings`,
+  `dialogue_history`, `company_dna_legacy`, `version`, `updated_at` — are
+  all intentionally REST/local-only; the frontend's own WS message type
+  never expects them). Also fixed a second, independent pre-existing bug
+  this investigation surfaced: `commandCenter.spec.ts`'s deposit/
+  withdraw test was silently filling the wrong input
+  (`input[type="number"]').first()` matched AccountsSection's own
+  "Starting Balance" field once that section started rendering above the
+  Deposit/Withdraw card) — now scoped to a real `data-testid`.
+
+- **UI Polish & Bug Fix Sprint — win/loss trade notifications moved from
+  a center-screen banner to real side-panel toasts**
+  (`frontend/src/ui/components/CommandCenter/CyberNotifications.tsx`,
+  `frontend/src/App.tsx`, `frontend/tailwind.config.js`;
+  `frontend/src/ui/components/TradeOutcomeBanner.tsx` deleted): the old
+  `TradeOutcomeBanner` was already non-blocking (`pointer-events-none`
+  wrapper, real queue, 8s auto-dismiss) but rendered as one large card
+  top-center, interrupting the player's view of the game world — the
+  exact complaint this sprint was asked to fix. Its real logic (ack a
+  trade only once its notification is actually dismissed, never the
+  instant it's shown, so a mid-display reload doesn't lose it; no
+  fabricated "Strategy" label — real symbol/side/holding-time only) now
+  lives in `CyberNotifications.tsx`, the component that already had the
+  real right-side stacking toast stack (slide-in-from-the-right + fade,
+  reusing the existing `cmd-toast-in`/`cmd-toast-out` keyframes — no new
+  animation needed) every other real-time event (new trade available,
+  research complete, risk alerts) already used. One shared stack means
+  a trade toast can never be covered by or overlap a second notification
+  system, by construction. Unlike the old one-at-a-time queue, multiple
+  trade toasts can now stack simultaneously — nothing is capped/evicted
+  the way the simpler event toasts are, so several trades closing near
+  the same tick each still get their own real, undropped notification.
+  Clicking a card still opens the real Trade Review (`DecisionDetail.tsx`
+  via the existing `trade:inspect` event — Trade Thesis, Bull/Bear Case,
+  Market Context, Confidence Engine, Post-Trade Review with real P&L,
+  Trade Plan with entry price/quantity/side, and Invalidation criteria).
+  The brief's fuller Trade Review field list (Fees, a literal Executive
+  Board Consensus/CIO Recommendation/Risk Officer Comments/Quant
+  Analysis section breakdown, explicit Save-to-Memory/Replay-Timeline
+  buttons on this specific view) is not fabricated here — `DecisionDetail`
+  already covers the real subset of that list this codebase actually has
+  data for; no new fields were invented to fill the rest. The now-dead
+  `cmd-shake`/`cmd-banner-in`/`cmd-banner-out`/`cmd-glitch` keyframes
+  (only ever used by the deleted banner) were removed along with it.
+  `commandCenter.spec.ts`'s trade-outcome test and `helpers.ts`'s
+  `dismissBlockingPopups` bystander-popup dismisser were both updated for
+  the new `trade-outcome-toast` testid and multi-instance stacking.
+
 ### Changed
 
 - **Chapter 69 restructured to three parts (correcting the previous
