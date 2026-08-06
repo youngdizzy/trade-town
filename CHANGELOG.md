@@ -7,6 +7,43 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 70, Part 3 — Weighted Executive Decision Engine (WEDE)**
+  (`docs/DesignBible/volumes/09-departments/chapter-70-executive-board-ceo-intelligence-system.md`):
+  documentation only, no code written against this part. The brief asks
+  that department opinions stop counting equally and instead carry a
+  Dynamic Influence Score shaped by accuracy, market conditions, and
+  rule compliance. Researched first: grep-confirmed zero per-department
+  `influence`/weight concept exists anywhere in `backend/app` today.
+  The one real, adjacent precedent is `compute_executive_recommendation()`'s
+  existing fixed priority-ordered rule chain (Market Intelligence's
+  veto-like top slot, then Devil's Advocate/Risk) — real proof some
+  departments already matter more in some situations, but expressed as
+  hardcoded if/elif logic, never a numeric, CEO-visible, adjustable
+  weight. Two of the brief's inputs have a real, if narrow, source
+  today: Historical Accuracy via `compute_executive_accuracy_scores()`
+  (built for Part 2 this same run — a real per-department, closed-
+  trade-only accuracy score whose only caller today is a read-only API
+  endpoint) and Market Conditions via Chapter 65's two real regime
+  classifiers (`app/market_environment.py`, `app/market_intelligence.py`),
+  whose own `app/regime_reconciliation.py` module docstring states its
+  `posture` output is "never applied to any [...] field automatically."
+  Confirmed genuinely unbuilt: any weighting formula or Weighted
+  Executive Recommendation, Dynamic Market Adaptation, a Performance-
+  Based Evolution loop, every CEO weighting control beyond the
+  pre-existing, unrelated trade-decision Override, and all eight named
+  Weight Profiles (no CEO-switchable named-profile precedent exists
+  anywhere in this codebase for anything — the closest analog,
+  `OperatingMode`, is a single three-way global autonomy dial). No
+  Chief Compliance Officer or Chief Innovation Officer exists as an
+  agent title or one of the 9 real `DepartmentOpinion` roles — the
+  closest real analogs (`app/gatekeeper.py`'s real, unconditional veto
+  pipeline; `app/innovation.py`'s unrelated Innovation Points ladder)
+  are both separate systems, not weightable department opinions. The
+  most consequential open design question this part raises and does
+  not resolve: how a weighting system could coexist with the Trade
+  Gatekeeper's real, absolute, non-bypassable veto (Chapter 66) without
+  diluting it into "one more weighted vote."
+
 - **Chapter 69 (all three parts) + Chapter 70 Part 2 — implemented**,
   per explicit instruction to implement everything across Chapters
   68-70 except Chapter 68 (deferred until Chapter 75, per Appendix G's

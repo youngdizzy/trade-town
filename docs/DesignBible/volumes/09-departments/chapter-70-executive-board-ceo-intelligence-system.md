@@ -1,14 +1,17 @@
 # Chapter 70 — Executive Board & CEO Intelligence System
 
-**Status:** Two parts. **Part 1** (below) — board roster, meetings,
+**Status:** Three parts. **Part 1** (below) — board roster, meetings,
 Decision Center, Company Health Review, Executive Command Center — is
-not implemented. **Part 2** (further down, the Executive Consensus
-Meter addendum) is now real: Modify joins Approve/Reject/Delay/Delegate
-as a genuine CEO decision action, and a real Executive Accuracy Score
-scores each department's directional stance against actual closed-trade
-P&L, resolving the counterfactual-outcome tension this section's own
-research originally raised — see Part 2's Implementation Notes for
-exactly what was built and what remains honestly out of scope.
+not implemented. **Part 2** (the Executive Consensus Meter addendum) is
+real: Modify joins Approve/Reject/Delay/Delegate as a genuine CEO
+decision action, and a real Executive Accuracy Score scores each
+department's directional stance against actual closed-trade P&L. **Part
+3** (further down, the Weighted Executive Decision Engine brief) is
+target architecture, not yet implemented — pure documentation this
+pass, matching how Part 2 itself was first written up before a later,
+separate implementation instruction. See each part's own Implementation
+Notes (Part 2) or Ownership section (Part 3) for the exact honest
+inventory.
 **A placement note:** this brief arrived numbered "Chapter 70," the
 same number Volume 10 had briefly used for a since-folded-in chapter —
 that number is free again, and this chapter's own subject (executive
@@ -421,3 +424,312 @@ Ownership); and accuracy scoring for the 5 non-directional departments
 named above. Verified: mypy/ruff clean, `tsc --noEmit`/eslint/`npm run
 build` clean, and runtime-tested against the real `GameState` singleton
 including the Modify/Delegate/accuracy code paths end to end.
+
+## Part 3 — Weighted Executive Decision Engine (WEDE)
+
+**Researched first, before any of the sections below were written:**
+this brief's own central claim — that every department's opinion
+should carry a numeric, dynamically-adjusted influence, rather than
+counting equally — has **zero real precedent anywhere in this
+codebase.** Grep-confirmed: no `influence` or per-department `weight`
+concept exists in `backend/app` (the one `influence` hit is prose in
+`app/constitution.py`, unrelated; every `weight` hit is a different
+system — position sizing, `rule_engine.py`, `confidence.py`'s
+single-proposal factor blend — never a cross-department multiplier).
+What *does* exist, and is worth naming honestly up front, is a related
+but different thing: `compute_executive_recommendation()`'s real
+priority-ordered rule chain already lets some departments' stances
+outrank others structurally (Market Intelligence's veto-like top slot,
+Devil's Advocate/Risk's second slot) — a real precedent for "some
+departments matter more in some situations," but expressed as a fixed
+if/elif ladder in code, not a numeric weight a CEO could see, adjust,
+or switch between named profiles for. This part's job is describing
+that gap precisely, not overstating how close today's system already
+is.
+
+### Executive Summary
+
+The brief asks that department opinions stop counting equally and
+instead carry a Dynamic Influence Score shaped by accuracy, market
+conditions, expertise, and rule compliance — visible to the CEO as both
+a Raw Vote and a Weighted Recommendation, switchable between named
+Weight Profiles. **Researched first:** three of this brief's real
+building blocks already exist, built for other purposes: a real,
+9-department `DepartmentOpinion` system with real confidence
+percentages (Part 2's Executive Consensus Meter); a real, closed-trade-
+only per-department accuracy score (`compute_executive_accuracy_scores()`,
+built for Part 2 this same run); and two real, separate market-regime
+classifiers (Chapter 65) whose own `RegimeReconciliation.posture`
+output is explicitly documented as read-only and "never applied to any
+[...] field automatically." None of the three is wired to change any
+department's say in a decision today. The weighting engine itself, the
+market-adaptation rules, the performance-evolution loop, the CEO weight
+controls, and every named Weight Profile are all genuinely, entirely
+unbuilt.
+
+### Company Philosophy
+
+"Executives prove their expertise through results" would be a new
+commitment for this codebase to make, not a restatement of an existing
+one — unlike most of this Design Bible's recent chapters, this
+philosophy has no real analog to point to today. The closest adjacent
+precedent is `DepartmentSelfEvaluation`'s weekly self-report (a
+department scoring its own average confidence) and, now,
+`compute_executive_accuracy_scores()` (a department scored against real
+outcomes) — both real, permanent records a future evolution loop could
+read from, but neither one currently changes anything about how much
+that department's opinion counts next time.
+
+### Primary Responsibilities
+
+**Would own:** the per-department Dynamic Influence Score, Weighted
+Executive Recommendation (alongside the existing Raw Vote), Dynamic
+Market Adaptation, Performance-Based Evolution, the Weight Profile
+system, and full weighting transparency.
+
+**Does NOT own** (matches this codebase's real division of labor,
+restated from Parts 1/2): the underlying department analysis itself
+(each department's real opinion is still computed by its own real
+system — this engine would only re-weight, never recompute, an
+existing `DepartmentOpinion`); the CEO's actual decision (weighting
+would advise, never replace, the CEO — the Trade Gatekeeper's real,
+unconditional veto pipeline, Chapter 66, stays the only thing that can
+block a trade); and — a new, explicit boundary this part must hold —
+**Compliance and Innovation as departments with a vote to weight.**
+Neither exists as one of the 9 real `DepartmentOpinion` roles today
+(see Ownership); this part must not silently invent two new department
+opinions just to give the brief's named seats something to weight, since
+that would be new decision-logic scope, not a weighting-engine scope.
+
+### Ownership
+
+Every brief concept checked against the real codebase before this part
+was written:
+
+| Brief concept | Real system today | What it actually does |
+|---|---|---|
+| "Dynamic Influence Score" (per-executive weight) | *(genuinely does not exist)* | Grep-confirmed: no per-department `influence` or `weight` field or computation exists anywhere in `backend/app`. Every one of the 9 real `DepartmentOpinion` entries counts identically today — `compute_executive_recommendation()` reads stances and a disagreement *count*, never a weighted sum. |
+| "Raw Executive Votes vs. Weighted Executive Recommendation" | Raw votes real; weighted recommendation does not exist | The 9 real `DepartmentOpinion` objects (stance, `confidencePct`, summary) already are the real "Raw Vote" the brief asks the CEO to always see — rendered today in `ExecutiveVoting.tsx`'s Executive Intelligence Network panel. No second, weighted version of the same recommendation exists to show alongside it. |
+| Named executive seats (CIO/CRO/CQO/Research/Compliance/Innovation) with context-specific higher influence | 4 of 6 seats have a real, if not-exactly-matching, agent title; 2 have none | Meridian = "Chief Investment Officer" (exact, `AgentProfiles.ts`), Keystone = "Chief Risk Architect", Vector = "Chief Quantitative Strategist", the real `research` department role covers Chief Research Officer's ground. **No Chief Compliance Officer or Chief Innovation Officer exists as an agent title or a `DepartmentOpinion` role** — the closest real analogs are the Trade Gatekeeper (`app/gatekeeper.py`, a separate unconditional pass/fail system, Chapter 58/66) for Compliance, and `app/innovation.py`'s narrow, unrelated Innovation Points ladder (driven by Devil's Advocate `ChallengeReport` severity, tiered `research_contributor`→`legendary_innovator`) for Innovation — neither casts a trade-decision opinion today. |
+| "Compliance has veto authority" | Real, but not framed as a department vote | `app/gatekeeper.py::evaluate_gatekeeper()`'s 8 unconditional checks (confidence, risk-manager alignment, multi-agent agreement, AI Debate outcome, exposure, correlation, active risk warnings, Market Intelligence quality) already behave exactly like a veto — one failed check blocks the trade regardless of everything else, matching the brief's own "veto authority" ask almost verbatim. **The honest gap:** it's a separate, pre-existing gate system (Chapter 58/66), not one of the 9 weightable `DepartmentOpinion` roles — this part cannot "give Compliance more influence" without first deciding whether to fold the Gatekeeper into the opinion system or leave it as the separate, absolute veto it already is (which this Design Bible's safety chapters, 66 especially, would argue strongly for keeping absolute, not diluted into a weighted vote). |
+| "Dynamic Market Adaptation" (Bull/Bear/High-Vol/Low-Vol boosts named departments) | Real market-regime reads; zero connection to any weight | Chapter 65's `app/market_environment.py` (5-way: bull/bear/sideways/high_volatility/low_volatility) and `app/market_intelligence.py` (a richer 13-way regime) are both real and live. `app/regime_reconciliation.py`'s `RegimeReconciliation.posture` (cautious/normal/opportunistic) is real and computed from both — but its own module docstring states plainly: "`posture` is read-only, informational text. It is never applied to any RiskLimits field automatically, and this module has no write path at all." No regime value adjusts any department's say in a decision today. |
+| "Performance-Based Evolution" (gain/lose influence over time via 7 named metrics) | 1 of 7 metrics real (Prediction Accuracy, narrowly); 0 feed any evolution | `compute_executive_accuracy_scores()` (built for Part 2 this same run) is a real, per-department, closed-trade-only accuracy score — the closest real match to "Prediction Accuracy." Risk Prevention, Profit Contribution, Forecast Reliability, Decision Consistency, Research Accuracy, and CEO Satisfaction have no real per-department analog. Critically: even the one real metric that exists feeds nothing today — its only caller is a read-only API endpoint (`GET /api/executive/accuracy`); no code path reads it back to adjust anything. "Improve through Academy/Knowledge Graph/Company Memory/Executive Reviews" presumes a feedback loop that doesn't exist to close. |
+| "Transparency" (Raw Vote, Weighted Vote, Influence Score, Reasoning, Confidence, Supporting Evidence) | 3 of 6 real | Raw Vote (real — `DepartmentOpinion.stance`), Reasoning (real — `DepartmentOpinion.summary`), Confidence (real — `confidencePct`). **Not real:** Weighted Vote, Influence Score (neither exists to show), and Supporting Evidence as a separate structured field (Part 2's own Ownership research already found this collapses into the same free-text `summary`, not a distinct evidence list, for these 9 departments specifically — contrast with the earlier-stage `AnalystVote.evidence`, which does carry a real structured list). |
+| "CEO Authority" (Ignore weighting / Equalize / Prioritize / Override / Lock custom weights / Create custom profiles) | 1 of 6 real, in spirit | Override is real today for every trade decision (the CEO's decision already always wins — Chapter 66's Trade Gatekeeper checks are not bypassable, but that's a floor beneath the CEO, not a "weighting" concept to override). The other five all presume a weighting system that does not exist yet to ignore, equalize, prioritize, lock, or profile. |
+| "Weight Profiles" (Equal Voting / Performance Weighted / Risk First / Growth First / Research First / Capital Preservation / Balanced Institutional / Custom CEO Profile) | *(genuinely does not exist, and no adjacent precedent either)* | Grep-confirmed: no named, CEO-switchable "profile" concept exists anywhere in this codebase for anything, department-weighting or otherwise. The single closest real analog is `OperatingMode` (`learning`/`assisted`/`executive`) — a three-way global AI-autonomy dial, not a multi-profile weighting system, and not named after any of the brief's eight profiles. Chapter 69 Part 3's Institutional Rule Engine is this codebase's only precedent for "a CEO-configurable, named, engine-driven system" at all, and even that doesn't switch between preset bundles — it's an open-ended per-account list the CEO builds by hand. |
+
+### Inputs
+
+**Real today:** every real `DepartmentOpinion` (stance, confidence,
+summary), `compute_executive_accuracy_scores()`'s real per-department
+accuracy read, and both of Chapter 65's real regime classifiers.
+**Would need, once real:** a defined formula turning those three real
+inputs (plus the brief's other five factors — Prediction Quality,
+Current Expertise, Department Performance, Recent Reliability, Rule
+Compliance, Specialization — none of which map to a single existing
+number today) into one per-department weight, and a decision for
+whether/how the Trade Gatekeeper's real veto interacts with a weighted
+vote rather than staying absolute.
+
+### Outputs
+
+**Real today:** the Raw Vote the brief asks for (every `DepartmentOpinion`
++ `ExecutiveRecommendation`, unchanged by this part). **Would produce,
+once real:** a Weighted Executive Recommendation distinct from the raw
+one, a per-department Influence Score, and a plain-language explanation
+of why one department's opinion counted more than another's on this
+specific decision — none of which exist as a computed value today.
+
+### Internal Workflow
+
+**The brief's own implied flow — department opinions in, weights
+applied, weighted recommendation out, CEO sees both — has no real
+precedent to point to, unlike most of this chapter's other sections.**
+The nearest real analog is `compute_executive_recommendation()`'s
+existing priority-ordered rule chain (Market Intelligence's veto-like
+top slot, then Devil's Advocate/Risk, then Simulation, then a raw
+disagreement count, then Research, then a raw waiting-majority count) —
+a real precedent for unequal department say, but it is a fixed
+if/elif ladder over categorical stances, not a numeric weight applied
+to a sum. A real WEDE implementation would need to decide whether it
+replaces this ladder, runs alongside it, or is expressed as a
+generalization of it (turning the fixed priority order into a
+CEO-visible, profile-switchable weight table) — a real design decision,
+not made unilaterally in this pass.
+
+### Decision Logic
+
+**Not real, for the entire weighting formula.** No formula exists
+anywhere that combines Historical Accuracy, Prediction Quality, Market
+Conditions, Current Expertise, Department Performance, Recent
+Reliability, Rule Compliance, and Specialization into one weight —
+each of those eight named factors would itself need a real, defined,
+computable source (only two of the eight — Historical Accuracy via
+`compute_executive_accuracy_scores()`, and Market Conditions via
+Chapter 65's regime reads — have one today), and then a real,
+*published* formula combining them, matching this Design Bible's
+"no black-box composite" convention throughout (`CompanyHealth.overall`,
+`PropFirmComplianceScore`, `compute_executive_recommendation()` itself
+all publish their exact formula; any real WEDE weight must too, not
+hide behind a trained or opaque score).
+
+### Department Cooperation
+
+**Would receive from:** Part 2 of this chapter (the real 9-department
+`DepartmentOpinion`/`ExecutiveRecommendation` system this part would
+re-weight, never recompute), Chapter 65 (the real market-regime reads
+this part's Dynamic Market Adaptation would read from, currently
+read-only and unconnected to any weight), Chapters 57/58/66 (the real
+Risk Authority/Trade Gatekeeper this part must not dilute into a
+weighted vote without a real design decision — see Ownership's
+Compliance-veto finding), Chapter 61 (Company Memory/Knowledge Graph —
+real, the closest existing analog to where a Performance-Based
+Evolution loop's history would need to live). **Would provide:** a
+Weighted Executive Recommendation and per-department Influence Scores
+to the Executive Intelligence Network panel, alongside the real Raw
+Vote it already shows.
+
+### CEO Controls
+
+| Control | Status |
+|---|---|
+| Ignore weighting / view raw votes | **Already real, trivially** — the Raw Vote is the *only* thing that exists today; there is no weighting to ignore yet. |
+| Equalize all votes | **Not built** — equal weighting is today's only real behavior, not a selectable option among others. |
+| Prioritize specific executives | **Not built** — no per-department weight exists to prioritize. |
+| Override any recommendation | **Already real**, for the underlying trade decision (unchanged from Parts 1/2) — the CEO's decision always wins; this predates and is unrelated to any weighting concept. |
+| Lock custom executive weights | **Not built.** |
+| Create custom weighting profiles | **Not built** — no profile-switching precedent exists anywhere in this codebase (see Ownership). |
+
+### Weight Profiles
+
+**Genuinely, entirely unbuilt, for all eight named profiles** (Equal
+Voting, Performance Weighted, Risk First, Growth First, Research
+First, Capital Preservation, Balanced Institutional, Custom CEO
+Profile) — and, unlike several of this chapter's other gaps, this one
+has no adjacent real machinery to extend from at all (see Ownership's
+"Weight Profiles" row). Two of the eight names describe a real
+*posture* this codebase already recognizes under a different name:
+"Risk First" and "Capital Preservation" both echo Chapter 66's real,
+enforced `pause_trading`/survival-first discipline and Chapter 65's
+real `cautious` posture read — but neither is expressed as a
+selectable weighting profile today, only as always-on enforcement
+(Chapter 66) or read-only text (Chapter 65).
+
+### Learning System
+
+**Not built, for the evolution loop itself** — but two real, permanent
+records already exist that a future evolution loop could read from
+without inventing new history: `DepartmentSelfEvaluation` (weekly,
+self-reported, average-confidence-based) and
+`compute_executive_accuracy_scores()` (closed-trade-outcome-based,
+built this same run for Part 2). Neither currently writes back to
+anything — a real WEDE Learning System would be the first consumer of
+either.
+
+### KPIs
+
+**Real and computable today, unchanged from Part 2:**
+`compute_executive_accuracy_scores()`'s per-department `accuracyPct`.
+**Not honestly computable:** any per-department Influence Score, since
+no weighting formula exists to compute one from.
+
+### Reports
+
+**Not built.** No named WEDE-specific report exists. The real,
+permanent `ExecutiveMeetingLogEntry` (Part 1/2) remains the closest
+live analog — it already stores every department's raw opinion
+per-decision, which any future weighting report would read from rather
+than duplicate.
+
+### Safety Systems
+
+**The one non-negotiable constraint any real implementation of this
+part must hold, stated explicitly because it's the most consequential
+open question this brief raises:** Chapter 66's Trade Gatekeeper is a
+real, unconditional, non-bypassable veto pipeline — no CEO override is
+even mechanically possible against it today. A weighting engine must
+never let a high-weighted department's "yes" outvote the Gatekeeper's
+"no," and must never fold the Gatekeeper's own checks into a numeric
+department weight that could be diluted by other departments'
+confidence — the brief's own "Compliance has veto authority" language
+already agrees with this constraint; any real implementation just has
+to actually honor it in code, not accidentally erode it by treating
+Compliance as "one more weighted vote, just usually a big one."
+
+### Dependencies
+
+Part 2 of this chapter (the real 9-department opinion system and
+Executive Accuracy Score this part would re-weight), Chapter 65
+(Market Regime & Adaptive Strategy — the real regime reads this part's
+Dynamic Market Adaptation would consume), Chapters 57/58/66
+(Risk Authority — the real veto pipeline this part must not dilute).
+All previous Design Bible chapters, matching this volume's own
+established framing.
+
+### Future Expansion
+
+A published, transparent weighting formula combining real inputs where
+they exist (Historical Accuracy, Market Conditions) and defining new
+real inputs where they don't (Prediction Quality, Current Expertise,
+Department Performance, Recent Reliability, Rule Compliance,
+Specialization); a decision on how — or whether — to fold the Trade
+Gatekeeper's absolute veto into a weighted system without eroding it;
+the eight named Weight Profiles; and a real Performance-Based Evolution
+loop closing the feedback gap `compute_executive_accuracy_scores()`
+currently leaves open. None of these were designed unilaterally in this
+pass — matches this volume's own Future Expansion precedent, and this
+part's own weight is unusually load-bearing: several of the open
+questions above (Gatekeeper dilution especially) are policy decisions,
+not just missing code.
+
+### Design Bible Integration
+
+**Real today, and already wired without this part's own help:** the 9
+real `DepartmentOpinion`s, `ExecutiveMeetingLogEntry`'s permanent
+per-decision record, and `compute_executive_accuracy_scores()` all
+already exist and would need no change to become this part's real
+inputs. **Not built:** any new data layer or write path connecting
+Chapter 65's regime reads, Company Memory, or the Knowledge Graph to a
+department weight — all three remain real and available to read, none
+is read for this purpose today.
+
+### Company Principle
+
+"Executives prove their expertise through results" and "the CEO always
+remains the final decision-maker" are two separate claims with very
+different honesty status today. The second is already, narrowly, true
+and enforced everywhere (Chapter 66's Gatekeeper). The first is not yet
+true in any mechanical sense — a department's real accuracy score
+(`compute_executive_accuracy_scores()`) exists and is visible, but
+nothing about "proving expertise" currently changes how much that
+department is listened to next time. Building the second claim without
+weakening the first is this part's real, unresolved challenge.
+
+### Part 3 Implementation Notes
+
+**What's real today, found by direct research before this part was
+written, not assumed:** the 9 real `DepartmentOpinion` roles and
+`compute_executive_recommendation()`'s real priority-ordered rule chain
+(Part 2, unchanged); a real per-department accuracy score
+(`compute_executive_accuracy_scores()`, built for Part 2 this same
+run) — the closest real match to "Historical Accuracy," though it only
+scores 3 of 6 possible stances and needs resolved trade outcomes to
+populate; two real, live market-regime classifiers (Chapter 65) whose
+own `regime_reconciliation.py` module docstring explicitly states its
+`posture` output is "never applied to any [...] field automatically";
+and a real, unconditional Trade Gatekeeper veto (Chapters 58/66) that
+already behaves like the brief's own "Compliance has veto authority"
+ask, just not as one of the 9 weightable department opinions. 4 of the
+brief's 6 named executive seats have a real, if not-exactly-matching,
+agent title (`AgentProfiles.ts`); Chief Compliance Officer and Chief
+Innovation Officer have none. **What's genuinely, entirely unbuilt:**
+any per-department Dynamic Influence Score or weighting formula
+(grep-confirmed: zero `influence`-weighting code exists anywhere in
+`backend/app`), a Weighted Executive Recommendation distinct from the
+real Raw Vote, Dynamic Market Adaptation connecting Chapter 65's real
+regime reads to any weight, a Performance-Based Evolution loop closing
+the feedback gap the real accuracy score currently leaves open, every
+CEO weighting control beyond the pre-existing, unrelated trade-decision
+Override, and all eight named Weight Profiles (no CEO-switchable
+named-profile precedent exists anywhere in this codebase for anything).
+No code was written against this part.
