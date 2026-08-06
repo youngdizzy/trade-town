@@ -7,6 +7,29 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 70 — Prop Firm Rule Engine**
+  (`docs/DesignBible/volumes/10-broker-live-trading/chapter-70-prop-firm-rule-engine.md`):
+  a new Design Bible chapter, pure target architecture — no code was
+  written against it. Filed as Chapter 70 (the brief itself carried no
+  explicit number, flagged in the chapter's own Status line). The
+  strongest real-coverage ratio of any chapter in this run: 5 of the
+  brief's 15 supported rules (Daily Loss Limit, Maximum Overall
+  Drawdown, Maximum Position Size, Maximum Risk Per Trade, Maximum
+  Open Positions) are already real, enforced `RiskLimits` fields
+  (Chapter 57), a sixth (Profit Targets) is real in a related
+  daily-scoped shape, and `DailyObjectiveStatus` already provides a
+  live, per-day compliance readout close to the brief's own Live
+  Account Monitoring/Prop Firm Dashboard shape. The Trade Gatekeeper's
+  real, unconditional block-and-explain pipeline (Chapter 58) already
+  matches the brief's own Pre-Trade Validation shape exactly. Trailing
+  drawdown, consistency rules, leverage, account scaling milestones,
+  weekend/time-based restrictions, and challenge-scoped (vs.
+  daily-scoped) tracking are all confirmed genuinely unbuilt — no
+  day-of-week concept exists anywhere in this codebase's `TimeState`,
+  and no peak-equity tracking exists to trail a drawdown from. Depends
+  on Chapter 69's account model and is gated by the same Live Trading
+  Gate (Appendix G). Documentation only, no code changes.
+
 - **Chapter 69 — Multi-Account & Fund Management System (MAFMS)**
   (`docs/DesignBible/volumes/10-broker-live-trading/`): a new Design
   Bible chapter, pure target architecture — no code was written against
