@@ -3,7 +3,10 @@ import type {
   AccountType,
   AgentEnergy,
   AgentId,
+  AlertSeverity,
   AnalystChoice,
+  AuditEntry,
+  AuditEventCategory,
   BlackBoxPriority,
   BlackBoxState,
   BlackSwanPlaybook,
@@ -13,8 +16,10 @@ import type {
   CalendarState,
   Candle,
   CeoDecisionRecord,
+  CeoOverrideRecord,
   ChallengeReport,
   ClientSaveSnapshot,
+  ComplianceOverview,
   Debate,
   DefensiveModeState,
   EducationLesson,
@@ -29,6 +34,7 @@ import type {
   FoundationalResourceType,
   GameSaveState,
   Goal,
+  GovernanceLayer,
   GoalAllocation,
   GoalCategory,
   GoalMetric,
@@ -242,6 +248,22 @@ export const api = {
     }),
   getBlackSwanPlaybook: () => request<BlackSwanPlaybook>("/black-swan/playbook"),
   getBrokerResilience: () => request<BrokerResilienceRead>("/black-swan/broker-resilience"),
+  // Design Bible Chapter 73 — Compliance, Audit & Governance System
+  // (CAGS). A read-only synthesis layer with no WS-broadcast fields —
+  // every one of these is a genuine on-demand fetch, never gameStore.
+  getAuditLog: (params?: { category?: AuditEventCategory; severity?: AlertSeverity; search?: string; limit?: number }) => {
+    const q = new URLSearchParams();
+    if (params?.category) q.set("category", params.category);
+    if (params?.severity) q.set("severity", params.severity);
+    if (params?.search) q.set("search", params.search);
+    if (params?.limit) q.set("limit", String(params.limit));
+    const qs = q.toString();
+    return request<AuditEntry[]>(`/audit/log${qs ? `?${qs}` : ""}`);
+  },
+  getAuditIncidents: () => request<AuditEntry[]>("/audit/incidents"),
+  getGovernance: () => request<GovernanceLayer[]>("/audit/governance"),
+  getComplianceOverview: () => request<ComplianceOverview>("/audit/overview"),
+  getCeoOverrides: () => request<CeoOverrideRecord[]>("/audit/overrides"),
   createSavingsRule: (ruleType: SavingsRuleType, percent: number, reserveTarget: number | null) =>
     request<{ treasury: TreasuryState }>("/treasury/rules/create", {
       method: "POST",

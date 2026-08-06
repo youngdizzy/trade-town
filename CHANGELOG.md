@@ -7,6 +7,29 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 73 — Compliance, Audit & Governance System (CAGS) (frontend)**
+  (`types.ts`, `net/api.ts`, `ui/components/CommandCenter/panels/CompliancePanel.tsx`
+  new, `FullCommandCenter.tsx`, `lib/navigation.ts`,
+  `tests/commandCenter.spec.ts`): a new "COMPLIANCE" tab under the
+  Headquarters section — the only Command Center panel that fetches its
+  data via genuine on-demand `GET /api/audit/*` calls instead of
+  gameStore/the WS tick broadcast, since the backend slice deliberately
+  added no new `GameSaveState` field or broadcast change (see the
+  backend entry above). A Compliance Overview header (score, open/
+  critical incident counts, CEO override count/rate, Defensive Mode /
+  Emergency Stop status, reused Executive Accuracy) sits above four
+  sub-tabs: **Audit Log** (server-side category/severity/keyword-search
+  filtering, debounced, expandable rows), **Incidents** (the same log,
+  server-filtered to non-`info` severity — no client-side second copy),
+  **Governance** (the real 13-layer Gatekeeper chain, `UNWIRED` flagged
+  honestly on the Institutional Rule Engine), and **CEO Overrides**
+  (every real AI/CEO disagreement with its graded outcome). No fake
+  loading skeletons or synthetic empty-state copy — each tab shows a
+  real "Loading…"/error/empty state tied to its actual fetch. Verified:
+  `tsc --noEmit` clean, `eslint` clean (0 warnings), `vite build` clean,
+  full Playwright regression against the live dev stack (37 Command
+  Center tabs, up from 36).
+
 - **Chapter 73 — Compliance, Audit & Governance System (CAGS) (backend)**
   (`app/audit_log.py` new, `app/schemas.py`, `app/routers/audit.py` new,
   `app/main.py`, `tests/test_audit_log.py`): the brief asks for

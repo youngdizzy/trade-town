@@ -3008,6 +3008,73 @@ export interface InstitutionalSurvivalScore {
   updatedAt: string;
 }
 
+// Design Bible Chapter 73 — Compliance, Audit & Governance System (CAGS).
+// A read-only synthesis layer, fetched on demand via app/net/api.ts —
+// unlike every other feature above, CAGS adds NO GameSaveState fields
+// and is NOT part of the WS broadcast or gameStore; see
+// backend/app/audit_log.py's module docstring for the full honesty
+// boundary (no per-event Broker/User/Software-Version fields, no
+// mutable Incident workflow, no Institutional Time Machine replay).
+export type AuditEventCategory =
+  | "ceo_decision"
+  | "gatekeeper_rejection"
+  | "opportunity_rejection"
+  | "risk_warning"
+  | "discipline_review"
+  | "emergency_stop"
+  | "defensive_mode"
+  | "crisis_briefing"
+  | "rule_violation";
+
+export interface AuditEntry {
+  id: string;
+  timestamp: string;
+  simDay: number;
+  category: AuditEventCategory;
+  severity: AlertSeverity;
+  department: string;
+  summary: string;
+  detail: string;
+  relatedId: string | null;
+}
+
+/** One real, disclosed layer of the actual decision pipeline this
+ * codebase enforces every tick — `order` is the real position
+ * app/gatekeeper.py::evaluate_gatekeeper() checks it in; `wired` is
+ * false only for the Institutional Rule Engine (Chapter 69 Part 3's
+ * own documented gap: real, but not yet routed into live trade
+ * execution for non-primary accounts). */
+export interface GovernanceLayer {
+  order: number;
+  name: string;
+  module: string;
+  description: string;
+  wired: boolean;
+}
+
+export interface ComplianceOverview {
+  complianceScore: number;
+  openIncidentCount: number;
+  criticalIncidentCount: number;
+  totalAuditEntries: number;
+  ceoOverrideCount: number;
+  ceoOverrideRatePct: number;
+  defensiveModeActive: boolean;
+  emergencyStopActive: boolean;
+  executiveAccuracy: ExecutiveAccuracyScore[];
+  updatedAt: string;
+}
+
+export interface CeoOverrideRecord {
+  id: string;
+  proposalId: string;
+  symbol: string;
+  aiRecommendation: AnalystChoice;
+  ceoDecision: AnalystChoice;
+  outcome: "pending" | "correct" | "incorrect" | "undecidable";
+  createdAt: string;
+}
+
 // v0.7 Feature 29 — the Reasoning Lab (see backend/app/reasoning_lab.py).
 // A permanent ReasoningChallenge is filed periodically from the
 // company's most recent real AI Debate + its linked TradeDecision —

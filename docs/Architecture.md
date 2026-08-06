@@ -6965,6 +6965,18 @@ full-state rewind.
 `docs/API.md`). 23 new tests (`tests/test_audit_log.py`). Deliberately
 adds no new Trade Gatekeeper check and no new persisted state this pass.
 
+**Frontend:** a new `COMPLIANCE` Command Center tab
+(`ui/components/CommandCenter/panels/CompliancePanel.tsx`), placed under
+the Headquarters section. It is the one Command Center panel that does
+not read `gameStore` for its main content — since the backend slice adds
+no WS-broadcast field, every section (Compliance Overview, Audit Log,
+Incidents, Governance, CEO Overrides) is a genuine on-demand
+`GET /api/audit/*` fetch via `net/api.ts`, the same on-demand pattern
+`ExecutiveVoting.tsx` already uses for What-If Simulation and Weighted
+Executive Recommendation reads. The Audit Log tab's category/severity/
+search filters are real query parameters sent to the backend's own
+`filter_audit_log()`, not a client-side re-filter of an unfiltered dump.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the
