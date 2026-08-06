@@ -1,8 +1,13 @@
 # Volume 10 — Broker & Live Trading
 
-**Status:** Chapters 68–71 written — pure target architecture, no
-implementation. See [the master Table of Contents](../../README.md)
-and [Appendix G's Live Trading
+**Status:** Chapters 68–69 written — pure target architecture, no
+implementation. Chapter 69 is organized in three parts (Part 1:
+Multi-Account & Fund Management; Part 2: Prop Firm Rule Engine, with
+its own addendum; Part 3: Institutional Rule Engine) rather than as
+separate chapter numbers — earlier drafts briefly existed as standalone
+"Chapters 70/71" before being folded back into Chapter 69 per explicit
+correction. See [the master Table of Contents](../../README.md) and
+[Appendix G's Live Trading
 Gate](../../appendices/appendix-g-permanent-development-policy.md) for
 the standing policy on exactly when this volume moves from
 architecture to a real connection.
@@ -23,9 +28,7 @@ already established.
 | Feature | Title | Status |
 |---|---|---|
 | 68 | [Institutional Broker Management System (IBMS)](chapter-68-institutional-broker-management-system.md) | Pure architecture — no implementation. `app/broker.py`'s `PaperBroker` (a real, fully simulated order-book engine) and `app/market_data.py`'s `MarketDataProvider` adapter-interface pattern (proven out for market data, never for execution) are the only real precedents. Broker connections, authentication, encrypted credentials, account synchronization, buying power beyond a cash-reserve floor, position reconciliation, broker health monitoring, a multi-account model, and Charles Schwab v1.0 itself are all genuinely unbuilt. Gated by the Live Trading Gate — see Appendix G. |
-| 69 | [Multi-Account & Fund Management System (MAFMS)](chapter-69-multi-account-fund-management-system.md) | Pure architecture — no implementation. `PaperPortfolio` (the company's trading account) and `TreasuryState` (the CEO's personal capital) are two real, genuinely isolated capital pools — the one real precedent this chapter's own architecture generalizes from. A generalized N-account model, account types, per-account permissions/risk profiles, account switching, cross-account aggregation, Fund Mode, and Client Mode are all genuinely unbuilt. Depends on Chapter 68 becoming real first. |
-| 70 | [Prop Firm Rule Engine](chapter-70-prop-firm-rule-engine.md) | Pure architecture — no implementation, but the strongest real-coverage ratio of any chapter in this volume: 5 of 15 supported rules (Daily Loss, Overall Drawdown, Position Size, Risk Per Trade, Open Positions) are already real, enforced `RiskLimits` fields, and `DailyObjectiveStatus` already provides a live daily compliance readout close to the brief's own Live Account Monitoring/Dashboard shape. Includes an addendum (Trailing Drawdown, Consistency Rules, Leverage, Scaling Milestones, Challenge Windows, a Weekday-Aware Time System, a Prop Firm Calendar, and a Compliance Score) — all confirmed genuinely unbuilt, with no peak-equity tracking, no weekday concept, and no leverage concept existing anywhere in this codebase. Depends on Chapter 69's account model and Chapter 71's centralized enforcement. |
-| 71 | [Institutional Rule Engine (IRE)](chapter-71-institutional-rule-engine.md) | Pure architecture — no implementation. Grep-confirmed: no `Rule`/`RuleProfile`/`RuleEngine` class exists anywhere in this codebase. Today's real risk checks are deliberately hardcoded, transparent Python functions (Chapters 57/58/66), not a data-driven rule interpreter — a real architectural trade-off this chapter must honor, not silently fix. Rule Profiles, the Custom Rule Builder (checked against all six of the brief's own examples individually), and cross-account Rule Compliance scoring are all genuinely unbuilt. Depends on Chapters 68–70. |
+| 69 | [Multi-Account & Fund Management System (MAFMS)](chapter-69-multi-account-fund-management-system.md) | Pure architecture — no implementation, in three parts. **Part 1 (MAFMS):** `PaperPortfolio` and `TreasuryState` are two real, genuinely isolated capital pools — the one real precedent this chapter's architecture generalizes from; a generalized N-account model, account types, per-account permissions/risk profiles, account switching, cross-account aggregation, Fund Mode, and Client Mode are all genuinely unbuilt. **Part 2 (Prop Firm Rule Engine, + addendum):** the strongest real-coverage ratio in this volume — 5 of 15 supported rules are already real, enforced `RiskLimits` fields, and `DailyObjectiveStatus` already provides a live daily compliance readout; trailing drawdown, consistency rules, leverage, scaling milestones, challenge windows, and a weekday-aware time system are all confirmed genuinely unbuilt. **Part 3 (Institutional Rule Engine):** grep-confirmed no `Rule`/`RuleProfile`/`RuleEngine` class exists anywhere; today's real risk checks are deliberately hardcoded, transparent Python functions, not a data-driven rule interpreter — a real architectural trade-off Part 3 must honor, not silently fix. Depends on Chapter 68 becoming real first. |
 
 ## Where the real content lives today
 

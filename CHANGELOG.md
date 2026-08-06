@@ -5,6 +5,24 @@ development milestones, not semver releases.
 
 ## Unreleased
 
+### Changed
+
+- **Chapter 69 restructured to three parts (correcting the previous
+  Chapter 70/71 numbering)**
+  (`docs/DesignBible/volumes/10-broker-live-trading/`): per explicit
+  correction, the content previously drafted as standalone "Chapter 70
+  — Prop Firm Rule Engine" (plus its addendum) and "Chapter 71 —
+  Institutional Rule Engine" is folded into Chapter 69 as Part 2 and
+  Part 3, alongside the original Multi-Account & Fund Management System
+  brief as Part 1. Each part keeps its own full structure (Executive
+  Summary through Implementation Notes); every internal cross-reference
+  between the three was rewritten from "Chapter 70"/"Chapter 71" to
+  "Part 2"/"Part 3" of Chapter 69. The standalone chapter-70/71 files
+  are removed; Volume 10's README and the master Table of Contents are
+  updated to reflect the new structure. Documentation only, no code or
+  research findings changed — this is a pure reorganization of where
+  the same already-verified content lives.
+
 ### Added
 
 - **Chapter 70 addendum + Chapter 71 — Institutional Rule Engine (IRE)**
