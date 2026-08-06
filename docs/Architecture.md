@@ -6853,6 +6853,61 @@ same "real second correct instance, not a bug" pattern this chapter's
 `GlobalStatusBar`/`QuickActionDock` slices already established. Full
 Playwright regression passing.
 
+### Black Swan Intelligence & Resilience System (BSIRS) — Design Bible Chapter 72
+
+Two parts, backend only, both real. **Part 1:** the brief asked for
+Flash Crash/Banking Failure/Pandemic/Cyberattack detection and
+simulation calibrated against real historical events (2008, 2020, 1987,
+Dot-Com) plus a calibrated "probability." This codebase has no
+historical black-swan dataset, no real broker connection, and no macro/
+sector/credit data (the same gap Chapter 71 already documented), so
+every historically-named section is an explicit cut — see
+`docs/DesignBible/volumes/09-departments/chapter-72-black-swan-intelligence-resilience-system.md`
+for the complete list. What's real: a new `EarlyWarningScore`
+(`app/black_swan.py`) built from eight already-real signals this company
+had never combined — Active Risk Warnings (Sentinel/Guardian), Market
+Stress and Volatility and News Severity and Liquidity (Market
+Intelligence), Correlation Breakdown (Portfolio Intelligence), Regime
+Divergence (`app/regime_reconciliation.py`), Macro Instability (Chapter
+71) — driving a new `BlackSwanRiskTier`
+(green/yellow/orange/red/critical), the named Safety Level/Capital
+Defense Mode gap Chapters 66 and 70 each already flagged as real,
+un-built work. Portfolio-wide Stress Tests (the brief's own
+-10/-20/-35/-50/-70% ladder, against the primary portfolio or any real
+Account) and four mechanically-named Scenario Simulations (Flash Crash,
+Severe Selloff, Liquidity Freeze, Correlation Breakdown Shock) extend
+`app/whatif.py`'s own real volatility-scaled shock convention from one
+trade to the whole book. A CEO-controllable Defensive Mode tightens real
+`RiskLimits` and pauses new AI-generated trade proposals while active,
+but never auto-closes a position — `app/portfolio_intelligence.py`'s own
+"never auto-corrected without the player" principle, upheld exactly.
+Crisis Briefings fire once when the Risk Level first crosses into
+RED/CRITICAL, writing to Company Memory — the honest answer to
+"automatically trigger an emergency Executive Board meeting" (no such
+mechanism, or any general-purpose non-trade Decision Center, exists in
+this codebase, per Chapter 70 Part 1). Post-Event Analysis writes one
+permanent `BlackSwanEventRecord` per completed Defensive Mode episode to
+both Company Memory and a new `black_swan_event` Knowledge Graph node
+type.
+
+**Part 2 (Institutional Survival Score)** adds a real 0-100 score with a
+published A+–F grade — reusing three of Part 1's own Early Warning
+factors (Correlation Breakdown, Liquidity, Active Risk Warnings,
+inverted from "how stressed" to "how resilient") plus five new real
+factors (Cash Reserves, Concentration Risk, Drawdown Exposure, Black
+Swan Readiness, Stress Test Survival — a real, cheap pass over the same
+shock ladder Part 1's Stress Test uses). "Leverage" and "Counterparty
+Risk" are cut outright (no margin or broker-counterparty concept exists
+anywhere in this codebase), and no "Estimated Survival Probability" is
+fabricated — the score itself is the honest answer.
+
+Both parts: `app/black_swan.py`, `app/routers/black_swan.py`
+(`GET/POST /api/black-swan/*`, see `docs/API.md`), wired into
+`app/nexus.py`'s per-tick loop, `app/state.py`, `app/save_modules.py`,
+`app/ws_manager.py`, and `app/knowledge_graph.py`. 39 new tests
+(`tests/test_black_swan.py`). Deliberately not wired into the Trade
+Gatekeeper or the Executive Board vote pipeline this pass.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

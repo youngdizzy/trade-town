@@ -3205,6 +3205,9 @@ KnowledgeNodeType = Literal[
     "trade",
     "case_study",
     "strategy",
+    # Design Bible Chapter 72 — one real node per completed Defensive
+    # Mode episode (app/black_swan.py's BlackSwanEventRecord).
+    "black_swan_event",
 ]
 KnowledgeEdgeRelation = Literal[
     "researched",
@@ -3891,6 +3894,332 @@ class EconomicIntelligenceReport(CamelModel):
     sim_day: int = Field(alias="simDay")
     snapshot: EconomicIntelligenceState
     narrative: MarketNarrativeEntry
+    created_at: str = Field(alias="createdAt")
+
+
+# Design Bible Chapter 72 — Black Swan Intelligence & Resilience System
+# (app/black_swan.py). See that module's own docstring for the full
+# honesty boundary: this codebase has no historical black-swan dataset,
+# no real broker connection, and no macro/sector/credit data (Chapters
+# 68/71 already established this), so BSIRS is a real STRESS-AND-
+# RESILIENCE SYNTHESIS layer over already-real signals (Risk Engine's
+# live warnings, Market Intelligence's quality/volatility/liquidity/news
+# reads, Portfolio Intelligence's correlation/heat reads, Regime
+# Reconciliation's aligned/diverging read, Economic Intelligence's health
+# tier) rather than a tracker of real historical crises or a real broker
+# health monitor, neither of which are fabricated here.
+BlackSwanRiskTier = Literal["green", "yellow", "orange", "red", "critical"]
+
+
+class BlackSwanSignalFactor(CamelModel):
+    """One real, named, published-formula input into the Early Warning
+    Score — never a blended/hidden number, the same "no black-box
+    composite" convention EconomicSignalFactor/CompanyHealth already
+    established. Higher score always means MORE stress, the opposite
+    direction of EconomicSignalFactor's "higher = healthier"."""
+
+    name: str
+    score: float  # 0-100, higher = more stress
+    weight: float
+    detail: str
+
+
+class EarlyWarningScore(CamelModel):
+    overall: float  # 0-100, a real weighted average of `factors` below
+    tier: BlackSwanRiskTier
+    factors: list[BlackSwanSignalFactor] = Field(default_factory=list)
+    reasoning: str
+
+
+class BlackSwanConfidenceRead(CamelModel):
+    """The brief's "always explain WHY the estimate changed" requirement,
+    plus an honest confidence wrapper — same shape as Chapter 71's
+    EconomicConfidenceRead, applied to a stress read instead of a
+    favorability read."""
+
+    confidence_pct: float = Field(alias="confidencePct")
+    evidence_quality: Literal["thin", "moderate", "strong"] = Field(
+        alias="evidenceQuality"
+    )
+    supporting_evidence: list[str] = Field(
+        default_factory=list, alias="supportingEvidence"
+    )
+    contradicting_evidence: list[str] = Field(
+        default_factory=list, alias="contradictingEvidence"
+    )
+    key_assumptions: list[str] = Field(default_factory=list, alias="keyAssumptions")
+    alternative_outcome: str = Field(alias="alternativeOutcome")
+
+
+class BlackSwanNarrativeEntry(CamelModel):
+    """A real, evidence-cited explanation of what changed since the last
+    stored BlackSwanReport — never an invented cause like "a banking
+    crisis began." See app/black_swan.py's generate_black_swan_narrative()."""
+
+    id: str
+    headline: str
+    body: str
+    evidence: list[str] = Field(default_factory=list)
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
+class BlackSwanIntelligenceState(CamelModel):
+    """The always-current stress read — recomputed fresh every tick from
+    real already-computed state, same convention as
+    company_health/portfolio_intelligence/economic_intelligence."""
+
+    warning: EarlyWarningScore
+    confidence: BlackSwanConfidenceRead
+    updated_at: str = Field(alias="updatedAt")
+
+
+class BlackSwanReport(CamelModel):
+    """One real, permanent snapshot per real in-game day (the Daily Black
+    Swan Situation Report), same once-per-evening cadence as Chapter 71's
+    own Daily Economic Intelligence Brief."""
+
+    id: str
+    sim_day: int = Field(alias="simDay")
+    snapshot: BlackSwanIntelligenceState
+    narrative: BlackSwanNarrativeEntry
+    created_at: str = Field(alias="createdAt")
+
+
+class DefensiveModeRecommendation(CamelModel):
+    """One real, computed recommendation — never generic filler. `automatic`
+    is true only for the two actions this codebase's own "never auto-
+    correct a position without the player" principle (app/portfolio_
+    intelligence.py) allows to actually apply while Defensive Mode is
+    active: tightening RiskLimits and pausing new proposal generation.
+    Every other recommendation (closing a position, raising cash) always
+    requires the CEO to act manually through the existing controls."""
+
+    action: str
+    detail: str
+    automatic: bool
+
+
+class DefensiveModeState(CamelModel):
+    """Design Bible Chapter 72 — CEO-controlled defensive posture. Mirrors
+    app/emergency_stop.py's EmergencyStopState shape (active/activatedAt)
+    but is a real, distinct, lighter mechanism: it tightens RiskLimits and
+    pauses new AI-generated trade proposals, but — unlike Emergency
+    Stop — never blocks the CEO's own manual trading."""
+
+    active: bool = False
+    trigger_tier: BlackSwanRiskTier = Field(default="red", alias="triggerTier")
+    auto_trigger_enabled: bool = Field(default=False, alias="autoTriggerEnabled")
+    activated_at: str | None = Field(default=None, alias="activatedAt")
+    deactivated_at: str | None = Field(default=None, alias="deactivatedAt")
+    activation_reason: str | None = Field(default=None, alias="activationReason")
+    # A real snapshot of the CEO's global RiskLimits taken the moment
+    # Defensive Mode activates, so deactivation can restore them exactly
+    # — never a hardcoded "undo" that might not match what was active.
+    prior_risk_limits: RiskLimits | None = Field(
+        default=None, alias="priorRiskLimits"
+    )
+    equity_at_activation: float | None = Field(
+        default=None, alias="equityAtActivation"
+    )
+    # Real sim-clock minutes (app/portfolio.py's sim_minutes()) at
+    # activation, so a Post-Event Analysis's real duration is measured in
+    # game time, the same unit every PaperTrade already uses, not wall
+    # clock time.
+    activated_sim_minutes: int | None = Field(
+        default=None, alias="activatedSimMinutes"
+    )
+    peak_tier_this_episode: BlackSwanRiskTier | None = Field(
+        default=None, alias="peakTierThisEpisode"
+    )
+    recommendations: list[DefensiveModeRecommendation] = Field(default_factory=list)
+
+
+class StressTestLevelResult(CamelModel):
+    shock_pct: float = Field(alias="shockPct")  # negative, e.g. -35.0
+    resulting_equity: float = Field(alias="resultingEquity")
+    resulting_drawdown_pct: float = Field(alias="resultingDrawdownPct")
+    breaches_max_drawdown: bool = Field(alias="breachesMaxDrawdown")
+    capital_survives: bool = Field(alias="capitalSurvives")
+    # None when the portfolio has no positive trailing realized P&L to
+    # project a recovery from — an honest cut, never a fabricated ETA.
+    recovery_days_estimate: float | None = Field(
+        default=None, alias="recoveryDaysEstimate"
+    )
+    recovery_note: str = Field(alias="recoveryNote")
+
+
+class PortfolioStressTestResult(CamelModel):
+    """The brief's -10/-20/-35/-50/-70% ladder, computed fresh on demand
+    against any real portfolio (the primary one, or any Account's — see
+    app/accounts.py). Never persisted, same "just as honest recomputed
+    live" convention app/whatif.py already established."""
+
+    account_id: str | None = Field(default=None, alias="accountId")
+    account_label: str = Field(alias="accountLabel")
+    starting_equity: float = Field(alias="startingEquity")
+    # Real average LiquidityRead.liquidityScore across currently-held
+    # symbols; None if nothing is held or no read is on file.
+    held_position_liquidity_score: float | None = Field(
+        default=None, alias="heldPositionLiquidityScore"
+    )
+    levels: list[StressTestLevelResult] = Field(default_factory=list)
+    computed_at: str = Field(alias="computedAt")
+
+
+# Four scenarios, each named for its real mechanism (reusing app/
+# whatif.py's own volatility-scaled shock convention), never for a
+# fabricated historical event. See app/black_swan.py's module docstring.
+BlackSwanScenarioType = Literal[
+    "flash_crash", "severe_selloff", "liquidity_freeze", "correlation_breakdown"
+]
+
+
+class PortfolioScenarioResult(CamelModel):
+    scenario_type: BlackSwanScenarioType = Field(alias="scenarioType")
+    label: str
+    account_id: str | None = Field(default=None, alias="accountId")
+    account_label: str = Field(alias="accountLabel")
+    starting_equity: float = Field(alias="startingEquity")
+    shocked_equity: float = Field(alias="shockedEquity")
+    impact_pct: float = Field(alias="impactPct")
+    impact_amount: float = Field(alias="impactAmount")
+    category_impact: list[CategoryExposure] = Field(
+        default_factory=list, alias="categoryImpact"
+    )
+    breaches_max_drawdown: bool = Field(alias="breachesMaxDrawdown")
+    capital_survives: bool = Field(alias="capitalSurvives")
+    detail: str
+    computed_at: str = Field(alias="computedAt")
+
+
+class PlaybookStep(CamelModel):
+    label: str
+    detail: str
+
+
+class BlackSwanPlaybook(CamelModel):
+    """One real, generically-named Elevated Risk Response Playbook —
+    live-populated with today's actual Defensive Mode recommendations,
+    never one of eight static documents for event types this codebase
+    has no real signal for (Broker Failure, Cyberattack, Pandemic, ...).
+    See app/black_swan.py's module docstring."""
+
+    current_tier: BlackSwanRiskTier = Field(alias="currentTier")
+    immediate_actions: list[PlaybookStep] = Field(
+        default_factory=list, alias="immediateActions"
+    )
+    department_responsibilities: list[PlaybookStep] = Field(
+        default_factory=list, alias="departmentResponsibilities"
+    )
+    ceo_checklist: list[PlaybookStep] = Field(default_factory=list, alias="ceoChecklist")
+    recovery_plan: str = Field(alias="recoveryPlan")
+    updated_at: str = Field(alias="updatedAt")
+
+
+class BrokerResilienceRead(CamelModel):
+    """The honest answer to the brief's Broker Resilience section:
+    app/broker.py has no real broker connection to monitor (its own
+    docstring: "no code path that reaches a real order-execution
+    endpoint"). A live health score here would fabricate monitoring of a
+    dependency that doesn't exist — this is a static, honest read
+    instead."""
+
+    status: Literal["simulated"] = "simulated"
+    message: str = (
+        "PaperBroker — 100% simulated execution. No real broker connection "
+        "exists in this codebase, so there is nothing live to monitor."
+    )
+
+
+class CrisisBriefing(CamelModel):
+    """The honest answer to the brief's "Automatically trigger emergency
+    Executive Board meetings" — Chapter 70 Part 1 already confirmed no
+    automatic meeting-trigger mechanism, and no general-purpose non-trade
+    Decision Center, exists anywhere in this codebase. A CrisisBriefing is
+    a real, structured situation report (reusing the exact real signals a
+    meeting would need) rather than a fabricated vote. Never persisted as
+    its own list — see app/black_swan.py's generate_crisis_briefing(),
+    which writes it straight into CompanyMemory and the Knowledge Graph."""
+
+    id: str
+    sim_day: int = Field(alias="simDay")
+    tier: BlackSwanRiskTier
+    overall_score: float = Field(alias="overallScore")
+    situation_summary: str = Field(alias="situationSummary")
+    portfolio_equity: float = Field(alias="portfolioEquity")
+    category_exposure: list[CategoryExposure] = Field(
+        default_factory=list, alias="categoryExposure"
+    )
+    recommendations: list[DefensiveModeRecommendation] = Field(default_factory=list)
+    created_at: str = Field(alias="createdAt")
+
+
+# Design Bible Chapter 72 Part 2 — Institutional Survival Score. Reuses
+# three of the Early Warning Score's own already-computed factors
+# (Active Risk Warnings, Liquidity, Correlation Breakdown, inverted back
+# to "how resilient" instead of "how stressed") rather than recomputing
+# the same raw signals a second time. See app/black_swan.py's module
+# docstring for the honesty boundary — "Leverage" and "Counterparty
+# Risk" are cut outright (no margin or counterparty concept exists
+# anywhere in this codebase), and no "Estimated Survival Probability" is
+# fabricated (no historical base rate to calibrate one against).
+InstitutionalSurvivalGrade = Literal["a_plus", "a", "b", "c", "d", "f"]
+
+
+class SurvivalScoreFactor(CamelModel):
+    """One real, named, published-formula input — never a blended/hidden
+    number. Higher score always means MORE resilient, the same direction
+    as EconomicSignalFactor (and the opposite of BlackSwanSignalFactor)."""
+
+    name: str
+    score: float  # 0-100, higher = more resilient
+    weight: float
+    detail: str
+
+
+class InstitutionalSurvivalScore(CamelModel):
+    """The always-current read — recomputed fresh every tick, same
+    convention as company_health/black_swan_intelligence. No forecasted
+    "survival probability" is attached — the score itself, and its named
+    factors, are the honest answer to "how prepared is this company."""
+
+    overall: float  # 0-100
+    grade: InstitutionalSurvivalGrade
+    factors: list[SurvivalScoreFactor] = Field(default_factory=list)
+    primary_strengths: list[str] = Field(default_factory=list, alias="primaryStrengths")
+    primary_weaknesses: list[str] = Field(default_factory=list, alias="primaryWeaknesses")
+    # Real, specific, computed suggestions tied to the weakest factors —
+    # never generic filler like "diversify more."
+    top_improvements: list[str] = Field(default_factory=list, alias="topImprovements")
+    reasoning: str
+    updated_at: str = Field(alias="updatedAt")
+
+
+class BlackSwanEventRecord(CamelModel):
+    """Post-Event Analysis — one real, permanent record per completed
+    Defensive Mode episode. `equity_change_pct` is real only when the
+    episode was live (Defensive Mode was actually active); Stress Tests
+    and Scenario Simulations never write one of these, since they are
+    hypothetical reads, not real episodes."""
+
+    id: str
+    trigger_reason: str = Field(alias="triggerReason")
+    peak_tier: BlackSwanRiskTier = Field(alias="peakTier")
+    activated_at: str = Field(alias="activatedAt")
+    deactivated_at: str = Field(alias="deactivatedAt")
+    duration_sim_minutes: int = Field(alias="durationSimMinutes")
+    equity_at_activation: float = Field(alias="equityAtActivation")
+    equity_at_deactivation: float = Field(alias="equityAtDeactivation")
+    equity_change_pct: float = Field(alias="equityChangePct")
+    largest_contributing_factor: str = Field(alias="largestContributingFactor")
+    # Real, distinct symbols held at the moment the episode ended — lets
+    # the Knowledge Graph draw a real "same symbol" edge to any research
+    # on file for that symbol, the same non-causal honesty rule Chapter
+    # 61's own trade/research edges already use. Never a claim that this
+    # episode was "caused by" or "about" any specific symbol.
+    affected_symbols: list[str] = Field(default_factory=list, alias="affectedSymbols")
+    lesson: str
     created_at: str = Field(alias="createdAt")
 
 
@@ -5071,6 +5400,31 @@ class GameSaveState(CamelModel):
     )
     economic_intelligence_reports: list[EconomicIntelligenceReport] = Field(
         default_factory=list, alias="economicIntelligenceReports"
+    )
+    # Design Bible Chapter 72 — Black Swan Intelligence & Resilience
+    # System (app/black_swan.py). `black_swan_intelligence` is the
+    # always-current stress read, recomputed fresh every tick like
+    # `economic_intelligence` above. `black_swan_reports` is the
+    # permanent once-daily Situation Report history, capped at
+    # MAX_BLACK_SWAN_REPORTS. `defensive_mode` is real, CEO-mutated
+    # state (not recomputed). `black_swan_events` is the permanent
+    # Post-Event Analysis history, capped at MAX_BLACK_SWAN_EVENTS.
+    black_swan_intelligence: BlackSwanIntelligenceState = Field(
+        alias="blackSwanIntelligence"
+    )
+    black_swan_reports: list[BlackSwanReport] = Field(
+        default_factory=list, alias="blackSwanReports"
+    )
+    defensive_mode: DefensiveModeState = Field(
+        default_factory=DefensiveModeState, alias="defensiveMode"
+    )
+    black_swan_events: list[BlackSwanEventRecord] = Field(
+        default_factory=list, alias="blackSwanEvents"
+    )
+    # Design Bible Chapter 72 Part 2 — Institutional Survival Score.
+    # Recomputed fresh every tick like black_swan_intelligence above.
+    institutional_survival_score: InstitutionalSurvivalScore = Field(
+        alias="institutionalSurvivalScore"
     )
     # v0.7 Design Bible Chapter 64 — CEO-authored company goals
     # (app/goals.py). Capped and append-only like every other real list

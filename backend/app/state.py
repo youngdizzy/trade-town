@@ -52,7 +52,13 @@ from app.goals import cancel_goal as cancel_goal_entry
 from app.goals import create_goal, record_goal, resolve_metric_value, validate_target_value
 from app.innovation import compute_innovation_state
 from app.weighted_decisions import compute_weighted_recommendation
+from app.black_swan import activate_defensive_mode as _activate_defensive_mode
+from app.black_swan import compute_black_swan_intelligence
+from app.black_swan import compute_institutional_survival_score
+from app.black_swan import deactivate_defensive_mode as _deactivate_defensive_mode
+from app.black_swan import record_black_swan_event
 from app.economic_intelligence import compute_economic_intelligence
+from app.memory import record
 from app.market_data import market_data_provider
 from app.market_environment import default_market_environment
 from app.market_intelligence import compute_market_intelligence_state
@@ -71,7 +77,9 @@ from app.schemas import (
     Weekday,
     BlackBoxPriority,
     BlackBoxProject,
+    BlackSwanRiskTier,
     ClientSaveRequest,
+    DefensiveModeState,
     EducationProgress,
     EntityTransform,
     FounderState,
@@ -285,6 +293,37 @@ def default_state() -> GameSaveState:
             compute_portfolio_intelligence(default_portfolio(), market_data_provider, pending_proposal_count=0),
         ),
         economicIntelligenceReports=[],
+        blackSwanIntelligence=compute_black_swan_intelligence(
+            [],
+            compute_market_intelligence_state(watchlist, [], [], market_data_provider),
+            compute_portfolio_intelligence(default_portfolio(), market_data_provider, pending_proposal_count=0),
+            default_market_environment(),
+            compute_economic_intelligence(
+                default_market_environment(),
+                compute_market_intelligence_state(watchlist, [], [], market_data_provider),
+                compute_portfolio_intelligence(default_portfolio(), market_data_provider, pending_proposal_count=0),
+            ),
+        ),
+        blackSwanReports=[],
+        defensiveMode=DefensiveModeState(),
+        blackSwanEvents=[],
+        institutionalSurvivalScore=compute_institutional_survival_score(
+            default_portfolio(),
+            default_risk_limits(),
+            compute_portfolio_intelligence(default_portfolio(), market_data_provider, pending_proposal_count=0),
+            compute_black_swan_intelligence(
+                [],
+                compute_market_intelligence_state(watchlist, [], [], market_data_provider),
+                compute_portfolio_intelligence(default_portfolio(), market_data_provider, pending_proposal_count=0),
+                default_market_environment(),
+                compute_economic_intelligence(
+                    default_market_environment(),
+                    compute_market_intelligence_state(watchlist, [], [], market_data_provider),
+                    compute_portfolio_intelligence(default_portfolio(), market_data_provider, pending_proposal_count=0),
+                ),
+            ),
+            DefensiveModeState(),
+        ),
         updatedAt=_now_iso(),
     )
 
@@ -735,6 +774,72 @@ class GameState:
             memory = list(self.data.memory)
             record_emergency_stop_event(memory, activated=False, max_records=self.data.risk_limits.max_memory_records)
             self.data = self.data.model_copy(update={"emergency_stop": new_state, "memory": memory})
+            return self.data, None
+
+    async def configure_defensive_mode(self, *, trigger_tier: BlackSwanRiskTier | None, auto_trigger_enabled: bool | None) -> tuple[GameSaveState, str | None]:
+        """Design Bible Chapter 72 — the CEO's own Defensive Mode
+        trigger configuration. Purely a settings change; never activates
+        or deactivates Defensive Mode itself (see activate/deactivate_
+        defensive_mode below)."""
+        async with self.lock:
+            update: dict[str, object] = {}
+            if trigger_tier is not None:
+                update["trigger_tier"] = trigger_tier
+            if auto_trigger_enabled is not None:
+                update["auto_trigger_enabled"] = auto_trigger_enabled
+            if not update:
+                return self.data, None
+            new_defensive_mode = self.data.defensive_mode.model_copy(update=update)
+            self.data = self.data.model_copy(update={"defensive_mode": new_defensive_mode})
+            return self.data, None
+
+    async def activate_defensive_mode(self, *, reason: str = "Manually activated by the CEO.") -> tuple[GameSaveState, str | None]:
+        """Design Bible Chapter 72 — a CEO-triggered (or, if configured,
+        auto-triggered by app/nexus.py's tick()) defensive posture:
+        tightens real RiskLimits and pauses new AI-generated trade
+        proposals. Never touches an open position — see
+        app/black_swan.py's module docstring."""
+        async with self.lock:
+            new_defensive_mode, new_limits, error = _activate_defensive_mode(
+                self.data.defensive_mode,
+                self.data.risk_limits,
+                self.data.paper_portfolio,
+                self.data.black_swan_intelligence.warning.tier,
+                reason=reason,
+                now_iso=_now_iso(),
+                now_sim_minutes=sim_minutes(self.data.time),
+            )
+            if error is not None:
+                return self.data, error
+            self.data = self.data.model_copy(update={"defensive_mode": new_defensive_mode, "risk_limits": new_limits})
+            return self.data, None
+
+    async def deactivate_defensive_mode(self) -> tuple[GameSaveState, str | None]:
+        """Design Bible Chapter 72 — restores the CEO's own pre-episode
+        RiskLimits exactly (from the real snapshot taken at activation)
+        and writes one permanent Post-Event Analysis record."""
+        async with self.lock:
+            new_defensive_mode, restored_limits, event, error = _deactivate_defensive_mode(
+                self.data.defensive_mode,
+                self.data.paper_portfolio,
+                self.data.black_swan_intelligence.warning,
+                now_iso=_now_iso(),
+                now_sim_minutes=sim_minutes(self.data.time),
+                event_id=f"bs-event-{self.data.time.day}-{sim_minutes(self.data.time)}",
+            )
+            if error is not None:
+                return self.data, error
+            update: dict[str, object] = {"defensive_mode": new_defensive_mode}
+            if restored_limits is not None:
+                update["risk_limits"] = restored_limits
+            memory = list(self.data.memory)
+            black_swan_events = list(self.data.black_swan_events)
+            if event is not None:
+                black_swan_events = record_black_swan_event(black_swan_events, event)
+                record(memory, "lesson", f"Defensive Mode episode ended — peaked at {event.peak_tier.upper()}", event.lesson, max_records=self.data.risk_limits.max_memory_records)
+                update["black_swan_events"] = black_swan_events
+                update["memory"] = memory
+            self.data = self.data.model_copy(update=update)
             return self.data, None
 
     async def create_goal(

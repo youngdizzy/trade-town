@@ -68,6 +68,18 @@ from app.executive_intelligence import (
     record_self_evaluations,
 )
 from app.weighted_decisions import compute_weighted_recommendation
+from app.black_swan import (
+    activate_defensive_mode,
+    compute_black_swan_intelligence,
+    compute_institutional_survival_score,
+    deactivate_defensive_mode,
+    generate_black_swan_report,
+    generate_crisis_briefing,
+    note_defensive_mode_peak_tier,
+    record_black_swan_event,
+    record_black_swan_report,
+    tier_meets_or_exceeds,
+)
 from app.economic_intelligence import (
     compute_economic_intelligence,
     generate_economic_intelligence_report,
@@ -94,7 +106,7 @@ from app.market_intelligence import (
     record_learning_entry,
     record_market_intelligence_report,
 )
-from app.memory import MAX_MEMORY_RECORDS
+from app.memory import MAX_MEMORY_RECORDS, record
 from app.mentor import compute_mentor_state, compute_thinking_profiles, generate_question_of_the_day, record_question
 from app.mistakes import generate_case_studies, record_case_studies
 from app.opportunity_gatekeeper import build_opportunity_rejection, evaluate_opportunity, grade_opportunity_rejections
@@ -152,10 +164,13 @@ from app.schemas import (
     CaseStudy,
     CeoDecisionRecord,
     ChallengeReport,
+    BlackSwanEventRecord,
+    BlackSwanReport,
     CoachReport,
     CompanyPriority,
     Debate,
     DecisionVaultEntry,
+    DefensiveModeState,
     DepartmentSelfEvaluation,
     DisciplineReview,
     EconomicIntelligenceReport,
@@ -1106,6 +1121,10 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     market_intelligence_learning: list[MarketIntelligenceLearningEntry] = list(state.market_intelligence_learning)
     # Design Bible Chapter 71 — Economic Intelligence Center (app/economic_intelligence.py).
     economic_intelligence_reports: list[EconomicIntelligenceReport] = list(state.economic_intelligence_reports)
+    # Design Bible Chapter 72 — Black Swan Intelligence & Resilience System (app/black_swan.py).
+    black_swan_reports: list[BlackSwanReport] = list(state.black_swan_reports)
+    black_swan_events: list[BlackSwanEventRecord] = list(state.black_swan_events)
+    defensive_mode: DefensiveModeState = state.defensive_mode
     # v0.7 — the Decision Memory System's Decision Vault (app/decision_vault.py).
     decision_vault: list[DecisionVaultEntry] = list(state.decision_vault)
     # v0.7 Feature 55 — the Executive Decision Simulator's War Room (app/war_room.py).
@@ -1817,6 +1836,53 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # computed above, same reasoning as company_health/portfolio_intelligence.
     economic_intelligence = compute_economic_intelligence(market_environment, market_intelligence, portfolio_intelligence)
 
+    # Design Bible Chapter 72 — Black Swan Intelligence & Resilience
+    # System. Cheap to recompute every tick over five real reads already
+    # computed above (risk_warnings, market_intelligence, portfolio_
+    # intelligence, market_environment, economic_intelligence), same
+    # "always current" reasoning as company_health/portfolio_intelligence.
+    previous_black_swan_tier = state.black_swan_intelligence.warning.tier
+    black_swan_intelligence = compute_black_swan_intelligence(risk_warnings, market_intelligence, portfolio_intelligence, market_environment, economic_intelligence)
+
+    if defensive_mode.active and defensive_mode.auto_trigger_enabled and not tier_meets_or_exceeds(black_swan_intelligence.warning.tier, defensive_mode.trigger_tier):
+        defensive_mode, restored_limits, closed_event, _deactivate_error = deactivate_defensive_mode(
+            defensive_mode, paper_portfolio, black_swan_intelligence.warning, now_iso=_now_iso(), now_sim_minutes=now_sim_minutes, event_id=f"bs-event-{new_time.day}-{now_sim_minutes}"
+        )
+        if restored_limits is not None:
+            risk_limits = restored_limits
+        if closed_event is not None:
+            black_swan_events = record_black_swan_event(black_swan_events, closed_event)
+            record(memory, "lesson", f"Defensive Mode episode ended — peaked at {closed_event.peak_tier.upper()}", closed_event.lesson, max_records=effective_risk_limits.max_memory_records)
+    elif defensive_mode.active:
+        defensive_mode = note_defensive_mode_peak_tier(defensive_mode, black_swan_intelligence.warning.tier)
+    elif defensive_mode.auto_trigger_enabled and tier_meets_or_exceeds(black_swan_intelligence.warning.tier, defensive_mode.trigger_tier):
+        defensive_mode, risk_limits, _activate_error = activate_defensive_mode(
+            defensive_mode,
+            risk_limits,
+            paper_portfolio,
+            black_swan_intelligence.warning.tier,
+            reason=f"Auto-triggered: Risk Level reached {black_swan_intelligence.warning.tier.upper()} (configured trigger: {defensive_mode.trigger_tier.upper()}).",
+            now_iso=_now_iso(),
+            now_sim_minutes=now_sim_minutes,
+        )
+
+    # A real Crisis Briefing fires once, the moment the tier first
+    # crosses into RED/CRITICAL — never every tick while it stays there.
+    # The honest answer to "automatically trigger an emergency Executive
+    # Board meeting": no such meeting mechanism exists anywhere in this
+    # codebase (Chapter 70 Part 1), so this is a real, structured
+    # situation report written straight to Company Memory instead of a
+    # fabricated vote. See app/black_swan.py's module docstring.
+    if tier_meets_or_exceeds(black_swan_intelligence.warning.tier, "red") and not tier_meets_or_exceeds(previous_black_swan_tier, "red"):
+        briefing = generate_crisis_briefing(black_swan_intelligence, paper_portfolio, portfolio_intelligence, risk_limits, new_time.day, briefing_id=f"crisis-{new_time.day}-{now_sim_minutes}")
+        record(memory, "alert", f"Crisis Briefing — Risk Level {briefing.tier.upper()}", briefing.situation_summary, max_records=effective_risk_limits.max_memory_records)
+
+    # Design Bible Chapter 72 Part 2 — Institutional Survival Score.
+    # Cheap to recompute every tick (reuses three of the Early Warning
+    # Score's own factors above, plus a handful of real linear scans),
+    # same "always current" reasoning as company_health above.
+    institutional_survival_score = compute_institutional_survival_score(paper_portfolio, risk_limits, portfolio_intelligence, black_swan_intelligence, defensive_mode)
+
     is_evening = new_time.hour == EVENING_REVIEW_HOUR and new_time.minute == 0
     is_midnight = new_time.hour == 0 and new_time.minute == 0
     is_morning_qotd = new_time.hour == MORNING_QOTD_HOUR and new_time.minute == 0
@@ -1855,6 +1921,15 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         previous_eic_report = economic_intelligence_reports[-1] if economic_intelligence_reports else None
         economic_intelligence_report = generate_economic_intelligence_report(economic_intelligence, previous_eic_report, sim_day=new_time.day)
         economic_intelligence_reports = record_economic_intelligence_report(economic_intelligence_reports, economic_intelligence_report)
+
+        # Design Bible Chapter 72 — the Daily Black Swan Situation
+        # Report. Same once-per-real-evening cadence as the EIC brief
+        # above; the narrative diffs against the most recently stored
+        # BSIRS report (see app/black_swan.py's generate_black_swan_
+        # narrative()), never the same day's own read.
+        previous_bs_report = black_swan_reports[-1] if black_swan_reports else None
+        black_swan_report = generate_black_swan_report(black_swan_intelligence, previous_bs_report, sim_day=new_time.day)
+        black_swan_reports = record_black_swan_report(black_swan_reports, black_swan_report)
 
     if is_evening and new_time.day % WEEKLY_INTERVAL_DAYS == 0:
         latest_report = generate_coach_report("weekly", research, paper_portfolio, company_score, RESEARCHER_IDS, new_time, ceo_decisions=ceo_decisions, decisions=decisions)
@@ -2294,6 +2369,11 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "portfolio_intelligence": portfolio_intelligence,
             "economic_intelligence": economic_intelligence,
             "economic_intelligence_reports": economic_intelligence_reports,
+            "black_swan_intelligence": black_swan_intelligence,
+            "black_swan_reports": black_swan_reports,
+            "defensive_mode": defensive_mode,
+            "black_swan_events": black_swan_events,
+            "institutional_survival_score": institutional_survival_score,
             "reasoning_challenges": reasoning_challenges,
             "reasoning_lab_state": reasoning_lab_state,
             "reflection_sessions": reflection_sessions,

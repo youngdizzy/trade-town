@@ -7,6 +7,94 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 72 — Black Swan Intelligence & Resilience System, Part 2:
+  Institutional Survival Score (backend)** (`app/black_swan.py`,
+  `app/schemas.py`, `app/state.py`, `app/nexus.py`,
+  `app/save_modules.py`, `app/ws_manager.py`, `app/routers/black_swan.py`,
+  `tests/test_black_swan.py`): a follow-up brief asked for a
+  continuously-updating 0-100 Institutional Survival Score with a
+  letter grade (A+ through F), named strengths/weaknesses, computed
+  improvement suggestions, and an "Estimated Survival Probability,"
+  scored against 12 named inputs including Leverage and Counterparty
+  Risk. This codebase has no margin/leverage concept anywhere and no
+  real broker connection to have counterparty risk from — both cut
+  outright — and no historical black-swan dataset to calibrate a
+  probability against, so no "Estimated Survival Probability" is
+  fabricated (the identical honesty rule Part 1 already applied to its
+  own "Black Swan probability" cut). What shipped is real: a new
+  `InstitutionalSurvivalScore` with nine named, published, weighted
+  factors — three reused directly from the Early Warning Score's own
+  already-computed factors (Correlation Breakdown → Diversification,
+  Liquidity, Active Risk Warnings → Rule Compliance, each inverted from
+  "how stressed" to "how resilient" rather than recomputed), plus five
+  genuinely new factors (Cash Reserves, Concentration Risk, Drawdown
+  Exposure, Black Swan Readiness, Stress Test Survival — the last a
+  real, cheap pass over the same -10/-20/-35/-50/-70% shock ladder Part
+  1's Stress Test uses). Primary Strengths/Weaknesses are the real
+  top/bottom three scored factors; Top 5 Improvements are those factors'
+  own real detail text, never generic filler. `GET
+  /api/black-swan/survival-score` exposes it; recomputed every tick like
+  Part 1's own Early Warning Score. 16 new tests (39 total for the
+  module) cover weight-sum invariants, factor reuse correctness, grade
+  thresholds, and that no `leverage`/`counterparty_risk`/
+  `survival_probability` field ever appears on the schema. Verified:
+  `mypy app/` clean, `ruff check app/ tests/` clean, full `pytest -q` —
+  1198 passed (1159 pre-existing + 39 new), zero regressions.
+
+- **Chapter 72 — Black Swan Intelligence & Resilience System, Part 1
+  (backend)** (`app/black_swan.py` new, `app/schemas.py`, `app/state.py`,
+  `app/nexus.py`, `app/save_modules.py`, `app/ws_manager.py`,
+  `app/knowledge_graph.py`, `app/routers/black_swan.py`, `app/main.py`):
+  the brief asked TradeTown to detect, simulate, and respond to Flash
+  Crashes, Banking Failures, Pandemics, Cyberattacks, and Broker
+  Failures with named historical calibration (2008, 2020, 1987,
+  Dot-Com) and a calibrated "probability." This codebase has zero real
+  macro/broker/historical-crisis data anywhere (the same gap Chapter 71
+  already documented, extended here to broker connections — see
+  `app/broker.py`'s own docstring), so every historically-named section
+  is an explicit, documented cut. What shipped instead is real: a new
+  `EarlyWarningScore` (eight named, published factors — Active Risk
+  Warnings, Market Stress, Volatility, Liquidity, Correlation
+  Breakdown, Regime Divergence, News Severity, Macro Instability — each
+  reused from an already-real department, Risk Engine through Chapter
+  71, never recomputed) driving a new `BlackSwanRiskTier`
+  (GREEN/YELLOW/ORANGE/RED/CRITICAL — the exact named gap Chapter 66's
+  Ownership table and Chapter 70 Part 1's Emergency Board Meeting table
+  each already flagged as real, un-built work). Portfolio-wide Stress
+  Tests (the brief's own -10/-20/-35/-50/-70% ladder, against the
+  primary portfolio or any real Account) report real drawdown, rule
+  violations, capital survival, and an honestly-capped recovery-time
+  projection (a real "N/A" when there's no positive trailing
+  performance to project from, never a fabricated ETA). Four Scenario
+  Simulations (Flash Crash, Severe Selloff, Liquidity Freeze,
+  Correlation Breakdown Shock) extend `app/whatif.py`'s own real
+  volatility-scaled shock convention from one candidate trade to the
+  whole book. A CEO-controllable Defensive Mode tightens real
+  `RiskLimits` (halves max position size/daily loss/risk-per-trade,
+  halves max open positions) and pauses new AI-generated trade
+  proposals while active — but never closes, resizes, or otherwise
+  touches an open position automatically, at any tier, upholding
+  `app/portfolio_intelligence.py`'s own existing "never auto-corrected
+  without the player" principle exactly. One real, generically-named
+  Elevated Risk Response Playbook (not eight fabricated event-specific
+  ones) is live-populated with today's actual Defensive Mode
+  recommendations. Crisis Briefings fire once when the Risk Level first
+  crosses into RED/CRITICAL, writing a permanent Company Memory
+  record — the honest answer to "automatically trigger an emergency
+  Executive Board meeting" (Chapter 70 Part 1 already confirmed no such
+  mechanism, or any general-purpose non-trade Decision Center, exists to
+  convene a real vote through). Post-Event Analysis writes one permanent
+  `BlackSwanEventRecord` per completed Defensive Mode episode to both
+  Company Memory and a new `black_swan_event` Knowledge Graph node type
+  (linked to real held symbols via the same non-causal "same symbol"
+  edge convention Chapter 61 already established). 23 new tests cover
+  factor scoring, tier thresholds, the stress-test ladder, all four
+  scenarios, the full Defensive Mode activate/deactivate lifecycle
+  (including exact RiskLimits restoration), event-history capping, the
+  Playbook, and Crisis Briefing generation. See
+  `docs/DesignBible/volumes/09-departments/chapter-72-black-swan-intelligence-resilience-system.md`
+  for the complete honesty boundary.
+
 - **Chapter 71 — Economic Intelligence Center (frontend)**
   (`frontend/src/types.ts`, `frontend/src/net/socket.ts`,
   `frontend/src/game/systems/EventBus.ts`,

@@ -96,6 +96,10 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         # portfolio is real mutated state, never recomputed from scratch.
         "accounts",
         "active_account_id",
+        # Design Bible Chapter 72 — Black Swan Intelligence & Resilience
+        # System (app/black_swan.py). Real, CEO-mutated posture state —
+        # not recomputed, so it belongs here, not in `derived`.
+        "defensive_mode",
     ),
     "research": ("research", "watchlist", "black_box"),
     # foundational_mentor_state lives here (not in `derived`) because,
@@ -121,6 +125,8 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         "market_intelligence",
         "portfolio_intelligence",
         "economic_intelligence",
+        "black_swan_intelligence",
+        "institutional_survival_score",
     ),
     "trade_history": (
         "decisions",
@@ -149,6 +155,8 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         "market_intelligence_reports",
         "market_intelligence_learning",
         "economic_intelligence_reports",
+        "black_swan_reports",
+        "black_swan_events",
     ),
     "academy": ("academy_projects", "academy_completed_projects", "agent_knowledge"),
 }

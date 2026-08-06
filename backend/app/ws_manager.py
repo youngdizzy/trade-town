@@ -134,6 +134,15 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         # permanent, capped daily history (MAX_ECONOMIC_INTELLIGENCE_REPORTS).
         "economicIntelligence": state.economic_intelligence.model_dump(by_alias=True),
         "economicIntelligenceReports": [r.model_dump(by_alias=True) for r in state.economic_intelligence_reports],
+        # Design Bible Chapter 72 — recomputed every tick like
+        # economicIntelligence above; blackSwanReports/blackSwanEvents are
+        # permanent, capped histories; defensiveMode is real CEO-mutated
+        # posture state.
+        "blackSwanIntelligence": state.black_swan_intelligence.model_dump(by_alias=True),
+        "blackSwanReports": [r.model_dump(by_alias=True) for r in state.black_swan_reports],
+        "defensiveMode": state.defensive_mode.model_dump(by_alias=True),
+        "blackSwanEvents": [e.model_dump(by_alias=True) for e in state.black_swan_events],
+        "institutionalSurvivalScore": state.institutional_survival_score.model_dump(by_alias=True),
         "talent": state.talent.model_dump(by_alias=True),
         "reasoningChallenges": [r.model_dump(by_alias=True) for r in state.reasoning_challenges],
         "reasoningLabState": state.reasoning_lab_state.model_dump(by_alias=True),

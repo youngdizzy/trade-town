@@ -56,6 +56,7 @@ from app.schemas import (
     AcademyProject,
     AgentId,
     AgentKnowledgeState,
+    BlackSwanEventRecord,
     CaseStudy,
     CoachReport,
     DecisionVaultEntry,
@@ -110,6 +111,7 @@ def build_knowledge_graph(
     decision_vault: list[DecisionVaultEntry],
     case_studies: list[CaseStudy],
     strategies: list[Strategy],
+    black_swan_events: list[BlackSwanEventRecord],
 ) -> KnowledgeGraph:
     nodes: list[KnowledgeNode] = []
     edges: list[KnowledgeEdge] = []
@@ -349,5 +351,31 @@ def build_knowledge_graph(
                     label="same category",
                 )
             )
+
+    # Design Bible Chapter 72 — one real node per completed Defensive
+    # Mode episode. Edges are "same symbol" only, the identical
+    # non-causal honesty rule the trade nodes above already use — never
+    # a claim that this episode was "caused by" a specific symbol.
+    for event in black_swan_events:
+        node_id = f"blackswan-{event.id}"
+        nodes.append(
+            KnowledgeNode(
+                id=node_id,
+                type="black_swan_event",
+                label=f"Defensive Mode — {event.peak_tier.title()}",
+                subtitle=f"{event.duration_sim_minutes} sim min · equity {event.equity_change_pct:+.1f}%",
+                timestamp=event.created_at,
+            )
+        )
+        for symbol in event.affected_symbols:
+            for research_node_id in research_by_symbol.get(symbol, []):
+                edges.append(
+                    KnowledgeEdge(
+                        source=node_id,
+                        target=research_node_id,
+                        relation="same_symbol",
+                        label="same symbol",
+                    )
+                )
 
     return KnowledgeGraph(nodes=nodes, edges=edges, generatedAt=_now_iso())

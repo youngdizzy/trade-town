@@ -1339,6 +1339,98 @@ endpoint) — see `app/economic_intelligence.py`'s module docstring for the
 full honesty boundary: this is a synthesis of already-real trading
 signals, never a real macroeconomic data feed (this codebase has none).
 
+### `GET /api/black-swan/intelligence` / `GET /api/black-swan/reports`
+
+Design Bible Chapter 72 — the Black Swan Intelligence & Resilience
+System (BSIRS). Read-only, no body on either call. `/intelligence`
+returns the always-current `BlackSwanIntelligenceState`: `warning`
+(`EarlyWarningScore` — `overall` 0-100, `tier`
+(`green`/`yellow`/`orange`/`red`/`critical`), and `factors`: eight named
+`BlackSwanSignalFactor` entries — Active Risk Warnings, Market Stress,
+Volatility, Liquidity, Correlation Breakdown, Regime Divergence, News
+Severity, Macro Instability, each its own score/weight/detail, higher
+score meaning more stress — and `confidence` (`BlackSwanConfidenceRead`,
+same shape as the Economic Confidence Engine above). `/reports` returns
+the permanent daily `BlackSwanReport[]` history (oldest first, capped at
+`MAX_BLACK_SWAN_REPORTS = 60`), each embedding that day's `snapshot`
+plus a real, evidence-cited `narrative` diffed against the previous
+day's report. Both already computed on the game state every tick — see
+`app/black_swan.py`'s module docstring for the full honesty boundary:
+this codebase has no historical black-swan dataset, so the Risk Level is
+a real-time stress reading, never a calibrated probability.
+
+### `GET /api/black-swan/survival-score`
+
+Design Bible Chapter 72 Part 2 — the always-current
+`InstitutionalSurvivalScore`: `overall` (0-100), `grade`
+(`a_plus`/`a`/`b`/`c`/`d`/`f`), nine named `SurvivalScoreFactor` entries
+(Cash Reserves, Diversification, Concentration Risk, Liquidity, Drawdown
+Exposure, Rule Compliance, Black Swan Readiness, Stress Test Survival,
+Broker Health — three reused directly from the Early Warning Score's own
+factors, inverted), `primaryStrengths`/`primaryWeaknesses` (top/bottom 3
+factors), and `topImprovements` (the 5 weakest factors' own real detail
+text). No "Leverage," "Counterparty Risk," or "Estimated Survival
+Probability" field exists anywhere on this response — see
+`app/black_swan.py`'s module docstring for why.
+
+### `POST /api/black-swan/stress-test`
+
+Body: `{ "accountId"?: string | null }` (omit or `null` for the primary
+portfolio; pass a real Account id to stress-test that account instead —
+see Chapter 69). Runs the brief's own -10/-20/-35/-50/-70% shock ladder
+against that portfolio's real current positions, returning a
+`PortfolioStressTestResult`: `startingEquity`,
+`heldPositionLiquidityScore`, and `levels[]` (per shock: resulting
+equity, drawdown %, whether `RiskLimits.maxDrawdownPct` would be
+breached, whether capital survives above zero, and an honestly-capped
+`recoveryDaysEstimate`/`recoveryNote` — `null`/"N/A" when there's no
+positive trailing realized performance to project a recovery from,
+never a fabricated ETA). Computed fresh per request, never persisted.
+404s if `accountId` doesn't match a real account.
+
+### `POST /api/black-swan/scenario`
+
+Body: `{ "scenarioType": "flash_crash" | "severe_selloff" |
+"liquidity_freeze" | "correlation_breakdown", "accountId"?: string |
+null }`. Applies an instantaneous, portfolio-wide equity shock — each
+scenario a disclosed multiple of the affected symbol(s)' own real
+measured volatility, reusing `app/whatif.py`'s own shock convention —
+and returns a `PortfolioScenarioResult` (`startingEquity`,
+`shockedEquity`, `impactPct`/`impactAmount`, `categoryImpact[]`,
+`breachesMaxDrawdown`, `capitalSurvives`, a real `detail` string). No
+scenario is named after a real historical event (2008/2020/1987/
+Dot-Com) — see `app/black_swan.py`'s module docstring for why.
+
+### `POST /api/black-swan/defensive-mode/activate` / `.../deactivate` / `.../configure`
+
+Design Bible Chapter 72 — CEO-controlled Defensive Mode. `/activate`
+(body: `{ "reason"?: string }`) tightens the CEO's real `RiskLimits`
+(halves `maxPositionPct`/`maxDailyLossPct`/`riskPerTradePct`, halves
+`maxOpenPositions`) and pauses new AI-generated trade proposal
+generation — errors 400 if already active. `/deactivate` restores the
+exact prior `RiskLimits` (from a real snapshot taken at activation) and
+writes one permanent `BlackSwanEventRecord` (Post-Event Analysis) to
+Company Memory and the Knowledge Graph — errors 400 if not active.
+`/configure` (body: `{ "triggerTier"?: BlackSwanRiskTier,
+"autoTriggerEnabled"?: boolean }`) sets which Risk Level auto-activates
+Defensive Mode and whether auto-trigger is on at all (default off — the
+brief's own "CEO may choose automatic or manual activation"). All three
+return `{ "defensiveMode": DefensiveModeState, "riskLimits": RiskLimits
+}`. Closing an open position is never automatic here, at any tier — see
+`app/black_swan.py`'s module docstring.
+
+### `GET /api/black-swan/playbook` / `GET /api/black-swan/broker-resilience` / `GET /api/black-swan/events`
+
+`/playbook` returns the one real, generically-named
+`BlackSwanPlaybook` ("Elevated Risk Response Playbook"), live-populated
+with today's actual Defensive Mode recommendations — never one of eight
+fabricated event-specific documents. `/broker-resilience` returns a
+static `BrokerResilienceRead` (`status: "simulated"`) — this codebase
+has no real broker connection to monitor, so this is an honest read, not
+a live health score. `/events` returns the permanent
+`BlackSwanEventRecord[]` Post-Event Analysis history (oldest first,
+capped at `MAX_BLACK_SWAN_EVENTS = 40`).
+
 ### `POST /api/emergency-stop/activate` / `POST /api/emergency-stop/resume`
 
 Design Bible Chapter 67 (TTOS) Part 3 — the real Global Emergency Stop.

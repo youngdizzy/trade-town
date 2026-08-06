@@ -216,6 +216,7 @@ class TestBuildKnowledgeGraph:
             decision_vault=[],
             case_studies=[],
             strategies=[],
+            black_swan_events=[],
         )
         agent_node_ids = {n.id for n in graph.nodes if n.type == "agent"}
         assert agent_node_ids == {"agent-scout", "agent-cio"}
@@ -232,6 +233,7 @@ class TestBuildKnowledgeGraph:
             decision_vault=[],
             case_studies=[],
             strategies=[],
+            black_swan_events=[],
         )
         research_nodes = [n for n in graph.nodes if n.type == "research"]
         assert len(research_nodes) == 1
@@ -251,6 +253,7 @@ class TestBuildKnowledgeGraph:
             decision_vault=[],
             case_studies=[],
             strategies=[],
+            black_swan_events=[],
         )
         assert not any(n.type == "research" for n in graph.nodes)
 
@@ -272,6 +275,7 @@ class TestBuildKnowledgeGraph:
             decision_vault=[],
             case_studies=[],
             strategies=[],
+            black_swan_events=[],
         )
         builds_on = [e for e in graph.edges if e.relation == "builds_on"]
         assert len(builds_on) == 1
@@ -292,6 +296,7 @@ class TestBuildKnowledgeGraph:
             decision_vault=[],
             case_studies=[],
             strategies=[],
+            black_swan_events=[],
         )
         assert not any(e.relation == "builds_on" for e in graph.edges)
 
@@ -311,6 +316,7 @@ class TestBuildKnowledgeGraph:
             decision_vault=[],
             case_studies=[],
             strategies=[],
+            black_swan_events=[],
         )
         academy_nodes = [n for n in graph.nodes if n.type == "academy_project"]
         assert len(academy_nodes) == 1
@@ -342,6 +348,7 @@ class TestBuildKnowledgeGraph:
             decision_vault=[],
             case_studies=[],
             strategies=[],
+            black_swan_events=[],
         )
         branch_nodes = [n for n in graph.nodes if n.type == "branch"]
         assert len(branch_nodes) == 2
@@ -360,6 +367,7 @@ class TestBuildKnowledgeGraph:
             decision_vault=[],
             case_studies=[],
             strategies=[],
+            black_swan_events=[],
         )
         edge = next(e for e in graph.edges if e.relation == "achieved")
         assert edge.source == "agent-nova"
@@ -376,6 +384,7 @@ class TestBuildKnowledgeGraph:
             decision_vault=[],
             case_studies=[],
             strategies=[],
+            black_swan_events=[],
         )
         assert not any(e.relation == "achieved" for e in graph.edges)
         assert any(n.type == "hall_of_fame" for n in graph.nodes)
@@ -392,6 +401,7 @@ class TestBuildKnowledgeGraph:
             decision_vault=[],
             case_studies=[],
             strategies=[],
+            black_swan_events=[],
         )
         edge = next(e for e in graph.edges if e.relation == "ranked_top_agent")
         assert edge.source == "agent-nova"
@@ -410,6 +420,7 @@ class TestBuildKnowledgeGraph:
             decision_vault=[],
             case_studies=[],
             strategies=[],
+            black_swan_events=[],
         )
         featured_edges = [e for e in graph.edges if e.relation == "featured_in"]
         assert {e.source for e in featured_edges} == {"agent-nova", "agent-scout"}
@@ -426,6 +437,7 @@ class TestBuildKnowledgeGraph:
             decision_vault=[],
             case_studies=[],
             strategies=[],
+            black_swan_events=[],
         )
         assert graph.generated_at
 
@@ -444,6 +456,7 @@ class TestKnowledgeGraphChapter61Extension:
             decision_vault=[],
             case_studies=[_case_study("cs-1")],
             strategies=[],
+            black_swan_events=[],
         )
         cs_nodes = [n for n in graph.nodes if n.type == "case_study"]
         assert len(cs_nodes) == 1
@@ -461,6 +474,7 @@ class TestKnowledgeGraphChapter61Extension:
             decision_vault=[_vault_entry("v1", "AAPL")],
             case_studies=[],
             strategies=[],
+            black_swan_events=[],
         )
         trade_nodes = [n for n in graph.nodes if n.type == "trade"]
         assert len(trade_nodes) == 1
@@ -478,6 +492,7 @@ class TestKnowledgeGraphChapter61Extension:
             decision_vault=[_vault_entry("v1", "AAPL", case_study_id="cs-1")],
             case_studies=[_case_study("cs-1")],
             strategies=[],
+            black_swan_events=[],
         )
         edge = next(e for e in graph.edges if e.relation == "documented_by")
         assert edge.source == "trade-v1"
@@ -497,6 +512,7 @@ class TestKnowledgeGraphChapter61Extension:
             decision_vault=[_vault_entry("v1", "AAPL", case_study_id="evicted")],
             case_studies=[],
             strategies=[],
+            black_swan_events=[],
         )
         assert not any(e.relation == "documented_by" for e in graph.edges)
 
@@ -512,6 +528,7 @@ class TestKnowledgeGraphChapter61Extension:
             decision_vault=[_vault_entry("v1", "AAPL")],
             case_studies=[],
             strategies=[],
+            black_swan_events=[],
         )
         edge = next(e for e in graph.edges if e.relation == "same_symbol")
         assert edge.source == "trade-v1"
@@ -529,6 +546,7 @@ class TestKnowledgeGraphChapter61Extension:
             decision_vault=[_vault_entry("v1", "AAPL")],
             case_studies=[],
             strategies=[],
+            black_swan_events=[],
         )
         assert not any(e.relation == "same_symbol" for e in graph.edges)
 
@@ -544,6 +562,7 @@ class TestKnowledgeGraphChapter61Extension:
             decision_vault=[],
             case_studies=[],
             strategies=[_strategy("s1", "nova")],
+            black_swan_events=[],
         )
         strategy_nodes = [n for n in graph.nodes if n.type == "strategy"]
         assert len(strategy_nodes) == 1
@@ -565,6 +584,7 @@ class TestKnowledgeGraphChapter61Extension:
             decision_vault=[],
             case_studies=[],
             strategies=[_strategy("s1", "nova", stage="idea")],
+            black_swan_events=[],
         )
         assert not any(n.type == "strategy" for n in graph.nodes)
 
@@ -582,6 +602,7 @@ class TestKnowledgeGraphChapter61Extension:
             decision_vault=[],
             case_studies=[],
             strategies=[_strategy("s1", "nova", category="stock")],
+            black_swan_events=[],
         )
         edge = next(e for e in graph.edges if e.relation == "same_category")
         assert edge.source == "strategy-s1"
@@ -601,5 +622,6 @@ class TestKnowledgeGraphChapter61Extension:
             decision_vault=[],
             case_studies=[],
             strategies=[_strategy("s1", "nova", category="stock")],
+            black_swan_events=[],
         )
         assert not any(e.relation == "same_category" for e in graph.edges)
