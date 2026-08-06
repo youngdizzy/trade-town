@@ -2,30 +2,31 @@
 
 **Status:** Phase 1 (7-section grouped navigation) and Part 3's own
 primary objective (a real Global Emergency Stop) are both implemented,
-plus three more Part 3 slices: real weekly/monthly loss circuit
-breakers (Safety Settings core), a real Global Status Bar (Risk/Company
-Health/Portfolio/Market/Automation/Deployed/Broker), and a real Quick
+plus four more Part 3 slices: real weekly/monthly loss circuit breakers
+(Safety Settings core), a real Global Status Bar (Risk/Company
+Health/Portfolio/Market/Automation/Deployed/Broker), a real Quick
 Action Dock (Automation Mode cycling + quick-jumps to RISK/COMPANY/
-PORTFOLIO/EXECUTIVE). This chapter is structurally different from every
-other chapter in this volume: it does not describe a trading/research/
-risk department with its own real backend module. It describes the
-*navigation and UX architecture* that organizes all 34 of those
-departments' existing Command Center surfaces into one system, plus (as
-of Part 3) several genuinely new safety and navigation controls this
-Design Bible's own research found had no real backing anywhere: a
-CEO-triggerable halt on all new trading, two more real loss-limit
-circuit breakers beyond the pre-existing daily one, a persistent global
-strip surfacing real risk/health/deployment status from every scene,
-and a global dock that makes Automation Mode and tab quick-jumps
-reachable without opening the Full Command Center first. Before any
-Part 3 code was written, a research pass confirmed the rest of that
-brief — a priority-tiered Alert Center and several command-palette
-examples (a specific broker name, "Swing/Day Trading Mode") — has no
-real backing feature anywhere in this codebase, so everything beyond
-those four slices remains genuinely unbuilt. Universal search, the
-command palette itself, workspace docking, priority-tiered
-notifications, and navigation analytics all remain genuinely unbuilt —
-see the Implementation Notes
+PORTFOLIO/EXECUTIVE), and a real Command Palette (Ctrl/Cmd+K). This
+chapter is structurally different from every other chapter in this
+volume: it does not describe a trading/research/risk department with
+its own real backend module. It describes the *navigation and UX
+architecture* that organizes all 34 of those departments' existing
+Command Center surfaces into one system, plus (as of Part 3) several
+genuinely new safety and navigation controls this Design Bible's own
+research found had no real backing anywhere: a CEO-triggerable halt on
+all new trading, two more real loss-limit circuit breakers beyond the
+pre-existing daily one, a persistent global strip surfacing real
+risk/health/deployment status from every scene, a global dock that
+makes Automation Mode and tab quick-jumps reachable without opening the
+Full Command Center first, and a keyboard-driven command palette over
+every real global action and all 34 real tabs. Before any Part 3 code
+was written, a research pass confirmed the rest of that brief — a
+priority-tiered Alert Center and two of the command palette's own
+example commands ("Open Charles Schwab," "Swing/Day Trading Mode") —
+has no real backing feature anywhere in this codebase, so everything
+beyond those five slices remains genuinely unbuilt. Universal search,
+workspace docking, priority-tiered notifications, and navigation
+analytics all remain genuinely unbuilt — see the Implementation Notes
 at the bottom for the full phased plan and the exact honesty boundary
 for each slice.
 
@@ -175,7 +176,7 @@ risk output to, because it never produces any.
 |---|---|
 | Navigation grouping (7 sections) | **Built (Phase 1)** — `lib/navigation.ts`'s `TAB_SECTION` map and `groupTabsBySection()` group all 34 tabs under 7 labeled section rows (Headquarters/Markets/AI Workforce/Research/Portfolio/Operations/Archive) in the Full Command Center's nav. Not CEO-customizable — the mapping is fixed in code, same as every other real navigation structure in this codebase. |
 | Universal Search | **Not built** — the only search anywhere in this codebase is two narrow, already-loaded-state client-side filters (`CompanyMemory.tsx`'s memory search, `KnowledgeGraphView.tsx`'s node search); neither is global, and no backend search endpoint is ever called from the frontend despite two real backend search functions existing (`app/memory.py`'s `search()`, `app/knowledge.py`'s `search_knowledge()`). |
-| Command Palette | **Not built** — no "type a command, press Enter" UI exists anywhere. |
+| Command Palette | **Built (Part 3).** `CommandPalette.tsx`, opened with Ctrl/Cmd+K from anywhere in-game, closed with Escape or by executing a command. Real commands only: Save/Load/Open Company Memory/Coach Dashboard/Brain Room Dashboard/Settings (the exact `BottomToolbar.tsx` actions), Pause/Resume Simulation, Work Mode toggle, Operating Mode switching, Emergency Stop (opens the real confirm dialog, never bypasses it), and 34 "Go to X" tab commands derived from `navigation.ts`'s own `TAB_SECTION` map, executed via the same `"ui:commandCenterJump"` plumbing the Quick Action Dock uses. Deliberately excludes two of the brief's own example commands with no real destination: "Open Charles Schwab" and "Swing/Day Trading Mode" (see Implementation Notes). |
 | Workspace layouts (dockable/saved) | **Not built** — the Command Center is one fixed, non-resizable, non-dockable overlay; `frontend/package.json` carries no windowing/docking library of any kind. |
 | Notification priority tiers | **Not built** — `CyberNotifications.tsx`'s `ToastKind` is a color category (trade/research/volatility/alert/save), not a severity level; every toast behaves identically (auto-dismiss, non-blocking, capped to 4 visible); nothing ever interrupts today because nothing is marked as needing to. |
 | Emergency Stop | **Built (Part 3).** A permanent, always-visible button in `TopStatusBar.tsx`, never inside a Command Center tab. Requires confirmation (`ConfirmDialog.tsx`, the first reusable confirm-before-you-act component in this codebase). Calls `POST /api/emergency-stop/activate`/`/resume`. Blocks new proposal generation, pending-proposal auto-resolution in Assisted/Executive mode, and the CEO's own manual buy/sell — only "wait" is still allowed. Only the CEO can resume; no automatic timeout. |
@@ -337,11 +338,18 @@ would need to design first (per Appendix G's Permanent Development
 Policy — design before code), per the approved migration plan's
 remaining phases:**
 
-- **Phase 2** — a real universal search (most honestly built first as a
-  client-side index over already-loaded state, the same pattern
+- **Phase 2, revised — universal search remains unbuilt; the command
+  palette shipped independently, per Phase 4e below.** This phase
+  originally proposed building the command palette *over* a universal-
+  search index. In practice the palette's own real command set (global
+  actions + 34 tab jumps) needed no search index to be honest or
+  useful, so it shipped on its own rather than waiting on search —  a
+  real deviation from the original phased plan, documented here rather
+  than silently reordered. Universal search itself (most honestly built
+  as a client-side index over already-loaded state, the same pattern
   `CompanyMemory.tsx` already established, before any new backend
-  search endpoint is considered) and a command palette (Cmd/Ctrl+K)
-  over that same index.
+  search endpoint is considered) remains its own separate, still-unbuilt
+  slice.
 - **Phase 3** — a priority-tiered notification center distinct from the
   existing toast system, built on the real precedent
   `ExecutiveVoting.tsx`'s trade-proposal modal already establishes for
@@ -453,6 +461,30 @@ remaining phases:**
   than patching every downstream test, since a generic label on an
   always-mounted global surface was always going to keep colliding with
   real content somewhere in a 34-tab app.
+- **Phase 4e — built (Part 3).** The Command Palette:
+  `CommandPalette.tsx`, opened with Ctrl/Cmd+K from anywhere in-game,
+  closed with Escape or by executing a command. Real commands only,
+  every one mapping to an already-real action rather than inventing a
+  new one: the same six `BottomToolbar.tsx` actions (Save/Load/Open
+  Company Memory/Coach Dashboard/Brain Room Dashboard/Settings),
+  Pause/Resume Simulation, Work Mode toggle, Operating Mode switching,
+  Emergency Stop (opens the real confirm dialog, never bypasses it —
+  the palette is not a shortcut around the CEO's own confirmation
+  step), and 34 "Go to X" tab commands derived from `navigation.ts`'s
+  own `TAB_SECTION` map rather than a fourth hand-maintained tab list,
+  executed via the same `"ui:commandCenterJump"` plumbing
+  `QuickActionDock.tsx` already established (Phase 4d). Two of the
+  brief's own example commands are deliberately absent: "Open Charles
+  Schwab" (no live broker integration exists anywhere) and "Swing/Day
+  Trading Mode" (no such mode exists under any name) — same honesty
+  boundary Part 3's original research already drew. Unlike
+  `GlobalStatusBar`/`QuickActionDock`, the palette is only mounted
+  while open rather than always-visible, so it doesn't create that same
+  always-mounted-label-collision risk; its own test scopes queries to
+  the palette's own `data-testid` container since several of its real
+  command labels ("Save", tab names) legitimately duplicate other
+  always-visible real controls while the palette itself happens to be
+  open.
 - **Phase 5** — dockable/resizable/saved-layout workspaces (this
   codebase has no windowing library today — adopting one is a real,
   non-trivial dependency decision not made unilaterally) and navigation
@@ -478,16 +510,16 @@ each remains its own separable slice awaiting its own go-ahead.
 **Part 3's own remaining scope, still not implemented:** Black Swan
 Protection, Broker Failover, Emergency Contacts, and recovery
 procedures all genuinely don't exist and are not fabricated (weekly/
-monthly loss limits, the global status bar, and Automation Mode
-cycling + tab quick-jumps — the rest of the original Safety Settings/
-status-bar/Quick Action Dock scope — are now built, per Phases 4b/4c/4d
-above; the Dock is deliberately *partially*, not fully, unified — see
-4d's own note on why Pause/Resume/Emergency Stop weren't physically
-merged into it); a priority-tiered Executive Alert Center; and Command
-Palette expansion — the palette itself remains Phase 2's
-own unbuilt scope, and two of the brief's own example commands have no
-real destination to open at all: "Open Charles Schwab" (confirmed zero
-real broker integration exists anywhere — `app/broker.py`'s own module
+monthly loss limits, the global status bar, Automation Mode cycling +
+tab quick-jumps, and the Command Palette itself — effectively all of
+Part 3's original buildable scope — are now built, per Phases
+4b/4c/4d/4e above; the Dock is deliberately *partially*, not fully,
+unified — see 4d's own note on why Pause/Resume/Emergency Stop weren't
+physically merged into it); and a priority-tiered Executive Alert
+Center. Two of the command palette's own example commands were confirmed
+to have no real destination to open at all and were deliberately left
+out rather than faked: "Open Charles Schwab" (confirmed zero real
+broker integration exists anywhere — `app/broker.py`'s own module
 docstring: "Completely simulated... no such adapter exists or is wired
 in v0.6") and "Swing Trading Mode"/"Day Trading Mode" (confirmed no
 such mode exists under any name — `RiskLimits`' day-trading-adjacent

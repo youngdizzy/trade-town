@@ -6623,6 +6623,83 @@ already-confirmed pre-existing flaky movement-key test;
 `emergencyStop.spec.ts` and `globalStatusBar.spec.ts` reverified
 passing after the label fixes above.
 
+### TTOS Command Palette (Cmd/Ctrl+K), Design Bible Chapter 67
+
+The last of Part 3's originally-scoped brief with real backing: a
+keyboard-driven command palette. This phase (Phase 2 in the chapter's
+own phased plan) had originally proposed building the palette *over* a
+universal-search index — in practice the palette's own real command set
+needed no search index to be honest, so it shipped independently rather
+than waiting on Universal Search, which remains its own separate,
+unbuilt slice. This is a real, documented deviation from the original
+phased plan, not a silent scope change.
+
+**Frontend only** — no new backend fields or endpoints; every command
+maps to an already-real EventBus event or manager call this codebase
+already uses elsewhere. `CommandPalette.tsx` (new): opens on
+`(metaKey || ctrlKey) && key === "k"`, closes via `useCloseOnEscape`
+(the same hook every other overlay in this codebase already uses) or by
+executing a command. A single text input drives substring filtering
+against each command's label + section hint; `ArrowUp`/`ArrowDown`
+move a `selected` index, `Enter` executes the currently-selected
+command. The command list is built once per render from real state
+(`paused`, `settings.workMode`, `settings.operatingMode`,
+`emergencyStop.active` — so labels like "Pause"/"Resume" and
+"Activate"/"Resume Trading" always reflect the real current state, not
+a static guess) and covers: the same six `BottomToolbar.tsx` actions
+(Save/Load/Open Company Memory/Coach Dashboard/Brain Room Dashboard/
+Settings — `SaveManager.save()`/`.load()` imported statically, the same
+way `BottomToolbar.tsx` already does, not a dynamic `import()` hack);
+Pause/Resume via `GameManager.getInstance()?.togglePause()`; Work Mode
+toggle and Operating Mode switching via `SettingsManager.update()`
+(offering only the two modes *not* currently active, mirroring
+`CompanyPanel.tsx`'s own three-button layout without an inert
+already-selected option); Emergency Stop, which emits
+`"ui:emergencyStopConfirm"` to open the real confirm dialog — the
+palette is deliberately not a shortcut around the CEO's own
+confirmation step Chapter 67 Part 3's Emergency Stop slice already
+established; and 34 "Go to X" tab commands, one per real
+`navigation.ts` `TAB_SECTION` key (`Object.keys(TAB_SECTION) as
+(keyof typeof TAB_SECTION)[]`, avoiding a fourth hand-maintained tab
+list alongside `FullCommandCenter.tsx`'s own `TABS`, `navigation.ts`'s
+`TAB_SECTION`, and `commandCenter.spec.ts`'s own 34-tab test array),
+each executing via the exact `"ui:commandCenterJump"` EventBus event
+`QuickActionDock.tsx`'s own quick-jump buttons already established
+(Chapter 67 Part 3's Quick Action Dock slice) — reused verbatim, not
+reimplemented. Two of the brief's own example commands are deliberately
+absent: "Open Charles Schwab" (no live broker integration exists
+anywhere — `app/broker.py`'s own module docstring: "Completely
+simulated... no such adapter exists or is wired in v0.6") and "Swing
+Trading Mode"/"Day Trading Mode" (confirmed no such mode exists under
+any name) — the same honesty boundary this chapter's own Part 3
+research already drew for Emergency Stop and the Global Status Bar.
+
+**A real collision, found and fixed differently than the Dock's own**:
+because the palette is only mounted while `open` is true (unlike
+`GlobalStatusBar`/`QuickActionDock`, which are always mounted), it
+doesn't inherit their always-visible-label-collision risk — but while
+it *is* open, several of its real command labels ("Save", every tab
+name) do legitimately duplicate other always-visible real controls
+(`BottomToolbar.tsx`'s own "Save" button, in particular). Rather than
+renaming the palette's own labels (unnecessary here, since the
+collision only exists for the few seconds the palette is actually
+open, not permanently), the fix was narrower: a `data-testid=
+"command-palette"` on the palette's own root container, with its test
+scoping every `getByText` query through that container instead of the
+full page.
+
+**Verified**: `tsc`/`eslint`/`vite build` clean. A new
+`commandPalette.spec.ts` exercises the real running app end-to-end:
+opening via Ctrl+K, confirming real (non-fabricated) commands are
+listed, filtering to a single real command by substring, executing it
+via Enter and confirming the Command Center actually opens on the real
+requested tab (checking the resulting tab button's own `text-cmd-cyan`
+highlight class, the same verification pattern
+`quickActionDock.spec.ts` already established), and confirming Escape
+closes the palette cleanly on reopen. Full `commandCenter.spec.ts`
+regression clean except the already-confirmed pre-existing flaky
+movement-key test.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

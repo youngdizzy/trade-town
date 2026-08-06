@@ -135,6 +135,32 @@ development milestones, not semver releases.
   test; `emergencyStop.spec.ts` and `globalStatusBar.spec.ts` also
   verified passing.
 
+- **Chapter 67 Part 3 — TTOS real Command Palette (Cmd/Ctrl+K)**
+  (`frontend/src/ui/components/CommandPalette.tsx`, `App.tsx`): real
+  commands only, per the brief's own constraint. Save/Load/Open Company
+  Memory/Coach Dashboard/Brain Room Dashboard/Settings (the exact
+  `BottomToolbar.tsx` actions), Pause/Resume Simulation, Work Mode
+  toggle, Operating Mode switching, Emergency Stop (opens the real
+  confirm dialog, never bypasses it), and 34 "Go to X" tab commands
+  derived from `navigation.ts`'s own `TAB_SECTION` map, executed via the
+  same `"ui:commandCenterJump"` plumbing `QuickActionDock.tsx` already
+  established. Deliberately excludes two of the brief's own example
+  commands with no real destination: "Open Charles Schwab" (no live
+  broker integration exists — see `app/broker.py`) and "Swing/Day
+  Trading Mode" (no such mode exists under any name). Opens via
+  Ctrl/Cmd+K, closes via Escape or executing a command; filters by
+  substring match against label + section hint; arrow-key navigation.
+  Only mounted while open, so — unlike `GlobalStatusBar`/
+  `QuickActionDock` — it doesn't create the always-visible label-
+  collision class of bug those two hit; its own test scopes queries to
+  the palette's own `data-testid` container since several of its real
+  command labels (Save, tab names) legitimately duplicate other
+  always-visible real controls while the palette itself is open. `tsc`/
+  `eslint`/`vite build` clean, a new `commandPalette.spec.ts` exercising
+  the real running app end-to-end (open, filter, execute a real tab
+  jump, close), full `commandCenter.spec.ts` regression clean except
+  the already-confirmed pre-existing flaky movement-key test.
+
 - **Chapter 67 Phase 1 — TTOS 7-section grouped navigation**
   (`frontend/src/ui/components/CommandCenter/lib/navigation.ts`,
   `FullCommandCenter.tsx`): before writing any code, a full audit +
