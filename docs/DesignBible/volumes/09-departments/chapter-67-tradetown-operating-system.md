@@ -180,7 +180,8 @@ risk output to, because it never produces any.
 | Universal Search | **Built (Part 3), inside the Command Palette.** Rather than a second Ctrl/Cmd+K-shaped overlay, `CommandPalette.tsx`'s same input now also searches real, already-loaded entities: the 14 real employees (jumps to AGENTS), closed trades (jumps to REPLAY), research items (jumps to RESEARCH), and Company Memory records (opens the real Company Memory overlay). Same "index of what we already have" pattern `CompanyMemory.tsx`'s own filter and `KnowledgeGraphView.tsx`'s own node search already used — still no new backend search endpoint, and the two existing real backend search functions (`app/memory.py`'s `search()`, `app/knowledge.py`'s `search_knowledge()`) remain unexposed via any route. |
 | Command Palette | **Built (Part 3).** `CommandPalette.tsx`, opened with Ctrl/Cmd+K from anywhere in-game, closed with Escape or by executing a command. Real commands only: Save/Load/Open Company Memory/Coach Dashboard/Brain Room Dashboard/Settings (the exact `BottomToolbar.tsx` actions), Pause/Resume Simulation, Work Mode toggle, Operating Mode switching, Emergency Stop (opens the real confirm dialog, never bypasses it), and 34 "Go to X" tab commands derived from `navigation.ts`'s own `TAB_SECTION` map, executed via the same `"ui:commandCenterJump"` plumbing the Quick Action Dock uses. Deliberately excludes two of the brief's own example commands with no real destination: "Open Charles Schwab" and "Swing/Day Trading Mode" (see Implementation Notes). |
 | Workspace layouts (dockable/saved) | **Not built** — the Command Center is one fixed, non-resizable, non-dockable overlay; `frontend/package.json` carries no windowing/docking library of any kind. |
-| Notification priority tiers | **Not built** — `CyberNotifications.tsx`'s `ToastKind` is a color category (trade/research/volatility/alert/save), not a severity level; every toast behaves identically (auto-dismiss, non-blocking, capped to 4 visible); nothing ever interrupts today because nothing is marked as needing to. |
+| Notification priority tiers | **Built (Part 3).** Every `CyberNotifications.tsx` toast now also carries a real `NotificationTier` (`critical`/`high`/`normal`), derived from the same field already driving the toast's own kind/copy, never a second-guessed severity. Two real critical-tier sources previously had zero proactive notification anywhere in this codebase — a critical `RiskWarning` (only passive visibility in RiskPanel/GlobalStatusBar before) and Emergency Stop activation — both now produce a sticky, non-auto-dismissing toast; every other toast still auto-dismisses after 6s as before. |
+| Executive Alert Center | **Built (Part 3).** `AlertCenter.tsx`, opened via the Command Palette's "Open Alert Center" command — reuses `Glass`/`StatusPill`/`TerminalLabel`/`EmptyState` from `CommandCenter/ui.tsx` rather than inventing new overlay chrome. Every real toast this session produces (all tiers, not just critical) is recorded into `gameStore.alertHistory` (capped at 200 entries — `MAX_ALERT_HISTORY` — render-only cap, same "cap render, never cap real data" pattern Universal Search's `MAX_RESULTS` already established) and browsable there with tier filter chips (All/Critical/High/Normal, each showing a real live count). |
 | Emergency Stop | **Built (Part 3).** A permanent, always-visible button in `TopStatusBar.tsx`, never inside a Command Center tab. Requires confirmation (`ConfirmDialog.tsx`, the first reusable confirm-before-you-act component in this codebase). Calls `POST /api/emergency-stop/activate`/`/resume`. Blocks new proposal generation, pending-proposal auto-resolution in Assisted/Executive mode, and the CEO's own manual buy/sell — only "wait" is still allowed. Only the CEO can resume; no automatic timeout. |
 | Safety Settings — weekly/monthly loss limits | **Built (Part 3, core slice).** `RiskLimits.maxWeeklyLossPct`/`maxMonthlyLossPct` (defaults 10%/15%, between the pre-existing daily 5% and lifetime drawdown 20%), enforced by `app/risk_engine.py`'s `weekly_realized_pnl_pct()`/`monthly_realized_pnl_pct()` inside `evaluate_sentinel_risk()` — the same real hard-reject path the existing daily loss limit already used, just scoped to the current sim week (7 days) / sim month (30 days) instead of today. CEO-editable via `POST /api/risk-limits` and a new "Safety & Capital Protection" block in the RISK tab (`RiskPanel.tsx`), which also surfaces live Emergency Stop status. Not built in this slice: Black Swan Protection, Broker Failover, Emergency Contacts, recovery procedures (see Safety Systems below). |
 | Global Status Bar | **Built (Part 3).** `GlobalStatusBar.tsx`, a second row under `TopStatusBar.tsx`, visible from every scene: real Risk Level (reuses `lib/derive.ts`'s own `riskLevel()`), Company Health (overall score + tier), Portfolio Heat (honestly labeled by what it measures, not renamed to "Health"), Market Regime (`marketEnvironment`'s real label), Automation (the real Operating Mode), Capital Deployed % of equity, and an honestly-static "SIMULATED" Broker Status (no live broker integration exists — see `app/broker.py`). Connection status stays in `TopStatusBar.tsx`'s own dot, not duplicated. |
@@ -349,10 +350,39 @@ remaining phases:**
   palette afterward (Phase 4f) rather than the palette being built over
   a separate search layer — a real, documented deviation from the
   original phased plan, not a silent reordering.
-- **Phase 3** — a priority-tiered notification center distinct from the
-  existing toast system, built on the real precedent
-  `ExecutiveVoting.tsx`'s trade-proposal modal already establishes for
-  an interrupting "Critical" tier.
+- **Phase 3 — built (Part 3).** Smart Notification priority tiers plus
+  the Executive Alert Center. Every `CyberNotifications.tsx` toast now
+  carries a real `NotificationTier` (`critical`/`high`/`normal`)
+  recorded alongside it into a new `gameStore.alertHistory` — never a
+  second-guessed severity, always derived from the same field already
+  driving the toast's own kind/copy: `RiskWarning.severity` for risk
+  toasts, `ScannerAlert.alertType === "high_volatility"` for "high," and
+  the pre-existing kind routing otherwise. Two sources previously
+  produced zero proactive notification anywhere in this codebase — a
+  critical `RiskWarning` (only passive visibility in
+  RiskPanel/GlobalStatusBar before) and Emergency Stop activation — both
+  now push a sticky, non-auto-dismissing "critical" toast, the one real
+  interrupt behavior this phase adds to an otherwise auto-dismissing
+  toast system (a true modal interrupt already exists for trade
+  proposals via `ExecutiveVoting.tsx` and stays that component's own
+  territory, not duplicated here). `AlertCenter.tsx`, opened via the
+  Command Palette's new "Open Alert Center" command rather than a
+  second Ctrl+K-shaped surface, reuses `Glass`/`StatusPill`/
+  `TerminalLabel`/`EmptyState` from `CommandCenter/ui.tsx` for its own
+  chrome and lets the CEO browse every recorded toast with tier filter
+  chips (All/Critical/High/Normal, each a real live count) — history is
+  capped at 200 entries (`MAX_ALERT_HISTORY`), a render/storage cap only,
+  never a cap on which real events get recorded. Diffing Emergency Stop
+  activation against the previous tick correctly to avoid a duplicate
+  push required keying off the real `activatedAt` timestamp rather than
+  a plain boolean transition — `NexusManager.setEmergencyStop()` applies
+  the activate/resume response immediately, ahead of the next real WS
+  broadcast tick (the same "don't wait for the next tick" pattern
+  `riskLimits` already uses), so a stale, already-in-flight
+  `active: false` broadcast sent by the server just before activation
+  can be processed just after the immediate apply; a boolean diff would
+  misread that as "resumed" and double-push on the next real tick,
+  while `activatedAt`'s identity is untouched by a stale inactive tick.
 - **Phase 4 — built (Part 3).** A real, CEO-triggerable Emergency Stop:
   `app/emergency_stop.py`'s `activate_emergency_stop()`/`resume_trading()`
   pure state-transition functions, a new `EmergencyStopState` on
@@ -529,15 +559,15 @@ each remains its own separable slice awaiting its own go-ahead.
 
 **Part 3's own remaining scope, still not implemented:** Black Swan
 Protection, Broker Failover, Emergency Contacts, and recovery
-procedures all genuinely don't exist and are not fabricated (weekly/
+procedures all genuinely don't exist and are not fabricated. Every other
+buildable piece of Part 3's original brief is now built — weekly/
 monthly loss limits, the global status bar, Automation Mode cycling +
-tab quick-jumps, the Command Palette, and Universal Search — the entire
-remaining Part 3 buildable scope — are now built, per Phases
-4b/4c/4d/4e/4f above; the Dock is deliberately *partially*, not fully,
-unified — see 4d's own note on why Pause/Resume/Emergency Stop weren't
-physically merged into it); and a priority-tiered Executive Alert
-Center — the one remaining genuinely unbuilt piece of Part 3's original
-brief. Two of the command palette's own example commands were confirmed
+tab quick-jumps, the Command Palette, Universal Search, Smart
+Notification priority tiers, and the Executive Alert Center (Phases
+4b/4c/4d/4e/4f, and Phase 3 above); the Dock is deliberately *partially*,
+not fully, unified — see 4d's own note on why Pause/Resume/Emergency
+Stop weren't physically merged into it. Two of the command palette's own
+example commands were confirmed
 to have no real destination to open at all and were deliberately left
 out rather than faked: "Open Charles Schwab" (confirmed zero real
 broker integration exists anywhere — `app/broker.py`'s own module

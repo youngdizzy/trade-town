@@ -182,6 +182,47 @@ development milestones, not semver releases.
   regression clean except the already-confirmed pre-existing flaky
   movement-key test.
 
+- **Chapter 67 Part 3 — TTOS real Smart Notification priority tiers +
+  Executive Alert Center** (`frontend/src/types.ts`,
+  `game/systems/EventBus.ts`, `state/gameStore.ts`,
+  `ui/components/CommandCenter/CyberNotifications.tsx`,
+  `ui/components/AlertCenter.tsx`, `ui/components/CommandPalette.tsx`):
+  the one remaining genuinely unbuilt piece of Part 3's original brief.
+  Every toast now carries a real `NotificationTier`
+  (`critical`/`high`/`normal`), always derived from the same field
+  already driving the toast's own kind/copy — never a second-guessed
+  severity — and recorded into a new `gameStore.alertHistory` (capped
+  at 200 entries, `MAX_ALERT_HISTORY`, a render/storage cap only, same
+  "cap render, never cap real data" pattern Universal Search's
+  `MAX_RESULTS` already established). Two sources previously produced
+  zero proactive notification anywhere in this codebase — a critical
+  `RiskWarning` (only passive visibility in RiskPanel/GlobalStatusBar
+  before) and Emergency Stop activation — both now push a sticky,
+  non-auto-dismissing "critical" toast, the one real interrupt behavior
+  this phase adds (a true modal interrupt already exists for trade
+  proposals via `ExecutiveVoting.tsx` and stays that component's own
+  territory). New `AlertCenter.tsx`, opened via the Command Palette's
+  new "Open Alert Center" command rather than a second Ctrl+K-shaped
+  surface, reuses `Glass`/`StatusPill`/`TerminalLabel`/`EmptyState`
+  from `CommandCenter/ui.tsx` for its own chrome, with tier filter
+  chips (All/Critical/High/Normal, each a real live count). Diffing
+  Emergency Stop activation correctly (without a duplicate push)
+  required keying off the real `activatedAt` timestamp rather than a
+  plain boolean transition: `NexusManager.setEmergencyStop()` applies
+  the activate/resume response immediately, ahead of the next real WS
+  broadcast tick (the same "don't wait for the next tick" pattern
+  `riskLimits` already uses), so a stale, already-in-flight
+  `active: false` broadcast sent by the server just before activation
+  can be processed just after the immediate apply — a boolean diff
+  misread that race as "resumed" and double-pushed on the next real
+  tick, caught live via a new `alertCenter.spec.ts` before this fix.
+  `tsc`/`eslint`/`vite build` clean, a new `alertCenter.spec.ts`
+  exercises the real running app end-to-end (activates the real
+  Emergency Stop, confirms the sticky toast survives past the normal
+  6s auto-dismiss window, opens the real Alert Center via the Command
+  Palette, and confirms real recorded history + tier filtering), full
+  Playwright regression passing.
+
 - **Chapter 67 Phase 1 — TTOS 7-section grouped navigation**
   (`frontend/src/ui/components/CommandCenter/lib/navigation.ts`,
   `FullCommandCenter.tsx`): before writing any code, a full audit +

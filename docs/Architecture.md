@@ -6759,6 +6759,97 @@ additions only render while the palette is open (unlike
 `GlobalStatusBar`/`QuickActionDock`, which are always mounted), so they
 don't inherit that always-visible-label-collision risk class.
 
+### TTOS Smart Notification priority tiers + Executive Alert Center, Design Bible Chapter 67
+
+The one remaining genuinely unbuilt piece of Part 3's original brief.
+Every `CyberNotifications.tsx` toast now carries a real
+`NotificationTier` (`"critical" | "high" | "normal"`), always derived
+from the same field already driving that toast's own kind/copy — never
+a second-guessed severity computed separately. `push()`'s signature
+gained a `tier` parameter and an optional `sticky` flag; every call site
+was updated to pass its own real tier: `RiskWarning.severity ===
+"critical"` for risk toasts, `ScannerAlert.alertType ===
+"high_volatility"` for "high," `save:failed` for a real data-loss risk
+("critical", and now sticky — a genuine behavioral change from the
+previous always-auto-dismissing save-failure toast), everything else
+"normal".
+
+**Two real event sources previously produced zero proactive
+notification anywhere in this codebase** — a critical `RiskWarning`
+(only passive visibility existed, in `RiskPanel.tsx`/
+`GlobalStatusBar.tsx`) and Emergency Stop activation (only the button's
+own visual flip and a Company Memory entry). Both now push a sticky,
+non-auto-dismissing "critical" toast — the one real interrupt behavior
+this phase adds to an otherwise always-auto-dismissing (6s) toast
+system. A true modal interrupt already exists for trade proposals via
+`ExecutiveVoting.tsx` and stays that component's own territory, not
+duplicated here.
+
+**Diffing correctly required more care than a plain boolean flip.** The
+risk-warning listener diffs newly-appeared warning ids against the
+previous tick's `Set<string>` (`priorRiskWarningIds`), safe because risk
+warnings are purely WS-tick-driven with no competing update channel.
+Emergency Stop is different: `NexusManager.setEmergencyStop()` applies
+the activate/resume API response *immediately*, ahead of the next real
+WS broadcast tick — the same "don't wait for the next tick" pattern
+`riskLimits` already uses. That immediate-apply channel can race a
+regular broadcast: a stale, already-in-flight `active: false` tick sent
+by the server *before* activation can be processed by the client's
+`onmessage` handler *after* the immediate apply resolves (fetch
+resolution and WS message delivery are two independent async sources
+with no ordering guarantee between them, even though messages *within*
+the WS stream itself stay ordered). A plain `wasActive` boolean would
+read that stale tick as "resumed," then read the next real (still
+`active: true`) tick as a brand-new activation and double-push — this
+exact bug was caught live by a first draft of `alertCenter.spec.ts`
+(`getByText(...)` resolving to 2 elements after a single, real
+activation). The fix keys the "already notified" marker off the real
+`activatedAt` timestamp (unique per genuine activation) instead of a
+boolean: `notifiedEmergencyStopAt` only advances when `state.active &&
+state.activatedAt !== notifiedEmergencyStopAt.current`, and is left
+untouched by any `active: false` tick, stale or current, since that
+branch never runs when `state.active` is false. A genuine resume-then-
+reactivate cycle still notifies correctly, since the backend always
+mints a new `activatedAt` for a real new activation.
+
+**Every toast (not just critical ones) is recorded** into a new
+`gameStore.alertHistory: AlertEntry[]` via `pushAlert(tier, title,
+body)`, called from inside `push()` itself so no call site needs to
+remember to record separately. Capped at 200 entries
+(`MAX_ALERT_HISTORY`) — a render/storage cap only, the same "cap
+render, never cap the real underlying data" shape Universal Search's
+`MAX_RESULTS` already established, applied here to history retention
+instead of search results.
+
+**`AlertCenter.tsx` (new)** is the browsable history view, opened via
+the Command Palette's new "Open Alert Center" command
+(`EventBus.emit("ui:alertCenter", { open: true })`) rather than a
+second Ctrl+K-shaped surface or a bespoke trigger — one more entry in
+the same real-actions list the palette already offers. It reuses
+`Glass`/`StatusPill`/`TerminalLabel`/`EmptyState` from
+`CommandCenter/ui.tsx` for its own chrome rather than inventing new
+overlay primitives, and joins the existing `OVERLAY_KEYS` set
+(`alertCenterOpen`) so opening it closes any other exclusive overlay and
+blocks movement the same way every other full-screen overlay in this
+codebase already does. Tier filter chips (All/Critical/High/Normal)
+each show a real live count derived from `alertHistory` itself, never a
+static or placeholder number.
+
+**Verified**: `tsc`/`eslint`/`vite build` clean. Live-verified against
+the running dev stack: activating the real Emergency Stop produces the
+sticky red pulsing toast, confirmed still visible 7s later (past the 6s
+auto-dismiss every other toast kind uses); opening the Alert Center via
+the palette shows the real accumulated history with working tier
+filtering. A new `alertCenter.spec.ts` exercises this same flow end to
+end against the real backend (`POST /api/emergency-stop/activate`, the
+same endpoint `emergencyStop.spec.ts` already exercises), asserting the
+sticky toast, the real recorded history entry, and the tier filter —
+using `.first()` where the shared dev backend can legitimately carry
+more than one real Emergency Stop activation across a test session, the
+same "real second correct instance, not a bug" pattern this chapter's
+`GlobalStatusBar`/`QuickActionDock` slices already established. Full
+Playwright regression passing.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the
