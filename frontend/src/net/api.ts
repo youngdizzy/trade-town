@@ -17,6 +17,8 @@ import type {
   EmergencyStopState,
   ExecutiveAccuracyScore,
   ExecutiveRecommendation,
+  WeightedExecutiveRecommendation,
+  WeightProfile,
   FoundationalMentorId,
   FoundationalMentorState,
   FoundationalResourceType,
@@ -177,6 +179,12 @@ export const api = {
   getExecutiveIntelligence: (proposalId: string) => request<ExecutiveRecommendation>(`/executive/intelligence?proposalId=${encodeURIComponent(proposalId)}`),
   // Design Bible Chapter 70 Part 2 — Executive Accuracy Score.
   getExecutiveAccuracy: () => request<ExecutiveAccuracyScore[]>("/executive/accuracy"),
+  // Design Bible Chapter 70 Part 3 — Weighted Executive Decision Engine.
+  // `profile` optionally previews a profile without persisting it.
+  getWeightedDecision: (proposalId: string, profile?: WeightProfile) =>
+    request<WeightedExecutiveRecommendation>(
+      `/executive/weighted-decision?proposalId=${encodeURIComponent(proposalId)}${profile ? `&profile=${encodeURIComponent(profile)}` : ""}`,
+    ),
   getKnowledgeGraph: () => request<KnowledgeGraph>("/knowledge-graph"),
   submitQotdResponse: (questionId: string, response: string) =>
     request<{ question: QuestionOfTheDay }>("/mentor/qotd/respond", {

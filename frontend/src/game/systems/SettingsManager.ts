@@ -12,6 +12,8 @@ const DEFAULT_SETTINGS: SettingsState = {
   companyPriority: "balanced",
   workMode: "work",
   ceoAcademyLearningMode: false,
+  activeWeightProfile: "balanced_institutional",
+  customDepartmentWeights: {},
 };
 
 /** Persists user preferences to localStorage and broadcasts changes on the EventBus. */

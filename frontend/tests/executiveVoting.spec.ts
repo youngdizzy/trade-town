@@ -214,6 +214,43 @@ test("Executive Intelligence Network panel synthesizes real department opinions 
   await expect(popup.getByText(/recomputed fresh each time this panel opens, not stored/)).toBeVisible();
 });
 
+test("Weighted Executive Decision Engine panel shows Raw vs Weighted votes and per-department influence", async ({ page }) => {
+  await page.goto("/");
+  await continueGame(page);
+  await boostResearchToThreshold(page);
+  await page.keyboard.press("Tab");
+  await clickExpand(page);
+  await clickTab(page, "EXECUTIVE");
+
+  const pendingRow = page.locator("button").filter({ hasText: /% confidence/ }).first();
+  await expect(pendingRow).toBeVisible({ timeout: 20000 });
+  await pendingRow.click();
+
+  const popup = page.getByTestId("executive-voting");
+  await expect(popup).toBeVisible();
+
+  await popup.getByText("OPEN WEIGHTED EXECUTIVE DECISION ENGINE").click();
+  await expect(popup.getByText(/Weighted Executive Decision Engine —/)).toBeVisible({ timeout: 10000 });
+
+  await expect(popup.getByText("RAW VOTE", { exact: true })).toBeVisible();
+  await expect(popup.getByText("WEIGHTED VOTE", { exact: true })).toBeVisible();
+  await expect(popup.getByText(/Market regime:/)).toBeVisible();
+  await expect(popup.getByText("SCORE BY ACTION (published, 0-100)")).toBeVisible();
+
+  // Design Bible Chapter 70 Part 3 — every one of the 9 real departments
+  // gets a real, published multiplier and reasoning line, never a
+  // hidden blend.
+  for (const label of ["Research", "Quant", "Risk", "Simulation", "Decision Intelligence", "Coach", "Founders", "Devil's Advocate", "Market Intelligence"]) {
+    await expect(popup.getByText(label, { exact: true })).toBeVisible();
+  }
+
+  // Switching the Weight Profile re-fetches a live, real preview without
+  // persisting until "SET AS ACTIVE PROFILE" is clicked.
+  await popup.getByRole("combobox").selectOption("risk_first");
+  await expect(popup.getByText(/Risk First — 2\.00× preset emphasis/)).toBeVisible({ timeout: 10000 });
+  await expect(popup.getByText("SET AS ACTIVE PROFILE")).toBeVisible();
+});
+
 test("Executive panel in the Command Center lists pending proposals and CEO track record", async ({ page }) => {
   await page.goto("/");
   await continueGame(page);

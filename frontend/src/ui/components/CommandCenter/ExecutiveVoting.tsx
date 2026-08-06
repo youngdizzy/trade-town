@@ -7,19 +7,23 @@ import type {
   DebateTurn,
   ExecutiveAccuracyScore,
   ExecutiveAction,
+  ExecutiveDepartmentRole,
   ExecutiveRecommendation,
   GatekeeperVerdict,
   HoldReason,
   ScenarioResult,
   ScenarioType,
   TradeProposal,
+  WeightedExecutiveRecommendation,
+  WeightProfile,
   WhatIfSimulation,
 } from "@/types";
-import { CONFIDENCE_TIER_LABEL, EXECUTIVE_ACTION_LABEL, EXECUTIVE_DEPARTMENT_LABEL, EXECUTIVE_STANCE_LABEL, ROLE_TO_AGENT } from "@/types";
+import { CONFIDENCE_TIER_LABEL, EXECUTIVE_ACTION_LABEL, EXECUTIVE_DEPARTMENT_LABEL, EXECUTIVE_STANCE_LABEL, ROLE_TO_AGENT, WEIGHT_PROFILE_LABEL } from "@/types";
 import { api } from "@/net/api";
 import { NexusManager } from "@/game/systems/NexusManager";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { EventBus } from "@/game/systems/EventBus";
+import { SettingsManager } from "@/game/systems/SettingsManager";
 import { confidenceTierTone, executiveActionTone, executiveStanceTone, formatMoney, formatPct, preTradeChecklist } from "./lib/derive";
 import { AnimatedGrid, DataRow, Glass, Meter, StatusPill, TerminalLabel } from "./ui";
 
@@ -77,6 +81,7 @@ export function ExecutiveVoting() {
     debates,
     challengeReports,
     constitution,
+    settings,
   } = useGameStore();
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
@@ -112,6 +117,16 @@ export function ExecutiveVoting() {
   const [accuracy, setAccuracy] = useState<ExecutiveAccuracyScore[] | null>(null);
   const [accuracyLoading, setAccuracyLoading] = useState(false);
   const [accuracyError, setAccuracyError] = useState<string | null>(null);
+  // Design Bible Chapter 70 Part 3 — Weighted Executive Decision Engine.
+  // previewProfile === null means "use the CEO's persisted active
+  // profile"; picking a different profile in the panel below previews
+  // it live without persisting — only "Set as Active Profile" does that.
+  const [showWeighted, setShowWeighted] = useState(false);
+  const [weighted, setWeighted] = useState<WeightedExecutiveRecommendation | null>(null);
+  const [weightedLoading, setWeightedLoading] = useState(false);
+  const [weightedError, setWeightedError] = useState<string | null>(null);
+  const [previewProfile, setPreviewProfile] = useState<WeightProfile | null>(null);
+  const [customWeightDraft, setCustomWeightDraft] = useState<Partial<Record<ExecutiveDepartmentRole, number>>>({});
   // v0.7 Feature 20 — set only when the Trade Gatekeeper vetoes the CEO's
   // real BUY/SELL call; holds the proposals list the backend already
   // returned so acknowledging can advance to the next one without a
@@ -205,6 +220,32 @@ export function ExecutiveVoting() {
     };
   }, [showAccuracy]);
 
+  // Design Bible Chapter 70 Part 3 — Weighted Executive Decision Engine,
+  // fetched fresh (same convention as the two effects above) whenever
+  // the section is open, the proposal changes, or the CEO previews a
+  // different profile.
+  useEffect(() => {
+    if (!showWeighted || !proposal) return;
+    let cancelled = false;
+    setWeightedLoading(true);
+    setWeightedError(null);
+    api
+      .getWeightedDecision(proposal.id, previewProfile ?? undefined)
+      .then((res) => {
+        if (!cancelled) setWeighted(res);
+      })
+      .catch((err) => {
+        if (!cancelled) setWeightedError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setWeightedLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showWeighted, proposal?.id, previewProfile]);
+
   // Same reasoning as TradeOutcomeBanner's own MainMenuScene guard: the
   // WebSocket connects independent of the title screen, so never render
   // a full-screen popup over it. A pending gatekeeperRejection keeps this
@@ -218,6 +259,8 @@ export function ExecutiveVoting() {
     setShowAnalysis(false);
     setShowWhatIf(false);
     setShowExecIntel(false);
+    setShowWeighted(false);
+    setPreviewProfile(null);
     setExpandedScenario(null);
     setError(null);
     EventBus.emit("ui:executiveVoting", { open: false });
@@ -243,6 +286,8 @@ export function ExecutiveVoting() {
       setShowAnalysis(false);
       setShowWhatIf(false);
       setShowExecIntel(false);
+      setShowWeighted(false);
+      setPreviewProfile(null);
       setExpandedScenario(null);
       // v0.7 Feature 20 — the CEO's own buy/sell can still be vetoed by
       // the Trade Gatekeeper; surface that instead of silently advancing
@@ -278,6 +323,8 @@ export function ExecutiveVoting() {
       setShowAnalysis(false);
       setShowWhatIf(false);
       setShowExecIntel(false);
+      setShowWeighted(false);
+      setPreviewProfile(null);
       setExpandedScenario(null);
       const resolvedDecision = res.decisions.find((d) => d.id === `decision-${proposal.id}`);
       if (resolvedDecision?.gatekeeperVerdict && !resolvedDecision.gatekeeperVerdict.approved) {
@@ -679,6 +726,87 @@ export function ExecutiveVoting() {
               {accuracyLoading && <div className="text-[9px] text-cmd-textDim">Reviewing closed trades…</div>}
               {accuracyError && <div className="text-[9px] text-cmd-red">{accuracyError}</div>}
               {!accuracyLoading && accuracy && <ExecutiveAccuracyPanel scores={accuracy} />}
+            </Glass>
+          )}
+
+          <button
+            type="button"
+            onClick={() => setShowWeighted(!showWeighted)}
+            className="w-full rounded-sm border border-cmd-border px-3 py-1.5 text-cmd-textDim transition-colors hover:border-cmd-purple/50 hover:text-cmd-purple"
+          >
+            {showWeighted ? "HIDE WEIGHTED EXECUTIVE DECISION ENGINE ▲" : "OPEN WEIGHTED EXECUTIVE DECISION ENGINE ▼"}
+          </button>
+
+          {showWeighted && (
+            <Glass className="p-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <TerminalLabel>Weighted Executive Decision Engine — {proposal.symbol}</TerminalLabel>
+                <span className="text-[9px] text-cmd-textDim">Advisory only — never overrides the Gatekeeper.</span>
+              </div>
+              <div className="mb-2 flex items-center gap-2 text-[9px]">
+                <span className="text-cmd-textDim">Weight Profile:</span>
+                <select
+                  value={previewProfile ?? settings.activeWeightProfile}
+                  onChange={(e) => setPreviewProfile(e.target.value as WeightProfile)}
+                  className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-1.5 py-0.5 text-cmd-text"
+                >
+                  {(Object.keys(WEIGHT_PROFILE_LABEL) as WeightProfile[]).map((p) => (
+                    <option key={p} value={p}>
+                      {WEIGHT_PROFILE_LABEL[p]}
+                    </option>
+                  ))}
+                </select>
+                {previewProfile && previewProfile !== settings.activeWeightProfile && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      SettingsManager.update({ activeWeightProfile: previewProfile });
+                      setPreviewProfile(null);
+                    }}
+                    className="rounded-sm border border-cmd-cyan/50 px-1.5 py-0.5 text-cmd-cyan transition-colors hover:bg-cmd-cyan/10"
+                  >
+                    SET AS ACTIVE PROFILE
+                  </button>
+                )}
+              </div>
+
+              {(previewProfile ?? settings.activeWeightProfile) === "custom" && (
+                <div className="mb-2 rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-2">
+                  <div className="mb-1.5 text-[9px] text-cmd-textDim">
+                    Custom CEO Profile — set each department&apos;s multiplier (1.00 = neutral). Saved weights apply on the next settings sync,
+                    same as every other CEO preference.
+                  </div>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    {(Object.keys(EXECUTIVE_DEPARTMENT_LABEL) as ExecutiveDepartmentRole[]).map((role) => (
+                      <label key={role} className="flex items-center justify-between gap-1 text-[8px] text-cmd-textDim">
+                        {EXECUTIVE_DEPARTMENT_LABEL[role]}
+                        <input
+                          type="number"
+                          min={0}
+                          step={0.1}
+                          value={customWeightDraft[role] ?? settings.customDepartmentWeights[role] ?? 1.0}
+                          onChange={(e) => setCustomWeightDraft((prev) => ({ ...prev, [role]: Number(e.target.value) }))}
+                          className="w-12 rounded-sm border border-cmd-border bg-cmd-bg/60 px-1 py-0.5 text-right text-cmd-text"
+                        />
+                      </label>
+                    ))}
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      SettingsManager.update({ customDepartmentWeights: { ...settings.customDepartmentWeights, ...customWeightDraft } });
+                      setCustomWeightDraft({});
+                    }}
+                    disabled={Object.keys(customWeightDraft).length === 0}
+                    className="mt-1.5 rounded-sm border border-cmd-cyan/50 px-1.5 py-0.5 text-[9px] text-cmd-cyan transition-colors hover:bg-cmd-cyan/10 disabled:opacity-40"
+                  >
+                    SAVE CUSTOM WEIGHTS
+                  </button>
+                </div>
+              )}
+              {weightedLoading && <div className="text-[9px] text-cmd-textDim">Reweighing the board…</div>}
+              {weightedError && <div className="text-[9px] text-cmd-red">{weightedError}</div>}
+              {!weightedLoading && weighted && weighted.proposalId === proposal.id && <WeightedDecisionPanel recommendation={weighted} />}
             </Glass>
           )}
 
@@ -1259,6 +1387,67 @@ function ExecutiveAccuracyPanel({ scores }: { scores: ExecutiveAccuracyScore[] }
           Not yet scored (no closed, directional trades tracked): {untracked.map((s) => s.departmentLabel).join(", ")}.
         </div>
       )}
+    </div>
+  );
+}
+
+/**
+ * Design Bible Chapter 70 Part 3 — Weighted Executive Decision Engine.
+ * Always shown alongside the Raw Vote (Executive Intelligence Network
+ * panel above), never replacing it — a department's weight is the
+ * product of small, published multipliers, each shown in its own
+ * reasoning line, never a hidden blend. Purely advisory: nothing here
+ * gates or resolves the trade.
+ */
+function WeightedDecisionPanel({ recommendation }: { recommendation: WeightedExecutiveRecommendation }) {
+  const sortedInfluences = [...recommendation.departmentInfluences].sort((a, b) => b.finalWeight - a.finalWeight);
+  const sortedActions = Object.entries(recommendation.scoreByAction).sort((a, b) => b[1] - a[1]);
+  return (
+    <div className="space-y-2">
+      <div className="grid grid-cols-2 gap-2 text-[9px]">
+        <div className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-2">
+          <div className="mb-1 text-cmd-textDim">RAW VOTE</div>
+          <StatusPill tone={executiveActionTone(recommendation.rawAction)}>{EXECUTIVE_ACTION_LABEL[recommendation.rawAction]}</StatusPill>
+        </div>
+        <div className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-2">
+          <div className="mb-1 text-cmd-textDim">WEIGHTED VOTE</div>
+          <StatusPill tone={executiveActionTone(recommendation.weightedAction)}>{EXECUTIVE_ACTION_LABEL[recommendation.weightedAction]}</StatusPill>
+        </div>
+      </div>
+      <div className="text-[9px] text-cmd-textDim">
+        {recommendation.agreesWithRaw
+          ? "Weighted and Raw votes agree — reweighting didn't change the call."
+          : "Weighted and Raw votes disagree — the CEO decides which one to trust."}{" "}
+        Market regime: <span className="text-cmd-text">{recommendation.marketRegime.replace(/_/g, " ")}</span>.
+      </div>
+
+      <div className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-2 text-[9px]">
+        <div className="mb-1 text-cmd-textDim">SCORE BY ACTION (published, 0-100)</div>
+        <div className="space-y-1">
+          {sortedActions.map(([action, score]) => (
+            <div key={action} className="flex items-center justify-between gap-2">
+              <span className="text-cmd-text">{EXECUTIVE_ACTION_LABEL[action as ExecutiveAction] ?? action}</span>
+              <span className="text-cmd-cyan">{score.toFixed(0)}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="space-y-1">
+        {sortedInfluences.map((di) => (
+          <div key={di.role} className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-2 text-[9px]">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <span className="text-cmd-text">{di.departmentLabel}</span>
+              <span className="text-cmd-cyan">{di.finalWeight.toFixed(2)}×</span>
+            </div>
+            <div className="text-cmd-textDim">{di.reasoning}</div>
+          </div>
+        ))}
+      </div>
+      <div className="text-[8px] text-cmd-textDim">
+        Historical Accuracy and Market Conditions are the only two of the brief&apos;s eight named weighting inputs with a real, computable
+        source today — see the Design Bible chapter for the honest boundary on the rest.
+      </div>
     </div>
   );
 }

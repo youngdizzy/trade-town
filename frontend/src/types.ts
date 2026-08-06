@@ -1478,6 +1478,53 @@ export const EXECUTIVE_STANCE_LABEL: Record<ExecutiveStance, string> = {
   recommend_rejecting: "Recommend Rejecting",
 };
 
+// Design Bible Chapter 70 Part 3 — Weighted Executive Decision Engine
+// (WEDE). Honest scope: only two of the brief's eight named weighting
+// inputs have a real, computable source (Historical Accuracy, Market
+// Conditions) — see backend/app/weighted_decisions.py's module
+// docstring for the full boundary.
+export type WeightProfile =
+  | "equal_voting"
+  | "performance_weighted"
+  | "risk_first"
+  | "growth_first"
+  | "research_first"
+  | "capital_preservation"
+  | "balanced_institutional"
+  | "custom";
+
+export const WEIGHT_PROFILE_LABEL: Record<WeightProfile, string> = {
+  equal_voting: "Equal Voting",
+  performance_weighted: "Performance Weighted",
+  risk_first: "Risk First",
+  growth_first: "Growth First",
+  research_first: "Research First",
+  capital_preservation: "Capital Preservation",
+  balanced_institutional: "Balanced Institutional",
+  custom: "Custom CEO Profile",
+};
+
+export interface DepartmentInfluence {
+  role: ExecutiveDepartmentRole;
+  departmentLabel: string;
+  accuracyMultiplier: number;
+  marketMultiplier: number;
+  presetMultiplier: number;
+  finalWeight: number;
+  reasoning: string;
+}
+
+export interface WeightedExecutiveRecommendation {
+  proposalId: string;
+  profile: WeightProfile;
+  marketRegime: MarketEnvironmentRegime;
+  departmentInfluences: DepartmentInfluence[];
+  rawAction: ExecutiveAction;
+  weightedAction: ExecutiveAction;
+  scoreByAction: Record<string, number>;
+  agreesWithRaw: boolean;
+}
+
 // v0.7 Feature 50 (Part 2/3) — the Executive Meeting Log. Makes Part 1's
 // ephemeral synthesis permanent: one real entry per actual
 // resolve_proposal() call. See backend/app/executive_intelligence.py.
@@ -1961,6 +2008,12 @@ export interface SettingsState {
   // gates whether the CEO may ALSO voluntarily take the same lessons
   // personally. See FoundationalMentorState's own doc comment above.
   ceoAcademyLearningMode: boolean;
+  // Design Bible Chapter 70 Part 3 — Weighted Executive Decision Engine.
+  // Same client-authoritative mechanism as operatingMode/companyPriority
+  // above — changed locally, persisted on the next save.
+  activeWeightProfile: WeightProfile;
+  // Only read when activeWeightProfile === "custom".
+  customDepartmentWeights: Partial<Record<ExecutiveDepartmentRole, number>>;
 }
 
 // v0.7 Feature 34 — CEO time controls (POST /api/time/advance).
