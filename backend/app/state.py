@@ -18,6 +18,10 @@ from app.black_box import archive_project, default_black_box_state, mark_breakth
 from app.config import settings
 from app.mentor import compute_mentor_state, compute_thinking_profiles, generate_question_of_the_day, submit_response
 from app.calendar import create_player_event, default_calendar, delete_player_event
+from app.accounts import allocate_capital as allocate_capital_fn
+from app.accounts import close_account as close_account_fn
+from app.accounts import create_account as create_account_fn
+from app.accounts import deallocate_capital as deallocate_capital_fn
 from app.treasury import create_rule, default_treasury, deposit, pause_all_rules, toggle_rule, withdraw
 from app.reasoning_lab import compute_reasoning_lab_state
 from app.wisdom import compute_wisdom_score
@@ -48,6 +52,7 @@ from app.sandbox import apply_review_decision, begin_company_review, begin_limit
 from app.sandbox import retire_strategy as retire_strategy_stage
 from app.scribe import record_ceo_decision, record_emergency_stop_event, record_proposal_hold, record_proposal_modify, record_strategy_failed_archive_entry, record_strategy_hall_of_fame_entry
 from app.schemas import (
+    AccountType,
     AgentId,
     BlackBoxPriority,
     BlackBoxProject,
@@ -790,6 +795,75 @@ class GameState:
             if error is None:
                 self.data = self.data.model_copy(update={"treasury": new_treasury, "paper_portfolio": new_portfolio})
             return self.data, error
+
+    async def create_account(self, name: str, account_type: AccountType, starting_balance: float) -> tuple[GameSaveState, str | None]:
+        """Design Bible Chapter 69 Part 1 — a new, real, isolated
+        sub-account, funded up front from a CEO-chosen starting balance
+        (the CEO's own choice, not drawn from the Treasury automatically
+        — see allocate_account_capital below for real, explicit
+        Treasury-to-account transfers after creation)."""
+        async with self.lock:
+            account_id = f"account-{len(self.data.accounts)}-{_now_iso()}"
+            accounts, error = create_account_fn(
+                self.data.accounts,
+                name=name,
+                account_type=account_type,
+                starting_balance=starting_balance,
+                base_risk_limits=self.data.risk_limits,
+                account_id=account_id,
+                now_iso=_now_iso(),
+            )
+            if error is None:
+                self.data = self.data.model_copy(update={"accounts": accounts})
+            return self.data, error
+
+    async def close_account(self, account_id: str) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            accounts, error = close_account_fn(self.data.accounts, account_id)
+            if error is None:
+                active = self.data.active_account_id
+                self.data = self.data.model_copy(
+                    update={"accounts": accounts, "active_account_id": None if active == account_id else active}
+                )
+            return self.data, error
+
+    async def allocate_account_capital(self, account_id: str, amount: float) -> tuple[GameSaveState, str | None]:
+        """Treasury -> a chosen account, under the same lock every other
+        state mutation uses."""
+        async with self.lock:
+            time = self.data.time
+            transaction_id = f"account-allocate-{account_id}-{time.day}-{time.hour}-{time.minute}-{len(self.data.treasury.transactions)}"
+            accounts, treasury, error = allocate_capital_fn(
+                self.data.accounts, self.data.treasury, account_id, amount, sim_day=time.day, now_iso=_now_iso(), transaction_id=transaction_id
+            )
+            if error is None:
+                self.data = self.data.model_copy(update={"accounts": accounts, "treasury": treasury})
+            return self.data, error
+
+    async def deallocate_account_capital(self, account_id: str, amount: float) -> tuple[GameSaveState, str | None]:
+        """A chosen account -> Treasury, under the same lock every other
+        state mutation uses."""
+        async with self.lock:
+            time = self.data.time
+            transaction_id = f"account-deallocate-{account_id}-{time.day}-{time.hour}-{time.minute}-{len(self.data.treasury.transactions)}"
+            accounts, treasury, error = deallocate_capital_fn(
+                self.data.accounts, self.data.treasury, account_id, amount, sim_day=time.day, now_iso=_now_iso(), transaction_id=transaction_id
+            )
+            if error is None:
+                self.data = self.data.model_copy(update={"accounts": accounts, "treasury": treasury})
+            return self.data, error
+
+    async def switch_active_account(self, account_id: str | None) -> tuple[GameSaveState, str | None]:
+        """Design Bible Chapter 69 Part 1 — Account Switching. `None`
+        means the primary PaperPortfolio; any other value must be a real
+        account id. Purely a CEO-facing viewing preference — never
+        changes which capital pool a trade executes against (see
+        app/accounts.py's module docstring on live-trading scope)."""
+        async with self.lock:
+            if account_id is not None and not any(a.id == account_id for a in self.data.accounts):
+                return self.data, f"No account with id {account_id!r}."
+            self.data = self.data.model_copy(update={"active_account_id": account_id})
+            return self.data, None
 
     async def create_savings_rule(self, rule_type: SavingsRuleType, percent: float, reserve_target: float | None) -> tuple[GameSaveState, str | None]:
         async with self.lock:

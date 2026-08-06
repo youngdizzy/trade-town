@@ -2,6 +2,7 @@ import Phaser from "phaser";
 import type {
   AcademyProject,
   AcademyState,
+  Account,
   AgentEnergy,
   AgentId,
   AgentKnowledgeState,
@@ -223,6 +224,10 @@ export interface GameEvents {
   "foundationalMentorState:updated": FoundationalMentorState;
   "founderState:updated": FounderState;
   "treasury:updated": TreasuryState;
+  // Design Bible Chapter 69 Part 1 — Multi-Account & Fund Management
+  // System.
+  "accounts:updated": Account[];
+  "activeAccount:updated": string | null;
   "calendar:updated": CalendarState;
   "blackBox:updated": BlackBoxState;
   "ui:executiveVoting": { open: boolean; proposalId?: string };

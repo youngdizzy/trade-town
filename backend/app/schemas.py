@@ -691,6 +691,40 @@ class PaperPortfolio(CamelModel):
     loss_count: int = Field(alias="lossCount")
 
 
+# Design Bible Chapter 69 Part 1 — Multi-Account & Fund Management
+# System. `PaperPortfolio` above (the company's one trading account) and
+# `TreasuryState` (the CEO's own isolated capital) were this chapter's
+# real precedent for genuine capital-pool isolation; `Account` below is
+# the honest generalization of that same pattern to more than two pools.
+AccountType = Literal["personal", "ira", "business", "prop_firm", "family"]
+
+
+class Account(CamelModel):
+    """One real, isolated capital pool beyond the company's primary
+    PaperPortfolio — its own cash, positions, trade history (embedding a
+    real PaperPortfolio rather than duplicating its fields, so every
+    existing function that already operates on a PaperPortfolio, like
+    app/risk_engine.py's portfolio_equity(), works on an Account's
+    portfolio for free), and its own editable RiskLimits profile.
+
+    Honest scope for this pass (see app/accounts.py's module docstring):
+    a real, CEO-manageable capital ledger — create an account, allocate/
+    deallocate real capital between it and the Treasury, track its own
+    equity over time. Live trading execution (new TradeProposals opening
+    positions IN a specific non-primary account) is not wired yet — that
+    would mean parameterizing the entire trading pipeline (proposals,
+    the Trade Gatekeeper, Sentinel/Guardian) by account, a materially
+    larger change than this pass makes, and named honestly in this
+    chapter's Future Expansion rather than silently assumed."""
+
+    id: str
+    name: str
+    account_type: AccountType = Field(alias="accountType")
+    portfolio: PaperPortfolio
+    risk_limits: RiskLimits = Field(alias="riskLimits")
+    created_at: str = Field(alias="createdAt")
+
+
 class StrategyStageEvent(CamelModel):
     """One real transition in a Strategy's Research Sandbox pipeline —
     see app/sandbox.py's module docstring for exactly what gates each
@@ -4683,6 +4717,13 @@ class GameSaveState(CamelModel):
     strategic_reviews: list[StrategicReview] = Field(
         default_factory=list, alias="strategicReviews"
     )
+    # Design Bible Chapter 69 Part 1 — Multi-Account & Fund Management
+    # System (app/accounts.py). Real, isolated capital pools beyond the
+    # primary PaperPortfolio above; `active_account_id` is None when the
+    # CEO is viewing the primary account (never a distinct Account
+    # object of its own — see app/accounts.py's module docstring).
+    accounts: list[Account] = Field(default_factory=list)
+    active_account_id: str | None = Field(default=None, alias="activeAccountId")
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(

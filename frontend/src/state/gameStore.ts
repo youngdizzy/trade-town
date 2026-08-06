@@ -1,6 +1,7 @@
 import type {
   AcademyProject,
   AcademyState,
+  Account,
   AgentEnergy,
   AgentId,
   AgentKnowledgeState,
@@ -171,6 +172,9 @@ export interface GameUiState {
   foundationalMentorState: FoundationalMentorState;
   founderState: FounderState;
   treasury: TreasuryState;
+  // Design Bible Chapter 69 Part 1 — Multi-Account & Fund Management System.
+  accounts: Account[];
+  activeAccountId: string | null;
   calendar: CalendarState;
   blackBox: BlackBoxState;
   agentEnergy: AgentEnergy;
@@ -439,6 +443,8 @@ class GameStore {
     foundationalMentorState: { mentors: [], progress: {}, certifications: [], ceoProgress: {}, activeMentorId: null, roadmapOrder: [], customLessonAnswers: {}, updatedAt: new Date().toISOString() },
     founderState: { retired: false, retiredAt: null, log: [], councilSessions: [], updatedAt: new Date().toISOString() },
     treasury: { balance: 0, lifetimeDeposits: 0, largestBalance: 0, transactions: [], savingsRules: [], monthlyReports: [], updatedAt: new Date().toISOString() },
+    accounts: [],
+    activeAccountId: null,
     calendar: { systemEvents: [], playerEvents: [], updatedAt: new Date().toISOString() },
     blackBox: { active: null, archive: [], reviews: [], viewedBreakthroughIds: [], updatedAt: new Date().toISOString() },
     agentEnergy: { current: 100, cap: 100, updatedAt: new Date().toISOString() },
@@ -610,6 +616,8 @@ class GameStore {
     EventBus.on("foundationalMentorState:updated", (foundationalMentorState) => this.set({ foundationalMentorState }));
     EventBus.on("founderState:updated", (founderState) => this.set({ founderState }));
     EventBus.on("treasury:updated", (treasury) => this.set({ treasury }));
+    EventBus.on("accounts:updated", (accounts) => this.set({ accounts }));
+    EventBus.on("activeAccount:updated", (activeAccountId) => this.set({ activeAccountId }));
     EventBus.on("calendar:updated", (calendar) => this.set({ calendar }));
     EventBus.on("blackBox:updated", (blackBox) => this.set({ blackBox }));
     EventBus.on("ui:executiveVoting", ({ open, proposalId }) =>

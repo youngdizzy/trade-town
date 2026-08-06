@@ -90,6 +90,12 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         "strategy_failed_archive",
         "goals",
         "strategic_reviews",
+        # Design Bible Chapter 69 Part 1 — Multi-Account & Fund
+        # Management System (app/accounts.py). Grouped with
+        # paper_portfolio/treasury above, not `derived`: an Account's
+        # portfolio is real mutated state, never recomputed from scratch.
+        "accounts",
+        "active_account_id",
     ),
     "research": ("research", "watchlist", "black_box"),
     # foundational_mentor_state lives here (not in `derived`) because,

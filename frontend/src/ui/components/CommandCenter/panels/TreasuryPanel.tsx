@@ -2,7 +2,8 @@ import { useMemo, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { NexusManager } from "@/game/systems/NexusManager";
 import { api } from "@/net/api";
-import type { SavingsRuleType, TreasuryTransaction } from "@/types";
+import type { Account, AccountType, SavingsRuleType, TreasuryTransaction } from "@/types";
+import { ACCOUNT_TYPE_LABEL } from "@/types";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../ui";
 
 const RULE_LABEL: Record<SavingsRuleType, string> = {
@@ -31,7 +32,7 @@ const TXN_TONE: Record<TreasuryTransaction["kind"], "green" | "amber" | "cyan"> 
  * panel is the Treasury.
  */
 export function TreasuryPanel() {
-  const { treasury, paperPortfolio } = useGameStore();
+  const { treasury, paperPortfolio, accounts, activeAccountId } = useGameStore();
   const [amount, setAmount] = useState("1000");
   const [busy, setBusy] = useState<"deposit" | "withdraw" | "rule" | "pause" | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -124,6 +125,8 @@ export function TreasuryPanel() {
           <DataRow label="Active Rules" value={String(treasury.savingsRules.filter((r) => r.active).length)} />
         </div>
       </Glass>
+
+      <AccountsSection accounts={accounts} activeAccountId={activeAccountId} />
 
       <Glass className="p-3">
         <TerminalLabel>Deposit / Withdraw</TerminalLabel>
@@ -264,5 +267,206 @@ export function TreasuryPanel() {
         )}
       </Glass>
     </div>
+  );
+}
+
+const ACCOUNT_TYPES: AccountType[] = ["personal", "ira", "business", "prop_firm", "family"];
+
+/**
+ * Design Bible Chapter 69 Part 1 — Multi-Account & Fund Management
+ * System. Every account here is a real, isolated capital pool (see
+ * backend/app/accounts.py's module docstring): its own cash, its own
+ * editable risk profile, funded by real, validated transfers to/from
+ * the CEO Treasury above — reusing the exact same deposit/withdraw
+ * mechanism, never a second transfer system. Honest scope: live trading
+ * execution against a non-primary account isn't wired yet, so "Balance"
+ * only moves via Allocate/Deallocate here, never a trade fill.
+ */
+function AccountsSection({ accounts, activeAccountId }: { accounts: Account[]; activeAccountId: string | null }) {
+  const [name, setName] = useState("");
+  const [accountType, setAccountType] = useState<AccountType>("personal");
+  const [startingBalance, setStartingBalance] = useState("1000");
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [amounts, setAmounts] = useState<Record<string, string>>({});
+  const [error, setError] = useState<string | null>(null);
+
+  const create = async () => {
+    if (busyId || !name.trim()) return;
+    setBusyId("create");
+    setError(null);
+    try {
+      const res = await api.createAccount(name.trim(), accountType, Number(startingBalance));
+      NexusManager.setAccounts(res.accounts);
+      setName("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const transfer = async (accountId: string, direction: "allocate" | "deallocate") => {
+    const amount = Number(amounts[accountId] ?? "");
+    if (!amount || amount <= 0 || busyId) return;
+    setBusyId(accountId);
+    setError(null);
+    try {
+      const res = direction === "allocate" ? await api.allocateAccountCapital(accountId, amount) : await api.deallocateAccountCapital(accountId, amount);
+      NexusManager.setAccounts(res.accounts);
+      NexusManager.setTreasury(res.treasury);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const close = async (accountId: string) => {
+    if (busyId) return;
+    setBusyId(accountId);
+    setError(null);
+    try {
+      const res = await api.closeAccount(accountId);
+      NexusManager.setAccounts(res.accounts);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const switchActive = async (accountId: string | null) => {
+    if (busyId) return;
+    try {
+      const res = await api.switchActiveAccount(accountId);
+      NexusManager.setActiveAccountId(res.activeAccountId);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
+  return (
+    <Glass className="p-3 lg:col-span-3">
+      <div className="mb-2 flex items-center justify-between">
+        <TerminalLabel>Multi-Account & Fund Management</TerminalLabel>
+        <StatusPill tone="cyan">{accounts.length} account{accounts.length === 1 ? "" : "s"}</StatusPill>
+      </div>
+      <p className="mb-2 text-[9px] text-cmd-textDim">
+        Each account below is a real, isolated capital pool with its own risk profile, funded by real transfers to/from the Treasury above. Live
+        trading execution against a non-primary account isn&apos;t wired yet — balances here move only through Allocate/Deallocate.
+      </p>
+
+      <div className="mb-2 flex flex-wrap items-end gap-2 border-b border-cmd-border/50 pb-2">
+        <input
+          type="text"
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="Account name"
+          className="min-w-[10rem] flex-1 rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1.5 text-[10px] text-cmd-text placeholder:text-cmd-textDim/60 focus:border-cmd-cyan/50 focus:outline-none"
+        />
+        <select
+          value={accountType}
+          onChange={(e) => setAccountType(e.target.value as AccountType)}
+          className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1.5 text-[10px] text-cmd-text focus:border-cmd-cyan/50 focus:outline-none"
+        >
+          {ACCOUNT_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {ACCOUNT_TYPE_LABEL[t]}
+            </option>
+          ))}
+        </select>
+        <input
+          type="number"
+          min={1}
+          value={startingBalance}
+          onChange={(e) => setStartingBalance(e.target.value)}
+          className="w-28 rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1.5 text-[10px] text-cmd-text focus:border-cmd-cyan/50 focus:outline-none"
+        />
+        <button
+          type="button"
+          onClick={() => void create()}
+          disabled={busyId !== null || !name.trim()}
+          className="rounded-sm border border-cmd-cyan/50 px-3 py-1.5 text-[10px] uppercase tracking-wider text-cmd-cyan transition-colors hover:bg-cmd-cyan/10 disabled:opacity-40"
+        >
+          {busyId === "create" ? "…" : "Create Account"}
+        </button>
+      </div>
+
+      {error && <div className="mb-2 text-[9px] text-cmd-red">{error}</div>}
+
+      {accounts.length === 0 ? (
+        <EmptyState>No sub-accounts yet — create one above to start a real, isolated capital pool.</EmptyState>
+      ) : (
+        <div className="space-y-1.5">
+          <button
+            type="button"
+            onClick={() => void switchActive(null)}
+            className={`flex w-full items-center justify-between rounded-sm border p-1.5 text-[9px] transition-colors ${
+              activeAccountId === null ? "border-cmd-cyan/60 bg-cmd-cyan/10" : "border-cmd-border/50 bg-cmd-bg/40 hover:border-cmd-cyan/40"
+            }`}
+          >
+            <span className="text-cmd-text">Primary (Operating Capital)</span>
+            {activeAccountId === null && <StatusPill tone="cyan">VIEWING</StatusPill>}
+          </button>
+          {accounts.map((account) => {
+            const canClose = account.portfolio.cashBalance <= 0 && account.portfolio.positions.length === 0;
+            return (
+              <div key={account.id} className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-2 text-[9px]">
+                <button type="button" onClick={() => void switchActive(account.id)} className="mb-1 flex w-full items-center justify-between gap-2 text-left">
+                  <span className="flex items-center gap-1.5">
+                    <span className="text-cmd-text">{account.name}</span>
+                    <span className="text-cmd-textDim">{ACCOUNT_TYPE_LABEL[account.accountType]}</span>
+                  </span>
+                  {activeAccountId === account.id && <StatusPill tone="cyan">VIEWING</StatusPill>}
+                </button>
+                <div className="mb-1 grid grid-cols-2 gap-x-3 gap-y-0.5 text-cmd-textDim">
+                  <span>
+                    Balance: <span className="tabular-nums text-cmd-text">${account.portfolio.cashBalance.toLocaleString(undefined, { maximumFractionDigits: 0 })}</span>
+                  </span>
+                  <span>
+                    Max Drawdown Limit: <span className="tabular-nums text-cmd-text">{account.riskLimits.maxDrawdownPct.toFixed(0)}%</span>
+                  </span>
+                </div>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <input
+                    type="number"
+                    min={1}
+                    value={amounts[account.id] ?? ""}
+                    onChange={(e) => setAmounts((prev) => ({ ...prev, [account.id]: e.target.value }))}
+                    placeholder="Amount"
+                    className="w-24 rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-[9px] text-cmd-text placeholder:text-cmd-textDim/60 focus:border-cmd-cyan/50 focus:outline-none"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => void transfer(account.id, "allocate")}
+                    disabled={busyId !== null}
+                    className="rounded-sm border border-cmd-green/50 px-2 py-1 text-cmd-green transition-colors hover:enabled:bg-cmd-green/10 disabled:opacity-40"
+                  >
+                    {busyId === account.id ? "…" : "Allocate ▸"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void transfer(account.id, "deallocate")}
+                    disabled={busyId !== null}
+                    className="rounded-sm border border-cmd-amber/50 px-2 py-1 text-cmd-amber transition-colors hover:enabled:bg-cmd-amber/10 disabled:opacity-40"
+                  >
+                    {busyId === account.id ? "…" : "◂ Deallocate"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void close(account.id)}
+                    disabled={busyId !== null || !canClose}
+                    title={canClose ? "Close this account" : "Deallocate all funds before closing"}
+                    className="ml-auto rounded-sm border border-cmd-red/40 px-2 py-1 text-cmd-red transition-colors hover:enabled:bg-cmd-red/10 disabled:opacity-40"
+                  >
+                    Close
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </Glass>
   );
 }

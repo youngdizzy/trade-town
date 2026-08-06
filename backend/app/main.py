@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db import init_db
 from app.persistence import load_state, persist_modules
-from app.routers import black_box, calendar, calibration, constitution, decision_vault, education, emergency, energy, executive, foundational_mentors, goals, health, knowledge_graph, market, mentor, player_vs_ai, risk, sandbox, save, talent, time, trades, treasury, ws
+from app.routers import accounts, black_box, calendar, calibration, constitution, decision_vault, education, emergency, energy, executive, foundational_mentors, goals, health, knowledge_graph, market, mentor, player_vs_ai, risk, sandbox, save, talent, time, trades, treasury, ws
 from app.sim import run_sim_loop
 from app.state import game_state
 
@@ -64,6 +64,7 @@ app.include_router(executive.router)
 app.include_router(knowledge_graph.router)
 app.include_router(mentor.router)
 app.include_router(treasury.router)
+app.include_router(accounts.router)
 app.include_router(calendar.router)
 app.include_router(time.router)
 app.include_router(black_box.router)

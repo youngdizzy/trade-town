@@ -1,6 +1,7 @@
 import type {
   AcademyProject,
   AcademyState,
+  Account,
   AgentEnergy,
   AgentId,
   AgentKnowledgeState,
@@ -159,6 +160,8 @@ type ServerMessage =
       foundationalMentorState: FoundationalMentorState;
       founderState: FounderState;
       treasury: TreasuryState;
+      accounts: Account[];
+      activeAccountId: string | null;
       calendar: CalendarState;
       blackBox: BlackBoxState;
       agentEnergy: AgentEnergy;
@@ -294,6 +297,8 @@ export class GameSocket {
             foundationalMentorState: msg.foundationalMentorState,
             founderState: msg.founderState,
             treasury: msg.treasury,
+            accounts: msg.accounts,
+            activeAccountId: msg.activeAccountId,
             calendar: msg.calendar,
             blackBox: msg.blackBox,
             agentEnergy: msg.agentEnergy,

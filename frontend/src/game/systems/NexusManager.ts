@@ -1,6 +1,7 @@
 import type {
   AcademyProject,
   AcademyState,
+  Account,
   AgentEnergy,
   AgentId,
   AgentKnowledgeState,
@@ -148,6 +149,8 @@ interface NexusSnapshot {
   foundationalMentorState: FoundationalMentorState;
   founderState: FounderState;
   treasury: TreasuryState;
+  accounts: Account[];
+  activeAccountId: string | null;
   calendar: CalendarState;
   blackBox: BlackBoxState;
   agentEnergy: AgentEnergy;
@@ -377,6 +380,9 @@ export class NexusManager {
   private static foundationalMentorState: FoundationalMentorState = { mentors: [], progress: {}, certifications: [], ceoProgress: {}, activeMentorId: null, roadmapOrder: [], customLessonAnswers: {}, updatedAt: new Date().toISOString() };
   private static founderState: FounderState = { retired: false, retiredAt: null, log: [], councilSessions: [], updatedAt: new Date().toISOString() };
   private static treasury: TreasuryState = { balance: 0, lifetimeDeposits: 0, largestBalance: 0, transactions: [], savingsRules: [], monthlyReports: [], updatedAt: new Date().toISOString() };
+  // Design Bible Chapter 69 Part 1 — Multi-Account & Fund Management System.
+  private static accounts: Account[] = [];
+  private static activeAccountId: string | null = null;
   private static calendar: CalendarState = { systemEvents: [], playerEvents: [], updatedAt: new Date().toISOString() };
   private static blackBox: BlackBoxState = { active: null, archive: [], reviews: [], viewedBreakthroughIds: [], updatedAt: new Date().toISOString() };
   private static agentEnergy: AgentEnergy = { current: 100, cap: 100, updatedAt: new Date().toISOString() };
@@ -720,6 +726,26 @@ export class NexusManager {
   static setTreasury(treasury: TreasuryState): void {
     this.treasury = treasury;
     EventBus.emit("treasury:updated", treasury);
+  }
+
+  static getAccounts(): Account[] {
+    return this.accounts;
+  }
+
+  static getActiveAccountId(): string | null {
+    return this.activeAccountId;
+  }
+
+  /** Applies the result of a direct POST /api/accounts/... call
+   * immediately, the same reasoning as setTreasury above. */
+  static setAccounts(accounts: Account[]): void {
+    this.accounts = accounts;
+    EventBus.emit("accounts:updated", accounts);
+  }
+
+  static setActiveAccountId(activeAccountId: string | null): void {
+    this.activeAccountId = activeAccountId;
+    EventBus.emit("activeAccount:updated", activeAccountId);
   }
 
   static getCalendar(): CalendarState {
@@ -1221,6 +1247,12 @@ export class NexusManager {
     if (update.treasury !== this.treasury) EventBus.emit("treasury:updated", update.treasury);
     this.treasury = update.treasury;
 
+    if (update.accounts !== this.accounts) EventBus.emit("accounts:updated", update.accounts);
+    this.accounts = update.accounts;
+
+    if (update.activeAccountId !== this.activeAccountId) EventBus.emit("activeAccount:updated", update.activeAccountId);
+    this.activeAccountId = update.activeAccountId;
+
     if (update.calendar !== this.calendar) EventBus.emit("calendar:updated", update.calendar);
     this.calendar = update.calendar;
 
@@ -1325,6 +1357,8 @@ export class NexusManager {
     this.foundationalMentorState = save.foundationalMentorState;
     this.founderState = save.founderState;
     this.treasury = save.treasury;
+    this.accounts = save.accounts;
+    this.activeAccountId = save.activeAccountId;
     this.calendar = save.calendar;
     this.blackBox = save.blackBox;
     this.agentEnergy = save.agentEnergy;

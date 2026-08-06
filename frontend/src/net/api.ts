@@ -1,4 +1,6 @@
 import type {
+  Account,
+  AccountType,
   AgentEnergy,
   AgentId,
   AnalystChoice,
@@ -206,6 +208,32 @@ export const api = {
     request<{ treasury: TreasuryState }>("/treasury/rules/pause-all", {
       method: "POST",
       body: JSON.stringify({}),
+    }),
+  // Design Bible Chapter 69 Part 1 — Multi-Account & Fund Management System.
+  createAccount: (name: string, accountType: AccountType, startingBalance: number) =>
+    request<{ accounts: Account[] }>("/accounts/create", {
+      method: "POST",
+      body: JSON.stringify({ name, accountType, startingBalance }),
+    }),
+  closeAccount: (accountId: string) =>
+    request<{ accounts: Account[] }>("/accounts/close", {
+      method: "POST",
+      body: JSON.stringify({ accountId }),
+    }),
+  allocateAccountCapital: (accountId: string, amount: number) =>
+    request<{ accounts: Account[]; treasury: TreasuryState }>("/accounts/allocate", {
+      method: "POST",
+      body: JSON.stringify({ accountId, amount }),
+    }),
+  deallocateAccountCapital: (accountId: string, amount: number) =>
+    request<{ accounts: Account[]; treasury: TreasuryState }>("/accounts/deallocate", {
+      method: "POST",
+      body: JSON.stringify({ accountId, amount }),
+    }),
+  switchActiveAccount: (accountId: string | null) =>
+    request<{ activeAccountId: string | null }>("/accounts/switch-active", {
+      method: "POST",
+      body: JSON.stringify({ accountId }),
     }),
   advanceTime: (target: TimeAdvanceTarget, hours?: number) =>
     request<GameSaveState>("/time/advance", {

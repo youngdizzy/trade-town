@@ -476,6 +476,29 @@ export interface PaperPortfolio {
   lossCount: number;
 }
 
+// Design Bible Chapter 69 Part 1 — Multi-Account & Fund Management
+// System. See backend/app/accounts.py's module docstring for the honest
+// scope: a real, CEO-manageable capital ledger, not yet wired to live
+// per-account trading execution.
+export type AccountType = "personal" | "ira" | "business" | "prop_firm" | "family";
+
+export const ACCOUNT_TYPE_LABEL: Record<AccountType, string> = {
+  personal: "Personal Trading Account",
+  ira: "IRA / Retirement Account",
+  business: "Business Trading Account",
+  prop_firm: "Prop Firm Challenge Account",
+  family: "Family Trust Account",
+};
+
+export interface Account {
+  id: string;
+  name: string;
+  accountType: AccountType;
+  portfolio: PaperPortfolio;
+  riskLimits: RiskLimits;
+  createdAt: string;
+}
+
 // v0.7 Feature 45 — the Research Sandbox. TestScenario reuses the exact
 // 5 regime names market_environment.py already computes live, plus
 // "historical" (the pre-Feature-45 default) and "custom" (a CEO-tunable
@@ -3112,6 +3135,9 @@ export interface GameSaveState {
   foundationalMentorState: FoundationalMentorState;
   founderState: FounderState;
   treasury: TreasuryState;
+  // Design Bible Chapter 69 Part 1 — Multi-Account & Fund Management System.
+  accounts: Account[];
+  activeAccountId: string | null;
   calendar: CalendarState;
   blackBox: BlackBoxState;
   agentEnergy: AgentEnergy;
