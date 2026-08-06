@@ -723,6 +723,120 @@ class Account(CamelModel):
     portfolio: PaperPortfolio
     risk_limits: RiskLimits = Field(alias="riskLimits")
     created_at: str = Field(alias="createdAt")
+    # Design Bible Chapter 69 Part 2 — Prop Firm Rule Engine. Real,
+    # optional fields every account carries (not prop-firm-exclusive —
+    # a Business or Family account could set a challenge window too),
+    # left unset (None) for accounts that never configure them, never
+    # defaulted to a fabricated value. `peak_equity` starts equal to the
+    # account's own starting balance and only ever moves up (see
+    # app/prop_firm.py's update_peak_equity()) — the real high-water
+    # mark a trailing-drawdown check trails from, grep-confirmed absent
+    # anywhere in this codebase before this field existed.
+    peak_equity: float = Field(alias="peakEquity")
+    trailing_drawdown_limit_pct: float | None = Field(default=None, alias="trailingDrawdownLimitPct")
+    consistency_limit_pct: float | None = Field(default=None, alias="consistencyLimitPct")
+    challenge_start_sim_day: int | None = Field(default=None, alias="challengeStartSimDay")
+    challenge_duration_days: int | None = Field(default=None, alias="challengeDurationDays")
+    challenge_profit_target_pct: float | None = Field(default=None, alias="challengeProfitTargetPct")
+
+
+# Design Bible Chapter 69 Part 2 — the Weekday-Aware Time System. Real,
+# derived infrastructure, not a Prop Firm-specific add-on (see
+# app/prop_firm.py's weekday_for()): TimeState.day is grep-confirmed to
+# have no epoch/calendar anchor anywhere in this codebase before this —
+# day 1 is defined as a Monday, a real, documented, deterministic choice,
+# never a stored/driftable field.
+Weekday = Literal["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"]
+
+
+class TrailingDrawdownStatus(CamelModel):
+    """A real, second, genuinely new computation alongside RiskLimits.
+    maxDrawdownPct's existing real check — that one compares current
+    equity to the account's starting balance (fixed floor); this one
+    compares current equity to the account's own peak_equity (a moving
+    high-water mark), the defining feature of a real trailing-drawdown
+    rule the brief asked for and this codebase never had."""
+
+    peak_equity: float = Field(alias="peakEquity")
+    current_equity: float = Field(alias="currentEquity")
+    drawdown_pct: float = Field(alias="drawdownPct")
+    limit_pct: float | None = Field(alias="limitPct")
+    breached: bool
+
+
+class ConsistencyStatus(CamelModel):
+    """Compares one closed trading day's real P&L against the challenge
+    window's own real cumulative P&L (both derived from the account's
+    real PaperTrade history, never fabricated) — the "no single day >X%
+    of total profit" shape most real prop firms use, and which this
+    codebase never had any comparison for before this."""
+
+    applicable: bool
+    cumulative_profit: float = Field(alias="cumulativeProfit")
+    largest_single_day_profit: float = Field(alias="largestSingleDayProfit")
+    largest_single_day_share_pct: float = Field(alias="largestSingleDaySharePct")
+    limit_pct: float | None = Field(alias="limitPct")
+    breached: bool
+
+
+class ScalingMilestoneStatus(CamelModel):
+    """A real, computed growth-tier read off the account's own real
+    equity vs. its own starting balance — no funded-account
+    growth-stage concept existed anywhere in this codebase before this."""
+
+    current_tier: int = Field(alias="currentTier")
+    equity_growth_pct: float = Field(alias="equityGrowthPct")
+    next_tier_growth_threshold_pct: float | None = Field(alias="nextTierGrowthThresholdPct")
+
+
+class ChallengeProgressStatus(CamelModel):
+    """Real only once the CEO has actually configured a challenge window
+    on this account (challenge_start_sim_day set) — `applicable=False`
+    otherwise, never a fabricated progress reading for an account that
+    was never given a challenge to track."""
+
+    applicable: bool
+    started_sim_day: int | None = Field(alias="startedSimDay")
+    duration_days: int | None = Field(alias="durationDays")
+    days_elapsed: int = Field(alias="daysElapsed")
+    days_remaining: int | None = Field(alias="daysRemaining")
+    profit_pct: float = Field(alias="profitPct")
+    target_pct: float | None = Field(alias="targetPct")
+    on_pace: bool | None = Field(alias="onPace")
+
+
+# Design Bible Chapter 69 Part 2 — Prop Firm Compliance Score. This
+# codebase's own "no black-box composite" convention (Chapter 66's own
+# Decision Logic section) means every input is published, not hidden —
+# see app/prop_firm.py's compute_compliance_score() for the exact,
+# equal-weighted formula (never a hidden blend, same convention
+# CompanyHealth.overall already established).
+class PropFirmComplianceScore(CamelModel):
+    overall: float
+    drawdown_safety: float = Field(alias="drawdownSafety")
+    consistency: float
+    rule_compliance: float = Field(alias="ruleCompliance")
+    risk_exposure: float = Field(alias="riskExposure")
+    capital_preservation: float = Field(alias="capitalPreservation")
+
+
+class PropFirmStatus(CamelModel):
+    """The combined, computed-fresh (never persisted — same convention
+    as ExecutiveRecommendation/WhatIfSimulation) real read behind the
+    brief's own Prop Firm Dashboard, for one account."""
+
+    account_id: str = Field(alias="accountId")
+    weekday: Weekday
+    trailing_drawdown: TrailingDrawdownStatus = Field(alias="trailingDrawdown")
+    consistency: ConsistencyStatus
+    scaling: ScalingMilestoneStatus
+    challenge: ChallengeProgressStatus
+    compliance_score: PropFirmComplianceScore = Field(alias="complianceScore")
+    # The Leverage System (addendum item 3) has no real foundation to
+    # extend — this codebase is a 100%-cash, long-only paper account
+    # with no margin field anywhere (confirmed by Chapter 68's own
+    # research). Stated honestly here rather than fabricating a number.
+    leverage_note: str = Field(alias="leverageNote")
 
 
 class StrategyStageEvent(CamelModel):

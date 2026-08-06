@@ -20,6 +20,7 @@ from app.mentor import compute_mentor_state, compute_thinking_profiles, generate
 from app.calendar import create_player_event, default_calendar, delete_player_event
 from app.accounts import allocate_capital as allocate_capital_fn
 from app.accounts import close_account as close_account_fn
+from app.accounts import configure_prop_firm_rules as configure_prop_firm_rules_fn
 from app.accounts import create_account as create_account_fn
 from app.accounts import deallocate_capital as deallocate_capital_fn
 from app.treasury import create_rule, default_treasury, deposit, pause_all_rules, toggle_rule, withdraw
@@ -851,6 +852,33 @@ class GameState:
             )
             if error is None:
                 self.data = self.data.model_copy(update={"accounts": accounts, "treasury": treasury})
+            return self.data, error
+
+    async def configure_prop_firm_rules(
+        self,
+        account_id: str,
+        *,
+        trailing_drawdown_limit_pct: float | None,
+        consistency_limit_pct: float | None,
+        challenge_start_sim_day: int | None,
+        challenge_duration_days: int | None,
+        challenge_profit_target_pct: float | None,
+    ) -> tuple[GameSaveState, str | None]:
+        """Design Bible Chapter 69 Part 2 — a real CEO control configuring
+        an account's Trailing Drawdown / Consistency / Challenge Window
+        rules, under the same lock every other state mutation uses."""
+        async with self.lock:
+            accounts, error = configure_prop_firm_rules_fn(
+                self.data.accounts,
+                account_id,
+                trailing_drawdown_limit_pct=trailing_drawdown_limit_pct,
+                consistency_limit_pct=consistency_limit_pct,
+                challenge_start_sim_day=challenge_start_sim_day,
+                challenge_duration_days=challenge_duration_days,
+                challenge_profit_target_pct=challenge_profit_target_pct,
+            )
+            if error is None:
+                self.data = self.data.model_copy(update={"accounts": accounts})
             return self.data, error
 
     async def switch_active_account(self, account_id: str | None) -> tuple[GameSaveState, str | None]:

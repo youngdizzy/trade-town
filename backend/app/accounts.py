@@ -107,6 +107,7 @@ def create_account(
         portfolio=portfolio,
         riskLimits=default_risk_limits_for(account_type, base_risk_limits),
         createdAt=now_iso,
+        peakEquity=starting_balance,
     )
     return [*accounts, account], None
 
@@ -124,6 +125,19 @@ def close_account(accounts: list[Account], account_id: str) -> tuple[list[Accoun
     return [a for a in accounts if a.id != account_id], None
 
 
+def _with_updated_peak_equity(account: Account) -> Account:
+    """Design Bible Chapter 69 Part 2 — the Trailing Drawdown Engine's
+    real high-water mark. Monotonically non-decreasing by definition (a
+    real peak never moves down); called after every real change to an
+    account's own equity so app/prop_firm.py's trailing-drawdown check
+    always trails from the account's true historical peak, not a stale
+    one."""
+    current_equity = account_equity(account)
+    if current_equity > account.peak_equity:
+        return account.model_copy(update={"peak_equity": current_equity})
+    return account
+
+
 def allocate_capital(
     accounts: list[Account], treasury: TreasuryState, account_id: str, amount: float, *, sim_day: int, now_iso: str, transaction_id: str
 ) -> tuple[list[Account], TreasuryState, str | None]:
@@ -138,7 +152,7 @@ def allocate_capital(
     new_treasury, new_portfolio, error = treasury_withdraw(treasury, account.portfolio, amount, sim_day=sim_day, now_iso=now_iso, transaction_id=transaction_id)
     if error is not None:
         return accounts, treasury, error
-    updated_account = account.model_copy(update={"portfolio": new_portfolio})
+    updated_account = _with_updated_peak_equity(account.model_copy(update={"portfolio": new_portfolio}))
     return [updated_account if a.id == account_id else a for a in accounts], new_treasury, None
 
 
@@ -154,5 +168,42 @@ def deallocate_capital(
     new_treasury, new_portfolio, error = treasury_deposit(treasury, account.portfolio, amount, sim_day=sim_day, now_iso=now_iso, transaction_id=transaction_id)
     if error is not None:
         return accounts, treasury, error
-    updated_account = account.model_copy(update={"portfolio": new_portfolio})
+    updated_account = _with_updated_peak_equity(account.model_copy(update={"portfolio": new_portfolio}))
     return [updated_account if a.id == account_id else a for a in accounts], new_treasury, None
+
+
+def configure_prop_firm_rules(
+    accounts: list[Account],
+    account_id: str,
+    *,
+    trailing_drawdown_limit_pct: float | None,
+    consistency_limit_pct: float | None,
+    challenge_start_sim_day: int | None,
+    challenge_duration_days: int | None,
+    challenge_profit_target_pct: float | None,
+) -> tuple[list[Account], str | None]:
+    """Design Bible Chapter 69 Part 2 — a real CEO control (any account
+    type may set these, not exclusively Prop Firm-typed accounts) for
+    the addendum systems this pass builds real computation for:
+    Trailing Drawdown, Consistency, and Challenge Windows. Every field
+    is optional and independently settable — a CEO can configure a
+    trailing drawdown limit without also starting a challenge window."""
+    account = next((a for a in accounts if a.id == account_id), None)
+    if account is None:
+        return accounts, f"No account with id {account_id!r}."
+    if trailing_drawdown_limit_pct is not None and trailing_drawdown_limit_pct <= 0:
+        return accounts, "Trailing drawdown limit must be greater than 0%."
+    if consistency_limit_pct is not None and not (0 < consistency_limit_pct <= 100):
+        return accounts, "Consistency limit must be between 0 and 100%."
+    if challenge_duration_days is not None and challenge_duration_days <= 0:
+        return accounts, "Challenge duration must be at least 1 day."
+    updated = account.model_copy(
+        update={
+            "trailing_drawdown_limit_pct": trailing_drawdown_limit_pct,
+            "consistency_limit_pct": consistency_limit_pct,
+            "challenge_start_sim_day": challenge_start_sim_day,
+            "challenge_duration_days": challenge_duration_days,
+            "challenge_profit_target_pct": challenge_profit_target_pct,
+        }
+    )
+    return [updated if a.id == account_id else a for a in accounts], None

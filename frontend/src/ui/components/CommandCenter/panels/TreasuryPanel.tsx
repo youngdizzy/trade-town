@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { NexusManager } from "@/game/systems/NexusManager";
 import { api } from "@/net/api";
-import type { Account, AccountType, SavingsRuleType, TreasuryTransaction } from "@/types";
+import type { Account, AccountType, PropFirmStatus, SavingsRuleType, TreasuryTransaction } from "@/types";
 import { ACCOUNT_TYPE_LABEL } from "@/types";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../ui";
 
@@ -462,11 +462,217 @@ function AccountsSection({ accounts, activeAccountId }: { accounts: Account[]; a
                     Close
                   </button>
                 </div>
+                {account.accountType === "prop_firm" && <PropFirmCard account={account} />}
               </div>
             );
           })}
         </div>
       )}
     </Glass>
+  );
+}
+
+/**
+ * Design Bible Chapter 69 Part 2 — Prop Firm Rule Engine. Configures the
+ * account's own real Trailing Drawdown / Consistency / Challenge Window
+ * fields, then fetches and displays the real, computed-fresh compliance
+ * status behind those numbers. See backend/app/prop_firm.py — every
+ * number here is real; leverage is explicitly stated as not applicable
+ * rather than fabricated, since this is a 100% cash account.
+ */
+function PropFirmCard({ account }: { account: Account }) {
+  const { time } = useGameStore();
+  const [showConfig, setShowConfig] = useState(false);
+  const [trailingLimit, setTrailingLimit] = useState(account.trailingDrawdownLimitPct?.toString() ?? "");
+  const [consistencyLimit, setConsistencyLimit] = useState(account.consistencyLimitPct?.toString() ?? "");
+  const [challengeDuration, setChallengeDuration] = useState(account.challengeDurationDays?.toString() ?? "30");
+  const [challengeTarget, setChallengeTarget] = useState(account.challengeProfitTargetPct?.toString() ?? "8");
+  const [saving, setSaving] = useState(false);
+  const [status, setStatus] = useState<PropFirmStatus | null>(null);
+  const [statusLoading, setStatusLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const loadStatus = async () => {
+    setStatusLoading(true);
+    setError(null);
+    try {
+      const res = await api.getPropFirmStatus(account.id);
+      setStatus(res);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setStatusLoading(false);
+    }
+  };
+
+  const toggleConfig = () => {
+    const next = !showConfig;
+    setShowConfig(next);
+    if (next && !status) void loadStatus();
+  };
+
+  const save = async () => {
+    if (saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await api.configurePropFirmRules(account.id, {
+        trailingDrawdownLimitPct: trailingLimit ? Number(trailingLimit) : null,
+        consistencyLimitPct: consistencyLimit ? Number(consistencyLimit) : null,
+        challengeStartSimDay: account.challengeStartSimDay ?? null,
+        challengeDurationDays: challengeDuration ? Number(challengeDuration) : null,
+        challengeProfitTargetPct: challengeTarget ? Number(challengeTarget) : null,
+      });
+      NexusManager.setAccounts(res.accounts);
+      await loadStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const startChallenge = async () => {
+    if (saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await api.configurePropFirmRules(account.id, {
+        trailingDrawdownLimitPct: trailingLimit ? Number(trailingLimit) : null,
+        consistencyLimitPct: consistencyLimit ? Number(consistencyLimit) : null,
+        challengeStartSimDay: time.day,
+        challengeDurationDays: challengeDuration ? Number(challengeDuration) : null,
+        challengeProfitTargetPct: challengeTarget ? Number(challengeTarget) : null,
+      });
+      NexusManager.setAccounts(res.accounts);
+      await loadStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="mt-1.5 border-t border-cmd-border/40 pt-1.5">
+      <button type="button" onClick={toggleConfig} className="text-[9px] text-cmd-purple underline-offset-2 hover:underline">
+        {showConfig ? "Hide Prop Firm Rules ▲" : "Prop Firm Rules ▼"}
+      </button>
+      {showConfig && (
+        <div className="mt-1.5 space-y-1.5 text-[9px]">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <label className="flex items-center gap-1 text-cmd-textDim">
+              Trailing DD %
+              <input
+                type="number"
+                min={0}
+                value={trailingLimit}
+                onChange={(e) => setTrailingLimit(e.target.value)}
+                className="w-14 rounded-sm border border-cmd-border bg-cmd-bg/60 px-1.5 py-0.5 text-cmd-text focus:border-cmd-cyan/50 focus:outline-none"
+              />
+            </label>
+            <label className="flex items-center gap-1 text-cmd-textDim">
+              Consistency %
+              <input
+                type="number"
+                min={0}
+                max={100}
+                value={consistencyLimit}
+                onChange={(e) => setConsistencyLimit(e.target.value)}
+                className="w-14 rounded-sm border border-cmd-border bg-cmd-bg/60 px-1.5 py-0.5 text-cmd-text focus:border-cmd-cyan/50 focus:outline-none"
+              />
+            </label>
+            <label className="flex items-center gap-1 text-cmd-textDim">
+              Duration (days)
+              <input
+                type="number"
+                min={1}
+                value={challengeDuration}
+                onChange={(e) => setChallengeDuration(e.target.value)}
+                className="w-14 rounded-sm border border-cmd-border bg-cmd-bg/60 px-1.5 py-0.5 text-cmd-text focus:border-cmd-cyan/50 focus:outline-none"
+              />
+            </label>
+            <label className="flex items-center gap-1 text-cmd-textDim">
+              Target %
+              <input
+                type="number"
+                min={0}
+                value={challengeTarget}
+                onChange={(e) => setChallengeTarget(e.target.value)}
+                className="w-14 rounded-sm border border-cmd-border bg-cmd-bg/60 px-1.5 py-0.5 text-cmd-text focus:border-cmd-cyan/50 focus:outline-none"
+              />
+            </label>
+          </div>
+          <div className="flex gap-1.5">
+            <button
+              type="button"
+              onClick={() => void save()}
+              disabled={saving}
+              className="rounded-sm border border-cmd-cyan/50 px-2 py-1 text-cmd-cyan transition-colors hover:enabled:bg-cmd-cyan/10 disabled:opacity-40"
+            >
+              {saving ? "…" : "Save Rules"}
+            </button>
+            <button
+              type="button"
+              onClick={() => void startChallenge()}
+              disabled={saving}
+              className="rounded-sm border border-cmd-green/50 px-2 py-1 text-cmd-green transition-colors hover:enabled:bg-cmd-green/10 disabled:opacity-40"
+            >
+              {saving ? "…" : "Start Challenge Today"}
+            </button>
+          </div>
+          {error && <div className="text-cmd-red">{error}</div>}
+
+          {statusLoading && <div className="text-cmd-textDim">Computing compliance…</div>}
+          {status && (
+            <div className="space-y-1 rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-cmd-textDim">
+                  Compliance Score ({status.weekday})
+                </span>
+                <span
+                  className={
+                    status.complianceScore.overall >= 70 ? "text-cmd-green" : status.complianceScore.overall >= 40 ? "text-cmd-amber" : "text-cmd-red"
+                  }
+                >
+                  {status.complianceScore.overall.toFixed(0)}/100
+                </span>
+              </div>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-cmd-textDim">
+                <span>
+                  Trailing Drawdown: <span className="tabular-nums text-cmd-text">{status.trailingDrawdown.drawdownPct.toFixed(1)}%</span>
+                  {status.trailingDrawdown.breached && <span className="ml-1 text-cmd-red">BREACHED</span>}
+                </span>
+                <span>
+                  Scaling Tier: <span className="tabular-nums text-cmd-text">{status.scaling.currentTier}</span>
+                </span>
+                {status.challenge.applicable ? (
+                  <>
+                    <span>
+                      Challenge: <span className="tabular-nums text-cmd-text">Day {status.challenge.daysElapsed}/{status.challenge.durationDays}</span>
+                    </span>
+                    <span>
+                      Progress: <span className="tabular-nums text-cmd-text">{status.challenge.profitPct.toFixed(1)}%</span> of{" "}
+                      <span className="tabular-nums text-cmd-text">{status.challenge.targetPct?.toFixed(1)}%</span>
+                      {status.challenge.onPace === false && <span className="ml-1 text-cmd-amber">BEHIND PACE</span>}
+                    </span>
+                  </>
+                ) : (
+                  <span className="col-span-2">No challenge window started yet.</span>
+                )}
+                {status.consistency.applicable && (
+                  <span className="col-span-2">
+                    Consistency: largest day is <span className="tabular-nums text-cmd-text">{status.consistency.largestSingleDaySharePct.toFixed(0)}%</span>{" "}
+                    of cumulative profit
+                    {status.consistency.breached && <span className="ml-1 text-cmd-red">BREACHED</span>}
+                  </span>
+                )}
+              </div>
+              <div className="text-cmd-textDim">{status.leverageNote}</div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
   );
 }

@@ -497,6 +497,72 @@ export interface Account {
   portfolio: PaperPortfolio;
   riskLimits: RiskLimits;
   createdAt: string;
+  // Design Bible Chapter 69 Part 2 — Prop Firm Rule Engine.
+  peakEquity: number;
+  trailingDrawdownLimitPct: number | null;
+  consistencyLimitPct: number | null;
+  challengeStartSimDay: number | null;
+  challengeDurationDays: number | null;
+  challengeProfitTargetPct: number | null;
+}
+
+// Design Bible Chapter 69 Part 2 — the Weekday-Aware Time System. Real,
+// derived infrastructure: day 1 is defined as a Monday (see
+// backend/app/prop_firm.py's weekday_for()).
+export type Weekday = "monday" | "tuesday" | "wednesday" | "thursday" | "friday" | "saturday" | "sunday";
+
+export interface TrailingDrawdownStatus {
+  peakEquity: number;
+  currentEquity: number;
+  drawdownPct: number;
+  limitPct: number | null;
+  breached: boolean;
+}
+
+export interface ConsistencyStatus {
+  applicable: boolean;
+  cumulativeProfit: number;
+  largestSingleDayProfit: number;
+  largestSingleDaySharePct: number;
+  limitPct: number | null;
+  breached: boolean;
+}
+
+export interface ScalingMilestoneStatus {
+  currentTier: number;
+  equityGrowthPct: number;
+  nextTierGrowthThresholdPct: number | null;
+}
+
+export interface ChallengeProgressStatus {
+  applicable: boolean;
+  startedSimDay: number | null;
+  durationDays: number | null;
+  daysElapsed: number;
+  daysRemaining: number | null;
+  profitPct: number;
+  targetPct: number | null;
+  onPace: boolean | null;
+}
+
+export interface PropFirmComplianceScore {
+  overall: number;
+  drawdownSafety: number;
+  consistency: number;
+  ruleCompliance: number;
+  riskExposure: number;
+  capitalPreservation: number;
+}
+
+export interface PropFirmStatus {
+  accountId: string;
+  weekday: Weekday;
+  trailingDrawdown: TrailingDrawdownStatus;
+  consistency: ConsistencyStatus;
+  scaling: ScalingMilestoneStatus;
+  challenge: ChallengeProgressStatus;
+  complianceScore: PropFirmComplianceScore;
+  leverageNote: string;
 }
 
 // v0.7 Feature 45 — the Research Sandbox. TestScenario reuses the exact

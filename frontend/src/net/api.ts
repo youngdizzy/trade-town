@@ -34,6 +34,7 @@ import type {
   PlayerEventCategory,
   PlayerVsAiPrompt,
   PlayerVsAiState,
+  PropFirmStatus,
   QuestionOfTheDay,
   SaveResponse,
   SavingsRuleType,
@@ -235,6 +236,22 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ accountId }),
     }),
+  // Design Bible Chapter 69 Part 2 — Prop Firm Rule Engine.
+  configurePropFirmRules: (
+    accountId: string,
+    rules: {
+      trailingDrawdownLimitPct: number | null;
+      consistencyLimitPct: number | null;
+      challengeStartSimDay: number | null;
+      challengeDurationDays: number | null;
+      challengeProfitTargetPct: number | null;
+    },
+  ) =>
+    request<{ accounts: Account[] }>("/accounts/prop-firm/configure", {
+      method: "POST",
+      body: JSON.stringify({ accountId, ...rules }),
+    }),
+  getPropFirmStatus: (accountId: string) => request<PropFirmStatus>(`/accounts/prop-firm/status?account_id=${encodeURIComponent(accountId)}`),
   advanceTime: (target: TimeAdvanceTarget, hours?: number) =>
     request<GameSaveState>("/time/advance", {
       method: "POST",
