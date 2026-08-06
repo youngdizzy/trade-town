@@ -183,7 +183,9 @@ test.describe("Global Command Center", () => {
     await expect(page.getByText(/No opportunities evaluated yet/).or(page.locator("text=/% confidence/").first())).toBeVisible();
 
     await clickTab(page, "RISK");
-    await expect(page.getByText(/NORMAL|ELEVATED|RESTRICTED/)).toBeVisible();
+    // .first() since Design Bible Chapter 67's GlobalStatusBar now shows
+    // this same real risk-level label from every scene, not just here.
+    await expect(page.getByText(/NORMAL|ELEVATED|RESTRICTED/).first()).toBeVisible();
 
     await clickTab(page, "AGENTS");
     await expect(page.getByText("Atlas").first()).toBeVisible();
@@ -751,7 +753,9 @@ test.describe("Global Command Center", () => {
     await clickTab(page, "PORTFOLIO");
 
     await expect(page.getByText("Capital Allocation", { exact: true })).toBeVisible();
-    await expect(page.getByText(/COOL|WARM|HOT|OVERHEATED/)).toBeVisible();
+    // .first() since Design Bible Chapter 67's GlobalStatusBar now shows
+    // this same real Portfolio Heat tier from every scene, not just here.
+    await expect(page.getByText(/COOL|WARM|HOT|OVERHEATED/).first()).toBeVisible();
 
     // Either real open-position category exposure, or the honest "no open
     // positions" empty state — never a blank panel either way.

@@ -1,5 +1,6 @@
 import { GameCanvas } from "@/ui/components/GameCanvas";
 import { TopStatusBar } from "@/ui/components/TopStatusBar";
+import { GlobalStatusBar } from "@/ui/components/GlobalStatusBar";
 import { BottomToolbar } from "@/ui/components/BottomToolbar";
 import { DialogueBox } from "@/ui/components/DialogueBox";
 import { InteractionPrompt } from "@/ui/components/InteractionPrompt";
@@ -24,6 +25,7 @@ export default function App() {
     <div className="relative h-screen w-screen overflow-hidden bg-black">
       <GameCanvas />
       <TopStatusBar />
+      <GlobalStatusBar />
       <DebugOverlay />
       <BrainRoomHud />
       <MarketObservatoryHud />
