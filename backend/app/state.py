@@ -506,6 +506,8 @@ class GameState:
         *,
         daily_profit_target_pct: float | None = None,
         max_daily_loss_pct: float | None = None,
+        max_weekly_loss_pct: float | None = None,
+        max_monthly_loss_pct: float | None = None,
         max_trades_per_day: int | None = None,
         risk_per_trade_pct: float | None = None,
         max_open_positions: int | None = None,
@@ -529,7 +531,11 @@ class GameState:
         company_health_needs_attention_threshold: float | None = None,
     ) -> tuple[GameSaveState, str | None]:
         """v0.7 Feature 49 — the CEO's Daily Trading Objectives — extended
-        by v0.7 Chapter 57 with four of the six new Position Sizing
+        by Design Bible Chapter 67 (TTOS)'s Safety Settings with the
+        weekly/monthly circuit breakers (`max_weekly_loss_pct`,
+        `max_monthly_loss_pct` — see app/risk_engine.py's
+        evaluate_sentinel_risk), by v0.7 Chapter 57 with four of the six
+        new Position Sizing
         controls (`scaling_aggressiveness_pct`/`emergency_reduction_
         heat_pct` are not writable here — see app/position_sizing.py's
         own honesty boundary; those two fields have no real consumer
@@ -572,6 +578,14 @@ class GameState:
                 if max_daily_loss_pct <= 0:
                     return self.data, "Daily maximum loss must be a positive percentage."
                 updates["max_daily_loss_pct"] = max_daily_loss_pct
+            if max_weekly_loss_pct is not None:
+                if max_weekly_loss_pct <= 0:
+                    return self.data, "Weekly maximum loss must be a positive percentage."
+                updates["max_weekly_loss_pct"] = max_weekly_loss_pct
+            if max_monthly_loss_pct is not None:
+                if max_monthly_loss_pct <= 0:
+                    return self.data, "Monthly maximum loss must be a positive percentage."
+                updates["max_monthly_loss_pct"] = max_monthly_loss_pct
             if max_trades_per_day is not None:
                 if max_trades_per_day <= 0:
                     return self.data, "Maximum trades per day must be a positive whole number."

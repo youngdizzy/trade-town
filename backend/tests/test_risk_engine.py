@@ -9,10 +9,12 @@ from app.risk_engine import (
     daily_realized_pnl_pct,
     evaluate_guardian_exposure,
     evaluate_sentinel_risk,
+    monthly_realized_pnl_pct,
     portfolio_equity,
     recommended_quantity,
     trades_closed_today,
     trades_opened_today,
+    weekly_realized_pnl_pct,
 )
 from app.schemas import PaperPortfolio, PaperTrade, RiskLimits
 
@@ -123,6 +125,63 @@ class TestEvaluateSentinelRiskDailyObjectives:
         warning = evaluate_sentinel_risk(limits, portfolio, symbol="AAPL", proposed_value=1000.0, sim_day=1)
         assert warning is not None
         assert "equity" in warning.message.lower()
+
+
+class TestWeeklyAndMonthlyLossLimits:
+    """Design Bible Chapter 67 (TTOS) Safety Settings — the second and
+    third real circuit breakers, mirroring the daily one's own tests
+    above but scoped to a 7-day week / 30-day month."""
+
+    def test_weekly_realized_pnl_pct_sums_the_whole_sim_week_not_just_today(self) -> None:
+        # Both trades close within sim week 0 (days 0-6), on different days.
+        day1_loss = _trade(pnl=-2000.0, opened_sim_minutes=1 * 1440, closed_sim_minutes=1 * 1440 + 30)
+        day3_win = _trade(pnl=500.0, opened_sim_minutes=3 * 1440, closed_sim_minutes=3 * 1440 + 30)
+        portfolio = _portfolio(trades=[day1_loss, day3_win], starting=100_000.0)
+        assert weekly_realized_pnl_pct(portfolio, sim_day=3) == -1.5
+
+    def test_last_weeks_trades_do_not_count_against_this_week(self) -> None:
+        last_week_loss = _trade(pnl=-5000.0, opened_sim_minutes=2 * 1440, closed_sim_minutes=2 * 1440 + 30)
+        portfolio = _portfolio(trades=[last_week_loss], starting=100_000.0)
+        assert weekly_realized_pnl_pct(portfolio, sim_day=9) == 0.0  # day 9 is week 1, day 2 is week 0
+
+    def test_weekly_max_loss_reached_blocks_new_trades(self) -> None:
+        limits = RiskLimits(maxWeeklyLossPct=5.0, maxDailyLossPct=100.0)  # loose daily so only weekly can fire
+        loss = _trade(pnl=-6000.0, opened_sim_minutes=1 * 1440, closed_sim_minutes=1 * 1440 + 30)
+        portfolio = _portfolio(trades=[loss], starting=100_000.0)
+        # sim_day=3 is the same week as the loss (day 1), but a different
+        # day, so the daily check (scoped to day 3 only) sees nothing.
+        warning = evaluate_sentinel_risk(limits, portfolio, symbol="AAPL", proposed_value=1000.0, sim_day=3)
+        assert warning is not None
+        assert warning.severity == "critical"
+        assert "weekly maximum loss" in warning.message.lower()
+
+    def test_monthly_realized_pnl_pct_sums_the_whole_sim_month(self) -> None:
+        week0_loss = _trade(pnl=-1000.0, opened_sim_minutes=1 * 1440, closed_sim_minutes=1 * 1440 + 30)
+        week2_win = _trade(pnl=200.0, opened_sim_minutes=15 * 1440, closed_sim_minutes=15 * 1440 + 30)
+        portfolio = _portfolio(trades=[week0_loss, week2_win], starting=100_000.0)
+        assert monthly_realized_pnl_pct(portfolio, sim_day=20) == -0.8
+
+    def test_last_months_trades_do_not_count_against_this_month(self) -> None:
+        last_month_loss = _trade(pnl=-5000.0, opened_sim_minutes=5 * 1440, closed_sim_minutes=5 * 1440 + 30)
+        portfolio = _portfolio(trades=[last_month_loss], starting=100_000.0)
+        assert monthly_realized_pnl_pct(portfolio, sim_day=35) == 0.0  # day 35 is month 1, day 5 is month 0
+
+    def test_monthly_max_loss_reached_blocks_new_trades(self) -> None:
+        limits = RiskLimits(maxMonthlyLossPct=5.0, maxDailyLossPct=100.0, maxWeeklyLossPct=100.0)
+        loss = _trade(pnl=-6000.0, opened_sim_minutes=1 * 1440, closed_sim_minutes=1 * 1440 + 30)
+        portfolio = _portfolio(trades=[loss], starting=100_000.0)
+        # sim_day=20 is the same month as the loss (day 1) but a
+        # different week, so neither daily nor weekly fires.
+        warning = evaluate_sentinel_risk(limits, portfolio, symbol="AAPL", proposed_value=1000.0, sim_day=20)
+        assert warning is not None
+        assert warning.severity == "critical"
+        assert "monthly maximum loss" in warning.message.lower()
+
+    def test_within_all_limits_yields_no_warning(self) -> None:
+        limits = RiskLimits(maxWeeklyLossPct=10.0, maxMonthlyLossPct=15.0)
+        small_loss = _trade(pnl=-500.0, opened_sim_minutes=1 * 1440, closed_sim_minutes=1 * 1440 + 30)
+        portfolio = _portfolio(trades=[small_loss], starting=100_000.0)
+        assert evaluate_sentinel_risk(limits, portfolio, symbol="AAPL", proposed_value=1000.0, sim_day=3) is None
 
 
 class TestComputeDailyObjectiveStatus:

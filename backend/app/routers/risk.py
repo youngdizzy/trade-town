@@ -19,6 +19,9 @@ class UpdateRiskLimitsRequest(BaseModel):
 
     daily_profit_target_pct: float | None = Field(default=None, alias="dailyProfitTargetPct")
     max_daily_loss_pct: float | None = Field(default=None, alias="maxDailyLossPct")
+    # Design Bible Chapter 67 (TTOS) Safety Settings.
+    max_weekly_loss_pct: float | None = Field(default=None, alias="maxWeeklyLossPct")
+    max_monthly_loss_pct: float | None = Field(default=None, alias="maxMonthlyLossPct")
     max_trades_per_day: int | None = Field(default=None, alias="maxTradesPerDay")
     risk_per_trade_pct: float | None = Field(default=None, alias="riskPerTradePct")
     max_open_positions: int | None = Field(default=None, alias="maxOpenPositions")
@@ -67,6 +70,8 @@ async def update_risk_limits(payload: UpdateRiskLimitsRequest) -> RiskLimitsResp
     state, error = await game_state.update_risk_limits(
         daily_profit_target_pct=payload.daily_profit_target_pct,
         max_daily_loss_pct=payload.max_daily_loss_pct,
+        max_weekly_loss_pct=payload.max_weekly_loss_pct,
+        max_monthly_loss_pct=payload.max_monthly_loss_pct,
         max_trades_per_day=payload.max_trades_per_day,
         risk_per_trade_pct=payload.risk_per_trade_pct,
         max_open_positions=payload.max_open_positions,

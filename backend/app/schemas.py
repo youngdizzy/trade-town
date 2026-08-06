@@ -953,6 +953,16 @@ class RiskLimits(CamelModel):
     # mechanism.
     daily_profit_target_pct: float = Field(default=3.0, alias="dailyProfitTargetPct")
     max_trades_per_day: int = Field(default=6, alias="maxTradesPerDay")
+    # Design Bible Chapter 67 (TTOS)'s Safety Settings — the second and
+    # third real circuit breakers, enforced the exact same way as
+    # max_daily_loss_pct above (app/risk_engine.py's
+    # evaluate_sentinel_risk), just scoped to the current sim week/month
+    # instead of the current sim day. Defaults sit between the daily
+    # (5%) and lifetime drawdown (20%) limits — each wider scope allows
+    # more cumulative loss before it fires, but still well inside the
+    # lifetime cap.
+    max_weekly_loss_pct: float = Field(default=10.0, alias="maxWeeklyLossPct")
+    max_monthly_loss_pct: float = Field(default=15.0, alias="maxMonthlyLossPct")
     # v0.7 Chapter 57 — Institutional Position Sizing & Capital Deployment
     # Engine (app/position_sizing.py). All six new CEO controls that
     # engine's own Design Bible chapter asks for; every existing field

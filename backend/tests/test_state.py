@@ -99,6 +99,27 @@ class TestUpdateRiskLimits:
         assert saved.risk_limits.max_daily_loss_pct == before.max_daily_loss_pct
         assert saved.risk_limits.max_trades_per_day == before.max_trades_per_day
 
+    def test_updates_weekly_and_monthly_loss_limits(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.update_risk_limits(max_weekly_loss_pct=8.0, max_monthly_loss_pct=12.0))
+        assert error is None
+        assert saved.risk_limits.max_weekly_loss_pct == 8.0
+        assert saved.risk_limits.max_monthly_loss_pct == 12.0
+
+    def test_rejects_non_positive_weekly_loss_limit(self) -> None:
+        state = GameState()
+        before = state.data.risk_limits
+        saved, error = asyncio.run(state.update_risk_limits(max_weekly_loss_pct=0.0))
+        assert error is not None
+        assert saved.risk_limits.max_weekly_loss_pct == before.max_weekly_loss_pct
+
+    def test_rejects_non_positive_monthly_loss_limit(self) -> None:
+        state = GameState()
+        before = state.data.risk_limits
+        saved, error = asyncio.run(state.update_risk_limits(max_monthly_loss_pct=0.0))
+        assert error is not None
+        assert saved.risk_limits.max_monthly_loss_pct == before.max_monthly_loss_pct
+
     def test_updates_all_five_fields_at_once(self) -> None:
         state = GameState()
         saved, error = asyncio.run(

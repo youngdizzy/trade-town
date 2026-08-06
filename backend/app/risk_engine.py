@@ -57,6 +57,13 @@ MIN_TRADE_VALUE = 100.0
 
 SIM_MINUTES_PER_DAY = 1440
 
+# Design Bible Chapter 67 (TTOS) Safety Settings — mirrors app/nexus.py's
+# own WEEKLY_INTERVAL_DAYS/MONTHLY_INTERVAL_DAYS (not imported, to avoid
+# a risk_engine.py -> nexus.py dependency; nexus.py already imports this
+# module, never the reverse).
+WEEKLY_INTERVAL_DAYS = 7
+MONTHLY_INTERVAL_DAYS = 30
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -82,6 +89,29 @@ def daily_realized_pnl_pct(portfolio: PaperPortfolio, sim_day: int) -> float:
     if portfolio.starting_balance <= 0:
         return 0.0
     realized = sum(t.pnl for t in trades_closed_today(portfolio.trade_history, sim_day))
+    return realized / portfolio.starting_balance * 100
+
+
+def weekly_realized_pnl_pct(portfolio: PaperPortfolio, sim_day: int) -> float:
+    """This sim week's real realized P&L (the same 7-day week
+    app/nexus.py's own weekly cadence uses), as a % of starting balance
+    — the same shape as daily_realized_pnl_pct above, just a wider
+    window."""
+    if portfolio.starting_balance <= 0:
+        return 0.0
+    week = sim_day // WEEKLY_INTERVAL_DAYS
+    realized = sum(t.pnl for t in portfolio.trade_history if (t.closed_sim_minutes // SIM_MINUTES_PER_DAY) // WEEKLY_INTERVAL_DAYS == week)
+    return realized / portfolio.starting_balance * 100
+
+
+def monthly_realized_pnl_pct(portfolio: PaperPortfolio, sim_day: int) -> float:
+    """This sim month's real realized P&L (the same 30-day month
+    app/nexus.py's own monthly cadence uses), as a % of starting
+    balance."""
+    if portfolio.starting_balance <= 0:
+        return 0.0
+    month = sim_day // MONTHLY_INTERVAL_DAYS
+    realized = sum(t.pnl for t in portfolio.trade_history if (t.closed_sim_minutes // SIM_MINUTES_PER_DAY) // MONTHLY_INTERVAL_DAYS == month)
     return realized / portfolio.starting_balance * 100
 
 
@@ -150,6 +180,30 @@ def evaluate_sentinel_risk(
             symbol=symbol,
             severity="critical",
             message=f"Today's realized profit ({daily_pnl_pct:.1f}%) has reached the {limits.daily_profit_target_pct:.0f}% daily target — protecting today's gain, no new trades until tomorrow.",
+            createdAt=_now_iso(),
+        )
+
+    # Design Bible Chapter 67 (TTOS) Safety Settings — the second and
+    # third real circuit breakers, checked right after the daily ones
+    # for the same reason: a week/month-scoped halt is a more common
+    # real event than the lifetime drawdown check below it.
+    weekly_pnl_pct = weekly_realized_pnl_pct(portfolio, sim_day)
+    if weekly_pnl_pct <= -limits.max_weekly_loss_pct:
+        return RiskWarning(
+            id=f"risk-{symbol}-{_now_iso()}",
+            symbol=symbol,
+            severity="critical",
+            message=f"This week's realized loss ({weekly_pnl_pct:.1f}%) has hit the {limits.max_weekly_loss_pct:.0f}% weekly maximum loss — no new trades until next week.",
+            createdAt=_now_iso(),
+        )
+
+    monthly_pnl_pct = monthly_realized_pnl_pct(portfolio, sim_day)
+    if monthly_pnl_pct <= -limits.max_monthly_loss_pct:
+        return RiskWarning(
+            id=f"risk-{symbol}-{_now_iso()}",
+            symbol=symbol,
+            severity="critical",
+            message=f"This month's realized loss ({monthly_pnl_pct:.1f}%) has hit the {limits.max_monthly_loss_pct:.0f}% monthly maximum loss — no new trades until next month.",
             createdAt=_now_iso(),
         )
 
