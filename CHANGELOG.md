@@ -7,6 +7,39 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 70 addendum + Chapter 71 — Institutional Rule Engine (IRE)**
+  (`docs/DesignBible/volumes/10-broker-live-trading/`): documentation
+  only, no code changes. A follow-up brief labeled "Addendum to
+  Chapter 69" arrived specifying eight systems (Trailing Drawdown
+  Engine, Consistency Rule Engine, Leverage System, Scaling Milestones,
+  Challenge Windows, a Weekday-Aware Time System, a Prop Firm Calendar,
+  and a Compliance Score) — applied to Chapter 70 (Prop Firm Rule
+  Engine) instead, since its content directly extends gaps that
+  chapter's own research already named, flagged explicitly in Chapter
+  70's own Status line. Every one of the eight is confirmed genuinely
+  unbuilt by direct research: no peak-equity/high-water-mark field, no
+  weekday/hour concept in `TimeState`, and no leverage/margin concept
+  exist anywhere in this codebase's schemas.
+
+  The same brief also introduced a real architectural correction —
+  no account type should own an independent rule-enforcement system;
+  every account loads a Rule Profile into one centralized engine —
+  written as new **Chapter 71**. Grep-confirmed: no `Rule`/
+  `RuleProfile`/`RuleEngine` class exists anywhere in this codebase
+  today. Today's real risk checks (Chapters 57/58/66) are deliberately
+  hardcoded, transparent Python functions, not a data-driven rule
+  interpreter — Chapter 71 names this explicitly as a real trade-off
+  any future implementation must honor (preserve the same
+  auditability), not a free upgrade. The brief's own six Custom Rule
+  Builder examples were checked individually: three reference
+  already-real, CEO-editable `RiskLimits` fields with no rule-authoring
+  surface around them; three reference infrastructure (weekday
+  awareness, a volatility-threshold hook, a configurable confidence
+  threshold) that doesn't exist in any form. Chapter 70 updated to
+  reference Chapter 71 as the only system that would ever enforce its
+  rules. Both chapters depend on Chapter 69 and are gated by the same
+  Live Trading Gate (Appendix G).
+
 - **Chapter 70 — Prop Firm Rule Engine**
   (`docs/DesignBible/volumes/10-broker-live-trading/chapter-70-prop-firm-rule-engine.md`):
   a new Design Bible chapter, pure target architecture — no code was

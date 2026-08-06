@@ -19,6 +19,25 @@ drawdown, consistency rules, leverage, scaling milestones, and
 challenge-scoped (rather than daily-scoped) tracking. See the
 Implementation Notes at the bottom for the exact split.
 
+**Addendum (received as "Addendum to Chapter 69," applied here):** a
+follow-up brief arrived labeled "Addendum to Chapter 69," but its
+content — Trailing Drawdown Engine, Consistency Rule Engine, Leverage
+System, Scaling Milestones, Challenge Windows, Weekday-Aware Time
+System, Prop Firm Calendar, Compliance Score — is a direct, detailed
+specification of the gaps *this* chapter's own Implementation Notes
+already named as genuinely unbuilt, not Chapter 69's own (Multi-Account
+& Fund Management). Applied here rather than to Chapter 69, flagged
+explicitly rather than silently reconciled, in case a literal Chapter
+69 placement was intended. See "Implementation Requirements Addendum"
+below. **The same addendum also introduced a real architectural
+correction, covered in full in [Chapter
+71](chapter-71-institutional-rule-engine.md):** this chapter's own
+rules must never become a standalone, independent enforcement system —
+they become one Rule Profile loaded into a single centralized
+Institutional Rule Engine every account type shares. This chapter
+still owns *which* rules a Prop Firm account needs; Chapter 71 owns
+*how* any account's rules get enforced.
+
 ## Executive Summary
 
 A Prop Firm Rule Engine's job is to protect a funded account by
@@ -58,7 +77,92 @@ auto-resolution per Operating Mode), general Risk Authority (Chapters
 more account-type-specific check, never a second, parallel veto
 system), Broker Communication (Chapter 68), Account Management
 (Chapter 69 owns the account type itself; this chapter owns only the
-rule set a Prop Firm-typed account would carry).
+rule set a Prop Firm-typed account would carry), **and, per the
+addendum's own correction, rule *enforcement* itself** — this chapter
+defines which rules a Prop Firm account needs (the fifteen supported
+rules plus the eight addendum systems below); [Chapter
+71](chapter-71-institutional-rule-engine.md)'s centralized Institutional
+Rule Engine is the only system that ever actually enforces any rule,
+for any account type. This chapter must never grow its own independent
+enforcement path.
+
+## Implementation Requirements Addendum
+
+Eight systems named as "mandatory for a complete institutional-grade
+Prop Firm Rule Engine," each checked against the real codebase before
+being added here — every one of them lands on the "genuinely unbuilt"
+side of this chapter's own Ownership table above, so this section adds
+detail to already-identified gaps rather than discovering new ones:
+
+**1. Trailing Drawdown Engine.** Requires tracking the highest
+historical equity ever reached (a peak-equity/high-water-mark value)
+and continuously recomputing drawdown from that moving peak, not a
+fixed floor. Grep-confirmed: no peak-equity or high-water-mark field
+exists anywhere in this codebase's schemas. `RiskLimits.maxDrawdownPct`
+only ever compares current equity against the account's *starting*
+balance — the "support both static and trailing drawdown models"
+requirement means keeping today's real static check exactly as-is and
+adding a second, genuinely new computation alongside it, never
+replacing one with the other.
+
+**2. Consistency Rule Engine.** Requires comparing one day's P&L
+against a challenge's running cumulative total (the "no single day
+&gt;X% of total profit" shape most real prop firms use). No such
+comparison exists anywhere — `DailyObjectiveStatus` tracks *today's*
+realized P&L in isolation, never against an accumulating challenge-
+window total, because no challenge window is tracked at all (see
+Challenge Windows below).
+
+**3. Leverage System.** Requires a margin/leverage concept this
+codebase has never had at any ratio — Chapter 68's own research already
+confirmed a 100%-cash, long-only account with no margin field, no
+buying-power-beyond-cash-balance concept, and no liquidation logic of
+any kind. This is the single largest structural gap of the eight: every
+other item on this list extends an existing real number; this one has
+no real foundation to extend at all.
+
+**4. Scaling Milestones.** Requires both a funded-account growth-stage
+concept (does not exist) and Chapter 69's own account model (does not
+exist, since a milestone is meaningless without a specific account to
+track it against).
+
+**5. Challenge Windows.** Requires a bounded time window (30/60/90-day
+or unlimited) distinct from the sim's own unbounded day counter, plus
+daily-pace-required math derived from days remaining and progress so
+far. Neither exists — `TimeState.day` counts up forever with no
+concept of "this challenge started on day N and must finish by day
+N+30."
+
+**6. Weekday-Aware Time System.** The addendum's own comparison is
+accurate and confirmed by direct inspection: `TimeState` (`app/schemas.py`)
+is exactly `{day: int, hour: int, minute: int}` — no weekday, week
+number, month, quarter, year, market session, or holiday field exists
+anywhere. This is real, load-bearing infrastructure work, not a Prop
+Firm-specific add-on — Weekend Holding Rules, Minimum Trading Days,
+News Blackout Days, and Challenge Windows above all depend on it
+directly, and it would be a real, honest, standalone backend slice
+(extending `TimeState` and whatever derives sim days into weekdays) if
+this chapter's architecture is ever implemented.
+
+**7. Prop Firm Calendar.** A presentation layer over Trading Days
+Completed/Remaining, Challenge Deadline, Weekend Countdown, Holiday
+Schedule, and News Blackout Days — every one of those inputs depends on
+the Weekday-Aware Time System and Challenge Windows above, neither of
+which exists. Nothing to build here until both exist.
+
+**8. Risk Score (Prop Firm Compliance Score).** Requires combining
+Drawdown Safety, Consistency, Rule Compliance, Risk Exposure, Capital
+Preservation, and Account Health into one composite number. Every
+individual input already has *some* real analog (Drawdown Safety →
+`maxDrawdownPct` proximity; Risk Exposure → open-position exposure
+already computed for `maxPositionPct`; Account Health → Chapter 63's
+real `CompanyHealth.overall`, company-wide not account-scoped) but no
+formula anywhere combines multiple risk signals into one composite
+score — this codebase's own "no black-box composite" convention
+(Chapter 66's own Decision Logic section states it explicitly) means
+any real implementation of this score must publish its own weighting
+formula in the open, the same way `CompanyHealth.overall`'s own real
+formula already is, never a hidden blend.
 
 ## Ownership
 
@@ -304,6 +408,13 @@ Trading Mode" (confirmed absent under any name by Chapter 67's own
 research), any system-initiated automatic pause distinct from the
 CEO-triggered Emergency Stop, and — transitively — everything that
 depends on Chapter 69's account model, which is itself pure
-architecture. No code was written against this chapter. Gated by the
-same [Live Trading Gate](../../appendices/appendix-g-permanent-development-policy.md)
-Chapters 68/69 are gated by.
+architecture. **Also confirmed by direct research for the addendum
+above:** no generic rule/rule-profile abstraction and no peak-equity/
+high-water-mark field exist anywhere in this codebase's schemas — grep
+against every backend module returned zero matches for either. No code
+was written against this chapter. Gated by the same [Live Trading
+Gate](../../appendices/appendix-g-permanent-development-policy.md)
+Chapters 68/69 are gated by, and — for enforcement specifically —
+by [Chapter 71](chapter-71-institutional-rule-engine.md), the one
+centralized system that would ever actually enforce any rule this
+chapter defines.
