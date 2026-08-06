@@ -7,6 +7,28 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 68 — Institutional Broker Management System (IBMS)**
+  (`docs/DesignBible/volumes/10-broker-live-trading/`): a new Design
+  Bible chapter, pure target architecture — no code was written against
+  it. Before writing, research confirmed this codebase's real broker
+  footprint: `app/broker.py`'s `PaperBroker` (a fully simulated
+  order-book engine — no brokerage SDK, no API key, no code path
+  reaching a real execution endpoint, per its own module docstring
+  since v0.6) and `app/market_data.py`'s `MarketDataProvider` adapter
+  interface (a real, proven "one connector, zero consumer changes"
+  pattern, applied so far only to market data, never execution).
+  Broker connections, authentication, encrypted credentials
+  (`requirements.txt` carries no HTTP client or cryptography library),
+  account synchronization, buying power beyond a cash-reserve floor,
+  position reconciliation, broker health monitoring, a multi-account
+  model, and Charles Schwab v1.0 itself are all confirmed genuinely
+  unbuilt, matching Chapter 66's own earlier "Broker Failsafe...
+  genuinely does not exist" finding. Also converts Volume 10 from a
+  flat outline stub into the same folder + README + numbered-chapter
+  structure Volume 9 already uses, and fixes two stale cross-references
+  in Chapters 58/59 that pointed at the old flat file path.
+  Documentation only, no code changes.
+
 - **Chapter 67 Part 3 — final TTOS Compliance Scorecard**
   (`docs/DesignBible/volumes/09-departments/chapter-67-tradetown-operating-system.md`):
   a new closing section scoring the brief's own nine pillars

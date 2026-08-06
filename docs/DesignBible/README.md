@@ -59,7 +59,7 @@ will eventually absorb remains the real, current reference.
 | 7 | [AI Workforce](volumes/07-ai-workforce.md) | Outline |
 | 8 | [Research Division](volumes/08-research-division.md) | Outline |
 | 9 | [Departments](volumes/09-departments/README.md) | Outline — chapter template defined |
-| 10 | [Broker & Live Trading](volumes/10-broker-live-trading.md) | Outline |
+| 10 | [Broker & Live Trading](volumes/10-broker-live-trading/README.md) | Chapter 68 written — pure architecture, no implementation |
 | 11 | [Testing & Quality Assurance](volumes/11-testing-quality-assurance.md) | Outline |
 | 12 | [Security](volumes/12-security.md) | Outline |
 | 13 | [Audits](volumes/13-audits.md) | Outline |

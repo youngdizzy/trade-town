@@ -269,8 +269,8 @@ opportunities" design needs).
 Multiple Brokers/Portfolios, Institutional Funds, Client Accounts,
 Cross-Market Allocation all require real infrastructure this codebase
 doesn't have yet (a live broker, in particular — see
-`docs/DesignBible/volumes/10-broker-live-trading.md`'s own "does not
-exist today" note). Machine Learning Capital Rotation and Dynamic
+`docs/DesignBible/volumes/10-broker-live-trading/chapter-68-institutional-broker-management-system.md`'s
+own "does not exist today" note). Machine Learning Capital Rotation and Dynamic
 Opportunity Forecasting are real future directions, not invented or
 stubbed here.
 

@@ -307,7 +307,8 @@ candidates, Adaptive Quality Thresholds (Company DNA's `researchRigor`
 trait feeding back into the Minimum Trade Quality control over time),
 Cross-Market Opportunity Comparison, and Multi-Broker Opportunity
 Routing all require real infrastructure (a live broker, in particular)
-this codebase does not have yet — see `docs/DesignBible/volumes/10-broker-live-trading.md`'s
+this codebase does not have yet — see
+`docs/DesignBible/volumes/10-broker-live-trading/chapter-68-institutional-broker-management-system.md`'s
 own honest "does not exist today" note. None of these are invented or
 stubbed here.
 
