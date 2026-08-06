@@ -81,7 +81,17 @@ export function OverviewPanel({ onInspect, onNavigate }: { onInspect: (d: TradeD
 
       <Glass className="p-3">
         <div className="mb-1.5 flex items-center justify-between">
-          <TerminalLabel>AI Academy</TerminalLabel>
+          {/* Design Bible Chapter 67 (TTOS) Part 3 — Navigation polish. Was
+              "AI Academy", which collided with the real, unrelated ACADEMY
+              tab (the pre-existing Trading Academy lesson/quiz curriculum)
+              this card doesn't navigate to — it navigates to KNOWLEDGE
+              (v0.7 Feature 25's actual AI Academy & Knowledge Network).
+              Renamed to the same term the KNOWLEDGE tab's own content
+              already uses for this ("Academy Progression" — see
+              AcademyPanel.tsx), the same disambiguation
+              MentorLibraryPanel.tsx's own "(KNOWLEDGE tab)" aside already
+              established, not an invented label. */}
+          <TerminalLabel>Academy Progression</TerminalLabel>
           <StatusPill tone="cyan">LVL {academyState.level}</StatusPill>
         </div>
         <div className="mb-2 text-[9px] text-cmd-textDim">{academyState.levelLabel}</div>

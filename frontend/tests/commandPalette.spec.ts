@@ -79,4 +79,23 @@ test.describe("Command Palette", () => {
     await expect(page.getByRole("button", { name: "AGENTS", exact: true })).toHaveClass(/text-cmd-cyan/);
     await page.keyboard.press("Escape");
   });
+
+  test("Navigation polish: Newspaper and Campus Map are reachable from the palette, same as every other real overlay", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+    await dismissBlockingPopups(page);
+
+    await page.keyboard.press("Control+k");
+    await page.getByPlaceholder("Search or type a command…").fill("newspaper");
+    await page.getByText("Open Newspaper", { exact: true }).click();
+    await expect(page.getByText("TradeTown Daily", { exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+
+    await page.keyboard.press("Control+k");
+    await page.getByPlaceholder("Search or type a command…").fill("campus");
+    await page.getByText("Open Campus Map", { exact: true }).click();
+    await expect(page.getByText("COMPANY CAMPUS MAP", { exact: true })).toBeVisible();
+    await page.keyboard.press("Escape");
+  });
 });

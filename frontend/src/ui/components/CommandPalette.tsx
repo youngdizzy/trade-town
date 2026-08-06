@@ -98,6 +98,15 @@ export function CommandPalette() {
       { id: "settings", label: "Open Settings", hint: "Overlay", run: () => EventBus.emit("ui:settings", { open: true }) },
       // Design Bible Chapter 67 (TTOS) Part 3 — the Executive Alert Center.
       { id: "alerts", label: "Open Alert Center", hint: "Overlay", run: () => EventBus.emit("ui:alertCenter", { open: true }) },
+      // Design Bible Chapter 67 (TTOS) Part 3 — Navigation polish. Newspaper
+      // and Campus Map were the only two of this app's 6 real standalone
+      // overlays with no path into the CEO's own central navigation surface
+      // (Newspaper was diegetic-only — walk to the stand in the Lobby;
+      // Campus Map lived only in QuickView/PauseMenu/FullCommandCenter's
+      // own buttons) — added here for parity with Memory/Coach/Dashboard/
+      // Alerts above, not a new overlay.
+      { id: "newspaper", label: "Open Newspaper", hint: "Overlay", run: () => EventBus.emit("ui:newspaper", { open: true }) },
+      { id: "campus", label: "Open Campus Map", hint: "Overlay", run: () => EventBus.emit("ui:campusMap", { open: true }) },
     ];
     list.push({
       id: "pause",
