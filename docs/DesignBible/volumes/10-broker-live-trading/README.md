@@ -1,16 +1,17 @@
 # Volume 10 — Broker & Live Trading
 
-**Status:** Chapters 68–69 written — pure target architecture, no
-implementation. Chapter 69 is organized in three parts (Part 1:
-Multi-Account & Fund Management; Part 2: Prop Firm Rule Engine, with
-its own addendum; Part 3: Institutional Rule Engine) rather than as
-separate chapter numbers — earlier drafts briefly existed as standalone
-"Chapters 70/71" before being folded back into Chapter 69 per explicit
-correction. See [the master Table of Contents](../../README.md) and
-[Appendix G's Live Trading
-Gate](../../appendices/appendix-g-permanent-development-policy.md) for
-the standing policy on exactly when this volume moves from
-architecture to a real connection.
+**Status:** Chapter 68 remains pure target architecture — explicitly
+deferred until Chapter 75 per [Appendix G's Live Trading
+Gate](../../appendices/appendix-g-permanent-development-policy.md).
+**Chapter 69 is now implemented, on the paper-trading side, in all
+three of its parts** (Part 1: Multi-Account & Fund Management; Part 2:
+Prop Firm Rule Engine, with its own addendum; Part 3: Institutional
+Rule Engine) — organized under one chapter number rather than as
+separate ones, per the same explicit correction as before (earlier
+drafts briefly existed as standalone "Chapters 70/71"). See [the master
+Table of Contents](../../README.md) and each part's own Implementation
+Notes for exactly what was built and the honest boundaries of what
+remains unbuilt or gated behind Chapter 68.
 
 Every real order this codebase has ever placed has gone to exactly one
 destination: `backend/app/broker.py`'s `PaperBroker`, a fully simulated
@@ -28,7 +29,7 @@ already established.
 | Feature | Title | Status |
 |---|---|---|
 | 68 | [Institutional Broker Management System (IBMS)](chapter-68-institutional-broker-management-system.md) | Pure architecture — no implementation. `app/broker.py`'s `PaperBroker` (a real, fully simulated order-book engine) and `app/market_data.py`'s `MarketDataProvider` adapter-interface pattern (proven out for market data, never for execution) are the only real precedents. Broker connections, authentication, encrypted credentials, account synchronization, buying power beyond a cash-reserve floor, position reconciliation, broker health monitoring, a multi-account model, and Charles Schwab v1.0 itself are all genuinely unbuilt. Gated by the Live Trading Gate — see Appendix G. |
-| 69 | [Multi-Account & Fund Management System (MAFMS)](chapter-69-multi-account-fund-management-system.md) | Pure architecture — no implementation, in three parts. **Part 1 (MAFMS):** `PaperPortfolio` and `TreasuryState` are two real, genuinely isolated capital pools — the one real precedent this chapter's architecture generalizes from; a generalized N-account model, account types, per-account permissions/risk profiles, account switching, cross-account aggregation, Fund Mode, and Client Mode are all genuinely unbuilt. **Part 2 (Prop Firm Rule Engine, + addendum):** the strongest real-coverage ratio in this volume — 5 of 15 supported rules are already real, enforced `RiskLimits` fields, and `DailyObjectiveStatus` already provides a live daily compliance readout; trailing drawdown, consistency rules, leverage, scaling milestones, challenge windows, and a weekday-aware time system are all confirmed genuinely unbuilt. **Part 3 (Institutional Rule Engine):** grep-confirmed no `Rule`/`RuleProfile`/`RuleEngine` class exists anywhere; today's real risk checks are deliberately hardcoded, transparent Python functions, not a data-driven rule interpreter — a real architectural trade-off Part 3 must honor, not silently fix. Depends on Chapter 68 becoming real first. |
+| 69 | [Multi-Account & Fund Management System (MAFMS)](chapter-69-multi-account-fund-management-system.md) | **Implemented, in all three parts, on the paper-trading side.** **Part 1 (MAFMS):** a real `Account` model (`app/schemas.py`/`app/accounts.py`) generalizes the old two-pool precedent — create/close accounts, capital allocation reusing `treasury.py`'s real transfer machinery, account switching. Live trading execution against non-primary accounts remains explicitly unwired (named honestly, not silently assumed). **Part 2 (Prop Firm Rule Engine, + addendum):** `app/prop_firm.py` adds a real Weekday-Aware Time System, Trailing Drawdown Engine (peak-equity high-water mark), Consistency Rule Engine, Scaling Milestones, Challenge Windows, and a transparent, published Compliance Score. Leverage is stated as explicitly not applicable (100% cash account) rather than fabricated — these are real status computations, not yet wired as pre-trade blocks. **Part 3 (Institutional Rule Engine):** `app/rule_engine.py` (new) is a real, centralized evaluator for a closed, named `RuleType` set (not a free-text DSL, a deliberate scope decision) attached per-account via `Account.custom_rules`, with corrective-action suggestions and real Company Memory recording — not yet wired into the pre-trade pipeline as a blocking veto. Chapter 68 (the real broker connection) remains deferred until Chapter 75 per Appendix G. |
 
 ## Where the real content lives today
 

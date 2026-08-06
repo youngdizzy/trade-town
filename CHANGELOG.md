@@ -7,6 +7,85 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 69 (all three parts) + Chapter 70 Part 2 — implemented**,
+  per explicit instruction to implement everything across Chapters
+  68-70 except Chapter 68 (deferred until Chapter 75, per Appendix G's
+  Live Trading Gate). The Design Bible entries below this one describe
+  the target-architecture research that preceded this pass; this entry
+  and its own file-level Implementation Notes sections (linked below)
+  describe what was actually built and verified.
+
+  **Chapter 70 Part 2 — Executive Consensus Meter**
+  (`app/schemas.py`, `app/executive_intelligence.py`, `app/executive.py`,
+  `app/state.py`, `app/scribe.py`, `app/routers/executive.py`,
+  `ExecutiveVoting.tsx`): Modify (`modify_proposal()`) and Delegate
+  (`submit_ceo_decision(delegated=True)`) are now real CEO decision
+  actions, distinctly recorded on `resolvedBy`. `_build_disagreement_
+  summary()` synthesizes the per-department disagreement picture the
+  CEO previously had to assemble by reading cards individually.
+  `compute_executive_accuracy_scores()` scores each department's
+  directional stance (`agree`/`disagree`/`recommend_rejecting` only —
+  hedged stances excluded) against real, already-closed
+  `CeoDecisionRecord.outcome` values — resolving the counterfactual-
+  outcome tension the original research raised by scope, not by
+  fabricating hypothetical trade outcomes. The What-If Simulation Lab's
+  Probability/Return/Risk numbers now merge into `GET /api/executive/
+  intelligence`'s single response. See [Chapter 70's own Part 2
+  Implementation
+  Notes](docs/DesignBible/volumes/09-departments/chapter-70-executive-board-ceo-intelligence-system.md)
+  for the full, honest inventory of what remains unbuilt (a distinct
+  Consensus % apart from average confidence, Institutional Risk/
+  Opportunity Scores, structured per-opinion Evidence/Concerns/Benefits/
+  Risks fields, and accuracy scoring for the 5 departments that never
+  cast a directional stance).
+
+  **Chapter 69 Part 1 — Multi-Account & Fund Management System**
+  (`app/schemas.py`'s new `Account`/`AccountType`, `app/accounts.py`
+  (new), `app/routers/accounts.py` (new), `app/state.py`): a real,
+  generalized `Account` model — create/close, capital allocation
+  reusing `treasury.py`'s own real deposit/withdraw machinery rather
+  than inventing a second transfer mechanism, and account switching.
+  Live trading execution against non-primary accounts is explicitly not
+  wired (stated in `Account`'s own docstring) — that would require
+  parameterizing the entire trading pipeline by account, named honestly
+  as Future Expansion rather than silently assumed.
+
+  **Chapter 69 Part 2 — Prop Firm Rule Engine** (`app/prop_firm.py`
+  (new)): a real Weekday-Aware Time System (`weekday_for()`, day 1 =
+  Monday, deterministic), a Trailing Drawdown Engine (`Account.
+  peak_equity`, a continuously-updated high-water mark), a Consistency
+  Rule Engine, Scaling Milestones (published 10/25/50/100% growth
+  tiers), Challenge Windows (with a real on-pace read), and a
+  transparent, published, equal-weighted Prop Firm Compliance Score —
+  never a hidden blend. Leverage is stated as explicitly not applicable
+  (`LEVERAGE_NOTE`: 100% cash, long-only, no margin concept anywhere in
+  this codebase) rather than fabricated. These are real status
+  computations, not yet wired as pre-trade blocks — see Part 3.
+
+  **Chapter 69 Part 3 — Institutional Rule Engine (IRE)**
+  (`app/rule_engine.py` (new), `Account.custom_rules`): a real,
+  centralized evaluator (`evaluate_rules()`) for a closed, named
+  8-value `RuleType` set — a deliberate scope decision over a free-text
+  DSL/rule parser (none exists anywhere in this codebase, and building
+  one was ruled out of scope), preserving this Design Bible's "no
+  black-box composite" convention while remaining genuinely data-driven
+  (no code change needed to add a rule instance). Includes per-`RuleType`
+  corrective-action suggestions (`CORRECTIVE_ACTIONS`) and real Company
+  Memory recording of violations (`record_rule_violation()`). Not yet
+  wired into the pre-trade pipeline as a blocking veto — `evaluate_
+  rules()` is real and callable but not called from `app/nexus.py` or
+  the Trade Gatekeeper today; it evaluates on demand
+  (`GET/POST /api/accounts/rules/*`), not inline with a pending trade.
+  Does not replace or duplicate the pre-existing, hardcoded Chapters
+  57/58/66 checks for the primary account.
+
+  Verified throughout: `mypy`/`ruff` clean on the full backend, `tsc
+  --noEmit`/`eslint`/`npm run build` clean on the full frontend
+  (`npm run build`'s `tsc -b` caught missing type imports plain `tsc
+  --noEmit` missed, consistent with this project's own prior findings),
+  and extensive runtime tests against the real `GameState` singleton
+  including full save-module persistence round-trips.
+
 - **Chapter 70, Part 2 — Executive Consensus Meter**
   (`docs/DesignBible/volumes/09-departments/chapter-70-executive-board-ceo-intelligence-system.md`):
   Chapter 70 is now two parts — the base Board & CEO Intelligence brief

@@ -1,19 +1,34 @@
 # Chapter 69 — Multi-Account & Fund Management System (MAFMS)
 
-**Status:** Pure architecture, not yet implemented — same posture as
-[Chapter 68](chapter-68-institutional-broker-management-system.md).
-This chapter now has three parts, all filed under Chapter 69 per
-explicit correction: **Part 1** is the original Multi-Account & Fund
-Management System brief. **Part 2** is the Prop Firm Rule Engine
-(previously drafted as a standalone "Chapter 70," including its own
-addendum) — merged in here rather than kept as a separate chapter
-number. **Part 3** is the Institutional Rule Engine (previously drafted
-as a standalone "Chapter 71") — merged in for the same reason. Each
-part keeps its own full structure (Executive Summary through
+**Status:** All three parts now implemented, on the paper-trading side
+only — [Chapter 68](chapter-68-institutional-broker-management-system.md)
+(the real broker connection this chapter's accounts would eventually
+route live orders through) remains explicitly deferred until Chapter
+75, per the project's own [Live Trading
+Gate](../../appendices/appendix-g-permanent-development-policy.md).
+This chapter has three parts, all filed under Chapter 69 per explicit
+correction: **Part 1** is the original Multi-Account & Fund Management
+System brief — a real `Account` model, capital allocation, and account
+switching now exist. **Part 2** is the Prop Firm Rule Engine (previously
+drafted as a standalone "Chapter 70," including its own addendum) — the
+Weekday-Aware Time System, Trailing Drawdown Engine, Consistency Rule
+Engine, Scaling Milestones, Challenge Windows, and a transparent
+Compliance Score are now real. **Part 3** is the Institutional Rule
+Engine (previously drafted as a standalone "Chapter 71") — a real,
+centralized `app/rule_engine.py` now enforces a closed, named set of
+per-account Custom Rules, resolving the brief's own configurability-vs-
+transparency tension by scope rather than by building a free-text DSL.
+Each part keeps its own full structure (Executive Summary through
 Implementation Notes) rather than being flattened into one undivided
 document, since each was researched and written as its own coherent
 system; they're organized together here because that's how they're
 meant to be read and maintained, not because their content overlaps.
+The original design-time research below (what existed *before* this
+implementation pass) is left intact throughout, since it's the accurate
+record of what motivated each design decision — each part's own
+Implementation Notes section at its end is the place to check for
+exactly what was actually built, and the honest boundaries of what
+remains unbuilt.
 
 ---
 
@@ -83,82 +98,86 @@ was written:
 
 | Brief concept | Real system today | What it actually does |
 |---|---|---|
-| "Multi-Account Management" / "Account Hierarchy" | *(genuinely does not exist)* | `GameSaveState` holds exactly one `PaperPortfolio` and one `TreasuryState` — two hardcoded fields, not a list of N accounts with IDs to iterate over. There is no `AccountGroup`, no `Strategy`-to-`Account` link (Chapter 45's Research Sandbox `Strategy` objects belong to the company, not to any one account), and no code path that could "create" or "archive" an account today. |
+| "Multi-Account Management" / "Account Hierarchy" | **Now real** — `GameSaveState.accounts: list[Account]` (`app/schemas.py`, `app/accounts.py`) | A real list of N accounts, each with its own id, name, type, embedded `PaperPortfolio`, and `RiskLimits`, with real `create_account()`/`close_account()` code paths. **Still not real:** `AccountGroup` (no grouping concept — see "Account Groups" below) and a `Strategy`-to-`Account` link (Chapter 45's `Strategy` objects still belong to the company, not to any one account). |
 | "Portfolio Separation" / "Account Isolation" | `PaperPortfolio` + `TreasuryState` (`app/schemas.py`, `app/treasury.py`) | The one real, working precedent for this entire part: two independent balances, each with its own transaction history (`PaperTrade`/`PaperOrder` vs. `TreasuryTransaction`), moved between only via an explicit deposit/withdraw call — never mixed silently. **Incomplete even for these two:** `RiskLimits` and Operating Mode (the real automation-level control) are each a single global object/setting, not scoped per-pool — a real gap even in today's narrower two-pool world, before a third account is ever added. |
 | "Fund Management" (NAV, investor capital, contributions/withdrawals) | *(genuinely does not exist)* | No Net Asset Value concept, no investor-vs-fund capital distinction anywhere. `TreasuryState` tracks deposits/withdrawals for the CEO's own personal capital only — the closest real analog, and a single-owner one. |
-| "Account Permissions" (View Only/Research Only/Paper/Manual/Automation/Execution/Transfers/Admin) | Operating Mode (`learning`/`assisted`/`executive`, `app/schemas.py`) | Real, but a single global AI-autonomy dial, not a per-account permission matrix — it changes how much of the *existing* proposal-resolution pipeline runs unattended, not who can view, trade, or transfer within a given account. No granular permission concept exists at all. |
+| "Account Permissions" (View Only/Research Only/Paper/Manual/Automation/Execution/Transfers/Admin) | Operating Mode (`learning`/`assisted`/`executive`, `app/schemas.py`) | Still real, but still a single global AI-autonomy dial, not a per-account permission matrix — it changes how much of the *existing* proposal-resolution pipeline runs unattended, not who can view, trade, or transfer within a given account. Now that real accounts exist, this is a genuine, narrower remaining gap rather than a hypothetical one: no granular per-account permission concept exists yet. |
 | "Capital Allocation" (Company → Account → Position) | Chapter 57's Position Sizing (`app/nexus.py`), Chapter 59's Capital Priority (`app/capital_priority.py`) | Real, but two levels, not three: company-level cash-reserve/position-sizing math flows straight to position-level sizing, because there is only one account's capital to size against — the brief's middle "Account Level" has nothing to sit between yet. |
 | "Account Reporting" | `TreasuryMonthlyReport` (`app/schemas.py`) | Real, and the one genuine precedent for a *named, persisted, per-period* report object in this whole part — but scoped to Treasury alone. `PaperPortfolio`'s own performance is always computed live off the ledger (`computePeriodFinancials()`), never archived into an equivalent `PortfolioMonthlyReport`. |
-| "Account Switching" | *(does not exist)* | There is nothing to switch between — the Command Center already shows the one `PaperPortfolio` and the one `TreasuryState` simultaneously, on their own tabs (RISK/PORTFOLIO and TREASURY), not as alternate contexts to toggle. |
-| "Master Dashboard" / "Master Portfolio View" / "Cross-Account Analytics" | *(does not exist)* | Nothing to aggregate — Total AUM, Per-Account P&L, Broker Distribution, and every other master-dashboard metric the brief lists require 2+ real accounts to compute honestly, and only one exists. |
+| "Account Switching" | **Now real** — `POST /api/accounts/switch-active` (`app/schemas.py`'s `GameSaveState.active_account_id`) | A real, persisted "which account is active" pointer the CEO can change. **Still narrower than the brief's own framing:** switching changes which account the CEO is viewing/managing capital for in `AccountsSection`, not which account new trades execute against — the primary `PaperPortfolio` remains the one place trades open (see Part 1's own Implementation Notes). |
+| "Master Dashboard" / "Master Portfolio View" / "Cross-Account Analytics" | *(still does not exist)* | Real accounts now exist to aggregate, but nothing does yet — Total AUM, Per-Account P&L, Broker Distribution, and every other master-dashboard metric remain unbuilt; `AccountsSection` lists each account individually, never rolled into one summary view. |
 | "Performance Attribution" (by account/broker/strategy/sector/timeframe/regime/employee/capital source) | Partially real, narrowly: by employee (`supportingAgents`/`opposingAgents` on every `PaperTrade`) and by timeframe (`computePeriodFinancials`'s daily/weekly/monthly/all-time periods) are both real today. **Not real:** by account or broker (only one of each exists to attribute against), by sector (no sector taxonomy exists on `PaperTrade`), by market regime (Chapter 65's regime read is real but never joined against trade P&L as an attribution dimension). |
 | "Account Groups" | *(does not exist)* | No grouping concept anywhere — matches "Account Switching" above; nothing exists yet to group. |
 | "Client Mode" / "Fund Mode" | *(does not exist — the brief's own framing, "future-ready architecture" and "future institutional support," already says so)* | Honored here at face value rather than re-litigated: these are named future work in the brief itself, not a gap this research needed to discover. |
 
 ### Inputs
 
-**Would receive, once real:** account credentials/permissions from
-Chapter 68's IBMS (does not exist — Chapter 68 is itself pure
-architecture), a CEO-assigned risk profile per account (the underlying
-`RiskLimits` machinery is real; per-account assignment is not), a
-CEO-assigned objective/strategy preference per account (does not
-exist). **Real today:** the two real capital pools themselves
-(`PaperPortfolio`, `TreasuryState`) are the one honest input this
-part's architecture would generalize from.
+**Still would need, once Chapter 68 is real:** account credentials/
+permissions from Chapter 68's IBMS (Chapter 68 itself remains pure
+architecture, deferred until Chapter 75). **Now real:** a CEO-assigned
+risk profile per account — every `Account` carries its own real
+`RiskLimits`, no longer only a single global object. **Still not real:**
+a CEO-assigned objective/strategy preference per account. **Real
+today, unchanged:** the two original capital pools (`PaperPortfolio`,
+`TreasuryState`) plus every real `Account`'s own embedded portfolio.
 
 ### Outputs
 
-**Would produce, once real:** Master Portfolio, Account Context,
-Capital Distribution, cross-account Performance Data, Account Reports,
-Executive Analytics scoped per account. **Real today:** `PaperPortfolio`'s
-live performance figures and `TreasuryMonthlyReport` — the same two
-real, single-scope outputs already described under Ownership.
+**Now real:** per-account state (`Account.portfolio`, `Account.
+riskLimits`) the CEO can list and act on individually. **Still not
+real:** Master Portfolio (a rolled-up cross-account view), Capital
+Distribution (a cross-account allocation formula), Executive Analytics
+scoped per account. **Real today, unchanged:** `PaperPortfolio`'s live
+performance figures and `TreasuryMonthlyReport`.
 
 ### Internal Workflow
 
 **The brief's own two-level Capital Allocation flow (Company → Account
 → Position), checked against what's real:** Company Level (real —
-`RiskLimits`' cash-reserve floor) → *Account Level* (does not exist —
-nothing between the company and a position to allocate through) →
-Position Level (real — Chapter 57's Position Sizing). A real
-implementation would insert exactly one new stage into an existing,
-real pipeline, not replace it.
+`RiskLimits`' cash-reserve floor) → **Account Level (now real — an
+`Account`'s own capital, allocated to it via `allocate_capital()`/
+`deallocate_capital()`)** → Position Level (real — Chapter 57's Position
+Sizing, still scoped to the primary `PaperPortfolio` only — see Part 1's
+own Implementation Notes on the live-execution boundary). The one new
+stage this brief asked for is real; positions still only open in the
+primary portfolio, not inside a specific non-primary `Account`.
 
 ### Decision Logic
 
-**Not real, for the whole part:** no formula exists for account
-prioritization, capital distribution across accounts, or per-account
-risk-profile derivation, because there is only one account's capital to
-distribute today. **Real precedent to build from:** Chapter 59's
-Capital Priority engine already ranks *opportunities* against one
-account's available capital with a real, transparent formula — the
-same shape a future cross-account allocator would need, one level up.
+**Still not real:** no formula exists for account prioritization or
+capital distribution *across* accounts (i.e., which account should get
+the next dollar) — allocating to a specific account is a real, direct
+CEO action (`allocate_capital()`), not yet an automated, ranked
+decision. **Real precedent to build from, unchanged:** Chapter 59's
+Capital Priority engine already ranks opportunities against one
+account's available capital with a real, transparent formula.
 
 ### Department Cooperation
 
-**Would receive from:** Chapter 68 (IBMS — itself pure architecture, so
-this part inherits the same "not yet real" status transitively, since a
-real multi-account model presumes real per-account broker connections
-that don't exist), Chapters 57/58/66 (Risk Authority — real, would
-supply the risk-check machinery any per-account profile assigns, never
-duplicated), Chapter 56-adjacent Portfolio Intelligence (real, single-
-account today), Chapter 61 (Knowledge Graph/Company Memory — real,
-already shared company-wide, would need no change to serve a second
-account), Chapter 62 (Innovation Lab — real). **Would provide:** Master
-Portfolio (does not exist), Account Context (does not exist), Capital
-Distribution (does not exist), Performance Data (real, single-account
-today), Account Reports (Treasury's own real report is the closest
-analog), Executive Analytics (Feature 24's real `ExecutiveReview` is
+**Receives from:** Chapter 68 (IBMS — still pure architecture, deferred
+until Chapter 75; a real broker connection per account remains
+unbuilt), Chapters 57/58/66 (Risk Authority — real, supplies the
+risk-check machinery every `Account`'s own `RiskLimits` already reuses),
+Chapter 56-adjacent Portfolio Intelligence (real, still scoped to the
+primary portfolio for live-trading purposes), Chapter 61 (Knowledge
+Graph/Company Memory — real, already shared company-wide, needed no
+change to serve the new accounts), Chapter 62 (Innovation Lab — real).
+**Provides:** per-account state to `AccountsSection` (real). **Still
+not provided:** a rolled-up Master Portfolio or cross-account Capital
+Distribution view (does not exist), Performance Data (real, still
+single-portfolio-scoped for live trading today), Account Reports
+(Treasury's own real report remains the closest analog), Executive
+Analytics (Feature 24's real `ExecutiveReview` is
 company-wide, not multi-account).
 
 ### CEO Controls
 
 | Control | Status |
 |---|---|
-| Create Account / Archive Account | **Not built** — no account model exists to create or archive an instance of. |
-| Switch Account | **Not built** — nothing to switch between. |
-| Group Accounts | **Not built.** |
-| Transfer Settings (between accounts) | **Not built** — the one real transfer mechanism, `TreasuryTransaction` deposit/withdraw, moves capital between the two existing hardcoded pools, not between CEO-created accounts. |
+| Create Account / Archive Account | **Real** — `POST /api/accounts/create` and `/close` (`app/accounts.py::create_account()`/`close_account()`). |
+| Switch Account | **Real** — `POST /api/accounts/switch-active` sets `GameSaveState.active_account_id`. |
+| Group Accounts | **Not built** — still no account-grouping concept. |
+| Transfer Settings (between accounts) | **Real, for Account ↔ Treasury specifically** — `POST /api/accounts/allocate`/`deallocate` reuse `treasury.py`'s real deposit/withdraw machinery. **Not built:** direct account-to-account transfers (every real transfer still routes through the Treasury as the hub, matching this codebase's existing two-pool precedent rather than inventing a new topology). |
 | Assign Strategy / Assign Risk Profile | **Not built** — `RiskLimits` is real but global, not an assignable per-account profile. |
 | Enable/Disable Automation | **Partially real, globally scoped** — Operating Mode already toggles automation level company-wide; there is no per-account equivalent. |
 | Paper Trading / Live Trading | **Not a real toggle, same finding as Chapter 68** — every account this codebase has ever had is paper; there is nothing live to switch to. |
@@ -269,28 +288,52 @@ set this profile would carry.
 
 ### Part 1 Implementation Notes
 
-**What's real today, found by direct research before this part was
-written, not assumed:** two genuinely isolated capital pools
-(`PaperPortfolio`, the company's trading account; `TreasuryState`, the
-CEO's personal capital), each with its own real, independent
-transaction history, moved between only via an explicit, logged
-transfer — the one real precedent this whole part's architecture would
-generalize; a real, working per-period report object
-(`TreasuryMonthlyReport`) for the Treasury pool specifically; real,
-already-global Company Memory/Knowledge Graph sharing that would need
-no change to serve a second account; and real risk-limit machinery
-(`RiskLimits`, Chapter 57/66's enforcement) that already implements
-the Prop Firm profile's own named special rules, just not as an
-assignable per-account configuration. **What's genuinely, entirely
-unbuilt:** a generalized N-account model of any kind, account types,
-account IDs/owners/permissions, account switching, account groups,
-cross-account aggregation or a Master Dashboard, Fund Mode, Client
-Mode, and every KPI/report that depends on 2+ real accounts existing
-to compute against. No code was written against this part — pure
-architecture, matching Chapter 68's own posture exactly, and gated by
-the same [Live Trading Gate](../../appendices/appendix-g-permanent-development-policy.md)
-Chapter 68 is gated by, since this part's own real value depends on
-IBMS becoming real first.
+**Pre-existing, found by direct research before this part was
+written:** two genuinely isolated capital pools (`PaperPortfolio`, the
+company's trading account; `TreasuryState`, the CEO's personal
+capital), each with its own real, independent transaction history,
+moved between only via an explicit, logged transfer; a real, working
+per-period report object (`TreasuryMonthlyReport`) for the Treasury pool
+specifically; real, already-global Company Memory/Knowledge Graph
+sharing; and real risk-limit machinery (`RiskLimits`, Chapter 57/66's
+enforcement).
+
+**Built this pass:** a real, generalized `Account` model
+(`app/schemas.py`) — id, name, `account_type` (a closed
+`personal`/`ira`/`business`/`prop_firm`/`family` set, matching the
+brief's own five named types), an embedded `PaperPortfolio` (so every
+existing function that already operates on a portfolio, like
+`app/risk_engine.py`'s `portfolio_equity()`, works on an Account's
+portfolio with no change), and its own editable `RiskLimits` — the
+per-account risk profile this part's Ownership table confirmed didn't
+exist. `app/accounts.py` (new) implements `create_account()`,
+`close_account()`, `allocate_capital()`/`deallocate_capital()` (moving
+real capital between an Account and the Treasury, reusing
+`treasury.py`'s own real deposit/withdraw machinery rather than
+inventing a second transfer mechanism), and account switching via
+`GameSaveState.active_account_id`. `POST/GET /api/accounts/*`
+(`app/routers/accounts.py`) exposes all of it; `TreasuryPanel.tsx`'s new
+`AccountsSection` is the CEO-facing surface.
+
+**Explicit, honest scope boundary (stated in `Account`'s own
+docstring):** live trading execution — a new `TradeProposal` opening a
+position *in* a specific non-primary account — is not wired. That would
+mean parameterizing the entire trading pipeline (proposals, the Trade
+Gatekeeper, Sentinel/Guardian) by account, a materially larger change
+than this pass makes; every account beyond the primary one is today a
+real, CEO-manageable capital ledger, not yet a second place trades can
+execute. Named honestly here rather than silently assumed, and carried
+into this part's own Future Expansion.
+
+**Still genuinely unbuilt:** account groups, cross-account aggregation
+or a Master Dashboard, Fund Mode, Client Mode, and every KPI/report that
+depends on 2+ accounts *trading* (as opposed to holding capital) to
+compute against. Verified: mypy/ruff clean, `tsc --noEmit`/eslint/`npm
+run build` clean, and a full save-module persistence round-trip tested
+against the real `GameState` singleton. Gated, for the live-execution
+half specifically, by the same [Live Trading
+Gate](../../appendices/appendix-g-permanent-development-policy.md)
+Chapter 68 is gated by.
 
 ---
 
@@ -399,9 +442,11 @@ any kind. This is the single largest structural gap of the eight: every
 other item on this list extends an existing real number; this one has
 no real foundation to extend at all.
 
-**4. Scaling Milestones.** Requires both a funded-account growth-stage
-concept (does not exist) and Part 1's own account model (does not
-exist, since a milestone is meaningless without a specific account to
+**4. Scaling Milestones.** *(Both requirements below are now real — see
+this part's own Implementation Notes; left here as the original
+research record.)* Requires both a funded-account growth-stage
+concept (did not exist at research time) and Part 1's own account model (did not
+exist at research time, since a milestone is meaningless without a specific account to
 track it against).
 
 **5. Challenge Windows.** Requires a bounded time window (30/60/90-day
@@ -451,26 +496,36 @@ real codebase before this part was written:
 |---|---|---|
 | Daily Loss Limit | `RiskLimits.maxDailyLossPct` (Ch57), enforced in `evaluate_sentinel_risk()` | Real, live, checked every relevant tick — the strongest real match in this whole part. |
 | Maximum Overall Drawdown | `RiskLimits.maxDrawdownPct` | Real, but a fixed lifetime ceiling from starting balance, not scoped to a specific challenge window. |
-| Trailing Drawdown | *(does not exist)* | `maxDrawdownPct` is a fixed floor, never recalculated from a rolling peak-equity high — the defining feature of a real trailing-drawdown rule. No peak-equity tracking exists to trail from. |
+| Trailing Drawdown | **Now real** — `Account.peak_equity` + `compute_trailing_drawdown()` (`app/prop_firm.py`) | A real, continuously-updated peak-equity high-water mark (`app/accounts.py::_with_updated_peak_equity()`), with drawdown recomputed from that moving peak, not a fixed floor — the existing static `maxDrawdownPct` check is kept exactly as-is alongside it, never replaced. |
 | Maximum Position Size | `RiskLimits.maxPositionPct` | Real, enforced. |
 | Maximum Risk Per Trade | `RiskLimits.riskPerTradePct` | Real, enforced. |
 | Maximum Open Positions | `RiskLimits.maxOpenPositions` | Real, enforced. |
 | News Trading Restrictions | *(does not exist)* | `ScannerAlert` has news-adjacent alert types (`gap_up`/`gap_down`/etc.) but no blackout-window or trade-blocking logic tied to them. |
 | Minimum Trading Days | *(does not exist)* | No "days actually traded" counter distinct from total sim days elapsed — `DailyObjectiveStatus.simDay` tracks the calendar, not trading-day participation. |
-| Consistency Rules (no single day &gt; X% of total profit) | *(does not exist)* | No formula anywhere compares one day's P&L against a challenge's cumulative total. |
-| Maximum Leverage | *(does not exist — confirmed by Chapter 68's own research)* | 100% cash-account, long-only paper trading; no margin or leverage concept exists anywhere in this codebase. |
-| Profit Targets | `RiskLimits.dailyProfitTargetPct` (Ch67) | Real, but **daily**-scoped, not the brief's own challenge-scoped target (e.g., "8% over 30 days") — a different shape serving a related purpose. |
-| Account Scaling Milestones | *(does not exist)* | No account-growth-triggers-a-new-limit-tier concept anywhere — also depends on Part 1's own account model, which doesn't exist yet. |
-| Time-Based Restrictions | *(does not exist)* | `TimeState` is `{day, hour, minute}` only — nothing gates trading to specific hours today; agents and the sim run continuously. |
-| Weekend Holding Rules | *(does not exist)* | No day-of-week concept exists anywhere in `TimeState` — there is no calendar to check a "weekend" against, let alone a rule enforcing flat-by-Friday. |
+| Consistency Rules (no single day &gt; X% of total profit) | **Now real** — `compute_consistency_status()` (`app/prop_firm.py`) | Real per-day P&L bucketed from the account's own closed-trade history, compared against the configured challenge window's real cumulative total — `applicable: false` honestly when no challenge window is configured, rather than fabricating a comparison against nothing. |
+| Maximum Leverage | **Confirmed, explicitly, still not applicable** | `LEVERAGE_NOTE` (`app/prop_firm.py`), surfaced on every `PropFirmStatus` response, states outright: "Not applicable — this is a 100% cash, long-only paper account with no margin or leverage concept anywhere in this codebase." A stated boundary, not a fabricated number. |
+| Profit Targets | `RiskLimits.dailyProfitTargetPct` (daily) **+ now real challenge-scoped target** — `compute_challenge_progress()` | Daily-scoped target remains real and unchanged. **Now also real, challenge-scoped:** `Account.challenge_profit_target_pct` + `compute_challenge_progress()`'s `onPace` read (required pace = target × days-elapsed/duration), the exact "8% over 30 days" shape the brief asked for. |
+| Account Scaling Milestones | **Now real** — `compute_scaling_status()` (`app/prop_firm.py`) | Real, published growth-tier thresholds (`SCALING_TIER_THRESHOLDS_PCT`: 10/25/50/100% equity growth from starting balance) — a transparent step function, never a hidden one, matching this Design Bible's "no black-box composite" convention. |
+| Time-Based Restrictions | *(still does not exist)* | `TimeState` remains `{day, hour, minute}` with no hour-of-day gating; nothing blocks trading to specific hours. |
+| Weekend Holding Rules | **Weekday awareness now real; enforcement still not built** | `weekday_for()` (`app/prop_firm.py`) is a real, deterministic Weekday-Aware Time System (day 1 = Monday, never stored/driftable) — the load-bearing infrastructure this row previously said didn't exist. It's surfaced on `PropFirmStatus.weekday` today; no rule yet blocks holding a position into a weekend using it. |
 | Broker-Specific Rules | *(explicitly future, per the brief's own "(future)" tag)* | Honored at face value — depends on Chapter 68's real broker connections, which don't exist. |
 
-**Score: 6 of 15 already real and enforced** (Daily Loss, Overall
-Drawdown, Position Size, Risk Per Trade, Open Positions — five
-directly, plus Profit Targets in a related daily-scoped shape) — by far
-the highest real-coverage ratio of any part in this chapter, precisely
-because this brief asks for machinery Chapter 57 and Chapter 66 already
-built for the one account that exists.
+**Score, after this pass: 6 of 15 real and *enforced* (block a trade)**
+(Daily Loss, Overall Drawdown, Position Size, Risk Per Trade, Open
+Positions, Profit Targets-daily — unchanged from before this pass, all
+still enforced by `evaluate_sentinel_risk()`), **plus 4 more now real
+and *tracked/computed*, not yet enforced** (Trailing Drawdown,
+Consistency, Scaling Milestones, Profit Targets-challenge-scoped —
+`app/prop_firm.py`'s own module docstring is explicit: "this module
+only computes real, honest status readouts, never blocks a trade
+itself" — Part 3's Institutional Rule Engine is the system that would
+ever enforce any of these), **1 more genuinely resolved by an honest
+non-answer** (Maximum Leverage — `LEVERAGE_NOTE`), and **1 more with
+real supporting infrastructure but still no enforcement** (Weekend
+Holding — `weekday_for()`). 3 of 15 remain genuinely unbuilt in any
+form (News Trading Restrictions, Minimum Trading Days, Time-Based
+Restrictions), plus Broker-Specific Rules, still explicitly future per
+the brief's own tag.
 
 ### Inputs
 
@@ -517,10 +572,10 @@ composite readout the way the brief's own Prop Firm Dashboard implies.
 
 ### Department Cooperation
 
-**Would receive from:** Part 1 of this chapter (the Prop Firm account
-type this part's rules would attach to — does not exist yet), Chapters
-57/58/66 (the real risk-check machinery six of this part's fifteen
-rules already are), Chapter 67 (the real sticky-critical-toast + Alert
+**Receives from:** Part 1 of this chapter (the account model this
+part's rules attach to — now real), Chapters 57/58/66 (the real
+risk-check machinery six of this part's fifteen rules already are),
+Chapter 67 (the real sticky-critical-toast + Alert
 Center delivery mechanism this part's Warning System would use).
 **Would provide:** Rule Compliance state to the Executive Dashboard
 (Chapter 67's real `useDashboardData()` hook would be the natural
@@ -531,10 +586,10 @@ account-protection recommendations to the CEO.
 
 | Control | Status |
 |---|---|
-| Enable Prop Firm Rule Set on an account | **Not built** — depends on Part 1's account-type model, which doesn't exist. |
+| Enable Prop Firm Rule Set on an account | **Real** — Part 1's `account_type` field supports `prop_firm`, and any account (not only prop-firm-typed ones) can carry the Part 2 fields via `POST /api/accounts/prop-firm/configure`. |
 | Configure Daily Loss / Drawdown / Position Size / Risk Per Trade / Open Positions | **Already real**, globally scoped — every one of these is already a CEO-editable `RiskLimits` field via `POST /api/risk-limits`, today. |
-| Configure Trailing Drawdown / Consistency Rules / Leverage / Scaling Milestones | **Not built** — no underlying computation exists for any of these four yet. |
-| Weekend Holding Rules (configurable) | **Not built** — no day-of-week concept exists to configure a rule against. |
+| Configure Trailing Drawdown / Consistency Rules / Scaling Milestones | **Now real** — `POST /api/accounts/prop-firm/configure` sets `trailing_drawdown_limit_pct`/`consistency_limit_pct`; Scaling Milestones compute automatically from equity growth, no configuration needed. **Leverage remains not applicable**, stated via `LEVERAGE_NOTE` rather than a configurable field. |
+| Weekend Holding Rules (configurable) | **Weekday awareness now real** (`weekday_for()`), surfaced on `PropFirmStatus.weekday` — **enforcement of a rule against it still not built.** |
 | Auto-pause on rule-violation risk ("if CEO approval settings allow") | **Not built as a settings-gated auto-pause specifically** — the closest real precedent is Chapter 66's AI Consensus Safety `pause_trading` enforcement, a real system-triggered pause, but for department disagreement, not rule-violation proximity. Emergency Stop (Chapter 67) is real but CEO-triggered only, never system-initiated. |
 
 ### Warning System
@@ -568,19 +623,23 @@ always-running sim clock.
 
 ### Prop Firm Dashboard
 
-**Genuinely unbuilt as a named, dedicated dashboard** — but seven of
-its nine listed metrics already have a real, live, close analog: Daily
-Loss Remaining and Maximum Drawdown Remaining (derivable today from
-`RiskLimits` minus `DailyObjectiveStatus`'s live P&L), Profit Target
-(`dailyProfitTargetPct`, daily-scoped), Trading Days Completed (no real
-counter, see Ownership), Rule Compliance Score (no real composite
-score, only independent real checks), Account Health Score (Chapter
-63's real `CompanyHealth.overall` is the closest analog, company-wide
-not account-scoped), Capital at Risk (real — sum of open position
-exposure already computed for `maxPositionPct` checks). **Challenge
-Progress specifically remains the one metric with no real foundation at
-all** — it presumes the challenge-window tracking this part's Ownership
-section already confirmed doesn't exist.
+**Now real as a named endpoint (`GET /api/accounts/prop-firm/status` →
+`PropFirmStatus`, rendered by `TreasuryPanel.tsx`'s `PropFirmCard`),
+covering eight of the brief's nine listed metrics:** Daily Loss
+Remaining and Maximum Drawdown Remaining (derivable from `RiskLimits`
+minus `DailyObjectiveStatus`'s live P&L, unchanged), Profit Target
+(both the daily `dailyProfitTargetPct` shape and the new challenge-scoped
+`challengeProfitTargetPct`/`onPace` read), Rule Compliance Score (now
+real — `PropFirmComplianceScore`, a published, equal-weighted average of
+five named sub-scores, never a hidden blend), Capital at Risk (real,
+unchanged), and **Challenge Progress** (now real —
+`compute_challenge_progress()`, `applicable: false` honestly when no
+window is configured). **Still not a single real number, deliberately:**
+Trading Days Completed (still no "days actually traded" counter distinct
+from calendar days) and Account Health Score (Chapter 63's
+`CompanyHealth.overall` remains company-wide, not account-scoped —
+misrepresenting it as this one account's own would be the same trap
+this Design Bible's KPIs sections warn against elsewhere).
 
 ### Security
 
@@ -599,14 +658,15 @@ persisted report series the way `TreasuryMonthlyReport` or
 
 ### KPIs
 
-**Real and computable today, if scoped honestly to "daily" rather than
-"challenge":** compliance against the six confirmed-real rules above.
-**Not honestly computable:** a combined Rule Compliance Score,
-Challenge Progress percentage, or Trading Days Completed — each depends
-on tracking this codebase doesn't do yet, and reporting a number for
-any of them today would fabricate a measurement that never actually
-ran, the same trap Chapter 68's KPIs section already named for
-Execution Success Rate.
+**Real and computable today:** compliance against the six originally-real
+daily-scoped rules, **plus, now:** `PropFirmComplianceScore.overall` (a
+real, published, equal-weighted average of Drawdown Safety, Consistency,
+Rule Compliance, Risk Exposure, and Capital Preservation — deliberately
+excluding company-wide `CompanyHealth.overall`, since blending a
+company-wide number into a single account's score would misrepresent
+it), and Challenge Progress percentage. **Still not honestly
+computable:** Trading Days Completed — no "days actually traded"
+counter distinct from calendar days exists yet.
 
 ### Learning System
 
@@ -659,42 +719,67 @@ enforced today.
 
 ### Part 2 Implementation Notes
 
-**What's real today, found by direct research before this part was
-written, not assumed — the strongest real-coverage ratio of any part in
-this chapter:** five of the brief's fifteen supported rules (Daily Loss
-Limit, Maximum Overall Drawdown, Maximum Position Size, Maximum Risk
-Per Trade, Maximum Open Positions) are already real, enforced,
-CEO-configurable `RiskLimits` fields, checked unconditionally every
-relevant tick by `evaluate_sentinel_risk()`; a sixth (Profit Targets)
-is real in a related daily-scoped shape (`dailyProfitTargetPct`); the
-exact "block automatically, explain exactly why" pre-trade shape the
-brief asks for is already real and unconditional, via the Trade
-Gatekeeper's eight checks (Chapter 58); `DailyObjectiveStatus` is a
-real, live, per-day compliance readout —
-tradesToday/realizedPnlPctToday/profitTargetReached/maxLossReached/
-tradingHalted/haltReason — that already does, daily, most of what the
-brief's own Live Account Monitoring and Prop Firm Dashboard ask for at
-challenge scope; and Chapter 67's sticky-critical-toast + Alert Center
-is real, working delivery infrastructure this part's Warning System
-would use rather than invent. **What's genuinely, entirely unbuilt:**
-trailing drawdown (no peak-equity tracking exists to trail from),
-consistency rules, leverage (this is a 100%-cash account, confirmed by
-Chapter 68), account scaling milestones, time-based/weekend
-restrictions (no day-of-week concept exists anywhere in `TimeState`),
-challenge-scoped (rather than daily-scoped) tracking of any kind,
-"Swing Trading Mode" (confirmed absent under any name by Chapter 67's
-own research), any system-initiated automatic pause distinct from the
-CEO-triggered Emergency Stop, and — transitively — everything that
-depends on Part 1's own account model, which is itself pure
-architecture. **Also confirmed by direct research for the addendum
-above:** no generic rule/rule-profile abstraction and no peak-equity/
-high-water-mark field exist anywhere in this codebase's schemas — grep
-against every backend module returned zero matches for either. No code
-was written against this part. Gated by the same [Live Trading
+**Pre-existing, found by direct research before this part was written:**
+five of the brief's fifteen supported rules (Daily Loss Limit, Maximum
+Overall Drawdown, Maximum Position Size, Maximum Risk Per Trade,
+Maximum Open Positions) already real, enforced, CEO-configurable
+`RiskLimits` fields; a sixth (Profit Targets) real in a daily-scoped
+shape; the "block automatically, explain exactly why" pre-trade shape
+already real via the Trade Gatekeeper; `DailyObjectiveStatus` a real,
+live, per-day compliance readout; Chapter 67's sticky-critical-toast +
+Alert Center real, working delivery infrastructure.
+
+**Built this pass, in `app/prop_firm.py` (new) — status-computation
+only, never enforcement (see Part 3 below):**
+- **Weekday-Aware Time System** — `weekday_for()`, a real, deterministic
+  Monday-anchored mapping from `sim_day` to `Weekday`, never stored or
+  driftable. The load-bearing infrastructure this part's addendum
+  identified as needed by every other calendar-scoped feature below.
+- **Trailing Drawdown Engine** — `Account.peak_equity`, a real,
+  continuously-updated high-water mark (`app/accounts.py::_with_
+  updated_peak_equity()`), plus `compute_trailing_drawdown()` recomputing
+  drawdown from that moving peak. The existing static `RiskLimits.
+  maxDrawdownPct` check is untouched, kept exactly as-is alongside it.
+- **Consistency Rule Engine** — `compute_consistency_status()`: real
+  per-day P&L bucketed from the account's own closed-trade history,
+  compared against the challenge window's real cumulative total.
+  `applicable: false` when no window is configured, rather than
+  fabricating a comparison.
+- **Scaling Milestones** — `compute_scaling_status()`: real, published
+  growth-tier thresholds (10/25/50/100% equity growth), a transparent
+  step function.
+- **Challenge Windows** — `Account.challenge_start_sim_day`/
+  `challenge_duration_days`/`challenge_profit_target_pct` +
+  `compute_challenge_progress()`, including a real `onPace` read
+  (required pace = target × elapsed/duration).
+- **Prop Firm Compliance Score** — `compute_compliance_score()`: a real,
+  published, **equal-weighted average of five named sub-scores**
+  (Drawdown Safety, Consistency, Rule Compliance, Risk Exposure, Capital
+  Preservation) — never a hidden blend, and deliberately excluding
+  company-wide `CompanyHealth.overall` from the average, since it isn't
+  account-scoped.
+- **Leverage** — deliberately *not* fabricated. `LEVERAGE_NOTE`, a
+  static, honest string ("Not applicable — 100% cash, long-only, no
+  margin concept anywhere in this codebase"), surfaced on every
+  `PropFirmStatus` response instead of a number.
+- `GET /api/accounts/prop-firm/status` and `POST /api/accounts/
+  prop-firm/configure` (`app/routers/accounts.py`) expose all of the
+  above; `TreasuryPanel.tsx`'s new `PropFirmCard` is the CEO-facing
+  surface.
+
+**Still genuinely unbuilt:** any of this part's real new status reads
+being *enforced* (blocking a trade) — that's Part 3's job, done next;
+News Trading Restrictions, Minimum Trading Days, and hour-of-day
+Time-Based Restrictions (Weekday-Aware Time System covers day-of-week,
+not hour-of-day); "Swing Trading Mode"; any system-initiated automatic
+pause distinct from the CEO-triggered Emergency Stop; and everything
+that depends on Chapter 68's real broker connections. Verified:
+mypy/ruff clean, `tsc --noEmit`/eslint/`npm run build` clean, and
+runtime-tested against the real `GameState` singleton including a full
+save-module persistence round-trip. Gated, for the eventual live-trading
+half, by the same [Live Trading
 Gate](../../appendices/appendix-g-permanent-development-policy.md)
-Chapter 68 is gated by, and — for enforcement specifically — by Part 3
-of this chapter, the one centralized system that would ever actually
-enforce any rule this part defines.
+Chapter 68 is gated by.
 
 ---
 
@@ -768,49 +853,62 @@ was written:
 
 | Brief concept | Real system today | What it actually does |
 |---|---|---|
-| "Institutional Rule Engine" (one centralized enforcer) | *(genuinely does not exist)* | Grep-confirmed: no `Rule`, `RuleProfile`, or `RuleEngine` class or module exists anywhere in `backend/app/`. Every real check is its own named function, called directly by `app/nexus.py`, never through a shared interpreter. |
-| "Rule Profiles" (per-account-type rule sets) | *(does not exist)* | `RiskLimits` is one single global object per game save — not a set of named profiles a CEO could pick from, and not attachable to a specific account, since no per-account model exists (Part 1). |
-| "Rule Execution Order" (AI Decision → Risk Authority → IRE → Broker Management System → Order Execution) | Real for two of five stages | AI Decision (real — the analyst desk) → Risk Authority (real — Chapters 57/58/66's pre-trade veto pipeline) → *IRE* (does not exist) → *Broker Management System* (Chapter 68, itself pure architecture) → Order Execution (real — `app/broker.py`'s simulated fill). Today's real pipeline skips straight from Risk Authority to Order Execution — the exact same finding Chapter 68's own Internal Workflow section already made independently. |
-| "If any rule fails: block, explain, suggest corrective actions, record in Company Memory" | Three of four real today | Block (real — the Trade Gatekeeper's unconditional reject), Explain (real — every real check carries a specific reason string, never generic), Record in Company Memory (real — `app/scribe.py` already records risk-relevant events). **Not real:** "suggest corrective actions" — a rejected proposal today states *why* it failed, never a recommended fix (e.g., "reduce size by X% to comply"). |
-| "Rule Categories" (14 named + Future Rule Packs) | Five real, individually, under different names | Capital Rules (real — cash-reserve floor, Ch57), Risk Rules (real — `RiskLimits`), Drawdown Rules (real — `maxDrawdownPct`), Position Rules (real — `maxPositionPct`/`maxOpenPositions`), Automation Rules (real, but singular — Operating Mode, not a rule set). **Not real:** Leverage Rules (no leverage concept, Ch68/Part 2), Broker Rules (no broker, Ch68), Time Rules (no weekday/hour-gating, Part 2's addendum), Market Rules (Chapter 65's regime read is real but never framed as a blocking rule), Account Rules (no account model, Part 1), Strategy Rules (Chapter 45's `Strategy` stage-gating is real but not rule-driven), Tax Rules (no tax concept anywhere in this codebase), Compliance Rules (no compliance framework exists), Custom CEO Rules (no rule-authoring surface exists), Future Rule Packs (aspirational by the brief's own framing). |
-| "Custom Rule Builder" (CEO writes rules without code changes) | *(genuinely does not exist)* | No rule-authoring UI, no rule DSL or parser, no natural-language-to-check pipeline anywhere in this codebase. Checked against the brief's own six examples individually — see Custom Rule Builder section below. |
+| "Institutional Rule Engine" (one centralized enforcer) | **Now real, as a centralized evaluator — not yet a pre-trade blocker.** `app/rule_engine.py`'s `evaluate_rules()`. | A real, single, centralized module — one place, not one function per check — evaluates every enabled `Rule` on an account and returns a structured pass/fail per rule. **The one honest gap left open:** grep-confirmed `evaluate_rules()` is not called anywhere in `app/nexus.py` or the Trade Gatekeeper's pre-trade pipeline — it's invoked on demand (`GET/POST /api/accounts/rules/evaluate*`), not wired as a veto before a trade executes. The brief's own "one centralized enforcer" vision is architecturally real; the "enforcer" half (blocking a trade before it happens) is not yet connected. |
+| "Rule Profiles" (per-account-type rule sets) | **Now real, per-account (not per-account-*type*)** — `Account.custom_rules: list[Rule]` | Each real `Account` (Part 1) carries its own list of `Rule` objects, up to `MAX_CUSTOM_RULES_PER_ACCOUNT` (20) — a real, CEO-authored, per-account rule set, closer to the brief's "Custom Rule Builder" output than a fixed named profile a CEO picks from a menu (no `personal`/`ira`/`prop_firm` preset bundles exist — every account starts with zero custom rules and the CEO adds its own). |
+| "Rule Execution Order" (AI Decision → Risk Authority → IRE → Broker Management System → Order Execution) | Still real for two of five stages; IRE now exists but isn't spliced into this pipeline | AI Decision (real) → Risk Authority (real) → *IRE* (**now real as a module, `evaluate_rules()`, but not called from this pipeline**) → *Broker Management System* (Chapter 68, still deferred) → Order Execution (real). The pipeline itself still skips straight from Risk Authority to Order Execution — wiring the IRE into it as a genuine pre-trade veto stage remains open work, named honestly in Future Expansion below. |
+| "If any rule fails: block, explain, suggest corrective actions, record in Company Memory" | **Now three of four real for the IRE specifically, one still open** | Explain (real — every `RuleCheckResult` carries the specific limit, current value, and pass/fail), **Suggest corrective actions (now real)** — `CORRECTIVE_ACTIONS`, a static, per-`RuleType` template dict (e.g. "Reduce position size to bring today's realized loss back under the daily limit."), never a generic message, Record in Company Memory (real — `record_rule_violation()` writes a real `"alert"`-category record on `POST /rules/evaluate-and-record`). **Still not real: Block** — see the Rule Execution Order gap above; a rule violation is recorded and explained, not yet used to reject a pending trade. |
+| "Rule Categories" (14 named + Future Rule Packs) | Six real, individually or via the new closed `RuleType` set | Capital/Risk/Drawdown/Position Rules (real, pre-existing `RiskLimits`), Automation Rules (real, singular), **and now Trailing-Drawdown/Consistency/Weekday Rules** — three of Part 2's new computations are now selectable `RuleType` values a CEO can attach as a Custom Rule (`trailing_drawdown_pct`, `consistency_pct`, `no_trading_on_weekday`), alongside the five original `RiskLimits`-mirroring types (`max_daily_loss_pct`, `max_drawdown_pct`, `max_position_pct`, `max_open_positions`, `max_risk_per_trade_pct`) — 8 `RuleType` values total. **Still not real:** Leverage Rules (not applicable — Part 2), Broker Rules (Ch68), Market Rules, Account-type Rules (no per-type presets), Strategy Rules, Tax Rules, Compliance Rules, Future Rule Packs. |
+| "Custom Rule Builder" (CEO writes rules without code changes) | **Real, by deliberate scope, not a free-text DSL** — `AddCustomRuleRequest` (`POST /api/accounts/rules/add`) + `CustomRulesCard` (`TreasuryPanel.tsx`) | The CEO picks a `RuleType` from a closed, named set (not a code change — no rule parser was built, and building one is out of scope; see Custom Rule Builder section below for the explicit reasoning), sets a label and a limit/weekday, and the rule is real, persisted, and independently evaluable/toggleable/removable — genuinely "no code change needed to add a *rule*," honestly narrower than "no code change needed to add a new *kind* of rule." |
 
 ### Inputs
 
 **Real today:** every individual `RiskLimits` field this part's Rule
-Categories table confirms real, and Chapter 65's real market
-regime/volatility read. **Would need, once real:** a Rule Profile per
-account (does not exist — depends on Part 1), a rule-definition format
-the Custom Rule Builder could parse (does not exist).
+Categories table confirms real; Chapter 65's real market regime/
+volatility read remains unused as a `RuleType`; and, now, a real
+per-account `Rule` list (`Account.custom_rules`) plus a real, closed
+`RuleType` definition format `evaluate_rules()` can parse. **Still not
+real:** a rule-definition format for *arbitrary* CEO-authored logic
+(the free-text DSL the brief's own "no code changes" framing implies) —
+see Decision Logic and Custom Rule Builder above for the deliberate
+scope decision behind that gap.
 
 ### Outputs
 
 **Real today:** a blocked trade with a real, specific reason (the Trade
-Gatekeeper's own output shape). **Would produce, once real:** a
-suggested corrective action alongside the block reason, and a
-per-account Rule Compliance state distinct from today's single global
-risk-warning list.
+Gatekeeper's own output shape, unchanged) — **and, now, separately:** a
+real `RuleEvaluationResult` per account (`GET/POST /api/accounts/rules/
+evaluate*`) — a per-`RuleCheckResult` pass/fail with a corrective-action
+suggestion, plus a real Company Memory record on every violation
+recorded via the `-and-record` endpoint. **Not yet produced:** that
+`RuleEvaluationResult` feeding back into a blocked trade — the two
+outputs exist in parallel today, not yet merged into one pipeline.
 
 ### Internal Workflow
 
-**The brief's own Rule Execution Order, stage by stage, already covered
-in full under Ownership above** — two of five stages real, three (IRE,
-Broker Management System, and any account-scoped hand-off between them)
-not yet built. A real IRE would insert itself as one new stage between
-two real, already-connected ones (Risk Authority and Order Execution),
-not replace either.
+**The brief's own Rule Execution Order, stage by stage:** AI Decision
+(real) → Risk Authority (real) → IRE (**now real as `evaluate_rules()`,
+callable, but not called from this pipeline**) → Broker Management
+System (Chapter 68, deferred) → Order Execution (real). A future pass
+would insert `evaluate_rules()`'s call as a genuine stage between Risk
+Authority and Order Execution — today it's invoked separately, on
+demand or after the fact, never inline with a pending trade.
 
 ### Decision Logic
 
-**Real today, for every individually-real check:** each is a
-transparent, named threshold comparison — Chapter 66's own "no
-black-box composite" convention, restated once more here because it's
-the one principle a Custom Rule Builder implementation must not break.
-**Not real:** any generic rule-evaluation formula that could take an
-arbitrary CEO-authored rule (a string, a DSL expression, whatever form
-it eventually takes) and decide pass/fail against live trade data —
-this is the one piece of new decision logic this whole part actually
-requires, and it doesn't exist in any form yet.
+**Real today, for every check `evaluate_rules()` runs:** each `RuleType`
+is its own transparent, named threshold comparison in `_check_rule()`
+(`app/rule_engine.py`) — one simple, individually-inspectable comparison
+per rule, never combined or weighted, matching Chapter 66's "no
+black-box composite" convention exactly. **The scope decision that
+resolves this part's own central tension (Company Philosophy, above):**
+rather than build a generic rule-evaluation formula that parses an
+arbitrary CEO-authored string or DSL expression (the brief's literal
+"Custom Rule Builder" ask), this pass implemented a closed, named
+`RuleType` enum instead — genuinely data-driven (no code change needed
+to add a *rule*), but not "no code change to add a new *kind* of rule."
+No rule parser exists anywhere in this codebase, and building one
+remains explicitly out of scope — see the Custom Rule Builder section
+below for the full reasoning.
 
 ### Department Cooperation
 
@@ -829,68 +927,79 @@ for every real block.
 
 | Control | Status |
 |---|---|
-| Select a Rule Profile for an account | **Not built** — no account model (Part 1) and no Rule Profile concept exist yet. |
-| Author a Custom Rule | **Not built** — no rule-authoring surface exists anywhere. |
+| Select a Rule Profile for an account | **Not built as a named, pre-bundled profile** (no Personal/IRA/Prop Firm preset menu) — but every account now carries its own real, independently-authored rule set (see Author a Custom Rule below), the substance of a "profile" without the preset-menu packaging. |
+| Author a Custom Rule | **Real** — `POST /api/accounts/rules/add` (`app/accounts.py::add_custom_rule()`), capped at 20 per account, from a closed 8-value `RuleType` set — not free-text, by deliberate scope decision (see Decision Logic and Custom Rule Builder). |
 | Configure existing named limits (Daily Loss, Position Size, ...) | **Already real**, globally scoped — every one of these is already a CEO-editable `RiskLimits` field via `POST /api/risk-limits`, today, for the one account that exists. |
-| Enable/disable a Rule Category | **Not built** — rules aren't organized into toggleable categories today; each is its own independent check. |
+| Enable/disable a Rule Category | **Not built as categories** — but individual rules are now real toggleable units: `POST /api/accounts/rules/toggle` (`app/accounts.py::toggle_custom_rule()`) enables/disables any one Custom Rule without deleting it. |
 
 ### Rule Profiles
 
-**Genuinely unbuilt, for all five named examples** (Personal, IRA,
-Business, Prop Firm, Family) — this section restates Part 1's own
-Portfolio DNA finding rather than re-deriving it: the underlying
-machinery several of these profiles would need already exists
-(position sizing, daily/weekly/monthly loss limits, the Prop Firm
-profile's own special rules per Part 2), just not organized as a named,
-selectable, per-account bundle. **The one real exception, already
-confirmed by Part 2's own research:** the Prop Firm profile's core
-three rules (Daily Loss Limit, Maximum Drawdown, Maximum Position Size)
-are the most fully real of any profile in this list — everything else
-in a real Prop Firm Rule Profile (Trailing Drawdown, Consistency Rules,
-Scaling Milestones, Leverage Rules, Challenge Deadlines) remains
-unbuilt per Part 2's own addendum research.
+**Still no named, pre-bundled profile menu** (Personal/IRA/Business/
+Prop Firm/Family presets a CEO picks from) — but the underlying reason
+to want one is now substantially covered a different way: every real
+`Account` carries its own real `custom_rules` list the CEO builds by
+hand, rule by rule, from the closed `RuleType` set. **The Prop Firm
+profile specifically:** its three original core rules (Daily Loss
+Limit, Maximum Drawdown, Maximum Position Size) remain real via
+`RiskLimits`; three more of Part 2's own additions (Trailing Drawdown,
+Consistency, Weekday) are now also directly attachable as Custom Rules
+through the IRE. Scaling Milestones and Leverage remain outside the
+Custom Rule Builder's scope — Scaling computes automatically (no rule
+needed), Leverage stays explicitly not applicable.
 
 ### Rule Categories
 
-Covered in full under Ownership above — five of fourteen real
-individually, none organized into a named, toggleable category system.
+Covered in full under Ownership above — six of fourteen real, now
+individually selectable as one of 8 `RuleType` values a Custom Rule can
+target; still no named, toggleable *category* grouping (a CEO toggles
+one rule at a time, not "all Drawdown Rules" as a group).
 
 ### Custom Rule Builder
 
-**Checked against each of the brief's own six examples individually,
-since "no code changes" claims are exactly the kind of thing this
-Design Bible's own conventions require verifying rather than assuming:**
+**The scope decision made this pass, stated plainly:** the brief's own
+"no code changes" ask, taken literally, means a CEO types or composes
+arbitrary free-form rule logic (a DSL, natural language, whatever form)
+and the system parses and evaluates it. That's a materially different,
+much larger piece of work than a closed set of named, parameterized
+rule types — and it directly threatens this codebase's own "no
+black-box composite" convention, since an arbitrary parsed expression is
+much harder for a CEO to audit than a fixed, named comparison. This pass
+chose the closed set deliberately: `RuleType` is a fixed 8-value enum
+(`max_daily_loss_pct`, `max_drawdown_pct`, `max_position_pct`,
+`max_open_positions`, `max_risk_per_trade_pct`, `trailing_drawdown_pct`,
+`consistency_pct`, `no_trading_on_weekday`), each with a label, limit,
+and (for the weekday type) a `Weekday` value — genuinely CEO-authored
+and data-driven (no code change to add a *rule instance*), but adding a
+*new kind* of rule still requires a code change, honestly narrower than
+the brief's literal ask.
 
-- "Never risk more than 1%" — the underlying number (`riskPerTradePct`)
-  is real and CEO-editable today, but only as a fixed schema field, not
-  free-form rule text a CEO could type.
-- "Never trade after 2:00 PM" / "No trades on Fridays" — both require
-  the Weekday-Aware Time System Part 2's addendum already confirmed
-  doesn't exist (`TimeState` has no hour-gating or weekday concept to
-  check against).
-- "Maximum three open positions" — the underlying number
-  (`maxOpenPositions`) is real and CEO-editable today, same shape as
-  the 1%-risk example above.
+**Re-checked against the brief's own six examples with this scope
+decision in mind:**
+- "Never risk more than 1%" — **now directly buildable** as a
+  `max_risk_per_trade_pct` Custom Rule, independent of the global
+  `RiskLimits.riskPerTradePct` field.
+- "Maximum three open positions" — **now directly buildable** as
+  `max_open_positions`.
+- "No trades on Fridays" — **now directly buildable** as
+  `no_trading_on_weekday`, using the real Weekday-Aware Time System
+  Part 2 built.
+- "Never trade after 2:00 PM" — **still not buildable** — no
+  `RuleType` exists for hour-of-day, since `TimeState` still has no
+  hour-gating concept to check against.
 - "Only trade when market volatility is below a defined threshold" —
-  Chapter 65's real market regime read includes a `high_volatility`/
-  `low_volatility` state, but it's never wired as a configurable,
-  trade-blocking threshold anywhere.
-- "Require AI confidence above 92%" — confidence is a real field on
-  every `TradeDecision`, and the Trade Gatekeeper already checks it as
-  one of its eight hardcoded checks (Chapter 58) — but the specific
-  threshold isn't CEO-configurable as an arbitrary rule; it's a fixed
-  constant in code today.
+  **still not buildable** — Chapter 65's real regime read was not added
+  as a `RuleType` this pass.
+- "Require AI confidence above 92%" — **still not buildable** — the
+  Trade Gatekeeper's confidence check remains a fixed constant in code,
+  not exposed as a `RuleType`.
 
-**The honest summary:** three of six examples reference numbers that
-are already real, CEO-editable `RiskLimits` fields (just not
-free-form-rule-shaped); three reference infrastructure (weekday
-awareness, a volatility-threshold hook, a configurable confidence
-threshold) that doesn't exist in any form. Building a genuine "CEO
-writes a rule, no code change needed" system is real, new work in every
-case — even the three real-number examples would need a rule
-parser/interpreter layer that doesn't exist today, since editing a
-`RiskLimits` field via the API is not the same thing as parsing
-free-form rule text.
+**The honest summary:** three of six brief examples are now real,
+CEO-authored Custom Rules; three remain unbuilt, each blocked on
+infrastructure (hour-gating, a volatility-threshold hook, a
+configurable confidence threshold) this pass didn't add. No free-text
+rule parser exists anywhere in this codebase, and none was built —
+extending the `RuleType` enum, not building a DSL, is this system's own
+stated path forward (see Future Expansion).
 
 ### Security
 
@@ -929,54 +1038,93 @@ Chapters 66/68 already use correctly.
 
 ### Future Expansion
 
-Rule Packs distributed or shared across CEOs, machine-learned rule
-suggestions, and natural-language rule authoring beyond a fixed DSL all
-require the base Custom Rule Builder this part itself confirms doesn't
-exist yet. Matches this volume's own Future Expansion precedent exactly
-— not invented or stubbed here.
+Wiring `evaluate_rules()` into the actual pre-trade pipeline as a real
+veto stage (today it evaluates on demand, not inline with a pending
+trade) is the single most consequential piece of remaining work — it's
+what would turn this from a real evaluator into the brief's own
+"enforcer." Beyond that: extending the closed `RuleType` enum with more
+values (hour-of-day, volatility threshold, confidence threshold — the
+three Custom Rule Builder examples still unbuilt), migrating Chapters
+57/58/66's own hardcoded checks to route through the same engine rather
+than staying parallel to it, Rule Packs shared across CEOs, and any
+move toward free-form rule authoring. All deliberately not attempted in
+this pass — matches this volume's own Future Expansion precedent.
 
 ### Design Bible Integration
 
-**Would integrate with, once real:** every chapter that currently
-enforces its own hardcoded check (57/58/66) would migrate that check
-into a Rule Profile rather than duplicate it — a real, non-trivial
-refactor of already-working code, not a greenfield addition layered on
-top. Company Memory would record every real rule violation exactly the
-way it already records other risk events today.
+**Real today:** Company Memory now records every real rule violation
+found by `evaluate_and_record_account_rules()`, exactly the way it
+already records other risk events (Chapter 61). **Not yet
+integrated:** Chapters 57/58/66's own hardcoded checks still run
+independently of the IRE — this pass built a second, real, centralized
+system alongside them rather than migrating them into it, an explicit
+scope boundary (see Primary Responsibilities): the IRE owns per-account
+Custom Rules; it does not yet subsume the pre-existing global
+`RiskLimits` checks for the primary account.
 
 ### Company Principle
 
 "Accounts define rules. The Institutional Rule Engine enforces them."
-This is a real, specific architectural commitment this codebase has not
-made — today, the code that defines a rule and the code that enforces
-it are the same function, which is precisely what has made every
-existing risk check simple to audit. Splitting definition from
-enforcement is the right long-term direction for a multi-account,
-multi-profile future, and it must be built without losing the
-transparency that hardcoding has given every real check so far — the
-one non-negotiable constraint on any future implementation of this
-part.
+**Now real, narrowly and honestly:** a real `Account.custom_rules` list
+defines rules, and a real, separate `app/rule_engine.py` evaluates
+them — definition and evaluation are now genuinely split code, not the
+same function, for every Custom Rule an account carries. **Still not
+true company-wide:** Chapters 57/58/66's own real, pre-existing checks
+remain hardcoded, on purpose, and this pass deliberately did not
+migrate them — the "one centralized engine for every account's rules"
+vision is real for the *new* rule surface this pass built, not yet for
+the *original* one it left untouched.
 
 ### Part 3 Implementation Notes
 
-**What's real today, found by direct research before this part was
-written, not assumed:** five of fourteen Rule Categories are already
-real, individually, as hardcoded checks (Capital, Risk, Drawdown,
-Position, and — singularly — Automation via Operating Mode); the
-brief's own Rule Execution Order is real for its first two stages (AI
-Decision, Risk Authority) and its last stage (Order Execution), with
-the middle two (IRE, Broker Management System) both genuinely unbuilt;
-every real check already blocks unconditionally and explains why, and
-is already recorded into Company Memory — three of the brief's own four
-required behaviors on a rule failure are real today, only "suggest
-corrective actions" is missing. Grep-confirmed: no
-`Rule`/`RuleProfile`/`RuleEngine` class exists anywhere in
-`backend/app/`. **What's genuinely, entirely unbuilt:** the centralized
-engine itself, any Rule Profile concept, the Custom Rule Builder
-(checked against all six of the brief's own examples individually —
-three reference already-real numbers with no rule-authoring surface
-around them, three reference infrastructure that doesn't exist at all),
-and every KPI/report that depends on cross-account or cross-profile
-data that doesn't exist yet. No code was written against this part.
-Gated by the same [Live Trading Gate](../../appendices/appendix-g-permanent-development-policy.md)
+**Pre-existing, found by direct research before this part was written:**
+five of fourteen Rule Categories already real, individually, as
+hardcoded checks; the brief's own Rule Execution Order real for its
+first two stages and its last stage; every real check already blocking
+unconditionally, explaining why, and recording into Company Memory.
+Grep-confirmed: no `Rule`/`RuleProfile`/`RuleEngine` class existed
+anywhere in `backend/app/` before this pass.
+
+**Built this pass:**
+- **`app/rule_engine.py`** (new) — `evaluate_rules()`, a real,
+  centralized evaluator. `_check_rule()` handles all 8 `RuleType`
+  values, each one simple, individually-inspectable comparison, never
+  combined. `CORRECTIVE_ACTIONS`, a static per-`RuleType` template
+  dict, resolves the "suggest corrective actions" gap this part's own
+  Ownership research identified — the fourth of the brief's four
+  required rule-failure behaviors, and the last one still missing
+  before this pass.
+- **`Account.custom_rules: list[Rule]`** (`app/schemas.py`) — the real
+  per-account rule set this part's "Rule Profiles" section asked for,
+  built as an open-ended list rather than a fixed named-profile menu.
+- **`app/accounts.py`** — `add_custom_rule()`/`remove_custom_rule()`/
+  `toggle_custom_rule()`, capped at `MAX_CUSTOM_RULES_PER_ACCOUNT` (20).
+- **`app/state.py::evaluate_account_rules()`** — the locked, persisted
+  counterpart to the read-only evaluation, writing a real `"alert"`
+  Company Memory record via `scribe.py::record_rule_violation()` for
+  every real violation found.
+- **`POST/GET /api/accounts/rules/*`** (`app/routers/accounts.py`) and
+  `CustomRulesCard` (`TreasuryPanel.tsx`) expose all of the above.
+
+**The one deliberate, load-bearing scope decision:** a closed `RuleType`
+enum instead of a free-text DSL/rule parser — see Decision Logic and
+Custom Rule Builder above for the full reasoning. No rule parser exists
+anywhere in this codebase.
+
+**What's genuinely still unbuilt:** `evaluate_rules()` wired into the
+actual pre-trade pipeline as a blocking veto stage (today: real,
+callable, evaluated on demand — not yet inline with a pending trade);
+migrating Chapters 57/58/66's own hardcoded checks into this same
+engine; named Rule Profile presets (Personal/IRA/Prop Firm bundles);
+the three Custom Rule Builder examples that need new infrastructure
+(hour-gating, a volatility threshold, a configurable confidence
+threshold); and any KPI/report depending on cross-account rule-
+violation history. Verified: mypy/ruff clean, `tsc --noEmit`/eslint/
+`npm run build` clean, and extensive runtime tests against the real
+`GameState` singleton — rule creation validation, PASS/FAIL evaluation
+with corrective actions, disable-changes-outcome, Company Memory
+recording (confirmed in a dedicated test with the rule left enabled),
+removal, and a full save-module persistence round-trip. Gated, for the
+eventual live-trading half, by the same [Live Trading
+Gate](../../appendices/appendix-g-permanent-development-policy.md)
 Chapter 68 is gated by.
