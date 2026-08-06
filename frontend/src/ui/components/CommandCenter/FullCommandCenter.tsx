@@ -30,6 +30,7 @@ import { DisciplinePanel } from "./panels/DisciplinePanel";
 import { DecisionVaultPanel } from "./panels/DecisionVaultPanel";
 import { WarRoomPanel } from "./panels/WarRoomPanel";
 import { PortfolioIntelPanel } from "./panels/PortfolioIntelPanel";
+import { BlackSwanPanel } from "./panels/BlackSwanPanel";
 import { EconomicIntelPanel } from "./panels/EconomicIntelPanel";
 import { PanelErrorBoundary } from "./PanelErrorBoundary";
 import { ReasoningLabPanel } from "./panels/ReasoningLabPanel";
@@ -85,6 +86,7 @@ const TABS = [
   "DECISIONS",
   "REPLAY",
   "RISK",
+  "BLACKSWAN",
   "AGENTS",
   "RESEARCH",
   "COMPANY",
@@ -241,6 +243,7 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
         {tab === "DECISIONS" && <DecisionsPanel onInspect={setInspecting} />}
         {tab === "REPLAY" && <ReplayPanel />}
         {tab === "RISK" && <RiskPanel onNeedHelp={needHelp} />}
+        {tab === "BLACKSWAN" && <BlackSwanPanel />}
         {tab === "AGENTS" && <AgentsPanel />}
         {tab === "RESEARCH" && <ResearchPanel />}
         {tab === "COMPANY" && <CompanyPanel />}

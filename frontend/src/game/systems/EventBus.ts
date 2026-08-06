@@ -9,6 +9,9 @@ import type {
   AgentState,
   BacktestSession,
   BlackBoxState,
+  BlackSwanEventRecord,
+  BlackSwanIntelligenceState,
+  BlackSwanReport,
   CalendarState,
   CeoDecisionRecord,
   CaseStudy,
@@ -21,6 +24,7 @@ import type {
   DailyObjectiveStatus,
   Debate,
   DecisionVaultEntry,
+  DefensiveModeState,
   DepartmentSelfEvaluation,
   DialogueHistoryEntry,
   DisciplineReview,
@@ -37,6 +41,7 @@ import type {
   GatekeeperRejection,
   HallOfFameEntry,
   InnovationState,
+  InstitutionalSurvivalScore,
   MarketEnvironmentState,
   MarketIntelligenceLearningEntry,
   MarketIntelligenceReport,
@@ -214,6 +219,11 @@ export interface GameEvents {
   "portfolioIntelligence:updated": PortfolioIntelligence;
   "economicIntelligence:updated": EconomicIntelligenceState;
   "economicIntelligenceReports:updated": EconomicIntelligenceReport[];
+  "blackSwanIntelligence:updated": BlackSwanIntelligenceState;
+  "blackSwanReports:updated": BlackSwanReport[];
+  "defensiveMode:updated": DefensiveModeState;
+  "blackSwanEvents:updated": BlackSwanEventRecord[];
+  "institutionalSurvivalScore:updated": InstitutionalSurvivalScore;
   "talent:updated": TalentState;
   "constitution:updated": ConstitutionState;
   "reasoningChallenges:updated": ReasoningChallenge[];

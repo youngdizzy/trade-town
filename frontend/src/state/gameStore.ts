@@ -9,6 +9,9 @@ import type {
   AgentState,
   BacktestSession,
   BlackBoxState,
+  BlackSwanEventRecord,
+  BlackSwanIntelligenceState,
+  BlackSwanReport,
   CalendarState,
   CaseStudy,
   CeoDecisionRecord,
@@ -21,6 +24,7 @@ import type {
   DailyObjectiveStatus,
   Debate,
   DecisionVaultEntry,
+  DefensiveModeState,
   DepartmentSelfEvaluation,
   DisciplineReview,
   EconomicIntelligenceReport,
@@ -34,6 +38,7 @@ import type {
   GatekeeperRejection,
   HallOfFameEntry,
   InnovationState,
+  InstitutionalSurvivalScore,
   MarketEnvironmentState,
   MarketIntelligenceLearningEntry,
   MarketIntelligenceReport,
@@ -162,6 +167,11 @@ export interface GameUiState {
   portfolioIntelligence: PortfolioIntelligence;
   economicIntelligence: EconomicIntelligenceState;
   economicIntelligenceReports: EconomicIntelligenceReport[];
+  blackSwanIntelligence: BlackSwanIntelligenceState;
+  blackSwanReports: BlackSwanReport[];
+  defensiveMode: DefensiveModeState;
+  blackSwanEvents: BlackSwanEventRecord[];
+  institutionalSurvivalScore: InstitutionalSurvivalScore;
   talent: TalentState;
   constitution: ConstitutionState;
   reasoningChallenges: ReasoningChallenge[];
@@ -445,6 +455,36 @@ class GameStore {
       updatedAt: new Date().toISOString(),
     },
     economicIntelligenceReports: [],
+    blackSwanIntelligence: {
+      warning: { overall: 0, tier: "green", factors: [], reasoning: "No data yet." },
+      confidence: { confidencePct: 50, evidenceQuality: "thin", supportingEvidence: [], contradictingEvidence: [], keyAssumptions: [], alternativeOutcome: "No data yet." },
+      updatedAt: new Date().toISOString(),
+    },
+    blackSwanReports: [],
+    defensiveMode: {
+      active: false,
+      triggerTier: "red",
+      autoTriggerEnabled: false,
+      activatedAt: null,
+      deactivatedAt: null,
+      activationReason: null,
+      priorRiskLimits: null,
+      equityAtActivation: null,
+      peakTierThisEpisode: null,
+      activatedSimMinutes: null,
+      recommendations: [],
+    },
+    blackSwanEvents: [],
+    institutionalSurvivalScore: {
+      overall: 50,
+      grade: "c",
+      factors: [],
+      primaryStrengths: [],
+      primaryWeaknesses: [],
+      topImprovements: [],
+      reasoning: "No data yet.",
+      updatedAt: new Date().toISOString(),
+    },
     talent: { reports: [], viewedReportIds: [], updatedAt: new Date().toISOString() },
     constitution: { articles: [], citations: [], amendments: [], updatedAt: new Date().toISOString() },
     reasoningChallenges: [],
@@ -631,6 +671,11 @@ class GameStore {
     EventBus.on("portfolioIntelligence:updated", (portfolioIntelligence) => this.set({ portfolioIntelligence }));
     EventBus.on("economicIntelligence:updated", (economicIntelligence) => this.set({ economicIntelligence }));
     EventBus.on("economicIntelligenceReports:updated", (economicIntelligenceReports) => this.set({ economicIntelligenceReports }));
+    EventBus.on("blackSwanIntelligence:updated", (blackSwanIntelligence) => this.set({ blackSwanIntelligence }));
+    EventBus.on("blackSwanReports:updated", (blackSwanReports) => this.set({ blackSwanReports }));
+    EventBus.on("defensiveMode:updated", (defensiveMode) => this.set({ defensiveMode }));
+    EventBus.on("blackSwanEvents:updated", (blackSwanEvents) => this.set({ blackSwanEvents }));
+    EventBus.on("institutionalSurvivalScore:updated", (institutionalSurvivalScore) => this.set({ institutionalSurvivalScore }));
     EventBus.on("talent:updated", (talent) => this.set({ talent }));
     EventBus.on("constitution:updated", (constitution) => this.set({ constitution }));
     EventBus.on("reasoningChallenges:updated", (reasoningChallenges) => this.set({ reasoningChallenges }));

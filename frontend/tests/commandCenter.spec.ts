@@ -141,8 +141,8 @@ test.describe("Global Command Center", () => {
     await expectMovement(page, "d", closedBefore);
   });
 
-  test("expands to the Full Command Center and renders all 35 tabs with graceful empty states", async ({ page }) => {
-    test.setTimeout(120000); // the longest-running test in the file — 35 real tab clicks, each dismissing real popups along the way
+  test("expands to the Full Command Center and renders all 36 tabs with graceful empty states", async ({ page }) => {
+    test.setTimeout(120000); // the longest-running test in the file — 36 real tab clicks, each dismissing real popups along the way
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);
     await continueGame(page);
@@ -160,7 +160,7 @@ test.describe("Global Command Center", () => {
     // ticking throughout, a genuine trade or trade proposal can appear
     // (and pop up) mid-test. clickTab() dismisses and retries rather
     // than losing the race to a popup that appears in that instant.
-    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "REPLAY", "RISK", "AGENTS", "RESEARCH", "COMPANY", "EXECINTEL", "MARKETINTEL", "ECONINTEL", "KNOWLEDGE", "DISCIPLINE", "VAULT", "WARROOM", "PORTFOLIO", "REASONING", "REFLECTION", "MENTOR", "MENTORLIB", "MENTORLAB", "TALENT", "SANDBOX", "CONSTITUTION", "OPS", "FOUNDERS", "TREASURY", "CALENDAR", "BLACKBOX", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
+    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "REPLAY", "RISK", "BLACKSWAN", "AGENTS", "RESEARCH", "COMPANY", "EXECINTEL", "MARKETINTEL", "ECONINTEL", "KNOWLEDGE", "DISCIPLINE", "VAULT", "WARROOM", "PORTFOLIO", "REASONING", "REFLECTION", "MENTOR", "MENTORLIB", "MENTORLAB", "TALENT", "SANDBOX", "CONSTITUTION", "OPS", "FOUNDERS", "TREASURY", "CALENDAR", "BLACKBOX", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS"];
     for (const tab of tabs) {
       await clickTab(page, tab);
       await expect(page.getByRole("button", { name: tab, exact: true })).toHaveClass(/text-cmd-cyan/);
@@ -991,9 +991,11 @@ test.describe("Global Command Center", () => {
     await clickExpand(page);
     await dismissBlockingPopups(page);
 
-    // Tab 9 is "COMPANY" per FullCommandCenter.tsx's own TABS order.
+    // Tab 9 is "RESEARCH" per FullCommandCenter.tsx's own TABS order
+    // (Design Bible Chapter 72 inserted BLACKSWAN right after RISK,
+    // shifting every tab from AGENTS onward down one position).
     await page.keyboard.press("9");
-    await expect(page.getByRole("button", { name: "COMPANY", exact: true })).toHaveClass(/text-cmd-cyan/);
+    await expect(page.getByRole("button", { name: "RESEARCH", exact: true })).toHaveClass(/text-cmd-cyan/);
 
     // Tab 1 is "OVERVIEW".
     await page.keyboard.press("1");

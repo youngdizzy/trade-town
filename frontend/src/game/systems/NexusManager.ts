@@ -7,6 +7,9 @@ import type {
   AgentKnowledgeState,
   BacktestSession,
   BlackBoxState,
+  BlackSwanEventRecord,
+  BlackSwanIntelligenceState,
+  BlackSwanReport,
   CaseStudy,
   CeoDecisionRecord,
   ChallengeReport,
@@ -18,6 +21,7 @@ import type {
   DailyObjectiveStatus,
   Debate,
   DecisionVaultEntry,
+  DefensiveModeState,
   DepartmentSelfEvaluation,
   DisciplineReview,
   EconomicIntelligenceReport,
@@ -31,6 +35,7 @@ import type {
   GatekeeperRejection,
   HallOfFameEntry,
   InnovationState,
+  InstitutionalSurvivalScore,
   MarketEnvironmentState,
   MarketIntelligenceLearningEntry,
   MarketIntelligenceReport,
@@ -141,6 +146,11 @@ interface NexusSnapshot {
   portfolioIntelligence: PortfolioIntelligence;
   economicIntelligence: EconomicIntelligenceState;
   economicIntelligenceReports: EconomicIntelligenceReport[];
+  blackSwanIntelligence: BlackSwanIntelligenceState;
+  blackSwanReports: BlackSwanReport[];
+  defensiveMode: DefensiveModeState;
+  blackSwanEvents: BlackSwanEventRecord[];
+  institutionalSurvivalScore: InstitutionalSurvivalScore;
   talent: TalentState;
   constitution: ConstitutionState;
   reasoningChallenges: ReasoningChallenge[];
@@ -377,6 +387,36 @@ export class NexusManager {
     updatedAt: new Date().toISOString(),
   };
   private static economicIntelligenceReports: EconomicIntelligenceReport[] = [];
+  private static blackSwanIntelligence: BlackSwanIntelligenceState = {
+    warning: { overall: 0, tier: "green", factors: [], reasoning: "No data yet." },
+    confidence: { confidencePct: 50, evidenceQuality: "thin", supportingEvidence: [], contradictingEvidence: [], keyAssumptions: [], alternativeOutcome: "No data yet." },
+    updatedAt: new Date().toISOString(),
+  };
+  private static blackSwanReports: BlackSwanReport[] = [];
+  private static defensiveMode: DefensiveModeState = {
+    active: false,
+    triggerTier: "red",
+    autoTriggerEnabled: false,
+    activatedAt: null,
+    deactivatedAt: null,
+    activationReason: null,
+    priorRiskLimits: null,
+    equityAtActivation: null,
+    peakTierThisEpisode: null,
+    activatedSimMinutes: null,
+    recommendations: [],
+  };
+  private static blackSwanEvents: BlackSwanEventRecord[] = [];
+  private static institutionalSurvivalScore: InstitutionalSurvivalScore = {
+    overall: 50,
+    grade: "c",
+    factors: [],
+    primaryStrengths: [],
+    primaryWeaknesses: [],
+    topImprovements: [],
+    reasoning: "No data yet.",
+    updatedAt: new Date().toISOString(),
+  };
   private static talent: TalentState = { reports: [], viewedReportIds: [], updatedAt: new Date().toISOString() };
   private static constitution: ConstitutionState = { articles: [], citations: [], amendments: [], updatedAt: new Date().toISOString() };
   private static reasoningChallenges: ReasoningChallenge[] = [];
@@ -653,6 +693,26 @@ export class NexusManager {
 
   static getEconomicIntelligenceReports(): EconomicIntelligenceReport[] {
     return this.economicIntelligenceReports;
+  }
+
+  static getBlackSwanIntelligence(): BlackSwanIntelligenceState {
+    return this.blackSwanIntelligence;
+  }
+
+  static getBlackSwanReports(): BlackSwanReport[] {
+    return this.blackSwanReports;
+  }
+
+  static getDefensiveMode(): DefensiveModeState {
+    return this.defensiveMode;
+  }
+
+  static getBlackSwanEvents(): BlackSwanEventRecord[] {
+    return this.blackSwanEvents;
+  }
+
+  static getInstitutionalSurvivalScore(): InstitutionalSurvivalScore {
+    return this.institutionalSurvivalScore;
   }
 
   static getTalent(): TalentState {
@@ -1225,6 +1285,27 @@ export class NexusManager {
     }
     this.economicIntelligenceReports = update.economicIntelligenceReports;
 
+    if (update.blackSwanIntelligence !== this.blackSwanIntelligence) EventBus.emit("blackSwanIntelligence:updated", update.blackSwanIntelligence);
+    this.blackSwanIntelligence = update.blackSwanIntelligence;
+
+    if (update.blackSwanReports.length !== this.blackSwanReports.length) {
+      EventBus.emit("blackSwanReports:updated", update.blackSwanReports);
+    }
+    this.blackSwanReports = update.blackSwanReports;
+
+    if (update.defensiveMode !== this.defensiveMode) EventBus.emit("defensiveMode:updated", update.defensiveMode);
+    this.defensiveMode = update.defensiveMode;
+
+    if (update.blackSwanEvents.length !== this.blackSwanEvents.length) {
+      EventBus.emit("blackSwanEvents:updated", update.blackSwanEvents);
+    }
+    this.blackSwanEvents = update.blackSwanEvents;
+
+    if (update.institutionalSurvivalScore !== this.institutionalSurvivalScore) {
+      EventBus.emit("institutionalSurvivalScore:updated", update.institutionalSurvivalScore);
+    }
+    this.institutionalSurvivalScore = update.institutionalSurvivalScore;
+
     if (update.talent !== this.talent) EventBus.emit("talent:updated", update.talent);
     this.talent = update.talent;
 
@@ -1377,6 +1458,11 @@ export class NexusManager {
     this.portfolioIntelligence = save.portfolioIntelligence;
     this.economicIntelligence = save.economicIntelligence;
     this.economicIntelligenceReports = save.economicIntelligenceReports;
+    this.blackSwanIntelligence = save.blackSwanIntelligence;
+    this.blackSwanReports = save.blackSwanReports;
+    this.defensiveMode = save.defensiveMode;
+    this.blackSwanEvents = save.blackSwanEvents;
+    this.institutionalSurvivalScore = save.institutionalSurvivalScore;
     this.talent = save.talent;
     this.constitution = save.constitution;
     this.reasoningChallenges = save.reasoningChallenges;

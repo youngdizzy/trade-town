@@ -2820,6 +2820,194 @@ export interface EconomicIntelligenceReport {
   createdAt: string;
 }
 
+// Design Bible Chapter 72 — Black Swan Intelligence & Resilience System
+// (backend/app/black_swan.py). This codebase has no historical
+// black-swan dataset, no real broker connection, and no macro/sector/
+// credit data — BSIRS is a real stress-and-resilience SYNTHESIS layer
+// over already-real signals, never a tracker of real historical crises
+// or a real broker health monitor.
+export type BlackSwanRiskTier = "green" | "yellow" | "orange" | "red" | "critical";
+
+/** Higher score always means MORE stress — the opposite direction of
+ * EconomicSignalFactor's "higher = healthier". */
+export interface BlackSwanSignalFactor {
+  name: string;
+  score: number; // 0-100, higher = more stress
+  weight: number;
+  detail: string;
+}
+
+export interface EarlyWarningScore {
+  overall: number; // 0-100
+  tier: BlackSwanRiskTier;
+  factors: BlackSwanSignalFactor[];
+  reasoning: string;
+}
+
+export interface BlackSwanConfidenceRead {
+  confidencePct: number;
+  evidenceQuality: "thin" | "moderate" | "strong";
+  supportingEvidence: string[];
+  contradictingEvidence: string[];
+  keyAssumptions: string[];
+  alternativeOutcome: string;
+}
+
+export interface BlackSwanNarrativeEntry {
+  id: string;
+  headline: string;
+  body: string;
+  evidence: string[];
+  simDay: number;
+  createdAt: string;
+}
+
+/** The always-current stress read — recomputed fresh every tick, same
+ * convention as companyHealth/portfolioIntelligence/economicIntelligence. */
+export interface BlackSwanIntelligenceState {
+  warning: EarlyWarningScore;
+  confidence: BlackSwanConfidenceRead;
+  updatedAt: string;
+}
+
+export interface BlackSwanReport {
+  id: string;
+  simDay: number;
+  snapshot: BlackSwanIntelligenceState;
+  narrative: BlackSwanNarrativeEntry;
+  createdAt: string;
+}
+
+/** `automatic` is true only for the two actions this codebase's own
+ * "never auto-correct a position without the player" principle allows
+ * to actually apply while Defensive Mode is active: tightening
+ * RiskLimits and pausing new proposal generation. Every other
+ * recommendation (closing a position, raising cash) always requires
+ * the CEO to act manually. */
+export interface DefensiveModeRecommendation {
+  action: string;
+  detail: string;
+  automatic: boolean;
+}
+
+export interface DefensiveModeState {
+  active: boolean;
+  triggerTier: BlackSwanRiskTier;
+  autoTriggerEnabled: boolean;
+  activatedAt: string | null;
+  deactivatedAt: string | null;
+  activationReason: string | null;
+  priorRiskLimits: RiskLimits | null;
+  equityAtActivation: number | null;
+  peakTierThisEpisode: BlackSwanRiskTier | null;
+  activatedSimMinutes: number | null;
+  recommendations: DefensiveModeRecommendation[];
+}
+
+export interface StressTestLevelResult {
+  shockPct: number;
+  resultingEquity: number;
+  resultingDrawdownPct: number;
+  breachesMaxDrawdown: boolean;
+  capitalSurvives: boolean;
+  recoveryDaysEstimate: number | null;
+  recoveryNote: string;
+}
+
+export interface PortfolioStressTestResult {
+  accountId: string | null;
+  accountLabel: string;
+  startingEquity: number;
+  heldPositionLiquidityScore: number | null;
+  levels: StressTestLevelResult[];
+  computedAt: string;
+}
+
+export type BlackSwanScenarioType = "flash_crash" | "severe_selloff" | "liquidity_freeze" | "correlation_breakdown";
+
+export interface PortfolioScenarioResult {
+  scenarioType: BlackSwanScenarioType;
+  label: string;
+  accountId: string | null;
+  accountLabel: string;
+  startingEquity: number;
+  shockedEquity: number;
+  impactPct: number;
+  impactAmount: number;
+  categoryImpact: CategoryExposure[];
+  breachesMaxDrawdown: boolean;
+  capitalSurvives: boolean;
+  detail: string;
+  computedAt: string;
+}
+
+export interface PlaybookStep {
+  label: string;
+  detail: string;
+}
+
+/** One real, generically-named Elevated Risk Response Playbook —
+ * live-populated with today's actual Defensive Mode recommendations,
+ * never one of eight fabricated event-specific documents. */
+export interface BlackSwanPlaybook {
+  currentTier: BlackSwanRiskTier;
+  immediateActions: PlaybookStep[];
+  departmentResponsibilities: PlaybookStep[];
+  ceoChecklist: PlaybookStep[];
+  recoveryPlan: string;
+  updatedAt: string;
+}
+
+/** Honestly static — no real broker connection exists in this codebase
+ * to monitor, so this is never a live health score. */
+export interface BrokerResilienceRead {
+  status: "simulated";
+  message: string;
+}
+
+export interface BlackSwanEventRecord {
+  id: string;
+  triggerReason: string;
+  peakTier: BlackSwanRiskTier;
+  activatedAt: string;
+  deactivatedAt: string;
+  durationSimMinutes: number;
+  equityAtActivation: number;
+  equityAtDeactivation: number;
+  equityChangePct: number;
+  largestContributingFactor: string;
+  affectedSymbols: string[];
+  lesson: string;
+  createdAt: string;
+}
+
+// Design Bible Chapter 72 Part 2 — Institutional Survival Score. Reuses
+// three of the Early Warning Score's own already-computed factors
+// (inverted back to "how resilient" instead of "how stressed"). No
+// "Leverage"/"Counterparty Risk" input and no "Estimated Survival
+// Probability" — see backend/app/black_swan.py's module docstring.
+export type InstitutionalSurvivalGrade = "a_plus" | "a" | "b" | "c" | "d" | "f";
+
+/** Higher score always means MORE resilient — the same direction as
+ * EconomicSignalFactor (opposite of BlackSwanSignalFactor). */
+export interface SurvivalScoreFactor {
+  name: string;
+  score: number; // 0-100, higher = more resilient
+  weight: number;
+  detail: string;
+}
+
+export interface InstitutionalSurvivalScore {
+  overall: number; // 0-100
+  grade: InstitutionalSurvivalGrade;
+  factors: SurvivalScoreFactor[];
+  primaryStrengths: string[];
+  primaryWeaknesses: string[];
+  topImprovements: string[];
+  reasoning: string;
+  updatedAt: string;
+}
+
 // v0.7 Feature 29 — the Reasoning Lab (see backend/app/reasoning_lab.py).
 // A permanent ReasoningChallenge is filed periodically from the
 // company's most recent real AI Debate + its linked TradeDecision —
@@ -3369,6 +3557,11 @@ export interface GameSaveState {
   portfolioIntelligence: PortfolioIntelligence;
   economicIntelligence: EconomicIntelligenceState;
   economicIntelligenceReports: EconomicIntelligenceReport[];
+  blackSwanIntelligence: BlackSwanIntelligenceState;
+  blackSwanReports: BlackSwanReport[];
+  defensiveMode: DefensiveModeState;
+  blackSwanEvents: BlackSwanEventRecord[];
+  institutionalSurvivalScore: InstitutionalSurvivalScore;
   talent: TalentState;
   constitution: ConstitutionState;
   reasoningChallenges: ReasoningChallenge[];

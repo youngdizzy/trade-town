@@ -6908,6 +6908,21 @@ Both parts: `app/black_swan.py`, `app/routers/black_swan.py`
 (`tests/test_black_swan.py`). Deliberately not wired into the Trade
 Gatekeeper or the Executive Board vote pipeline this pass.
 
+The frontend mirrors both parts one-for-one: a new BLACKSWAN tab
+(Command Center → PORTFOLIO section, inserted right after RISK) shows
+the Early Warning Score's eight factors, the Confidence Engine, the
+Institutional Survival Score with its letter grade and Strengths/
+Weaknesses/Improvements, live Defensive Mode controls (real POST
+actions), an on-demand Stress Test ladder and Scenario Simulator, the
+permanent Post-Event Analysis history, and the latest Daily Situation
+Report — five new `blackSwan*`/`defensiveMode`/`institutionalSurvivalScore`
+fields threaded through the same WS-driven `NexusManager` → `EventBus` →
+`gameStore` pipeline every other Command Center panel already uses
+(`frontend/src/ui/components/CommandCenter/panels/BlackSwanPanel.tsx`).
+Inserting BLACKSWAN shifted every later tab's number-key (1-9) shortcut
+down one position; the two affected Playwright assertions in
+`commandCenter.spec.ts` were updated to match.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

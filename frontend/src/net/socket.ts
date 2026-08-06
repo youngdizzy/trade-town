@@ -8,6 +8,9 @@ import type {
   AgentState,
   BacktestSession,
   BlackBoxState,
+  BlackSwanEventRecord,
+  BlackSwanIntelligenceState,
+  BlackSwanReport,
   CalendarState,
   CaseStudy,
   CeoDecisionRecord,
@@ -20,6 +23,7 @@ import type {
   DailyObjectiveStatus,
   Debate,
   DecisionVaultEntry,
+  DefensiveModeState,
   DepartmentSelfEvaluation,
   DisciplineReview,
   EconomicIntelligenceReport,
@@ -33,6 +37,7 @@ import type {
   GatekeeperRejection,
   HallOfFameEntry,
   InnovationState,
+  InstitutionalSurvivalScore,
   MarketEnvironmentState,
   MarketIntelligenceLearningEntry,
   MarketIntelligenceReport,
@@ -150,6 +155,11 @@ type ServerMessage =
       portfolioIntelligence: PortfolioIntelligence;
       economicIntelligence: EconomicIntelligenceState;
       economicIntelligenceReports: EconomicIntelligenceReport[];
+      blackSwanIntelligence: BlackSwanIntelligenceState;
+      blackSwanReports: BlackSwanReport[];
+      defensiveMode: DefensiveModeState;
+      blackSwanEvents: BlackSwanEventRecord[];
+      institutionalSurvivalScore: InstitutionalSurvivalScore;
       talent: TalentState;
       constitution: ConstitutionState;
       reasoningChallenges: ReasoningChallenge[];
@@ -289,6 +299,11 @@ export class GameSocket {
             portfolioIntelligence: msg.portfolioIntelligence,
             economicIntelligence: msg.economicIntelligence,
             economicIntelligenceReports: msg.economicIntelligenceReports,
+            blackSwanIntelligence: msg.blackSwanIntelligence,
+            blackSwanReports: msg.blackSwanReports,
+            defensiveMode: msg.defensiveMode,
+            blackSwanEvents: msg.blackSwanEvents,
+            institutionalSurvivalScore: msg.institutionalSurvivalScore,
             talent: msg.talent,
             constitution: msg.constitution,
             reasoningChallenges: msg.reasoningChallenges,

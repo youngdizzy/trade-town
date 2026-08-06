@@ -7,6 +7,8 @@ import type {
   AgentVote,
   AnalystRole,
   BlackBoxState,
+  BlackSwanReport,
+  BlackSwanRiskTier,
   CaseStudy,
   CeoDecisionRecord,
   CertificationStatus,
@@ -21,6 +23,7 @@ import type {
   DisciplineReview,
   EconomicHealthTier,
   EconomicIntelligenceReport,
+  InstitutionalSurvivalGrade,
   ExecutiveAction,
   ExecutiveMeetingLogEntry,
   ExecutiveReview,
@@ -1553,5 +1556,42 @@ export function economicHealthTone(tier: EconomicHealthTier): "green" | "cyan" |
  * intelligence.py's generate_economic_intelligence_report). Null before
  * the first evening. */
 export function latestEconomicIntelligenceReport(reports: EconomicIntelligenceReport[]): EconomicIntelligenceReport | null {
+  return reports.at(-1) ?? null;
+}
+
+// Design Bible Chapter 72 — Black Swan Intelligence & Resilience System.
+const BLACK_SWAN_RISK_TONE: Record<BlackSwanRiskTier, "green" | "cyan" | "amber" | "red" | "purple"> = {
+  green: "green",
+  yellow: "cyan",
+  orange: "amber",
+  red: "red",
+  critical: "purple",
+};
+
+export function blackSwanRiskTone(tier: BlackSwanRiskTier): "green" | "cyan" | "amber" | "red" | "purple" {
+  return BLACK_SWAN_RISK_TONE[tier];
+}
+
+const SURVIVAL_GRADE_TONE: Record<InstitutionalSurvivalGrade, "green" | "cyan" | "amber" | "red"> = {
+  a_plus: "green",
+  a: "green",
+  b: "cyan",
+  c: "amber",
+  d: "amber",
+  f: "red",
+};
+
+export function survivalGradeTone(grade: InstitutionalSurvivalGrade): "green" | "cyan" | "amber" | "red" {
+  return SURVIVAL_GRADE_TONE[grade];
+}
+
+export function survivalGradeLabel(grade: InstitutionalSurvivalGrade): string {
+  return grade === "a_plus" ? "A+" : grade.toUpperCase();
+}
+
+/** The most recent Daily Black Swan Situation Report — one real
+ * permanent snapshot per real in-game evening. Null before the first
+ * evening. */
+export function latestBlackSwanReport(reports: BlackSwanReport[]): BlackSwanReport | null {
   return reports.at(-1) ?? null;
 }

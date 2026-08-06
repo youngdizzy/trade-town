@@ -7,6 +7,42 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 72 — Black Swan Intelligence & Resilience System (frontend)**
+  (`frontend/src/types.ts`, `frontend/src/net/socket.ts`,
+  `frontend/src/net/api.ts`, `frontend/src/game/systems/EventBus.ts`,
+  `frontend/src/game/systems/NexusManager.ts`,
+  `frontend/src/state/gameStore.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/BlackSwanPanel.tsx`
+  new, `frontend/src/ui/components/CommandCenter/lib/derive.ts`,
+  `frontend/src/ui/components/CommandCenter/lib/navigation.ts`,
+  `frontend/src/ui/components/CommandCenter/FullCommandCenter.tsx`): a
+  new BLACKSWAN tab (Command Center → PORTFOLIO section, alongside
+  RISK — inserted right after it, which shifts every later tab's
+  number-key shortcut down one position; the two affected Playwright
+  assertions were updated to match) mirrors both Part 1 and Part 2's
+  backend types exactly, wired through the same WebSocket-driven store
+  pattern as `economicIntelligence`/`portfolioIntelligence` (five new
+  EventBus event pairs, following `blackSwanReports`/`blackSwanEvents`'
+  length-diffed emit convention rather than firing on every tick). The
+  panel shows the Early Warning Score's eight named factors, the Black
+  Swan Confidence Engine, the Institutional Survival Score with its
+  letter grade and Primary Strengths/Weaknesses/Top 5 Improvements,
+  live Defensive Mode controls (activate/deactivate, auto-trigger
+  toggle — both real POST actions against `/api/black-swan/defensive-
+  mode/*`) with its recommendation list, an on-demand Portfolio Stress
+  Test runner (the real -10/-20/-35/-50/-70% ladder) and Scenario
+  Simulator (all four real scenarios), the permanent Post-Event
+  Analysis history, and the latest Daily Black Swan Situation Report —
+  reusing `EconomicIntelPanel`/`RiskPanel`'s exact visual conventions
+  (`Glass`/`TerminalLabel`/`Meter`/`StatusPill`/`EmptyState`/`DataRow`),
+  no new UI primitives. Verified against the live Vite + FastAPI stack:
+  `tsc --noEmit`, `eslint`, and `vite build` all clean; the full
+  Playwright suite re-run against a fresh dev backend and a freshly
+  restarted Vite dev server (a stale multi-hour dev server was
+  confirmed, again, to be the cause of an initial spurious title-screen
+  failure — same class of environment issue documented earlier in this
+  session, not a real regression).
+
 - **Chapter 72 — Black Swan Intelligence & Resilience System, Part 2:
   Institutional Survival Score (backend)** (`app/black_swan.py`,
   `app/schemas.py`, `app/state.py`, `app/nexus.py`,

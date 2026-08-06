@@ -6,12 +6,17 @@ import type {
   AnalystChoice,
   BlackBoxPriority,
   BlackBoxState,
+  BlackSwanPlaybook,
+  BlackSwanRiskTier,
+  BlackSwanScenarioType,
+  BrokerResilienceRead,
   CalendarState,
   Candle,
   CeoDecisionRecord,
   ChallengeReport,
   ClientSaveSnapshot,
   Debate,
+  DefensiveModeState,
   EducationLesson,
   EducationProgress,
   EmergencyStopState,
@@ -36,6 +41,8 @@ import type {
   PlayerEventCategory,
   PlayerVsAiPrompt,
   PlayerVsAiState,
+  PortfolioScenarioResult,
+  PortfolioStressTestResult,
   PropFirmStatus,
   QuestionOfTheDay,
   RuleEvaluationResult,
@@ -206,6 +213,35 @@ export const api = {
     request<{ emergencyStop: EmergencyStopState }>("/emergency-stop/activate", { method: "POST" }),
   resumeTradingAfterEmergencyStop: () =>
     request<{ emergencyStop: EmergencyStopState }>("/emergency-stop/resume", { method: "POST" }),
+  // Design Bible Chapter 72 — Black Swan Intelligence & Resilience
+  // System. blackSwanIntelligence/blackSwanReports/defensiveMode/
+  // blackSwanEvents/institutionalSurvivalScore are all already live via
+  // the WS tick broadcast (see gameStore) — these are only the genuine
+  // on-demand actions/reads.
+  runBlackSwanStressTest: (accountId: string | null = null) =>
+    request<PortfolioStressTestResult>("/black-swan/stress-test", {
+      method: "POST",
+      body: JSON.stringify({ accountId }),
+    }),
+  runBlackSwanScenario: (scenarioType: BlackSwanScenarioType, accountId: string | null = null) =>
+    request<PortfolioScenarioResult>("/black-swan/scenario", {
+      method: "POST",
+      body: JSON.stringify({ scenarioType, accountId }),
+    }),
+  activateDefensiveMode: (reason?: string) =>
+    request<{ defensiveMode: DefensiveModeState; riskLimits: RiskLimits }>("/black-swan/defensive-mode/activate", {
+      method: "POST",
+      body: JSON.stringify({ reason: reason ?? null }),
+    }),
+  deactivateDefensiveMode: () =>
+    request<{ defensiveMode: DefensiveModeState; riskLimits: RiskLimits }>("/black-swan/defensive-mode/deactivate", { method: "POST" }),
+  configureDefensiveMode: (triggerTier: BlackSwanRiskTier | null, autoTriggerEnabled: boolean | null) =>
+    request<{ defensiveMode: DefensiveModeState; riskLimits: RiskLimits }>("/black-swan/defensive-mode/configure", {
+      method: "POST",
+      body: JSON.stringify({ triggerTier, autoTriggerEnabled }),
+    }),
+  getBlackSwanPlaybook: () => request<BlackSwanPlaybook>("/black-swan/playbook"),
+  getBrokerResilience: () => request<BrokerResilienceRead>("/black-swan/broker-resilience"),
   createSavingsRule: (ruleType: SavingsRuleType, percent: number, reserveTarget: number | null) =>
     request<{ treasury: TreasuryState }>("/treasury/rules/create", {
       method: "POST",
