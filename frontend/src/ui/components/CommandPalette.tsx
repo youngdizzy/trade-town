@@ -5,24 +5,45 @@ import { EventBus } from "@/game/systems/EventBus";
 import { GameManager } from "@/game/systems/GameManager";
 import { SettingsManager } from "@/game/systems/SettingsManager";
 import { SaveManager } from "@/game/systems/SaveManager";
+import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { TAB_SECTION } from "./CommandCenter/lib/navigation";
-import type { OperatingMode } from "@/types";
+import { AGENT_IDS, type OperatingMode } from "@/types";
 
 /**
  * Design Bible Chapter 67 (TTOS) Part 3 — the Command Palette
- * (Cmd/Ctrl+K). Real commands only, per the brief's own constraint —
- * every entry below maps to an already-real EventBus event or manager
- * call this codebase already uses elsewhere (BottomToolbar.tsx's own
- * Save/Load/Memory/Coach/Dashboard/Settings/Pause buttons,
- * QuickActionDock.tsx's own Automation Mode cycle and tab quick-jumps,
- * EmergencyStopControl.tsx's own confirm-dialog trigger) — nothing here
- * invents a new action. Two of the brief's own example commands are
+ * (Cmd/Ctrl+K), doubling as Universal Search. Real commands and real
+ * search results only, per the brief's own constraint — every command
+ * entry maps to an already-real EventBus event or manager call this
+ * codebase already uses elsewhere (BottomToolbar.tsx's own Save/Load/
+ * Memory/Coach/Dashboard/Settings/Pause buttons, QuickActionDock.tsx's
+ * own Automation Mode cycle and tab quick-jumps, EmergencyStopControl
+ * .tsx's own confirm-dialog trigger), and every search result reads a
+ * real gameStore field. Two of the brief's own example commands are
  * deliberately absent: "Open Charles Schwab" (no live broker
  * integration exists anywhere — see app/broker.py's own "Completely
  * simulated" docstring) and "Swing/Day Trading Mode" (no such mode
  * exists under any name). The 34 "Go to X" tab commands are derived
  * from `navigation.ts`'s own `TAB_SECTION` map rather than a fourth
  * hand-maintained tab list.
+ *
+ * Universal Search is built into this same overlay rather than as a
+ * second Ctrl+K-shaped surface — both need the identical type/filter/
+ * arrow-nav/enter-to-act shape (the same "index of what we already
+ * have, never a new source of truth" pattern `CompanyMemory.tsx`'s own
+ * client-side filter already established, no new backend endpoint),
+ * so building two competing overlays for the same interaction pattern
+ * would have been the duplication this codebase's own convention warns
+ * against. Real, already-loaded entities are searchable: the 14 real
+ * employees (jumps to AGENTS), closed trades from `paperPortfolio
+ * .tradeHistory` (jumps to REPLAY, where trade history is actually
+ * browsable), research items (jumps to RESEARCH), and Company Memory
+ * records (opens the real Company Memory overlay, where its own
+ * existing search can narrow further — this palette only gets the CEO
+ * to the right surface, it doesn't reimplement CompanyMemory's own
+ * search a second time). The rendered list is capped at 50 matches
+ * (`MAX_RESULTS`) so a broad query against a mature save's full trade/
+ * research/memory history stays scrollable — the underlying search
+ * still runs across every real record, only the render is capped.
  */
 interface Command {
   id: string;
@@ -32,9 +53,10 @@ interface Command {
 }
 
 const ALL_TABS = Object.keys(TAB_SECTION) as (keyof typeof TAB_SECTION)[];
+const MAX_RESULTS = 50;
 
 export function CommandPalette() {
-  const { currentScene, paused, settings, emergencyStop } = useGameStore();
+  const { currentScene, paused, settings, emergencyStop, agents, paperPortfolio, research, memory } = useGameStore();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
@@ -113,14 +135,59 @@ export function CommandPalette() {
         run: () => EventBus.emit("ui:commandCenterJump", { tab }),
       });
     }
+    // Universal Search — real employees.
+    if (agents) {
+      for (const id of AGENT_IDS) {
+        const profile = AGENT_PROFILES[id];
+        list.push({
+          id: `agent-${id}`,
+          label: `${profile.name} — ${profile.occupation}`,
+          hint: "Employee",
+          run: () => EventBus.emit("ui:commandCenterJump", { tab: "AGENTS" }),
+        });
+      }
+    }
+    // Universal Search — real closed trades.
+    for (const trade of paperPortfolio.tradeHistory) {
+      list.push({
+        id: `trade-${trade.id}`,
+        label: `${trade.symbol} ${trade.side.toUpperCase()} — ${trade.pnlPct >= 0 ? "+" : ""}${trade.pnlPct.toFixed(1)}%`,
+        hint: "Trade",
+        run: () => EventBus.emit("ui:commandCenterJump", { tab: "REPLAY" }),
+      });
+    }
+    // Universal Search — real research items.
+    for (const item of research) {
+      list.push({
+        id: `research-${item.id}`,
+        label: `${item.title}${item.symbol ? ` (${item.symbol})` : ""}`,
+        hint: "Research",
+        run: () => EventBus.emit("ui:commandCenterJump", { tab: "RESEARCH" }),
+      });
+    }
+    // Universal Search — real Company Memory records. Opens the real
+    // overlay rather than duplicating its own search a second time.
+    for (const record of memory) {
+      list.push({
+        id: `memory-${record.id}`,
+        label: record.title,
+        hint: "Company Memory",
+        run: () => EventBus.emit("ui:companyMemory", { open: true }),
+      });
+    }
     return list;
-  }, [paused, settings.workMode, settings.operatingMode, emergencyStop.active]);
+  }, [paused, settings.workMode, settings.operatingMode, emergencyStop.active, agents, paperPortfolio.tradeHistory, research, memory]);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return commands;
     return commands.filter((c) => c.label.toLowerCase().includes(q) || c.hint.toLowerCase().includes(q));
   }, [commands, query]);
+
+  // The underlying search runs across every real record above; only the
+  // render is capped, so a broad query against a mature save's full
+  // trade/research/memory history stays scrollable.
+  const visible = filtered.slice(0, MAX_RESULTS);
 
   const execute = (cmd: Command | undefined) => {
     if (!cmd) return;
@@ -147,23 +214,23 @@ export function CommandPalette() {
           onKeyDown={(e) => {
             if (e.key === "ArrowDown") {
               e.preventDefault();
-              setSelected((i) => Math.min(i + 1, filtered.length - 1));
+              setSelected((i) => Math.min(i + 1, visible.length - 1));
             } else if (e.key === "ArrowUp") {
               e.preventDefault();
               setSelected((i) => Math.max(i - 1, 0));
             } else if (e.key === "Enter") {
               e.preventDefault();
-              execute(filtered[selected]);
+              execute(visible[selected]);
             }
           }}
-          placeholder="Type a command…"
+          placeholder="Search or type a command…"
           className="border-b border-cmd-border bg-transparent px-3 py-2.5 text-cmd-text outline-none placeholder:text-cmd-textDim"
         />
         <div className="overflow-y-auto">
-          {filtered.length === 0 ? (
-            <div className="px-3 py-3 text-cmd-textDim">No matching command.</div>
+          {visible.length === 0 ? (
+            <div className="px-3 py-3 text-cmd-textDim">No matching command or result.</div>
           ) : (
-            filtered.map((cmd, i) => (
+            visible.map((cmd, i) => (
               <button
                 key={cmd.id}
                 type="button"
@@ -175,6 +242,9 @@ export function CommandPalette() {
                 <span className="text-[9px] uppercase tracking-wide text-cmd-textDim">{cmd.hint}</span>
               </button>
             ))
+          )}
+          {filtered.length > MAX_RESULTS && (
+            <div className="px-3 py-1.5 text-cmd-textDim">+{filtered.length - MAX_RESULTS} more — refine your search</div>
           )}
         </div>
       </div>
