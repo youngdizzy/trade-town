@@ -25,6 +25,30 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 70 — Executive Board & CEO Intelligence System**
+  (`docs/DesignBible/volumes/09-departments/chapter-70-executive-board-ceo-intelligence-system.md`):
+  a new Design Bible chapter, filed in Volume 9 (Departments) rather
+  than Volume 10 — its subject is executive governance, not broker/
+  account infrastructure. One of the highest real-coverage chapters
+  written this run, alongside Chapters 66/67: a real monthly CIO review
+  (`ExecutiveReview`), a real permanent per-decision meeting log
+  (`ExecutiveMeetingLogEntry`) recording department opinions/network
+  recommendation/CEO decision, a real merged executive-priorities list
+  (`computeExecutivePriorities()`), a real Company Health/Score
+  breakdown covering 6 of the brief's own 9 Company Health Review
+  categories, and — the strongest match — Chapter 67's Global Status
+  Bar/Executive Alert Center/`useDashboardData()` hook already
+  surfacing 7 of the brief's own 10 Executive Command Center metrics
+  live today. 4 of the brief's 12 named board seats are filled by real
+  agents with real (CIO exact; 3 others close-but-not-exact) "Chief"
+  titles. Confirmed genuinely unbuilt: the other 8 board seats, Daily/
+  Quarterly meeting cadence, automatic Emergency Board Meeting triggers
+  (2 of the 7 named triggers have no underlying signal to fire from at
+  all), Modify/Delegate as CEO decision actions, a general-purpose
+  non-trade Decision Center, per-executive Contribution/Forecast-
+  Accuracy scorecards, and a CEO Assistant AI. Documentation only, no
+  code changes.
+
 - **Chapter 70 addendum + Chapter 71 — Institutional Rule Engine (IRE)**
   (`docs/DesignBible/volumes/10-broker-live-trading/`): documentation
   only, no code changes. A follow-up brief labeled "Addendum to
