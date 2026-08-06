@@ -1,20 +1,23 @@
 # Chapter 67 — TradeTown Operating System (TTOS)
 
 **Status:** Phase 1 (7-section grouped navigation) and Part 3's own
-primary objective (a real Global Emergency Stop) are both implemented.
-This chapter is structurally different from every other chapter in this
-volume: it does not describe a trading/research/risk department with
-its own real backend module. It describes the *navigation and UX
+primary objective (a real Global Emergency Stop) are both implemented,
+plus the core of Part 3's Safety Settings page: real weekly and monthly
+loss circuit breakers, enforced the same way as the existing daily loss
+limit. This chapter is structurally different from every other chapter
+in this volume: it does not describe a trading/research/risk department
+with its own real backend module. It describes the *navigation and UX
 architecture* that organizes all 34 of those departments' existing
-Command Center surfaces into one system, plus (as of Part 3) the one
-genuinely new safety control this Design Bible's own research found had
-no real backing anywhere: a CEO-triggerable halt on all new trading.
-Before any Part 3 code was written, a research pass confirmed the rest
-of that brief — a Safety Settings page, a global status bar, the Quick
-Action Dock, a priority-tiered Alert Center, and several command-palette
-examples (a specific broker name, "Swing/Day Trading Mode") — has no
-real backing feature anywhere in this codebase, so only Emergency Stop
-was implemented this pass; everything else remains genuinely unbuilt.
+Command Center surfaces into one system, plus (as of Part 3) two
+genuinely new safety controls this Design Bible's own research found had
+no real backing anywhere: a CEO-triggerable halt on all new trading, and
+two more real loss-limit circuit breakers beyond the pre-existing daily
+one. Before any Part 3 code was written, a research pass confirmed the
+rest of that brief — a global status bar, the Quick Action Dock, a
+priority-tiered Alert Center, and several command-palette examples (a
+specific broker name, "Swing/Day Trading Mode") — has no real backing
+feature anywhere in this codebase, so everything beyond Emergency Stop
+and the weekly/monthly loss limits remains genuinely unbuilt.
 Universal search, the command palette itself, workspace docking,
 priority-tiered notifications, and navigation analytics all remain
 genuinely unbuilt — see the Implementation Notes at the bottom for the
@@ -170,6 +173,7 @@ risk output to, because it never produces any.
 | Workspace layouts (dockable/saved) | **Not built** — the Command Center is one fixed, non-resizable, non-dockable overlay; `frontend/package.json` carries no windowing/docking library of any kind. |
 | Notification priority tiers | **Not built** — `CyberNotifications.tsx`'s `ToastKind` is a color category (trade/research/volatility/alert/save), not a severity level; every toast behaves identically (auto-dismiss, non-blocking, capped to 4 visible); nothing ever interrupts today because nothing is marked as needing to. |
 | Emergency Stop | **Built (Part 3).** A permanent, always-visible button in `TopStatusBar.tsx`, never inside a Command Center tab. Requires confirmation (`ConfirmDialog.tsx`, the first reusable confirm-before-you-act component in this codebase). Calls `POST /api/emergency-stop/activate`/`/resume`. Blocks new proposal generation, pending-proposal auto-resolution in Assisted/Executive mode, and the CEO's own manual buy/sell — only "wait" is still allowed. Only the CEO can resume; no automatic timeout. |
+| Safety Settings — weekly/monthly loss limits | **Built (Part 3, core slice).** `RiskLimits.maxWeeklyLossPct`/`maxMonthlyLossPct` (defaults 10%/15%, between the pre-existing daily 5% and lifetime drawdown 20%), enforced by `app/risk_engine.py`'s `weekly_realized_pnl_pct()`/`monthly_realized_pnl_pct()` inside `evaluate_sentinel_risk()` — the same real hard-reject path the existing daily loss limit already used, just scoped to the current sim week (7 days) / sim month (30 days) instead of today. CEO-editable via `POST /api/risk-limits` and a new "Safety & Capital Protection" block in the RISK tab (`RiskPanel.tsx`), which also surfaces live Emergency Stop status. Not built in this slice: Black Swan Protection, Broker Failover, Emergency Contacts, recovery procedures (see Safety Systems below). |
 | Quick Action bar (Pause Trading / Resume, unified) | **Not built as a unified surface.** The real global toolbar (`BottomToolbar.tsx`) exposes Work Mode and a game-level Pause/Resume (the sim clock, not trading specifically), and TopStatusBar now exposes Emergency Stop — but these live in two separate global surfaces, not one unified dock. Operating Mode (Learning/Assisted/Executive) and Time Controls are real but still buried inside the COMPANY tab, not global. |
 | Themes | **Not built as a CEO control** — the dark cyberpunk visual language is real and consistent (see Chapter 65/66's own Command Center surfacing), but it is fixed in code, not a CEO-selectable option. |
 | Widget/dashboard customization | **Not built** — OverviewPanel and QuickView both show a fixed, code-defined set of cards; no CEO-facing widget picker or layout editor exists. |
@@ -215,16 +219,20 @@ confirm-before-you-act pattern anywhere in this codebase (every other
 destructive/high-stakes action here still fires immediately, e.g.
 Founders retirement, order cancellation, Treasury withdrawals — that
 gap is unchanged by this pass, only Emergency Stop gained the pattern).
+**Real today (Part 3, Safety Settings core):** three real loss-limit
+circuit breakers now exist — daily (pre-existing), weekly, and monthly
+(new) — each enforced the same way inside `evaluate_sentinel_risk()`.
 **Genuinely still not built:** an always-visible broker-status/
 risk-status/capital-status/company-health strip (today, Risk Status,
 Company Health, and Market Environment are all real but only shown
 inside OverviewPanel/QuickView, not as a persistent global strip
-visible from every scene the way `BottomToolbar.tsx` is); Safety
-Settings (daily/weekly/monthly loss limits beyond the one existing
-daily-scoped limit, circuit breakers, Black Swan Protection, Broker
-Failover — none of these exist under any name); "cancel pending
-orders" as part of Emergency Stop (deliberately deferred — see
-Implementation Notes).
+visible from every scene the way `BottomToolbar.tsx` is); Black Swan
+Protection, Broker Failover, Emergency Contacts, and recovery
+procedures (none of these exist under any name — no external
+market-crash data feed, no live broker integration to fail over from,
+no contact/notification-delivery system anywhere in this codebase);
+"cancel pending orders" as part of Emergency Stop (deliberately
+deferred — see Implementation Notes).
 
 ## Dependencies
 
@@ -357,6 +365,29 @@ remaining phases:**
   surface this same button alongside Pause/Resume/others in one
   dock — remains unbuilt; Emergency Stop lives only in TopStatusBar for
   now.
+- **Phase 4b — built (Part 3).** The Safety Settings page's core: two
+  more real circuit breakers beyond the pre-existing daily loss limit.
+  `RiskLimits` gained `maxWeeklyLossPct`/`maxMonthlyLossPct` (defaults
+  10%/15%); `app/risk_engine.py` gained `weekly_realized_pnl_pct()`/
+  `monthly_realized_pnl_pct()` (mirroring `app/nexus.py`'s own
+  `WEEKLY_INTERVAL_DAYS`/`MONTHLY_INTERVAL_DAYS` cadence, not imported,
+  to avoid a `risk_engine.py -> nexus.py` dependency) and two new
+  hard-reject checks in `evaluate_sentinel_risk()`, checked right after
+  the existing daily ones. CEO-editable via the existing
+  `POST /api/risk-limits` write path (`app/state.py`'s
+  `update_risk_limits()`) and a new "Safety & Capital Protection" block
+  in `RiskPanel.tsx` (RISK tab — extending the existing panel rather
+  than adding a new Operations-section tab, since Operations has no
+  other real backing feature to justify one yet), which also surfaces
+  live Emergency Stop status/control inline. Deliberately not a
+  standalone "Safety Settings" page/tab — the smallest honest slice
+  reuses the tab that already owns risk configuration. Genuinely not
+  built in this slice, and documented as cut rather than faked: Black
+  Swan Protection (no external market-crash data feed exists), Broker
+  Failover (no live broker integration exists to fail over from — see
+  `app/broker.py`'s own "Completely simulated" docstring), Emergency
+  Contacts (no contact/notification-delivery system exists), and
+  recovery procedures.
 - **Phase 5** — dockable/resizable/saved-layout workspaces (this
   codebase has no windowing library today — adopting one is a real,
   non-trivial dependency decision not made unilaterally) and navigation
@@ -379,21 +410,19 @@ for all future chapters (checked directly against `README.md`'s current
 None of these were assumed to follow automatically from Phase 1 —
 each remains its own separable slice awaiting its own go-ahead.
 
-**Part 3's own remaining scope, researched but not implemented this
-pass:** a Safety Settings page (Operations → Safety & Capital
-Protection) — weekly/monthly loss limits, a second/third circuit
-breaker, Black Swan Protection, Broker Failover, and recovery
-procedures all genuinely don't exist (`RiskLimits` has exactly one
-daily-scoped loss limit and a lifetime drawdown cap, confirmed by
-direct read of `backend/app/schemas.py`); a global always-visible
-status bar (Broker Status/Market Status/Automation Status/Risk
-Level/Portfolio Health/Capital Deployment) beyond the real clock/agent/
-connection dot `TopStatusBar.tsx` already showed; the unified Quick
-Action Dock; a priority-tiered Executive Alert Center; and Command
-Palette expansion — the palette itself remains Phase 2's own unbuilt
-scope, and two of the brief's own example commands have no real
-destination to open at all: "Open Charles Schwab" (confirmed zero real
-broker integration exists anywhere — `app/broker.py`'s own module
+**Part 3's own remaining scope, still not implemented:** Black Swan
+Protection, Broker Failover, Emergency Contacts, and recovery
+procedures all genuinely don't exist and are not fabricated (weekly/
+monthly loss limits — the other two thirds of the original Safety
+Settings scope — are now built, per Phase 4b above); a global
+always-visible status bar (Broker Status/Market Status/Automation
+Status/Risk Level/Portfolio Health/Capital Deployment) beyond the real
+clock/agent/connection dot `TopStatusBar.tsx` already showed; the
+unified Quick Action Dock; a priority-tiered Executive Alert Center;
+and Command Palette expansion — the palette itself remains Phase 2's
+own unbuilt scope, and two of the brief's own example commands have no
+real destination to open at all: "Open Charles Schwab" (confirmed zero
+real broker integration exists anywhere — `app/broker.py`'s own module
 docstring: "Completely simulated... no such adapter exists or is wired
 in v0.6") and "Swing Trading Mode"/"Day Trading Mode" (confirmed no
 such mode exists under any name — `RiskLimits`' day-trading-adjacent

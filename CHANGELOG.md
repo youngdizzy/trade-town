@@ -49,6 +49,35 @@ development milestones, not semver releases.
   failure is the already-confirmed pre-existing flaky movement-key
   test).
 
+- **Chapter 67 Part 3 — TTOS Safety Settings core: real weekly/monthly
+  loss circuit breakers** (`backend/app/schemas.py`, `app/risk_engine.py`,
+  `app/state.py`, `app/routers/risk.py`,
+  `frontend/src/ui/components/CommandCenter/panels/RiskPanel.tsx`):
+  the second and third real circuit breakers beyond the one pre-existing
+  daily-scoped loss limit. New `RiskLimits.maxWeeklyLossPct`/
+  `maxMonthlyLossPct` (defaults 10%/15%, between the daily 5% and
+  lifetime drawdown 20%), enforced by new `weekly_realized_pnl_pct()`/
+  `monthly_realized_pnl_pct()` functions inside `evaluate_sentinel_risk()`
+  — the same real hard-reject path the daily limit already used, scoped
+  to the current sim week (7 days)/month (30 days) using constants
+  mirrored from `app/nexus.py`'s own cadence (not imported, to avoid a
+  `risk_engine.py -> nexus.py` dependency). CEO-editable via the
+  existing `POST /api/risk-limits` write path. Frontend: a new "Safety &
+  Capital Protection" block in the RISK tab's existing panel (not a new
+  Operations-section tab — Operations has no other real backing feature
+  to justify one yet), which also surfaces live Emergency Stop status
+  and control inline, and explicitly documents Black Swan Protection,
+  Broker Failover, and Emergency Contacts as not built: no external
+  market-crash data feed, no live broker integration to fail over from
+  (see `app/broker.py`'s own "Completely simulated" docstring), and no
+  contact/notification-delivery system exist anywhere in this codebase.
+  10 new backend tests, `mypy`/`ruff` clean, full backend suite
+  1134/1134 passing; `tsc`/`eslint`/`vite build` clean, a new
+  Playwright test in `commandCenter.spec.ts` exercising the real save
+  round-trip and Emergency Stop surfacing, full `commandCenter.spec.ts`
+  regression passing (the one failure is the already-confirmed
+  pre-existing flaky movement-key test).
+
 - **Chapter 67 Phase 1 — TTOS 7-section grouped navigation**
   (`frontend/src/ui/components/CommandCenter/lib/navigation.ts`,
   `FullCommandCenter.tsx`): before writing any code, a full audit +

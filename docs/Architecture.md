@@ -6395,6 +6395,81 @@ race against the same backend state) both passed; the one failure in
 each run is the already-confirmed pre-existing flaky movement-key test,
 unrelated to this change.
 
+### TTOS Safety Settings core — real weekly/monthly loss circuit breakers, Design Bible Chapter 67
+
+Part 3's own Safety Settings scope had three pieces: weekly/monthly
+loss limits (a second/third circuit breaker beyond the pre-existing
+daily one), Black Swan Protection, and Broker Failover/recovery
+procedures. Research confirmed `RiskLimits` had exactly one loss-based
+circuit breaker (daily-scoped) and a lifetime drawdown cap, and that
+Black Swan Protection and Broker Failover have zero real backing
+anywhere (no external market-crash data feed, no live broker
+integration to fail over from — `app/broker.py`'s own module docstring
+is explicit that trading is "completely simulated"). This slice builds
+the one piece with a real, honest implementation: the weekly/monthly
+loss limits.
+
+**Backend**: `RiskLimits` (`app/schemas.py`) gained
+`max_weekly_loss_pct`/`max_monthly_loss_pct` (defaults 10%/15%, sitting
+between the existing daily 5% and lifetime drawdown 20% — each wider
+scope allows more cumulative loss before it fires, but stays well
+inside the lifetime cap). `app/risk_engine.py` gained
+`WEEKLY_INTERVAL_DAYS`/`MONTHLY_INTERVAL_DAYS` constants mirroring
+`app/nexus.py`'s own weekly/monthly cadence (not imported, to avoid a
+`risk_engine.py -> nexus.py` dependency — `nexus.py` already imports
+`risk_engine.py`, never the reverse) and two new functions,
+`weekly_realized_pnl_pct()`/`monthly_realized_pnl_pct()`, summing
+`PaperPortfolio.trade_history`'s real realized P&L within the current
+sim week (7 days)/month (30 days) as a % of starting balance — the same
+shape `daily_realized_pnl_pct()` already used, just a wider window.
+Two new checks inside `evaluate_sentinel_risk()`, placed right after
+the existing daily ones (a week/month-scoped halt is a more common real
+event than the lifetime drawdown check below it): a breach returns a
+`critical`-severity `RiskWarning`, which — like every other Sentinel
+warning — becomes a hard-reject vote that unconditionally blocks new
+trades (`decision.py`'s `HARD_REJECT_CHOICES`). CEO-editable through
+the existing `POST /api/risk-limits` write path: `update_risk_limits()`
+(`app/state.py`) gained the two new params with the same
+reject-non-positive validation every other percentage limit already
+has; `UpdateRiskLimitsRequest` (`app/routers/risk.py`) gained the two
+matching optional fields.
+
+**Frontend**: no new Command Center tab — the smallest honest slice
+extends `RiskPanel.tsx` (the existing RISK tab) with a new "Safety &
+Capital Protection" block, rather than adding a standalone Operations-
+section tab that would otherwise sit alone (Operations remains real but
+thin — LOGS only — since Automation/Integrations/Infrastructure/Broker
+Configuration still have no backing feature). The block holds: inputs +
+save button for the two new limits (matching every other RiskLimits
+sub-panel's own save-button pattern exactly); a live Emergency Stop
+status/control reusing the same `"ui:emergencyStopConfirm"` EventBus
+event `EmergencyStopControl.tsx` (TopStatusBar) already emits, styled
+to match this panel's terminal aesthetic rather than reusing that
+component's pixel-art styling directly; and an explicit paragraph
+documenting Black Swan Protection, Broker Failover, and Emergency
+Contacts as not built, naming the real gap for each (no external
+market-crash feed, no live broker integration, no contact/notification-
+delivery system) rather than a placeholder control. The two new limits
+were also added to the panel's existing read-only "Configured Risk
+Limits" summary. `types.ts`'s `RiskLimits` interface,
+`api.ts`'s `updateRiskLimits()` payload type, and the two hardcoded
+`RiskLimits` object literals in `NexusManager.ts`/`gameStore.ts`
+(caught by a real `tsc -b` build failure the first pass's narrower
+`tsc --noEmit` run had missed) all gained the two new fields.
+
+**Verified**: 10 new backend tests
+(`test_risk_engine.py`'s `TestWeeklyAndMonthlyLossLimits`, 7 cases
+carefully isolating the week/monthly check under test from the daily
+one by neutralizing it with a 100% threshold; `test_state.py`'s 3 new
+cases in `TestUpdateRiskLimits`), `mypy`/`ruff` clean, full backend
+suite 1134/1134 passing. `tsc`/`eslint`/`vite build` clean. A new
+Playwright test in `commandCenter.spec.ts` exercises the real save
+round-trip for both new limits and confirms the panel surfaces
+Emergency Stop status and the "not built" disclaimers; full
+`commandCenter.spec.ts` regression (31/32, one skipped) passed — the
+one failure is the same already-confirmed pre-existing flaky
+movement-key test, unrelated to this change.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

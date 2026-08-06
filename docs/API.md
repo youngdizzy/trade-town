@@ -599,6 +599,12 @@ perspective and exists purely to detect disconnects
     // "Daily Trading Objectives" below) — the first real write path
     // RiskLimits has ever had.
     "dailyProfitTargetPct": 3.0, "maxTradesPerDay": 6,
+    // Design Bible Chapter 67 (TTOS) Safety Settings — the second and
+    // third real circuit breakers, enforced the same way as
+    // maxDailyLossPct above (app/risk_engine.py's evaluate_sentinel_risk),
+    // just scoped to the current sim week/month. Defaults sit between
+    // the daily (5%) and lifetime drawdown (20%) limits.
+    "maxWeeklyLossPct": 10.0, "maxMonthlyLossPct": 15.0,
     // v0.7 Chapter 57 — Institutional Position Sizing & Capital
     // Deployment Engine (backend/app/position_sizing.py). All six new
     // real inputs that engine reads. portfolioHeatCapPct null = no hard
@@ -1192,9 +1198,11 @@ v0.7 Feature 46 — the Company Constitution. All three return
 v0.7 Feature 49 — the first real CEO write path for `RiskLimits`
 (previously display-only, with no endpoint at all); extended by v0.7
 Chapter 57 with four of the Position Sizing engine's six new controls,
-and by v0.7 Chapter 58 with the Opportunity Gatekeeper's two new
-controls. Body: any subset of `{ "dailyProfitTargetPct": 3.0,
-"maxDailyLossPct": 5.0, "maxTradesPerDay": 6, "riskPerTradePct": 2.0,
+by v0.7 Chapter 58 with the Opportunity Gatekeeper's two new controls,
+and by Design Bible Chapter 67 (TTOS) with the Safety Settings'
+weekly/monthly loss limits. Body: any subset of `{ "dailyProfitTargetPct": 3.0,
+"maxDailyLossPct": 5.0, "maxWeeklyLossPct": 10.0, "maxMonthlyLossPct": 15.0,
+"maxTradesPerDay": 6, "riskPerTradePct": 2.0,
 "maxOpenPositions": 8, "maxWeeklyDeploymentPct": 15.0,
 "portfolioHeatCapPct": 40.0, "clearPortfolioHeatCap": false,
 "cashReservePct": 10.0,
@@ -1203,7 +1211,8 @@ controls. Body: any subset of `{ "dailyProfitTargetPct": 3.0,
 — every field optional, so a single call can update just one limit.
 Returns `{ "riskLimits": { ... } }` with the full, current `RiskLimits`.
 `400` if a provided value fails validation (most fields must be
-positive; `cashReservePct` must be `>= 0` and `< 100`;
+positive, including `maxWeeklyLossPct`/`maxMonthlyLossPct`;
+`cashReservePct` must be `>= 0` and `< 100`;
 `minTradeQualityScore` must be `>= 0` and `<= 100`;
 `minExpectedValuePct` has no range check — a CEO can legitimately set
 it negative to relax the gate below "merely positive"; every
