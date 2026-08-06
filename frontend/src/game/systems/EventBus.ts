@@ -132,6 +132,8 @@ export interface GameEvents {
   "watchlist:updated": WatchlistEntry[];
   "memory:updated": MemoryRecord[];
   "ui:companyMemory": { open: boolean };
+  // Design Bible Chapter 67 (TTOS) Part 3 — the Executive Alert Center.
+  "ui:alertCenter": { open: boolean };
   "portfolio:updated": PaperPortfolio;
   "strategies:updated": Strategy[];
   "simulation:updated": { sessions: BacktestSession[]; results: SimulationResult[] };

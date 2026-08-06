@@ -13,6 +13,7 @@ import { BrainRoomHud } from "@/ui/components/BrainRoomHud";
 import { MarketObservatoryHud } from "@/ui/components/MarketObservatoryHud";
 import { Newspaper } from "@/ui/components/Newspaper";
 import { CompanyMemory } from "@/ui/components/CompanyMemory";
+import { AlertCenter } from "@/ui/components/AlertCenter";
 import { CoachDashboard } from "@/ui/components/CoachDashboard";
 import { CommandCenter } from "@/ui/components/CommandCenter/CommandCenter";
 import { CampusMap } from "@/ui/components/CampusMap/CampusMap";
@@ -35,6 +36,7 @@ export default function App() {
       <InteractionPrompt />
       <Newspaper />
       <CompanyMemory />
+      <AlertCenter />
       <CoachDashboard />
       <BottomToolbar />
       <QuickActionDock />

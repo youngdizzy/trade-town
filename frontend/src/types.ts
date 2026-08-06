@@ -96,6 +96,25 @@ export type OrderStatus = "open" | "filled" | "closed" | "cancelled";
 export type OrderType = "market" | "limit" | "stop" | "take_profit" | "stop_loss";
 export type AlertType = "gap_up" | "gap_down" | "breakout" | "volume_spike" | "high_volatility";
 export type AlertSeverity = "info" | "warning" | "critical";
+
+// Design Bible Chapter 67 (TTOS) Part 3 — Smart Notification priority
+// tiers. Derived from real fields this codebase already tags events
+// with (RiskWarning.severity, save:failed, Emergency Stop activation),
+// never invented — see CyberNotifications.tsx's own doc comment for
+// exactly which real source maps to which tier.
+export type NotificationTier = "critical" | "high" | "normal";
+
+/** One entry in the CEO's real notification history (gameStore's
+ * `alertHistory`), viewable in the Executive Alert Center
+ * (AlertCenter.tsx) — every toast CyberNotifications.tsx ever shows is
+ * also recorded here, so nothing the CEO glimpses and misses is lost. */
+export interface AlertEntry {
+  id: string;
+  tier: NotificationTier;
+  title: string;
+  body: string;
+  createdAt: string;
+}
 export type VoteChoice = "buy" | "sell" | "hold" | "risk_too_high" | "position_too_large";
 export type DecisionOutcome = "trade" | "no_trade";
 export type SimulationStatus = "queued" | "running" | "completed";

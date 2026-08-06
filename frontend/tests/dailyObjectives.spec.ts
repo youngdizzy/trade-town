@@ -35,7 +35,15 @@ test("the RISK tab shows Daily Trading Objectives and a real CEO update round-tr
   await clickExpand(page);
   await clickTab(page, "RISK");
 
-  await expect(page.getByText(/Daily Trading Objectives/)).toBeVisible();
+  // Chapter 67 Part 3's Safety & Capital Protection block (further down
+  // this same RISK tab) legitimately references "Daily Trading
+  // Objectives" in its own description copy ("...enforced the same way
+  // as Daily Max Loss above (see Daily Trading Objectives)") — a real
+  // second correct instance, not a bug, the same "second correct
+  // instance" pattern GlobalStatusBar/QuickActionDock's own tests
+  // already established elsewhere. `.first()` targets this test's own
+  // real "Daily Trading Objectives — Day N" heading.
+  await expect(page.getByText(/Daily Trading Objectives/).first()).toBeVisible();
   await expect(page.getByText("Trades today")).toBeVisible();
 
   const uniqueTarget = "7.5";

@@ -96,6 +96,8 @@ export function CommandPalette() {
       { id: "coach", label: "Open Coach Dashboard", hint: "Overlay", run: () => EventBus.emit("ui:coachDashboard", { open: true }) },
       { id: "dashboard", label: "Open Brain Room Dashboard", hint: "Overlay", run: () => EventBus.emit("ui:brainRoomHud", { open: true }) },
       { id: "settings", label: "Open Settings", hint: "Overlay", run: () => EventBus.emit("ui:settings", { open: true }) },
+      // Design Bible Chapter 67 (TTOS) Part 3 — the Executive Alert Center.
+      { id: "alerts", label: "Open Alert Center", hint: "Overlay", run: () => EventBus.emit("ui:alertCenter", { open: true }) },
     ];
     list.push({
       id: "pause",

@@ -4,6 +4,7 @@ import type {
   AgentEnergy,
   AgentId,
   AgentKnowledgeState,
+  AlertEntry,
   AgentState,
   BacktestSession,
   BlackBoxState,
@@ -183,6 +184,8 @@ export interface GameUiState {
   settingsOpen: boolean;
   newspaperOpen: boolean;
   companyMemoryOpen: boolean;
+  /** Design Bible Chapter 67 (TTOS) Part 3 — the Executive Alert Center. */
+  alertCenterOpen: boolean;
   coachDashboardOpen: boolean;
   brainRoomHudOpen: boolean;
   commandCenterOpen: boolean;
@@ -203,6 +206,11 @@ export interface GameUiState {
    * quick-jump buttons request the Command Center jump to a specific
    * tab; FullCommandCenter consumes and clears this. */
   pendingCommandCenterTab: string | null;
+  /** Design Bible Chapter 67 (TTOS) Part 3 — the CEO's real notification
+   * history, viewable in the Executive Alert Center. Every toast
+   * CyberNotifications.tsx ever shows is also recorded here (newest
+   * first, capped at MAX_ALERT_HISTORY). */
+  alertHistory: AlertEntry[];
   netConnected: boolean;
   save: SaveUiState;
   currentScene: string;
@@ -216,6 +224,12 @@ type Listener = () => void;
  * reactively, without pulling in a state-management dependency for what is
  * fundamentally just "subscribe to a few events."
  */
+// Design Bible Chapter 67 (TTOS) Part 3 — the Executive Alert Center's
+// retention cap, the same "cap the UI list, never the real underlying
+// data" convention this codebase already uses elsewhere (e.g.
+// maxDecisionVaultEntries, maxMemoryRecords).
+const MAX_ALERT_HISTORY = 200;
+
 class GameStore {
   private state: GameUiState = {
     time: { day: 1, hour: 8, minute: 0 },
@@ -438,6 +452,7 @@ class GameStore {
     settingsOpen: false,
     newspaperOpen: false,
     companyMemoryOpen: false,
+    alertCenterOpen: false,
     coachDashboardOpen: false,
     brainRoomHudOpen: false,
     commandCenterOpen: false,
@@ -448,6 +463,7 @@ class GameStore {
     executiveVotingProposalId: null,
     pendingInspectDecision: null,
     pendingCommandCenterTab: null,
+    alertHistory: [],
     netConnected: false,
     save: { status: "idle", lastSavedAt: null, error: null },
     currentScene: "MainMenuScene",
@@ -473,7 +489,7 @@ class GameStore {
     // of them is open — without that, the player kept moving (invisibly,
     // since the overlay hides the world) behind a panel that only a mouse
     // click could close, which read as the game being stuck.
-    const OVERLAY_KEYS = ["newspaperOpen", "companyMemoryOpen", "coachDashboardOpen", "brainRoomHudOpen", "commandCenterOpen", "campusMapOpen", "breakthroughOpen"] as const;
+    const OVERLAY_KEYS = ["newspaperOpen", "companyMemoryOpen", "alertCenterOpen", "coachDashboardOpen", "brainRoomHudOpen", "commandCenterOpen", "campusMapOpen", "breakthroughOpen"] as const;
     // v0.7 — Input Priority fix: the Command Center is intentionally
     // excluded from the movement-blocking subset. Its own backdrop
     // (bg-black/70 backdrop-blur-sm — see CommandCenter.tsx) isn't fully
@@ -497,6 +513,7 @@ class GameStore {
     };
     EventBus.on("ui:newspaper", ({ open }) => setOverlay("newspaperOpen", open));
     EventBus.on("ui:companyMemory", ({ open }) => setOverlay("companyMemoryOpen", open));
+    EventBus.on("ui:alertCenter", ({ open }) => setOverlay("alertCenterOpen", open));
     EventBus.on("ui:coachDashboard", ({ open }) => setOverlay("coachDashboardOpen", open));
     EventBus.on("ui:brainRoomHud", ({ open }) => setOverlay("brainRoomHudOpen", open));
     // Global Command Center (v0.6.1) — openable from anywhere via Tab or
@@ -663,6 +680,16 @@ class GameStore {
   /** FullCommandCenter calls this once it has acted on a pendingCommandCenterTab request. */
   clearPendingCommandCenterTab(): void {
     this.set({ pendingCommandCenterTab: null });
+  }
+
+  /** Design Bible Chapter 67 (TTOS) Part 3 — records one real
+   * notification into the CEO's alert history (newest first, capped).
+   * CyberNotifications.tsx calls this every time it shows a toast, so
+   * the Executive Alert Center's history is never missing anything the
+   * CEO glimpsed and dismissed. */
+  pushAlert(tier: AlertEntry["tier"], title: string, body: string): void {
+    const entry: AlertEntry = { id: `alert-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`, tier, title, body, createdAt: new Date().toISOString() };
+    this.set({ alertHistory: [entry, ...this.state.alertHistory].slice(0, MAX_ALERT_HISTORY) });
   }
 }
 
