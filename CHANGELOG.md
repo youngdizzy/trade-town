@@ -7,6 +7,37 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 71 — Economic Intelligence Center (frontend)**
+  (`frontend/src/types.ts`, `frontend/src/net/socket.ts`,
+  `frontend/src/game/systems/EventBus.ts`,
+  `frontend/src/game/systems/NexusManager.ts`,
+  `frontend/src/state/gameStore.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/EconomicIntelPanel.tsx`
+  new, `frontend/src/ui/components/CommandCenter/lib/derive.ts`,
+  `frontend/src/ui/components/CommandCenter/lib/navigation.ts`,
+  `frontend/src/ui/components/CommandCenter/FullCommandCenter.tsx`): a
+  new ECONINTEL tab (Command Center → MARKETS section, alongside
+  MARKETINTEL) mirrors the backend's `EconomicIntelligenceState`/
+  `EconomicIntelligenceReport` types exactly, wired through the same
+  WebSocket-driven store pattern as `portfolioIntelligence`/
+  `marketIntelligence` (a dedicated `economicIntelligence:updated` /
+  `economicIntelligenceReports:updated` EventBus pair, following
+  `marketIntelligenceReports:updated`'s own length-diffed emit
+  convention rather than firing on every tick). The panel shows the
+  Economic Health Score with all five named factors (never collapsed
+  into one number), the Confidence Engine's supporting/contradicting
+  evidence and key assumptions, News Risk, held-position Correlation
+  Clustering, and the latest Daily Economic Intelligence Brief
+  narrative — reusing `MarketIntelPanel`/`PortfolioIntelPanel`'s exact
+  visual conventions (`Glass`/`TerminalLabel`/`Meter`/`StatusPill`/
+  `EmptyState`), no new UI primitives. Verified against the live Vite +
+  FastAPI stack: `tsc --noEmit`, `eslint`, and `vite build` all clean; a
+  new `tests/economicIntel.spec.ts` (2 tests) confirms the real backend
+  state shape and that the tab renders live data with zero console
+  errors — a screenshot confirmed correct real values (Economic Health
+  66.6/100 STABLE, all five factors populated) against a live dev
+  backend.
+
 - **Chapter 71 — Economic Intelligence Center (backend)**
   (`app/economic_intelligence.py` new, `app/schemas.py`, `app/state.py`,
   `app/nexus.py`, `app/save_modules.py`, `app/ws_manager.py`,

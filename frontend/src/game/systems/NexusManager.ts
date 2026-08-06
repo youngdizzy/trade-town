@@ -20,6 +20,8 @@ import type {
   DecisionVaultEntry,
   DepartmentSelfEvaluation,
   DisciplineReview,
+  EconomicIntelligenceReport,
+  EconomicIntelligenceState,
   EmergencyStopState,
   ExecutiveMeetingLogEntry,
   ExecutiveReview,
@@ -137,6 +139,8 @@ interface NexusSnapshot {
   decisionVault: DecisionVaultEntry[];
   warRoomSessions: WarRoomSession[];
   portfolioIntelligence: PortfolioIntelligence;
+  economicIntelligence: EconomicIntelligenceState;
+  economicIntelligenceReports: EconomicIntelligenceReport[];
   talent: TalentState;
   constitution: ConstitutionState;
   reasoningChallenges: ReasoningChallenge[];
@@ -361,6 +365,18 @@ export class NexusManager {
     opportunityCost: "No data yet.",
     updatedAt: new Date().toISOString(),
   };
+  private static economicIntelligence: EconomicIntelligenceState = {
+    regime: "sideways",
+    regimeLabel: "SIDEWAYS",
+    marketQualityTier: "average",
+    health: { overall: 50, tier: "cautious", factors: [], reasoning: "No data yet." },
+    confidence: { confidencePct: 40, evidenceQuality: "thin", supportingEvidence: [], contradictingEvidence: [], keyAssumptions: [], alternativeOutcome: "No data yet." },
+    correlationPairs: [],
+    categoryExposure: [],
+    newsRisk: { activeMarketNewsCount: 0, riskLevel: "low", detail: "No data yet." },
+    updatedAt: new Date().toISOString(),
+  };
+  private static economicIntelligenceReports: EconomicIntelligenceReport[] = [];
   private static talent: TalentState = { reports: [], viewedReportIds: [], updatedAt: new Date().toISOString() };
   private static constitution: ConstitutionState = { articles: [], citations: [], amendments: [], updatedAt: new Date().toISOString() };
   private static reasoningChallenges: ReasoningChallenge[] = [];
@@ -629,6 +645,14 @@ export class NexusManager {
 
   static getPortfolioIntelligence(): PortfolioIntelligence {
     return this.portfolioIntelligence;
+  }
+
+  static getEconomicIntelligence(): EconomicIntelligenceState {
+    return this.economicIntelligence;
+  }
+
+  static getEconomicIntelligenceReports(): EconomicIntelligenceReport[] {
+    return this.economicIntelligenceReports;
   }
 
   static getTalent(): TalentState {
@@ -1193,6 +1217,14 @@ export class NexusManager {
     if (update.portfolioIntelligence !== this.portfolioIntelligence) EventBus.emit("portfolioIntelligence:updated", update.portfolioIntelligence);
     this.portfolioIntelligence = update.portfolioIntelligence;
 
+    if (update.economicIntelligence !== this.economicIntelligence) EventBus.emit("economicIntelligence:updated", update.economicIntelligence);
+    this.economicIntelligence = update.economicIntelligence;
+
+    if (update.economicIntelligenceReports.length !== this.economicIntelligenceReports.length) {
+      EventBus.emit("economicIntelligenceReports:updated", update.economicIntelligenceReports);
+    }
+    this.economicIntelligenceReports = update.economicIntelligenceReports;
+
     if (update.talent !== this.talent) EventBus.emit("talent:updated", update.talent);
     this.talent = update.talent;
 
@@ -1343,6 +1375,8 @@ export class NexusManager {
     this.decisionVault = save.decisionVault;
     this.warRoomSessions = save.warRoomSessions;
     this.portfolioIntelligence = save.portfolioIntelligence;
+    this.economicIntelligence = save.economicIntelligence;
+    this.economicIntelligenceReports = save.economicIntelligenceReports;
     this.talent = save.talent;
     this.constitution = save.constitution;
     this.reasoningChallenges = save.reasoningChallenges;

@@ -19,6 +19,8 @@ import type {
   DecisionGrade,
   DepartmentSelfEvaluation,
   DisciplineReview,
+  EconomicHealthTier,
+  EconomicIntelligenceReport,
   ExecutiveAction,
   ExecutiveMeetingLogEntry,
   ExecutiveReview,
@@ -1532,4 +1534,24 @@ export function latestMarketIntelligenceReport(reports: MarketIntelligenceReport
  * recent window, same pattern as recentMeetingLogEntries above. */
 export function recentMarketIntelligenceLearning(learning: MarketIntelligenceLearningEntry[], limit = 10): MarketIntelligenceLearningEntry[] {
   return [...learning].reverse().slice(0, limit);
+}
+
+const ECONOMIC_HEALTH_TONE: Record<EconomicHealthTier, "green" | "cyan" | "amber" | "red"> = {
+  thriving: "green",
+  stable: "cyan",
+  cautious: "amber",
+  stressed: "amber",
+  critical: "red",
+};
+
+export function economicHealthTone(tier: EconomicHealthTier): "green" | "cyan" | "amber" | "red" {
+  return ECONOMIC_HEALTH_TONE[tier];
+}
+
+/** The most recent Daily Economic Intelligence Brief — one real
+ * permanent snapshot per real in-game evening (see backend/app/economic_
+ * intelligence.py's generate_economic_intelligence_report). Null before
+ * the first evening. */
+export function latestEconomicIntelligenceReport(reports: EconomicIntelligenceReport[]): EconomicIntelligenceReport | null {
+  return reports.at(-1) ?? null;
 }

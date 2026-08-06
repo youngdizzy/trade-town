@@ -24,6 +24,8 @@ import type {
   DepartmentSelfEvaluation,
   DialogueHistoryEntry,
   DisciplineReview,
+  EconomicIntelligenceReport,
+  EconomicIntelligenceState,
   EmergencyStopState,
   ExecutiveMeetingLogEntry,
   ExecutiveReview,
@@ -210,6 +212,8 @@ export interface GameEvents {
   "decisionVault:updated": DecisionVaultEntry[];
   "warRoomSessions:updated": WarRoomSession[];
   "portfolioIntelligence:updated": PortfolioIntelligence;
+  "economicIntelligence:updated": EconomicIntelligenceState;
+  "economicIntelligenceReports:updated": EconomicIntelligenceReport[];
   "talent:updated": TalentState;
   "constitution:updated": ConstitutionState;
   "reasoningChallenges:updated": ReasoningChallenge[];

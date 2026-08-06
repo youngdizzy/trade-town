@@ -22,6 +22,8 @@ import type {
   DecisionVaultEntry,
   DepartmentSelfEvaluation,
   DisciplineReview,
+  EconomicIntelligenceReport,
+  EconomicIntelligenceState,
   EmergencyStopState,
   ExecutiveMeetingLogEntry,
   ExecutiveReview,
@@ -146,6 +148,8 @@ type ServerMessage =
       decisionVault: DecisionVaultEntry[];
       warRoomSessions: WarRoomSession[];
       portfolioIntelligence: PortfolioIntelligence;
+      economicIntelligence: EconomicIntelligenceState;
+      economicIntelligenceReports: EconomicIntelligenceReport[];
       talent: TalentState;
       constitution: ConstitutionState;
       reasoningChallenges: ReasoningChallenge[];
@@ -283,6 +287,8 @@ export class GameSocket {
             decisionVault: msg.decisionVault,
             warRoomSessions: msg.warRoomSessions,
             portfolioIntelligence: msg.portfolioIntelligence,
+            economicIntelligence: msg.economicIntelligence,
+            economicIntelligenceReports: msg.economicIntelligenceReports,
             talent: msg.talent,
             constitution: msg.constitution,
             reasoningChallenges: msg.reasoningChallenges,

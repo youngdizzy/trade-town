@@ -2746,6 +2746,80 @@ export interface PortfolioIntelligence {
   updatedAt: string;
 }
 
+// Design Bible Chapter 71 — Economic Intelligence Center
+// (backend/app/economic_intelligence.py). This codebase has no real
+// macroeconomic data source anywhere (no API keys, no live feed) — EIC
+// is a real cross-signal SYNTHESIS layer over already-real state
+// (MarketEnvironment's regime, MarketIntelligence's quality/news-risk,
+// PortfolioIntelligence's correlation/category/heat), never a tracker of
+// real central banks, real economic calendars, or real global events.
+export type EconomicHealthTier = "thriving" | "stable" | "cautious" | "stressed" | "critical";
+
+/** One real, named, published-formula input — never a blended/hidden
+ * number (this Design Bible's "no black-box composite" convention). */
+export interface EconomicSignalFactor {
+  name: string;
+  score: number; // 0-100, higher = healthier
+  weight: number;
+  detail: string;
+}
+
+export interface EconomicHealthScore {
+  overall: number; // 0-100
+  tier: EconomicHealthTier;
+  factors: EconomicSignalFactor[];
+  reasoning: string;
+}
+
+/** Never presents the health read as fact — confidence, evidence
+ * quality, and named supporting/contradicting evidence, the same
+ * convention DecisionConfidence already established for trade decisions. */
+export interface EconomicConfidenceRead {
+  confidencePct: number;
+  evidenceQuality: "thin" | "moderate" | "strong";
+  supportingEvidence: string[];
+  contradictingEvidence: string[];
+  keyAssumptions: string[];
+  alternativeOutcome: string;
+}
+
+/** A real, evidence-cited explanation — never invented causality like
+ * "the Fed cut rates" (no real Fed data exists here). Always a diff
+ * against the company's own last stored EconomicIntelligenceReport. */
+export interface MarketNarrativeEntry {
+  id: string;
+  headline: string;
+  body: string;
+  evidence: string[];
+  simDay: number;
+  createdAt: string;
+}
+
+/** The always-current cross-signal read — recomputed fresh every tick,
+ * same "cheap, never a stale second copy" convention as
+ * companyHealth/marketIntelligence/portfolioIntelligence. */
+export interface EconomicIntelligenceState {
+  regime: MarketEnvironmentRegime;
+  regimeLabel: string;
+  marketQualityTier: MarketQualityTier;
+  health: EconomicHealthScore;
+  confidence: EconomicConfidenceRead;
+  correlationPairs: CorrelationPair[];
+  categoryExposure: CategoryExposure[];
+  newsRisk: NewsRiskRead;
+  updatedAt: string;
+}
+
+/** One real, permanent snapshot per real in-game day (the Daily
+ * Economic Intelligence Brief), same cadence as MarketIntelligenceReport. */
+export interface EconomicIntelligenceReport {
+  id: string;
+  simDay: number;
+  snapshot: EconomicIntelligenceState;
+  narrative: MarketNarrativeEntry;
+  createdAt: string;
+}
+
 // v0.7 Feature 29 — the Reasoning Lab (see backend/app/reasoning_lab.py).
 // A permanent ReasoningChallenge is filed periodically from the
 // company's most recent real AI Debate + its linked TradeDecision —
@@ -3293,6 +3367,8 @@ export interface GameSaveState {
   decisionVault: DecisionVaultEntry[];
   warRoomSessions: WarRoomSession[];
   portfolioIntelligence: PortfolioIntelligence;
+  economicIntelligence: EconomicIntelligenceState;
+  economicIntelligenceReports: EconomicIntelligenceReport[];
   talent: TalentState;
   constitution: ConstitutionState;
   reasoningChallenges: ReasoningChallenge[];

@@ -30,6 +30,7 @@ import { DisciplinePanel } from "./panels/DisciplinePanel";
 import { DecisionVaultPanel } from "./panels/DecisionVaultPanel";
 import { WarRoomPanel } from "./panels/WarRoomPanel";
 import { PortfolioIntelPanel } from "./panels/PortfolioIntelPanel";
+import { EconomicIntelPanel } from "./panels/EconomicIntelPanel";
 import { ReasoningLabPanel } from "./panels/ReasoningLabPanel";
 import { ReflectionPanel } from "./panels/ReflectionPanel";
 import { MentorPanel } from "./panels/MentorPanel";
@@ -88,6 +89,7 @@ const TABS = [
   "COMPANY",
   "EXECINTEL",
   "MARKETINTEL",
+  "ECONINTEL",
   "KNOWLEDGE",
   "DISCIPLINE",
   "VAULT",
@@ -242,6 +244,7 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
         {tab === "COMPANY" && <CompanyPanel />}
         {tab === "EXECINTEL" && <ExecutiveIntelPanel />}
         {tab === "MARKETINTEL" && <MarketIntelPanel />}
+        {tab === "ECONINTEL" && <EconomicIntelPanel />}
         {tab === "KNOWLEDGE" && <AcademyPanel />}
         {tab === "DISCIPLINE" && <DisciplinePanel />}
         {tab === "VAULT" && <DecisionVaultPanel />}

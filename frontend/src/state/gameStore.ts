@@ -23,6 +23,8 @@ import type {
   DecisionVaultEntry,
   DepartmentSelfEvaluation,
   DisciplineReview,
+  EconomicIntelligenceReport,
+  EconomicIntelligenceState,
   EmergencyStopState,
   ExecutiveMeetingLogEntry,
   ExecutiveReview,
@@ -158,6 +160,8 @@ export interface GameUiState {
   decisionVault: DecisionVaultEntry[];
   warRoomSessions: WarRoomSession[];
   portfolioIntelligence: PortfolioIntelligence;
+  economicIntelligence: EconomicIntelligenceState;
+  economicIntelligenceReports: EconomicIntelligenceReport[];
   talent: TalentState;
   constitution: ConstitutionState;
   reasoningChallenges: ReasoningChallenge[];
@@ -429,6 +433,18 @@ class GameStore {
       opportunityCost: "No data yet.",
       updatedAt: new Date().toISOString(),
     },
+    economicIntelligence: {
+      regime: "sideways",
+      regimeLabel: "SIDEWAYS",
+      marketQualityTier: "average",
+      health: { overall: 50, tier: "cautious", factors: [], reasoning: "No data yet." },
+      confidence: { confidencePct: 40, evidenceQuality: "thin", supportingEvidence: [], contradictingEvidence: [], keyAssumptions: [], alternativeOutcome: "No data yet." },
+      correlationPairs: [],
+      categoryExposure: [],
+      newsRisk: { activeMarketNewsCount: 0, riskLevel: "low", detail: "No data yet." },
+      updatedAt: new Date().toISOString(),
+    },
+    economicIntelligenceReports: [],
     talent: { reports: [], viewedReportIds: [], updatedAt: new Date().toISOString() },
     constitution: { articles: [], citations: [], amendments: [], updatedAt: new Date().toISOString() },
     reasoningChallenges: [],
@@ -613,6 +629,8 @@ class GameStore {
     EventBus.on("decisionVault:updated", (decisionVault) => this.set({ decisionVault }));
     EventBus.on("warRoomSessions:updated", (warRoomSessions) => this.set({ warRoomSessions }));
     EventBus.on("portfolioIntelligence:updated", (portfolioIntelligence) => this.set({ portfolioIntelligence }));
+    EventBus.on("economicIntelligence:updated", (economicIntelligence) => this.set({ economicIntelligence }));
+    EventBus.on("economicIntelligenceReports:updated", (economicIntelligenceReports) => this.set({ economicIntelligenceReports }));
     EventBus.on("talent:updated", (talent) => this.set({ talent }));
     EventBus.on("constitution:updated", (constitution) => this.set({ constitution }));
     EventBus.on("reasoningChallenges:updated", (reasoningChallenges) => this.set({ reasoningChallenges }));
