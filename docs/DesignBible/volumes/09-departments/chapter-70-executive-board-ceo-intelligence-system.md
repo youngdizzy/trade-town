@@ -10,9 +10,17 @@ department's directional stance against actual closed-trade P&L. **Part
 too: a published, per-department weighting layer over the existing
 Consensus Meter, honestly scoped to the only two of the brief's eight
 named inputs with a real, computable source — Historical Accuracy and
-Market Conditions. See each part's own Implementation Notes (Part 2) or
-Part 3 Implementation Notes for the exact honest inventory of what's
-built and what remains out of scope.
+Market Conditions. **A follow-up Design Bible addendum then required
+WEDE to feed the Trade Gatekeeper directly** ("The Executive Board
+recommends. The Trade Gatekeeper decides.") **while remaining
+advisory-only — also now real:** `app/gatekeeper.py` gained a 9th
+unconditional check reading WEDE's real output, with the exact same
+authority as every other check (can contribute to a rejection, can
+never force an approval or bypass any other check), wired into both
+real paths that can open a position (a manual CEO decision and
+Assisted/Executive auto-resolution). See each part's own Implementation
+Notes (Part 2) or Part 3 Implementation Notes for the exact honest
+inventory of what's built and what remains out of scope.
 **A placement note:** this brief arrived numbered "Chapter 70," the
 same number Volume 10 had briefly used for a since-folded-in chapter —
 that number is free again, and this chapter's own subject (executive
@@ -512,7 +520,7 @@ was written:
 | "Dynamic Influence Score" (per-executive weight) | **Now real** — `DepartmentInfluence` + `compute_department_influence()` (`app/weighted_decisions.py`) | A real, per-department, per-decision weight — the product of small, named, published multipliers (accuracy × market × preset/custom), never a hidden blend. Honestly narrower than the brief's own eight-factor vision: only Historical Accuracy and Market Conditions feed the default formula; the other six factors have no real source and are not fabricated. |
 | "Raw Executive Votes vs. Weighted Executive Recommendation" | **Now both real, side by side** | The pre-existing 9 real `DepartmentOpinion` objects remain the Raw Vote, unchanged. `WeightedExecutiveRecommendation` (`GET /api/executive/weighted-decision`) is now a real, separate computation — `rawAction` and `weightedAction` are both present on the same object so the CEO always sees both, exactly as the brief asks. |
 | Named executive seats (CIO/CRO/CQO/Research/Compliance/Innovation) with context-specific higher influence | Still 4 of 6 seats real; still no Compliance/Innovation seat — **deliberately not invented** | Unchanged from Part 2's own finding: Meridian, Keystone, Vector, and the real `research` role cover four of six. **This pass explicitly did not invent Chief Compliance/Chief Innovation department opinions** — see Primary Responsibilities above: doing so would be new decision-logic scope (a new vote), not a weighting-engine scope (re-weighting existing votes), and risked quietly diluting the Trade Gatekeeper's real veto into "one more weighted opinion." |
-| "Compliance has veto authority" | **Confirmed untouched and still absolute** | `app/gatekeeper.py`'s real, unconditional veto pipeline is not read, called, or modified anywhere in `app/weighted_decisions.py` — grep-confirmed. WEDE is purely advisory (stated in its own module docstring) and never gates a trade; Compliance's real veto authority remains exactly as strong as before this pass, never diluted into a weighted vote. |
+| "Compliance has veto authority" | **Confirmed still absolute — and WEDE now feeds the Gatekeeper as one more input, per the Design Bible's own follow-up addendum** | `app/gatekeeper.py::_weighted_executive_check()` is a real 9th check in `evaluate_gatekeeper()`'s unconditional `all(checks)` list — the exact same authority as Decision Confidence or Portfolio Exposure: it can contribute to a REJECTION, never force an approval, and cannot override or skip any other check. `app/weighted_decisions.py` itself still touches nothing in the Gatekeeper/Risk Authority pipeline (verified — see Safety Systems below); the caller (`app/state.py`'s `submit_ceo_decision`, `app/nexus.py`'s auto-resolve path) computes the real `WeightedExecutiveRecommendation` and passes it in as data, the same way every other check's real input already flows in. Compliance's real veto authority is undiminished — a favorable WEDE read cannot rescue a trade any other real check would still reject. |
 | "Dynamic Market Adaptation" (Bull/Bear/High-Vol/Low-Vol boosts named departments) | **Now real** — `MARKET_CONDITION_BOOSTS` (`app/weighted_decisions.py`) | A real, published table mapping each of Chapter 65's 5 real `MarketEnvironmentRegime` values to per-department multipliers (e.g. bear → Risk 1.4×, Devil's Advocate 1.3×; bull → Research 1.3×, Market Intelligence 1.2×) — read live from `state.market_environment.current` on every request, applied automatically under the default Balanced Institutional profile. `RegimeReconciliation.posture` itself remains untouched and still read-only, per its own module docstring — this pass reads the underlying regime classifier directly, not that posture field. |
 | "Performance-Based Evolution" (gain/lose influence over time via 7 named metrics) | Still 1 of 7 metrics real; **deliberately not wired into any persisted evolution** | `compute_executive_accuracy_scores()` is now read directly by `compute_department_influence()` under Performance Weighted and Balanced Institutional profiles — a real, live input, computed fresh every request (`compute_accuracy_multiplier()`), never a stored, decaying, or accumulating "influence" value. This is a deliberate scope decision: this codebase's own "no fake progression" rule (CLAUDE.md) rules out inventing a persisted gain/lose-influence-over-time mechanic without a resolved design for what "losing influence" durably means; a department with `decisionsTracked: 0` gets the neutral 1.0×, never penalized for a track record that doesn't exist yet. |
 | "Transparency" (Raw Vote, Weighted Vote, Influence Score, Reasoning, Confidence, Supporting Evidence) | **Now 5 of 6 real** | Raw Vote, Weighted Vote, Influence Score (`finalWeight`), and Reasoning (a real, generated per-department string spelling out every multiplier that produced the weight) are all real and rendered together in `ExecutiveVoting.tsx`'s new panel. Confidence remains real, unchanged. **Still not real:** Supporting Evidence as a separate structured field (same Part 2 finding — collapses into `summary`). |
@@ -636,15 +644,31 @@ historical decision.
 
 ### Safety Systems
 
-**Verified held, not just stated as a constraint.** Grep-confirmed:
-`app/weighted_decisions.py` imports nothing from `app/gatekeeper.py` or
-`app/risk_engine.py`, and nothing in `app/routers/executive.py`'s new
-`weighted-decision` endpoint touches `state.trade_proposals`,
-`state.decisions`, or any resolution path — it's read-only, computed
-fresh, and never called from anywhere that could gate a trade. Chapter
-66's Trade Gatekeeper remains exactly as absolute as before this pass;
-Compliance's real veto authority was never diluted into "one more
-weighted vote."
+**A follow-up Design Bible addendum asked explicitly that WEDE "feed
+recommendations into the Trade Gatekeeper, while remaining advisory
+only" — implemented, and the exact authority boundary verified, not
+just stated:** `app/gatekeeper.py::_weighted_executive_check()` is a
+9th check in the same unconditional `all(checks)` list every other real
+Gatekeeper check already lives in. It can contribute to a rejection
+exactly like Decision Confidence or Portfolio Exposure; it cannot
+approve a trade on its own, and it cannot skip, weaken, or override any
+of the other eight checks — proven by a real test
+(`test_a_favorable_weighted_recommendation_cannot_rescue_a_failing_
+confidence_check`) confirming a favorable WEDE read does nothing when
+Decision Confidence still fails. `app/weighted_decisions.py` itself
+still imports nothing from `app/gatekeeper.py` or `app/risk_engine.py`
+— the computation and the enforcement stay separate modules; only the
+already-computed result crosses the boundary, as plain data, the same
+way every other check's real input already does. Both real production
+paths that can open a position — a manual CEO click
+(`app/state.py::submit_ceo_decision`) and Assisted/Executive-mode
+auto-resolution (`app/nexus.py::_apply_operating_mode`) — now compute
+and pass a real `WeightedExecutiveRecommendation`; the stale-proposal
+expiry path is untouched since it always resolves "wait," which never
+reaches the Gatekeeper at all. Chapter 66's Trade Gatekeeper remains
+exactly as absolute as before this pass; Compliance's real veto
+authority was never diluted into "one more weighted vote" — it's still
+the Gatekeeper, not WEDE, that decides.
 
 ### Dependencies
 
@@ -707,7 +731,10 @@ classifier; and a real, unconditional Trade Gatekeeper veto (Chapters
 58/66).
 
 **Built this pass, in `app/weighted_decisions.py` (new) — advisory
-only, never gating a trade (verified — see Safety Systems above):**
+only, meaning it can never approve a trade or override another check on
+its own, not that it's disconnected from the Gatekeeper (see the
+Gatekeeper wiring bullet below, and Safety Systems above for the exact
+verified boundary):**
 - **Dynamic Influence Score** — `compute_department_influence()`,
   returning a real `DepartmentInfluence` per department: `accuracy
   Multiplier` (from the real accuracy score, neutral 1.0 when
@@ -738,27 +765,63 @@ only, never gating a trade (verified — see Safety Systems above):**
   cards with their reasoning, a profile dropdown with live preview, and
   a Custom CEO Profile per-department weight editor.
 
+**Built in a follow-up pass, per a Design Bible addendum requiring WEDE
+to "feed recommendations into the Trade Gatekeeper, while remaining
+advisory only":**
+- **`app/gatekeeper.py::_weighted_executive_check()`** — a real 9th
+  check in `evaluate_gatekeeper()`'s existing unconditional
+  `all(checks)` list, the same authority as every other check: it can
+  contribute to a rejection, never force an approval, never override or
+  skip any of the other eight. Vacuously passes when no recommendation
+  is supplied, the same honest pattern `_debate_check` already uses for
+  a missing debate.
+- **`app/executive.py::resolve_proposal()`** gained an optional
+  `weighted_recommendation` parameter, passed straight through to
+  `evaluate_gatekeeper()` — this function still never computes WEDE
+  itself.
+- **`app/state.py::submit_ceo_decision()`** and **`app/nexus.py::
+  _apply_operating_mode()`** (the Assisted/Executive auto-resolve path)
+  both now compute the real `WeightedExecutiveRecommendation`
+  immediately before calling `resolve_proposal()`, so a manual CEO
+  decision and an auto-resolution are gated by the identical advisory
+  check — no safety signal that applies to a CEO click silently skips
+  an auto-resolution. The auto-resolve path reuses the department
+  opinions it already computed for the pre-existing `pause_trading`
+  safety check (Chapter 66) rather than a second, redundant pass. The
+  stale-proposal expiry path is untouched — it always resolves "wait,"
+  which never reaches the Gatekeeper.
+
 **Deliberate scope decisions, not gaps to silently fill later:**
 Compliance and Innovation were not added as new `DepartmentOpinion`
 roles just to give the brief's named seats something to weight (see
 Primary Responsibilities); no Performance-Based Evolution loop persists
 or decays influence over time (accuracy is read live, every request,
 never accumulated — this codebase's own "no fake progression" rule);
-the Trade Gatekeeper was not touched in any way.
+the Institutional Rule Engine (Chapter 69 Part 3) is not wired into
+this same pipeline — its Custom Rules attach to Part 1's secondary
+`Account` objects, and live trade execution against those accounts
+remains explicitly unwired (Part 1's own documented scope), so there is
+no real trade flowing through an Account for IRE to evaluate against
+yet; wiring it in would be architecturally hollow until account-scoped
+execution exists.
 
 **What's genuinely still unbuilt:** real sources for the six weighting
 factors this pass couldn't honestly compute (Prediction Quality,
 Current Expertise, Department Performance, Recent Reliability, Rule
-Compliance, Specialization); a persisted evolution loop; and recording
-the Weighted Recommendation on `ExecutiveMeetingLogEntry` alongside the
-Raw one it already stores permanently. Verified: mypy + ruff clean;
-runtime-tested against the real `GameState` singleton across all 8
-profiles (equal-voting neutrality, custom-weight override, preset
-multipliers, the balanced-institutional blended formula); FastAPI
-`TestClient` route registration + 404 handling; full save-module
-persistence round-trip for the two new `SettingsState` fields; `tsc
---noEmit`/eslint/`npm run build` all clean; and a real Playwright test
-against the live dev stack that boosts a research item to a genuine
-trade proposal, opens the new panel, confirms all 9 departments render
-with real influence data, and confirms switching the Weight Profile
-dropdown live-previews a different published formula.
+Compliance, Specialization); a persisted evolution loop; recording the
+Weighted Recommendation on `ExecutiveMeetingLogEntry` alongside the Raw
+one it already stores permanently; and Institutional Rule Engine
+enforcement in this same execution hierarchy (see the scope decision
+above). Verified: mypy + ruff clean; the full backend suite (1138
+tests, including 4 new real tests for the Gatekeeper check's pass/fail/
+vacuous/non-overriding behavior) passing; two direct runtime smoke
+tests against the real `GameState` singleton and `_apply_operating_
+mode` confirming both production call sites produce a real, non-vacuous
+WEDE evaluation as the Gatekeeper's 9th check; FastAPI `TestClient`
+route registration + 404 handling; full save-module persistence
+round-trip for the two new `SettingsState` fields; `tsc --noEmit`/
+eslint/`npm run build` all clean; and a real Playwright test against
+the live dev stack that boosts a research item to a genuine trade
+proposal, opens the new panel, confirms all 9 departments render with
+real influence data, and confirms switching the Weight Profile dropdown
+live-previews a different published formula.

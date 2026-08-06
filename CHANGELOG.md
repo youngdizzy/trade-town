@@ -7,6 +7,44 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 70 Part 3 addendum — Weighted Executive Decision Engine
+  wired into the Trade Gatekeeper (advisory only)**
+  (`app/gatekeeper.py`, `app/executive.py`, `app/state.py`,
+  `app/nexus.py`): closes a gap a follow-up Design Bible addendum
+  named explicitly — "The Executive Board recommends. The Trade
+  Gatekeeper decides... The Weighted Executive Decision Engine must
+  feed recommendations into the Trade Gatekeeper, while remaining
+  advisory only." WEDE was previously a real but disconnected
+  read-only endpoint. `gatekeeper.py` gains `_weighted_executive_
+  check()`, a 9th unconditional check in `evaluate_gatekeeper()`'s
+  existing `all(checks)` list — the exact same authority as every
+  other check (Decision Confidence, Portfolio Exposure, ...): it can
+  contribute to a rejection, never force an approval, and cannot
+  override or skip any other check. `resolve_proposal()` gained an
+  optional `weighted_recommendation` parameter passed straight through
+  (it still never computes WEDE itself); `state.py`'s
+  `submit_ceo_decision()` and `nexus.py`'s `_apply_operating_mode()`
+  (the Assisted/Executive auto-resolve path) both now compute the real
+  `WeightedExecutiveRecommendation` immediately before resolving a
+  proposal, so a manual CEO decision and an auto-resolution are gated
+  identically — the auto-resolve path reuses the department opinions
+  it already computed for the pre-existing Chapter 66 `pause_trading`
+  safety check rather than a second, redundant pass. The stale-
+  proposal expiry path is untouched (always resolves "wait," never
+  reaching the Gatekeeper). Institutional Rule Engine (Chapter 69 Part
+  3) enforcement was deliberately not added to this same pipeline —
+  its Custom Rules attach to Part 1's secondary Account objects, and
+  live trade execution against those accounts remains unwired, so
+  there's no real trade for IRE to evaluate against yet. Verified:
+  mypy/ruff clean; full backend suite (1138 tests) passing, including
+  4 new real tests proving the check's pass/fail/vacuous/non-
+  overriding behavior (a favorable WEDE read cannot rescue a trade a
+  failing Decision Confidence check would otherwise reject); two
+  direct runtime smoke tests against the real `GameState` singleton
+  and `_apply_operating_mode` confirming both production call sites
+  produce a real, non-vacuous WEDE evaluation as the Gatekeeper's 9th
+  check.
+
 - **Chapter 70, Part 3 — Weighted Executive Decision Engine (WEDE) —
   implemented**
   (`app/weighted_decisions.py`, `app/schemas.py`, `app/routers/

@@ -24,12 +24,18 @@ Every weight this module computes is the product of small, named,
 published multipliers — never a hidden blend, matching this Design
 Bible's "no black-box composite" convention throughout
 (CompanyHealth.overall, PropFirmComplianceScore, compute_executive_
-recommendation() itself). This module is purely advisory: it never
-gates, blocks, or resolves a trade. The Trade Gatekeeper's real,
-unconditional veto (Chapters 58/66) is untouched and stays the only
-thing that can block a trade — see the Design Bible chapter's own
-Safety Systems section for why a weighted vote must never be allowed to
-outvote it.
+recommendation() itself). This module itself never gates, blocks, or
+resolves a trade — it only computes a real, published recommendation.
+A follow-up Design Bible addendum required that recommendation to
+actually reach the Trade Gatekeeper rather than sit disconnected; see
+app/gatekeeper.py's _weighted_executive_check() for how — as one more
+unconditional check in evaluate_gatekeeper()'s existing all(checks)
+list, with exactly the same authority as every other check (can
+contribute to a rejection, can never force an approval or override any
+other check). The Trade Gatekeeper's real, unconditional veto (Chapters
+58/66) is otherwise untouched and stays the only thing that actually
+decides whether a trade executes — see the Design Bible chapter's own
+Safety Systems section for the verified boundary.
 """
 from __future__ import annotations
 
