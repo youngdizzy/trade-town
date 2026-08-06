@@ -38,6 +38,7 @@ from app.schemas import (
     RiskWarning,
     TradeProposal,
     WatchlistEntry,
+    WeightedExecutiveRecommendation,
 )
 
 ROLE_TO_AGENT = {"technical": "echo", "news": "scout", "macro": "nova", "risk": "sentinel", "sentiment": "pulse", "execution": "atlas"}
@@ -213,7 +214,11 @@ class TestEvaluateGatekeeper:
         portfolio = default_portfolio()
         verdict = evaluate_gatekeeper(proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], default_market_intelligence_state())
         assert verdict.approved is True
-        assert len(verdict.checks) == 8
+        # Design Bible Chapter 70 Part 3 addendum — 9th check: the
+        # Weighted Executive Decision Engine, vacuously passing here
+        # since no weighted_recommendation was supplied (see
+        # TestWeightedExecutiveCheck below for the real behavior).
+        assert len(verdict.checks) == 9
         assert all(c.passed for c in verdict.checks)
         assert "APPROVED" in verdict.summary
 
@@ -244,6 +249,68 @@ class TestEvaluateGatekeeper:
         verdict = evaluate_gatekeeper(proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], poor_market)
         assert verdict.approved is False
         assert any(c.id == "market_intelligence" and not c.passed for c in verdict.checks)
+
+
+def _weighted_recommendation(weighted_action: str) -> WeightedExecutiveRecommendation:
+    return WeightedExecutiveRecommendation(
+        proposalId="proposal-NEXA",
+        profile="balanced_institutional",
+        marketRegime="sideways",
+        departmentInfluences=[],
+        rawAction="trade_normally",
+        weightedAction=weighted_action,  # type: ignore[arg-type]
+        scoreByAction={weighted_action: 100.0},
+        agreesWithRaw=weighted_action == "trade_normally",
+    )
+
+
+class TestWeightedExecutiveCheck:
+    """Design Bible Chapter 70 Part 3 addendum — the Weighted Executive
+    Decision Engine must feed the Trade Gatekeeper while remaining
+    advisory only: it can contribute to a rejection like any other real
+    check, but it can never approve a trade or bypass any of the other
+    eight checks on its own."""
+
+    def test_passes_when_no_recommendation_supplied(self) -> None:
+        proposal = _proposal(confidence_score=90.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}))
+        portfolio = default_portfolio()
+        verdict = evaluate_gatekeeper(proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], default_market_intelligence_state())
+        check = next(c for c in verdict.checks if c.id == "weighted_executive")
+        assert check.passed is True
+        assert "not evaluated" in check.detail
+
+    def test_passes_when_weighted_action_favors_trading(self) -> None:
+        proposal = _proposal(confidence_score=90.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}))
+        portfolio = default_portfolio()
+        verdict = evaluate_gatekeeper(
+            proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], default_market_intelligence_state(), _weighted_recommendation("trade_normally")
+        )
+        check = next(c for c in verdict.checks if c.id == "weighted_executive")
+        assert check.passed is True
+        assert verdict.approved is True
+
+    def test_rejects_the_whole_trade_when_weighted_action_advises_caution(self) -> None:
+        proposal = _proposal(confidence_score=90.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}))
+        portfolio = default_portfolio()
+        verdict = evaluate_gatekeeper(
+            proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], default_market_intelligence_state(), _weighted_recommendation("pause_trading")
+        )
+        check = next(c for c in verdict.checks if c.id == "weighted_executive")
+        assert check.passed is False
+        assert verdict.approved is False
+        assert "Weighted Executive Recommendation" in verdict.summary
+
+    def test_a_favorable_weighted_recommendation_cannot_rescue_a_failing_confidence_check(self) -> None:
+        """WEDE is advisory-only both ways — it can never override the
+        other eight real checks, only ever add to them."""
+        proposal = _proposal(confidence_score=10.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}))
+        portfolio = default_portfolio()
+        verdict = evaluate_gatekeeper(
+            proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], default_market_intelligence_state(), _weighted_recommendation("trade_normally")
+        )
+        assert verdict.approved is False
+        confidence_check = next(c for c in verdict.checks if c.id == "confidence")
+        assert confidence_check.passed is False
 
 
 class TestGradeGatekeeperRejections:

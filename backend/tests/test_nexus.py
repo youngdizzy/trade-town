@@ -125,6 +125,9 @@ class TestApplyOperatingModePauseTrading:
             1,  # sim_day
             market_intelligence,
             [],  # war_room_sessions
+            "sideways",  # market_environment_regime
+            "balanced_institutional",  # active_weight_profile
+            {},  # custom_department_weights
         )
 
     def test_avoid_trading_regime_keeps_an_otherwise_non_significant_proposal_pending_in_assisted_mode(self) -> None:
@@ -177,6 +180,9 @@ class TestApplyOperatingModeEmergencyStop:
             1,  # sim_day
             default_market_intelligence_state(),
             [],  # war_room_sessions
+            "sideways",  # market_environment_regime
+            "balanced_institutional",  # active_weight_profile
+            {},  # custom_department_weights
             emergency_stop_active=emergency_stop_active,
         )
 

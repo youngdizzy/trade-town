@@ -41,10 +41,17 @@ from app.devils_advocate import MAX_CHALLENGE_REPORTS, generate_challenge_report
 from app.emergency_stop import activate_emergency_stop as _activate_emergency_stop
 from app.emergency_stop import resume_trading as _resume_trading
 from app.executive import MAX_CEO_DECISIONS, MAX_PROPOSAL_HOLDS, AnalystChoice, hold_proposal, modify_proposal, resolve_proposal
-from app.executive_intelligence import generate_meeting_log_entry, record_meeting_log_entry
+from app.executive_intelligence import (
+    compute_executive_accuracy_scores,
+    compute_executive_recommendation,
+    generate_department_opinions,
+    generate_meeting_log_entry,
+    record_meeting_log_entry,
+)
 from app.goals import cancel_goal as cancel_goal_entry
 from app.goals import create_goal, record_goal, resolve_metric_value, validate_target_value
 from app.innovation import compute_innovation_state
+from app.weighted_decisions import compute_weighted_recommendation
 from app.market_data import market_data_provider
 from app.market_environment import default_market_environment
 from app.market_intelligence import compute_market_intelligence_state
@@ -1380,6 +1387,32 @@ class GameState:
             debate = next((d for d in reversed(self.data.debates) if d.proposal_id == proposal_id), None)
             resolved_by: Literal["ceo", "auto", "delegated"] = "delegated" if delegated else "ceo"
 
+            # Design Bible Chapter 70 Part 3 addendum — "Research →
+            # Executive Board Recommendation → Weighted Executive Decision
+            # Engine → Trade Gatekeeper." Computed here (not inside
+            # resolve_proposal itself) because the department opinions,
+            # accuracy scores, and active Weight Profile all live in real
+            # state only this call site has in scope; passed straight
+            # through as one more advisory-only Gatekeeper check — see
+            # app/gatekeeper.py's _weighted_executive_check for the exact
+            # authority boundary. Skipped for a real "wait" (nothing for
+            # the Gatekeeper to evaluate — resolve_proposal never calls it).
+            weighted_recommendation = None
+            if choice in ("buy", "sell"):
+                challenge_report_for_opinions = next((c for c in reversed(self.data.challenge_reports) if c.proposal_id == proposal_id), None)
+                opinions = generate_department_opinions(proposal, challenge_report_for_opinions, self.data.coach_reports, self.data.market_intelligence)
+                raw_recommendation = compute_executive_recommendation(proposal, opinions)
+                accuracy_scores = compute_executive_accuracy_scores(self.data.executive_meeting_log, self.data.ceo_decisions)
+                weighted_recommendation = compute_weighted_recommendation(
+                    proposal.id,
+                    opinions,
+                    accuracy_scores,
+                    regime=self.data.market_environment.current,
+                    profile=self.data.settings.active_weight_profile,
+                    custom_weights=self.data.settings.custom_department_weights,
+                    raw_action=raw_recommendation.action,
+                )
+
             portfolio, decision, ceo_record = resolve_proposal(
                 proposal,
                 choice,
@@ -1391,6 +1424,7 @@ class GameState:
                 debate=debate,
                 risk_warnings=self.data.risk_warnings,
                 resolved_by=resolved_by,
+                weighted_recommendation=weighted_recommendation,
             )
 
             memory = list(self.data.memory)

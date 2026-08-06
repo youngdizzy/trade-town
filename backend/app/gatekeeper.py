@@ -40,12 +40,24 @@ from app.schemas import (
     RiskWarning,
     TradeProposal,
     WatchlistEntry,
+    WeightedExecutiveRecommendation,
 )
 from app.watchlist import SYMBOL_CATEGORY
 
 MIN_CONFIDENCE = 55.0
 MAX_CORRELATED_POSITIONS = 2
 GATEKEEPER_EVAL_WINDOW_MINUTES = 240  # 4 simulated hours — same order of magnitude as this sim's typical real hold durations.
+
+# Design Bible Chapter 70 Part 3 addendum — the execution hierarchy the
+# Weighted Executive Decision Engine must feed into: Research → Executive
+# Board Recommendation → WEDE → Trade Gatekeeper → Risk Authority →
+# Institutional Rule Engine → Broker Management System → Order Execution.
+# Mirrors app/executive_intelligence.py's own _TRADING_ACTIONS exactly
+# (duplicated rather than cross-imported, matching this codebase's
+# existing precedent for small, stable enums shared across modules with
+# no other coupling) — "the network thinks a trade should happen at all
+# right now," never a directional (buy vs. sell) judgment.
+_WEDE_TRADING_ACTIONS = frozenset({"trade_normally", "reduce_risk"})
 
 
 def _now_iso() -> str:
@@ -137,6 +149,37 @@ def _market_intelligence_check(market_intelligence: MarketIntelligenceState) -> 
     return GatekeeperCheck(id="market_intelligence", label="Market Intelligence Quality", passed=passed, detail=detail)
 
 
+# Design Bible Chapter 70 Part 3 addendum — "The Weighted Executive
+# Decision Engine must feed recommendations into the Trade Gatekeeper,
+# while remaining advisory only." Implemented as one more unconditional
+# check in the same `all(checks)` list every other real Gatekeeper check
+# already uses — WEDE gets exactly the same authority as Decision
+# Confidence or Portfolio Exposure: it can contribute to a REJECTION,
+# never force an approval, and it cannot override or skip any other
+# check. `weighted_recommendation` is None only when the caller had
+# nothing to evaluate (ceo_choice == "wait" never reaches this function
+# at all — see app/executive.py's resolve_proposal) or a caller predates
+# this wiring (e.g. a direct unit test) — vacuously passes in that case,
+# the same honest pattern `_debate_check` above already uses for a
+# missing `debate`.
+def _weighted_executive_check(weighted_recommendation: WeightedExecutiveRecommendation | None) -> GatekeeperCheck:
+    if weighted_recommendation is None:
+        return GatekeeperCheck(
+            id="weighted_executive",
+            label="Weighted Executive Recommendation",
+            passed=True,
+            detail="Weighted Executive Decision Engine not evaluated for this decision.",
+        )
+    passed = weighted_recommendation.weighted_action in _WEDE_TRADING_ACTIONS
+    detail = (
+        f"Weighted Executive Decision Engine ({weighted_recommendation.profile.replace('_', ' ')} profile, "
+        f"{weighted_recommendation.market_regime.replace('_', ' ')} regime) recommends "
+        f"{weighted_recommendation.weighted_action.replace('_', ' ')} — "
+        f"{'consistent with' if passed else 'advises against'} proceeding."
+    )
+    return GatekeeperCheck(id="weighted_executive", label="Weighted Executive Recommendation", passed=passed, detail=detail)
+
+
 def evaluate_gatekeeper(
     proposal: TradeProposal,
     ceo_choice: AnalystChoice,
@@ -145,6 +188,7 @@ def evaluate_gatekeeper(
     risk_limits: RiskLimits,
     risk_warnings: list[RiskWarning],
     market_intelligence: MarketIntelligenceState,
+    weighted_recommendation: WeightedExecutiveRecommendation | None = None,
 ) -> "GatekeeperVerdict":
     from app.schemas import GatekeeperVerdict  # local import avoids a schemas.py forward-reference cycle at module load
 
@@ -157,6 +201,7 @@ def evaluate_gatekeeper(
         _correlation_check(proposal, portfolio),
         _risk_warning_check(proposal, risk_warnings),
         _market_intelligence_check(market_intelligence),
+        _weighted_executive_check(weighted_recommendation),
     ]
     approved = all(c.passed for c in checks)
     if approved:

@@ -58,7 +58,16 @@ from app.executive import (
     is_significant_proposal,
     resolve_proposal,
 )
-from app.executive_intelligence import compute_executive_recommendation, generate_department_opinions, generate_meeting_log_entry, generate_weekly_self_evaluations, record_meeting_log_entry, record_self_evaluations
+from app.executive_intelligence import (
+    compute_executive_accuracy_scores,
+    compute_executive_recommendation,
+    generate_department_opinions,
+    generate_meeting_log_entry,
+    generate_weekly_self_evaluations,
+    record_meeting_log_entry,
+    record_self_evaluations,
+)
+from app.weighted_decisions import compute_weighted_recommendation
 from app.executive_review import generate_executive_review, record_review
 from app.founders import compute_founder_state, generate_breakthrough_review, generate_council_session, generate_founder_log_entry, record_council_session, record_founder_log
 from app.goals import generate_strategic_review, record_strategic_review, tick_goals
@@ -145,6 +154,7 @@ from app.schemas import (
     DepartmentSelfEvaluation,
     DisciplineReview,
     EntityTransform,
+    ExecutiveDepartmentRole,
     ExecutiveMeetingLogEntry,
     ExecutiveReview,
     FounderCouncilSession,
@@ -155,6 +165,7 @@ from app.schemas import (
     Goal,
     HallOfFameEntry,
     InnovationState,
+    MarketEnvironmentRegime,
     MarketIntelligenceLearningEntry,
     MarketIntelligenceReport,
     MarketIntelligenceState,
@@ -186,6 +197,7 @@ from app.schemas import (
     TradeProposal,
     TreasuryState,
     WarRoomSession,
+    WeightProfile,
     WisdomState,
 )
 from app.simulation import default_strategies, queue_backtest_now, tick_simulation_lab
@@ -801,6 +813,9 @@ def _apply_operating_mode(
     sim_day: int,
     market_intelligence: MarketIntelligenceState,
     war_room_sessions: list[WarRoomSession],
+    market_environment_regime: MarketEnvironmentRegime,
+    active_weight_profile: WeightProfile,
+    custom_department_weights: dict[ExecutiveDepartmentRole, float],
     emergency_stop_active: bool = False,
 ) -> tuple[list[TradeProposal], PaperPortfolio, list[ExecutiveMeetingLogEntry]]:
     """v0.7 Feature 21 — Company Operating Modes. Learning Mode never
@@ -872,12 +887,33 @@ def _apply_operating_mode(
         # closes the one real, precise gap Chapter 66's own research
         # found: the signal already existed (ExecutiveRecommendation.action),
         # nothing previously enforced it.
+        # Design Bible Chapter 70 Part 3 addendum — the same real
+        # Weighted Executive Decision Engine read app/state.py's
+        # submit_ceo_decision computes for a manual CEO call, computed
+        # here too so an auto-resolution (Assisted/Executive mode) is
+        # gated by the exact same advisory-only Gatekeeper check — no
+        # safety signal that applies to a CEO click should silently skip
+        # an auto-resolution. Reuses the `opinions` this block already
+        # had to compute for the pre-existing pause_trading check above,
+        # rather than a second, redundant department-opinion pass.
+        weighted_recommendation = None
         if proposal.overall_recommendation != "wait":
             pre_resolve_challenge_report = next((c for c in reversed(challenge_reports) if c.proposal_id == proposal.id), None)
             opinions = generate_department_opinions(proposal, pre_resolve_challenge_report, coach_reports, market_intelligence)
-            if compute_executive_recommendation(proposal, opinions).action == "pause_trading":
+            raw_recommendation = compute_executive_recommendation(proposal, opinions)
+            if raw_recommendation.action == "pause_trading":
                 still_pending.append(proposal)
                 continue
+            accuracy_scores = compute_executive_accuracy_scores(meeting_log, ceo_decisions)
+            weighted_recommendation = compute_weighted_recommendation(
+                proposal.id,
+                opinions,
+                accuracy_scores,
+                regime=market_environment_regime,
+                profile=active_weight_profile,
+                custom_weights=custom_department_weights,
+                raw_action=raw_recommendation.action,
+            )
 
         debate = next((d for d in reversed(debates) if d.proposal_id == proposal.id), None)
         portfolio, decision, record = resolve_proposal(
@@ -890,6 +926,7 @@ def _apply_operating_mode(
             market_intelligence=market_intelligence,
             debate=debate,
             risk_warnings=risk_warnings,
+            weighted_recommendation=weighted_recommendation,
             resolved_by="auto",
         )
         record_ceo_decision(memory, decision, max_records=risk_limits.max_memory_records)
@@ -1390,6 +1427,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         new_time.day,
         market_intelligence,
         war_room_sessions,
+        market_environment.current,
+        state.settings.active_weight_profile,
+        state.settings.custom_department_weights,
         emergency_stop_active=state.emergency_stop.active,
     )
 

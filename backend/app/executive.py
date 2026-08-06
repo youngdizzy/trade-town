@@ -68,6 +68,7 @@ from app.schemas import (
     ScannerAlert,
     TradeDecision,
     TradeProposal,
+    WeightedExecutiveRecommendation,
 )
 from app.voting import researcher_vote
 
@@ -355,6 +356,7 @@ def resolve_proposal(
     debate: Debate | None = None,
     risk_warnings: list[RiskWarning] | None = None,
     resolved_by: Literal["ceo", "auto", "delegated"] = "ceo",
+    weighted_recommendation: WeightedExecutiveRecommendation | None = None,
 ) -> tuple[PaperPortfolio, TradeDecision, CeoDecisionRecord]:
     """Applies the CEO's real decision: buy opens a real long, sell opens
     a real short, wait does nothing — subject to the Trade Gatekeeper's
@@ -369,7 +371,18 @@ def resolve_proposal(
     click, "delegated" (Design Bible Chapter 70 Part 2) for a CEO click
     that explicitly asked the Executive Intelligence Network's own
     recommendation to decide; it never changes what actually happens,
-    only what gets recorded about who decided it."""
+    only what gets recorded about who decided it.
+
+    `weighted_recommendation` (Design Bible Chapter 70 Part 3 addendum)
+    — the caller's already-computed Weighted Executive Decision Engine
+    read for this exact proposal, if any. Passed straight through to
+    evaluate_gatekeeper() below as one more real, unconditional check —
+    advisory in the sense that it can only ever contribute to a
+    rejection alongside every other check, never approve a trade or
+    bypass any of them. This function never computes it itself (the
+    caller already has the department opinions, accuracy scores, and
+    active Weight Profile in scope — see app/state.py's
+    submit_ceo_decision and app/nexus.py's _apply_operating_mode)."""
     decision_id = f"decision-{proposal.id}"
     order_id: str | None = None
     price = current_price if current_price and current_price > 0 else proposal.price
@@ -396,7 +409,7 @@ def resolve_proposal(
             # size zero happened.
             ceo_choice = "wait"
         else:
-            gatekeeper_verdict = evaluate_gatekeeper(proposal, ceo_choice, debate, portfolio, risk_limits, risk_warnings or [], market_intelligence)
+            gatekeeper_verdict = evaluate_gatekeeper(proposal, ceo_choice, debate, portfolio, risk_limits, risk_warnings or [], market_intelligence, weighted_recommendation)
             if gatekeeper_verdict.approved:
                 position_id = f"pos-{proposal.id}"
                 portfolio = open_position(
