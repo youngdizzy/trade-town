@@ -26,9 +26,12 @@ from app.schemas import (
     PaperPortfolio,
     TradeDecision,
     TradeProposal,
+    WeightedExecutiveRecommendation,
+    WeightProfile,
     WhatIfSimulation,
 )
 from app.state import game_state
+from app.weighted_decisions import compute_weighted_recommendation
 from app.whatif import run_whatif_simulation
 
 router = APIRouter(prefix="/api/executive", tags=["executive"])
@@ -237,3 +240,39 @@ async def executive_accuracy() -> list[ExecutiveAccuracyScore]:
     outcome). No game-state lock needed — nothing here mutates the save."""
     state = await game_state.snapshot()
     return compute_executive_accuracy_scores(state.executive_meeting_log, state.ceo_decisions)
+
+
+@router.get("/weighted-decision", response_model=WeightedExecutiveRecommendation)
+async def weighted_decision(
+    proposal_id: str = Query(..., alias="proposalId"),
+    profile: WeightProfile | None = Query(default=None),
+) -> WeightedExecutiveRecommendation:
+    """Design Bible Chapter 70 Part 3 — Weighted Executive Decision
+    Engine. Read-only and computed fresh (same convention as
+    /intelligence and /accuracy above) — this is purely advisory and
+    never gates or resolves a trade; the Trade Gatekeeper's real,
+    unconditional veto (Chapters 58/66) is untouched.
+
+    `profile` optionally previews a different Weight Profile than the
+    CEO's persisted `settings.activeWeightProfile` without changing it —
+    switching for real happens via the normal settings save, the same
+    client-authoritative mechanism `operatingMode` already uses. No
+    game-state lock needed — nothing here mutates the save."""
+    state = await game_state.snapshot()
+    proposal = next((p for p in state.trade_proposals if p.id == proposal_id), None)
+    if proposal is None:
+        raise HTTPException(status_code=404, detail="Unknown or already-resolved proposal.")
+    challenge_report = next((c for c in reversed(state.challenge_reports) if c.proposal_id == proposal_id), None)
+    opinions = generate_department_opinions(proposal, challenge_report, state.coach_reports, state.market_intelligence)
+    recommendation = compute_executive_recommendation(proposal, opinions)
+    accuracy_scores = compute_executive_accuracy_scores(state.executive_meeting_log, state.ceo_decisions)
+    active_profile = profile if profile is not None else state.settings.active_weight_profile
+    return compute_weighted_recommendation(
+        proposal.id,
+        opinions,
+        accuracy_scores,
+        regime=state.market_environment.current,
+        profile=active_profile,
+        custom_weights=state.settings.custom_department_weights,
+        raw_action=recommendation.action,
+    )

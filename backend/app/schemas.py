@@ -381,6 +381,18 @@ class SettingsState(CamelModel):
     ceo_academy_learning_mode: bool = Field(
         default=False, alias="ceoAcademyLearningMode"
     )
+    # Design Bible Chapter 70 Part 3 — Weighted Executive Decision Engine.
+    # Same client-authoritative mechanism as operating_mode/
+    # company_priority above — no dedicated persistence endpoint needed.
+    active_weight_profile: WeightProfile = Field(
+        default="balanced_institutional", alias="activeWeightProfile"
+    )
+    # Only read when active_weight_profile == "custom" — a CEO-authored
+    # multiplier per department, default 1.0 (neutral) for any role not
+    # present. See app/weighted_decisions.py.
+    custom_department_weights: dict[ExecutiveDepartmentRole, float] = Field(
+        default_factory=dict, alias="customDepartmentWeights"
+    )
 
 
 class DialogueHistoryEntry(CamelModel):
@@ -1856,6 +1868,63 @@ class ExecutiveAccuracyScore(CamelModel):
     decisions_tracked: int = Field(alias="decisionsTracked")
     correct_count: int = Field(alias="correctCount")
     accuracy_pct: float = Field(alias="accuracyPct")
+
+
+# Design Bible Chapter 70 Part 3 — Weighted Executive Decision Engine
+# (WEDE). Honest scope, stated here once rather than per-field below: of
+# the brief's eight named weighting inputs, only two have a real,
+# computable source in this codebase — Historical Accuracy
+# (ExecutiveAccuracyScore, closed-trade-only) and Market Conditions
+# (MarketEnvironmentRegime, Chapter 65). The other six (Prediction
+# Quality, Current Expertise, Department Performance, Recent
+# Reliability, Rule Compliance, Specialization) have no real per-
+# department measure anywhere in this codebase and are not fabricated
+# here — see app/weighted_decisions.py's module docstring for the full
+# published formula.
+WeightProfile = Literal[
+    "equal_voting",
+    "performance_weighted",
+    "risk_first",
+    "growth_first",
+    "research_first",
+    "capital_preservation",
+    "balanced_institutional",
+    "custom",
+]
+
+
+class DepartmentInfluence(CamelModel):
+    """One department's real, fully-published weight for one decision —
+    every multiplier that produced `final_weight` is itself a field
+    here, never collapsed into an opaque number (this Design Bible's
+    "no black-box composite" convention)."""
+
+    role: ExecutiveDepartmentRole
+    department_label: str = Field(alias="departmentLabel")
+    accuracy_multiplier: float = Field(alias="accuracyMultiplier")
+    market_multiplier: float = Field(alias="marketMultiplier")
+    preset_multiplier: float = Field(alias="presetMultiplier")
+    final_weight: float = Field(alias="finalWeight")
+    reasoning: str
+
+
+class WeightedExecutiveRecommendation(CamelModel):
+    """The Weighted Executive Recommendation, always presented alongside
+    the pre-existing Raw Vote (`ExecutiveRecommendation`), never in place
+    of it — see app/weighted_decisions.py."""
+
+    proposal_id: str = Field(alias="proposalId")
+    profile: WeightProfile
+    market_regime: MarketEnvironmentRegime = Field(alias="marketRegime")
+    department_influences: list[DepartmentInfluence] = Field(alias="departmentInfluences")
+    raw_action: ExecutiveAction = Field(alias="rawAction")
+    weighted_action: ExecutiveAction = Field(alias="weightedAction")
+    # Published per-action breakdown (sum of weight × confidence for every
+    # department whose stance maps to that action, normalized to a 0-100
+    # scale) — the exact number `weighted_action` was chosen from, not a
+    # hidden intermediate.
+    score_by_action: dict[str, float] = Field(alias="scoreByAction")
+    agrees_with_raw: bool = Field(alias="agreesWithRaw")
 
 
 # v0.7 Feature 51 — Market Intelligence Department, "the company's eyes."
