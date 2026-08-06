@@ -7,9 +7,45 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 70, Part 3 — Weighted Executive Decision Engine (WEDE) —
+  implemented**
+  (`app/weighted_decisions.py`, `app/schemas.py`, `app/routers/
+  executive.py`, `ExecutiveVoting.tsx`): a real, published, per-
+  department weighting layer over the pre-existing Executive Consensus
+  Meter, honestly scoped to the only two of the brief's eight named
+  weighting inputs with a real, computable source — Historical Accuracy
+  (`compute_executive_accuracy_scores()`, built for Part 2 this same
+  run) and Market Conditions (Chapter 65's real, live 5-way regime
+  read). `compute_department_influence()` computes a real, fully-
+  published multiplier per department (never a hidden blend) across all
+  8 named Weight Profiles (Equal Voting, Performance Weighted, the four
+  "First" emphasis presets, Balanced Institutional, and a CEO-editable
+  Custom profile), persisted via the same client-authoritative
+  `SettingsState` mechanism `operatingMode` already uses.
+  `compute_weighted_recommendation()` maps every department's real
+  stance onto the existing six-value `ExecutiveAction` space so the Raw
+  Vote and Weighted Recommendation are always shown together, in the
+  same vocabulary, on the real trade proposal panel — never one
+  replacing the other. Deliberate scope decisions, not gaps: Chief
+  Compliance/Chief Innovation Officer were not invented as new
+  department-opinion roles (verified: `app/weighted_decisions.py`
+  imports nothing from and writes nothing to the Trade Gatekeeper — its
+  real, absolute veto, Chapters 58/66, is completely untouched); no
+  Performance-Based Evolution loop persists or decays influence over
+  time (accuracy is read live every request, never accumulated,
+  matching this codebase's "no fake progression" rule). Verified:
+  mypy/ruff clean; runtime-tested against the real `GameState` singleton
+  across all 8 profiles; FastAPI `TestClient` route + 404 checks; a full
+  save-module persistence round-trip; `tsc --noEmit`/eslint/`npm run
+  build` clean; and a real Playwright test against the live dev stack
+  confirming all 9 departments render real influence data and profile
+  switching live-previews a different published formula.
+
 - **Chapter 70, Part 3 — Weighted Executive Decision Engine (WEDE)**
   (`docs/DesignBible/volumes/09-departments/chapter-70-executive-board-ceo-intelligence-system.md`):
-  documentation only, no code written against this part. The brief asks
+  documentation only, no code written against this part (superseded by
+  the implementation entry above — kept as the original research
+  record). The brief asks
   that department opinions stop counting equally and instead carry a
   Dynamic Influence Score shaped by accuracy, market conditions, and
   rule compliance. Researched first: grep-confirmed zero per-department
