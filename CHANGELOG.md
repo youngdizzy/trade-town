@@ -7,6 +7,18 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Appendix G — the Live Trading Gate**
+  (`docs/DesignBible/appendices/appendix-g-permanent-development-policy.md`,
+  cross-referenced from Chapter 68): records, as permanent policy, the
+  seven conditions the Institutional Broker Management System must
+  meet before connecting to any live brokerage — Chapters 67–75
+  complete, paper trading extensively tested, backtesting validated,
+  Risk Authority fully operational, Emergency Stop verified, Audit
+  Center operational, and the CEO explicitly enabling Live Trading
+  Mode. Charles Schwab v1.0 is a final V1.0 milestone, built only after
+  every system the platform's paper-trading proof depends on is real,
+  never the vehicle that proves them. Documentation only.
+
 - **Chapter 68 — Institutional Broker Management System (IBMS)**
   (`docs/DesignBible/volumes/10-broker-live-trading/`): a new Design
   Bible chapter, pure target architecture — no code was written against

@@ -12,7 +12,11 @@ reason. This chapter's job is to give that permanent boundary a real
 architecture to grow into — the interface every future connector
 (Charles Schwab first) would implement — without writing a single line
 of code against it yet. See the Implementation Notes at the bottom for
-the precise inventory of what's real today.
+the precise inventory of what's real today, and the Charles Schwab
+V1.0 section for the standing **Live Trading Gate** policy (also
+[Appendix G](../../appendices/appendix-g-permanent-development-policy.md))
+governing exactly when — not if — this chapter moves from architecture
+to a real connection.
 
 ## Executive Summary
 
@@ -235,17 +239,30 @@ real feeding it.
 
 ## Charles Schwab V1.0
 
-**Genuinely, entirely unbuilt.** Every requirement the brief lists —
-secure authentication, paper trading support, live trading support,
-account synchronization, buying power, position sync, order placement,
-order cancellation, order status, execution confirmation — has zero
-real backing anywhere in this codebase today. `app/broker.py`'s own
-module docstring has named Charles Schwab, Interactive Brokers, and
-Alpaca as hypothetical future adapters since v0.6; none has ever been
-implemented, and no SDK for any of them is installed. This section is
-the concrete target this whole chapter's architecture exists to make
-possible — the first connector to actually implement the interface IBMS
-describes — not a status update on work in progress.
+**Genuinely, entirely unbuilt, and deliberately not next.** Every
+requirement the brief lists — secure authentication, paper trading
+support, live trading support, account synchronization, buying power,
+position sync, order placement, order cancellation, order status,
+execution confirmation — has zero real backing anywhere in this
+codebase today. `app/broker.py`'s own module docstring has named
+Charles Schwab, Interactive Brokers, and Alpaca as hypothetical future
+adapters since v0.6; none has ever been implemented, and no SDK for any
+of them is installed. This section is the concrete target this whole
+chapter's architecture exists to make possible — the first connector to
+actually implement the interface IBMS describes — not a status update
+on work in progress.
+
+**The Live Trading Gate** (see [Appendix
+G](../../appendices/appendix-g-permanent-development-policy.md)) is the
+standing policy on exactly when this section stops being pure
+architecture: Chapter 68 shall not connect to any live brokerage until
+Chapters 67–75 are complete, paper trading has been extensively tested,
+backtesting is validated, Risk Authority is fully operational,
+Emergency Stop is verified, Audit Center is operational, and the CEO
+explicitly enables Live Trading Mode. Charles Schwab v1.0 is one of the
+final V1.0 milestones, built only after every system this platform's
+paper-trading proof depends on is real and proven — never the vehicle
+that proves them.
 
 ## Future Expansion
 

@@ -33,3 +33,29 @@ chapter" for a department-level feature means: add or update its row in
 write that feature's own chapter using the 20-section template defined
 there — the same discipline this policy describes, scoped to what
 already exists.
+
+## The Live Trading Gate
+
+A permanent, standing policy, not scoped to any one chapter: the
+Institutional Broker Management System ([Chapter
+68](../volumes/10-broker-live-trading/chapter-68-institutional-broker-management-system.md))
+shall **not** connect to any live brokerage until every one of the
+following is true:
+
+1. Chapters 67–75 are completed.
+2. Paper trading has been extensively tested.
+3. Backtesting is validated.
+4. Risk Authority is fully operational.
+5. Emergency Stop is verified.
+6. Audit Center is operational.
+7. The CEO explicitly enables Live Trading Mode.
+
+Live trading is the final deployment stage, not the development stage.
+Every chapter written and every system implemented between now and
+that gate is real, load-bearing work toward it — proven first against
+`app/broker.py`'s simulated engine, per Chapter 68's own architecture —
+never a placeholder waiting to be swapped for something real later.
+This gate is checked, not assumed: no future session should build
+toward a live connector, request broker credentials, or wire a real
+execution endpoint without first confirming, explicitly and in writing,
+that all seven conditions above hold.

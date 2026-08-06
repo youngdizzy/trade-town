@@ -73,7 +73,7 @@ will eventually absorb remains the real, current reference.
 | D | [Version History](appendices/appendix-d-version-history.md) | Outline |
 | E | [Decision Authority Matrix](appendices/appendix-e-decision-authority-matrix.md) | Outline |
 | F | [Performance Targets](appendices/appendix-f-performance-targets.md) | Outline |
-| G | [Permanent Development Policy](appendices/appendix-g-permanent-development-policy.md) | Outline |
+| G | [Permanent Development Policy](appendices/appendix-g-permanent-development-policy.md) | Real policy content — the core 4-step discipline plus the Live Trading Gate (Chapter 68's own standing pre-conditions for connecting to any live brokerage) |
 
 ---
 
