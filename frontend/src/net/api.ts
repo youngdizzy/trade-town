@@ -328,6 +328,9 @@ export const api = {
     updates: Partial<{
       dailyProfitTargetPct: number;
       maxDailyLossPct: number;
+      // Design Bible Chapter 67 (TTOS) Safety Settings.
+      maxWeeklyLossPct: number;
+      maxMonthlyLossPct: number;
       maxTradesPerDay: number;
       riskPerTradePct: number;
       maxOpenPositions: number;

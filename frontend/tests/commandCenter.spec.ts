@@ -426,6 +426,44 @@ test.describe("Global Command Center", () => {
     await expect(capitalReserveInput).toHaveValue("15");
   });
 
+  test("RISK panel's Safety & Capital Protection controls save real weekly/monthly loss limits and surface Emergency Stop status (Design Bible Ch. 67)", async ({ page }) => {
+    await page.goto("/");
+    await setPlayerScene(page, "LobbyScene", 160, 220);
+    await continueGame(page);
+
+    await page.keyboard.press("Tab");
+    await clickExpand(page);
+    await clickTab(page, "RISK");
+
+    await expect(page.getByText("Safety & Capital Protection", { exact: true })).toBeVisible();
+
+    const weeklyLossInput = page.locator("label", { hasText: "Max weekly loss" }).locator("input");
+    await weeklyLossInput.fill("12");
+    const monthlyLossInput = page.locator("label", { hasText: "Max monthly loss" }).locator("input");
+    await monthlyLossInput.fill("18");
+    await clickButton(page, "Save Safety Limits");
+
+    await expect(page.getByRole("button", { name: "Save Safety Limits", exact: true })).toBeEnabled();
+    await expect(page.getByText("must be a positive percentage", { exact: false })).toHaveCount(0);
+    await expect(weeklyLossInput).toHaveValue("12");
+    await expect(monthlyLossInput).toHaveValue("18");
+    await expect(page.getByText("Max weekly loss", { exact: false }).first()).toBeVisible();
+    await expect(page.getByText("Max monthly loss", { exact: false }).first()).toBeVisible();
+
+    // Emergency Stop status is real, not a placeholder — it's the same
+    // EmergencyStopState this session's own emergencyStop.spec.ts exercises
+    // end-to-end via TopStatusBar; here we only confirm this panel shows
+    // the current (inactive) status and offers the same control.
+    await expect(page.getByText("Global Emergency Stop", { exact: true })).toBeVisible();
+    await expect(page.getByText("Not active", { exact: true })).toBeVisible();
+    await expect(page.getByRole("button", { name: "Emergency Stop", exact: true }).last()).toBeVisible();
+
+    // Explicitly cut features must say so, never fake a control.
+    await expect(page.getByText("Black Swan Protection", { exact: false })).toBeVisible();
+    await expect(page.getByText("Broker Failover", { exact: false })).toBeVisible();
+    await expect(page.getByText("Emergency Contacts", { exact: false })).toBeVisible();
+  });
+
   test("EXECUTIVE tab's Pending Proposals queue shows a real Priority Score or the honest N/A, always real content or an honest empty state (v0.7 Chapter 59)", async ({ page }) => {
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);

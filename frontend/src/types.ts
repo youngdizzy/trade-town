@@ -930,6 +930,12 @@ export interface RiskLimits {
   // already existed; these two are new.
   dailyProfitTargetPct: number;
   maxTradesPerDay: number;
+  // Design Bible Chapter 67 (TTOS) Safety Settings — the same real
+  // circuit breaker as maxDailyLossPct above, just scoped to the
+  // current sim week/month (see backend/app/risk_engine.py's
+  // weekly_realized_pnl_pct/monthly_realized_pnl_pct).
+  maxWeeklyLossPct: number;
+  maxMonthlyLossPct: number;
   // v0.7 Chapter 57 — Institutional Position Sizing & Capital Deployment
   // Engine (see backend/app/position_sizing.py). All six new CEO
   // controls that engine's own Design Bible chapter asks for; every

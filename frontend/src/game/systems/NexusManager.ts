@@ -217,6 +217,8 @@ export class NexusManager {
   private static riskLimits: RiskLimits = {
     maxPositionPct: 10,
     maxDailyLossPct: 5,
+    maxWeeklyLossPct: 10,
+    maxMonthlyLossPct: 15,
     maxDrawdownPct: 20,
     maxOpenPositions: 8,
     maxSectorConcentrationPct: 30,

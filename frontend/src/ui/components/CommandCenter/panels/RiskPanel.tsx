@@ -3,6 +3,7 @@ import { useGameStore } from "@/ui/hooks/useGameStore";
 import type { EducationTopic } from "@/types";
 import { api } from "@/net/api";
 import { NexusManager } from "@/game/systems/NexusManager";
+import { EventBus } from "@/game/systems/EventBus";
 import { RISK_LEVEL_LABEL, formatPct, riskLevel, riskTextClass } from "../lib/derive";
 import { DataRow, EmptyState, Glass, RiskDot, StatusPill, TerminalLabel } from "../ui";
 
@@ -22,7 +23,7 @@ const RISK_BANNER = {
  * label.
  */
 export function RiskPanel({ onNeedHelp }: { onNeedHelp?: (lessonId: EducationTopic) => void } = {}) {
-  const { riskWarnings, riskLimits, paperPortfolio, companyScore, dailyObjectiveStatus, companyHealth } = useGameStore();
+  const { riskWarnings, riskLimits, paperPortfolio, companyScore, dailyObjectiveStatus, companyHealth, emergencyStop } = useGameStore();
   const level = riskLevel(riskWarnings);
 
   const equity = paperPortfolio.cashBalance + paperPortfolio.positions.reduce((s, p) => s + p.quantity * p.currentPrice, 0);
@@ -133,6 +134,34 @@ export function RiskPanel({ onNeedHelp }: { onNeedHelp?: (lessonId: EducationTop
       setPriorityError(err instanceof Error ? err.message : String(err));
     } finally {
       setPriorityBusy(false);
+    }
+  };
+
+  // Design Bible Chapter 67 (TTOS) Safety Settings — the second and
+  // third real circuit breakers, config-only (no live weekly/monthly
+  // P&L is tracked as displayable state anywhere in the backend today;
+  // when one trips, it surfaces exactly like any other Sentinel warning
+  // in the Active Warnings list below, not as a separate fabricated
+  // gauge here).
+  const [maxWeeklyLossPct, setMaxWeeklyLossPct] = useState(String(riskLimits.maxWeeklyLossPct));
+  const [maxMonthlyLossPct, setMaxMonthlyLossPct] = useState(String(riskLimits.maxMonthlyLossPct));
+  const [safetyBusy, setSafetyBusy] = useState(false);
+  const [safetyError, setSafetyError] = useState<string | null>(null);
+
+  const saveSafetyLimits = async () => {
+    if (safetyBusy) return;
+    setSafetyBusy(true);
+    setSafetyError(null);
+    try {
+      const res = await api.updateRiskLimits({
+        maxWeeklyLossPct: Number(maxWeeklyLossPct),
+        maxMonthlyLossPct: Number(maxMonthlyLossPct),
+      });
+      NexusManager.setRiskLimits(res.riskLimits);
+    } catch (err) {
+      setSafetyError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSafetyBusy(false);
     }
   };
 
@@ -435,6 +464,73 @@ export function RiskPanel({ onNeedHelp }: { onNeedHelp?: (lessonId: EducationTop
         {priorityError && <div className="mt-1.5 text-cmd-red">{priorityError}</div>}
       </Glass>
 
+      <Glass className={`p-3 ${emergencyStop.active ? "border border-cmd-red/50 bg-cmd-red/5" : ""}`}>
+        <div className="mb-1.5 flex items-center justify-between">
+          <TerminalLabel>Safety &amp; Capital Protection</TerminalLabel>
+          <span className="text-[8px] uppercase tracking-wide text-cmd-textDim">Design Bible Ch. 67</span>
+        </div>
+        <div className="text-[9px] text-cmd-textDim">
+          Two more real circuit breakers, enforced the same way as Daily Max Loss above (see Daily Trading Objectives) — just scoped to this sim week and this sim month instead of today. A breach blocks new trades and shows up in Active Warnings below, exactly like every other Sentinel warning.
+        </div>
+        <div className="mt-3 grid grid-cols-1 gap-2 sm:grid-cols-2">
+          <label className="flex flex-col gap-1 text-[9px] text-cmd-textDim">
+            Max weekly loss (%)
+            <input
+              type="number"
+              min="0.1"
+              step="0.1"
+              value={maxWeeklyLossPct}
+              onChange={(e) => setMaxWeeklyLossPct(e.target.value)}
+              className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-cmd-text outline-none focus:border-cmd-cyan/50"
+            />
+          </label>
+          <label className="flex flex-col gap-1 text-[9px] text-cmd-textDim">
+            Max monthly loss (%)
+            <input
+              type="number"
+              min="0.1"
+              step="0.1"
+              value={maxMonthlyLossPct}
+              onChange={(e) => setMaxMonthlyLossPct(e.target.value)}
+              className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-cmd-text outline-none focus:border-cmd-cyan/50"
+            />
+          </label>
+        </div>
+        <button
+          type="button"
+          onClick={() => void saveSafetyLimits()}
+          disabled={safetyBusy}
+          className="mt-3 rounded-sm border border-cmd-cyan/50 px-3 py-1 text-[9px] uppercase tracking-wider text-cmd-cyan hover:bg-cmd-cyan/10 disabled:opacity-40"
+        >
+          {safetyBusy ? "Saving…" : "Save Safety Limits"}
+        </button>
+        {safetyError && <div className="mt-1.5 text-cmd-red">{safetyError}</div>}
+
+        <div className="mt-3 flex items-center justify-between gap-2 border-t border-cmd-border/50 pt-3">
+          <div>
+            <TerminalLabel>Global Emergency Stop</TerminalLabel>
+            <div className={`font-cmdmono text-xs ${emergencyStop.active ? "text-cmd-red" : "text-cmd-green"}`}>
+              {emergencyStop.active ? `HALTED since ${new Date(emergencyStop.activatedAt ?? "").toLocaleString()}` : "Not active"}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => EventBus.emit("ui:emergencyStopConfirm", { pending: emergencyStop.active ? "resume" : "activate" })}
+            className={
+              emergencyStop.active
+                ? "rounded-sm border border-cmd-red/60 px-3 py-1.5 text-[9px] uppercase tracking-wider text-cmd-red hover:bg-cmd-red/10"
+                : "rounded-sm border border-cmd-red/40 px-3 py-1.5 text-[9px] uppercase tracking-wider text-cmd-textDim hover:border-cmd-red/60 hover:text-cmd-red"
+            }
+          >
+            {emergencyStop.active ? "Resume Trading" : "Emergency Stop"}
+          </button>
+        </div>
+
+        <div className="mt-3 border-t border-cmd-border/50 pt-3 text-[9px] text-cmd-textDim">
+          Not built — no real mechanism exists in this codebase for any of these: Black Swan Protection (no external market-crash data feed), Broker Failover (no live broker integration to fail over from — see PaperBroker in broker.py), or Emergency Contacts (no contact/notification-delivery system). Documented here rather than faked.
+        </div>
+      </Glass>
+
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         <Glass className="p-3">
           <TerminalLabel>Open Positions</TerminalLabel>
@@ -472,6 +568,8 @@ export function RiskPanel({ onNeedHelp }: { onNeedHelp?: (lessonId: EducationTop
         <DataRow label="Risk per trade" value={`${riskLimits.riskPerTradePct}%`} />
         <DataRow label="Daily profit target" value={`${riskLimits.dailyProfitTargetPct}%`} />
         <DataRow label="Max daily loss" value={`${riskLimits.maxDailyLossPct}%`} />
+        <DataRow label="Max weekly loss" value={`${riskLimits.maxWeeklyLossPct}%`} />
+        <DataRow label="Max monthly loss" value={`${riskLimits.maxMonthlyLossPct}%`} />
         <DataRow label="Max trades per day" value={riskLimits.maxTradesPerDay} />
         <DataRow label="Max drawdown" value={`${riskLimits.maxDrawdownPct}%`} />
         <DataRow label="Max open positions" value={riskLimits.maxOpenPositions} />
