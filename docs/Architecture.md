@@ -6470,6 +6470,65 @@ Emergency Stop status and the "not built" disclaimers; full
 one failure is the same already-confirmed pre-existing flaky
 movement-key test, unrelated to this change.
 
+### TTOS Global Status Bar — always-visible risk/health/capital/broker strip, Design Bible Chapter 67
+
+The last genuinely-buildable piece of Part 3's brief researched to have
+real backing: the "always-visible broker-status/risk-status/
+capital-status/company-health strip" Chapter 67's own Safety Systems
+section had explicitly named as missing (Risk Status, Company Health,
+and Market Environment were previously real but shown only inside
+OverviewPanel/QuickView, never persistently).
+
+**Frontend only** — no new backend fields or endpoints; every value
+this bar shows was already computed and broadcast over WS by an earlier
+feature. `GlobalStatusBar.tsx` (new) renders a second row under
+`TopStatusBar.tsx`, positioned `absolute top-11` so it never overlaps
+that bar's own content, visible from every in-game scene the same way
+`TopStatusBar`/`EmergencyStopControl` already are. Seven items, each
+reading a real gameStore field directly rather than computing anything
+fresh: Risk Level reuses `lib/derive.ts`'s own `riskLevel()`/
+`RISK_LEVEL_LABEL` (the same Sentinel/Guardian severity bucket
+`RiskPanel.tsx` already derives, imported rather than re-implemented —
+this is the first import of that Command Center-scoped utility module
+from outside the CommandCenter folder, judged safe since the module has
+no React/DOM coupling); Company Health reuses `companyHealth.overall`/
+`.tier`; Portfolio reuses `portfolioIntelligence.heat.tier` (Chapter
+56's real Portfolio Heat reading — deliberately left as "Portfolio" in
+the pill, not relabeled "Portfolio Health," so the label doesn't imply
+a metric this codebase doesn't actually compute); Market reuses
+`marketEnvironment.label`; Automation reuses `settings.operatingMode`;
+Deployed reuses `portfolioIntelligence.deployedPctOfEquity`; Broker
+Status is honestly static text — "SIMULATED" — since no live broker
+integration exists anywhere in this codebase to read a real status
+from (`app/broker.py`'s own module docstring is explicit that trading
+is "completely simulated"), and inventing a field to back it would have
+violated this project's no-fabrication rule. Connection status
+deliberately stays in `TopStatusBar.tsx`'s own dot rather than being
+duplicated into the new strip.
+
+**A real regression, caught and fixed, not worked around**: adding this
+bar gave two pre-existing real labels — RiskPanel's own "NORMAL" risk
+banner and PortfolioIntelPanel's own "COOL" heat-tier pill — a second,
+correct on-screen instance, which broke two existing
+`commandCenter.spec.ts` assertions that used non-`exact` `getByText()`
+locators expecting exactly one match (Playwright strict mode). Fixed by
+adding `.first()` to both existing locators — the same disambiguation
+pattern already used for the "RESUME TRADING" collision in Part 3's
+Emergency Stop slice — never by removing or renaming the real duplicate
+content itself, since both instances are genuinely correct.
+
+**Verified**: `tsc`/`eslint`/`vite build` clean. A new
+`globalStatusBar.spec.ts` exercises the real running app end-to-end,
+confirming all seven items render with real (never blank) values from
+both the base game view and from inside the Command Center. Full
+`commandCenter.spec.ts` regression run twice: the already-confirmed
+pre-existing flaky movement-key test failed both times; a TREASURY
+deposit/withdrawal test failed once on a stale balance read (confirmed
+via a standalone rerun to be live-backend-ticking flakiness — a real
+trade landing between the test's own balance reads — unrelated to this
+change, since nothing in this slice touches Treasury or portfolio
+balances).
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

@@ -78,6 +78,32 @@ development milestones, not semver releases.
   regression passing (the one failure is the already-confirmed
   pre-existing flaky movement-key test).
 
+- **Chapter 67 Part 3 — TTOS real Global Status Bar**
+  (`frontend/src/ui/components/GlobalStatusBar.tsx`, `App.tsx`): the
+  always-visible broker-status/risk-status/capital-status/company-
+  health strip this chapter's own Safety Systems section had named as
+  genuinely missing. A second row under `TopStatusBar.tsx`, visible
+  from every scene. Every value is a real field read straight off
+  gameStore — Risk Level reuses `lib/derive.ts`'s own `riskLevel()`
+  (same Sentinel/Guardian severity bucket RiskPanel already showed),
+  Company Health reuses `overall`/`.tier`, Portfolio reuses the real
+  Portfolio Heat tier (honestly not relabeled "Health"), Market reuses
+  `marketEnvironment.label`, Automation reuses the real Operating Mode,
+  Deployed reuses real capital-deployed % of equity, and Broker Status
+  is honestly static — "SIMULATED" — since no live broker integration
+  exists anywhere in this codebase. Connection status stays in
+  `TopStatusBar.tsx`'s own dot, not duplicated. Fixed two real
+  strict-mode text collisions this surfaced in the existing
+  `commandCenter.spec.ts` suite (RiskPanel's "NORMAL" and
+  PortfolioIntelPanel's "COOL" each now have a second, correct instance
+  in the new strip) with `.first()`, the same fix pattern already used
+  for the Part 3 Emergency Stop's "RESUME TRADING" collision. `tsc`/
+  `eslint`/`vite build` clean, a new `globalStatusBar.spec.ts` exercising
+  the real running app end-to-end, full `commandCenter.spec.ts`
+  regression run twice (only the already-confirmed pre-existing flaky
+  movement-key test failed both times, plus one live-backend-flakiness
+  TREASURY failure confirmed to pass standalone).
+
 - **Chapter 67 Phase 1 — TTOS 7-section grouped navigation**
   (`frontend/src/ui/components/CommandCenter/lib/navigation.ts`,
   `FullCommandCenter.tsx`): before writing any code, a full audit +
