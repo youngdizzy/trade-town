@@ -1,7 +1,8 @@
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import type { CompanyHealthTier, MarketEnvironmentRegime, TradeDecision } from "@/types";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
-import { computeNoTradeStats, formatPct, latestDecision, riskLevel, voteDirection } from "../lib/derive";
+import { formatPct, voteDirection } from "../lib/derive";
+import { useDashboardData } from "../lib/useDashboardData";
 import { DataRow, EmptyState, Glass, Meter, RiskDot, StatusPill, TerminalLabel } from "../ui";
 import { MarketChartPanel } from "../MarketChartPanel";
 import { AgentEnergyWidget } from "../AgentEnergyWidget";
@@ -22,15 +23,10 @@ const REGIME_TONE: Record<MarketEnvironmentRegime, "green" | "red" | "amber" | "
   low_volatility: "cyan",
 };
 
-/** The landing tab — the small set of numbers most likely to change what the operator does next, pulled from every other panel's real data. */
+/** The landing tab — the small set of numbers most likely to change what the operator does next, pulled from every other panel's real data. Shares its data with QuickView via useDashboardData() rather than recomputing it. */
 export function OverviewPanel({ onInspect, onNavigate }: { onInspect: (d: TradeDecision) => void; onNavigate: (t: Tab) => void }) {
-  const { companyScore, companyHealth, marketEnvironment, academyState, paperPortfolio, riskWarnings, decisions, agents } = useGameStore();
-  const level = riskLevel(riskWarnings);
-  const recent = [...decisions].slice(-5).reverse();
-  const noTrade = computeNoTradeStats(decisions);
-  const latest = latestDecision(decisions);
-
-  const workingCount = agents ? Object.values(agents).filter((a) => !["lobby", "break-room"].includes(a.location)).length : 0;
+  const { companyScore, companyHealth, marketEnvironment, academyState, paperPortfolio, riskWarnings } = useGameStore();
+  const { level, recentDecisions: recent, noTrade, latest, workingCount } = useDashboardData();
 
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">

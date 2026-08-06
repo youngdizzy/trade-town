@@ -1,38 +1,15 @@
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { EventBus } from "@/game/systems/EventBus";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
-import {
-  RISK_LEVEL_LABEL,
-  aiStatus,
-  computeNoTradeStats,
-  formatMoney,
-  formatPct,
-  latestDecision,
-  marketRegimeHeuristic,
-  riskLevel,
-  riskTextClass,
-  topOpportunity,
-} from "./lib/derive";
-import { computePeriodFinancials, simMonthNumber } from "./lib/financials";
+import { RISK_LEVEL_LABEL, formatMoney, formatPct, riskTextClass } from "./lib/derive";
+import { simMonthNumber } from "./lib/financials";
+import { useDashboardData } from "./lib/useDashboardData";
 import { DataRow, EmptyState, Glass, RiskDot, StatusPill, TerminalLabel } from "./ui";
 
-/** Fast-glance status card — everything a player needs to decide whether to open the Full Command Center, without leaving Quick View's single screen. */
+/** Fast-glance status card — everything a player needs to decide whether to open the Full Command Center, without leaving Quick View's single screen. Shares its data with OverviewPanel via useDashboardData() rather than recomputing it. */
 export function QuickView({ onExpand }: { onExpand: () => void }) {
-  const { paperPortfolio, riskWarnings, riskLimits, watchlist, research, agents, decisions, time } = useGameStore();
-
-  const equity = paperPortfolio.cashBalance + paperPortfolio.positions.reduce((s, p) => s + p.quantity * p.currentPrice, 0);
-  const openUnrealized = paperPortfolio.positions.reduce((s, p) => s + p.unrealizedPnl, 0);
-  // Monthly, not live/raw cumulative — a large single trade's notional
-  // value shouldn't make the company dashboard read as an instant
-  // windfall; see PerformancePanel's own docstring and CHANGELOG.md.
-  const month = computePeriodFinancials("month", paperPortfolio.tradeHistory, paperPortfolio.startingBalance, time, openUnrealized);
-
-  const level = riskLevel(riskWarnings);
-  const status = aiStatus(riskWarnings, research, agents);
-  const regime = marketRegimeHeuristic(watchlist);
-  const opportunity = topOpportunity(research);
-  const decision = latestDecision(decisions);
-  const noTrade = computeNoTradeStats(decisions);
+  const { paperPortfolio, riskLimits, riskWarnings } = useGameStore();
+  const { equity, month, level, status, regime, opportunity, latest: decision, noTrade } = useDashboardData();
 
   const recommendation = decision === null ? "WAITING" : decision.outcome === "trade" ? "TRADE" : "NO TRADE";
   const recommendationTone = recommendation === "TRADE" ? "text-cmd-green" : recommendation === "NO TRADE" ? "text-cmd-amber" : "text-cmd-textDim";
