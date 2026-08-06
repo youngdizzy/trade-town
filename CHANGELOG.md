@@ -7,6 +7,30 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 67 Part 3 — TTOS Navigation polish**
+  (`frontend/src/ui/components/CommandPalette.tsx`,
+  `CommandCenter/panels/OverviewPanel.tsx`): two real, low-risk fixes.
+  The Command Palette gained "Open Newspaper" and "Open Campus Map"
+  commands — the only two of this app's 6 real standalone overlays
+  with no path into the CEO's own central navigation surface
+  (Newspaper was diegetic-only; Campus Map lived only in
+  QuickView's/PauseMenu's own separate buttons) — for parity with the
+  other four, not a new overlay. OverviewPanel's "AI Academy" card
+  (which navigates to KNOWLEDGE, v0.7 Feature 25's actual AI Academy &
+  Knowledge Network) was relabeled to "Academy Progression" to resolve
+  a real, live naming collision with the completely unrelated
+  pre-existing "ACADEMY" tab (Trading Academy) — the same
+  disambiguation `MentorLibraryPanel.tsx`'s own "(KNOWLEDGE tab)" aside
+  already established, not an invented label. Deliberately not touched:
+  the OPS tab's own section-placement naming collision and any tab
+  identifier rename, both already documented in `navigation.ts` as
+  deferred (renaming would ripple `clickTab()`'s exact-name lookups
+  across the whole Playwright suite for zero real user benefit).
+  `tsc`/`eslint`/`vite build` clean, a new Navigation polish test in
+  `commandPalette.spec.ts`, full `commandPalette.spec.ts` +
+  `commandCenter.spec.ts` + `campusMap.spec.ts` regression passing (one
+  already-documented pre-existing flaky movement-key failure aside).
+
 - **Chapter 67 Part 3 — TTOS Executive Dashboard consolidation (data layer)**
   (`frontend/src/ui/components/CommandCenter/lib/useDashboardData.ts`,
   `QuickView.tsx`, `panels/OverviewPanel.tsx`): `QuickView` (the

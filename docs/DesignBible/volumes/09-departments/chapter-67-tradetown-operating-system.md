@@ -566,17 +566,48 @@ this data layer or the other two's visual presentation — a real,
 undone piece of the brief's full three-way consolidation, not silently
 dropped.
 
-Also still genuinely new and unbuilt: folding the 5 standalone overlays (Newspaper,
-Company Memory, Coach Dashboard, Brain Room HUD, Campus Map) into TTOS
-navigation, renaming "ACADEMY"/"OPS" to resolve their naming collisions,
-CEO-facing themes and widget customization, and the "declare Navigation
-Location / Quick Actions / Search Tags / Notifications / Dashboard
-Widgets" integration-contract requirement this chapter's brief proposes
-for all future chapters (checked directly against `README.md`'s current
-20-item chapter template — confirmed a real, new addition; only
-"Dependencies," item #16, already exists under that exact name today).
-None of these were assumed to follow automatically from Phase 1 —
-each remains its own separable slice awaiting its own go-ahead.
+**Navigation polish — built (Part 3), partial.** Two real, low-risk
+pieces: (1) of this app's 6 real standalone overlays (Newspaper,
+Company Memory, Coach Dashboard, Brain Room HUD, Campus Map, and now
+the Executive Alert Center), Newspaper and Campus Map were the only two
+with no path into the Command Palette — Newspaper was diegetic-only
+(walk to the stand in the Lobby), Campus Map lived only in QuickView's/
+PauseMenu's/FullCommandCenter's own separate buttons. `CommandPalette
+.tsx` gained "Open Newspaper" and "Open Campus Map" commands for parity
+with the other four, not a new overlay or a restructure of any of them.
+(2) A real, live naming collision in `OverviewPanel.tsx`'s own "AI
+Academy" card: it navigated to KNOWLEDGE (v0.7 Feature 25's actual AI
+Academy & Knowledge Network, per `AcademyPanel.tsx`), while a
+completely unrelated tab literally named "ACADEMY" already existed (the
+pre-existing Trading Academy lesson/quiz curriculum) — a CEO could
+reasonably expect the card to lead to the tab of the same name and land
+somewhere else entirely. Relabeled to "Academy Progression," the same
+term the KNOWLEDGE tab's own content already uses for this
+(`commandCenter.spec.ts`'s own test title: "KNOWLEDGE tab shows real
+Academy Progression..."), the same disambiguation
+`MentorLibraryPanel.tsx`'s own "(KNOWLEDGE tab)" aside already
+established — not an invented label.
+
+**Deliberately not done here, and still genuinely unbuilt:** the OPS
+tab's own name/section-placement collision (OPS reads as if it belongs
+under the OPERATIONS section but is placed under RESEARCH, since its
+real content — `KnowledgeBasePanel.tsx`'s Knowledge Base timeline — is
+a learning feed, not infrastructure) stays exactly as `navigation.ts`'s
+own existing comment already documented it: renaming the tab identifier
+itself is deferred, since `clickTab()` looks buttons up by exact
+accessible name across the whole Playwright suite and the number-key
+1-9 shortcut indexes `TABS` positionally — a rename would ripple into
+the whole suite for zero real user benefit, not a decision this pass
+reopened. Folding the 6 overlays into TTOS's own 7-section navigation
+structure (rather than just reaching them from the Palette), CEO-facing
+themes and widget customization, and the "declare Navigation Location /
+Quick Actions / Search Tags / Notifications / Dashboard Widgets"
+integration-contract requirement this chapter's brief proposes for all
+future chapters (checked directly against `README.md`'s current 20-item
+chapter template — confirmed a real, new addition; only "Dependencies,"
+item #16, already exists under that exact name today) all remain
+unbuilt. None of these were assumed to follow automatically from Phase
+1 — each remains its own separable slice awaiting its own go-ahead.
 
 **Part 3's own remaining scope, still not implemented:** Black Swan
 Protection, Broker Failover, Emergency Contacts, and recovery
