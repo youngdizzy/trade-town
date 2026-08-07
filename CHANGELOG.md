@@ -7,6 +7,22 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 68 — Charles Schwab V1.0 target architecture, documentation
+  only** (`docs/DesignBible/volumes/10-broker-live-trading/
+  chapter-68-institutional-broker-management-system.md`): expanded the
+  "Charles Schwab V1.0" section into a 15-phase target design —
+  connector design, OAuth authentication, account discovery, read-only
+  validation, reconciliation, order safety gating, Live Mode
+  protection/lock, the Paper → Shadow → Live progression, execution
+  monitoring, fail-safe behavior, the audit trail, the Live Trading
+  Gate (restating, not loosening, Appendix G's standing policy), and a
+  progressive live rollout. Explicitly labeled `PLANNED — NOT
+  IMPLEMENTED` throughout. No code was written — no SDK, no OAuth
+  library, no credential handling, no live connection of any kind; only
+  Phase 1 (the `ExecutionProvider` interface, real since this session's
+  earlier commit) is marked implemented. This does not advance, loosen,
+  or bypass the Live Trading Gate.
+
 - **Chapter 68 Part 1 — Institutional Broker Management System, Execution
   Provider Adapter Interface** (`app/broker.py`, `app/nexus.py`,
   `backend/tests/test_broker.py` new): scoped down from the full

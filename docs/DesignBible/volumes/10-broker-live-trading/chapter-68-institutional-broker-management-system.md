@@ -279,18 +279,201 @@ real feeding it.
 
 ## Charles Schwab V1.0
 
-**Genuinely, entirely unbuilt, and deliberately not next.** Every
-requirement the brief lists — secure authentication, paper trading
-support, live trading support, account synchronization, buying power,
-position sync, order placement, order cancellation, order status,
-execution confirmation — has zero real backing anywhere in this
-codebase today. `app/broker.py`'s own module docstring has named
-Charles Schwab, Interactive Brokers, and Alpaca as hypothetical future
-adapters since v0.6; none has ever been implemented, and no SDK for any
-of them is installed. This section is the concrete target this whole
-chapter's architecture exists to make possible — the first connector to
-actually implement the interface IBMS describes — not a status update
-on work in progress.
+**Status: PLANNED — NOT IMPLEMENTED.** Every requirement below — secure
+authentication, paper trading support, live trading support, account
+synchronization, buying power, position sync, order placement, order
+cancellation, order status, execution confirmation — has zero real
+backing anywhere in this codebase today. `app/broker.py`'s own module
+docstring has named Charles Schwab, Interactive Brokers, and Alpaca as
+hypothetical future adapters since v0.6; none has ever been
+implemented, and no SDK, HTTP client, or OAuth library for any of them
+is installed (`requirements.txt` carries none). TradeTown must remain
+100% simulated until the Live Trading Gate below explicitly authorizes
+live brokerage connectivity. **Standing constraints on every future
+session that touches this section:** do not add live credentials, do
+not add OAuth credentials, do not place real orders, do not bypass the
+Live Trading Gate. The 15-phase target design below is the concrete
+plan this whole chapter's architecture exists to make possible — the
+first connector to actually implement the interface IBMS describes —
+not a status update on work in progress, and not an implementation
+schedule any future session may start executing without the CEO's
+explicit, in-writing authorization the Live Trading Gate requires.
+
+### Phase 1 — Current Architecture (Implemented)
+
+The one piece of this plan that is real today: `app/broker.py`'s
+`ExecutionProvider(ABC)` and its one concrete implementation,
+`PaperExecutionProvider` — see "Part 1: Execution Provider Adapter
+Interface" above. The application communicates with brokers through
+`ExecutionProvider`, never by calling a broker API directly; every
+future broker, Schwab included, must plug into this same interface
+rather than becoming a second, parallel execution path.
+
+### Phase 2 — Schwab Connector Design (Target)
+
+A dedicated `SchwabExecutionProvider` implementing the existing
+`ExecutionProvider` interface — not a new, parallel interface. It must
+not leak Schwab-specific objects (raw API response shapes, Schwab's own
+order/account models) anywhere outside its own module; every
+TradeTown Order it receives is translated into a Schwab-shaped request,
+and every Schwab response is translated back into TradeTown's existing
+`PaperOrder`/`PaperTrade`/`PaperPosition` models before it reaches any
+other system. Flow: TradeTown Order → `ExecutionProvider` →
+Schwab Adapter → Schwab API, and the reverse on the way back.
+
+### Phase 3 — Authentication (Target)
+
+Schwab's official OAuth authorization flow only. TradeTown must never
+store a Schwab username, password, or any other direct brokerage login
+credential — only OAuth tokens, and only with secure token handling.
+Required infrastructure, none of which exists today: an OAuth callback
+endpoint, authorization-state validation, encrypted token storage,
+token refresh handling, token-expiration detection, token-revocation
+handling, a reauthorization flow, and authentication audit logging.
+`requirements.txt` would need a real cryptography library (none is
+installed) before any of this could be built safely.
+
+### Phase 4 — Account Discovery (Target)
+
+After authorization, discover the Schwab accounts available to the
+authorized connection and map them to TradeTown's own supported account
+types (Chapter 69's real `Account` model: Personal, IRA, Business, Prop
+Firm, Family — no new categories invented beyond what Chapter 69
+already supports). The CEO must explicitly select which discovered
+Schwab account maps to which TradeTown account; no mapping is ever
+assumed.
+
+### Phase 5 — Read-Only Validation (Target)
+
+Before order placement is enabled at all, connect to Schwab in
+read-only mode where the integration architecture supports it, and
+validate account information, balances, buying power, positions,
+orders, transactions, market data, market status, account identifiers,
+position quantities, and cash values against TradeTown's own internal
+portfolio state.
+
+### Phase 6 — Reconciliation (Target)
+
+TradeTown must compare its internal state against Schwab's and detect:
+missing positions, unexpected positions, quantity differences, cash
+differences, order-state differences, price differences, stale data,
+and connection failures. Any reconciliation failure must prevent
+automated live execution until resolved — this is the same "TradeTown
+never trusts that an order succeeded" standard this chapter's Company
+Principle already states, made concrete and mandatory.
+
+### Phase 7 — Order Safety (Target)
+
+Every live order must pass through every one of these real or
+target-real gates before it may reach Schwab: Trading Mode (Chapter
+75), the Institutional Rule Engine (Chapter 69 Part 3), Risk Authority
+(Chapters 57/58/66), the Trade Gatekeeper, the Daily Loss Circuit
+Breaker, Losing Streak Protection, Position Limits, Correlation Limits,
+News Risk Controls, Broker Health Checks, and Emergency Stop. None of
+these gates may be bypassed for a live order, ever — this is the same
+pre-trade veto pipeline already real for every paper order today,
+extended rather than replaced.
+
+### Phase 8 — Live Mode Protection (Target)
+
+Live Trading must be visually unmistakable, never interchangeable with
+Paper Mode: `LIVE MODE`, `REAL MONEY`, `BROKER: CHARLES SCHWAB`,
+`ACCOUNT`, `ACTIVE RISK LEVEL`, and Emergency Stop must all be
+displayed. The existing `GlobalStatusBar.tsx` `BROKER` pill's honest,
+static `"SIMULATED"` label is the real precedent this would eventually
+replace — for a live connection only, never blurring the two.
+
+### Phase 9 — Live Mode Lock (Target)
+
+Entering Live Mode requires explicit CEO acknowledgment (e.g. "I
+UNDERSTAND I AM RISKING REAL MONEY"), and stays locked until: Live
+Trading Gate = PASSED, Schwab connection = HEALTHY, account
+reconciliation = PASSED, risk systems = HEALTHY, Emergency Stop =
+READY, and audit system = HEALTHY. This is the CEO-facing enforcement
+surface for the Live Trading Gate below — not a separate policy.
+
+### Phase 10 — Paper → Shadow → Live (Target)
+
+Three validation stages, in order, none skippable: **Paper** — no real
+brokerage activity (today's `PaperExecutionProvider`, unchanged).
+**Shadow** — TradeTown generates what it would execute while real
+market/account information is monitored against Schwab; no real orders
+are ever placed in this stage. **Live** — real orders become possible
+only after every gate in Phase 7 and Phase 9 passes.
+
+### Phase 11 — Live Execution Monitoring (Target)
+
+Every state a live order can pass through must be monitored and
+logged: submitted, acknowledged, accepted, rejected, partially filled,
+filled, cancelled, expired, plus broker errors, connection status,
+execution latency, and unexpected broker responses. `OrderStatus`
+(`schemas.py`) would need real expansion beyond today's `"open" |
+"filled" | "closed" | "cancelled"` to represent these states honestly
+— not silently mapped onto the paper engine's narrower state machine.
+
+### Phase 12 — Fail-Safe Behavior (Target)
+
+New orders must stop the instant any of the following becomes true:
+Schwab connectivity unhealthy, account reconciliation failing, the risk
+engine failing, the Trade Gatekeeper failing, market data going stale,
+authentication expiring, or Emergency Stop activating (which follows
+the existing Emergency Stop protocol in addition to halting new
+orders). TradeTown must never assume an order succeeded merely because
+the request was sent — every fill must be confirmed, never inferred.
+
+### Phase 13 — Audit Trail (Target)
+
+Every live brokerage action must record: timestamp, account, trading
+mode, strategy, order ID, internal trade ID, symbol, side, quantity,
+order type, requested price, execution price, status, broker response,
+risk decision, gatekeeper decision, CEO approval (when required), and
+result. This is a real superset of today's capped `PaperOrder`
+resolved-order log (Execution Logging, above) — the same fields that
+log already carries, plus every field only a real broker connection
+could ever populate.
+
+### Phase 14 — The Live Trading Gate
+
+Live Schwab connectivity must remain disabled until all of the
+following hold, checked and confirmed in writing, never assumed:
+Chapters 67–75 are complete; every required Design Bible requirement
+touching this chapter is implemented; Risk systems are operational;
+Emergency Stop is operational; Trading Modes are operational; the Daily
+Loss Circuit Breaker is operational; Losing Streak Protection is
+operational; Audit systems are operational; portfolio reconciliation
+(Phase 6) is operational; paper trading has been validated extensively;
+Shadow trading (Phase 10) has been validated; broker adapter tests
+pass; a security review passes; failure/recovery testing passes; and
+the CEO explicitly authorizes the transition. This restates, and does
+not loosen, the same standing policy in [Appendix
+G](../../appendices/appendix-g-permanent-development-policy.md): no
+future session should build toward a live connector, request broker
+credentials, or wire a real execution endpoint without first
+confirming, explicitly and in writing, that every condition above
+holds.
+
+### Phase 15 — Progressive Live Rollout (Target)
+
+Even after the Live Trading Gate passes, live automation must not be
+enabled unrestricted all at once. Recommended progression, each stage
+gated on the previous one's demonstrated reliability: **Stage 1** —
+read-only Schwab connection only. **Stage 2** — account/position
+reconciliation, still no orders. **Stage 3** — manual, CEO-approved
+live orders only, no automation. **Stage 4** — restricted automated
+execution under very conservative limits. **Stage 5** — gradual
+expansion, only after each prior stage has proven reliable in practice,
+not on paper.
+
+### Design Principle
+
+Charles Schwab must be treated as an external execution venue, never as
+the foundation TradeTown is built on. TradeTown's own Risk, Strategy,
+Execution, Governance, Audit, Portfolio, Decision, and Emergency
+systems must remain broker-independent — the Schwab connector is simply
+the final execution adapter, exactly the role `ExecutionProvider`
+(Phase 1, real today) already exists to constrain it to. The broker
+integration must never be allowed to bypass any of TradeTown's
+institutional controls, in any phase, for any reason.
 
 **The Live Trading Gate** (see [Appendix
 G](../../appendices/appendix-g-permanent-development-policy.md)) is the
