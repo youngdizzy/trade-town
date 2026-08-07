@@ -7,6 +7,30 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 68 Part 1 — Institutional Broker Management System, Execution
+  Provider Adapter Interface** (`app/broker.py`, `app/nexus.py`,
+  `backend/tests/test_broker.py` new): scoped down from the full
+  chapter (real Charles Schwab connectivity, gated behind Appendix G's
+  Live Trading Gate — not touched) to exactly the interface seam,
+  authorized explicitly. `app/broker.py` now defines
+  `ExecutionProvider(ABC)` (`place_order()`/`tick_broker()`) and
+  `PaperExecutionProvider`, the one concrete implementation, delegating
+  directly to this module's pre-existing, byte-for-byte-unchanged
+  `place_order()`/`_fill_price()`/`tick_broker()` free functions.
+  `_select_execution_provider()` reads `EXECUTION_PROVIDER` from the
+  environment (default `"paper"`, any other value warns and falls
+  back), mirroring `app/market_data.py`'s `_select_provider()`/
+  `MARKET_DATA_PROVIDER` pattern exactly. `app/nexus.py`'s one real
+  order-fill call site (grep-confirmed the only production caller of
+  `tick_broker()`) now goes through the `execution_provider` singleton
+  instead of the bare free function. No brokerage SDK, HTTP client, or
+  credential-handling code was added, and this change does not by
+  itself advance any of the Live Trading Gate's seven conditions — it
+  only gives a future real connector a real seam to implement. 7 new
+  tests (`test_broker.py`); full suite 1328/1328 passing;
+  `mypy app/`/`ruff check app/ tests/` clean. Backend only — no new
+  endpoint or WS field exists to give this a frontend surface.
+
 - **Chapter 70 Part 1 — Executive Board & CEO Intelligence System (frontend)**
   (`types.ts`, `net/api.ts`, `net/socket.ts`, `game/systems/EventBus.ts`,
   `game/systems/NexusManager.ts`, `state/gameStore.ts`,

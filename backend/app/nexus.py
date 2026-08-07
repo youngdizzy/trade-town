@@ -34,7 +34,7 @@ from app.agent_energy import RESEARCH_BOOST_AMOUNT, regen_daily, spend
 from app.agents import AGENT_PROFILES, LOCATION_TO_SCENE, all_agent_ids
 from app.analytics import compute_performance_snapshot, confidence_accuracy, period_profit_dollars, record_snapshot
 from app.black_box import archive_project, default_black_box_state, generate_project_challenge, record_review as record_breakthrough_review, tick_black_box_daily
-from app.broker import tick_broker
+from app.broker import execution_provider
 from app.calendar import compute_system_events
 from app.capital_priority import cash_reserve_breached, priority_score, rank_trade_proposals
 from app.coach import generate_report as generate_coach_report
@@ -1288,7 +1288,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # Runs before this tick's own decision/order-placement step below, so
     # a market order approved this tick is guaranteed one full tick of
     # latency before it can fill (see app/broker.py's place_order()).
-    paper_portfolio, broker_closed_trades = tick_broker(paper_portfolio, prices, new_time)
+    paper_portfolio, broker_closed_trades = execution_provider.tick_broker(paper_portfolio, prices, new_time)
 
     # --- v0.6: Guardian's standing risk watch ------------------------------
     # Reflects the current portfolio, not an accumulating log — refreshed

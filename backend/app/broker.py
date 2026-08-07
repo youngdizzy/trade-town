@@ -8,20 +8,35 @@ condition has been met yet.
 Completely simulated. There is no brokerage SDK import anywhere in this
 file, no API key it could use even if there were, and no code path that
 reaches a real order-execution endpoint — the same permanent boundary
-app/paper_trading.py has stated since v0.5. The module is shaped so a
-real adapter (Charles Schwab, Interactive Brokers, Alpaca) could
-implement the same place_order()/tick_broker() calls behind a real
-execution API later, mirroring app/market_data.py's MarketDataProvider
-adapter pattern — but no such adapter exists or is wired in v0.6, and
-wiring one in is an explicit future decision, not something this module
-does by default.
+app/paper_trading.py has stated since v0.5.
+
+Design Bible Chapter 68 (Institutional Broker Management System) adds a
+real `ExecutionProvider` adapter interface below, mirroring
+app/market_data.py's `MarketDataProvider` pattern exactly: an ABC that a
+real broker connector (Charles Schwab, Interactive Brokers, Alpaca)
+could implement later, plus one concrete `PaperExecutionProvider` that
+simply delegates to the free functions in this module (still the only
+order-execution code that exists). `_select_execution_provider()` reads
+`EXECUTION_PROVIDER` from the environment the same way
+`_select_provider()` reads `MARKET_DATA_PROVIDER` — only "paper" is
+implemented, any other value falls back to paper with a warning. This
+is an interface seam only. Chapter 68's "Live Trading Gate" (see
+Appendix G) still applies in full: no SDK import, no credential
+handling, and no real execution endpoint exist anywhere in this
+codebase, and adding a real adapter class here in the future does not
+by itself satisfy any of that gate's seven conditions.
 """
 from __future__ import annotations
 
+import logging
+import os
+from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 
 from app.portfolio import close_position, open_position, sim_minutes
 from app.schemas import AgentId, OrderSide, OrderType, PaperOrder, PaperPortfolio, PaperTrade, TimeState
+
+logger = logging.getLogger("tradetown.broker")
 
 # Resolved (filled/cancelled) orders are kept for a short audit trail —
 # "Order History" in the v0.6 brief — capped the same way trade_history
@@ -171,3 +186,94 @@ def tick_broker(
 
     portfolio = portfolio.model_copy(update={"orders": [*still_open, *order_log]})
     return portfolio, newly_closed
+
+
+class ExecutionProvider(ABC):
+    """Adapter interface for turning an approved order into a filled
+    position or a closed trade. A real implementation (Charles Schwab,
+    Interactive Brokers, Alpaca, ...) would wrap that broker's order-
+    execution API behind this same shape — app/nexus.py only ever calls
+    `tick_broker()` on whatever provider is selected, so nothing
+    downstream needs to change when a real adapter replaces the paper
+    one. See this module's docstring and Design Bible Chapter 68 for why
+    no such adapter exists yet."""
+
+    @abstractmethod
+    def place_order(
+        self,
+        portfolio: PaperPortfolio,
+        *,
+        order_id: str,
+        symbol: str,
+        side: OrderSide,
+        order_type: OrderType,
+        quantity: float,
+        price: float,
+        placed_by: AgentId,
+        reason: str,
+        confidence: float,
+        linked_position_id: str | None = None,
+    ) -> PaperPortfolio: ...
+
+    @abstractmethod
+    def tick_broker(
+        self,
+        portfolio: PaperPortfolio,
+        prices: dict[str, float],
+        new_time: TimeState,
+    ) -> tuple[PaperPortfolio, list[PaperTrade]]: ...
+
+
+class PaperExecutionProvider(ExecutionProvider):
+    """The only ExecutionProvider implementation in this codebase.
+    Delegates directly to this module's existing, unchanged
+    place_order()/tick_broker() free functions — this class adds no new
+    behavior, only the real seam a future adapter would implement
+    instead."""
+
+    def place_order(
+        self,
+        portfolio: PaperPortfolio,
+        *,
+        order_id: str,
+        symbol: str,
+        side: OrderSide,
+        order_type: OrderType,
+        quantity: float,
+        price: float,
+        placed_by: AgentId,
+        reason: str,
+        confidence: float,
+        linked_position_id: str | None = None,
+    ) -> PaperPortfolio:
+        return place_order(
+            portfolio,
+            order_id=order_id,
+            symbol=symbol,
+            side=side,
+            order_type=order_type,
+            quantity=quantity,
+            price=price,
+            placed_by=placed_by,
+            reason=reason,
+            confidence=confidence,
+            linked_position_id=linked_position_id,
+        )
+
+    def tick_broker(
+        self,
+        portfolio: PaperPortfolio,
+        prices: dict[str, float],
+        new_time: TimeState,
+    ) -> tuple[PaperPortfolio, list[PaperTrade]]:
+        return tick_broker(portfolio, prices, new_time)
+
+
+def _select_execution_provider() -> ExecutionProvider:
+    name = os.environ.get("EXECUTION_PROVIDER", "paper").strip().lower()
+    if name not in ("", "paper"):
+        logger.warning("EXECUTION_PROVIDER=%r has no real adapter in v0.6; falling back to paper execution.", name)
+    return PaperExecutionProvider()
+
+
+execution_provider: ExecutionProvider = _select_execution_provider()

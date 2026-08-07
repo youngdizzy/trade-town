@@ -59,7 +59,7 @@ will eventually absorb remains the real, current reference.
 | 7 | [AI Workforce](volumes/07-ai-workforce.md) | Outline |
 | 8 | [Research Division](volumes/08-research-division.md) | Outline |
 | 9 | [Departments](volumes/09-departments/README.md) | 17 chapters written (57–67, 70–73, 73.5, 75; 70 in three parts — Board & CEO Intelligence, Executive Consensus Meter, Weighted Executive Decision Engine) — chapter template defined; see the volume's own table for exact implementation status per chapter |
-| 10 | [Broker & Live Trading](volumes/10-broker-live-trading/README.md) | Chapters 68–69 written. Chapter 69 (Multi-Account & Fund Management, in three parts) is implemented on the paper-trading side. Chapter 68 (the real broker connector) remains pure architecture, no implementation, gated by Appendix G's Live Trading Gate |
+| 10 | [Broker & Live Trading](volumes/10-broker-live-trading/README.md) | Chapters 68–69 written. Chapter 69 (Multi-Account & Fund Management, in three parts) is implemented on the paper-trading side. Chapter 68 Part 1 (Execution Provider Adapter Interface) is implemented — no SDK, no credentials, no real connection. Chapter 68's real broker connector remains pure architecture, no implementation, gated by Appendix G's Live Trading Gate |
 | 11 | [Testing & Quality Assurance](volumes/11-testing-quality-assurance.md) | Outline |
 | 12 | [Security](volumes/12-security.md) | Outline |
 | 13 | [Audits](volumes/13-audits.md) | Outline |

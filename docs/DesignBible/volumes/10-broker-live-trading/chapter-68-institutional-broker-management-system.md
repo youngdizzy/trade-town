@@ -1,22 +1,29 @@
 # Chapter 68 — Institutional Broker Management System (IBMS)
 
-**Status:** Pure architecture, not yet implemented. **Researched
-first:** this codebase has exactly one order-execution engine
-(`app/broker.py`'s `PaperBroker`), and its own module docstring has
-stated since v0.6 that it is "completely simulated" — no brokerage SDK
-import, no API key, no code path that reaches a real execution
+**Status:** Part 1 (Execution Provider Adapter Interface) implemented —
+see "Part 1: Execution Provider Adapter Interface" below. Everything
+else in this chapter remains pure architecture, not yet implemented.
+**Researched first:** this codebase has exactly one order-execution
+engine (`app/broker.py`'s `PaperBroker`), and its own module docstring
+has stated since v0.6 that it is "completely simulated" — no brokerage
+SDK import, no API key, no code path that reaches a real execution
 endpoint. That finding, and every other real-vs-aspirational line in
 this chapter, is not new: Chapter 66's own Ownership table already
 confirmed "Broker Failsafe... genuinely does not exist" for the same
 reason. This chapter's job is to give that permanent boundary a real
 architecture to grow into — the interface every future connector
-(Charles Schwab first) would implement — without writing a single line
-of code against it yet. See the Implementation Notes at the bottom for
-the precise inventory of what's real today, and the Charles Schwab
-V1.0 section for the standing **Live Trading Gate** policy (also
-[Appendix G](../../appendices/appendix-g-permanent-development-policy.md))
+(Charles Schwab first) would implement. Part 1 built exactly that
+interface — `ExecutionProvider`, mirroring `app/market_data.py`'s
+`MarketDataProvider` pattern — with only a `PaperExecutionProvider`
+wired in; no SDK, no credentials, no real connection, still 100%
+simulated. See the Implementation Notes at the bottom for the precise
+inventory of what's real today, and the Charles Schwab V1.0 section for
+the standing **Live Trading Gate** policy (also [Appendix
+G](../../appendices/appendix-g-permanent-development-policy.md))
 governing exactly when — not if — this chapter moves from architecture
-to a real connection.
+to a real connection. **Part 1 does not move that gate any closer to
+open** — it gives a future connector a real seam to implement, nothing
+more.
 
 ## Executive Summary
 
@@ -35,6 +42,39 @@ TradeTown's AI and any real broker, Charles Schwab first — as pure
 target architecture: every section below states plainly whether it
 describes something real or something none of this codebase's real
 infrastructure supports yet, and never blurs the two.
+
+## Part 1: Execution Provider Adapter Interface
+
+**Real, implemented, and the only real code this chapter has ever
+produced.** `app/broker.py` now defines `ExecutionProvider(ABC)` — an
+abstract interface with `place_order()` and `tick_broker()` methods —
+and `PaperExecutionProvider`, its one concrete implementation, which
+delegates directly to this module's pre-existing, unchanged
+`place_order()`/`tick_broker()` free functions. A module-level
+`execution_provider` singleton is selected by `_select_execution_provider()`,
+which reads an `EXECUTION_PROVIDER` environment variable (default
+`"paper"`; any other value logs a warning and falls back to paper) —
+the exact same shape `app/market_data.py`'s `_select_provider()` already
+uses for `MARKET_DATA_PROVIDER`. `app/nexus.py`'s one real call site
+(previously a bare `tick_broker(...)` import) now calls
+`execution_provider.tick_broker(...)` — the only production code path
+this interface changes.
+
+**What this is not:** no brokerage SDK, no HTTP client, no credential
+handling, no real connection of any kind was added. `place_order()`,
+`_fill_price()`, and `tick_broker()` themselves are byte-for-byte
+unchanged — `PaperExecutionProvider` only wraps them. This gives a
+future Charles Schwab (or other) connector a real seam to implement
+instead of `app/nexus.py` calling `broker.py`'s free functions
+directly, and nothing more. It does not satisfy, advance, or shortcut
+any of the seven Live Trading Gate conditions below — those remain
+entirely about a real, credentialed, tested connection existing, which
+this interface deliberately does not build toward. Covered by
+`backend/tests/test_broker.py` (7 tests): the interface is abstract
+with exactly the two methods above, the default/fallback provider
+selection matches `market_data.py`'s pattern, and `PaperExecutionProvider`'s
+`place_order()`/`tick_broker()` produce results identical to calling
+the underlying free functions directly.
 
 ## Company Philosophy
 
@@ -75,7 +115,7 @@ this chapter was written — not assumed:
 |---|---|---|
 | "Broker Connections" / "API Sessions" | *(genuinely does not exist)* | No brokerage SDK is imported anywhere in this codebase (grep-confirmed against `backend/app/*.py`). `backend/requirements.txt` carries no HTTP client library (no `httpx`, no `requests`) and no OAuth library — there is no technical capability to open a real broker session today, not just a missing credential. |
 | "Authentication" / "Encrypt credentials" | *(genuinely does not exist)* | No credential storage of any kind exists to encrypt. `requirements.txt` carries no cryptography library (no `cryptography`, no `pynacl`). `python-dotenv` is present (env-var loading only) — the same "no API keys held anywhere in this repo" boundary `app/market_data.py`'s own docstring already states for market data. |
-| "Order Routing" | `app/broker.py`'s `place_order()` | Appends an order to an in-memory book on the *same* `PaperPortfolio` TradeTown already owns. Routes to nothing external — there is no second, broker-side order book to route to. |
+| "Order Routing" | `app/broker.py`'s `place_order()`, now reachable through `ExecutionProvider.place_order()` | Appends an order to an in-memory book on the *same* `PaperPortfolio` TradeTown already owns. Routes to nothing external — there is no second, broker-side order book to route to. Part 1 gave this a real interface seam (`ExecutionProvider`); it did not give it anywhere external to route to. |
 | "Order Verification" (Accepted/Partially Filled/Filled/Rejected/Cancelled/Expired/Pending/Unexpected State) | `OrderStatus` (`schemas.py`): `"open" \| "filled" \| "closed" \| "cancelled"` | A real, working, but much narrower state machine: `_fill_price()` fills an order entirely or not at all (**no partial fills exist**), a filled exit order closes its linked position, and — since Chapters 57/58/66's own pre-trade checks already run before an order can be placed at all — **"rejected" cannot happen inside `broker.py`**, only before it. No `"expired"`/time-in-force concept exists (`broker.py`'s own docstring: orders "stay open indefinitely until filled"). |
 | "Buying Power Validation" (cash, margin, PDT, options/short permissions) | Chapter 57's Position Sizing cash-reserve floor (`app/nexus.py`) | Real, but narrower: checks `cashBalance` against a reserve floor before a proposal is even created. **No margin account, Pattern Day Trader restriction, options permission, or short-selling permission concept exists anywhere** — this is 100% simulated cash-account, long-only paper trading. |
 | "Position Synchronization" | *(does not apply)* | There is exactly one ledger — TradeTown's own `PaperPortfolio.positions` — with no second, broker-side position list to compare it against. Reconciliation, as the brief defines it, needs two sources of truth; today there is only one. |
@@ -83,7 +123,7 @@ this chapter was written — not assumed:
 | "Execution Logs" / "Audit Trail" | `PaperOrder`'s own resolved-order log (`MAX_ORDER_LOG = 40`, capped) | Real precedent, incomplete against the brief's own field list: `id`/`symbol`/`side`/`orderType`/`quantity`/`price`/`status`/`reason`/`placedBy`/`confidence`/`filledPrice`/`filledAt` exist; `Broker`, `Account`, and `Latency` do not, because none of those concepts exist yet to log. |
 | "Account Management" (Personal/Paper/Business/IRA, multi-account) | `PaperPortfolio` (`schemas.py`) | One account. Its own docstring: "the company's one simulated trading account." No account ID, broker field, permissions, risk profile, currency, or status field exists — there is nothing to distinguish, because nothing to distinguish it from. |
 | "Broker States" (Connected/Connecting/Disconnected/Auth Failed/Rate Limited/Maintenance/Market Closed/Emergency Disabled) | *(does not exist)* | The closest real precedent is `net:status`/`gameStore.netConnected` — a real, working binary connected/disconnected indicator (`TopStatusBar.tsx`'s own dot) for TradeTown's **own** WebSocket to its **own** backend, not a broker connection of any kind. Reusable event/UI *pattern*, zero broker-specific meaning today. |
-| "Multi-Broker Ready" / "one connector, no changes to existing ones" | `app/market_data.py`'s `MarketDataProvider` (ABC) | The one real, working precedent for this exact shape, proven out for market data, not execution: implement the interface, wire it in `_select_provider()`, nothing that calls it changes. No equivalent execution-side interface exists — `NexusManager`/`paper_trading.py` call `broker.py`'s functions directly today, not through an abstraction a second connector could sit behind. |
+| "Multi-Broker Ready" / "one connector, no changes to existing ones" | `app/market_data.py`'s `MarketDataProvider` (ABC), and now `app/broker.py`'s `ExecutionProvider` (ABC) | The real, working precedent for this exact shape, proven out for market data, now mirrored for execution: implement the interface, wire it in `_select_execution_provider()`, nothing that calls it changes. Only `PaperExecutionProvider` exists — a second, real connector would still need to be written from scratch — but `app/nexus.py` now calls through the abstraction (`execution_provider.tick_broker(...)`) rather than `broker.py`'s bare functions directly, so a second implementation could be wired in without touching that call site. |
 
 ## Inputs
 
@@ -308,16 +348,22 @@ placement, deterministic fills, a capped execution log, and the
 approved-order handoff seam from Chapters 57/58/66's own real
 pre-trade veto pipeline; a real, proven adapter-interface *pattern*
 (`app/market_data.py`'s `MarketDataProvider`) for how a future
-connector could be wired in without touching its consumers, applied so
-far only to market data, never to execution; a single, real, honest
-`"SIMULATED"` acknowledgment already surfaced to the CEO
-(`GlobalStatusBar.tsx`). **What's genuinely, entirely unbuilt:**
-broker connections, authentication, encrypted credentials, API
-sessions, order routing to anything external, execution confirmation
-against a real system, account synchronization, buying power beyond a
-cash-reserve floor, position reconciliation, latency/health
-monitoring, a multi-account model, Charles Schwab v1.0 itself, and
-every KPI/report/learning-loop that depends on a real broker existing
-to measure against. No code was written against this chapter — it is
-architecture only, exactly matching how Chapters 65/66/67 were each
-written first as pure documentation before any implementation began.
+connector could be wired in without touching its consumers, previously
+applied only to market data. **Part 1 (this session) extended that
+pattern to execution:** `ExecutionProvider(ABC)` +
+`PaperExecutionProvider` + `_select_execution_provider()` + a module-level
+`execution_provider` singleton in `app/broker.py`, with
+`app/nexus.py`'s one real `tick_broker()` call site rewired through it
+— see "Part 1: Execution Provider Adapter Interface" above. A single,
+real, honest `"SIMULATED"` acknowledgment remains surfaced to the CEO
+(`GlobalStatusBar.tsx`), unchanged by Part 1. **What's genuinely,
+entirely unbuilt:** broker connections, authentication, encrypted
+credentials, API sessions, order routing to anything external,
+execution confirmation against a real system, account synchronization,
+buying power beyond a cash-reserve floor, position reconciliation,
+latency/health monitoring, a multi-account model, Charles Schwab v1.0
+itself, and every KPI/report/learning-loop that depends on a real
+broker existing to measure against. Every other section of this
+chapter beyond Part 1 remains architecture only, exactly matching how
+Chapters 65/66/67 were each written first as pure documentation before
+any implementation began.

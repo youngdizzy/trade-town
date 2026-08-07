@@ -6923,6 +6923,31 @@ Inserting BLACKSWAN shifted every later tab's number-key (1-9) shortcut
 down one position; the two affected Playwright assertions in
 `commandCenter.spec.ts` were updated to match.
 
+### Institutional Broker Management System, Part 1 — Design Bible Chapter 68
+
+Chapter 68's own real broker connection remains gated behind Appendix
+G's Live Trading Gate, unchanged and untouched by this pass. What this
+pass added is narrower and purely architectural: `app/broker.py` now
+defines `ExecutionProvider(ABC)` (`place_order()`/`tick_broker()`) and
+`PaperExecutionProvider`, the one concrete implementation, delegating
+directly to this module's pre-existing, byte-for-byte-unchanged
+`place_order()`/`_fill_price()`/`tick_broker()` free functions.
+`_select_execution_provider()` reads an `EXECUTION_PROVIDER` env var
+(default `"paper"`, any other value warns and falls back), mirroring
+`app/market_data.py`'s `_select_provider()`/`MARKET_DATA_PROVIDER`
+pattern exactly. `app/nexus.py`'s one real order-fill call site
+(grep-confirmed the only production caller of `tick_broker()`; `place_
+order()` itself has zero real callers — positions open via `app/
+portfolio.py::open_position()` called directly from `app/executive.
+py::resolve_proposal()`) now goes through `execution_provider.tick_
+broker(...)` instead of the bare free function. No brokerage SDK, HTTP
+client, or credential-handling code was added — this interface exists
+so a future real connector has a real seam to implement, and does not
+by itself advance any of the Live Trading Gate's seven conditions.
+Covered by `backend/tests/test_broker.py` (7 tests). See Design Bible
+Chapter 68's own "Part 1: Execution Provider Adapter Interface" section
+for the full detail.
+
 ### Executive Board & CEO Intelligence System, Part 1 — Design Bible Chapter 70
 
 Part 1's own brief asked for one place where "everything important
