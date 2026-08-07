@@ -3143,6 +3143,55 @@ class ExecutiveReview(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
+# Design Bible Chapter 70 Part 1 — Executive Board & CEO Intelligence
+# System (app/board.py). BoardSeat/BoardRoster are computed fresh per
+# request, never persisted — the same "always current" reasoning as
+# CompanyHealth, since agent occupations rarely change and there is
+# nothing here worth snapshotting. Only 11 of the brief's own 12 named
+# seats are represented: the 12th is never named anywhere in the source
+# brief itself, and is deliberately not invented — see the chapter's own
+# Implementation Notes.
+class BoardSeat(CamelModel):
+    title: str
+    agent_id: AgentId | None = Field(default=None, alias="agentId")
+    agent_name: str | None = Field(default=None, alias="agentName")
+
+
+class BoardRoster(CamelModel):
+    seats: list[BoardSeat]
+    generated_at: str = Field(alias="generatedAt")
+
+
+# Design Bible Chapter 70 Part 1 — the Board Report, a real composition
+# of already-real signals (never a duplicate computation) on three
+# cadences: "daily" (the same is_evening-only gate Feature 51's Market
+# Brief already established), "quarterly" (a new day % 90 == 0 gate,
+# the same shape Weekly/Monthly already use), and "emergency" (fired
+# once on a real edge-crossing — Emergency Stop activation or Black
+# Swan tier crossing into red/critical — never every tick while the
+# condition holds). Weekly/Monthly cadences are deliberately not built
+# here — CoachReport and ExecutiveReview already cover them.
+BoardReportCadence = Literal["daily", "quarterly", "emergency"]
+BoardReportTrigger = Literal["emergency_stop", "black_swan_tier"]
+
+
+class BoardReport(CamelModel):
+    id: str
+    cadence: BoardReportCadence
+    trigger: BoardReportTrigger | None = Field(default=None, alias="trigger")
+    department_activity: list[DepartmentActivity] = Field(
+        default_factory=list, alias="departmentActivity"
+    )
+    problems: list[str] = Field(default_factory=list)
+    recommendations: list[str] = Field(default_factory=list)
+    risk_assessment: str = Field(alias="riskAssessment")
+    confidence_level: float = Field(alias="confidenceLevel")
+    required_ceo_decisions: int = Field(alias="requiredCeoDecisions")
+    summary: str
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
 # v0.7 Feature 25 — AI Academy & Knowledge Network (app/academy.py,
 # app/academy_research.py). Every agent has one real Knowledge Branch and
 # a points total that only grows from real completed work (a finished
@@ -4267,6 +4316,10 @@ AuditEventCategory = Literal[
     # deactivation, recorded by app/travel_mode.py the same way Chapter
     # 75 records its own mode/tier changes.
     "travel_mode_change",
+    # Design Bible Chapter 70 Part 1 — a real emergency Board Report
+    # (app/board.py), fired on a real Emergency Stop activation or a
+    # Black Swan tier crossing into red/critical.
+    "board_report",
 ]
 
 
@@ -5667,6 +5720,12 @@ class GameSaveState(CamelModel):
     # v0.7 Feature 24 — the CIO's Monthly Executive Review (app/executive_review.py).
     executive_reviews: list[ExecutiveReview] = Field(
         default_factory=list, alias="executiveReviews"
+    )
+    # Design Bible Chapter 70 Part 1 — the Board Report (app/board.py),
+    # daily/quarterly/emergency cadence, capped the same way every other
+    # daily-cadence report list is (see MAX_BOARD_REPORTS).
+    board_reports: list[BoardReport] = Field(
+        default_factory=list, alias="boardReports"
     )
     # v0.7 Feature 25 — AI Academy. `academy_projects` holds the one
     # currently-active knowledge project (company-wide, not per-agent);

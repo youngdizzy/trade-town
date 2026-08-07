@@ -279,6 +279,23 @@ def _entries_from_memory(memory: list[MemoryRecord], current_sim_day: int) -> li
                     relatedId=None,
                 )
             )
+        elif m.category == "alert" and m.title.startswith("Emergency Board Report"):
+            # Design Bible Chapter 70 Part 1 — app/board.py's
+            # generate_board_report(), fired on a real Emergency Stop
+            # activation or a Black Swan tier crossing into red/critical.
+            entries.append(
+                AuditEntry(
+                    id=f"audit-boardreport-{m.id}",
+                    timestamp=m.timestamp,
+                    simDay=current_sim_day,
+                    category="board_report",
+                    severity="warning",
+                    department="Executive Board",
+                    summary=m.title,
+                    detail=m.body,
+                    relatedId=None,
+                )
+            )
     return entries
 
 

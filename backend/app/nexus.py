@@ -86,6 +86,7 @@ from app.economic_intelligence import (
     record_economic_intelligence_report,
 )
 from app.executive_review import generate_executive_review, record_review
+from app.board import generate_board_report, record_board_report
 from app.founders import compute_founder_state, generate_breakthrough_review, generate_council_session, generate_founder_log_entry, record_council_session, record_founder_log
 from app.goals import generate_strategic_review, record_strategic_review, tick_goals
 from app.foundational_mentors import tick_employee_progress
@@ -184,6 +185,7 @@ from app.schemas import (
     ChallengeReport,
     BlackSwanEventRecord,
     BlackSwanReport,
+    BoardReport,
     CoachReport,
     CompanyPriority,
     Debate,
@@ -314,6 +316,10 @@ EVENING_REVIEW_HOUR = 20
 MORNING_QOTD_HOUR = 8
 WEEKLY_INTERVAL_DAYS = 7
 MONTHLY_INTERVAL_DAYS = 30
+# Design Bible Chapter 70 Part 1 — the Board Report's own Quarterly
+# cadence, the identical day % N shape WEEKLY/MONTHLY_INTERVAL_DAYS
+# above already use.
+QUARTERLY_INTERVAL_DAYS = 90
 # v0.7 Feature 25 — how often to check whether a real mentorship pairing
 # qualifies (see app/academy.py's maybe_run_mentorship). Checked on the
 # same evening cadence as everything else above, but only every 3 days —
@@ -1133,6 +1139,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     agent_energy = state.agent_energy
     operating_mode = state.settings.operating_mode
     executive_reviews: list[ExecutiveReview] = list(state.executive_reviews)
+    board_reports: list[BoardReport] = list(state.board_reports)
     academy_projects: list[AcademyProject] = state.academy_projects or default_academy_projects()
     academy_completed_projects: list[AcademyProject] = list(state.academy_completed_projects)
     # v0.7 Design Bible Chapter 64 — CEO-authored company goals.
@@ -1377,12 +1384,21 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     trigger_emergency_stop = not emergency_stop.active and (
         daily_circuit_breaker.tier == "tier4" or losing_streak.consecutive_losses >= trading_mode_state.losing_streak_suspend_count
     )
+    # Design Bible Chapter 70 Part 1 — the second of the two real
+    # Emergency Board Meeting triggers this chapter's research
+    # confirmed. company_health/black_swan_intelligence aren't computed
+    # until later in this same tick, so only the trigger text is
+    # captured here; the actual BoardReport is generated further down,
+    # right alongside the Black Swan tier crossing's own emergency
+    # report (see below).
+    emergency_stop_board_trigger_detail: str | None = None
     if trigger_emergency_stop:
         trigger: str = "circuit_breaker_tier4" if daily_circuit_breaker.tier == "tier4" else "losing_streak"
         emergency_stop, _ = activate_emergency_stop(emergency_stop, now_iso=_now_iso())
         trigger_detail = (
             "the Daily Circuit Breaker reaching Tier 4" if trigger == "circuit_breaker_tier4" else f"{losing_streak.consecutive_losses} consecutive losing trades"
         )
+        emergency_stop_board_trigger_detail = f"Emergency Stop activated — {trigger_detail}"
         record(
             memory,
             "emergency",
@@ -1991,16 +2007,57 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             now_sim_minutes=now_sim_minutes,
         )
 
+    # Design Bible Chapter 70 Part 1 — the Emergency Stop Board Report,
+    # for the trigger captured earlier in this same tick (circuit
+    # breaker Tier 4 or a losing-streak suspension) once company_health/
+    # black_swan_intelligence above are finally available to compose it
+    # from.
+    if emergency_stop_board_trigger_detail is not None:
+        emergency_stop_board_report = generate_board_report(
+            cadence="emergency",
+            trigger="emergency_stop",
+            trigger_detail=emergency_stop_board_trigger_detail,
+            research=research,
+            decisions=decisions,
+            agent_ids=all_agent_ids(),
+            company_health=company_health,
+            black_swan_tier=black_swan_intelligence.warning.tier,
+            circuit_breaker_tier=daily_circuit_breaker.tier,
+            pending_ceo_decisions=len(trade_proposals),
+            sim_day=new_time.day,
+            report_id=f"board-emergency-stop-{new_time.day}-{now_sim_minutes}",
+            now_iso=_now_iso(),
+        )
+        board_reports = record_board_report(board_reports, emergency_stop_board_report)
+        record(memory, "alert", "Emergency Board Report filed", emergency_stop_board_report.summary, max_records=effective_risk_limits.max_memory_records)
+
     # A real Crisis Briefing fires once, the moment the tier first
     # crosses into RED/CRITICAL — never every tick while it stays there.
-    # The honest answer to "automatically trigger an emergency Executive
-    # Board meeting": no such meeting mechanism exists anywhere in this
-    # codebase (Chapter 70 Part 1), so this is a real, structured
-    # situation report written straight to Company Memory instead of a
-    # fabricated vote. See app/black_swan.py's module docstring.
+    # Design Bible Chapter 70 Part 1 — this same crossing now also fires
+    # a real emergency Board Report, one of the two real Emergency Board
+    # Meeting triggers this chapter's own research confirmed (the other
+    # is Emergency Stop activation, below). See app/black_swan.py's
+    # module docstring for the Crisis Briefing itself.
     if tier_meets_or_exceeds(black_swan_intelligence.warning.tier, "red") and not tier_meets_or_exceeds(previous_black_swan_tier, "red"):
         briefing = generate_crisis_briefing(black_swan_intelligence, paper_portfolio, portfolio_intelligence, risk_limits, new_time.day, briefing_id=f"crisis-{new_time.day}-{now_sim_minutes}")
         record(memory, "alert", f"Crisis Briefing — Risk Level {briefing.tier.upper()}", briefing.situation_summary, max_records=effective_risk_limits.max_memory_records)
+        emergency_board_report = generate_board_report(
+            cadence="emergency",
+            trigger="black_swan_tier",
+            trigger_detail=f"Black Swan Risk crossing into {black_swan_intelligence.warning.tier.upper()}",
+            research=research,
+            decisions=decisions,
+            agent_ids=all_agent_ids(),
+            company_health=company_health,
+            black_swan_tier=black_swan_intelligence.warning.tier,
+            circuit_breaker_tier=daily_circuit_breaker.tier,
+            pending_ceo_decisions=len(trade_proposals),
+            sim_day=new_time.day,
+            report_id=f"board-emergency-blackswan-{new_time.day}-{now_sim_minutes}",
+            now_iso=_now_iso(),
+        )
+        board_reports = record_board_report(board_reports, emergency_board_report)
+        record(memory, "alert", "Emergency Board Report filed", emergency_board_report.summary, max_records=effective_risk_limits.max_memory_records)
 
     # Design Bible Chapter 72 Part 2 — Institutional Survival Score.
     # Cheap to recompute every tick (reuses three of the Early Warning
@@ -2055,6 +2112,28 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         previous_bs_report = black_swan_reports[-1] if black_swan_reports else None
         black_swan_report = generate_black_swan_report(black_swan_intelligence, previous_bs_report, sim_day=new_time.day)
         black_swan_reports = record_black_swan_report(black_swan_reports, black_swan_report)
+
+        # Design Bible Chapter 70 Part 1 — the Board Report's Daily
+        # cadence, the same once-per-real-evening gate as the three
+        # daily reports directly above. Weekly/Monthly cadences are
+        # deliberately not built here — CoachReport/ExecutiveReview
+        # already cover them (see app/board.py's module docstring).
+        daily_board_report = generate_board_report(
+            cadence="daily",
+            trigger=None,
+            trigger_detail=None,
+            research=research,
+            decisions=decisions,
+            agent_ids=all_agent_ids(),
+            company_health=company_health,
+            black_swan_tier=black_swan_intelligence.warning.tier,
+            circuit_breaker_tier=daily_circuit_breaker.tier,
+            pending_ceo_decisions=len(trade_proposals),
+            sim_day=new_time.day,
+            report_id=f"board-daily-{new_time.day}",
+            now_iso=_now_iso(),
+        )
+        board_reports = record_board_report(board_reports, daily_board_report)
 
     if is_evening and new_time.day % WEEKLY_INTERVAL_DAYS == 0:
         latest_report = generate_coach_report("weekly", research, paper_portfolio, company_score, RESEARCHER_IDS, new_time, ceo_decisions=ceo_decisions, decisions=decisions)
@@ -2149,6 +2228,28 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         # to their own real real domain at every monthly sit-down.
         constitution_citations = cite_article(constitution_citations, "VII", "founders", "Keystone's monthly Council commentary reaffirms real risk discipline.", new_time.day)
         constitution_citations = cite_article(constitution_citations, "VIII", "founders", "Compass's monthly Council commentary reaffirms continuous learning.", new_time.day)
+
+    # Design Bible Chapter 70 Part 1 — the Board Report's Quarterly
+    # cadence, the one genuinely missing cadence this chapter's own
+    # research confirmed (Weekly/Monthly are already real via
+    # CoachReport/ExecutiveReview above).
+    if is_evening and new_time.day % QUARTERLY_INTERVAL_DAYS == 0:
+        quarterly_board_report = generate_board_report(
+            cadence="quarterly",
+            trigger=None,
+            trigger_detail=None,
+            research=research,
+            decisions=decisions,
+            agent_ids=all_agent_ids(),
+            company_health=company_health,
+            black_swan_tier=black_swan_intelligence.warning.tier,
+            circuit_breaker_tier=daily_circuit_breaker.tier,
+            pending_ceo_decisions=len(trade_proposals),
+            sim_day=new_time.day,
+            report_id=f"board-quarterly-{new_time.day}",
+            now_iso=_now_iso(),
+        )
+        board_reports = record_board_report(board_reports, quarterly_board_report)
 
     # v0.7 Feature 25 — a modest, honestly-grounded mentorship check (see
     # app/academy.py's module docstring). Checked far less often than
@@ -2481,6 +2582,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "daily_objective_status": daily_objective_status,
             "company_dna_legacy": company_dna_legacy,
             "executive_reviews": executive_reviews,
+            "board_reports": board_reports,
             "academy_projects": academy_projects,
             "academy_completed_projects": academy_completed_projects,
             "goals": goals,

@@ -33,6 +33,7 @@ from app.wisdom import compute_wisdom_score
 from app.academy_research import default_academy_projects
 from app.agent_energy import default_agent_energy
 from app.company_dna import STRATEGY_HALL_OF_FAME_NUDGE, compute_company_dna, nudge_legacy
+from app.board import generate_board_report, record_board_report
 from app.company_health import compute_company_health
 from app.company_score import compute_company_score
 from app.constitution import decide_amendment, default_constitution, generate_coach_evaluation, generate_employee_votes, generate_founder_debate, propose_amendment, ratify_amendment
@@ -776,14 +777,37 @@ class GameState:
     async def activate_emergency_stop(self) -> tuple[GameSaveState, str | None]:
         """Design Bible Chapter 67 (TTOS) Part 3 — the CEO's real Global
         Emergency Stop. See app/emergency_stop.py's module docstring for
-        exactly what this does and does not block."""
+        exactly what this does and does not block. Design Bible Chapter
+        70 Part 1 — a manual (CEO-clicked) activation is a real
+        Emergency Board Meeting trigger, the same as the two automatic
+        ones app/nexus.py's own tick() already fires this exact report
+        for (circuit breaker Tier 4 / losing streak, and a Black Swan
+        tier crossing)."""
         async with self.lock:
             new_state, error = _activate_emergency_stop(self.data.emergency_stop, now_iso=_now_iso())
             if error is not None:
                 return self.data, error
             memory = list(self.data.memory)
             record_emergency_stop_event(memory, activated=True, max_records=self.data.risk_limits.max_memory_records)
-            self.data = self.data.model_copy(update={"emergency_stop": new_state, "memory": memory})
+            now_iso = _now_iso()
+            board_report = generate_board_report(
+                cadence="emergency",
+                trigger="emergency_stop",
+                trigger_detail="Emergency Stop activated — CEO manual",
+                research=self.data.research,
+                decisions=self.data.decisions,
+                agent_ids=all_agent_ids(),
+                company_health=self.data.company_health,
+                black_swan_tier=self.data.black_swan_intelligence.warning.tier,
+                circuit_breaker_tier=self.data.daily_circuit_breaker.tier,
+                pending_ceo_decisions=len(self.data.trade_proposals),
+                sim_day=self.data.time.day,
+                report_id=f"board-emergency-stop-manual-{self.data.time.day}-{self.data.time.hour}-{self.data.time.minute}",
+                now_iso=now_iso,
+            )
+            board_reports = record_board_report(list(self.data.board_reports), board_report)
+            record(memory, "alert", "Emergency Board Report filed", board_report.summary, max_records=self.data.risk_limits.max_memory_records)
+            self.data = self.data.model_copy(update={"emergency_stop": new_state, "memory": memory, "board_reports": board_reports})
             return self.data, None
 
     async def resume_trading(self) -> tuple[GameSaveState, str | None]:

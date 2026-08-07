@@ -1,8 +1,18 @@
 # Chapter 70 — Executive Board & CEO Intelligence System
 
-**Status:** Three parts. **Part 1** (below) — board roster, meetings,
-Decision Center, Company Health Review, Executive Command Center — is
-not implemented. **Part 2** (the Executive Consensus Meter addendum) is
+**Status:** Three parts. **Part 1** (below) is now substantially
+implemented: a real 11-seat Board Roster, a real Board Report on
+Daily/Quarterly/Emergency cadence (composing already-real signals,
+never a duplicate computation), and two real Emergency Board Meeting
+triggers (Emergency Stop activation, Black Swan tier crossing into
+red/critical). Four items are explicitly deferred, not built and not
+faked: per-executive scorecards, a CEO Assistant AI, CEO-assignable
+Chief titles, and a general-purpose non-trade Decision Center — each
+documented in its own **Deferred Features** section below with its
+current state, the real missing infrastructure, dependencies, a
+recommended future chapter, an estimated complexity, and the risks of
+building it prematurely. See this Part's own Implementation Notes for
+the full inventory. **Part 2** (the Executive Consensus Meter addendum) is
 real: Modify joins Approve/Reject/Delay/Delegate as a genuine CEO
 decision action, and a real Executive Accuracy Score scores each
 department's directional stance against actual closed-trade P&L. **Part
@@ -49,11 +59,29 @@ what every department said and what the CEO decided
 matching most of the brief's own Company Health Review categories, and
 — as of Chapter 67 — a real Global Status Bar, Executive Alert Center,
 and unified dashboard hook already surfacing most of what the brief
-calls the Executive Command Center. What's genuinely missing is
-narrower: a literal twelve-seat board roster with every named
-Chief-Officer title, automatic emergency-meeting triggers, a CEO
-Assistant AI, and one unified report object combining all nine of the
-brief's own Board Report fields in one place.
+calls the Executive Command Center. **Now real, this pass:** a Board
+Roster (`GET /api/board/roster`, computed fresh from the same real
+agent identities every other agent-facing UI already uses) covering 11
+of the brief's own 12 named seats — the 12th is never named anywhere
+in the source brief itself and is deliberately not invented; and a
+Board Report (`GET /api/board/reports`) on Daily/Quarterly/Emergency
+cadence, composing seven of the brief's nine named Board Report fields
+from already-real sources (Department Health, Problems, Recommendations,
+a narrative summary, and — new this pass — Risk Assessment, Confidence
+Level, and Required CEO Decisions, each reusing an existing real number
+rather than inventing one). Two of the brief's own seven named Emergency Board Meeting triggers are
+real (Emergency Stop activation — both automatic and CEO-manual — and
+Black Swan tier crossing into red/critical); Broker Failure remains
+confirmed absent (no real broker exists, Chapter 68), and the brief's
+own remaining triggers are not individually named anywhere in this
+chapter's Ownership research and are not fabricated here either. What
+remains genuinely
+deferred — not built, and explicitly not faked to look built — is
+narrower still: per-executive scorecards, a CEO Assistant AI,
+CEO-assignable Chief titles, and a general-purpose non-trade Decision
+Center. See this Part's own **Deferred Features** section for exactly
+why each one doesn't fit today's real architecture, and what would need
+to change for it to.
 
 ### Company Philosophy
 
@@ -91,39 +119,42 @@ chapter was written:
 
 | Brief concept | Real system today | What it actually does |
 |---|---|---|
-| "Board Members" (12 named Chief-Officer seats) | 14 real agents, 4 with "Chief" titles | `AGENT_PROFILES` (frontend/src/game/systems/AgentProfiles.ts): Meridian is literally "Chief Investment Officer" (exact match). Keystone is "Chief Risk Architect," Compass is "Chief Learning Architect," Vector is "Chief Quantitative Strategist" — close to, but not exact matches for, the brief's CRO/Chief Knowledge Officer/CQO. The other 9 real agents (Scout, Atlas, Echo, Nova, Scribe, Coach, Sentinel, Pulse, Guardian, Sage) have real, distinct occupations but no "Chief" title. No Chief Research/Technology/Operations/Compliance/Innovation/Portfolio/Market Intelligence Officer exists by that exact name — five of the brief's twelve named seats have no real occupant. |
-| "Executive Board Meetings" (Daily/Weekly/Monthly/Quarterly/Emergency) | `FounderCouncilSession` + `ExecutiveReview`, both real, both monthly | `FounderCouncilSession` (`app/founders.py`) — a real monthly Coach+Founders sit-down, generated alongside the existing `CoachReport`. `ExecutiveReview` (`app/executive_review.py`, "the CIO's Monthly Executive Review") — real, monthly, company-wide. `CoachReport` itself supports weekly *and* monthly cadence (`ReflectionCadence`). **Not real:** Daily or Quarterly cadence for any of these, and no Emergency meeting trigger of any kind. |
-| "Board Report Format" (9 named fields) | `ExecutiveReview`'s real fields | Real matches: Department Health → `departmentActivity` + `companyHealthTier`; Completed Objectives → `researchCompleted`/`knowledgeGained`/`lessonsCompleted`; Problems → `flags`; Recommendations → `recommendations`; a narrative → `summary`. **Not real, as named fields:** Opportunities, Risk Assessment, Confidence Level, Required CEO Decisions, Expected Impact — none of these exist on `ExecutiveReview` or any other real report object today. |
-| "CEO Decision Center" (Summary/Evidence/Benefits/Risks/Probability/Capital/Time Horizon/Departments/Confidence, Approve/Reject/Delay/Modify/Delegate) | `ExecutiveVoting.tsx` + `TradeDecision` | Real, but scoped only to trade proposals: Summary (symbol + reasoning), Supporting Evidence (agent votes), Probability (confidence score), Affected Departments (supporting/opposing agents) are all real. CEO options are real but narrower: BUY/SELL/WAIT map to Approve/Reject/Delay; **Modify and Delegate do not exist as CEO actions anywhere.** No general-purpose Decision Center exists for non-trade decisions — Strategy promotion, Innovation Lab budget, and every other CEO approval each has its own separate, ad hoc UI, never one unified center. |
+| "Board Members" (12 named Chief-Officer seats) | **Now real — an 11-seat Board Roster** (`app/board.py::compute_board_roster()`, `GET /api/board/roster`) | 4 real agents already hold a "Chief" title in `AGENT_PROFILES` (agents.py/AgentProfiles.ts, kept in sync): Meridian is literally "Chief Investment Officer" (exact match); Keystone is "Chief Risk Architect," Compass is "Chief Learning Architect," Vector is "Chief Quantitative Strategist" — close to, but not exact matches for, the brief's CRO/Chief Knowledge Officer/CQO, disclosed as such rather than silently relabeled. The roster adds the brief's own 7 other named-but-unfilled titles (Chief Research/Technology/Operations/Compliance/Innovation/Portfolio/Market Intelligence Officer) as real vacant seats. **The brief's own source document names only 11 of its claimed 12 seats anywhere in the file — the 12th is never named and is deliberately not invented; see Implementation Notes.** |
+| "Executive Board Meetings" (Daily/Weekly/Monthly/Quarterly/Emergency) | **Now real, all five cadences** — `FounderCouncilSession` + `ExecutiveReview` (Weekly/Monthly) + the new Board Report (`app/board.py`, Daily/Quarterly/Emergency) | `FounderCouncilSession` (`app/founders.py`) — a real monthly Coach+Founders sit-down. `ExecutiveReview` (`app/executive_review.py`) — real, monthly. `CoachReport` — weekly and monthly (`ReflectionCadence`). **New this pass:** the Board Report's Daily cadence (the same `is_evening`-only gate Feature 51's Market Brief already established) and Quarterly cadence (a new `day % 90 == 0` gate, the identical shape Weekly/Monthly already use) — deliberately not duplicating CoachReport/ExecutiveReview's own Weekly/Monthly coverage. Emergency cadence is now real too, on 2 of the brief's 7 named triggers — see the "Emergency Board Meeting" row below. |
+| "Board Report Format" (9 named fields) | `ExecutiveReview`'s real fields, plus the new Board Report | Real matches on `ExecutiveReview`: Department Health → `departmentActivity` + `companyHealthTier`; Completed Objectives → `researchCompleted`/`knowledgeGained`/`lessonsCompleted`; Problems → `flags`; Recommendations → `recommendations`; a narrative → `summary`. **New this pass, on the Board Report specifically:** Department Health (reuses the same shared `compute_department_activity()`, moved out of `executive_review.py` so both report types call one real function, never two competing ones), Problems, Recommendations (reused verbatim from `CompanyHealth.recommendations`), a narrative `summary`, Risk Assessment (a real one-line composition of the already-real Black Swan tier + Daily Circuit Breaker tier), Confidence Level (reuses `CompanyHealth.department_consensus` verbatim — a real, already-computed, company-wide agreement-rate KPI, never a new number), and Required CEO Decisions (`len(trade_proposals)`, the same real count Chapter 73.5's Situation Room already uses for its own "Pending CEO Decisions" field). **Still not real, and not fabricated:** Opportunities and Expected Impact — neither has a real computable source anywhere in this codebase. |
+| "CEO Decision Center" (Summary/Evidence/Benefits/Risks/Probability/Capital/Time Horizon/Departments/Confidence, Approve/Reject/Delay/Modify/Delegate) | `ExecutiveVoting.tsx` + `TradeDecision` | Real, but scoped only to trade proposals: Summary (symbol + reasoning), Supporting Evidence (agent votes), Probability (confidence score), Affected Departments (supporting/opposing agents) are all real. CEO options are real but narrower: BUY/SELL/WAIT map to Approve/Reject/Delay; Modify and Delegate are now real CEO actions too, per Part 2's own Implementation Notes below. **Deferred, not built this pass:** a general-purpose Decision Center for non-trade decisions — see this Part's own Deferred Features section for exactly why. |
 | "Board Discussion System" (evidence-based debate, CEO sees both sides) | `generate_department_opinions()` (`app/executive_intelligence.py`) | Real and genuinely evidence-based: real department stances that can actively oppose each other, feeding `compute_executive_recommendation()`'s real `pause_trading` enforcement (Chapter 66). Scoped to trade proposals only — no general "Risk Officer disagrees with CIO on a non-trade matter" mechanism exists. |
 | "Board Voting" (Unanimous/Majority/Split/Tie/CEO Override, recorded in Company Memory) | `AgentVote` on `TradeDecision.votes`, `ExecutiveMeetingLogEntry` | Real: every trade decision already carries individual agent votes, aggregated via `voteDirection()`; `ExecutiveMeetingLogEntry` (`app/schemas.py`) is a real, permanent record of what every department said, what the network recommended, and what the CEO actually decided, generated on every real `resolve_proposal()` call. **Not real:** "Tie" and "CEO Override" as distinctly labeled outcomes (the CEO's decision already always wins; there's no vote-tally state machine naming these cases), and none of this exists for non-trade board proposals. |
 | "Company Health Review" (9 named categories) | `CompanyScore` + `CompanyHealth` | Strong real match: `companyScore`'s breakdown (Research/Decisions/Risk/Paper Trading Performance/Teamwork/Simulation, per `OverviewPanel.tsx`) and `CompanyHealth.overall`/`.tier` cover Financial/Portfolio/Risk/Research/Employee-Performance/Automation ground honestly. **Not real:** "Infrastructure" as a tracked dimension — no infrastructure concept exists anywhere in a paper-trading sim with no real broker or server-health signal to report on. |
 | "Executive Priorities" (5 separate Top-5 lists) | `computeExecutivePriorities()` (`derive.ts`) | Real, but a different shape, and its own code comment already names this exact tension: it merges and dedupes `CompanyHealth.recommendations`, the latest `CoachReport.recommendations`, and the latest `ExecutiveReview.recommendations` into **one** ranked list, ordered by which real system raised the point first — never split into five separate Opportunities/Risks/Objectives/Bottlenecks/Actions categories, and never capped at exactly 5. |
 | "Strategic Roadmap" | Chapter 64's real Goals/Milestones, Chapter 45's Research Sandbox `Strategy` stage history, Hall of Fame | Real, distributed: CEO-authored Goals with real tracked progress and 25/50/75% milestone checkpoints (Current/Long-Term Goals); `Strategy.stageHistory` (Upcoming Features/Research Projects, loosely); Hall of Fame (Completed Milestones, loosely). Never assembled into one named "Strategic Roadmap" view. |
 | "Board Memory" | Company Memory (Chapter 61) | Real, permanent, and already the exact shape this brief asks for — decisions, reasoning, evidence, and outcomes are already recorded for every real event category this codebase produces, including trade decisions and Emergency Stop activations. |
-| "Emergency Board Meeting" (auto-triggered on 7 named events) | *(does not exist)* | No automatic meeting-trigger mechanism exists for any of the seven named events. Two of the seven have no real underlying signal to trigger from at all: Broker Failure (no real broker exists, Chapter 68) and Black Swan Events (confirmed absent, Chapters 66/68). Emergency Stop Activation is real and does produce a sticky critical toast + permanent Company Memory record (Chapter 67) — the closest real analog, but it's a notification, not a meeting. |
-| "Executive Scorecards" (8 named metrics per executive) | `CompanyScore` breakdown, `computeDepartmentHealth()` | Partial real coverage: `computeDepartmentHealth()` already computes real Efficiency/Workload/Morale/Productivity-shaped metrics per real subsystem, whichever of those dimensions that subsystem actually has a number for (its own docstring: never a uniform template forced onto systems that don't track all of them). **Not real:** a single scorecard object per named Chief Officer combining Accuracy/Decision Quality/Forecast Accuracy/Capital Efficiency/Risk Prevention/Innovation Success/Contribution Score — no such per-executive composite exists. |
-| "CEO Assistant" (summarize meetings, prioritize tasks, prepare agendas) | *(does not exist)* | Sage is a real "Socratic Mentor" (Q&A, never tells the CEO what to think, per its own personality field) — the opposite job from an assistant that prioritizes and summarizes. No agent performs any of the six named Assistant responsibilities today. |
+| "Emergency Board Meeting" (auto-triggered on 7 named events) | **Now real for 2 of the brief's 7 named triggers** — the Board Report's `"emergency"` cadence (`app/board.py`) | Fires once on a real edge-crossing, never every tick while the condition holds — the identical convention Chapter 72's own Crisis Briefing already established: (1) Emergency Stop activation, from any real source (automatic — Daily Circuit Breaker Tier 4 or a losing-streak suspension, both in `app/nexus.py` — or CEO-manual, in `app/state.py::activate_emergency_stop()`); (2) Black Swan tier crossing into red/critical (`app/nexus.py`, the same crossing that already fires the real Crisis Briefing). Broker Failure remains confirmed absent (no real broker exists, Chapter 68). The brief's other named triggers are not individually specified anywhere in this chapter's own research and are not fabricated here. |
+| "Executive Scorecards" (8 named metrics per executive) | `CompanyScore` breakdown, `computeDepartmentHealth()` | Partial real coverage: `computeDepartmentHealth()` already computes real Efficiency/Workload/Morale/Productivity-shaped metrics per real subsystem. **Deferred, not built this pass** — see this Part's own Deferred Features section: the real per-department accuracy/influence numbers (Parts 2/3) are role-keyed, not agent-keyed, and don't map cleanly onto the 4 filled Chief seats without a new, unresolved identity-mapping decision. |
+| "CEO Assistant" (summarize meetings, prioritize tasks, prepare agendas) | *(does not exist)* | Sage is a real "Socratic Mentor" (Q&A, never tells the CEO what to think, per its own personality field) — the opposite job from an assistant that prioritizes and summarizes. **Deferred, not built this pass** — see this Part's own Deferred Features section: the brief's own source document names only 3 of its claimed "six named Assistant responsibilities," and the other 3 are not specified anywhere. |
 | "Executive Command Center" (10 named live metrics) | `GlobalStatusBar.tsx` + `useDashboardData()` + Executive Alert Center (all Chapter 67) | The strongest real match of any section in this brief: Company Health✓, Market Regime✓, Portfolio Health✓ (Portfolio Heat), Risk Status✓, Major Alerts✓ (the real Alert Center), Executive Recommendations✓ (`computeExecutivePriorities`), Pending CEO Decisions✓ (the real Pending Proposals queue, Chapter 59) are all real today, already live, already CEO-facing — just distributed across Chapter 67's Global Status Bar/Alert Center/Command Palette rather than one consolidated screen. Broker Health is real only as the honest static "SIMULATED" pill; Active Objectives (Chapter 64 Goals) and Capital Allocation (RiskPanel) exist but aren't surfaced on this particular strip today. |
 
 ### Inputs
 
 **Real today:** every input this table confirms real above — trade
 proposals, department opinions, `CompanyHealth`/`CompanyScore`,
-Goals/Milestones, Company Memory. **Would need, once real:** a
-non-trade-scoped decision object the CEO Decision Center could present
-(does not exist), a Chief-Officer-to-agent mapping for the five unfilled
-board seats (does not exist).
+Goals/Milestones, Company Memory, `AGENT_PROFILES` (the Board Roster's
+own real input). **Deferred, would need once built:** a non-trade-scoped
+decision object the CEO Decision Center could present, and a real
+role↔agent identity mapping for per-executive scorecards — see this
+Part's own Deferred Features section for both.
 
 ### Outputs
 
 **Real today:** `ExecutiveReview`, `ExecutiveMeetingLogEntry`,
 `computeExecutivePriorities()`'s merged list, `CompanyHealth`/
-`CompanyScore`. **Would produce, once real:** a single Board Report
-object combining all nine of the brief's own named fields, five
-separate Top-5 priority lists instead of one merged list, and a
-Strategic Roadmap view assembling the three real, currently-separate
-sources named under Ownership.
+`CompanyScore`, and — new this pass — `BoardRoster` and `BoardReport`
+(7 of the brief's own 9 named Board Report fields, composed from
+already-real sources, never a duplicate computation). **Deferred, would
+produce once built:** five separate Top-5 priority lists instead of the
+current one merged list, and a Strategic Roadmap view assembling the
+three real, currently-separate sources named under Ownership — neither
+was in scope for this pass.
 
 ### Internal Workflow
 
@@ -140,9 +171,13 @@ pipeline to non-trade decisions, not invent a second one.
 **Real today, for every trade-scoped piece:** `compute_executive_
 recommendation()`'s department-opinion aggregation is a transparent,
 named formula, matching this codebase's "no black-box composite"
-convention throughout. **Not real:** any formula for ranking or scoring
-non-trade board proposals, or for computing the brief's own per-executive
-Contribution Score — no composite scoring exists for either.
+convention throughout. The Board Report's own Risk Assessment/
+Confidence Level/Required CEO Decisions fields are each a direct reuse
+of an existing real number, never a new formula. **Deferred:** any
+formula for ranking or scoring non-trade board proposals, or for
+computing the brief's own per-executive Contribution Score — see this
+Part's own Deferred Features section for why the latter isn't a simple
+formula gap but an unresolved identity-mapping question.
 
 ### Department Cooperation
 
@@ -154,19 +189,21 @@ Chapter 61 (Knowledge Graph/Company Memory — real, this chapter's own
 Board Memory), Chapter 66 (the real department-opinion/disagreement
 machinery this chapter's Board Discussion System already is, scoped to
 trades), Chapter 67 (the real Global Status Bar/Alert Center this
-chapter's Executive Command Center already substantially is). **Would
-provide:** a unified Board Report, Executive Scorecards, and Strategic
-Roadmap to every department that currently produces its own separate
-report.
+chapter's Executive Command Center already substantially is), Chapter
+73 (the Audit Log, which now picks up every real emergency Board Report
+via the new `board_report` category). **Provides, now real:** the Board
+Roster and Board Report to any department that wants a real, composed
+read of company-wide state. **Deferred:** Executive Scorecards and a
+Strategic Roadmap view — see the Deferred Features section.
 
 ### CEO Controls
 
 | Control | Status |
 |---|---|
-| Configure meeting cadence (Daily/Weekly/Monthly/Quarterly) | **Partially real** — `CoachReport` already supports weekly/monthly cadence; no CEO-facing toggle exists to choose it, and no daily/quarterly option exists anywhere. |
+| Configure meeting cadence (Daily/Weekly/Monthly/Quarterly) | **All four cadences are now real** (CoachReport/ExecutiveReview for Weekly/Monthly, the Board Report for Daily/Quarterly) — no CEO-facing toggle exists to choose *which* cadences run; all real cadences fire unconditionally, matching every other periodic report in this codebase (none of which are individually togglable either). |
 | Enable Board Voting | **Not built** as a togglable setting — voting is real but always-on for trade decisions specifically, not a feature the CEO can enable/disable. |
-| Approve / Reject / Delay / Modify / Delegate a proposal | **3 of 5 real** (Approve/Reject/Delay, via BUY/SELL/WAIT on trade proposals) — Modify and Delegate don't exist as CEO actions anywhere, for any decision type. |
-| Assign a Chief Officer title to an agent | **Not built** — the four real "Chief" titles are fixed in `AgentProfiles.ts`, not CEO-assignable. |
+| Approve / Reject / Delay / Modify / Delegate a proposal | **Now 5 of 5 real** — Modify and Delegate are real CEO actions per Part 2's own Implementation Notes below (built for that section, reused here rather than duplicated). |
+| Assign a Chief Officer title to an agent | **Deferred, not built this pass** — see this Part's own Deferred Features section. The Board Roster (this pass) is real and read-only; the four real "Chief" titles remain fixed in `AGENT_PROFILES`, not CEO-assignable. |
 
 ### Learning System
 
@@ -179,20 +216,22 @@ exists yet to generate history from.
 
 ### KPIs
 
-**Real and computable today, narrowly:** whatever `CompanyScore`'s
-breakdown and `computeDepartmentHealth()` already track. **Not
-honestly computable:** a per-executive Contribution Score, Forecast
-Accuracy, or Risk Prevention metric — no composite scoring exists for
-any named Chief Officer today, since five of the twelve named seats
-have no real occupant to score in the first place.
+**Real and computable today:** whatever `CompanyScore`'s breakdown and
+`computeDepartmentHealth()` already track, plus — new this pass — the
+Board Report's own Confidence Level (`CompanyHealth.department_
+consensus`, reused verbatim) and Required CEO Decisions
+(`len(trade_proposals)`). **Not honestly computable:** a per-executive
+Contribution Score, Forecast Accuracy, or Risk Prevention metric — see
+the Deferred Features section for exactly why this is an identity-
+mapping gap, not a missing formula.
 
 ### Reports
 
-**Real today:** `ExecutiveReview` (the closest real analog to a Board
-Report), `ExecutiveMeetingLogEntry` (the closest real analog to Board
-Meeting minutes). **Not built:** a single report object combining all
-nine of the brief's own named Board Report fields, or any of the eight
-Executive Scorecards.
+**Real today:** `ExecutiveReview`, `ExecutiveMeetingLogEntry`, and — new
+this pass — the Board Report (`app/board.py`, 7 of the brief's own 9
+named fields, Daily/Quarterly/Emergency cadence, capped and
+WS-broadcast). **Deferred:** any of the brief's named Executive
+Scorecards — see the Deferred Features section.
 
 ### Safety Systems
 
@@ -200,9 +239,12 @@ This chapter inherits, rather than duplicates, Chapter 66's real
 safety machinery — the Board Discussion System's real disagreement
 signal already enforces a trading pause (Chapter 66's `pause_trading`),
 and nothing in this chapter should build a second, competing
-enforcement path. Emergency Board Meetings, if ever built, should
-trigger *from* Chapter 66/67's real signals (a critical `RiskWarning`,
-Emergency Stop activation), never invent a parallel detection layer.
+enforcement path. Emergency Board Meetings are now real, and trigger
+*from* Chapter 66/67/72's own real signals exactly as this section
+originally specified — Emergency Stop activation and a Black Swan tier
+crossing into red/critical — never a parallel detection layer of their
+own; see this Part's own Implementation Notes for the exact trigger
+points in `app/nexus.py`/`app/state.py`.
 
 ### Dependencies
 
@@ -213,15 +255,157 @@ Command Palette this chapter's Executive Command Center substantially
 already is). All previous Design Bible chapters, matching this volume's
 own established framing.
 
-### Future Expansion
+### Deferred Features
 
-A literal twelve-seat board with every named Chief Officer filled by a
-real, distinct agent; automatic Emergency Board Meeting triggers; a CEO
-Assistant AI; and a general-purpose (non-trade-scoped) Decision Center
-all require real design decisions (new agents? repurposed existing
-ones? a new proposal type distinct from `TradeProposal`?) not made
-unilaterally in this pass. Matches this volume's own Future Expansion
-precedent — named honestly, not stubbed.
+Four items from this Part's own brief are explicitly deferred — not
+built, and not faked to look built. Each is documented here in full so
+a future session can pick it up without re-deriving this research: what
+exists today, exactly what real infrastructure is missing, what this
+depends on, which future chapter should own it, a rough complexity
+estimate, and the concrete risk of building it prematurely.
+
+#### Per-executive scorecards
+
+- **Current state:** `compute_executive_accuracy_scores()` (Part 2) and
+  `DepartmentInfluence` (Part 3) are both keyed on the 9-value
+  `ExecutiveDepartmentRole` enum (research/quant/risk/simulation/
+  decision_intelligence/coach/founders/devils_advocate/market_
+  intelligence), not on `AgentId`. Only 4 of those 9 roles carry a real
+  `agentId` on their `DepartmentOpinion` today (risk, simulation,
+  founders, devils_advocate), and none of the 4 map to this Part's own
+  4 filled Chief seats (cio/keystone/compass/quant) — Meridian (CIO)
+  never casts a `DepartmentOpinion` at all; she authors `ExecutiveReview`
+  separately. The one genuinely per-agent-id real number,
+  `DepartmentActivity` (research/decisions counts, now shared via
+  `compute_department_activity()`), is an activity-volume count, not a
+  quality or accuracy score.
+- **Missing infrastructure:** a real role↔agent identity mapping for
+  the 4 filled Chief seats into the 9-role `DepartmentOpinion` system
+  (or a wholly separate per-agent accuracy computation) does not exist
+  anywhere in this codebase.
+- **Dependencies:** Part 2 (Executive Accuracy Score), Part 3
+  (Department Influence), and this Part's own Board Roster (the seat
+  list a scorecard would attach to).
+- **Recommended future chapter:** a Chapter 70 Part 4 addendum, once a
+  real agent↔role identity mapping has an actual resolved design — not
+  a standalone new chapter, since it's a direct extension of Parts 2/3's
+  own real machinery.
+- **Estimated implementation complexity:** Medium. The accuracy/
+  influence math already exists and is real; the entire remaining cost
+  is resolving identity mapping and deciding what a scorecard shows for
+  the 7 vacant seats that have no agent at all.
+- **Risks of implementing prematurely:** silently declaring, e.g.,
+  "Keystone is the risk vote" when Sentinel is the agent who actually
+  casts it today would misattribute real trade outcomes to the wrong
+  agent's track record — corrupting the Executive Accuracy Score's own
+  real accountability, not just this feature. Inventing placeholder
+  "N/A" scorecards for the 7 vacant seats would be exactly the fake-
+  progression UI this project's engineering discipline forbids.
+
+#### CEO Assistant AI
+
+- **Current state:** zero existing "assistant" agent or mechanism
+  anywhere in `backend/app` (grep-confirmed). This chapter's own source
+  brief names only 3 of its claimed "six named Assistant
+  responsibilities" anywhere in the document — summarize meetings,
+  prioritize tasks, prepare agendas — the other 3 are not specified.
+- **Missing infrastructure:** no conversational or summarization
+  pipeline exists in this codebase at all — every "AI" output today
+  (Sage's Q&A, `ExecutiveReview.summary`, `CoachReport`) is deterministic
+  template/string generation over real state, never a generative model
+  call (this codebase has zero LLM calls anywhere). Building even the 3
+  named responsibilities honestly requires first deciding whether they
+  stay in that same deterministic-narrative convention or introduce this
+  codebase's first real generative-text mechanism — a real architectural
+  fork, not a detail.
+- **Dependencies:** `computeExecutivePriorities()` ("prioritize tasks")
+  and `ExecutiveMeetingLogEntry` ("summarize meetings") already exist as
+  real raw ingredients; "prepare agendas" has no real analog anywhere in
+  this codebase today.
+- **Recommended future chapter:** its own explicitly-scoped chapter,
+  written only once the source brief's other 3 responsibilities are
+  actually specified — they cannot be honestly scoped from what exists
+  today without inventing them.
+- **Estimated implementation complexity:** Medium if kept deterministic
+  (assembling already-real data into a narrative, matching
+  `ExecutiveReview`'s own precedent exactly); High if it introduces a
+  first generative mechanism, since that carries cost/latency/
+  determinism tradeoffs this codebase's engineering discipline has never
+  had to weigh before.
+- **Risks of implementing prematurely:** naming only 3 of the brief's 6
+  claimed responsibilities and inventing the other 3 to "complete" the
+  feature is exactly the fabrication this project's discipline forbids.
+  Treating Sage as this Assistant would silently overload an existing
+  agent's identity — Sage's own `personality` field states its job is
+  the opposite one (never telling the CEO what to think).
+
+#### CEO-assignable Chief titles
+
+- **Current state:** the 4 filled seats are hardcoded, static data in
+  `AGENT_PROFILES` (`agents.py`/`AgentProfiles.ts`, kept in sync) as
+  each agent's own `occupation` string. This Part's new Board Roster
+  reads them read-only; nothing persists a CEO-chosen assignment.
+- **Missing infrastructure:** no persisted "who holds which seat" state
+  distinct from the static agent profile; no CEO-facing assignment
+  endpoint or control; and, most importantly, no resolved rule for what
+  happens to an agent's existing `occupation` display everywhere else in
+  this codebase (NPC labels, dialogue, Command Center panels) if a seat
+  becomes independently reassignable.
+- **Dependencies:** this Part's own Board Roster (`app/board.py`) as
+  the read surface a real assignment control would attach to;
+  `AGENT_PROFILES`'s own static-data architecture, which is read from
+  in many places well outside this chapter.
+- **Recommended future chapter:** a Chapter 70 Part 1 addendum, written
+  only once the Board Roster has been live for a real pass and there is
+  an observed need to reassign seats — not built speculatively ahead of
+  that need.
+- **Estimated implementation complexity:** Low-Medium in isolation (a
+  new persisted `dict[seat_title, AgentId | None]` plus one CEO
+  endpoint), but the blast radius of getting the override layer wrong
+  is wider than the feature itself, since `AGENT_PROFILES.occupation` is
+  read pervasively across NPC rendering, dialogue, and the Command
+  Center.
+- **Risks of implementing prematurely:** without a resolved design for
+  whether/how a reassigned title propagates to every other place
+  `occupation` is displayed, this creates exactly the kind of partially
+  duplicated architecture this chapter's own workflow was told to avoid
+  — two competing sources of truth for "what is this agent's title."
+
+#### General-purpose non-trade Decision Center
+
+- **Current state:** every non-trade CEO approval this codebase has
+  today (Strategy Lab promotion, Innovation Lab budget, Goal creation,
+  Constitution amendments, Treasury savings rules, and more) has its
+  own separate, ad hoc UI and its own decision-recording shape —
+  confirmed directly against the code before this chapter's Ownership
+  table was written. No shared `Decision` object, no shared Approve/
+  Reject/Delay/Modify/Delegate action set, and no shared decision log
+  spans across any of them.
+- **Missing infrastructure:** a real, generalized `Decision` schema
+  abstract enough to cover trade proposals and every one of those ad
+  hoc approvals without forcing an awkward fit; a migration plan for
+  each existing flow to either move onto it or stay explicitly separate;
+  and a single log/history view spanning all of them — the closest real
+  analog, `ExecutiveMeetingLogEntry`, is trade-only.
+- **Dependencies:** every existing CEO-approval flow this codebase has
+  — a change of this scope touches most of the department chapters
+  already written, not just this one.
+- **Recommended future chapter:** its own dedicated Design Bible
+  chapter, never a Chapter 70 Part — scoped only after an explicit audit
+  of every existing ad hoc approval flow's real shape. Folding a change
+  this size into Part 1 here would itself be exactly the vague,
+  underscoped general-purpose Decision Center this chapter was told not
+  to build.
+- **Estimated implementation complexity:** High. This is a cross-cutting
+  architectural change touching most department chapters' own CEO
+  Controls, not a contained feature addition.
+- **Risks of implementing prematurely:** a hastily generalized
+  `Decision` object risks becoming exactly the kind of duplicate,
+  parallel system Appendix G forbids — competing with each department's
+  own real, working approval flow rather than replacing it cleanly. A
+  vague, half-migrated Decision Center would leave this codebase with
+  two competing approval architectures at once, the specific failure
+  mode this chapter was explicitly told to avoid.
 
 ### Design Bible Integration
 
@@ -249,35 +433,67 @@ change that.
 
 ### Implementation Notes
 
-**What's real today, found by direct research before this chapter was
-written, not assumed — one of the highest real-coverage chapters
-written this run, alongside Chapters 66/67:** a real monthly CIO review
-(`ExecutiveReview`) with fields matching five of the brief's own nine
-Board Report categories; a real, permanent per-decision meeting log
-(`ExecutiveMeetingLogEntry`) recording department opinions, the
-network's recommendation, and the CEO's actual choice; a real merged
-executive-priorities list (`computeExecutivePriorities()`, whose own
-code comment already named the "one list vs. five separate lists"
-tension this brief raises again); a real Company Health/Score breakdown
-covering six of the brief's own nine Company Health Review categories;
-real Goals/Milestones (Chapter 64) and Hall of Fame as distributed
-Strategic Roadmap material; a real, evidence-based department-
-disagreement system already enforcing a trading pause (Chapter 66);
-and — the single strongest match in this whole brief — Chapter 67's
-Global Status Bar, Executive Alert Center, and `useDashboardData()`
-hook already surfacing seven of the brief's own ten Executive Command
-Center metrics live, today. Four of the brief's twelve named board
-seats are filled by real agents with real, if not exactly matching,
-"Chief" titles (CIO exact; Risk/Knowledge/Quantitative close);
-eight others are not. **What's genuinely, entirely unbuilt:** the
-remaining five named board seats, Daily/Quarterly meeting cadence,
-automatic Emergency Board Meeting triggers (two of the seven named
-triggers — Broker Failure, Black Swan — have no underlying signal to
-trigger from at all, confirmed absent by Chapters 66/68), Modify/
-Delegate as CEO decision actions, a general-purpose non-trade Decision
-Center, per-executive Contribution/Forecast-Accuracy scorecards, and a
-CEO Assistant AI (Sage's real Socratic-mentor role is deliberately the
-opposite job). No code was written against this chapter.
+**Pre-existing, found by direct research before this pass began:** a
+real monthly CIO review (`ExecutiveReview`); a real, permanent
+per-decision meeting log (`ExecutiveMeetingLogEntry`); a real merged
+executive-priorities list (`computeExecutivePriorities()`); a real
+Company Health/Score breakdown; real Goals/Milestones (Chapter 64) and
+Hall of Fame as distributed Strategic Roadmap material; a real,
+evidence-based department-disagreement system enforcing a trading pause
+(Chapter 66); Chapter 67's Global Status Bar/Executive Alert
+Center/`useDashboardData()`; and, from Part 2 below, Modify/Delegate as
+real CEO decision actions.
+
+**Built this pass:**
+- **Board Roster** (`app/board.py::compute_board_roster()`,
+  `GET /api/board/roster`) — 11 of the brief's own 12 named seats
+  (4 filled by real agents, 7 named-vacant, all titles copied verbatim
+  from the brief, never invented). Computed fresh, never persisted —
+  agent identity rarely changes and there is nothing here worth
+  snapshotting.
+- **Board Report** (`app/board.py::generate_board_report()`,
+  `GET /api/board/reports`, persisted, capped at `MAX_BOARD_REPORTS`
+  (60), broadcast over WS) — composes already-real signals into 7 of
+  the brief's own 9 named Board Report fields (Department Health,
+  Problems, Recommendations, a narrative Summary, Risk Assessment,
+  Confidence Level, Required CEO Decisions); Opportunities and Expected
+  Impact remain uncomputable and are not fabricated. `compute_
+  department_activity()` was promoted out of `app/executive_review.py`
+  (was `_department_activity()`, module-private) into a shared function
+  both `ExecutiveReview` and the Board Report now call — one real
+  computation, never two.
+- **Daily and Quarterly cadence** — the two genuinely missing cadences
+  this chapter's own research confirmed (Weekly/Monthly were already
+  real via CoachReport/ExecutiveReview). Daily reuses Feature 51's
+  `is_evening`-only gate; Quarterly adds one new `QUARTERLY_INTERVAL_
+  DAYS = 90` constant, the identical `day % N` shape Weekly/Monthly
+  already use.
+- **Two real Emergency Board Meeting triggers**, both firing once on a
+  real edge-crossing — never every tick while the condition holds, the
+  same convention Chapter 72's Crisis Briefing already established:
+  Emergency Stop activation (from any real source — automatic Circuit
+  Breaker Tier 4/losing-streak in `app/nexus.py`, or CEO-manual in
+  `app/state.py::activate_emergency_stop()`) and a Black Swan tier
+  crossing into red/critical (the same crossing that already fires the
+  real Crisis Briefing). Each emergency report also writes a real,
+  permanent `MemoryRecord`, picked up by Chapter 73's Audit Log via a
+  new `board_report` category.
+
+**What's genuinely, entirely deferred — not built, and not faked to
+look built:** per-executive scorecards, a CEO Assistant AI,
+CEO-assignable Chief titles, and a general-purpose non-trade Decision
+Center. Each is documented in full in this Part's own **Deferred
+Features** section above — current state, missing infrastructure,
+dependencies, a recommended future chapter, an estimated complexity,
+and the risk of building it prematurely. Also genuinely unbuilt: the
+brief's own 12th board seat (never named anywhere in the source
+document — not invented here), and 5 of the brief's 7 named Emergency
+Board Meeting triggers (only Broker Failure is individually confirmed
+absent, per Chapter 68; the others are not individually specified
+anywhere in this chapter's own research and are not fabricated).
+Verified: `mypy app/` clean, `ruff check app/` clean, 18 new tests
+(`tests/test_board.py`) passing alongside the full existing suite
+(1321/1321).
 
 ## Part 2 — Executive Consensus Meter
 

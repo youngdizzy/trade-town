@@ -52,7 +52,11 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _department_activity(research: list[ResearchItem], decisions: list[TradeDecision], agent_ids: tuple[AgentId, ...]) -> list[DepartmentActivity]:
+def compute_department_activity(research: list[ResearchItem], decisions: list[TradeDecision], agent_ids: tuple[AgentId, ...]) -> list[DepartmentActivity]:
+    """Real per-agent research/decision counts — shared with
+    app/board.py's own Board Report (Design Bible Chapter 70 Part 1),
+    which reuses this exact computation for its own Department Health
+    field rather than re-deriving it."""
     activity: list[DepartmentActivity] = []
     for agent_id in agent_ids:
         research_count = len([r for r in research if r.assigned_agent == agent_id and r.status == "completed"])
@@ -138,7 +142,7 @@ def generate_executive_review(
     agent_ids: tuple[AgentId, ...],
     new_time: TimeState,
 ) -> ExecutiveReview:
-    department_activity = _department_activity(research, decisions, agent_ids)
+    department_activity = compute_department_activity(research, decisions, agent_ids)
     research_completed = len([r for r in research if r.status == "completed"])
     conflicts = _conflicts_detected(debates)
     major_events = _major_events(news)

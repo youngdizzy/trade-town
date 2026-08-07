@@ -6923,6 +6923,69 @@ Inserting BLACKSWAN shifted every later tab's number-key (1-9) shortcut
 down one position; the two affected Playwright assertions in
 `commandCenter.spec.ts` were updated to match.
 
+### Executive Board & CEO Intelligence System, Part 1 — Design Bible Chapter 70
+
+Part 1's own brief asked for one place where "everything important
+arrives" — a board roster, meetings on five cadences, a unified Board
+Report, and automatic emergency meetings. Research before this pass
+confirmed most of the underlying pieces were already real, under
+different names (`ExecutiveReview`, `ExecutiveMeetingLogEntry`,
+`computeExecutivePriorities()`, `CompanyHealth`) — this pass's job was
+building the two genuinely missing pieces without duplicating any of
+them: a real Board Roster and a real Board Report.
+
+**What's real:** an 11-seat `BoardRoster` (`app/board.py::
+compute_board_roster()`, `GET /api/board/roster`) — 4 seats already
+filled by real agents' own `AGENT_PROFILES.occupation` string (Meridian
+is literally "Chief Investment Officer"; Keystone/Compass/Vector hold
+close-but-not-exact matches, disclosed as such), plus the brief's own 7
+other named-but-vacant seats. The brief's claimed 12th seat is never
+named anywhere in the source document and is deliberately not invented.
+A `BoardReport` (`generate_board_report()`, `GET /api/board/reports`,
+persisted, capped at `MAX_BOARD_REPORTS` (60), WS-broadcast as
+`boardReports`) composes 7 of the brief's own 9 named fields from
+already-real sources — Department Health reuses `compute_department_
+activity()` (promoted out of `app/executive_review.py`, where it was
+`_department_activity()`, module-private, so both report types now call
+one real shared function instead of two competing ones), Problems and
+Recommendations reuse `CompanyHealth`'s own fields, Risk Assessment
+composes the already-real Black Swan tier and Daily Circuit Breaker
+tier into one line, Confidence Level reuses `CompanyHealth.
+department_consensus` verbatim, and Required CEO Decisions is the same
+`len(trade_proposals)` count Chapter 73.5's Situation Room already uses.
+Three cadences: `"daily"` (the same `is_evening`-only gate Feature 51's
+Market Brief already established), `"quarterly"` (one new
+`QUARTERLY_INTERVAL_DAYS = 90` constant, the identical `day % N` shape
+Weekly/Monthly already use — themselves already real via CoachReport/
+ExecutiveReview, so not duplicated here), and `"emergency"` — firing
+once on a real edge-crossing, never every tick while the condition
+holds, the identical convention Chapter 72's Crisis Briefing already
+established: an Emergency Stop activation from any real source
+(automatic Circuit Breaker Tier 4/losing-streak in `app/nexus.py`, or
+CEO-manual in `app/state.py::activate_emergency_stop()`), or a Black
+Swan tier crossing into red/critical (the same crossing that already
+fires the real Crisis Briefing). Each emergency report also writes a
+real, permanent `MemoryRecord`, picked up by Chapter 73's Audit Log via
+a new `board_report` category.
+
+**Deferred, not built and not faked to look built:** per-executive
+scorecards (the real accuracy/influence numbers from Parts 2/3 are
+role-keyed, not agent-keyed, and don't map onto the 4 filled Chief
+seats without a new, unresolved identity-mapping decision), a CEO
+Assistant AI (the brief's own source document names only 3 of its
+claimed 6 responsibilities), CEO-assignable Chief titles (would require
+an override layer over the pervasively-read `AGENT_PROFILES` static
+data), and a general-purpose non-trade Decision Center (a cross-cutting
+change touching most department chapters' own CEO Controls — scoped to
+its own future chapter, not folded in here). Each is documented in full
+in the Design Bible chapter's own Deferred Features section: current
+state, missing infrastructure, dependencies, a recommended future
+chapter, an estimated complexity, and the risk of building it
+prematurely.
+
+`app/board.py`, `app/routers/board.py`. 18 new tests
+(`tests/test_board.py`). Backend only this pass.
+
 ### Compliance, Audit & Governance System (CAGS) — Design Bible Chapter 73
 
 A real, read-only audit synthesis layer, backend only, with **no new

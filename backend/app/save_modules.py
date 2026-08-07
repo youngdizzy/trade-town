@@ -161,6 +161,7 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         "memory",
         "meeting_minutes",
         "executive_reviews",
+        "board_reports",
         "talent",
         "department_self_evaluations",
         "market_intelligence_reports",

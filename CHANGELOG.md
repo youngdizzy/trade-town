@@ -7,6 +7,45 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 70 Part 1 — Executive Board & CEO Intelligence System (backend)**
+  (`app/board.py` new, `app/routers/board.py` new, `app/schemas.py`,
+  `app/executive_review.py`, `app/nexus.py`, `app/state.py`,
+  `app/ws_manager.py`, `app/save_modules.py`, `app/audit_log.py`,
+  `app/main.py`): a real 11-seat Board Roster (`GET /api/board/roster`)
+  — 4 seats already filled by real agents' own `AGENT_PROFILES`
+  occupation string, plus the brief's own 7 other named-but-vacant
+  seats; the brief's claimed 12th seat is never named anywhere in the
+  source document and is deliberately not invented. A real Board Report
+  (`generate_board_report()`, `GET /api/board/reports`, persisted,
+  capped, WS-broadcast) composes 7 of the brief's own 9 named fields
+  from already-real sources — Department Health reuses
+  `compute_department_activity()` (promoted out of
+  `app/executive_review.py`'s own module-private
+  `_department_activity()` so both report types share one real
+  computation), Problems/Recommendations reuse `CompanyHealth` fields
+  verbatim, Risk Assessment composes the real Black Swan/Circuit
+  Breaker tiers, Confidence Level reuses `CompanyHealth.
+  department_consensus` verbatim, Required CEO Decisions reuses the
+  same pending-proposal count Chapter 73.5's Situation Room already
+  uses. Three cadences: Daily and Quarterly (the two genuinely missing
+  ones — Weekly/Monthly were already real via CoachReport/
+  ExecutiveReview) and Emergency, firing once on a real edge-crossing
+  (Emergency Stop activation from any source, or a Black Swan tier
+  crossing into red/critical), each writing a real `MemoryRecord`
+  picked up by Chapter 73's Audit Log via a new `board_report` category.
+  **Explicitly deferred, documented in full in the Design Bible chapter
+  rather than built or faked:** per-executive scorecards (the real
+  accuracy/influence numbers are role-keyed, not agent-keyed, and don't
+  map onto the 4 filled Chief seats without a new identity-mapping
+  decision), a CEO Assistant AI (the brief's own source document names
+  only 3 of its claimed 6 responsibilities), CEO-assignable Chief
+  titles (would need an override layer over the pervasively-read
+  `AGENT_PROFILES` static data), and a general-purpose non-trade
+  Decision Center (a cross-cutting change scoped to its own future
+  chapter). Verified: `mypy app/` clean, `ruff check app/` clean, 18
+  new tests (`tests/test_board.py`) passing alongside the full existing
+  suite (1321/1321). Backend only this pass.
+
 - **Chapter 73.5 — Mobile Command Center & Remote Operations (frontend)**
   (`types.ts`, `net/api.ts`, `net/socket.ts`, `game/systems/EventBus.ts`,
   `game/systems/NexusManager.ts`, `state/gameStore.ts`,
