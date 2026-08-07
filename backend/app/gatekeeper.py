@@ -191,7 +191,7 @@ def evaluate_gatekeeper(
     weighted_recommendation: WeightedExecutiveRecommendation | None = None,
     min_confidence_override: float | None = None,
 ) -> "GatekeeperVerdict":
-    """`min_confidence_override` (Design Bible Chapter 74) — the real,
+    """`min_confidence_override` (Design Bible Chapter 75) — the real,
     disclosed points app/trading_modes.py's Daily Circuit Breaker adds to
     the required confidence while a tier is active. None (the default)
     means the ordinary MIN_CONFIDENCE applies, unchanged from before this

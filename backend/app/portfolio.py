@@ -70,7 +70,7 @@ def open_position(
     recommended_quantity() instead of this module's flat-fraction
     default). No-ops (returns the portfolio unchanged) if cash is too low
     to open a meaningful position, rather than opening a zero-size one.
-    `trading_style` (Design Bible Chapter 74) — the real "day"/"swing"
+    `trading_style` (Design Bible Chapter 75) — the real "day"/"swing"
     tag app/trading_modes.py's assign_trading_style() assigned to the
     TradeProposal this position was opened from; None for any caller
     that doesn't pass one (unchanged, pre-chapter behavior)."""

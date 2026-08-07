@@ -100,7 +100,7 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         # System (app/black_swan.py). Real, CEO-mutated posture state —
         # not recomputed, so it belongs here, not in `derived`.
         "defensive_mode",
-        # Design Bible Chapter 74 — Company Trading Modes. Real,
+        # Design Bible Chapter 75 — Company Trading Modes. Real,
         # CEO-mutated mode/thresholds (plus internal rotation/
         # acknowledgment bookkeeping) — not recomputed, same as
         # defensive_mode above.

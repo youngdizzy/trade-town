@@ -271,7 +271,7 @@ export const api = {
   getGovernance: () => request<GovernanceLayer[]>("/audit/governance"),
   getComplianceOverview: () => request<ComplianceOverview>("/audit/overview"),
   getCeoOverrides: () => request<CeoOverrideRecord[]>("/audit/overrides"),
-  // Design Bible Chapter 74 — Company Trading Modes & Institutional
+  // Design Bible Chapter 75 — Company Trading Modes & Institutional
   // Capital Protection. tradingModes/dailyCircuitBreaker/losingStreak/
   // recoveryBriefings are already live via the WS tick broadcast (see
   // gameStore) — these are the genuine on-demand reads/actions:

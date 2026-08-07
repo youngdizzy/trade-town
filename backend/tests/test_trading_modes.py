@@ -1,4 +1,4 @@
-"""Covers app/trading_modes.py — Design Bible Chapter 74, Company
+"""Covers app/trading_modes.py — Design Bible Chapter 75, Company
 Trading Modes & Institutional Capital Protection. Every lever must trace
 back to a real formula over already-real state — never a fabricated
 signal. See the module's own docstring for the full honesty boundary.

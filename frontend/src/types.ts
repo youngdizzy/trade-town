@@ -3075,7 +3075,7 @@ export interface CeoOverrideRecord {
   createdAt: string;
 }
 
-// Design Bible Chapter 74 — Company Trading Modes & Institutional
+// Design Bible Chapter 75 — Company Trading Modes & Institutional
 // Capital Protection (see backend/app/trading_modes.py). tradingModes/
 // dailyCircuitBreaker/losingStreak/recoveryBriefings are real, part of
 // the WS tick broadcast (gameStore) — unlike Chapter 73's CAGS.

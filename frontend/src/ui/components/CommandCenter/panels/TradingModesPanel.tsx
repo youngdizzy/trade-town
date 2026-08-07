@@ -5,7 +5,7 @@ import type { AdaptiveModeRecommendation, DailyCircuitBreakerTier, TradingMode, 
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
 
 /**
- * Design Bible Chapter 74 — Company Trading Modes & Institutional
+ * Design Bible Chapter 75 — Company Trading Modes & Institutional
  * Capital Protection (backend/app/trading_modes.py). Extends, never
  * duplicates, Chapter 65's real Regime Reconciliation and Chapter 66's
  * real daily/weekly/monthly loss halt and Trade Gatekeeper — a graduated

@@ -1,4 +1,4 @@
-"""Design Bible Chapter 74 — Company Trading Modes & Institutional
+"""Design Bible Chapter 75 — Company Trading Modes & Institutional
 Capital Protection endpoints. See app/trading_modes.py's module
 docstring for the full honesty boundary. TradingModeState/
 DailyCircuitBreaker/LosingStreak/RecoveryBriefings are real, already-

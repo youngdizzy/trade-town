@@ -905,7 +905,7 @@ def _apply_operating_mode(
             still_pending.append(proposal)
             continue
 
-        # Design Bible Chapter 74 — Daily Circuit Breaker Tier 2+. Every
+        # Design Bible Chapter 75 — Daily Circuit Breaker Tier 2+. Every
         # new proposal waits for manual CEO resolution regardless of
         # Operating Mode while a tier is active, the same real branch
         # this function already uses for Chapter 66's pause_trading.
@@ -1097,7 +1097,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     performance_snapshots = list(state.performance_snapshots)
     risk_limits = state.risk_limits
     company_priority: CompanyPriority = state.settings.company_priority
-    # Design Bible Chapter 74 — Company Trading Modes & Institutional
+    # Design Bible Chapter 75 — Company Trading Modes & Institutional
     # Capital Protection (app/trading_modes.py).
     trading_mode_state: TradingModeState = state.trading_modes
     recovery_briefings = list(state.recovery_briefings)
@@ -1314,7 +1314,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             )
         )
 
-    # Design Bible Chapter 74 — Company Trading Modes & Institutional
+    # Design Bible Chapter 75 — Company Trading Modes & Institutional
     # Capital Protection. Day-position flattening runs once per real
     # sim-day rollover, before this tick's Circuit Breaker read (a
     # flattened position's realized P&L is part of *today's* real daily
@@ -1381,7 +1381,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # trade proposal generation entirely (existing pending proposals are
     # handled by _apply_operating_mode()'s own emergency_stop_active
     # check below; research/monitoring above this line are untouched).
-    # Design Bible Chapter 74 — the Daily Circuit Breaker's Tier 3/4 and
+    # Design Bible Chapter 75 — the Daily Circuit Breaker's Tier 3/4 and
     # an active Losing Streak pause block new proposal generation the
     # same real way.
     candidate_proposals = (
@@ -1487,7 +1487,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             sim_day=now_sim_minutes // 1440,
         )
         war_room_session = war_room_session.model_copy(update={"position_sizing": position_sizing})
-        # Design Bible Chapter 74 — every proposal that survives the
+        # Design Bible Chapter 75 — every proposal that survives the
         # Opportunity Gatekeeper gets a real "day"/"swing" tag the moment
         # it becomes CEO-visible.
         trading_style, trading_mode_state = assign_trading_style(trading_mode_state)

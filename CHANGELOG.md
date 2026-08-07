@@ -7,7 +7,7 @@ development milestones, not semver releases.
 
 ### Added
 
-- **Chapter 74 — Company Trading Modes & Institutional Capital Protection (frontend)**
+- **Chapter 75 — Company Trading Modes & Institutional Capital Protection (frontend)**
   (`types.ts`, `net/api.ts`, `net/socket.ts`, `game/systems/EventBus.ts`,
   `game/systems/NexusManager.ts`, `state/gameStore.ts`,
   `ui/components/CommandCenter/panels/TradingModesPanel.tsx` new,
@@ -35,7 +35,7 @@ development milestones, not semver releases.
   documented movement-hold timing flake confirmed earlier this session,
   untouched by this change).
 
-- **Chapter 74 — Company Trading Modes & Institutional Capital Protection (backend)**
+- **Chapter 75 — Company Trading Modes & Institutional Capital Protection (backend)**
   (`app/trading_modes.py` new, `app/routers/trading_modes.py` new,
   `app/schemas.py`, `app/gatekeeper.py`, `app/portfolio.py`,
   `app/executive.py`, `app/nexus.py`, `app/state.py`,
@@ -82,7 +82,7 @@ development milestones, not semver releases.
   tests. Verified: `mypy app/` clean, `ruff check app/` clean, full
   `pytest -q` — 1259 passed (1221 pre-existing + 38 new), zero
   regressions. See
-  `docs/DesignBible/volumes/09-departments/chapter-74-company-trading-modes-institutional-capital-protection.md`
+  `docs/DesignBible/volumes/09-departments/chapter-75-company-trading-modes-institutional-capital-protection.md`
   for the complete honesty boundary.
 
 - **Chapter 73 — Compliance, Audit & Governance System (CAGS) (frontend)**

@@ -634,7 +634,7 @@ class PaperPosition(CamelModel):
     # migration path, which relies on every field added after the initial
     # release having a safe default.
     opened_sim_minutes: int = Field(default=0, alias="openedSimMinutes")
-    # Design Bible Chapter 74 — the real per-position tag Day Trading
+    # Design Bible Chapter 75 — the real per-position tag Day Trading
     # Mode's own end-of-day flattening checks. None for any position
     # opened before this chapter (or via the currently-inert
     # PaperOrder/tick_broker path — see app/trading_modes.py's module
@@ -691,7 +691,7 @@ class PaperTrade(CamelModel):
     # see persistence.py's migration path.
     opened_sim_minutes: int = Field(default=0, alias="openedSimMinutes")
     closed_sim_minutes: int = Field(default=0, alias="closedSimMinutes")
-    # Design Bible Chapter 74 — carried over from the PaperPosition this
+    # Design Bible Chapter 75 — carried over from the PaperPosition this
     # trade closed (app/portfolio.py's close_position() copies it
     # automatically). None for any trade closed before this chapter.
     trading_style: "TradingStyle | None" = Field(default=None, alias="tradingStyle")
@@ -1610,7 +1610,7 @@ class TradeProposal(CamelModel):
     market_intelligence_summary: str | None = Field(
         default=None, alias="marketIntelligenceSummary"
     )
-    # Design Bible Chapter 74 — assigned by app/trading_modes.py's
+    # Design Bible Chapter 75 — assigned by app/trading_modes.py's
     # assign_trading_style() the moment this proposal enters
     # trade_proposals (app/nexus.py's tick()), never at construction
     # time here — see that module's own docstring for the deterministic
@@ -4258,7 +4258,7 @@ AuditEventCategory = Literal[
     "defensive_mode",
     "crisis_briefing",
     "rule_violation",
-    # Design Bible Chapter 74 — a real Trading Mode change or Daily
+    # Design Bible Chapter 75 — a real Trading Mode change or Daily
     # Circuit Breaker tier change, both recorded as MemoryRecords by
     # app/trading_modes.py.
     "trading_mode_change",
@@ -4337,7 +4337,7 @@ class CeoOverrideRecord(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
-# Design Bible Chapter 74 — Company Trading Modes & Institutional Capital
+# Design Bible Chapter 75 — Company Trading Modes & Institutional Capital
 # Protection (app/trading_modes.py). "day_trading"/"swing_trading"/
 # "hybrid" are the CEO's real operating policy; TradingStyle is the
 # per-trade tag that policy assigns (see TradingModeState.mode's own
@@ -5672,7 +5672,7 @@ class GameSaveState(CamelModel):
     institutional_survival_score: InstitutionalSurvivalScore = Field(
         alias="institutionalSurvivalScore"
     )
-    # Design Bible Chapter 74 — Company Trading Modes & Institutional
+    # Design Bible Chapter 75 — Company Trading Modes & Institutional
     # Capital Protection (app/trading_modes.py). trading_modes is the
     # CEO's own real selection/thresholds; daily_circuit_breaker and
     # losing_streak are recomputed fresh every tick exactly like

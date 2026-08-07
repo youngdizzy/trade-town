@@ -791,7 +791,7 @@ class GameState:
             return self.data, None
 
     async def set_trading_mode(self, *, mode: TradingMode, hybrid_day_allocation_pct: float | None) -> tuple[GameSaveState, str | None]:
-        """Design Bible Chapter 74 — the CEO's real Trading Mode change.
+        """Design Bible Chapter 75 — the CEO's real Trading Mode change.
         Blocked while Emergency Stop is active, the same real precedent
         every other CEO trading control in this codebase already
         follows — a mode change mid-halt has nothing real to act on."""
@@ -808,7 +808,7 @@ class GameState:
             return self.data, None
 
     async def acknowledge_losing_streak(self) -> tuple[GameSaveState, str | None]:
-        """Design Bible Chapter 74 — the CEO's real, explicit clear of
+        """Design Bible Chapter 75 — the CEO's real, explicit clear of
         the current losing-streak pause. Only meaningful while the pause
         is actually active; a no-op error otherwise, matching this
         codebase's other action-not-applicable error precedents."""
@@ -1568,7 +1568,7 @@ class GameState:
                     raw_action=raw_recommendation.action,
                 )
 
-            # Design Bible Chapter 74 — the Daily Circuit Breaker's real,
+            # Design Bible Chapter 75 — the Daily Circuit Breaker's real,
             # disclosed confidence bonus applies to a manual CEO decision
             # exactly like an auto-resolution (see app/nexus.py's
             # _apply_operating_mode) — the same Gatekeeper bar for

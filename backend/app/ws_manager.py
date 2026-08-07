@@ -143,7 +143,7 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         "defensiveMode": state.defensive_mode.model_dump(by_alias=True),
         "blackSwanEvents": [e.model_dump(by_alias=True) for e in state.black_swan_events],
         "institutionalSurvivalScore": state.institutional_survival_score.model_dump(by_alias=True),
-        # Design Bible Chapter 74 — tradingModes is real CEO-mutated
+        # Design Bible Chapter 75 — tradingModes is real CEO-mutated
         # state; dailyCircuitBreaker/losingStreak are recomputed every
         # tick like institutionalSurvivalScore above; recoveryBriefings
         # is a permanent, capped history.

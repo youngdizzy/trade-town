@@ -1,4 +1,4 @@
-# Chapter 74 — Company Trading Modes & Institutional Capital Protection
+# Chapter 75 — Company Trading Modes & Institutional Capital Protection
 
 **Status:** Backend implemented. Real overlap found and extended rather
 than duplicated: Chapter 65 (Market Regime & Adaptive Strategy) already

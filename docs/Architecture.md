@@ -6977,7 +6977,7 @@ Executive Recommendation reads. The Audit Log tab's category/severity/
 search filters are real query parameters sent to the backend's own
 `filter_audit_log()`, not a client-side re-filter of an unfiltered dump.
 
-### Company Trading Modes & Institutional Capital Protection — Design Bible Chapter 74
+### Company Trading Modes & Institutional Capital Protection — Design Bible Chapter 75
 
 Closes two gaps Chapters 65 (Market Regime & Adaptive Strategy) and 66
 (Institutional Safety & Capital Protection) each already named as

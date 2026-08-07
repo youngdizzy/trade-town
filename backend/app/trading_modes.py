@@ -1,6 +1,6 @@
 """Company Trading Modes & Institutional Capital Protection — Design
-Bible Chapter 74 (see docs/DesignBible/volumes/09-departments/
-chapter-74-company-trading-modes-institutional-capital-protection.md for
+Bible Chapter 75 (see docs/DesignBible/volumes/09-departments/
+chapter-75-company-trading-modes-institutional-capital-protection.md for
 the full honesty boundary).
 
 Two real, previously-confirmed gaps closed here, extending rather than

@@ -1483,7 +1483,7 @@ tracks for CEO Accuracy.
 
 ### `GET /api/trading-modes/state` / `POST /api/trading-modes/set`
 
-Design Bible Chapter 74 — Company Trading Modes & Institutional Capital
+Design Bible Chapter 75 — Company Trading Modes & Institutional Capital
 Protection. `GET` returns the real, persisted `TradingModeState`
 (`mode`: `day_trading`/`swing_trading`/`hybrid`, `hybridDayAllocationPct`,
 `changedAt`, `previousMode`, `changeReason`, plus the CEO's Circuit
@@ -1529,7 +1529,7 @@ Strategy's `SimulationResult` history.
 
 ### `GET /api/trading-modes/adaptive-recommendation`
 
-Design Bible Chapter 74's Adaptive Mode — read-only, exactly like
+Design Bible Chapter 75's Adaptive Mode — read-only, exactly like
 Chapter 65's own `posture` field, never applied automatically. Reads the
 real `RegimeReconciliation` (Chapter 65) and maps it to a recommended
 `TradingMode` (or `null`) off a disclosed decision table — see
