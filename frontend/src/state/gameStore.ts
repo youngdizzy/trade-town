@@ -30,6 +30,7 @@ import type {
   EconomicIntelligenceReport,
   EconomicIntelligenceState,
   EmergencyStopState,
+  BoardReport,
   ExecutiveMeetingLogEntry,
   ExecutiveReview,
   FounderState,
@@ -160,6 +161,7 @@ export interface GameUiState {
   companyDna: CompanyDNA;
   dailyObjectiveStatus: DailyObjectiveStatus;
   executiveReviews: ExecutiveReview[];
+  boardReports: BoardReport[];
   academyProjects: AcademyProject[];
   academyCompletedProjects: AcademyProject[];
   goals: Goal[];
@@ -433,6 +435,7 @@ class GameStore {
       updatedAt: new Date().toISOString(),
     },
     executiveReviews: [],
+    boardReports: [],
     academyProjects: [],
     goals: [],
     strategicReviews: [],
@@ -704,6 +707,7 @@ class GameStore {
     EventBus.on("companyDna:updated", (companyDna) => this.set({ companyDna }));
     EventBus.on("dailyObjectiveStatus:updated", (dailyObjectiveStatus) => this.set({ dailyObjectiveStatus }));
     EventBus.on("executiveReviews:updated", (executiveReviews) => this.set({ executiveReviews }));
+    EventBus.on("boardReports:updated", (boardReports) => this.set({ boardReports }));
     EventBus.on("academyProjects:updated", (academyProjects) => this.set({ academyProjects }));
     EventBus.on("goals:updated", (goals) => this.set({ goals }));
     EventBus.on("strategicReviews:updated", (strategicReviews) => this.set({ strategicReviews }));

@@ -1,9 +1,16 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { api } from "@/net/api";
 import { useGameStore } from "@/ui/hooks/useGameStore";
-import { EXECUTIVE_ACTION_LABEL, EXECUTIVE_STANCE_LABEL } from "@/types";
+import { EXECUTIVE_ACTION_LABEL, EXECUTIVE_STANCE_LABEL, type BoardReport, type BoardRoster } from "@/types";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { computeDepartmentHealth, computeExecutivePriorities, decisionGradeTone, executiveActionTone, executiveStanceTone, latestSelfEvaluationsByRole, recentMeetingLogEntries } from "../lib/derive";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
+
+const CADENCE_TONE: Record<BoardReport["cadence"], "cyan" | "purple" | "red"> = {
+  daily: "cyan",
+  quarterly: "purple",
+  emergency: "red",
+};
 
 /**
  * v0.7 Feature 43 — the Executive Intelligence Dashboard. Researched
@@ -18,10 +25,25 @@ import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "..
  * real per-subsystem rollup — see lib/derive.ts's computeDepartmentHealth
  * for exactly which of the brief's five requested dimensions each real
  * subsystem actually supports).
+ *
+ * Design Bible Chapter 70 Part 1 — Executive Board & CEO Intelligence
+ * System (backend/app/board.py). boardRoster has no WS-broadcast field
+ * (computed fresh per request, since agent identity rarely changes) —
+ * fetched here on mount instead. boardReports IS already live via the
+ * WS tick broadcast (gameStore).
  */
 export function ExecutiveIntelPanel() {
-  const { companyDna, companyHealth, coachReports, executiveReviews, research, riskWarnings, paperPortfolio, blackBox, innovationState, founderState, academyState, executiveMeetingLog, departmentSelfEvaluations } = useGameStore();
+  const { companyDna, companyHealth, coachReports, executiveReviews, research, riskWarnings, paperPortfolio, blackBox, innovationState, founderState, academyState, executiveMeetingLog, departmentSelfEvaluations, boardReports } = useGameStore();
   const [expandedMeeting, setExpandedMeeting] = useState<string | null>(null);
+  const [roster, setRoster] = useState<BoardRoster | null>(null);
+  const [rosterError, setRosterError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .getBoardRoster()
+      .then(setRoster)
+      .catch((err: unknown) => setRosterError(err instanceof Error ? err.message : "Failed to load the Board Roster."));
+  }, []);
 
   const priorities = computeExecutivePriorities(companyHealth, coachReports, executiveReviews);
   const departments = computeDepartmentHealth({
@@ -65,6 +87,25 @@ export function ExecutiveIntelPanel() {
             </div>
           ))}
         </div>
+      </Glass>
+
+      <Glass className="p-3">
+        <TerminalLabel>Board Roster — 11 of the brief&apos;s 12 named seats (the 12th is never named in the source brief)</TerminalLabel>
+        {roster === null ? (
+          rosterError ? <div className="text-[9px] text-cmd-red">{rosterError}</div> : <EmptyState>Loading the Board Roster…</EmptyState>
+        ) : (
+          <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {roster.seats.map((seat) => (
+              <div key={seat.title} className="rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2 text-[9px]">
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-cmd-cyan">{seat.title}</span>
+                  <StatusPill tone={seat.agentId ? "green" : "neutral"}>{seat.agentId ? "FILLED" : "VACANT"}</StatusPill>
+                </div>
+                <div className="text-cmd-text">{seat.agentName ?? "No agent holds this seat."}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </Glass>
 
       <Glass className="p-3">
@@ -177,6 +218,42 @@ export function ExecutiveIntelPanel() {
                 </button>
               );
             })}
+          </div>
+        )}
+      </Glass>
+
+      <Glass className="p-3">
+        <div className="mb-1.5 flex items-center justify-between">
+          <TerminalLabel>Board Reports ({boardReports.length})</TerminalLabel>
+          <span className="text-[9px] text-cmd-textDim">Daily / Quarterly / Emergency — composed from already-real signals, never a duplicate computation</span>
+        </div>
+        {boardReports.length === 0 ? (
+          <EmptyState>No Board Report has been filed yet.</EmptyState>
+        ) : (
+          <div className="max-h-96 space-y-1.5 overflow-y-auto">
+            {[...boardReports].reverse().map((report) => (
+              <div key={report.id} className="rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2 text-[9px]">
+                <div className="mb-1 flex flex-wrap items-center gap-2">
+                  <StatusPill tone={CADENCE_TONE[report.cadence]}>{report.cadence.toUpperCase()}</StatusPill>
+                  {report.trigger && <span className="text-cmd-textDim">({report.trigger.replace("_", " ")})</span>}
+                  <span className="ml-auto text-cmd-textDim">Day {report.simDay}</span>
+                </div>
+                <p className="mb-1.5 text-cmd-text">{report.summary}</p>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 sm:grid-cols-4">
+                  <DataRow label="Confidence" value={`${report.confidenceLevel.toFixed(0)}%`} />
+                  <DataRow label="Decisions Pending" value={report.requiredCeoDecisions} />
+                  <DataRow label="Problems" value={report.problems.length} />
+                  <DataRow label="Recommendations" value={report.recommendations.length} />
+                </div>
+                {report.problems.length > 0 && (
+                  <div className="mt-1.5 space-y-0.5">
+                    {report.problems.map((p) => (
+                      <div key={p} className="text-cmd-amber">{p}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </Glass>

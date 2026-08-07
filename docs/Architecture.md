@@ -6984,7 +6984,17 @@ chapter, an estimated complexity, and the risk of building it
 prematurely.
 
 `app/board.py`, `app/routers/board.py`. 18 new tests
-(`tests/test_board.py`). Backend only this pass.
+(`tests/test_board.py`).
+
+**Frontend:** the Board Roster and Board Reports were added to the
+existing `EXECINTEL` tab (`ExecutiveIntelPanel.tsx`) rather than a new
+tab — Part 1 of an already-tabbed chapter, extending its established
+UI surface. Board Roster is fetched on mount (`api.getBoardRoster()`),
+mirroring `CompliancePanel.tsx`'s on-demand pattern since the backend
+slice adds no WS-broadcast field for it; Board Reports reads
+`boardReports` live off `gameStore`, wired through the full
+`socket.ts` → `EventBus` → `NexusManager` → `gameStore` pipeline the
+same way `executiveReviews` already is.
 
 ### Compliance, Audit & Governance System (CAGS) — Design Bible Chapter 73
 

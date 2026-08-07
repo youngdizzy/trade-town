@@ -7,6 +7,29 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 70 Part 1 — Executive Board & CEO Intelligence System (frontend)**
+  (`types.ts`, `net/api.ts`, `net/socket.ts`, `game/systems/EventBus.ts`,
+  `game/systems/NexusManager.ts`, `state/gameStore.ts`,
+  `ui/components/CommandCenter/panels/ExecutiveIntelPanel.tsx`): the
+  Board Roster and Board Reports were added to the existing `EXECINTEL`
+  tab rather than a new tab — Part 1 of an already-tabbed chapter,
+  extending its established UI surface instead of duplicating it. Board
+  Roster is fetched on mount (`api.getBoardRoster()`, no WS-broadcast
+  field, same on-demand pattern `CompliancePanel.tsx` already
+  established); Board Reports reads `boardReports` live off
+  `gameStore`, wired through the full `socket.ts` → `EventBus` →
+  `NexusManager` → `gameStore` pipeline the same way `executiveReviews`
+  already is. Verified: `tsc --noEmit` clean, `eslint` clean (0
+  warnings), `vite build` clean, and a live dev-stack walkthrough
+  (backend + Vite dev server, headless Chromium) confirming the Board
+  Roster renders all 11 real seats (4 filled with real agent names, 7
+  honestly vacant) and the Board Reports section renders its honest
+  empty state before any report has fired, no console errors. Full
+  Playwright regression against the live dev stack (40 Command Center
+  tabs, unchanged this pass; 31 passed, 1 skipped, 1 failed — the same
+  pre-existing, already-documented movement-hold timing flake,
+  untouched by this change).
+
 - **Chapter 70 Part 1 — Executive Board & CEO Intelligence System (backend)**
   (`app/board.py` new, `app/routers/board.py` new, `app/schemas.py`,
   `app/executive_review.py`, `app/nexus.py`, `app/state.py`,
@@ -44,7 +67,7 @@ development milestones, not semver releases.
   Decision Center (a cross-cutting change scoped to its own future
   chapter). Verified: `mypy app/` clean, `ruff check app/` clean, 18
   new tests (`tests/test_board.py`) passing alongside the full existing
-  suite (1321/1321). Backend only this pass.
+  suite (1321/1321).
 
 - **Chapter 73.5 — Mobile Command Center & Remote Operations (frontend)**
   (`types.ts`, `net/api.ts`, `net/socket.ts`, `game/systems/EventBus.ts`,

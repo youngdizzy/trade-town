@@ -2170,6 +2170,41 @@ export interface ExecutiveReview {
   createdAt: string;
 }
 
+// Design Bible Chapter 70 Part 1 — Executive Board & CEO Intelligence
+// System (see backend/app/board.py). BoardSeat/BoardRoster have no
+// WS-broadcast field (computed fresh per request, the same on-demand
+// pattern Chapter 73's CompliancePanel already established) — fetched
+// via net/api.ts instead. boardReports IS a real, live WS-broadcast
+// field (gameStore), the same convention executiveReviews above uses.
+export interface BoardSeat {
+  title: string;
+  agentId: AgentId | null;
+  agentName: string | null;
+}
+
+export interface BoardRoster {
+  seats: BoardSeat[];
+  generatedAt: string;
+}
+
+export type BoardReportCadence = "daily" | "quarterly" | "emergency";
+export type BoardReportTrigger = "emergency_stop" | "black_swan_tier";
+
+export interface BoardReport {
+  id: string;
+  cadence: BoardReportCadence;
+  trigger: BoardReportTrigger | null;
+  departmentActivity: DepartmentActivity[];
+  problems: string[];
+  recommendations: string[];
+  riskAssessment: string;
+  confidenceLevel: number;
+  requiredCeoDecisions: number;
+  summary: string;
+  simDay: number;
+  createdAt: string;
+}
+
 // Design Bible Chapter 64 — Executive Strategic Planning & Goal
 // Management Engine (see backend/app/goals.py). Deliberately the
 // smallest real slice: a CEO-authored goal against one real,
@@ -3779,6 +3814,7 @@ export interface GameSaveState {
   companyDna: CompanyDNA;
   dailyObjectiveStatus: DailyObjectiveStatus;
   executiveReviews: ExecutiveReview[];
+  boardReports: BoardReport[];
   academyProjects: AcademyProject[];
   academyCompletedProjects: AcademyProject[];
   goals: Goal[];

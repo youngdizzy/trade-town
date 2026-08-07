@@ -29,6 +29,7 @@ import type {
   EconomicIntelligenceReport,
   EconomicIntelligenceState,
   EmergencyStopState,
+  BoardReport,
   ExecutiveMeetingLogEntry,
   ExecutiveReview,
   FounderState,
@@ -148,6 +149,7 @@ type ServerMessage =
       companyDna: CompanyDNA;
       dailyObjectiveStatus: DailyObjectiveStatus;
       executiveReviews: ExecutiveReview[];
+      boardReports: BoardReport[];
       academyProjects: AcademyProject[];
       academyCompletedProjects: AcademyProject[];
       goals: Goal[];
@@ -298,6 +300,7 @@ export class GameSocket {
             companyDna: msg.companyDna,
             dailyObjectiveStatus: msg.dailyObjectiveStatus,
             executiveReviews: msg.executiveReviews,
+            boardReports: msg.boardReports,
             academyProjects: msg.academyProjects,
             academyCompletedProjects: msg.academyCompletedProjects,
             goals: msg.goals,

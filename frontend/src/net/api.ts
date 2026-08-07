@@ -88,6 +88,7 @@ import type {
   LosingStreakRead,
   AdaptiveModeRecommendation,
   RecoveryBriefing,
+  BoardRoster,
   SituationRoomState,
   TravelModeState,
   TravelModeSettings,
@@ -292,6 +293,12 @@ export const api = {
   getTradingModeHealth: () => request<TradingModeHealthAssessment[]>("/trading-modes/health"),
   getAdaptiveModeRecommendation: () => request<AdaptiveModeRecommendation>("/trading-modes/adaptive-recommendation"),
   getRecoveryBriefings: () => request<RecoveryBriefing[]>("/trading-modes/recovery-briefings"),
+  // Design Bible Chapter 70 Part 1 — Executive Board & CEO Intelligence
+  // System. boardRoster has no WS-broadcast field (computed fresh per
+  // request, same on-demand pattern as the Adaptive Mode recommendation
+  // above) — fetched here instead. boardReports IS already live via the
+  // WS tick broadcast (gameStore).
+  getBoardRoster: () => request<BoardRoster>("/board/roster"),
   // Design Bible Chapter 73.5 — Mobile Command Center & Remote
   // Operations. situationRoom has no WS-broadcast field (computed
   // fresh per request, same on-demand pattern as the Adaptive Mode

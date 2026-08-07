@@ -493,7 +493,14 @@ absent, per Chapter 68; the others are not individually specified
 anywhere in this chapter's own research and are not fabricated).
 Verified: `mypy app/` clean, `ruff check app/` clean, 18 new tests
 (`tests/test_board.py`) passing alongside the full existing suite
-(1321/1321).
+(1321/1321). **Frontend:** the Board Roster and Board Reports were
+added to the existing `EXECINTEL` tab (`ExecutiveIntelPanel.tsx`)
+rather than a new tab, extending its established UI surface. Verified:
+`tsc --noEmit`/`eslint`/`vite build` clean, a live dev-stack walkthrough
+confirming both sections render real data with no console errors, and
+the full Playwright regression suite (40 tabs, unchanged this pass; 31
+passed, 1 skipped, 1 failed — the same pre-existing movement-hold
+timing flake, untouched by this change).
 
 ## Part 2 — Executive Consensus Meter
 

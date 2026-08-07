@@ -29,6 +29,7 @@ import type {
   DialogueHistoryEntry,
   DisciplineReview,
   EconomicIntelligenceReport,
+  BoardReport,
   EconomicIntelligenceState,
   EmergencyStopState,
   ExecutiveMeetingLogEntry,
@@ -212,6 +213,7 @@ export interface GameEvents {
   "companyDna:updated": CompanyDNA;
   "dailyObjectiveStatus:updated": DailyObjectiveStatus;
   "executiveReviews:updated": ExecutiveReview[];
+  "boardReports:updated": BoardReport[];
   "academyProjects:updated": AcademyProject[];
   "academyCompletedProjects:updated": AcademyProject[];
   "goals:updated": Goal[];

@@ -28,6 +28,7 @@ import type {
   EconomicIntelligenceState,
   EmergencyStopState,
   ExecutiveMeetingLogEntry,
+  BoardReport,
   ExecutiveReview,
   FounderState,
   Goal,
@@ -139,6 +140,7 @@ interface NexusSnapshot {
   companyDna: CompanyDNA;
   dailyObjectiveStatus: DailyObjectiveStatus;
   executiveReviews: ExecutiveReview[];
+  boardReports: BoardReport[];
   academyProjects: AcademyProject[];
   academyCompletedProjects: AcademyProject[];
   goals: Goal[];
@@ -359,6 +361,7 @@ export class NexusManager {
     updatedAt: new Date().toISOString(),
   };
   private static executiveReviews: ExecutiveReview[] = [];
+  private static boardReports: BoardReport[] = [];
   private static academyProjects: AcademyProject[] = [];
   private static goals: Goal[] = [];
   private static strategicReviews: StrategicReview[] = [];
@@ -687,6 +690,10 @@ export class NexusManager {
 
   static getExecutiveReviews(): ExecutiveReview[] {
     return this.executiveReviews;
+  }
+
+  static getBoardReports(): BoardReport[] {
+    return this.boardReports;
   }
 
   static getAcademyProjects(): AcademyProject[] {
@@ -1310,6 +1317,9 @@ export class NexusManager {
     if (update.executiveReviews.length !== this.executiveReviews.length) EventBus.emit("executiveReviews:updated", update.executiveReviews);
     this.executiveReviews = update.executiveReviews;
 
+    if (update.boardReports.length !== this.boardReports.length) EventBus.emit("boardReports:updated", update.boardReports);
+    this.boardReports = update.boardReports;
+
     if (update.academyProjects !== this.academyProjects) EventBus.emit("academyProjects:updated", update.academyProjects);
     this.academyProjects = update.academyProjects;
 
@@ -1537,6 +1547,7 @@ export class NexusManager {
     this.companyDna = save.companyDna;
     this.dailyObjectiveStatus = save.dailyObjectiveStatus;
     this.executiveReviews = save.executiveReviews;
+    this.boardReports = save.boardReports;
     this.academyProjects = save.academyProjects;
     this.academyCompletedProjects = save.academyCompletedProjects;
     this.goals = save.goals;
