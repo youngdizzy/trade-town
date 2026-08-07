@@ -7,6 +7,82 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 73.5 — Mobile Command Center & Remote Operations (frontend)**
+  (`types.ts`, `net/api.ts`, `net/socket.ts`, `game/systems/EventBus.ts`,
+  `game/systems/NexusManager.ts`, `state/gameStore.ts`,
+  `ui/components/CommandCenter/panels/SituationRoomPanel.tsx` new,
+  `ui/components/CommandCenter/panels/TravelModePanel.tsx` new,
+  `ui/components/CommandCenter/CyberNotifications.tsx`,
+  `FullCommandCenter.tsx`, `lib/navigation.ts`,
+  `tests/commandCenter.spec.ts`): two new tabs,
+  "SITUATIONROOM" under Headquarters and "TRAVELMODE" under Portfolio.
+  The Executive Situation Room fetches `GET /api/situation-room` on
+  mount and whenever the underlying live fields it summarizes change
+  (Company Health, Portfolio Intelligence, Emergency Stop,
+  trade proposals, Daily Circuit Breaker), the same on-demand pattern
+  Chapter 73's CompliancePanel already established, since it has no
+  WS-broadcast field of its own — it renders all 13 severity-banded
+  fields plus a ranked CEO Priority Engine list. Travel Mode's
+  `travelMode`/`travelModeBriefings` are real, live WS-broadcast fields,
+  wired through the full `socket.ts` → `EventBus` → `NexusManager` →
+  `gameStore` pipeline the same way Chapter 75's Trading Modes fields
+  are; its panel exposes the real activate/deactivate toggle, posture
+  settings (position size cap, daily risk cap, notification
+  sensitivity, auto-activate-after-inactivity), and a
+  Return-to-Operations Briefing history. `CyberNotifications.tsx`'s
+  `push()` now checks Travel Mode's notification sensitivity setting
+  before surfacing a non-critical toast, so the Design Bible chapter's
+  filtering claim is real, not documentation-only. Verified:
+  `tsc --noEmit` clean, `eslint` clean (0 warnings), `vite build` clean,
+  and a live dev-stack walkthrough (backend + Vite dev server, headless
+  Chromium) driving both new tabs end-to-end — Situation Room's 13
+  fields and Priority Engine render with correct severity coloring;
+  Travel Mode's activate → live ACTIVE state → deactivate → real
+  Return-to-Operations Briefing (decisions/rejections/warnings/P&L all
+  computed from the actual activation window) all confirmed against the
+  real running backend, no console errors. Full Playwright regression
+  against the live dev stack (40 Command Center tabs, up from 38 —
+  `commandCenter.spec.ts`'s own tab-list test updated to click through
+  both new tabs and assert their graceful-empty-state rendering; 31
+  passed, 1 skipped, 1 failed — the same pre-existing, already-
+  documented movement-hold timing flake confirmed in earlier sessions,
+  untouched by this change).
+
+- **Chapter 73.5 — Mobile Command Center & Remote Operations (backend)**
+  (`app/travel_mode.py` new, `app/situation_room.py` new,
+  `app/routers/travel_mode.py` new, `app/routers/situation_room.py` new,
+  `app/schemas.py`, `app/nexus.py`, `app/state.py`, `app/ws_manager.py`,
+  `app/audit_log.py`, `app/save_modules.py`, `app/main.py`): Travel Mode
+  is a real CEO-configurable conservative posture (position size cap,
+  daily risk cap, notification sensitivity, auto-activate after a
+  measured period of CEO inactivity) that composes with — rather than
+  duplicates — the existing tightening seam already used by Company
+  Priority (`nexus.py::_effective_risk_limits`) and Chapter 75's Daily
+  Circuit Breaker: confirmed to be one of exactly three derived,
+  non-persisted tightening patterns in this codebase, with Travel Mode
+  now the third real user of that same composition point via
+  `apply_travel_mode_tightening()` and `max()`'d confidence bonuses. A
+  Return-to-Operations Briefing is generated from real records in the
+  exact activation window on deactivation (CEO decisions resolved,
+  Gatekeeper rejections, critical Risk Warnings, Circuit Breaker tier
+  changes, realized P&L). The Executive Situation Room
+  (`GET /api/situation-room`) is a single computed read answering "what
+  needs the CEO's attention right now" — eleven of its thirteen fields
+  reuse an already-real single computed source verbatim (Company
+  Health, Portfolio Intelligence, Market Regime, the Daily Circuit
+  Breaker, Economic Intelligence, Black Swan tier, Broker status,
+  Operating Mode/Emergency Stop), and only Pending CEO Decisions and
+  Executive Consensus are computed fresh; a CEO Priority Engine ranks
+  the same underlying signals critical-first. Both features are wired
+  into save/load (`save_modules.py` MODULE_FIELDS), the WS broadcast
+  (Travel Mode only — Situation Room is request-computed), and the
+  Audit Log (a new `travel_mode_change` category). Verified: `mypy app/`
+  clean, `ruff` clean, 44 new tests (24 for Travel Mode, 20 for the
+  Situation Room) passing alongside the full existing suite (1303/1303),
+  live smoke tests against the running server (activate/deactivate/
+  settings, auto-activation via the tick loop, Audit Log end-to-end,
+  save/load migration for a pre-existing save).
+
 - **Chapter 75 — Company Trading Modes & Institutional Capital Protection (frontend)**
   (`types.ts`, `net/api.ts`, `net/socket.ts`, `game/systems/EventBus.ts`,
   `game/systems/NexusManager.ts`, `state/gameStore.ts`,

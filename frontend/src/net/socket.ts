@@ -86,6 +86,8 @@ import type {
   DailyCircuitBreakerRead,
   LosingStreakRead,
   RecoveryBriefing,
+  TravelModeState,
+  TravelModeBriefing,
   WarRoomSession,
   WatchlistEntry,
   WisdomState,
@@ -168,6 +170,8 @@ type ServerMessage =
       dailyCircuitBreaker: DailyCircuitBreakerRead;
       losingStreak: LosingStreakRead;
       recoveryBriefings: RecoveryBriefing[];
+      travelMode: TravelModeState;
+      travelModeBriefings: TravelModeBriefing[];
       talent: TalentState;
       constitution: ConstitutionState;
       reasoningChallenges: ReasoningChallenge[];
@@ -316,6 +320,8 @@ export class GameSocket {
             dailyCircuitBreaker: msg.dailyCircuitBreaker,
             losingStreak: msg.losingStreak,
             recoveryBriefings: msg.recoveryBriefings,
+            travelMode: msg.travelMode,
+            travelModeBriefings: msg.travelModeBriefings,
             talent: msg.talent,
             constitution: msg.constitution,
             reasoningChallenges: msg.reasoningChallenges,

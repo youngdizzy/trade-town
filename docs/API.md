@@ -1481,6 +1481,49 @@ false, with its real `outcome` once graded. Sourced directly from
 `CeoDecisionRecord`, the same real field Chapter 70 Part 2 already
 tracks for CEO Accuracy.
 
+### `GET /api/situation-room`
+
+Design Bible Chapter 73.5 — Mobile Command Center & Remote Operations.
+Returns the real `SituationRoomState`: 13 named `SituationRoomField`s
+(label/value/severity band/detail) — Company Health, Portfolio Health,
+Cash Position, Open Risk, Market Regime, Trading Mode, Economic Health,
+Black Swan Risk, Executive Consensus, Pending CEO Decisions, Broker
+Status, Automation Status, Emergency Alerts — plus a ranked
+`priorities: PriorityItem[]` (CEO Priority Engine, critical-first).
+Eleven of the thirteen fields reuse an already-real single computed
+source verbatim (`app/situation_room.py::compute_situation_room()`);
+only Pending CEO Decisions and Executive Consensus are computed fresh.
+Computed per request, same on-demand convention as
+`GET /api/audit/overview` — no dedicated WS-broadcast field.
+
+### `GET /api/travel-mode` / `POST /api/travel-mode/activate` / `POST /api/travel-mode/deactivate` / `PATCH /api/travel-mode/settings`
+
+Design Bible Chapter 73.5's Travel Mode — a real CEO-configurable
+conservative posture, persisted as `TravelModeState` and broadcast over
+the WS `"state"` message (`travelMode`, `travelModeBriefings`). `GET`
+returns the current state. `POST /activate` sets `active: true`
+(`activationSource: "manual"`); the same activation can also happen
+automatically (`"auto_inactivity"`) from `app/nexus.py`'s tick loop once
+`should_auto_activate()` trips, if the CEO has enabled it in settings.
+`POST /deactivate` clears `active`, generates a real
+`TravelModeBriefing` from records in the exact activation window
+(CEO decisions resolved, Gatekeeper rejections, critical Risk Warnings,
+Circuit Breaker tier changes, realized P&L), appends it to the capped
+`travelModeBriefings` history, and returns that briefing. `PATCH
+/settings` body: any subset of `{ "positionSizeCapPct", "dailyRiskCapPct",
+"notificationSensitivity", "autoActivateEnabled",
+"autoActivateAfterMinutes" }` — percentages clamp to 25–75, the
+inactivity threshold clamps to 15–240 simulated minutes
+(`app/travel_mode.py::_clamp_settings()`). While active, Travel Mode's
+caps compose with — never replace — the same derived,
+non-persisted tightening seam Company Priority and Chapter 75's Daily
+Circuit Breaker already use (`apply_travel_mode_tightening()`,
+layered onto `_effective_risk_limits()` via `max()`, confirmed one of
+exactly three such patterns in this codebase). Records a real, permanent
+`MemoryRecord` (`category: "alert"`, title prefixed `"Travel Mode"`),
+picked up by Chapter 73's Audit Log via the new `travel_mode_change`
+category.
+
 ### `GET /api/trading-modes/state` / `POST /api/trading-modes/set`
 
 Design Bible Chapter 75 — Company Trading Modes & Institutional Capital

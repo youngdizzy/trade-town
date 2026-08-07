@@ -88,6 +88,10 @@ import type {
   LosingStreakRead,
   AdaptiveModeRecommendation,
   RecoveryBriefing,
+  SituationRoomState,
+  TravelModeState,
+  TravelModeSettings,
+  TravelModeBriefing,
   TreasuryState,
   Weekday,
   WhatIfSimulation,
@@ -288,6 +292,18 @@ export const api = {
   getTradingModeHealth: () => request<TradingModeHealthAssessment[]>("/trading-modes/health"),
   getAdaptiveModeRecommendation: () => request<AdaptiveModeRecommendation>("/trading-modes/adaptive-recommendation"),
   getRecoveryBriefings: () => request<RecoveryBriefing[]>("/trading-modes/recovery-briefings"),
+  // Design Bible Chapter 73.5 — Mobile Command Center & Remote
+  // Operations. situationRoom has no WS-broadcast field (computed
+  // fresh per request, same on-demand pattern as the Adaptive Mode
+  // recommendation above) — fetched here instead. travelMode/
+  // travelModeBriefings ARE already live via the WS tick broadcast
+  // (gameStore); activate/deactivate/settings below are the real CEO
+  // actions.
+  getSituationRoom: () => request<SituationRoomState>("/situation-room"),
+  activateTravelMode: () => request<TravelModeState>("/travel-mode/activate", { method: "POST" }),
+  deactivateTravelMode: () => request<TravelModeBriefing>("/travel-mode/deactivate", { method: "POST" }),
+  updateTravelModeSettings: (settings: Partial<TravelModeSettings>) =>
+    request<TravelModeState>("/travel-mode/settings", { method: "PATCH", body: JSON.stringify(settings) }),
   createSavingsRule: (ruleType: SavingsRuleType, percent: number, reserveTarget: number | null) =>
     request<{ treasury: TreasuryState }>("/treasury/rules/create", {
       method: "POST",

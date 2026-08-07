@@ -84,6 +84,8 @@ import type {
   DailyCircuitBreakerRead,
   LosingStreakRead,
   RecoveryBriefing,
+  TravelModeState,
+  TravelModeBriefing,
   WarRoomSession,
   WatchlistEntry,
   WisdomState,
@@ -159,6 +161,8 @@ interface NexusSnapshot {
   dailyCircuitBreaker: DailyCircuitBreakerRead;
   losingStreak: LosingStreakRead;
   recoveryBriefings: RecoveryBriefing[];
+  travelMode: TravelModeState;
+  travelModeBriefings: TravelModeBriefing[];
   talent: TalentState;
   constitution: ConstitutionState;
   reasoningChallenges: ReasoningChallenge[];
@@ -443,6 +447,22 @@ export class NexusManager {
   private static dailyCircuitBreaker: DailyCircuitBreakerRead = { tier: "none", dailyPnlPct: 0, tier1Pct: 1, tier2Pct: 2, tier3Pct: 3, tier4Pct: 5, updatedAt: new Date().toISOString() };
   private static losingStreak: LosingStreakRead = { consecutiveLosses: 0, pauseActive: false, pauseThreshold: 3, suspendThreshold: 5 };
   private static recoveryBriefings: RecoveryBriefing[] = [];
+  private static travelMode: TravelModeState = {
+    active: false,
+    settings: {
+      positionSizeCapPct: 50,
+      dailyRiskCapPct: 50,
+      notificationSensitivity: "high_and_above",
+      autoActivateEnabled: false,
+      autoActivateAfterMinutes: 120,
+    },
+    activatedAt: null,
+    activationSource: null,
+    deactivatedAt: null,
+    activatedSimMinutes: 0,
+    lastCeoDecisionSimMinutes: 0,
+  };
+  private static travelModeBriefings: TravelModeBriefing[] = [];
   private static talent: TalentState = { reports: [], viewedReportIds: [], updatedAt: new Date().toISOString() };
   private static constitution: ConstitutionState = { articles: [], citations: [], amendments: [], updatedAt: new Date().toISOString() };
   private static reasoningChallenges: ReasoningChallenge[] = [];
@@ -755,6 +775,14 @@ export class NexusManager {
 
   static getRecoveryBriefings(): RecoveryBriefing[] {
     return this.recoveryBriefings;
+  }
+
+  static getTravelMode(): TravelModeState {
+    return this.travelMode;
+  }
+
+  static getTravelModeBriefings(): TravelModeBriefing[] {
+    return this.travelModeBriefings;
   }
 
   static getTalent(): TalentState {
@@ -1362,6 +1390,14 @@ export class NexusManager {
     }
     this.recoveryBriefings = update.recoveryBriefings;
 
+    if (update.travelMode !== this.travelMode) EventBus.emit("travelMode:updated", update.travelMode);
+    this.travelMode = update.travelMode;
+
+    if (update.travelModeBriefings.length !== this.travelModeBriefings.length) {
+      EventBus.emit("travelModeBriefings:updated", update.travelModeBriefings);
+    }
+    this.travelModeBriefings = update.travelModeBriefings;
+
     if (update.talent !== this.talent) EventBus.emit("talent:updated", update.talent);
     this.talent = update.talent;
 
@@ -1523,6 +1559,8 @@ export class NexusManager {
     this.dailyCircuitBreaker = save.dailyCircuitBreaker;
     this.losingStreak = save.losingStreak;
     this.recoveryBriefings = save.recoveryBriefings;
+    this.travelMode = save.travelMode;
+    this.travelModeBriefings = save.travelModeBriefings;
     this.talent = save.talent;
     this.constitution = save.constitution;
     this.reasoningChallenges = save.reasoningChallenges;

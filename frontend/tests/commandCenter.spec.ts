@@ -141,8 +141,8 @@ test.describe("Global Command Center", () => {
     await expectMovement(page, "d", closedBefore);
   });
 
-  test("expands to the Full Command Center and renders all 38 tabs with graceful empty states", async ({ page }) => {
-    test.setTimeout(120000); // the longest-running test in the file — 38 real tab clicks, each dismissing real popups along the way
+  test("expands to the Full Command Center and renders all 40 tabs with graceful empty states", async ({ page }) => {
+    test.setTimeout(120000); // the longest-running test in the file — 40 real tab clicks, each dismissing real popups along the way
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);
     await continueGame(page);
@@ -160,7 +160,7 @@ test.describe("Global Command Center", () => {
     // ticking throughout, a genuine trade or trade proposal can appear
     // (and pop up) mid-test. clickTab() dismisses and retries rather
     // than losing the race to a popup that appears in that instant.
-    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "REPLAY", "RISK", "BLACKSWAN", "AGENTS", "RESEARCH", "COMPANY", "EXECINTEL", "MARKETINTEL", "ECONINTEL", "KNOWLEDGE", "DISCIPLINE", "VAULT", "WARROOM", "PORTFOLIO", "REASONING", "REFLECTION", "MENTOR", "MENTORLIB", "MENTORLAB", "TALENT", "SANDBOX", "CONSTITUTION", "OPS", "FOUNDERS", "TREASURY", "CALENDAR", "BLACKBOX", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS", "COMPLIANCE", "TRADINGMODES"];
+    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "REPLAY", "RISK", "BLACKSWAN", "AGENTS", "RESEARCH", "COMPANY", "EXECINTEL", "MARKETINTEL", "ECONINTEL", "KNOWLEDGE", "DISCIPLINE", "VAULT", "WARROOM", "PORTFOLIO", "REASONING", "REFLECTION", "MENTOR", "MENTORLIB", "MENTORLAB", "TALENT", "SANDBOX", "CONSTITUTION", "OPS", "FOUNDERS", "TREASURY", "CALENDAR", "BLACKBOX", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS", "COMPLIANCE", "TRADINGMODES", "SITUATIONROOM", "TRAVELMODE"];
     for (const tab of tabs) {
       await clickTab(page, tab);
       await expect(page.getByRole("button", { name: tab, exact: true })).toHaveClass(/text-cmd-cyan/);

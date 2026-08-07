@@ -3162,6 +3162,87 @@ export interface TradingModeHealthAssessment {
   reasoning: string[];
 }
 
+// Design Bible Chapter 73.5 — Mobile Command Center & Remote Operations
+// (see backend/app/situation_room.py, backend/app/travel_mode.py).
+// situationRoom has no WS-broadcast field (computed fresh per request,
+// the same on-demand pattern Chapter 75's Adaptive Mode recommendation
+// already established) — fetched via net/api.ts instead. travelMode/
+// travelModeBriefings ARE real, part of the WS tick broadcast
+// (gameStore), the same convention tradingModes/recoveryBriefings above
+// already use.
+export type SituationRoomSeverity = "good" | "caution" | "elevated" | "severe" | "critical";
+
+export interface SituationRoomField {
+  label: string;
+  value: string;
+  band: SituationRoomSeverity;
+  detail: string;
+}
+
+export type PriorityTier = "critical" | "high" | "medium" | "low";
+
+export interface PriorityItem {
+  id: string;
+  tier: PriorityTier;
+  title: string;
+  detail: string;
+  source: string;
+  relatedId: string | null;
+}
+
+export interface SituationRoomState {
+  companyHealth: SituationRoomField;
+  portfolioHealth: SituationRoomField;
+  cashPosition: SituationRoomField;
+  openRisk: SituationRoomField;
+  marketRegime: SituationRoomField;
+  tradingMode: SituationRoomField;
+  economicHealth: SituationRoomField;
+  blackSwanRisk: SituationRoomField;
+  executiveConsensus: SituationRoomField;
+  pendingCeoDecisions: SituationRoomField;
+  brokerStatus: SituationRoomField;
+  automationStatus: SituationRoomField;
+  emergencyAlerts: SituationRoomField;
+  priorities: PriorityItem[];
+  generatedAt: string;
+}
+
+export type TravelModeActivationSource = "manual" | "auto_inactivity";
+export type NotificationSensitivity = "all" | "high_and_above" | "critical_only";
+
+export interface TravelModeSettings {
+  positionSizeCapPct: number;
+  dailyRiskCapPct: number;
+  notificationSensitivity: NotificationSensitivity;
+  autoActivateEnabled: boolean;
+  autoActivateAfterMinutes: number;
+}
+
+export interface TravelModeState {
+  active: boolean;
+  settings: TravelModeSettings;
+  activatedAt: string | null;
+  activationSource: TravelModeActivationSource | null;
+  deactivatedAt: string | null;
+  activatedSimMinutes: number;
+  lastCeoDecisionSimMinutes: number;
+}
+
+export interface TravelModeBriefing {
+  id: string;
+  activatedAt: string;
+  deactivatedAt: string;
+  activationSource: TravelModeActivationSource;
+  decisionsResolved: number;
+  gatekeeperRejections: number;
+  criticalRiskWarnings: number;
+  circuitBreakerTierChanges: number;
+  realizedPnl: number;
+  summary: string;
+  createdAt: string;
+}
+
 // v0.7 Feature 29 — the Reasoning Lab (see backend/app/reasoning_lab.py).
 // A permanent ReasoningChallenge is filed periodically from the
 // company's most recent real AI Debate + its linked TradeDecision —
@@ -3720,6 +3801,8 @@ export interface GameSaveState {
   dailyCircuitBreaker: DailyCircuitBreakerRead;
   losingStreak: LosingStreakRead;
   recoveryBriefings: RecoveryBriefing[];
+  travelMode: TravelModeState;
+  travelModeBriefings: TravelModeBriefing[];
   talent: TalentState;
   constitution: ConstitutionState;
   reasoningChallenges: ReasoningChallenge[];

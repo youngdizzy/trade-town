@@ -87,6 +87,8 @@ import type {
   DailyCircuitBreakerRead,
   LosingStreakRead,
   RecoveryBriefing,
+  TravelModeState,
+  TravelModeBriefing,
   TreasuryState,
   WarRoomSession,
   WatchlistEntry,
@@ -180,6 +182,8 @@ export interface GameUiState {
   dailyCircuitBreaker: DailyCircuitBreakerRead;
   losingStreak: LosingStreakRead;
   recoveryBriefings: RecoveryBriefing[];
+  travelMode: TravelModeState;
+  travelModeBriefings: TravelModeBriefing[];
   talent: TalentState;
   constitution: ConstitutionState;
   reasoningChallenges: ReasoningChallenge[];
@@ -511,6 +515,22 @@ class GameStore {
     dailyCircuitBreaker: { tier: "none", dailyPnlPct: 0, tier1Pct: 1, tier2Pct: 2, tier3Pct: 3, tier4Pct: 5, updatedAt: new Date().toISOString() },
     losingStreak: { consecutiveLosses: 0, pauseActive: false, pauseThreshold: 3, suspendThreshold: 5 },
     recoveryBriefings: [],
+    travelMode: {
+      active: false,
+      settings: {
+        positionSizeCapPct: 50,
+        dailyRiskCapPct: 50,
+        notificationSensitivity: "high_and_above",
+        autoActivateEnabled: false,
+        autoActivateAfterMinutes: 120,
+      },
+      activatedAt: null,
+      activationSource: null,
+      deactivatedAt: null,
+      activatedSimMinutes: 0,
+      lastCeoDecisionSimMinutes: 0,
+    },
+    travelModeBriefings: [],
     talent: { reports: [], viewedReportIds: [], updatedAt: new Date().toISOString() },
     constitution: { articles: [], citations: [], amendments: [], updatedAt: new Date().toISOString() },
     reasoningChallenges: [],
@@ -706,6 +726,8 @@ class GameStore {
     EventBus.on("dailyCircuitBreaker:updated", (dailyCircuitBreaker) => this.set({ dailyCircuitBreaker }));
     EventBus.on("losingStreak:updated", (losingStreak) => this.set({ losingStreak }));
     EventBus.on("recoveryBriefings:updated", (recoveryBriefings) => this.set({ recoveryBriefings }));
+    EventBus.on("travelMode:updated", (travelMode) => this.set({ travelMode }));
+    EventBus.on("travelModeBriefings:updated", (travelModeBriefings) => this.set({ travelModeBriefings }));
     EventBus.on("talent:updated", (talent) => this.set({ talent }));
     EventBus.on("constitution:updated", (constitution) => this.set({ constitution }));
     EventBus.on("reasoningChallenges:updated", (reasoningChallenges) => this.set({ reasoningChallenges }));

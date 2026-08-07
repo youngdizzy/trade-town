@@ -6977,6 +6977,75 @@ Executive Recommendation reads. The Audit Log tab's category/severity/
 search filters are real query parameters sent to the backend's own
 `filter_audit_log()`, not a client-side re-filter of an unfiltered dump.
 
+### Mobile Command Center & Remote Operations — Design Bible Chapter 73.5
+
+This codebase is a single-player, single-device Vite/Phaser web app with
+no native shell, no push infrastructure, no biometric/session APIs, and
+no offline/PWA support — so native push notifications, voice briefings, a
+companion watch app, PIN/biometric quick-unlock, and true offline access
+are all explicit, documented cuts; see
+`docs/DesignBible/volumes/09-departments/chapter-73-5-mobile-command-center-remote-operations.md`
+for the complete reasoning. The CEO is never actually "away," only
+inactive in-session — the whole chapter is honestly scoped around that.
+
+**What's real:** a Travel Mode CEO posture
+(`GET /api/travel-mode`, `POST /api/travel-mode/activate|deactivate`,
+`PATCH /api/travel-mode/settings`) — position size cap, daily risk cap,
+notification sensitivity, and auto-activate after a measured period of
+CEO inactivity (`app/travel_mode.py::should_auto_activate()`, checked
+every tick in `app/nexus.py`). Its tightening
+(`apply_travel_mode_tightening()`) composes with, never replaces, the
+same derived, non-persisted `RiskLimits`-tightening seam Company
+Priority (`app/nexus.py::_effective_risk_limits()`) and Chapter 75's
+Daily Circuit Breaker already use — confirmed, by direct inspection, to
+be exactly the third real user of that pattern in this codebase, never a
+fourth invented mechanism. A confidence bonus follows the same rule:
+`max(circuit_breaker_confidence_bonus(...), travel_mode_confidence_bonus(...))`,
+never additive stacking. Deactivating generates a real
+`TravelModeBriefing` from records in the exact activation window — CEO
+decisions resolved, Gatekeeper rejections, critical Risk Warnings,
+Circuit Breaker tier changes, realized P&L — modeled on Chapter 72's
+`generate_crisis_briefing()` windowing convention, capped at 20 stored
+briefings.
+
+The Executive Situation Room (`GET /api/situation-room`) answers "what
+needs the CEO's attention right now" in one screen. Eleven of its
+thirteen `SituationRoomField`s reuse an already-real single computed
+source verbatim — Company Health, Portfolio Intelligence, Market Regime,
+the Daily Circuit Breaker, Economic Intelligence, Black Swan tier, Broker
+status, and Operating Mode/Emergency Stop — never recomputed a second
+way; only Pending CEO Decisions and Executive Consensus are computed
+fresh (`app/situation_room.py::compute_situation_room()`). A CEO Priority
+Engine (`rank_priorities()`) ranks the same underlying signals
+critical-first into one merged list, rather than requiring the CEO to
+scan all thirteen fields for what actually needs a decision. Computed
+per request — no dedicated WS-broadcast field, the same on-demand
+convention `GET /api/audit/overview` already established.
+
+Persisted state: `TravelModeState`, capped `TravelModeBriefing[]` — both
+in the WS broadcast (`travelMode`, `travelModeBriefings`). Chapter 73's
+Audit Log gained one new category (`travel_mode_change`), matched by a
+real `MemoryRecord` title prefix, the same pattern Crisis Briefings and
+Circuit Breaker tier changes already use.
+
+`app/travel_mode.py`, `app/situation_room.py`, `app/routers/travel_mode.py`,
+`app/routers/situation_room.py`. 44 new tests (`tests/test_travel_mode.py`,
+`tests/test_situation_room.py`).
+
+**Frontend:** two new Command Center tabs — `SITUATIONROOM` under
+Headquarters (`ui/components/CommandCenter/panels/SituationRoomPanel.tsx`),
+fetched on mount and whenever the live fields it summarizes change,
+mirroring `CompliancePanel.tsx`'s on-demand-fetch pattern since the
+backend slice adds no WS-broadcast field for it; and `TRAVELMODE` under
+Portfolio (`ui/components/CommandCenter/panels/TravelModePanel.tsx`),
+which reads `travelMode`/`travelModeBriefings` live off `gameStore` the
+same way `TradingModesPanel.tsx` reads Chapter 75's fields, and exposes
+the real activate/deactivate toggle, posture settings, and briefing
+history. `CyberNotifications.tsx`'s `push()` now checks Travel Mode's
+`notificationSensitivity` before surfacing a non-critical toast — a real
+extension of Chapter 67's existing 3-tier (`critical`/`high`/`normal`)
+toast system, not a second, competing notification pipeline.
+
 ### Company Trading Modes & Institutional Capital Protection — Design Bible Chapter 75
 
 Closes two gaps Chapters 65 (Market Regime & Adaptive Strategy) and 66

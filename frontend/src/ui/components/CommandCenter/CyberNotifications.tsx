@@ -108,9 +108,23 @@ export function CyberNotifications() {
 
   const push = useCallback(
     (kind: ToastKind, title: string, body: string, tier: NotificationTier, sticky = false) => {
+      // Design Bible Chapter 73.5 — Travel Mode's real Notification
+      // Sensitivity Filter. "critical" always interrupts regardless of
+      // sensitivity, matching the brief's own rule. Filtered-out items
+      // still land in Alert Center history via pushAlert() below —
+      // only the toast interruption is suppressed, never the record.
+      const travelMode = gameStore.getSnapshot().travelMode;
+      const suppressed =
+        travelMode.active &&
+        tier !== "critical" &&
+        (travelMode.settings.notificationSensitivity === "critical_only" ||
+          (travelMode.settings.notificationSensitivity === "high_and_above" && tier === "normal"));
+
+      gameStore.pushAlert(tier, title, body);
+      if (suppressed) return;
+
       const id = `${kind}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
       setToasts((prev) => [...prev.slice(-3), { id, kind, title, body, leaving: false }]);
-      gameStore.pushAlert(tier, title, body);
       if (!sticky) {
         const handle = window.setTimeout(() => dismiss(id), AUTO_DISMISS_MS);
         timers.current.set(id, handle);

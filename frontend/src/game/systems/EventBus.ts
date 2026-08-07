@@ -91,6 +91,8 @@ import type {
   DailyCircuitBreakerRead,
   LosingStreakRead,
   RecoveryBriefing,
+  TravelModeState,
+  TravelModeBriefing,
   WarRoomSession,
   WatchlistEntry,
   WisdomState,
@@ -232,6 +234,8 @@ export interface GameEvents {
   "dailyCircuitBreaker:updated": DailyCircuitBreakerRead;
   "losingStreak:updated": LosingStreakRead;
   "recoveryBriefings:updated": RecoveryBriefing[];
+  "travelMode:updated": TravelModeState;
+  "travelModeBriefings:updated": TravelModeBriefing[];
   "talent:updated": TalentState;
   "constitution:updated": ConstitutionState;
   "reasoningChallenges:updated": ReasoningChallenge[];

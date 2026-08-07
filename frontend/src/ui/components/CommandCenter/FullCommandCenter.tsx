@@ -45,6 +45,8 @@ import { CalendarPanel } from "./panels/CalendarPanel";
 import { BlackBoxPanel } from "./panels/BlackBoxPanel";
 import { CompliancePanel } from "./panels/CompliancePanel";
 import { TradingModesPanel } from "./panels/TradingModesPanel";
+import { SituationRoomPanel } from "./panels/SituationRoomPanel";
+import { TravelModePanel } from "./panels/TravelModePanel";
 import { DecisionDetail } from "./DecisionDetail";
 
 // Design Bible Chapter 67 (TradeTown Operating System) — Phase 1: the
@@ -120,6 +122,8 @@ const TABS = [
   "LOGS",
   "COMPLIANCE",
   "TRADINGMODES",
+  "SITUATIONROOM",
+  "TRAVELMODE",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -279,6 +283,8 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
         {tab === "LOGS" && <LogsPanel />}
         {tab === "COMPLIANCE" && <CompliancePanel />}
         {tab === "TRADINGMODES" && <TradingModesPanel />}
+        {tab === "SITUATIONROOM" && <SituationRoomPanel />}
+        {tab === "TRAVELMODE" && <TravelModePanel />}
         </PanelErrorBoundary>
       </div>
 
