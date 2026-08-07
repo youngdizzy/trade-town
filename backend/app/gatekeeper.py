@@ -64,14 +64,14 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _confidence_check(proposal: TradeProposal) -> GatekeeperCheck:
+def _confidence_check(proposal: TradeProposal, min_confidence: float = MIN_CONFIDENCE) -> GatekeeperCheck:
     score = proposal.confidence_engine.score
-    passed = score >= MIN_CONFIDENCE
+    passed = score >= min_confidence
     return GatekeeperCheck(
         id="confidence",
         label="Decision Confidence",
         passed=passed,
-        detail=f"{score:.0f}/100 — {'meets' if passed else 'below'} the required {MIN_CONFIDENCE:.0f} minimum.",
+        detail=f"{score:.0f}/100 — {'meets' if passed else 'below'} the required {min_confidence:.0f} minimum.",
     )
 
 
@@ -189,11 +189,18 @@ def evaluate_gatekeeper(
     risk_warnings: list[RiskWarning],
     market_intelligence: MarketIntelligenceState,
     weighted_recommendation: WeightedExecutiveRecommendation | None = None,
+    min_confidence_override: float | None = None,
 ) -> "GatekeeperVerdict":
+    """`min_confidence_override` (Design Bible Chapter 74) — the real,
+    disclosed points app/trading_modes.py's Daily Circuit Breaker adds to
+    the required confidence while a tier is active. None (the default)
+    means the ordinary MIN_CONFIDENCE applies, unchanged from before this
+    chapter — every existing caller that doesn't pass this stays exactly
+    as it was."""
     from app.schemas import GatekeeperVerdict  # local import avoids a schemas.py forward-reference cycle at module load
 
     checks = [
-        _confidence_check(proposal),
+        _confidence_check(proposal, min_confidence_override if min_confidence_override is not None else MIN_CONFIDENCE),
         _risk_manager_check(proposal, ceo_choice),
         _agreement_check(proposal, ceo_choice),
         _debate_check(debate, ceo_choice),

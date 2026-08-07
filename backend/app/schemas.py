@@ -634,6 +634,12 @@ class PaperPosition(CamelModel):
     # migration path, which relies on every field added after the initial
     # release having a safe default.
     opened_sim_minutes: int = Field(default=0, alias="openedSimMinutes")
+    # Design Bible Chapter 74 — the real per-position tag Day Trading
+    # Mode's own end-of-day flattening checks. None for any position
+    # opened before this chapter (or via the currently-inert
+    # PaperOrder/tick_broker path — see app/trading_modes.py's module
+    # docstring) — never backfilled or guessed.
+    trading_style: "TradingStyle | None" = Field(default=None, alias="tradingStyle")
 
 
 class PaperTrade(CamelModel):
@@ -685,6 +691,10 @@ class PaperTrade(CamelModel):
     # see persistence.py's migration path.
     opened_sim_minutes: int = Field(default=0, alias="openedSimMinutes")
     closed_sim_minutes: int = Field(default=0, alias="closedSimMinutes")
+    # Design Bible Chapter 74 — carried over from the PaperPosition this
+    # trade closed (app/portfolio.py's close_position() copies it
+    # automatically). None for any trade closed before this chapter.
+    trading_style: "TradingStyle | None" = Field(default=None, alias="tradingStyle")
 
 
 class PaperPortfolio(CamelModel):
@@ -1600,6 +1610,12 @@ class TradeProposal(CamelModel):
     market_intelligence_summary: str | None = Field(
         default=None, alias="marketIntelligenceSummary"
     )
+    # Design Bible Chapter 74 — assigned by app/trading_modes.py's
+    # assign_trading_style() the moment this proposal enters
+    # trade_proposals (app/nexus.py's tick()), never at construction
+    # time here — see that module's own docstring for the deterministic
+    # rotation formula. None only for a proposal predating this chapter.
+    trading_style: "TradingStyle | None" = Field(default=None, alias="tradingStyle")
 
 
 # v0.7 Feature 17 — AI Debate Room. Every turn's substance is a real
@@ -4242,6 +4258,11 @@ AuditEventCategory = Literal[
     "defensive_mode",
     "crisis_briefing",
     "rule_violation",
+    # Design Bible Chapter 74 — a real Trading Mode change or Daily
+    # Circuit Breaker tier change, both recorded as MemoryRecords by
+    # app/trading_modes.py.
+    "trading_mode_change",
+    "circuit_breaker_tier",
 ]
 
 
@@ -4313,6 +4334,138 @@ class CeoOverrideRecord(CamelModel):
     ai_recommendation: AnalystChoice = Field(alias="aiRecommendation")
     ceo_decision: AnalystChoice = Field(alias="ceoDecision")
     outcome: Literal["pending", "correct", "incorrect", "undecidable"]
+    created_at: str = Field(alias="createdAt")
+
+
+# Design Bible Chapter 74 — Company Trading Modes & Institutional Capital
+# Protection (app/trading_modes.py). "day_trading"/"swing_trading"/
+# "hybrid" are the CEO's real operating policy; TradingStyle is the
+# per-trade tag that policy assigns (see TradingModeState.mode's own
+# docstring for exactly how). Neither existed anywhere in this codebase
+# before this chapter — confirmed by direct grep before writing it.
+TradingMode = Literal["day_trading", "swing_trading", "hybrid"]
+TradingStyle = Literal["day", "swing"]
+
+
+class TradingModeState(CamelModel):
+    """The CEO's real Trading Mode selection and every real, disclosed
+    threshold this chapter's Circuit Breaker / Losing Streak Protection
+    checks against. `rotation_counter` and `losing_streak_acknowledged`
+    are internal bookkeeping (the hybrid tag rotation's own running
+    counter, and whether the CEO already silenced the *current* losing
+    streak) — real persisted state, not CEO-facing controls themselves."""
+
+    mode: TradingMode = "swing_trading"
+    hybrid_day_allocation_pct: float = Field(default=50.0, alias="hybridDayAllocationPct")
+    changed_at: str = Field(alias="changedAt")
+    previous_mode: TradingMode | None = Field(default=None, alias="previousMode")
+    change_reason: str = Field(default="Default at company founding.", alias="changeReason")
+    rotation_counter: int = Field(default=0, alias="rotationCounter")
+    adaptive_recommendations_enabled: bool = Field(default=True, alias="adaptiveRecommendationsEnabled")
+    # Daily Circuit Breaker thresholds — Tier 4 is deliberately NOT a
+    # field here; it reuses RiskLimits.max_daily_loss_pct verbatim (see
+    # this chapter's own Decision Logic) rather than a confusing second
+    # daily-loss number.
+    tier1_pct: float = Field(default=1.0, alias="tier1Pct")
+    tier2_pct: float = Field(default=2.0, alias="tier2Pct")
+    tier3_pct: float = Field(default=3.0, alias="tier3Pct")
+    losing_streak_pause_count: int = Field(default=3, alias="losingStreakPauseCount")
+    losing_streak_suspend_count: int = Field(default=5, alias="losingStreakSuspendCount")
+    losing_streak_acknowledged: bool = Field(default=False, alias="losingStreakAcknowledged")
+
+
+DailyCircuitBreakerTier = Literal["none", "tier1", "tier2", "tier3", "tier4"]
+
+
+class DailyCircuitBreakerRead(CamelModel):
+    """Computed fresh every tick from the same real daily P&L%
+    `evaluate_sentinel_risk()` already tracks — never persisted as a
+    second, driftable copy (the same convention `DailyObjectiveStatus`
+    already established)."""
+
+    tier: DailyCircuitBreakerTier
+    daily_pnl_pct: float = Field(alias="dailyPnlPct")
+    tier1_pct: float = Field(alias="tier1Pct")
+    tier2_pct: float = Field(alias="tier2Pct")
+    tier3_pct: float = Field(alias="tier3Pct")
+    tier4_pct: float = Field(alias="tier4Pct")
+    updated_at: str = Field(alias="updatedAt")
+
+
+class LosingStreakRead(CamelModel):
+    """Computed fresh every tick by walking `trade_history` backward from
+    the most recent closed trade — never persisted as a second copy."""
+
+    consecutive_losses: int = Field(alias="consecutiveLosses")
+    pause_active: bool = Field(alias="pauseActive")
+    pause_threshold: int = Field(alias="pauseThreshold")
+    suspend_threshold: int = Field(alias="suspendThreshold")
+
+
+class AdaptiveModeRecommendation(CamelModel):
+    """Read-only, exactly like Chapter 65's own `posture` field — never
+    applied to `TradingModeState` automatically. `recommendedMode` is
+    None when no real signal is strong enough to recommend a change, or
+    when the real regime read calls for Chapter 72's Defensive Mode
+    instead of a trading-style pick (see `note`)."""
+
+    recommended_mode: TradingMode | None = Field(default=None, alias="recommendedMode")
+    reasoning: str
+    confidence_pct: float = Field(alias="confidencePct")
+    note: str | None = None
+    generated_at: str = Field(alias="generatedAt")
+
+
+class TradingStylePerformance(CamelModel):
+    """A real win-rate/P&L split over `PaperPortfolio.trade_history`,
+    grouped by the `tradingStyle` tag this chapter assigns at proposal
+    time. Never claims independent capital pools — see this chapter's
+    own Ownership section for why that's explicitly out of scope."""
+
+    style: TradingStyle
+    trade_count: int = Field(alias="tradeCount")
+    win_rate: float = Field(alias="winRate")
+    total_pnl: float = Field(alias="totalPnl")
+    avg_pnl_pct: float = Field(alias="avgPnlPct")
+
+
+class TradingModeHealthAssessment(CamelModel):
+    """Mirrors `StrategyHealthAssessment`'s own real 7-value
+    `StrategyHealthStatus` vocabulary and threshold shape (see
+    app/strategy_lab.py's `compute_strategy_health()`), computed over a
+    trading style's own real `PaperTrade` history instead of a backtested
+    Strategy's `SimulationResult` history — the same real formula,
+    genuinely adapted to a different real input, never a second,
+    differently-worded scale."""
+
+    style: TradingStyle
+    status: StrategyHealthStatus
+    trend: StrategyHealthTrend
+    recent_win_rate: float = Field(alias="recentWinRate")
+    lifetime_win_rate: float = Field(alias="lifetimeWinRate")
+    recent_avg_return_pct: float = Field(alias="recentAvgReturnPct")
+    lifetime_avg_return_pct: float = Field(alias="lifetimeAvgReturnPct")
+    recent_sample_size: int = Field(alias="recentSampleSize")
+    lifetime_sample_size: int = Field(alias="lifetimeSampleSize")
+    reasoning: list[str] = Field(default_factory=list)
+
+
+class RecoveryBriefing(CamelModel):
+    """Generated only when Emergency Stop activates *because of* this
+    chapter's own Tier 4 Circuit Breaker or a losing-streak suspension —
+    never for a CEO-manual stop, which already has its own real reason.
+    Modeled on Chapter 72's `generate_crisis_briefing()` pattern: real
+    recent stats, real links to Discipline Chamber reviews, never a
+    regenerated copy of their content."""
+
+    id: str
+    trigger: Literal["circuit_breaker_tier4", "losing_streak"]
+    summary: str
+    recent_win_rate: float = Field(alias="recentWinRate")
+    recent_avg_loss_pct: float = Field(alias="recentAvgLossPct")
+    largest_loss_pct: float = Field(alias="largestLossPct")
+    days_since_last_profitable_day: int | None = Field(default=None, alias="daysSinceLastProfitableDay")
+    linked_discipline_review_ids: list[str] = Field(default_factory=list, alias="linkedDisciplineReviewIds")
     created_at: str = Field(alias="createdAt")
 
 
@@ -5518,6 +5671,21 @@ class GameSaveState(CamelModel):
     # Recomputed fresh every tick like black_swan_intelligence above.
     institutional_survival_score: InstitutionalSurvivalScore = Field(
         alias="institutionalSurvivalScore"
+    )
+    # Design Bible Chapter 74 — Company Trading Modes & Institutional
+    # Capital Protection (app/trading_modes.py). trading_modes is the
+    # CEO's own real selection/thresholds; daily_circuit_breaker and
+    # losing_streak are recomputed fresh every tick exactly like
+    # daily_objective_status above, never a second drifting copy.
+    # recovery_briefings is a small, capped, append-only history —
+    # see MAX_RECOVERY_BRIEFINGS.
+    trading_modes: TradingModeState = Field(alias="tradingModes")
+    daily_circuit_breaker: DailyCircuitBreakerRead = Field(
+        alias="dailyCircuitBreaker"
+    )
+    losing_streak: LosingStreakRead = Field(alias="losingStreak")
+    recovery_briefings: list[RecoveryBriefing] = Field(
+        default_factory=list, alias="recoveryBriefings"
     )
     # v0.7 Design Bible Chapter 64 — CEO-authored company goals
     # (app/goals.py). Capped and append-only like every other real list

@@ -57,6 +57,15 @@ from app.black_swan import compute_black_swan_intelligence
 from app.black_swan import compute_institutional_survival_score
 from app.black_swan import deactivate_defensive_mode as _deactivate_defensive_mode
 from app.black_swan import record_black_swan_event
+from app.gatekeeper import MIN_CONFIDENCE as GATEKEEPER_MIN_CONFIDENCE
+from app.trading_modes import (
+    acknowledge_losing_streak,
+    change_trading_mode,
+    circuit_breaker_confidence_bonus,
+    default_daily_circuit_breaker,
+    default_losing_streak,
+    default_trading_mode_state,
+)
 from app.economic_intelligence import compute_economic_intelligence
 from app.memory import record
 from app.market_data import market_data_provider
@@ -105,6 +114,7 @@ from app.schemas import (
     TierAllocationLimits,
     TimeAdvanceTarget,
     TimeState,
+    TradingMode,
 )
 from app.foundational_mentors import (
     add_custom_lesson as add_custom_academy_lesson_entry,
@@ -324,6 +334,10 @@ def default_state() -> GameSaveState:
             ),
             DefensiveModeState(),
         ),
+        tradingModes=default_trading_mode_state(_now_iso()),
+        dailyCircuitBreaker=default_daily_circuit_breaker(),
+        losingStreak=default_losing_streak(),
+        recoveryBriefings=[],
         updatedAt=_now_iso(),
     )
 
@@ -774,6 +788,35 @@ class GameState:
             memory = list(self.data.memory)
             record_emergency_stop_event(memory, activated=False, max_records=self.data.risk_limits.max_memory_records)
             self.data = self.data.model_copy(update={"emergency_stop": new_state, "memory": memory})
+            return self.data, None
+
+    async def set_trading_mode(self, *, mode: TradingMode, hybrid_day_allocation_pct: float | None) -> tuple[GameSaveState, str | None]:
+        """Design Bible Chapter 74 — the CEO's real Trading Mode change.
+        Blocked while Emergency Stop is active, the same real precedent
+        every other CEO trading control in this codebase already
+        follows — a mode change mid-halt has nothing real to act on."""
+        async with self.lock:
+            if self.data.emergency_stop.active:
+                return self.data, "Trading is halted — Emergency Stop is active. Resume trading first."
+            new_state, memory_entry = change_trading_mode(
+                self.data.trading_modes, new_mode=mode, hybrid_day_allocation_pct=hybrid_day_allocation_pct, now_iso=_now_iso()
+            )
+            memory = [*self.data.memory, memory_entry]
+            if len(memory) > self.data.risk_limits.max_memory_records:
+                del memory[: len(memory) - self.data.risk_limits.max_memory_records]
+            self.data = self.data.model_copy(update={"trading_modes": new_state, "memory": memory})
+            return self.data, None
+
+    async def acknowledge_losing_streak(self) -> tuple[GameSaveState, str | None]:
+        """Design Bible Chapter 74 — the CEO's real, explicit clear of
+        the current losing-streak pause. Only meaningful while the pause
+        is actually active; a no-op error otherwise, matching this
+        codebase's other action-not-applicable error precedents."""
+        async with self.lock:
+            if not self.data.losing_streak.pause_active:
+                return self.data, "There is no active losing-streak pause to acknowledge."
+            new_state = acknowledge_losing_streak(self.data.trading_modes)
+            self.data = self.data.model_copy(update={"trading_modes": new_state, "losing_streak": self.data.losing_streak.model_copy(update={"pause_active": False})})
             return self.data, None
 
     async def configure_defensive_mode(self, *, trigger_tier: BlackSwanRiskTier | None, auto_trigger_enabled: bool | None) -> tuple[GameSaveState, str | None]:
@@ -1525,6 +1568,14 @@ class GameState:
                     raw_action=raw_recommendation.action,
                 )
 
+            # Design Bible Chapter 74 — the Daily Circuit Breaker's real,
+            # disclosed confidence bonus applies to a manual CEO decision
+            # exactly like an auto-resolution (see app/nexus.py's
+            # _apply_operating_mode) — the same Gatekeeper bar for
+            # whoever resolves the proposal, not a mode-dependent one.
+            confidence_bonus = circuit_breaker_confidence_bonus(self.data.daily_circuit_breaker.tier)
+            min_confidence_override = (GATEKEEPER_MIN_CONFIDENCE + confidence_bonus) if confidence_bonus > 0 else None
+
             portfolio, decision, ceo_record = resolve_proposal(
                 proposal,
                 choice,
@@ -1537,6 +1588,7 @@ class GameState:
                 risk_warnings=self.data.risk_warnings,
                 resolved_by=resolved_by,
                 weighted_recommendation=weighted_recommendation,
+                min_confidence_override=min_confidence_override,
             )
 
             memory = list(self.data.memory)

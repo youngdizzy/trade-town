@@ -89,7 +89,8 @@ from app.executive_review import generate_executive_review, record_review
 from app.founders import compute_founder_state, generate_breakthrough_review, generate_council_session, generate_founder_log_entry, record_council_session, record_founder_log
 from app.goals import generate_strategic_review, record_strategic_review, tick_goals
 from app.foundational_mentors import tick_employee_progress
-from app.gatekeeper import grade_gatekeeper_rejections
+from app.emergency_stop import activate_emergency_stop
+from app.gatekeeper import MIN_CONFIDENCE as GATEKEEPER_MIN_CONFIDENCE, grade_gatekeeper_rejections
 from app.hall_of_fame import evaluate_hall_of_fame
 from app.innovation import compute_innovation_state
 from app.journal import stamp_journal_entry
@@ -129,6 +130,17 @@ from app.strategy_lab import (
     compute_strategy_regime_test,
     run_strategy_monte_carlo,
     validate_strategy_liquidity,
+)
+from app.trading_modes import (
+    MAX_RECOVERY_BRIEFINGS,
+    apply_circuit_breaker_tightening,
+    assign_trading_style,
+    build_circuit_breaker_tier_memory,
+    circuit_breaker_confidence_bonus,
+    compute_daily_circuit_breaker,
+    compute_losing_streak,
+    flatten_day_positions,
+    generate_recovery_briefing,
 )
 from app.scanner import tick_scanner
 from app.schedule import ScheduleBlock, block_for_hour
@@ -216,6 +228,9 @@ from app.schemas import (
     TimeState,
     TradeDecision,
     TradeProposal,
+    DailyCircuitBreakerRead,
+    LosingStreakRead,
+    TradingModeState,
     TreasuryState,
     WarRoomSession,
     WeightProfile,
@@ -838,6 +853,8 @@ def _apply_operating_mode(
     active_weight_profile: WeightProfile,
     custom_department_weights: dict[ExecutiveDepartmentRole, float],
     emergency_stop_active: bool = False,
+    force_manual_review: bool = False,
+    min_confidence_override: float | None = None,
 ) -> tuple[list[TradeProposal], PaperPortfolio, list[ExecutiveMeetingLogEntry]]:
     """v0.7 Feature 21 — Company Operating Modes. Learning Mode never
     calls this (every proposal stays pending, the pre-Feature-21
@@ -885,6 +902,14 @@ def _apply_operating_mode(
     still_pending: list[TradeProposal] = []
     for proposal in trade_proposals:
         if emergency_stop_active:
+            still_pending.append(proposal)
+            continue
+
+        # Design Bible Chapter 74 — Daily Circuit Breaker Tier 2+. Every
+        # new proposal waits for manual CEO resolution regardless of
+        # Operating Mode while a tier is active, the same real branch
+        # this function already uses for Chapter 66's pause_trading.
+        if force_manual_review:
             still_pending.append(proposal)
             continue
 
@@ -949,6 +974,7 @@ def _apply_operating_mode(
             risk_warnings=risk_warnings,
             weighted_recommendation=weighted_recommendation,
             resolved_by="auto",
+            min_confidence_override=min_confidence_override,
         )
         record_ceo_decision(memory, decision, max_records=risk_limits.max_memory_records)
         decisions.append(decision)
@@ -1071,6 +1097,12 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     performance_snapshots = list(state.performance_snapshots)
     risk_limits = state.risk_limits
     company_priority: CompanyPriority = state.settings.company_priority
+    # Design Bible Chapter 74 — Company Trading Modes & Institutional
+    # Capital Protection (app/trading_modes.py).
+    trading_mode_state: TradingModeState = state.trading_modes
+    recovery_briefings = list(state.recovery_briefings)
+    emergency_stop = state.emergency_stop
+    is_new_sim_day = new_time.day != state.time.day
     # v0.7 Feature 37 — the Work Mode System. "rest" pauses new employee-
     # initiated work (research progress, new meetings, Academy training)
     # while every trading/risk system (paper_trading/broker/risk_engine/
@@ -1282,6 +1314,63 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             )
         )
 
+    # Design Bible Chapter 74 — Company Trading Modes & Institutional
+    # Capital Protection. Day-position flattening runs once per real
+    # sim-day rollover, before this tick's Circuit Breaker read (a
+    # flattened position's realized P&L is part of *today's* real daily
+    # number the breaker checks next).
+    if is_new_sim_day:
+        paper_portfolio, flattened_trades = flatten_day_positions(paper_portfolio, prices, now_sim_minutes)
+        if flattened_trades:
+            record(
+                memory,
+                "alert",
+                "Day Trading Mode — positions flattened",
+                f"{len(flattened_trades)} open day-tagged position(s) force-closed at day-end per Day Trading discipline.",
+                max_records=risk_limits.max_memory_records,
+            )
+
+    daily_circuit_breaker: DailyCircuitBreakerRead = compute_daily_circuit_breaker(risk_limits, trading_mode_state, paper_portfolio, new_time.day)
+    circuit_breaker_memory = build_circuit_breaker_tier_memory(state.daily_circuit_breaker.tier, daily_circuit_breaker.tier, daily_circuit_breaker.daily_pnl_pct, _now_iso())
+    if circuit_breaker_memory is not None:
+        memory = [*memory, circuit_breaker_memory]
+        if len(memory) > risk_limits.max_memory_records:
+            del memory[: len(memory) - risk_limits.max_memory_records]
+    effective_risk_limits = apply_circuit_breaker_tightening(effective_risk_limits, daily_circuit_breaker.tier)
+    confidence_bonus = circuit_breaker_confidence_bonus(daily_circuit_breaker.tier)
+    min_confidence_override = (GATEKEEPER_MIN_CONFIDENCE + confidence_bonus) if confidence_bonus > 0 else None
+    force_manual_review = daily_circuit_breaker.tier in ("tier2", "tier3")
+    block_new_proposals = daily_circuit_breaker.tier in ("tier3", "tier4")
+
+    losing_streak: LosingStreakRead
+    losing_streak, trading_mode_state = compute_losing_streak(trading_mode_state, paper_portfolio.trade_history)
+    if losing_streak.pause_active:
+        block_new_proposals = True
+
+    trigger_emergency_stop = not emergency_stop.active and (
+        daily_circuit_breaker.tier == "tier4" or losing_streak.consecutive_losses >= trading_mode_state.losing_streak_suspend_count
+    )
+    if trigger_emergency_stop:
+        trigger: str = "circuit_breaker_tier4" if daily_circuit_breaker.tier == "tier4" else "losing_streak"
+        emergency_stop, _ = activate_emergency_stop(emergency_stop, now_iso=_now_iso())
+        trigger_detail = (
+            "the Daily Circuit Breaker reaching Tier 4" if trigger == "circuit_breaker_tier4" else f"{losing_streak.consecutive_losses} consecutive losing trades"
+        )
+        record(
+            memory,
+            "emergency",
+            "Emergency Stop activated",
+            f"Automatically triggered by {trigger_detail} — not a CEO click. Research, monitoring, and dashboards continue; only the CEO can resume trading.",
+            max_records=risk_limits.max_memory_records,
+        )
+        recovery_briefings = [
+            *recovery_briefings,
+            generate_recovery_briefing(trigger, paper_portfolio, discipline_reviews, new_time.day, f"recovery-{trigger}-{now_sim_minutes}"),
+        ]
+        if len(recovery_briefings) > MAX_RECOVERY_BRIEFINGS:
+            del recovery_briefings[: len(recovery_briefings) - MAX_RECOVERY_BRIEFINGS]
+        block_new_proposals = True
+
     # v0.7 Feature 34 — "risk_reduction" biases new-proposal sizing/vetting
     # toward the tightened effective_risk_limits; every other real reading
     # of risk_limits (Guardian's ambient risk_warnings, the RiskPanel
@@ -1292,8 +1381,11 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # trade proposal generation entirely (existing pending proposals are
     # handled by _apply_operating_mode()'s own emergency_stop_active
     # check below; research/monitoring above this line are untouched).
+    # Design Bible Chapter 74 — the Daily Circuit Breaker's Tier 3/4 and
+    # an active Losing Streak pause block new proposal generation the
+    # same real way.
     candidate_proposals = (
-        [] if state.emergency_stop.active else _generate_trade_proposals(trade_proposals, completed, prices, effective_risk_limits, paper_portfolio, news, scanner_alerts, now_sim_minutes, market_intelligence)
+        [] if (emergency_stop.active or block_new_proposals) else _generate_trade_proposals(trade_proposals, completed, prices, effective_risk_limits, paper_portfolio, news, scanner_alerts, now_sim_minutes, market_intelligence)
     )
     # v0.7 Design Bible Chapter 58 — the Institutional Trade Filter &
     # Opportunity Gatekeeper. Every candidate above is only a raw,
@@ -1395,7 +1487,11 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             sim_day=now_sim_minutes // 1440,
         )
         war_room_session = war_room_session.model_copy(update={"position_sizing": position_sizing})
-        proposal = proposal.model_copy(update={"quantity": position_sizing.final_quantity})
+        # Design Bible Chapter 74 — every proposal that survives the
+        # Opportunity Gatekeeper gets a real "day"/"swing" tag the moment
+        # it becomes CEO-visible.
+        trading_style, trading_mode_state = assign_trading_style(trading_mode_state)
+        proposal = proposal.model_copy(update={"quantity": position_sizing.final_quantity, "trading_style": trading_style})
         new_proposals.append(proposal)
 
         war_room_sessions = record_war_room_session(war_room_sessions, war_room_session)
@@ -1457,7 +1553,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         market_environment.current,
         state.settings.active_weight_profile,
         state.settings.custom_department_weights,
-        emergency_stop_active=state.emergency_stop.active,
+        emergency_stop_active=emergency_stop.active,
+        force_manual_review=force_manual_review,
+        min_confidence_override=min_confidence_override,
     )
 
     trade_proposals, expired_proposals = expire_stale_proposals(trade_proposals, now_sim_minutes)
@@ -2374,6 +2472,11 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "defensive_mode": defensive_mode,
             "black_swan_events": black_swan_events,
             "institutional_survival_score": institutional_survival_score,
+            "trading_modes": trading_mode_state,
+            "daily_circuit_breaker": daily_circuit_breaker,
+            "losing_streak": losing_streak,
+            "recovery_briefings": recovery_briefings,
+            "emergency_stop": emergency_stop,
             "reasoning_challenges": reasoning_challenges,
             "reasoning_lab_state": reasoning_lab_state,
             "reflection_sessions": reflection_sessions,

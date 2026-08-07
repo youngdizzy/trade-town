@@ -7,6 +7,56 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 74 — Company Trading Modes & Institutional Capital Protection (backend)**
+  (`app/trading_modes.py` new, `app/routers/trading_modes.py` new,
+  `app/schemas.py`, `app/gatekeeper.py`, `app/portfolio.py`,
+  `app/executive.py`, `app/nexus.py`, `app/state.py`,
+  `app/save_modules.py`, `app/ws_manager.py`, `app/audit_log.py`,
+  `app/main.py`, `tests/test_trading_modes.py`): researched first —
+  Chapters 65 (Market Regime & Adaptive Strategy) and 66 (Institutional
+  Safety & Capital Protection) each already named the two real gaps this
+  chapter closes (Adaptive Strategy Profiles; a graduated daily circuit
+  breaker ladder) as unbuilt in their own CEO Controls tables, so this
+  extends their real machinery rather than duplicating it. True
+  per-account capital isolation for a live Hybrid mode is blocked on
+  Chapter 69 Part 1's own admitted execution-routing gap (Custom Rules
+  and Account portfolios are real, but live trade execution still isn't
+  routed to a specific non-primary account) — explicitly cut, along with
+  a fully Automatic (non-recommendation) Adaptive Mode, which inherits
+  Chapter 65's own conservative recommend-only precedent, and weekly/
+  monthly graduated tiers (already real, binary halts — Sentinel's
+  `max_weekly_loss_pct`/`max_monthly_loss_pct` — this chapter only adds
+  the brief's own daily example).
+  What shipped: a CEO-selectable `TradingMode` (day/swing/hybrid) that
+  tags every new `TradeProposal` `"day"`/`"swing"` via a disclosed
+  deterministic largest-remainder rotation (never a coin flip dressed up
+  as AI judgment) and force-closes `"day"`-tagged open positions at
+  sim-day rollover via the real, existing `close_position()`; an
+  Adaptive Mode recommendation reading Chapter 65's real
+  `RegimeReconciliation` off a disclosed decision table (read-only,
+  exactly like that chapter's own `posture` field); a Daily Circuit
+  Breaker Tier ladder — three new graduated tiers (default 1%/2%/3%
+  daily loss) reusing `nexus.py`'s own `_effective_risk_limits()`
+  pattern for tightened, never-persisted `RiskLimits` and a new optional
+  confidence override on the Trade Gatekeeper, layered in front of the
+  existing real `max_daily_loss_pct` halt as Tier 4 (which now also
+  triggers the real `activate_emergency_stop()` — never a duplicate halt
+  state); Losing Streak Protection (pause new proposals at 3 consecutive
+  losses, CEO-acknowledgeable and auto-re-arming on a fresh streak;
+  trigger the same real Emergency Stop at 5); a Recovery Briefing
+  generated only for tier/streak-triggered stops, modeled on Chapter
+  72's `generate_crisis_briefing()`; and a Trading Mode Performance
+  Split / Health Score that reuses `strategy_lab.py`'s real
+  `StrategyHealthStatus` vocabulary and threshold constants rather than
+  inventing a second, differently-worded scale. Chapter 73's Audit Log
+  gained two new categories (`trading_mode_change`,
+  `circuit_breaker_tier`). `GET/POST /api/trading-modes/*`. 38 new
+  tests. Verified: `mypy app/` clean, `ruff check app/` clean, full
+  `pytest -q` — 1259 passed (1221 pre-existing + 38 new), zero
+  regressions. See
+  `docs/DesignBible/volumes/09-departments/chapter-74-company-trading-modes-institutional-capital-protection.md`
+  for the complete honesty boundary.
+
 - **Chapter 73 — Compliance, Audit & Governance System (CAGS) (frontend)**
   (`types.ts`, `net/api.ts`, `ui/components/CommandCenter/panels/CompliancePanel.tsx`
   new, `FullCommandCenter.tsx`, `lib/navigation.ts`,

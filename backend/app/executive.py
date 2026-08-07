@@ -357,6 +357,7 @@ def resolve_proposal(
     risk_warnings: list[RiskWarning] | None = None,
     resolved_by: Literal["ceo", "auto", "delegated"] = "ceo",
     weighted_recommendation: WeightedExecutiveRecommendation | None = None,
+    min_confidence_override: float | None = None,
 ) -> tuple[PaperPortfolio, TradeDecision, CeoDecisionRecord]:
     """Applies the CEO's real decision: buy opens a real long, sell opens
     a real short, wait does nothing — subject to the Trade Gatekeeper's
@@ -409,7 +410,9 @@ def resolve_proposal(
             # size zero happened.
             ceo_choice = "wait"
         else:
-            gatekeeper_verdict = evaluate_gatekeeper(proposal, ceo_choice, debate, portfolio, risk_limits, risk_warnings or [], market_intelligence, weighted_recommendation)
+            gatekeeper_verdict = evaluate_gatekeeper(
+                proposal, ceo_choice, debate, portfolio, risk_limits, risk_warnings or [], market_intelligence, weighted_recommendation, min_confidence_override
+            )
             if gatekeeper_verdict.approved:
                 position_id = f"pos-{proposal.id}"
                 portfolio = open_position(
@@ -422,6 +425,7 @@ def resolve_proposal(
                     opened_sim_minutes=now_sim_minutes,
                     side="buy" if ceo_choice == "buy" else "sell",
                     quantity=quantity,
+                    trading_style=proposal.trading_style,
                 )
                 order_id = position_id
             # else: the Gatekeeper vetoed it — ceo_choice is deliberately

@@ -1481,6 +1481,71 @@ false, with its real `outcome` once graded. Sourced directly from
 `CeoDecisionRecord`, the same real field Chapter 70 Part 2 already
 tracks for CEO Accuracy.
 
+### `GET /api/trading-modes/state` / `POST /api/trading-modes/set`
+
+Design Bible Chapter 74 — Company Trading Modes & Institutional Capital
+Protection. `GET` returns the real, persisted `TradingModeState`
+(`mode`: `day_trading`/`swing_trading`/`hybrid`, `hybridDayAllocationPct`,
+`changedAt`, `previousMode`, `changeReason`, plus the CEO's Circuit
+Breaker/Losing Streak thresholds and internal rotation/acknowledgment
+bookkeeping). `POST` body: `{ "mode": TradingMode, "hybridDayAllocationPct"?: number }`
+— errors 400 while Emergency Stop is active. Records a real, permanent
+`MemoryRecord` (`category: "alert"`), picked up by Chapter 73's Audit
+Log via the new `trading_mode_change` category.
+
+### `GET /api/trading-modes/circuit-breaker`
+
+The real Daily Circuit Breaker read (`tier`: `none`/`tier1`/`tier2`/
+`tier3`/`tier4`, `dailyPnlPct`, `tier1Pct`/`tier2Pct`/`tier3Pct` — CEO-
+configurable, `tier4Pct` — mirrors `RiskLimits.maxDailyLossPct`
+verbatim, never a separate field). Recomputed every tick from the same
+real daily P&L% `evaluate_sentinel_risk()` already tracks.
+
+### `GET /api/trading-modes/losing-streak` / `POST /api/trading-modes/losing-streak/acknowledge`
+
+`GET` returns the real `LosingStreakRead` (`consecutiveLosses`,
+`pauseActive`, `pauseThreshold`/`suspendThreshold` — CEO-configurable).
+`POST` is the CEO's real, explicit clear of an active pause — errors 400
+if no pause is currently active. The clear auto-re-arms the moment a
+fresh losing streak reaches the threshold again (see
+`app/trading_modes.py`'s `compute_losing_streak()` for the exact
+auto-reset-on-win rule).
+
+### `GET /api/trading-modes/performance`
+
+A real win-rate/P&L split (`TradingStylePerformance[]`) over
+`PaperPortfolio.tradeHistory`, grouped by the real `"day"`/`"swing"` tag
+assigned at proposal time. Computed fresh per request. Never claims
+independent capital pools per style — see the Design Bible chapter's own
+Ownership section for why that's out of scope.
+
+### `GET /api/trading-modes/health`
+
+A real Trading Mode Health read (`TradingModeHealthAssessment[]`),
+mirroring `app/strategy_lab.py`'s own `StrategyHealthStatus`/
+`StrategyHealthTrend` vocabulary and threshold shape, computed over each
+trading style's own real closed-trade history instead of a backtested
+Strategy's `SimulationResult` history.
+
+### `GET /api/trading-modes/adaptive-recommendation`
+
+Design Bible Chapter 74's Adaptive Mode — read-only, exactly like
+Chapter 65's own `posture` field, never applied automatically. Reads the
+real `RegimeReconciliation` (Chapter 65) and maps it to a recommended
+`TradingMode` (or `null`) off a disclosed decision table — see
+`app/trading_modes.py`'s `compute_adaptive_mode_recommendation()`.
+Extreme/avoid-trading conditions never recommend a trading-style change;
+`note` points the CEO at Chapter 72's Defensive Mode instead.
+
+### `GET /api/trading-modes/recovery-briefings`
+
+The permanent, capped history of `RecoveryBriefing` records — generated
+only when Emergency Stop activates because of this chapter's own Tier 4
+Circuit Breaker or a losing-streak suspension, never for a CEO-manual
+stop. Real recent stats (win rate, average loss, largest loss, days
+since the last profitable day) plus links to the real Discipline Chamber
+reviews for the trades involved.
+
 ### `POST /api/emergency-stop/activate` / `POST /api/emergency-stop/resume`
 
 Design Bible Chapter 67 (TTOS) Part 3 — the real Global Emergency Stop.

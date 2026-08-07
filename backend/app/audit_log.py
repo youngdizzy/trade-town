@@ -233,6 +233,36 @@ def _entries_from_memory(memory: list[MemoryRecord], current_sim_day: int) -> li
                     relatedId=None,
                 )
             )
+        elif m.category == "alert" and m.title.startswith("Trading Mode changed"):
+            # Design Bible Chapter 74 — app/trading_modes.py's change_trading_mode().
+            entries.append(
+                AuditEntry(
+                    id=f"audit-tradingmode-{m.id}",
+                    timestamp=m.timestamp,
+                    simDay=current_sim_day,
+                    category="trading_mode_change",
+                    severity="info",
+                    department="Trading Modes",
+                    summary=m.title,
+                    detail=m.body,
+                    relatedId=None,
+                )
+            )
+        elif m.category == "alert" and m.title.startswith("Daily Circuit Breaker"):
+            # Design Bible Chapter 74 — app/trading_modes.py's build_circuit_breaker_tier_memory().
+            entries.append(
+                AuditEntry(
+                    id=f"audit-circuitbreaker-{m.id}",
+                    timestamp=m.timestamp,
+                    simDay=current_sim_day,
+                    category="circuit_breaker_tier",
+                    severity="warning" if "tier3" in m.title.lower() or "tier4" in m.title.lower() else "info",
+                    department="Trading Modes",
+                    summary=m.title,
+                    detail=m.body,
+                    relatedId=None,
+                )
+            )
     return entries
 
 

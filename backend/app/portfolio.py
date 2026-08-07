@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.schemas import AgentId, OrderSide, PaperPortfolio, PaperPosition, PaperTrade, TimeState
+from app.schemas import AgentId, OrderSide, PaperPortfolio, PaperPosition, PaperTrade, TimeState, TradingStyle
 
 STARTING_BALANCE = 100_000.0
 MAX_TRADE_HISTORY = 50
@@ -62,13 +62,18 @@ def open_position(
     opened_sim_minutes: int,
     side: OrderSide = "buy",
     quantity: float | None = None,
+    trading_style: TradingStyle | None = None,
 ) -> PaperPortfolio:
     """Commits POSITION_SIZE_FRACTION of current cash to a new position at
     `price`, unless the caller already knows the exact size it wants (see
     app/broker.py, which sizes fills via app/risk_engine.py's
     recommended_quantity() instead of this module's flat-fraction
     default). No-ops (returns the portfolio unchanged) if cash is too low
-    to open a meaningful position, rather than opening a zero-size one."""
+    to open a meaningful position, rather than opening a zero-size one.
+    `trading_style` (Design Bible Chapter 74) — the real "day"/"swing"
+    tag app/trading_modes.py's assign_trading_style() assigned to the
+    TradeProposal this position was opened from; None for any caller
+    that doesn't pass one (unchanged, pre-chapter behavior)."""
     if quantity is None:
         budget = max(portfolio.cash_balance * POSITION_SIZE_FRACTION, 0.0)
         if budget < MIN_POSITION_SIZE or price <= 0:
@@ -90,6 +95,7 @@ def open_position(
         confidence=confidence,
         openedAt=_now_iso(),
         openedSimMinutes=opened_sim_minutes,
+        tradingStyle=trading_style,
     )
     return portfolio.model_copy(
         update={
@@ -159,6 +165,7 @@ def close_position(
         closedAt=_now_iso(),
         openedSimMinutes=match.opened_sim_minutes,
         closedSimMinutes=match.opened_sim_minutes + duration_minutes,
+        tradingStyle=match.trading_style,
     )
     history = [*portfolio.trade_history, trade]
     if len(history) > MAX_TRADE_HISTORY:

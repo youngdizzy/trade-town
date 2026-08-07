@@ -6977,6 +6977,66 @@ Executive Recommendation reads. The Audit Log tab's category/severity/
 search filters are real query parameters sent to the backend's own
 `filter_audit_log()`, not a client-side re-filter of an unfiltered dump.
 
+### Company Trading Modes & Institutional Capital Protection — Design Bible Chapter 74
+
+Closes two gaps Chapters 65 (Market Regime & Adaptive Strategy) and 66
+(Institutional Safety & Capital Protection) each already named as
+unbuilt in their own CEO Controls tables — Adaptive Strategy Profiles
+and a graduated daily circuit breaker ladder — by extending, not
+duplicating, their real machinery. This codebase has no multi-timeframe
+data and Chapter 69 Part 1's own admitted execution-routing gap means
+true per-account capital isolation for a live Hybrid mode isn't fixable
+here, so both are explicit, documented cuts, along with a fully
+Automatic (non-recommendation) Adaptive Mode, which inherits Chapter
+65's own conservative recommend-only precedent.
+
+**What's real:** a CEO-selectable `TradingMode` (`day_trading`/
+`swing_trading`/`hybrid`, `POST /api/trading-modes/set`) that tags every
+new `TradeProposal` `"day"`/`"swing"` via a disclosed deterministic
+rotation (`app/trading_modes.py::assign_trading_style()` — a
+largest-remainder formula, never a coin flip) and force-closes
+`"day"`-tagged open positions at sim-day rollover via the real, existing
+`close_position()`; an Adaptive Mode recommendation
+(`GET /api/trading-modes/adaptive-recommendation`) reading Chapter 65's
+real `RegimeReconciliation` off a disclosed decision table; a Daily
+Circuit Breaker Tier ladder (`GET /api/trading-modes/circuit-breaker`) —
+three new graduated tiers (default 1%/2%/3% daily loss) reusing
+`app/nexus.py`'s own `_effective_risk_limits()` pattern for a
+derived-never-persisted `RiskLimits` tightening and a new optional
+`min_confidence_override` on `app/gatekeeper.py::evaluate_gatekeeper()`,
+layered in front of the existing real `RiskLimits.maxDailyLossPct` halt
+as Tier 4 (which now also triggers the real `activate_emergency_stop()`
+— never a duplicate halt state); Losing Streak Protection
+(`GET/POST /api/trading-modes/losing-streak*`) — pausing new proposals
+at 3 consecutive losses (CEO-acknowledgeable, auto-re-arms on a fresh
+streak), triggering the same real Emergency Stop at 5; a Recovery
+Briefing (`GET /api/trading-modes/recovery-briefings`), generated only
+for tier/streak-triggered stops, modeled on Chapter 72's
+`generate_crisis_briefing()`; and a Trading Mode Performance Split
+(`GET /api/trading-modes/performance`) / Health Score
+(`GET /api/trading-modes/health`) reusing `app/strategy_lab.py`'s real
+`StrategyHealthStatus`/`StrategyHealthTrend` vocabulary and threshold
+constants rather than inventing a second, differently-worded scale.
+
+Persisted state: `TradingModeState`, `DailyCircuitBreakerRead` and
+`LosingStreakRead` (both recomputed every tick, the same convention
+`DailyObjectiveStatus` already established), `RecoveryBriefing[]` — all
+in the WS broadcast alongside the existing Chapter 72 fields.
+`trading_style` is a new optional field on `TradeProposal`/
+`PaperPosition`/`PaperTrade`, threaded through the one real, live
+position-opening call site this codebase has
+(`app/executive.py::resolve_proposal()` →
+`app/portfolio.py::open_position()`/`close_position()`) — never through
+`app/broker.py`'s `place_order()`/`tick_broker()` path, which is real
+but grep-confirmed unused by any live caller before this chapter was
+written. Chapter 73's Audit Log gained two new categories
+(`trading_mode_change`, `circuit_breaker_tier`), matched by real
+`MemoryRecord` title prefixes, the same pattern Crisis Briefings already
+use.
+
+`app/trading_modes.py`, `app/routers/trading_modes.py`. 38 new tests
+(`tests/test_trading_modes.py`). Backend only this pass.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the
