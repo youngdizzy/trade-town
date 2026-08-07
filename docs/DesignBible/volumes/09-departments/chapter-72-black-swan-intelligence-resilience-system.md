@@ -3,8 +3,9 @@
 **Status:** Part 1 (Early Warning Score, Risk Level, Stress Tests,
 Scenario Simulations, Defensive Mode, Playbook, Crisis Briefings,
 Post-Event Analysis) and Part 2 (Institutional Survival Score) both
-implemented as real synthesis layers — backend only (`app/black_swan.py`,
-`app/routers/black_swan.py`). See **Part 2** at the end of this chapter
+implemented as real synthesis layers — backend (`app/black_swan.py`,
+`app/routers/black_swan.py`) and frontend (a real `BLACKSWAN` Command
+Center tab, `BlackSwanPanel.tsx`). See **Part 2** at the end of this chapter
 for the Survival Score's own honesty boundary. The
 brief asks TradeTown to detect and simulate Flash Crashes, Banking
 Failures, Pandemics, Cyberattacks, Sovereign Debt Crises, and Broker

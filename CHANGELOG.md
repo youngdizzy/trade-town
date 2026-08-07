@@ -649,6 +649,29 @@ development milestones, not semver releases.
 
 ### Fixed
 
+- **Design Bible documentation-accuracy pass (Chapters 71/72/73/75/73.5)**
+  (`docs/DesignBible/volumes/09-departments/README.md`,
+  `chapter-71-economic-intelligence-center.md`,
+  `chapter-72-black-swan-intelligence-resilience-system.md`,
+  `chapter-73-compliance-audit-governance-system.md`,
+  `chapter-73-5-mobile-command-center-remote-operations.md`,
+  `chapter-75-company-trading-modes-institutional-capital-protection.md`):
+  a code-verified audit of Chapters 68–75 found the Chapters 71, 72, 73,
+  and 75 chapter files (and their Volume 9 README rows) still said
+  "backend only," even though each already shipped a real Command Center
+  tab in a later, separate frontend commit that never circled back to
+  update the doc. Corrected all four to state their real frontend status
+  (`ECONINTEL`, `BLACKSWAN`, `COMPLIANCE`, `TRADINGMODES` tabs). Also
+  fixed Chapter 73.5's own chapter file, which still read "Status:
+  Proposed" after it shipped this session, and a leftover numbering
+  error in the Volume 9 README's Trading Modes row — it still printed
+  "74" in its numeral column (linking to the `chapter-75-...md` file)
+  from before an earlier session's 74→75 renumbering, which updated the
+  file name, in-file heading, and every other reference except that one
+  table cell. No code changed; Chapter 68 (the real broker connector)
+  was confirmed still correctly unimplemented and gated behind Appendix
+  G's Live Trading Gate — not touched.
+
 - **UI Polish & Bug Fix Sprint — Treasury black-screen crash, root-caused
   and fixed** (`backend/app/ws_manager.py`,
   `frontend/src/ui/components/CommandCenter/PanelErrorBoundary.tsx` new,

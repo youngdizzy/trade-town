@@ -1,7 +1,8 @@
 # Chapter 73 — Compliance, Audit & Governance System (CAGS)
 
 **Status:** Implemented as a real, read-only audit synthesis layer —
-backend only (`app/audit_log.py`, `app/routers/audit.py`). The brief
+backend (`app/audit_log.py`, `app/routers/audit.py`) and frontend (a
+real `COMPLIANCE` Command Center tab, `CompliancePanel.tsx`). The brief
 asks for per-event fields (Broker, User, Credentials, Software Version)
 and mutable incident-management workflows (open/resolved status,
 corrective actions, security/encryption) this single-player, single-

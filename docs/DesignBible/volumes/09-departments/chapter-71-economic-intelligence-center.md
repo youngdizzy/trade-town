@@ -1,8 +1,9 @@
 # Chapter 71 — Economic Intelligence Center (EIC)
 
 **Status:** Implemented as a real cross-signal synthesis layer — backend
-only (`app/economic_intelligence.py`, `GET /api/market/economic-
-intelligence` and `.../reports`). This chapter's brief was written as if
+(`app/economic_intelligence.py`, `GET /api/market/economic-
+intelligence` and `.../reports`) and frontend (a real `ECONINTEL`
+Command Center tab, `EconomicIntelPanel.tsx`). This chapter's brief was written as if
 TradeTown had live feeds into central banks, an economic calendar, and
 global news — it has none of these (see `app/market_data.py`'s own
 module docstring: "this repo holds no API keys"). Most of the brief's

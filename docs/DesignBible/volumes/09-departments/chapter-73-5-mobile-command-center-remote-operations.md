@@ -1,12 +1,11 @@
 # Chapter 73.5 — Mobile Command Center & Remote Operations
 
-**Status:** Proposed — pending Design Bible approval before implementation
-(see this project's standing workflow: research → compare against the
-codebase → identify overlaps → write/update this chapter → **wait for
-approval since this introduces new architecture** → backend →
-frontend → tests → polish → save/broker/integration verification →
-code review). Numbered 73.5 (not 74) at the CEO's explicit direction,
-so it sits between Chapter 73 (Compliance/Audit) and Chapter 75
+**Status:** Implemented, backend (`app/travel_mode.py`,
+`app/situation_room.py`, `app/routers/travel_mode.py`,
+`app/routers/situation_room.py`) and frontend (real `SITUATIONROOM` and
+`TRAVELMODE` Command Center tabs, `SituationRoomPanel.tsx` and
+`TravelModePanel.tsx`). Numbered 73.5 (not 74) at the CEO's explicit
+direction, so it sits between Chapter 73 (Compliance/Audit) and Chapter 75
 (Company Trading Modes) without disturbing either chapter's real number.
 
 Scoped as a real, honest subset — a responsive Command Center layout,

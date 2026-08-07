@@ -1,6 +1,8 @@
 # Chapter 75 — Company Trading Modes & Institutional Capital Protection
 
-**Status:** Backend implemented. Real overlap found and extended rather
+**Status:** Implemented, backend (`app/trading_modes.py`,
+`app/routers/trading_modes.py`) and frontend (a real `TRADINGMODES`
+Command Center tab, `TradingModesPanel.tsx`). Real overlap found and extended rather
 than duplicated: Chapter 65 (Market Regime & Adaptive Strategy) already
 established the "recommend-only-until-the-CEO-permits" boundary this
 chapter's own Adaptive Mode inherits verbatim; Chapter 66 (Institutional
