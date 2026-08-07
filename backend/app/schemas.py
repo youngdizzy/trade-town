@@ -4263,6 +4263,10 @@ AuditEventCategory = Literal[
     # app/trading_modes.py.
     "trading_mode_change",
     "circuit_breaker_tier",
+    # Design Bible Chapter 73.5 — a real Travel Mode activation/
+    # deactivation, recorded by app/travel_mode.py the same way Chapter
+    # 75 records its own mode/tier changes.
+    "travel_mode_change",
 ]
 
 
@@ -4466,6 +4470,146 @@ class RecoveryBriefing(CamelModel):
     largest_loss_pct: float = Field(alias="largestLossPct")
     days_since_last_profitable_day: int | None = Field(default=None, alias="daysSinceLastProfitableDay")
     linked_discipline_review_ids: list[str] = Field(default_factory=list, alias="linkedDisciplineReviewIds")
+    created_at: str = Field(alias="createdAt")
+
+
+# Design Bible Chapter 73.5 — Mobile Command Center & Remote Operations
+# (app/situation_room.py, app/travel_mode.py). See that chapter's own
+# honesty boundary: this codebase has no accounts, push-notification,
+# biometric, voice, wearable, or geolocation infrastructure — what's
+# real is a single-screen aggregate over already-real state (eleven of
+# its thirteen fields reused verbatim from an existing single computed
+# source), a formalized four-tier priority ranking extending Chapter
+# 67's existing three toast tiers, and a CEO-configurable Travel Mode
+# posture that composes through the same derived-override seam Company
+# Priority and Chapter 75's Daily Circuit Breaker already share.
+SituationRoomSeverity = Literal["good", "caution", "elevated", "severe", "critical"]
+
+
+class SituationRoomField(CamelModel):
+    """One of the Situation Room's thirteen real fields — `value` is
+    always a pre-formatted display string built from a real number or
+    real enum already computed elsewhere, `band` is this chapter's own
+    disclosed severity-band mapping (see app/situation_room.py's module
+    docstring for the complete per-field threshold table), never a
+    fabricated score."""
+
+    label: str
+    value: str
+    band: SituationRoomSeverity
+    detail: str
+
+
+PriorityTier = Literal["critical", "high", "medium", "low"]
+
+
+class PriorityItem(CamelModel):
+    """One real, actionable item the CEO Priority Engine surfaced —
+    `source` names the real backend signal it came from (never a
+    synthetic "notification" with no underlying record) and `relatedId`
+    links back to that record the same way `AuditEntry.relatedId`
+    already does."""
+
+    id: str
+    tier: PriorityTier
+    title: str
+    detail: str
+    source: str
+    related_id: str | None = Field(default=None, alias="relatedId")
+
+
+class SituationRoomState(CamelModel):
+    """Computed fresh every request from state this game already
+    persists — never a second, independently-tracked copy of Company
+    Health, Portfolio Health, Market Regime, etc. The same "cheap,
+    always current" convention Chapter 73's Compliance Overview already
+    established for a cross-cutting aggregate."""
+
+    company_health: SituationRoomField = Field(alias="companyHealth")
+    portfolio_health: SituationRoomField = Field(alias="portfolioHealth")
+    cash_position: SituationRoomField = Field(alias="cashPosition")
+    open_risk: SituationRoomField = Field(alias="openRisk")
+    market_regime: SituationRoomField = Field(alias="marketRegime")
+    trading_mode: SituationRoomField = Field(alias="tradingMode")
+    economic_health: SituationRoomField = Field(alias="economicHealth")
+    black_swan_risk: SituationRoomField = Field(alias="blackSwanRisk")
+    executive_consensus: SituationRoomField = Field(alias="executiveConsensus")
+    pending_ceo_decisions: SituationRoomField = Field(alias="pendingCeoDecisions")
+    broker_status: SituationRoomField = Field(alias="brokerStatus")
+    automation_status: SituationRoomField = Field(alias="automationStatus")
+    emergency_alerts: SituationRoomField = Field(alias="emergencyAlerts")
+    priorities: list[PriorityItem] = Field(default_factory=list)
+    generated_at: str = Field(alias="generatedAt")
+
+
+TravelModeActivationSource = Literal["manual", "auto_inactivity"]
+NotificationSensitivity = Literal["all", "high_and_above", "critical_only"]
+
+
+class TravelModeSettings(CamelModel):
+    """The CEO's own configuration, within a disclosed floor/ceiling —
+    see this chapter's own Decision Logic for why these particular
+    bounds (25%-75% of the account's normal limits, matching the
+    conservative-but-arbitrary honesty note RiskLimits itself already
+    carries)."""
+
+    position_size_cap_pct: float = Field(default=50.0, alias="positionSizeCapPct")
+    daily_risk_cap_pct: float = Field(default=50.0, alias="dailyRiskCapPct")
+    notification_sensitivity: NotificationSensitivity = Field(default="high_and_above", alias="notificationSensitivity")
+    auto_activate_enabled: bool = Field(default=False, alias="autoActivateEnabled")
+    auto_activate_after_minutes: int = Field(default=120, alias="autoActivateAfterMinutes")
+
+
+class TravelModeState(CamelModel):
+    """Persisted CEO posture. `active` gates
+    app/travel_mode.py::apply_travel_mode_tightening() inside
+    app/nexus.py's _effective_risk_limits() — a derived override,
+    exactly like Chapter 75's Circuit Breaker, never a mutation of the
+    CEO's own persisted RiskLimits (contrast with Chapter 72's
+    Defensive Mode, which does mutate-and-restore via `priorRiskLimits`
+    — Travel Mode deliberately reuses the derived-override pattern
+    instead, since `TravelModeState` itself is already real, persisted,
+    CEO-owned state; a second RiskLimits snapshot underneath it would
+    be a redundant, driftable copy — see the chapter's own Decision
+    Logic for the full comparison of this codebase's exactly three
+    tightening patterns)."""
+
+    active: bool = False
+    settings: TravelModeSettings = Field(default_factory=TravelModeSettings)
+    activated_at: str | None = Field(default=None, alias="activatedAt")
+    activation_source: TravelModeActivationSource | None = Field(default=None, alias="activationSource")
+    deactivated_at: str | None = Field(default=None, alias="deactivatedAt")
+    # Simulated-clock minutes-since-epoch, the same convention
+    # PaperTrade.closed_sim_minutes/GatekeeperRejection.rejected_sim_minutes
+    # already use — lets the Return-to-Operations briefing window its
+    # real record search against TradeTown's in-game calendar rather
+    # than real wall-clock time.
+    activated_sim_minutes: int = Field(default=0, alias="activatedSimMinutes")
+    # Internal bookkeeping (not a CEO-facing control) — bumped by
+    # app/state.py whenever the CEO takes any real action on a pending
+    # TradeProposal (decide/hold/modify). The one real, measurable
+    # "how long has the CEO actually gone without touching a decision"
+    # signal should_auto_activate() checks — never a calendar or
+    # clock-time-of-day read, neither of which this codebase has.
+    last_ceo_decision_sim_minutes: int = Field(default=0, alias="lastCeoDecisionSimMinutes")
+
+
+class TravelModeBriefing(CamelModel):
+    """The real Return-to-Full-Operations briefing, built from real
+    records in the exact activation window — never a templated recap.
+    Modeled directly on Chapter 72's Defensive Mode deactivation (its
+    own real Post-Event Analysis) pattern."""
+
+    id: str
+    activated_at: str = Field(alias="activatedAt")
+    deactivated_at: str = Field(alias="deactivatedAt")
+    activation_source: TravelModeActivationSource = Field(alias="activationSource")
+    decisions_resolved: int = Field(alias="decisionsResolved")
+    gatekeeper_rejections: int = Field(alias="gatekeeperRejections")
+    critical_risk_warnings: int = Field(alias="criticalRiskWarnings")
+    circuit_breaker_tier_changes: int = Field(alias="circuitBreakerTierChanges")
+    realized_pnl: float = Field(alias="realizedPnl")
+    summary: str
     created_at: str = Field(alias="createdAt")
 
 
@@ -5686,6 +5830,16 @@ class GameSaveState(CamelModel):
     losing_streak: LosingStreakRead = Field(alias="losingStreak")
     recovery_briefings: list[RecoveryBriefing] = Field(
         default_factory=list, alias="recoveryBriefings"
+    )
+    # Design Bible Chapter 73.5 — Mobile Command Center & Remote
+    # Operations (app/travel_mode.py). travel_mode is the CEO's own
+    # real posture/settings (persisted, CEO-mutated, like
+    # defensive_mode above); travel_mode_briefings is a small, capped,
+    # append-only Return-to-Operations history — see
+    # MAX_TRAVEL_MODE_BRIEFINGS.
+    travel_mode: TravelModeState = Field(default_factory=TravelModeState, alias="travelMode")
+    travel_mode_briefings: list[TravelModeBriefing] = Field(
+        default_factory=list, alias="travelModeBriefings"
     )
     # v0.7 Design Bible Chapter 64 — CEO-authored company goals
     # (app/goals.py). Capped and append-only like every other real list

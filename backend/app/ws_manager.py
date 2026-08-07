@@ -151,6 +151,12 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         "dailyCircuitBreaker": state.daily_circuit_breaker.model_dump(by_alias=True),
         "losingStreak": state.losing_streak.model_dump(by_alias=True),
         "recoveryBriefings": [r.model_dump(by_alias=True) for r in state.recovery_briefings],
+        # Design Bible Chapter 73.5 — travelMode is real CEO-mutated
+        # state; travelModeBriefings is a permanent, capped
+        # Return-to-Operations history, same convention as
+        # recoveryBriefings above.
+        "travelMode": state.travel_mode.model_dump(by_alias=True),
+        "travelModeBriefings": [b.model_dump(by_alias=True) for b in state.travel_mode_briefings],
         "talent": state.talent.model_dump(by_alias=True),
         "reasoningChallenges": [r.model_dump(by_alias=True) for r in state.reasoning_challenges],
         "reasoningLabState": state.reasoning_lab_state.model_dump(by_alias=True),

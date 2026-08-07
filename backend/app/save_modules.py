@@ -105,6 +105,10 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         # acknowledgment bookkeeping) — not recomputed, same as
         # defensive_mode above.
         "trading_modes",
+        # Design Bible Chapter 73.5 — Mobile Command Center & Remote
+        # Operations. Real, CEO-mutated Travel Mode posture/settings —
+        # not recomputed, same as trading_modes above.
+        "travel_mode",
     ),
     "research": ("research", "watchlist", "black_box"),
     # foundational_mentor_state lives here (not in `derived`) because,
@@ -165,6 +169,10 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         "black_swan_reports",
         "black_swan_events",
         "recovery_briefings",
+        # Design Bible Chapter 73.5 — Mobile Command Center & Remote
+        # Operations. A small, capped, append-only history, same as
+        # recovery_briefings above.
+        "travel_mode_briefings",
     ),
     "academy": ("academy_projects", "academy_completed_projects", "agent_knowledge"),
 }

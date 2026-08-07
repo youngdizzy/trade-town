@@ -66,6 +66,14 @@ from app.trading_modes import (
     default_losing_streak,
     default_trading_mode_state,
 )
+from app.travel_mode import (
+    MAX_TRAVEL_MODE_BRIEFINGS,
+    activate_travel_mode as _activate_travel_mode,
+    deactivate_travel_mode as _deactivate_travel_mode,
+    generate_travel_mode_briefing,
+    travel_mode_confidence_bonus,
+    update_travel_mode_settings as _update_travel_mode_settings,
+)
 from app.economic_intelligence import compute_economic_intelligence
 from app.memory import record
 from app.market_data import market_data_provider
@@ -817,6 +825,66 @@ class GameState:
                 return self.data, "There is no active losing-streak pause to acknowledge."
             new_state = acknowledge_losing_streak(self.data.trading_modes)
             self.data = self.data.model_copy(update={"trading_modes": new_state, "losing_streak": self.data.losing_streak.model_copy(update={"pause_active": False})})
+            return self.data, None
+
+    async def activate_travel_mode(self) -> tuple[GameSaveState, str | None]:
+        """Design Bible Chapter 73.5 — the CEO's real, manual Travel Mode
+        activation. Automatic (inactivity-based) activation is a
+        separate real path — see app/nexus.py's tick() call into
+        app/travel_mode.py's should_auto_activate()."""
+        async with self.lock:
+            if self.data.travel_mode.active:
+                return self.data, "Travel Mode is already active."
+            new_state, memory_entry = _activate_travel_mode(
+                self.data.travel_mode, source="manual", now_iso=_now_iso(), now_sim_minutes=sim_minutes(self.data.time)
+            )
+            memory = [*self.data.memory, memory_entry]
+            if len(memory) > self.data.risk_limits.max_memory_records:
+                del memory[: len(memory) - self.data.risk_limits.max_memory_records]
+            self.data = self.data.model_copy(update={"travel_mode": new_state, "memory": memory})
+            return self.data, None
+
+    async def deactivate_travel_mode(self) -> tuple[GameSaveState, str | None]:
+        """Design Bible Chapter 73.5 — the CEO's real return-to-full-
+        operations. Generates a real Return-to-Operations briefing from
+        records inside the exact activation window before clearing the
+        posture — see app/travel_mode.py's generate_travel_mode_briefing()."""
+        async with self.lock:
+            if not self.data.travel_mode.active:
+                return self.data, "Travel Mode is not currently active."
+            now_iso = _now_iso()
+            now_sim = sim_minutes(self.data.time)
+            briefing = generate_travel_mode_briefing(
+                self.data.travel_mode,
+                now_sim_minutes=now_sim,
+                now_iso=now_iso,
+                memory=self.data.memory,
+                ceo_decisions=self.data.ceo_decisions,
+                gatekeeper_rejections=self.data.gatekeeper_rejections,
+                risk_warnings=self.data.risk_warnings,
+                portfolio=self.data.paper_portfolio,
+                briefing_id=f"travel-mode-{self.data.time.day}-{now_sim}",
+            )
+            new_state, memory_entry = _deactivate_travel_mode(self.data.travel_mode, now_iso=now_iso)
+            memory = [*self.data.memory, memory_entry]
+            if len(memory) > self.data.risk_limits.max_memory_records:
+                del memory[: len(memory) - self.data.risk_limits.max_memory_records]
+            briefings = [*self.data.travel_mode_briefings, briefing]
+            if len(briefings) > MAX_TRAVEL_MODE_BRIEFINGS:
+                del briefings[: len(briefings) - MAX_TRAVEL_MODE_BRIEFINGS]
+            self.data = self.data.model_copy(update={"travel_mode": new_state, "memory": memory, "travel_mode_briefings": briefings})
+            return self.data, None
+
+    async def update_travel_mode_settings(self, update: dict[str, object]) -> tuple[GameSaveState, str | None]:
+        """Design Bible Chapter 73.5 — the CEO's real settings PATCH.
+        Values are clamped to their disclosed floor/ceiling by
+        app/travel_mode.py's own update_travel_mode_settings(), never
+        trusted verbatim from the client."""
+        async with self.lock:
+            if not update:
+                return self.data, None
+            new_state = _update_travel_mode_settings(self.data.travel_mode, update)
+            self.data = self.data.model_copy(update={"travel_mode": new_state})
             return self.data, None
 
     async def configure_defensive_mode(self, *, trigger_tier: BlackSwanRiskTier | None, auto_trigger_enabled: bool | None) -> tuple[GameSaveState, str | None]:
@@ -1573,7 +1641,13 @@ class GameState:
             # exactly like an auto-resolution (see app/nexus.py's
             # _apply_operating_mode) — the same Gatekeeper bar for
             # whoever resolves the proposal, not a mode-dependent one.
-            confidence_bonus = circuit_breaker_confidence_bonus(self.data.daily_circuit_breaker.tier)
+            # Design Bible Chapter 73.5 — Travel Mode's own real bonus
+            # composes via max(), never adds on top of the Circuit
+            # Breaker's (see app/travel_mode.py's module docstring).
+            confidence_bonus = max(
+                circuit_breaker_confidence_bonus(self.data.daily_circuit_breaker.tier),
+                travel_mode_confidence_bonus(self.data.travel_mode),
+            )
             min_confidence_override = (GATEKEEPER_MIN_CONFIDENCE + confidence_bonus) if confidence_bonus > 0 else None
 
             portfolio, decision, ceo_record = resolve_proposal(
@@ -1644,6 +1718,9 @@ class GameState:
                     "gatekeeper_rejections": gatekeeper_rejections,
                     "memory": memory,
                     "executive_meeting_log": meeting_log,
+                    # Design Bible Chapter 73.5 — real CEO activity, resets
+                    # Travel Mode's inactivity-based auto-activation clock.
+                    "travel_mode": self.data.travel_mode.model_copy(update={"last_ceo_decision_sim_minutes": now_sim_minutes}),
                     "updated_at": _now_iso(),
                 }
             )
@@ -1717,6 +1794,9 @@ class GameState:
                 update={
                     "trade_proposals": [held if p.id == proposal_id else p for p in self.data.trade_proposals],
                     "memory": memory,
+                    # Design Bible Chapter 73.5 — real CEO activity, resets
+                    # Travel Mode's inactivity-based auto-activation clock.
+                    "travel_mode": self.data.travel_mode.model_copy(update={"last_ceo_decision_sim_minutes": sim_minutes(self.data.time)}),
                     "updated_at": _now_iso(),
                 }
             )
@@ -1745,6 +1825,9 @@ class GameState:
                 update={
                     "trade_proposals": [modified if p.id == proposal_id else p for p in self.data.trade_proposals],
                     "memory": memory,
+                    # Design Bible Chapter 73.5 — real CEO activity, resets
+                    # Travel Mode's inactivity-based auto-activation clock.
+                    "travel_mode": self.data.travel_mode.model_copy(update={"last_ceo_decision_sim_minutes": sim_minutes(self.data.time)}),
                     "updated_at": _now_iso(),
                 }
             )

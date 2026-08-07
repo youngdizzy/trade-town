@@ -248,6 +248,22 @@ def _entries_from_memory(memory: list[MemoryRecord], current_sim_day: int) -> li
                     relatedId=None,
                 )
             )
+        elif m.category == "alert" and m.title.startswith("Travel Mode"):
+            # Design Bible Chapter 73.5 — app/travel_mode.py's
+            # activate_travel_mode()/deactivate_travel_mode().
+            entries.append(
+                AuditEntry(
+                    id=f"audit-travelmode-{m.id}",
+                    timestamp=m.timestamp,
+                    simDay=current_sim_day,
+                    category="travel_mode_change",
+                    severity="info",
+                    department="Mobile Command Center",
+                    summary=m.title,
+                    detail=m.body,
+                    relatedId=None,
+                )
+            )
         elif m.category == "alert" and m.title.startswith("Daily Circuit Breaker"):
             # Design Bible Chapter 75 — app/trading_modes.py's build_circuit_breaker_tier_memory().
             entries.append(

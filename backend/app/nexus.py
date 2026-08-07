@@ -142,6 +142,12 @@ from app.trading_modes import (
     flatten_day_positions,
     generate_recovery_briefing,
 )
+from app.travel_mode import (
+    apply_travel_mode_tightening,
+    activate_travel_mode as _activate_travel_mode,
+    should_auto_activate,
+    travel_mode_confidence_bonus,
+)
 from app.scanner import tick_scanner
 from app.schedule import ScheduleBlock, block_for_hour
 from app.treasury import apply_monthly_savings_rules, record_monthly_report
@@ -1101,6 +1107,10 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # Capital Protection (app/trading_modes.py).
     trading_mode_state: TradingModeState = state.trading_modes
     recovery_briefings = list(state.recovery_briefings)
+    # Design Bible Chapter 73.5 — Mobile Command Center & Remote
+    # Operations (app/travel_mode.py). Real, CEO-mutated posture — not
+    # recomputed, same as trading_mode_state above.
+    travel_mode = state.travel_mode
     emergency_stop = state.emergency_stop
     is_new_sim_day = new_time.day != state.time.day
     # v0.7 Feature 37 — the Work Mode System. "rest" pauses new employee-
@@ -1337,7 +1347,24 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         if len(memory) > risk_limits.max_memory_records:
             del memory[: len(memory) - risk_limits.max_memory_records]
     effective_risk_limits = apply_circuit_breaker_tightening(effective_risk_limits, daily_circuit_breaker.tier)
-    confidence_bonus = circuit_breaker_confidence_bonus(daily_circuit_breaker.tier)
+
+    # Design Bible Chapter 73.5 — Travel Mode. Composes into the same
+    # derived-override seam as the Circuit Breaker above (never a
+    # fourth, independent tightening mechanic — see
+    # app/travel_mode.py's module docstring). Inactivity-based
+    # automatic activation is checked once per tick, off the real
+    # last_ceo_decision_sim_minutes timestamp app/state.py bumps on
+    # every real CEO action.
+    if should_auto_activate(travel_mode, travel_mode.last_ceo_decision_sim_minutes, now_sim_minutes):
+        travel_mode, travel_mode_memory = _activate_travel_mode(
+            travel_mode, source="auto_inactivity", now_iso=_now_iso(), now_sim_minutes=now_sim_minutes
+        )
+        memory = [*memory, travel_mode_memory]
+        if len(memory) > risk_limits.max_memory_records:
+            del memory[: len(memory) - risk_limits.max_memory_records]
+    effective_risk_limits = apply_travel_mode_tightening(effective_risk_limits, travel_mode)
+
+    confidence_bonus = max(circuit_breaker_confidence_bonus(daily_circuit_breaker.tier), travel_mode_confidence_bonus(travel_mode))
     min_confidence_override = (GATEKEEPER_MIN_CONFIDENCE + confidence_bonus) if confidence_bonus > 0 else None
     force_manual_review = daily_circuit_breaker.tier in ("tier2", "tier3")
     block_new_proposals = daily_circuit_breaker.tier in ("tier3", "tier4")
@@ -2476,6 +2503,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "daily_circuit_breaker": daily_circuit_breaker,
             "losing_streak": losing_streak,
             "recovery_briefings": recovery_briefings,
+            "travel_mode": travel_mode,
             "emergency_stop": emergency_stop,
             "reasoning_challenges": reasoning_challenges,
             "reasoning_lab_state": reasoning_lab_state,
