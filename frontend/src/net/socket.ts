@@ -82,6 +82,10 @@ import type {
   TimeState,
   TradeDecision,
   TradeProposal,
+  TradingModeState,
+  DailyCircuitBreakerRead,
+  LosingStreakRead,
+  RecoveryBriefing,
   WarRoomSession,
   WatchlistEntry,
   WisdomState,
@@ -160,6 +164,10 @@ type ServerMessage =
       defensiveMode: DefensiveModeState;
       blackSwanEvents: BlackSwanEventRecord[];
       institutionalSurvivalScore: InstitutionalSurvivalScore;
+      tradingModes: TradingModeState;
+      dailyCircuitBreaker: DailyCircuitBreakerRead;
+      losingStreak: LosingStreakRead;
+      recoveryBriefings: RecoveryBriefing[];
       talent: TalentState;
       constitution: ConstitutionState;
       reasoningChallenges: ReasoningChallenge[];
@@ -304,6 +312,10 @@ export class GameSocket {
             defensiveMode: msg.defensiveMode,
             blackSwanEvents: msg.blackSwanEvents,
             institutionalSurvivalScore: msg.institutionalSurvivalScore,
+            tradingModes: msg.tradingModes,
+            dailyCircuitBreaker: msg.dailyCircuitBreaker,
+            losingStreak: msg.losingStreak,
+            recoveryBriefings: msg.recoveryBriefings,
             talent: msg.talent,
             constitution: msg.constitution,
             reasoningChallenges: msg.reasoningChallenges,

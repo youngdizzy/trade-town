@@ -7,6 +7,34 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 74 — Company Trading Modes & Institutional Capital Protection (frontend)**
+  (`types.ts`, `net/api.ts`, `net/socket.ts`, `game/systems/EventBus.ts`,
+  `game/systems/NexusManager.ts`, `state/gameStore.ts`,
+  `ui/components/CommandCenter/panels/TradingModesPanel.tsx` new,
+  `FullCommandCenter.tsx`, `lib/navigation.ts`,
+  `tests/commandCenter.spec.ts`): a new "TRADINGMODES" tab under the
+  Portfolio section, next to RISK and BLACKSWAN. Unlike Chapter 73's
+  CAGS, this chapter's `tradingModes`/`dailyCircuitBreaker`/
+  `losingStreak`/`recoveryBriefings` are real, live WS-broadcast fields
+  (the backend adds them to `GameState`), so they're wired through the
+  full `socket.ts` → `EventBus` → `NexusManager` → `gameStore` pipeline
+  the same way Chapter 72's BSIRS fields already are. Performance Split,
+  Trading Mode Health, and the Adaptive Mode recommendation have no
+  WS-broadcast field and are fetched on demand via `net/api.ts`,
+  mirroring Chapter 73's CompliancePanel pattern. The panel shows: a
+  Trading Mode selector (day/swing/hybrid, with a hybrid allocation
+  slider) and a live-fetched, read-only Adaptive Mode recommendation; a
+  Daily Circuit Breaker card (current tier, daily P&L%, all four
+  thresholds); a Losing Streak Protection card with a real CEO
+  Acknowledge action; a Trading Style Performance/Health grid (real win
+  rate/P&L split, Health status reusing `StrategyHealthStatus`); and a
+  Recovery Briefings history. Verified: `tsc --noEmit` clean, `eslint`
+  clean (0 warnings), `vite build` clean, full Playwright regression
+  against the live dev stack (38 Command Center tabs, up from 37; 31
+  passed, 1 skipped, 1 failed — the same pre-existing, already-
+  documented movement-hold timing flake confirmed earlier this session,
+  untouched by this change).
+
 - **Chapter 74 — Company Trading Modes & Institutional Capital Protection (backend)**
   (`app/trading_modes.py` new, `app/routers/trading_modes.py` new,
   `app/schemas.py`, `app/gatekeeper.py`, `app/portfolio.py`,

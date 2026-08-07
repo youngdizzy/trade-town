@@ -87,6 +87,10 @@ import type {
   TimeState,
   TradeDecision,
   TradeProposal,
+  TradingModeState,
+  DailyCircuitBreakerRead,
+  LosingStreakRead,
+  RecoveryBriefing,
   WarRoomSession,
   WatchlistEntry,
   WisdomState,
@@ -224,6 +228,10 @@ export interface GameEvents {
   "defensiveMode:updated": DefensiveModeState;
   "blackSwanEvents:updated": BlackSwanEventRecord[];
   "institutionalSurvivalScore:updated": InstitutionalSurvivalScore;
+  "tradingModes:updated": TradingModeState;
+  "dailyCircuitBreaker:updated": DailyCircuitBreakerRead;
+  "losingStreak:updated": LosingStreakRead;
+  "recoveryBriefings:updated": RecoveryBriefing[];
   "talent:updated": TalentState;
   "constitution:updated": ConstitutionState;
   "reasoningChallenges:updated": ReasoningChallenge[];

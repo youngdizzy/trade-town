@@ -7037,6 +7037,17 @@ use.
 `app/trading_modes.py`, `app/routers/trading_modes.py`. 38 new tests
 (`tests/test_trading_modes.py`). Backend only this pass.
 
+**Frontend:** a new `TRADINGMODES` Command Center tab
+(`ui/components/CommandCenter/panels/TradingModesPanel.tsx`), placed
+under the Portfolio section next to RISK and BLACKSWAN. Unlike Chapter
+73's CAGS, `tradingModes`/`dailyCircuitBreaker`/`losingStreak`/
+`recoveryBriefings` are real WS-broadcast fields, so they're wired
+through the full `socket.ts` → `EventBus` → `NexusManager` →
+`gameStore` pipeline the same way Chapter 72's BSIRS fields already
+are. Performance Split, Trading Mode Health, and the Adaptive Mode
+recommendation have no WS-broadcast field and are fetched on demand via
+`net/api.ts`, the same pattern CompliancePanel established.
+
 ## Test suite popup resilience
 
 `frontend/tests/helpers.ts` is the shared home for what every one of the

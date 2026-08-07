@@ -83,6 +83,10 @@ import type {
   TimeState,
   TradeDecision,
   TradeProposal,
+  TradingModeState,
+  DailyCircuitBreakerRead,
+  LosingStreakRead,
+  RecoveryBriefing,
   TreasuryState,
   WarRoomSession,
   WatchlistEntry,
@@ -172,6 +176,10 @@ export interface GameUiState {
   defensiveMode: DefensiveModeState;
   blackSwanEvents: BlackSwanEventRecord[];
   institutionalSurvivalScore: InstitutionalSurvivalScore;
+  tradingModes: TradingModeState;
+  dailyCircuitBreaker: DailyCircuitBreakerRead;
+  losingStreak: LosingStreakRead;
+  recoveryBriefings: RecoveryBriefing[];
   talent: TalentState;
   constitution: ConstitutionState;
   reasoningChallenges: ReasoningChallenge[];
@@ -485,6 +493,24 @@ class GameStore {
       reasoning: "No data yet.",
       updatedAt: new Date().toISOString(),
     },
+    tradingModes: {
+      mode: "swing_trading",
+      hybridDayAllocationPct: 50,
+      changedAt: new Date().toISOString(),
+      previousMode: null,
+      changeReason: "Default at company founding.",
+      rotationCounter: 0,
+      adaptiveRecommendationsEnabled: true,
+      tier1Pct: 1,
+      tier2Pct: 2,
+      tier3Pct: 3,
+      losingStreakPauseCount: 3,
+      losingStreakSuspendCount: 5,
+      losingStreakAcknowledged: false,
+    },
+    dailyCircuitBreaker: { tier: "none", dailyPnlPct: 0, tier1Pct: 1, tier2Pct: 2, tier3Pct: 3, tier4Pct: 5, updatedAt: new Date().toISOString() },
+    losingStreak: { consecutiveLosses: 0, pauseActive: false, pauseThreshold: 3, suspendThreshold: 5 },
+    recoveryBriefings: [],
     talent: { reports: [], viewedReportIds: [], updatedAt: new Date().toISOString() },
     constitution: { articles: [], citations: [], amendments: [], updatedAt: new Date().toISOString() },
     reasoningChallenges: [],
@@ -676,6 +702,10 @@ class GameStore {
     EventBus.on("defensiveMode:updated", (defensiveMode) => this.set({ defensiveMode }));
     EventBus.on("blackSwanEvents:updated", (blackSwanEvents) => this.set({ blackSwanEvents }));
     EventBus.on("institutionalSurvivalScore:updated", (institutionalSurvivalScore) => this.set({ institutionalSurvivalScore }));
+    EventBus.on("tradingModes:updated", (tradingModes) => this.set({ tradingModes }));
+    EventBus.on("dailyCircuitBreaker:updated", (dailyCircuitBreaker) => this.set({ dailyCircuitBreaker }));
+    EventBus.on("losingStreak:updated", (losingStreak) => this.set({ losingStreak }));
+    EventBus.on("recoveryBriefings:updated", (recoveryBriefings) => this.set({ recoveryBriefings }));
     EventBus.on("talent:updated", (talent) => this.set({ talent }));
     EventBus.on("constitution:updated", (constitution) => this.set({ constitution }));
     EventBus.on("reasoningChallenges:updated", (reasoningChallenges) => this.set({ reasoningChallenges }));

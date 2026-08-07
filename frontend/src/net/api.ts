@@ -81,6 +81,13 @@ import type {
   TradeDecision,
   TradeProposal,
   TradeReportCard,
+  TradingMode,
+  TradingModeState,
+  TradingModeHealthAssessment,
+  TradingStylePerformance,
+  LosingStreakRead,
+  AdaptiveModeRecommendation,
+  RecoveryBriefing,
   TreasuryState,
   Weekday,
   WhatIfSimulation,
@@ -264,6 +271,23 @@ export const api = {
   getGovernance: () => request<GovernanceLayer[]>("/audit/governance"),
   getComplianceOverview: () => request<ComplianceOverview>("/audit/overview"),
   getCeoOverrides: () => request<CeoOverrideRecord[]>("/audit/overrides"),
+  // Design Bible Chapter 74 — Company Trading Modes & Institutional
+  // Capital Protection. tradingModes/dailyCircuitBreaker/losingStreak/
+  // recoveryBriefings are already live via the WS tick broadcast (see
+  // gameStore) — these are the genuine on-demand reads/actions:
+  // performance split, Trading Mode Health, and the Adaptive Mode
+  // recommendation have no WS-broadcast field, and set/acknowledge are
+  // real CEO actions.
+  setTradingMode: (mode: TradingMode, hybridDayAllocationPct?: number) =>
+    request<TradingModeState>("/trading-modes/set", {
+      method: "POST",
+      body: JSON.stringify({ mode, hybridDayAllocationPct: hybridDayAllocationPct ?? null }),
+    }),
+  acknowledgeLosingStreak: () => request<LosingStreakRead>("/trading-modes/losing-streak/acknowledge", { method: "POST" }),
+  getTradingStylePerformance: () => request<TradingStylePerformance[]>("/trading-modes/performance"),
+  getTradingModeHealth: () => request<TradingModeHealthAssessment[]>("/trading-modes/health"),
+  getAdaptiveModeRecommendation: () => request<AdaptiveModeRecommendation>("/trading-modes/adaptive-recommendation"),
+  getRecoveryBriefings: () => request<RecoveryBriefing[]>("/trading-modes/recovery-briefings"),
   createSavingsRule: (ruleType: SavingsRuleType, percent: number, reserveTarget: number | null) =>
     request<{ treasury: TreasuryState }>("/treasury/rules/create", {
       method: "POST",

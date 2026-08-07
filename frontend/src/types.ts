@@ -3075,6 +3075,93 @@ export interface CeoOverrideRecord {
   createdAt: string;
 }
 
+// Design Bible Chapter 74 — Company Trading Modes & Institutional
+// Capital Protection (see backend/app/trading_modes.py). tradingModes/
+// dailyCircuitBreaker/losingStreak/recoveryBriefings are real, part of
+// the WS tick broadcast (gameStore) — unlike Chapter 73's CAGS.
+// Performance split, Trading Mode Health, and the Adaptive Mode
+// recommendation are fetched on demand via net/api.ts instead (no
+// WS-broadcast field backs them — the same on-demand pattern CAGS
+// established), so their types live only where api.ts imports them.
+export type TradingMode = "day_trading" | "swing_trading" | "hybrid";
+export type TradingStyle = "day" | "swing";
+
+export interface TradingModeState {
+  mode: TradingMode;
+  hybridDayAllocationPct: number;
+  changedAt: string;
+  previousMode: TradingMode | null;
+  changeReason: string;
+  rotationCounter: number;
+  adaptiveRecommendationsEnabled: boolean;
+  tier1Pct: number;
+  tier2Pct: number;
+  tier3Pct: number;
+  losingStreakPauseCount: number;
+  losingStreakSuspendCount: number;
+  losingStreakAcknowledged: boolean;
+}
+
+export type DailyCircuitBreakerTier = "none" | "tier1" | "tier2" | "tier3" | "tier4";
+
+export interface DailyCircuitBreakerRead {
+  tier: DailyCircuitBreakerTier;
+  dailyPnlPct: number;
+  tier1Pct: number;
+  tier2Pct: number;
+  tier3Pct: number;
+  tier4Pct: number;
+  updatedAt: string;
+}
+
+export interface LosingStreakRead {
+  consecutiveLosses: number;
+  pauseActive: boolean;
+  pauseThreshold: number;
+  suspendThreshold: number;
+}
+
+export interface RecoveryBriefing {
+  id: string;
+  trigger: "circuit_breaker_tier4" | "losing_streak";
+  summary: string;
+  recentWinRate: number;
+  recentAvgLossPct: number;
+  largestLossPct: number;
+  daysSinceLastProfitableDay: number | null;
+  linkedDisciplineReviewIds: string[];
+  createdAt: string;
+}
+
+export interface AdaptiveModeRecommendation {
+  recommendedMode: TradingMode | null;
+  reasoning: string;
+  confidencePct: number;
+  note: string | null;
+  generatedAt: string;
+}
+
+export interface TradingStylePerformance {
+  style: TradingStyle;
+  tradeCount: number;
+  winRate: number;
+  totalPnl: number;
+  avgPnlPct: number;
+}
+
+export interface TradingModeHealthAssessment {
+  style: TradingStyle;
+  status: StrategyHealthStatus;
+  trend: StrategyHealthTrend;
+  recentWinRate: number;
+  lifetimeWinRate: number;
+  recentAvgReturnPct: number;
+  lifetimeAvgReturnPct: number;
+  recentSampleSize: number;
+  lifetimeSampleSize: number;
+  reasoning: string[];
+}
+
 // v0.7 Feature 29 — the Reasoning Lab (see backend/app/reasoning_lab.py).
 // A permanent ReasoningChallenge is filed periodically from the
 // company's most recent real AI Debate + its linked TradeDecision —
@@ -3629,6 +3716,10 @@ export interface GameSaveState {
   defensiveMode: DefensiveModeState;
   blackSwanEvents: BlackSwanEventRecord[];
   institutionalSurvivalScore: InstitutionalSurvivalScore;
+  tradingModes: TradingModeState;
+  dailyCircuitBreaker: DailyCircuitBreakerRead;
+  losingStreak: LosingStreakRead;
+  recoveryBriefings: RecoveryBriefing[];
   talent: TalentState;
   constitution: ConstitutionState;
   reasoningChallenges: ReasoningChallenge[];

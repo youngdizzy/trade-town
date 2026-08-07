@@ -80,6 +80,10 @@ import type {
   ThinkingProfile,
   TradeDecision,
   TradeProposal,
+  TradingModeState,
+  DailyCircuitBreakerRead,
+  LosingStreakRead,
+  RecoveryBriefing,
   WarRoomSession,
   WatchlistEntry,
   WisdomState,
@@ -151,6 +155,10 @@ interface NexusSnapshot {
   defensiveMode: DefensiveModeState;
   blackSwanEvents: BlackSwanEventRecord[];
   institutionalSurvivalScore: InstitutionalSurvivalScore;
+  tradingModes: TradingModeState;
+  dailyCircuitBreaker: DailyCircuitBreakerRead;
+  losingStreak: LosingStreakRead;
+  recoveryBriefings: RecoveryBriefing[];
   talent: TalentState;
   constitution: ConstitutionState;
   reasoningChallenges: ReasoningChallenge[];
@@ -417,6 +425,24 @@ export class NexusManager {
     reasoning: "No data yet.",
     updatedAt: new Date().toISOString(),
   };
+  private static tradingModes: TradingModeState = {
+    mode: "swing_trading",
+    hybridDayAllocationPct: 50,
+    changedAt: new Date().toISOString(),
+    previousMode: null,
+    changeReason: "Default at company founding.",
+    rotationCounter: 0,
+    adaptiveRecommendationsEnabled: true,
+    tier1Pct: 1,
+    tier2Pct: 2,
+    tier3Pct: 3,
+    losingStreakPauseCount: 3,
+    losingStreakSuspendCount: 5,
+    losingStreakAcknowledged: false,
+  };
+  private static dailyCircuitBreaker: DailyCircuitBreakerRead = { tier: "none", dailyPnlPct: 0, tier1Pct: 1, tier2Pct: 2, tier3Pct: 3, tier4Pct: 5, updatedAt: new Date().toISOString() };
+  private static losingStreak: LosingStreakRead = { consecutiveLosses: 0, pauseActive: false, pauseThreshold: 3, suspendThreshold: 5 };
+  private static recoveryBriefings: RecoveryBriefing[] = [];
   private static talent: TalentState = { reports: [], viewedReportIds: [], updatedAt: new Date().toISOString() };
   private static constitution: ConstitutionState = { articles: [], citations: [], amendments: [], updatedAt: new Date().toISOString() };
   private static reasoningChallenges: ReasoningChallenge[] = [];
@@ -713,6 +739,22 @@ export class NexusManager {
 
   static getInstitutionalSurvivalScore(): InstitutionalSurvivalScore {
     return this.institutionalSurvivalScore;
+  }
+
+  static getTradingModes(): TradingModeState {
+    return this.tradingModes;
+  }
+
+  static getDailyCircuitBreaker(): DailyCircuitBreakerRead {
+    return this.dailyCircuitBreaker;
+  }
+
+  static getLosingStreak(): LosingStreakRead {
+    return this.losingStreak;
+  }
+
+  static getRecoveryBriefings(): RecoveryBriefing[] {
+    return this.recoveryBriefings;
   }
 
   static getTalent(): TalentState {
@@ -1306,6 +1348,20 @@ export class NexusManager {
     }
     this.institutionalSurvivalScore = update.institutionalSurvivalScore;
 
+    if (update.tradingModes !== this.tradingModes) EventBus.emit("tradingModes:updated", update.tradingModes);
+    this.tradingModes = update.tradingModes;
+
+    if (update.dailyCircuitBreaker !== this.dailyCircuitBreaker) EventBus.emit("dailyCircuitBreaker:updated", update.dailyCircuitBreaker);
+    this.dailyCircuitBreaker = update.dailyCircuitBreaker;
+
+    if (update.losingStreak !== this.losingStreak) EventBus.emit("losingStreak:updated", update.losingStreak);
+    this.losingStreak = update.losingStreak;
+
+    if (update.recoveryBriefings.length !== this.recoveryBriefings.length) {
+      EventBus.emit("recoveryBriefings:updated", update.recoveryBriefings);
+    }
+    this.recoveryBriefings = update.recoveryBriefings;
+
     if (update.talent !== this.talent) EventBus.emit("talent:updated", update.talent);
     this.talent = update.talent;
 
@@ -1463,6 +1519,10 @@ export class NexusManager {
     this.defensiveMode = save.defensiveMode;
     this.blackSwanEvents = save.blackSwanEvents;
     this.institutionalSurvivalScore = save.institutionalSurvivalScore;
+    this.tradingModes = save.tradingModes;
+    this.dailyCircuitBreaker = save.dailyCircuitBreaker;
+    this.losingStreak = save.losingStreak;
+    this.recoveryBriefings = save.recoveryBriefings;
     this.talent = save.talent;
     this.constitution = save.constitution;
     this.reasoningChallenges = save.reasoningChallenges;
