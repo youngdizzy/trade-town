@@ -296,6 +296,38 @@ def _entries_from_memory(memory: list[MemoryRecord], current_sim_day: int) -> li
                     relatedId=None,
                 )
             )
+        elif m.category == "alert" and m.title.startswith("Self-Improvement Proposal filed"):
+            # Design Bible Chapter 74 Part 1 — app/self_improvement.py's
+            # two evidence-gated proposal generators.
+            entries.append(
+                AuditEntry(
+                    id=f"audit-selfimprove-{m.id}",
+                    timestamp=m.timestamp,
+                    simDay=current_sim_day,
+                    category="self_improvement_proposal",
+                    severity="info",
+                    department="Continuous Learning",
+                    summary=m.title,
+                    detail=m.body,
+                    relatedId=None,
+                )
+            )
+        elif m.category == "alert" and m.title.startswith("Institutional Evolution Report filed"):
+            # Design Bible Chapter 74 Part 2 — app/evolution.py's monthly
+            # report.
+            entries.append(
+                AuditEntry(
+                    id=f"audit-evolutionreport-{m.id}",
+                    timestamp=m.timestamp,
+                    simDay=current_sim_day,
+                    category="evolution_report",
+                    severity="info",
+                    department="Continuous Learning",
+                    summary=m.title,
+                    detail=m.body,
+                    relatedId=None,
+                )
+            )
     return entries
 
 
