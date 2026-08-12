@@ -162,6 +162,11 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         "meeting_minutes",
         "executive_reviews",
         "board_reports",
+        # Design Bible Chapter 74 — Self-Improvement Proposals and the
+        # Institutional Evolution Engine. Real, capped, permanent
+        # history, same as board_reports/executive_reviews above.
+        "self_improvement_proposals",
+        "evolution_reports",
         "talent",
         "department_self_evaluations",
         "market_intelligence_reports",

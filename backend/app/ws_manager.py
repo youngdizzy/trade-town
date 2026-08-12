@@ -112,6 +112,10 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         "executiveReviews": [r.model_dump(by_alias=True) for r in state.executive_reviews],
         # Design Bible Chapter 70 Part 1 — already capped (MAX_BOARD_REPORTS).
         "boardReports": [r.model_dump(by_alias=True) for r in state.board_reports],
+        # Design Bible Chapter 74 — already capped
+        # (MAX_SELF_IMPROVEMENT_PROPOSALS/MAX_EVOLUTION_REPORTS).
+        "selfImprovementProposals": [p.model_dump(by_alias=True) for p in state.self_improvement_proposals],
+        "evolutionReports": [r.model_dump(by_alias=True) for r in state.evolution_reports],
         # v0.7 Feature 25 — academyProjects holds the one active project
         # (small); academyCompletedProjects is already capped
         # (MAX_ACADEMY_LIBRARY), the permanent Knowledge Library.
