@@ -3197,6 +3197,130 @@ export interface TradingModeHealthAssessment {
   reasoning: string[];
 }
 
+// Design Bible Chapter 74 — Continuous Learning & Self-Improvement
+// System (CLSIS, Part 1) and the Institutional Evolution Engine (Part
+// 2) (see backend/app/self_improvement.py and backend/app/evolution.py).
+// selfImprovementProposals/evolutionReports are real, part of the WS
+// tick broadcast (gameStore) — the same convention tradingModes above
+// established. Executive Learning Summary and the Company Evolution
+// Score have no WS-broadcast field and are fetched on demand instead.
+export type SelfImprovementCategory =
+  | "risk_rule"
+  | "dashboard"
+  | "research_workflow"
+  | "position_sizing"
+  | "new_executive"
+  | "automation"
+  | "knowledge_organization"
+  | "ui";
+export type SelfImprovementStatus = "pending" | "approved" | "rejected" | "implemented";
+export type SelfImprovementComplexity = "small" | "medium" | "large";
+export type SelfImprovementPriority = "low" | "medium" | "high";
+
+export interface SelfImprovementProposal {
+  id: string;
+  category: SelfImprovementCategory;
+  title: string;
+  reasoning: string;
+  evidence: string[];
+  benefits: string[];
+  risks: string[];
+  estimatedComplexity: SelfImprovementComplexity;
+  priority: SelfImprovementPriority;
+  confidence: number;
+  status: SelfImprovementStatus;
+  ceoNote: string | null;
+  visionAlignmentScore: number | null;
+  implementationNote: string | null;
+  implementedAt: string | null;
+  simDay: number;
+  createdAt: string;
+  decidedAt: string | null;
+}
+
+export interface ExecutiveLearningSummary {
+  agentId: AgentId;
+  researchAccuracy: number | null;
+  confidenceCalibration: number | null;
+  thinkingProfile: ThinkingProfile | null;
+  knowledgePoints: number;
+  knowledgeTier: number;
+  knowledgeLevel: string;
+  mentorTracks: string[];
+  graduatedTrackCount: number;
+}
+
+export type CompanyEvolutionWindow = "monthly" | "quarterly" | "yearly";
+
+export interface CompanyEvolutionScore {
+  window: CompanyEvolutionWindow;
+  overall: number;
+  learningVolume: number;
+  proposalExecution: number;
+  knowledgeGrowth: number;
+  strategyMaturation: number;
+  governanceEvolution: number;
+  periodStartSimDay: number;
+  periodEndSimDay: number;
+  computedAt: string;
+}
+
+export interface InstitutionalEvolutionReport {
+  id: string;
+  strategicReviewId: string | null;
+  executiveReviewId: string | null;
+  coachReportId: string | null;
+  topCaseStudyIds: string[];
+  topSuccessStudyIds: string[];
+  proposalsGenerated: string[];
+  proposalsResolved: string[];
+  evolutionScore: CompanyEvolutionScore;
+  summary: string;
+  simDay: number;
+  createdAt: string;
+}
+
+// Design Bible Chapter 74.5 — CEO Vision Board & Strategic Alignment
+// Engine (see backend/app/vision_board.py). visionBoard is real, part
+// of the WS tick broadcast — the same convention tradingModes/
+// selfImprovementProposals above established. Alignment lookups and the
+// Self-Correction Note have no WS-broadcast field and are fetched on
+// demand instead.
+export type VisionPriorityCategory = "growth" | "risk" | "research" | "trading" | "operations" | "governance";
+export type VisionObjectiveCategory = "trading_style" | "expansion" | "research_priority" | "technology" | "lifestyle" | "other";
+
+export interface VisionBoardObjective {
+  id: string;
+  text: string;
+  category: VisionObjectiveCategory;
+  createdAt: string;
+}
+
+export interface VisionBoardState {
+  mission: string | null;
+  priorities: VisionPriorityCategory[];
+  objectives: VisionBoardObjective[];
+  identityNote: string | null;
+  updatedAt: string;
+}
+
+export interface VisionAlignmentScore {
+  subjectType: "self_improvement_proposal" | "goal" | "constitution_amendment";
+  subjectId: string;
+  score: number;
+  supportingReasons: string[];
+  conflictingGoals: string[];
+  confidence: number;
+  computedAt: string;
+}
+
+export interface VisionSelfCorrectionNote {
+  triggered: boolean;
+  message: string | null;
+  circuitBreakerTier: DailyCircuitBreakerTier;
+  computedAt: string;
+}
+
 // Design Bible Chapter 73.5 — Mobile Command Center & Remote Operations
 // (see backend/app/situation_room.py, backend/app/travel_mode.py).
 // situationRoom has no WS-broadcast field (computed fresh per request,
@@ -3837,6 +3961,9 @@ export interface GameSaveState {
   dailyCircuitBreaker: DailyCircuitBreakerRead;
   losingStreak: LosingStreakRead;
   recoveryBriefings: RecoveryBriefing[];
+  selfImprovementProposals: SelfImprovementProposal[];
+  evolutionReports: InstitutionalEvolutionReport[];
+  visionBoard: VisionBoardState;
   travelMode: TravelModeState;
   travelModeBriefings: TravelModeBriefing[];
   talent: TalentState;

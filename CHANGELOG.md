@@ -7,6 +7,26 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 74/74.5 — a real frontend panel for CLSIS, the Institutional Evolution Engine, and the CEO Vision Board**
+  (`frontend/src/ui/components/CommandCenter/panels/EvolutionPanel.tsx` new, `frontend/tests/evolutionPanel.spec.ts`
+  new, `frontend/src/types.ts`, `frontend/src/net/api.ts`, `frontend/src/net/socket.ts`,
+  `frontend/src/game/systems/{NexusManager,EventBus}.ts`, `frontend/src/state/gameStore.ts`,
+  `frontend/src/ui/components/CommandCenter/{FullCommandCenter.tsx,lib/navigation.ts}`,
+  `docs/DesignBible/volumes/09-departments/{chapter-74-continuous-learning-self-improvement-system.md,
+  chapter-74-5-ceo-vision-board-strategic-alignment-engine.md}`): a Chapters 67–75 audit found these three
+  real, working backends (`app/self_improvement.py`, `app/evolution.py`, `app/vision_board.py`) had zero
+  frontend presence — `selfImprovementProposals`/`evolutionReports`/`visionBoard` were broadcast over the WS
+  tick but never reached the client's type layer, store, or any UI. Fixed with a new `EVOLUTION` Command
+  Center tab bundling all three: Self-Improvement Proposals (approve/reject/mark-implemented), the Executive
+  Learning Summary, the Company Evolution Score, Institutional Evolution Reports, and the CEO Vision Board
+  (mission/priorities/objectives/identity note/self-correction note). Along the way, live Playwright
+  verification caught a real, separate wiring bug this session's `tsc --noEmit -p .` invocation had been
+  silently failing to catch for months: `frontend/tsconfig.json` is a TypeScript project-references solution
+  file with `files: []`, so plain `-p .` type-checks nothing — the actual command is `tsc -b --noEmit`
+  (`package.json`'s own `typecheck` script). Under the real command, `net/socket.ts`'s hand-built WS-message
+  object literal was missing all three new fields entirely (a real runtime `undefined` crash the
+  `PanelErrorBoundary` caught and reported, not merely a lint gap) — fixed by adding them there too.
+
 - **Chapter 73.5 mobile audit + real touch controls** (`frontend/src/game/systems/TouchMoveState.ts` new,
   `frontend/src/ui/components/MobileTouchControls.tsx` new, `frontend/src/ui/hooks/useIsTouchDevice.ts` new,
   `InputManager.ts`, `App.tsx`, `EventBus.ts`, `BottomToolbar.tsx`, `EmergencyStopControl.tsx`,

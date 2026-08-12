@@ -88,6 +88,14 @@ import type {
   LosingStreakRead,
   AdaptiveModeRecommendation,
   RecoveryBriefing,
+  SelfImprovementProposal,
+  ExecutiveLearningSummary,
+  CompanyEvolutionScore,
+  CompanyEvolutionWindow,
+  VisionBoardState,
+  VisionPriorityCategory,
+  VisionObjectiveCategory,
+  VisionSelfCorrectionNote,
   BoardRoster,
   SituationRoomState,
   TravelModeState,
@@ -298,6 +306,44 @@ export const api = {
       body: JSON.stringify({ enabled }),
     }),
   getRecoveryBriefings: () => request<RecoveryBriefing[]>("/trading-modes/recovery-briefings"),
+  // Design Bible Chapter 74 — Continuous Learning & Self-Improvement
+  // System (CLSIS, Part 1) and the Institutional Evolution Engine (Part
+  // 2). selfImprovementProposals/evolutionReports are already live via
+  // the WS tick broadcast (gameStore) — these are the genuine on-demand
+  // reads/actions: Executive Learning Summary and the Company Evolution
+  // Score have no WS-broadcast field, and decide/implement are real CEO
+  // actions.
+  decideSelfImprovementProposal: (proposalId: string, approve: boolean, ceoNote?: string) =>
+    request<SelfImprovementProposal[]>("/self-improvement/proposals/decide", {
+      method: "POST",
+      body: JSON.stringify({ proposalId, approve, ceoNote: ceoNote ?? null }),
+    }),
+  markSelfImprovementProposalImplemented: (proposalId: string, implementationNote?: string) =>
+    request<SelfImprovementProposal[]>("/self-improvement/proposals/implement", {
+      method: "POST",
+      body: JSON.stringify({ proposalId, implementationNote: implementationNote ?? null }),
+    }),
+  getExecutiveLearningSummary: (agentId: AgentId) => request<ExecutiveLearningSummary>(`/self-improvement/executive-learning/${agentId}`),
+  getCompanyEvolutionScore: (window: CompanyEvolutionWindow) => request<CompanyEvolutionScore>(`/self-improvement/evolution-score/${window}`),
+  // Design Bible Chapter 74.5 — CEO Vision Board & Strategic Alignment
+  // Engine. visionBoard is already live via the WS tick broadcast — the
+  // mutations below are real CEO actions; the Self-Correction Note has
+  // no WS-broadcast field (computed fresh per request). Goal/
+  // constitution-amendment alignment lookups exist at the API layer
+  // (backend/app/routers/vision_board.py) but have no UI surface yet —
+  // they belong more naturally on the Goals/Constitution panels
+  // themselves, out of scope for this chapter's own panel.
+  setVisionBoardMission: (mission: string | null) =>
+    request<VisionBoardState>("/vision-board/mission", { method: "POST", body: JSON.stringify({ mission }) }),
+  setVisionBoardIdentityNote: (identityNote: string | null) =>
+    request<VisionBoardState>("/vision-board/identity-note", { method: "POST", body: JSON.stringify({ identityNote }) }),
+  setVisionBoardPriorities: (priorities: VisionPriorityCategory[]) =>
+    request<VisionBoardState>("/vision-board/priorities", { method: "POST", body: JSON.stringify({ priorities }) }),
+  addVisionBoardObjective: (text: string, category: VisionObjectiveCategory) =>
+    request<VisionBoardState>("/vision-board/objectives", { method: "POST", body: JSON.stringify({ text, category }) }),
+  removeVisionBoardObjective: (objectiveId: string) =>
+    request<VisionBoardState>(`/vision-board/objectives/${encodeURIComponent(objectiveId)}`, { method: "DELETE" }),
+  getVisionSelfCorrectionNote: () => request<VisionSelfCorrectionNote>("/vision-board/self-correction"),
   // Design Bible Chapter 70 Part 1 — Executive Board & CEO Intelligence
   // System. boardRoster has no WS-broadcast field (computed fresh per
   // request, same on-demand pattern as the Adaptive Mode recommendation

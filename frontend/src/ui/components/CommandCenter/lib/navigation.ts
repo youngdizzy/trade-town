@@ -30,6 +30,13 @@ import type { Tab } from "../FullCommandCenter";
  * - DISCIPLINE (Library of Mistakes/Successes, discipline case studies)
  *   and PERFORMANCE (monthly P&L reporting) each plausibly fit two
  *   sections; placed under AI Workforce and Archive respectively.
+ * - EVOLUTION (Chapter 74's CLSIS Self-Improvement Proposals +
+ *   Institutional Evolution Engine, and Chapter 74.5's CEO Vision
+ *   Board — bundled into one tab, EvolutionPanel.tsx) sits next to
+ *   DISCIPLINE/REASONING/REFLECTION under AI Workforce: it's company-
+ *   wide learning about how the company itself operates, not a
+ *   portfolio-facing control, despite the Vision Board's own CEO-
+ *   authored mission/priorities content.
  * - Operations is real but thin (LOGS only) — Automation, Integrations,
  *   Infrastructure, and Broker Configuration have no backing feature
  *   anywhere in this codebase today, so no placeholder tabs were added
@@ -66,6 +73,7 @@ export const TAB_SECTION: Record<Tab, Section> = {
   REASONING: "AI WORKFORCE",
   REFLECTION: "AI WORKFORCE",
   DISCIPLINE: "AI WORKFORCE",
+  EVOLUTION: "AI WORKFORCE",
 
   RESEARCH: "RESEARCH",
   SANDBOX: "RESEARCH",

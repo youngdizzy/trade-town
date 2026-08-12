@@ -1,6 +1,14 @@
 # Chapter 74.5 — CEO Vision Board & Strategic Alignment Engine
 
-**Status:** Target design, not yet implemented. **Chapter number
+**Status:** Substantially implemented, backend and frontend —
+`app/vision_board.py` and its router are real (this line was previously
+stale, fixed as part of a later Chapters 67–75 audit pass, the same
+stale-line pattern found and fixed on Chapter 74's own page); the CEO
+Priorities/Objectives/Mission/Identity Note surface and the real
+Self-Correction Note now render in `EvolutionPanel.tsx`'s CEO Vision
+Board section (shared with Chapter 74's own Command Center tab, since
+the audit also found this chapter had zero frontend presence). Covered
+by `frontend/tests/evolutionPanel.spec.ts`. **Chapter number
 note:** inserted between Chapters 74 and 75, the same decimal-insertion
 precedent Chapter 73.5 already established, per explicit instruction to
 keep this chapter separate from — but immediately following — Chapter
@@ -330,8 +338,13 @@ reporting via `StrategicReview`), Chapter 74's `InstitutionalEvolutionReport`
 **What this chapter adds, real:** `app/vision_board.py` (new) —
 `VisionBoardState` CRUD, `compute_vision_alignment_score()` (a
 disclosed, rank-based formula over three real subject types), one
-narrow self-correction check. **What's genuinely, entirely unbuilt,
-named and not faked:** trade-level alignment scoring, general-purpose
-drift detection beyond the one risk/circuit-breaker check, and
-persisted alignment scores on `Goal`/`ConstitutionAmendment` — see
-Deferred Features.
+narrow self-correction check; `EvolutionPanel.tsx`'s CEO Vision Board
+section (mission/priorities/objectives/identity note/self-correction
+note, shared with Chapter 74's own tab). **What's genuinely, entirely
+unbuilt, named and not faked:** trade-level alignment scoring,
+general-purpose drift detection beyond the one risk/circuit-breaker
+check, and persisted alignment scores on `Goal`/`ConstitutionAmendment`
+— see Deferred Features. Goal/constitution-amendment alignment lookups
+exist at the API layer (`GET /api/vision-board/alignment/...`) but have
+no UI surface yet — they belong on the Goals/Constitution panels
+themselves, out of scope for this chapter's own panel.

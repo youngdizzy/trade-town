@@ -92,6 +92,9 @@ import type {
   DailyCircuitBreakerRead,
   LosingStreakRead,
   RecoveryBriefing,
+  SelfImprovementProposal,
+  InstitutionalEvolutionReport,
+  VisionBoardState,
   TravelModeState,
   TravelModeBriefing,
   WarRoomSession,
@@ -240,6 +243,9 @@ export interface GameEvents {
   "dailyCircuitBreaker:updated": DailyCircuitBreakerRead;
   "losingStreak:updated": LosingStreakRead;
   "recoveryBriefings:updated": RecoveryBriefing[];
+  "selfImprovementProposals:updated": SelfImprovementProposal[];
+  "evolutionReports:updated": InstitutionalEvolutionReport[];
+  "visionBoard:updated": VisionBoardState;
   "travelMode:updated": TravelModeState;
   "travelModeBriefings:updated": TravelModeBriefing[];
   "talent:updated": TalentState;

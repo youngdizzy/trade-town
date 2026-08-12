@@ -45,6 +45,7 @@ import { CalendarPanel } from "./panels/CalendarPanel";
 import { BlackBoxPanel } from "./panels/BlackBoxPanel";
 import { CompliancePanel } from "./panels/CompliancePanel";
 import { TradingModesPanel } from "./panels/TradingModesPanel";
+import { EvolutionPanel } from "./panels/EvolutionPanel";
 import { SituationRoomPanel } from "./panels/SituationRoomPanel";
 import { TravelModePanel } from "./panels/TravelModePanel";
 import { DecisionDetail } from "./DecisionDetail";
@@ -124,6 +125,7 @@ const TABS = [
   "TRADINGMODES",
   "SITUATIONROOM",
   "TRAVELMODE",
+  "EVOLUTION",
 ] as const;
 type Tab = (typeof TABS)[number];
 
@@ -291,6 +293,7 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
         {tab === "TRADINGMODES" && <TradingModesPanel />}
         {tab === "SITUATIONROOM" && <SituationRoomPanel />}
         {tab === "TRAVELMODE" && <TravelModePanel />}
+        {tab === "EVOLUTION" && <EvolutionPanel />}
         </PanelErrorBoundary>
       </div>
 

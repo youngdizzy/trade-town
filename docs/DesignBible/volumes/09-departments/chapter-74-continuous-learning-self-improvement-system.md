@@ -1,11 +1,19 @@
 # Chapter 74 — Continuous Learning & Self-Improvement System (CLSIS)
 
-**Status:** Substantially implemented (backend) — see Implementation
-Notes below for the complete, itemized honesty boundary; this line was
-previously stale (it said "not yet implemented" even after
-`app/self_improvement.py` shipped), fixed as part of the same audit pass
-noted below. No frontend panel exists yet for this chapter (tracked
-separately). **Chapter number note:**
+**Status:** Substantially implemented, backend and frontend — see
+Implementation Notes below for the complete, itemized honesty boundary;
+this line was previously stale (it said "not yet implemented" even
+after `app/self_improvement.py` shipped), fixed as part of the same
+audit pass noted below. A Chapters 67–75 audit later found this chapter
+(and Part 2, and Chapter 74.5's Vision Board) had zero frontend
+presence despite a real, working backend — fixed by a real
+`EvolutionPanel.tsx` Command Center tab (`EVOLUTION`, under AI
+Workforce) bundling all three: Self-Improvement Proposals (approve/
+reject/mark-implemented), the Executive Learning Summary, the Company
+Evolution Score, Institutional Evolution Reports, and the CEO Vision
+Board (mission/priorities/objectives/identity note/self-correction
+note). Covered by `frontend/tests/evolutionPanel.spec.ts`. **Chapter
+number note:**
 the source brief for this chapter called itself "Chapter 75," but that
 number already belongs to the real, implemented [Company Trading Modes
 & Institutional Capital
@@ -354,9 +362,12 @@ implemented), `app/coach.py`, `app/mentor.py`,
 company_score.py` (Chapter 63 — Substantially implemented). **What this
 chapter adds, real:** `app/self_improvement.py` (new) — two
 evidence-gated Self-Improvement Proposal generators, CEO
-approve/reject, `compute_executive_learning_summary()`; a new
-`economic_event` node type in `app/knowledge_graph.py`'s
-`build_knowledge_graph()`. **What's genuinely, entirely unbuilt, named
+approve/reject/mark-implemented, `compute_executive_learning_summary()`;
+a new `economic_event` node type in `app/knowledge_graph.py`'s
+`build_knowledge_graph()`; a real frontend, `EvolutionPanel.tsx`'s
+Self-Improvement Proposals and Executive Learning Summary sections
+(shared with Part 2 below and Chapter 74.5, all bundled into one
+Command Center tab). **What's genuinely, entirely unbuilt, named
 and not faked:** auto-generated Academy lesson content, "indicator"
 graph nodes, and six of eight Self-Improvement Proposal categories —
 see Deferred Features. See Part 2 below for the Institutional Evolution
@@ -366,9 +377,11 @@ Engine and its own Company Evolution Score.
 
 # Part 2 — Institutional Evolution Engine
 
-**Status:** Substantially implemented (backend) — same stale-line fix as
-Part 1 above; `app/evolution.py` and its two router endpoints are real.
-Same relationship to
+**Status:** Substantially implemented, backend and frontend — same
+stale-line fix as Part 1 above; `app/evolution.py` and its two router
+endpoints are real, now surfaced in `EvolutionPanel.tsx`'s Company
+Evolution Score and Institutional Evolution Reports sections. Same
+relationship to
 Part 1 as Chapter 72's Institutional Survival Score has to its own Part
 1 Early Warning Score: a company-wide, longer-horizon rollup built on
 top of Part 1's real per-event machinery, not a second, competing

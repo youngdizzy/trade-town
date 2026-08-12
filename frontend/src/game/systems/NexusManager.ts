@@ -85,6 +85,9 @@ import type {
   DailyCircuitBreakerRead,
   LosingStreakRead,
   RecoveryBriefing,
+  SelfImprovementProposal,
+  InstitutionalEvolutionReport,
+  VisionBoardState,
   TravelModeState,
   TravelModeBriefing,
   WarRoomSession,
@@ -163,6 +166,9 @@ interface NexusSnapshot {
   dailyCircuitBreaker: DailyCircuitBreakerRead;
   losingStreak: LosingStreakRead;
   recoveryBriefings: RecoveryBriefing[];
+  selfImprovementProposals: SelfImprovementProposal[];
+  evolutionReports: InstitutionalEvolutionReport[];
+  visionBoard: VisionBoardState;
   travelMode: TravelModeState;
   travelModeBriefings: TravelModeBriefing[];
   talent: TalentState;
@@ -450,6 +456,15 @@ export class NexusManager {
   private static dailyCircuitBreaker: DailyCircuitBreakerRead = { tier: "none", dailyPnlPct: 0, tier1Pct: 1, tier2Pct: 2, tier3Pct: 3, tier4Pct: 5, updatedAt: new Date().toISOString() };
   private static losingStreak: LosingStreakRead = { consecutiveLosses: 0, pauseActive: false, pauseThreshold: 3, suspendThreshold: 5 };
   private static recoveryBriefings: RecoveryBriefing[] = [];
+  private static selfImprovementProposals: SelfImprovementProposal[] = [];
+  private static evolutionReports: InstitutionalEvolutionReport[] = [];
+  private static visionBoard: VisionBoardState = {
+    mission: null,
+    priorities: [],
+    objectives: [],
+    identityNote: null,
+    updatedAt: new Date().toISOString(),
+  };
   private static travelMode: TravelModeState = {
     active: false,
     settings: {
@@ -784,6 +799,18 @@ export class NexusManager {
     return this.recoveryBriefings;
   }
 
+  static getSelfImprovementProposals(): SelfImprovementProposal[] {
+    return this.selfImprovementProposals;
+  }
+
+  static getEvolutionReports(): InstitutionalEvolutionReport[] {
+    return this.evolutionReports;
+  }
+
+  static getVisionBoard(): VisionBoardState {
+    return this.visionBoard;
+  }
+
   static getTravelMode(): TravelModeState {
     return this.travelMode;
   }
@@ -806,6 +833,22 @@ export class NexusManager {
   static setConstitution(constitution: ConstitutionState): void {
     this.constitution = constitution;
     EventBus.emit("constitution:updated", constitution);
+  }
+
+  /** Design Bible Chapter 74 Part 1 — applies the result of a real CEO
+   * decide/implement action on a Self-Improvement Proposal immediately,
+   * rather than waiting for the next WS tick. */
+  static setSelfImprovementProposals(proposals: SelfImprovementProposal[]): void {
+    this.selfImprovementProposals = proposals;
+    EventBus.emit("selfImprovementProposals:updated", proposals);
+  }
+
+  /** Design Bible Chapter 74.5 — applies the result of a real CEO
+   * mutation to the Vision Board immediately, rather than waiting for
+   * the next WS tick. */
+  static setVisionBoard(visionBoard: VisionBoardState): void {
+    this.visionBoard = visionBoard;
+    EventBus.emit("visionBoard:updated", visionBoard);
   }
 
   /** v0.7 Feature 49 — applies the result of POST /api/risk-limits, the
@@ -1400,6 +1443,25 @@ export class NexusManager {
     }
     this.recoveryBriefings = update.recoveryBriefings;
 
+    // Unlike recoveryBriefings/evolutionReports below (append-only logs,
+    // where a length-diff is a real "did anything change" check), an
+    // existing proposal's own status can mutate in place (CEO approve/
+    // reject/mark-implemented) without the array's length changing — so
+    // this always emits, the same convention tradingModes above already
+    // uses for its own in-place-mutable object.
+    if (update.selfImprovementProposals !== this.selfImprovementProposals) {
+      EventBus.emit("selfImprovementProposals:updated", update.selfImprovementProposals);
+    }
+    this.selfImprovementProposals = update.selfImprovementProposals;
+
+    if (update.evolutionReports.length !== this.evolutionReports.length) {
+      EventBus.emit("evolutionReports:updated", update.evolutionReports);
+    }
+    this.evolutionReports = update.evolutionReports;
+
+    if (update.visionBoard !== this.visionBoard) EventBus.emit("visionBoard:updated", update.visionBoard);
+    this.visionBoard = update.visionBoard;
+
     if (update.travelMode !== this.travelMode) EventBus.emit("travelMode:updated", update.travelMode);
     this.travelMode = update.travelMode;
 
@@ -1570,6 +1632,9 @@ export class NexusManager {
     this.dailyCircuitBreaker = save.dailyCircuitBreaker;
     this.losingStreak = save.losingStreak;
     this.recoveryBriefings = save.recoveryBriefings;
+    this.selfImprovementProposals = save.selfImprovementProposals;
+    this.evolutionReports = save.evolutionReports;
+    this.visionBoard = save.visionBoard;
     this.travelMode = save.travelMode;
     this.travelModeBriefings = save.travelModeBriefings;
     this.talent = save.talent;
