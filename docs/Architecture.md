@@ -7103,6 +7103,77 @@ new `tests/test_knowledge_graph.py` cases for the `economic_event`
 node/`same_day` edge). Backend only this pass — no new endpoint or WS
 field yet has a dedicated frontend panel.
 
+### CEO Vision Board & Strategic Alignment Engine — Design Bible Chapter 74.5
+
+Research before this pass found the source brief's three biggest
+concepts already real under different names: "Company Philosophy" is
+`app/constitution.py`'s 13 real, CEO-amendable Articles; "Company
+Identity" collides with `app/company_dna.py::classify_identity()` (a
+derived, historical read, not CEO-declared); "CEO Long-Term Objectives"
+runs into `app/goals.py`'s real `Goal`, which structurally supports only
+4 real, computable metrics. This chapter's real job was narrower than
+its brief: cite every one of those systems by reference, refuse to
+rebuild a second copy of any of them, and add exactly two new things — a
+small CEO Priorities/Objectives surface for what `goals.py` structurally
+cannot represent, and a real, disclosed Vision Alignment Engine.
+
+**What's real:** `app/vision_board.py` (new). `VisionBoardState` — a
+real, permanent, CEO-mutated singleton (same shape as
+`RiskLimits`/`ConstitutionState`, not a growing log): `mission` (free
+CEO text, no computed progress), `priorities` (a CEO-ranked ordering
+over the fixed 6-value `VisionPriorityCategory` set — the 5 real
+`GoalCategory` values plus a new `governance` value added specifically
+so `ConstitutionAmendment`s have a real category to rank against),
+`objectives` (`VisionBoardObjective` — CEO text plus a category tag from
+a small fixed set, explicitly no progress bar/percentage/target, the
+same honesty boundary `goals.py`'s own 4-metric limit drew for itself),
+and `identity_note` (optional CEO annotation displayed next to
+`company_dna.py`'s real derived classification, never replacing it).
+
+The Vision Alignment Engine (`compute_vision_alignment_score()`) is a
+real, disclosed, purely mechanical rank-based formula scoring exactly
+three real subject types, per explicit scope decision — not every trade
+recommendation (would require a 10th unconditional `app/gatekeeper.py`
+check, deliberately out of scope). Every subject maps to a
+`VisionPriorityCategory`: `Goal.category` maps directly;
+`SelfImprovementProposal.category` maps through a fixed, disclosed table
+(`SELF_IMPROVEMENT_TO_PRIORITY_CATEGORY`, e.g. `risk_rule`→`risk`,
+`research_workflow`→`research`, `automation`→`operations`), the same
+"no hidden weighting" convention `app/company_score.py` established;
+`ConstitutionAmendment` always maps to `governance`. If the mapped
+category is ranked at position *R* among *N* CEO priorities, `score =
+100 × (N − R + 1) / N`; if unranked, `score = 50.0` — an explicit,
+disclosed neutral default, never an invented "we think you'd care about
+this" guess (`confidence` is `100.0` when ranked, `40.0` for the
+neutral-default case, an honest signal the reading is a placeholder).
+For `Goal`/`ConstitutionAmendment` the score is computed fresh per
+request, never persisted (neither schema has a reserved field, and
+adding one would touch `app/state.py`'s creation flows beyond this
+chapter's scope). For `SelfImprovementProposal`, the score *is*
+persisted — Chapter 74 reserved `vision_alignment_score` on that schema
+for exactly this chapter to fill in, so it's computed once, at
+generation time, in the same two real proposal-generation call sites
+(`app/nexus.py`'s recurring-mistake check, `app/state.py`'s
+retirement-cluster check).
+
+Self-Correction is one real, narrow check, not the brief's open-ended
+drift list: if the CEO's own rank-1 priority is `risk` and the real
+Daily Circuit Breaker tier (`app/trading_modes.py`) is `tier2` or worse,
+`compute_self_correction_note()` surfaces a real drift note. Every other
+drift scenario the brief named (research priorities shifting, automation
+conflicting with philosophy) has no equally clean single real signal to
+check against without fabricating one — documented as a Deferred
+Feature rather than faked.
+
+`GET/POST/DELETE /api/vision-board/*`
+(`app/routers/vision_board.py`), `visionBoard` in the WS `"state"`
+broadcast, in the `company` save module alongside
+`trading_modes`/`travel_mode` (a real, CEO-mutated posture, not
+recomputed). 24 new tests (`tests/test_vision_board.py`). Read-only and
+advisory in every direction — the Vision Alignment Engine never blocks
+or forces a decision, and never feeds the Trade Gatekeeper. Backend only
+this pass — no dedicated frontend panel yet.
+
 ### Compliance, Audit & Governance System (CAGS) — Design Bible Chapter 73
 
 A real, read-only audit synthesis layer, backend only, with **no new

@@ -936,6 +936,68 @@ and `CompanyScore`'s 7-metric mean, never a re-read of either (see the
 Design Bible chapter's own Ownership table for why that would be
 duplication).
 
+### `GET /api/vision-board`
+
+Design Bible Chapter 74.5 — the CEO Vision Board & Strategic Alignment
+Engine. Returns the real, permanent, CEO-mutated `VisionBoardState`
+(`mission`, `priorities`, `objectives`, `identityNote`) — the same shape
+as `RiskLimits`/`ConstitutionState`, not a growing log. In the WS
+`"state"` broadcast as `visionBoard`.
+
+### `POST /api/vision-board/mission`
+
+CEO-manual only. Body: `{"mission": string | null}`. Returns the updated
+`VisionBoardState`.
+
+### `POST /api/vision-board/identity-note`
+
+CEO-manual only. Body: `{"identityNote": string | null}` — an optional
+annotation displayed next to `app/company_dna.py`'s real derived
+identity classification, never a competing re-classification of it.
+Returns the updated `VisionBoardState`.
+
+### `POST /api/vision-board/priorities`
+
+CEO-manual only. Body: `{"priorities": string[]}` — a ranked ordering
+(index 0 = rank 1) over the fixed 6-value `VisionPriorityCategory` set
+(`growth`, `risk`, `research`, `trading`, `operations`, `governance`).
+400 if a category repeats or isn't one of the 6 real values. Returns the
+updated `VisionBoardState`.
+
+### `POST /api/vision-board/objectives`
+
+CEO-manual only. Body: `{"text": string, "category": string}` — category
+must be one of `trading_style`, `expansion`, `research_priority`,
+`technology`, `lifestyle`, `other`. No progress percentage or target
+value — the same honesty boundary `app/goals.py`'s own 4-metric limit
+drew for itself. Capped (`MAX_VISION_BOARD_OBJECTIVES`, 20). Returns the
+updated `VisionBoardState`.
+
+### `DELETE /api/vision-board/objectives/{objectiveId}`
+
+CEO-manual only. Returns the updated `VisionBoardState`.
+
+### `GET /api/vision-board/alignment/goal/{goalId}`
+
+The Vision Alignment Engine's real, disclosed, rank-based score for a
+real `Goal` — `Goal.category` maps directly to a `VisionPriorityCategory`.
+Computed fresh per request, never persisted. 404 if the goal doesn't
+exist.
+
+### `GET /api/vision-board/alignment/constitution-amendment/{amendmentId}`
+
+The same Vision Alignment Engine score for a real `ConstitutionAmendment`
+— always mapped to the `governance` category. Computed fresh per
+request, never persisted. 404 if the amendment doesn't exist.
+
+### `GET /api/vision-board/self-correction`
+
+The one real, narrow Self-Correction check: the CEO's own rank-1
+priority is `risk` and the real Daily Circuit Breaker tier
+(`app/trading_modes.py`) is `tier2` or worse. Computed on-demand, never
+persisted — same convention Chapter 72's Early Warning Score uses for a
+live read with no history to keep.
+
 #### `executiveMeetingLog` / `departmentSelfEvaluations` (WS + archive state, no dedicated endpoint)
 
 v0.7 Feature 50 (Part 2/3) — the permanent record the intelligence

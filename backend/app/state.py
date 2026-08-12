@@ -89,6 +89,15 @@ from app.sandbox import apply_review_decision, begin_company_review, begin_limit
 from app.sandbox import retire_strategy as retire_strategy_stage
 from app.scribe import record_ceo_decision, record_emergency_stop_event, record_proposal_hold, record_proposal_modify, record_rule_violation, record_strategy_failed_archive_entry, record_strategy_hall_of_fame_entry
 from app.self_improvement import decide_self_improvement_proposal, maybe_propose_retirement_cluster, record_self_improvement_proposal
+from app.vision_board import (
+    add_vision_objective,
+    compute_self_improvement_proposal_alignment,
+    default_vision_board,
+    remove_vision_objective,
+    set_vision_identity_note,
+    set_vision_mission,
+    set_vision_priorities,
+)
 from app.schemas import (
     AccountType,
     AgentId,
@@ -305,6 +314,7 @@ def default_state() -> GameSaveState:
         blackBox=default_black_box_state(),
         talent=TalentState(reports=[], viewedReportIds=[], updatedAt=_now_iso()),
         constitution=default_constitution(),
+        visionBoard=default_vision_board(),
         warRoomSessions=[],
         portfolioIntelligence=compute_portfolio_intelligence(default_portfolio(), market_data_provider, pending_proposal_count=0),
         economicIntelligence=compute_economic_intelligence(
@@ -1500,6 +1510,16 @@ class GameState:
                     new_failed_archive, self.data.self_improvement_proposals, sim_day=self.data.time.day
                 )
                 if retirement_cluster_proposal is not None:
+                    # Design Bible Chapter 74.5 — the Vision Alignment
+                    # Engine, computed once at generation time (the field
+                    # Chapter 74 reserved on SelfImprovementProposal for
+                    # exactly this chapter to fill in).
+                    alignment = compute_self_improvement_proposal_alignment(
+                        retirement_cluster_proposal, self.data.vision_board
+                    )
+                    retirement_cluster_proposal = retirement_cluster_proposal.model_copy(
+                        update={"vision_alignment_score": alignment.score}
+                    )
                     update["self_improvement_proposals"] = record_self_improvement_proposal(
                         self.data.self_improvement_proposals, retirement_cluster_proposal
                     )
@@ -1580,6 +1600,45 @@ class GameState:
             )
             self.data = self.data.model_copy(update={"self_improvement_proposals": proposals})
             return self.data, None
+
+    async def set_vision_board_mission(self, mission: str | None) -> GameSaveState:
+        """Design Bible Chapter 74.5 — the CEO Vision Board. CEO-mutated
+        only, the same restraint every other CEO-authored singleton in
+        this codebase (RiskLimits, ConstitutionState) holds itself to."""
+        async with self.lock:
+            board = set_vision_mission(self.data.vision_board, mission.strip() if mission else None)
+            self.data = self.data.model_copy(update={"vision_board": board})
+            return self.data
+
+    async def set_vision_board_identity_note(self, identity_note: str | None) -> GameSaveState:
+        async with self.lock:
+            board = set_vision_identity_note(
+                self.data.vision_board, identity_note.strip() if identity_note else None
+            )
+            self.data = self.data.model_copy(update={"vision_board": board})
+            return self.data
+
+    async def set_vision_board_priorities(self, priorities: list[str]) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            board, error = set_vision_priorities(self.data.vision_board, priorities)
+            if error is not None:
+                return self.data, error
+            self.data = self.data.model_copy(update={"vision_board": board})
+            return self.data, None
+
+    async def add_vision_board_objective(self, text: str, category: str) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            board, error = add_vision_objective(self.data.vision_board, text, category)
+            if error is not None:
+                return self.data, error
+            self.data = self.data.model_copy(update={"vision_board": board})
+            return self.data, None
+
+    async def remove_vision_board_objective(self, objective_id: str) -> GameSaveState:
+        async with self.lock:
+            board = remove_vision_objective(self.data.vision_board, objective_id)
+            self.data = self.data.model_copy(update={"vision_board": board})
+            return self.data
 
     async def create_calendar_event(self, category: PlayerEventCategory, title: str, day: int, hour: int, minute: int) -> tuple[GameSaveState, str | None]:
         """CEO-scheduled custom calendar entry — informational only, the

@@ -5712,6 +5712,79 @@ class InstitutionalEvolutionReport(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
+# Design Bible Chapter 74.5 — the CEO Vision Board & Strategic Alignment
+# Engine. The 5 real GoalCategory values plus one new value, `governance`,
+# added specifically so ConstitutionAmendments (which have no GoalCategory
+# of their own) have a real category to rank against — not because
+# governance is a Goal concept.
+VisionPriorityCategory = Literal[
+    "growth", "risk", "research", "trading", "operations", "governance"
+]
+
+VisionObjectiveCategory = Literal[
+    "trading_style", "expansion", "research_priority", "technology", "lifestyle", "other"
+]
+
+
+class VisionBoardObjective(CamelModel):
+    """CEO-authored text with a category tag, nothing else — no progress
+    bar, no percentage, no target value. The same honesty boundary
+    app/goals.py's own 4-metric limit drew for itself, applied here to
+    the objectives that fall outside even that limit (see the chapter's
+    own Ownership table)."""
+
+    id: str
+    text: str
+    category: VisionObjectiveCategory
+    created_at: str = Field(alias="createdAt")
+
+
+class VisionBoardState(CamelModel):
+    """One real, permanent, CEO-mutated object — the same shape as
+    RiskLimits/TradingModeState, not a growing log."""
+
+    mission: str | None = None
+    # A CEO-ranked ordering over VisionPriorityCategory — index 0 is
+    # rank 1 (highest). No duplicate categories; enforced by
+    # app/vision_board.py's update function, not the schema itself.
+    priorities: list[VisionPriorityCategory] = Field(default_factory=list)
+    objectives: list[VisionBoardObjective] = Field(default_factory=list)
+    # Optional CEO annotation displayed next to app/company_dna.py's real
+    # derived identity classification — never a competing
+    # re-classification of it.
+    identity_note: str | None = Field(default=None, alias="identityNote")
+    updated_at: str = Field(alias="updatedAt")
+
+
+class VisionAlignmentScore(CamelModel):
+    """Output of compute_vision_alignment_score() — a real, disclosed,
+    purely mechanical rank-based formula, never a fabricated 'does this
+    feel aligned' read. Computed on-demand for goal/constitution_amendment;
+    persisted on SelfImprovementProposal at generation time."""
+
+    subject_type: Literal[
+        "self_improvement_proposal", "goal", "constitution_amendment"
+    ] = Field(alias="subjectType")
+    subject_id: str = Field(alias="subjectId")
+    score: float
+    supporting_reasons: list[str] = Field(default_factory=list, alias="supportingReasons")
+    conflicting_goals: list[str] = Field(default_factory=list, alias="conflictingGoals")
+    confidence: float
+    computed_at: str = Field(alias="computedAt")
+
+
+class VisionSelfCorrectionNote(CamelModel):
+    """The one real, narrow Self-Correction check: the CEO's own rank-1
+    priority vs. the real Daily Circuit Breaker tier. Computed on-demand,
+    not persisted — same convention Chapter 72's Early Warning Score uses
+    for a live read with no history to keep."""
+
+    triggered: bool
+    message: str | None = None
+    circuit_breaker_tier: DailyCircuitBreakerTier = Field(alias="circuitBreakerTier")
+    computed_at: str = Field(alias="computedAt")
+
+
 class GameSaveState(CamelModel):
     version: Literal["0.6"] = "0.6"
     player: EntityTransform
@@ -6083,6 +6156,10 @@ class GameSaveState(CamelModel):
     evolution_reports: list[InstitutionalEvolutionReport] = Field(
         default_factory=list, alias="evolutionReports"
     )
+    # Design Bible Chapter 74.5 — the CEO Vision Board & Strategic
+    # Alignment Engine (app/vision_board.py). CEO-mutated singleton, the
+    # same shape as RiskLimits/ConstitutionState.
+    vision_board: VisionBoardState = Field(alias="visionBoard")
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(

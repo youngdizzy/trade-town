@@ -109,6 +109,11 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         # Operations. Real, CEO-mutated Travel Mode posture/settings —
         # not recomputed, same as trading_modes above.
         "travel_mode",
+        # Design Bible Chapter 74.5 — CEO Vision Board & Strategic
+        # Alignment Engine (app/vision_board.py). Real, CEO-mutated
+        # singleton — not recomputed, same as trading_modes/travel_mode
+        # above.
+        "vision_board",
     ),
     "research": ("research", "watchlist", "black_box"),
     # foundational_mentor_state lives here (not in `derived`) because,

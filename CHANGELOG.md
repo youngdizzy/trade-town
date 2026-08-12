@@ -7,6 +7,39 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 74.5 — CEO Vision Board & Strategic Alignment Engine**
+  (`app/vision_board.py` new, `app/routers/vision_board.py` new,
+  `app/nexus.py`, `app/state.py`, `app/schemas.py`, `app/ws_manager.py`,
+  `app/save_modules.py`, `app/main.py`): inserted between Chapters 74
+  and 75, the same decimal-insertion precedent Chapter 73.5 already
+  established. Research found the brief's three biggest concepts
+  already real elsewhere — "Company Philosophy" is
+  `app/constitution.py`'s 13 real Articles, "Company Identity" collides
+  with `app/company_dna.py::classify_identity()` (derived, not
+  CEO-declared), "CEO Long-Term Objectives" runs into `app/goals.py`'s
+  real 4-metric `Goal` — none of it is rebuilt here. Adds exactly two
+  new things: `VisionBoardState` (a real, permanent, CEO-mutated
+  singleton — `mission`, a CEO-ranked `priorities` ordering over a
+  fixed 6-value category set including a new `governance` value, a
+  small `objectives` list with honestly no fabricated progress, an
+  optional `identity_note`) and the Vision Alignment Engine
+  (`compute_vision_alignment_score()`) — a real, disclosed, rank-based
+  formula (`score = 100 × (N − R + 1) / N`, or `50.0` neutral default if
+  unranked) scoring exactly three real subject types: `Goal`
+  (category maps directly), `ConstitutionAmendment` (always maps to
+  `governance`), and Chapter 74's `SelfImprovementProposal` (maps
+  through a fixed, disclosed `SELF_IMPROVEMENT_TO_PRIORITY_CATEGORY`
+  table). Persisted on `SelfImprovementProposal` at generation time —
+  the field Chapter 74 reserved for exactly this chapter — computed
+  on-demand only for `Goal`/`ConstitutionAmendment`. One real, narrow
+  Self-Correction check: CEO's rank-1 priority is `risk` and the real
+  Daily Circuit Breaker tier is `tier2`+ → a real drift note. Explicitly
+  not scored: individual trade recommendations (would add a 10th
+  `app/gatekeeper.py` check, out of scope). `GET/POST/DELETE
+  /api/vision-board/*`, `visionBoard` in the WS `"state"` broadcast, in
+  the `company` save module. 24 new tests (`tests/test_vision_board.py`).
+  Backend only this pass — no dedicated frontend panel yet.
+
 - **Chapter 74 — Continuous Learning & Self-Improvement System (CLSIS)
   + Institutional Evolution Engine** (`app/self_improvement.py` new,
   `app/evolution.py` new, `app/knowledge_graph.py`, `app/nexus.py`,

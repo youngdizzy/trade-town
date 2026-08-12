@@ -115,6 +115,7 @@ from app.opportunity_gatekeeper import build_opportunity_rejection, evaluate_opp
 from app.successes import generate_success_studies, record_success_studies
 from app.self_improvement import maybe_propose_recurring_mistake, record_self_improvement_proposal
 from app.evolution import compute_company_evolution_score, generate_institutional_evolution_report, record_evolution_report
+from app.vision_board import compute_self_improvement_proposal_alignment
 from app.talent import generate_talent_reports, record_talent_reports
 from app.paper_trading import tick_paper_trading
 from app.portfolio import sim_minutes
@@ -1755,6 +1756,17 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                     case_studies, self_improvement_proposals, sim_day=new_time.day
                 )
                 if recurring_mistake_proposal is not None:
+                    # Design Bible Chapter 74.5 — the Vision Alignment
+                    # Engine. Computed once, here, at generation time:
+                    # Chapter 74 already reserved vision_alignment_score
+                    # on SelfImprovementProposal for exactly this chapter
+                    # to fill in.
+                    alignment = compute_self_improvement_proposal_alignment(
+                        recurring_mistake_proposal, state.vision_board
+                    )
+                    recurring_mistake_proposal = recurring_mistake_proposal.model_copy(
+                        update={"vision_alignment_score": alignment.score}
+                    )
                     self_improvement_proposals = record_self_improvement_proposal(
                         self_improvement_proposals, recurring_mistake_proposal
                     )
