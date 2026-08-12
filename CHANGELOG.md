@@ -870,6 +870,15 @@ development milestones, not semver releases.
   counterfactual "would have" trade outcomes, not just a missing
   feature. No code was written against this section.
 
+- **Chapter 69 Part 3 — Institutional Rule Engine pre-trade wiring, investigated and confirmed correctly deferred**
+  (`docs/DesignBible/volumes/10-broker-live-trading/chapter-69-multi-account-fund-management-system.md`): a
+  Chapters 67–75 audit flagged `evaluate_rules()` not being called before a trade executes as a possible gap.
+  Investigated and confirmed it's not a contained wiring fix: there is no per-account pre-trade checkpoint to
+  plug it into, since Part 1's own `app/accounts.py` already documents that live trade execution against a
+  non-primary `Account` was never built — every real trade still only touches the one primary company
+  portfolio. Closing this for real needs that separate, larger per-account live-trading pipeline first. Per
+  explicit CEO instruction, stays deferred; no code changed, only the honest boundary documented more clearly.
+
 ### Fixed
 
 - **Chapter 74 Part 1 — a Self-Improvement Proposal can now actually be marked Implemented**

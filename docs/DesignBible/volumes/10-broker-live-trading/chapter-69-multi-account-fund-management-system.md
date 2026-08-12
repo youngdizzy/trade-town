@@ -1064,6 +1064,25 @@ than staying parallel to it, Rule Packs shared across CEOs, and any
 move toward free-form rule authoring. All deliberately not attempted in
 this pass — matches this volume's own Future Expansion precedent.
 
+**Audit finding, confirmed correctly deferred (this session):** a
+Chapters 67–75 audit flagged "the Institutional Rule Engine isn't wired
+pre-trade" as a possible gap to close. Investigated and confirmed this
+is not a small wiring fix: there is no per-account pre-trade checkpoint
+to plug `evaluate_rules()` into in the first place, since Part 1's own
+`app/accounts.py` explicitly documents that live trade execution
+against a non-primary `Account` was never built — every real
+`TradeProposal`/Trade Gatekeeper/Sentinel/Guardian check still only
+ever operates on the one primary company `PaperPortfolio`. Closing this
+gap for real would require building that per-account live-trading
+pipeline first (parameterizing proposal generation and every pre-trade
+risk check by account) — a materially larger, separate architectural
+addition, not a contained fix. Per explicit CEO instruction, this stays
+deferred rather than being built as part of an incremental audit pass;
+no code changed. The real starting point for a future pass wanting to
+close this is exactly the per-account execution pipeline named above,
+not the Rule Engine itself (`evaluate_rules()` is already complete and
+correct for the inputs it's given).
+
 ### Design Bible Integration
 
 **Real today:** Company Memory now records every real rule violation
