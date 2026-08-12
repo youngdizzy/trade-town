@@ -113,6 +113,8 @@ from app.mentor import compute_mentor_state, compute_thinking_profiles, generate
 from app.mistakes import generate_case_studies, record_case_studies
 from app.opportunity_gatekeeper import build_opportunity_rejection, evaluate_opportunity, grade_opportunity_rejections
 from app.successes import generate_success_studies, record_success_studies
+from app.self_improvement import maybe_propose_recurring_mistake, record_self_improvement_proposal
+from app.evolution import compute_company_evolution_score, generate_institutional_evolution_report, record_evolution_report
 from app.talent import generate_talent_reports, record_talent_reports
 from app.paper_trading import tick_paper_trading
 from app.portfolio import sim_minutes
@@ -187,6 +189,8 @@ from app.schemas import (
     BlackSwanReport,
     BoardReport,
     CoachReport,
+    InstitutionalEvolutionReport,
+    SelfImprovementProposal,
     CompanyPriority,
     Debate,
     DecisionVaultEntry,
@@ -320,6 +324,11 @@ MONTHLY_INTERVAL_DAYS = 30
 # cadence, the identical day % N shape WEEKLY/MONTHLY_INTERVAL_DAYS
 # above already use.
 QUARTERLY_INTERVAL_DAYS = 90
+# Design Bible Chapter 74 Part 1 — the Academy Integration hook's one
+# real, small points nudge per supporting agent when a CaseStudy/
+# SuccessStudy is filed (see app/self_improvement.py's module docstring
+# for why this is the one honest hook, not generated lesson content).
+ACADEMY_CASE_STUDY_NUDGE = 1.0
 # v0.7 Feature 25 — how often to check whether a real mentorship pairing
 # qualifies (see app/academy.py's maybe_run_mentorship). Checked on the
 # same evening cadence as everything else above, but only every 3 days —
@@ -1150,6 +1159,11 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     agent_knowledge: dict[AgentId, AgentKnowledgeState] = state.agent_knowledge or default_agent_knowledge()
     discipline_reviews: list[DisciplineReview] = list(state.discipline_reviews)
     case_studies: list[CaseStudy] = list(state.case_studies)
+    # Design Bible Chapter 74 — Self-Improvement Proposals and the
+    # Institutional Evolution Engine (app/self_improvement.py,
+    # app/evolution.py).
+    self_improvement_proposals: list[SelfImprovementProposal] = list(state.self_improvement_proposals)
+    evolution_reports: list[InstitutionalEvolutionReport] = list(state.evolution_reports)
     talent_reports: list[TalentReport] = list(state.talent.reports)
     challenge_reports: list[ChallengeReport] = list(state.challenge_reports)
     reasoning_challenges: list[ReasoningChallenge] = list(state.reasoning_challenges)
@@ -1727,6 +1741,24 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                     specific_article = MISTAKE_ARTICLE_MAP.get(case_study.category)
                     if specific_article:
                         constitution_citations = cite_article(constitution_citations, specific_article, "case_study", f'"{case_study.title}" — {case_study.category.replace("_", " ")}.', new_time.day)
+                    # Design Bible Chapter 74 Part 1 — Academy Integration's
+                    # one real, honest hook: no lesson content is
+                    # generated (no LLM exists to write one), but the
+                    # supporting agents nudge their own AgentKnowledgeState
+                    # for having reflected on a real, filed mistake.
+                    for supporting_agent in decision.supporting_agents:
+                        agent_knowledge, _ = award_points(agent_knowledge, supporting_agent, ACADEMY_CASE_STUDY_NUDGE)
+                # Design Bible Chapter 74 Part 1 — the Recurring Mistake
+                # Pattern generator, checked once per trade after that
+                # trade's own case studies are already real and recorded.
+                recurring_mistake_proposal = maybe_propose_recurring_mistake(
+                    case_studies, self_improvement_proposals, sim_day=new_time.day
+                )
+                if recurring_mistake_proposal is not None:
+                    self_improvement_proposals = record_self_improvement_proposal(
+                        self_improvement_proposals, recurring_mistake_proposal
+                    )
+                    record(memory, "alert", "Self-Improvement Proposal filed", recurring_mistake_proposal.title, max_records=effective_risk_limits.max_memory_records)
             # v0.7 Feature 42 — the Library of Successes (app/successes.py),
             # the Decision Replay Center's "Successes" lesson type. Same
             # capped list/memory log as the Library of Mistakes above
@@ -1762,6 +1794,10 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                     elif success_study.category == "patient_execution":
                         company_dna_legacy = nudge_legacy(company_dna_legacy, "patience", SUCCESS_STUDY_NUDGE)
                         company_dna_change = f"Legacy patience nudged +{SUCCESS_STUDY_NUDGE} after a patient_execution win on {trade.symbol}."
+                    # Design Bible Chapter 74 Part 1 — same real Academy
+                    # hook as the loss branch above.
+                    for supporting_agent in decision.supporting_agents:
+                        agent_knowledge, _ = award_points(agent_knowledge, supporting_agent, ACADEMY_CASE_STUDY_NUDGE)
 
             # v0.7 — the Decision Memory System's Decision Vault
             # (app/decision_vault.py). One permanent record joining this
@@ -2207,6 +2243,34 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         )
         strategic_reviews = record_strategic_review(strategic_reviews, strategic_review)
 
+        # Design Bible Chapter 74 Part 2 — the Institutional Evolution
+        # Engine's own monthly report, composing this same tick's
+        # freshly-generated StrategicReview/ExecutiveReview/CoachReport
+        # rather than a fourth independent monthly cadence — see the
+        # Design Bible chapter's own cadence/focus table.
+        evolution_score = compute_company_evolution_score(
+            window="monthly",
+            current_sim_day=new_time.day,
+            case_studies=case_studies,
+            self_improvement_proposals=self_improvement_proposals,
+            mentor_progress=state.foundational_mentor_state.progress,
+            strategy_hall_of_fame=state.strategy_hall_of_fame,
+            strategy_failed_archive=state.strategy_failed_archive,
+            constitution_amendments=state.constitution.amendments,
+        )
+        evolution_report = generate_institutional_evolution_report(
+            report_id=f"evolution-{new_time.day}",
+            sim_day=new_time.day,
+            strategic_reviews=strategic_reviews,
+            executive_reviews=executive_reviews,
+            coach_reports=coach_reports,
+            case_studies=case_studies,
+            self_improvement_proposals=self_improvement_proposals,
+            evolution_score=evolution_score,
+        )
+        evolution_reports = record_evolution_report(evolution_reports, evolution_report)
+        record(memory, "alert", "Institutional Evolution Report filed", evolution_report.summary, max_records=effective_risk_limits.max_memory_records)
+
         # v0.7 Feature 39 — the Founder Council. Real monthly sit-down
         # between the Coach and both Founders, generated alongside the
         # monthly CoachReport above (`latest_report`) — see
@@ -2591,6 +2655,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "academy_state": academy_state,
             "discipline_reviews": discipline_reviews,
             "case_studies": case_studies,
+            "self_improvement_proposals": self_improvement_proposals,
+            "evolution_reports": evolution_reports,
             "decision_vault": decision_vault,
             "war_room_sessions": war_room_sessions,
             "portfolio_intelligence": portfolio_intelligence,
