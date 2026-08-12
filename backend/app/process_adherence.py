@@ -51,7 +51,23 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.schemas import DisciplineReview, PaperTrade, ProcessAdherenceCheck, ProcessAdherenceRead, TradeDecision
+from app.schemas import (
+    DisciplineReview,
+    PaperTrade,
+    ProcessAdherenceCheck,
+    ProcessAdherenceRead,
+    ProcessAdherenceSummaryRead,
+    TradeDecision,
+)
+
+# Trading Psychology & Discipline, Piece G — how many of the most recent
+# decisions the company-wide summary looks at. Matches the same window
+# size app/self_improvement.py's own recurring-pattern generators
+# (RECURRING_MISTAKE_WINDOW/RECURRING_SUCCESS_WINDOW) already settled on
+# for "recent enough to be a real, current read" without reusing that
+# constant directly — this module has no dependency on self_improvement.py
+# and shouldn't gain one just to share one number.
+RECENT_DECISIONS_WINDOW = 10
 
 # Day Trading discipline's own real same-day bar (Design Bible Chapter
 # 75, app/trading_modes.py's flatten_day_positions() — force-closes any
@@ -177,5 +193,47 @@ def compute_process_adherence(decision: TradeDecision, trade: PaperTrade | None,
         failedCount=failed_count,
         notTrackableCount=not_trackable_count,
         checks=checks,
+        computedAt=_now_iso(),
+    )
+
+
+def compute_recent_process_adherence_summary(
+    decisions: list[TradeDecision],
+    trade_history: list[PaperTrade],
+    discipline_reviews: list[DisciplineReview],
+    *,
+    window: int = RECENT_DECISIONS_WINDOW,
+) -> ProcessAdherenceSummaryRead:
+    """Trading Psychology & Discipline, Piece G — the one company-wide
+    aggregate over ProcessAdherenceRead this codebase never needed
+    before every other consumer read a single decision's own score by
+    id. Reuses compute_process_adherence() unchanged for each of the
+    most recent `window` decisions (the same trailing-window convention
+    app/self_improvement.py's own recurring-pattern generators already
+    use) — never a second, differently-weighted scoring path.
+    `average_score_pct` is the mean of only the decisions that actually
+    had a real score (`scorePct is not None`) — a decision with zero
+    verified checks contributes to `decisions_reviewed` honestly but
+    never gets averaged in as a fabricated 0%."""
+    recent = decisions[-window:]
+    trade_by_decision = {t.decision_id: t for t in trade_history if t.decision_id is not None}
+    review_by_decision = {r.decision_id: r for r in discipline_reviews}
+
+    scores: list[float] = []
+    for decision in recent:
+        read = compute_process_adherence(
+            decision,
+            trade_by_decision.get(decision.id),
+            review_by_decision.get(decision.id),
+        )
+        if read.score_pct is not None:
+            scores.append(read.score_pct)
+
+    average_score_pct = round(sum(scores) / len(scores), 1) if scores else None
+
+    return ProcessAdherenceSummaryRead(
+        decisionsReviewed=len(recent),
+        decisionsWithVerifiedChecks=len(scores),
+        averageScorePct=average_score_pct,
         computedAt=_now_iso(),
     )

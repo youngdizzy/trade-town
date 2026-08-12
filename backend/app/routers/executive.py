@@ -13,7 +13,7 @@ from app.executive import PROPOSAL_CANDLE_COUNT, PROPOSAL_TIMEFRAME, AnalystChoi
 from app.executive_intelligence import compute_executive_accuracy_scores, compute_executive_recommendation, generate_department_opinions
 from app.market_data import market_data_provider
 from app.persistence import persist_modules
-from app.process_adherence import compute_process_adherence
+from app.process_adherence import compute_process_adherence, compute_recent_process_adherence_summary
 from app.schemas import (
     AgentId,
     CeoDecisionRecord,
@@ -26,6 +26,7 @@ from app.schemas import (
     InnovationState,
     PaperPortfolio,
     ProcessAdherenceRead,
+    ProcessAdherenceSummaryRead,
     TradeDecision,
     TradeProposal,
     WeightedExecutiveRecommendation,
@@ -248,6 +249,17 @@ async def process_adherence(decision_id: str) -> ProcessAdherenceRead:
     trade = next((t for t in state.paper_portfolio.trade_history if t.decision_id == decision_id), None)
     discipline_review = next((r for r in state.discipline_reviews if r.decision_id == decision_id), None)
     return compute_process_adherence(decision, trade, discipline_review)
+
+
+@router.get("/process-adherence-summary", response_model=ProcessAdherenceSummaryRead)
+async def process_adherence_summary() -> ProcessAdherenceSummaryRead:
+    """Trading Psychology & Discipline, Piece G — the one company-wide
+    aggregate over Process Adherence this codebase never needed before
+    (every other consumer reads a single decision by id — see
+    DecisionDetail.tsx above). Read-only, computed fresh every call, same
+    convention as the per-decision endpoint above."""
+    state = await game_state.snapshot()
+    return compute_recent_process_adherence_summary(state.decisions, state.paper_portfolio.trade_history, state.discipline_reviews)
 
 
 @router.get("/accuracy", response_model=list[ExecutiveAccuracyScore])

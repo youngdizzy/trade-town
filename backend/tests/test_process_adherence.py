@@ -10,7 +10,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.process_adherence import DAY_TRADING_MAX_HOLD_MINUTES, compute_process_adherence
+from app.process_adherence import DAY_TRADING_MAX_HOLD_MINUTES, compute_process_adherence, compute_recent_process_adherence_summary
 from app.schemas import (
     AgentVote,
     ConfidenceFactor,
@@ -287,3 +287,62 @@ class TestComputeProcessAdherence:
         read = compute_process_adherence(decision, None, None)
         assert read.decision_id == "decision-xyz"
         assert read.symbol == "NEXA"
+
+
+class TestComputeRecentProcessAdherenceSummary:
+    """Trading Psychology & Discipline, Piece G — the one company-wide
+    aggregate over ProcessAdherenceRead. Every case here reuses
+    compute_process_adherence() internally rather than a second scoring
+    path, so these tests check the aggregation, not the scoring itself
+    (already covered exhaustively by TestComputeProcessAdherence above)."""
+
+    def test_empty_decisions_reports_zero_never_a_fabricated_average(self) -> None:
+        summary = compute_recent_process_adherence_summary([], [], [])
+        assert summary.decisions_reviewed == 0
+        assert summary.decisions_with_verified_checks == 0
+        assert summary.average_score_pct is None
+
+    def test_a_wait_decision_with_zero_verified_checks_is_reviewed_but_not_averaged(self) -> None:
+        decision = _wait_decision()
+        summary = compute_recent_process_adherence_summary([decision], [], [])
+        assert summary.decisions_reviewed == 1
+        assert summary.decisions_with_verified_checks == 0
+        assert summary.average_score_pct is None
+
+    def test_average_score_is_the_mean_of_only_the_scored_decisions(self) -> None:
+        verdict_all_pass = _verdict([_check("confidence", True), _check("risk_manager", True)])
+        decision_a = _decision(decision_id="decision-a", gatekeeper_verdict=verdict_all_pass)
+        verdict_one_fail = _verdict([_check("confidence", True), _check("risk_manager", False)])
+        decision_b = _decision(decision_id="decision-b", gatekeeper_verdict=verdict_one_fail)
+        wait_decision = _wait_decision(decision_id="decision-c")
+        summary = compute_recent_process_adherence_summary([decision_a, decision_b, wait_decision], [], [])
+        assert summary.decisions_reviewed == 3
+        assert summary.decisions_with_verified_checks == 2
+        # decision_a scores 100%, decision_b scores 50% (1 of 2 passed) -> mean 75%.
+        assert summary.average_score_pct == 75.0
+
+    def test_only_the_most_recent_window_is_considered(self) -> None:
+        verdict = _verdict([_check("confidence", True)])
+        old_decisions = [_decision(decision_id=f"old-{i}", gatekeeper_verdict=verdict) for i in range(5)]
+        wait_decisions = [_wait_decision(decision_id=f"wait-{i}") for i in range(10)]
+        summary = compute_recent_process_adherence_summary(old_decisions + wait_decisions, [], [], window=10)
+        # Only the trailing 10 (all wait_decisions) are in the window — the
+        # 5 real-scored decisions aged out entirely.
+        assert summary.decisions_reviewed == 10
+        assert summary.decisions_with_verified_checks == 0
+        assert summary.average_score_pct is None
+
+    def test_trade_and_discipline_review_are_matched_by_real_decision_id(self) -> None:
+        verdict = _verdict([_check("confidence", True)])
+        decision = _decision(gatekeeper_verdict=verdict)
+        trade = _trade(decision_id="decision-1", trading_style="swing")
+        review = _discipline_review(decision_id="decision-1", tier="exemplary", score=95.0)
+        summary = compute_recent_process_adherence_summary([decision], [trade], [review])
+        assert summary.decisions_with_verified_checks == 1
+        # confidence(pass) + trading_mode(pass, swing never fails on duration)
+        # + discipline(pass, exemplary) = 3/3 verified, all passed = 100%.
+        assert summary.average_score_pct == 100.0
+
+    def test_computed_at_is_a_real_timestamp(self) -> None:
+        summary = compute_recent_process_adherence_summary([], [], [])
+        assert summary.computed_at

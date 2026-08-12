@@ -17,6 +17,8 @@ import type {
   CompanyHealth,
   ConfidenceTier,
   ConstitutionCitation,
+  DailyCircuitBreakerRead,
+  DailyCircuitBreakerTier,
   Debate,
   DecisionGrade,
   DepartmentSelfEvaluation,
@@ -42,6 +44,8 @@ import type {
   PaperOrder,
   PaperPortfolio,
   PaperTrade,
+  PerformancePeriod,
+  PerformanceSnapshot,
   ReasoningChallenge,
   ReflectionSession,
   ResearchCategory,
@@ -49,7 +53,9 @@ import type {
   RiskLimits,
   RiskWarning,
   SimulationResult,
+  Strategy,
   StrategyExecutiveAction,
+  StrategyHealthAssessment,
   StrategyHealthStatus,
   StrategyReport,
   StrategyStage,
@@ -1594,4 +1600,146 @@ export function survivalGradeLabel(grade: InstitutionalSurvivalGrade): string {
  * evening. */
 export function latestBlackSwanReport(reports: BlackSwanReport[]): BlackSwanReport | null {
   return reports.at(-1) ?? null;
+}
+
+// Trading Psychology & Discipline, Piece G — the Command Center
+// Psychology Dashboard's own derivations (PsychologyDashboardPanel.tsx).
+// Behavioral Risk and Loss Streak already have their own real,
+// WS-broadcast fields (behavioralCircuitBreaker/losingStreak on
+// gameStore) and need no derivation here — the dashboard reads those
+// directly. These four functions are the honest client-side composition
+// of already-real state for the remaining metrics, mirroring
+// lib/financials.ts's own established "derive from real WS state,
+// never round-trip the backend for a number already on the wire"
+// convention.
+
+export type RiskComplianceStatus = "compliant" | "warning" | "breach";
+
+export interface RiskComplianceSummary {
+  status: RiskComplianceStatus;
+  dailyCircuitBreakerTier: DailyCircuitBreakerTier;
+  activeWarningCount: number;
+  criticalWarningCount: number;
+  drawdownPct: number;
+  drawdownLimitPct: number;
+  withinDrawdownLimit: boolean;
+}
+
+/** Composed from three already-real, already-independently-governed
+ * signals — never a fourth, parallel risk computation: the Daily
+ * Circuit Breaker's own real tier, Sentinel/Guardian's own real
+ * RiskWarning list, and the real comparison
+ * app/risk_engine.py's evaluate_sentinel_risk()/monitor_portfolio()
+ * already make between portfolio.totalPnlPct and RiskLimits.
+ * maxDrawdownPct. "breach" requires an active critical warning, an
+ * exceeded drawdown limit, or the daily circuit breaker's most severe
+ * tier — a single ordinary warning or an early circuit-breaker tier is
+ * only ever "warning", never conflated with a real breach. */
+export function computeRiskComplianceSummary(
+  dailyCircuitBreaker: DailyCircuitBreakerRead,
+  riskWarnings: RiskWarning[],
+  portfolio: PaperPortfolio,
+  riskLimits: RiskLimits,
+): RiskComplianceSummary {
+  const drawdownPct = Math.abs(Math.min(0, portfolio.totalPnlPct));
+  const withinDrawdownLimit = drawdownPct < riskLimits.maxDrawdownPct;
+  const criticalWarningCount = riskWarnings.filter((w) => w.severity === "critical").length;
+  const status: RiskComplianceStatus =
+    criticalWarningCount > 0 || !withinDrawdownLimit || dailyCircuitBreaker.tier === "tier4"
+      ? "breach"
+      : riskWarnings.length > 0 || dailyCircuitBreaker.tier !== "none"
+        ? "warning"
+        : "compliant";
+  return {
+    status,
+    dailyCircuitBreakerTier: dailyCircuitBreaker.tier,
+    activeWarningCount: riskWarnings.length,
+    criticalWarningCount,
+    drawdownPct,
+    drawdownLimitPct: riskLimits.maxDrawdownPct,
+    withinDrawdownLimit,
+  };
+}
+
+export interface StrategyExpectancySummary {
+  strategyCount: number;
+  averageExpectancyPct: number | null;
+  bestStrategyName: string | null;
+  bestExpectancyPct: number | null;
+  worstStrategyName: string | null;
+  worstExpectancyPct: number | null;
+}
+
+/** Reuses SimulationResult.expectedValuePct exactly as
+ * backend/app/strategy_lab.py's own Certification gate already computes
+ * per-strategy expectancy (`sum(expectedValuePct) / len(results)`) — a
+ * strategy with zero real simulation results contributes nothing rather
+ * than a fabricated 0%. The company-wide average weights every strategy
+ * with real results equally, not by run count, so one heavily-tested
+ * strategy can't dominate the read. */
+export function computeStrategyExpectancySummary(strategies: Strategy[], simulationResults: SimulationResult[]): StrategyExpectancySummary {
+  const perStrategy: { name: string; expectancyPct: number }[] = [];
+  for (const strategy of strategies) {
+    const results = simulationResults.filter((r) => r.strategyId === strategy.id);
+    if (results.length === 0) continue;
+    const expectancyPct = results.reduce((sum, r) => sum + r.expectedValuePct, 0) / results.length;
+    perStrategy.push({ name: strategy.name, expectancyPct });
+  }
+  if (perStrategy.length === 0) {
+    return { strategyCount: 0, averageExpectancyPct: null, bestStrategyName: null, bestExpectancyPct: null, worstStrategyName: null, worstExpectancyPct: null };
+  }
+  const averageExpectancyPct = perStrategy.reduce((sum, s) => sum + s.expectancyPct, 0) / perStrategy.length;
+  const best = perStrategy.reduce((a, b) => (b.expectancyPct > a.expectancyPct ? b : a));
+  const worst = perStrategy.reduce((a, b) => (b.expectancyPct < a.expectancyPct ? b : a));
+  return {
+    strategyCount: perStrategy.length,
+    averageExpectancyPct,
+    bestStrategyName: best.name,
+    bestExpectancyPct: best.expectancyPct,
+    worstStrategyName: worst.name,
+    worstExpectancyPct: worst.expectancyPct,
+  };
+}
+
+export interface DrawdownSummary {
+  currentDrawdownPct: number;
+  drawdownLimitPct: number;
+  withinLimit: boolean;
+  latestWindowMaxDrawdownPct: number | null;
+  latestWindowPeriod: PerformancePeriod | null;
+}
+
+/** Two distinct real drawdown reads, both already computed elsewhere,
+ * never re-derived: `currentDrawdownPct` is the same lifetime
+ * portfolio.totalPnlPct-vs-RiskLimits.maxDrawdownPct comparison
+ * app/risk_engine.py's own Sentinel/Guardian checks already make (a
+ * negative totalPnlPct IS the current drawdown from the starting
+ * balance); `latestWindowMaxDrawdownPct` is the most recent real
+ * PerformanceSnapshot's own maxDrawdownPct (the worst single losing
+ * trade within that snapshot's period window) — a different, narrower
+ * number, kept separate rather than conflated into one figure. */
+export function computeDrawdownSummary(portfolio: PaperPortfolio, riskLimits: RiskLimits, performanceSnapshots: PerformanceSnapshot[]): DrawdownSummary {
+  const currentDrawdownPct = Math.abs(Math.min(0, portfolio.totalPnlPct));
+  const latest = performanceSnapshots.at(-1) ?? null;
+  return {
+    currentDrawdownPct,
+    drawdownLimitPct: riskLimits.maxDrawdownPct,
+    withinLimit: currentDrawdownPct < riskLimits.maxDrawdownPct,
+    latestWindowMaxDrawdownPct: latest ? latest.maxDrawdownPct : null,
+    latestWindowPeriod: latest ? latest.period : null,
+  };
+}
+
+/** The real, most-recent StrategyHealthAssessment per strategy — this
+ * capped list (app/strategy_lab.py) carries one entry per strategy per
+ * real tick it was assessed, appended in order, so the last entry for a
+ * given strategyId is honestly "current." Sorted by recent average
+ * return, best first, so the dashboard's "Recent Strategy Performance"
+ * reads like a real leaderboard rather than an arbitrary list order. */
+export function recentStrategyHealthByStrategy(assessments: StrategyHealthAssessment[]): StrategyHealthAssessment[] {
+  const latestByStrategy = new Map<string, StrategyHealthAssessment>();
+  for (const assessment of assessments) {
+    latestByStrategy.set(assessment.strategyId, assessment);
+  }
+  return [...latestByStrategy.values()].sort((a, b) => b.recentAvgReturnPct - a.recentAvgReturnPct);
 }

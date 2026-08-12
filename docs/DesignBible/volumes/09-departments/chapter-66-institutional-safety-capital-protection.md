@@ -598,3 +598,100 @@ auditing clean, and the planted-violation proof. Full backend suite
 green (1550/1550), `mypy app/` and `ruff check app/ tests/` clean. No
 frontend changes in this piece, so no `tsc -b --noEmit`/`npm run lint`
 re-verification was needed beyond the audit's own manual review.
+
+---
+
+## Addendum — Command Center Psychology Dashboard (Trading Psychology & Discipline, Piece G)
+
+**Origin.** The seventh and final piece of the CEO's trading-psychology
+roadmap. Piece G's brief: "Command Center dashboard tab surfacing
+Process Adherence, Behavioral Risk, Loss Streak, Risk Compliance,
+Strategy Expectancy, Drawdown, Recent Strategy Performance."
+
+**Research finding that shaped scope.** A structured audit of all seven
+named metrics (dispatched before writing any code) found six of the
+seven already real and already computed somewhere in this codebase —
+this piece's real job was composition, not invention:
+
+- **Behavioral Risk** and **Loss Streak** already have their own real,
+  WS-broadcast fields (`behavioralCircuitBreaker`/`losingStreak` on
+  `GameSaveState` — Chapter 66's own Piece A addendum above, and the
+  pre-existing Losing Streak Protection) and their own full-detail view,
+  `TradingModesPanel.tsx`. The new dashboard reads the exact same
+  gameStore fields and links back to that panel rather than
+  re-implementing the detail.
+- **Risk Compliance** had no existing metric by that literal name.
+  Composed, never fabricated, from three already-real, independently-
+  governed signals: the Daily Circuit Breaker's own real tier, Sentinel/
+  Guardian's own real `RiskWarning` list, and the exact
+  `portfolio.totalPnlPct`-vs-`RiskLimits.maxDrawdownPct` comparison
+  `app/risk_engine.py`'s `evaluate_sentinel_risk()`/`monitor_
+  portfolio()` already make. `"breach"` requires a critical warning, an
+  exceeded drawdown limit, or the circuit breaker's most severe tier — a
+  single ordinary warning is only ever `"warning"`, never conflated with
+  a real breach.
+- **Strategy Expectancy** reuses `SimulationResult.expectedValuePct`
+  exactly as `app/strategy_lab.py`'s own Certification gate already
+  computes per-strategy expectancy — the new company-wide average
+  weights every strategy with real results equally, not by run count,
+  so one heavily-tested strategy can't dominate the read.
+- **Drawdown** surfaces two distinct real numbers that were never
+  conflated into one: the same lifetime `totalPnlPct`-vs-limit
+  comparison Risk Compliance uses (the current drawdown from the
+  starting balance), and the most recent real `PerformanceSnapshot`'s
+  own `maxDrawdownPct` (the worst single losing trade within that
+  snapshot's own period window — a narrower, different number, kept
+  separate rather than merged).
+- **Recent Strategy Performance** filters the real, already-WS-
+  broadcast `strategyHealthAssessments` capped list (one entry per
+  strategy per real tick it was assessed) down to the latest entry per
+  strategy, sorted by recent average return.
+- **Process Adherence** was the one genuine gap: every existing
+  consumer reads a single decision's own score by id (`Decision
+  Detail.tsx`) — no company-wide aggregate existed. New
+  `compute_recent_process_adherence_summary()`
+  (`app/process_adherence.py`) reuses `compute_process_adherence()`
+  unchanged for the most recent 10 decisions and averages only the ones
+  with a real score — a decision with zero verified checks is honestly
+  counted in `decisionsReviewed` but never averaged in as a fabricated
+  0%. New `GET /api/executive/process-adherence-summary` endpoint, the
+  one real backend addition this piece needed.
+
+**The tab.** `PsychologyDashboardPanel.tsx`, a new `PSYCHOLOGY` tab
+under Command Center's PORTFOLIO section (next to RISK/TRADINGMODES).
+Six of the seven cards are pure client-side derivations of already-real
+WS state (`lib/derive.ts`'s `computeRiskComplianceSummary()`,
+`computeStrategyExpectancySummary()`, `computeDrawdownSummary()`,
+`recentStrategyHealthByStrategy()`) — the same "derive from the wire,
+never round-trip the backend for a number already there" convention
+`lib/financials.ts` already established for client-side drawdown/win-
+rate math. Only Process Adherence fetches on demand.
+
+**What this addendum explicitly does not do.** It does not re-implement
+Behavioral Risk or Loss Streak's full detail — `TradingModesPanel.tsx`
+remains the one real detail view for both, linked from the new tab
+rather than duplicated. It does not build a peak-to-trough equity-curve
+drawdown tracker — no peak-equity-tracking field exists anywhere in
+this codebase, and inventing one would be a materially larger change
+than "surface what already exists"; the two real drawdown reads
+surfaced instead (lifetime P&L-vs-limit, and the latest window's worst
+single losing trade) are both already real and already computed
+elsewhere for other reasons.
+
+**Verified:** 6 new backend tests (`TestComputeRecentProcessAdherence
+Summary`) covering empty input, a wait-decision's zero-verified-checks
+case, the average-of-only-scored-decisions math, the trailing-window
+cutoff, and real decision/trade/discipline-review matching by id. Full
+backend suite green (1561/1561 — one known, pre-existing, unseeded-
+random flaky test unrelated to this piece confirmed passing in
+isolation). `mypy app/`/`ruff check app/ tests/` clean. `tsc -b
+--noEmit`/`npm run lint`/`npm run build` clean. Live-verified against
+the running dev server: `GET /api/executive/process-adherence-summary`
+returns a correctly-shaped, honest response (`averageScorePct: null`
+for this session's real game state, whose decisions have no verified
+checks yet); the new PSYCHOLOGY tab renders all seven cards with real,
+populated live data (4 real tested strategies, a real +1.63% average
+expectancy, real recent strategy health entries) — screenshotted.
+
+This closes the CEO's full seven-piece trading-psychology roadmap
+(Pieces A–G).

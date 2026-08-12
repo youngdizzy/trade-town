@@ -7,6 +7,32 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Command Center Psychology Dashboard** (`backend/app/process_adherence.py`, `backend/app/schemas.py`,
+  `backend/app/routers/executive.py`, `backend/tests/test_process_adherence.py`,
+  `frontend/src/types.ts`, `frontend/src/net/api.ts`, `frontend/src/ui/components/CommandCenter/lib/derive.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/PsychologyDashboardPanel.tsx` new,
+  `frontend/src/ui/components/CommandCenter/FullCommandCenter.tsx`,
+  `frontend/src/ui/components/CommandCenter/lib/navigation.ts`,
+  `docs/DesignBible/volumes/09-departments/chapter-66-institutional-safety-capital-protection.md`): Piece G —
+  the seventh and final piece of the CEO's trading-psychology roadmap. A structured research pass (dispatched
+  before writing any code) found six of the seven named metrics already real and already computed somewhere
+  in this codebase — this piece's real job was composition, not invention. Behavioral Risk and Loss Streak
+  already have their own real WS-broadcast fields and full-detail view (`TradingModesPanel.tsx`, linked from
+  the new tab, not duplicated). Risk Compliance, Strategy Expectancy, Drawdown, and Recent Strategy
+  Performance are new pure client-side derivations (`lib/derive.ts`) composed from already-real WS state —
+  the same "derive from the wire, never round-trip the backend" convention `lib/financials.ts` already
+  established — reusing the exact real signals `app/risk_engine.py`/`app/strategy_lab.py` already compute for
+  other reasons, never a fabricated parallel metric. Process Adherence was the one genuine gap: every
+  existing consumer reads a single decision's own score by id, so new `compute_recent_process_adherence_
+  summary()` averages only the real-scored decisions among the most recent 10 (a decision with zero verified
+  checks is honestly counted as reviewed but never averaged in as a fabricated 0%), exposed via new
+  `GET /api/executive/process-adherence-summary` — the one real new backend endpoint this piece needed. New
+  `PsychologyDashboardPanel.tsx` ships as a `PSYCHOLOGY` tab under Command Center's PORTFOLIO section.
+  Verified: 6 new backend tests, full backend suite green (1561/1561), `mypy`/`ruff`/`tsc -b --noEmit`/
+  `npm run lint`/`npm run build` clean, and a live Playwright screenshot showing all seven cards rendering
+  real, populated data (4 real tested strategies, a real +1.63% average expectancy) against the running dev
+  server. This closes the CEO's full seven-piece trading-psychology roadmap (Pieces A–G).
+
 - **Two New Foundational Mentor Tracks — Mark Douglas & Linda Raschke** (`backend/app/foundational_mentors.py`,
   `backend/tests/test_foundational_mentors.py`, `backend/tests/test_company_health.py`,
   `docs/DesignBible/volumes/09-departments/chapter-74-continuous-learning-self-improvement-system.md`): Piece F

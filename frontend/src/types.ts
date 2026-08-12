@@ -2463,6 +2463,16 @@ export interface ProcessAdherenceRead {
   computedAt: string;
 }
 
+// Trading Psychology & Discipline, Piece G — the one company-wide
+// aggregate over ProcessAdherenceRead (every other consumer reads a
+// single decision's own score by id — see DecisionDetail.tsx).
+export interface ProcessAdherenceSummaryRead {
+  decisionsReviewed: number;
+  decisionsWithVerifiedChecks: number;
+  averageScorePct: number | null;
+  computedAt: string;
+}
+
 // v0.7 Feature 27 — the Library of Mistakes (see backend/app/mistakes.py).
 // A permanent CaseStudy is filed whenever a closed, losing trade's own
 // DisciplineReview shows a specific real process gap — never merely

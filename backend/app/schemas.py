@@ -3446,6 +3446,21 @@ class ProcessAdherenceRead(CamelModel):
     computed_at: str = Field(alias="computedAt")
 
 
+# Trading Psychology & Discipline, Piece G — the one real company-wide
+# aggregate over ProcessAdherenceRead this codebase had never needed
+# before (every existing consumer reads a single decision's own real
+# score by id — see DecisionDetail.tsx). `average_score_pct` is the mean
+# of `scorePct` across only the reviewed decisions that had at least one
+# verified check — never padded with a fabricated 0% or 100% for a
+# decision with nothing to score, the same "None means nothing real to
+# average" rule ProcessAdherenceRead.score_pct already follows.
+class ProcessAdherenceSummaryRead(CamelModel):
+    decisions_reviewed: int = Field(alias="decisionsReviewed")
+    decisions_with_verified_checks: int = Field(alias="decisionsWithVerifiedChecks")
+    average_score_pct: float | None = Field(default=None, alias="averageScorePct")
+    computed_at: str = Field(alias="computedAt")
+
+
 # v0.7 Feature 27 — the Library of Mistakes (app/mistakes.py). A
 # permanent CaseStudy is filed whenever a closed, losing trade's own
 # DisciplineReview shows a specific real process gap — never merely
