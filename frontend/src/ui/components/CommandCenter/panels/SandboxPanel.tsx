@@ -44,6 +44,7 @@ export function SandboxPanel() {
     simulationResults,
     strategyReports,
     strategyReviews,
+    strategyModelValidations,
     strategyHealthAssessments,
     strategyHallOfFame,
     strategyFailedArchive,
@@ -98,6 +99,7 @@ export function SandboxPanel() {
                   simulationResults={simulationResults}
                   strategyReports={strategyReports}
                   strategyReviews={strategyReviews}
+                  strategyModelValidations={strategyModelValidations}
                   watchlist={watchlist}
                 />
               )}

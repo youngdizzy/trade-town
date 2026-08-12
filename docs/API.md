@@ -1311,12 +1311,24 @@ real stage-gate violation, with the exact required stage in the message.
 - `request-review`: body `{ "strategyId": "..." }`. Requires stage
   `"limited_live_capital"`; generates a real `StrategyReview` (five
   reviewer verdicts) and advances the strategy to `"company_review"` in
-  one call.
+  one call. Also returns `{ "strategyModelValidation": {...} | null }` —
+  Meridian/CIO's independent, advisory-only `ModelValidationReport`
+  (Quantitative Research & Intelligence System, Piece 4; see
+  `docs/DesignBible/volumes/09-departments/chapter-62-innovation-lab-continuous-improvement.md`'s
+  addendum). Advisory only: never affects the stage transition above.
 - `decide`: body `{ "reviewId": "...", "approve": true }`. The Company
   Review stage's real manual CEO call — Learning Mode always requires
   this; Assisted/Executive Mode auto-resolve instead (see
   `docs/Architecture.md`'s "Research Sandbox" section). `400` if the
   review was already decided.
+
+### `GET /api/sandbox/model-validation?strategyId=`
+
+Piece 4 (Quantitative Research & Intelligence System) — Meridian/CIO's
+most recent `ModelValidationReport` for this strategy, or `null` if it
+has never been through Company Review yet. Read-only, computed from
+already-persisted state (no recomputation), same pattern as
+`GET /api/sandbox/certification`.
 
 ### `POST /api/constitution/propose` / `advance` / `decide`
 

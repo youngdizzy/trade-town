@@ -467,3 +467,115 @@ on a real strategy with 228 real trades on file) confirmed the
 level tests above exercising the identical code path, since every
 strategy already in that dev save happened to carry well over the
 10-trade minimum.
+
+## Addendum — Model Validator (Quantitative Research & Intelligence System, Piece 4)
+
+**Status:** Real, implemented (`app/model_validation.py`, generated
+inside `app/state.py`'s `request_strategy_company_review()`). Advisory-
+only.
+
+**Origin.** A large CEO specification ("TradeTown Quantitative Research
+& Intelligence System") asked for six real quant roles cooperating
+without collapsing into one general-purpose "Quant AI," each with real
+substance rather than a rename of existing agents — explicitly: *"The
+goal is NOT to simply label existing AI agents as 'quants.'"* Research
+found four of the six roles already real under different names (Chief
+Quant = Vector, Risk Quant = Sentinel/Guardian/Keystone, Quant
+Researcher = Vector + this chapter's own Strategy Lab pipeline), leaving
+the Model Validator as the one genuine gap: no seat in the existing
+5-reviewer `StrategyReview` panel was a standing, independent
+validation authority whose job is specifically to challenge a
+strategy's statistical soundness before it advances — *"A model should
+not become an approved production strategy merely because the Research
+Quant created it."* The CEO named **Meridian (CIO)** as that authority
+and scoped this first piece as advisory-only, with fifteen binding
+requirements covering independence, non-duplication of risk logic, a
+four-state verdict, full auditability, and an explicit instruction not
+to start further quant pieces until this one shipped, tested, and
+verified.
+
+**The design.** `generate_model_validation_report()` runs once per
+`request_strategy_company_review()` call — the same real action that
+already files a `StrategyReview`, confirmed by grep to be
+`generate_strategy_review()`'s only call site in this codebase. Five
+checks (sample size, regime breadth, tail risk, liquidity realism,
+expectancy), each a `ModelValidationCheck` with `passed: bool | None`
+(never coerced when unevaluable) and a `thresholdSource` string citing
+exactly which existing constant it reused. Every threshold is a proven
+reuse of this chapter's own Certification gate
+(`CERTIFICATION_MIN_TRADE_COUNT`, the `len(tested) >= 2 and not
+weak_buckets` regime-consistency pattern, `CERTIFICATION_MAX_RUIN_PCT`,
+`StrategyLiquidityValidation.verdict` as-is, and the certification
+gate's own `expectancy > 0` formula) — none invented for this piece.
+The four-state verdict (`approved` / `rejected` / `needs_more_evidence`
+/ `not_validatable`) never defaults to `approved`: a clear failure among
+evaluated checks always yields `rejected` even when other checks remain
+unevaluated, so missing evidence can never launder an
+already-established failure.
+
+**Independence, precisely.** Meridian does not re-derive these numbers
+from a separate raw-data pipeline — none exists in this codebase.
+Meridian reviews and challenges the same computed evidence (Monte Carlo
+bootstrap, regime test, liquidity validation, real trade/expectancy
+history) that Vector's research and Sentinel/Guardian/Keystone's risk
+review also draw on. What is real here is **organizational/decision
+independence**: Meridian did not author this strategy's research or
+risk read, and — via `app/sandbox.py`'s `exclude_cio` parameter on
+`_devils_advocate_verdict()`/`generate_strategy_review()` — cannot
+simultaneously serve as this same review cycle's rotating Devil's
+Advocate. This exclusion is a pure, stateless substitution keyed only on
+`(strategy_id, existing_review_count)`: it never alters the underlying
+rotation formula, never persists past the single call that sets it, and
+never leaks between strategies — proven by a dedicated 6-case test
+class (`TestDevilsAdvocateExclusionStatelessness` in
+`tests/test_model_validation.py`) covering same-strategy scoping,
+unrelated-strategy eligibility, post-cycle rotation recovery,
+re-run idempotence, cross-strategy independence, and the untouched base
+formula at every other rotation slot.
+
+**Advisory-only, precisely.** `app/sandbox.py`'s
+`apply_review_decision()` and `begin_company_review()` are byte-for-byte
+unmodified — `apply_review_decision()`'s own signature has no
+`ModelValidationReport` parameter, so it cannot read `verdict` even in
+principle. The report is generated, persisted (`strategy_model_
+validations` on `GameSaveState`), broadcast over WS, and surfaced to the
+CEO purely for visibility. `TestAdvisoryOnlyProof` constructs the
+identical Company Review scenario with and without a `rejected`
+ModelValidationReport attached and asserts an identical stage
+transition either way. **Future promotion criteria** (advisory →
+blocking) is intentionally left undocumented as a specific number or
+date here — the CEO's own requirement was that any such change be a
+deliberate future decision the CEO makes explicitly, never a hardcoded
+timer this piece invents on her behalf.
+
+**No duplicated risk logic.** Nothing here reads or writes
+`gatekeeper.py`, `risk_engine.py`, or any Circuit Breaker state — this
+is not a second Risk Quant or a second Gatekeeper, per the CEO's own
+explicit requirement.
+
+**Verified:** 30 new pure-function tests
+(`tests/test_model_validation.py` — each of the five checks'
+pass/fail/not-evaluable states, four-state verdict logic including the
+"missing evidence never launders a real failure" case, the six DA-
+exclusion statelessness cases, the advisory-only proof, and two
+no-fabricated-evidence checks), full backend suite green (1591/1591),
+`mypy`/`ruff` clean, `tsc -b --noEmit`/`npm run lint`/`npm run build`
+clean. Live-verified end-to-end against the real running dev backend:
+a real strategy (News Momentum) was driven through Backtest → Market
+Simulation → Paper Trading → Limited Live Capital → a real `POST
+/api/sandbox/request-review` call, which returned a genuine `"approved"`
+`ModelValidationReport` with real evidence strings (e.g. "378 real
+trade(s) across 12 real run(s) on file," "Real probability of ruin 0.0%
+across 200 real simulated paths") and `validatorAgentId: "cio"` —
+confirmed again via a direct `GET /api/sandbox/model-validation` call.
+The frontend card (`StrategyPipelineView.tsx`'s new "Model Validation —
+Meridian" section) was code-reviewed against this exact live response
+shape and the same props/typing this chapter's other cards already use;
+a literal browser screenshot could not be captured in this session's
+sandboxed Playwright environment, which crashes on an unrelated,
+pre-existing tileset-texture-decode failure (`[TileWorld] Failed to
+build tileset`) reproducing identically on a brand-new "New Game," with
+zero files this piece touched anywhere in the crash's call path — the
+same kind of environment-specific gap this chapter's own Piece B
+addendum above already disclosed rather than silently claiming full
+coverage.

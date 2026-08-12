@@ -7,6 +7,44 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Model Validator (Meridian/CIO)** (`backend/app/model_validation.py` new, `backend/app/sandbox.py`,
+  `backend/app/state.py`, `backend/app/schemas.py`, `backend/app/ws_manager.py`, `backend/app/save_modules.py`,
+  `backend/app/routers/sandbox.py`, `backend/tests/test_model_validation.py` new, `frontend/src/types.ts`,
+  `frontend/src/net/api.ts`, `frontend/src/net/socket.ts`, `frontend/src/game/systems/NexusManager.ts`,
+  `frontend/src/game/systems/EventBus.ts`, `frontend/src/state/gameStore.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/SandboxPanel.tsx`,
+  `frontend/src/ui/components/CommandCenter/panels/sandbox/StrategyPipelineView.tsx`,
+  `docs/DesignBible/volumes/09-departments/chapter-62-innovation-lab-continuous-improvement.md`): Piece 4 of a
+  CEO-requested Quantitative Research & Intelligence System, and the only piece the CEO authorized to start —
+  "do not start another Piece until this piece is implemented, tested, documented, and verified." Research
+  found four of the spec's six named quant roles already real under different names (Chief Quant = Vector,
+  Risk Quant = Sentinel/Guardian/Keystone, Quant Researcher = Vector + the existing Strategy Lab pipeline);
+  the Model Validator was the genuine gap — no seat in the 5-reviewer `StrategyReview` panel was a standing,
+  independent authority whose job is specifically to challenge a strategy's statistical soundness before it
+  advances. Ships as **Meridian (CIO)**, advisory-only: `apply_review_decision()`/`begin_company_review()`
+  are byte-for-byte unmodified, and `apply_review_decision()`'s own signature has no `ModelValidationReport`
+  parameter, so it cannot read `verdict` even in principle. Five checks (sample size, regime breadth, tail
+  risk, liquidity realism, expectancy), every threshold a proven reuse of the existing Strategy Lab
+  Certification gate's own constants — never a new invented number. Four-state verdict
+  (`approved`/`rejected`/`needs_more_evidence`/`not_validatable`) never silently defaults to approved: a
+  clear failure among evaluated checks always yields `rejected`, even with other checks still unevaluated.
+  Independence is organizational/decision independence, not statistical — Meridian reviews the same computed
+  evidence Vector's research and the risk seats' own review already draw on, but is excluded from that
+  strategy's own rotating Devil's Advocate seat during the same validation cycle
+  (`app/sandbox.py`'s new `exclude_cio` parameter), a pure per-call substitution proven stateless by a
+  dedicated 6-case test class. Verified: 30 new backend tests, full backend suite green (1591/1591),
+  `mypy`/`ruff`/`tsc -b --noEmit`/`npm run lint`/`npm run build` clean. Live-verified end-to-end against the
+  running dev backend: a real strategy was driven through Backtest → Market Simulation → Paper Trading →
+  Limited Live Capital → a real `POST /api/sandbox/request-review` call that returned a genuine `"approved"`
+  `ModelValidationReport` with real evidence and `validatorAgentId: "cio"`, confirmed again via
+  `GET /api/sandbox/model-validation`. The new frontend card was code-reviewed against this exact live
+  response shape; a literal browser screenshot could not be captured in this session's sandboxed Playwright
+  environment, which crashes on an unrelated, pre-existing tileset-texture-decode failure reproducing
+  identically on a brand-new game, with zero files this piece touched anywhere in the crash's call path.
+  Pieces 1/2/3/5/6/7 of the full spec (Design Bible formalization, walk-forward validation, real
+  Sharpe/Sortino/VaR, Execution Quant, wiring findings into institutional memory, a new Quant Developer
+  agent) are documented as a deferred roadmap, not started, per the CEO's own instruction.
+
 - **Command Center Psychology Dashboard** (`backend/app/process_adherence.py`, `backend/app/schemas.py`,
   `backend/app/routers/executive.py`, `backend/tests/test_process_adherence.py`,
   `frontend/src/types.ts`, `frontend/src/net/api.ts`, `frontend/src/ui/components/CommandCenter/lib/derive.ts`,

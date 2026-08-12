@@ -56,6 +56,7 @@ import type {
   TreasuryState,
   RiskLimits,
   EducationProgress,
+  ModelValidationReport,
   PlayerVsAiState,
   ReasoningChallenge,
   ReasoningLabState,
@@ -112,6 +113,7 @@ interface NexusSnapshot {
   simulationResults: SimulationResult[];
   strategyReports: StrategyReport[];
   strategyReviews: StrategyReview[];
+  strategyModelValidations: ModelValidationReport[];
   strategyMonteCarloResults: StrategyMonteCarloResult[];
   strategyRegimeTests: StrategyRegimeTestReport[];
   strategyLiquidityValidations: StrategyLiquidityValidation[];
@@ -231,6 +233,7 @@ export class NexusManager {
   private static simulationResults: SimulationResult[] = [];
   private static strategyReports: StrategyReport[] = [];
   private static strategyReviews: StrategyReview[] = [];
+  private static strategyModelValidations: ModelValidationReport[] = [];
   private static strategyMonteCarloResults: StrategyMonteCarloResult[] = [];
   private static strategyRegimeTests: StrategyRegimeTestReport[] = [];
   private static strategyLiquidityValidations: StrategyLiquidityValidation[] = [];
@@ -598,6 +601,10 @@ export class NexusManager {
     return this.strategyReviews;
   }
 
+  static getStrategyModelValidations(): ModelValidationReport[] {
+    return this.strategyModelValidations;
+  }
+
   static getStrategyMonteCarloResults(): StrategyMonteCarloResult[] {
     return this.strategyMonteCarloResults;
   }
@@ -648,8 +655,18 @@ export class NexusManager {
   /** v0.7 Feature 52 (Part 1) — same immediate-response pattern as
    * setSandboxState, for /api/sandbox/request-review's richer response
    * (which also files a real StrategyExecutiveReview/StrategyFounderApproval
-   * in the same CEO action). */
-  static setStrategyExecutiveOutcome(strategies: Strategy[], strategyReviews: StrategyReview[], executiveReview: StrategyExecutiveReview | null, founderApproval: StrategyFounderApproval | null): void {
+   * in the same CEO action).
+   *
+   * v0.7 Quantitative Research & Intelligence System, Piece 4 —
+   * `modelValidation` is Meridian/CIO's independent, advisory-only
+   * ModelValidationReport, filed in this same real CEO action. */
+  static setStrategyExecutiveOutcome(
+    strategies: Strategy[],
+    strategyReviews: StrategyReview[],
+    executiveReview: StrategyExecutiveReview | null,
+    founderApproval: StrategyFounderApproval | null,
+    modelValidation: ModelValidationReport | null = null,
+  ): void {
     this.setSandboxState(strategies, strategyReviews);
     if (executiveReview) {
       this.strategyExecutiveReviews = [...this.strategyExecutiveReviews, executiveReview];
@@ -658,6 +675,10 @@ export class NexusManager {
     if (founderApproval) {
       this.strategyFounderApprovals = [...this.strategyFounderApprovals, founderApproval];
       EventBus.emit("strategyFounderApprovals:updated", this.strategyFounderApprovals);
+    }
+    if (modelValidation) {
+      this.strategyModelValidations = [...this.strategyModelValidations, modelValidation];
+      EventBus.emit("strategyModelValidations:updated", this.strategyModelValidations);
     }
   }
 
@@ -1247,6 +1268,9 @@ export class NexusManager {
     if (update.strategyReviews.length !== this.strategyReviews.length) EventBus.emit("strategyReviews:updated", update.strategyReviews);
     this.strategyReviews = update.strategyReviews;
 
+    if (update.strategyModelValidations.length !== this.strategyModelValidations.length) EventBus.emit("strategyModelValidations:updated", update.strategyModelValidations);
+    this.strategyModelValidations = update.strategyModelValidations;
+
     if (update.strategyMonteCarloResults.length !== this.strategyMonteCarloResults.length) EventBus.emit("strategyMonteCarloResults:updated", update.strategyMonteCarloResults);
     this.strategyMonteCarloResults = update.strategyMonteCarloResults;
 
@@ -1603,6 +1627,7 @@ export class NexusManager {
     this.simulationResults = save.simulationResults;
     this.strategyReports = save.strategyReports;
     this.strategyReviews = save.strategyReviews;
+    this.strategyModelValidations = save.strategyModelValidations;
     this.strategyMonteCarloResults = save.strategyMonteCarloResults;
     this.strategyRegimeTests = save.strategyRegimeTests;
     this.strategyLiquidityValidations = save.strategyLiquidityValidations;

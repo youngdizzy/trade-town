@@ -64,6 +64,7 @@ import type {
   FailedStrategyArchiveEntry,
   KnowledgeQualityScore,
   MarketIntelligenceRegime,
+  ModelValidationReport,
   ProcessAdherenceRead,
   ProcessAdherenceSummaryRead,
   RegimeReconciliation,
@@ -520,7 +521,16 @@ export const api = {
     // Council's real StrategyFounderApproval (see backend/app/state.py's
     // request_strategy_company_review()); at most one of each comes
     // back, since it's this one strategy's own new review moment.
-    request<{ strategies: Strategy[]; strategyReviews: StrategyReview[]; strategyExecutiveReviews: StrategyExecutiveReview[]; strategyFounderApprovals: StrategyFounderApproval[] }>("/sandbox/request-review", {
+    // v0.7 Quantitative Research & Intelligence System, Piece 4 — this
+    // is also the one real moment Meridian/CIO's independent, advisory-
+    // only ModelValidationReport is filed.
+    request<{
+      strategies: Strategy[];
+      strategyReviews: StrategyReview[];
+      strategyExecutiveReviews: StrategyExecutiveReview[];
+      strategyFounderApprovals: StrategyFounderApproval[];
+      strategyModelValidation: ModelValidationReport | null;
+    }>("/sandbox/request-review", {
       method: "POST",
       body: JSON.stringify({ strategyId }),
     }),
@@ -547,6 +557,11 @@ export const api = {
   // every call — `certified` is always a live read of current real
   // state (see StrategyCertification's own docstring in types.ts).
   getSandboxCertification: (strategyId: string) => request<StrategyCertification>(`/sandbox/certification?strategyId=${encodeURIComponent(strategyId)}`),
+  // v0.7 Quantitative Research & Intelligence System, Piece 4 —
+  // Meridian/CIO's most recent independent validation report for this
+  // strategy. Read-only, computed fresh every call; null if the
+  // strategy has never been through Company Review yet.
+  getSandboxModelValidation: (strategyId: string) => request<ModelValidationReport | null>(`/sandbox/model-validation?strategyId=${encodeURIComponent(strategyId)}`),
   // v0.7 Feature 54 (the brief self-numbered it "Feature 53," already
   // used above for Company Certification) — the Decision Memory
   // System. Both read-only, computed fresh every call, mirroring the

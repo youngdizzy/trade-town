@@ -61,6 +61,7 @@ import type {
   TreasuryState,
   RiskLimits,
   EducationProgress,
+  ModelValidationReport,
   PlayerVsAiState,
   ReasoningChallenge,
   ReasoningLabState,
@@ -159,6 +160,9 @@ export interface GameEvents {
   "simulation:completed": SimulationResult;
   "strategyReports:updated": StrategyReport[];
   "strategyReviews:updated": StrategyReview[];
+  // v0.7 Quantitative Research & Intelligence System, Piece 4 —
+  // Meridian/CIO's independent, advisory-only ModelValidationReport.
+  "strategyModelValidations:updated": ModelValidationReport[];
   // v0.7 Feature 52 (Part 1/2) — the Strategy Validation Laboratory.
   "strategyMonteCarloResults:updated": StrategyMonteCarloResult[];
   "strategyRegimeTests:updated": StrategyRegimeTestReport[];

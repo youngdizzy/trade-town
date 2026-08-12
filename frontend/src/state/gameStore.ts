@@ -48,6 +48,7 @@ import type {
   MeetingState,
   MemoryRecord,
   MentorState,
+  ModelValidationReport,
   NewsItem,
   OpportunityRejection,
   PaperPortfolio,
@@ -133,6 +134,7 @@ export interface GameUiState {
   simulationResults: SimulationResult[];
   strategyReports: StrategyReport[];
   strategyReviews: StrategyReview[];
+  strategyModelValidations: ModelValidationReport[];
   strategyMonteCarloResults: StrategyMonteCarloResult[];
   strategyRegimeTests: StrategyRegimeTestReport[];
   strategyLiquidityValidations: StrategyLiquidityValidation[];
@@ -298,6 +300,7 @@ class GameStore {
     simulationResults: [],
     strategyReports: [],
     strategyReviews: [],
+    strategyModelValidations: [],
     strategyMonteCarloResults: [],
     strategyRegimeTests: [],
     strategyLiquidityValidations: [],
@@ -700,6 +703,7 @@ class GameStore {
     EventBus.on("strategies:updated", (strategies) => this.set({ strategies }));
     EventBus.on("strategyReports:updated", (strategyReports) => this.set({ strategyReports }));
     EventBus.on("strategyReviews:updated", (strategyReviews) => this.set({ strategyReviews }));
+    EventBus.on("strategyModelValidations:updated", (strategyModelValidations) => this.set({ strategyModelValidations }));
     EventBus.on("simulation:updated", ({ sessions, results }) => this.set({ backtestSessions: sessions, simulationResults: results }));
     EventBus.on("strategyMonteCarloResults:updated", (strategyMonteCarloResults) => this.set({ strategyMonteCarloResults }));
     EventBus.on("strategyRegimeTests:updated", (strategyRegimeTests) => this.set({ strategyRegimeTests }));

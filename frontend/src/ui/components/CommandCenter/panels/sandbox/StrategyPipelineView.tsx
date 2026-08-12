@@ -2,7 +2,7 @@ import { useMemo, useState } from "react";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { NexusManager } from "@/game/systems/NexusManager";
 import { api } from "@/net/api";
-import type { BacktestSession, Strategy, StrategyReport, StrategyReview, StrategyStage, StrategyVerdict, SimulationResult, TestScenario, WatchlistEntry } from "@/types";
+import type { BacktestSession, ModelValidationReport, Strategy, StrategyReport, StrategyReview, StrategyStage, StrategyVerdict, SimulationResult, TestScenario, WatchlistEntry } from "@/types";
 import { STAGE_LABELS, computeStrategyConsistency } from "../../lib/derive";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../../ui";
 
@@ -19,6 +19,14 @@ const SCENARIO_LABELS: Record<TestScenario, string> = {
 };
 
 const VERDICT_TONE: Record<StrategyVerdict, "green" | "amber" | "red"> = { pass: "green", concern: "amber", fail: "red" };
+
+// v0.7 Quantitative Research & Intelligence System, Piece 4.
+const MODEL_VALIDATION_TONE: Record<ModelValidationReport["verdict"], "green" | "amber" | "red" | "neutral"> = {
+  approved: "green",
+  rejected: "red",
+  needs_more_evidence: "amber",
+  not_validatable: "neutral",
+};
 
 // Trading Psychology & Discipline, Piece B — mirrors backend/app/strategy_lab.py's
 // real MIN_RETIREMENT_TRADE_COUNT exactly (the Statistical Evidence Gate
@@ -42,6 +50,7 @@ export function StrategyPipelineView({
   simulationResults,
   strategyReports,
   strategyReviews,
+  strategyModelValidations,
   watchlist,
 }: {
   selected: Strategy;
@@ -49,6 +58,7 @@ export function StrategyPipelineView({
   simulationResults: SimulationResult[];
   strategyReports: StrategyReport[];
   strategyReviews: StrategyReview[];
+  strategyModelValidations: ModelValidationReport[];
   watchlist: WatchlistEntry[];
 }) {
   const [scenario, setScenario] = useState<TestScenario>("historical");
@@ -64,6 +74,10 @@ export function StrategyPipelineView({
   const ownReports = useMemo(() => strategyReports.filter((r) => r.strategyId === selected.id), [selected, strategyReports]);
   const ownReviews = useMemo(() => strategyReviews.filter((r) => r.strategyId === selected.id), [selected, strategyReviews]);
   const pendingReview = ownReviews.find((r) => r.ceoDecision === "pending");
+  const latestModelValidation = useMemo(() => {
+    const own = strategyModelValidations.filter((r) => r.strategyId === selected.id);
+    return own.length > 0 ? own[own.length - 1] : null;
+  }, [selected, strategyModelValidations]);
   const activeSessions = useMemo(() => backtestSessions.filter((s) => s.strategyId === selected.id && s.status !== "completed"), [selected, backtestSessions]);
   const consistency = computeStrategyConsistency(selected.id, simulationResults);
   const totalTradeCount = useMemo(() => ownResults.reduce((sum, r) => sum + r.tradeCount, 0), [ownResults]);
@@ -104,7 +118,7 @@ export function StrategyPipelineView({
   const requestReview = () =>
     runAction(async () => {
       const res = await api.requestSandboxCompanyReview(selected.id);
-      NexusManager.setStrategyExecutiveOutcome(res.strategies, res.strategyReviews, res.strategyExecutiveReviews[0] ?? null, res.strategyFounderApprovals[0] ?? null);
+      NexusManager.setStrategyExecutiveOutcome(res.strategies, res.strategyReviews, res.strategyExecutiveReviews[0] ?? null, res.strategyFounderApprovals[0] ?? null, res.strategyModelValidation);
     });
 
   const decide = (approve: boolean) =>
@@ -345,6 +359,39 @@ export function StrategyPipelineView({
           </div>
         )}
       </Glass>
+
+      {latestModelValidation && (
+        <Glass className="p-3">
+          <div className="mb-1.5 flex items-center justify-between">
+            <TerminalLabel>Model Validation — Meridian (independent, advisory-only)</TerminalLabel>
+            <StatusPill tone={MODEL_VALIDATION_TONE[latestModelValidation.verdict]}>{latestModelValidation.verdict.replace(/_/g, " ").toUpperCase()}</StatusPill>
+          </div>
+          <p className="mb-2 text-[9px] text-cmd-textDim">
+            {latestModelValidation.evidenceSummary} This verdict is advisory only — it does not override or bypass Company Review, the Gatekeeper, Risk Authority, or any Circuit Breaker, and a
+            rejection does not automatically change this strategy's stage.
+          </p>
+          <div className="space-y-1">
+            {latestModelValidation.checks.map((check) => (
+              <div key={check.id} className="rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-1.5 text-[9px]">
+                <div className="mb-0.5 flex items-start gap-1.5">
+                  <StatusPill tone={check.passed === true ? "green" : check.passed === false ? "red" : "neutral"}>{check.passed === true ? "pass" : check.passed === false ? "fail" : "n/a"}</StatusPill>
+                  <span className="flex-1 text-cmd-text">{check.label}</span>
+                </div>
+                <p className="text-cmd-textDim">{check.evidence}</p>
+                <p className="text-cmd-textDim">{check.reasoning}</p>
+                <p className="text-cmd-textDim">Threshold: {check.thresholdSource}</p>
+              </div>
+            ))}
+          </div>
+          {latestModelValidation.dataSourcesAndAssumptions.length > 0 && (
+            <div className="mt-2 space-y-0.5 border-t border-cmd-border/50 pt-2 text-[9px] text-cmd-textDim">
+              {latestModelValidation.dataSourcesAndAssumptions.map((line, i) => (
+                <p key={i}>{line}</p>
+              ))}
+            </div>
+          )}
+        </Glass>
+      )}
 
       {selected.stage !== "retired" && (
         <Glass className="p-3">

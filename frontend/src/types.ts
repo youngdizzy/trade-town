@@ -796,6 +796,47 @@ export interface StrategyLiquidityValidation {
   createdAt: string;
 }
 
+// v0.7 — Quantitative Research & Intelligence System, Piece 4: the
+// Model Validator (Meridian/CIO). See backend/app/model_validation.py's
+// module docstring for the full honesty boundary — every check reuses
+// an existing, already-load-bearing Strategy Lab Certification-gate
+// threshold (never a new invented number), and the whole report is
+// advisory-only: nothing in the Company Review approve/reject flow
+// reads `verdict`.
+export type ModelValidationVerdict = "approved" | "rejected" | "needs_more_evidence" | "not_validatable";
+
+export interface ModelValidationCheck {
+  id: string;
+  label: string;
+  /** null means this check could not be evaluated yet (the underlying
+   * artifact doesn't exist for this strategy yet) — never coerced to
+   * true/false. */
+  passed: boolean | null;
+  evidence: string;
+  reasoning: string;
+  /** Always cites exactly which existing constant/pattern this check
+   * reused — never blank, since Piece 4 introduces no new numeric bar. */
+  thresholdSource: string;
+}
+
+export interface ModelValidationReport {
+  id: string;
+  strategyId: string;
+  strategyName: string;
+  reviewId: string;
+  existingReviewCount: number;
+  verdict: ModelValidationVerdict;
+  checks: ModelValidationCheck[];
+  validatorAgentId: "cio";
+  evidenceSummary: string;
+  /** What real data each check drew on, and what this report does NOT
+   * independently establish — independence here is organizational/
+   * decision independence, not statistical independence. */
+  dataSourcesAndAssumptions: string[];
+  simDay: number;
+  createdAt: string;
+}
+
 // Deliberately distinct from the trade-scoped ExecutiveAction —
 // strategy-lifecycle semantics differ from single-trade semantics.
 export type StrategyExecutiveAction = "advance" | "request_more_evidence" | "hold_for_improvement" | "reject";
@@ -3995,6 +4036,9 @@ export interface GameSaveState {
   simulationResults: SimulationResult[];
   strategyReports: StrategyReport[];
   strategyReviews: StrategyReview[];
+  // v0.7 Quantitative Research & Intelligence System, Piece 4 —
+  // Meridian/CIO's independent, advisory-only ModelValidationReport.
+  strategyModelValidations: ModelValidationReport[];
   // v0.7 Feature 52 (Part 1/2) — the Strategy Validation Laboratory.
   strategyMonteCarloResults: StrategyMonteCarloResult[];
   strategyRegimeTests: StrategyRegimeTestReport[];

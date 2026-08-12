@@ -57,6 +57,7 @@ import type {
   TreasuryState,
   EducationProgress,
   PlayerVsAiState,
+  ModelValidationReport,
   ReasoningChallenge,
   ReasoningLabState,
   ReflectionSession,
@@ -121,6 +122,7 @@ type ServerMessage =
       simulationResults: SimulationResult[];
       strategyReports: StrategyReport[];
       strategyReviews: StrategyReview[];
+      strategyModelValidations: ModelValidationReport[];
       strategyMonteCarloResults: StrategyMonteCarloResult[];
       strategyRegimeTests: StrategyRegimeTestReport[];
       strategyLiquidityValidations: StrategyLiquidityValidation[];
@@ -276,6 +278,7 @@ export class GameSocket {
             simulationResults: msg.simulationResults,
             strategyReports: msg.strategyReports,
             strategyReviews: msg.strategyReviews,
+            strategyModelValidations: msg.strategyModelValidations,
             strategyMonteCarloResults: msg.strategyMonteCarloResults,
             strategyRegimeTests: msg.strategyRegimeTests,
             strategyLiquidityValidations: msg.strategyLiquidityValidations,
