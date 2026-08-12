@@ -431,6 +431,13 @@ export interface PaperPosition {
   openedAt: string;
   /** Simulated-clock minutes-since-epoch (day*1440 + hour*60 + minute) at open time. */
   openedSimMinutes: number;
+  /** Quantitative Research & Intelligence System, Piece 5 (Execution
+   * Quant) — the real dollar transaction cost charged at entry (a flat,
+   * disclosed basis-points constant, see backend/app/portfolio.py's
+   * TRANSACTION_COST_BPS/module docstring — never derived from real
+   * spread/order-book data, which this codebase does not have). 0.0 for
+   * any position opened before this piece. */
+  entryCostUsd: number;
 }
 
 /** One closed paper position — the Learning System's "training data" record (v0.5 brief Feature 5). */
@@ -461,6 +468,11 @@ export interface PaperTrade {
   /** Simulated-clock minutes-since-epoch (day*1440 + hour*60 + minute) — same convention as PaperPosition.openedSimMinutes. `closedSimMinutes` is always `openedSimMinutes + durationMinutes`. Added in v0.6.1 so monthly P&L can bucket by TradeTown's in-game calendar instead of real wall-clock time (openedAt/closedAt above remain real timestamps, kept only for audit/display). */
   openedSimMinutes: number;
   closedSimMinutes: number;
+  /** Quantitative Research & Intelligence System, Piece 5 (Execution
+   * Quant) — the real combined round-trip transaction cost (entry +
+   * exit) already subtracted from `pnl` above; kept here purely for
+   * audit visibility. 0.0 for any trade closed before this piece. */
+  transactionCostUsd: number;
 }
 
 /** The company's one simulated trading account — entirely fictional. */

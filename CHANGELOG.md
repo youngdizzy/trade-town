@@ -7,6 +7,30 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Execution Quant: real transaction cost at the execution choke point** (`backend/app/portfolio.py`,
+  `backend/app/schemas.py`, `backend/tests/test_portfolio.py`, `frontend/src/types.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/PerformancePanel.tsx`,
+  `docs/DesignBible/volumes/07-ai-workforce.md`): Piece 5 of the Quantitative Research & Intelligence System.
+  `open_position()`/`close_position()` — confirmed by direct trace to be this codebase's one real execution
+  choke point, since every live-trade caller funnels through them — now deduct a real transaction cost from
+  the cash ledger on every fill. Ships agent-agnostic (no new named agent, per an earlier scoping decision),
+  the mechanism sitting downstream of Gatekeeper's existing pre-execution approval. Research confirmed a
+  data-driven, spread/volume-varying cost model is not honestly buildable here: this codebase has no real
+  bid-ask spread anywhere, `Quote.volume` is `random.uniform` mock data, and `LiquidityRead`/
+  `StrategyLiquidityValidation` are real price-action pattern detectors, not spread proxies — explicitly
+  documented as never a claim about real order-book data. So `TRANSACTION_COST_BPS = 5.0` is instead a real,
+  functioning mechanism (real dollars leave the ledger, every trade's `pnl`/`pnlPct` is genuinely net of it,
+  fully auditable via `PaperPosition.entryCostUsd`/`PaperTrade.transactionCostUsd`) built on one flat,
+  disclosed constant rather than a fabricated statistic — the same reasoning `app/simulation.py`'s own
+  disclosed-placeholder Sharpe/Sortino already established for a different metric. `pnl_pct`'s new formula is
+  algebraically identical to the old one whenever cost is 0, so this is a strict generalization, not a
+  redefinition. Verified: 4 new tests (hand-computed entry/exit cost deductions, an affordability-refusal
+  case, and pre-piece save-compatibility for positions with no `entryCostUsd`), full backend suite 1611
+  passed with zero regressions elsewhere (the 5bps rate didn't disturb any existing exact-value assertion
+  across the 13 other test files touching `open_position`/`close_position`), `mypy`/`ruff` clean, `tsc -b
+  --noEmit`/`eslint`/`vite build` clean. Surfaced as a real per-trade cost line in Command Center's "Recent
+  Trades" journal card.
+
 - **Real Sharpe/Sortino + Monte Carlo VaR/CVaR** (`backend/app/analytics.py`, `backend/app/strategy_lab.py`,
   `backend/app/schemas.py`, `backend/tests/test_analytics.py`, `backend/tests/test_strategy_lab.py`,
   `backend/tests/test_model_validation.py`, `frontend/src/types.ts`,

@@ -98,7 +98,77 @@ research above and the risk tiers above it.
 This is the real three-way separation the CEO's spec asked for: Vector
 researches, Sentinel/Guardian/Keystone manage risk at their respective
 tiers, and Meridian validates — cooperating without collapsing into one
-general-purpose "Quant AI." **Quant Developer** and **Execution Quant**
-(the spec's remaining two named roles) have no real seat in this
-codebase yet and are tracked as separate, deferred future pieces (7 and
-5 respectively) — not claimed here.
+general-purpose "Quant AI." **Quant Developer** (the spec's remaining
+named role) has no real seat in this codebase yet and is tracked as a
+separate, deferred future piece (7) — not claimed here. **Execution
+Quant** now has a real mechanism, documented below — still no new named
+agent (per Q3's original scoping decision), since the mechanism sits at
+the shared execution choke point every trade already funnels through.
+
+## Addendum — Execution Quant (Quantitative Research & Intelligence System, Piece 5)
+
+**Status:** Real. `app/portfolio.py`'s `open_position()`/`close_position()`
+now deduct a real transaction cost from the cash ledger on every fill —
+confirmed by direct trace to be this codebase's one real execution choke
+point (every live-trade caller, `app/executive.py`'s `resolve_proposal()`,
+`app/paper_trading.py`, `app/trading_modes.py`'s `flatten_day_positions`,
+funnels through these same two functions; `app/broker.py`'s
+`place_order()`/`tick_broker()` path is real but confirmed unreachable —
+zero production call sites, always operating on an empty order book). Per
+Q3's original scoping decision, this ships **agent-agnostic** — no new
+named agent — with the mechanism owned by the same real pre-execution
+pipeline Gatekeeper's `evaluate_gatekeeper()` already gates: cost only
+ever applies to a trade that already passed that check, since
+`open_position()` is only ever called after it.
+
+**Why a flat rate, not a data-driven model.** A slippage/cost model that
+varied by real spread or order-book depth is not honestly buildable in
+this codebase today — confirmed by direct research, not assumed. There
+is no real bid-ask spread anywhere; `app/market_data.py`'s `Quote.volume`
+is `random.uniform` mock data, not a real market signal; and
+`app/market_intelligence.py`'s `LiquidityRead`/`StrategyLiquidityValidation`
+are real price-action *pattern detectors* (equal-high/low clustering,
+sweep-and-close-back), explicitly documented there as "never a claim
+about real resting stop orders... real order-book/order-flow data this
+codebase does not have." A cost that varied per-symbol by any of those
+inputs would be deriving "realism" from numbers that are themselves
+fabricated or pattern-inferred — the same trap `app/simulation.py`'s own
+disclosed-placeholder Sharpe/Sortino already fell into for a different
+metric, and which that module's docstring already declines to repeat.
+
+So `TRANSACTION_COST_BPS = 5.0` (`app/portfolio.py`) is instead a real,
+functioning mechanism built on one flat, deliberately chosen, fully
+disclosed constant — standing in for combined commission + spread +
+slippage as a single number, applied identically to every symbol and
+every side. This is the honest tradeoff: real dollars leave the cash
+ledger on every fill (not a cosmetic display number), every trade's
+`pnl`/`pnlPct` is genuinely net of it, and the cost itself is fully
+auditable (`PaperPosition.entry_cost_usd`, `PaperTrade.
+transaction_cost_usd`) — but the *rate* is a disclosed assumption, not a
+measured statistic, and the report/UI never claims otherwise.
+
+**The mechanics.** Entry and exit each pay `TRANSACTION_COST_BPS` (5.0
+bps = 0.05%) of that fill's own notional once, so a full round trip pays
+it twice. `open_position()` deducts `notional + entry_cost` from cash
+(no-op — unchanged portfolio, not a partial fill — if that total exceeds
+available cash, the same "no-op, not error" philosophy the function's
+docstring already establishes for its other affordability check).
+`close_position()` nets `gross_pnl - (entry_cost_usd + exit_cost)` into
+`pnl`, and recomputes `pnl_pct` as `pnl / (quantity * entry_price) * 100`
+— algebraically identical to the pre-Piece-5 formula whenever cost is
+0, so this is a strict generalization, not a redefinition.
+
+**Verified:** 4 new tests (`tests/test_portfolio.py::TestTransactionCost`
+— hand-computed entry-cost deduction from cash, a refusal case when cash
+can't cover notional-plus-cost, hand-computed net pnl/pnl_pct on a real
+round trip, and a legacy position with no `entry_cost_usd` — pre-Piece-5
+save-compatibility — still closing cleanly with only the exit side's
+cost applied). Full backend suite (1611 tests, up from 1607) passed
+unchanged with zero other regressions — the 5bps rate is small enough
+that no existing exact-value test assertion in any of the 13 other test
+files that call `open_position`/`close_position` was affected.
+`mypy`/`ruff` clean. Frontend: `PaperPosition.entryCostUsd`/
+`PaperTrade.transactionCostUsd` added to `types.ts`;
+`PerformancePanel.tsx`'s "Recent Trades" journal card now shows a real
+per-trade cost line ("real, already netted above") whenever a trade's
+cost is nonzero. `tsc -b --noEmit`/`eslint`/`vite build` clean.
