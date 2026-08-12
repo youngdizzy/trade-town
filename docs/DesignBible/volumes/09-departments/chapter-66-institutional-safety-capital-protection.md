@@ -511,3 +511,90 @@ WAIT decision scoring `None` with zero verified checks, confirmation the
 score never folds not-trackable into either side, and Discipline tier
 boundary cases), full backend suite green (1525/1525), `mypy`/`ruff`
 clean, `tsc -b --noEmit`/`npm run lint` clean.
+
+---
+
+## Addendum — Probability-First Language Audit (Trading Psychology & Discipline, Piece E)
+
+**Origin.** The fifth piece of the CEO's trading-psychology roadmap
+(Pieces A/C above and Piece D in Chapter 74 Part 1). Piece E's brief:
+"Probability-first language audit."
+
+**The audit itself, done first.** This codebase has no LLM anywhere
+(confirmed: no such dependency in `requirements.txt`) — every player-
+facing string is deterministic f-string/template generation, never
+freeform prose, so a real audit is genuinely tractable: read every
+generation module rather than sample it. 22 real backend text-
+generation modules were checked (the Decision Confidence Engine, the
+Discipline Chamber, the AI Debate, the Library of Mistakes/Successes,
+the Coach, the Academy, market/economic intelligence, and every other
+module that produces player-facing prose), plus the frontend files a
+keyword sweep flagged for manual review. **Zero genuine violations
+found.** Every hit from a certainty-language sweep (`will win/rise/
+fall/rally/crash`, `guaranteed`, `sure thing`, `always wins`, `never
+loses`, `can't lose`, `100% certain`, `surefire`, `slam dunk`, and more)
+resolved to one of: a code comment/docstring describing a structural
+code guarantee (never a market-outcome claim), an Academy quiz's
+wrong-answer distractor (confirmed via each lesson's own
+`correct_index` — these exist specifically to be marked incorrect,
+teaching against overconfidence rather than modeling it), or text that
+actively negates certainty ("an estimate, not a guarantee" —
+`app/calendar.py`; "a probable zone is not a guarantee price ever
+reaches it" — `app/market_debate.py`). This is a legitimate zero-finding
+result, not a failed search — `app/confidence.py`'s own module
+docstring already states the design principle this codebase was built
+under: *"Never predicts whether a trade will win. It scores the quality
+of the evidence behind the current setup."* The Decision Confidence
+Engine (Feature 15), the Discipline Chamber (Feature 26), and the
+Library of Mistakes/Successes (Features 27/42) were all already
+architecturally probability-first before this piece touched anything.
+
+**Turning the finding into a permanent guarantee, not a report that
+goes stale.** New `app/probability_language.py`:
+`BANNED_CERTAINTY_PHRASES` — a **phrase**-level list ("is guaranteed
+to", "sure thing", "always wins", "100% certain," 23 phrases total),
+deliberately never a bare-word ban on "guarantee"/"certain"/"sure",
+because this codebase's own *correct* usage already contains those
+words inside hedged, negated sentences ("not a guarantee") — a
+bare-word ban would flag exactly the probability-first phrasing this
+module exists to protect, the same false-positive trap a naive
+first-pass grep sweep during this audit itself walked into and had to
+correct for. `find_certainty_violations(text)` and `audit_model(model)`
+(a generic recursive walker over any pydantic model's string fields,
+via `model.model_dump()` — no per-schema field enumeration needed) are
+the reusable checker functions.
+
+**The regression guard.** `tests/test_probability_language_audit.py`
+runs `audit_model()` against **real generated output** — not synthetic
+text — from `generate_discipline_review()`, `generate_case_studies()`,
+`generate_success_studies()`, and `generate_debate()` (the AI Debate),
+covering the highest-value trade-thesis/analyst-reasoning/post-trade-
+review surfaces a future template is most likely to drift on. A planted-
+violation test (`test_audit_model_actually_catches_a_planted_
+violation`) proves the checker itself works end-to-end against a real
+schema object, not just against bare strings, so a silently-broken
+checker can't hide behind passing "is clean" assertions. This is
+intentionally a representative sample of the highest-value surfaces,
+not every one of the 22 modules audited manually — extending fixture
+coverage to additional modules is a straightforward, low-risk future
+addition using the exact same `audit_model()` call against any other
+generator's real output, not a redesign.
+
+**What this addendum explicitly does not do.** It does not add a
+frontend surface — this is an internal regression guard for the
+CEO/developers, not new information the player needs to see (the
+player already sees only clean, probability-first text, confirmed by
+the audit). It does not touch any of the 22 audited modules' actual
+generation logic, since none needed a fix. It does not claim to have
+audited the frontend as exhaustively as the backend — TSX/JSX copy was
+checked via keyword sweep and manual review of the flagged files, not
+read module-by-module the way the backend's 22 generation modules were.
+
+**Verified:** 10 new tests (`TestFindCertaintyViolations`,
+`TestAuditModelAgainstRealGeneratedOutput`) covering clean text, hedged/
+negated non-violations, individual phrase detection, real generated
+`DisciplineReview`/`CaseStudy` (mistake and success)/`Debate` output all
+auditing clean, and the planted-violation proof. Full backend suite
+green (1550/1550), `mypy app/` and `ruff check app/ tests/` clean. No
+frontend changes in this piece, so no `tsc -b --noEmit`/`npm run lint`
+re-verification was needed beyond the audit's own manual review.

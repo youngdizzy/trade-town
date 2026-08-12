@@ -7,6 +7,31 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Probability-First Language Audit** (`backend/app/probability_language.py` new,
+  `backend/tests/test_probability_language_audit.py` new,
+  `docs/DesignBible/volumes/09-departments/chapter-66-institutional-safety-capital-protection.md`): Piece E
+  of the CEO's trading-psychology roadmap. Since this codebase has no LLM anywhere (every player-facing
+  string is deterministic template generation), a real audit was tractable: 22 real backend text-generation
+  modules read in full, plus a keyword-flagged frontend review. Zero genuine violations of probability-first
+  framing found — every certainty-language hit (`guaranteed`, `sure thing`, `always wins`, `will win`, etc.)
+  resolved to a code comment about a structural guarantee, an Academy quiz's confirmed wrong-answer
+  distractor, or text actively negating certainty ("an estimate, not a guarantee"). `app/confidence.py`'s own
+  module docstring already documents the design principle this codebase was built under: "Never predicts
+  whether a trade will win. It scores the quality of the evidence behind the current setup." Rather than
+  file this as a one-time report that goes stale, new `app/probability_language.py` turns the finding into a
+  permanent, enforced guarantee: `BANNED_CERTAINTY_PHRASES` is phrase-level (`"is guaranteed to"`,
+  `"sure thing"`, `"always wins"`, 23 total) — deliberately never a bare-word ban on `"guarantee"`/`"certain"`,
+  since this codebase's own correct usage already contains those words inside hedged/negated sentences
+  ("not a guarantee") that a bare-word ban would wrongly flag. `find_certainty_violations()` and
+  `audit_model()` (a generic recursive walker over any pydantic model's string fields) are the reusable
+  checkers; `test_probability_language_audit.py` runs them against real generated output from
+  `generate_discipline_review()`, `generate_case_studies()`, `generate_success_studies()`, and
+  `generate_debate()` — the AI Debate/Discipline Chamber/Library of Mistakes/Successes' highest-value
+  trade-thesis and post-trade-review surfaces — plus a planted-violation test proving the checker itself
+  actually catches a real violation, not just passing silently. No frontend changes (this is an internal
+  regression guard, not new player-facing information). Verified: 10 new tests, full backend suite green
+  (1550/1550), `mypy app/`/`ruff check app/ tests/` clean.
+
 - **Loss/Win Classification, Formalized on Top of the Discipline Chamber** (`backend/app/discipline.py`,
   `backend/app/self_improvement.py`, `backend/app/schemas.py`, `backend/app/nexus.py`,
   `backend/app/routers/self_improvement.py`, `backend/tests/test_discipline.py`,
