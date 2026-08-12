@@ -255,7 +255,12 @@ export function CyberNotifications() {
   if (currentScene === "MainMenuScene" || (toasts.length === 0 && tradeToasts.length === 0)) return null;
 
   return (
-    <div className="pointer-events-none absolute right-3 top-14 z-[70] flex w-80 flex-col gap-2">
+    // Design Bible Chapter 73.5 — capped to calc(100vw-1.5rem) so this
+    // stack never spans wide enough on a narrow phone to sit over
+    // TopStatusBar/GlobalStatusBar's real risk/health readouts; starts
+    // lower on mobile (top-20) to clear GlobalStatusBar's trimmed row,
+    // back to the original top-14 at `sm` and up.
+    <div className="pointer-events-none absolute right-3 top-20 z-[70] flex w-[min(20rem,calc(100vw-1.5rem))] flex-col gap-2 sm:top-14">
       {tradeToasts.map(({ id, trade, leaving }) => {
         const win = trade.pnl > 0;
         const loss = trade.pnl < 0;

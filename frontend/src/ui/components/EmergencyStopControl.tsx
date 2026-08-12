@@ -18,7 +18,7 @@ export function EmergencyStopControl() {
     <button
       type="button"
       onClick={() => EventBus.emit("ui:emergencyStopConfirm", { pending: "resume" })}
-      className="pointer-events-auto flex animate-pulse items-center gap-1.5 rounded bg-bearish px-3 py-1.5 text-ink shadow-pixel"
+      className="pointer-events-auto flex min-h-[44px] animate-pulse items-center gap-1.5 rounded bg-bearish px-3 py-1.5 text-ink shadow-pixel sm:min-h-0"
       title="Emergency Stop is active — trading is halted. Only the CEO can resume."
     >
       <span className="h-2 w-2 rounded-full bg-ink" />
@@ -28,7 +28,7 @@ export function EmergencyStopControl() {
     <button
       type="button"
       onClick={() => EventBus.emit("ui:emergencyStopConfirm", { pending: "activate" })}
-      className="pointer-events-auto rounded border border-bearish/60 px-3 py-1.5 text-bearish shadow-pixel transition-colors hover:bg-bearish hover:text-ink"
+      className="pointer-events-auto flex min-h-[44px] items-center rounded border border-bearish/60 px-3 py-1.5 text-bearish shadow-pixel transition-colors hover:bg-bearish hover:text-ink sm:min-h-0"
       title="Halt all trading immediately"
     >
       EMERGENCY STOP

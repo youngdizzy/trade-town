@@ -55,9 +55,27 @@ const REGIME_TONE: Record<MarketEnvironmentRegime, string> = {
 
 const MODE_LABEL: Record<OperatingMode, string> = { learning: "LEARNING", assisted: "ASSISTED", executive: "EXECUTIVE" };
 
-function StatusItem({ label, value, tone, title }: { label: string; value: string; tone: string; title: string }) {
+function StatusItem({
+  label,
+  value,
+  tone,
+  title,
+  hideOnMobile = false,
+}: {
+  label: string;
+  value: string;
+  tone: string;
+  title: string;
+  /** Design Bible Chapter 73.5 — this row wraps into extra lines once
+   * enough items exceed a narrow viewport's width, which pushed the row
+   * tall enough to collide with CyberNotifications' toast stack below
+   * it. RISK/COMPANY HEALTH/PORTFOLIO stay visible everywhere (the
+   * user's own mobile-priority ordering); the remaining four are one tap
+   * away in the Command Center's OVERVIEW tab. */
+  hideOnMobile?: boolean;
+}) {
   return (
-    <div className="flex items-center gap-1.5" title={title}>
+    <div className={`items-center gap-1.5 ${hideOnMobile ? "hidden sm:flex" : "flex"}`} title={title}>
       <span className="opacity-60">{label}</span>
       <span className={`font-bold ${tone}`}>{value}</span>
     </div>
@@ -87,15 +105,34 @@ export function GlobalStatusBar() {
           tone={HEAT_TONE[portfolioIntelligence.heat.tier]}
           title="Portfolio Heat — total capital at risk reading, never an automatic action"
         />
-        <StatusItem label="MARKET" value={marketEnvironment.label} tone={REGIME_TONE[marketEnvironment.current]} title={marketEnvironment.detail} />
-        <StatusItem label="AUTOMATION" value={MODE_LABEL[settings.operatingMode]} tone="text-parchment" title="Company Operating Mode (COMPANY tab)" />
+        <StatusItem
+          label="MARKET"
+          value={marketEnvironment.label}
+          tone={REGIME_TONE[marketEnvironment.current]}
+          title={marketEnvironment.detail}
+          hideOnMobile
+        />
+        <StatusItem
+          label="AUTOMATION"
+          value={MODE_LABEL[settings.operatingMode]}
+          tone="text-parchment"
+          title="Company Operating Mode (COMPANY tab)"
+          hideOnMobile
+        />
         <StatusItem
           label="DEPLOYED"
           value={`${Math.round(portfolioIntelligence.deployedPctOfEquity)}%`}
           tone="text-parchment"
           title="Capital deployed as % of equity"
+          hideOnMobile
         />
-        <StatusItem label="BROKER" value="SIMULATED" tone="text-parchment/70" title="Paper trading only — no live broker integration exists (app/broker.py)" />
+        <StatusItem
+          label="BROKER"
+          value="SIMULATED"
+          tone="text-parchment/70"
+          title="Paper trading only — no live broker integration exists (app/broker.py)"
+          hideOnMobile
+        />
       </div>
     </div>
   );

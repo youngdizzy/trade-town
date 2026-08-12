@@ -414,6 +414,45 @@ activation window; a new Audit Log category following Chapter 75's
 exact template; and a genuinely responsive (phone-width-usable)
 Command Center layout — all described above.
 
+**Mobile audit pass (post-73/73.5 verification, this session):** a
+direct mobile-viewport audit found the earlier "responsive Command
+Center layout" claim was real for panel content (no horizontal
+overflow) but had never been driven or verified via actual touch
+input — no `(pointer: coarse)` detection existed anywhere, zero touch
+event handlers existed in the entire frontend, and the bottom-of-screen
+control cluster (BottomToolbar's 10 buttons, QuickActionDock's
+mode/jump buttons, GlobalStatusBar's 7-item row, CyberNotifications'
+toast stack) had never been tested at a real phone width — a live
+Playwright run at a 390px viewport (iPhone 13 emulation) found genuine
+overlaps: the joystick region and BottomToolbar's wrapped rows
+collided, QuickActionDock's fixed `bottom-16 right-3` position blocked
+taps on BottomToolbar underneath it, and CyberNotifications' `w-80`
+toast could cover TopStatusBar/GlobalStatusBar's risk readouts. Closed
+this pass, real and verified by re-running the same Playwright script
+after each fix: a real on-screen joystick + interact button
+(`app/game/systems/TouchMoveState.ts`, `MobileTouchControls.tsx`)
+feeding the exact same `MoveVector`/`interactJustPressed` interface
+WASD/E already use (`InputManager.ts` — no second movement system);
+`useIsTouchDevice()`, a live `(pointer: coarse)` media-query hook;
+44px-minimum touch targets on Emergency Stop, the Command Center's
+header/tab buttons, and BottomToolbar; BottomToolbar trimmed to
+Command Center/Search/Pause on touch devices (Save/Load/Memory/Coach/
+Dashboard/Settings/Work Mode stay desktop-only, still reachable via
+autosave or the Command Center itself) and repositioned above the
+joystick's footprint; QuickActionDock hidden on touch (its mode-cycle
+and tab quick-jumps are one tap away inside the Command Center, the
+CEO's primary mobile surface, per this chapter's own "mobile is the
+CEO operations console" rule); GlobalStatusBar trimmed to
+RISK/COMPANY HEALTH/PORTFOLIO on narrow viewports; a real, touch-
+accessible Command Palette open path (`ui:commandPalette` event +
+BottomToolbar's Search button), since Cmd+K/Ctrl+K has no touch
+equivalent. Verified end-to-end on a real emulated mobile viewport:
+Command Center opens and every tab renders without overflow, Treasury
+loads real data, Emergency Stop's full activate→confirm→backend-state-
+change→new-trades-blocked→resume→confirm→backend-state-change cycle
+works via touch taps alone, and no console/page errors occur across
+the full flow.
+
 **Files to change this pass:** `app/schemas.py` (new
 `SituationRoomState`/`SituationRoomField`/`PriorityItem`/
 `TravelModeState`/`TravelModeSettings`/`TravelModeBriefing`; extended

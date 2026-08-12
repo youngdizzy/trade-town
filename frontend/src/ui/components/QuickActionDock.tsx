@@ -1,6 +1,7 @@
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { EventBus } from "@/game/systems/EventBus";
 import { SettingsManager } from "@/game/systems/SettingsManager";
+import { useIsTouchDevice } from "@/ui/hooks/useIsTouchDevice";
 import type { OperatingMode } from "@/types";
 
 /**
@@ -51,8 +52,17 @@ const JUMPS: { label: string; tab: string }[] = [
 
 export function QuickActionDock() {
   const { settings, currentScene } = useGameStore();
+  const isTouch = useIsTouchDevice();
   const inGame = currentScene !== "MainMenuScene";
-  if (!inGame) return null;
+  // Design Bible Chapter 73.5 — this dock's fixed bottom-right pixel
+  // offset was never designed for a narrow viewport, and on touch
+  // devices it now shares that screen region with the mobile joystick/
+  // interact controls (MobileTouchControls.tsx) and BottomToolbar's
+  // wrapped rows — every function here (mode cycle, tab quick-jumps) is
+  // still one tap away inside the Command Center, the CEO's primary
+  // mobile surface, so this convenience layer steps aside on touch
+  // rather than risk covering a real control.
+  if (!inGame || isTouch) return null;
 
   const cycleMode = () => {
     const next = MODE_ORDER[(MODE_ORDER.indexOf(settings.operatingMode) + 1) % MODE_ORDER.length];

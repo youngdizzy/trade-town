@@ -186,7 +186,13 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b border-cmd-border px-4 py-2.5">
+      {/* Design Bible Chapter 73.5 — flex-wrap so a narrow/mobile viewport
+          wraps the status/action cluster onto its own row instead of
+          overflowing past the edge, which would push CLOSE (the one
+          control that must always stay reachable to exit) off-screen.
+          Buttons get a 44px minimum touch target below `sm`, unchanged
+          on desktop. */}
+      <header className="flex flex-wrap items-center justify-between gap-y-2 border-b border-cmd-border px-4 py-2.5">
         <div className="flex items-center gap-3">
           <span className="tracking-[0.2em] text-cmd-cyan">COMMAND CENTER</span>
           <span className="text-cmd-textDim">
@@ -201,7 +207,7 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
           <button
             type="button"
             onClick={() => EventBus.emit("ui:campusMap", { open: true })}
-            className="rounded-sm border border-cmd-border px-2.5 py-1 text-cmd-textDim transition-colors hover:border-cmd-cyan/50 hover:text-cmd-cyan"
+            className="hidden min-h-[44px] rounded-sm border border-cmd-border px-2.5 py-1 text-cmd-textDim transition-colors hover:border-cmd-cyan/50 hover:text-cmd-cyan sm:flex sm:min-h-0 sm:items-center"
             title="Company Campus Map (M)"
           >
             🗺 CAMPUS
@@ -209,21 +215,21 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
           <button
             type="button"
             onClick={onCollapse}
-            className="rounded-sm border border-cmd-border px-2.5 py-1 text-cmd-textDim transition-colors hover:border-cmd-cyan/50 hover:text-cmd-cyan"
+            className="flex min-h-[44px] items-center rounded-sm border border-cmd-border px-2.5 py-1 text-cmd-textDim transition-colors hover:border-cmd-cyan/50 hover:text-cmd-cyan sm:min-h-0"
           >
             QUICK VIEW
           </button>
           <button
             type="button"
             onClick={onClose}
-            className="rounded-sm border border-cmd-border px-2.5 py-1 text-cmd-textDim transition-colors hover:border-cmd-red/50 hover:text-cmd-red"
+            className="flex min-h-[44px] items-center rounded-sm border border-cmd-border px-2.5 py-1 text-cmd-textDim transition-colors hover:border-cmd-red/50 hover:text-cmd-red sm:min-h-0"
           >
             CLOSE ✕
           </button>
         </div>
       </header>
 
-      <nav className="flex flex-col gap-1 overflow-y-auto border-b border-cmd-border bg-cmd-panel/60 px-3 py-1.5">
+      <nav className="flex max-h-[45vh] flex-col gap-1 overflow-y-auto border-b border-cmd-border bg-cmd-panel/60 px-3 py-1.5">
         {groupTabsBySection(TABS).map(({ section, tabs }) => (
           <div key={section} className="flex flex-wrap items-center gap-1">
             <span className="mr-1 w-[104px] shrink-0 text-[10px] tracking-[0.15em] text-cmd-textDim/70">{section}</span>
@@ -232,7 +238,7 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
                 key={t}
                 type="button"
                 onClick={() => setTab(t)}
-                className={`whitespace-nowrap rounded-sm px-3 py-1.5 tracking-wide transition-colors ${
+                className={`min-h-[40px] whitespace-nowrap rounded-sm px-3 py-1.5 tracking-wide transition-colors sm:min-h-0 ${
                   tab === t ? "border border-cmd-cyan/40 bg-cmd-cyan/10 text-cmd-cyan shadow-cmd-cyan" : "border border-transparent text-cmd-textDim hover:text-cmd-text"
                 }`}
               >

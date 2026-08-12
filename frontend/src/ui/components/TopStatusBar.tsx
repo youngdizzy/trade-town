@@ -17,8 +17,14 @@ export function TopStatusBar() {
         {meeting.active && <span className="rounded bg-gold/20 px-1.5 py-0.5 text-gold">Meeting in progress</span>}
       </div>
 
+      {/* Design Bible Chapter 73.5 — hidden below `sm` so this row's 3
+          justify-between blocks never squeeze Emergency Stop (the
+          highest-priority mobile control per the Design Bible's own
+          desktop-vs-mobile interface priority rule) off a narrow phone
+          viewport. Agent status stays one tap away via the Command
+          Center's AGENTS tab. */}
       {agents && (
-        <div className="pointer-events-auto flex items-center gap-3 rounded bg-panel/80 px-3 py-1.5 shadow-pixel">
+        <div className="pointer-events-auto hidden items-center gap-3 rounded bg-panel/80 px-3 py-1.5 shadow-pixel sm:flex">
           {AGENT_IDS.map((id) => {
             const profile = AGENT_PROFILES[id];
             const agent = agents[id];

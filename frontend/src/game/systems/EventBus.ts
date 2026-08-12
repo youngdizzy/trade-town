@@ -176,6 +176,10 @@ export interface GameEvents {
   "ui:brainRoomHud": { open: boolean };
   "ui:commandCenter": { open: boolean; mode?: "quick" | "full" };
   "ui:campusMap": { open: boolean };
+  // Design Bible Chapter 73.5 — a real, touch-accessible way to open the
+  // Command Palette that doesn't depend on the Cmd+K/Ctrl+K shortcut
+  // (BottomToolbar's Search button emits this).
+  "ui:commandPalette": { open: boolean };
   "ui:breakthrough": { open: boolean };
   "ui:emergencyStopConfirm": { pending: "activate" | "resume" | null };
   // Design Bible Chapter 67 (TTOS) Part 3 — the Quick Action Dock's

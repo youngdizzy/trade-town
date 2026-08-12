@@ -7,6 +7,31 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 73.5 mobile audit + real touch controls** (`frontend/src/game/systems/TouchMoveState.ts` new,
+  `frontend/src/ui/components/MobileTouchControls.tsx` new, `frontend/src/ui/hooks/useIsTouchDevice.ts` new,
+  `InputManager.ts`, `App.tsx`, `EventBus.ts`, `BottomToolbar.tsx`, `EmergencyStopControl.tsx`,
+  `TopStatusBar.tsx`, `GlobalStatusBar.tsx`, `QuickActionDock.tsx`, `CommandCenter/FullCommandCenter.tsx`,
+  `CommandCenter/CyberNotifications.tsx`, `CommandPalette.tsx`): a direct mobile-viewport audit (real
+  Playwright runs at a 390px iPhone-13 emulation, not static code reading) found the previously-claimed
+  "responsive Command Center layout" had never been driven by real touch input — zero touch event handlers
+  existed anywhere, no `(pointer: coarse)` detection existed, and a live screenshot caught genuine overlaps:
+  the bottom-of-screen control cluster (BottomToolbar's 10 buttons, QuickActionDock's fixed position,
+  GlobalStatusBar's 7-item row, CyberNotifications' toast stack) collided with itself and with TopStatusBar's
+  risk readouts on a narrow viewport. Fixed and re-verified after each change: a real on-screen joystick +
+  interact button feeding the exact same `MoveVector`/`interactJustPressed` interface WASD/E already use
+  (no second movement system); 44px-minimum touch targets on Emergency Stop and Command Center controls;
+  BottomToolbar trimmed to Command Center/Search/Pause on touch and repositioned clear of the joystick;
+  QuickActionDock hidden on touch (redundant with the Command Center, the CEO's primary mobile surface);
+  GlobalStatusBar trimmed to Risk/Company Health/Portfolio on narrow viewports; a real touch-accessible
+  Command Palette open path (Cmd+K has no touch equivalent). Also directly re-verified this session, with
+  real backend-state assertions, not visual-only checks: Treasury renders real data with no black screen and
+  no horizontal overflow at mobile width; the 5 account categories (Personal/IRA/Business/Prop Firm/Family)
+  remain unchanged (no new categories added); Emergency Stop's full activate→confirm→real-backend-state-
+  change→new-trades-genuinely-blocked→resume→confirm→real-backend-state-change cycle works via touch taps
+  alone. Zero regressions — the one persistently-failing Playwright test found during this pass
+  (`commandCenter.spec.ts`'s translucent-backdrop movement check) was confirmed pre-existing by reproducing
+  it against the unmodified baseline before and after this change.
+
 - **Chapter 74.5 — CEO Vision Board & Strategic Alignment Engine**
   (`app/vision_board.py` new, `app/routers/vision_board.py` new,
   `app/nexus.py`, `app/state.py`, `app/schemas.py`, `app/ws_manager.py`,

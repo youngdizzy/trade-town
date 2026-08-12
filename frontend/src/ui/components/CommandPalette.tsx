@@ -78,6 +78,17 @@ export function CommandPalette() {
     return () => window.removeEventListener("keydown", onKey);
   }, [inGame]);
 
+  // Design Bible Chapter 73.5 — a real, touch-accessible open path,
+  // since a mobile CEO has no Cmd+K/Ctrl+K to press (BottomToolbar's
+  // Search button emits this).
+  useEffect(() => {
+    const onOpen = ({ open: shouldOpen }: { open: boolean }) => {
+      if (inGame) setOpen(shouldOpen);
+    };
+    EventBus.on("ui:commandPalette", onOpen);
+    return () => EventBus.off("ui:commandPalette", onOpen);
+  }, [inGame]);
+
   useEffect(() => {
     if (open) {
       setQuery("");

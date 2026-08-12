@@ -1,6 +1,7 @@
 import Phaser from "phaser";
 import type { Direction } from "@/types";
 import { isTypingInTextField } from "./inputFocus";
+import { consumeTouchInteract, getTouchMoveVector } from "./TouchMoveState";
 
 export interface MoveVector {
   x: number;
@@ -79,6 +80,21 @@ export class InputManager {
     if (up) y -= 1;
     if (down) y += 1;
 
+    // Design Bible Chapter 73.5 — the mobile on-screen joystick
+    // (MobileTouchControls.tsx) feeds the exact same vector keyboard
+    // input does, via TouchMoveState. Only applied when the keyboard
+    // itself is neutral, so a touch drag can never fight a held key. The
+    // joystick already reports a magnitude-clamped, continuous vector
+    // (not a fixed ±1 per axis like keys), so it skips the keyboard-only
+    // diagonal normalize below.
+    let fromTouch = false;
+    if (x === 0 && y === 0) {
+      const touch = getTouchMoveVector();
+      x = touch.x;
+      y = touch.y;
+      fromTouch = x !== 0 || y !== 0;
+    }
+
     let direction: Direction | null = null;
     if (y < 0) direction = "up";
     else if (y > 0) direction = "down";
@@ -86,7 +102,7 @@ export class InputManager {
     else if (x > 0) direction = "right";
 
     const moving = x !== 0 || y !== 0;
-    if (moving && x !== 0 && y !== 0) {
+    if (moving && x !== 0 && y !== 0 && !fromTouch) {
       // Diagonal movement normalized; facing prioritizes vertical for sprite readability.
       const len = Math.sqrt(2);
       x /= len;
@@ -97,7 +113,7 @@ export class InputManager {
   }
 
   get interactJustPressed(): boolean {
-    return Phaser.Input.Keyboard.JustDown(this.interactKey);
+    return Phaser.Input.Keyboard.JustDown(this.interactKey) || consumeTouchInteract();
   }
 
   get pauseJustPressed(): boolean {
