@@ -578,4 +578,81 @@ build tileset`) reproducing identically on a brand-new "New Game," with
 zero files this piece touched anywhere in the crash's call path — the
 same kind of environment-specific gap this chapter's own Piece B
 addendum above already disclosed rather than silently claiming full
-coverage.
+coverage. (A follow-up session isolated the same real
+`StrategyPipelineView.tsx` component outside the game bootstrap and
+confirmed the card renders correctly for all four verdict states.)
+
+## Addendum — Walk-Forward / Temporal-Split Validation (Quantitative Research & Intelligence System, Piece 2)
+
+**Status:** Real, implemented as a sixth check inside `app/model_
+validation.py`'s existing `ModelValidationReport` (Piece 4, above) —
+not a standalone module.
+
+**Origin and the honest constraint.** A genuine walk-forward test needs
+real, sequential, unseen-at-the-time historical price data to hold out
+a true out-of-sample window. `app/simulation.py`'s own module docstring
+already discloses this codebase has no real historical
+`MarketDataProvider` — that cannot be honestly built here, and this
+piece does not pretend otherwise.
+
+**What research found already real.** `app/strategy_lab.py`'s
+`compute_strategy_health()` already does a recent-vs-lifetime temporal
+comparison (last `HEALTH_RECENT_WINDOW = 3` runs vs. the full,
+overlapping lifetime average) — a genuine, real precedent this piece
+builds on rather than duplicates. It also confirmed the codebase's own
+established convention that `SimulationResult` has no `sim_day` of its
+own; **list order is already treated as chronological order** (results
+append onto `self.data.simulation_results` strictly in completion
+order, never re-sorted — see `app/simulation.py`'s
+`tick_simulation_lab()` and `app/nexus.py`'s threading of that list).
+Piece 2 reuses this exact convention rather than inventing a new
+timestamp-parsing scheme.
+
+**The real, distinct contribution.** `_temporal_stability_check()`
+splits a strategy's own `SimulationResult` history at its chronological
+midpoint — earlier half vs. later half, by list order — and requires
+real expectancy (`expected_value_pct`, the exact same formula and
+`> 0` bar `_expectancy_check` and the Certification gate already use)
+to hold positive in **both** halves independently, not just in the
+whole-sample average. This is a genuinely different failure mode than
+the existing whole-sample expectancy check: a strategy whose early
+results were strong but whose more recent results have turned negative
+(or an unproven recent turnaround) can still average out to a positive
+whole-sample expectancy — this check surfaces that where the aggregate
+number alone would mask it. Each half must independently clear
+`CERTIFICATION_MIN_TRADE_COUNT` (20) real trades before the split is
+trusted; below that, the check honestly returns `passed: None` rather
+than a statistically vacuous verdict on a thin split.
+
+**Explicitly disclosed as an analog, not the real thing.** The check's
+own `reasoning` string says so directly: *"A disjoint-split analog to
+walk-forward validation, not a claim of true out-of-sample testing
+against unseen future data."* The module docstring's own threshold-
+provenance table names this as the one exception whose *shape* (a
+chronological split) has no prior precedent to reuse, distinct from
+every other check's numeric threshold, which all cite an existing
+Certification-gate constant.
+
+**Why folded into Piece 4's existing report rather than a new module.**
+The same real inputs (`self.data.simulation_results`, `strategy.id`)
+are already in scope at `request_strategy_company_review()`'s one real
+call site; a seventh top-level Strategy Lab artifact type (this codebase
+already has eight: Dossier, Health, Monte Carlo, Regime Test, Liquidity,
+Executive Review, Founder Approval, Certification) would be redundant
+surface area for what is fundamentally one more piece of evidence in
+the same CEO-facing verdict. Advisory-only, same as every other check
+in this report — it participates in `ModelValidationReport.verdict`
+exactly like the other five, and inherits the same non-gating guarantee
+(`apply_review_decision()`/`begin_company_review()` remain byte-for-byte
+unmodified).
+
+**Verified:** 7 new pure-function tests
+(`tests/test_model_validation.py::TestTemporalStabilityCheck` — too few
+runs, a half below the trade floor, both halves profitable, edge decay
+in the later half, an unproven-turnaround-only-profitable-later case,
+odd-length-history split-by-floor-division, and threshold-source never
+blank), one existing test updated (`test_all_pass_is_approved` needed
+enough trades per half to also clear the new check, since it previously
+used a sample size that satisfied the whole-sample floor but not each
+half independently — a real behavioral consequence of adding a sixth
+check, not a workaround), full backend suite green, `mypy`/`ruff` clean.

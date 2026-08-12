@@ -1,5 +1,8 @@
 """app/model_validation.py — Quantitative Research & Intelligence System,
-Piece 4: the Model Validator (Meridian/CIO).
+Piece 4: the Model Validator (Meridian/CIO). Also houses Piece 2 (Walk-
+Forward / Temporal-Split Validation), added as a sixth check inside the
+same report rather than a standalone module — see THE TEMPORAL-
+STABILITY CHECK section below for why.
 
 THE ROLE, AS THE CEO SPECIFIED IT: a genuinely independent validation
 authority for the Strategy Lab pipeline (app/sandbox.py, app/
@@ -44,10 +47,44 @@ this module:
   - Expectancy     -> "expectancy > 0", the same formula and bar
                        strategy_lab.py's own certification/readiness
                        gates already use.
-If a future check ever needs a threshold with no existing precedent, it
-must be documented here as a configurable research assumption, not
-presented as an established statistical fact — none of the five checks
-below need that treatment, since each already cites a real precedent.
+  - Temporal
+    stability      -> two reused pieces, no new number: (1) "list order
+                       = chronological order" — the same convention
+                       strategy_lab.py's own compute_strategy_health()
+                       already relies on for its recent-vs-lifetime read
+                       (SimulationResult has no sim_day of its own; the
+                       codebase already treats append order as time
+                       order); (2) the same "expectancy > 0" bar above,
+                       applied independently to each half of a
+                       chronological split instead of once to the whole
+                       sample.
+If a future check ever needs a threshold with no existing numeric
+precedent, it must be documented here as a configurable research
+assumption, not presented as an established statistical fact. The
+temporal-stability check above is the one exception worth naming
+explicitly: its *shape* (splitting a strategy's own run history into an
+earlier and later half) has no prior precedent to reuse — see THE
+TEMPORAL-STABILITY CHECK section below for the honest boundary this
+requires.
+
+THE TEMPORAL-STABILITY CHECK (Piece 2 — Walk-Forward / Temporal-Split
+Validation): a genuine walk-forward test needs real, sequential,
+unseen-at-the-time historical price data to hold out a true
+out-of-sample window — app/simulation.py's own module docstring already
+discloses this codebase has no real historical MarketDataProvider, so
+that cannot be honestly built here. What *can* be built honestly: this
+strategy's own real `SimulationResult` history, split at its
+chronological midpoint (earlier half vs. later half, by list order —
+see above), checking whether real expectancy holds positive in *both*
+halves rather than only in the whole-sample average. This surfaces a
+real, different failure mode than `_expectancy_check` above: a strategy
+whose early results were strong but whose more recent results have
+turned negative (or vice versa — an unproven recent turnaround) can
+still average out to a positive whole-sample expectancy that
+`_expectancy_check` alone would pass. This is a disjoint-split analog to
+walk-forward validation, not a claim of true sequential in-sample/
+out-of-sample testing against unseen future data — the check's own
+`reasoning` string says so.
 
 LIFECYCLE / STATELESSNESS: `generate_strategy_review()` (app/sandbox.py)
 has exactly one real call site in this codebase —
@@ -195,6 +232,54 @@ def _expectancy_check(strategy_results: list[SimulationResult]) -> ModelValidati
     )
 
 
+def _temporal_stability_check(strategy_results: list[SimulationResult]) -> ModelValidationCheck:
+    """Piece 2 — Walk-Forward / Temporal-Split Validation, as an honest
+    analog (see the module docstring's THE TEMPORAL-STABILITY CHECK
+    section): splits `strategy_results` at its chronological midpoint —
+    by list order, the same convention app/strategy_lab.py's
+    compute_strategy_health() already relies on — and checks that real
+    expectancy holds positive in both the earlier and later half, not
+    just in the whole-sample average."""
+    if len(strategy_results) < 2:
+        return ModelValidationCheck(
+            id="temporal_stability",
+            label="Edge Stability Across This Strategy's Own Run History (Walk-Forward Analog)",
+            passed=None,
+            evidence=f"Only {len(strategy_results)} real run(s) on file — at least 2 are needed to split into an earlier and later half.",
+            reasoning="Cannot evaluate temporal stability without at least two real completed runs to compare chronologically.",
+            thresholdSource="app/strategy_lab.py's own 'list order = chronological order' convention for SimulationResult, already used by compute_strategy_health() (reused, not new)",
+        )
+    midpoint = len(strategy_results) // 2
+    earlier = strategy_results[:midpoint]
+    later = strategy_results[midpoint:]
+    earlier_trade_count = sum(r.trade_count for r in earlier)
+    later_trade_count = sum(r.trade_count for r in later)
+    if earlier_trade_count < CERTIFICATION_MIN_TRADE_COUNT or later_trade_count < CERTIFICATION_MIN_TRADE_COUNT:
+        return ModelValidationCheck(
+            id="temporal_stability",
+            label="Edge Stability Across This Strategy's Own Run History (Walk-Forward Analog)",
+            passed=None,
+            evidence=f"Earlier half: {earlier_trade_count} real trade(s) across {len(earlier)} run(s). Later half: {later_trade_count} real trade(s) across {len(later)} run(s).",
+            reasoning=f"Each half needs ≥{CERTIFICATION_MIN_TRADE_COUNT} real trades (the same Certification-gate sample-size bar) before a chronological split is statistically meaningful.",
+            thresholdSource="app/strategy_lab.py CERTIFICATION_MIN_TRADE_COUNT, applied independently to each half (reused, not new)",
+        )
+    earlier_expectancy = sum(r.expected_value_pct for r in earlier) / len(earlier)
+    later_expectancy = sum(r.expected_value_pct for r in later) / len(later)
+    passed = earlier_expectancy > 0 and later_expectancy > 0
+    return ModelValidationCheck(
+        id="temporal_stability",
+        label="Edge Stability Across This Strategy's Own Run History (Walk-Forward Analog)",
+        passed=passed,
+        evidence=f"Earlier-half expectancy {earlier_expectancy:+.2f}% per trade ({len(earlier)} run(s)); later-half expectancy {later_expectancy:+.2f}% per trade ({len(later)} run(s)).",
+        reasoning=(
+            "The real edge holds in both the earlier and later half of this strategy's own tested history — not just an early lucky stretch or an unproven recent turnaround. A disjoint-split analog to walk-forward validation, not a claim of true out-of-sample testing against unseen future data."
+            if passed
+            else "The real edge does not hold across both halves of this strategy's own tested history — a whole-sample average can mask a strategy that only worked early on, or only recently."
+        ),
+        thresholdSource="app/strategy_lab.py's certification 'expectancy' requirement: expectancy > 0, applied independently to each half (reused, not new)",
+    )
+
+
 def _compute_verdict(checks: list[ModelValidationCheck], strategy_results: list[SimulationResult]) -> ModelValidationVerdict:
     if not strategy_results:
         return "not_validatable"
@@ -231,6 +316,7 @@ def generate_model_validation_report(
         _tail_risk_check(monte_carlo),
         _liquidity_check(liquidity),
         _expectancy_check(strategy_results),
+        _temporal_stability_check(strategy_results),
     ]
     verdict = _compute_verdict(checks, strategy_results)
     passed_count = sum(1 for c in checks if c.passed is True)

@@ -7,6 +7,26 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Walk-Forward / Temporal-Split Validation** (`backend/app/model_validation.py`, `backend/tests/test_model_validation.py`,
+  `docs/DesignBible/volumes/09-departments/chapter-62-innovation-lab-continuous-improvement.md`): Piece 2 of the
+  Quantitative Research & Intelligence System. A genuine walk-forward test needs real, sequential historical
+  price data to hold a true out-of-sample window; `app/simulation.py`'s own module docstring already discloses
+  this codebase has no real historical `MarketDataProvider`, so this piece builds the honest analog instead of
+  pretending otherwise. New sixth `ModelValidationCheck` (`temporal_stability`) inside Meridian's existing
+  report — not a new standalone module or Strategy Lab artifact type, since the same real inputs are already
+  in scope at the one real call site and a ninth top-level report card would be redundant surface area for one
+  more piece of evidence. Splits a strategy's own `SimulationResult` history at its chronological midpoint
+  (earlier half vs. later half, by list order — reusing the exact same "list order = chronological order"
+  convention `app/strategy_lab.py`'s `compute_strategy_health()` already relies on, since `SimulationResult`
+  has no `sim_day` of its own) and requires positive real expectancy (the same formula/bar `_expectancy_check`
+  and the Certification gate already use) independently in both halves — surfacing a strategy whose early
+  results were strong but has since decayed, or an unproven recent turnaround, either of which a whole-sample
+  average can mask. Each half must independently clear the reused `CERTIFICATION_MIN_TRADE_COUNT` (20 real
+  trades) before the split is trusted. The check's own `reasoning` explicitly discloses it as "a disjoint-split
+  analog to walk-forward validation, not a claim of true out-of-sample testing against unseen future data."
+  Verified: 7 new tests, 1 existing test updated (a real behavioral consequence of a sixth check tightening
+  the "all pass" fixture, not a workaround), full backend suite green, `mypy`/`ruff` clean.
+
 - **The Quant Organization, formalized** (`docs/DesignBible/volumes/07-ai-workforce.md`): Piece 1 of the
   Quantitative Research & Intelligence System, docs-only. Names the real three-way separation the CEO's spec
   asked for, using each agent's existing name and occupation — no renames, no new agents, no behavior

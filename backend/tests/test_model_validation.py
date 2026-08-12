@@ -1,15 +1,17 @@
 """Covers app/model_validation.py — Quantitative Research & Intelligence
-System, Piece 4: the Model Validator (Meridian/CIO). Every check must
-reuse an existing, already-load-bearing threshold (never fabricate a
-new one), the four-state verdict must never silently default to
-"approved", and the DA-exclusion mechanism (app/sandbox.py's
-_devils_advocate_verdict/generate_strategy_review `exclude_cio`) must be
-provably stateless: scoped to exactly the strategy/cycle it's invoked
-for, never leaking to other strategies or persisting past the call.
+System, Piece 4: the Model Validator (Meridian/CIO), and Piece 2
+(Walk-Forward / Temporal-Split Validation, the temporal_stability
+check). Every check must reuse an existing, already-load-bearing
+threshold (never fabricate a new one), the four-state verdict must
+never silently default to "approved", and the DA-exclusion mechanism
+(app/sandbox.py's _devils_advocate_verdict/generate_strategy_review
+`exclude_cio`) must be provably stateless: scoped to exactly the
+strategy/cycle it's invoked for, never leaking to other strategies or
+persisting past the call.
 """
 from __future__ import annotations
 
-from app.model_validation import generate_model_validation_report
+from app.model_validation import _temporal_stability_check, generate_model_validation_report
 from app.sandbox import (
     STRATEGY_DEVILS_ADVOCATES,
     _devils_advocate_verdict,
@@ -250,11 +252,71 @@ class TestExpectancyCheck:
         assert check.passed is None
 
 
+class TestTemporalStabilityCheck:
+    """Piece 2 — Walk-Forward / Temporal-Split Validation. Splits
+    strategy_results at its chronological midpoint (by list order, the
+    same convention app/strategy_lab.py's compute_strategy_health()
+    already uses) and requires positive expectancy in BOTH halves."""
+
+    def test_not_evaluable_with_fewer_than_two_runs(self) -> None:
+        check = _temporal_stability_check(_results(1, trade_count_each=25))
+        assert check.passed is None
+
+        check_empty = _temporal_stability_check([])
+        assert check_empty.passed is None
+
+    def test_not_evaluable_when_a_half_is_below_the_trade_floor(self) -> None:
+        # 4 runs split 2/2, trade_count_each=5 -> 10 trades/half, below
+        # the reused CERTIFICATION_MIN_TRADE_COUNT=20 floor.
+        check = _temporal_stability_check(_results(4, trade_count_each=5, expected_value_pct=1.0))
+        assert check.passed is None
+
+    def test_passes_when_both_halves_have_positive_expectancy(self) -> None:
+        earlier = _results(2, trade_count_each=15, expected_value_pct=1.0, strategy_id="strategy-1")
+        later = _results(2, trade_count_each=15, expected_value_pct=1.0, strategy_id="strategy-1")
+        check = _temporal_stability_check(earlier + later)
+        assert check.passed is True
+
+    def test_fails_when_the_edge_decays_in_the_later_half(self) -> None:
+        earlier = _results(2, trade_count_each=15, expected_value_pct=2.0, strategy_id="strategy-1")
+        later = _results(2, trade_count_each=15, expected_value_pct=-1.0, strategy_id="strategy-1")
+        check = _temporal_stability_check(earlier + later)
+        assert check.passed is False
+        assert "later" in check.evidence.lower() or "-1.00" in check.evidence
+
+    def test_fails_when_only_the_later_half_is_profitable(self) -> None:
+        # An unproven recent turnaround must not pass just because the
+        # whole-sample average could still look positive.
+        earlier = _results(2, trade_count_each=15, expected_value_pct=-2.0, strategy_id="strategy-1")
+        later = _results(2, trade_count_each=15, expected_value_pct=3.0, strategy_id="strategy-1")
+        check = _temporal_stability_check(earlier + later)
+        assert check.passed is False
+
+    def test_odd_length_history_splits_by_floor_division(self) -> None:
+        # 5 runs -> midpoint = 5 // 2 = 2: earlier=2, later=3. Confirms
+        # the split is deterministic list-order division, not an even
+        # requirement.
+        earlier = _results(2, trade_count_each=15, expected_value_pct=1.0, strategy_id="strategy-1")
+        later = _results(3, trade_count_each=15, expected_value_pct=1.0, strategy_id="strategy-1")
+        check = _temporal_stability_check(earlier + later)
+        assert check.passed is True
+        assert "2 run(s)" in check.evidence
+        assert "3 run(s)" in check.evidence
+
+    def test_threshold_source_never_blank(self) -> None:
+        for results in ([], _results(1), _results(4, trade_count_each=5), _results(4, trade_count_each=15, expected_value_pct=1.0)):
+            check = _temporal_stability_check(results)
+            assert check.threshold_source.strip()
+
+
 class TestVerdictLogic:
     def test_all_pass_is_approved(self) -> None:
         strategy = _strategy()
+        # trade_count_each=15 across 4 runs (2 per chronological half) gives
+        # each half 30 real trades — clears the temporal_stability check's
+        # own per-half CERTIFICATION_MIN_TRADE_COUNT floor too.
         report = generate_model_validation_report(
-            strategy, _results(4, trade_count_each=5, expected_value_pct=1.0), _monte_carlo(probability_of_ruin_pct=5.0), _regime_test(tested_count=2, any_weak=False), _liquidity(verdict="favorable"), "review-1", 0, sim_day=10
+            strategy, _results(4, trade_count_each=15, expected_value_pct=1.0), _monte_carlo(probability_of_ruin_pct=5.0), _regime_test(tested_count=2, any_weak=False), _liquidity(verdict="favorable"), "review-1", 0, sim_day=10
         )
         assert report.verdict == "approved"
         assert all(c.passed is True for c in report.checks)
