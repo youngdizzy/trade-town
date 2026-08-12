@@ -326,21 +326,23 @@ event-to-trade proximity; a fabricated indicator-to-trade causal edge
 would not be, and is exactly the kind of invented causality Chapter
 71's own Market Narrative Engine already refuses to produce.
 
-**The other six Self-Improvement Proposal categories** (`dashboard`,
-`position_sizing`, `new_executive`, `automation`, `knowledge_
-organization`, `ui`). *Current state:* named in the schema, no real
-generator. *Missing infrastructure:* each would need its own real,
-evidence-gated trigger — e.g. a `dashboard` proposal would need a real
-signal that a CEO is manually cross-referencing multiple tabs
-repeatedly, which this codebase has no telemetry to detect.
-*Dependencies:* vary per category. *Recommended future chapter:* an
-addendum to this chapter once a real trigger signal exists for any one
-of them. *Estimated complexity:* small per category, once a real
-trigger is identified. *Risk of building prematurely:* a proposal
-category with no real evidence path would either sit permanently empty
-(harmless but dead weight) or tempt a future implementer into
-fabricating a trigger just to populate it — exactly what this chapter's
-Philosophy section exists to prevent.
+**The other five Self-Improvement Proposal categories** (`dashboard`,
+`position_sizing`, `new_executive`, `automation`, `ui`). *Current
+state:* named in the schema, no real generator. *Missing
+infrastructure:* each would need its own real, evidence-gated trigger —
+e.g. a `dashboard` proposal would need a real signal that a CEO is
+manually cross-referencing multiple tabs repeatedly, which this
+codebase has no telemetry to detect. *Dependencies:* vary per category.
+*Recommended future chapter:* an addendum to this chapter once a real
+trigger signal exists for any one of them. *Estimated complexity:*
+small per category, once a real trigger is identified. *Risk of
+building prematurely:* a proposal category with no real evidence path
+would either sit permanently empty (harmless but dead weight) or tempt
+a future implementer into fabricating a trigger just to populate it —
+exactly what this chapter's Philosophy section exists to prevent. (A
+sixth category, `knowledge_organization`, is no longer in this bucket —
+see the Trading Psychology & Discipline, Piece D addendum at the end of
+this chapter for its own real trigger, added later.)
 
 ## Company Principle
 
@@ -635,3 +637,125 @@ constitution.py`'s amendment history, Chapter 70 Part 1's `BoardReport`
 windows), `MAX_EVOLUTION_REPORTS`. **What's genuinely, entirely
 unbuilt, named and not faked:** Automation Maturity and Decision Speed
 tracking — see Deferred Features above.
+
+---
+
+## Addendum — Loss/Win Classification, Formalized on Top of the
+## Discipline Chamber (Trading Psychology & Discipline, Piece D)
+
+**Origin.** The fourth piece of a CEO-approved trading-psychology
+roadmap (Pieces A–C: the Behavioral Circuit Breaker, the Statistical
+Evidence Gate on strategy retirement, and the Process Adherence Score —
+see Chapter 66's own addenda). Piece D's brief: "Loss/Win classification
+formalized on top of the existing Discipline Chamber; tie into CLSIS."
+
+**Research finding that reshaped scope.** Most of "Loss/Win
+classification" already existed before this piece touched anything:
+`DisciplineReview.outcome` (`app/discipline.py`) is the real, single,
+already-canonical win/loss definition (`pnl > 0` → win, else loss),
+attached to every closed trade's review; the Library of Mistakes
+(`app/mistakes.py`) and Library of Successes (`app/successes.py`)
+already file real `CaseStudy` records on the loss and win sides
+respectively, keyed off that same outcome. What was genuinely missing,
+found by reading `app/nexus.py`'s own trade-close handler line by line:
+the loss branch (`if trade.pnl <= 0:`) already called
+`maybe_propose_recurring_mistake()` — CLSIS's own real tie-in — right
+after filing new case studies; the win branch (`elif trade.pnl > 0:`)
+filed its own real success studies but called nothing into CLSIS at
+all. A real, literal structural asymmetry in the code itself, not a
+hypothetical gap. This piece closes exactly that asymmetry and adds one
+real, company-wide aggregate that didn't exist in any one place before
+— it does not rebuild `DisciplineReview.outcome`, `app/mistakes.py`, or
+`app/successes.py`.
+
+**1. `compute_loss_win_classification()` (`app/discipline.py`) — the
+"formalized" half.** A pure, on-demand aggregate over the Discipline
+Chamber's own capped `DisciplineReview`/`CaseStudy` lists (the same
+`MAX_DISCIPLINE_REVIEWS`/`MAX_CASE_STUDIES = 60` bound every other
+aggregate in this codebase already lives within — honestly "the most
+recent reviews on file," never claimed as a full historical archive).
+Reads `outcome`/`tier` directly off each `DisciplineReview`, never
+recomputes them. Reports:
+- `winCount`/`lossCount`/`winRatePct` (null, never `0%`, when nothing
+  has been reviewed yet).
+- `byTier`: a win/loss count for each of the five Discipline tiers.
+- `alignedCount` — a good-tier (`exemplary`/`sound`) win, or a
+  poor-tier (`weak`/`reckless`) loss: process and outcome agree.
+- `unluckyLossCount` — a good-tier trade that still lost. Real market
+  variance, not a process failure — the exact distinction
+  `discipline.py`'s own `_summary()` already draws per-review,
+  formalized here across the whole population for the first time.
+- `luckyWinCount` — a poor-tier trade that still won. A warning, not a
+  validation — same source, same distinction, now aggregated.
+- `mostCommonMistakeCategory`/`mostCommonSuccessCategory` — a real
+  `Counter` over the loss-side and win-side `CaseStudy` categories
+  respectively, `None` (never fabricated) when no case studies exist.
+- `adequate`-tier trades count toward neither `alignedCount` nor
+  `misalignedCount` — a genuine middle tier, not a strong signal either
+  way; every count still sums back to `totalReviewed`.
+
+Exposed at `GET /api/self-improvement/loss-win-classification`,
+computed fresh on every call — the same on-demand convention
+`get_evolution_score()` above already established, no sixth persisted
+copy of these numbers.
+
+**2. `maybe_propose_reinforce_success_pattern()`
+(`app/self_improvement.py`) — the "tie into CLSIS" half.** The exact
+structural mirror of `maybe_propose_recurring_mistake()` above, scanning
+`SUCCESS_CASE_STUDY_CATEGORIES` (the win side) instead of the loss side:
+when a real success-side `CaseStudy` category recurs at or above
+`RECURRING_SUCCESS_THRESHOLD` (3) within the most recent
+`RECURRING_SUCCESS_WINDOW` (15) win-side case studies, propose
+formalizing that pattern as company knowledge — filed under
+`knowledge_organization`, this category's **first real generator**
+(previously named on the `SelfImprovementCategory` schema with no
+trigger — see this chapter's own Deferred Features section, updated
+above). Same edge-triggered dedup via `evidence` citation the loss-side
+generator already uses; same CEO-manual approve/reject/implement flow,
+no automation eligibility. Wired into `app/nexus.py`'s win-side
+trade-close branch (`elif trade.pnl > 0:`), called once per trade right
+after that trade's own success studies are recorded — line-for-line the
+same placement the loss-side call already has in the branch above it.
+
+**Frontend.** `EvolutionPanel.tsx` (the same Command Center `EVOLUTION`
+tab this chapter's own Part 1/Part 2/Vision Board addenda already
+share) gained a new "Loss/Win Classification" card between Self-
+Improvement Proposals and Executive Learning Summary: win rate, by-tier
+win/loss breakdown, the aligned/unlucky-loss/lucky-win counts, and the
+most common mistake/success category — reusing `DisciplineTier`/
+`CaseStudyCategory` types and `DisciplinePanel.tsx`'s own established
+`TIER_TONE`/category-label conventions locally rather than
+cross-importing another panel's module internals.
+
+**What this addendum explicitly does not do.** It does not add a
+second win/loss definition — `DisciplineReview.outcome` remains the one
+canonical source. It does not touch `app/knowledge.py`'s older,
+independent `derive_lesson()` (a cruder, pnl-sign-only "lesson"/
+"mistake" classifier that predates the Discipline Chamber) — both
+already agree on the same `pnl > 0` rule, so there is no real
+divergence to reconcile, and `derive_lesson()` serves a different
+consumer (`CompanyMemory`'s free-text log) this piece has no reason to
+touch. It does not build a fourth/fifth CLSIS category — the six
+categories with no real trigger (see Deferred Features) remain
+genuinely deferred.
+
+**Verification.** 22 new backend tests (`TestComputeLossWinClassification`
+in `tests/test_discipline.py`, `TestMaybeProposeReinforceSuccessPattern`
+in `tests/test_self_improvement.py`) covering empty input, win-rate
+correctness, aligned/misaligned/unlucky-loss/lucky-win counts, the
+`adequate`-tier neutral case, the full five-tier breakdown, most-common-
+category derivation, threshold/window/dedup/refire behavior mirroring
+the loss-side generator's own existing test matrix. Full backend suite:
+1540/1540 passing. `mypy app/`, `ruff check app/ tests/` clean.
+`tsc -b --noEmit`, `npm run lint`, `npm run build` clean. Live-verified
+against the running dev server: `GET /api/self-improvement/loss-win-
+classification` returns a correctly-shaped, honest empty-state response
+against this session's real (currently trade-free) game state — no
+crash, `winRatePct: null` rather than a fabricated `0%`, every count
+zeroed rather than omitted; the new `EvolutionPanel.tsx` card renders
+that same honest empty state live in Command Center (screenshotted).
+Populating a non-empty live case was not reachable within this session
+— the running dev server's current game state has never produced a
+closed trade (all 29 decisions on file resolved `no_trade`) — so the
+populated-classification and win-side-CLSIS-firing paths are proven by
+the automated test suite above rather than a second live screenshot.

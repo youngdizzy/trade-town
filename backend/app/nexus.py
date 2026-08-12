@@ -114,7 +114,7 @@ from app.mentor import compute_mentor_state, compute_thinking_profiles, generate
 from app.mistakes import generate_case_studies, record_case_studies
 from app.opportunity_gatekeeper import build_opportunity_rejection, evaluate_opportunity, grade_opportunity_rejections
 from app.successes import generate_success_studies, record_success_studies
-from app.self_improvement import maybe_propose_recurring_mistake, record_self_improvement_proposal
+from app.self_improvement import maybe_propose_recurring_mistake, maybe_propose_reinforce_success_pattern, record_self_improvement_proposal
 from app.evolution import compute_company_evolution_score, generate_institutional_evolution_report, record_evolution_report
 from app.vision_board import compute_self_improvement_proposal_alignment
 from app.talent import generate_talent_reports, record_talent_reports
@@ -1851,6 +1851,25 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                     # hook as the loss branch above.
                     for supporting_agent in decision.supporting_agents:
                         agent_knowledge, _ = award_points(agent_knowledge, supporting_agent, ACADEMY_CASE_STUDY_NUDGE)
+                # Trading Psychology & Discipline, Piece D — the Library
+                # of Successes' own tie into CLSIS, checked once per trade
+                # after that trade's own success studies are already real
+                # and recorded, the exact mirror of the loss branch's own
+                # recurring_mistake trigger above.
+                reinforce_success_proposal = maybe_propose_reinforce_success_pattern(
+                    case_studies, self_improvement_proposals, sim_day=new_time.day
+                )
+                if reinforce_success_proposal is not None:
+                    alignment = compute_self_improvement_proposal_alignment(
+                        reinforce_success_proposal, state.vision_board
+                    )
+                    reinforce_success_proposal = reinforce_success_proposal.model_copy(
+                        update={"vision_alignment_score": alignment.score}
+                    )
+                    self_improvement_proposals = record_self_improvement_proposal(
+                        self_improvement_proposals, reinforce_success_proposal
+                    )
+                    record(memory, "alert", "Self-Improvement Proposal filed", reinforce_success_proposal.title, max_records=effective_risk_limits.max_memory_records)
 
             # v0.7 — the Decision Memory System's Decision Vault
             # (app/decision_vault.py). One permanent record joining this

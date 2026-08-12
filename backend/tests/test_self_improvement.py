@@ -18,11 +18,14 @@ from app.schemas import (
 from app.self_improvement import (
     RECURRING_MISTAKE_THRESHOLD,
     RECURRING_MISTAKE_WINDOW,
+    RECURRING_SUCCESS_THRESHOLD,
+    RECURRING_SUCCESS_WINDOW,
     RETIREMENT_CLUSTER_THRESHOLD,
     compute_executive_learning_summary,
     decide_self_improvement_proposal,
     mark_self_improvement_proposal_implemented,
     maybe_propose_recurring_mistake,
+    maybe_propose_reinforce_success_pattern,
     maybe_propose_retirement_cluster,
     record_self_improvement_proposal,
 )
@@ -125,6 +128,52 @@ class TestMaybeProposeRetirementCluster:
         assert first is not None
         second = maybe_propose_retirement_cluster(entries, [first], sim_day=10)
         assert second is None
+
+
+class TestMaybeProposeReinforceSuccessPattern:
+    """Trading Psychology & Discipline, Piece D — the exact mirror of
+    TestMaybeProposeRecurringMistake above, on the win-side population."""
+
+    def test_no_proposal_below_threshold(self) -> None:
+        case_studies = [_case_study(f"cs{i}", category="disciplined_process") for i in range(RECURRING_SUCCESS_THRESHOLD - 1)]
+        assert maybe_propose_reinforce_success_pattern(case_studies, [], sim_day=10) is None
+
+    def test_proposal_fires_at_threshold(self) -> None:
+        case_studies = [_case_study(f"cs{i}", category="disciplined_process") for i in range(RECURRING_SUCCESS_THRESHOLD)]
+        proposal = maybe_propose_reinforce_success_pattern(case_studies, [], sim_day=10)
+        assert proposal is not None
+        assert proposal.category == "knowledge_organization"
+        assert proposal.evidence == [cs.id for cs in case_studies]
+        assert proposal.sim_day == 10
+
+    def test_mistake_categories_never_trigger_a_knowledge_organization_proposal(self) -> None:
+        case_studies = [_case_study(f"cs{i}", category="overconfidence") for i in range(5)]
+        assert maybe_propose_reinforce_success_pattern(case_studies, [], sim_day=10) is None
+
+    def test_only_the_most_recent_window_is_considered(self) -> None:
+        old = [_case_study(f"old{i}", category="disciplined_process") for i in range(RECURRING_SUCCESS_THRESHOLD)]
+        filler = [_case_study(f"filler{i}", category="patient_execution") for i in range(RECURRING_SUCCESS_WINDOW)]
+        case_studies = old + filler
+        proposal = maybe_propose_reinforce_success_pattern(case_studies, [], sim_day=10)
+        assert proposal is not None
+        assert all(cs.id not in proposal.evidence for cs in old)
+        assert "patient execution" in proposal.title
+
+    def test_already_cited_evidence_does_not_refire(self) -> None:
+        case_studies = [_case_study(f"cs{i}", category="disciplined_process") for i in range(RECURRING_SUCCESS_THRESHOLD)]
+        first = maybe_propose_reinforce_success_pattern(case_studies, [], sim_day=10)
+        assert first is not None
+        second = maybe_propose_reinforce_success_pattern(case_studies, [first], sim_day=10)
+        assert second is None
+
+    def test_a_new_case_study_after_a_resolved_proposal_can_refire(self) -> None:
+        case_studies = [_case_study(f"cs{i}", category="disciplined_process") for i in range(RECURRING_SUCCESS_THRESHOLD)]
+        first = maybe_propose_reinforce_success_pattern(case_studies, [], sim_day=10)
+        assert first is not None
+        case_studies.append(_case_study("cs-new", category="disciplined_process"))
+        second = maybe_propose_reinforce_success_pattern(case_studies, [first], sim_day=11)
+        assert second is not None
+        assert second.id != first.id
 
 
 class TestRecordSelfImprovementProposal:

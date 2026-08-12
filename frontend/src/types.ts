@@ -3334,6 +3334,35 @@ export interface InstitutionalEvolutionReport {
   createdAt: string;
 }
 
+// Trading Psychology & Discipline, Piece D — Loss/Win Classification,
+// formalized on top of the Discipline Chamber (Design Bible Chapter 74
+// addendum). Fetched on demand (GET /api/self-improvement/loss-win-
+// classification), the same convention CompanyEvolutionScore above uses
+// — no WS-broadcast field, computed fresh from DisciplineReview/
+// CaseStudy every call.
+export interface DisciplineTierOutcomeCount {
+  tier: DisciplineTier;
+  winCount: number;
+  lossCount: number;
+}
+
+export interface LossWinClassificationRead {
+  totalReviewed: number;
+  winCount: number;
+  lossCount: number;
+  winRatePct: number | null;
+  byTier: DisciplineTierOutcomeCount[];
+  alignedCount: number;
+  misalignedCount: number;
+  unluckyLossCount: number;
+  luckyWinCount: number;
+  mostCommonMistakeCategory: CaseStudyCategory | null;
+  mostCommonMistakeCount: number;
+  mostCommonSuccessCategory: CaseStudyCategory | null;
+  mostCommonSuccessCount: number;
+  computedAt: string;
+}
+
 // Design Bible Chapter 74.5 — CEO Vision Board & Strategic Alignment
 // Engine (see backend/app/vision_board.py). visionBoard is real, part
 // of the WS tick broadcast — the same convention tradingModes/

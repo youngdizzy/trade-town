@@ -17,11 +17,20 @@ evidence-gated generator here:
                         the most recent RETIREMENT_CLUSTER_WINDOW
                         retirements (see app/strategy_lab.py).
 
-The other six categories (dashboard, position_sizing, new_executive,
-automation, knowledge_organization, ui) are named on the
-SelfImprovementCategory schema but have no real trigger signal
-anywhere in this codebase yet — see the Design Bible chapter's own
-Deferred Features section for why they stay unbuilt rather than faked.
+  knowledge_organization — Trading Psychology & Discipline, Piece D.
+                        A real CaseStudyCategory from the WIN side
+                        (SUCCESS_CASE_STUDY_CATEGORIES — see
+                        app/successes.py) recurs at or above
+                        RECURRING_SUCCESS_THRESHOLD times among the most
+                        recent RECURRING_SUCCESS_WINDOW win-side CaseStudy
+                        records — the exact mirror of risk_rule's own
+                        trigger, on the opposite population.
+
+The other five categories (dashboard, position_sizing, new_executive,
+automation, ui) are named on the SelfImprovementCategory schema but have
+no real trigger signal anywhere in this codebase yet — see the Design
+Bible chapter's own Deferred Features section for why they stay unbuilt
+rather than faked.
 
 Also home to compute_executive_learning_summary() — Part 1's other real
 addition, a pure aggregation of four already-real per-agent systems
@@ -54,6 +63,12 @@ RECURRING_MISTAKE_WINDOW = 15
 
 RETIREMENT_CLUSTER_THRESHOLD = 2
 RETIREMENT_CLUSTER_WINDOW = 5
+
+# Trading Psychology & Discipline, Piece D — the same threshold/window
+# shape as RECURRING_MISTAKE_THRESHOLD/_WINDOW above, on the opposite
+# (win-side) population.
+RECURRING_SUCCESS_THRESHOLD = 3
+RECURRING_SUCCESS_WINDOW = 15
 
 
 def _now_iso() -> str:
@@ -140,6 +155,56 @@ def maybe_propose_retirement_cluster(
         simDay=sim_day,
         createdAt=_now_iso(),
     )
+
+
+def maybe_propose_reinforce_success_pattern(
+    case_studies: list[CaseStudy],
+    existing_proposals: list[SelfImprovementProposal],
+    *,
+    sim_day: int,
+) -> SelfImprovementProposal | None:
+    """Trading Psychology & Discipline, Piece D — the Library of
+    Successes' own tie into CLSIS, the exact mirror of
+    maybe_propose_recurring_mistake() above but scanning the WIN side
+    (SUCCESS_CASE_STUDY_CATEGORIES) instead of the loss side. Loss-side
+    recurrence already proposes a new risk_rule; a recurring, real WIN
+    pattern is evidence too — evidence a specific process strength is
+    working repeatedly, not a fluke — and deserves the same
+    "formalize it" treatment. Filed as `knowledge_organization`, this
+    category's first real generator (see this module's own docstring
+    and the Design Bible chapter's Deferred Features section for why it
+    was previously named but unbuilt)."""
+    success_studies = [c for c in case_studies if c.category in SUCCESS_CASE_STUDY_CATEGORIES]
+    recent = success_studies[-RECURRING_SUCCESS_WINDOW:]
+    if not recent:
+        return None
+    counts = Counter(c.category for c in recent)
+    for category, count in counts.most_common():
+        if count < RECURRING_SUCCESS_THRESHOLD:
+            continue
+        matching = [c for c in recent if c.category == category]
+        newest = matching[-1]
+        if _already_cited(newest.id, existing_proposals):
+            continue
+        readable = category.replace("_", " ")
+        return SelfImprovementProposal(
+            id=f"self-improve-success-{newest.id}",
+            category="knowledge_organization",
+            title=f"Formalize the recurring {readable} pattern as company knowledge",
+            reasoning=(
+                f'{count} of the last {len(recent)} filed win-side case studies were categorized "{readable}" — '
+                "a real, recurring process strength worth codifying deliberately, not a coincidence."
+            ),
+            evidence=[c.id for c in matching],
+            benefits=[f'Could make "{readable}" a deliberate, repeatable practice instead of an unnoticed pattern.'],
+            risks=["Formalizing a pattern too early, before enough real evidence accumulates, could over-fit to a short lucky streak."],
+            estimatedComplexity="small",
+            priority="medium",
+            confidence=round(min(100.0, count / len(recent) * 100.0), 1),
+            simDay=sim_day,
+            createdAt=_now_iso(),
+        )
+    return None
 
 
 def record_self_improvement_proposal(

@@ -7,6 +7,38 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Loss/Win Classification, Formalized on Top of the Discipline Chamber** (`backend/app/discipline.py`,
+  `backend/app/self_improvement.py`, `backend/app/schemas.py`, `backend/app/nexus.py`,
+  `backend/app/routers/self_improvement.py`, `backend/tests/test_discipline.py`,
+  `backend/tests/test_self_improvement.py`, `frontend/src/types.ts`, `frontend/src/net/api.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/EvolutionPanel.tsx`,
+  `docs/DesignBible/volumes/09-departments/chapter-74-continuous-learning-self-improvement-system.md`):
+  Piece D of the CEO's trading-psychology roadmap ("Loss/Win classification formalized on top of the
+  existing Discipline Chamber; tie into CLSIS"). Research found most of "classification" already real —
+  `DisciplineReview.outcome` is the one canonical win/loss definition, and the Library of Mistakes/Successes
+  already file real `CaseStudy` records on both sides — but reading `app/nexus.py`'s trade-close handler
+  line by line found a genuine, literal structural asymmetry: the loss branch already called
+  `maybe_propose_recurring_mistake()` (CLSIS's own tie-in) right after filing case studies; the win branch
+  filed its own success studies but called nothing into CLSIS at all. This closes exactly that gap and adds
+  one real, company-wide aggregate: new `compute_loss_win_classification()` reads `outcome`/`tier` straight
+  off every `DisciplineReview` on file (never recomputed) and reports win rate, a full by-tier win/loss
+  breakdown, and — the pedagogical core, reusing `discipline.py`'s own "good decision, bad outcome" /
+  "weak process, lucky win" distinction, now formalized across the whole population — `alignedCount`,
+  `unluckyLossCount` (good-tier trade that still lost — real variance, not a process failure), and
+  `luckyWinCount` (poor-tier trade that still won — a warning, not a validation). New
+  `maybe_propose_reinforce_success_pattern()` is the exact structural mirror of the existing recurring-
+  mistake generator, scanning the win-side `CaseStudy` categories instead: a real recurring success pattern
+  now files a `knowledge_organization` proposal — this category's first real generator, previously named on
+  the schema with no trigger. New `GET /api/self-improvement/loss-win-classification` endpoint (on-demand,
+  same convention as `get_evolution_score()`); surfaced in `EvolutionPanel.tsx`'s Command Center EVOLUTION
+  tab as a new card. Verified: 22 new tests (empty input, win-rate correctness, aligned/unlucky-loss/
+  lucky-win counts, the `adequate`-tier neutral case, full tier breakdown, most-common-category derivation,
+  and the win-side generator's own threshold/window/dedup/refire matrix mirroring the loss-side one), full
+  backend suite green (1540/1540), `mypy`/`ruff`/`tsc -b --noEmit`/`npm run lint`/`npm run build` clean, and
+  a live Playwright screenshot of the new card's honest empty state against the running dev server (this
+  session's game state has never produced a closed trade, so the populated case is proven by the test suite
+  rather than a second live screenshot).
+
 - **Process Adherence Score** (`backend/app/process_adherence.py` new, `backend/app/schemas.py`,
   `backend/app/routers/executive.py`, `backend/tests/test_process_adherence.py` new,
   `frontend/src/types.ts`, `frontend/src/net/api.ts`,

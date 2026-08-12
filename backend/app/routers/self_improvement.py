@@ -8,6 +8,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.discipline import compute_loss_win_classification
 from app.evolution import WINDOW_DAYS, compute_company_evolution_score
 from app.persistence import persist_modules
 from app.self_improvement import compute_executive_learning_summary
@@ -16,6 +17,7 @@ from app.schemas import (
     CompanyEvolutionScore,
     ExecutiveLearningSummary,
     InstitutionalEvolutionReport,
+    LossWinClassificationRead,
     SelfImprovementProposal,
 )
 from app.state import game_state
@@ -99,3 +101,13 @@ async def get_evolution_score(window: str) -> CompanyEvolutionScore:
         strategy_failed_archive=state.strategy_failed_archive,
         constitution_amendments=state.constitution.amendments,
     )
+
+
+@router.get("/loss-win-classification", response_model=LossWinClassificationRead)
+async def get_loss_win_classification() -> LossWinClassificationRead:
+    """Trading Psychology & Discipline, Piece D — computed fresh from
+    the Discipline Chamber's own real DisciplineReview/CaseStudy records
+    on every call, the same on-demand convention get_evolution_score()
+    above already uses; no persisted sixth copy of these numbers."""
+    state = await game_state.snapshot()
+    return compute_loss_win_classification(state.discipline_reviews, state.case_studies)

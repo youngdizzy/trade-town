@@ -37,19 +37,31 @@ app/gatekeeper.py already established.
 """
 from __future__ import annotations
 
+from collections import Counter
+from datetime import datetime, timezone
 from typing import Literal
 
 from app.schemas import (
+    SUCCESS_CASE_STUDY_CATEGORIES,
     AgentId,
+    CaseStudy,
     Debate,
     DisciplineFactor,
     DisciplineReview,
     DisciplineTier,
+    DisciplineTierOutcomeCount,
+    LossWinClassificationRead,
     PostDecisionReview,
     TradeDecision,
 )
 
 MAX_DISCIPLINE_REVIEWS = 60
+# Trading Psychology & Discipline, Piece D — compute_loss_win_classification()'s
+# own two buckets. "adequate" (the tier band between these two) counts
+# toward neither — a genuine middle tier, not a strong signal either way.
+GOOD_DISCIPLINE_TIERS: frozenset[DisciplineTier] = frozenset({"exemplary", "sound"})
+POOR_DISCIPLINE_TIERS: frozenset[DisciplineTier] = frozenset({"weak", "reckless"})
+_ALL_TIERS_IN_ORDER: tuple[DisciplineTier, ...] = ("exemplary", "sound", "adequate", "weak", "reckless")
 # Matches app/coach.py's own "patient win" bar (patient_wins >= 240
 # minutes) — reused rather than inventing a second patience threshold.
 PATIENCE_TARGET_MINUTES = 240
@@ -281,3 +293,59 @@ def record_review(reviews: list[DisciplineReview], review: DisciplineReview) -> 
     if len(updated) > MAX_DISCIPLINE_REVIEWS:
         del updated[: len(updated) - MAX_DISCIPLINE_REVIEWS]
     return updated
+
+
+def compute_loss_win_classification(
+    reviews: list[DisciplineReview], case_studies: list[CaseStudy]
+) -> LossWinClassificationRead:
+    """Trading Psychology & Discipline, Piece D. `reviews` and
+    `case_studies` are each capped lists (MAX_DISCIPLINE_REVIEWS /
+    MAX_CASE_STUDIES in this module and app/mistakes.py respectively), so
+    this is honestly "classification over the most recent reviews/case
+    studies on file," the same real-but-bounded population every other
+    aggregate in this codebase already reads from — never a claim of a
+    full historical archive. `outcome`/`tier` are read directly off each
+    DisciplineReview, never recomputed — the one already-real, already-
+    canonical definition (see generate_discipline_review() above)."""
+    total = len(reviews)
+    win_count = sum(1 for r in reviews if r.outcome == "win")
+    loss_count = total - win_count
+    win_rate_pct = round(win_count / total * 100.0, 1) if total else None
+
+    by_tier = [
+        DisciplineTierOutcomeCount(
+            tier=tier,
+            winCount=sum(1 for r in reviews if r.tier == tier and r.outcome == "win"),
+            lossCount=sum(1 for r in reviews if r.tier == tier and r.outcome == "loss"),
+        )
+        for tier in _ALL_TIERS_IN_ORDER
+    ]
+
+    unlucky_loss_count = sum(1 for r in reviews if r.tier in GOOD_DISCIPLINE_TIERS and r.outcome == "loss")
+    good_tier_win_count = sum(1 for r in reviews if r.tier in GOOD_DISCIPLINE_TIERS and r.outcome == "win")
+    lucky_win_count = sum(1 for r in reviews if r.tier in POOR_DISCIPLINE_TIERS and r.outcome == "win")
+    poor_tier_loss_count = sum(1 for r in reviews if r.tier in POOR_DISCIPLINE_TIERS and r.outcome == "loss")
+    aligned_count = good_tier_win_count + poor_tier_loss_count
+    misaligned_count = unlucky_loss_count + lucky_win_count
+
+    mistake_categories = Counter(c.category for c in case_studies if c.category not in SUCCESS_CASE_STUDY_CATEGORIES)
+    success_categories = Counter(c.category for c in case_studies if c.category in SUCCESS_CASE_STUDY_CATEGORIES)
+    most_common_mistake = mistake_categories.most_common(1)
+    most_common_success = success_categories.most_common(1)
+
+    return LossWinClassificationRead(
+        totalReviewed=total,
+        winCount=win_count,
+        lossCount=loss_count,
+        winRatePct=win_rate_pct,
+        byTier=by_tier,
+        alignedCount=aligned_count,
+        misalignedCount=misaligned_count,
+        unluckyLossCount=unlucky_loss_count,
+        luckyWinCount=lucky_win_count,
+        mostCommonMistakeCategory=most_common_mistake[0][0] if most_common_mistake else None,
+        mostCommonMistakeCount=most_common_mistake[0][1] if most_common_mistake else 0,
+        mostCommonSuccessCategory=most_common_success[0][0] if most_common_success else None,
+        mostCommonSuccessCount=most_common_success[0][1] if most_common_success else 0,
+        computedAt=datetime.now(timezone.utc).isoformat(),
+    )

@@ -93,6 +93,7 @@ import type {
   ExecutiveLearningSummary,
   CompanyEvolutionScore,
   CompanyEvolutionWindow,
+  LossWinClassificationRead,
   VisionBoardState,
   VisionPriorityCategory,
   VisionObjectiveCategory,
@@ -328,6 +329,7 @@ export const api = {
     }),
   getExecutiveLearningSummary: (agentId: AgentId) => request<ExecutiveLearningSummary>(`/self-improvement/executive-learning/${agentId}`),
   getCompanyEvolutionScore: (window: CompanyEvolutionWindow) => request<CompanyEvolutionScore>(`/self-improvement/evolution-score/${window}`),
+  getLossWinClassification: () => request<LossWinClassificationRead>("/self-improvement/loss-win-classification"),
   // Design Bible Chapter 74.5 — CEO Vision Board & Strategic Alignment
   // Engine. visionBoard is already live via the WS tick broadcast — the
   // mutations below are real CEO actions; the Self-Correction Note has

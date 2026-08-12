@@ -10,6 +10,7 @@ from datetime import datetime, timezone
 
 from app.discipline import (
     compute_discipline_score,
+    compute_loss_win_classification,
     generate_discipline_review,
     overridden_dissent,
     record_review,
@@ -17,7 +18,10 @@ from app.discipline import (
 )
 from app.schemas import (
     AgentVote,
+    CaseStudy,
     ConfidenceFactor,
+    DisciplineReview,
+    PostDecisionReview,
     Debate,
     DebateTurn,
     DecisionConfidence,
@@ -193,3 +197,140 @@ class TestRecordReview:
             reviews = record_review(reviews, review)
         assert len(reviews) == 60
         assert reviews[-1].id == "discipline-69"
+
+
+def _review(*, tier: str, outcome: str, review_id: str = "discipline-1") -> DisciplineReview:
+    return DisciplineReview(
+        id=review_id,
+        decisionId=f"decision-{review_id}",
+        symbol="NEXA",
+        score=90.0 if tier == "exemplary" else 75.0 if tier == "sound" else 60.0 if tier == "adequate" else 45.0 if tier == "weak" else 20.0,
+        tier=tier,  # type: ignore[arg-type]
+        summary="test summary",
+        postDecisionReview=PostDecisionReview(),
+        outcome=outcome,  # type: ignore[arg-type]
+        tradePnlPct=1.0 if outcome == "win" else -1.0,
+        holdDurationMinutes=100,
+        simDay=1,
+        createdAt=_now_iso(),
+    )
+
+
+def _case_study(*, category: str, study_id: str = "case-1") -> CaseStudy:
+    return CaseStudy(
+        id=study_id,
+        category=category,  # type: ignore[arg-type]
+        title="Test Case Study",
+        symbol="NEXA",
+        decisionId=f"decision-{study_id}",
+        background="test background",
+        decisionProcess="test decision process",
+        missedInformation="test missed info",
+        lessonsLearned="test lessons",
+        recommendedImprovements="test improvements",
+        tradePnlPct=1.0,
+        simDay=1,
+        createdAt=_now_iso(),
+    )
+
+
+class TestComputeLossWinClassification:
+    def test_empty_input_reports_zero_and_none_never_a_fabricated_rate(self) -> None:
+        result = compute_loss_win_classification([], [])
+        assert result.total_reviewed == 0
+        assert result.win_count == 0
+        assert result.loss_count == 0
+        assert result.win_rate_pct is None
+        assert result.aligned_count == 0
+        assert result.misaligned_count == 0
+        assert result.most_common_mistake_category is None
+        assert result.most_common_success_category is None
+
+    def test_win_rate_and_counts_are_correct(self) -> None:
+        reviews = [
+            _review(tier="sound", outcome="win", review_id="d1"),
+            _review(tier="sound", outcome="win", review_id="d2"),
+            _review(tier="weak", outcome="loss", review_id="d3"),
+            _review(tier="weak", outcome="loss", review_id="d4"),
+        ]
+        result = compute_loss_win_classification(reviews, [])
+        assert result.total_reviewed == 4
+        assert result.win_count == 2
+        assert result.loss_count == 2
+        assert result.win_rate_pct == 50.0
+
+    def test_good_tier_win_and_poor_tier_loss_are_aligned(self) -> None:
+        reviews = [
+            _review(tier="exemplary", outcome="win", review_id="d1"),
+            _review(tier="sound", outcome="win", review_id="d2"),
+            _review(tier="weak", outcome="loss", review_id="d3"),
+            _review(tier="reckless", outcome="loss", review_id="d4"),
+        ]
+        result = compute_loss_win_classification(reviews, [])
+        assert result.aligned_count == 4
+        assert result.misaligned_count == 0
+        assert result.unlucky_loss_count == 0
+        assert result.lucky_win_count == 0
+
+    def test_good_tier_loss_is_an_unlucky_loss_not_a_process_failure(self) -> None:
+        reviews = [_review(tier="sound", outcome="loss", review_id="d1")]
+        result = compute_loss_win_classification(reviews, [])
+        assert result.unlucky_loss_count == 1
+        assert result.lucky_win_count == 0
+        assert result.misaligned_count == 1
+        assert result.aligned_count == 0
+
+    def test_poor_tier_win_is_a_lucky_win_not_a_validation(self) -> None:
+        reviews = [_review(tier="weak", outcome="win", review_id="d1")]
+        result = compute_loss_win_classification(reviews, [])
+        assert result.lucky_win_count == 1
+        assert result.unlucky_loss_count == 0
+        assert result.misaligned_count == 1
+        assert result.aligned_count == 0
+
+    def test_adequate_tier_counts_toward_neither_aligned_nor_misaligned(self) -> None:
+        reviews = [
+            _review(tier="adequate", outcome="win", review_id="d1"),
+            _review(tier="adequate", outcome="loss", review_id="d2"),
+        ]
+        result = compute_loss_win_classification(reviews, [])
+        assert result.aligned_count == 0
+        assert result.misaligned_count == 0
+        assert result.total_reviewed == 2
+
+    def test_by_tier_breakdown_covers_all_five_tiers_and_sums_correctly(self) -> None:
+        reviews = [
+            _review(tier="exemplary", outcome="win", review_id="d1"),
+            _review(tier="sound", outcome="loss", review_id="d2"),
+            _review(tier="adequate", outcome="win", review_id="d3"),
+            _review(tier="weak", outcome="win", review_id="d4"),
+            _review(tier="reckless", outcome="loss", review_id="d5"),
+        ]
+        result = compute_loss_win_classification(reviews, [])
+        assert {row.tier for row in result.by_tier} == {"exemplary", "sound", "adequate", "weak", "reckless"}
+        exemplary_row = next(row for row in result.by_tier if row.tier == "exemplary")
+        assert exemplary_row.win_count == 1
+        assert exemplary_row.loss_count == 0
+        total_from_tiers = sum(row.win_count + row.loss_count for row in result.by_tier)
+        assert total_from_tiers == result.total_reviewed
+
+    def test_most_common_mistake_and_success_category_are_derived_separately(self) -> None:
+        case_studies = [
+            _case_study(category="overconfidence", study_id="c1"),
+            _case_study(category="overconfidence", study_id="c2"),
+            _case_study(category="acted_too_quickly", study_id="c3"),
+            _case_study(category="disciplined_process", study_id="c4"),
+            _case_study(category="disciplined_process", study_id="c5"),
+            _case_study(category="disciplined_process", study_id="c6"),
+            _case_study(category="patient_execution", study_id="c7"),
+        ]
+        result = compute_loss_win_classification([], case_studies)
+        assert result.most_common_mistake_category == "overconfidence"
+        assert result.most_common_mistake_count == 2
+        assert result.most_common_success_category == "disciplined_process"
+        assert result.most_common_success_count == 3
+
+    def test_no_case_studies_reports_none_for_both_categories_never_fabricated(self) -> None:
+        result = compute_loss_win_classification([_review(tier="sound", outcome="win")], [])
+        assert result.most_common_mistake_category is None
+        assert result.most_common_success_category is None

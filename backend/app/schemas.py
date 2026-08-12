@@ -3520,6 +3520,55 @@ class CaseStudy(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
+# Trading Psychology & Discipline, Piece D — Loss/Win Classification,
+# formalized on top of the Discipline Chamber (Design Bible Chapter 74
+# addendum). The one company-wide, real aggregate over every trade this
+# Discipline Chamber has ever reviewed, cross-tabulating the same
+# win/loss outcome DisciplineReview already computes against its own
+# tier — so a good-process trade undone by real market variance and a
+# weak-process trade that happened to win are named explicitly, never
+# folded into a bare win rate. Computed fresh on demand from
+# DisciplineReview/CaseStudy — never a sixth persisted copy of numbers
+# those two already carry.
+class DisciplineTierOutcomeCount(CamelModel):
+    tier: DisciplineTier
+    win_count: int = Field(alias="winCount")
+    loss_count: int = Field(alias="lossCount")
+
+
+class LossWinClassificationRead(CamelModel):
+    """`aligned_count` = a good-tier (exemplary/sound) win, or a poor-tier
+    (weak/reckless) loss — process and outcome agree. `unlucky_loss_count`
+    = a good-tier trade that still lost (real market variance, not a
+    process failure — see discipline.py's own `_summary()`).
+    `lucky_win_count` = a poor-tier trade that still won (a warning, not a
+    validation — same source). `misaligned_count` is their sum.
+    `adequate`-tier trades count toward neither bucket — a genuine middle
+    tier, not a strong signal either way. Every count always sums back to
+    `total_reviewed` across (aligned + misaligned + adequate-tier)."""
+
+    total_reviewed: int = Field(alias="totalReviewed")
+    win_count: int = Field(alias="winCount")
+    loss_count: int = Field(alias="lossCount")
+    win_rate_pct: float | None = Field(default=None, alias="winRatePct")
+    by_tier: list[DisciplineTierOutcomeCount] = Field(
+        default_factory=list, alias="byTier"
+    )
+    aligned_count: int = Field(alias="alignedCount")
+    misaligned_count: int = Field(alias="misalignedCount")
+    unlucky_loss_count: int = Field(alias="unluckyLossCount")
+    lucky_win_count: int = Field(alias="luckyWinCount")
+    most_common_mistake_category: CaseStudyCategory | None = Field(
+        default=None, alias="mostCommonMistakeCategory"
+    )
+    most_common_mistake_count: int = Field(default=0, alias="mostCommonMistakeCount")
+    most_common_success_category: CaseStudyCategory | None = Field(
+        default=None, alias="mostCommonSuccessCategory"
+    )
+    most_common_success_count: int = Field(default=0, alias="mostCommonSuccessCount")
+    computed_at: str = Field(alias="computedAt")
+
+
 # v0.7 — the Decision Memory System / Decision Vault. One permanent,
 # immutable record per closed trade, JOINING every real artifact this
 # codebase already generates for that trade (TradeDecision, PaperTrade,
@@ -5659,11 +5708,14 @@ class StrategicReview(CamelModel):
 # company-level change to itself — never a trade, never a strategy
 # (Chapter 62's sandbox.py/strategy_lab.py already owns strategy-level
 # proposals) — grounded only in real, citable evidence. Every value here
-# matches the brief's own eight named categories, but only two
-# ("risk_rule", "research_workflow") have a real, evidence-gated
-# generator today — the same honesty posture Chapter 68 held for its
-# own not-yet-real broker categories. See this chapter's own Deferred
-# Features section for why the other six stay named but unbuilt.
+# matches the brief's own eight named categories; three have a real,
+# evidence-gated generator today ("risk_rule", "research_workflow", and
+# — Trading Psychology & Discipline, Piece D — "knowledge_organization",
+# triggered by a recurring win-side CaseStudy pattern, the loss side's
+# own recurring_mistake trigger mirrored onto the opposite population).
+# The same honesty posture Chapter 68 held for its own not-yet-real
+# broker categories. See this chapter's own Deferred Features section
+# for why the other five stay named but unbuilt.
 SelfImprovementCategory = Literal[
     "risk_rule",
     "dashboard",
@@ -5675,7 +5727,7 @@ SelfImprovementCategory = Literal[
     "ui",
 ]
 SELF_IMPROVEMENT_CATEGORIES_WITH_REAL_GENERATOR: frozenset[SelfImprovementCategory] = (
-    frozenset({"risk_rule", "research_workflow"})
+    frozenset({"risk_rule", "research_workflow", "knowledge_organization"})
 )
 SelfImprovementStatus = Literal["pending", "approved", "rejected", "implemented"]
 # Not a dollar figure — no real development-cost signal exists anywhere

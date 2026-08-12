@@ -5,9 +5,12 @@ import { api } from "@/net/api";
 import { AGENT_IDS } from "@/types";
 import type {
   AgentId,
+  CaseStudyCategory,
   CompanyEvolutionScore,
   CompanyEvolutionWindow,
+  DisciplineTier,
   ExecutiveLearningSummary,
+  LossWinClassificationRead,
   SelfImprovementCategory,
   SelfImprovementProposal,
   VisionObjectiveCategory,
@@ -58,6 +61,30 @@ const STATUS_TONE: Record<SelfImprovementProposal["status"], "neutral" | "cyan" 
   implemented: "green",
 };
 
+// Trading Psychology & Discipline, Piece D — mirrors DisciplinePanel.tsx's
+// own local TIER_TONE/CATEGORY_LABEL exactly (each Command Center panel
+// stays self-contained rather than cross-importing another panel's
+// module-local consts).
+const TIER_TONE: Record<DisciplineTier, "green" | "cyan" | "amber" | "red"> = {
+  exemplary: "green",
+  sound: "cyan",
+  adequate: "amber",
+  weak: "amber",
+  reckless: "red",
+};
+
+const CASE_STUDY_CATEGORY_LABEL: Record<CaseStudyCategory, string> = {
+  overconfidence: "The Cost of Overconfidence",
+  incomplete_research: "Incomplete Research",
+  unchallenged_assumptions: "Failure to Challenge Assumptions",
+  acted_too_quickly: "Acting Too Quickly",
+  ignored_dissent: "Poor Communication",
+  confirmation_bias: "Confirmation Bias",
+  disciplined_process: "A Well-Disciplined Process",
+  rigorous_cross_examination: "Rigorous Cross-Examination",
+  patient_execution: "Patient Execution",
+};
+
 const VISION_PRIORITY_LABEL: Record<VisionPriorityCategory, string> = {
   growth: "Growth",
   risk: "Risk",
@@ -79,7 +106,7 @@ const OBJECTIVE_CATEGORY_LABEL: Record<VisionObjectiveCategory, string> = {
 };
 
 export function EvolutionPanel() {
-  const { selfImprovementProposals, evolutionReports, visionBoard } = useGameStore();
+  const { selfImprovementProposals, evolutionReports, visionBoard, disciplineReviews, caseStudies } = useGameStore();
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [implementNoteByProposal, setImplementNoteByProposal] = useState<Record<string, string>>({});
@@ -89,6 +116,8 @@ export function EvolutionPanel() {
 
   const [evolutionWindow, setEvolutionWindow] = useState<CompanyEvolutionWindow>("monthly");
   const [evolutionScore, setEvolutionScore] = useState<CompanyEvolutionScore | null>(null);
+
+  const [lossWinClassification, setLossWinClassification] = useState<LossWinClassificationRead | null>(null);
 
   const [missionDraft, setMissionDraft] = useState(visionBoard.mission ?? "");
   const [identityNoteDraft, setIdentityNoteDraft] = useState(visionBoard.identityNote ?? "");
@@ -111,6 +140,10 @@ export function EvolutionPanel() {
   useEffect(() => {
     api.getCompanyEvolutionScore(evolutionWindow).then(setEvolutionScore).catch(() => setEvolutionScore(null));
   }, [evolutionWindow, evolutionReports.length]);
+
+  useEffect(() => {
+    api.getLossWinClassification().then(setLossWinClassification).catch(() => setLossWinClassification(null));
+  }, [disciplineReviews.length, caseStudies.length]);
 
   useEffect(() => {
     api.getVisionSelfCorrectionNote().then(setSelfCorrection).catch(() => setSelfCorrection(null));
@@ -257,6 +290,61 @@ export function EvolutionPanel() {
                     )}
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        )}
+      </Glass>
+
+      <Glass className="p-3">
+        <TerminalLabel>Loss/Win Classification — formalized on top of the Discipline Chamber</TerminalLabel>
+        {lossWinClassification === null ? (
+          <EmptyState>Loading…</EmptyState>
+        ) : lossWinClassification.totalReviewed === 0 ? (
+          <EmptyState>No trades reviewed by the Discipline Chamber yet.</EmptyState>
+        ) : (
+          <div className="text-[9px]">
+            <div className="mb-1.5 flex items-center gap-1.5">
+              <StatusPill tone={lossWinClassification.winRatePct !== null && lossWinClassification.winRatePct >= 50 ? "green" : "amber"}>
+                {lossWinClassification.winRatePct !== null ? `${lossWinClassification.winRatePct.toFixed(0)}% win rate` : "N/A"}
+              </StatusPill>
+              <span className="text-cmd-textDim">
+                {lossWinClassification.winCount}W / {lossWinClassification.lossCount}L over {lossWinClassification.totalReviewed} reviewed
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <div>
+                <div className="mb-1 text-cmd-textDim">By Discipline tier</div>
+                {lossWinClassification.byTier.map((row) => (
+                  <div key={row.tier} className="mb-0.5 flex items-center justify-between gap-2">
+                    <StatusPill tone={TIER_TONE[row.tier]}>{row.tier}</StatusPill>
+                    <span className="text-cmd-text">
+                      {row.winCount}W / {row.lossCount}L
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <div>
+                <div className="mb-1 text-cmd-textDim">Process/outcome alignment</div>
+                <DataRow label="Aligned (good process→win, weak→loss)" value={lossWinClassification.alignedCount} />
+                <DataRow label="Unlucky loss (good process, still lost)" value={lossWinClassification.unluckyLossCount} />
+                <DataRow label="Lucky win (weak process, still won)" value={lossWinClassification.luckyWinCount} />
+              </div>
+            </div>
+            {(lossWinClassification.mostCommonMistakeCategory || lossWinClassification.mostCommonSuccessCategory) && (
+              <div className="mt-1.5 border-t border-cmd-border/50 pt-1.5">
+                {lossWinClassification.mostCommonMistakeCategory && (
+                  <DataRow
+                    label="Most common mistake"
+                    value={`${CASE_STUDY_CATEGORY_LABEL[lossWinClassification.mostCommonMistakeCategory]} (${lossWinClassification.mostCommonMistakeCount}×)`}
+                  />
+                )}
+                {lossWinClassification.mostCommonSuccessCategory && (
+                  <DataRow
+                    label="Most common success"
+                    value={`${CASE_STUDY_CATEGORY_LABEL[lossWinClassification.mostCommonSuccessCategory]} (${lossWinClassification.mostCommonSuccessCount}×)`}
+                  />
+                )}
               </div>
             )}
           </div>
