@@ -640,6 +640,13 @@ class PaperPosition(CamelModel):
     # PaperOrder/tick_broker path — see app/trading_modes.py's module
     # docstring) — never backfilled or guessed.
     trading_style: "TradingStyle | None" = Field(default=None, alias="tradingStyle")
+    # Quantitative Research & Intelligence System, Piece 5 (Execution
+    # Quant) — the real dollar transaction cost app/portfolio.py's
+    # open_position() charged at entry (TRANSACTION_COST_BPS of
+    # notional), carried on the position so close_position() can fold it
+    # into the trade's net pnl. Defaults to 0.0 so a position opened
+    # before this piece still validates during load.
+    entry_cost_usd: float = Field(default=0.0, alias="entryCostUsd")
 
 
 class PaperTrade(CamelModel):
@@ -695,6 +702,13 @@ class PaperTrade(CamelModel):
     # trade closed (app/portfolio.py's close_position() copies it
     # automatically). None for any trade closed before this chapter.
     trading_style: "TradingStyle | None" = Field(default=None, alias="tradingStyle")
+    # Quantitative Research & Intelligence System, Piece 5 (Execution
+    # Quant) — the real combined round-trip transaction cost (entry +
+    # exit, app/portfolio.py's TRANSACTION_COST_BPS) already subtracted
+    # from this trade's pnl above; kept here as its own field purely for
+    # audit visibility, not a separate deduction. Defaults to 0.0 so a
+    # trade closed before this piece still validates during load.
+    transaction_cost_usd: float = Field(default=0.0, alias="transactionCostUsd")
 
 
 class PaperPortfolio(CamelModel):

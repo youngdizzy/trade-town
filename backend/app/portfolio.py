@@ -7,6 +7,30 @@ trade, only how the ledger changes once told to.
 Every dollar here is fictional. TradeTown never connects to a real
 brokerage or spends real capital — see app/paper_trading.py's module
 docstring for the full boundary statement.
+
+Quantitative Research & Intelligence System, Piece 5 (Execution Quant).
+open_position()/close_position() are this codebase's one real execution
+choke point — every fill, in every caller (app/executive.py's
+resolve_proposal(), app/paper_trading.py, app/trading_modes.py), funnels
+through these two functions. They now deduct a REAL transaction cost from
+the cash ledger on every fill (TRANSACTION_COST_BPS below), applied to
+both entry and exit notional. This is a genuine, functioning mechanism —
+real dollars leave the ledger, every trade's pnl/pnlPct is net of it, and
+the cost itself is fully auditable via PaperPosition.entry_cost_usd and
+PaperTrade.transaction_cost_usd — built on one disclosed simplification,
+not a fabrication: the rate is a FLAT, deliberately chosen constant
+representing simplified market friction (commission + spread + slippage
+combined into one number), never derived from real bid-ask spread or
+order-book depth, because this codebase has neither. app/market_data.py's
+Quote.volume is random.uniform mock data, not a real market signal, and
+app/market_intelligence.py's LiquidityRead/StrategyLiquidityValidation
+are real price-action pattern detectors, explicitly documented there as
+never a claim about real order-book/order-flow data. A cost model that
+varied per-symbol by "real" spread or volume would have to derive that
+variation from one of those two non-real sources — this piece declines
+to, the same reasoning app/simulation.py's own disclosed-placeholder
+Sharpe/Sortino already established for a different metric it also
+couldn't honestly compute from real data.
 """
 from __future__ import annotations
 
@@ -22,6 +46,18 @@ MAX_TRADE_HISTORY = 50
 # positions) without needing a separate risk-sizing model this early.
 POSITION_SIZE_FRACTION = 0.05
 MIN_POSITION_SIZE = 100.0
+
+# Flat per-fill transaction cost, in basis points of notional — entry and
+# exit each pay this once, so a full round trip pays it twice. A
+# deliberately chosen, disclosed design assumption (see module docstring
+# above) standing in for combined commission+spread+slippage friction —
+# never derived from real market-microstructure data, which this
+# codebase does not have.
+TRANSACTION_COST_BPS = 5.0
+
+
+def _transaction_cost(notional: float) -> float:
+    return round(notional * (TRANSACTION_COST_BPS / 10_000), 2)
 
 
 def _now_iso() -> str:
@@ -73,15 +109,24 @@ def open_position(
     `trading_style` (Design Bible Chapter 75) — the real "day"/"swing"
     tag app/trading_modes.py's assign_trading_style() assigned to the
     TradeProposal this position was opened from; None for any caller
-    that doesn't pass one (unchanged, pre-chapter behavior)."""
+    that doesn't pass one (unchanged, pre-chapter behavior).
+
+    Quantitative Research & Intelligence System, Piece 5 — a real, flat
+    entry transaction cost (see TRANSACTION_COST_BPS/module docstring) is
+    deducted from cash alongside the notional, and recorded on the
+    position (entry_cost_usd) so close_position() can include it in the
+    trade's real net pnl."""
     if quantity is None:
         budget = max(portfolio.cash_balance * POSITION_SIZE_FRACTION, 0.0)
         if budget < MIN_POSITION_SIZE or price <= 0:
             return portfolio
         quantity = round(budget / price, 4)
-    elif quantity <= 0 or price <= 0 or quantity * price > portfolio.cash_balance:
+    elif quantity <= 0 or price <= 0:
         return portfolio
-    cost = quantity * price
+    notional = quantity * price
+    entry_cost = _transaction_cost(notional)
+    if notional + entry_cost > portfolio.cash_balance:
+        return portfolio
     position = PaperPosition(
         id=position_id,
         symbol=symbol,
@@ -96,10 +141,11 @@ def open_position(
         openedAt=_now_iso(),
         openedSimMinutes=opened_sim_minutes,
         tradingStyle=trading_style,
+        entryCostUsd=entry_cost,
     )
     return portfolio.model_copy(
         update={
-            "cash_balance": portfolio.cash_balance - cost,
+            "cash_balance": portfolio.cash_balance - notional - entry_cost,
             "positions": [*portfolio.positions, position],
         }
     )
@@ -136,15 +182,26 @@ def close_position(
     a PaperTrade to the (capped) trade history. Returns the portfolio
     unchanged (and None) if the position id isn't found — closing an
     already-closed position is a no-op, not an error, since NEXUS may
-    evaluate a close condition more than once before the position clears."""
+    evaluate a close condition more than once before the position clears.
+
+    Quantitative Research & Intelligence System, Piece 5 — a real, flat
+    exit transaction cost (TRANSACTION_COST_BPS) is deducted from
+    proceeds alongside the position's already-real entry_cost_usd
+    (charged at open_position()); pnl/pnl_pct are net of both, and the
+    combined round-trip cost is recorded on the trade
+    (transaction_cost_usd) for audit."""
     match = next((p for p in portfolio.positions if p.id == position_id), None)
     if match is None:
         return portfolio, None
 
     direction = 1 if match.side == "buy" else -1
-    pnl = (exit_price - match.entry_price) * match.quantity * direction
-    pnl_pct = ((exit_price - match.entry_price) / match.entry_price * 100 * direction) if match.entry_price else 0.0
-    proceeds = match.quantity * exit_price
+    gross_pnl = (exit_price - match.entry_price) * match.quantity * direction
+    exit_notional = match.quantity * exit_price
+    exit_cost = _transaction_cost(exit_notional)
+    total_cost = match.entry_cost_usd + exit_cost
+    pnl = gross_pnl - total_cost
+    pnl_pct = (pnl / (match.quantity * match.entry_price) * 100) if match.entry_price and match.quantity else 0.0
+    proceeds = exit_notional - exit_cost
 
     trade = PaperTrade(
         id=f"trade-{position_id}",
@@ -166,6 +223,7 @@ def close_position(
         openedSimMinutes=match.opened_sim_minutes,
         closedSimMinutes=match.opened_sim_minutes + duration_minutes,
         tradingStyle=match.trading_style,
+        transactionCostUsd=total_cost,
     )
     history = [*portfolio.trade_history, trade]
     if len(history) > MAX_TRADE_HISTORY:
