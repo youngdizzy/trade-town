@@ -751,6 +751,16 @@ export interface StrategyMonteCarloResult {
    * drawdown bar — never a true infinite-sample probability of ruin. */
   probabilityOfRuinPct: number;
   capitalSurvivalPct: number;
+  /** Quantitative Research & Intelligence System, Piece 3 — real
+   * percentile/tail-mean reads off this same bootstrap's own sorted
+   * final-return array (no new simulation). VaR = the return level such
+   * that only 5%/1% of paths did worse (signed: negative = a loss); CVaR
+   * (Expected Shortfall) = the mean return among exactly that worst
+   * 5%/1% of paths — what to expect *given* you're in the tail. */
+  valueAtRisk95Pct: number;
+  valueAtRisk99Pct: number;
+  conditionalValueAtRisk95Pct: number;
+  conditionalValueAtRisk99Pct: number;
   simDay: number;
   createdAt: string;
 }
@@ -1094,6 +1104,17 @@ export interface CompanyScore {
   updatedAt: string;
 }
 
+/** sharpeRatio/sortinoRatio (Quantitative Research & Intelligence System,
+ * Piece 3) are REAL statistics — mean/population-stdev and
+ * mean/downside-deviation over PaperPortfolio.trade_history's own real,
+ * sequential per-trade pnlPct returns (see backend/app/analytics.py's
+ * compute_performance_snapshot()) — not the fabricated formula
+ * SimulationResult's own same-named fields still use. Two disclosed
+ * simplifications, not fabrications: risk-free rate assumed 0 (no
+ * bond/cash-yield concept exists in this codebase), and these are
+ * per-trade ratios, not annualized (trades close at irregular
+ * sim-minute intervals, so there is no real fixed-period return series
+ * to normalize against). */
 export interface PerformanceSnapshot {
   period: PerformancePeriod;
   returnPct: number;

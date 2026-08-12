@@ -144,10 +144,16 @@ export function StrategyCertificationView({ selected }: { selected: Strategy }) 
               value={`${monteCarlo.probabilityOfRuinPct.toFixed(1)}%`}
               valueClassName={monteCarlo.probabilityOfRuinPct > 10 ? "text-cmd-red" : "text-cmd-text"}
             />
+            <DataRow label="VaR (95th / 99th pct.)" value={`${monteCarlo.valueAtRisk95Pct.toFixed(1)}% / ${monteCarlo.valueAtRisk99Pct.toFixed(1)}%`} valueClassName="text-cmd-amber" />
+            <DataRow label="CVaR (95th / 99th pct.)" value={`${monteCarlo.conditionalValueAtRisk95Pct.toFixed(1)}% / ${monteCarlo.conditionalValueAtRisk99Pct.toFixed(1)}%`} valueClassName="text-cmd-red" />
           </div>
           <p className="mt-1.5 text-[8px] italic text-cmd-textDim">
             A real share of these {monteCarlo.pathsSimulated} simulated paths that breached a named drawdown bar — not a true infinite-sample probability of ruin. Drawn from this
             strategy's own real {monteCarlo.sourceWinRate.toFixed(0)}% win rate / {monteCarlo.sourceAvgWinPct.toFixed(1)}% avg win / {monteCarlo.sourceAvgLossPct.toFixed(1)}% avg loss.
+          </p>
+          <p className="mt-1 text-[8px] italic text-cmd-textDim">
+            VaR/CVaR are real percentile and tail-mean reads off this same bootstrap's own sorted final-return array — no new simulation. VaR is the return level such that only
+            5%/1% of paths did worse; CVaR is the mean return among exactly that worst 5%/1% of paths — what to expect given you're already in the tail.
           </p>
         </Glass>
       )}
