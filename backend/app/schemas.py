@@ -3273,6 +3273,13 @@ KnowledgeNodeType = Literal[
     # Design Bible Chapter 72 — one real node per completed Defensive
     # Mode episode (app/black_swan.py's BlackSwanEventRecord).
     "black_swan_event",
+    # Design Bible Chapter 74 Part 1 — one real node per daily
+    # EconomicIntelligenceReport (app/economic_intelligence.py), the one
+    # honestly-buildable Knowledge Graph gap Chapter 61's own
+    # Implementation Notes named. "Indicator" nodes are cut — no
+    # per-trade indicator linkage exists anywhere to build them from
+    # real data rather than a guess.
+    "economic_event",
 ]
 KnowledgeEdgeRelation = Literal[
     "researched",
@@ -3286,6 +3293,12 @@ KnowledgeEdgeRelation = Literal[
     "same_symbol",
     "same_category",
     "created",
+    # Design Bible Chapter 74 Part 1 — links an economic_event node to
+    # any trade/case_study node recorded the same real simDay. A real,
+    # checkable temporal proximity — never a claim that the event
+    # caused the trade, the same non-causal honesty rule "same_symbol"/
+    # "same_category" already hold themselves to.
+    "same_day",
 ]
 
 
@@ -4320,6 +4333,11 @@ AuditEventCategory = Literal[
     # (app/board.py), fired on a real Emergency Stop activation or a
     # Black Swan tier crossing into red/critical.
     "board_report",
+    # Design Bible Chapter 74 — a real Self-Improvement Proposal
+    # generated (app/self_improvement.py) or an Institutional Evolution
+    # Report filed (app/evolution.py).
+    "self_improvement_proposal",
+    "evolution_report",
 ]
 
 
@@ -5559,6 +5577,141 @@ class StrategicReview(CamelModel):
     summary: str
 
 
+# Design Bible Chapter 74 Part 1 — Continuous Learning & Self-Improvement
+# System (CLSIS), app/self_improvement.py. TradeTown may propose a
+# company-level change to itself — never a trade, never a strategy
+# (Chapter 62's sandbox.py/strategy_lab.py already owns strategy-level
+# proposals) — grounded only in real, citable evidence. Every value here
+# matches the brief's own eight named categories, but only two
+# ("risk_rule", "research_workflow") have a real, evidence-gated
+# generator today — the same honesty posture Chapter 68 held for its
+# own not-yet-real broker categories. See this chapter's own Deferred
+# Features section for why the other six stay named but unbuilt.
+SelfImprovementCategory = Literal[
+    "risk_rule",
+    "dashboard",
+    "research_workflow",
+    "position_sizing",
+    "new_executive",
+    "automation",
+    "knowledge_organization",
+    "ui",
+]
+SELF_IMPROVEMENT_CATEGORIES_WITH_REAL_GENERATOR: frozenset[SelfImprovementCategory] = (
+    frozenset({"risk_rule", "research_workflow"})
+)
+SelfImprovementStatus = Literal["pending", "approved", "rejected", "implemented"]
+# Not a dollar figure — no real development-cost signal exists anywhere
+# in this codebase to compute one honestly (see the chapter's own
+# Ownership table).
+SelfImprovementComplexity = Literal["small", "medium", "large"]
+SelfImprovementPriority = Literal["low", "medium", "high"]
+
+
+class SelfImprovementProposal(CamelModel):
+    id: str
+    category: SelfImprovementCategory
+    title: str
+    reasoning: str
+    # Real source record ids (a CaseStudy id, a FailedStrategyArchiveEntry
+    # id) — never an invented justification.
+    evidence: list[str] = Field(default_factory=list)
+    benefits: list[str] = Field(default_factory=list)
+    risks: list[str] = Field(default_factory=list)
+    estimated_complexity: SelfImprovementComplexity = Field(alias="estimatedComplexity")
+    priority: SelfImprovementPriority
+    confidence: float
+    status: SelfImprovementStatus = "pending"
+    # CEO-manual resolution only — never automation-eligible, the same
+    # restraint app/constitution.py's own Amendment flow holds itself to.
+    ceo_note: str | None = Field(default=None, alias="ceoNote")
+    # Reserved for Chapter 74.5's future Vision Alignment Engine — stays
+    # null until that chapter wires it in. Declared now so the schema
+    # doesn't need a breaking change later; does nothing yet.
+    vision_alignment_score: float | None = Field(
+        default=None, alias="visionAlignmentScore"
+    )
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+    decided_at: str | None = Field(default=None, alias="decidedAt")
+
+
+# Design Bible Chapter 74 Part 1 — the Executive Learning Summary. Pure
+# aggregation of four already-real per-agent systems (app/coach.py's
+# AgentScore, app/mentor.py's ThinkingProfile, app/academy.py's
+# AgentKnowledgeState, app/foundational_mentors.py's per-track
+# progress) — computed fresh per request, like ThinkingProfile itself
+# already is, never a fifth independently-stored copy of any of these
+# numbers.
+class ExecutiveLearningSummary(CamelModel):
+    agent_id: AgentId = Field(alias="agentId")
+    research_accuracy: float | None = Field(default=None, alias="researchAccuracy")
+    confidence_calibration: float | None = Field(
+        default=None, alias="confidenceCalibration"
+    )
+    thinking_profile: ThinkingProfile | None = Field(
+        default=None, alias="thinkingProfile"
+    )
+    knowledge_points: float = Field(alias="knowledgePoints")
+    knowledge_tier: int = Field(alias="knowledgeTier")
+    knowledge_level: KnowledgeLevel = Field(alias="knowledgeLevel")
+    # One entry per mentor track this agent has any real progress on —
+    # (mentorId, graduationStatus) pairs, never a fabricated "training
+    # recommendation" beyond what FoundationalMentorProgress already
+    # tracks.
+    mentor_tracks: list[str] = Field(default_factory=list, alias="mentorTracks")
+    graduated_track_count: int = Field(default=0, alias="graduatedTrackCount")
+
+
+# Design Bible Chapter 74 Part 2 — the Institutional Evolution Engine,
+# app/evolution.py. Same underlying architecture as Part 1's CLSIS at a
+# longer time horizon: company-wide/monthly rather than
+# individual/event-level. Composes already-real monthly reports rather
+# than competing with them — see the chapter's own cadence/focus table
+# against BoardReport/StrategicReview/ExecutiveReview/CoachReport.
+class CompanyEvolutionScore(CamelModel):
+    """A disclosed, unweighted mean of five real, period-scoped counts
+    or deltas — never a re-read of CompanyHealth's 21 sub-scores or
+    CompanyScore's 7-metric mean (see this chapter's own Ownership
+    table for why that would be duplication). Each factor is published
+    alongside the overall score so the CEO can see exactly what moved
+    it."""
+
+    window: Literal["monthly", "quarterly", "yearly"]
+    overall: float
+    learning_volume: float = Field(alias="learningVolume")
+    proposal_execution: float = Field(alias="proposalExecution")
+    knowledge_growth: float = Field(alias="knowledgeGrowth")
+    strategy_maturation: float = Field(alias="strategyMaturation")
+    governance_evolution: float = Field(alias="governanceEvolution")
+    period_start_sim_day: int = Field(alias="periodStartSimDay")
+    period_end_sim_day: int = Field(alias="periodEndSimDay")
+    computed_at: str = Field(alias="computedAt")
+
+
+class InstitutionalEvolutionReport(CamelModel):
+    id: str
+    # Real ids of the period's own StrategicReview/ExecutiveReview/
+    # CoachReport — composed by reference, never re-derived.
+    strategic_review_id: str | None = Field(default=None, alias="strategicReviewId")
+    executive_review_id: str | None = Field(default=None, alias="executiveReviewId")
+    coach_report_id: str | None = Field(default=None, alias="coachReportId")
+    top_case_study_ids: list[str] = Field(default_factory=list, alias="topCaseStudyIds")
+    top_success_study_ids: list[str] = Field(
+        default_factory=list, alias="topSuccessStudyIds"
+    )
+    proposals_generated: list[str] = Field(
+        default_factory=list, alias="proposalsGenerated"
+    )
+    proposals_resolved: list[str] = Field(
+        default_factory=list, alias="proposalsResolved"
+    )
+    evolution_score: CompanyEvolutionScore = Field(alias="evolutionScore")
+    summary: str
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
 class GameSaveState(CamelModel):
     version: Literal["0.6"] = "0.6"
     player: EntityTransform
@@ -5918,6 +6071,18 @@ class GameSaveState(CamelModel):
     # object of its own — see app/accounts.py's module docstring).
     accounts: list[Account] = Field(default_factory=list)
     active_account_id: str | None = Field(default=None, alias="activeAccountId")
+    # Design Bible Chapter 74 Part 1 — Self-Improvement Proposals
+    # (app/self_improvement.py). Capped and append-only like every other
+    # real list in this codebase — see MAX_SELF_IMPROVEMENT_PROPOSALS.
+    self_improvement_proposals: list[SelfImprovementProposal] = Field(
+        default_factory=list, alias="selfImprovementProposals"
+    )
+    # Design Bible Chapter 74 Part 2 — the Institutional Evolution Engine
+    # (app/evolution.py). Monthly cadence, capped the same way every
+    # other monthly-cadence report list is (see MAX_EVOLUTION_REPORTS).
+    evolution_reports: list[InstitutionalEvolutionReport] = Field(
+        default_factory=list, alias="evolutionReports"
+    )
     time: TimeState
     settings: SettingsState
     dialogue_history: list[DialogueHistoryEntry] = Field(
