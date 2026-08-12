@@ -72,3 +72,63 @@ def test_all_time_snapshot_stays_fully_cumulative():
 
     assert snapshot.return_pct == portfolio.total_pnl_pct
     assert snapshot.win_rate == 50.0  # one win, one loss across all time
+
+
+class TestRealSharpeSortino:
+    """Quantitative Research & Intelligence System, Piece 3 — real
+    per-trade Sharpe/Sortino computed from PaperPortfolio.trade_history's
+    own real pnl_pct sequence (mean/population-stdev; mean/downside-
+    deviation), risk-free rate assumed 0. Never the old placeholder
+    return/drawdown ratio, and Sortino is never a fixed multiple of
+    Sharpe (the old `sharpe * 1.1` formula) — they diverge with real
+    downside-only data."""
+
+    def test_zero_trades_is_neutral_zero_not_a_crash(self) -> None:
+        portfolio = _portfolio([])
+        now = TimeState(day=40, hour=20, minute=0)
+        snapshot = compute_performance_snapshot("all_time", portfolio, [], now)
+        assert snapshot.sharpe_ratio == 0.0
+        assert snapshot.sortino_ratio == 0.0
+
+    def test_single_trade_has_undefined_stdev_and_is_zero(self) -> None:
+        trades = [_trade(pnl=100.0, closed_sim_minutes=1440, pnl_pct=2.0)]
+        portfolio = _portfolio(trades)
+        now = TimeState(day=40, hour=20, minute=0)
+        snapshot = compute_performance_snapshot("all_time", portfolio, [], now)
+        # A single real return has no real variance to divide by — must
+        # not fabricate a ratio from an undefined stdev.
+        assert snapshot.sharpe_ratio == 0.0
+
+    def test_real_formula_matches_hand_computed_population_stats(self) -> None:
+        # Real, hand-verified pnl_pct sequence: [2.0, -1.0, 3.0, -2.0].
+        # mean=0.5, population stdev≈2.0616 -> sharpe≈0.24;
+        # downside-deviation≈1.1180 (only the two losing trades count)
+        # -> sortino≈0.45. Confirms the real formula, not the old
+        # `sharpe * 1.1` placeholder (which would give 0.264).
+        trades = [
+            _trade(pnl=200.0, closed_sim_minutes=1 * 1440, pnl_pct=2.0),
+            _trade(pnl=-100.0, closed_sim_minutes=2 * 1440, pnl_pct=-1.0),
+            _trade(pnl=300.0, closed_sim_minutes=3 * 1440, pnl_pct=3.0),
+            _trade(pnl=-200.0, closed_sim_minutes=4 * 1440, pnl_pct=-2.0),
+        ]
+        portfolio = _portfolio(trades)
+        now = TimeState(day=40, hour=20, minute=0)
+        snapshot = compute_performance_snapshot("all_time", portfolio, [], now)
+        assert snapshot.sharpe_ratio == 0.24
+        assert snapshot.sortino_ratio == 0.45
+        assert snapshot.sortino_ratio != round(snapshot.sharpe_ratio * 1.1, 2)
+
+    def test_no_losing_trades_gives_zero_sortino_not_infinite(self) -> None:
+        trades = [
+            _trade(pnl=100.0, closed_sim_minutes=1 * 1440, pnl_pct=1.0),
+            _trade(pnl=200.0, closed_sim_minutes=2 * 1440, pnl_pct=2.0),
+        ]
+        portfolio = _portfolio(trades)
+        now = TimeState(day=40, hour=20, minute=0)
+        snapshot = compute_performance_snapshot("all_time", portfolio, [], now)
+        # No downside deviation to measure from — honestly 0.0, not a
+        # fabricated "infinite" ratio.
+        assert snapshot.sortino_ratio == 0.0
+        # Sharpe is still real: identical returns (1.0, 2.0) have real,
+        # nonzero variance, so this is not the "undefined stdev" case.
+        assert snapshot.sharpe_ratio != 0.0

@@ -20,6 +20,7 @@ from app.strategy_lab import (
     HALL_OF_FAME_MIN_TRADE_COUNT,
     HALL_OF_FAME_MIN_WIN_RATE,
     MIN_RETIREMENT_TRADE_COUNT,
+    _tail_mean,
     compute_experiment_tier,
     compute_strategy_certification,
     compute_strategy_confidence_score,
@@ -157,6 +158,54 @@ class TestRunStrategyMonteCarlo:
         mc = run_strategy_monte_carlo(_strategy(), results, sim_day=5)
         assert mc is not None
         assert mc.probability_of_ruin_pct < 10.0
+
+    def test_var_and_cvar_are_real_tail_reads_off_the_same_bootstrap(self) -> None:
+        """Quantitative Research & Intelligence System, Piece 3 — VaR95/99
+        and CVaR95/99 are percentile/tail-mean reads off the existing
+        200-path bootstrap's own sorted `finals` array, not a second
+        simulation. The randomness makes exact values non-deterministic,
+        but these ordering invariants must always hold: the 99th-
+        percentile tail is at least as bad as the 95th, and each CVaR
+        (a tail *mean*, including the boundary path and everything
+        worse) is never better than its own VaR boundary."""
+        results = [_result(win_rate=55.0, avg_win_pct=4.0, avg_loss_pct=-3.0, trade_count=20)]
+        mc = run_strategy_monte_carlo(_strategy(), results, sim_day=5)
+        assert mc is not None
+        assert mc.value_at_risk_99_pct <= mc.value_at_risk_95_pct
+        assert mc.conditional_value_at_risk_99_pct <= mc.conditional_value_at_risk_95_pct
+        assert mc.conditional_value_at_risk_95_pct <= mc.value_at_risk_95_pct
+        assert mc.conditional_value_at_risk_99_pct <= mc.value_at_risk_99_pct
+        # Also consistent with the existing p10 return-range-low read:
+        # a 5%-tail VaR must be at least as bad as the 10%-tail edge.
+        assert mc.value_at_risk_95_pct <= mc.return_range_low_pct
+
+
+class TestTailMean:
+    """Quantitative Research & Intelligence System, Piece 3 — CVaR's
+    underlying helper, tested directly with a deterministic sorted
+    array (bypassing the bootstrap's own randomness)."""
+
+    def test_matches_hand_computed_worst_fraction_mean(self) -> None:
+        sorted_values = [-10.0, -5.0, -2.0, 0.0, 3.0, 8.0, 12.0, 20.0, 25.0, 30.0]
+        # p=0.2 over 10 values -> idx = int(10*0.2) = 2 -> tail = first 3
+        # values (indices 0-2): [-10.0, -5.0, -2.0], mean = -17/3.
+        assert _tail_mean(sorted_values, 0.2) == sum([-10.0, -5.0, -2.0]) / 3
+
+    def test_empty_list_is_zero(self) -> None:
+        assert _tail_mean([], 0.05) == 0.0
+
+    def test_single_value_returns_that_value(self) -> None:
+        assert _tail_mean([-7.0], 0.05) == -7.0
+
+    def test_uses_the_same_index_convention_as_percentile(self) -> None:
+        # For any sorted array, the tail mean must include at least the
+        # same boundary element _percentile() itself would return, and
+        # never be more favorable than it (the mean of "the boundary
+        # plus everything worse" can't beat the boundary alone unless
+        # every included value ties it).
+        sorted_values = [-20.0, -15.0, -10.0, -5.0, 0.0, 5.0, 10.0]
+        boundary = sorted_values[min(len(sorted_values) - 1, max(0, int(len(sorted_values) * 0.3)))]
+        assert _tail_mean(sorted_values, 0.3) <= boundary
 
 
 class TestComputeStrategyRegimeTest:
@@ -323,6 +372,10 @@ def _monte_carlo(*, median_return_pct: float = 0.0, worst_case_drawdown_pct: flo
         probabilityOfProfitPct=60.0,
         probabilityOfRuinPct=5.0,
         capitalSurvivalPct=95.0,
+        valueAtRisk95Pct=median_return_pct - 8.0,
+        valueAtRisk99Pct=median_return_pct - 12.0,
+        conditionalValueAtRisk95Pct=median_return_pct - 10.0,
+        conditionalValueAtRisk99Pct=median_return_pct - 15.0,
         simDay=10,
         createdAt=_now_iso(),
     )
@@ -593,6 +646,10 @@ class TestEvaluateCertificationReadiness:
             probabilityOfProfitPct=15.0,
             probabilityOfRuinPct=40.0,
             capitalSurvivalPct=60.0,
+            valueAtRisk95Pct=-45.0,
+            valueAtRisk99Pct=-55.0,
+            conditionalValueAtRisk95Pct=-50.0,
+            conditionalValueAtRisk99Pct=-58.0,
             simDay=10,
             createdAt=_now_iso(),
         )

@@ -11,13 +11,29 @@ isn't enough data yet to compute a real number, rather than defaulting
 to 0 — a fresh company with zero trades hasn't "failed," it just hasn't
 been measured yet, and a 0 would read as a failing score on a dashboard.
 
-sharpe_ratio/sortino_ratio are explicitly placeholder return-to-drawdown
-ratios, not real risk-adjusted-return statistics — see app/simulation.py's
-module docstring for why (no real historical daily-return series exists
-yet in v0.5).
+PerformanceSnapshot's sharpe_ratio/sortino_ratio (Quantitative Research
+& Intelligence System, Piece 3) are REAL, computed from
+PaperPortfolio.trade_history's own real, sequential per-trade pnl_pct
+returns — mean/population-stdev for Sharpe, mean/downside-deviation for
+Sortino. Two honest, disclosed simplifications rather than fabrications:
+(1) risk-free rate is assumed 0 — this codebase has no bond/cash-yield
+concept to draw a real rate from, and inventing one would itself be a
+fabrication; (2) these are PER-TRADE ratios, not annualized — trades
+close at irregular sim-minute intervals, so there is no real fixed-
+period (daily/weekly) return series to normalize against. Both are real
+statistics over a real (if capped at MAX_TRADE_HISTORY=50 in
+app/portfolio.py) return sequence — never a fabricated formula.
+
+SimulationResult.sharpe_ratio/sortino_ratio (the per-backtest-run ones,
+distinct from the PerformanceSnapshot ones above) remain an explicitly
+placeholder return-to-drawdown ratio — see app/simulation.py's module
+docstring for why: that engine has no real per-trade return sequence
+backing it at all (only randomly-generated aggregate scalars), so there
+is nothing real to compute a real Sharpe/Sortino FROM there yet.
 """
 from __future__ import annotations
 
+import math
 from datetime import datetime, timezone
 
 from app.schemas import PaperPortfolio, PaperTrade, PerformancePeriod, PerformanceSnapshot, ResearchItem, TimeState
@@ -27,6 +43,36 @@ MAX_PERFORMANCE_SNAPSHOTS = 60
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
+
+
+def _mean(values: list[float]) -> float:
+    return sum(values) / len(values) if values else 0.0
+
+
+def _population_stdev(values: list[float], mean: float) -> float:
+    """Population-style stdev (divides by len(values), not len(values)-1)
+    — with at most 50 real trades on file (PaperPortfolio.MAX_TRADE_HISTORY
+    in app/portfolio.py), this codebase's own real sample is always
+    small; a sample-correction factor would overstate a precision this
+    data doesn't actually support. Returns 0.0 (undefined) below 2
+    values, matching this module's existing "not enough data" fallback
+    reasoning."""
+    if len(values) < 2:
+        return 0.0
+    variance = sum((v - mean) ** 2 for v in values) / len(values)
+    return math.sqrt(variance)
+
+
+def _downside_deviation(values: list[float]) -> float:
+    """Real Sortino input: root-mean-square of only the sub-zero returns
+    (target = 0.0, since this codebase has no real risk-free rate to
+    use as the minimum acceptable return — see this module's own
+    docstring). Returns 0.0 when there are no losing trades to measure
+    downside from."""
+    downside = [min(0.0, v) for v in values]
+    if not downside:
+        return 0.0
+    return math.sqrt(sum(d * d for d in downside) / len(downside))
 
 
 def research_accuracy(research: list[ResearchItem]) -> float:
@@ -100,7 +146,11 @@ def compute_performance_snapshot(period: PerformancePeriod, portfolio: PaperPort
     was built to avoid. `returnPct` for a windowed period is relative to the account's
     equity *at the start of that period* (starting_balance plus every
     trade closed before it), not the global starting_balance, so a
-    profitable month 3 doesn't get diluted by a rough month 1."""
+    profitable month 3 doesn't get diluted by a rough month 1.
+    sharpeRatio/sortinoRatio are real per-trade statistics over this
+    same windowed `trades` list's own real pnl_pct sequence — see this
+    module's own docstring for the risk-free-rate=0 and
+    not-annualized disclosures."""
     start_minutes = _period_start_sim_minutes(period, now)
     all_trades = portfolio.trade_history
     trades = all_trades if start_minutes is None else [t for t in all_trades if t.closed_sim_minutes >= start_minutes]
@@ -118,8 +168,13 @@ def compute_performance_snapshot(period: PerformancePeriod, portfolio: PaperPort
 
     losing_pcts = [t.pnl_pct for t in trades if t.pnl_pct < 0]
     max_drawdown_pct = abs(min([0.0, *losing_pcts]))
-    sharpe_ratio = round(return_pct / max(max_drawdown_pct, 1.0), 2)
-    sortino_ratio = round(sharpe_ratio * 1.1, 2)
+
+    returns = [t.pnl_pct for t in trades]
+    mean_return = _mean(returns)
+    stdev_return = _population_stdev(returns, mean_return)
+    downside_dev = _downside_deviation(returns)
+    sharpe_ratio = round(mean_return / stdev_return, 2) if stdev_return > 0 else 0.0
+    sortino_ratio = round(mean_return / downside_dev, 2) if downside_dev > 0 else 0.0
     avg_holding_minutes = sum(t.duration_minutes for t in trades) / len(trades) if trades else 0.0
 
     return PerformanceSnapshot(

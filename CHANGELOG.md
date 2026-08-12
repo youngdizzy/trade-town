@@ -7,6 +7,33 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Real Sharpe/Sortino + Monte Carlo VaR/CVaR** (`backend/app/analytics.py`, `backend/app/strategy_lab.py`,
+  `backend/app/schemas.py`, `backend/tests/test_analytics.py`, `backend/tests/test_strategy_lab.py`,
+  `backend/tests/test_model_validation.py`, `frontend/src/types.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/sandbox/StrategyCertificationView.tsx`,
+  `docs/DesignBible/volumes/09-departments/chapter-62-innovation-lab-continuous-improvement.md`): Piece 3 of the
+  Quantitative Research & Intelligence System. Makes `PerformanceSnapshot.sharpeRatio`/`sortinoRatio` genuinely
+  real — mean/population-stdev and mean/downside-deviation over `PaperPortfolio.trade_history`'s own real,
+  sequential per-trade `pnlPct` returns — replacing the old `return_pct / max_drawdown_pct` and `sharpe * 1.1`
+  placeholder formulas. Two disclosed simplifications, not fabrications: risk-free rate assumed 0 (no
+  bond/cash-yield concept exists anywhere in this codebase), and both ratios are per-trade, not annualized
+  (trades close at irregular sim-minute intervals, so there's no real fixed-period return series to normalize
+  against). `SimulationResult.sharpe_ratio`/`sortino_ratio` (the separate, per-backtest-run pair, still
+  load-bearing in `sandbox.py`'s `_quant_verdict()` gate) stays an explicitly disclosed placeholder — that
+  engine still has no real per-trade return sequence to compute a real ratio from. Also adds real VaR95/99 and
+  CVaR95/99 (Expected Shortfall) to `StrategyMonteCarloResult`, as pure percentile/tail-mean reads off the
+  existing 200-path Monte Carlo bootstrap's already-computed, already-sorted final-return array — no new
+  simulation, no new randomness source. VaR is the return level such that only 5%/1% of paths did worse; CVaR
+  is the mean return among exactly that worst 5%/1% of paths. Surfaced in Command Center's Strategy
+  Certification card alongside the existing Probability of Ruin row. Verified: 9 new backend tests (4
+  hand-computed Sharpe/Sortino cases including zero-trade/single-trade/no-losing-trade edge cases; 1
+  ordering-invariant Monte Carlo VaR/CVaR test, since bootstrap output is non-deterministic; 4 deterministic
+  `_tail_mean()` tests bypassing the bootstrap's randomness), 3 existing test fixtures updated for the new
+  required schema fields (a real behavioral consequence of the schema change, not a workaround), full backend
+  suite 1607 passed, `mypy`/`ruff` clean, `tsc -b --noEmit`/`eslint`/`vite build` clean. No
+  `PerformanceSnapshot.sharpeRatio`/`sortinoRatio` render site exists anywhere in the frontend (confirmed by
+  grep) — documented honestly via a new disclosure comment rather than inventing a UI surface for it.
+
 - **Walk-Forward / Temporal-Split Validation** (`backend/app/model_validation.py`, `backend/tests/test_model_validation.py`,
   `docs/DesignBible/volumes/09-departments/chapter-62-innovation-lab-continuous-improvement.md`): Piece 2 of the
   Quantitative Research & Intelligence System. A genuine walk-forward test needs real, sequential historical

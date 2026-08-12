@@ -86,6 +86,10 @@ def _monte_carlo(*, strategy_id: str = "strategy-1", probability_of_ruin_pct: fl
         probabilityOfProfitPct=65.0,
         probabilityOfRuinPct=probability_of_ruin_pct,
         capitalSurvivalPct=100.0 - probability_of_ruin_pct,
+        valueAtRisk95Pct=-10.0,
+        valueAtRisk99Pct=-18.0,
+        conditionalValueAtRisk95Pct=-14.0,
+        conditionalValueAtRisk99Pct=-22.0,
         simDay=10,
         createdAt=_now_iso(),
     )

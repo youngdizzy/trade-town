@@ -1211,6 +1211,18 @@ class CompanyScore(CamelModel):
 
 
 class PerformanceSnapshot(CamelModel):
+    """sharpe_ratio/sortino_ratio (Quantitative Research & Intelligence
+    System, Piece 3) are REAL statistics — mean/population-stdev and
+    mean/downside-deviation over PaperPortfolio.trade_history's own
+    real, sequential per-trade pnl_pct returns (see
+    app/analytics.py's compute_performance_snapshot()) — not the
+    fabricated formula SimulationResult's own same-named fields still
+    use. Two disclosed simplifications, not fabrications: risk-free
+    rate assumed 0 (no bond/cash-yield concept exists in this
+    codebase), and these are per-trade ratios, not annualized (trades
+    close at irregular sim-minute intervals, so there is no real
+    fixed-period return series to normalize against)."""
+
     period: PerformancePeriod
     return_pct: float = Field(alias="returnPct")
     win_rate: float = Field(alias="winRate")
@@ -2273,7 +2285,17 @@ class StrategyMonteCarloResult(CamelModel):
     sizes (from SimulationResult) as the generating probabilities — the
     same 'real derived inputs, not fabricated statistics' discipline
     app/simulation.py's own placeholder engine already established. See
-    app/strategy_lab.py's run_strategy_monte_carlo()."""
+    app/strategy_lab.py's run_strategy_monte_carlo().
+
+    valueAtRisk95Pct/valueAtRisk99Pct/conditionalValueAtRisk95Pct/
+    conditionalValueAtRisk99Pct (Quantitative Research & Intelligence
+    System, Piece 3) are real percentile/tail-mean reads off this same
+    bootstrap's own sorted final-return array — no new simulation, no
+    new data source. VaR is the return level such that only 5%/1% of
+    simulated paths did worse (signed: negative means a loss); CVaR
+    (Expected Shortfall) is the mean return among exactly that worst
+    5%/1% of paths, i.e. what to expect *given* you're in the tail, not
+    just where the tail begins."""
 
     id: str
     strategy_id: str = Field(alias="strategyId")
@@ -2295,6 +2317,10 @@ class StrategyMonteCarloResult(CamelModel):
     # complement, named to match the brief's own "Capital Survival" term.
     probability_of_ruin_pct: float = Field(alias="probabilityOfRuinPct")
     capital_survival_pct: float = Field(alias="capitalSurvivalPct")
+    value_at_risk_95_pct: float = Field(alias="valueAtRisk95Pct")
+    value_at_risk_99_pct: float = Field(alias="valueAtRisk99Pct")
+    conditional_value_at_risk_95_pct: float = Field(alias="conditionalValueAtRisk95Pct")
+    conditional_value_at_risk_99_pct: float = Field(alias="conditionalValueAtRisk99Pct")
     sim_day: int = Field(alias="simDay")
     created_at: str = Field(alias="createdAt")
 

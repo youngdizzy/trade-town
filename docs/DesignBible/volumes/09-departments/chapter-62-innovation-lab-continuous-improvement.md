@@ -656,3 +656,103 @@ enough trades per half to also clear the new check, since it previously
 used a sample size that satisfied the whole-sample floor but not each
 half independently — a real behavioral consequence of adding a sixth
 check, not a workaround), full backend suite green, `mypy`/`ruff` clean.
+
+## Addendum — Real Sharpe/Sortino + Monte Carlo VaR/CVaR (Quantitative Research & Intelligence System, Piece 3)
+
+**Status:** Real, implemented in two independent places — `app/
+analytics.py`'s `compute_performance_snapshot()` (Sharpe/Sortino) and
+`app/strategy_lab.py`'s `run_strategy_monte_carlo()` (VaR/CVaR) — neither
+touches `app/model_validation.py`; this addendum lives in this chapter
+because both are Quantitative Research & Intelligence System pieces, not
+because either is a new Model Validation check.
+
+**The two-tier honest split this piece is built on.** This codebase has
+had two same-named-but-different Sharpe/Sortino pairs since v0.5:
+`SimulationResult.sharpe_ratio`/`sortino_ratio` (one per backtest run,
+from `app/simulation.py`'s placeholder engine — random aggregate scalars,
+no real per-trade sequence behind them at all) and
+`PerformanceSnapshot.sharpe_ratio`/`sortino_ratio` (one per CEO-facing
+performance period, from `app/analytics.py`). Piece 3 makes only the
+second pair real; the first stays an explicitly disclosed placeholder
+forever, because `app/simulation.py`'s engine still has no real per-trade
+return sequence to compute a real ratio from — and because it is
+load-bearing (`sandbox.py`'s `_quant_verdict()` gates on
+`QUANT_MIN_AVG_SHARPE = 1.0`, and `_SHARPE_TIER` drives narrative
+framing), silently dropping or renaming it would itself be dishonest.
+Nothing about that placeholder changes in this piece.
+
+**What makes the `PerformanceSnapshot` pair real.**
+`PaperPortfolio.trade_history` (`app/portfolio.py`) is a genuinely real,
+sequential, non-fabricated per-trade `pnl_pct` return series from
+actually-executed (if zero-cost/zero-slippage) paper trades, capped at
+`MAX_TRADE_HISTORY = 50`. `compute_performance_snapshot()` already
+windows this list by period (daily/weekly/monthly/all-time — v0.6.1).
+Piece 3 replaces the old formula
+(`sharpe_ratio = return_pct / max(max_drawdown_pct, 1.0)`,
+`sortino_ratio = sharpe_ratio * 1.1`) with real statistics over that same
+windowed list's own returns: Sharpe = mean return ÷ population standard
+deviation of returns; Sortino = mean return ÷ downside deviation
+(root-mean-square of only the sub-zero returns, target = 0.0). Two
+disclosed simplifications, not fabrications, both stated directly in
+`app/analytics.py`'s module docstring and `PerformanceSnapshot`'s own
+schema docstring: risk-free rate is assumed 0 (this codebase has no
+bond/cash-yield concept to draw a real rate from — inventing one would
+itself be a fabrication), and these are **per-trade**, not annualized,
+ratios (trades close at irregular sim-minute intervals, so there is no
+real fixed-period return series to normalize against). Population-style
+(not sample-corrected) standard deviation was chosen deliberately: with
+at most 50 real trades on file, a sample-correction factor would overstate
+a precision this small a real sample doesn't actually support — see
+`_population_stdev()`'s own docstring. Edge cases are handled honestly
+rather than silently: 0 or 1 trades has no real variance to divide by,
+so both ratios read `0.0`, not a fabricated number or a crash; a strategy
+with zero losing trades has no downside deviation to measure Sortino
+from, so it reads `0.0` rather than a fabricated "infinite" ratio, while
+Sharpe (which uses *all* returns' variance, not just the downside) stays
+real and nonzero in that same case.
+
+**VaR/CVaR — a real extension of an already-real bootstrap, not a new
+simulation.** `run_strategy_monte_carlo()` already ran a 200-path
+bootstrap over the strategy's own real, aggregated win rate and average
+win/loss sizes (from real `SimulationResult`s), sorting the resulting
+`finals` array only to read off percentile fields
+(`return_range_low_pct`/`return_range_high_pct`, etc.) before discarding
+it. Piece 3 reuses that same sorted array for two new percentile reads
+(Value at Risk, at the existing `_percentile()` helper's 5%/1% tails) and
+one new tail-mean read (Conditional Value at Risk / Expected Shortfall,
+via a new `_tail_mean()` helper placed directly beside `_percentile()`).
+VaR is the return level such that only 5%/1% of simulated paths did worse
+(signed, matching the existing `return_range_low_pct` sign convention);
+CVaR is the mean return among exactly that worst 5%/1% of paths — a
+stricter read of "given you're already in the tail, what should you
+expect," not just where the tail begins. No new randomness source, no
+second simulation — both are real statistics over the same real (if
+randomized-per-run) distribution the strategy's existing Monte Carlo
+evidence already produces. Surfaced in Command Center's Strategy
+Certification view (`StrategyCertificationView.tsx`) directly alongside
+the existing Probability of Ruin row, with the same disclosure language
+in a caption beneath the card.
+
+**Verified:** 9 new backend tests — `test_analytics.py::
+TestRealSharpeSortino` (4: zero trades, single trade with undefined
+stdev, a hand-computed exact match against a real 4-trade sequence
+confirming the new formula and that Sortino is never a fixed multiple of
+Sharpe, and the no-losing-trades zero-Sortino-not-infinite case);
+`test_strategy_lab.py`'s new
+`test_var_and_cvar_are_real_tail_reads_off_the_same_bootstrap` (ordering
+invariants across VaR95/99 and CVaR95/99, since exact values are
+non-deterministic under the bootstrap's real randomness) and new
+`TestTailMean` class (4 deterministic tests against a hand-constructed
+sorted array, bypassing the bootstrap's randomness entirely). Three
+existing test-fixture construction sites for `StrategyMonteCarloResult`
+needed the four new required fields added (`tests/test_strategy_lab.py`'s
+`_monte_carlo()` helper and its second direct construction in
+`test_not_ready_when_ruin_probability_is_too_high`, and
+`tests/test_model_validation.py`'s `_monte_carlo()` helper) — a real
+behavioral consequence of the schema change, not a workaround. Full
+backend suite: 1607 passed, `mypy`/`ruff` clean across `app/` and every
+touched test file. Frontend: `tsc -b --noEmit`, `eslint`, and `vite
+build` all clean after adding the four new `StrategyMonteCarloResult`
+fields to `types.ts`, a disclosure comment to `PerformanceSnapshot`
+(no existing render site references it — confirmed by grep — so none was
+invented), and the two new DataRows to `StrategyCertificationView.tsx`.

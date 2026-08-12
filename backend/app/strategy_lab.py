@@ -259,6 +259,20 @@ def _percentile(sorted_values: list[float], p: float) -> float:
     return sorted_values[idx]
 
 
+def _tail_mean(sorted_values: list[float], p: float) -> float:
+    """Quantitative Research & Intelligence System, Piece 3 — Conditional
+    Value at Risk (CVaR / Expected Shortfall): the mean of the worst
+    p-fraction of `sorted_values` (ascending), using the exact same
+    index convention _percentile() already uses. Answers "given a path
+    lands in the worst p%, what's the average outcome" — a real
+    tail-mean read, not a new bootstrap."""
+    if not sorted_values:
+        return 0.0
+    idx = min(len(sorted_values) - 1, max(0, int(len(sorted_values) * p)))
+    tail = sorted_values[: idx + 1]
+    return sum(tail) / len(tail)
+
+
 # ---------------------------------------------------------------------
 # Monte Carlo Testing — a real trade-sequence bootstrap.
 # ---------------------------------------------------------------------
@@ -318,6 +332,10 @@ def run_strategy_monte_carlo(strategy: Strategy, results: list[SimulationResult]
         probabilityOfProfitPct=round(sum(1 for f in finals if f > 0) / len(finals) * 100, 1),
         probabilityOfRuinPct=probability_of_ruin,
         capitalSurvivalPct=round(100 - probability_of_ruin, 1),
+        valueAtRisk95Pct=round(_percentile(finals, 0.05) * 100, 2),
+        valueAtRisk99Pct=round(_percentile(finals, 0.01) * 100, 2),
+        conditionalValueAtRisk95Pct=round(_tail_mean(finals, 0.05) * 100, 2),
+        conditionalValueAtRisk99Pct=round(_tail_mean(finals, 0.01) * 100, 2),
         simDay=sim_day,
         createdAt=_now_iso(),
     )
