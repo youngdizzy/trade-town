@@ -64,6 +64,7 @@ import type {
   FailedStrategyArchiveEntry,
   KnowledgeQualityScore,
   MarketIntelligenceRegime,
+  ProcessAdherenceRead,
   RegimeReconciliation,
   RiskLimits,
   SimilarTradesSummary,
@@ -210,6 +211,8 @@ export const api = {
     }),
   getWhatIfSimulation: (symbol: string) => request<WhatIfSimulation>(`/executive/whatif?symbol=${encodeURIComponent(symbol)}`),
   getExecutiveIntelligence: (proposalId: string) => request<ExecutiveRecommendation>(`/executive/intelligence?proposalId=${encodeURIComponent(proposalId)}`),
+  // Trading Psychology & Discipline, Piece C — the Process Adherence Score.
+  getProcessAdherence: (decisionId: string) => request<ProcessAdherenceRead>(`/executive/decisions/${encodeURIComponent(decisionId)}/process-adherence`),
   // Design Bible Chapter 70 Part 2 — Executive Accuracy Score.
   getExecutiveAccuracy: () => request<ExecutiveAccuracyScore[]>("/executive/accuracy"),
   // Design Bible Chapter 70 Part 3 — Weighted Executive Decision Engine.

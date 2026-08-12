@@ -3407,6 +3407,45 @@ class DisciplineReview(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
+# Trading Psychology & Discipline, Piece C — the Process Adherence Score
+# (Design Bible Chapter 66 addendum). Explicitly NOT a Plan Adherence
+# Engine: this codebase has no stop-loss/take-profit/entry-condition/
+# exit-condition/confluence tracking anywhere (see app/gatekeeper.py's
+# own module docstring), so those checks are honestly reported as
+# "not_trackable_yet" — never scored as pass, never as fail, never
+# silently omitted. Every "passed"/"failed" check below reuses data this
+# codebase already computed for a different real reason (the Gatekeeper's
+# own checks, the Discipline Chamber's own tier, the Trading Mode
+# tagging Chapter 75 already enforces) — never a fabricated signal.
+ProcessAdherenceCheckStatus = Literal["passed", "failed", "not_trackable_yet"]
+
+
+class ProcessAdherenceCheck(CamelModel):
+    id: str
+    label: str
+    status: ProcessAdherenceCheckStatus
+    detail: str
+
+
+class ProcessAdherenceRead(CamelModel):
+    """`score_pct` is None whenever `verified_count` is 0 — there is
+    nothing real to score from yet, and this must never be displayed as
+    0% (a real failing grade) or omitted silently. `verified_count` =
+    `passed_count` + `failed_count` (checks this architecture could
+    actually evaluate); `not_trackable_count` is disclosed separately,
+    never folded into either side of the score."""
+
+    decision_id: str = Field(alias="decisionId")
+    symbol: str
+    score_pct: float | None = Field(default=None, alias="scorePct")
+    verified_count: int = Field(alias="verifiedCount")
+    passed_count: int = Field(alias="passedCount")
+    failed_count: int = Field(alias="failedCount")
+    not_trackable_count: int = Field(alias="notTrackableCount")
+    checks: list[ProcessAdherenceCheck] = Field(default_factory=list)
+    computed_at: str = Field(alias="computedAt")
+
+
 # v0.7 Feature 27 — the Library of Mistakes (app/mistakes.py). A
 # permanent CaseStudy is filed whenever a closed, losing trade's own
 # DisciplineReview shows a specific real process gap — never merely

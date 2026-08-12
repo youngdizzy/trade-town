@@ -1,6 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { api } from "@/net/api";
 import { useGameStore } from "@/ui/hooks/useGameStore";
-import type { TradeDecision } from "@/types";
+import type { ProcessAdherenceRead, TradeDecision } from "@/types";
 import { CONFIDENCE_TIER_LABEL } from "@/types";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { CandlestickChart } from "./CandlestickChart";
@@ -37,6 +38,22 @@ export function DecisionDetail({ decision, onClose }: { decision: TradeDecision;
   const [timeframe, setTimeframe] = useState("1h");
   const { candles, loading, error } = useCandles(decision.symbol, timeframe, 80);
   const dataStatus = candles[0]?.dataStatus ?? null;
+
+  const [processAdherence, setProcessAdherence] = useState<ProcessAdherenceRead | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getProcessAdherence(decision.id)
+      .then((res) => {
+        if (!cancelled) setProcessAdherence(res);
+      })
+      .catch(() => {
+        // Real, honest silence — this section simply doesn't render if the read fails.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [decision.id]);
 
   return (
     <div className="absolute inset-0 z-10 flex items-center justify-center bg-cmd-bg/80 p-4 backdrop-blur-sm" onClick={onClose}>
@@ -207,6 +224,39 @@ export function DecisionDetail({ decision, onClose }: { decision: TradeDecision;
               <EmptyState>No order was placed — this decision was not approved.</EmptyState>
             )}
           </Glass>
+
+          {processAdherence && (
+            <Glass className="p-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <TerminalLabel>Process Adherence</TerminalLabel>
+                <span className="font-cmdmono text-cmd-text">
+                  {processAdherence.scorePct !== null ? `${processAdherence.scorePct.toFixed(0)}%` : "N/A"}
+                </span>
+              </div>
+              <div className="mb-2 text-[9px] text-cmd-textDim">
+                Verified checks: {processAdherence.passedCount}/{processAdherence.verifiedCount} · Not trackable yet: {processAdherence.notTrackableCount} · Failed:{" "}
+                {processAdherence.failedCount}
+              </div>
+              <div className="space-y-1">
+                {processAdherence.checks.map((c) => (
+                  <div key={c.id} className="flex items-start justify-between gap-2 border-b border-cmd-border/50 py-0.5 text-[9px] last:border-0">
+                    <span className="text-cmd-textDim">{c.label}</span>
+                    <span
+                      className={
+                        c.status === "passed" ? "shrink-0 text-cmd-green" : c.status === "failed" ? "shrink-0 text-cmd-red" : "shrink-0 text-cmd-textDim"
+                      }
+                    >
+                      {c.status === "passed" ? "PASSED" : c.status === "failed" ? "FAILED" : "NOT TRACKABLE YET"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+              <p className="mt-2 text-[8px] text-cmd-textDim/70">
+                Full plan adherence requires future execution/order-plan infrastructure this paper-trading engine does not have yet — stop-loss/take-profit/entry/exit/confluence checks
+                above are honestly reported as not trackable, never scored as pass or fail.
+              </p>
+            </Glass>
+          )}
 
           <Glass className="p-3">
             <TerminalLabel>Invalidation — What Would Prove This Thesis Wrong?</TerminalLabel>

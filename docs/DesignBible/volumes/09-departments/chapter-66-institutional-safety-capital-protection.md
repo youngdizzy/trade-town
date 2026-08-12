@@ -398,3 +398,116 @@ using a loss seeded via `app/portfolio.py`'s own real
 backend suite (1496/1496 passing, zero regressions to Daily Circuit
 Breaker/Emergency Stop/Losing Streak/the other nine Gatekeeper checks),
 `mypy`/`ruff` clean, `tsc -b --noEmit`/`npm run lint` clean.
+
+## Addendum — Process Adherence Score (Trading Psychology & Discipline, Piece C)
+
+**Status:** Real, implemented (`app/process_adherence.py`, `GET
+/api/executive/decisions/{decisionId}/process-adherence`).
+
+**Origin and honesty boundary.** The third piece of the CEO-requested
+trading-psychology roadmap (see this chapter's own Piece A addendum
+above for the roadmap's origin). The CEO's own request named a literal
+"Plan Adherence Engine" — comparing PLANNED vs. ACTUAL entry/exit
+conditions, stop-loss/take-profit placement, position size, and
+confluence requirements. Checked directly against this codebase before
+any code was written: none of that exists. `app/gatekeeper.py`'s own
+module docstring already names the exact gap — no stop-loss/take-profit
+order concept, no entry/exit condition model, no confluence checklist
+anywhere in this paper-trading engine. Building a literal Plan Adherence
+Engine would mean fabricating data this architecture has no real source
+for. The CEO's own review, given this exact constraint up front, asked
+for a narrower, honestly-bounded **Process Adherence Score** instead —
+scored ONLY from information this architecture can actually verify,
+with every unbuildable component reported as `NOT_TRACKABLE_YET`, never
+scored as pass, never as fail, never silently omitted.
+
+**The real, verifiable checks** (`compute_process_adherence()`), every
+one reusing data this codebase already computes for a different real
+reason — never a second, parallel computation:
+
+1. **Gatekeeper checks** — every real `GatekeeperCheck` on the
+   decision's own `TradeDecision.gatekeeper_verdict.checks` (Chapter
+   66's own Trade Gatekeeper, now ten checks after Piece A's Behavioral
+   Circuit Breaker), surfaced exactly as produced — one row per real
+   check, so a rejected decision honestly shows which specific check(s)
+   failed (Decision Confidence, Risk Manager Alignment, Portfolio
+   Exposure, Correlated Positions, Active Risk Warnings, and so on).
+   This is where "risk compliance" from the CEO's own request lives —
+   the Gatekeeper's own risk-related checks are the real, already-
+   computed risk-compliance signal; a second, independently-derived
+   "risk %" would only ever restate what these checks already say,
+   since every executed position is structurally sized at or under the
+   CEO's configured risk ceiling by construction (`app/executive.py`'s
+   `resolve_proposal()` always clamps to
+   `min(risk_per_trade_pct, max_position_pct)` of equity before a
+   position can open) — a real, verified, always-true fact for anything
+   that actually executed, not a fabricated discriminator.
+2. **Discipline Process Quality** — reuses the Discipline Chamber's own
+   real `DisciplineReview.tier` (`app/discipline.py`) by `decision_id`,
+   never re-scored: `exemplary`/`sound`/`adequate` passes,
+   `weak`/`reckless` fails. `NOT_TRACKABLE_YET` until the position
+   closes (the Discipline Chamber only ever reviews a finished trade).
+3. **Trading Mode Compliance** — reuses the trade's own real
+   `trading_style` tag (Chapter 75's `assign_trading_style()`, the
+   single real assignment point). A genuine, checkable violation exists
+   here: a `"day"`-tagged position held past
+   `DAY_TRADING_MAX_HOLD_MINUTES` (1440 — the same same-day bar
+   `flatten_day_positions()` enforces) is real evidence the Day Trading
+   discipline was not honored for that specific trade. Every other
+   tagged case passes by construction; an untagged (pre-Chapter-75)
+   trade is `NOT_TRACKABLE_YET`.
+4. **Stop-Loss Placement, Take-Profit Placement, Entry Condition Match,
+   Exit Condition Match, Confluence Requirements** — always, honestly,
+   `NOT_TRACKABLE_YET` for every decision, with the required disclosure
+   verbatim: *"Full plan adherence requires future execution/order-plan
+   infrastructure this paper-trading engine does not have yet."*
+
+**Scoring.** `score_pct` = `passed_count / verified_count * 100`, where
+`verified_count = passed_count + failed_count` — `not_trackable_count`
+is disclosed separately and never folded into either side. `score_pct`
+is `None` (never 0%, never omitted) whenever `verified_count` is 0 — a
+real case that occurs for a WAIT decision (nothing ever reached the
+Gatekeeper) or a decision predating this feature. Computed fresh on
+every real request (`GET /api/executive/decisions/{decisionId}/process-
+adherence`), never persisted — the same convention Chapter 62's
+Certification and this chapter's own What-If Simulation already
+established, so a Discipline Review filed after this was first read
+automatically shows up the next time it's read.
+
+**Future TradeProposal/execution-layer fields a real Plan Adherence
+Engine would need (documented, explicitly NOT built here):**
+
+- `TradeProposal.plannedStopLossPrice` / `plannedTakeProfitPrice` — the
+  price levels the setup actually called for at proposal time.
+- `TradeProposal.plannedEntryConditions` / `plannedExitConditions` —
+  the specific technical/fundamental conditions the setup required,
+  structured enough to compare against what actually happened.
+- `TradeProposal.requiredConfluences` — which independent signals had
+  to align before this setup qualified at all.
+- A real broker-level OCO (stop + target) order pair attached to every
+  open position, plus an execution-event log recording exactly which
+  order actually closed it (stop hit / target hit / manual close /
+  time-based) — without this, "did the actual exit match the planned
+  exit" has no real event to compare against.
+- A `PaperTrade.actualExitReason` field populated from that same real
+  execution-event log, so a closed trade's plan-vs-actual comparison is
+  a real diff, not an inference.
+
+None of the above is invented or stubbed in this pass — building it
+would mean adding real order-management infrastructure this codebase's
+100%-simulated `PaperBroker` does not have (see `app/broker.py`'s own
+module docstring), a materially larger change than this piece's scope,
+and exactly the kind of fabricated-precision trap this project's
+engineering discipline exists to prevent.
+
+**Verified:** `tests/test_process_adherence.py` (17 pure-function cases
+covering the full required matrix — all-pass, one-fails, multiple-fail,
+the five NOT_TRACKABLE_YET checks always present, mixed pass/fail/not-
+trackable, a Trading-Mode mismatch that genuinely fails, a Trading Mode
+compliance pass for both day-within-bar and swing trades, an untagged
+trade reported not-trackable, a risk-limit violation surfaced as failed
+Gatekeeper checks, a rejected decision's specific failed check(s), a
+WAIT decision scoring `None` with zero verified checks, confirmation the
+score never folds not-trackable into either side, and Discipline tier
+boundary cases), full backend suite green (1525/1525), `mypy`/`ruff`
+clean, `tsc -b --noEmit`/`npm run lint` clean.

@@ -13,6 +13,7 @@ from app.executive import PROPOSAL_CANDLE_COUNT, PROPOSAL_TIMEFRAME, AnalystChoi
 from app.executive_intelligence import compute_executive_accuracy_scores, compute_executive_recommendation, generate_department_opinions
 from app.market_data import market_data_provider
 from app.persistence import persist_modules
+from app.process_adherence import compute_process_adherence
 from app.schemas import (
     AgentId,
     CeoDecisionRecord,
@@ -24,6 +25,7 @@ from app.schemas import (
     HoldReason,
     InnovationState,
     PaperPortfolio,
+    ProcessAdherenceRead,
     TradeDecision,
     TradeProposal,
     WeightedExecutiveRecommendation,
@@ -228,6 +230,24 @@ async def executive_intelligence(proposal_id: str = Query(..., alias="proposalId
     except ValueError:
         pass
     return recommendation
+
+
+@router.get("/decisions/{decision_id}/process-adherence", response_model=ProcessAdherenceRead)
+async def process_adherence(decision_id: str) -> ProcessAdherenceRead:
+    """Trading Psychology & Discipline, Piece C — the Process Adherence
+    Score (Design Bible Chapter 66 addendum, app/process_adherence.py).
+    Read-only and computed fresh every call (the same convention GET
+    /whatif above and app/strategy_lab.py's Certification already
+    established) — never persisted, so a Discipline Review filed after
+    this was first read automatically shows up on the next read. No
+    game-state lock needed — nothing here mutates the save."""
+    state = await game_state.snapshot()
+    decision = next((d for d in state.decisions if d.id == decision_id), None)
+    if decision is None:
+        raise HTTPException(status_code=404, detail="Unknown trade decision.")
+    trade = next((t for t in state.paper_portfolio.trade_history if t.decision_id == decision_id), None)
+    discipline_review = next((r for r in state.discipline_reviews if r.decision_id == decision_id), None)
+    return compute_process_adherence(decision, trade, discipline_review)
 
 
 @router.get("/accuracy", response_model=list[ExecutiveAccuracyScore])

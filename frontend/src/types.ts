@@ -2436,6 +2436,33 @@ export interface DisciplineReview {
   createdAt: string;
 }
 
+// Trading Psychology & Discipline, Piece C — the Process Adherence
+// Score (see backend/app/process_adherence.py). Explicitly NOT a Plan
+// Adherence Engine: stop-loss/take-profit/entry-condition/exit-
+// condition/confluence checks always report "not_trackable_yet" —
+// never "passed", never "failed", never omitted. `scorePct` is null
+// whenever `verifiedCount` is 0 — never render that as 0%.
+export type ProcessAdherenceCheckStatus = "passed" | "failed" | "not_trackable_yet";
+
+export interface ProcessAdherenceCheck {
+  id: string;
+  label: string;
+  status: ProcessAdherenceCheckStatus;
+  detail: string;
+}
+
+export interface ProcessAdherenceRead {
+  decisionId: string;
+  symbol: string;
+  scorePct: number | null;
+  verifiedCount: number;
+  passedCount: number;
+  failedCount: number;
+  notTrackableCount: number;
+  checks: ProcessAdherenceCheck[];
+  computedAt: string;
+}
+
 // v0.7 Feature 27 — the Library of Mistakes (see backend/app/mistakes.py).
 // A permanent CaseStudy is filed whenever a closed, losing trade's own
 // DisciplineReview shows a specific real process gap — never merely

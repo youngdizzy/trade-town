@@ -7,6 +7,34 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Process Adherence Score** (`backend/app/process_adherence.py` new, `backend/app/schemas.py`,
+  `backend/app/routers/executive.py`, `backend/tests/test_process_adherence.py` new,
+  `frontend/src/types.ts`, `frontend/src/net/api.ts`,
+  `frontend/src/ui/components/CommandCenter/DecisionDetail.tsx`,
+  `docs/DesignBible/volumes/09-departments/chapter-66-institutional-safety-capital-protection.md`): Piece C of
+  the CEO's trading-psychology roadmap. The CEO's own request named a literal "Plan Adherence Engine" comparing
+  planned vs. actual entry/exit conditions, stop-loss/take-profit placement, and confluence — none of which
+  exists anywhere in this paper-trading engine (`app/gatekeeper.py`'s own module docstring already names the
+  gap). Rather than fabricate that data, this ships the honestly-bounded subset the CEO explicitly asked for:
+  a real Process Adherence Score built ONLY from information this architecture can actually verify — the
+  Gatekeeper's own real per-check pass/fail (surfaced exactly as produced, one row per check, so a rejected
+  decision shows precisely which check failed), the Discipline Chamber's own real review tier (reused by
+  `decision_id`, never re-scored), and Trading Mode compliance (a `"day"`-tagged position held past the real
+  1440-minute same-day discipline bar is a genuine, checkable violation; every other tagged case passes by
+  construction). Stop-loss/take-profit/entry-condition/exit-condition/confluence checks always report
+  `NOT_TRACKABLE_YET` — never scored as pass, never as fail, never silently omitted. `scorePct` is computed
+  only from verifiable checks (`passed / (passed + failed)`) and is `None` — never 0%, never omitted — when
+  zero checks were verifiable (e.g. a WAIT decision that never reached the Gatekeeper). New
+  `GET /api/executive/decisions/{decisionId}/process-adherence` endpoint, computed fresh on every call, never
+  persisted; surfaced in the existing Decision Detail drill-down with the required honest wording ("Process
+  Adherence" / "Verified checks" / "Not trackable yet" / the required disclosure sentence about future
+  execution/order-plan infrastructure). The future `TradeProposal`/execution-layer fields a real Plan
+  Adherence Engine would eventually need are documented in the Design Bible addendum — explicitly not built.
+  Verified: 17 new pure-function tests covering the full required matrix (all-pass, one-fails, multiple-fail,
+  the five always-not-trackable checks, mixed, a genuine Trading-Mode mismatch, a risk-limit violation, a
+  Gatekeeper-rejected decision, and a no-verified-checks-available WAIT decision), full backend suite green
+  (1525/1525), `mypy`/`ruff`/`tsc -b --noEmit`/`npm run lint` clean.
+
 - **Statistical Evidence Gate on Strategy Retirement** (`backend/app/strategy_lab.py`, `backend/app/state.py`,
   `backend/tests/test_strategy_lab.py`, `backend/tests/test_state.py`,
   `frontend/src/ui/components/CommandCenter/panels/sandbox/StrategyPipelineView.tsx`,
