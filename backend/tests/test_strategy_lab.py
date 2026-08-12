@@ -19,6 +19,7 @@ from app.strategy_lab import (
     HALL_OF_FAME_MIN_PROFIT_FACTOR,
     HALL_OF_FAME_MIN_TRADE_COUNT,
     HALL_OF_FAME_MIN_WIN_RATE,
+    MIN_RETIREMENT_TRADE_COUNT,
     compute_experiment_tier,
     compute_strategy_certification,
     compute_strategy_confidence_score,
@@ -26,6 +27,7 @@ from app.strategy_lab import (
     compute_strategy_health,
     compute_strategy_regime_test,
     evaluate_certification_readiness,
+    evaluate_retirement_readiness,
     generate_strategy_dossier,
     generate_strategy_executive_review,
     generate_strategy_founder_approval,
@@ -598,3 +600,64 @@ class TestEvaluateCertificationReadiness:
         ready, detail = evaluate_certification_readiness(strategy, bad_results, ruinous_monte_carlo, None)
         assert ready is False
         assert "probability of ruin" in detail
+
+
+class TestEvaluateRetirementReadiness:
+    """Trading Psychology & Discipline, Piece B — the Statistical
+    Evidence Gate on Strategy Retirement. Every case here traces to the
+    CEO's own review: "if evidence insufficient, keep current strategy
+    and continue collecting data" / "a single bad run does not
+    invalidate a strategy."""
+
+    def test_idea_stage_is_always_ready_no_evidence_bar_applies(self) -> None:
+        strategy = _strategy(stage="idea")
+        ready, detail = evaluate_retirement_readiness(strategy, [])
+        assert ready is True
+        assert "not entered real testing yet" in detail
+
+    def test_research_stage_is_always_ready_no_evidence_bar_applies(self) -> None:
+        strategy = _strategy(stage="research")
+        ready, detail = evaluate_retirement_readiness(strategy, [])
+        assert ready is True
+
+    def test_historical_backtest_stage_with_zero_results_is_not_ready(self) -> None:
+        strategy = _strategy(stage="historical_backtest")
+        ready, detail = evaluate_retirement_readiness(strategy, [])
+        assert ready is False
+        assert "0 real trade(s)" in detail
+        assert str(MIN_RETIREMENT_TRADE_COUNT) in detail
+
+    def test_below_the_minimum_trade_count_is_not_ready(self) -> None:
+        strategy = _strategy(stage="market_simulation")
+        results = [_result(trade_count=MIN_RETIREMENT_TRADE_COUNT - 1)]
+        ready, detail = evaluate_retirement_readiness(strategy, results)
+        assert ready is False
+        assert "does not invalidate a strategy" in detail
+
+    def test_at_the_minimum_trade_count_is_ready(self) -> None:
+        strategy = _strategy(stage="market_simulation")
+        results = [_result(trade_count=MIN_RETIREMENT_TRADE_COUNT)]
+        ready, detail = evaluate_retirement_readiness(strategy, results)
+        assert ready is True
+        assert "enough real evidence" in detail
+
+    def test_trade_count_sums_across_multiple_real_runs(self) -> None:
+        strategy = _strategy(stage="market_simulation")
+        results = [_result(trade_count=4, scenario="bull"), _result(trade_count=4, scenario="bear"), _result(trade_count=2, scenario="sideways")]
+        ready, detail = evaluate_retirement_readiness(strategy, results)
+        assert ready is True
+
+    def test_a_live_approved_strategy_with_insufficient_evidence_is_still_gated(self) -> None:
+        """The most important real case: retirement of a strategy
+        already committing capital must not be allowed on a whim."""
+        strategy = _strategy(stage="approved")
+        results = [_result(trade_count=2)]
+        ready, detail = evaluate_retirement_readiness(strategy, results)
+        assert ready is False
+
+    def test_only_this_strategys_own_results_count(self) -> None:
+        strategy = _strategy(stage="market_simulation")
+        other_strategy_results = [_result(strategy_id="strategy-other", trade_count=100)]
+        ready, detail = evaluate_retirement_readiness(strategy, other_strategy_results)
+        assert ready is False
+        assert "0 real trade(s)" in detail

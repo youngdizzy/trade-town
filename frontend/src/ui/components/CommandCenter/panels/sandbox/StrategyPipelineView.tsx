@@ -20,6 +20,13 @@ const SCENARIO_LABELS: Record<TestScenario, string> = {
 
 const VERDICT_TONE: Record<StrategyVerdict, "green" | "amber" | "red"> = { pass: "green", concern: "amber", fail: "red" };
 
+// Trading Psychology & Discipline, Piece B — mirrors backend/app/strategy_lab.py's
+// real MIN_RETIREMENT_TRADE_COUNT exactly (the Statistical Evidence Gate
+// on Strategy Retirement). A strategy still at "idea"/"research" has no
+// real evidence bar to clear — see evaluate_retirement_readiness()'s own
+// docstring.
+const MIN_RETIREMENT_TRADE_COUNT = 10;
+
 /**
  * v0.7 Feature 45/52 — the Research Sandbox pipeline: queue real
  * backtests, review per-run metrics, and walk a strategy through its
@@ -59,6 +66,9 @@ export function StrategyPipelineView({
   const pendingReview = ownReviews.find((r) => r.ceoDecision === "pending");
   const activeSessions = useMemo(() => backtestSessions.filter((s) => s.strategyId === selected.id && s.status !== "completed"), [selected, backtestSessions]);
   const consistency = computeStrategyConsistency(selected.id, simulationResults);
+  const totalTradeCount = useMemo(() => ownResults.reduce((sum, r) => sum + r.tradeCount, 0), [ownResults]);
+  const enteredRealTesting = STAGE_ORDER.indexOf(selected.stage) >= STAGE_ORDER.indexOf("historical_backtest");
+  const evidenceReady = !enteredRealTesting || totalTradeCount >= MIN_RETIREMENT_TRADE_COUNT;
 
   const runAction = async (fn: () => Promise<void>) => {
     if (busy) return;
@@ -343,6 +353,12 @@ export function StrategyPipelineView({
             Reachable from any stage. Files exactly one real permanent record: a Strategy Hall of Fame induction if this strategy clears a strict real bar, or a Failed Strategy Archive
             entry citing its own real concerns otherwise — see the Hall of Fame / Failed Archive / Evolution tabs.
           </p>
+          {enteredRealTesting && (
+            <p className={`mb-2 text-[9px] ${evidenceReady ? "text-cmd-textDim" : "text-cmd-amber"}`}>
+              Statistical Evidence Gate: {totalTradeCount} real trade(s) on file (needs ≥{MIN_RETIREMENT_TRADE_COUNT} before this strategy can be retired — a single bad run does not invalidate
+              a strategy).
+            </p>
+          )}
           {!showRetireForm ? (
             <button type="button" onClick={() => setShowRetireForm(true)} className="rounded-sm border border-cmd-red/50 px-3 py-1 text-[10px] uppercase tracking-wider text-cmd-red hover:bg-cmd-red/10">
               Retire This Strategy
@@ -367,6 +383,7 @@ export function StrategyPipelineView({
               </button>
             </div>
           )}
+          {error && <div className="mt-2 text-[9px] text-cmd-red">{error}</div>}
         </Glass>
       )}
     </div>

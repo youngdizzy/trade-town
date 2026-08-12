@@ -161,6 +161,7 @@ from app.strategy_lab import (
     cap_strategy_founder_approvals,
     cap_strategy_hall_of_fame,
     evaluate_certification_readiness,
+    evaluate_retirement_readiness,
     generate_strategy_executive_review,
     generate_strategy_founder_approval,
     generate_strategy_retirement_outcome,
@@ -1492,7 +1493,13 @@ class GameState:
     async def retire_strategy(self, strategy_id: str, reason: str) -> tuple[GameSaveState, str | None]:
         """v0.7 Feature 52 (Part 2) — the only real way a strategy's stage
         ever reaches "retired" (see app/sandbox.py's retire_strategy()).
-        Files exactly one of a real StrategyHallOfFameEntry or a real
+        Trading Psychology & Discipline, Piece B — gated first by the
+        real Statistical Evidence Gate (app/strategy_lab.py's
+        evaluate_retirement_readiness()): a strategy that has entered
+        real empirical testing must have a real minimum trade sample on
+        file before it can be retired, so a strategy is never abandoned
+        purely on impulse or a single bad run. Files exactly one of a
+        real StrategyHallOfFameEntry or a real
         FailedStrategyArchiveEntry in the same CEO action (see
         app/strategy_lab.py's generate_strategy_retirement_outcome()) —
         only a Hall of Fame induction also nudges Company DNA's real
@@ -1511,6 +1518,15 @@ class GameState:
             reason = reason.strip()
             if not reason:
                 return self.data, "Retiring a strategy needs a real reason."
+            # Trading Psychology & Discipline, Piece B — the Statistical
+            # Evidence Gate on Strategy Retirement (Design Bible Chapter
+            # 62 addendum). Blocks retirement only when the strategy has
+            # entered real empirical testing but doesn't yet have enough
+            # real evidence on file — never blocks the CEO's own real
+            # decision once that evidence bar is real.
+            ready, readiness_detail = evaluate_retirement_readiness(strategy, self.data.simulation_results)
+            if not ready:
+                return self.data, readiness_detail
             latest_review = next((r for r in reversed(self.data.strategy_reviews) if r.strategy_id == strategy_id), None)
             latest_executive_review = next((r for r in reversed(self.data.strategy_executive_reviews) if r.strategy_id == strategy_id), None)
             latest_founder_approval = next((a for a in reversed(self.data.strategy_founder_approvals) if a.strategy_id == strategy_id), None)

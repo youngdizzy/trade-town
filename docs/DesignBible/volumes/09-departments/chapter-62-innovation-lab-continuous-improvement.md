@@ -389,3 +389,81 @@ Integration, above).
 Policy, this chapter is the required design-first step, satisfied before
 this pass began. The remaining CEO controls are a well-scoped, separate
 future follow-up.
+
+## Addendum — Statistical Evidence Gate on Strategy Retirement (Trading Psychology & Discipline, Piece B)
+
+**Status:** Real, implemented (`app/strategy_lab.py`'s
+`evaluate_retirement_readiness()`, enforced in `app/state.py`'s
+`retire_strategy()`).
+
+**Origin.** The second piece of a CEO-requested trading-psychology
+roadmap (see Chapter 66's own Behavioral Circuit Breaker addendum for
+Piece A and its full origin story). This piece traces to the CEO's
+review's own Strategy Evaluation Discipline principle: "avoid strategy
+hopping; if evidence insufficient, keep current strategy and continue
+collecting data" and "a single bad run does not invalidate a strategy."
+
+**The real gap.** `app/sandbox.py`'s `retire_strategy()` docstring
+already said retirement was "expected to cite that strategy's own real
+StrategyHealthAssessment... as the reason" — but nothing ever checked
+that any real evidence existed at all. A strategy could be retired,
+including a live `"approved"` strategy already committing real allocated
+capital, after a single bad simulation run or zero runs, purely on CEO
+impulse. This chapter's own Certification gate
+(`evaluate_certification_readiness()`) already established the exact
+"real, ENFORCED gate, `(bool, str)`" pattern for a different stage
+transition (Limited Live Capital) — retirement had no equivalent.
+
+**The fix.** `evaluate_retirement_readiness(strategy, results)` reuses
+the identical `trade_count = sum(r.trade_count for r in
+strategy_results)` computation `evaluate_certification_readiness()`
+already uses — never a second, differently-defined "sample size."
+`MIN_RETIREMENT_TRADE_COUNT = 10`, real and disclosed, deliberately
+looser than Certification's own `CERTIFICATION_MIN_TRADE_COUNT = 20`
+(retiring is not the same trust-earning bar as certifying for live
+capital — the point is only "is there enough real evidence to conclude
+anything at all," not a quality bar). Vacuously ready for a strategy
+still at `"idea"`/`"research"`: those stages have no real
+`SimulationResult` by construction, so there is no thin evidence to
+gate — abandoning an untested idea is always a legitimate, ungated CEO
+call. Once a strategy has entered real empirical testing
+(`historical_backtest` or later, including a live `"approved"`
+strategy), retirement requires the real minimum trade count on file;
+below it, `retire_strategy()` returns a real, actionable error and the
+strategy's stage does not change.
+
+**What this does NOT do, by design.** It never blocks retirement of a
+strategy with plenty of evidence and a genuinely good `StrategyHealth`
+read — the CEO retains full authority over the actual decision (a
+strategy might be abandoned for a legitimate business reason unrelated
+to performance). It never forces the CEO's free-text reason to
+literally cite the health read (the retirement form's placeholder
+already invites this; enforcing it via string-matching would be fragile
+over-engineering, not a real evidence check). It is a floor on evidence
+quantity, never a judgment on evidence quality.
+
+**Frontend.** `StrategyPipelineView.tsx`'s existing Retirement card
+gains a real, mirrored evidence readout (`{totalTradeCount} real
+trade(s) on file (needs ≥{MIN_RETIREMENT_TRADE_COUNT}...)`) once a
+strategy has entered real testing — reusing the same real `ownResults`
+this file already computes, not a second data source — plus the
+existing shared `error` display duplicated next to the retire button
+(previously only rendered in the Testing Environments card above,
+easy to miss on this new failure mode).
+
+**Verified:** 8 new pure-function tests
+(`tests/test_strategy_lab.py::TestEvaluateRetirementReadiness` —
+idea/research always ready, zero-evidence blocked, below/at/above the
+threshold, cross-strategy result isolation, a live `"approved"`
+strategy still gated), 4 new `GameState`-level tests
+(`tests/test_state.py::TestRetireStrategy` — blocked with too few real
+trades, allowed at the threshold, an untested idea ungated, a live
+approved strategy still gated), full backend suite green (1508/1508),
+`mypy`/`ruff` clean, `tsc -b --noEmit`/`npm run lint` clean. A live
+retirement against the running dev server (`POST /api/sandbox/retire`
+on a real strategy with 228 real trades on file) confirmed the
+"sufficient evidence" path end-to-end through the actual HTTP API; the
+"insufficient evidence" block is proven by the automated `GameState`-
+level tests above exercising the identical code path, since every
+strategy already in that dev save happened to carry well over the
+10-trade minimum.

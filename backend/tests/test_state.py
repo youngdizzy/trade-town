@@ -10,7 +10,8 @@ from __future__ import annotations
 
 import asyncio
 
-from app.schemas import AnalystVote, ClientSaveRequest, DecisionConfidence, DialogueHistoryEntry, EntityTransform, SettingsState, Strategy, TierAllocationLimits, TradeProposal
+from app.schemas import AnalystVote, ClientSaveRequest, DecisionConfidence, DialogueHistoryEntry, EntityTransform, SettingsState, SimulationResult, Strategy, TierAllocationLimits, TradeProposal
+from app.strategy_lab import MIN_RETIREMENT_TRADE_COUNT
 from app.state import MAX_DIALOGUE_HISTORY, GameState
 
 
@@ -536,6 +537,81 @@ class TestRetireStrategy:
         strategy_memories = [m for m in saved.memory if m.category == "strategy"]
         assert len(strategy_memories) == 1
         assert "Momentum Breakout" in strategy_memories[0].title
+
+    def _strategy(self, *, stage: str = "market_simulation") -> Strategy:
+        return Strategy(
+            id="strategy-1",
+            name="Momentum Breakout",
+            description="Follows short-term price momentum.",
+            createdBy="echo",  # type: ignore[arg-type]
+            focusCategory="stock",  # type: ignore[arg-type]
+            createdAt="2026-01-01T00:00:00+00:00",
+            stage=stage,  # type: ignore[arg-type]
+            allocatedCapital=0.0,
+        )
+
+    def _result(self, *, trade_count: int) -> SimulationResult:
+        return SimulationResult(
+            id="result-1",
+            strategyId="strategy-1",
+            strategyName="Momentum Breakout",
+            symbol="NEXA",
+            totalReturnPct=5.0,
+            winRate=55.0,
+            maxDrawdownPct=8.0,
+            sharpeRatio=1.0,
+            sortinoRatio=1.0,
+            tradeCount=trade_count,
+            runBy="quant",  # type: ignore[arg-type]
+            completedAt="2026-01-01T00:00:00+00:00",
+        )
+
+    def test_statistical_evidence_gate_blocks_retirement_with_too_few_real_trades(self) -> None:
+        """Trading Psychology & Discipline, Piece B — a strategy that has
+        entered real empirical testing but has thin evidence on file
+        must not be retirable on a whim."""
+        state = GameState()
+        strategy = self._strategy(stage="market_simulation")
+        result = self._result(trade_count=MIN_RETIREMENT_TRADE_COUNT - 1)
+        state.data = state.data.model_copy(update={"strategies": [strategy], "simulation_results": [result]})
+
+        saved, error = asyncio.run(state.retire_strategy("strategy-1", "One bad run — cutting losses."))
+
+        assert error is not None
+        assert "does not invalidate a strategy" in error
+        assert saved.strategies[0].stage == "market_simulation"
+
+    def test_statistical_evidence_gate_allows_retirement_with_enough_real_trades(self) -> None:
+        state = GameState()
+        strategy = self._strategy(stage="market_simulation")
+        result = self._result(trade_count=MIN_RETIREMENT_TRADE_COUNT)
+        state.data = state.data.model_copy(update={"strategies": [strategy], "simulation_results": [result]})
+
+        saved, error = asyncio.run(state.retire_strategy("strategy-1", "Consistent underperformance across a real sample."))
+
+        assert error is None
+        assert saved.strategies[0].stage == "retired"
+
+    def test_statistical_evidence_gate_does_not_apply_to_an_untested_idea(self) -> None:
+        state = GameState()
+        strategy = self._strategy(stage="idea")
+        state.data = state.data.model_copy(update={"strategies": [strategy]})
+
+        saved, error = asyncio.run(state.retire_strategy("strategy-1", "Never worth building."))
+
+        assert error is None
+        assert saved.strategies[0].stage == "retired"
+
+    def test_statistical_evidence_gate_still_applies_to_a_live_approved_strategy(self) -> None:
+        state = GameState()
+        strategy = self._strategy(stage="approved")
+        result = self._result(trade_count=1)
+        state.data = state.data.model_copy(update={"strategies": [strategy], "simulation_results": [result]})
+
+        saved, error = asyncio.run(state.retire_strategy("strategy-1", "Had one bad day."))
+
+        assert error is not None
+        assert saved.strategies[0].stage == "approved"
 
 
 class TestActivateAndResumeEmergencyStop:

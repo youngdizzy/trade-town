@@ -201,6 +201,15 @@ CERTIFICATION_MAX_RUIN_PCT = 15.0
 CERTIFICATION_MAX_WORST_CASE_DRAWDOWN_PCT = 30.0
 CERTIFICATION_MIN_STRESS_RETURN_PCT = -50.0
 
+# Trading Psychology & Discipline, Piece B — the Statistical Evidence
+# Gate on Strategy Retirement (Design Bible Chapter 62 addendum). Real,
+# disclosed, and deliberately looser than Certification's own
+# CERTIFICATION_MIN_TRADE_COUNT above (retiring a strategy is not the
+# same trust-earning bar as certifying it for live capital) — just
+# enough real evidence to say a "not enough data yet" conclusion is
+# honestly impossible to reach.
+MIN_RETIREMENT_TRADE_COUNT = 10
+
 # Design Bible Chapter 62 — Experiment Tiering. Real, but honestly
 # arbitrary thresholds (the same "conservative but arbitrary" resolution
 # app/schemas.py's own RiskLimits docstring already uses for its default
@@ -869,6 +878,43 @@ def cap_strategy_health_assessments(items: list[StrategyHealthAssessment]) -> li
     if len(items) > MAX_STRATEGY_HEALTH_ASSESSMENTS:
         del items[: len(items) - MAX_STRATEGY_HEALTH_ASSESSMENTS]
     return items
+
+
+def evaluate_retirement_readiness(strategy: Strategy, results: list[SimulationResult]) -> tuple[bool, str]:
+    """Trading Psychology & Discipline, Piece B — the real, ENFORCED gate
+    on app/sandbox.py's own retire_strategy(), the same "real, ENFORCED
+    gate ... returning (bool, str)" pattern evaluate_certification_
+    readiness() above already established for the Limited Live Capital
+    stage. Closes a gap that function's own docstring in sandbox.py
+    already named but never checked: retirement was "expected to cite
+    that strategy's own real StrategyHealthAssessment... as the reason,"
+    but nothing ever required any real evidence to exist first — a
+    strategy could be retired after a single bad run, or none at all,
+    the exact "strategy hopping" the CEO's own trading-psychology review
+    warned against ("if evidence insufficient, keep current strategy and
+    continue collecting data").
+
+    Vacuously ready for a strategy still at "idea"/"research" — those
+    stages have no real SimulationResult by construction (nothing has
+    been tested yet), so there is no "thin evidence" to gate; abandoning
+    a pure idea before ever running a backtest is always a legitimate,
+    ungated CEO call, not a data-driven conclusion. Once a strategy has
+    entered real empirical testing (historical_backtest or later,
+    including a live "approved" strategy), retiring it requires the same
+    real trade_count = sum(r.trade_count for r in strategy_results)
+    computation evaluate_certification_readiness() already uses — never
+    a second, differently-defined "sample size."""
+    if stage_index(strategy.stage) < stage_index("historical_backtest"):
+        return True, f'"{strategy.name}" has not entered real testing yet — no evidence bar applies to retiring an untested idea.'
+    strategy_results = [r for r in results if r.strategy_id == strategy.id]
+    trade_count = sum(r.trade_count for r in strategy_results)
+    if trade_count < MIN_RETIREMENT_TRADE_COUNT:
+        return False, (
+            f'"{strategy.name}" has only {trade_count} real trade(s) on file across {len(strategy_results)} real run(s) '
+            f"— at least {MIN_RETIREMENT_TRADE_COUNT} are needed before retiring it. A single bad run does not "
+            f"invalidate a strategy; run more simulations first to gather real evidence."
+        )
+    return True, f'"{strategy.name}" has {trade_count} real trade(s) on file across {len(strategy_results)} real run(s) — enough real evidence to retire on.'
 
 
 def generate_strategy_retirement_outcome(

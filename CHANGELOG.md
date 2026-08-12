@@ -7,6 +7,26 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Statistical Evidence Gate on Strategy Retirement** (`backend/app/strategy_lab.py`, `backend/app/state.py`,
+  `backend/tests/test_strategy_lab.py`, `backend/tests/test_state.py`,
+  `frontend/src/ui/components/CommandCenter/panels/sandbox/StrategyPipelineView.tsx`,
+  `docs/DesignBible/volumes/09-departments/chapter-62-innovation-lab-continuous-improvement.md`): Piece B of the
+  CEO's trading-psychology roadmap. `app/sandbox.py`'s `retire_strategy()` docstring already said retirement was
+  "expected to cite that strategy's own real StrategyHealthAssessment... as the reason," but nothing ever
+  enforced it — a strategy, including a live `"approved"` one already committing real allocated capital, could
+  be retired after a single bad simulation run or zero runs at all. New `evaluate_retirement_readiness()` closes
+  the gap, reusing the exact `trade_count = sum(r.trade_count for r in strategy_results)` computation this
+  chapter's own Certification gate already established rather than inventing a second "sample size." A strategy
+  still at `idea`/`research` is always ready to retire (no real evidence exists yet to be thin on); once a
+  strategy enters real empirical testing, retirement requires `MIN_RETIREMENT_TRADE_COUNT = 10` real trades on
+  file — deliberately looser than Certification's own 20-trade bar, since this is a floor on evidence quantity,
+  never a judgment on evidence quality or an override of the CEO's actual retirement decision. Frontend gains a
+  real, mirrored evidence readout next to the Retire button, plus the pre-existing error display duplicated
+  there (previously only visible in the Testing Environments card above, easy to miss on this new failure
+  mode). Verified: 8 new pure-function tests, 4 new `GameState`-level tests, full backend suite green
+  (1508/1508), `mypy`/`ruff`/`tsc -b --noEmit`/`npm run lint` clean, and a live retirement against the
+  running dev server confirming the real endpoint end-to-end.
+
 - **Behavioral Circuit Breaker — a real revenge-trading detector, the Gatekeeper's tenth check**
   (`backend/app/behavioral_risk.py` new, `backend/app/gatekeeper.py`, `backend/app/executive.py`,
   `backend/app/nexus.py`, `backend/app/state.py`, `backend/app/routers/trading_modes.py`,
