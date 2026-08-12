@@ -1,11 +1,13 @@
 """Covers app/foundational_mentors.py — v0.7 Feature 49 (Phase 3,
-revised) and its v0.7 Feature 51 "market_intelligence" track addition.
-Employees are the real students — real progress advances via
-tick_employee_progress(), never via a player click. Real lesson content
-exists for the "tjr" track and the "market_intelligence" track (the
-latter not attributed to any real external educator — see the module's
-own docstring); the other five roadmap entries are real, named,
-ordered, but intentionally empty until their own content is authored."""
+revised), its v0.7 Feature 51 "market_intelligence" track addition, and
+Trading Psychology & Discipline Piece F's "mark_douglas"/
+"linda_raschke" track additions. Employees are the real students — real
+progress advances via tick_employee_progress(), never via a player
+click. Real lesson content exists for "tjr", "market_intelligence" (not
+attributed to any real external educator), "mark_douglas", and
+"linda_raschke" — see the module's own docstring; the remaining three
+roadmap entries are real, named, ordered, but intentionally empty until
+their own content is authored."""
 from __future__ import annotations
 
 from app.foundational_mentors import (
@@ -91,19 +93,24 @@ class TestDefaultState:
         state = default_foundational_mentor_state()
         assert [m.id for m in state.mentors] == list(_ROADMAP_ORDER)
 
-    def test_only_tjr_and_market_intelligence_have_lesson_content(self):
-        # v0.7 Feature 51 — the Market Intelligence Department's own
-        # track is the second real, shipped-content track (the other
-        # five real-educator tracks stay roadmap-only, see this module's
-        # docstring for why).
+    def test_four_of_seven_tracks_have_real_lesson_content(self):
+        # v0.7 Feature 51 (market_intelligence) and Trading Psychology &
+        # Discipline, Piece F (mark_douglas, linda_raschke) are the real,
+        # shipped-content tracks beyond tjr — the remaining three
+        # real-educator tracks stay roadmap-only, see this module's
+        # docstring for why.
         state = default_foundational_mentor_state()
         by_id = {m.id: m for m in state.mentors}
         assert by_id["tjr"].status == "active"
         assert len(by_id["tjr"].lessons) == 8
         assert by_id["market_intelligence"].status == "active"
         assert len(by_id["market_intelligence"].lessons) == 8
+        assert by_id["mark_douglas"].status == "active"
+        assert len(by_id["mark_douglas"].lessons) == 2
+        assert by_id["linda_raschke"].status == "active"
+        assert len(by_id["linda_raschke"].lessons) == 2
         for mentor_id in _ROADMAP_ORDER:
-            if mentor_id in ("tjr", "market_intelligence"):
+            if mentor_id in ("tjr", "market_intelligence", "mark_douglas", "linda_raschke"):
                 continue
             assert by_id[mentor_id].status == "planned"
             assert by_id[mentor_id].lessons == []
@@ -173,6 +180,60 @@ class TestMarketIntelligenceTrack:
         assert error is None
         state, _ = tick_employee_progress(state, discipline_reviews=[], sim_day=1)
         assert "scout" in state.progress and "market_intelligence" in state.progress["scout"]
+
+
+class TestMarkDouglasAndLindaRaschkeTracks:
+    """Trading Psychology & Discipline, Piece F — the first real content
+    for two of the five previously-empty roadmap tracks. Each lesson
+    cites a specific real already-built mechanic (Decision Confidence
+    Engine, Behavioral Circuit Breaker, Trade Gatekeeper, risk-engine
+    position sizing) — deliberately a small, honest 2-lesson start per
+    track rather than backfilling to match tjr's 8."""
+
+    def test_two_real_lessons_each_in_order(self):
+        state = default_foundational_mentor_state()
+        for mentor_id in ("mark_douglas", "linda_raschke"):
+            mentor = next(m for m in state.mentors if m.id == mentor_id)
+            assert len(mentor.lessons) == 2
+            assert [lesson.order for lesson in sorted(mentor.lessons, key=lambda x: x.order)] == [1, 2]
+
+    def test_every_lesson_has_exactly_one_real_correct_answer(self):
+        state = default_foundational_mentor_state()
+        for mentor_id in ("mark_douglas", "linda_raschke"):
+            mentor = next(m for m in state.mentors if m.id == mentor_id)
+            for lesson in mentor.lessons:
+                index = _correct_index_for(state, mentor_id, lesson.id)
+                assert 0 <= index < 4
+                assert len(lesson.quiz_options) == 4
+
+    def test_content_disclaimer_credits_the_real_educator_never_their_actual_work(self):
+        state = default_foundational_mentor_state()
+        for mentor_id in ("mark_douglas", "linda_raschke"):
+            mentor = next(m for m in state.mentors if m.id == mentor_id)
+            assert "original TradeTown-authored teaching material" in mentor.content_note
+            assert "never a transcription" in mentor.content_note
+
+    def test_employees_can_auto_progress_through_either_once_active(self):
+        for mentor_id in ("mark_douglas", "linda_raschke"):
+            state = default_foundational_mentor_state()
+            state, error = set_active_mentor(state, mentor_id)  # type: ignore[arg-type]
+            assert error is None
+            state, _ = tick_employee_progress(state, discipline_reviews=[], sim_day=1)
+            assert "scout" in state.progress and mentor_id in state.progress["scout"]
+
+    def test_lessons_pass_the_probability_first_language_audit(self):
+        # Trading Psychology & Discipline, Piece E's own regression guard
+        # — new Academy lesson content is exactly the kind of prose a
+        # future author could accidentally drift into certainty language
+        # on, so it must pass the same checker the trade-thesis/review
+        # generators already do.
+        from app.probability_language import audit_model
+
+        state = default_foundational_mentor_state()
+        for mentor_id in ("mark_douglas", "linda_raschke"):
+            mentor = next(m for m in state.mentors if m.id == mentor_id)
+            for lesson in mentor.lessons:
+                assert audit_model(lesson) == {}
 
 
 class TestTickEmployeeProgress:

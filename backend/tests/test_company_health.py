@@ -122,15 +122,18 @@ def _strong_executive_overrides() -> dict:
         )
         for role in _ALL_ROLES
     ]
-    # v0.7 Feature 51 added market_intelligence as a second real active
-    # track by default, so talent_development's real denominator now
-    # spans both — every real active track needs a real graduated
+    # v0.7 Feature 51 added market_intelligence, and Trading Psychology &
+    # Discipline Piece F added mark_douglas/linda_raschke, as real active
+    # tracks by default, so talent_development's real denominator now
+    # spans all four — every real active track needs a real graduated
     # student here too, or talent_development would drag this "nothing
     # to recommend" fixture below the recommendation threshold.
-    graduated_tjr = FoundationalMentorProgress(mentorId="tjr", graduationStatus="graduated")  # type: ignore[call-arg]
-    graduated_mi = FoundationalMentorProgress(mentorId="market_intelligence", graduationStatus="graduated")  # type: ignore[call-arg]
+    graduated_by_mentor = {
+        mentor_id: FoundationalMentorProgress(mentorId=mentor_id, graduationStatus="graduated")  # type: ignore[call-arg]
+        for mentor_id in ("tjr", "market_intelligence", "mark_douglas", "linda_raschke")
+    }
     fm_state = default_foundational_mentor_state().model_copy(
-        update={"progress": {agent_id: {"tjr": graduated_tjr, "market_intelligence": graduated_mi} for agent_id in STUDENT_AGENT_IDS}}
+        update={"progress": {agent_id: dict(graduated_by_mentor) for agent_id in STUDENT_AGENT_IDS}}
     )
     founder_council_sessions = [
         FounderCouncilSession(id=f"c{i}", simDay=i, coachHighlight="x", keystoneNote="x", compassNote="x", createdAt="2026-01-01T00:00:00+00:00") for i in range(5)
@@ -492,27 +495,31 @@ class TestExecutiveTier:
 
     def test_talent_development_reads_real_graduation_progress(self) -> None:
         # Isolated to a single real active track (tjr) — market_intelligence
-        # (v0.7 Feature 51) is also "active" by default on a fresh game, so
-        # it's explicitly parked back to "planned" here to test the
-        # single-active-track case cleanly; see the next test for the real
-        # multi-active-track denominator.
+        # (v0.7 Feature 51) and mark_douglas/linda_raschke (Trading
+        # Psychology & Discipline, Piece F) are also "active" by default
+        # on a fresh game, so they're explicitly parked back to "planned"
+        # here to test the single-active-track case cleanly; see the next
+        # test for the real multi-active-track denominator.
         fm_state = default_foundational_mentor_state()
-        fm_state = fm_state.model_copy(update={"mentors": [m.model_copy(update={"status": "planned"}) if m.id == "market_intelligence" else m for m in fm_state.mentors]})
+        parked = {"market_intelligence", "mark_douglas", "linda_raschke"}
+        fm_state = fm_state.model_copy(update={"mentors": [m.model_copy(update={"status": "planned"}) if m.id in parked else m for m in fm_state.mentors]})
         graduated = FoundationalMentorProgress(mentorId="tjr", graduationStatus="graduated")  # type: ignore[call-arg]
         fm_state = fm_state.model_copy(update={"progress": {agent_id: {"tjr": graduated} for agent_id in list(STUDENT_AGENT_IDS)[:4]}})
         health = _health(foundational_mentor_state=fm_state)
         assert health.talent_development == 50.0
 
     def test_talent_development_divides_across_every_real_active_track(self) -> None:
-        # v0.7 Feature 51 — a fresh game legitimately has two real active
-        # tracks (tjr and market_intelligence) until one graduates, so the
-        # real denominator is students × active tracks, not just students.
+        # v0.7 Feature 51 and Trading Psychology & Discipline Piece F — a
+        # fresh game legitimately has four real active tracks (tjr,
+        # market_intelligence, mark_douglas, linda_raschke) until one
+        # graduates, so the real denominator is students × active tracks,
+        # not just students.
         fm_state = default_foundational_mentor_state()
-        assert sum(1 for m in fm_state.mentors if m.status == "active") == 2
+        assert sum(1 for m in fm_state.mentors if m.status == "active") == 4
         graduated = FoundationalMentorProgress(mentorId="tjr", graduationStatus="graduated")  # type: ignore[call-arg]
         fm_state = fm_state.model_copy(update={"progress": {agent_id: {"tjr": graduated} for agent_id in list(STUDENT_AGENT_IDS)[:4]}})
         health = _health(foundational_mentor_state=fm_state)
-        assert health.talent_development == 25.0
+        assert health.talent_development == 12.5
 
     def test_executive_overall_is_the_mean_of_the_ten_executive_metrics_and_never_moves_the_operational_overall(self) -> None:
         baseline = _health()

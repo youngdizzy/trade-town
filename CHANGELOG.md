@@ -7,6 +7,33 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Two New Foundational Mentor Tracks — Mark Douglas & Linda Raschke** (`backend/app/foundational_mentors.py`,
+  `backend/tests/test_foundational_mentors.py`, `backend/tests/test_company_health.py`,
+  `docs/DesignBible/volumes/09-departments/chapter-74-continuous-learning-self-improvement-system.md`): Piece F
+  of the CEO's trading-psychology roadmap ("3-4 new Academy lessons via the empty mark_douglas/linda_raschke
+  tracks"). Both tracks already existed as real, named, ordered roadmap entries with zero lesson content
+  (`status: "planned"`) — this ships their first real content: 2 lessons each, deliberately a small honest
+  start rather than backfilling to match the `tjr` track's 8. Same content-attribution boundary the `tjr`
+  track already established (no HTTP client/PDF/video/LLM anywhere in this codebase, so a real educator's
+  name only labels the real subject area their track covers — every lesson is 100% original TradeTown-
+  authored material, never a transcription of either person's actual work). Each lesson cites a specific real
+  mechanic: Mark Douglas's track covers the Decision Confidence Engine's "never predicts whether a trade will
+  win" design principle (tying into this session's own Piece E `probability_language.py` regression guard)
+  and the Behavioral Circuit Breaker's real corroboration rule; Linda Raschke's track covers the Trade
+  Gatekeeper's real ten-check pure-AND composition and the risk engine's real `min(risk_budget,
+  position_cap)` position-sizing rule. Running the Piece E audit against the drafted lessons caught two real
+  issues before shipping (a quiz option's "always wins" phrasing and a lesson quoting literal banned-phrase
+  examples) — both fixed by rewriting the text, not weakening the checker. Adding two active tracks changed
+  `app/company_health.py`'s real Talent Development denominator (`students × active tracks`) from 2 to 4, the
+  same consequence `market_intelligence`'s own earlier addition already caused — `test_company_health.py`
+  updated accordingly, a genuine behavioral consequence, not a workaround. No frontend changes: the Mentor
+  Library UI already renders any mentor's lessons generically. Verified: 6 new/extended tests plus 3 updated
+  Company Health tests, full backend suite green (1555/1555), `mypy`/`ruff` clean. Live-verified via the real
+  `default_foundational_mentor_state()` function; the running dev server's own persisted save predates this
+  change (new mentor content applies to new games, not retroactively merged into old saves — the same
+  boundary `market_intelligence`'s v0.7 Feature 51 rollout already established), so its live screenshot
+  honestly still shows both tracks `PLANNED` for that older save.
+
 - **Probability-First Language Audit** (`backend/app/probability_language.py` new,
   `backend/tests/test_probability_language_audit.py` new,
   `docs/DesignBible/volumes/09-departments/chapter-66-institutional-safety-capital-protection.md`): Piece E

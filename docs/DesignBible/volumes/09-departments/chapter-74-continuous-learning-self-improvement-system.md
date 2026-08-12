@@ -759,3 +759,119 @@ Populating a non-empty live case was not reachable within this session
 closed trade (all 29 decisions on file resolved `no_trade`) — so the
 populated-classification and win-side-CLSIS-firing paths are proven by
 the automated test suite above rather than a second live screenshot.
+
+---
+
+## Addendum — Two New Foundational Mentor Tracks (Trading Psychology & Discipline, Piece F)
+
+**Origin.** The sixth piece of the CEO's trading-psychology roadmap.
+Piece F's brief: "3-4 new Academy lessons via `app/
+foundational_mentors.py`'s empty `mark_douglas`/`linda_raschke`
+tracks."
+
+**What already existed.** `app/foundational_mentors.py` (v0.7 Feature
+49 Phase 3) already carries the real infrastructure this piece needed:
+a seven-track roadmap (`_ROADMAP_ORDER`), each track a real, named,
+ordered entry with real focus-area topics, but only `tjr` (8 lessons)
+and `market_intelligence` (8 lessons, v0.7 Feature 51) shipped real
+lesson content before this piece — the other five, including
+`mark_douglas` and `linda_raschke`, were seeded `status: "planned"`
+with zero lessons, exactly matching this module's own "seed the
+roadmap entry, ship real content later" convention (see its module
+docstring's "WHAT'S REAL VS. ROADMAP"). Adding a track's real content
+is deliberately additive and small: write a `_LessonSpec` tuple, add it
+to `_LESSON_SPECS_BY_MENTOR`, and `status: "active"` follows
+automatically (`"active" if specs else "planned"` in
+`default_foundational_mentor_state()`).
+
+**The content-attribution boundary, unchanged.** Same rule `_TJR_
+LESSONS`/`_MARKET_INTELLIGENCE_LESSONS` already established and this
+module's own docstring states directly: this codebase has no HTTP
+client, PDF/video parser, or LLM anywhere, so it cannot ingest any real
+educator's actual published work. "Mark Douglas" and "Linda Raschke"
+name only the real subject areas (trading psychology/probability
+thinking; professional process/risk management) their tracks cover —
+every lesson below is 100% original TradeTown-authored material citing
+this codebase's own real, already-built mechanics, never a
+transcription, summary, or quote of either person's actual work.
+
+**The four new lessons — deliberately a small, honest start (2 per
+track), not a backfill to match `tjr`'s 8 — each citing a specific real
+mechanic, and each covering ground the existing `tjr`/`market_
+intelligence` tracks don't already teach:**
+- `md-probability` (Mark Douglas) — cites `app/confidence.py`'s
+  Decision Confidence Engine, whose own module docstring already
+  states "Never predicts whether a trade will win," and this same
+  chapter's own Piece E `app/probability_language.py` regression guard
+  as the enforced, permanent version of that principle.
+- `md-revenge-trading` (Mark Douglas) — cites `app/behavioral_risk.py`
+  's Behavioral Circuit Breaker (Chapter 66's Piece A): the real
+  corroboration rule (timing alone never blocks; timing plus same-
+  instrument or a loss-driven size increase does).
+- `lr-gatekeeper-checklist` (Linda Raschke) — cites `app/
+  gatekeeper.py`'s `evaluate_gatekeeper()`: ten real checks, a pure AND
+  composition (`approved = all(c.passed for c in checks)`), a real
+  auditable `GatekeeperRejection` naming exactly which check(s) failed.
+- `lr-position-sizing` (Linda Raschke) — cites `app/risk_engine.py`'s
+  `recommended_quantity()`: the real `min(risk_budget, position_cap)`
+  rule, so tightening either of the CEO's two configured limits alone
+  shrinks every future position size.
+
+**A real, live catch from the Piece E regression guard.** Running
+`audit_model()` against these four lessons during development caught
+two genuine issues in the drafted text before they shipped: a quiz
+option describing risk-engine sizing math used the phrase "the tighter
+limit always wins" (a mechanical fact about which of two numeric caps
+governs, not a market-outcome claim, but still matched the banned
+`"always wins"` phrase) and a lesson explaining the probability-
+language audit itself quoted literal banned-phrase examples
+(`'sure thing'`, `'will definitely win'`) as illustration. Both were
+rewritten (the sizing option now reads "is the one that actually
+governs"; the audit lesson now says "absolute-certainty phrasing"
+without quoting the literal banned examples) rather than weakening the
+checker — proof the Piece E guard is a real, working enforcement
+mechanism, not a report that only checks itself.
+
+**Downstream consequence, found and fixed.** `app/company_health.py`'s
+`_talent_development()` executive metric divides real graduated-student
+count by `students × count of "active" mentor tracks` — a real
+denominator that legitimately grows every time a new track ships real
+content (the same consequence v0.7 Feature 51's own `market_
+intelligence` addition already caused once, and left a code comment
+documenting). `tests/test_company_health.py`'s `_strong_executive_
+overrides()` fixture and two `TestExecutiveTier` tests assumed exactly
+two active tracks; all three were updated to the new real count of four
+(and the "everything strong" fixture now grants a graduated
+credential on all four active tracks, not two) — a genuine, correct
+behavioral consequence of shipping real content, not a workaround.
+
+**What this addendum explicitly does not do.** It does not backfill
+`al_brooks`/`tom_hougaard`/`mike_bellafiore` — those three roadmap
+entries remain honestly `"planned"` with zero lessons. It does not add
+any frontend code — `MentorLibraryPanel.tsx` already renders any
+mentor's lessons generically from the real `FoundationalMentorProfile`
+the backend serves, with no per-mentor-id branching anywhere in the
+frontend, so no UI change was needed for the new content to render.
+
+**Verified:** 6 new/extended tests in `tests/test_foundational_
+mentors.py` (`TestMarkDouglasAndLindaRaschkeTracks`: real 2-lesson
+content in order, exactly one real correct answer per quiz, the content
+disclaimer, real employee auto-progression through either track once
+activated, and the Piece E probability-language audit passing clean on
+every new lesson) plus 3 updated tests in `tests/test_company_
+health.py` reflecting the real four-active-track denominator. Full
+backend suite green (1555/1555), `mypy app/`/`ruff check app/ tests/`
+clean. No frontend changes, so no `tsc -b --noEmit`/`npm run lint`
+re-verification was needed. Live-verified against the running dev
+server: `default_foundational_mentor_state()` (the real function a
+brand-new game calls) produces the correct real content and `status:
+"active"` for both tracks. The running dev server's own persisted save
+predates this change — `FoundationalMentorState` is seeded once at
+game creation and never re-synced against newer code on load, the same
+"new content applies to new games" boundary `market_intelligence`'s
+own v0.7 Feature 51 rollout already established — so its live
+Mentor Library screenshot honestly still shows `Linda Raschke Track —
+PLANNED`/`Mark Douglas Track — PLANNED` for this specific, older save;
+the new content is proven by the automated test suite and the direct
+`default_foundational_mentor_state()` call above instead of a second
+live screenshot of a fresh game.

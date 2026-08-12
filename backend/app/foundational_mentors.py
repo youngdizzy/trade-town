@@ -53,15 +53,21 @@ subject, never a transcription, summary, paraphrase, or quote of that
 person's actual published work. `_CONTENT_DISCLAIMER` states this
 explicitly on every mentor profile.
 
-WHAT'S REAL VS. ROADMAP (unchanged): only the "tjr" track ships real
-lesson content (8 original lessons — see `_TJR_LESSONS` below, expanded
-from the original 6 to match this revision's wider TJR focus-area list).
-The
-other five named tracks are seeded as real, ordered, named roadmap
-entries — real display name, real track label, real focus-area topics —
-but deliberately ship with zero lessons and `status: "planned"` rather
-than five fabricated placeholder shells. `_LESSON_SPECS_BY_MENTOR` is
-exactly where a future track's real content gets added.
+WHAT'S REAL VS. ROADMAP: four of the seven roadmap tracks ship real
+lesson content — "tjr" (8 original lessons, `_TJR_LESSONS`, expanded
+from the original 6 to match this revision's wider TJR focus-area
+list), "market_intelligence" (8 lessons, `_MARKET_INTELLIGENCE_LESSONS`,
+v0.7 Feature 51 — not credited to any real external educator), and —
+Trading Psychology & Discipline, Piece F — "mark_douglas" and
+"linda_raschke" (2 lessons each, `_MARK_DOUGLAS_LESSONS`/
+`_LINDA_RASCHKE_LESSONS`, deliberately a small honest start rather than
+backfilling to match TJR's 8). The remaining three named tracks
+(al_brooks, tom_hougaard, mike_bellafiore) are seeded as real, ordered,
+named roadmap entries — real display name, real track label, real
+focus-area topics — but deliberately ship with zero lessons and
+`status: "planned"` rather than fabricated placeholder shells.
+`_LESSON_SPECS_BY_MENTOR` is exactly where a future track's real
+content gets added.
 
 AUTO-GRADED QUIZZES — the honest signal behind them. An employee's real
 `quiz_options`/`correct_index` content still exists (and is still used
@@ -389,6 +395,92 @@ _TJR_LESSONS: tuple[_LessonSpec, ...] = (
     ),
 )
 
+# Trading Psychology & Discipline, Piece F — the first real content for
+# two of the five previously-empty roadmap tracks (see module docstring's
+# "WHAT'S REAL VS. ROADMAP"). Same content-attribution boundary as
+# _TJR_LESSONS: "Mark Douglas" names the real subject area (trading
+# psychology, probability-based thinking) this track covers, never a
+# transcription of his actual published work. Deliberately a small,
+# honest 2-lesson start rather than backfilling to match TJR's 8 — each
+# lesson below cites a specific real mechanic this codebase already
+# computes for reasons unrelated to the Academy, the same "cite, don't
+# fabricate" rule every other track's lessons already follow, and covers
+# real ground the existing TJR/Market Intelligence tracks don't already
+# teach (TJR's own lesson 1 is process-over-outcome; these two instead
+# cover the Decision Confidence Engine's probability framing and the
+# Behavioral Circuit Breaker's revenge-trading detection specifically).
+_MARK_DOUGLAS_LESSONS: tuple[_LessonSpec, ...] = (
+    _LessonSpec(
+        id="md-probability",
+        order=1,
+        title="Probability, Not Prediction",
+        simple_explanation="A professional trader doesn't try to know what happens next — no one can. What separates a professional from a gambler is thinking in probabilities: how strong is this specific setup's evidence, right now, compared to setups like it historically? That question has a real answer. 'Will this trade win?' does not.",
+        deeper_explanation="app/confidence.py's Decision Confidence Engine is built around this exact distinction — its own module docstring states it directly: 'Never predicts whether a trade will win. It scores the quality of the evidence behind the current setup.' compute_confidence() produces a real 0-100 score from six real, weighted factors (multi-agent agreement, technical alignment, risk conditions, research confidence, sentiment, portfolio exposure) and tier_for_score() bands it into a real confidence tier — never a win/loss forecast. This isn't just one module's convention: app/probability_language.py is a real, automated regression test that scans every generated trade thesis, review, and case study in this codebase for absolute-certainty phrasing and fails if any appears — probability-first framing is enforced, not just encouraged.",
+        quiz_question="What does TradeTown's Decision Confidence Engine actually score?",
+        quiz_options=(
+            "The quality of the evidence behind a setup right now — never a prediction of whether the trade wins",
+            "The exact probability the trade will win, computed from historical odds",
+            "The CEO's own personal gut feeling about the trade",
+            "A guaranteed pass/fail grade on the trade's eventual outcome",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="md-revenge-trading",
+        order=2,
+        title="Recognizing Revenge Trading",
+        simple_explanation="After a loss, the urge to immediately win it back — bigger, faster, on the same instrument that just burned you — is one of the most damaging and most human patterns in trading. The danger isn't feeling that urge; everyone does. The danger is acting on it without noticing.",
+        deeper_explanation="app/behavioral_risk.py's Behavioral Circuit Breaker is a real, checkable detector for exactly this pattern, built as the Trade Gatekeeper's own tenth check. It never claims to read emotion — it only checks real, observable facts: did the account just lose (trade_history[-1].pnl < 0), is this new proposal arriving inside a real post-loss cooldown window, and does it corroborate that timing with a real warning sign (the same instrument that just lost, or a position sized well above this account's own recent normal). Timing alone is deliberately never enough to block a trade — compute_behavioral_check() only reaches 'triggered' when timing is corroborated by at least one of those real signals, so a legitimate, differently-sized setup on a different instrument minutes after a loss is never punished for bad timing alone.",
+        quiz_question="What has to be true for TradeTown's Behavioral Circuit Breaker to actually block a trade (not just warn)?",
+        quiz_options=(
+            "Rapid post-loss timing corroborated by a real signal — same instrument as the loss, or a loss-driven size increase — not timing alone",
+            "Any trade proposed within an hour of any loss, regardless of instrument or size",
+            "The CEO manually flagging the trade as emotional",
+            "A sentiment-analysis read of the agent's dialogue",
+        ),
+        correct_index=0,
+    ),
+)
+
+# Trading Psychology & Discipline, Piece F — the first real content for
+# the linda_raschke roadmap track, the same small, honest 2-lesson start
+# and content-attribution boundary as _MARK_DOUGLAS_LESSONS above. Covers
+# real ground neither TJR nor Market Intelligence already teaches: the
+# Trade Gatekeeper's own full pre-trade checklist, and the risk-engine
+# math behind position sizing.
+_LINDA_RASCHKE_LESSONS: tuple[_LessonSpec, ...] = (
+    _LessonSpec(
+        id="lr-gatekeeper-checklist",
+        order=1,
+        title="The Trade Gatekeeper: A Real Pre-Trade Checklist",
+        simple_explanation="Professional preparation means having a real, consistent checklist a trade idea has to clear before it becomes a live position — not a fresh judgment call every time. A trade that skips the checklist because 'this one feels different' is exactly how process discipline erodes.",
+        deeper_explanation="app/gatekeeper.py's evaluate_gatekeeper() is TradeTown's own real, disclosed pre-trade checklist: ten independent checks (decision confidence, risk-manager alignment, multi-agent agreement, the AI Debate's outcome, portfolio exposure, correlated positions, active risk warnings, market conditions, the weighted executive recommendation, and the Behavioral Circuit Breaker) run on every single proposal. `approved = all(c.passed for c in checks)` — a pure AND across all ten; there is no override, no partial credit, and no way for one strong check to compensate for a failed one. A rejected proposal is recorded as a real, auditable GatekeeperRejection naming exactly which check(s) failed, so the reason a trade didn't happen is never a mystery.",
+        quiz_question="How does TradeTown's Trade Gatekeeper combine its ten real checks into an approve/reject decision?",
+        quiz_options=(
+            "A pure AND across all ten — every check must pass, and no strong check can offset a failed one",
+            "A majority vote — six of ten checks passing is enough to approve",
+            "Only the Risk Manager's own check actually matters; the other nine are informational",
+            "The CEO manually overrides the checklist on a case-by-case basis",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="lr-position-sizing",
+        order=2,
+        title="Position Sizing Is Risk Management",
+        simple_explanation="The single most controllable risk decision in trading isn't picking the right setup — it's deciding how much to risk on it. A great setup sized too large can still do lasting damage; a mediocre setup sized correctly rarely does.",
+        deeper_explanation="app/risk_engine.py's recommended_quantity() sizes every new position from two real, independent limits at once: risk_budget (equity times the CEO's own configured risk_per_trade_pct) and position_cap (equity times max_position_pct) — and always takes the smaller of the two, never the larger. That min() rule is deliberate: it means tightening either limit alone is enough to shrink every future position size, without needing to touch the other, so the CEO always has two real, independent levers rather than one that can be bypassed by the other.",
+        quiz_question="When TradeTown's risk engine sizes a new position, which of its two real caps (risk-per-trade budget, max-position cap) actually governs the trade?",
+        quiz_options=(
+            "Whichever of the two produces the SMALLER position size — the tighter limit is the one that actually governs",
+            "Whichever of the two produces the LARGER position size — the looser limit is the one that actually governs",
+            "Only the risk-per-trade budget; max-position cap is display-only",
+            "Neither — position size is chosen at random within a range",
+        ),
+        correct_index=0,
+    ),
+)
+
 # v0.7 Feature 51 — the Market Intelligence Department's own Academy
 # track. Not attributed to any real external educator (see
 # _MARKET_INTELLIGENCE_CONTENT_NOTE above) — every lesson teaches a real
@@ -521,9 +613,13 @@ _MARKET_INTELLIGENCE_LESSONS: tuple[_LessonSpec, ...] = (
 _LESSON_SPECS_BY_MENTOR: dict[FoundationalMentorId, tuple[_LessonSpec, ...]] = {
     "tjr": _TJR_LESSONS,
     "market_intelligence": _MARKET_INTELLIGENCE_LESSONS,
-    # The other five roadmap tracks intentionally have no entry here yet —
-    # see this module's docstring. Adding real content for one of them
-    # later is exactly: write its own _LessonSpec tuple and add it here.
+    # Trading Psychology & Discipline, Piece F.
+    "mark_douglas": _MARK_DOUGLAS_LESSONS,
+    "linda_raschke": _LINDA_RASCHKE_LESSONS,
+    # The other three roadmap tracks (al_brooks, tom_hougaard,
+    # mike_bellafiore) intentionally have no entry here yet — see this
+    # module's docstring. Adding real content for one of them later is
+    # exactly: write its own _LessonSpec tuple and add it here.
 }
 
 
