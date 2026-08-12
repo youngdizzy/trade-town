@@ -173,6 +173,29 @@ def decide_self_improvement_proposal(
     ]
 
 
+def mark_self_improvement_proposal_implemented(
+    proposals: list[SelfImprovementProposal],
+    proposal_id: str,
+    *,
+    implementation_note: str | None,
+) -> list[SelfImprovementProposal]:
+    """The CEO's own real, manual record that they carried an approved
+    proposal out elsewhere in the game (e.g. tightening a RiskLimits
+    field, or actually reviewing the research workflow) — never an
+    automatic mutation triggered by approval itself. Only a proposal
+    already `"approved"` can be marked `"implemented"`; every other
+    status (including an already-implemented one) is a no-op, the same
+    guard decide_self_improvement_proposal() already applies to its own
+    status transition."""
+    now = _now_iso()
+    return [
+        p.model_copy(update={"status": "implemented", "implementation_note": implementation_note, "implemented_at": now})
+        if p.id == proposal_id and p.status == "approved"
+        else p
+        for p in proposals
+    ]
+
+
 def compute_executive_learning_summary(
     agent_id: AgentId,
     *,

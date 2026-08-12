@@ -88,7 +88,7 @@ from app.risk_engine import compute_daily_objective_status, default_risk_limits
 from app.sandbox import apply_review_decision, begin_company_review, begin_limited_live, begin_paper_trial, generate_strategy_review
 from app.sandbox import retire_strategy as retire_strategy_stage
 from app.scribe import record_ceo_decision, record_emergency_stop_event, record_proposal_hold, record_proposal_modify, record_rule_violation, record_strategy_failed_archive_entry, record_strategy_hall_of_fame_entry
-from app.self_improvement import decide_self_improvement_proposal, maybe_propose_retirement_cluster, record_self_improvement_proposal
+from app.self_improvement import decide_self_improvement_proposal, mark_self_improvement_proposal_implemented, maybe_propose_retirement_cluster, record_self_improvement_proposal
 from app.vision_board import (
     add_vision_objective,
     compute_self_improvement_proposal_alignment,
@@ -1609,6 +1609,26 @@ class GameState:
                 return self.data, "That proposal has already been decided."
             proposals = decide_self_improvement_proposal(
                 self.data.self_improvement_proposals, proposal_id, approve=approve, ceo_note=ceo_note
+            )
+            self.data = self.data.model_copy(update={"self_improvement_proposals": proposals})
+            return self.data, None
+
+    async def mark_self_improvement_proposal_implemented(
+        self, proposal_id: str, implementation_note: str | None
+    ) -> tuple[GameSaveState, str | None]:
+        """Design Bible Chapter 74 Part 1 — the CEO's own real, manual
+        record that an approved Self-Improvement Proposal was actually
+        carried out. Never auto-triggered by approval itself (see
+        app/self_improvement.py's own docstring for why no automatic
+        mutation exists for this)."""
+        async with self.lock:
+            proposal = next((p for p in self.data.self_improvement_proposals if p.id == proposal_id), None)
+            if proposal is None:
+                return self.data, "No self-improvement proposal found with that id."
+            if proposal.status != "approved":
+                return self.data, "Only an approved proposal can be marked implemented."
+            proposals = mark_self_improvement_proposal_implemented(
+                self.data.self_improvement_proposals, proposal_id, implementation_note=implementation_note
             )
             self.data = self.data.model_copy(update={"self_improvement_proposals": proposals})
             return self.data, None

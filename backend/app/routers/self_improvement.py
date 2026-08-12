@@ -31,6 +31,13 @@ class DecideProposalRequest(BaseModel):
     ceo_note: str | None = Field(default=None, alias="ceoNote")
 
 
+class ImplementProposalRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    proposal_id: str = Field(alias="proposalId")
+    implementation_note: str | None = Field(default=None, alias="implementationNote")
+
+
 @router.get("/proposals", response_model=list[SelfImprovementProposal])
 async def get_self_improvement_proposals() -> list[SelfImprovementProposal]:
     state = await game_state.snapshot()
@@ -41,6 +48,17 @@ async def get_self_improvement_proposals() -> list[SelfImprovementProposal]:
 async def decide_proposal(payload: DecideProposalRequest) -> list[SelfImprovementProposal]:
     state, error = await game_state.decide_self_improvement_proposal(
         payload.proposal_id, payload.approve, payload.ceo_note
+    )
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    return state.self_improvement_proposals
+
+
+@router.post("/proposals/implement", response_model=list[SelfImprovementProposal])
+async def implement_proposal(payload: ImplementProposalRequest) -> list[SelfImprovementProposal]:
+    state, error = await game_state.mark_self_improvement_proposal_implemented(
+        payload.proposal_id, payload.implementation_note
     )
     if error is not None:
         raise HTTPException(status_code=400, detail=error)

@@ -852,6 +852,21 @@ development milestones, not semver releases.
 
 ### Fixed
 
+- **Chapter 74 Part 1 — a Self-Improvement Proposal can now actually be marked Implemented**
+  (`backend/app/schemas.py`, `backend/app/self_improvement.py`, `backend/app/state.py`,
+  `backend/app/routers/self_improvement.py`, `backend/tests/test_self_improvement.py`,
+  `docs/DesignBible/volumes/09-departments/chapter-74-continuous-learning-self-improvement-system.md`):
+  a Chapters 67–75 audit found `SelfImprovementProposal.status`'s `"implemented"` value was declared on the
+  schema and read by `app/evolution.py`'s own Proposal Execution scoring, but nothing anywhere ever set it —
+  the only real transition was `pending` → `approved`/`rejected`. There is no single, well-defined state
+  mutation an approved `risk_rule`/`research_workflow` proposal maps onto (this chapter's own KPIs section
+  already names that as why "proposal success rate" isn't honestly computable), so rather than fabricate an
+  automatic mutation of `RiskLimits`, the fix adds a real, CEO-manual `mark_self_improvement_proposal_
+  implemented()` and `POST /api/self-improvement/proposals/implement` — the CEO records, in their own words,
+  that they carried an approved proposal out elsewhere in the game. Also corrected this chapter's Design Bible
+  page, which still said "Target design, not yet implemented" in its Status line despite its own
+  Implementation Notes section listing real, shipped modules.
+
 - **Chapter 69 — real test coverage for Accounts, Prop Firm Rule Engine, and Institutional Rule Engine**
   (`backend/tests/test_accounts.py`, `backend/tests/test_prop_firm.py`, `backend/tests/test_rule_engine.py`,
   all new): a Chapters 67–75 audit found `app/accounts.py`, `app/prop_firm.py`, and `app/rule_engine.py` — the

@@ -1,6 +1,11 @@
 # Chapter 74 — Continuous Learning & Self-Improvement System (CLSIS)
 
-**Status:** Target design, not yet implemented. **Chapter number note:**
+**Status:** Substantially implemented (backend) — see Implementation
+Notes below for the complete, itemized honesty boundary; this line was
+previously stale (it said "not yet implemented" even after
+`app/self_improvement.py` shipped), fixed as part of the same audit pass
+noted below. No frontend panel exists yet for this chapter (tracked
+separately). **Chapter number note:**
 the source brief for this chapter called itself "Chapter 75," but that
 number already belongs to the real, implemented [Company Trading Modes
 & Institutional Capital
@@ -132,7 +137,29 @@ this codebase to compute one honestly), `priority`, `confidence`,
 `status` (`pending`/`approved`/`rejected`/`implemented`), and a
 `ceoNote`. Resolution is CEO-manual only — never automation-eligible,
 the same restraint `app/constitution.py`'s own Amendment flow already
-holds itself to for company-level changes. A `visionAlignmentScore`
+holds itself to for company-level changes.
+
+**Audit finding, fixed (this session):** `implemented` was a real,
+declared `status` value that nothing in the codebase ever set — the only
+real transition was `pending` → `approved`/`rejected`
+(`decide_self_improvement_proposal()`), confirmed by grep before this
+fix. There is no single, well-defined state mutation an approved
+`risk_rule` or `research_workflow` proposal maps onto (a risk rule
+could mean any of several `RiskLimits` fields, by an amount this
+codebase has no formula for) — inventing one would fabricate a business
+rule this Design Bible never specified, exactly what this chapter's own
+KPIs section already names as the reason "proposal success rate" isn't
+honestly computable ("a new risk rule someone manually adds to
+`RiskLimits`"). So the fix mirrors that same sentence literally: a new
+`mark_self_improvement_proposal_implemented()` (`app/self_improvement.py`)
+and `POST /api/self-improvement/proposals/implement` let the CEO record,
+in their own words (`implementationNote`), that they carried an approved
+proposal out elsewhere in the game — a real, manual, CEO-authored status
+transition, never an automatic mutation of `RiskLimits` or anything
+else. Only an already-`approved` proposal can be marked `implemented`.
+Covered by `tests/test_self_improvement.py::TestMarkSelfImprovementProposalImplemented`.
+No frontend control exists for this yet (see this chapter's own missing
+frontend panel, tracked separately). A `visionAlignmentScore`
 field exists on the schema but stays `null` until Chapter 74.5 ships and
 wires it — declared now so the schema does not need a breaking change
 later, not because the field does anything yet.
@@ -212,6 +239,7 @@ have no path into `app/gatekeeper.py`.
 | Control | Status |
 |---|---|
 | Approve / Reject a Self-Improvement Proposal | Real — the only resolution path; never automation-eligible |
+| Mark an approved proposal Implemented, with a note | Real — `POST /api/self-improvement/proposals/implement`; CEO-manual record only, never an automatic mutation |
 | Recurring-mistake / retirement-cluster thresholds | Real, CEO-editable (mirrors `RiskLimits`' own editable-constant convention) |
 | Executive Learning Summary view | Real, read-only |
 
@@ -338,7 +366,9 @@ Engine and its own Company Evolution Score.
 
 # Part 2 — Institutional Evolution Engine
 
-**Status:** Target design, not yet implemented. Same relationship to
+**Status:** Substantially implemented (backend) — same stale-line fix as
+Part 1 above; `app/evolution.py` and its two router endpoints are real.
+Same relationship to
 Part 1 as Chapter 72's Institutional Survival Score has to its own Part
 1 Early Warning Score: a company-wide, longer-horizon rollup built on
 top of Part 1's real per-event machinery, not a second, competing

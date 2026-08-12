@@ -5634,6 +5634,15 @@ class SelfImprovementProposal(CamelModel):
     sim_day: int = Field(alias="simDay")
     created_at: str = Field(alias="createdAt")
     decided_at: str | None = Field(default=None, alias="decidedAt")
+    # The CEO's own real, manual record that they carried an approved
+    # proposal out (e.g. "Tightened max_position_pct from 10% to 7%") —
+    # never an automatic mutation of RiskLimits or anything else, since
+    # this chapter's own honesty boundary has no single, well-defined
+    # target field for a "risk_rule"/"research_workflow" proposal to
+    # mutate. Matches this chapter's own established "CEO-manual
+    # resolution only" restraint for the approve/reject step above.
+    implementation_note: str | None = Field(default=None, alias="implementationNote")
+    implemented_at: str | None = Field(default=None, alias="implementedAt")
 
 
 # Design Bible Chapter 74 Part 1 — the Executive Learning Summary. Pure

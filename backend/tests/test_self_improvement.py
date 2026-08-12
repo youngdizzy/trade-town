@@ -21,6 +21,7 @@ from app.self_improvement import (
     RETIREMENT_CLUSTER_THRESHOLD,
     compute_executive_learning_summary,
     decide_self_improvement_proposal,
+    mark_self_improvement_proposal_implemented,
     maybe_propose_recurring_mistake,
     maybe_propose_retirement_cluster,
     record_self_improvement_proposal,
@@ -180,6 +181,53 @@ class TestDecideSelfImprovementProposal:
         pending = self._pending()
         updated = decide_self_improvement_proposal([pending], "does-not-exist", approve=True, ceo_note=None)
         assert updated[0].status == "pending"
+
+
+class TestMarkSelfImprovementProposalImplemented:
+    def _approved(self) -> SelfImprovementProposal:
+        return SelfImprovementProposal(
+            id="p1",
+            category="risk_rule",  # type: ignore[arg-type]
+            title="test",
+            reasoning="test",
+            evidence=[],
+            benefits=[],
+            risks=[],
+            estimatedComplexity="small",  # type: ignore[arg-type]
+            priority="low",  # type: ignore[arg-type]
+            confidence=50.0,
+            status="approved",  # type: ignore[arg-type]
+            simDay=1,
+            createdAt="2026-01-01T00:00:00+00:00",
+        )
+
+    def test_marks_an_approved_proposal_implemented_with_a_real_ceo_note(self) -> None:
+        updated = mark_self_improvement_proposal_implemented([self._approved()], "p1", implementation_note="Tightened max_position_pct from 10% to 7%.")
+        assert updated[0].status == "implemented"
+        assert updated[0].implementation_note == "Tightened max_position_pct from 10% to 7%."
+        assert updated[0].implemented_at is not None
+
+    def test_a_pending_proposal_cannot_be_marked_implemented(self) -> None:
+        proposal = self._approved().model_copy(update={"status": "pending"})
+        updated = mark_self_improvement_proposal_implemented([proposal], "p1", implementation_note="too soon")
+        assert updated[0].status == "pending"
+        assert updated[0].implementation_note is None
+
+    def test_a_rejected_proposal_cannot_be_marked_implemented(self) -> None:
+        proposal = self._approved().model_copy(update={"status": "rejected"})
+        updated = mark_self_improvement_proposal_implemented([proposal], "p1", implementation_note="no")
+        assert updated[0].status == "rejected"
+
+    def test_an_already_implemented_proposal_is_not_re_stamped(self) -> None:
+        proposal = self._approved().model_copy(update={"status": "implemented", "implementation_note": "first note", "implemented_at": "2026-01-01T00:00:00+00:00"})
+        updated = mark_self_improvement_proposal_implemented([proposal], "p1", implementation_note="second note")
+        assert updated[0].implementation_note == "first note"
+
+    def test_unknown_id_is_a_noop(self) -> None:
+        approved = self._approved()
+        updated = mark_self_improvement_proposal_implemented([approved], "does-not-exist", implementation_note="x")
+        assert updated[0].status == "approved"
+        assert updated[0].implementation_note is None
 
 
 class TestComputeExecutiveLearningSummary:
