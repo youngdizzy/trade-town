@@ -850,6 +850,18 @@ class GameState:
             self.data = self.data.model_copy(update={"trading_modes": new_state, "memory": memory})
             return self.data, None
 
+    async def set_adaptive_recommendations_enabled(self, enabled: bool) -> GameSaveState:
+        """Design Bible Chapter 75 — the CEO's real on/off control over
+        Adaptive Mode's recommendation reads. No safety property depends
+        on this: `compute_adaptive_mode_recommendation()` never writes
+        to any state (see its own docstring), so this is purely a CEO
+        display preference, not gated on Emergency Stop the way an
+        actual trading control is."""
+        async with self.lock:
+            new_trading_modes = self.data.trading_modes.model_copy(update={"adaptive_recommendations_enabled": enabled})
+            self.data = self.data.model_copy(update={"trading_modes": new_trading_modes})
+            return self.data
+
     async def acknowledge_losing_streak(self) -> tuple[GameSaveState, str | None]:
         """Design Bible Chapter 75 — the CEO's real, explicit clear of
         the current losing-streak pause. Only meaningful while the pause

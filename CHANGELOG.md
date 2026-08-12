@@ -852,6 +852,20 @@ development milestones, not semver releases.
 
 ### Fixed
 
+- **Chapter 75 — Adaptive Recommendations toggle now actually gates the recommendation**
+  (`backend/app/trading_modes.py`, `backend/app/routers/trading_modes.py`, `backend/app/state.py`,
+  `backend/tests/test_trading_modes.py`, `backend/tests/test_adaptive_recommendations_toggle_integration.py`
+  new, `frontend/src/net/api.ts`, `frontend/src/ui/components/CommandCenter/panels/TradingModesPanel.tsx`):
+  a Chapters 67–75 audit found `TradingModeState.adaptiveRecommendationsEnabled` was a real, persisted field
+  that nothing read or exposed a way to change — `GET /api/trading-modes/adaptive-recommendation` always
+  computed and returned a live recommendation regardless of its value, and no endpoint could toggle it.
+  Fixed by gating the endpoint on the flag (a new `adaptive_recommendations_disabled_reading()` returns an
+  honest "turned off" reading and never computes a regime reconciliation when disabled, rather than
+  suppressing an already-computed result), adding a real `POST /api/trading-modes/adaptive-recommendations-enabled`
+  endpoint backed by `GameState.set_adaptive_recommendations_enabled()`, and wiring a real On/Off button into
+  `TradingModesPanel.tsx`. A pure CEO display preference — the underlying recommendation function never
+  writes to any state, so this control is not gated on Emergency Stop the way Trading Mode changes are.
+
 - **Chapter 72 — Black Swan Defensive Mode's "Pause New Entries" now actually fires**
   (`backend/app/nexus.py`, `backend/tests/test_defensive_mode_integration.py` new): a Chapters 67–75 audit
   found that Defensive Mode's advertised auto-pause on new trade generation — documented and UI-labeled

@@ -58,6 +58,7 @@ export function TradingModesPanel() {
   const [recommendation, setRecommendation] = useState<AdaptiveModeRecommendation | null>(null);
   const [performance, setPerformance] = useState<TradingStylePerformance[] | null>(null);
   const [health, setHealth] = useState<TradingModeHealthAssessment[] | null>(null);
+  const [togglingRecommendations, setTogglingRecommendations] = useState(false);
 
   useEffect(() => {
     setSelectedMode(tradingModes.mode);
@@ -68,7 +69,19 @@ export function TradingModesPanel() {
     api.getAdaptiveModeRecommendation().then(setRecommendation).catch(() => setRecommendation(null));
     api.getTradingStylePerformance().then(setPerformance).catch(() => setPerformance([]));
     api.getTradingModeHealth().then(setHealth).catch(() => setHealth([]));
-  }, [tradingModes.mode, recoveryBriefings.length]);
+  }, [tradingModes.mode, tradingModes.adaptiveRecommendationsEnabled, recoveryBriefings.length]);
+
+  async function toggleAdaptiveRecommendations() {
+    setError(null);
+    setTogglingRecommendations(true);
+    try {
+      await api.setAdaptiveRecommendationsEnabled(!tradingModes.adaptiveRecommendationsEnabled);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setTogglingRecommendations(false);
+    }
+  }
 
   async function saveMode() {
     setError(null);
@@ -148,8 +161,27 @@ export function TradingModesPanel() {
         {error && <div className="mt-2 text-[9px] text-cmd-red">{error}</div>}
 
         <div className="mt-2 border-t border-cmd-border/50 pt-2">
-          <TerminalLabel>Adaptive Mode Recommendation — read-only, never applied automatically</TerminalLabel>
-          {recommendation === null ? (
+          <div className="mb-1.5 flex items-center justify-between gap-2">
+            <TerminalLabel>Adaptive Mode Recommendation — read-only, never applied automatically</TerminalLabel>
+            <button
+              type="button"
+              onClick={toggleAdaptiveRecommendations}
+              disabled={togglingRecommendations}
+              className={`shrink-0 rounded-sm border px-2 py-0.5 text-[9px] uppercase tracking-wide disabled:opacity-50 ${
+                tradingModes.adaptiveRecommendationsEnabled
+                  ? "border-cmd-cyan/50 text-cmd-cyan hover:bg-cmd-cyan/10"
+                  : "border-cmd-border text-cmd-textDim hover:text-cmd-text"
+              }`}
+            >
+              {tradingModes.adaptiveRecommendationsEnabled ? "On" : "Off"}
+            </button>
+          </div>
+          {!tradingModes.adaptiveRecommendationsEnabled ? (
+            <div className="text-[9px]">
+              <p className="text-cmd-textDim">{recommendation?.reasoning ?? "Adaptive Recommendations are turned off."}</p>
+              {recommendation?.note && <p className="mt-1 text-cmd-amber">{recommendation.note}</p>}
+            </div>
+          ) : recommendation === null ? (
             <EmptyState>Loading…</EmptyState>
           ) : recommendation.recommendedMode ? (
             <div className="text-[9px]">

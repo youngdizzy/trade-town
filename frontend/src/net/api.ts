@@ -292,6 +292,11 @@ export const api = {
   getTradingStylePerformance: () => request<TradingStylePerformance[]>("/trading-modes/performance"),
   getTradingModeHealth: () => request<TradingModeHealthAssessment[]>("/trading-modes/health"),
   getAdaptiveModeRecommendation: () => request<AdaptiveModeRecommendation>("/trading-modes/adaptive-recommendation"),
+  setAdaptiveRecommendationsEnabled: (enabled: boolean) =>
+    request<TradingModeState>("/trading-modes/adaptive-recommendations-enabled", {
+      method: "POST",
+      body: JSON.stringify({ enabled }),
+    }),
   getRecoveryBriefings: () => request<RecoveryBriefing[]>("/trading-modes/recovery-briefings"),
   // Design Bible Chapter 70 Part 1 — Executive Board & CEO Intelligence
   // System. boardRoster has no WS-broadcast field (computed fresh per

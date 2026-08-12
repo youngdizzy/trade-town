@@ -16,6 +16,27 @@ per-account — that gap is real, pre-existing, and this chapter does not
 attempt to close it. See the Implementation Notes at the bottom for the
 complete honesty boundary.
 
+**Audit finding, fixed (this session):** `TradingModeState.adaptive
+RecommendationsEnabled` was a real, persisted CEO toggle field that
+nothing ever read — `GET /api/trading-modes/adaptive-recommendation`
+computed and returned a live recommendation from
+`compute_adaptive_mode_recommendation()` regardless of the flag's value,
+confirmed by a live reproduction (turning the toggle off and still
+receiving a live-computed recommendation). Fixed by gating that endpoint
+on the flag: when off, no regime reconciliation is computed at all —
+`app/trading_modes.py`'s new `adaptive_recommendations_disabled_reading()`
+returns an honest "Adaptive Recommendations are turned off" reading
+instead, matching this chapter's own CEO Controls claim below rather than
+suppressing an already-computed result. A new
+`POST /api/trading-modes/adaptive-recommendations-enabled` endpoint and
+`GameState.set_adaptive_recommendations_enabled()` give the CEO the real
+control the toggle always implied, wired to a real On/Off button in
+`TradingModesPanel.tsx`. This is a pure display preference — the
+underlying recommendation function has never written to any state, so
+unlike Trading Mode changes this control is not gated on Emergency Stop.
+Covered by `tests/test_trading_modes.py::TestAdaptiveRecommendationsDisabledReading`
+and `tests/test_adaptive_recommendations_toggle_integration.py`.
+
 ## Executive Summary
 
 Professional trading firms don't force every opportunity through one

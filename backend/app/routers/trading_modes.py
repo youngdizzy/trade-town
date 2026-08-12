@@ -25,7 +25,12 @@ from app.schemas import (
     TradingStylePerformance,
 )
 from app.state import game_state
-from app.trading_modes import compute_adaptive_mode_recommendation, compute_trading_mode_health, compute_trading_style_performance
+from app.trading_modes import (
+    adaptive_recommendations_disabled_reading,
+    compute_adaptive_mode_recommendation,
+    compute_trading_mode_health,
+    compute_trading_style_performance,
+)
 
 router = APIRouter(prefix="/api/trading-modes", tags=["trading-modes"])
 
@@ -86,8 +91,22 @@ async def get_trading_mode_health() -> list[TradingModeHealthAssessment]:
 @router.get("/adaptive-recommendation", response_model=AdaptiveModeRecommendation)
 async def get_adaptive_mode_recommendation() -> AdaptiveModeRecommendation:
     state = await game_state.snapshot()
+    if not state.trading_modes.adaptive_recommendations_enabled:
+        return adaptive_recommendations_disabled_reading()
     reconciliation = compute_regime_reconciliation(state.market_environment, state.market_intelligence)
     return compute_adaptive_mode_recommendation(reconciliation)
+
+
+class SetAdaptiveRecommendationsEnabledRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    enabled: bool
+
+
+@router.post("/adaptive-recommendations-enabled", response_model=TradingModeState)
+async def post_set_adaptive_recommendations_enabled(payload: SetAdaptiveRecommendationsEnabledRequest) -> TradingModeState:
+    state = await game_state.set_adaptive_recommendations_enabled(payload.enabled)
+    return state.trading_modes
 
 
 @router.get("/recovery-briefings", response_model=list[RecoveryBriefing])

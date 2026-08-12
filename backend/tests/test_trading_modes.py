@@ -11,6 +11,7 @@ from app.risk_engine import default_risk_limits
 from app.schemas import PaperPosition, PaperPortfolio, PaperTrade, RegimeReconciliation, TradingModeState, TradingStyle
 from app.trading_modes import (
     acknowledge_losing_streak,
+    adaptive_recommendations_disabled_reading,
     apply_circuit_breaker_tightening,
     assign_trading_style,
     build_circuit_breaker_tier_memory,
@@ -366,3 +367,13 @@ class TestAdaptiveModeRecommendation:
             _reconciliation(environment_regime="bull", agreement="aligned", posture="normal", quality_tier="good")
         )
         assert rec.recommended_mode is None
+
+
+class TestAdaptiveRecommendationsDisabledReading:
+    def test_returns_no_mode_and_says_turned_off(self) -> None:
+        rec = adaptive_recommendations_disabled_reading()
+        assert rec.recommended_mode is None
+        assert "off" in rec.reasoning.lower()
+        assert rec.confidence_pct == 0.0
+        assert rec.note is not None
+        assert "adaptive recommendations" in rec.note.lower()

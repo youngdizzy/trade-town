@@ -511,3 +511,18 @@ def compute_adaptive_mode_recommendation(reconciliation: RegimeReconciliation) -
         confidencePct=reconciliation.confidence_pct,
         generatedAt=now_iso,
     )
+
+
+def adaptive_recommendations_disabled_reading() -> AdaptiveModeRecommendation:
+    """The real reading returned when the CEO has turned
+    `adaptiveRecommendationsEnabled` off — no regime reconciliation is
+    computed at all in this case (matches this chapter's own CEO
+    Controls claim: "when off, no recommendation is computed"), never a
+    stale/cached recommendation from before it was disabled."""
+    return AdaptiveModeRecommendation(
+        recommendedMode=None,
+        reasoning="Adaptive Recommendations are turned off.",
+        confidencePct=0.0,
+        note="Turn Adaptive Recommendations back on in Trading Modes to see a live read.",
+        generatedAt=_now_iso(),
+    )
