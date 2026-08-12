@@ -852,6 +852,15 @@ development milestones, not semver releases.
 
 ### Fixed
 
+- **Chapter 69 — real test coverage for Accounts, Prop Firm Rule Engine, and Institutional Rule Engine**
+  (`backend/tests/test_accounts.py`, `backend/tests/test_prop_firm.py`, `backend/tests/test_rule_engine.py`,
+  all new): a Chapters 67–75 audit found `app/accounts.py`, `app/prop_firm.py`, and `app/rule_engine.py` — the
+  real, working Multi-Account & Fund Management backend — had zero test coverage anywhere in the repository,
+  unlike every other real module in this chapter range. Added 72 tests covering account creation/closure/
+  capital allocation against the real Treasury, Trailing Drawdown/Consistency/Scaling/Challenge Window/
+  Compliance Score computations checked against hand-computed expected values, and all eight `RuleType`
+  evaluator branches plus its disabled-rule-skip and corrective-action behavior. No production code changed.
+
 - **Chapter 75 — Adaptive Recommendations toggle now actually gates the recommendation**
   (`backend/app/trading_modes.py`, `backend/app/routers/trading_modes.py`, `backend/app/state.py`,
   `backend/tests/test_trading_modes.py`, `backend/tests/test_adaptive_recommendations_toggle_integration.py`

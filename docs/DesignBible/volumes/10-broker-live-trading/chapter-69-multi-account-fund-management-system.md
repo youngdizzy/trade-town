@@ -30,6 +30,20 @@ Implementation Notes section at its end is the place to check for
 exactly what was actually built, and the honest boundaries of what
 remains unbuilt.
 
+**Audit finding, fixed (this session):** a Chapters 67–75 audit found
+`app/accounts.py`, `app/prop_firm.py`, and `app/rule_engine.py` — the
+real, working backend for all three parts above — had zero test
+coverage anywhere in the repository (grep-confirmed before this fix),
+despite every other real module in this chapter range carrying its own
+test file. Fixed by adding `tests/test_accounts.py` (account creation/
+closure, capital allocation/deallocation against the real Treasury,
+Custom Rule CRUD), `tests/test_prop_firm.py` (Trailing Drawdown,
+Consistency, Scaling Milestones, Challenge Windows, and the Compliance
+Score, each checked against a hand-computed expected value), and
+`tests/test_rule_engine.py` (every one of the eight `RuleType`
+comparisons, plus the evaluator's own disabled-rule-skip and
+corrective-action behavior) — 72 new tests total, no behavior changed.
+
 ---
 
 ## Part 1 — Multi-Account & Fund Management System
