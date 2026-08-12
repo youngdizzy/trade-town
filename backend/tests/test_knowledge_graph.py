@@ -13,8 +13,14 @@ from app.schemas import (
     CaseStudy,
     CoachReport,
     DecisionVaultEntry,
+    EconomicConfidenceRead,
+    EconomicHealthScore,
+    EconomicIntelligenceReport,
+    EconomicIntelligenceState,
     ExecutiveReview,
     HallOfFameEntry,
+    MarketNarrativeEntry,
+    NewsRiskRead,
     ResearchItem,
     Strategy,
 )
@@ -160,6 +166,22 @@ def _case_study(cs_id: str, category: str = "overconfidence", title: str = "Test
     )
 
 
+def _economic_report(report_id: str, sim_day: int, headline: str = "Steady conditions") -> EconomicIntelligenceReport:
+    snapshot = EconomicIntelligenceState(
+        regime="bull",  # type: ignore[arg-type]
+        regimeLabel="Bull",
+        marketQualityTier="good",  # type: ignore[arg-type]
+        health=EconomicHealthScore(overall=70.0, tier="stable", factors=[], reasoning="test"),  # type: ignore[arg-type]
+        confidence=EconomicConfidenceRead(confidencePct=70.0, evidenceQuality="moderate", supportingEvidence=[], contradictingEvidence=[], alternativeOutcome="test"),  # type: ignore[arg-type]
+        correlationPairs=[],
+        categoryExposure=[],
+        newsRisk=NewsRiskRead(activeMarketNewsCount=0, riskLevel="low", detail="test"),  # type: ignore[arg-type]
+        updatedAt="2026-01-01T00:00:00+00:00",
+    )
+    narrative = MarketNarrativeEntry(id=f"narrative-{report_id}", headline=headline, body="test", evidence=[], simDay=sim_day, createdAt="2026-01-01T00:00:00+00:00")
+    return EconomicIntelligenceReport(id=report_id, simDay=sim_day, snapshot=snapshot, narrative=narrative, createdAt="2026-01-01T00:00:00+00:00")
+
+
 def _strategy(
     strategy_id: str,
     agent: str,
@@ -217,6 +239,7 @@ class TestBuildKnowledgeGraph:
             case_studies=[],
             strategies=[],
             black_swan_events=[],
+            economic_reports=[],
         )
         agent_node_ids = {n.id for n in graph.nodes if n.type == "agent"}
         assert agent_node_ids == {"agent-scout", "agent-cio"}
@@ -234,6 +257,7 @@ class TestBuildKnowledgeGraph:
             case_studies=[],
             strategies=[],
             black_swan_events=[],
+            economic_reports=[],
         )
         research_nodes = [n for n in graph.nodes if n.type == "research"]
         assert len(research_nodes) == 1
@@ -254,6 +278,7 @@ class TestBuildKnowledgeGraph:
             case_studies=[],
             strategies=[],
             black_swan_events=[],
+            economic_reports=[],
         )
         assert not any(n.type == "research" for n in graph.nodes)
 
@@ -276,6 +301,7 @@ class TestBuildKnowledgeGraph:
             case_studies=[],
             strategies=[],
             black_swan_events=[],
+            economic_reports=[],
         )
         builds_on = [e for e in graph.edges if e.relation == "builds_on"]
         assert len(builds_on) == 1
@@ -297,6 +323,7 @@ class TestBuildKnowledgeGraph:
             case_studies=[],
             strategies=[],
             black_swan_events=[],
+            economic_reports=[],
         )
         assert not any(e.relation == "builds_on" for e in graph.edges)
 
@@ -317,6 +344,7 @@ class TestBuildKnowledgeGraph:
             case_studies=[],
             strategies=[],
             black_swan_events=[],
+            economic_reports=[],
         )
         academy_nodes = [n for n in graph.nodes if n.type == "academy_project"]
         assert len(academy_nodes) == 1
@@ -349,6 +377,7 @@ class TestBuildKnowledgeGraph:
             case_studies=[],
             strategies=[],
             black_swan_events=[],
+            economic_reports=[],
         )
         branch_nodes = [n for n in graph.nodes if n.type == "branch"]
         assert len(branch_nodes) == 2
@@ -368,6 +397,7 @@ class TestBuildKnowledgeGraph:
             case_studies=[],
             strategies=[],
             black_swan_events=[],
+            economic_reports=[],
         )
         edge = next(e for e in graph.edges if e.relation == "achieved")
         assert edge.source == "agent-nova"
@@ -385,6 +415,7 @@ class TestBuildKnowledgeGraph:
             case_studies=[],
             strategies=[],
             black_swan_events=[],
+            economic_reports=[],
         )
         assert not any(e.relation == "achieved" for e in graph.edges)
         assert any(n.type == "hall_of_fame" for n in graph.nodes)
@@ -402,6 +433,7 @@ class TestBuildKnowledgeGraph:
             case_studies=[],
             strategies=[],
             black_swan_events=[],
+            economic_reports=[],
         )
         edge = next(e for e in graph.edges if e.relation == "ranked_top_agent")
         assert edge.source == "agent-nova"
@@ -421,6 +453,7 @@ class TestBuildKnowledgeGraph:
             case_studies=[],
             strategies=[],
             black_swan_events=[],
+            economic_reports=[],
         )
         featured_edges = [e for e in graph.edges if e.relation == "featured_in"]
         assert {e.source for e in featured_edges} == {"agent-nova", "agent-scout"}
@@ -438,6 +471,7 @@ class TestBuildKnowledgeGraph:
             case_studies=[],
             strategies=[],
             black_swan_events=[],
+            economic_reports=[],
         )
         assert graph.generated_at
 
@@ -457,6 +491,7 @@ class TestKnowledgeGraphChapter61Extension:
             case_studies=[_case_study("cs-1")],
             strategies=[],
             black_swan_events=[],
+            economic_reports=[],
         )
         cs_nodes = [n for n in graph.nodes if n.type == "case_study"]
         assert len(cs_nodes) == 1
@@ -475,6 +510,7 @@ class TestKnowledgeGraphChapter61Extension:
             case_studies=[],
             strategies=[],
             black_swan_events=[],
+            economic_reports=[],
         )
         trade_nodes = [n for n in graph.nodes if n.type == "trade"]
         assert len(trade_nodes) == 1
@@ -493,6 +529,7 @@ class TestKnowledgeGraphChapter61Extension:
             case_studies=[_case_study("cs-1")],
             strategies=[],
             black_swan_events=[],
+            economic_reports=[],
         )
         edge = next(e for e in graph.edges if e.relation == "documented_by")
         assert edge.source == "trade-v1"
@@ -513,6 +550,7 @@ class TestKnowledgeGraphChapter61Extension:
             case_studies=[],
             strategies=[],
             black_swan_events=[],
+            economic_reports=[],
         )
         assert not any(e.relation == "documented_by" for e in graph.edges)
 
@@ -529,6 +567,7 @@ class TestKnowledgeGraphChapter61Extension:
             case_studies=[],
             strategies=[],
             black_swan_events=[],
+            economic_reports=[],
         )
         edge = next(e for e in graph.edges if e.relation == "same_symbol")
         assert edge.source == "trade-v1"
@@ -547,6 +586,7 @@ class TestKnowledgeGraphChapter61Extension:
             case_studies=[],
             strategies=[],
             black_swan_events=[],
+            economic_reports=[],
         )
         assert not any(e.relation == "same_symbol" for e in graph.edges)
 
@@ -563,6 +603,7 @@ class TestKnowledgeGraphChapter61Extension:
             case_studies=[],
             strategies=[_strategy("s1", "nova")],
             black_swan_events=[],
+            economic_reports=[],
         )
         strategy_nodes = [n for n in graph.nodes if n.type == "strategy"]
         assert len(strategy_nodes) == 1
@@ -585,6 +626,7 @@ class TestKnowledgeGraphChapter61Extension:
             case_studies=[],
             strategies=[_strategy("s1", "nova", stage="idea")],
             black_swan_events=[],
+            economic_reports=[],
         )
         assert not any(n.type == "strategy" for n in graph.nodes)
 
@@ -603,6 +645,7 @@ class TestKnowledgeGraphChapter61Extension:
             case_studies=[],
             strategies=[_strategy("s1", "nova", category="stock")],
             black_swan_events=[],
+            economic_reports=[],
         )
         edge = next(e for e in graph.edges if e.relation == "same_category")
         assert edge.source == "strategy-s1"
@@ -623,5 +666,66 @@ class TestKnowledgeGraphChapter61Extension:
             case_studies=[],
             strategies=[_strategy("s1", "nova", category="stock")],
             black_swan_events=[],
+            economic_reports=[],
         )
         assert not any(e.relation == "same_category" for e in graph.edges)
+
+
+class TestEconomicEventNodes:
+    """Design Bible Chapter 74 Part 1's one real Knowledge Graph
+    addition: economic_event nodes, same-day-edged to trade/case_study
+    nodes — never a causal claim, see module docstring."""
+
+    def test_economic_report_becomes_an_economic_event_node(self) -> None:
+        graph = build_knowledge_graph(
+            agent_ids=(),
+            research=[],
+            academy_completed_projects=[],
+            agent_knowledge={},
+            executive_reviews=[],
+            coach_reports=[],
+            hall_of_fame=[],
+            decision_vault=[],
+            case_studies=[],
+            strategies=[],
+            black_swan_events=[],
+            economic_reports=[_economic_report("econ-1", sim_day=5)],
+        )
+        node = next(n for n in graph.nodes if n.type == "economic_event")
+        assert node.id == "econevent-econ-1"
+
+    def test_economic_event_links_to_case_study_filed_the_same_sim_day(self) -> None:
+        graph = build_knowledge_graph(
+            agent_ids=(),
+            research=[],
+            academy_completed_projects=[],
+            agent_knowledge={},
+            executive_reviews=[],
+            coach_reports=[],
+            hall_of_fame=[],
+            decision_vault=[],
+            case_studies=[_case_study("cs1")],  # simDay=1
+            strategies=[],
+            black_swan_events=[],
+            economic_reports=[_economic_report("econ-1", sim_day=1)],
+        )
+        edge = next(e for e in graph.edges if e.relation == "same_day")
+        assert edge.source == "econevent-econ-1"
+        assert edge.target == "casestudy-cs1"
+
+    def test_economic_event_on_a_different_sim_day_gets_no_same_day_edge(self) -> None:
+        graph = build_knowledge_graph(
+            agent_ids=(),
+            research=[],
+            academy_completed_projects=[],
+            agent_knowledge={},
+            executive_reviews=[],
+            coach_reports=[],
+            hall_of_fame=[],
+            decision_vault=[],
+            case_studies=[_case_study("cs1")],  # simDay=1
+            strategies=[],
+            black_swan_events=[],
+            economic_reports=[_economic_report("econ-2", sim_day=9)],
+        )
+        assert not any(e.relation == "same_day" for e in graph.edges)

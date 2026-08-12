@@ -880,6 +880,62 @@ Risk Assessment, Confidence Level, Required CEO Decisions) rather than
 recomputing any of them a second way. In the WS `"state"` broadcast as
 `boardReports`.
 
+### `GET /api/self-improvement/proposals`
+
+Design Bible Chapter 74 Part 1 — Continuous Learning & Self-Improvement
+System. Returns the real, permanent, capped
+(`MAX_SELF_IMPROVEMENT_PROPOSALS`, 40) history of `SelfImprovementProposal`
+records. Two real, evidence-gated generators feed this list — a
+recurring `CaseStudy` mistake pattern (`app/mistakes.py`), checked once
+per closed loss in `app/nexus.py`'s tick loop, and a Strategy Retirement
+Cluster (`app/strategy_lab.py`), checked at the one real place a
+retirement happens (`GameState.retire_strategy()` in `app/state.py`,
+never tick-driven). The other six of the brief's eight named categories
+have no real generator yet — see the Design Bible chapter's own
+Deferred Features section. In the WS `"state"` broadcast as
+`selfImprovementProposals`.
+
+### `POST /api/self-improvement/proposals/decide`
+
+CEO-manual approve/reject on a pending proposal — never
+automation-eligible, the same restraint `POST /api/constitution/decide`
+already holds itself to. Body: `{"proposalId": string, "approve":
+boolean, "ceoNote": string | null}`. Returns the full, updated proposal
+list. 400 if the proposal id doesn't exist or has already been decided.
+
+### `GET /api/self-improvement/executive-learning/{agentId}`
+
+The Executive Learning Summary — a real, on-demand aggregation of four
+already-real per-agent systems (`app/coach.py`'s latest `AgentScore`,
+`app/mentor.py`'s `ThinkingProfile`, `app/academy.py`'s
+`AgentKnowledgeState`, `app/foundational_mentors.py`'s per-track
+progress). Computed fresh per request, same convention
+`GET /api/board/roster` already established; no new number is computed,
+only composed.
+
+### `GET /api/self-improvement/evolution-reports`
+
+Design Bible Chapter 74 Part 2 — the Institutional Evolution Engine.
+Returns the real, permanent, capped (`MAX_EVOLUTION_REPORTS`, 20)
+history of `InstitutionalEvolutionReport` records, generated once per
+real sim-month in `app/nexus.py` right after the existing monthly
+Strategic Review Cycle. Each report composes — never recomputes — that
+same month's real `StrategicReview`/`ExecutiveReview`/`CoachReport` by
+id reference, plus the period's top 3 loss/win `CaseStudy` records and
+its own `CompanyEvolutionScore`. In the WS `"state"` broadcast as
+`evolutionReports`.
+
+### `GET /api/self-improvement/evolution-score/{window}`
+
+The Company Evolution Score for a given window — `monthly`, `quarterly`,
+or `yearly` (400 for anything else). A disclosed, unweighted mean of
+five real, period-scoped counts/deltas (Learning Volume, Proposal
+Execution, Knowledge Growth, Strategy Maturation, Governance
+Evolution) — deliberately disjoint from `CompanyHealth`'s 21 sub-scores
+and `CompanyScore`'s 7-metric mean, never a re-read of either (see the
+Design Bible chapter's own Ownership table for why that would be
+duplication).
+
 #### `executiveMeetingLog` / `departmentSelfEvaluations` (WS + archive state, no dedicated endpoint)
 
 v0.7 Feature 50 (Part 2/3) — the permanent record the intelligence

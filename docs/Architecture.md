@@ -7021,6 +7021,88 @@ slice adds no WS-broadcast field for it; Board Reports reads
 `socket.ts` → `EventBus` → `NexusManager` → `gameStore` pipeline the
 same way `executiveReviews` already is.
 
+### Continuous Learning & Self-Improvement System (CLSIS) — Design Bible Chapter 74
+
+Research before this pass found roughly 60-70% of the source brief
+already real, spread across Chapters 61/62/63 and `app/mistakes.py`/
+`successes.py`/`knowledge.py`/`strategy_lab.py`/`coach.py`/`mentor.py`/
+`academy.py` — this chapter's real job was naming every place it would
+duplicate an already-real system and building only the pieces that
+were genuinely missing, not rebuilding a "Post-Trade Review Engine" or
+"Strategy Evolution" tracker that already exist under different names.
+
+**Part 1 (CLSIS) — what's real:** `app/self_improvement.py` (new), two
+evidence-gated Self-Improvement Proposal generators (only 2 of the
+brief's 8 named categories have a real trigger — the other six are
+named on the `SelfImprovementCategory` schema but unbuilt, same honesty
+posture Chapter 68 held for its own not-yet-real broker categories): a
+**Recurring Mistake Pattern** (`maybe_propose_recurring_mistake()`,
+checked once per closed loss in `app/nexus.py`'s tick loop, right after
+that trade's own `CaseStudy` records are filed — fires a `"risk_rule"`
+proposal when the same category recurs ≥3 times within the last 15
+loss-side case studies, citing the specific `CaseStudy` ids as
+evidence, edge-triggered off the newest citing id so a resolved
+proposal doesn't block a fresh cluster later) and a **Strategy
+Retirement Cluster** (`maybe_propose_retirement_cluster()`, checked at
+the one real place a retirement happens — `GameState.retire_strategy()`
+in `app/state.py`, never tick-driven — fires a `"research_workflow"`
+proposal when ≥2 strategies retire to the Failed Archive within the
+last 5 retirements). Every proposal is CEO-manual approve/reject only
+(`decide_self_improvement_proposal()`), never automation-eligible, the
+same restraint `app/constitution.py`'s Amendment flow already holds
+itself to. The Academy Integration hook is deliberately thin: no lesson
+content is generated (confirmed, independently, three times over that
+no LLM/content-generation capability exists anywhere in this codebase)
+— the one real hook is a small `AgentKnowledgeState.points` nudge
+(`ACADEMY_CASE_STUDY_NUDGE = 1.0`) to each supporting agent when a
+`CaseStudy`/`SuccessStudy` is filed. The Executive Learning Summary
+(`compute_executive_learning_summary()`) is pure composition, zero new
+computation — joins `CoachReport.agentRankings`, `ThinkingProfile`,
+`AgentKnowledgeState`, and `FoundationalMentorProgress` into one view,
+since no single screen joined these four already-real systems before.
+The Knowledge Graph gained one real node type, `economic_event`
+(`app/knowledge_graph.py`, sourced from Chapter 71's
+`EconomicIntelligenceReport`), linked via a new `same_day` edge to any
+`trade`/`case_study` node recorded the same real `simDay` — a real,
+checkable temporal proximity, never a causal claim, the exact
+honestly-buildable gap Chapter 61's own Implementation Notes had named.
+"Indicator" nodes and the other six proposal categories are explicit,
+documented Deferred Features — no real per-trade indicator linkage or
+evidence-gated trigger exists for them yet.
+
+**Part 2 (Institutional Evolution Engine) — what's real:**
+`app/evolution.py` (new). `generate_institutional_evolution_report()`
+runs on the existing monthly cadence in `app/nexus.py`, right after the
+Strategic Review Cycle, composing — never recomputing — that same
+tick's freshly-generated `StrategicReview`/`ExecutiveReview`/
+`CoachReport` by id reference, plus the period's top 3 loss/win
+`CaseStudy` records and the period's own `CompanyEvolutionScore`. The
+Score itself (`compute_company_evolution_score()`) is a disclosed,
+unweighted mean of five real, period-scoped counts/deltas — Learning
+Volume (case studies filed), Proposal Execution (approved+implemented
+÷ generated), Knowledge Growth (real Foundational Mentor graduations,
+the one period-scoped signal that schema carries), Strategy Maturation
+(Hall of Fame minus Failed Archive entries, floored at 0), Governance
+Evolution (a rare, binary "was an amendment ratified this period"
+signal) — deliberately disjoint from `CompanyHealth`'s 21 sub-scores
+and `CompanyScore`'s 7-metric mean, confirmed by construction never to
+re-read either. Computed over monthly/quarterly/yearly windows on
+request. Automation Maturity and Decision Speed tracking (two of the
+brief's eight "Long-Term Company Evolution" metrics) are explicit,
+documented Deferred Features — no telemetry exists anywhere in this
+codebase to measure either honestly.
+
+`GET/POST /api/self-improvement/*` (`app/routers/self_improvement.py`),
+`selfImprovementProposals`/`evolutionReports` in the WS `"state"`
+broadcast, both in the `knowledge_archive` save module alongside
+`board_reports`/`executive_reviews`. Two new `AuditEventCategory`
+values (`self_improvement_proposal`, `evolution_report`) wired into
+`app/audit_log.py`'s title-matching. 29 new tests
+(`tests/test_self_improvement.py`, `tests/test_evolution.py`, plus 3
+new `tests/test_knowledge_graph.py` cases for the `economic_event`
+node/`same_day` edge). Backend only this pass — no new endpoint or WS
+field yet has a dedicated frontend panel.
+
 ### Compliance, Audit & Governance System (CAGS) — Design Bible Chapter 73
 
 A real, read-only audit synthesis layer, backend only, with **no new

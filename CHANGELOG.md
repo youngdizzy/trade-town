@@ -7,6 +7,49 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Chapter 74 — Continuous Learning & Self-Improvement System (CLSIS)
+  + Institutional Evolution Engine** (`app/self_improvement.py` new,
+  `app/evolution.py` new, `app/knowledge_graph.py`, `app/nexus.py`,
+  `app/state.py`, `app/routers/self_improvement.py` new,
+  `app/audit_log.py`, `app/schemas.py`, `app/ws_manager.py`,
+  `app/save_modules.py`, `app/main.py`): claims the chapter number
+  vacated by Trading Modes' earlier 74→75 renumber. Research found
+  ~60-70% of the source brief already real across Chapters 61/62/63
+  and mistakes.py/successes.py/knowledge.py/strategy_lab.py/coach.py/
+  mentor.py/academy.py — none of it is rebuilt here. **Part 1
+  (CLSIS):** two evidence-gated Self-Improvement Proposal generators
+  (Recurring Mistake Pattern → `risk_rule`, checked once per closed
+  loss; Strategy Retirement Cluster → `research_workflow`, checked at
+  the one real retirement action, never tick-driven) out of the
+  brief's 8 named categories — the other 6 are named but unbuilt, per
+  the same honesty posture Chapter 68 held for its own broker
+  categories. CEO-manual approve/reject only, never
+  automation-eligible. A thin, honest Academy Integration hook (a
+  small `AgentKnowledgeState.points` nudge on any filed CaseStudy/
+  SuccessStudy — no lesson content generated, since no LLM exists
+  anywhere in this codebase). An Executive Learning Summary (pure
+  aggregation of `CoachReport`/`ThinkingProfile`/`AgentKnowledgeState`/
+  Foundational Mentor progress, zero new computation). A new
+  `economic_event` Knowledge Graph node type (Chapter 61 extension,
+  sourced from Chapter 71's `EconomicIntelligenceReport`) with a
+  `same_day` edge to same-`simDay` trade/case_study nodes — a real,
+  checkable temporal proximity, never a causal claim. **Part 2
+  (Institutional Evolution Engine):** a monthly Institutional
+  Evolution Report composing — never recomputing — that month's real
+  `StrategicReview`/`ExecutiveReview`/`CoachReport`, plus a new
+  Company Evolution Score built as a disclosed, unweighted 5-factor
+  rate-of-*change* metric (Learning Volume, Proposal Execution,
+  Knowledge Growth, Strategy Maturation, Governance Evolution),
+  deliberately disjoint from `CompanyHealth`'s 21 sub-scores and
+  `CompanyScore`'s 7-metric mean — never a third copy of either.
+  Academy auto-lesson-generation, "indicator" graph nodes, 6 of 8
+  proposal categories, and Automation Maturity/Decision Speed
+  tracking are explicit, documented Deferred Features. 29 new tests
+  (`test_self_improvement.py`, `test_evolution.py`, plus 3 new
+  `test_knowledge_graph.py` cases); full suite 1360/1360 passing;
+  `mypy app/`/`ruff check app/` clean. `GET/POST /api/self-improvement/*`.
+  Backend only this pass — no dedicated frontend panel yet.
+
 - **Chapter 68 — Charles Schwab V1.0 target architecture, documentation
   only** (`docs/DesignBible/volumes/10-broker-live-trading/
   chapter-68-institutional-broker-management-system.md`): expanded the
