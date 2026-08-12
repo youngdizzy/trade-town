@@ -16,6 +16,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.regime_reconciliation import compute_regime_reconciliation
 from app.schemas import (
     AdaptiveModeRecommendation,
+    BehavioralCircuitBreakerRead,
     DailyCircuitBreakerRead,
     LosingStreakRead,
     RecoveryBriefing,
@@ -74,6 +75,27 @@ async def post_acknowledge_losing_streak() -> LosingStreakRead:
     if error is not None:
         raise HTTPException(status_code=400, detail=error)
     return state.losing_streak
+
+
+@router.get("/behavioral-circuit-breaker", response_model=BehavioralCircuitBreakerRead)
+async def get_behavioral_circuit_breaker() -> BehavioralCircuitBreakerRead:
+    state = await game_state.snapshot()
+    return state.behavioral_circuit_breaker
+
+
+class SetBehavioralThresholdsRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    cooldown_minutes: int = Field(alias="cooldownMinutes")
+    size_increase_threshold_pct: float = Field(alias="sizeIncreaseThresholdPct")
+
+
+@router.post("/behavioral-circuit-breaker/thresholds", response_model=TradingModeState)
+async def post_set_behavioral_thresholds(payload: SetBehavioralThresholdsRequest) -> TradingModeState:
+    state, error = await game_state.set_behavioral_thresholds(cooldown_minutes=payload.cooldown_minutes, size_increase_threshold_pct=payload.size_increase_threshold_pct)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    return state.trading_modes
 
 
 @router.get("/performance", response_model=list[TradingStylePerformance])

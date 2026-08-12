@@ -159,6 +159,9 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         "tradingModes": state.trading_modes.model_dump(by_alias=True),
         "dailyCircuitBreaker": state.daily_circuit_breaker.model_dump(by_alias=True),
         "losingStreak": state.losing_streak.model_dump(by_alias=True),
+        # Behavioral Circuit Breaker (app/behavioral_risk.py) — recomputed
+        # every tick like dailyCircuitBreaker/losingStreak above.
+        "behavioralCircuitBreaker": state.behavioral_circuit_breaker.model_dump(by_alias=True),
         "recoveryBriefings": [r.model_dump(by_alias=True) for r in state.recovery_briefings],
         # Design Bible Chapter 73.5 — travelMode is real CEO-mutated
         # state; travelModeBriefings is a permanent, capped

@@ -4447,6 +4447,12 @@ class TradingModeState(CamelModel):
     losing_streak_pause_count: int = Field(default=3, alias="losingStreakPauseCount")
     losing_streak_suspend_count: int = Field(default=5, alias="losingStreakSuspendCount")
     losing_streak_acknowledged: bool = Field(default=False, alias="losingStreakAcknowledged")
+    # Behavioral Circuit Breaker (app/behavioral_risk.py) — the CEO's own
+    # real, editable thresholds for the revenge-trading detector's timing
+    # and self-relative sizing signals. Set via
+    # POST /api/trading-modes/behavioral-circuit-breaker/thresholds.
+    behavioral_cooldown_minutes: int = Field(default=60, alias="behavioralCooldownMinutes")
+    behavioral_size_increase_threshold_pct: float = Field(default=50.0, alias="behavioralSizeIncreaseThresholdPct")
 
 
 DailyCircuitBreakerTier = Literal["none", "tier1", "tier2", "tier3", "tier4"]
@@ -4475,6 +4481,38 @@ class LosingStreakRead(CamelModel):
     pause_active: bool = Field(alias="pauseActive")
     pause_threshold: int = Field(alias="pauseThreshold")
     suspend_threshold: int = Field(alias="suspendThreshold")
+
+
+# Behavioral Circuit Breaker — the revenge-trading detector
+# (app/behavioral_risk.py), the tenth real Gatekeeper check
+# (app/gatekeeper.py::_behavioral_check). `warning` is informational only
+# and never blocks; only `triggered` fails the Gatekeeper check for the
+# specific proposal being resolved. Ambient (no-candidate) reads can
+# never reach `triggered` — see app/behavioral_risk.py's module
+# docstring for why.
+BehavioralCircuitBreakerStatus = Literal["clear", "warning", "triggered"]
+
+
+class BehavioralCircuitBreakerRead(CamelModel):
+    """Real, disclosed evidence for a single behavioral-risk read — either
+    the per-proposal Gatekeeper check (a real `candidate` proposal was
+    evaluated) or the ambient tick-level dashboard read (no candidate).
+    `sameInstrument`/`sizeIncreasePct` are None whenever no real candidate
+    was evaluated, or no candidate-independent baseline/comparison was
+    possible — never a fabricated value standing in for "not evaluated."
+    """
+
+    status: BehavioralCircuitBreakerStatus
+    reasons: list[str] = Field(default_factory=list)
+    previous_loss_symbol: str | None = Field(default=None, alias="previousLossSymbol")
+    previous_loss_pnl: float | None = Field(default=None, alias="previousLossPnl")
+    minutes_since_loss: int | None = Field(default=None, alias="minutesSinceLoss")
+    cooldown_minutes: int = Field(alias="cooldownMinutes")
+    same_instrument: bool | None = Field(default=None, alias="sameInstrument")
+    size_increase_pct: float | None = Field(default=None, alias="sizeIncreasePct")
+    consecutive_losses: int = Field(alias="consecutiveLosses")
+    repeated_rapid_reentry_count: int = Field(alias="repeatedRapidReentryCount")
+    computed_at: str = Field(alias="computedAt")
 
 
 class AdaptiveModeRecommendation(CamelModel):
@@ -6122,6 +6160,13 @@ class GameSaveState(CamelModel):
         alias="dailyCircuitBreaker"
     )
     losing_streak: LosingStreakRead = Field(alias="losingStreak")
+    # Behavioral Circuit Breaker (app/behavioral_risk.py) — recomputed
+    # fresh every tick exactly like daily_circuit_breaker/losing_streak
+    # above, never a second drifting copy. This ambient read is capped at
+    # "warning" (no candidate proposal to corroborate against); the real
+    # "triggered" enforcement happens per-proposal inside the Gatekeeper
+    # (app/gatekeeper.py::_behavioral_check), not here.
+    behavioral_circuit_breaker: BehavioralCircuitBreakerRead = Field(alias="behavioralCircuitBreaker")
     recovery_briefings: list[RecoveryBriefing] = Field(
         default_factory=list, alias="recoveryBriefings"
     )

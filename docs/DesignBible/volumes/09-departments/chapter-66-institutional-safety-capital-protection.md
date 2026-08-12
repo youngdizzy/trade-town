@@ -269,3 +269,132 @@ a CEO-facing backup restore path. Broker/API failsafe monitoring is
 explicitly **not** a buildable slice — there is no real broker or data
 feed with a failure mode to monitor, and fabricating one would violate
 this project's own no-fabrication discipline.
+
+## Addendum — Behavioral Circuit Breaker (Trading Psychology & Discipline, Piece A)
+
+**Status:** Real, implemented as the Gatekeeper's tenth check
+(`app/gatekeeper.py::_behavioral_check`, `app/behavioral_risk.py`).
+
+**Origin.** The CEO shared a trading-psychology video's five principles
+(consistency over strategy-switching, losses as normal distribution
+variance, no revenge trading, emotions-are-normal-but-emotional-action-
+is-the-risk, the plan as a capital-protection constraint system) and
+asked for the useful principles to be extracted, validated against
+TradeTown's existing risk architecture, and implemented only where they
+close a real gap — never taken as guaranteed financial truth. Research
+found this codebase's own `app/constitution.py` (Article V) had already
+named the exact gap this piece closes: *"this codebase has no real
+signal for literally re-entering a position out of anger after a loss...
+building one would mean inventing behavior-classification infrastructure
+this session's whole discipline exists to avoid."* This addendum closes
+that named gap without inventing anything unverifiable.
+
+**The honesty boundary — this system detects observable behavioral
+risk. It does not claim to detect human emotion.** Every signal is
+computed purely from real, already-persisted trade data (symbol,
+quantity, price, timestamps, realized P&L) — never an AI judgment of
+"is this angry trading."
+
+**The five real signals** (`compute_behavioral_check()`):
+
+1. **Recent loss** — the most recently closed trade in the company's
+   real `trade_history` has `pnl < 0`.
+2. **Rapid re-entry** — the candidate proposal is being evaluated within
+   `behavioral_cooldown_minutes` (CEO-configurable, default 60) of that
+   loss closing.
+3. **Same/similar instrument** — the candidate's symbol matches the
+   loss's symbol.
+4. **Loss-driven size increase** — the candidate's dollar size
+   (`quantity × price`) exceeds this account's own trailing average
+   trade size (the last `SIZE_BASELINE_TRADES` trades, excluding the
+   loss itself) by more than `behavioral_size_increase_threshold_pct`
+   (CEO-configurable, default 50%). A self-relative baseline, never a
+   hard-coded dollar figure — a proposal larger than recent normal but
+   within the CEO's own configured risk limits, on a different
+   instrument, well outside the cooldown window, is a **legitimate**
+   sizing choice, not a behavioral signal.
+5. **Repeated rapid re-entry** — a count of how many times signals 1+2
+   have already co-occurred across the trailing trade history (reusing
+   the same real timestamps every other signal here reads) — real
+   corroborating evidence of a pattern, not a new data source.
+
+**Corroboration requirement.** Directly answers the CEO's own review:
+*"Do NOT define revenge trading as simply 'loss followed by another
+trade.' A legitimate setup immediately following a loss must remain
+possible."*
+
+- **`clear`** — no recent loss, enough time has passed, or (loss +
+  rapid re-entry) with no corroborating signal.
+- **`warning`** — recent loss + rapid re-entry, but no same-instrument
+  or loss-driven size-increase signal — informational only, never
+  blocks.
+- **`triggered`** — recent loss + rapid re-entry + at least one
+  corroborating signal — fails this one Gatekeeper check for this one
+  proposal.
+
+Timing alone can never reach `triggered`. A differently-symboled,
+normally-sized (or larger-but-limit-compliant) trade moments after a
+loss is explicitly allowed through untouched — proven by
+`tests/test_behavioral_risk.py`'s and `tests/test_gatekeeper.py`'s
+false-positive matrix, not just asserted.
+
+**Reuses the existing Gatekeeper — no second, parallel enforcement
+path.** `_behavioral_check()` is the tenth entry in
+`evaluate_gatekeeper()`'s existing pure-AND `checks` list (composed via
+`approved = all(c.passed for c in checks)`, the same structural
+guarantee every other check already has). A `triggered` read fails only
+this proposal's behavioral check — every other check still runs
+independently, and a rejection is automatically recorded as a real,
+auditable `GatekeeperRejection` (no new plumbing needed). Because it
+rides the Gatekeeper, it inherits the Gatekeeper's own non-bypassable
+guarantee: no Trading Mode (Day/Swing/Hybrid) or Operating Mode
+(Learning/Assisted/Executive) can skip it — verified directly by
+`tests/test_behavioral_circuit_breaker_integration.py`, which resolves
+the same revenge-shaped proposal through both real call sites
+(`app/nexus.py`'s `_apply_operating_mode` auto-resolution and a real
+CEO click via `GameState.submit_ceo_decision`) and confirms an identical
+rejection either way.
+
+**Ambient dashboard read.** The same signal logic runs once per tick
+with no candidate proposal (`candidate=None`), reporting whether the
+account is currently inside a post-loss cooldown window — capped at
+`warning`, since the two corroborating signals need a real candidate to
+compare against and can never reach `triggered` without one. Persisted
+on `GameSaveState.behavioral_circuit_breaker`, broadcast over the WS
+tick, and shown in the Command Center's TRADINGMODES tab next to Losing
+Streak Protection — the same convention `daily_circuit_breaker`/
+`losing_streak` already established, no new dashboard surface.
+
+**Account-Awareness.** The CEO's review raised a real concern: a loss in
+one Account should not silently influence unrelated Accounts unless a
+company-wide rule says so. Checked against Chapter 69 Part 1's own
+confirmed finding: live trade execution today only ever touches the
+single primary company `PaperPortfolio` — no secondary Account
+(IRA/Business/Prop Firm/Family) has live-execution routing to cross-
+contaminate. This check reads that one real portfolio by construction,
+not by new design choice, and adds no new Account-scoping plumbing. If
+per-Account live execution is ever built, this check must be re-scoped
+to run per-Account — tracked as a V2 follow-up, not assumed away.
+
+**Deferred (named, not silently skipped):** repeated-rejected-setups-
+retried, repeated trading-mode-switching, and "recover the exact dollar
+amount lost" — each needs either data this codebase doesn't capture
+per-proposal today or materially more design work.
+
+**What remains `NOT_TRACKABLE_YET`:** nothing here claims to solve Plan
+Adherence (stop-loss/take-profit/entry-condition/exit-condition/
+confluence tracking) — that honest boundary stays entirely with the
+separately-scoped Process Adherence Score piece, not touched here.
+
+**Verified:** `tests/test_behavioral_risk.py` (19 pure-function cases —
+the full false-positive/true-positive matrix, boundary conditions,
+degenerate inputs, ambient-mode-never-triggers), `tests/test_gatekeeper.py`
+(extended — the tenth check composes correctly into the pure-AND, a
+triggered read fails the whole verdict while every other check still
+passes independently), `tests/test_behavioral_circuit_breaker_integration.py`
+(3 real `GameState`-level cases proving both real call sites end-to-end,
+using a loss seeded via `app/portfolio.py`'s own real
+`open_position()`/`close_position()`, not a fabricated record), full
+backend suite (1496/1496 passing, zero regressions to Daily Circuit
+Breaker/Emergency Stop/Losing Streak/the other nine Gatekeeper checks),
+`mypy`/`ruff` clean, `tsc -b --noEmit`/`npm run lint` clean.

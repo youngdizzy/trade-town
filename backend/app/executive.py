@@ -358,6 +358,8 @@ def resolve_proposal(
     resolved_by: Literal["ceo", "auto", "delegated"] = "ceo",
     weighted_recommendation: WeightedExecutiveRecommendation | None = None,
     min_confidence_override: float | None = None,
+    behavioral_cooldown_minutes: int | None = None,
+    behavioral_size_increase_threshold_pct: float | None = None,
 ) -> tuple[PaperPortfolio, TradeDecision, CeoDecisionRecord]:
     """Applies the CEO's real decision: buy opens a real long, sell opens
     a real short, wait does nothing — subject to the Trade Gatekeeper's
@@ -383,7 +385,13 @@ def resolve_proposal(
     bypass any of them. This function never computes it itself (the
     caller already has the department opinions, accuracy scores, and
     active Weight Profile in scope — see app/state.py's
-    submit_ceo_decision and app/nexus.py's _apply_operating_mode)."""
+    submit_ceo_decision and app/nexus.py's _apply_operating_mode).
+
+    `behavioral_cooldown_minutes`/`behavioral_size_increase_threshold_pct`
+    — the CEO's own real Behavioral Circuit Breaker thresholds
+    (TradingModeState), passed straight through to evaluate_gatekeeper()'s
+    tenth check. None (the default) falls back to that function's own
+    disclosed defaults, mirroring min_confidence_override's convention."""
     decision_id = f"decision-{proposal.id}"
     order_id: str | None = None
     price = current_price if current_price and current_price > 0 else proposal.price
@@ -411,7 +419,18 @@ def resolve_proposal(
             ceo_choice = "wait"
         else:
             gatekeeper_verdict = evaluate_gatekeeper(
-                proposal, ceo_choice, debate, portfolio, risk_limits, risk_warnings or [], market_intelligence, weighted_recommendation, min_confidence_override
+                proposal,
+                ceo_choice,
+                debate,
+                portfolio,
+                risk_limits,
+                risk_warnings or [],
+                market_intelligence,
+                now_sim_minutes,
+                weighted_recommendation,
+                min_confidence_override,
+                behavioral_cooldown_minutes,
+                behavioral_size_increase_threshold_pct,
             )
             if gatekeeper_verdict.approved:
                 position_id = f"pos-{proposal.id}"

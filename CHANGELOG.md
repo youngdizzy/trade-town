@@ -7,6 +7,37 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Behavioral Circuit Breaker — a real revenge-trading detector, the Gatekeeper's tenth check**
+  (`backend/app/behavioral_risk.py` new, `backend/app/gatekeeper.py`, `backend/app/executive.py`,
+  `backend/app/nexus.py`, `backend/app/state.py`, `backend/app/routers/trading_modes.py`,
+  `backend/app/ws_manager.py`, `backend/app/save_modules.py`, `backend/app/audit_log.py`,
+  `backend/app/schemas.py`, `backend/tests/test_behavioral_risk.py` new,
+  `backend/tests/test_behavioral_circuit_breaker_integration.py` new, `backend/tests/test_gatekeeper.py`,
+  `frontend/src/types.ts`, `frontend/src/net/socket.ts`, `frontend/src/game/systems/{NexusManager,EventBus}.ts`,
+  `frontend/src/state/gameStore.ts`, `frontend/src/ui/components/CommandCenter/panels/TradingModesPanel.tsx`,
+  `docs/DesignBible/volumes/09-departments/chapter-66-institutional-safety-capital-protection.md`): the first
+  piece of a CEO-requested trading-psychology roadmap (five video-transcript principles — consistency over
+  strategy-switching, losses as normal distribution variance, no revenge trading, emotions-are-normal-but-
+  emotional-action-is-the-risk, the plan as a capital-protection constraint system), validated against this
+  codebase's own real architecture rather than taken as guaranteed financial truth. Closes a gap
+  `app/constitution.py`'s Article V had already named as deliberately unbuilt: *"this codebase has no real
+  signal for literally re-entering a position out of anger after a loss."* Five deterministic signals (recent
+  loss, rapid re-entry, same-instrument, a self-relative loss-driven size increase, repeated rapid re-entry),
+  all read from real trade data — never a fabricated emotion read. A CEO review corrected the first design (a
+  blanket tick-level gate) because it couldn't distinguish a genuine same-instrument oversized re-entry from a
+  legitimate, differently-sized trade moments later; the shipped design is a per-proposal Gatekeeper check
+  instead, requiring corroboration (timing alone caps at a non-blocking `warning`, never `triggered`) so a
+  legitimate follow-up trade is never hard-blocked purely from elapsed time. Reuses the existing Gatekeeper's
+  pure-AND check list — no second, parallel enforcement path — so it inherits the Gatekeeper's own
+  non-bypassable guarantee across every Trading Mode and Operating Mode, verified end-to-end through both real
+  resolution paths (`app/nexus.py`'s auto-resolution and a real CEO click) in a new integration test that
+  seeds its loss via `app/portfolio.py`'s own real `open_position()`/`close_position()`. Two new CEO-editable
+  thresholds (`behavioralCooldownMinutes`, `behavioralSizeIncreaseThresholdPct`) on `TradingModeState`; a new
+  Command Center section next to Losing Streak Protection; `GOVERNANCE_LAYERS` gains a disclosed order-11
+  entry. This system detects observable behavioral risk. It does not claim to detect human emotion — and it
+  does not claim to solve Plan Adherence (stop-loss/take-profit/confluence tracking stays a separate,
+  honestly-scoped future piece).
+
 - **Chapter 74/74.5 — a real frontend panel for CLSIS, the Institutional Evolution Engine, and the CEO Vision Board**
   (`frontend/src/ui/components/CommandCenter/panels/EvolutionPanel.tsx` new, `frontend/tests/evolutionPanel.spec.ts`
   new, `frontend/src/types.ts`, `frontend/src/net/api.ts`, `frontend/src/net/socket.ts`,

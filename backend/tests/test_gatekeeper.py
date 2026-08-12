@@ -15,6 +15,7 @@ from app.gatekeeper import (
     MAX_CORRELATED_POSITIONS,
     MIN_CONFIDENCE,
     _agreement_check,
+    _behavioral_check,
     _confidence_check,
     _correlation_check,
     _debate_check,
@@ -34,6 +35,7 @@ from app.schemas import (
     DecisionConfidence,
     GatekeeperRejection,
     PaperPosition,
+    PaperTrade,
     RiskLimits,
     RiskWarning,
     TradeProposal,
@@ -102,6 +104,29 @@ def _debate(final_recommendation: str = "buy") -> Debate:
         finalRecommendation=final_recommendation,  # type: ignore[arg-type]
         finalSummary="test summary",
         createdAt=_now_iso(),
+    )
+
+
+def _loss_trade(*, symbol: str = "NEXA", quantity: float = 10.0, entry_price: float = 100.0, closed_sim_minutes: int = 0, opened_sim_minutes: int = 0) -> PaperTrade:
+    """A real closed losing trade — app/behavioral_risk.py's own real
+    signal input (never a fabricated behavioral read)."""
+    return PaperTrade(
+        id=f"trade-{symbol}-{closed_sim_minutes}",
+        symbol=symbol,
+        side="buy",
+        quantity=quantity,
+        entryPrice=entry_price,
+        exitPrice=entry_price * 0.9,
+        pnl=-100.0,
+        pnlPct=-10.0,
+        durationMinutes=closed_sim_minutes - opened_sim_minutes,
+        confidence=80.0,
+        reason="test loss",
+        marketConditions="test conditions",
+        openedAt=_now_iso(),
+        closedAt=_now_iso(),
+        openedSimMinutes=opened_sim_minutes,
+        closedSimMinutes=closed_sim_minutes,
     )
 
 
@@ -208,24 +233,76 @@ class TestRiskWarningCheck:
         assert _risk_warning_check(proposal, [warning]).passed is True
 
 
+class TestBehavioralCheck:
+    """app/behavioral_risk.py's real revenge-trading signals, wired as the
+    Gatekeeper's tenth check. The CEO's own review required this
+    corroboration rule proven directly: "a legitimate setup immediately
+    following a loss must remain possible" — timing alone must never
+    fail this check, only timing plus a real corroborating signal
+    (same-instrument or loss-driven size increase)."""
+
+    def test_case_a_true_revenge_behavior_fails(self) -> None:
+        proposal = _proposal(symbol="NEXA", confidence_score=90.0)
+        loss = _loss_trade(symbol="NEXA", quantity=10.0, entry_price=100.0, closed_sim_minutes=100)
+        check = _behavioral_check(proposal, [loss], now_sim_minutes=110, cooldown_minutes=60, size_increase_threshold_pct=50.0)
+        assert check.passed is False
+
+    def test_case_b_legitimate_follow_up_never_fails(self) -> None:
+        """Different instrument, normal size, even though rapid."""
+        proposal = _proposal(symbol="DIFFERENT", confidence_score=90.0)
+        loss = _loss_trade(symbol="NEXA", quantity=10.0, entry_price=100.0, closed_sim_minutes=100)
+        check = _behavioral_check(proposal, [loss], now_sim_minutes=110, cooldown_minutes=60, size_increase_threshold_pct=50.0)
+        assert check.passed is True
+
+    def test_enough_time_passed_never_fails(self) -> None:
+        proposal = _proposal(symbol="NEXA", confidence_score=90.0)
+        loss = _loss_trade(symbol="NEXA", quantity=10.0, entry_price=100.0, closed_sim_minutes=0)
+        check = _behavioral_check(proposal, [loss], now_sim_minutes=60, cooldown_minutes=60, size_increase_threshold_pct=50.0)
+        assert check.passed is True
+
+    def test_no_previous_trade_never_fails(self) -> None:
+        proposal = _proposal(symbol="NEXA", confidence_score=90.0)
+        check = _behavioral_check(proposal, [], now_sim_minutes=0, cooldown_minutes=60, size_increase_threshold_pct=50.0)
+        assert check.passed is True
+
+    def test_previous_win_never_fails(self) -> None:
+        proposal = _proposal(symbol="NEXA", confidence_score=90.0)
+        win = _loss_trade(symbol="NEXA", closed_sim_minutes=0).model_copy(update={"pnl": 100.0})
+        check = _behavioral_check(proposal, [win], now_sim_minutes=10, cooldown_minutes=60, size_increase_threshold_pct=50.0)
+        assert check.passed is True
+
+    def test_a_triggered_read_fails_the_whole_gatekeeper_verdict(self) -> None:
+        proposal = _proposal(symbol="NEXA", confidence_score=90.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}))
+        loss = _loss_trade(symbol="NEXA", closed_sim_minutes=100)
+        portfolio = default_portfolio().model_copy(update={"trade_history": [loss]})
+        verdict = evaluate_gatekeeper(proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], default_market_intelligence_state(), now_sim_minutes=110)
+        assert verdict.approved is False
+        assert any(c.id == "behavioral" and not c.passed for c in verdict.checks)
+        # Every other real check still ran and passed independently —
+        # a triggered behavioral read fails only its own check.
+        assert all(c.passed for c in verdict.checks if c.id != "behavioral")
+
+
 class TestEvaluateGatekeeper:
     def test_approves_when_every_check_passes(self) -> None:
         proposal = _proposal(confidence_score=90.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}))
         portfolio = default_portfolio()
-        verdict = evaluate_gatekeeper(proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], default_market_intelligence_state())
+        verdict = evaluate_gatekeeper(proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], default_market_intelligence_state(), now_sim_minutes=0)
         assert verdict.approved is True
         # Design Bible Chapter 70 Part 3 addendum — 9th check: the
         # Weighted Executive Decision Engine, vacuously passing here
         # since no weighted_recommendation was supplied (see
         # TestWeightedExecutiveCheck below for the real behavior).
-        assert len(verdict.checks) == 9
+        # 10th check: the Behavioral Circuit Breaker, vacuously passing
+        # here since this portfolio has no trade history at all.
+        assert len(verdict.checks) == 10
         assert all(c.passed for c in verdict.checks)
         assert "APPROVED" in verdict.summary
 
     def test_rejects_and_names_the_failed_check_when_confidence_is_too_low(self) -> None:
         proposal = _proposal(confidence_score=10.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}))
         portfolio = default_portfolio()
-        verdict = evaluate_gatekeeper(proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], default_market_intelligence_state())
+        verdict = evaluate_gatekeeper(proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], default_market_intelligence_state(), now_sim_minutes=0)
         assert verdict.approved is False
         assert "REJECTED" in verdict.summary
         assert "Decision Confidence" in verdict.summary
@@ -236,7 +313,7 @@ class TestEvaluateGatekeeper:
         proposal = _proposal(symbol="NEXA", confidence_score=90.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}))
         portfolio = default_portfolio()
         warning = RiskWarning(id="w1", symbol="NEXA", severity="critical", message="Too concentrated.", createdAt=_now_iso())
-        verdict = evaluate_gatekeeper(proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [warning], default_market_intelligence_state())
+        verdict = evaluate_gatekeeper(proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [warning], default_market_intelligence_state(), now_sim_minutes=0)
         assert verdict.approved is False
         assert any(c.id == "risk_warning" and not c.passed for c in verdict.checks)
 
@@ -246,9 +323,30 @@ class TestEvaluateGatekeeper:
         poor_market = default_market_intelligence_state().model_copy(
             update={"quality": default_market_intelligence_state().quality.model_copy(update={"tier": "avoid_trading", "score": 10.0})}
         )
-        verdict = evaluate_gatekeeper(proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], poor_market)
+        verdict = evaluate_gatekeeper(proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], poor_market, now_sim_minutes=0)
         assert verdict.approved is False
         assert any(c.id == "market_intelligence" and not c.passed for c in verdict.checks)
+
+    def test_rejects_when_the_behavioral_circuit_breaker_triggers_even_if_every_other_check_passes(self) -> None:
+        proposal = _proposal(confidence_score=90.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}), symbol="NEXA")
+        loss = _loss_trade(symbol="NEXA", closed_sim_minutes=100)
+        portfolio = default_portfolio().model_copy(update={"trade_history": [loss]})
+        verdict = evaluate_gatekeeper(proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], default_market_intelligence_state(), now_sim_minutes=110)
+        assert verdict.approved is False
+        behavioral_check = next(c for c in verdict.checks if c.id == "behavioral")
+        assert behavioral_check.passed is False
+        assert "Behavioral Circuit Breaker" in verdict.summary
+
+    def test_a_clear_or_warning_behavioral_read_never_blocks(self) -> None:
+        proposal = _proposal(confidence_score=90.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}), symbol="DIFFERENT")
+        loss = _loss_trade(symbol="NEXA", closed_sim_minutes=100)
+        portfolio = default_portfolio().model_copy(update={"trade_history": [loss]})
+        # Different instrument, normal size, rapid timing — corroboration
+        # rule keeps this at "warning" at most, never "triggered".
+        verdict = evaluate_gatekeeper(proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], default_market_intelligence_state(), now_sim_minutes=110)
+        assert verdict.approved is True
+        behavioral_check = next(c for c in verdict.checks if c.id == "behavioral")
+        assert behavioral_check.passed is True
 
 
 def _weighted_recommendation(weighted_action: str) -> WeightedExecutiveRecommendation:
@@ -274,7 +372,7 @@ class TestWeightedExecutiveCheck:
     def test_passes_when_no_recommendation_supplied(self) -> None:
         proposal = _proposal(confidence_score=90.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}))
         portfolio = default_portfolio()
-        verdict = evaluate_gatekeeper(proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], default_market_intelligence_state())
+        verdict = evaluate_gatekeeper(proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], default_market_intelligence_state(), now_sim_minutes=0)
         check = next(c for c in verdict.checks if c.id == "weighted_executive")
         assert check.passed is True
         assert "not evaluated" in check.detail
@@ -283,7 +381,7 @@ class TestWeightedExecutiveCheck:
         proposal = _proposal(confidence_score=90.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}))
         portfolio = default_portfolio()
         verdict = evaluate_gatekeeper(
-            proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], default_market_intelligence_state(), _weighted_recommendation("trade_normally")
+            proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], default_market_intelligence_state(), now_sim_minutes=0, weighted_recommendation=_weighted_recommendation("trade_normally")
         )
         check = next(c for c in verdict.checks if c.id == "weighted_executive")
         assert check.passed is True
@@ -293,7 +391,7 @@ class TestWeightedExecutiveCheck:
         proposal = _proposal(confidence_score=90.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}))
         portfolio = default_portfolio()
         verdict = evaluate_gatekeeper(
-            proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], default_market_intelligence_state(), _weighted_recommendation("pause_trading")
+            proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], default_market_intelligence_state(), now_sim_minutes=0, weighted_recommendation=_weighted_recommendation("pause_trading")
         )
         check = next(c for c in verdict.checks if c.id == "weighted_executive")
         assert check.passed is False
@@ -306,7 +404,7 @@ class TestWeightedExecutiveCheck:
         proposal = _proposal(confidence_score=10.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}))
         portfolio = default_portfolio()
         verdict = evaluate_gatekeeper(
-            proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], default_market_intelligence_state(), _weighted_recommendation("trade_normally")
+            proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], default_market_intelligence_state(), now_sim_minutes=0, weighted_recommendation=_weighted_recommendation("trade_normally")
         )
         assert verdict.approved is False
         confidence_check = next(c for c in verdict.checks if c.id == "confidence")

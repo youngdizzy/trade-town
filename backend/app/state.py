@@ -14,6 +14,7 @@ from typing import Callable, Literal
 from app import education, nexus, player_vs_ai, signal_calibration, trade_notifications
 from app.academy import compute_academy_state, default_agent_knowledge
 from app.agents import AGENT_PROFILES, all_agent_ids
+from app.behavioral_risk import default_behavioral_circuit_breaker
 from app.black_box import archive_project, default_black_box_state, mark_breakthrough_viewed
 from app.config import settings
 from app.mentor import compute_mentor_state, compute_thinking_profiles, generate_question_of_the_day, submit_response
@@ -357,6 +358,7 @@ def default_state() -> GameSaveState:
         tradingModes=default_trading_mode_state(_now_iso()),
         dailyCircuitBreaker=default_daily_circuit_breaker(),
         losingStreak=default_losing_streak(),
+        behavioralCircuitBreaker=default_behavioral_circuit_breaker(),
         recoveryBriefings=[],
         updatedAt=_now_iso(),
     )
@@ -861,6 +863,23 @@ class GameState:
             new_trading_modes = self.data.trading_modes.model_copy(update={"adaptive_recommendations_enabled": enabled})
             self.data = self.data.model_copy(update={"trading_modes": new_trading_modes})
             return self.data
+
+    async def set_behavioral_thresholds(self, *, cooldown_minutes: int, size_increase_threshold_pct: float) -> tuple[GameSaveState, str | None]:
+        """The CEO's real, editable Behavioral Circuit Breaker thresholds
+        (Design Bible Chapter 66 addendum, app/behavioral_risk.py) — a
+        display/config preference, not gated on Emergency Stop, mirroring
+        set_adaptive_recommendations_enabled above. Rejects non-positive
+        values rather than silently accepting a threshold that would make
+        the check meaningless (e.g. a 0-minute cooldown or 0% size
+        threshold)."""
+        if cooldown_minutes <= 0 or size_increase_threshold_pct <= 0:
+            return self.data, "Cooldown minutes and size increase threshold must both be positive."
+        async with self.lock:
+            new_trading_modes = self.data.trading_modes.model_copy(
+                update={"behavioral_cooldown_minutes": cooldown_minutes, "behavioral_size_increase_threshold_pct": size_increase_threshold_pct}
+            )
+            self.data = self.data.model_copy(update={"trading_modes": new_trading_modes})
+            return self.data, None
 
     async def acknowledge_losing_streak(self) -> tuple[GameSaveState, str | None]:
         """Design Bible Chapter 75 — the CEO's real, explicit clear of
@@ -1812,6 +1831,8 @@ class GameState:
                 resolved_by=resolved_by,
                 weighted_recommendation=weighted_recommendation,
                 min_confidence_override=min_confidence_override,
+                behavioral_cooldown_minutes=self.data.trading_modes.behavioral_cooldown_minutes,
+                behavioral_size_increase_threshold_pct=self.data.trading_modes.behavioral_size_increase_threshold_pct,
             )
 
             memory = list(self.data.memory)

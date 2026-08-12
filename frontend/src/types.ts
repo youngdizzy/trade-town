@@ -3135,6 +3135,11 @@ export interface TradingModeState {
   losingStreakPauseCount: number;
   losingStreakSuspendCount: number;
   losingStreakAcknowledged: boolean;
+  // Behavioral Circuit Breaker (backend/app/behavioral_risk.py) — the
+  // CEO's own real, editable thresholds for the revenge-trading
+  // detector's timing and self-relative sizing signals.
+  behavioralCooldownMinutes: number;
+  behavioralSizeIncreaseThresholdPct: number;
 }
 
 export type DailyCircuitBreakerTier = "none" | "tier1" | "tier2" | "tier3" | "tier4";
@@ -3154,6 +3159,28 @@ export interface LosingStreakRead {
   pauseActive: boolean;
   pauseThreshold: number;
   suspendThreshold: number;
+}
+
+// Behavioral Circuit Breaker — the revenge-trading detector, the tenth
+// real Gatekeeper check (backend/app/gatekeeper.py::_behavioral_check).
+// "warning" is informational only and never blocks; only "triggered"
+// fails the Gatekeeper check for the specific proposal being resolved.
+// This system detects observable behavioral risk. It does not claim to
+// detect human emotion.
+export type BehavioralCircuitBreakerStatus = "clear" | "warning" | "triggered";
+
+export interface BehavioralCircuitBreakerRead {
+  status: BehavioralCircuitBreakerStatus;
+  reasons: string[];
+  previousLossSymbol: string | null;
+  previousLossPnl: number | null;
+  minutesSinceLoss: number | null;
+  cooldownMinutes: number;
+  sameInstrument: boolean | null;
+  sizeIncreasePct: number | null;
+  consecutiveLosses: number;
+  repeatedRapidReentryCount: number;
+  computedAt: string;
 }
 
 export interface RecoveryBriefing {
@@ -3960,6 +3987,7 @@ export interface GameSaveState {
   tradingModes: TradingModeState;
   dailyCircuitBreaker: DailyCircuitBreakerRead;
   losingStreak: LosingStreakRead;
+  behavioralCircuitBreaker: BehavioralCircuitBreakerRead;
   recoveryBriefings: RecoveryBriefing[];
   selfImprovementProposals: SelfImprovementProposal[];
   evolutionReports: InstitutionalEvolutionReport[];

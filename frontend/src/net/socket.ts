@@ -84,6 +84,7 @@ import type {
   TradeDecision,
   TradeProposal,
   TradingModeState,
+  BehavioralCircuitBreakerRead,
   DailyCircuitBreakerRead,
   LosingStreakRead,
   RecoveryBriefing,
@@ -174,6 +175,7 @@ type ServerMessage =
       tradingModes: TradingModeState;
       dailyCircuitBreaker: DailyCircuitBreakerRead;
       losingStreak: LosingStreakRead;
+      behavioralCircuitBreaker: BehavioralCircuitBreakerRead;
       recoveryBriefings: RecoveryBriefing[];
       selfImprovementProposals: SelfImprovementProposal[];
       evolutionReports: InstitutionalEvolutionReport[];
@@ -328,6 +330,7 @@ export class GameSocket {
             tradingModes: msg.tradingModes,
             dailyCircuitBreaker: msg.dailyCircuitBreaker,
             losingStreak: msg.losingStreak,
+            behavioralCircuitBreaker: msg.behavioralCircuitBreaker,
             recoveryBriefings: msg.recoveryBriefings,
             selfImprovementProposals: msg.selfImprovementProposals,
             evolutionReports: msg.evolutionReports,

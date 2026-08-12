@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/net/api";
 import { useGameStore } from "@/ui/hooks/useGameStore";
-import type { AdaptiveModeRecommendation, DailyCircuitBreakerTier, TradingMode, TradingModeHealthAssessment, TradingStylePerformance } from "@/types";
+import type { AdaptiveModeRecommendation, BehavioralCircuitBreakerStatus, DailyCircuitBreakerTier, TradingMode, TradingModeHealthAssessment, TradingStylePerformance } from "@/types";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
 
 /**
@@ -46,8 +46,14 @@ function healthTone(status: TradingModeHealthAssessment["status"]): "green" | "c
   return "red";
 }
 
+function behavioralTone(status: BehavioralCircuitBreakerStatus): "green" | "amber" | "red" {
+  if (status === "clear") return "green";
+  if (status === "warning") return "amber";
+  return "red";
+}
+
 export function TradingModesPanel() {
-  const { tradingModes, dailyCircuitBreaker, losingStreak, recoveryBriefings } = useGameStore();
+  const { tradingModes, dailyCircuitBreaker, losingStreak, behavioralCircuitBreaker, recoveryBriefings } = useGameStore();
 
   const [selectedMode, setSelectedMode] = useState<TradingMode>(tradingModes.mode);
   const [hybridPct, setHybridPct] = useState(tradingModes.hybridDayAllocationPct);
@@ -238,6 +244,39 @@ export function TradingModesPanel() {
           ) : (
             <p className="mt-2 text-[9px] text-cmd-textDim">New proposals continue normally.</p>
           )}
+        </Glass>
+
+        <Glass className="p-3 md:col-span-2">
+          <div className="mb-1.5 flex items-center justify-between">
+            <TerminalLabel>Behavioral Circuit Breaker — revenge-trading detector</TerminalLabel>
+            <StatusPill tone={behavioralTone(behavioralCircuitBreaker.status)}>{behavioralCircuitBreaker.status.toUpperCase()}</StatusPill>
+          </div>
+          {behavioralCircuitBreaker.status === "clear" ? (
+            <p className="text-[9px] text-cmd-textDim">No recent-loss behavioral pattern detected.</p>
+          ) : (
+            <>
+              <DataRow label="Previous Loss" value={behavioralCircuitBreaker.previousLossSymbol ?? "—"} />
+              {behavioralCircuitBreaker.previousLossPnl !== null && (
+                <DataRow label="Previous Loss P&L" value={behavioralCircuitBreaker.previousLossPnl.toFixed(2)} valueClassName="text-cmd-red" />
+              )}
+              <DataRow label="Minutes Since Loss" value={behavioralCircuitBreaker.minutesSinceLoss ?? "—"} />
+              <DataRow label="Cooldown Window" value={`${behavioralCircuitBreaker.cooldownMinutes} min`} />
+              {behavioralCircuitBreaker.sameInstrument !== null && <DataRow label="Same Instrument" value={behavioralCircuitBreaker.sameInstrument ? "Yes" : "No"} />}
+              {behavioralCircuitBreaker.sizeIncreasePct !== null && (
+                <DataRow label="Size vs. Recent Normal" value={`${behavioralCircuitBreaker.sizeIncreasePct >= 0 ? "+" : ""}${behavioralCircuitBreaker.sizeIncreasePct.toFixed(0)}%`} />
+              )}
+              {behavioralCircuitBreaker.repeatedRapidReentryCount > 0 && <DataRow label="Repeated Rapid Re-Entries" value={behavioralCircuitBreaker.repeatedRapidReentryCount} valueClassName="text-cmd-amber" />}
+              <ul className="mt-2 space-y-0.5 text-[9px] text-cmd-textDim">
+                {behavioralCircuitBreaker.reasons.map((reason, i) => (
+                  <li key={i}>• {reason}</li>
+                ))}
+              </ul>
+            </>
+          )}
+          <p className="mt-2 text-[8px] text-cmd-textDim/70">
+            This system detects observable behavioral risk. It does not claim to detect human emotion. A {"triggered"} read fails only the specific proposal's Gatekeeper check — never a blanket
+            future block.
+          </p>
         </Glass>
       </div>
 

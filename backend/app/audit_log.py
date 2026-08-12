@@ -93,9 +93,10 @@ GOVERNANCE_LAYERS: list[GovernanceLayer] = [
     GovernanceLayer(order=8, name="Active Risk Warnings", module="app/gatekeeper.py::_risk_warning_check", description="Any real, currently-active critical RiskWarning blocks the trade outright.", wired=True),
     GovernanceLayer(order=9, name="Market Intelligence Quality", module="app/gatekeeper.py::_market_intelligence_check", description="Real Market Quality tier must not read avoid_trading.", wired=True),
     GovernanceLayer(order=10, name="Weighted Executive Recommendation", module="app/gatekeeper.py::_weighted_executive_check", description="Chapter 70 Part 3's real per-department influence-weighted recommendation, advisory-only — can contribute to a rejection, never force an approval.", wired=True),
-    GovernanceLayer(order=11, name="Institutional Rule Engine", module="app/rule_engine.py", description="Real, per-account custom rules (Chapter 69 Part 3) — not yet routed into live trade execution for non-primary accounts. Evaluated on demand, shown here for transparency, not enforced in this pipeline.", wired=False),
-    GovernanceLayer(order=12, name="Broker (PaperBroker)", module="app/broker.py", description="100% simulated fill logic — no real broker connection exists anywhere in this codebase.", wired=True),
-    GovernanceLayer(order=13, name="Execution", module="app/portfolio.py", description="Real position open/close against the company's own simulated paper portfolio.", wired=True),
+    GovernanceLayer(order=11, name="Behavioral Circuit Breaker", module="app/gatekeeper.py::_behavioral_check", description="Real revenge-trading detection (recent loss + rapid re-entry, corroborated by same-instrument or loss-driven size increase). Detects observable behavioral risk, never human emotion — see app/behavioral_risk.py.", wired=True),
+    GovernanceLayer(order=12, name="Institutional Rule Engine", module="app/rule_engine.py", description="Real, per-account custom rules (Chapter 69 Part 3) — not yet routed into live trade execution for non-primary accounts. Evaluated on demand, shown here for transparency, not enforced in this pipeline.", wired=False),
+    GovernanceLayer(order=13, name="Broker (PaperBroker)", module="app/broker.py", description="100% simulated fill logic — no real broker connection exists anywhere in this codebase.", wired=True),
+    GovernanceLayer(order=14, name="Execution", module="app/portfolio.py", description="Real position open/close against the company's own simulated paper portfolio.", wired=True),
 ]
 
 

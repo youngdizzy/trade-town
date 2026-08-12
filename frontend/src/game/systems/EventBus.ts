@@ -89,6 +89,7 @@ import type {
   TradeDecision,
   TradeProposal,
   TradingModeState,
+  BehavioralCircuitBreakerRead,
   DailyCircuitBreakerRead,
   LosingStreakRead,
   RecoveryBriefing,
@@ -242,6 +243,7 @@ export interface GameEvents {
   "tradingModes:updated": TradingModeState;
   "dailyCircuitBreaker:updated": DailyCircuitBreakerRead;
   "losingStreak:updated": LosingStreakRead;
+  "behavioralCircuitBreaker:updated": BehavioralCircuitBreakerRead;
   "recoveryBriefings:updated": RecoveryBriefing[];
   "selfImprovementProposals:updated": SelfImprovementProposal[];
   "evolutionReports:updated": InstitutionalEvolutionReport[];

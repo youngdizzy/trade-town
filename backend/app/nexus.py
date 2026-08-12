@@ -33,6 +33,7 @@ from app.academy_research import MAX_ACADEMY_LIBRARY, default_academy_projects, 
 from app.agent_energy import RESEARCH_BOOST_AMOUNT, regen_daily, spend
 from app.agents import AGENT_PROFILES, LOCATION_TO_SCENE, all_agent_ids
 from app.analytics import compute_performance_snapshot, confidence_accuracy, period_profit_dollars, record_snapshot
+from app.behavioral_risk import compute_behavioral_check
 from app.black_box import archive_project, default_black_box_state, generate_project_challenge, record_review as record_breakthrough_review, tick_black_box_daily
 from app.broker import execution_provider
 from app.calendar import compute_system_events
@@ -877,6 +878,8 @@ def _apply_operating_mode(
     emergency_stop_active: bool = False,
     force_manual_review: bool = False,
     min_confidence_override: float | None = None,
+    behavioral_cooldown_minutes: int | None = None,
+    behavioral_size_increase_threshold_pct: float | None = None,
 ) -> tuple[list[TradeProposal], PaperPortfolio, list[ExecutiveMeetingLogEntry]]:
     """v0.7 Feature 21 — Company Operating Modes. Learning Mode never
     calls this (every proposal stays pending, the pre-Feature-21
@@ -917,7 +920,15 @@ def _apply_operating_mode(
     proposal pending, checked first since it's the CEO's own explicit
     override of every other signal here (see app/emergency_stop.py).
     All three are real, checkable facts, never a mode-dependent
-    judgment call."""
+    judgment call.
+
+    `behavioral_cooldown_minutes`/`behavioral_size_increase_threshold_pct`
+    — the CEO's own real Behavioral Circuit Breaker thresholds
+    (TradingModeState), threaded straight through to every real
+    resolve_proposal() call below so an auto-resolution is gated by
+    exactly the same revenge-trading check a manual CEO click gets — no
+    Operating Mode can bypass it (see app/gatekeeper.py's
+    _behavioral_check, the Gatekeeper's own non-bypassable pure-AND)."""
     if operating_mode == "learning" or not trade_proposals:
         return trade_proposals, portfolio, meeting_log
 
@@ -997,6 +1008,8 @@ def _apply_operating_mode(
             weighted_recommendation=weighted_recommendation,
             resolved_by="auto",
             min_confidence_override=min_confidence_override,
+            behavioral_cooldown_minutes=behavioral_cooldown_minutes,
+            behavioral_size_increase_threshold_pct=behavioral_size_increase_threshold_pct,
         )
         record_ceo_decision(memory, decision, max_records=risk_limits.max_memory_records)
         decisions.append(decision)
@@ -1396,6 +1409,17 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     if losing_streak.pause_active:
         block_new_proposals = True
 
+    # Behavioral Circuit Breaker (app/behavioral_risk.py) — the ambient,
+    # tick-level dashboard read (no specific candidate proposal to
+    # corroborate against yet, so this can never reach "triggered" —
+    # only the real per-proposal Gatekeeper check below can). Never
+    # blocks new proposal generation on its own; the real enforcement is
+    # the Gatekeeper's tenth check (app/gatekeeper.py::_behavioral_check),
+    # evaluated per-proposal inside resolve_proposal() above/below.
+    behavioral_circuit_breaker = compute_behavioral_check(
+        None, paper_portfolio.trade_history, now_sim_minutes, trading_mode_state.behavioral_cooldown_minutes, trading_mode_state.behavioral_size_increase_threshold_pct
+    )
+
     # Design Bible Chapter 72 — Black Swan Intelligence & Resilience
     # System. Defensive Mode's own recommendation
     # (build_defensive_recommendations(), "Pause New Entries") has always
@@ -1629,6 +1653,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         emergency_stop_active=emergency_stop.active,
         force_manual_review=force_manual_review,
         min_confidence_override=min_confidence_override,
+        behavioral_cooldown_minutes=trading_mode_state.behavioral_cooldown_minutes,
+        behavioral_size_increase_threshold_pct=trading_mode_state.behavioral_size_increase_threshold_pct,
     )
 
     trade_proposals, expired_proposals = expire_stale_proposals(trade_proposals, now_sim_minutes)
@@ -2697,6 +2723,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "trading_modes": trading_mode_state,
             "daily_circuit_breaker": daily_circuit_breaker,
             "losing_streak": losing_streak,
+            "behavioral_circuit_breaker": behavioral_circuit_breaker,
             "recovery_briefings": recovery_briefings,
             "travel_mode": travel_mode,
             "emergency_stop": emergency_stop,

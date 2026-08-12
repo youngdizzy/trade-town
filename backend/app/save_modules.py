@@ -143,6 +143,10 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         "institutional_survival_score",
         "daily_circuit_breaker",
         "losing_streak",
+        # Behavioral Circuit Breaker (app/behavioral_risk.py) — recomputed
+        # fresh every tick exactly like daily_circuit_breaker/losing_streak
+        # above, never a second drifting copy.
+        "behavioral_circuit_breaker",
     ),
     "trade_history": (
         "decisions",

@@ -28,6 +28,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from app.behavioral_risk import compute_behavioral_check
 from app.schemas import (
     AnalystChoice,
     Debate,
@@ -36,6 +37,7 @@ from app.schemas import (
     GatekeeperVerdict,
     MarketIntelligenceState,
     PaperPortfolio,
+    PaperTrade,
     RiskLimits,
     RiskWarning,
     TradeProposal,
@@ -47,6 +49,14 @@ from app.watchlist import SYMBOL_CATEGORY
 MIN_CONFIDENCE = 55.0
 MAX_CORRELATED_POSITIONS = 2
 GATEKEEPER_EVAL_WINDOW_MINUTES = 240  # 4 simulated hours — same order of magnitude as this sim's typical real hold durations.
+
+# Behavioral Circuit Breaker defaults (app/behavioral_risk.py) — mirror
+# TradingModeState's own behavioral_cooldown_minutes/
+# behavioral_size_increase_threshold_pct defaults exactly, so a caller
+# that doesn't pass an override (e.g. an existing direct test) behaves
+# identically to the CEO's own out-of-the-box configuration.
+BEHAVIORAL_COOLDOWN_MINUTES = 60
+BEHAVIORAL_SIZE_INCREASE_THRESHOLD_PCT = 50.0
 
 # Design Bible Chapter 70 Part 3 addendum — the execution hierarchy the
 # Weighted Executive Decision Engine must feed into: Research → Executive
@@ -180,6 +190,27 @@ def _weighted_executive_check(weighted_recommendation: WeightedExecutiveRecommen
     return GatekeeperCheck(id="weighted_executive", label="Weighted Executive Recommendation", passed=passed, detail=detail)
 
 
+# Behavioral Circuit Breaker — real revenge-trading detection, the tenth
+# entry in evaluate_gatekeeper()'s own pure-AND check list below. See
+# app/behavioral_risk.py's module docstring for the four real signals,
+# the corroboration requirement, and the honesty/Account-Awareness
+# boundaries. A `triggered` read fails only this one check for this one
+# proposal — every other check still runs independently, and a real
+# GatekeeperRejection is recorded automatically the same way any other
+# failed check's rejection already is.
+def _behavioral_check(
+    proposal: TradeProposal,
+    trade_history: list[PaperTrade],
+    now_sim_minutes: int,
+    cooldown_minutes: int,
+    size_increase_threshold_pct: float,
+) -> GatekeeperCheck:
+    read = compute_behavioral_check(proposal, trade_history, now_sim_minutes, cooldown_minutes, size_increase_threshold_pct)
+    passed = read.status != "triggered"
+    detail = " ".join(read.reasons) if read.reasons else "No recent-loss behavioral pattern detected for this proposal."
+    return GatekeeperCheck(id="behavioral", label="Behavioral Circuit Breaker", passed=passed, detail=detail)
+
+
 def evaluate_gatekeeper(
     proposal: TradeProposal,
     ceo_choice: AnalystChoice,
@@ -188,15 +219,34 @@ def evaluate_gatekeeper(
     risk_limits: RiskLimits,
     risk_warnings: list[RiskWarning],
     market_intelligence: MarketIntelligenceState,
+    now_sim_minutes: int,
     weighted_recommendation: WeightedExecutiveRecommendation | None = None,
     min_confidence_override: float | None = None,
+    behavioral_cooldown_minutes: int | None = None,
+    behavioral_size_increase_threshold_pct: float | None = None,
 ) -> "GatekeeperVerdict":
     """`min_confidence_override` (Design Bible Chapter 75) — the real,
     disclosed points app/trading_modes.py's Daily Circuit Breaker adds to
     the required confidence while a tier is active. None (the default)
     means the ordinary MIN_CONFIDENCE applies, unchanged from before this
     chapter — every existing caller that doesn't pass this stays exactly
-    as it was."""
+    as it was.
+
+    `behavioral_cooldown_minutes`/`behavioral_size_increase_threshold_pct`
+    — the CEO's own real, editable Behavioral Circuit Breaker thresholds
+    (TradingModeState.behavioral_cooldown_minutes/
+    behavioral_size_increase_threshold_pct). None (the default) falls
+    back to BEHAVIORAL_COOLDOWN_MINUTES/BEHAVIORAL_SIZE_INCREASE_THRESHOLD_PCT
+    above, the same "unconfigured caller behaves like the CEO's own
+    out-of-the-box defaults" convention `min_confidence_override` already
+    established.
+
+    `now_sim_minutes` is required (not optional) because the Behavioral
+    Circuit Breaker cannot honestly evaluate timing without it — both
+    real production call sites (app/executive.py's resolve_proposal, fed
+    from app/nexus.py's auto-resolution loop and app/state.py's CEO-click
+    path) already have this value in scope, so this adds no new plumbing
+    burden anywhere real."""
     from app.schemas import GatekeeperVerdict  # local import avoids a schemas.py forward-reference cycle at module load
 
     checks = [
@@ -209,6 +259,13 @@ def evaluate_gatekeeper(
         _risk_warning_check(proposal, risk_warnings),
         _market_intelligence_check(market_intelligence),
         _weighted_executive_check(weighted_recommendation),
+        _behavioral_check(
+            proposal,
+            portfolio.trade_history,
+            now_sim_minutes,
+            behavioral_cooldown_minutes if behavioral_cooldown_minutes is not None else BEHAVIORAL_COOLDOWN_MINUTES,
+            behavioral_size_increase_threshold_pct if behavioral_size_increase_threshold_pct is not None else BEHAVIORAL_SIZE_INCREASE_THRESHOLD_PCT,
+        ),
     ]
     approved = all(c.passed for c in checks)
     if approved:

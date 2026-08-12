@@ -82,6 +82,7 @@ import type {
   TradeDecision,
   TradeProposal,
   TradingModeState,
+  BehavioralCircuitBreakerRead,
   DailyCircuitBreakerRead,
   LosingStreakRead,
   RecoveryBriefing,
@@ -165,6 +166,7 @@ interface NexusSnapshot {
   tradingModes: TradingModeState;
   dailyCircuitBreaker: DailyCircuitBreakerRead;
   losingStreak: LosingStreakRead;
+  behavioralCircuitBreaker: BehavioralCircuitBreakerRead;
   recoveryBriefings: RecoveryBriefing[];
   selfImprovementProposals: SelfImprovementProposal[];
   evolutionReports: InstitutionalEvolutionReport[];
@@ -452,9 +454,24 @@ export class NexusManager {
     losingStreakPauseCount: 3,
     losingStreakSuspendCount: 5,
     losingStreakAcknowledged: false,
+    behavioralCooldownMinutes: 60,
+    behavioralSizeIncreaseThresholdPct: 50,
   };
   private static dailyCircuitBreaker: DailyCircuitBreakerRead = { tier: "none", dailyPnlPct: 0, tier1Pct: 1, tier2Pct: 2, tier3Pct: 3, tier4Pct: 5, updatedAt: new Date().toISOString() };
   private static losingStreak: LosingStreakRead = { consecutiveLosses: 0, pauseActive: false, pauseThreshold: 3, suspendThreshold: 5 };
+  private static behavioralCircuitBreaker: BehavioralCircuitBreakerRead = {
+    status: "clear",
+    reasons: [],
+    previousLossSymbol: null,
+    previousLossPnl: null,
+    minutesSinceLoss: null,
+    cooldownMinutes: 60,
+    sameInstrument: null,
+    sizeIncreasePct: null,
+    consecutiveLosses: 0,
+    repeatedRapidReentryCount: 0,
+    computedAt: new Date().toISOString(),
+  };
   private static recoveryBriefings: RecoveryBriefing[] = [];
   private static selfImprovementProposals: SelfImprovementProposal[] = [];
   private static evolutionReports: InstitutionalEvolutionReport[] = [];
@@ -793,6 +810,10 @@ export class NexusManager {
 
   static getLosingStreak(): LosingStreakRead {
     return this.losingStreak;
+  }
+
+  static getBehavioralCircuitBreaker(): BehavioralCircuitBreakerRead {
+    return this.behavioralCircuitBreaker;
   }
 
   static getRecoveryBriefings(): RecoveryBriefing[] {
@@ -1438,6 +1459,11 @@ export class NexusManager {
     if (update.losingStreak !== this.losingStreak) EventBus.emit("losingStreak:updated", update.losingStreak);
     this.losingStreak = update.losingStreak;
 
+    if (update.behavioralCircuitBreaker !== this.behavioralCircuitBreaker) {
+      EventBus.emit("behavioralCircuitBreaker:updated", update.behavioralCircuitBreaker);
+    }
+    this.behavioralCircuitBreaker = update.behavioralCircuitBreaker;
+
     if (update.recoveryBriefings.length !== this.recoveryBriefings.length) {
       EventBus.emit("recoveryBriefings:updated", update.recoveryBriefings);
     }
@@ -1631,6 +1657,7 @@ export class NexusManager {
     this.tradingModes = save.tradingModes;
     this.dailyCircuitBreaker = save.dailyCircuitBreaker;
     this.losingStreak = save.losingStreak;
+    this.behavioralCircuitBreaker = save.behavioralCircuitBreaker;
     this.recoveryBriefings = save.recoveryBriefings;
     this.selfImprovementProposals = save.selfImprovementProposals;
     this.evolutionReports = save.evolutionReports;

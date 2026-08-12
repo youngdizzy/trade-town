@@ -85,6 +85,7 @@ import type {
   TradeDecision,
   TradeProposal,
   TradingModeState,
+  BehavioralCircuitBreakerRead,
   DailyCircuitBreakerRead,
   LosingStreakRead,
   RecoveryBriefing,
@@ -186,6 +187,7 @@ export interface GameUiState {
   tradingModes: TradingModeState;
   dailyCircuitBreaker: DailyCircuitBreakerRead;
   losingStreak: LosingStreakRead;
+  behavioralCircuitBreaker: BehavioralCircuitBreakerRead;
   recoveryBriefings: RecoveryBriefing[];
   selfImprovementProposals: SelfImprovementProposal[];
   evolutionReports: InstitutionalEvolutionReport[];
@@ -520,9 +522,24 @@ class GameStore {
       losingStreakPauseCount: 3,
       losingStreakSuspendCount: 5,
       losingStreakAcknowledged: false,
+      behavioralCooldownMinutes: 60,
+      behavioralSizeIncreaseThresholdPct: 50,
     },
     dailyCircuitBreaker: { tier: "none", dailyPnlPct: 0, tier1Pct: 1, tier2Pct: 2, tier3Pct: 3, tier4Pct: 5, updatedAt: new Date().toISOString() },
     losingStreak: { consecutiveLosses: 0, pauseActive: false, pauseThreshold: 3, suspendThreshold: 5 },
+    behavioralCircuitBreaker: {
+      status: "clear",
+      reasons: [],
+      previousLossSymbol: null,
+      previousLossPnl: null,
+      minutesSinceLoss: null,
+      cooldownMinutes: 60,
+      sameInstrument: null,
+      sizeIncreasePct: null,
+      consecutiveLosses: 0,
+      repeatedRapidReentryCount: 0,
+      computedAt: new Date().toISOString(),
+    },
     recoveryBriefings: [],
     selfImprovementProposals: [],
     evolutionReports: [],
@@ -738,6 +755,7 @@ class GameStore {
     EventBus.on("tradingModes:updated", (tradingModes) => this.set({ tradingModes }));
     EventBus.on("dailyCircuitBreaker:updated", (dailyCircuitBreaker) => this.set({ dailyCircuitBreaker }));
     EventBus.on("losingStreak:updated", (losingStreak) => this.set({ losingStreak }));
+    EventBus.on("behavioralCircuitBreaker:updated", (behavioralCircuitBreaker) => this.set({ behavioralCircuitBreaker }));
     EventBus.on("recoveryBriefings:updated", (recoveryBriefings) => this.set({ recoveryBriefings }));
     EventBus.on("selfImprovementProposals:updated", (selfImprovementProposals) => this.set({ selfImprovementProposals }));
     EventBus.on("evolutionReports:updated", (evolutionReports) => this.set({ evolutionReports }));
