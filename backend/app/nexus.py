@@ -1396,6 +1396,20 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     if losing_streak.pause_active:
         block_new_proposals = True
 
+    # Design Bible Chapter 72 — Black Swan Intelligence & Resilience
+    # System. Defensive Mode's own recommendation
+    # (build_defensive_recommendations(), "Pause New Entries") has always
+    # documented and UI-labeled this as automatic — this is the real
+    # enforcement that claim was missing (confirmed absent by a live
+    # reproduction: activating Defensive Mode and running a tick produced
+    # new proposals anyway). Reads defensive_mode as it stood at the
+    # start of this tick (state.defensive_mode, captured above) — the
+    # same real, persisted CEO/auto-activated flag every other
+    # defensive_mode read in this function already uses, never a second
+    # copy.
+    if defensive_mode.active:
+        block_new_proposals = True
+
     trigger_emergency_stop = not emergency_stop.active and (
         daily_circuit_breaker.tier == "tier4" or losing_streak.consecutive_losses >= trading_mode_state.losing_streak_suspend_count
     )
@@ -1440,7 +1454,8 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # handled by _apply_operating_mode()'s own emergency_stop_active
     # check below; research/monitoring above this line are untouched).
     # Design Bible Chapter 75 — the Daily Circuit Breaker's Tier 3/4 and
-    # an active Losing Streak pause block new proposal generation the
+    # an active Losing Streak pause, and Chapter 72 — an active
+    # Defensive Mode, block new proposal generation the
     # same real way.
     candidate_proposals = (
         [] if (emergency_stop.active or block_new_proposals) else _generate_trade_proposals(trade_proposals, completed, prices, effective_risk_limits, paper_portfolio, news, scanner_alerts, now_sim_minutes, market_intelligence)

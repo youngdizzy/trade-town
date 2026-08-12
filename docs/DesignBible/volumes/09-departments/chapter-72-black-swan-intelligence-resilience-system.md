@@ -28,6 +28,23 @@ position — see Implementation Notes for why); and a **Crisis Briefing** /
 and Knowledge Graph records. See Implementation Notes for the complete,
 itemized honesty boundary.
 
+**Audit finding, fixed (this session):** a direct Chapters 67–75 audit
+found that "pauses new trade generation" above — always documented here
+and UI-labeled `automatic=True` on the "Pause New Entries" recommendation
+(`build_defensive_recommendations()`) — was never actually wired into
+`app/nexus.py`'s tick(). Live-reproduced: activating Defensive Mode and
+running a real tick still generated new trade proposals. Fixed by adding
+`defensive_mode.active` to the same real `block_new_proposals` gate
+Chapter 75's Circuit Breaker Tier 3/4 and Losing Streak Pause already
+use (`app/nexus.py`, right before `candidate_proposals` is computed) —
+never a second, competing gate. A new integration test
+(`tests/test_defensive_mode_integration.py`) exercises the real
+end-to-end path (`GameState.activate_defensive_mode()` →
+`GameState.advance_time()`, the same two real CEO actions a player
+takes) and was confirmed to fail against the pre-fix code before the fix
+landed. The RiskLimits-tightening half of Defensive Mode was already
+real and unaffected by this bug.
+
 ## Executive Summary
 
 The brief's thesis — "TradeTown should never assume normal market

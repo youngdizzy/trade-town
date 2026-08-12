@@ -852,6 +852,17 @@ development milestones, not semver releases.
 
 ### Fixed
 
+- **Chapter 72 — Black Swan Defensive Mode's "Pause New Entries" now actually fires**
+  (`backend/app/nexus.py`, `backend/tests/test_defensive_mode_integration.py` new): a Chapters 67–75 audit
+  found that Defensive Mode's advertised auto-pause on new trade generation — documented and UI-labeled
+  `automatic=True` since this chapter shipped — was never wired into `tick()`, and live-reproduced the gap
+  (activating Defensive Mode and running a tick still generated new proposals). Fixed by adding
+  `defensive_mode.active` to the same real `block_new_proposals` gate Chapter 75's Circuit Breaker Tier 3/4
+  and Losing Streak Pause already use — never a second, competing gate. A new integration test exercises the
+  real end-to-end path (`GameState.activate_defensive_mode()` → `advance_time()`, the same two real CEO
+  actions a player takes) and was confirmed to fail against the pre-fix code before the fix landed. The
+  RiskLimits-tightening half of Defensive Mode was already real and unaffected.
+
 - **Design Bible documentation-accuracy pass (Chapters 71/72/73/75/73.5)**
   (`docs/DesignBible/volumes/09-departments/README.md`,
   `chapter-71-economic-intelligence-center.md`,
