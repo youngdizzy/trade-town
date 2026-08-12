@@ -80,6 +80,7 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         "simulation_results",
         "strategy_reports",
         "strategy_reviews",
+        "strategy_model_validations",
         "strategy_monte_carlo_results",
         "strategy_regime_tests",
         "strategy_liquidity_validations",

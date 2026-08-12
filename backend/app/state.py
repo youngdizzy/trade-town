@@ -166,6 +166,7 @@ from app.strategy_lab import (
     generate_strategy_founder_approval,
     generate_strategy_retirement_outcome,
 )
+from app.model_validation import cap_strategy_model_validations, generate_model_validation_report
 from app.talent import mark_talent_report_viewed
 from app.watchlist import default_watchlist
 
@@ -1440,7 +1441,20 @@ class GameState:
         the richer 9-department StrategyExecutiveReview and the Founder
         Council's real StrategyFounderApproval in the same action —
         Company Review, Executive Review, and Founder Approval are one
-        real CEO-triggered moment, not three separate requests."""
+        real CEO-triggered moment, not three separate requests.
+
+        v0.7 Quantitative Research & Intelligence System, Piece 4: this
+        is also the one real call site that files Meridian/CIO's
+        independent ModelValidationReport (app/model_validation.py),
+        advisory-only — it never affects the stage transition below.
+        Because this is the only place a ModelValidationReport is ever
+        generated, `exclude_cio=True` is always passed to
+        generate_strategy_review() here: Meridian is always acting as
+        validator for this exact cycle, so it can never also serve as
+        this same cycle's rotating Devil's Advocate. See
+        app/model_validation.py's module docstring for why this is
+        provably stateless (a pure function of existing_count, never a
+        persisted flag)."""
         async with self.lock:
             strategy = self._find_strategy(strategy_id)
             if strategy is None:
@@ -1449,9 +1463,13 @@ class GameState:
             if error is not None or updated is None:
                 return self.data, error
             existing_count = sum(1 for r in self.data.strategy_reviews if r.strategy_id == strategy_id)
-            review = generate_strategy_review(updated, self.data.simulation_results, self.data.research, existing_count, sim_day=self.data.time.day)
+            review = generate_strategy_review(updated, self.data.simulation_results, self.data.research, existing_count, sim_day=self.data.time.day, exclude_cio=True)
             monte_carlo = next((r for r in reversed(self.data.strategy_monte_carlo_results) if r.strategy_id == strategy_id), None)
             regime_test = next((r for r in reversed(self.data.strategy_regime_tests) if r.strategy_id == strategy_id), None)
+            liquidity_validation = next((r for r in reversed(self.data.strategy_liquidity_validations) if r.strategy_id == strategy_id), None)
+            model_validation = generate_model_validation_report(
+                updated, self.data.simulation_results, monte_carlo, regime_test, liquidity_validation, review.id, existing_count, sim_day=self.data.time.day
+            )
             existing_exec_count = sum(1 for r in self.data.strategy_executive_reviews if r.strategy_id == strategy_id)
             executive_review = generate_strategy_executive_review(
                 updated, review, self.data.research, self.data.coach_reports, monte_carlo, regime_test, self.data.market_intelligence, existing_exec_count, sim_day=self.data.time.day
@@ -1459,12 +1477,14 @@ class GameState:
             founder_approval = generate_strategy_founder_approval(updated, executive_review, sim_day=self.data.time.day)
             strategies = [updated if s.id == strategy_id else s for s in self.data.strategies]
             strategy_reviews = [*self.data.strategy_reviews, review]
+            strategy_model_validations = cap_strategy_model_validations([*self.data.strategy_model_validations, model_validation])
             strategy_executive_reviews = cap_strategy_executive_reviews([*self.data.strategy_executive_reviews, executive_review])
             strategy_founder_approvals = cap_strategy_founder_approvals([*self.data.strategy_founder_approvals, founder_approval])
             self.data = self.data.model_copy(
                 update={
                     "strategies": strategies,
                     "strategy_reviews": strategy_reviews,
+                    "strategy_model_validations": strategy_model_validations,
                     "strategy_executive_reviews": strategy_executive_reviews,
                     "strategy_founder_approvals": strategy_founder_approvals,
                 }

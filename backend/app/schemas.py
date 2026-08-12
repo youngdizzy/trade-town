@@ -1080,6 +1080,71 @@ class StrategyReview(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
+# v0.7 — Quantitative Research & Intelligence System, Piece 4: the Model
+# Validator (Meridian/CIO). See app/model_validation.py's module
+# docstring for the full honesty boundary. Every check below reuses data
+# a different real system already computed (Monte Carlo bootstrap,
+# regime test, liquidity validation, expectancy) against an existing,
+# already-load-bearing threshold — never a new fabricated statistic.
+ModelValidationVerdict = Literal[
+    "approved", "rejected", "needs_more_evidence", "not_validatable"
+]
+
+
+class ModelValidationCheck(CamelModel):
+    """`passed=None` means this check could not be evaluated yet (e.g.
+    the underlying artifact — Monte Carlo/regime test/liquidity
+    validation — doesn't exist for this strategy yet) — never silently
+    coerced to pass or fail. `threshold_source` always cites exactly
+    which existing constant/pattern this check reused; it is never
+    blank, since Piece 4 introduces no new numeric bar of its own."""
+
+    id: str
+    label: str
+    passed: bool | None
+    evidence: str
+    reasoning: str
+    threshold_source: str = Field(alias="thresholdSource")
+
+
+class ModelValidationReport(CamelModel):
+    """Meridian/CIO's independent validation sign-off for one Company
+    Review cycle (see app/model_validation.py). Advisory-only: nothing
+    in app/sandbox.py's apply_review_decision()/begin_company_review()
+    control flow reads `verdict` — it is generated and surfaced purely
+    for CEO visibility alongside the matching StrategyReview. This
+    codebase has no strategy version-number concept, so
+    `existing_review_count` (the same count that already drives that
+    cycle's Devil's Advocate rotation assignment) is the honest
+    substitute audit-trail/reproducibility field, not a fabricated
+    version number."""
+
+    id: str
+    strategy_id: str = Field(alias="strategyId")
+    strategy_name: str = Field(alias="strategyName")
+    review_id: str = Field(alias="reviewId")
+    existing_review_count: int = Field(alias="existingReviewCount")
+    verdict: ModelValidationVerdict
+    checks: list[ModelValidationCheck]
+    validator_agent_id: Literal["cio"] = Field(
+        default="cio", alias="validatorAgentId"
+    )
+    evidence_summary: str = Field(alias="evidenceSummary")
+    # Plain statement of what real data each check drew on and, just as
+    # importantly, what this report does NOT independently establish —
+    # Meridian reviews and challenges the same computed evidence
+    # Vector's research and Sentinel/Guardian/Keystone's risk review also
+    # draw on; it does not re-derive statistics from a separate raw-data
+    # pipeline (none exists). The independence that's real here is
+    # organizational/decision independence, not statistical
+    # independence — see app/model_validation.py's module docstring.
+    data_sources_and_assumptions: list[str] = Field(
+        default_factory=list, alias="dataSourcesAndAssumptions"
+    )
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
 class HallOfFameEntry(CamelModel):
     id: str
     category: HallOfFameCategory
@@ -5965,6 +6030,13 @@ class GameSaveState(CamelModel):
     )
     strategy_reviews: list[StrategyReview] = Field(
         default_factory=list, alias="strategyReviews"
+    )
+    # v0.7 — Quantitative Research & Intelligence System, Piece 4.
+    # One real ModelValidationReport per request_strategy_company_review()
+    # call (the same call that files a StrategyReview) — see
+    # app/model_validation.py.
+    strategy_model_validations: list[ModelValidationReport] = Field(
+        default_factory=list, alias="strategyModelValidations"
     )
     # v0.7 Feature 52 (Part 1) — the Strategy Validation Laboratory's
     # extension of the Research Sandbox pipeline (app/strategy_lab.py).

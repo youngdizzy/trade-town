@@ -303,8 +303,19 @@ def _fundamental_verdict(strategy: Strategy, research_items: list[ResearchItem])
     return StrategyReviewVerdict(reviewerRole="fundamental", reviewerAgent="nova", verdict="concern", summary=f"No completed research on record for {strategy.focus_category} — the strategy's assumptions haven't been independently checked.")
 
 
-def _devils_advocate_verdict(strategy: Strategy, results: list[SimulationResult], existing_review_count: int) -> StrategyReviewVerdict:
+def _devils_advocate_verdict(strategy: Strategy, results: list[SimulationResult], existing_review_count: int, *, exclude_cio: bool = False) -> StrategyReviewVerdict:
+    """`exclude_cio` is Piece 4's (Quantitative Research & Intelligence
+    System) Model Validator independence guarantee: Meridian/CIO cannot
+    simultaneously serve as this same review cycle's rotating Devil's
+    Advocate. It is a pure, per-call substitution only — the base
+    `existing_review_count % len(...)` formula is never altered, so no
+    other review (this strategy's past/future ones, or any other
+    strategy's) is affected. See app/model_validation.py's module
+    docstring for the full lifecycle grounding."""
     assigned = STRATEGY_DEVILS_ADVOCATES[existing_review_count % len(STRATEGY_DEVILS_ADVOCATES)]
+    if exclude_cio and assigned == "cio":
+        cio_index = STRATEGY_DEVILS_ADVOCATES.index("cio")
+        assigned = STRATEGY_DEVILS_ADVOCATES[(cio_index + 1) % len(STRATEGY_DEVILS_ADVOCATES)]
     worst = max(results, key=lambda r: r.max_drawdown_pct) if results else None
     losers = [r for r in results if r.expected_value_pct < 0]
     if worst is None:
@@ -315,14 +326,14 @@ def _devils_advocate_verdict(strategy: Strategy, results: list[SimulationResult]
     return StrategyReviewVerdict(reviewerRole="devils_advocate", reviewerAgent=assigned, verdict="pass", summary=f"Tried to break it across {len(results)} run(s) (worst drawdown {worst.max_drawdown_pct:.1f}%) and found no disqualifying weakness.")
 
 
-def generate_strategy_review(strategy: Strategy, results: list[SimulationResult], research_items: list[ResearchItem], existing_review_count: int, *, sim_day: int) -> StrategyReview:
+def generate_strategy_review(strategy: Strategy, results: list[SimulationResult], research_items: list[ResearchItem], existing_review_count: int, *, sim_day: int, exclude_cio: bool = False) -> StrategyReview:
     strategy_results = [r for r in results if r.strategy_id == strategy.id]
     verdicts = [
         _quant_verdict(strategy_results),
         _risk_verdict(strategy_results, strategy.allocated_capital),
         _technical_verdict(strategy_results),
         _fundamental_verdict(strategy, research_items),
-        _devils_advocate_verdict(strategy, strategy_results, existing_review_count),
+        _devils_advocate_verdict(strategy, strategy_results, existing_review_count, exclude_cio=exclude_cio),
     ]
     if any(v.verdict == "fail" for v in verdicts):
         overall: StrategyVerdict = "fail"

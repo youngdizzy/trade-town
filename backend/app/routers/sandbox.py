@@ -10,6 +10,7 @@ from app.persistence import persist_modules
 from app.schemas import (
     BacktestSession,
     FailedStrategyArchiveEntry,
+    ModelValidationReport,
     Strategy,
     StrategyCertification,
     StrategyDossier,
@@ -79,6 +80,12 @@ class StrategyStateResponse(BaseModel):
     # action here leaves them empty rather than re-sending the whole list.
     strategy_executive_reviews: list[StrategyExecutiveReview] = Field(default_factory=list, alias="strategyExecutiveReviews")
     strategy_founder_approvals: list[StrategyFounderApproval] = Field(default_factory=list, alias="strategyFounderApprovals")
+    # v0.7 Quantitative Research & Intelligence System, Piece 4 — Meridian/
+    # CIO's independent, advisory-only ModelValidationReport. Only
+    # populated by /request-review, the one action that files it (see
+    # app/state.py's request_strategy_company_review()); every other
+    # action here leaves it empty rather than re-sending the whole list.
+    strategy_model_validation: ModelValidationReport | None = Field(default=None, alias="strategyModelValidation")
     # v0.7 Feature 52 (Part 2) — only populated by /retire; exactly one of
     # the two is ever non-empty for a given retirement (see
     # app/strategy_lab.py's generate_strategy_retirement_outcome()).
@@ -121,11 +128,13 @@ async def request_company_review(payload: StrategyIdRequest) -> StrategyStateRes
     persist_modules(state)
     latest_executive_review = [r for r in state.strategy_executive_reviews if r.strategy_id == payload.strategy_id][-1:]
     latest_founder_approval = [a for a in state.strategy_founder_approvals if a.strategy_id == payload.strategy_id][-1:]
+    latest_model_validation = next((r for r in reversed(state.strategy_model_validations) if r.strategy_id == payload.strategy_id), None)
     return StrategyStateResponse(
         strategies=state.strategies,
         strategyReviews=state.strategy_reviews,
         strategyExecutiveReviews=latest_executive_review,
         strategyFounderApprovals=latest_founder_approval,
+        strategyModelValidation=latest_model_validation,
     )
 
 
@@ -196,6 +205,21 @@ async def strategy_certification(strategy_id: str = Query(..., alias="strategyId
     founder_approval = next((r for r in reversed(state.strategy_founder_approvals) if r.strategy_id == strategy_id), None)
     health = next((r for r in reversed(state.strategy_health_assessments) if r.strategy_id == strategy_id), None)
     return compute_strategy_certification(strategy, state.simulation_results, review, monte_carlo, regime_test, executive_review, founder_approval, health)
+
+
+@router.get("/model-validation", response_model=ModelValidationReport | None)
+async def strategy_model_validation(strategy_id: str = Query(..., alias="strategyId")) -> ModelValidationReport | None:
+    """v0.7 Quantitative Research & Intelligence System, Piece 4 —
+    Meridian/CIO's most recent independent, advisory-only validation
+    report for this strategy. Read-only; returns None if the strategy
+    has never been through Company Review yet (see app/state.py's
+    request_strategy_company_review(), the one real place this is
+    generated)."""
+    state = await game_state.snapshot()
+    strategy = next((s for s in state.strategies if s.id == strategy_id), None)
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="No strategy found with that id.")
+    return next((r for r in reversed(state.strategy_model_validations) if r.strategy_id == strategy_id), None)
 
 
 @router.get("/dossier", response_model=StrategyDossier)

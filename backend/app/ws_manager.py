@@ -39,6 +39,10 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         "simulationResults": [r.model_dump(by_alias=True) for r in state.simulation_results],
         "strategyReports": [r.model_dump(by_alias=True) for r in state.strategy_reports],
         "strategyReviews": [r.model_dump(by_alias=True) for r in state.strategy_reviews],
+        # v0.7 Quantitative Research & Intelligence System, Piece 4 —
+        # Meridian/CIO's independent, advisory-only ModelValidationReport.
+        # Already capped in model_validation.py's own cap helper, send as-is.
+        "strategyModelValidations": [r.model_dump(by_alias=True) for r in state.strategy_model_validations],
         # v0.7 Feature 52 (Part 1) — Strategy Validation Laboratory.
         # Already capped in strategy_lab.py's own cap_* helpers, send as-is
         # like the other pre-bounded lists above.
