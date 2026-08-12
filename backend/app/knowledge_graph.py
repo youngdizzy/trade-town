@@ -60,6 +60,7 @@ from app.schemas import (
     CaseStudy,
     CoachReport,
     DecisionVaultEntry,
+    EconomicIntelligenceReport,
     ExecutiveReview,
     HallOfFameEntry,
     KnowledgeEdge,
@@ -112,6 +113,7 @@ def build_knowledge_graph(
     case_studies: list[CaseStudy],
     strategies: list[Strategy],
     black_swan_events: list[BlackSwanEventRecord],
+    economic_reports: list[EconomicIntelligenceReport],
 ) -> KnowledgeGraph:
     nodes: list[KnowledgeNode] = []
     edges: list[KnowledgeEdge] = []
@@ -270,8 +272,12 @@ def build_knowledge_graph(
             )
 
     # v0.7 Design Bible Chapter 61 — case studies first, so trade nodes
-    # (below) can look up their own real caseStudyId.
+    # (below) can look up their own real caseStudyId. Design Bible
+    # Chapter 74 Part 1 tracks each node's real simDay here too, so the
+    # economic_event nodes below can draw a real same-day edge without a
+    # second pass.
     case_study_ids = {cs.id for cs in case_studies}
+    same_day_node_ids: dict[int, list[str]] = {}
     for cs in case_studies:
         node_id = f"casestudy-{cs.id}"
         nodes.append(
@@ -283,6 +289,7 @@ def build_knowledge_graph(
                 timestamp=cs.created_at,
             )
         )
+        same_day_node_ids.setdefault(cs.sim_day, []).append(node_id)
 
     for vault_entry in decision_vault:
         node_id = f"trade-{vault_entry.id}"
@@ -295,6 +302,7 @@ def build_knowledge_graph(
                 timestamp=vault_entry.created_at,
             )
         )
+        same_day_node_ids.setdefault(vault_entry.sim_day, []).append(node_id)
         # A real, direct 1:1 link already stored on the vault entry —
         # never a fuzzy match.
         if vault_entry.case_study_id is not None and vault_entry.case_study_id in case_study_ids:
@@ -377,5 +385,30 @@ def build_knowledge_graph(
                         label="same symbol",
                     )
                 )
+
+    # Design Bible Chapter 74 Part 1 — one real node per daily
+    # EconomicIntelligenceReport, linked to any trade/case_study node
+    # recorded the same real simDay. A real, checkable temporal
+    # proximity only — never a causal claim (see module docstring).
+    for econ_report in economic_reports:
+        node_id = f"econevent-{econ_report.id}"
+        nodes.append(
+            KnowledgeNode(
+                id=node_id,
+                type="economic_event",
+                label=econ_report.narrative.headline,
+                subtitle=f"Day {econ_report.sim_day} Economic Intelligence Brief",
+                timestamp=econ_report.created_at,
+            )
+        )
+        for target_id in same_day_node_ids.get(econ_report.sim_day, []):
+            edges.append(
+                KnowledgeEdge(
+                    source=node_id,
+                    target=target_id,
+                    relation="same_day",
+                    label="same day",
+                )
+            )
 
     return KnowledgeGraph(nodes=nodes, edges=edges, generatedAt=_now_iso())

@@ -34,4 +34,5 @@ async def knowledge_graph() -> KnowledgeGraph:
         case_studies=state.case_studies,
         strategies=state.strategies,
         black_swan_events=state.black_swan_events,
+        economic_reports=state.economic_intelligence_reports,
     )
