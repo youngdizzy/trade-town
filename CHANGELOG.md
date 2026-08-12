@@ -7,6 +7,18 @@ development milestones, not semver releases.
 
 ### Added
 
+- **The Quant Organization, formalized** (`docs/DesignBible/volumes/07-ai-workforce.md`): Piece 1 of the
+  Quantitative Research & Intelligence System, docs-only. Names the real three-way separation the CEO's spec
+  asked for, using each agent's existing name and occupation — no renames, no new agents, no behavior
+  changes, per her own explicit instruction not to rename an agent just to sound more quantitative. **Chief
+  Quant = Vector** (leads Black Box Research, the `"quant"` `StrategyReview` seat). **Risk Quant = Sentinel +
+  Guardian + Keystone**, a real three-tier structure rather than one role under three names: Sentinel's hard
+  per-trade gate (`evaluate_sentinel_risk`), Guardian's softer concentration monitor
+  (`evaluate_guardian_exposure`), and Keystone's strategic Founder-level risk domain (Constitution amendments,
+  Academy mentorship) — a distinction not previously written down anywhere. **Model Validator = Meridian**
+  cross-references Piece 4's own Chapter 62 addendum rather than duplicating it. Quant Developer and Execution
+  Quant remain undocumented, deferred future pieces (7 and 5) — not claimed as real here.
+
 - **Model Validator (Meridian/CIO)** (`backend/app/model_validation.py` new, `backend/app/sandbox.py`,
   `backend/app/state.py`, `backend/app/schemas.py`, `backend/app/ws_manager.py`, `backend/app/save_modules.py`,
   `backend/app/routers/sandbox.py`, `backend/tests/test_model_validation.py` new, `frontend/src/types.ts`,
