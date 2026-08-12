@@ -88,6 +88,7 @@ from app.risk_engine import compute_daily_objective_status, default_risk_limits
 from app.sandbox import apply_review_decision, begin_company_review, begin_limited_live, begin_paper_trial, generate_strategy_review
 from app.sandbox import retire_strategy as retire_strategy_stage
 from app.scribe import record_ceo_decision, record_emergency_stop_event, record_proposal_hold, record_proposal_modify, record_rule_violation, record_strategy_failed_archive_entry, record_strategy_hall_of_fame_entry
+from app.self_improvement import decide_self_improvement_proposal, maybe_propose_retirement_cluster, record_self_improvement_proposal
 from app.schemas import (
     AccountType,
     AgentId,
@@ -1487,8 +1488,22 @@ class GameState:
                 record_strategy_hall_of_fame_entry(memory, hall_of_fame_entry, max_records=self.data.risk_limits.max_memory_records)
             else:
                 assert failed_archive_entry is not None
-                update["strategy_failed_archive"] = cap_strategy_failed_archive([*self.data.strategy_failed_archive, failed_archive_entry])
+                new_failed_archive = cap_strategy_failed_archive([*self.data.strategy_failed_archive, failed_archive_entry])
+                update["strategy_failed_archive"] = new_failed_archive
                 record_strategy_failed_archive_entry(memory, failed_archive_entry, max_records=self.data.risk_limits.max_memory_records)
+                # Design Bible Chapter 74 Part 1 — the Strategy Retirement
+                # Cluster generator, checked at the one real place a
+                # retirement happens (a real CEO/player action, not
+                # tick-driven — see app/strategy_lab.py's own module
+                # docstring on why strategy retirement is never automatic).
+                retirement_cluster_proposal = maybe_propose_retirement_cluster(
+                    new_failed_archive, self.data.self_improvement_proposals, sim_day=self.data.time.day
+                )
+                if retirement_cluster_proposal is not None:
+                    update["self_improvement_proposals"] = record_self_improvement_proposal(
+                        self.data.self_improvement_proposals, retirement_cluster_proposal
+                    )
+                    record(memory, "alert", "Self-Improvement Proposal filed", retirement_cluster_proposal.title, max_records=self.data.risk_limits.max_memory_records)
             update["memory"] = memory
             self.data = self.data.model_copy(update=update)
             return self.data, None
@@ -1545,6 +1560,25 @@ class GameState:
             amendments = [decided if a.id == amendment_id else a for a in self.data.constitution.amendments]
             constitution = self.data.constitution.model_copy(update={"articles": articles, "amendments": amendments, "updated_at": _now_iso()})
             self.data = self.data.model_copy(update={"constitution": constitution})
+            return self.data, None
+
+    async def decide_self_improvement_proposal(
+        self, proposal_id: str, approve: bool, ceo_note: str | None
+    ) -> tuple[GameSaveState, str | None]:
+        """Design Bible Chapter 74 Part 1 — the CEO's own real, manual,
+        final call on a Self-Improvement Proposal, never auto-resolved
+        by Automation Mode, the same restraint decide_constitution_amendment
+        above already holds itself to."""
+        async with self.lock:
+            proposal = next((p for p in self.data.self_improvement_proposals if p.id == proposal_id), None)
+            if proposal is None:
+                return self.data, "No self-improvement proposal found with that id."
+            if proposal.status != "pending":
+                return self.data, "That proposal has already been decided."
+            proposals = decide_self_improvement_proposal(
+                self.data.self_improvement_proposals, proposal_id, approve=approve, ceo_note=ceo_note
+            )
+            self.data = self.data.model_copy(update={"self_improvement_proposals": proposals})
             return self.data, None
 
     async def create_calendar_event(self, category: PlayerEventCategory, title: str, day: int, hour: int, minute: int) -> tuple[GameSaveState, str | None]:
