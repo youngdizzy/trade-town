@@ -4782,6 +4782,18 @@ class BehavioralCircuitBreakerRead(CamelModel):
     `sameInstrument`/`sizeIncreasePct` are None whenever no real candidate
     was evaluated, or no candidate-independent baseline/comparison was
     possible — never a fabricated value standing in for "not evaluated."
+
+    `sameDirection` (Piece 8b) is informational only — like
+    `repeatedRapidReentryCount`, it never independently corroborates a
+    `"triggered"` verdict on its own (a candidate defaults to the same
+    side as almost any prior trade far too often by chance for that to
+    be real evidence of revenge trading; see app/behavioral_risk.py's
+    module docstring for why). `previousWinSymbol`/`previousWinPnl`/
+    `minutesSinceWin`/`winSizeIncreasePct` (also Piece 8b) are the
+    win-triggered-escalation read — populated only when the most recent
+    closed trade was a real win, mutually exclusive with the
+    `previousLoss*`/`sameInstrument`/`sizeIncreasePct` fields above,
+    which populate only when it was a real loss.
     """
 
     status: BehavioralCircuitBreakerStatus
@@ -4791,9 +4803,14 @@ class BehavioralCircuitBreakerRead(CamelModel):
     minutes_since_loss: int | None = Field(default=None, alias="minutesSinceLoss")
     cooldown_minutes: int = Field(alias="cooldownMinutes")
     same_instrument: bool | None = Field(default=None, alias="sameInstrument")
+    same_direction: bool | None = Field(default=None, alias="sameDirection")
     size_increase_pct: float | None = Field(default=None, alias="sizeIncreasePct")
     consecutive_losses: int = Field(alias="consecutiveLosses")
     repeated_rapid_reentry_count: int = Field(alias="repeatedRapidReentryCount")
+    previous_win_symbol: str | None = Field(default=None, alias="previousWinSymbol")
+    previous_win_pnl: float | None = Field(default=None, alias="previousWinPnl")
+    minutes_since_win: int | None = Field(default=None, alias="minutesSinceWin")
+    win_size_increase_pct: float | None = Field(default=None, alias="winSizeIncreasePct")
     computed_at: str = Field(alias="computedAt")
 
 
