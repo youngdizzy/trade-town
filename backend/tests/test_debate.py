@@ -65,6 +65,37 @@ class TestGenerateDebate:
         assert technical_cross.stance == "challenge"
         assert technical_cross.responding_to is not None
 
+    def test_a_lone_dissenter_does_not_turn_the_rest_of_the_desk_into_challengers(self) -> None:
+        """The bug this replaced: any real disagreement anywhere on the
+        desk used to give EVERY analyst a "challenge" turn, since each
+        analyst's stance was decided by whether *any other* analyst
+        disagreed with *them* — not by their own real relationship to
+        the desk's actual final call. One dissenting vote should only
+        produce one real challenge turn; the five analysts who actually
+        agree with the desk's own recommendation must read as real
+        support, not manufactured conflict."""
+        votes = _six_votes({"technical": "sell", "news": "buy", "macro": "buy", "risk": "buy", "sentiment": "buy", "execution": "buy"})
+        proposal = _proposal(votes, overall="buy")
+        debate = generate_debate(proposal)
+        cross = [t for t in debate.turns if t.stance != "opening"]
+        assert sum(1 for t in cross if t.stance == "challenge") == 1
+        assert sum(1 for t in cross if t.stance == "support") == 5
+        supporters = {t.agent_id for t in cross if t.stance == "support"}
+        assert supporters == {"scout", "nova", "sentinel", "pulse", "atlas"}
+
+    def test_a_real_minority_faction_produces_a_genuine_split(self) -> None:
+        """Two real dissenters against a four-vote majority should read
+        as 4 support / 2 challenge — not a single global "conflict
+        exists" flag applied uniformly to all six analysts."""
+        votes = _six_votes({"technical": "sell", "news": "sell", "macro": "buy", "risk": "buy", "sentiment": "buy", "execution": "buy"})
+        proposal = _proposal(votes, overall="buy")
+        debate = generate_debate(proposal)
+        cross = [t for t in debate.turns if t.stance != "opening"]
+        assert sum(1 for t in cross if t.stance == "challenge") == 2
+        assert sum(1 for t in cross if t.stance == "support") == 4
+        challengers = {t.agent_id for t in cross if t.stance == "challenge"}
+        assert challengers == {"echo", "scout"}
+
     def test_challenge_text_includes_the_challenger_own_real_reasoning(self) -> None:
         votes = _six_votes({"technical": "sell", "news": "buy", "macro": "buy", "risk": "buy", "sentiment": "buy", "execution": "buy"})
         proposal = _proposal(votes)

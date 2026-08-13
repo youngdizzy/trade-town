@@ -198,21 +198,79 @@ def _education_progress(education: EducationProgress) -> float:
     return len(education.completed_lesson_ids) / total * 100.0
 
 
-def _team_chemistry(debates: list[Debate]) -> float:
-    """v0.7 Feature 43 — a real, checkable reading of whether the team
-    tends to back each other's calls during the AI Debate or mostly push
-    back, over the most recent TEAM_CHEMISTRY_WINDOW debates. Distinct
-    from `employee_morale` (individual mood) and `department_efficiency`
-    (time at desk) — this is specifically about how the team behaves
-    *together*, never a fabricated pairwise relationship graph (there is
-    no per-agent-pair data anywhere in this codebase to build one from).
-    50.0 (neutral) until the company has held at least one real debate."""
+def _debate_collaboration_quality(debates: list[Debate]) -> float:
+    """v0.7 Feature 43, corrected under the CEO's Company/Executive
+    Health directive — a real, checkable reading of whether analysts
+    tend to back the desk's real final call or genuinely push back
+    against it, over the most recent TEAM_CHEMISTRY_WINDOW debates.
+
+    Reads app/debate.py's real per-analyst stance, which that module now
+    assigns by comparing each analyst's own vote to the desk's actual
+    overall_recommendation (not "does disagreement exist anywhere on the
+    desk" — see that module's own docstring for the bug this replaced,
+    which made nearly every debate read as 100% conflict). A 4-2 split
+    now yields 4 support turns and 2 real challenge turns, so this
+    signal genuinely rewards GOOD DISAGREEMENT (a real minority dissent,
+    preserved and visible) alongside real majority alignment, rather
+    than collapsing every non-unanimous debate to zero. 50.0 (neutral)
+    until the company has held at least one real debate."""
     recent = debates[-TEAM_CHEMISTRY_WINDOW:]
     turns = [t for d in recent for t in d.turns if t.stance != "opening"]
     if not turns:
         return 50.0
     supportive = sum(1 for t in turns if t.stance == "support")
     return supportive / len(turns) * 100.0
+
+
+def _cross_agent_research_handoffs(research: list[ResearchItem]) -> float:
+    """The CEO's Company Health directive asked Team Chemistry to
+    reflect real collaboration, not just debate tone — this is the
+    second real, non-fabricated signal: whether completed research
+    within the same real category actually gets picked up and built on
+    by a *different* agent, versus one agent working a subject in
+    isolation. Same real category-and-recency grouping
+    app/knowledge_graph.py's own _builds_on_chain() already uses to draw
+    "builds on" edges between research items — this reads the identical
+    real ResearchItem.assignedAgent/category/updatedAt fields, just
+    checking whether the agent changed across each real consecutive
+    pair instead of drawing a graph edge from it. 50.0 (neutral) until
+    the company has at least one same-category pair to check — a
+    single completed research item, or research items that never share
+    a category, has no real handoff to measure yet."""
+    completed = [r for r in research if r.status == "completed"]
+    by_category: dict[str, list[ResearchItem]] = {}
+    for item in completed:
+        by_category.setdefault(item.category, []).append(item)
+
+    total_pairs = 0
+    handoffs = 0
+    for items in by_category.values():
+        ordered = sorted(items, key=lambda r: r.updated_at)
+        for earlier, later in zip(ordered, ordered[1:]):
+            total_pairs += 1
+            if later.assigned_agent != earlier.assigned_agent:
+                handoffs += 1
+
+    if total_pairs == 0:
+        return 50.0
+    return handoffs / total_pairs * 100.0
+
+
+def _team_chemistry(debates: list[Debate], research: list[ResearchItem]) -> float:
+    """v0.7 Feature 43, extended under the CEO's Company/Executive
+    Health directive: an equal, unweighted mean of two independent real
+    collaboration signals — see _debate_collaboration_quality() (how the
+    desk behaves toward its own real final calls) and
+    _cross_agent_research_handoffs() (whether research knowledge
+    actually crosses between agents) above. Same "plain mean, no hidden
+    weighting" convention this module already uses throughout. Mentorship/
+    knowledge-sharing (already read by app/wisdom.py's own
+    share_knowledge factor, which feeds Institutional Memory) is
+    deliberately not re-read a second time here — see this module's own
+    "no duplicate systems" convention — a genuinely new, checkable
+    collaboration signal (e.g. real CEO-assigned cross-agent review
+    pairings) is documented as future work rather than duplicated."""
+    return (_debate_collaboration_quality(debates) + _cross_agent_research_handoffs(research)) / 2.0
 
 
 def _decision_quality(decisions: list[TradeDecision]) -> float:
@@ -340,7 +398,7 @@ def compute_company_health(
         "technology_level": _technology_level(signal_calibration),
         "office_expansion": _office_expansion(watchlist),
         "education_progress": _education_progress(education),
-        "team_chemistry": _team_chemistry(debates),
+        "team_chemistry": _team_chemistry(debates, research),
     }
     overall = sum(metrics.values()) / len(metrics)
 

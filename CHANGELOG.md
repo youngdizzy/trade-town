@@ -280,6 +280,45 @@ development milestones, not semver releases.
   backend suite 1618 passed (every existing caller needed zero changes, since both new parameters are optional
   and default to identical pre-Piece-6 behavior), `mypy`/`ruff` clean.
 
+- **CEO Company/Executive Health directive, Phase 1 — Team Chemistry: real debate-stance bug fix +
+  real cross-agent research handoff signal** (`backend/app/debate.py`, `backend/app/company_health.py`,
+  `backend/tests/test_debate.py`, `backend/tests/test_company_health.py`,
+  `docs/DesignBible/volumes/09-departments/chapter-63-executive-performance-company-health.md`): the CEO's own
+  review of a live Company Health dashboard (~70 overall, several sub-scores reading 0) opened a directive
+  requiring every weak dimension traced to real code before any change, explicitly forbidding hardcoded scores,
+  loosened thresholds, or rewarding meaningless activity. **Root cause found by direct trace:**
+  `app/debate.py`'s `_cross_examination()` gave an analyst a "challenge" turn the moment *any other* analyst on
+  the six-seat desk disagreed with *them* — checked before ever looking for agreement. With six independent
+  real votes, some pairwise disagreement exists on nearly every proposal, so in practice every analyst got
+  "challenge" on nearly every debate, including analysts who fully agreed with the desk's own real final call —
+  "support" only ever appeared on a fully unanimous vote. `_team_chemistry()`'s support-vs-challenge ratio
+  therefore read near-zero on almost any real activity, collapsing into the exact "unanimous vs. not" false
+  binary the CEO's directive named as the anti-pattern to avoid. Confirmed live against a running save: a real
+  debate showed 6 opening + 6 challenge + 0 support turns. **Fix:** each analyst's stance is now judged against
+  the proposal's real `overall_recommendation` — voting with the desk's real final call is support, voting
+  against it is a real challenge; a 4-2 split now yields 4 support + 2 challenge instead of 6 challenge. A real
+  minority dissent is preserved and visible rather than mislabeling majority agreement as conflict — verified
+  the existing regression suite needed zero changes for the two other real consumers of debate stance
+  (`app/discipline.py`'s `assumptions_challenged`, `app/mistakes.py`'s `unchallenged_assumptions`,
+  `app/executive_review.py`'s conflict count, `app/reasoning_lab.py`'s challenge/support reads all passed
+  unchanged). **Second, genuinely new signal:** `_team_chemistry()` is now an equal mean of the corrected debate
+  signal and a new `_cross_agent_research_handoffs()` — reusing `app/knowledge_graph.py`'s own real
+  category-and-recency grouping over `ResearchItem` to check whether consecutive same-category completed
+  research was actually picked up by a *different* agent (a real handoff) versus one agent working alone. No new
+  persisted telemetry — both signals are pure functions over data already tracked. Mentorship (already read by
+  `app/wisdom.py`'s `share_knowledge`, feeding Institutional Memory) deliberately not re-read a second time here,
+  per this module's own no-duplicate-systems convention. Verified: 2 new `test_debate.py` tests proving the exact
+  bug scenario, a rewritten `TestTeamChemistry` + new `TestCrossAgentResearchHandoffs` (9 tests) in
+  `test_company_health.py`, full backend suite 1620/1620 passing, `mypy`/`ruff` clean. Live-verified: advancing a
+  running save's clock moved `teamChemistry` from a stuck `0.0` to a genuinely varying `31.1` as real mixed
+  debates (including a real 5-support/1-challenge split) were generated — the metric now responds to real
+  behavior instead of reading a structural floor. Deliberately out of scope for this phase: a dedicated
+  "successful handoff" CEO action, and a frontend "why is this score what it is" breakdown view (sequenced after
+  this backend fix per backend-first commit discipline). Remaining Company/Executive Health dimensions from the
+  same directive (Efficiency, Office, Talent Development, Founder Oversight, Department Consensus, Self-Evaluation
+  Health, Decision Quality calibration, Institutional Memory/Innovation Velocity linkage, Education) are later
+  phases, not started here.
+
 - **Execution Quant: real transaction cost at the execution choke point** (`backend/app/portfolio.py`,
   `backend/app/schemas.py`, `backend/tests/test_portfolio.py`, `frontend/src/types.ts`,
   `frontend/src/ui/components/CommandCenter/panels/PerformancePanel.tsx`,

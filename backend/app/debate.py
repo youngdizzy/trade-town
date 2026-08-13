@@ -56,24 +56,50 @@ def _opening_turn(vote: AnalystVote) -> DebateTurn:
     return DebateTurn(agentId=vote.agent_id, role=vote.role, stance="opening", respondingTo=None, text=text)
 
 
-def _cross_examination(votes: list[AnalystVote]) -> list[DebateTurn]:
-    """One real challenge-or-support turn per analyst — the first real
-    disagreement it finds among the others (or, absent one, the first
-    real agreement) — rather than every pairwise combination, which
-    would balloon into an unreadable wall of near-duplicate text for a
-    six-seat desk."""
+def _cross_examination(votes: list[AnalystVote], overall_recommendation: str) -> list[DebateTurn]:
+    """One real challenge-or-support turn per analyst, judged against
+    that analyst's own real relationship to the desk's actual final
+    call — not "does any disagreement exist anywhere on the desk."
+
+    The previous version gave an analyst a "challenge" turn the moment
+    it found *any* other analyst who disagreed with *that analyst*,
+    checked before ever looking for agreement. With six independent
+    analysts, some pairwise disagreement is almost always present, so
+    in practice every analyst got "challenge" on nearly every debate —
+    including the ones who actually agreed with the desk's own final
+    recommendation and with each other. "Support" turns only ever
+    appeared on the rare debate where all six voted identically. That
+    collapsed Team Chemistry (app/company_health.py's _team_chemistry)
+    into "unanimous vs. not," the exact false binary the CEO's Company
+    Health directive named as the anti-pattern to avoid.
+
+    Fixed: each analyst's stance reflects whether *their own* vote
+    matches the desk's real overall_recommendation. An analyst voting
+    with the desk backs it up (support); an analyst voting against it
+    is the one actually raising a real objection (challenge). A 4-2
+    split now produces 4 support turns and 2 challenge turns instead of
+    6 challenge turns — the minority's real dissent is preserved
+    without mislabeling the majority's real agreement as conflict."""
     turns: list[DebateTurn] = []
     for vote in votes:
         others = [v for v in votes if v.agent_id != vote.agent_id]
-        disagreement = next((o for o in others if o.choice != vote.choice), None)
-        if disagreement is not None:
-            opener = random.choice(_CHALLENGE_OPENERS).format(other=_ROLE_LABEL[disagreement.role])
-            turns.append(DebateTurn(agentId=vote.agent_id, role=vote.role, stance="challenge", respondingTo=disagreement.agent_id, text=f"{opener} {vote.reasoning}"))
-            continue
-        agreement = next((o for o in others if o.choice == vote.choice), None)
-        if agreement is not None:
-            opener = random.choice(_SUPPORT_OPENERS).format(other=_ROLE_LABEL[agreement.role])
-            turns.append(DebateTurn(agentId=vote.agent_id, role=vote.role, stance="support", respondingTo=agreement.agent_id, text=f"{opener} {vote.reasoning}"))
+        if vote.choice != overall_recommendation:
+            # A real disagreement with the desk's actual call. Point at
+            # another analyst who did side with the final recommendation
+            # (the real position being challenged), falling back to any
+            # other analyst if the whole desk somehow overrode this vote
+            # alone.
+            target = next((o for o in others if o.choice == overall_recommendation), others[0] if others else None)
+            opener = random.choice(_CHALLENGE_OPENERS).format(other=_ROLE_LABEL[target.role] if target else "the desk")
+            turns.append(DebateTurn(agentId=vote.agent_id, role=vote.role, stance="challenge", respondingTo=target.agent_id if target else None, text=f"{opener} {vote.reasoning}"))
+        else:
+            # Backing the desk's real call. Credit another analyst who
+            # also voted for it where one exists (a genuine ally), else
+            # this is the lone supporter and there is no one real to
+            # name.
+            ally = next((o for o in others if o.choice == overall_recommendation), None)
+            opener = random.choice(_SUPPORT_OPENERS).format(other=_ROLE_LABEL[ally.role] if ally else "the desk")
+            turns.append(DebateTurn(agentId=vote.agent_id, role=vote.role, stance="support", respondingTo=ally.agent_id if ally else None, text=f"{opener} {vote.reasoning}"))
     return turns
 
 
@@ -84,7 +110,7 @@ def generate_debate(proposal: TradeProposal) -> Debate:
     the underlying evidence and final recommendation never change,
     since neither is invented per-call."""
     opening = [_opening_turn(v) for v in proposal.analyst_votes]
-    cross = _cross_examination(proposal.analyst_votes)
+    cross = _cross_examination(proposal.analyst_votes, proposal.overall_recommendation)
     summary = (
         f"After {len(proposal.analyst_votes)} independent reads, the desk recommends "
         f"{proposal.overall_recommendation.upper()} on {proposal.symbol}. {proposal.confidence_engine.summary}"

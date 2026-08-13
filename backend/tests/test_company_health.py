@@ -8,14 +8,17 @@ is randomized or invented.
 from __future__ import annotations
 
 from app.company_health import compute_company_health
+from app.debate import generate_debate
 from app.education import all_lessons
 from app.foundational_mentors import STUDENT_AGENT_IDS, default_foundational_mentor_state
 from app.portfolio import default_portfolio
 from app.schemas import (
     AgentEnergy,
     AgentState,
+    AnalystVote,
     Debate,
     DebateTurn,
+    DecisionConfidence,
     DepartmentOpinion,
     DepartmentSelfEvaluation,
     EducationProgress,
@@ -30,6 +33,7 @@ from app.schemas import (
     RiskWarning,
     SignalCalibrationState,
     TradeDecision,
+    TradeProposal,
     WatchlistEntry,
     WisdomState,
 )
@@ -351,16 +355,47 @@ class TestOverallAndTier:
         assert health.recommendations == []
 
 
+def _research_at(agent: str, category: str, updated_at: str, item_id: str) -> ResearchItem:
+    return ResearchItem(
+        id=item_id,
+        title="test",
+        symbol="AAPL",
+        category=category,  # type: ignore[arg-type]
+        priority="normal",
+        status="completed",  # type: ignore[arg-type]
+        assignedAgent=agent,  # type: ignore[arg-type]
+        summary="test",
+        confidence=80.0,
+        createdAt=updated_at,
+        updatedAt=updated_at,
+    )
+
+
 class TestTeamChemistry:
-    def test_no_debates_yet_reads_neutral(self) -> None:
-        health = _health(debates=[])
+    """Team Chemistry is an equal mean of two real signals — see
+    app/company_health.py's _team_chemistry()/_debate_collaboration_quality()/
+    _cross_agent_research_handoffs(). Both default to the neutral 50.0
+    _health()'s own defaults produce (debates=[], and the single default
+    `research=[_research()]` has no same-category pair to check), so
+    every test below overrides both signals' real inputs explicitly to
+    isolate what it's testing."""
+
+    def test_no_data_at_all_reads_neutral(self) -> None:
+        health = _health(debates=[], research=[])
         assert health.team_chemistry == 50.0
 
-    def test_mostly_supportive_turns_score_high(self) -> None:
-        health = _health(debates=[_all_supportive_debate()])
+    def test_fully_supportive_debates_and_real_handoffs_score_high(self) -> None:
+        health = _health(
+            debates=[_all_supportive_debate()],
+            research=[_research_at("nova", "stock", "2026-01-01T00:00:00+00:00", "r1"), _research_at("echo", "stock", "2026-01-02T00:00:00+00:00", "r2")],
+        )
         assert health.team_chemistry == 100.0
 
-    def test_mostly_challenge_turns_score_low(self) -> None:
+    def test_fully_adversarial_debates_and_isolated_research_score_low(self) -> None:
+        # Under the fixed app/debate.py logic, a genuinely all-challenge
+        # debate only occurs when every analyst's vote opposes the
+        # desk's own final recommendation (not merely "someone
+        # disagreed with someone") — a real full-desk override.
         debate = Debate(
             id="d1",
             proposalId="p1",
@@ -374,7 +409,12 @@ class TestTeamChemistry:
             finalSummary="x",
             createdAt="2026-01-01T00:00:00+00:00",
         )
-        health = _health(debates=[debate])
+        health = _health(
+            debates=[debate],
+            # Same agent worked both items in the same category — no
+            # real cross-agent handoff occurred.
+            research=[_research_at("nova", "stock", "2026-01-01T00:00:00+00:00", "r1"), _research_at("nova", "stock", "2026-01-02T00:00:00+00:00", "r2")],
+        )
         assert health.team_chemistry == 0.0
 
     def test_only_the_most_recent_window_of_debates_counts(self) -> None:
@@ -396,8 +436,86 @@ class TestTeamChemistry:
             finalSummary="x",
             createdAt="2026-01-01T00:00:00+00:00",
         )
-        health = _health(debates=[*(challenge_debate for _ in range(19)), _all_supportive_debate()])
+        health = _health(debates=[*(challenge_debate for _ in range(19)), _all_supportive_debate()], research=[])
         assert 0.0 < health.team_chemistry < 100.0
+
+    def test_a_real_minority_dissent_is_not_scored_as_total_conflict(self) -> None:
+        """The exact anti-pattern the CEO's directive named: a debate
+        with real, healthy minority disagreement (2 of 6 analysts
+        dissent from the desk's own final call) must NOT collapse Team
+        Chemistry to 0 just because disagreement exists somewhere —
+        only the real dissenters get a challenge turn, the real
+        majority still gets credited for backing the desk."""
+        votes = [
+            AnalystVote(role=role, agentId=agent, choice=choice, reasoning=f"{role} reasoning", evidence=["e"])  # type: ignore[arg-type]
+            for role, agent, choice in [
+                ("technical", "echo", "buy"),
+                ("news", "scout", "buy"),
+                ("macro", "nova", "buy"),
+                ("risk", "sentinel", "buy"),
+                ("sentiment", "pulse", "sell"),
+                ("execution", "atlas", "sell"),
+            ]
+        ]
+        proposal = TradeProposal(
+            id="p1",
+            symbol="AAPL",
+            category="stock",
+            quantity=10.0,
+            price=100.0,
+            confidence=80.0,
+            analystVotes=votes,  # type: ignore[arg-type]
+            overallRecommendation="buy",  # type: ignore[arg-type]
+            researchSummary="x",
+            riskSummary="x",
+            confidenceEngine=DecisionConfidence(score=80.0, tier="strong", summary="x", factors=[]),
+            createdAt="2026-01-01T00:00:00+00:00",
+            createdSimMinutes=0,
+        )
+        debate = generate_debate(proposal)
+        cross = [t for t in debate.turns if t.stance != "opening"]
+        assert sum(1 for t in cross if t.stance == "support") == 4
+        assert sum(1 for t in cross if t.stance == "challenge") == 2
+        health = _health(debates=[debate], research=[])
+        # debate signal = 4/6 support = 66.7; research signal (empty) = 50 neutral
+        assert health.team_chemistry == round((4 / 6 * 100.0 + 50.0) / 2.0, 1)
+
+
+class TestCrossAgentResearchHandoffs:
+    def test_no_completed_research_reads_neutral(self) -> None:
+        health = _health(debates=[], research=[])
+        assert health.team_chemistry == 50.0
+
+    def test_single_item_per_category_has_no_pair_to_check(self) -> None:
+        health = _health(debates=[], research=[_research_at("nova", "stock", "2026-01-01T00:00:00+00:00", "r1")])
+        assert health.team_chemistry == 50.0
+
+    def test_different_agents_in_the_same_category_is_a_real_handoff(self) -> None:
+        health = _health(
+            debates=[],
+            research=[_research_at("nova", "stock", "2026-01-01T00:00:00+00:00", "r1"), _research_at("echo", "stock", "2026-01-02T00:00:00+00:00", "r2")],
+        )
+        # debate signal (no debates) = 50 neutral; handoff signal = 100 (1/1 pairs crossed agents)
+        assert health.team_chemistry == 75.0
+
+    def test_same_agent_working_a_category_alone_is_not_a_handoff(self) -> None:
+        health = _health(
+            debates=[],
+            research=[_research_at("nova", "stock", "2026-01-01T00:00:00+00:00", "r1"), _research_at("nova", "stock", "2026-01-02T00:00:00+00:00", "r2")],
+        )
+        assert health.team_chemistry == 25.0
+
+    def test_in_progress_research_is_not_counted(self) -> None:
+        item = _research_at("nova", "stock", "2026-01-01T00:00:00+00:00", "r1").model_copy(update={"status": "in_progress"})
+        health = _health(debates=[], research=[item, _research_at("echo", "stock", "2026-01-02T00:00:00+00:00", "r2")])
+        assert health.team_chemistry == 50.0  # only one real completed item — no pair yet
+
+    def test_different_categories_never_form_a_pair(self) -> None:
+        health = _health(
+            debates=[],
+            research=[_research_at("nova", "stock", "2026-01-01T00:00:00+00:00", "r1"), _research_at("echo", "bitcoin", "2026-01-02T00:00:00+00:00", "r2")],
+        )
+        assert health.team_chemistry == 50.0
 
 
 def _all_supportive_debate() -> Debate:

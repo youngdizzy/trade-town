@@ -2603,6 +2603,26 @@ per-agent-pair data exists anywhere in this codebase to build one from).
 `black_box.py`'s docstring was corrected to point here instead of
 repeating the unfulfilled claim.
 
+**Team Chemistry, corrected under the CEO's Company/Executive Health
+directive.** A direct trace found the debate-stance signal above was
+itself a real bug, not a real-but-thin metric: `app/debate.py`'s
+`_cross_examination()` gave an analyst a "challenge" turn the moment
+*any other* analyst on the six-seat desk disagreed with *them* — with
+six independent votes, that's true on nearly every real proposal, so in
+practice every analyst read as "challenge" on nearly every debate,
+including analysts who agreed with the desk's own real final call.
+"Support" only ever appeared on a fully unanimous vote. Fixed: each
+analyst's stance is now judged against the proposal's real
+`overall_recommendation` (voting with it is support, against it is a
+real challenge), so a 4-2 split now reads as 4 support/2 challenge
+instead of 6 challenge. `_team_chemistry()` is now an equal mean of that
+corrected signal and a second, genuinely new one —
+`_cross_agent_research_handoffs()` — reusing `knowledge_graph.py`'s own
+real category-and-recency grouping over completed research to check
+whether consecutive same-category items were picked up by a *different*
+real agent. Live-verified: a running save's `teamChemistry` moved from a
+stuck `0.0` to a genuinely varying `31.1` purely from real ticking.
+
 **Executive Priorities and Department Health are both pure frontend
 derivations** — like the Decision Replay Center, no second backend
 computation was needed. `lib/derive.ts`'s `computeExecutivePriorities()`

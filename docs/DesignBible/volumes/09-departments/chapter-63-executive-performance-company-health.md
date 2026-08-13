@@ -363,3 +363,90 @@ Policy, this chapter is the required design-first step, satisfied
 before this second pass began. The Early Warning consolidation remains
 the one real, scoped, not-yet-attempted future slice — every underlying
 signal it would consume already exists.
+
+**CEO Company/Executive Health directive, Phase 1 — Team Chemistry (a
+real bug fix + a real second collaboration signal):** the CEO's own
+review of the live Company Health dashboard (~70 overall, several
+sub-scores reading 0 or near-0) opened a formal directive requiring every
+weak dimension be traced to real code and real data before any change,
+with an explicit, binding prohibition on hardcoding scores, loosening
+thresholds, or rewarding meaningless activity — the target stated as
+"make TradeTown genuinely deserve a 90+," not "make the dashboard say
+90." Team Chemistry was the CEO's own first-priority pick to implement.
+
+*Root cause, found by direct trace (not assumed):* `app/debate.py`'s
+`_cross_examination()` decided each analyst's stance by checking whether
+*any other* analyst on the six-seat desk disagreed with *them* — before
+ever checking for agreement. With six independent real analyst votes,
+some pairwise disagreement is present on nearly every real proposal, so
+in practice **every analyst received a "challenge" turn on nearly every
+debate, including analysts who fully agreed with the desk's own final
+call and with each other.** "Support" turns only appeared on the rare
+debate where all six analysts voted identically. `_team_chemistry()`
+(the real support-vs-challenge ratio over the most recent 20 debates)
+therefore read near-zero on almost any real desk activity — collapsing
+into exactly the "unanimous vs. not" false binary the CEO's directive
+named as the anti-pattern to avoid ("Team Chemistry should NOT mean
+'everyone agrees.' The system should reward GOOD DISAGREEMENT →
+EVIDENCE → RESOLUTION → BETTER DECISION"). Confirmed live: a running
+save with real debate history showed one debate with 6 opening + 6
+challenge turns and zero support turns, matching the bug exactly.
+
+*Fix:* `_cross_examination()` now takes the proposal's real
+`overall_recommendation` and judges each analyst's stance against it —
+an analyst voting *with* the desk's real final call gets a support turn;
+an analyst voting *against* it gets a challenge turn. A real 4-2 split
+now produces 4 support turns and 2 real challenge turns, instead of 6
+challenge turns. A real minority dissent is preserved and visible
+(`assumptions_challenged` in `app/discipline.py` and
+`unchallenged_assumptions` in `app/mistakes.py` both now read this same,
+more honest signal — verified by the full existing regression suite,
+zero other test needed updating) without mislabeling real majority
+agreement as conflict.
+
+*Second, genuinely new real signal:* per the directive's request that
+Team Chemistry reflect real collaboration beyond debate tone alone,
+`_team_chemistry()` is now an equal mean of two independent real
+signals — the corrected debate-collaboration-quality reading above, and
+a new `_cross_agent_research_handoffs()`: reusing the exact same
+real category-and-recency grouping `app/knowledge_graph.py`'s own
+`_builds_on_chain()` already uses over `ResearchItem`, checking whether
+consecutive same-category completed research items were actually picked
+up by a *different* real agent (a genuine handoff) versus the same agent
+working a subject alone. No new persisted telemetry was needed — both
+signals are pure functions over data this codebase already tracks.
+Mentorship/knowledge-sharing (already read by `app/wisdom.py`'s
+`share_knowledge` factor, feeding Institutional Memory) was deliberately
+not re-read a second time here, per this chapter's own "no duplicate
+systems" convention — documented as a candidate future signal (e.g. a
+real CEO-assignable cross-agent review pairing) rather than duplicated.
+
+Verified: 2 new `test_debate.py` tests proving the exact bug scenario (a
+lone dissenter no longer manufactures 6 challenge turns; a real 2-4
+minority/majority split reads as 2 challenge/4 support, not 6/0), a
+rewritten `TestTeamChemistry` class plus a new `TestCrossAgentResearchHandoffs`
+class in `test_company_health.py` (9 tests total covering both signals'
+neutral-until-real-data fallback, the handoff/no-handoff cases, and that
+in-progress research never counts), full backend suite 1620/1620
+passing (zero regressions elsewhere in the codebase touching debate
+stances — `app/executive_review.py`'s conflict count and
+`app/reasoning_lab.py`'s challenge/support reads all passed unchanged),
+`mypy`/`ruff` clean. Live-verified against the running dev server: a
+fresh save's debates correctly read the new per-analyst stance
+distribution after a `/api/time/advance` call generated new real
+proposals.
+
+Deliberately out of scope for this phase, and not fabricated: a
+dedicated "successful handoff" event log (today's handoff signal is
+derived from existing `ResearchItem` history, not a new tracked event —
+a distinct CEO-assignable pairing/handoff action is future work, not
+attempted here), and any UI change to explain a Team Chemistry score's
+components to the CEO (the CEO's directive asked for a "why is this
+score what it is" breakdown view — a real, separate frontend slice,
+deliberately sequenced after the backend correctness fix per this
+project's backend-first commit discipline). The remaining Company
+Health/Executive Health dimensions named in the CEO's directive
+(Efficiency, Office, Talent Development, Founder Oversight, Department
+Consensus, Self-Evaluation Health, Decision Quality calibration,
+Institutional Memory/Innovation Velocity linkage, Education) are
+tracked as later phases of the same directive, not started here.
