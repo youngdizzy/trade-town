@@ -143,6 +143,22 @@ AGENT_PROFILES: dict[AgentId, AgentProfile] = {
         home_location="simulation-lab",
         tint=0x9AA5B1,
     ),
+    # Quantitative Research & Intelligence System, Piece 7 — the Quant
+    # Developer. Distinct from Vector (does this strategy have real
+    # edge?) and Meridian (is the evidence behind it sound?): Forge's
+    # real job is auditing the RELIABILITY OF THE TOOLS the other two
+    # depend on — see app/quant_developer.py's module docstring. Works
+    # out of the Simulation Lab alongside Vector; no new scene, matching
+    # Vector's own precedent that a "Quant Lab" is real content layered
+    # onto the existing backtesting room, not a new physical space.
+    "forge": AgentProfile(
+        id="forge",
+        name="Forge",
+        occupation="Quantitative Systems Engineer",
+        personality="Blunt and hands-on. Distrusts anything that hasn't been stress-tested, including its own tools.",
+        home_location="simulation-lab",
+        tint=0xE07A5F,
+    ),
 }
 
 

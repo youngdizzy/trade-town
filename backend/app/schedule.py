@@ -199,6 +199,20 @@ AGENT_SCHEDULES: dict[AgentId, list[ScheduleBlock]] = {
         ScheduleBlock(22, 24, "break-room", "Reading quietly"),
         ScheduleBlock(0, 6, "break-room", "Sleeping"),
     ],
+    # Quantitative Research & Intelligence System, Piece 7 — the Quant
+    # Developer. Works out of the same Simulation Lab as Vector, but
+    # audits the tools rather than running the research.
+    "forge": [
+        ScheduleBlock(6, 9, "simulation-lab", "Auditing overnight Monte Carlo runs for sample reliability"),
+        ScheduleBlock(9, 12, "simulation-lab", "Stress-testing the bootstrap pipeline"),
+        ScheduleBlock(12, 13, "break-room", "Resting"),
+        ScheduleBlock(13, 16, "simulation-lab", "Checking every real result against the audited path count"),
+        ScheduleBlock(16, 19, "simulation-lab", "Writing up today's reliability findings"),
+        ScheduleBlock(19, 20, "executive-boardroom", "Flagging any tooling gaps to the CEO"),
+        ScheduleBlock(20, 22, "break-room", "Tinkering with a side project, off the clock"),
+        ScheduleBlock(22, 24, "break-room", "Reading a systems-engineering paper"),
+        ScheduleBlock(0, 6, "break-room", "Sleeping"),
+    ],
 }
 
 

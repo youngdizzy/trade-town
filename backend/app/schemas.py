@@ -87,6 +87,7 @@ AgentId = Literal[
     "keystone",
     "compass",
     "quant",
+    "forge",
 ]
 AGENT_IDS: tuple[AgentId, ...] = (
     "scout",
@@ -103,6 +104,7 @@ AGENT_IDS: tuple[AgentId, ...] = (
     "keystone",
     "compass",
     "quant",
+    "forge",
 )
 
 # Every room an agent's schedule (or a meeting/break override) can place them in.
@@ -2337,6 +2339,49 @@ class StrategyMonteCarloResult(CamelModel):
     conditional_value_at_risk_99_pct: float = Field(alias="conditionalValueAtRisk99Pct")
     sim_day: int = Field(alias="simDay")
     created_at: str = Field(alias="createdAt")
+
+
+# Quantitative Research & Intelligence System, Piece 7 — Forge, the
+# Quant Developer. Distinct from Piece 4's ModelValidationReport
+# (Meridian reviews the EVIDENCE a strategy's Monte Carlo run produced)
+# — this audits the RELIABILITY OF THE TOOL that produced it: whether
+# MONTE_CARLO_PATHS gives enough real samples in the 5%/1% tail for the
+# VaR/CVaR statistics StrategyMonteCarloResult reports there to be
+# statistically trustworthy, not just a share of paths that happen to
+# breach a bar. See app/quant_developer.py's module docstring for the
+# full derivation and the disclosed reliability threshold.
+MonteCarloReliabilityVerdict = Literal["reliable", "marginal", "unreliable"]
+
+
+class MonteCarloReliabilityAssessment(CamelModel):
+    """A real, standing engineering fact about the Monte Carlo bootstrap
+    pipeline itself (app/strategy_lab.py's run_strategy_monte_carlo()) —
+    NOT a per-strategy finding, since every real run uses the identical
+    global MONTE_CARLO_PATHS constant. Recomputed fresh on every read
+    (never persisted or capped), the same "derived view over already-
+    real data" convention app/knowledge_graph.py's own module docstring
+    already established, and audited against every real
+    StrategyMonteCarloResult currently on file rather than just restated
+    from the constant, so a future drift between the documented constant
+    and what a run actually used would be caught, not assumed away."""
+
+    developer_agent_id: Literal["forge"] = Field(default="forge", alias="developerAgentId")
+    paths_simulated: int = Field(alias="pathsSimulated")
+    tail_sample_count_95_pct: int = Field(alias="tailSampleCount95Pct")
+    tail_sample_count_99_pct: int = Field(alias="tailSampleCount99Pct")
+    verdict_95_pct: MonteCarloReliabilityVerdict = Field(alias="verdict95Pct")
+    verdict_99_pct: MonteCarloReliabilityVerdict = Field(alias="verdict99Pct")
+    min_reliable_tail_samples: int = Field(alias="minReliableTailSamples")
+    min_marginal_tail_samples: int = Field(alias="minMarginalTailSamples")
+    recommended_paths_for_reliable_99_pct: int = Field(alias="recommendedPathsForReliable99Pct")
+    real_results_audited: int = Field(alias="realResultsAudited")
+    # False only if a real StrategyMonteCarloResult on file was found
+    # using a DIFFERENT path count than the audited constant — an honest
+    # drift flag, never fabricated.
+    observed_path_counts_consistent: bool = Field(alias="observedPathCountsConsistent")
+    reasoning: str
+    threshold_source: str = Field(alias="thresholdSource")
+    generated_at: str = Field(alias="generatedAt")
 
 
 class StrategyRegimeBucketPerformance(CamelModel):

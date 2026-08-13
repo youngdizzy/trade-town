@@ -27,8 +27,11 @@ class TestDefaultAgentKnowledge:
         # students earning points inside it (see app/founders.py's
         # module docstring). The Quant is the same case — its own real
         # progression is Innovation Points (app/black_box.py), not the
-        # general Academy ladder.
-        assert set(knowledge.keys()) == set(AGENT_IDS) - {"keystone", "compass", "quant"}
+        # general Academy ladder. Quantitative Research & Intelligence
+        # System, Piece 7 — Forge is the same case again: its own real
+        # progression is the Monte Carlo reliability audit
+        # (app/quant_developer.py), not the general Academy ladder.
+        assert set(knowledge.keys()) == set(AGENT_IDS) - {"keystone", "compass", "quant", "forge"}
         for state in knowledge.values():
             assert state.points == 0.0
             assert state.tier == 0
