@@ -9,7 +9,17 @@ from __future__ import annotations
 from app.market_data import MockMarketDataProvider
 from app.market_intelligence import default_market_intelligence_state
 from app.sandbox import generate_strategy_review
-from app.schemas import CoachReport, ResearchItem, SimulationResult, Strategy, StrategyMonteCarloResult, StrategyStageEvent, WatchlistEntry
+from app.schemas import (
+    CoachReport,
+    ModelValidationCheck,
+    ModelValidationReport,
+    ResearchItem,
+    SimulationResult,
+    Strategy,
+    StrategyMonteCarloResult,
+    StrategyStageEvent,
+    WatchlistEntry,
+)
 from app.strategy_lab import (
     CERTIFICATION_MAX_RUIN_PCT,
     CERTIFICATION_MIN_TRADE_COUNT,
@@ -446,6 +456,31 @@ class TestComputeStrategyHealth:
         assert compute_strategy_health(_strategy(), results, sim_day=5) is None
 
 
+def _model_validation_report(*, verdict: str = "rejected", strategy_id: str = "strategy-1") -> ModelValidationReport:
+    return ModelValidationReport(
+        id=f"validation-{strategy_id}",
+        strategyId=strategy_id,
+        strategyName="Momentum Breakout",
+        reviewId="review-1",
+        existingReviewCount=0,
+        verdict=verdict,  # type: ignore[arg-type]
+        checks=[
+            ModelValidationCheck(
+                id="tail_risk",
+                label="Tail Risk",
+                passed=False,
+                evidence="Probability of ruin 22.0% exceeds the 15.0% certification bar.",
+                reasoning="This strategy's own Monte Carlo bootstrap shows an unacceptable real ruin risk.",
+                thresholdSource="CERTIFICATION_MAX_RUIN_PCT (strategy_lab.py)",
+            ),
+        ],
+        evidenceSummary="1 of 6 real checks failed: Tail Risk.",
+        dataSourcesAndAssumptions=["Reviews the same Monte Carlo bootstrap Vector's research already computed."],
+        simDay=10,
+        createdAt=_now_iso(),
+    )
+
+
 class TestGenerateStrategyRetirementOutcome:
     def test_a_real_hall_of_fame_worthy_track_record_earns_induction(self) -> None:
         strategy = _strategy(stage="approved", stage_history=[StrategyStageEvent(id="stage-0", stage="idea", detail="Created.", simDay=1, createdAt=_now_iso())])
@@ -489,6 +524,45 @@ class TestGenerateStrategyRetirementOutcome:
         hof_entry, failed_entry = generate_strategy_retirement_outcome(strategy, results, review, None, None, "No founder approval on file.", sim_day=20)
         assert hof_entry is None
         assert failed_entry is not None
+
+    def test_a_rejected_model_validation_is_folded_into_the_failed_archive(self) -> None:
+        """Quantitative Research & Intelligence System, Piece 6 — a real
+        Meridian/CIO rejection becomes part of the permanent
+        FailedStrategyArchiveEntry, not just a report that disappears
+        once Company Review ends."""
+        strategy = _strategy(stage="limited_live_capital")
+        bad_result = _result(win_rate=20.0, max_drawdown_pct=45.0, avg_win_pct=1.0, avg_loss_pct=-8.0, profit_factor=0.3, total_return_pct=-30.0)
+        review = generate_strategy_review(strategy, [bad_result], [], 0, sim_day=10)
+        validation = _model_validation_report(verdict="rejected")
+
+        _, failed_entry = generate_strategy_retirement_outcome(
+            strategy, [bad_result], review, None, None, "Failed independent validation.", sim_day=20, latest_model_validation=validation
+        )
+        assert failed_entry is not None
+        assert any("Meridian/CIO" in item and "rejected" in item for item in failed_entry.what_failed)
+        assert any(validation.evidence_summary in item for item in failed_entry.what_failed)
+        assert any("Tail Risk" in item and validation.checks[0].reasoning in item for item in failed_entry.lessons_learned)
+
+    def test_an_approved_model_validation_is_not_folded_in_as_a_failure(self) -> None:
+        strategy = _strategy(stage="limited_live_capital")
+        bad_result = _result(win_rate=20.0, max_drawdown_pct=45.0, avg_win_pct=1.0, avg_loss_pct=-8.0, profit_factor=0.3, total_return_pct=-30.0)
+        review = generate_strategy_review(strategy, [bad_result], [], 0, sim_day=10)
+        validation = _model_validation_report(verdict="approved")
+
+        _, failed_entry = generate_strategy_retirement_outcome(
+            strategy, [bad_result], review, None, None, "Failed for other reasons.", sim_day=20, latest_model_validation=validation
+        )
+        assert failed_entry is not None
+        assert not any("Meridian/CIO" in item for item in failed_entry.what_failed)
+
+    def test_no_model_validation_on_file_behaves_exactly_as_before(self) -> None:
+        strategy = _strategy(stage="limited_live_capital")
+        bad_result = _result(win_rate=20.0, max_drawdown_pct=45.0, avg_win_pct=1.0, avg_loss_pct=-8.0, profit_factor=0.3, total_return_pct=-30.0)
+        review = generate_strategy_review(strategy, [bad_result], [], 0, sim_day=10)
+
+        _, failed_entry = generate_strategy_retirement_outcome(strategy, [bad_result], review, None, None, "Never earned real trust.", sim_day=20)
+        assert failed_entry is not None
+        assert not any("Meridian/CIO" in item for item in failed_entry.what_failed)
 
 
 class TestComputeStrategyExecutiveDashboard:

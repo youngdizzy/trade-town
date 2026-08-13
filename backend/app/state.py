@@ -1530,7 +1530,12 @@ class GameState:
         MemoryRecord under the "strategy" category (see app/scribe.py's
         record_strategy_hall_of_fame_entry/record_strategy_failed_archive_entry),
         a real MemoryCategory this codebase declared long ago but never
-        actually populated until now."""
+        actually populated until now. Quantitative Research &
+        Intelligence System, Piece 6 — the failed-archive path also
+        folds in this strategy's own latest real ModelValidationReport
+        (Piece 4), if one exists and isn't `approved`, so a real
+        Meridian/CIO rejection becomes part of the same permanent
+        record instead of being forgotten once Company Review ends."""
         async with self.lock:
             strategy = self._find_strategy(strategy_id)
             if strategy is None:
@@ -1550,8 +1555,21 @@ class GameState:
             latest_review = next((r for r in reversed(self.data.strategy_reviews) if r.strategy_id == strategy_id), None)
             latest_executive_review = next((r for r in reversed(self.data.strategy_executive_reviews) if r.strategy_id == strategy_id), None)
             latest_founder_approval = next((a for a in reversed(self.data.strategy_founder_approvals) if a.strategy_id == strategy_id), None)
+            # Quantitative Research & Intelligence System, Piece 6 — the
+            # same real "latest record for this strategy" pattern as the
+            # three lookups above, so a real Model Validation rejection
+            # (Piece 4) becomes part of the permanent failed-archive
+            # record instead of being forgotten once Company Review ends.
+            latest_model_validation = next((m for m in reversed(self.data.strategy_model_validations) if m.strategy_id == strategy_id), None)
             hall_of_fame_entry, failed_archive_entry = generate_strategy_retirement_outcome(
-                strategy, self.data.simulation_results, latest_review, latest_executive_review, latest_founder_approval, reason, sim_day=self.data.time.day
+                strategy,
+                self.data.simulation_results,
+                latest_review,
+                latest_executive_review,
+                latest_founder_approval,
+                reason,
+                sim_day=self.data.time.day,
+                latest_model_validation=latest_model_validation,
             )
             retired_strategy, error = retire_strategy_stage(strategy, reason, self.data.time.day)
             if error is not None or retired_strategy is None:

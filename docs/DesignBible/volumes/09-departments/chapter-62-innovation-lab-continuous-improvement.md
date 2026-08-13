@@ -756,3 +756,88 @@ build` all clean after adding the four new `StrategyMonteCarloResult`
 fields to `types.ts`, a disclosure comment to `PerformanceSnapshot`
 (no existing render site references it — confirmed by grep — so none was
 invented), and the two new DataRows to `StrategyCertificationView.tsx`.
+
+## Addendum — Wiring Model Validator Findings Into Institutional Memory (Quantitative Research & Intelligence System, Piece 6)
+
+**Status:** Real, backend-only. `app/strategy_lab.py`'s
+`generate_strategy_retirement_outcome()`, `app/state.py`'s
+`retire_strategy()`, and `app/knowledge_graph.py`'s
+`build_knowledge_graph()` now all consult a strategy's latest real
+`ModelValidationReport` (Piece 4, above) — previously generated at
+Company Review and then never read again by anything downstream.
+
+**The real gap this closes.** Direct trace confirmed `Model Validation`
+was write-only: `request_strategy_company_review()` generates and stores
+a `ModelValidationReport` in `self.data.strategy_model_validations`
+(Piece 4), but nothing else in the codebase ever read that list back —
+not strategy retirement's `FailedStrategyArchiveEntry` (whose
+`what_failed`/`lessons_learned` only ever drew on `StrategyReview`
+verdicts and `StrategyExecutiveReview` concerns), not the Company
+Knowledge Graph's strategy nodes. A real Meridian/CIO rejection was
+CEO-visible for exactly as long as Company Review stayed open, then
+gone — advisory in the worst sense, not "advisory-but-remembered."
+
+**What's real about the fix.** Every string folded in is a direct read
+of `ModelValidationReport`'s own already-real fields
+(`verdict`/`evidence_summary`/`checks[].label`/`checks[].reasoning`) —
+never paraphrased, never re-derived. The "latest report for this
+strategy" lookup pattern (`next((r for r in reversed(...) if
+r.strategy_id == strategy_id), None)`) is the exact same pattern
+`retire_strategy()` already used for `latest_review`/
+`latest_executive_review`/`latest_founder_approval` — Piece 6 adds a
+fourth lookup of the identical shape, not a new pattern.
+
+1. **`FailedStrategyArchiveEntry`** (the piece's primary, explicitly
+   named target). `generate_strategy_retirement_outcome()` gained an
+   optional `latest_model_validation` parameter; when the report exists
+   and its verdict isn't `approved`, one line citing the verdict +
+   `evidence_summary` is appended to `what_failed`, and one line per
+   failed check's own `reasoning` is appended to `lessons_learned`.
+   Because `app/scribe.py`'s `record_strategy_failed_archive_entry()`
+   already builds its permanent `MemoryRecord` narrative directly from
+   `entry.what_failed`, this one change automatically flows the
+   validation finding into real, permanent Company Memory too — no
+   second change needed there.
+2. **Knowledge Graph** — a strategy node's `subtitle` now names the
+   verdict of that strategy's own latest `ModelValidationReport` when
+   one exists (e.g. `"Retired · Momentum · Model Validation:
+   rejected"`), the same "real, checkable shared attribute" discipline
+   every other edge/label in this graph already follows —
+   `ModelValidationReport.strategy_id` is a real, direct field, and the
+   verdict shown is that report's own real `verdict`, never inferred.
+
+**Explicitly scoped out — not fabricated.** Two adjacent ideas were
+considered and cut, each for a concrete, verified reason rather than
+time pressure:
+- **`app/mistakes.py`** operates at the individual closed-trade level
+  (one `CaseStudy` per real process gap on one losing trade) — there is
+  no real mechanism connecting a strategy-level Model Validation verdict
+  to any specific trade's own `TradeDecision`/`Debate`/
+  `DisciplineReview`, so wiring it in would mean inventing a link this
+  codebase's data model doesn't support.
+- **Execution Quant (Piece 5) findings** are not wired into any
+  institutional-memory system in this piece. Confirmed by direct check:
+  `PaperTrade` carries no `strategy_id` field anywhere (Command Center's
+  own Performance panel already discloses this — "closed trades aren't
+  currently linked to a Strategy id"), so there is no real way to
+  compute "this specific strategy's real trades paid $X in cumulative
+  transaction cost" today. Building that check anyway would mean
+  fabricating a linkage this codebase's schema doesn't have. This
+  remains open for a future piece, once/if a real trade-to-strategy link
+  exists.
+
+**Verified:** 7 new backend tests —
+`tests/test_strategy_lab.py::TestGenerateStrategyRetirementOutcome`
+gained 3 (a rejected validation folded into the failed archive with its
+real `evidence_summary`/check `reasoning` both present verbatim; an
+`approved` validation correctly NOT folded in as a failure; no
+validation on file behaves byte-for-byte as before Piece 6);
+`tests/test_knowledge_graph.py::TestModelValidationOnStrategyNodes`
+gained 4 (a real verdict shown on its own strategy's node; no text at
+all when no report exists; a report for a *different* strategy never
+leaks onto this one's node; the latest of more than one report for the
+same strategy wins). Full backend suite: 1618 passed (up from 1611),
+`mypy`/`ruff` clean on every touched `app/` file. Every existing caller
+of `generate_strategy_retirement_outcome()`/`build_knowledge_graph()`
+needed zero changes — both new parameters are optional and default to
+the pre-Piece-6 behavior exactly.

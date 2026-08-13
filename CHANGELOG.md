@@ -7,6 +7,28 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Wiring Model Validator findings into institutional memory** (`backend/app/strategy_lab.py`,
+  `backend/app/state.py`, `backend/app/knowledge_graph.py`, `backend/app/routers/knowledge_graph.py`,
+  `backend/tests/test_strategy_lab.py`, `backend/tests/test_knowledge_graph.py`,
+  `docs/DesignBible/volumes/09-departments/chapter-62-innovation-lab-continuous-improvement.md`): Piece 6 of the
+  Quantitative Research & Intelligence System. Closes a real, confirmed gap: Meridian/CIO's `ModelValidationReport`
+  (Piece 4) was write-only — generated at Company Review, stored, then never read by anything downstream, so a real
+  rejection was CEO-visible only as long as that review stayed open. `generate_strategy_retirement_outcome()` now
+  folds a strategy's own latest non-`approved` validation report's real `verdict`/`evidence_summary`/check
+  `reasoning` into `FailedStrategyArchiveEntry.whatFailed`/`lessonsLearned` — which `app/scribe.py` already turns
+  into a permanent `MemoryRecord`, so this one change makes the finding real, permanent Company Memory with no
+  second change needed there. The Company Knowledge Graph's strategy nodes also now name that same latest real
+  verdict in their subtitle. Two adjacent ideas were explicitly scoped out rather than faked: `app/mistakes.py`
+  operates at the individual-trade level with no real mechanism to link a strategy-level verdict to a specific
+  trade, and Execution Quant (Piece 5) findings couldn't be wired in at all — `PaperTrade` has no `strategy_id`
+  field anywhere in this codebase (already disclosed in Command Center's own Performance panel), so there's no
+  real way to compute a strategy's cumulative transaction-cost drag today. Verified: 7 new tests (3 for the
+  failed-archive folding — a rejected report folded in with its real fields intact, an approved report correctly
+  not folded in, and pre-Piece-6 behavior unchanged with no report on file; 4 for the Knowledge Graph — verdict
+  shown, no report means no text, a different strategy's report never leaks, latest-of-multiple wins), full
+  backend suite 1618 passed (every existing caller needed zero changes, since both new parameters are optional
+  and default to identical pre-Piece-6 behavior), `mypy`/`ruff` clean.
+
 - **Execution Quant: real transaction cost at the execution choke point** (`backend/app/portfolio.py`,
   `backend/app/schemas.py`, `backend/tests/test_portfolio.py`, `frontend/src/types.ts`,
   `frontend/src/ui/components/CommandCenter/panels/PerformancePanel.tsx`,

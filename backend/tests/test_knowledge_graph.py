@@ -20,6 +20,8 @@ from app.schemas import (
     ExecutiveReview,
     HallOfFameEntry,
     MarketNarrativeEntry,
+    ModelValidationCheck,
+    ModelValidationReport,
     NewsRiskRead,
     ResearchItem,
     Strategy,
@@ -197,6 +199,30 @@ def _strategy(
         focusCategory=category,  # type: ignore[arg-type]
         createdAt=created_at,
         stage=stage,  # type: ignore[arg-type]
+    )
+
+
+def _validation(strategy_id: str, verdict: str = "rejected") -> ModelValidationReport:
+    return ModelValidationReport(
+        id=f"validation-{strategy_id}",
+        strategyId=strategy_id,
+        strategyName=f"Strategy {strategy_id}",
+        reviewId="review-1",
+        existingReviewCount=0,
+        verdict=verdict,  # type: ignore[arg-type]
+        checks=[
+            ModelValidationCheck(
+                id="tail_risk",
+                label="Tail Risk",
+                passed=False,
+                evidence="test",
+                reasoning="test",
+                thresholdSource="CERTIFICATION_MAX_RUIN_PCT (strategy_lab.py)",
+            ),
+        ],
+        evidenceSummary="1 of 6 real checks failed: Tail Risk.",
+        simDay=5,
+        createdAt="2026-01-01T00:00:00+00:00",
     )
 
 
@@ -669,6 +695,90 @@ class TestKnowledgeGraphChapter61Extension:
             economic_reports=[],
         )
         assert not any(e.relation == "same_category" for e in graph.edges)
+
+
+class TestModelValidationOnStrategyNodes:
+    """Quantitative Research & Intelligence System, Piece 6 — a strategy
+    node's subtitle names Meridian/CIO's real latest ModelValidationReport
+    verdict when one exists for that strategy."""
+
+    def test_strategy_with_a_real_validation_report_shows_its_verdict(self) -> None:
+        graph = build_knowledge_graph(
+            agent_ids=("nova",),
+            research=[],
+            academy_completed_projects=[],
+            agent_knowledge={},
+            executive_reviews=[],
+            coach_reports=[],
+            hall_of_fame=[],
+            decision_vault=[],
+            case_studies=[],
+            strategies=[_strategy("s1", "nova")],
+            black_swan_events=[],
+            economic_reports=[],
+            model_validations=[_validation("s1", verdict="rejected")],
+        )
+        node = next(n for n in graph.nodes if n.type == "strategy")
+        assert "Model Validation: rejected" in node.subtitle
+
+    def test_strategy_with_no_validation_report_has_no_validation_text(self) -> None:
+        graph = build_knowledge_graph(
+            agent_ids=("nova",),
+            research=[],
+            academy_completed_projects=[],
+            agent_knowledge={},
+            executive_reviews=[],
+            coach_reports=[],
+            hall_of_fame=[],
+            decision_vault=[],
+            case_studies=[],
+            strategies=[_strategy("s1", "nova")],
+            black_swan_events=[],
+            economic_reports=[],
+        )
+        node = next(n for n in graph.nodes if n.type == "strategy")
+        assert "Model Validation" not in node.subtitle
+
+    def test_validation_for_a_different_strategy_is_not_shown(self) -> None:
+        graph = build_knowledge_graph(
+            agent_ids=("nova",),
+            research=[],
+            academy_completed_projects=[],
+            agent_knowledge={},
+            executive_reviews=[],
+            coach_reports=[],
+            hall_of_fame=[],
+            decision_vault=[],
+            case_studies=[],
+            strategies=[_strategy("s1", "nova")],
+            black_swan_events=[],
+            economic_reports=[],
+            model_validations=[_validation("s2", verdict="rejected")],
+        )
+        node = next(n for n in graph.nodes if n.type == "strategy")
+        assert "Model Validation" not in node.subtitle
+
+    def test_the_latest_report_wins_when_a_strategy_has_more_than_one(self) -> None:
+        graph = build_knowledge_graph(
+            agent_ids=("nova",),
+            research=[],
+            academy_completed_projects=[],
+            agent_knowledge={},
+            executive_reviews=[],
+            coach_reports=[],
+            hall_of_fame=[],
+            decision_vault=[],
+            case_studies=[],
+            strategies=[_strategy("s1", "nova")],
+            black_swan_events=[],
+            economic_reports=[],
+            model_validations=[
+                _validation("s1", verdict="needs_more_evidence"),
+                _validation("s1", verdict="approved"),
+            ],
+        )
+        node = next(n for n in graph.nodes if n.type == "strategy")
+        assert "Model Validation: approved" in node.subtitle
 
 
 class TestEconomicEventNodes:

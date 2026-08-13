@@ -127,6 +127,7 @@ from app.schemas import (
     FailedStrategyArchiveEntry,
     MarketIntelligenceRegime,
     MarketIntelligenceState,
+    ModelValidationReport,
     ResearchItem,
     SimulationResult,
     Strategy,
@@ -944,12 +945,26 @@ def generate_strategy_retirement_outcome(
     reason: str,
     *,
     sim_day: int,
+    latest_model_validation: ModelValidationReport | None = None,
 ) -> tuple[StrategyHallOfFameEntry | None, FailedStrategyArchiveEntry | None]:
     """Every real retirement produces exactly one of the two permanent
     records below — never both, never neither. `strategy` is the
     strategy's state right before retirement (still carrying its real
     pre-retirement `stage`), since app/sandbox.py's retire_strategy()
-    only returns the already-retired copy."""
+    only returns the already-retired copy.
+
+    Quantitative Research & Intelligence System, Piece 6 —
+    `latest_model_validation` (Meridian/CIO's independent
+    ModelValidationReport, Piece 4) is folded into the failed-archive
+    path's own `what_failed`/`lessons_learned` below whenever one exists
+    and its verdict isn't `approved`, so a real Model Validation
+    rejection becomes real, permanent institutional knowledge (this
+    entry is what app/scribe.py's record_strategy_failed_archive_entry()
+    turns into a real MemoryRecord) instead of a report nobody
+    remembers. Every string folded in is Meridian's own real
+    `reasoning`/`evidence`/`evidence_summary` field, never paraphrased or
+    invented. Optional and defaulted so every existing caller/test is
+    unaffected when no validation report exists for this strategy yet."""
     strategy_results = [r for r in results if r.strategy_id == strategy.id]
     trade_count = sum(r.trade_count for r in strategy_results)
     win_rate = sum(r.win_rate for r in strategy_results) / len(strategy_results) if strategy_results else 0.0
@@ -996,6 +1011,15 @@ def generate_strategy_retirement_outcome(
     if latest_executive_review is not None:
         for opinion in latest_executive_review.opinions:
             lessons_learned.extend(opinion.concerns)
+    if latest_model_validation is not None and latest_model_validation.verdict != "approved":
+        what_failed.append(
+            f"Independent Model Validation (Meridian/CIO): {latest_model_validation.verdict.replace('_', ' ')} — {latest_model_validation.evidence_summary}"
+        )
+        lessons_learned.extend(
+            f"Model Validation — {check.label}: {check.reasoning}"
+            for check in latest_model_validation.checks
+            if check.passed is False
+        )
     if not what_failed:
         what_failed = ["Retired before completing enough real validation stages to file specific findings."]
     if not lessons_learned:

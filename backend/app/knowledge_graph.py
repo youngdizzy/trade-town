@@ -43,7 +43,15 @@ persists elsewhere — the exact gap the chapter's own Implementation
 Notes named as "the single largest real, closeable piece of work."
 Strategies still in the raw `idea` stage are not graphed, mirroring the
 existing research filter (only `completed` research items become
-nodes) — an unstarted idea has no real work behind it yet to connect."""
+nodes) — an unstarted idea has no real work behind it yet to connect.
+
+Quantitative Research & Intelligence System, Piece 6 — a strategy node's
+`subtitle` also names Meridian/CIO's real latest ModelValidationReport
+verdict (Piece 4) when one exists for that strategy, the same "real,
+checkable shared attribute" discipline as every edge in this module:
+`ModelValidationReport.strategy_id` is a real, direct field, and the
+verdict shown is that report's own real `verdict`, never inferred or
+paraphrased."""
 
 from __future__ import annotations
 
@@ -66,6 +74,7 @@ from app.schemas import (
     KnowledgeEdge,
     KnowledgeGraph,
     KnowledgeNode,
+    ModelValidationReport,
     ResearchItem,
     Strategy,
 )
@@ -114,9 +123,21 @@ def build_knowledge_graph(
     strategies: list[Strategy],
     black_swan_events: list[BlackSwanEventRecord],
     economic_reports: list[EconomicIntelligenceReport],
+    model_validations: list[ModelValidationReport] | None = None,
 ) -> KnowledgeGraph:
     nodes: list[KnowledgeNode] = []
     edges: list[KnowledgeEdge] = []
+
+    # Quantitative Research & Intelligence System, Piece 6 — each
+    # strategy's own latest real ModelValidationReport (Piece 4), so the
+    # strategy node below can carry Meridian/CIO's real verdict rather
+    # than the graph staying silent on it. `model_validations` is already
+    # in chronological order (the same "list order = chronological
+    # order" convention app/strategy_lab.py's compute_strategy_health()
+    # established), so the last match per strategy_id is the latest one.
+    latest_validation_by_strategy: dict[str, ModelValidationReport] = {}
+    for validation_report in model_validations or []:
+        latest_validation_by_strategy[validation_report.strategy_id] = validation_report
 
     for agent_id in agent_ids:
         profile = AGENT_PROFILES[agent_id]
@@ -331,12 +352,16 @@ def build_knowledge_graph(
         if strategy.stage == "idea":
             continue  # mirrors the research filter — no real work behind an unstarted idea yet
         node_id = f"strategy-{strategy.id}"
+        subtitle = f"{strategy.stage.replace('_', ' ').title()} · {strategy.focus_category}"
+        validation = latest_validation_by_strategy.get(strategy.id)
+        if validation is not None:
+            subtitle += f" · Model Validation: {validation.verdict.replace('_', ' ')}"
         nodes.append(
             KnowledgeNode(
                 id=node_id,
                 type="strategy",
                 label=strategy.name,
-                subtitle=f"{strategy.stage.replace('_', ' ').title()} · {strategy.focus_category}",
+                subtitle=subtitle,
                 timestamp=strategy.created_at,
             )
         )
