@@ -65,7 +65,39 @@ temporal-stability check above is the one exception worth naming
 explicitly: its *shape* (splitting a strategy's own run history into an
 earlier and later half) has no prior precedent to reuse — see THE
 TEMPORAL-STABILITY CHECK section below for the honest boundary this
-requires.
+requires. THE CONCENTRATION CHECK below is the second and only other
+exception — see THE CONCENTRATION CHECK section for its own disclosed,
+non-reused threshold.
+
+THE CONCENTRATION CHECK (Prop-Firm Risk Intelligence Addendum, Piece
+8a — Requirement 8, "CONSISTENCY ANALYSIS: track profit concentration
+[largest winning trade/day as % of total]"): the CEO's transcript
+source discussed prop-firm daily-consistency rules; Chapter 69's real
+`app/prop_firm.py::compute_consistency_status()` already implements
+that literal concept for an `Account`'s own real per-day P&L — but (as
+Piece 8's addendum above documents at length) `Account`s never receive
+live trades, so that function has no strategy-validation analog to
+reuse directly. `SimulationResult` has no day-level granularity either
+— it represents one full backtest/simulation *run*, not a sequence of
+trading days. What is real and reusable is the *shape* of
+`compute_consistency_status()`'s formula (largest single bucket's
+profit, as a percentage of the cumulative positive total) applied to
+the one real per-strategy bucket this codebase actually has: each
+strategy's own `SimulationResult.total_return_pct` per run. A strategy
+whose real profitability is overwhelmingly the product of one dominant
+run — rather than being earned consistently across its several real
+tested runs — is a real robustness concern distinct from every other
+check above (a positive whole-sample expectancy, and even a positive
+temporal-stability split, can both still be true while one outlier run
+does nearly all the work). `CONCENTRATION_MAX_SINGLE_RUN_SHARE_PCT =
+50.0` is a **new, disclosed research assumption with no existing
+in-codebase precedent** — unlike every other check in this module, it
+is not a reuse of an existing Certification-gate constant. It is
+presented honestly as a chosen conservative rule of thumb (no single
+real run should account for more than half of a strategy's total real
+positive return sample), the same disclosure standard Piece 7's
+`MIN_RELIABLE_TAIL_SAMPLES`/`MIN_MARGINAL_TAIL_SAMPLES` set for a novel
+threshold — never as an established statistical fact.
 
 THE TEMPORAL-STABILITY CHECK (Piece 2 — Walk-Forward / Temporal-Split
 Validation): a genuine walk-forward test needs real, sequential,
@@ -126,6 +158,11 @@ from app.strategy_lab import (
 )
 
 MAX_STRATEGY_MODEL_VALIDATIONS = 30
+
+# Piece 8a — a new, disclosed research assumption (see THE CONCENTRATION
+# CHECK in this module's docstring). Not a reuse of any existing
+# Certification-gate constant, unlike every other threshold in this file.
+CONCENTRATION_MAX_SINGLE_RUN_SHARE_PCT = 50.0
 
 
 def _now_iso() -> str:
@@ -280,6 +317,51 @@ def _temporal_stability_check(strategy_results: list[SimulationResult]) -> Model
     )
 
 
+def _concentration_check(strategy_results: list[SimulationResult]) -> ModelValidationCheck:
+    """Piece 8a — Prop-Firm Risk Intelligence Addendum, Requirement 8
+    (consistency analysis / profit concentration), applied to this
+    strategy's own real per-run `total_return_pct` history the same way
+    app/prop_firm.py's compute_consistency_status() applies its formula
+    to an Account's own real per-day P&L (see THE CONCENTRATION CHECK in
+    this module's docstring for why a direct reuse of that function
+    isn't possible here)."""
+    if len(strategy_results) < 2:
+        return ModelValidationCheck(
+            id="concentration",
+            label="Profit Concentration Across This Strategy's Own Runs (Robustness)",
+            passed=None,
+            evidence=f"Only {len(strategy_results)} real run(s) on file — at least 2 are needed to assess whether profit is concentrated in one run.",
+            reasoning="Cannot evaluate profit concentration without at least two real completed runs to compare.",
+            thresholdSource=f"New disclosed research assumption, not a reuse of an existing constant: CONCENTRATION_MAX_SINGLE_RUN_SHARE_PCT = {CONCENTRATION_MAX_SINGLE_RUN_SHARE_PCT:.0f}%",
+        )
+    positive_returns = [r.total_return_pct for r in strategy_results if r.total_return_pct > 0]
+    cumulative = sum(positive_returns)
+    if cumulative <= 0:
+        return ModelValidationCheck(
+            id="concentration",
+            label="Profit Concentration Across This Strategy's Own Runs (Robustness)",
+            passed=None,
+            evidence="No real run on file has a positive total return yet — nothing to assess concentration against.",
+            reasoning="Cannot evaluate profit concentration with zero real positive-return runs on file.",
+            thresholdSource=f"New disclosed research assumption, not a reuse of an existing constant: CONCENTRATION_MAX_SINGLE_RUN_SHARE_PCT = {CONCENTRATION_MAX_SINGLE_RUN_SHARE_PCT:.0f}%",
+        )
+    largest = max(positive_returns)
+    share_pct = round(largest / cumulative * 100.0, 2)
+    passed = share_pct <= CONCENTRATION_MAX_SINGLE_RUN_SHARE_PCT
+    return ModelValidationCheck(
+        id="concentration",
+        label="Profit Concentration Across This Strategy's Own Runs (Robustness)",
+        passed=passed,
+        evidence=f"This strategy's single best real run accounts for {share_pct:.1f}% of its cumulative positive real return across {len(positive_returns)} real profitable run(s) (needs ≤{CONCENTRATION_MAX_SINGLE_RUN_SHARE_PCT:.0f}%).",
+        reasoning=(
+            "Real profitability is earned across multiple real runs, not overwhelmingly the product of one dominant run."
+            if passed
+            else "One real run accounts for most of this strategy's real positive return — a whole-sample average or a positive expectancy can both still hold true while robustness is actually fragile."
+        ),
+        thresholdSource=f"New disclosed research assumption, not a reuse of an existing constant: CONCENTRATION_MAX_SINGLE_RUN_SHARE_PCT = {CONCENTRATION_MAX_SINGLE_RUN_SHARE_PCT:.0f}%",
+    )
+
+
 def _compute_verdict(checks: list[ModelValidationCheck], strategy_results: list[SimulationResult]) -> ModelValidationVerdict:
     if not strategy_results:
         return "not_validatable"
@@ -317,6 +399,7 @@ def generate_model_validation_report(
         _liquidity_check(liquidity),
         _expectancy_check(strategy_results),
         _temporal_stability_check(strategy_results),
+        _concentration_check(strategy_results),
     ]
     verdict = _compute_verdict(checks, strategy_results)
     passed_count = sum(1 for c in checks if c.passed is True)

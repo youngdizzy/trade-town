@@ -841,3 +841,91 @@ same strategy wins). Full backend suite: 1618 passed (up from 1611),
 of `generate_strategy_retirement_outcome()`/`build_knowledge_graph()`
 needed zero changes — both new parameters are optional and default to
 the pre-Piece-6 behavior exactly.
+
+## Addendum — Profit Concentration / Robustness Check (Prop-Firm Risk Intelligence Addendum, Piece 8a)
+
+**Status:** Real, implemented as a seventh check inside `app/model_
+validation.py`'s existing `ModelValidationReport` (Piece 4, above) —
+not a standalone module, the same "fold into the existing report"
+precedent Piece 2 already set.
+
+**Origin.** The CEO's Prop-Firm Risk Intelligence Addendum's
+Requirement 8 ("CONSISTENCY ANALYSIS: track profit concentration —
+largest winning trade/day as a percentage of total") plus the
+directive's own instruction not to blindly implement the transcript
+source's specific numbers as established fact. Authorized alongside
+Piece 8 as "8, 8a, 8b."
+
+**Why this couldn't reuse `app/prop_firm.py`'s existing
+`compute_consistency_status()` directly.** That function already
+implements this exact concept — real, correct, and load-bearing — but
+for an `Account`'s own real per-day P&L (`PaperTrade.closed_sim_
+minutes` bucketed by day). Two real constraints block reusing it here:
+`Account`s never receive live trades (Piece 8's addendum above), and
+`SimulationResult` — the real evidence Meridian actually validates —
+has no day-level granularity at all; it represents one full backtest
+*run*. The real, honest analog reuses the *formula's shape* (largest
+bucket's profit as a percentage of the cumulative positive total)
+against the one real per-strategy bucket this codebase has: each
+strategy's own `SimulationResult.total_return_pct` per run.
+
+**The real, distinct contribution.** `_concentration_check()` sums
+every real positive `total_return_pct` across a strategy's own runs,
+finds the single largest one, and checks it doesn't account for more
+than half the total. This is a real, different failure mode than every
+other check in this report: a strategy can have a positive whole-sample
+expectancy (`_expectancy_check`) and even hold up across a chronological
+split (`_temporal_stability_check`, Piece 2) while still being
+fragile — if nearly all of its real profit traces to one outlier run,
+neither of those checks would catch it, because both operate on
+per-trade averages or a two-way split, not a per-run concentration
+read. Needs ≥2 real runs with at least one real positive return to be
+evaluable; `passed: None` otherwise, never a fabricated verdict on
+insufficient evidence.
+
+**The one genuinely new threshold in this whole system.** Every other
+check in `app/model_validation.py` — sample size, regime breadth, tail
+risk, liquidity, expectancy, and Piece 2's temporal stability — cites an
+existing, already-load-bearing `app/strategy_lab.py` Certification-gate
+constant. This check cannot: no equivalent "how much concentration is
+too much" number exists anywhere in this codebase, and `Account.
+consistency_limit_pct` (the nearest real analog) is a per-account
+*configurable* field, not a fixed, learned constant. `CONCENTRATION_
+MAX_SINGLE_RUN_SHARE_PCT = 50.0` is disclosed explicitly, in the
+module's own docstring and in the check's own `thresholdSource` string,
+as **a new research assumption with no existing precedent** — a
+conservative rule of thumb (no single run should account for more than
+half a strategy's real positive-return sample), never presented as an
+established statistical fact. This is the same disclosure standard
+Piece 7's `MIN_RELIABLE_TAIL_SAMPLES`/`MIN_MARGINAL_TAIL_SAMPLES` set
+for a threshold with no reuse available — the CEO's own directive
+(Requirement 15/16) requires exactly this kind of disclosure rather
+than silently treating a chosen number as proven fact.
+
+**Advisory only**, same as every other check — participates in
+`ModelValidationReport.verdict` exactly like the other six, and
+inherits the same non-gating guarantee (`apply_review_decision()`/
+`begin_company_review()` remain byte-for-byte unmodified; no change to
+Sentinel, Guardian, the Gatekeeper, or any Circuit Breaker).
+
+**Frontend:** no changes needed. `StrategyPipelineView.tsx`'s existing
+Model Validation card already renders `latestModelValidation.checks.
+map(...)` generically — the new seventh check appears automatically
+with no new UI code.
+
+**Verified:** 7 new backend tests
+(`tests/test_model_validation.py::TestConcentrationCheck` — too few
+runs, zero positive-return runs, evenly-spread profit passing, one run
+dominating and failing, the exact-50%-boundary case passing (`<=`, not
+`<`), a losing run correctly excluded from the denominator, and
+threshold-source always disclosing the new non-reused constant), 37
+pre-existing tests in the same file passing unchanged (the fixture data
+in `TestVerdictLogic`'s "all pass" case happens to spread its identical
+per-run returns evenly, so the new check doesn't flip any existing
+verdict). Full backend suite: 1641 total, 1640 passed — the one failure
+is `test_foundational_mentors.py`'s pre-existing, genuinely unseeded-
+random `test_low_aptitude_agent_racks_up_consecutive_failures_eventually`
+(uses `random.random()`/`random.uniform()` with no seed, confirmed
+unrelated to this piece and passing on its own in isolation — the same
+category of known flake the Piece G addendum above already documented
+once). `mypy app/`/`ruff check app/ tests/` clean.

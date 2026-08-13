@@ -11,7 +11,7 @@ persisting past the call.
 """
 from __future__ import annotations
 
-from app.model_validation import _temporal_stability_check, generate_model_validation_report
+from app.model_validation import CONCENTRATION_MAX_SINGLE_RUN_SHARE_PCT, _concentration_check, _temporal_stability_check, generate_model_validation_report
 from app.sandbox import (
     STRATEGY_DEVILS_ADVOCATES,
     _devils_advocate_verdict,
@@ -153,6 +153,79 @@ def _results(count: int, *, trade_count_each: int = 5, expected_value_pct: float
         )
         for i in range(count)
     ]
+
+
+def _results_with_returns(returns: list[float], *, trade_count_each: int = 5, strategy_id: str = "strategy-1") -> list[SimulationResult]:
+    return [
+        SimulationResult(
+            id=f"result-{strategy_id}-{i}",
+            strategyId=strategy_id,
+            strategyName="Momentum Breakout",
+            symbol="NEXA",
+            totalReturnPct=total_return_pct,
+            winRate=60.0,
+            maxDrawdownPct=10.0,
+            sharpeRatio=1.5,
+            sortinoRatio=1.5,
+            tradeCount=trade_count_each,
+            runBy="quant",  # type: ignore[arg-type]
+            completedAt=_now_iso(),
+            expectedValuePct=1.0,
+        )
+        for i, total_return_pct in enumerate(returns)
+    ]
+
+
+class TestConcentrationCheck:
+    """Piece 8a — Prop-Firm Risk Intelligence Addendum, Requirement 8
+    (profit concentration / consistency analysis), applied to this
+    strategy's own real per-run totalReturnPct history. Not a reuse of
+    an existing Certification-gate constant (see
+    CONCENTRATION_MAX_SINGLE_RUN_SHARE_PCT's own disclosure in
+    app/model_validation.py)."""
+
+    def test_not_evaluable_with_fewer_than_two_runs(self) -> None:
+        check = _concentration_check(_results_with_returns([10.0]))
+        assert check.passed is None
+
+        check_empty = _concentration_check([])
+        assert check_empty.passed is None
+
+    def test_not_evaluable_when_no_run_has_a_positive_return(self) -> None:
+        check = _concentration_check(_results_with_returns([-5.0, -3.0, -1.0]))
+        assert check.passed is None
+
+    def test_passes_when_profit_is_spread_evenly_across_runs(self) -> None:
+        check = _concentration_check(_results_with_returns([10.0, 10.0, 10.0, 10.0]))
+        assert check.passed is True
+        assert "25.0%" in check.evidence
+
+    def test_fails_when_one_run_dominates_total_profit(self) -> None:
+        check = _concentration_check(_results_with_returns([90.0, 5.0, 5.0]))
+        assert check.passed is False
+        assert "90.0%" in check.evidence
+
+    def test_exactly_at_the_threshold_passes(self) -> None:
+        # Two equal positive runs -> the best run is exactly 50% of the
+        # cumulative positive total, at the disclosed
+        # CONCENTRATION_MAX_SINGLE_RUN_SHARE_PCT boundary itself — <=
+        # must pass, not just <.
+        check = _concentration_check(_results_with_returns([10.0, 10.0]))
+        assert check.passed is True
+
+    def test_negative_runs_are_excluded_from_the_denominator(self) -> None:
+        # A losing run must not dilute the concentration math — only
+        # real positive-return runs count toward the cumulative total.
+        check = _concentration_check(_results_with_returns([10.0, 10.0, -50.0]))
+        assert check.passed is True
+        assert "2 real profitable run" in check.evidence
+
+    def test_threshold_source_discloses_a_new_non_reused_constant(self) -> None:
+        for results in ([], _results_with_returns([10.0]), _results_with_returns([-1.0, -2.0]), _results_with_returns([10.0, 10.0])):
+            check = _concentration_check(results)
+            assert check.threshold_source.strip()
+            assert "New disclosed research assumption" in check.threshold_source
+            assert f"{CONCENTRATION_MAX_SINGLE_RUN_SHARE_PCT:.0f}%" in check.threshold_source
 
 
 class TestSampleSizeCheck:

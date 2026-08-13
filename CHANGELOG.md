@@ -7,6 +7,27 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Profit concentration / robustness check in Meridian's Model Validator** (`backend/app/model_validation.py`,
+  `backend/tests/test_model_validation.py`,
+  `docs/DesignBible/volumes/09-departments/chapter-62-innovation-lab-continuous-improvement.md`): Piece 8a of the
+  Prop-Firm Risk Intelligence Addendum's Requirement 8 ("consistency analysis: track profit concentration —
+  largest winning trade/day as a percentage of total"). `app/prop_firm.py`'s real
+  `compute_consistency_status()` already implements this concept for an `Account`'s own real per-day P&L, but
+  `Account`s never receive live trades (Piece 8, below) and `SimulationResult` — the real evidence Meridian
+  validates — has no day-level granularity; it represents one full backtest run. New `_concentration_check()`
+  reuses the formula's *shape* (largest bucket's profit as a percentage of the cumulative positive total) against
+  the one real per-strategy bucket that exists: each strategy's own `SimulationResult.total_return_pct` per run —
+  a real, distinct failure mode neither the existing whole-sample expectancy check nor Piece 2's chronological-split
+  check would catch (a strategy whose profit is earned almost entirely by one outlier run can still pass both).
+  `CONCENTRATION_MAX_SINGLE_RUN_SHARE_PCT = 50.0` is the one genuinely new threshold in this whole six-piece system
+  with no existing in-codebase constant to reuse — explicitly disclosed as a chosen research assumption, not an
+  established fact, the same disclosure standard Piece 7's tail-sample thresholds set. Advisory only, folds into
+  the existing seven-check `ModelValidationReport.verdict` unchanged; the frontend needed zero changes since
+  `StrategyPipelineView.tsx`'s Model Validation card already renders `checks.map(...)` generically. Verified: 7 new
+  tests, 37 pre-existing tests in the same file passing unchanged, full backend suite 1641 total/1640 passed (the
+  one failure is a pre-existing, genuinely unseeded-random flaky test in an unrelated module, confirmed passing in
+  isolation), `mypy`/`ruff` clean.
+
 - **Remaining risk budget at trade-decision time** (`backend/app/risk_engine.py`, `backend/app/schemas.py`,
   `backend/app/state.py`, `backend/app/nexus.py`, `backend/app/save_modules.py`, `backend/app/ws_manager.py`,
   `backend/tests/test_risk_engine.py`, `frontend/src/types.ts`, `frontend/src/net/socket.ts`,
