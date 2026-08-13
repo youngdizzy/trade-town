@@ -1571,6 +1571,94 @@ class EvaluationTrackingStatus(CamelModel):
     computed_at: str = Field(alias="computedAt")
 
 
+# Quantitative Research & Intelligence System, Requirements 21/22/23/25
+# (Piece 10) — the evaluation-level risk-policy simulator. Every policy
+# below is an explicit, disclosed HYPOTHESIS to be tested, never adopted
+# as truth merely because it appears here (see app/evaluation_simulator.
+# py's module docstring for the full disclosure of every assumption this
+# makes). "failure_boundary_relative" sizes risk as a real fraction of
+# the account's own real trailing-drawdown boundary when one is
+# configured — the only policy that varies per-account rather than
+# using a fixed risk_per_trade_pct.
+EvaluationRiskPolicyId = Literal[
+    "conservative", "moderate", "aggressive", "failure_boundary_relative"
+]
+
+
+class EvaluationPolicySimulationResult(CamelModel):
+    """One risk policy's real Monte Carlo evaluation-simulation results —
+    every field here is a real statistic computed from real simulated
+    paths (see app/evaluation_simulator.py's simulate_evaluation_policy()),
+    never a fabricated conclusion. Speed (expected_trades_to_pass /
+    expected_trading_days_to_pass) is reported alongside failure and
+    drawdown risk specifically so a reader can never read "fast" without
+    also seeing "at what cost" — per Requirement 25, speed is an
+    objective to weigh, never treated here as automatically good."""
+
+    policy_id: EvaluationRiskPolicyId = Field(alias="policyId")
+    label: str
+    risk_per_trade_pct: float = Field(alias="riskPerTradePct")
+    paths_simulated: int = Field(alias="pathsSimulated")
+    probability_of_passing_pct: float = Field(alias="probabilityOfPassingPct")
+    probability_of_failing_drawdown_pct: float = Field(alias="probabilityOfFailingDrawdownPct")
+    probability_of_failing_time_expiry_pct: float = Field(alias="probabilityOfFailingTimeExpiryPct")
+    # None when zero simulated paths passed — never a fabricated "0" or
+    # infinity standing in for "no real passing paths to average."
+    expected_trades_to_pass: float | None = Field(alias="expectedTradesToPass")
+    expected_trading_days_to_pass: float | None = Field(alias="expectedTradingDaysToPass")
+    expected_cost_to_pass: float | None = Field(alias="expectedCostToPass")
+    median_max_drawdown_pct: float = Field(alias="medianMaxDrawdownPct")
+    worst_case_max_drawdown_pct: float = Field(alias="worstCaseMaxDrawdownPct")
+    probability_of_consecutive_loss_streak_pct: float = Field(alias="probabilityOfConsecutiveLossStreakPct")
+    consecutive_loss_streak_threshold: int = Field(alias="consecutiveLossStreakThreshold")
+    # A simple, disclosed research heuristic (probabilityOfPassingPct
+    # divided by medianMaxDrawdownPct) — explicitly NOT presented as a
+    # universal or validated risk-adjusted-return formula, only as one
+    # comparative signal among the many fields on this object. See
+    # Requirement 21's own text: "the system must not conclude that
+    # aggressive risk is superior merely because it produces faster
+    # passes" — this field is not the sole deciding number.
+    risk_adjusted_outcome: float = Field(alias="riskAdjustedOutcome")
+    # Requirement 21's "sensitivity to strategy quality" — the same
+    # simulation rerun at a real, disclosed win-rate delta (see
+    # STRATEGY_QUALITY_SENSITIVITY_DELTA_PP) to show how much the pass
+    # probability actually depends on the input strategy being good.
+    probability_of_passing_at_lower_quality_pct: float = Field(alias="probabilityOfPassingAtLowerQualityPct")
+    probability_of_passing_at_higher_quality_pct: float = Field(alias="probabilityOfPassingAtHigherQualityPct")
+
+
+class EvaluationPolicyComparisonReport(CamelModel):
+    """Requirement 21's research question, answered honestly: "Which
+    evaluation-stage risk policy produces the best probability-adjusted
+    outcome for reaching and succeeding in the funded stage while
+    controlling failure risk and evaluation cost?" This report compares
+    real simulated policies side by side and explicitly refuses to
+    declare a winner — `conclusion` states the comparative evidence in
+    plain language, `assumptions` and `limitations` are never omitted or
+    hidden, and no field here claims validated/production status for any
+    policy. See app/evaluation_simulator.py's own docstring for the full
+    honesty boundary, including what Requirement 21 asked for that this
+    piece explicitly does NOT attempt (real per-regime sensitivity;
+    downstream funded-stage performance, since Piece 10a's funded-stage
+    tracking is CEO-recorded, not linked to simulated paths)."""
+
+    id: str
+    strategy_id: str = Field(alias="strategyId")
+    strategy_name: str = Field(alias="strategyName")
+    account_id: str | None = Field(alias="accountId")
+    sample_trade_count: int = Field(alias="sampleTradeCount")
+    profit_target_pct: float = Field(alias="profitTargetPct")
+    drawdown_limit_pct: float = Field(alias="drawdownLimitPct")
+    max_trades: int = Field(alias="maxTrades")
+    research_question: str = Field(alias="researchQuestion")
+    policies: list[EvaluationPolicySimulationResult]
+    conclusion: str
+    assumptions: list[str]
+    limitations: list[str]
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
 class ScannerAlert(CamelModel):
     """Pulse's output — see app/scanner.py. `detected_by` is always
     "pulse" today; the field exists so a future version could let other

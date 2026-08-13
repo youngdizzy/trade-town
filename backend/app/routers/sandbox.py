@@ -6,9 +6,11 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.evaluation_simulator import compare_evaluation_policies
 from app.persistence import persist_modules
 from app.schemas import (
     BacktestSession,
+    EvaluationPolicyComparisonReport,
     FailedStrategyArchiveEntry,
     ModelValidationReport,
     Strategy,
@@ -246,3 +248,31 @@ async def strategy_dossier(strategy_id: str = Query(..., alias="strategyId")) ->
         state.strategy_executive_reviews,
         state.strategy_founder_approvals,
     )
+
+
+@router.get("/evaluation-policy-comparison", response_model=EvaluationPolicyComparisonReport | None)
+async def evaluation_policy_comparison(
+    strategy_id: str = Query(..., alias="strategyId"),
+    account_id: str | None = Query(default=None, alias="accountId"),
+) -> EvaluationPolicyComparisonReport | None:
+    """Quantitative Research & Intelligence System, Requirements
+    21/22/23/25 (Piece 10) — a real, on-demand Monte Carlo comparison of
+    four named evaluation-stage risk policies for this strategy. None
+    when the strategy has no completed simulation runs yet — nothing
+    real to bootstrap from (same honesty boundary as GET /model-
+    validation and .../monte-carlo). Read-only and computed fresh every
+    call — nothing here is persisted or auto-generated in the background
+    sim tick, unlike StrategyMonteCarloResult; see app/
+    evaluation_simulator.py's own module docstring for why this piece
+    stays a real, on-demand research computation rather than a second
+    autonomous background pipeline."""
+    state = await game_state.snapshot()
+    strategy = next((s for s in state.strategies if s.id == strategy_id), None)
+    if strategy is None:
+        raise HTTPException(status_code=404, detail="No strategy found with that id.")
+    account = None
+    if account_id is not None:
+        account = next((a for a in state.accounts if a.id == account_id), None)
+        if account is None:
+            raise HTTPException(status_code=404, detail=f"No account with id {account_id!r}.")
+    return compare_evaluation_policies(strategy, state.simulation_results, account=account, sim_day=state.time.day)
