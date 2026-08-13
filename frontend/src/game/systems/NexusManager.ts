@@ -16,6 +16,7 @@ import type {
   CoachReport,
   CompanyDNA,
   CompanyHealth,
+  CompanyHealthDelta,
   CompanyScore,
   ConstitutionState,
   DailyObjectiveStatus,
@@ -144,6 +145,7 @@ interface NexusSnapshot {
   marketIntelligenceReports: MarketIntelligenceReport[];
   marketIntelligenceLearning: MarketIntelligenceLearningEntry[];
   companyHealth: CompanyHealth;
+  companyHealthDelta: CompanyHealthDelta | null;
   companyDna: CompanyDNA;
   dailyObjectiveStatus: DailyObjectiveStatus;
   riskBudgetStatus: RiskBudgetStatus;
@@ -355,6 +357,7 @@ export class NexusManager {
     combinedOverall: 50,
     combinedTier: "stable",
   };
+  private static companyHealthDelta: CompanyHealthDelta | null = null;
   private static companyDna: CompanyDNA = {
     traits: [],
     summary: "",
@@ -756,6 +759,10 @@ export class NexusManager {
 
   static getCompanyHealth(): CompanyHealth {
     return this.companyHealth;
+  }
+
+  static getCompanyHealthDelta(): CompanyHealthDelta | null {
+    return this.companyHealthDelta;
   }
 
   static getCompanyDna(): CompanyDNA {
@@ -1425,6 +1432,9 @@ export class NexusManager {
     if (update.companyHealth !== this.companyHealth) EventBus.emit("companyHealth:updated", update.companyHealth);
     this.companyHealth = update.companyHealth;
 
+    if (update.companyHealthDelta !== this.companyHealthDelta) EventBus.emit("companyHealthDelta:updated", update.companyHealthDelta);
+    this.companyHealthDelta = update.companyHealthDelta;
+
     if (update.companyDna !== this.companyDna) EventBus.emit("companyDna:updated", update.companyDna);
     this.companyDna = update.companyDna;
 
@@ -1689,6 +1699,7 @@ export class NexusManager {
     this.marketIntelligenceReports = save.marketIntelligenceReports;
     this.marketIntelligenceLearning = save.marketIntelligenceLearning;
     this.companyHealth = save.companyHealth;
+    this.companyHealthDelta = save.companyHealthDelta ?? null;
     this.companyDna = save.companyDna;
     this.dailyObjectiveStatus = save.dailyObjectiveStatus;
     this.riskBudgetStatus = save.riskBudgetStatus;

@@ -18,6 +18,7 @@ import type {
   CoachReport,
   CompanyDNA,
   CompanyHealth,
+  CompanyHealthDelta,
   CompanyScore,
   ConstitutionState,
   DailyObjectiveStatus,
@@ -153,6 +154,7 @@ type ServerMessage =
       marketIntelligenceReports: MarketIntelligenceReport[];
       marketIntelligenceLearning: MarketIntelligenceLearningEntry[];
       companyHealth: CompanyHealth;
+      companyHealthDelta: CompanyHealthDelta | null;
       companyDna: CompanyDNA;
       dailyObjectiveStatus: DailyObjectiveStatus;
       riskBudgetStatus: RiskBudgetStatus;
@@ -310,6 +312,7 @@ export class GameSocket {
             marketIntelligenceReports: msg.marketIntelligenceReports,
             marketIntelligenceLearning: msg.marketIntelligenceLearning,
             companyHealth: msg.companyHealth,
+            companyHealthDelta: msg.companyHealthDelta,
             companyDna: msg.companyDna,
             dailyObjectiveStatus: msg.dailyObjectiveStatus,
             riskBudgetStatus: msg.riskBudgetStatus,

@@ -2370,6 +2370,37 @@ export interface CompanyHealth {
   combinedTier: CompanyHealthTier;
 }
 
+// CEO Company Health + Live Market Realism directive, Section 6 — the
+// explicit before/after delta breakdown (see
+// backend/app/company_health.py's diff_company_health()). `group`
+// distinguishes CompanyHealth's two already-real, already-equal-weighted
+// tiers; never a new weighting scheme, just a label on the existing one.
+export type CompanyHealthDeltaGroup = "operational" | "executive";
+
+export interface CompanyHealthComponentDelta {
+  key: string;
+  label: string;
+  group: CompanyHealthDeltaGroup;
+  previous: number;
+  current: number;
+  delta: number;
+}
+
+/** One real diff between two already-computed CompanyHealth readings —
+ * never a fabricated "reason"/"evidence" string. `components` holds only
+ * entries that actually moved, sorted by magnitude. */
+export interface CompanyHealthDelta {
+  previousUpdatedAt: string;
+  currentUpdatedAt: string;
+  overallDelta: number;
+  executiveOverallDelta: number;
+  combinedOverallDelta: number;
+  tierChanged: boolean;
+  executiveTierChanged: boolean;
+  combinedTierChanged: boolean;
+  components: CompanyHealthComponentDelta[];
+}
+
 // v0.7 Feature 43 — Company DNA (see backend/app/company_dna.py). The one
 // genuinely net-new concept the Executive Intelligence Dashboard brief
 // asked for; five real, descriptive behavioral traits read off the
@@ -4300,6 +4331,7 @@ export interface GameSaveState {
   marketIntelligenceReports: MarketIntelligenceReport[];
   marketIntelligenceLearning: MarketIntelligenceLearningEntry[];
   companyHealth: CompanyHealth;
+  companyHealthDelta: CompanyHealthDelta | null;
   companyDna: CompanyDNA;
   dailyObjectiveStatus: DailyObjectiveStatus;
   riskBudgetStatus: RiskBudgetStatus;

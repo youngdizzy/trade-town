@@ -19,6 +19,7 @@ import type {
   CoachReport,
   CompanyDNA,
   CompanyHealth,
+  CompanyHealthDelta,
   CompanyScore,
   ConstitutionState,
   DailyObjectiveStatus,
@@ -165,6 +166,7 @@ export interface GameUiState {
   marketIntelligenceReports: MarketIntelligenceReport[];
   marketIntelligenceLearning: MarketIntelligenceLearningEntry[];
   companyHealth: CompanyHealth;
+  companyHealthDelta: CompanyHealthDelta | null;
   companyDna: CompanyDNA;
   dailyObjectiveStatus: DailyObjectiveStatus;
   riskBudgetStatus: RiskBudgetStatus;
@@ -429,6 +431,7 @@ class GameStore {
       combinedOverall: 50,
       combinedTier: "stable",
     },
+    companyHealthDelta: null,
     companyDna: {
       traits: [],
       summary: "",
@@ -759,6 +762,7 @@ class GameStore {
     EventBus.on("marketIntelligenceReports:updated", (marketIntelligenceReports) => this.set({ marketIntelligenceReports }));
     EventBus.on("marketIntelligenceLearning:updated", (marketIntelligenceLearning) => this.set({ marketIntelligenceLearning }));
     EventBus.on("companyHealth:updated", (companyHealth) => this.set({ companyHealth }));
+    EventBus.on("companyHealthDelta:updated", (companyHealthDelta) => this.set({ companyHealthDelta }));
     EventBus.on("companyDna:updated", (companyDna) => this.set({ companyDna }));
     EventBus.on("dailyObjectiveStatus:updated", (dailyObjectiveStatus) => this.set({ dailyObjectiveStatus }));
     EventBus.on("riskBudgetStatus:updated", (riskBudgetStatus) => this.set({ riskBudgetStatus }));

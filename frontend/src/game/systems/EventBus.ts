@@ -19,6 +19,7 @@ import type {
   CoachReport,
   CompanyDNA,
   CompanyHealth,
+  CompanyHealthDelta,
   CompanyScore,
   ConstitutionState,
   DailyObjectiveStatus,
@@ -223,6 +224,7 @@ export interface GameEvents {
   "marketIntelligenceReports:updated": MarketIntelligenceReport[];
   "marketIntelligenceLearning:updated": MarketIntelligenceLearningEntry[];
   "companyHealth:updated": CompanyHealth;
+  "companyHealthDelta:updated": CompanyHealthDelta | null;
   "companyDna:updated": CompanyDNA;
   "dailyObjectiveStatus:updated": DailyObjectiveStatus;
   "riskBudgetStatus:updated": RiskBudgetStatus;

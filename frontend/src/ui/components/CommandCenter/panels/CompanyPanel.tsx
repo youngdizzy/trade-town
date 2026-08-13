@@ -99,7 +99,7 @@ function priorityTone(score: number): "green" | "amber" | "red" {
  * path every other player preference (music/SFX/showFps) already uses.
  */
 export function CompanyPanel() {
-  const { settings, companyHealth, marketEnvironment, riskLimits, executiveReviews, goals, strategicReviews, time } = useGameStore();
+  const { settings, companyHealth, companyHealthDelta, marketEnvironment, riskLimits, executiveReviews, goals, strategicReviews, time } = useGameStore();
   const [advancing, setAdvancing] = useState<TimeAdvanceTarget | null>(null);
   const [customHours, setCustomHours] = useState("6");
   const [timeError, setTimeError] = useState<string | null>(null);
@@ -456,6 +456,41 @@ export function CompanyPanel() {
       </Glass>
 
       <Glass className="p-3">
+        <TerminalLabel>Health Delta</TerminalLabel>
+        <p className="mb-2 text-[9px] text-cmd-textDim">
+          The real, tick-over-tick before/after breakdown — every component here actually moved since the last reading, nothing fabricated.
+        </p>
+        {!companyHealthDelta ? (
+          <EmptyState>No prior reading yet — this is the first Company Health computed this session.</EmptyState>
+        ) : (
+          <>
+            <div className="mb-2 grid grid-cols-3 gap-2 text-center">
+              <DeltaHeadline label="Overall" delta={companyHealthDelta.overallDelta} changedTier={companyHealthDelta.tierChanged} />
+              <DeltaHeadline label="Executive" delta={companyHealthDelta.executiveOverallDelta} changedTier={companyHealthDelta.executiveTierChanged} />
+              <DeltaHeadline label="Combined" delta={companyHealthDelta.combinedOverallDelta} changedTier={companyHealthDelta.combinedTierChanged} />
+            </div>
+            {companyHealthDelta.components.length === 0 ? (
+              <EmptyState>No component moved since the last reading.</EmptyState>
+            ) : (
+              <div className="space-y-1">
+                {companyHealthDelta.components.map((c) => (
+                  <div key={c.key} className="flex items-center justify-between text-[10px]">
+                    <span className="text-cmd-textDim">
+                      {c.label} <span className="uppercase text-cmd-textDim/60">({c.group === "operational" ? "OPS" : "EXEC"})</span>
+                    </span>
+                    <span className={`font-cmdmono ${c.delta >= 0 ? "text-cmd-green" : "text-cmd-red"}`}>
+                      {c.delta >= 0 ? "+" : ""}
+                      {c.delta.toFixed(1)}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+      </Glass>
+
+      <Glass className="p-3">
         <TerminalLabel>Recommendations</TerminalLabel>
         {companyHealth.recommendations.length === 0 ? (
           <EmptyState>Every metric is holding strong.</EmptyState>
@@ -789,4 +824,17 @@ function HealthCell({ label, value }: { label: string; value: number }) {
   const tone = metricTone(value);
   const toneClass: Record<string, string> = { green: "text-cmd-green", amber: "text-cmd-amber", red: "text-cmd-red" };
   return <DataRow label={label} value={value.toFixed(0)} valueClassName={toneClass[tone]} />;
+}
+
+function DeltaHeadline({ label, delta, changedTier }: { label: string; delta: number; changedTier: boolean }) {
+  return (
+    <div className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-1.5">
+      <div className="text-[8px] uppercase tracking-wide text-cmd-textDim">{label}</div>
+      <div className={`font-cmdmono text-sm ${delta > 0 ? "text-cmd-green" : delta < 0 ? "text-cmd-red" : "text-cmd-textDim"}`}>
+        {delta >= 0 ? "+" : ""}
+        {delta.toFixed(1)}
+      </div>
+      {changedTier && <div className="text-[8px] text-cmd-cyan">TIER CHANGED</div>}
+    </div>
+  );
 }
