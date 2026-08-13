@@ -77,6 +77,7 @@ export function ExecutiveVoting() {
     riskWarnings,
     paperPortfolio,
     riskLimits,
+    riskBudgetStatus,
     currentScene,
     debates,
     challengeReports,
@@ -850,6 +851,28 @@ export function ExecutiveVoting() {
                 <div className="mt-1.5 text-[9px] text-cmd-textDim">
                   Stop-loss / take-profit distance and reward-to-risk ratio aren&apos;t shown — TradeTown&apos;s paper broker doesn&apos;t place exit
                   orders yet, so there&apos;s no real number to report.
+                </div>
+              </Glass>
+
+              <Glass className="p-3">
+                <div className="mb-1.5 flex items-center justify-between">
+                  <TerminalLabel>Risk Budget Remaining</TerminalLabel>
+                  {riskBudgetStatus.tradingHalted && <StatusPill tone="red">HALTED</StatusPill>}
+                </div>
+                <DataRow
+                  label="Lifetime drawdown budget"
+                  value={`${riskBudgetStatus.remainingDrawdownBudgetPct.toFixed(1)}% of ${riskBudgetStatus.maxDrawdownPct}% left`}
+                  valueClassName={riskBudgetStatus.remainingDrawdownBudgetPct <= riskBudgetStatus.maxDrawdownPct * 0.25 ? "text-cmd-red" : undefined}
+                />
+                <DataRow
+                  label="Today's loss budget"
+                  value={`${riskBudgetStatus.remainingDailyLossBudgetPct.toFixed(1)}% of ${riskBudgetStatus.maxDailyLossPct}% left`}
+                  valueClassName={riskBudgetStatus.remainingDailyLossBudgetPct <= riskBudgetStatus.maxDailyLossPct * 0.25 ? "text-cmd-red" : undefined}
+                />
+                <DataRow label="Distance to today's profit target" value={`${riskBudgetStatus.remainingToDailyProfitTargetPct.toFixed(1)}%`} />
+                {riskBudgetStatus.haltReason && <div className="mt-1.5 text-[9px] text-cmd-amber">{riskBudgetStatus.haltReason}</div>}
+                <div className="mt-1.5 text-[9px] text-cmd-textDim">
+                  Remaining permissible loss budget before this trade — not a new limit, just what&apos;s left of the existing ones above.
                 </div>
               </Glass>
 

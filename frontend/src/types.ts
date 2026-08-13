@@ -1267,6 +1267,31 @@ export interface DailyObjectiveStatus {
   updatedAt: string;
 }
 
+/** Prop-Firm Risk Intelligence Addendum, Piece 8 — "the system should
+ * understand the remaining permissible loss budget" before a trade is
+ * proposed, not just nominal account size. Every field is a real value
+ * already computed elsewhere (lifetime drawdown reuses the same
+ * portfolio.totalPnlPct evaluate_sentinel_risk already gates on; today's
+ * P&L reuses dailyRealizedPnlPct) — the two "remaining" fields are the
+ * one new arithmetic step (limit minus current usage, floored at 0).
+ * Advisory only. */
+export interface RiskBudgetStatus {
+  equity: number;
+  startingBalance: number;
+  lifetimeDrawdownPct: number;
+  maxDrawdownPct: number;
+  remainingDrawdownBudgetPct: number;
+  dailyLossPctToday: number;
+  maxDailyLossPct: number;
+  remainingDailyLossBudgetPct: number;
+  dailyProfitPctToday: number;
+  dailyProfitTargetPct: number;
+  remainingToDailyProfitTargetPct: number;
+  tradingHalted: boolean;
+  haltReason: string | null;
+  computedAt: string;
+}
+
 export interface RiskWarning {
   id: string;
   symbol: string;
@@ -4134,6 +4159,7 @@ export interface GameSaveState {
   companyHealth: CompanyHealth;
   companyDna: CompanyDNA;
   dailyObjectiveStatus: DailyObjectiveStatus;
+  riskBudgetStatus: RiskBudgetStatus;
   executiveReviews: ExecutiveReview[];
   boardReports: BoardReport[];
   academyProjects: AcademyProject[];

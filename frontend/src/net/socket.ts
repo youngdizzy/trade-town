@@ -61,6 +61,7 @@ import type {
   ReasoningChallenge,
   ReasoningLabState,
   ReflectionSession,
+  RiskBudgetStatus,
   RiskLimits,
   RiskWarning,
   ScannerAlert,
@@ -154,6 +155,7 @@ type ServerMessage =
       companyHealth: CompanyHealth;
       companyDna: CompanyDNA;
       dailyObjectiveStatus: DailyObjectiveStatus;
+      riskBudgetStatus: RiskBudgetStatus;
       executiveReviews: ExecutiveReview[];
       boardReports: BoardReport[];
       academyProjects: AcademyProject[];
@@ -310,6 +312,7 @@ export class GameSocket {
             companyHealth: msg.companyHealth,
             companyDna: msg.companyDna,
             dailyObjectiveStatus: msg.dailyObjectiveStatus,
+            riskBudgetStatus: msg.riskBudgetStatus,
             executiveReviews: msg.executiveReviews,
             boardReports: msg.boardReports,
             academyProjects: msg.academyProjects,

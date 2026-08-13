@@ -59,6 +59,7 @@ import type {
   QuestionOfTheDay,
   ResearchItem,
   TreasuryState,
+  RiskBudgetStatus,
   RiskLimits,
   EducationProgress,
   ModelValidationReport,
@@ -224,6 +225,7 @@ export interface GameEvents {
   "companyHealth:updated": CompanyHealth;
   "companyDna:updated": CompanyDNA;
   "dailyObjectiveStatus:updated": DailyObjectiveStatus;
+  "riskBudgetStatus:updated": RiskBudgetStatus;
   "executiveReviews:updated": ExecutiveReview[];
   "boardReports:updated": BoardReport[];
   "academyProjects:updated": AcademyProject[];

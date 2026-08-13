@@ -54,6 +54,7 @@ import type {
   ResearchItem,
   CalendarState,
   TreasuryState,
+  RiskBudgetStatus,
   RiskLimits,
   EducationProgress,
   ModelValidationReport,
@@ -145,6 +146,7 @@ interface NexusSnapshot {
   companyHealth: CompanyHealth;
   companyDna: CompanyDNA;
   dailyObjectiveStatus: DailyObjectiveStatus;
+  riskBudgetStatus: RiskBudgetStatus;
   executiveReviews: ExecutiveReview[];
   boardReports: BoardReport[];
   academyProjects: AcademyProject[];
@@ -370,6 +372,22 @@ export class NexusManager {
     tradingHalted: false,
     haltReason: null,
     updatedAt: new Date().toISOString(),
+  };
+  private static riskBudgetStatus: RiskBudgetStatus = {
+    equity: 100_000,
+    startingBalance: 100_000,
+    lifetimeDrawdownPct: 0,
+    maxDrawdownPct: 20,
+    remainingDrawdownBudgetPct: 20,
+    dailyLossPctToday: 0,
+    maxDailyLossPct: 5,
+    remainingDailyLossBudgetPct: 5,
+    dailyProfitPctToday: 0,
+    dailyProfitTargetPct: 3,
+    remainingToDailyProfitTargetPct: 3,
+    tradingHalted: false,
+    haltReason: null,
+    computedAt: new Date().toISOString(),
   };
   private static executiveReviews: ExecutiveReview[] = [];
   private static boardReports: BoardReport[] = [];
@@ -739,6 +757,10 @@ export class NexusManager {
 
   static getDailyObjectiveStatus(): DailyObjectiveStatus {
     return this.dailyObjectiveStatus;
+  }
+
+  static getRiskBudgetStatus(): RiskBudgetStatus {
+    return this.riskBudgetStatus;
   }
 
   static getExecutiveReviews(): ExecutiveReview[] {
@@ -1402,6 +1424,9 @@ export class NexusManager {
     if (update.dailyObjectiveStatus !== this.dailyObjectiveStatus) EventBus.emit("dailyObjectiveStatus:updated", update.dailyObjectiveStatus);
     this.dailyObjectiveStatus = update.dailyObjectiveStatus;
 
+    if (update.riskBudgetStatus !== this.riskBudgetStatus) EventBus.emit("riskBudgetStatus:updated", update.riskBudgetStatus);
+    this.riskBudgetStatus = update.riskBudgetStatus;
+
     if (update.executiveReviews.length !== this.executiveReviews.length) EventBus.emit("executiveReviews:updated", update.executiveReviews);
     this.executiveReviews = update.executiveReviews;
 
@@ -1659,6 +1684,7 @@ export class NexusManager {
     this.companyHealth = save.companyHealth;
     this.companyDna = save.companyDna;
     this.dailyObjectiveStatus = save.dailyObjectiveStatus;
+    this.riskBudgetStatus = save.riskBudgetStatus;
     this.executiveReviews = save.executiveReviews;
     this.boardReports = save.boardReports;
     this.academyProjects = save.academyProjects;

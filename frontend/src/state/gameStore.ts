@@ -56,6 +56,7 @@ import type {
   PortfolioIntelligence,
   QuestionOfTheDay,
   ResearchItem,
+  RiskBudgetStatus,
   RiskLimits,
   EducationProgress,
   PlayerVsAiState,
@@ -166,6 +167,7 @@ export interface GameUiState {
   companyHealth: CompanyHealth;
   companyDna: CompanyDNA;
   dailyObjectiveStatus: DailyObjectiveStatus;
+  riskBudgetStatus: RiskBudgetStatus;
   executiveReviews: ExecutiveReview[];
   boardReports: BoardReport[];
   academyProjects: AcademyProject[];
@@ -444,6 +446,22 @@ class GameStore {
       tradingHalted: false,
       haltReason: null,
       updatedAt: new Date().toISOString(),
+    },
+    riskBudgetStatus: {
+      equity: 100_000,
+      startingBalance: 100_000,
+      lifetimeDrawdownPct: 0,
+      maxDrawdownPct: 20,
+      remainingDrawdownBudgetPct: 20,
+      dailyLossPctToday: 0,
+      maxDailyLossPct: 5,
+      remainingDailyLossBudgetPct: 5,
+      dailyProfitPctToday: 0,
+      dailyProfitTargetPct: 3,
+      remainingToDailyProfitTargetPct: 3,
+      tradingHalted: false,
+      haltReason: null,
+      computedAt: new Date().toISOString(),
     },
     executiveReviews: [],
     boardReports: [],
@@ -736,6 +754,7 @@ class GameStore {
     EventBus.on("companyHealth:updated", (companyHealth) => this.set({ companyHealth }));
     EventBus.on("companyDna:updated", (companyDna) => this.set({ companyDna }));
     EventBus.on("dailyObjectiveStatus:updated", (dailyObjectiveStatus) => this.set({ dailyObjectiveStatus }));
+    EventBus.on("riskBudgetStatus:updated", (riskBudgetStatus) => this.set({ riskBudgetStatus }));
     EventBus.on("executiveReviews:updated", (executiveReviews) => this.set({ executiveReviews }));
     EventBus.on("boardReports:updated", (boardReports) => this.set({ boardReports }));
     EventBus.on("academyProjects:updated", (academyProjects) => this.set({ academyProjects }));

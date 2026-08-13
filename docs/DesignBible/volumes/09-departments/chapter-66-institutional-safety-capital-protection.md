@@ -695,3 +695,111 @@ expectancy, real recent strategy health entries) — screenshotted.
 
 This closes the CEO's full seven-piece trading-psychology roadmap
 (Pieces A–G).
+
+## Addendum — Remaining Risk Budget at Trade-Decision Time (Prop-Firm Risk Intelligence Addendum, Piece 8)
+
+**Origin.** The CEO's "Quantitative Research + Prop-Firm Risk
+Intelligence Addendum" (19 numbered requirements plus an explicit
+research-before-code mandate) asked that "before a trade is proposed,
+[the system understands] real account state: current equity, drawdown,
+remaining loss budget, daily loss remaining, profit target remaining …
+Do not use nominal account size as the primary risk reference." A
+research pass across three parallel investigations (dispatched per the
+directive's own Section 20, before any code was written) produced a
+scoped implementation plan; the CEO authorized exactly Pieces 8, 8a, and
+8b. This addendum covers Piece 8.
+
+**Research finding that reshaped the literal brief.** The directive's
+own framing assumed an "Account" is what receives trades. Chapter 69
+Part 1 (`app/accounts.py`) already has a substantial real prop-firm
+module (`app/prop_firm.py`) with real gradient drawdown, consistency,
+scaling, and challenge-progress functions — but its own module docstring
+discloses that live trade execution into a non-primary `Account` is
+**not wired**: "a materially larger change than a capital-ledger layer."
+Only the one primary `PaperPortfolio` ever receives a real
+`TradeProposal`. So the literal brief ("surface the active Account's
+remaining budget alongside a TradeProposal") doesn't map onto anything
+that actually executes a trade — the sub-Account prop-firm status is
+already fully surfaced elsewhere (`TreasuryPanel.tsx`'s existing
+`PropFirmCard`, `GET /api/accounts/prop-firm/status`), and re-computing
+it here would duplicate that, not close a gap. The real gap was that
+**the primary portfolio — the only thing that ever receives a live
+trade — had no remaining-budget view at all**, and nothing surfaced
+risk-budget context inside the actual trade-decision UI
+(`ExecutiveVoting.tsx`). Piece 8 was re-scoped to that real gap.
+
+**What was built.** `compute_risk_budget_status()`
+(`app/risk_engine.py`, right after the pre-existing
+`compute_daily_objective_status()`) returns a new `RiskBudgetStatus`:
+equity, starting balance, lifetime drawdown and its remaining budget
+against `RiskLimits.max_drawdown_pct`, today's realized loss and its
+remaining budget against `max_daily_loss_pct`, today's realized profit
+and remaining distance to `daily_profit_target_pct`, and the same
+halted/haltReason read `compute_daily_objective_status()` already
+produces. Every input is a value this codebase already computed for
+another purpose — `portfolio.total_pnl_pct` is the exact same
+lifetime-drawdown reading `evaluate_sentinel_risk()` already gates on;
+`daily_realized_pnl_pct()` is the exact function
+`compute_daily_objective_status()` already calls. The only new
+arithmetic in the whole piece is "limit minus current usage, floored at
+zero" for the three *remaining* fields — packaging, not a new formula,
+matching the "plumbing only" scope the CEO authorized. **Advisory only:**
+this function is never called from Sentinel, Guardian, the Gatekeeper,
+or any Circuit Breaker — only from the read-only status broadcast to the
+client every tick (`nexus.py`), computed fresh, never gating a decision.
+
+**Wiring bug found and fixed during live verification.** The backend's
+WS broadcast (`app/ws_manager.py`'s `build_state_message()`) is a
+hand-built dict, not a generic `state.model_dump()` — adding
+`risk_budget_status` to `GameSaveState`, `state.py`, and `nexus.py`
+alone was not sufficient for the field to actually reach the frontend.
+A live WS connection during verification confirmed the field was
+genuinely absent from the wire despite being present on the backend's
+own `GameSaveState`; `build_state_message()` was missing the same line
+every other derived-state field needs. Fixed and re-verified live before
+this piece was considered complete — a reminder that "the schema has the
+field" and "the client receives the field" are two different claims,
+and only the second one was ever the actual goal.
+
+**Frontend.** Standard five-site wiring
+(`types.ts`/`socket.ts`/`EventBus.ts`/`NexusManager.ts`/`gameStore.ts`)
+plus a new "Risk Budget Remaining" card in `ExecutiveVoting.tsx`'s
+"Review Analysis" section, next to the pre-existing Risk Snapshot and
+Pre-Trade Checklist cards — the actual trade-decision surface, not a
+standing dashboard, per the directive's "before a trade is proposed"
+framing. Shows remaining drawdown budget, remaining daily loss budget
+(each flagged red once less than 25% of the limit remains), and
+distance to today's profit target, with the halted state and its real
+reason surfaced inline. Values are formatted as plain magnitudes
+(`"20.0% of 20% left"`), not signed deltas — an early draft reused the
+existing `formatPct()` helper (which prefixes a `+` for any non-negative
+number, correct for P&L deltas) and produced a misleading `"+20.0% of
++20.0% left"`; caught and fixed during live visual verification before
+committing.
+
+**What this addendum explicitly does not do.** It adds no new gate, no
+new threshold, and no new enforcement path — Sentinel, Guardian, the
+Gatekeeper, and every Circuit Breaker behave exactly as before. It does
+not surface real stop-loss/take-profit distance or a reward-to-risk
+ratio (`ExecutiveVoting.tsx` already discloses why: TradeTown's paper
+broker doesn't place exit orders, so there's no real number to report —
+unchanged by this piece). It does not route live trades through a
+specific non-primary `Account`'s rules — that remains the
+materially-larger execution-architecture change `app/accounts.py`'s own
+docstring already named as out of scope.
+
+**Verified:** 7 new backend tests
+(`TestComputeRiskBudgetStatus` — fresh-portfolio full budget, lifetime
+drawdown reducing the real remaining budget, drawdown past the limit
+flooring at zero, today's real loss/profit correctly tracked, halted
+state read directly from the existing daily-objective function, and the
+not-halted case having no reason), full backend suite 1634 passed,
+`mypy app/`/`ruff check app/ tests/` clean. `tsc -b --noEmit`/`npm run
+lint`/`npm run build` clean. Live-verified end-to-end against the real
+running dev stack: a live WS connection confirmed `riskBudgetStatus`
+present on the wire after the `ws_manager.py` fix; a live Playwright run
+(boosting a real research item over the trade-confidence threshold via
+the real `research_boost` energy action, then opening the real
+Executive Voting popup and expanding Review Analysis) confirmed the new
+"Risk Budget Remaining" card renders real, correctly-formatted data —
+screenshotted.

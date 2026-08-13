@@ -7,6 +7,33 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Remaining risk budget at trade-decision time** (`backend/app/risk_engine.py`, `backend/app/schemas.py`,
+  `backend/app/state.py`, `backend/app/nexus.py`, `backend/app/save_modules.py`, `backend/app/ws_manager.py`,
+  `backend/tests/test_risk_engine.py`, `frontend/src/types.ts`, `frontend/src/net/socket.ts`,
+  `frontend/src/game/systems/EventBus.ts`, `frontend/src/game/systems/NexusManager.ts`,
+  `frontend/src/state/gameStore.ts`, `frontend/src/ui/components/CommandCenter/ExecutiveVoting.tsx`,
+  `docs/DesignBible/volumes/09-departments/chapter-66-institutional-safety-capital-protection.md`): Piece 8 of the
+  CEO's Prop-Firm Risk Intelligence Addendum ("understand the remaining permissible loss budget … before a trade
+  is proposed, not just nominal account size"). Research found the literal brief didn't map onto the codebase as
+  written — `app/prop_firm.py`'s real gradient budget/consistency/scaling functions operate on `Account` objects
+  that never receive live trades (`app/accounts.py`'s own docstring discloses this), and that sub-Account status
+  was already fully surfaced via `TreasuryPanel.tsx`'s `PropFirmCard`. The real gap was the primary
+  `PaperPortfolio` — the only thing that ever executes a trade — having no remaining-budget view at all. New
+  `compute_risk_budget_status()` returns lifetime drawdown/daily loss/daily profit each against its real
+  `RiskLimits` and how much budget remains, built entirely from values already computed elsewhere
+  (`portfolio.total_pnl_pct`, `daily_realized_pnl_pct()`, `compute_daily_objective_status()`) — the only new
+  arithmetic is "limit minus usage, floored at zero." Advisory only: never called from Sentinel, Guardian, the
+  Gatekeeper, or any Circuit Breaker. Surfaced as a new "Risk Budget Remaining" card in `ExecutiveVoting.tsx`'s
+  Review Analysis section, the actual trade-decision surface. Two real bugs caught during live verification before
+  committing: `app/ws_manager.py`'s `build_state_message()` is a hand-built dict, not a generic
+  `state.model_dump()`, so the new field never reached the frontend until that function was updated too (confirmed
+  absent, then present, over a live WS connection); and an early draft misused the signed-delta `formatPct()`
+  helper on budget magnitudes, producing a misleading `"+20.0% of +20.0% left"`, fixed to plain `"20.0% of 20%
+  left"`. Verified: 7 new backend tests, full backend suite 1634 passed, `mypy`/`ruff` clean, `tsc -b
+  --noEmit`/`eslint`/`vite build` clean, and live-verified end-to-end (real WS payload check, and a live Playwright
+  run that boosts a real research item to threshold, opens the real Executive Voting popup, and confirms the new
+  card renders real data) — screenshotted.
+
 - **Forge, the Quant Developer** (`backend/app/quant_developer.py` new, `backend/app/schemas.py`, `backend/app/agents.py`,
   `backend/app/schedule.py`, `backend/app/routers/quant_developer.py` new, `backend/app/main.py`,
   `backend/tests/test_quant_developer.py` new, `backend/tests/test_academy.py`, `frontend/src/types.ts`,
