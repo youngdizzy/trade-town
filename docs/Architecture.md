@@ -297,6 +297,21 @@ against.
   provider later**: implement the interface (wrap that vendor's HTTP
   client), register it in `_select_provider()`, done — `watchlist.py` only
   ever calls `get_quotes()`, so nothing downstream changes.
+  `MockMarketDataProvider` is a disclosed simplification, not a
+  calibrated financial model, but its price walk (shared by `get_quote()`
+  and `get_candles()` through one `_step()` core, so both stay one real
+  process) has real statistical structure: GARCH(1,1) volatility
+  clustering, AR(1) drift persistence, an internal multi-bar regime
+  machine (`trend_up`/`trend_down`/`range`/`volatile`) with real
+  mean-reversion in `range`, and a `set_market_regime()` hook `app/
+  nexus.py`'s tick loop uses to bias the newest `RECENT_REGIME_BIAS_WINDOW`
+  bars of any freshly generated series toward the real, already-computed
+  `MarketEnvironmentRegime` — real two-way regime↔price coupling, never
+  retroactive. `get_candles()` regenerates a deterministic history from a
+  fixed per-symbol seed on every call (so a reopened chart doesn't
+  reshuffle its own past) and then proportionally rescales the whole
+  series to land exactly on `get_quote()`'s live price with zero
+  discontinuity, rather than only patching the last bar.
 - **Watchlist** (`watchlist.py` / `WatchlistEntry`): a fixed 8-symbol seed
   list (`SEED_SYMBOLS`), one per `ResearchCategory` in the brief (stock,
   ETF, index, economy, gold, bitcoin, company, sector). Prices refresh

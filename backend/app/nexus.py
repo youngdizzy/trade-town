@@ -1349,6 +1349,15 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     market_environment, environment_changed = tick_market_environment(state.market_environment, watchlist, now_sim_minutes)
     if len(market_environment.timeline) > MAX_MARKET_ENVIRONMENT_HISTORY:
         market_environment = market_environment.model_copy(update={"timeline": market_environment.timeline[-MAX_MARKET_ENVIRONMENT_HISTORY:]})
+    # CEO Company Health + Live Market Realism directive — the real,
+    # already-computed regime feeds back into the same provider's own
+    # price generation (see market_data.py's own docstring for the full
+    # two-way coupling this is one half of). One-tick lag by
+    # construction: this tick's regime was classified from watchlist
+    # quotes already generated before this point, so it can only bias
+    # the *next* real quote/candle generation, never retroactively
+    # rewrite the quotes that produced it.
+    market_data_provider.set_market_regime(market_environment.current)
     if environment_changed:
         news.append(
             NewsItem(

@@ -7,6 +7,42 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO Company Health + Live Market Realism directive — statistically realistic candlestick generation**
+  (`backend/app/market_data.py`, `backend/app/nexus.py`, `backend/tests/test_market_data.py`,
+  `frontend/src/ui/components/CommandCenter/lib/derive.ts`,
+  `frontend/src/ui/components/CommandCenter/MarketChartPanel.tsx`): the CEO asked for the Market Chart to stop
+  looking "obviously synthetic" (uniform candle sizes, no clustering, no regime behavior) and instead read like a
+  real trading terminal. `MockMarketDataProvider`'s shared `_step()` walk (used by both `get_quote()` and
+  `get_candles()`, so the two stay one real underlying process rather than diverging) now implements: GARCH(1,1)
+  volatility clustering (`variance_t = omega + alpha*shock_{t-1}^2 + beta*variance_{t-1}`, so a real large move
+  measurably raises the very next step's volatility); AR(1) drift/momentum persistence so directional runs last
+  longer than i.i.d. noise would; an internal 4-state regime machine (`trend_up`/`trend_down`/`range`/`volatile`)
+  with randomized multi-bar segment durations (consolidation and trend runs, not a bar-by-bar coin flip), where
+  `range` exerts real mean-reversion pull back toward a slow-moving anchor. A new `set_market_regime()` hook
+  (no-op default on the `MarketDataProvider` ABC) lets `app/nexus.py`'s tick loop feed the already-real, already-
+  computed 5-way `MarketEnvironmentRegime` (`app/market_environment.py`) into the generator as a one-tick-lagged
+  bias on only the most recent `RECENT_REGIME_BIAS_WINDOW` (20) bars of any freshly generated series — real
+  two-way regime↔price coupling (price already drives the external regime's classification; this is the other
+  direction) without ever retroactively rewriting already-rendered chart history on a regime flip. Root-caused
+  and fixed a real discontinuity this surfaced: `get_candles()` regenerates a deterministic `limit`-bar series
+  from a fixed seed every call, while `get_quote()`'s separate persistent live walk drifts arbitrarily far from
+  that seed over real gameplay time, so the pre-existing "patch the last candle's close to the live price" logic
+  was producing an ever-growing, visually jarring jump at the chart's right edge. Fixed by proportionally
+  rescaling the entire generated series (`scale = live_price / deterministic_last_close`, applied to every OHLC
+  value in every bar) instead of patching only the last bar — percentage moves are scale-invariant, so this
+  preserves every bar's real relative shape/volatility/wick proportions exactly while landing the series exactly
+  on the live price with zero discontinuity anywhere, not just at the edge. Frontend: `MarketChartPanel` gained a
+  ticker-stat strip (price, day change %, volume, realized volatility % computed from the same real candles the
+  chart renders, current regime label, timeframe) via a new pure `marketTickerStats()` derive function — no
+  bid/ask/spread/session fields added, since this codebase has no real data source for market microstructure yet
+  (explicitly scoped out, tracked as a future CEO directive section). Verified: 10 new backend tests (volatility
+  clustering, trend persistence, mean reversion, regime-switching duration, three-way external regime coupling
+  for both `get_candles()` and `get_quote()`, and two no-obviously-synthetic-pattern checks) plus the 9 pre-
+  existing tests, all passing; full backend suite (1763 tests), `mypy`, `ruff` clean; frontend `tsc`/`lint` clean;
+  live-verified against the running dev server that a symbol whose live price has drifted over real elapsed
+  gameplay time (continuous background tick loop, not a synthetic test) now renders a fully continuous candle
+  series with no jump at the newest bar.
+
 - **CEO Company/Executive Health directive — Office Expansion → Market Coverage rename, frontend follow-up**
   (`frontend/src/types.ts`, `frontend/src/state/gameStore.ts`, `frontend/src/game/systems/NexusManager.ts`,
   `frontend/src/ui/components/CampusMap/CampusMap.tsx`, `frontend/src/ui/components/CommandCenter/panels/CompanyPanel.tsx`,
