@@ -130,6 +130,7 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         "company_dna",
         "company_dna_legacy",
         "daily_objective_status",
+        "risk_budget_status",
         "academy_state",
         "reasoning_lab_state",
         "wisdom_state",

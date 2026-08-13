@@ -6,6 +6,7 @@ from __future__ import annotations
 
 from app.risk_engine import (
     compute_daily_objective_status,
+    compute_risk_budget_status,
     daily_realized_pnl_pct,
     evaluate_guardian_exposure,
     evaluate_sentinel_risk,
@@ -222,6 +223,81 @@ class TestComputeDailyObjectiveStatus:
         status = compute_daily_objective_status(limits, portfolio, sim_day=1)
         assert status.max_trades_reached is True
         assert status.trading_halted is True
+
+
+class TestComputeRiskBudgetStatus:
+    """Prop-Firm Risk Intelligence Addendum, Piece 8 — "the system should
+    understand the remaining permissible loss budget" before a trade is
+    proposed. Every value here traces to a field/function this codebase
+    already had (portfolio.total_pnl_pct, daily_realized_pnl_pct,
+    compute_daily_objective_status) — these tests confirm the packaging
+    is correct, not a new formula."""
+
+    def test_fresh_portfolio_has_full_remaining_budget(self) -> None:
+        limits = RiskLimits(maxDrawdownPct=20.0, maxDailyLossPct=5.0, dailyProfitTargetPct=3.0)
+        portfolio = _portfolio(starting=100_000.0, cash=100_000.0, total_pnl_pct=0.0)
+        status = compute_risk_budget_status(limits, portfolio, sim_day=1)
+        assert status.equity == 100_000.0
+        assert status.starting_balance == 100_000.0
+        assert status.lifetime_drawdown_pct == 0.0
+        assert status.remaining_drawdown_budget_pct == 20.0
+        assert status.daily_loss_pct_today == 0.0
+        assert status.remaining_daily_loss_budget_pct == 5.0
+        assert status.trading_halted is False
+
+    def test_lifetime_drawdown_reduces_the_real_remaining_budget(self) -> None:
+        # A real lifetime loss, read off the same total_pnl_pct field
+        # evaluate_sentinel_risk's own lifetime-drawdown check reads.
+        limits = RiskLimits(maxDrawdownPct=20.0)
+        portfolio = _portfolio(starting=100_000.0, cash=92_000.0, total_pnl_pct=-8.0)
+        status = compute_risk_budget_status(limits, portfolio, sim_day=1)
+        assert status.lifetime_drawdown_pct == 8.0
+        assert status.remaining_drawdown_budget_pct == 12.0
+
+    def test_drawdown_past_the_limit_floors_remaining_budget_at_zero(self) -> None:
+        limits = RiskLimits(maxDrawdownPct=10.0)
+        portfolio = _portfolio(starting=100_000.0, cash=85_000.0, total_pnl_pct=-15.0)
+        status = compute_risk_budget_status(limits, portfolio, sim_day=1)
+        assert status.lifetime_drawdown_pct == 15.0
+        assert status.remaining_drawdown_budget_pct == 0.0
+
+    def test_todays_real_loss_reduces_the_real_remaining_daily_budget(self) -> None:
+        limits = RiskLimits(maxDailyLossPct=5.0)
+        trades = [_trade(pnl=-2000.0, opened_sim_minutes=1440, closed_sim_minutes=1440 + 30)]
+        portfolio = _portfolio(trades=trades, starting=100_000.0)
+        status = compute_risk_budget_status(limits, portfolio, sim_day=1)
+        assert status.daily_loss_pct_today == 2.0
+        assert status.remaining_daily_loss_budget_pct == 3.0
+        assert status.daily_profit_pct_today == 0.0
+
+    def test_todays_real_profit_tracks_remaining_distance_to_target(self) -> None:
+        limits = RiskLimits(dailyProfitTargetPct=3.0)
+        trades = [_trade(pnl=1000.0, opened_sim_minutes=1440, closed_sim_minutes=1440 + 30)]
+        portfolio = _portfolio(trades=trades, starting=100_000.0)
+        status = compute_risk_budget_status(limits, portfolio, sim_day=1)
+        assert status.daily_profit_pct_today == 1.0
+        assert status.remaining_to_daily_profit_target_pct == 2.0
+        assert status.daily_loss_pct_today == 0.0
+
+    def test_halted_state_is_read_directly_from_compute_daily_objective_status(self) -> None:
+        # Never a second, independently-derived halt decision — must
+        # match compute_daily_objective_status exactly, since that's the
+        # function evaluate_sentinel_risk's own real gate is built on.
+        limits = RiskLimits(maxDailyLossPct=2.0)
+        trades = [_trade(pnl=-3000.0, opened_sim_minutes=1440, closed_sim_minutes=1440 + 30)]
+        portfolio = _portfolio(trades=trades, starting=100_000.0)
+        daily_status = compute_daily_objective_status(limits, portfolio, sim_day=1)
+        budget_status = compute_risk_budget_status(limits, portfolio, sim_day=1)
+        assert budget_status.trading_halted == daily_status.trading_halted
+        assert budget_status.halt_reason == daily_status.halt_reason
+        assert budget_status.trading_halted is True
+
+    def test_not_halted_state_has_no_reason(self) -> None:
+        limits = RiskLimits()
+        portfolio = _portfolio(starting=100_000.0)
+        status = compute_risk_budget_status(limits, portfolio, sim_day=1)
+        assert status.trading_halted is False
+        assert status.halt_reason is None
 
 
 class TestEvaluateSentinelRiskExisting:

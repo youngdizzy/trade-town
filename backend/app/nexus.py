@@ -124,7 +124,7 @@ from app.portfolio_intelligence import compute_portfolio_intelligence
 from app.position_sizing import build_position_sizing
 from app.reasoning_lab import compute_reasoning_lab_state, generate_challenge, record_challenge
 from app.research import RESEARCHER_IDS, default_research, tick_research
-from app.risk_engine import compute_daily_objective_status, evaluate_guardian_exposure, evaluate_sentinel_risk, monitor_portfolio, recommended_quantity
+from app.risk_engine import compute_daily_objective_status, compute_risk_budget_status, evaluate_guardian_exposure, evaluate_sentinel_risk, monitor_portfolio, recommended_quantity
 from app.sandbox import apply_review_decision, cap_strategy_reports, cap_strategy_reviews, generate_strategy_report, maybe_advance_after_research, maybe_advance_after_result
 from app.strategy_lab import (
     cap_strategy_health_assessments,
@@ -2068,6 +2068,10 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # "derived, recomputed fresh every tick" convention as company_dna
     # above.
     daily_objective_status = compute_daily_objective_status(risk_limits, paper_portfolio, new_time.day)
+    # Prop-Firm Risk Intelligence Addendum, Piece 8 — remaining risk
+    # budget. Same "derived, recomputed fresh every tick" convention as
+    # daily_objective_status directly above.
+    risk_budget_status = compute_risk_budget_status(risk_limits, paper_portfolio, new_time.day)
     # v0.7 Feature 25 — cheap to recompute every tick, same reasoning as
     # company_health above (feeds a live-updating Academy readout).
     academy_state = compute_academy_state(agent_knowledge, len(academy_completed_projects))
@@ -2716,6 +2720,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "company_health": company_health,
             "company_dna": company_dna,
             "daily_objective_status": daily_objective_status,
+            "risk_budget_status": risk_budget_status,
             "company_dna_legacy": company_dna_legacy,
             "executive_reviews": executive_reviews,
             "board_reports": board_reports,

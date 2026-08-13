@@ -48,7 +48,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.schemas import DailyObjectiveStatus, PaperPortfolio, PaperTrade, RiskLimits, RiskWarning
+from app.schemas import DailyObjectiveStatus, PaperPortfolio, PaperTrade, RiskBudgetStatus, RiskLimits, RiskWarning
 
 # Position sizing floor/ceiling, mirroring app/portfolio.py's
 # MIN_POSITION_SIZE — a proposed trade smaller than this isn't worth
@@ -354,4 +354,47 @@ def compute_daily_objective_status(limits: RiskLimits, portfolio: PaperPortfolio
         tradingHalted=profit_target_reached or max_loss_reached or max_trades_reached,
         haltReason=halt_reason,
         updatedAt=_now_iso(),
+    )
+
+
+def compute_risk_budget_status(limits: RiskLimits, portfolio: PaperPortfolio, sim_day: int) -> RiskBudgetStatus:
+    """Prop-Firm Risk Intelligence Addendum, Piece 8 — "the system should
+    understand the remaining permissible loss budget" before a trade is
+    proposed, not just the raw current numbers a human would otherwise
+    have to subtract by hand. Every input here is already real and
+    already used elsewhere: `portfolio.total_pnl_pct` is the exact same
+    lifetime-drawdown reading `evaluate_sentinel_risk` above already
+    gates on (line ~220); `daily_realized_pnl_pct` is the same function
+    `compute_daily_objective_status` above already calls. The only new
+    arithmetic is "limit minus current usage, floored at 0" for the two
+    *remaining* fields — packaging, not a new formula. Advisory only:
+    this function is never called from any gate, only from the read-only
+    status the CEO/agents see before deciding."""
+    equity = portfolio_equity(portfolio)
+    lifetime_drawdown_pct = max(0.0, -portfolio.total_pnl_pct)
+    remaining_drawdown_budget_pct = max(0.0, limits.max_drawdown_pct - lifetime_drawdown_pct)
+
+    daily_pnl_pct = daily_realized_pnl_pct(portfolio, sim_day)
+    daily_loss_pct_today = max(0.0, -daily_pnl_pct)
+    remaining_daily_loss_budget_pct = max(0.0, limits.max_daily_loss_pct - daily_loss_pct_today)
+    daily_profit_pct_today = max(0.0, daily_pnl_pct)
+    remaining_to_daily_profit_target_pct = max(0.0, limits.daily_profit_target_pct - daily_profit_pct_today)
+
+    daily_status = compute_daily_objective_status(limits, portfolio, sim_day)
+
+    return RiskBudgetStatus(
+        equity=round(equity, 2),
+        startingBalance=round(portfolio.starting_balance, 2),
+        lifetimeDrawdownPct=round(lifetime_drawdown_pct, 2),
+        maxDrawdownPct=limits.max_drawdown_pct,
+        remainingDrawdownBudgetPct=round(remaining_drawdown_budget_pct, 2),
+        dailyLossPctToday=round(daily_loss_pct_today, 2),
+        maxDailyLossPct=limits.max_daily_loss_pct,
+        remainingDailyLossBudgetPct=round(remaining_daily_loss_budget_pct, 2),
+        dailyProfitPctToday=round(daily_profit_pct_today, 2),
+        dailyProfitTargetPct=limits.daily_profit_target_pct,
+        remainingToDailyProfitTargetPct=round(remaining_to_daily_profit_target_pct, 2),
+        tradingHalted=daily_status.trading_halted,
+        haltReason=daily_status.halt_reason,
+        computedAt=_now_iso(),
     )

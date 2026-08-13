@@ -1417,6 +1417,35 @@ class DailyObjectiveStatus(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+class RiskBudgetStatus(CamelModel):
+    """Prop-Firm Risk Intelligence Addendum, Piece 8 — "the system should
+    understand the remaining permissible loss budget" (not just nominal
+    account size), surfaced at trade-decision time. Every field here is a
+    real value already computed elsewhere in this codebase — lifetime
+    drawdown reuses the exact same `portfolio.total_pnl_pct` reading
+    app/risk_engine.py's evaluate_sentinel_risk() already gates on;
+    today's realized P&L reuses daily_realized_pnl_pct(); the two
+    "remaining" fields are the one new arithmetic step (limit minus
+    current usage, floored at 0) — packaging, not a new formula. This is
+    advisory only: nothing here changes what Sentinel/Guardian/Gatekeeper
+    actually enforce, which remains exactly as it was."""
+
+    equity: float
+    starting_balance: float = Field(alias="startingBalance")
+    lifetime_drawdown_pct: float = Field(alias="lifetimeDrawdownPct")
+    max_drawdown_pct: float = Field(alias="maxDrawdownPct")
+    remaining_drawdown_budget_pct: float = Field(alias="remainingDrawdownBudgetPct")
+    daily_loss_pct_today: float = Field(alias="dailyLossPctToday")
+    max_daily_loss_pct: float = Field(alias="maxDailyLossPct")
+    remaining_daily_loss_budget_pct: float = Field(alias="remainingDailyLossBudgetPct")
+    daily_profit_pct_today: float = Field(alias="dailyProfitPctToday")
+    daily_profit_target_pct: float = Field(alias="dailyProfitTargetPct")
+    remaining_to_daily_profit_target_pct: float = Field(alias="remainingToDailyProfitTargetPct")
+    trading_halted: bool = Field(alias="tradingHalted")
+    halt_reason: str | None = Field(default=None, alias="haltReason")
+    computed_at: str = Field(alias="computedAt")
+
+
 class ScannerAlert(CamelModel):
     """Pulse's output — see app/scanner.py. `detected_by` is always
     "pulse" today; the field exists so a future version could let other
@@ -6253,6 +6282,11 @@ class GameSaveState(CamelModel):
     # v0.7 Feature 49 — Daily Trading Objectives (app/risk_engine.py's
     # compute_daily_objective_status).
     daily_objective_status: DailyObjectiveStatus = Field(alias="dailyObjectiveStatus")
+    # Prop-Firm Risk Intelligence Addendum, Piece 8 — remaining risk
+    # budget (app/risk_engine.py's compute_risk_budget_status), the same
+    # "derived, recomputed fresh every tick" convention as
+    # daily_objective_status directly above.
+    risk_budget_status: RiskBudgetStatus = Field(alias="riskBudgetStatus")
     # v0.7 Feature 24 — the CIO's Monthly Executive Review (app/executive_review.py).
     executive_reviews: list[ExecutiveReview] = Field(
         default_factory=list, alias="executiveReviews"
