@@ -1161,3 +1161,91 @@ removal, and a full save-module persistence round-trip. Gated, for the
 eventual live-trading half, by the same [Live Trading
 Gate](../../appendices/appendix-g-permanent-development-policy.md)
 Chapter 68 is gated by.
+
+## Addendum — Risk Relative to the Real Failure Boundary (Prop-Firm Risk Intelligence Addendum, Piece 11)
+
+**Status:** Real, implemented as a new status read alongside `app/
+prop_firm.py`'s existing compliance functions (Part 2, above) — not a
+new module, not a new endpoint.
+
+**Origin.** Requirement 23 of the CEO's Prop-Firm Risk Intelligence
+Addendum (added as Requirements 21–25 to the standing "Quantitative
+Research & Intelligence System" directive, authorized as "11, 11a, 11b,
+10, 10a, 10b"): "risk should be modeled relative to the account's
+actual failure boundary... do NOT treat account notional size as the
+primary definition of usable risk." Any requested metric that can't be
+honestly computed from real data must return `NOT_TRACKABLE_YET`,
+never a fabricated value.
+
+**The honest distinction this piece is built around.** Chapter 66's
+Piece 8 addendum already gave the *primary* portfolio a "remaining risk
+budget" read (`RiskBudgetStatus`), but its `maxDrawdownPct` is
+`RiskLimits.max_drawdown_pct` — a CEO-configurable setting with, in
+that schema's own words, "no real capital or regulatory requirement
+behind them." That is a **self-chosen ceiling**, not a true externally
+-imposed **failure boundary**. This chapter's own `Account.
+trailing_drawdown_limit_pct` (Part 2) is the one real thing in this
+codebase that behaves like an actual prop-firm rule — a number the CEO
+configures to *model* a real firm's real disqualification rule, not a
+number she picks purely as her own risk tolerance. New `Account
+RiskBudgetStatus` and `compute_account_risk_budget_status()` (`app/
+prop_firm.py`) measure risk against that real boundary instead. Piece
+8's `RiskBudgetStatus` docstring was updated to name this distinction
+explicitly, so a reader of either schema sees the contrast, not just
+one half of it.
+
+**What's computed, reusing real math, not inventing new formulas.**
+`effective_failure_boundary_pct` is `trailing_drawdown_limit_pct`
+itself; `current_distance_to_failure_pct` and (for this one real
+boundary type) the identical `remaining_drawdown_budget_pct` are both
+`boundary − compute_trailing_drawdown().drawdown_pct`, floored at
+zero — the same real drawdown reading Part 2's own compliance score
+already uses, packaged relative to the boundary rather than re-derived.
+Requirement 23 names "current distance to failure" and "remaining risk
+budget" as two separate asks; this codebase has exactly one real
+externally-configurable boundary today, so both resolve to the same
+real number rather than two independently invented ones — stated
+plainly in the schema's own docstring, not left for a reader to assume
+are secretly different.
+
+**What is honestly `NOT_TRACKABLE_YET`, not fabricated.** Two cases,
+both always true today, each with its own reason string in
+`not_trackable_reasons`, literally prefixed `NOT_TRACKABLE_YET:` per
+the CEO's own requested vocabulary: (1) the whole boundary read, for
+any account that never configured a `trailing_drawdown_limit_pct` — no
+real number to measure distance against; (2) `risk_per_trade_pct_of_
+boundary`, for *every* real Account today, because — as this chapter's
+Part 1 has always disclosed — no live `TradeProposal` ever executes
+against a secondary Account. "Risk per trade" is not a real, measured
+quantity for one; only a hypothetical could be computed, and this
+function never presents a hypothetical as if it were measured.
+
+**What this piece deliberately does not attempt.** Requirement 23 also
+names "probability of hitting the failure boundary" and "expected
+drawdown path." Both require real forward simulation (Monte Carlo),
+not a real-time snapshot — every other function in `app/prop_firm.py`
+is a snapshot, and this one stays consistent with that shape rather
+than quietly bolting a second, duplicate simulation engine onto it.
+That is explicitly Piece 10's job (the evaluation-level risk-policy
+simulator, Requirement 21), not this piece's.
+
+**Wired into the existing real endpoint.** `AccountRiskBudgetStatus`
+is a new field on `PropFirmStatus`, so `GET /api/accounts/prop-firm/
+status` already returns it — no new route. Surfaced in `TreasuryPanel.
+tsx`'s existing `PropFirmCard`, right below the compliance-score
+summary, under a "Risk vs. Real Failure Boundary" heading.
+
+**Verified:** 5 new backend tests (`TestComputeAccountRiskBudgetStatus`
+— no boundary configured is honestly not-trackable, a configured
+boundary computes a real distance-to-failure, distance floors at zero
+past the boundary, risk-per-trade-as-%-of-boundary is always
+not-trackable regardless of whether a boundary exists, and no
+fabricated values survive into the aggregate `PropFirmStatus`), full
+backend suite 1659/1659 passed, `mypy app/`/`ruff check app/ tests/`
+clean. `tsc -b --noEmit`/`npm run lint`/`npm run build` clean.
+Live-verified against the real running dev stack: created a real
+prop-firm Account via the real `POST /api/accounts/create` endpoint,
+opened its Prop Firm Rules panel, and confirmed the new section renders
+both the "no boundary configured" honest state and the
+`NOT_TRACKABLE_YET` risk-per-trade reason for real, unconfigured data —
+screenshotted.

@@ -576,6 +576,7 @@ export interface PropFirmStatus {
   scaling: ScalingMilestoneStatus;
   challenge: ChallengeProgressStatus;
   complianceScore: PropFirmComplianceScore;
+  riskBudget: AccountRiskBudgetStatus;
   leverageNote: string;
 }
 
@@ -1289,6 +1290,23 @@ export interface RiskBudgetStatus {
   remainingToDailyProfitTargetPct: number;
   tradingHalted: boolean;
   haltReason: string | null;
+  computedAt: string;
+}
+
+/** Prop-Firm Risk Intelligence Addendum, Piece 11 — Requirement 23: risk
+ * measured against an Account's real failure boundary
+ * (trailingDrawdownLimitPct), not notional account size. Any field that
+ * can't be honestly computed is null, with the reason named in
+ * notTrackableReasons (each prefixed "NOT_TRACKABLE_YET:"). */
+export interface AccountRiskBudgetStatus {
+  accountId: string;
+  equity: number;
+  startingBalance: number;
+  effectiveFailureBoundaryPct: number | null;
+  currentDistanceToFailurePct: number | null;
+  remainingDrawdownBudgetPct: number | null;
+  riskPerTradePctOfBoundary: number | null;
+  notTrackableReasons: string[];
   computedAt: string;
 }
 

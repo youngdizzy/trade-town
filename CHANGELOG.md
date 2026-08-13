@@ -7,6 +7,30 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Risk relative to an Account's real failure boundary** (`backend/app/schemas.py`, `backend/app/prop_firm.py`,
+  `backend/tests/test_prop_firm.py`, `frontend/src/types.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/TreasuryPanel.tsx`,
+  `docs/DesignBible/volumes/10-broker-live-trading/chapter-69-multi-account-fund-management-system.md`): Piece 11 of
+  the CEO's Prop-Firm Risk Intelligence Addendum, Requirement 23 ("risk should be modeled relative to the account's
+  actual failure boundary... do NOT treat account notional size as the primary definition of usable risk"; any
+  metric that can't be honestly computed must return `NOT_TRACKABLE_YET`, never a fabricated value). Piece 8's
+  `RiskBudgetStatus` (the primary portfolio) packages `RiskLimits.max_drawdown_pct` — a self-chosen ceiling with no
+  external authority behind it, per that schema's own docstring — not a true externally-imposed boundary. New
+  `AccountRiskBudgetStatus` + `compute_account_risk_budget_status()` measure risk against the one real
+  externally-configurable boundary an `Account` actually carries (`trailing_drawdown_limit_pct`), reusing
+  `compute_trailing_drawdown()`'s exact real drawdown reading — no new formula, only new packaging relative to the
+  boundary. `risk_per_trade_pct_of_boundary` is always `NOT_TRACKABLE_YET` for every real Account today, honestly,
+  since no live `TradeProposal` execution routes to a secondary Account yet (`app/accounts.py`'s own module
+  docstring) — there is no real, measured per-trade risk to express as a ratio, only a hypothetical, which this
+  function never presents as if it were real. "Probability of hitting the failure boundary" and "expected drawdown
+  path" are deliberately not attempted here — both need real forward simulation, which is Piece 10's job, not a
+  duplicate bolted onto this real-time snapshot. Wired into the existing `PropFirmStatus` (`GET
+  /api/accounts/prop-firm/status`) — no new endpoint — and surfaced in `TreasuryPanel.tsx`'s existing `PropFirmCard`.
+  Verified: 5 new backend tests, full backend suite 1659/1659 passed, `mypy`/`ruff` clean, `tsc -b
+  --noEmit`/`eslint`/`vite build` clean, live-verified against the real running dev stack (created a real prop-firm
+  Account, confirmed both the honest "no boundary configured" state and the `NOT_TRACKABLE_YET` reason render for
+  real data) — screenshotted.
+
 - **Behavioral risk: same-direction (weak) + win-triggered escalation signals** (`backend/app/schemas.py`,
   `backend/app/behavioral_risk.py`, `backend/tests/test_behavioral_risk.py`,
   `frontend/src/types.ts`, `frontend/src/game/systems/NexusManager.ts`, `frontend/src/state/gameStore.ts`,

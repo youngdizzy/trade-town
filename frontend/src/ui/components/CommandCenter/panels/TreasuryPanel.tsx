@@ -680,6 +680,22 @@ function PropFirmCard({ account }: { account: Account }) {
                 )}
               </div>
               <div className="text-cmd-textDim">{status.leverageNote}</div>
+              <div className="mt-1 space-y-0.5 border-t border-cmd-border/40 pt-1 text-cmd-textDim">
+                <div className="text-[9px] uppercase tracking-wide text-cmd-textDim/80">Risk vs. Real Failure Boundary</div>
+                {status.riskBudget.effectiveFailureBoundaryPct !== null ? (
+                  <span>
+                    Failure boundary: <span className="tabular-nums text-cmd-text">{status.riskBudget.effectiveFailureBoundaryPct.toFixed(1)}%</span> trailing drawdown — remaining budget{" "}
+                    <span className="tabular-nums text-cmd-text">{status.riskBudget.remainingDrawdownBudgetPct?.toFixed(1)}%</span>
+                  </span>
+                ) : (
+                  <span>No trailing-drawdown boundary configured yet.</span>
+                )}
+                {status.riskBudget.notTrackableReasons.map((reason, i) => (
+                  <div key={i} className="text-[9px] italic text-cmd-textDim/70">
+                    {reason}
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>
