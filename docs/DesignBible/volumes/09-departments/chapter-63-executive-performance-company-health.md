@@ -693,3 +693,53 @@ real Weighted Executive Recommendation check — working exactly as
 intended — blocked every pending proposal this pass attempted to
 resolve, so no new real trades closed); the trend computation itself is
 covered by the 6 new unit tests above instead.
+
+**CEO Company/Executive Health directive, Phase 6 — Decision Quality:
+real calibration between two independent process assessments, never
+touching money either way.** The CEO's directive asked for "calibration"
+and a "postmortem" dimension while explicitly warning: "Do not judge
+decisions solely by whether they made money. A good decision can lose
+money. A bad decision can make money. The system must distinguish
+DECISION QUALITY from OUTCOME LUCK."
+
+*What was already real, confirmed by direct trace:* `decision_grade_score`
+(`app/executive.py`'s `compute_decision_grade()`) already satisfies the
+CEO's core instruction — it blends the real Decision Confidence Engine
+score, real analyst agreement rate, and real Trade Gatekeeper approval,
+computed the instant the CEO decides, and never reads pnl. Averaging it
+(`base`, unchanged) was already a genuinely outcome-decoupled process
+score. The real gap: nothing ever checked whether that initial grade
+was *calibrated* — whether a second, truly independent look at the same
+decision would reach a similar conclusion about how sound the process
+really was.
+
+*Fix:* a new `calibration` component compares `decision_grade_score`
+against that same decision's real `DisciplineReview.score`
+(`DisciplineReview.decisionId` links them) — a completely independent
+real assessment, computed later (at trade close, once a real hold
+duration exists) from a different weighted blend of real factors
+(research depth, viewpoint diversity, cross-examination, assumptions
+challenged, position sizing, patience), and — per `app/discipline.py`'s
+own docstring — *also* never reads pnl. Two real, independently-computed,
+equally outcome-decoupled scores for the same decision agreeing closely
+is genuine calibration evidence; a wide gap means the initial grade and
+the later, more detailed review disagreed about the process itself,
+regardless of whether the trade won or lost. `_decision_quality()` is
+now an equal blend of `base` and `calibration`. Neutral 50.0 for
+`calibration` when a graded decision has no matching real closed-trade
+review yet to check against — an honest "not yet calibratable" state.
+
+Verified: 4 new tests (close agreement between the two scores earns
+high calibration; a wide disagreement is penalized regardless of trade
+outcome; an unrelated decision's review is never used to calibrate a
+different decision; no matching review defaults to neutral),
+`_strong_executive_overrides()`'s fixture extended with matching
+agreeing reviews for its own real decisions, full backend suite
+passing, `mypy`/`ruff` clean. Live-verified against a running save with
+independently hand-computed arithmetic from the same raw save data: the
+server reported `decisionQuality: 66.1`; recomputing `base` (82.3, the
+real average `decisionGradeScore` over the most recent 30 graded
+decisions) and `calibration` (the honest neutral 50.0 — the save's one
+real closed-trade Discipline Review exists, but its underlying decision
+had already aged out of that same 30-decision window) by hand from the
+raw archive data produced `(82.3 + 50.0) / 2 = 66.1` — an exact match.

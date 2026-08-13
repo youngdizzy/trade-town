@@ -194,7 +194,31 @@ def _strong_executive_overrides() -> dict:
         )
         for i in range(len(STUDENT_AGENT_IDS))
     ]
-    all_discipline_reviews = earlier_misaligned_reviews + strong_post_graduation_reviews
+    # CEO Company/Executive Health directive, Phase 6 — decision_quality's
+    # own real calibration component needs each of the five real
+    # decisions above to have a matching, agreeing DisciplineReview, or
+    # this "everything maxed" fixture would honestly (and correctly)
+    # read a lower decision_quality than a genuinely fully-calibrated
+    # company would.
+    matching_calibration_reviews = [
+        DisciplineReview(
+            id=f"calib-{i}",
+            decisionId=f"d{i}",
+            symbol="AAPL",
+            score=99.0,
+            tier="exemplary",
+            attendees=["scout"],
+            summary="x",
+            postDecisionReview=PostDecisionReview(),
+            outcome="win",
+            tradePnlPct=5.0,
+            holdDurationMinutes=60,
+            simDay=1,
+            createdAt="2026-01-01T00:00:00+00:00",
+        )
+        for i in range(5)
+    ]
+    all_discipline_reviews = earlier_misaligned_reviews + strong_post_graduation_reviews + matching_calibration_reviews
     founder_council_sessions = [
         FounderCouncilSession(id=f"c{i}", simDay=i, coachHighlight="x", keystoneNote="x", compassNote="x", createdAt="2026-01-01T00:00:00+00:00") for i in range(5)
     ]
@@ -627,7 +651,58 @@ class TestExecutiveTier:
             for i, score in enumerate([80.0, 90.0])
         ]
         health = _health(decisions=decisions)
-        assert health.decision_quality == 85.0
+        # CEO Company/Executive Health directive, Phase 6 — base (the
+        # real average decision_grade_score, unchanged) is now blended
+        # with a real calibration component. With no discipline_reviews
+        # here, calibration reads its own honest neutral 50.0.
+        assert health.decision_quality == 67.5
+
+    def test_decision_quality_rewards_agreement_with_the_later_independent_discipline_review(self) -> None:
+        """CEO Company/Executive Health directive, Phase 6 — the exact
+        calibration chain: a decision graded highly at decision time
+        whose later, fully independent Discipline Review (never reading
+        the same inputs, never reading pnl either) lands on a matching
+        real score demonstrates the initial grade was genuinely
+        calibrated, not merely optimistic."""
+        decision = TradeDecision(
+            id="d1", symbol="AAPL", outcome="trade", researchSummary="x", technicalSummary="x", fundamentalSummary="x", riskSummary="x",
+            confidence=90.0, finalReasoning="x", decisionGrade="A+", decisionGradeScore=90.0, createdAt="2026-01-01T00:00:00+00:00",
+        )
+        matching_review = DisciplineReview(
+            id="r1", decisionId="d1", symbol="AAPL", score=90.0, tier="exemplary", attendees=["scout"], summary="x",
+            postDecisionReview=PostDecisionReview(), outcome="win", tradePnlPct=3.0, holdDurationMinutes=60, simDay=1, createdAt="2026-01-01T00:00:00+00:00",
+        )
+        health = _health(decisions=[decision], discipline_reviews=[matching_review])
+        # base = 90.0; calibration = 100 - |90-90| = 100. (90+100)/2 = 95.0.
+        assert health.decision_quality == 95.0
+
+    def test_decision_quality_penalizes_a_grade_that_disagrees_with_the_later_review(self) -> None:
+        decision = TradeDecision(
+            id="d1", symbol="AAPL", outcome="trade", researchSummary="x", technicalSummary="x", fundamentalSummary="x", riskSummary="x",
+            confidence=90.0, finalReasoning="x", decisionGrade="A+", decisionGradeScore=95.0, createdAt="2026-01-01T00:00:00+00:00",
+        )
+        disagreeing_review = DisciplineReview(
+            id="r1", decisionId="d1", symbol="AAPL", score=25.0, tier="weak", attendees=["scout"], summary="x",
+            postDecisionReview=PostDecisionReview(), outcome="loss", tradePnlPct=-3.0, holdDurationMinutes=60, simDay=1, createdAt="2026-01-01T00:00:00+00:00",
+        )
+        health = _health(decisions=[decision], discipline_reviews=[disagreeing_review])
+        # base = 95.0; calibration = 100 - |95-25| = 30. (95+30)/2 = 62.5.
+        assert health.decision_quality == 62.5
+
+    def test_decision_quality_only_compares_a_decisions_own_real_review(self) -> None:
+        """A Discipline Review for an unrelated decision must never be
+        used to calibrate this one."""
+        decision = TradeDecision(
+            id="d1", symbol="AAPL", outcome="trade", researchSummary="x", technicalSummary="x", fundamentalSummary="x", riskSummary="x",
+            confidence=90.0, finalReasoning="x", decisionGrade="A+", decisionGradeScore=90.0, createdAt="2026-01-01T00:00:00+00:00",
+        )
+        unrelated_review = DisciplineReview(
+            id="r1", decisionId="d999", symbol="AAPL", score=10.0, tier="reckless", attendees=["scout"], summary="x",
+            postDecisionReview=PostDecisionReview(), outcome="loss", tradePnlPct=-3.0, holdDurationMinutes=60, simDay=1, createdAt="2026-01-01T00:00:00+00:00",
+        )
+        health = _health(decisions=[decision], discipline_reviews=[unrelated_review])
+        # No real matching review -> calibration stays neutral 50.
+        assert health.decision_quality == 70.0
 
     def test_executive_alignment_reads_the_real_network_agreed_flag(self) -> None:
         opinions = [DepartmentOpinion(role=role, departmentLabel=role, stance="agree", summary="x", confidencePct=90.0) for role in _ALL_ROLES]

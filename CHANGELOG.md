@@ -7,6 +7,30 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO Company/Executive Health directive, Phase 6 — Decision Quality: real calibration between two
+  independent process assessments, never touching money either way** (`backend/app/company_health.py`,
+  `backend/tests/test_company_health.py`,
+  `docs/DesignBible/volumes/09-departments/chapter-63-executive-performance-company-health.md`): the CEO's
+  directive asked for a "calibration"/"postmortem" dimension while explicitly warning: "Do not judge decisions
+  solely by whether they made money... The system must distinguish DECISION QUALITY from OUTCOME LUCK." Direct
+  trace confirmed `decision_grade_score` (`app/executive.py`) already satisfies that core instruction — it
+  blends real confidence-engine score, real analyst agreement, and real Gatekeeper approval, computed at
+  decision time, never reading pnl — but nothing ever checked whether that initial grade was *calibrated*
+  against a second, independent look at the same decision. Fixed: a new `calibration` component compares
+  `decision_grade_score` against that same decision's real `DisciplineReview.score` (linked via
+  `decisionId`) — a completely independent real assessment computed later, at trade close, from a different
+  weighted blend of real factors, and — per `app/discipline.py`'s own docstring — also never reads pnl. Two
+  independently-computed, equally outcome-decoupled scores agreeing closely is genuine calibration evidence; a
+  wide gap means the initial grade and the later review disagreed about the process itself, regardless of
+  whether the trade won or lost. `_decision_quality()` is now an equal blend of the original average grade and
+  this new calibration reading, defaulting to neutral 50.0 when no matching review exists yet. Verified: 4 new
+  tests, `_strong_executive_overrides()`'s fixture extended with matching agreeing reviews, full backend suite
+  passing, `mypy`/`ruff` clean. Live-verified against a running save with independently hand-computed arithmetic
+  from the same raw save data: the server reported `decisionQuality: 66.1`; recomputing `base` (82.3, the real
+  average grade over the most recent 30 decisions) and `calibration` (the honest neutral 50.0 — the save's one
+  real Discipline Review's underlying decision had aged out of that same window) by hand produced
+  `(82.3 + 50.0) / 2 = 66.1` — an exact match.
+
 - **CEO Company/Executive Health directive, Phase 5 — Self-Evaluation Health: real prediction-vs-outcome
   calibration trend, not confidence alone** (`backend/app/company_health.py`, `backend/tests/test_company_health.py`,
   `docs/DesignBible/volumes/09-departments/chapter-63-executive-performance-company-health.md`): the CEO's

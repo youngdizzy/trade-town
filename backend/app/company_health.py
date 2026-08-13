@@ -284,11 +284,56 @@ def _team_chemistry(debates: list[Debate], research: list[ResearchItem]) -> floa
     return (_debate_collaboration_quality(debates) + _cross_agent_research_handoffs(research)) / 2.0
 
 
-def _decision_quality(decisions: list[TradeDecision]) -> float:
+def _decision_quality(decisions: list[TradeDecision], discipline_reviews: list[DisciplineReview]) -> float:
+    """v0.7 Feature 50 Part 2/3, extended under the CEO's Company/
+    Executive Health directive.
+
+    `decision_grade_score` was already real and already outcome-decoupled
+    — `compute_decision_grade()` (app/executive.py) blends the real
+    Decision Confidence Engine score, real analyst agreement, and real
+    Trade Gatekeeper approval, computed the moment the CEO decides,
+    before any trade outcome exists. Averaging it (kept below as `base`)
+    already satisfies the CEO's core instruction — "do not judge
+    decisions solely by whether they made money" — since it never reads
+    pnl at all. The real gap: nothing ever checked whether that initial
+    grade was *calibrated* — whether it agreed with a second, genuinely
+    independent real assessment of the same decision.
+
+    `app/discipline.py`'s own Discipline Score is exactly that: computed
+    separately, later (at trade close, once a real hold duration is
+    known), from a different weighted blend of real factors (research
+    depth, viewpoint diversity, cross-examination, assumptions
+    challenged, position sizing, patience) — and, per that module's own
+    docstring, it "never reads `decision`'s outcome or any trade pnl"
+    either. Comparing the two real, independently-computed, equally
+    outcome-decoupled scores for the same real decision (linked by
+    `DisciplineReview.decision_id`) is a genuine calibration check —
+    "did the process look as good in hindsight as it did at the moment
+    of decision" — without ever touching money either way. A close
+    real agreement between the two earns high `calibration`; a wide gap
+    (the initial grade and the independent later review disagreed about
+    how sound the process really was) earns low `calibration`,
+    regardless of whether the trade itself won or lost.
+
+    `_decision_quality()` is now an equal blend of `base` and
+    `calibration`. Neutral 50.0 for `calibration` when no real graded
+    decision yet has a matching real closed-trade Discipline Review to
+    check against — an honest "not yet calibratable" state, not a
+    fabricated pass."""
     graded = [d for d in decisions if d.decision_grade_score is not None][-EXECUTIVE_METRIC_WINDOW:]
     if not graded:
         return 50.0
-    return sum(d.decision_grade_score for d in graded if d.decision_grade_score is not None) / len(graded)
+    base = sum(d.decision_grade_score for d in graded if d.decision_grade_score is not None) / len(graded)
+
+    review_by_decision_id = {r.decision_id: r for r in discipline_reviews}
+    agreements = [
+        100.0 - abs(d.decision_grade_score - review_by_decision_id[d.id].score)
+        for d in graded
+        if d.decision_grade_score is not None and d.id in review_by_decision_id
+    ]
+    calibration = sum(agreements) / len(agreements) if agreements else 50.0
+
+    return (base + calibration) / 2.0
 
 
 def _executive_alignment(meeting_log: list[ExecutiveMeetingLogEntry]) -> float:
@@ -571,7 +616,7 @@ def compute_company_health(
     overall = sum(metrics.values()) / len(metrics)
 
     executive_metrics = {
-        "decision_quality": _decision_quality(decisions),
+        "decision_quality": _decision_quality(decisions, discipline_reviews),
         "executive_alignment": _executive_alignment(meeting_log),
         "risk_governance": _risk_governance(portfolio.trade_history, gatekeeper_rejections),
         "simulation_coverage": _simulation_coverage(meeting_log),

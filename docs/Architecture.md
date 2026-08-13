@@ -2675,6 +2675,23 @@ equal blend of `engagement` and `calibration_trend`. Live-verified:
 blended with the honest neutral default its single closed trade (below
 the 4-review minimum) correctly produces.
 
+**Decision Quality, corrected under the same directive.** The real
+`decision_grade_score` average was already outcome-decoupled (never
+reads pnl), but nothing checked whether it was *calibrated* against a
+second, independent look at the same decision. A new `calibration`
+component compares it against that decision's real `DisciplineReview.score`
+— a separate real assessment computed later, at trade close, from a
+different weighted blend of factors, and also never reading pnl. Two
+independently-computed, equally outcome-decoupled scores agreeing
+closely is real calibration evidence; a wide gap means the two real
+process reviews disagreed, regardless of the trade's real win/loss.
+`_decision_quality()` is now an equal blend of the average grade and
+this calibration reading. Live-verified with hand-computed arithmetic
+from the raw save data: `base` (82.3) and `calibration` (the honest
+neutral 50.0 — the one real matching review's decision had aged out of
+the 30-decision window) produced `66.1`, an exact match to the server's
+reported value.
+
 **Executive Priorities and Department Health are both pure frontend
 derivations** — like the Decision Replay Center, no second backend
 computation was needed. `lib/derive.ts`'s `computeExecutivePriorities()`
