@@ -22,9 +22,12 @@ from app.calendar import create_player_event, default_calendar, delete_player_ev
 from app.accounts import add_custom_rule as add_custom_rule_fn
 from app.accounts import allocate_capital as allocate_capital_fn
 from app.accounts import close_account as close_account_fn
+from app.accounts import configure_evaluation_tracking as configure_evaluation_tracking_fn
 from app.accounts import configure_prop_firm_rules as configure_prop_firm_rules_fn
 from app.accounts import create_account as create_account_fn
 from app.accounts import deallocate_capital as deallocate_capital_fn
+from app.accounts import mark_account_funded as mark_account_funded_fn
+from app.accounts import record_account_payout as record_account_payout_fn
 from app.accounts import remove_custom_rule as remove_custom_rule_fn
 from app.accounts import toggle_custom_rule as toggle_custom_rule_fn
 from app.rule_engine import evaluate_rules
@@ -1182,6 +1185,48 @@ class GameState:
                 challenge_duration_days=challenge_duration_days,
                 challenge_profit_target_pct=challenge_profit_target_pct,
             )
+            if error is None:
+                self.data = self.data.model_copy(update={"accounts": accounts})
+            return self.data, error
+
+    async def configure_evaluation_tracking(
+        self,
+        account_id: str,
+        *,
+        evaluation_cost: float | None,
+        payout_eligibility_min_profit_pct: float | None,
+    ) -> tuple[GameSaveState, str | None]:
+        """Prop-Firm Risk Intelligence Addendum, Piece 10a — a real CEO
+        control configuring an account's evaluation cost and payout
+        eligibility threshold, under the same lock every other state
+        mutation uses."""
+        async with self.lock:
+            accounts, error = configure_evaluation_tracking_fn(
+                self.data.accounts,
+                account_id,
+                evaluation_cost=evaluation_cost,
+                payout_eligibility_min_profit_pct=payout_eligibility_min_profit_pct,
+            )
+            if error is None:
+                self.data = self.data.model_copy(update={"accounts": accounts})
+            return self.data, error
+
+    async def mark_account_funded(self, account_id: str) -> tuple[GameSaveState, str | None]:
+        """Prop-Firm Risk Intelligence Addendum, Piece 10a — a real,
+        explicit CEO action, never a system-inferred pass/fail."""
+        async with self.lock:
+            time = self.data.time
+            accounts, error = mark_account_funded_fn(self.data.accounts, account_id, sim_day=time.day)
+            if error is None:
+                self.data = self.data.model_copy(update={"accounts": accounts})
+            return self.data, error
+
+    async def record_account_payout(self, account_id: str, amount: float) -> tuple[GameSaveState, str | None]:
+        """Prop-Firm Risk Intelligence Addendum, Piece 10a — a real,
+        CEO-recorded payout amount added to this account's permanent
+        running total."""
+        async with self.lock:
+            accounts, error = record_account_payout_fn(self.data.accounts, account_id, amount=amount)
             if error is None:
                 self.data = self.data.model_copy(update={"accounts": accounts})
             return self.data, error

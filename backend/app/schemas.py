@@ -781,6 +781,18 @@ class Account(CamelModel):
     # app/rule_engine.py rather than a second, account-specific
     # enforcement path — see that module's own docstring.
     custom_rules: list[Rule] = Field(default_factory=list, alias="customRules")
+    # Prop-Firm Risk Intelligence Addendum, Piece 10a, Requirement 24 —
+    # real, CEO-recorded evaluation-cost / funded-stage / payout data.
+    # Every field is optional/defaulted so an account created before this
+    # piece still validates during load; none is ever auto-derived from a
+    # probability model (that's Piece 10's job) — these are only ever
+    # set by an explicit CEO action (app/accounts.py's
+    # configure_evaluation_tracking/mark_account_funded/record_account_payout).
+    evaluation_cost: float | None = Field(default=None, alias="evaluationCost")
+    funded_stage_reached: bool = Field(default=False, alias="fundedStageReached")
+    funded_at_sim_day: int | None = Field(default=None, alias="fundedAtSimDay")
+    payout_eligibility_min_profit_pct: float | None = Field(default=None, alias="payoutEligibilityMinProfitPct")
+    total_payouts_received: float = Field(default=0.0, alias="totalPayoutsReceived")
 
 
 # Design Bible Chapter 69 Part 2 — the Weekday-Aware Time System. Real,
@@ -878,6 +890,9 @@ class PropFirmStatus(CamelModel):
     # Prop-Firm Risk Intelligence Addendum, Piece 11 — risk measured
     # against this account's real failure boundary, not notional size.
     risk_budget: "AccountRiskBudgetStatus" = Field(alias="riskBudget")
+    # Prop-Firm Risk Intelligence Addendum, Piece 10a — evaluation cost,
+    # funded-stage, and payout tracking.
+    evaluation_tracking: "EvaluationTrackingStatus" = Field(alias="evaluationTracking")
     # The Leverage System (addendum item 3) has no real foundation to
     # extend — this codebase is a 100%-cash, long-only paper account
     # with no margin field anywhere (confirmed by Chapter 68's own
@@ -1526,6 +1541,33 @@ class ProjectedLossPath(CamelModel):
     risk_per_trade_pct: float = Field(alias="riskPerTradePct")
     projected_loss_pct: float = Field(alias="projectedLossPct")
     assumption: str
+    computed_at: str = Field(alias="computedAt")
+
+
+class EvaluationTrackingStatus(CamelModel):
+    """Prop-Firm Risk Intelligence Addendum, Piece 10a — Requirement 24's
+    evaluation-cost / funded-stage / payout data points. Every field
+    here is either a real CEO-recorded number carried on the Account, or
+    a real, directly-derived read off it (e.g. `days_to_fund`) — never a
+    system-detected "you passed" judgment. Whether an account has
+    reached the funded stage is deliberately left as an explicit CEO
+    action (`app/accounts.py`'s `mark_account_funded()`), not an
+    automatic pass/fail inferred from the challenge profit target —
+    building an honest automatic pass/fail read is Piece 10's job (a
+    real evaluation-policy simulator), not this piece's."""
+
+    account_id: str = Field(alias="accountId")
+    evaluation_cost: float | None = Field(alias="evaluationCost")
+    funded_stage_reached: bool = Field(alias="fundedStageReached")
+    funded_at_sim_day: int | None = Field(alias="fundedAtSimDay")
+    # None when there's no real challenge_start_sim_day to measure from,
+    # or the account hasn't been marked funded yet.
+    days_to_fund: int | None = Field(alias="daysToFund")
+    payout_eligibility_min_profit_pct: float | None = Field(alias="payoutEligibilityMinProfitPct")
+    # None when no threshold is configured — never a fabricated "not
+    # eligible" default for an account that was never given a threshold.
+    payout_eligible: bool | None = Field(alias="payoutEligible")
+    total_payouts_received: float = Field(alias="totalPayoutsReceived")
     computed_at: str = Field(alias="computedAt")
 
 

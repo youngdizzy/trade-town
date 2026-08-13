@@ -8,7 +8,7 @@ fabricated stand-in.
 """
 from __future__ import annotations
 
-from app.accounts import create_account
+from app.accounts import create_account, mark_account_funded
 from app.prop_firm import (
     LEVERAGE_NOTE,
     SCALING_TIER_THRESHOLDS_PCT,
@@ -16,6 +16,7 @@ from app.prop_firm import (
     compute_challenge_progress,
     compute_compliance_score,
     compute_consistency_status,
+    compute_evaluation_tracking_status,
     compute_prop_firm_status,
     compute_scaling_status,
     compute_trailing_drawdown,
@@ -274,3 +275,65 @@ class TestComputePropFirmStatus:
         assert status.scaling is not None
         assert status.challenge is not None
         assert status.compliance_score is not None
+        assert status.evaluation_tracking is not None
+
+
+class TestComputeEvaluationTrackingStatus:
+    """Prop-Firm Risk Intelligence Addendum, Piece 10a — Requirement 24's
+    evaluation-cost / funded-stage / payout data points. Never a
+    system-inferred pass/fail — funded_stage_reached only ever reflects
+    a real, explicit CEO action (app/accounts.py's mark_account_funded)."""
+
+    def test_a_fresh_account_is_honestly_not_funded_with_no_payouts(self) -> None:
+        account = _account(starting_balance=10_000.0)
+        status = compute_evaluation_tracking_status(account)
+        assert status.funded_stage_reached is False
+        assert status.funded_at_sim_day is None
+        assert status.days_to_fund is None
+        assert status.total_payouts_received == 0.0
+        assert status.payout_eligible is None  # no threshold configured
+
+    def test_evaluation_cost_passes_through_unchanged(self) -> None:
+        account = _account(starting_balance=10_000.0)
+        account = account.model_copy(update={"evaluation_cost": 150.0})
+        status = compute_evaluation_tracking_status(account)
+        assert status.evaluation_cost == 150.0
+
+    def test_days_to_fund_is_the_real_gap_between_challenge_start_and_funded(self) -> None:
+        account = _account(starting_balance=10_000.0)
+        account = account.model_copy(update={"challenge_start_sim_day": 5})
+        accounts, error = mark_account_funded([account], account.id, sim_day=17)
+        assert error is None
+        status = compute_evaluation_tracking_status(accounts[0])
+        assert status.funded_stage_reached is True
+        assert status.days_to_fund == 12
+
+    def test_days_to_fund_is_none_without_a_real_challenge_start_day(self) -> None:
+        account = _account(starting_balance=10_000.0)
+        accounts, error = mark_account_funded([account], account.id, sim_day=17)
+        assert error is None
+        status = compute_evaluation_tracking_status(accounts[0])
+        assert status.funded_stage_reached is True
+        assert status.days_to_fund is None
+
+    def test_payout_eligible_true_once_real_profit_meets_the_configured_threshold(self) -> None:
+        account = _account(starting_balance=10_000.0)
+        account = account.model_copy(update={"payout_eligibility_min_profit_pct": 5.0})
+        grown = account.portfolio.model_copy(update={"cash_balance": 10_600.0})  # 6% real profit
+        account = account.model_copy(update={"portfolio": grown})
+        status = compute_evaluation_tracking_status(account)
+        assert status.payout_eligible is True
+
+    def test_payout_eligible_false_below_the_configured_threshold(self) -> None:
+        account = _account(starting_balance=10_000.0)
+        account = account.model_copy(update={"payout_eligibility_min_profit_pct": 10.0})
+        grown = account.portfolio.model_copy(update={"cash_balance": 10_200.0})  # 2% real profit
+        account = account.model_copy(update={"portfolio": grown})
+        status = compute_evaluation_tracking_status(account)
+        assert status.payout_eligible is False
+
+    def test_total_payouts_received_passes_through_unchanged(self) -> None:
+        account = _account(starting_balance=10_000.0)
+        account = account.model_copy(update={"total_payouts_received": 750.0})
+        status = compute_evaluation_tracking_status(account)
+        assert status.total_payouts_received == 750.0

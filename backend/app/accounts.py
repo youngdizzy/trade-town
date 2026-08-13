@@ -209,6 +209,68 @@ def configure_prop_firm_rules(
     return [updated if a.id == account_id else a for a in accounts], None
 
 
+def configure_evaluation_tracking(
+    accounts: list[Account],
+    account_id: str,
+    *,
+    evaluation_cost: float | None,
+    payout_eligibility_min_profit_pct: float | None,
+) -> tuple[list[Account], str | None]:
+    """Prop-Firm Risk Intelligence Addendum, Piece 10a — Requirement 24.
+    A real CEO control for the two evaluation/payout numbers this
+    codebase never tracked before this piece. Both fields are optional
+    and independently settable, same convention as
+    configure_prop_firm_rules above."""
+    account = next((a for a in accounts if a.id == account_id), None)
+    if account is None:
+        return accounts, f"No account with id {account_id!r}."
+    if evaluation_cost is not None and evaluation_cost < 0:
+        return accounts, "Evaluation cost cannot be negative."
+    if payout_eligibility_min_profit_pct is not None and payout_eligibility_min_profit_pct <= 0:
+        return accounts, "Payout eligibility minimum profit must be greater than 0%."
+    updated = account.model_copy(
+        update={
+            "evaluation_cost": evaluation_cost,
+            "payout_eligibility_min_profit_pct": payout_eligibility_min_profit_pct,
+        }
+    )
+    return [updated if a.id == account_id else a for a in accounts], None
+
+
+def mark_account_funded(accounts: list[Account], account_id: str, *, sim_day: int) -> tuple[list[Account], str | None]:
+    """A real, explicit CEO action recording that an evaluation account
+    has reached the funded stage — never an automatic pass/fail
+    inference off the challenge profit target (that honest judgment call
+    is Piece 10's job, a real evaluation-policy simulator). Idempotent
+    refusal, not a silent overwrite: once funded_at_sim_day is set, it's
+    a permanent historical fact this account shouldn't be able to
+    quietly re-date."""
+    account = next((a for a in accounts if a.id == account_id), None)
+    if account is None:
+        return accounts, f"No account with id {account_id!r}."
+    if account.funded_stage_reached:
+        return accounts, f"{account.name} was already marked funded on sim day {account.funded_at_sim_day}."
+    updated = account.model_copy(update={"funded_stage_reached": True, "funded_at_sim_day": sim_day})
+    return [updated if a.id == account_id else a for a in accounts], None
+
+
+def record_account_payout(accounts: list[Account], account_id: str, *, amount: float) -> tuple[list[Account], str | None]:
+    """A real, CEO-recorded payout amount, added to this account's
+    permanent running total. Requires the account to already be marked
+    funded — a real payout only makes sense once an evaluation has
+    actually been passed, matching how funded-stage accounts work at a
+    real prop firm."""
+    account = next((a for a in accounts if a.id == account_id), None)
+    if account is None:
+        return accounts, f"No account with id {account_id!r}."
+    if not account.funded_stage_reached:
+        return accounts, f"{account.name} has not been marked funded yet — mark it funded before recording a payout."
+    if amount <= 0:
+        return accounts, "Payout amount must be greater than 0."
+    updated = account.model_copy(update={"total_payouts_received": account.total_payouts_received + amount})
+    return [updated if a.id == account_id else a for a in accounts], None
+
+
 MAX_CUSTOM_RULES_PER_ACCOUNT = 20
 
 

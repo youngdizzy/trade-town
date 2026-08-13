@@ -152,6 +152,47 @@ async def prop_firm_status(account_id: str) -> PropFirmStatus:
     return compute_prop_firm_status(account, sim_day=state.time.day)
 
 
+# Prop-Firm Risk Intelligence Addendum, Piece 10a — evaluation cost /
+# funded-stage / payout tracking.
+class ConfigureEvaluationTrackingRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    account_id: str = Field(alias="accountId")
+    evaluation_cost: float | None = Field(default=None, alias="evaluationCost")
+    payout_eligibility_min_profit_pct: float | None = Field(default=None, alias="payoutEligibilityMinProfitPct")
+
+
+@router.post("/evaluation/configure", response_model=AccountsResponse)
+async def configure_evaluation_tracking(payload: ConfigureEvaluationTrackingRequest) -> AccountsResponse:
+    state, error = await game_state.configure_evaluation_tracking(
+        payload.account_id,
+        evaluation_cost=payload.evaluation_cost,
+        payout_eligibility_min_profit_pct=payload.payout_eligibility_min_profit_pct,
+    )
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    return AccountsResponse(accounts=state.accounts)
+
+
+@router.post("/evaluation/mark-funded", response_model=AccountsResponse)
+async def mark_account_funded(payload: AccountIdRequest) -> AccountsResponse:
+    state, error = await game_state.mark_account_funded(payload.account_id)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    return AccountsResponse(accounts=state.accounts)
+
+
+@router.post("/evaluation/record-payout", response_model=AccountsResponse)
+async def record_account_payout(payload: AccountAmountRequest) -> AccountsResponse:
+    state, error = await game_state.record_account_payout(payload.account_id, payload.amount)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    return AccountsResponse(accounts=state.accounts)
+
+
 # Design Bible Chapter 69 Part 3 — Institutional Rule Engine (IRE).
 class AddCustomRuleRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)

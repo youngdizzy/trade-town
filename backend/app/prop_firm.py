@@ -30,6 +30,7 @@ from app.schemas import (
     AccountRiskBudgetStatus,
     ChallengeProgressStatus,
     ConsistencyStatus,
+    EvaluationTrackingStatus,
     PropFirmComplianceScore,
     PropFirmStatus,
     ScalingMilestoneStatus,
@@ -254,6 +255,39 @@ def compute_account_risk_budget_status(account: Account) -> AccountRiskBudgetSta
     )
 
 
+def compute_evaluation_tracking_status(account: Account) -> EvaluationTrackingStatus:
+    """Prop-Firm Risk Intelligence Addendum, Piece 10a — Requirement 24's
+    evaluation-cost / funded-stage / payout data points. `funded_stage_
+    reached` and `funded_at_sim_day` are read straight off the Account —
+    real, CEO-recorded facts (app/accounts.py's mark_account_funded()),
+    never inferred here from the challenge profit target. `days_to_fund`
+    is the one real derived value: the gap between the account's own
+    challenge_start_sim_day and funded_at_sim_day, when both exist."""
+    days_to_fund: int | None = None
+    if account.funded_stage_reached and account.funded_at_sim_day is not None and account.challenge_start_sim_day is not None:
+        days_to_fund = max(0, account.funded_at_sim_day - account.challenge_start_sim_day)
+
+    payout_eligible: bool | None = None
+    threshold = account.payout_eligibility_min_profit_pct
+    if threshold is not None:
+        starting = account.portfolio.starting_balance
+        current_equity = account_equity(account)
+        profit_pct = (current_equity - starting) / starting * 100.0 if starting > 0 else 0.0
+        payout_eligible = profit_pct >= threshold
+
+    return EvaluationTrackingStatus(
+        accountId=account.id,
+        evaluationCost=account.evaluation_cost,
+        fundedStageReached=account.funded_stage_reached,
+        fundedAtSimDay=account.funded_at_sim_day,
+        daysToFund=days_to_fund,
+        payoutEligibilityMinProfitPct=threshold,
+        payoutEligible=payout_eligible,
+        totalPayoutsReceived=round(account.total_payouts_received, 2),
+        computedAt=_now_iso(),
+    )
+
+
 def compute_prop_firm_status(account: Account, *, sim_day: int) -> PropFirmStatus:
     return PropFirmStatus(
         accountId=account.id,
@@ -264,5 +298,6 @@ def compute_prop_firm_status(account: Account, *, sim_day: int) -> PropFirmStatu
         challenge=compute_challenge_progress(account, sim_day=sim_day),
         complianceScore=compute_compliance_score(account, sim_day=sim_day),
         riskBudget=compute_account_risk_budget_status(account),
+        evaluationTracking=compute_evaluation_tracking_status(account),
         leverageNote=LEVERAGE_NOTE,
     )

@@ -13,10 +13,13 @@ from app.accounts import (
     add_custom_rule,
     allocate_capital,
     close_account,
+    configure_evaluation_tracking,
     configure_prop_firm_rules,
     create_account,
     deallocate_capital,
     default_risk_limits_for,
+    mark_account_funded,
+    record_account_payout,
     remove_custom_rule,
     toggle_custom_rule,
     total_capital_across_accounts,
@@ -247,6 +250,85 @@ class TestConfigurePropFirmRules:
         accounts, error = configure_prop_firm_rules(
             [account], account.id, trailing_drawdown_limit_pct=None, consistency_limit_pct=None, challenge_start_sim_day=1, challenge_duration_days=0, challenge_profit_target_pct=None
         )
+        assert error is not None
+
+
+class TestConfigureEvaluationTracking:
+    def test_sets_both_fields_on_the_target_account_only(self) -> None:
+        target = _account(starting_balance=1_000.0, account_id="target")
+        other = _account(starting_balance=1_000.0, account_id="other")
+        accounts, error = configure_evaluation_tracking([target, other], "target", evaluation_cost=150.0, payout_eligibility_min_profit_pct=8.0)
+        assert error is None
+        updated_target = next(a for a in accounts if a.id == "target")
+        updated_other = next(a for a in accounts if a.id == "other")
+        assert updated_target.evaluation_cost == 150.0
+        assert updated_target.payout_eligibility_min_profit_pct == 8.0
+        assert updated_other.evaluation_cost is None
+
+    def test_rejects_a_negative_evaluation_cost(self) -> None:
+        account = _account(starting_balance=1_000.0)
+        accounts, error = configure_evaluation_tracking([account], account.id, evaluation_cost=-1.0, payout_eligibility_min_profit_pct=None)
+        assert error is not None
+
+    def test_rejects_a_non_positive_payout_eligibility_threshold(self) -> None:
+        account = _account(starting_balance=1_000.0)
+        accounts, error = configure_evaluation_tracking([account], account.id, evaluation_cost=None, payout_eligibility_min_profit_pct=0.0)
+        assert error is not None
+
+    def test_unknown_account_returns_an_error(self) -> None:
+        accounts, error = configure_evaluation_tracking([], "nope", evaluation_cost=100.0, payout_eligibility_min_profit_pct=None)
+        assert error is not None
+
+
+class TestMarkAccountFunded:
+    def test_marks_the_account_funded_on_the_real_sim_day(self) -> None:
+        account = _account(starting_balance=1_000.0)
+        accounts, error = mark_account_funded([account], account.id, sim_day=12)
+        assert error is None
+        updated = accounts[0]
+        assert updated.funded_stage_reached is True
+        assert updated.funded_at_sim_day == 12
+
+    def test_refuses_to_re_mark_an_already_funded_account(self) -> None:
+        account = _account(starting_balance=1_000.0)
+        accounts, error = mark_account_funded([account], account.id, sim_day=12)
+        assert error is None
+        accounts, error = mark_account_funded(accounts, account.id, sim_day=99)
+        assert error is not None
+        assert accounts[0].funded_at_sim_day == 12
+
+    def test_unknown_account_returns_an_error(self) -> None:
+        accounts, error = mark_account_funded([], "nope", sim_day=1)
+        assert error is not None
+
+
+class TestRecordAccountPayout:
+    def test_requires_the_account_to_already_be_funded(self) -> None:
+        account = _account(starting_balance=1_000.0)
+        accounts, error = record_account_payout([account], account.id, amount=500.0)
+        assert error is not None
+        assert accounts[0].total_payouts_received == 0.0
+
+    def test_adds_to_the_permanent_running_total_once_funded(self) -> None:
+        account = _account(starting_balance=1_000.0)
+        accounts, error = mark_account_funded([account], account.id, sim_day=5)
+        assert error is None
+        accounts, error = record_account_payout(accounts, account.id, amount=500.0)
+        assert error is None
+        assert accounts[0].total_payouts_received == 500.0
+        accounts, error = record_account_payout(accounts, account.id, amount=250.0)
+        assert error is None
+        assert accounts[0].total_payouts_received == 750.0
+
+    def test_rejects_a_non_positive_amount(self) -> None:
+        account = _account(starting_balance=1_000.0)
+        accounts, error = mark_account_funded([account], account.id, sim_day=5)
+        assert error is None
+        accounts, error = record_account_payout(accounts, account.id, amount=0.0)
+        assert error is not None
+
+    def test_unknown_account_returns_an_error(self) -> None:
+        accounts, error = record_account_payout([], "nope", amount=100.0)
         assert error is not None
 
 
