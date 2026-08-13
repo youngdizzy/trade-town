@@ -2662,6 +2662,19 @@ and real substance (how many of a session's three notes were real,
 versus founders.py's own honest placeholder). Live-verified: `60.0` for
 one real, fully-substantive session — exactly `(20 + 100) / 2`.
 
+**Self-Evaluation Health, corrected under the same directive.** The real
+`engagement` reading (average opinion confidence) never compared a
+prediction to a real outcome. A new `calibration_trend` component reuses
+`discipline.py`'s own good/poor tier definitions to compare the real
+misalignment rate (good-tier process that still lost, or poor-tier
+process that happened to win) across the earlier half of real Discipline
+Reviews versus the later half — a genuine decrease earns credit, a flat
+or worsening rate earns none. `_self_evaluation_health()` is now an
+equal blend of `engagement` and `calibration_trend`. Live-verified:
+`55.4`, matching `(60.8 + 50.0) / 2` for this save's real engagement
+blended with the honest neutral default its single closed trade (below
+the 4-review minimum) correctly produces.
+
 **Executive Priorities and Department Health are both pure frontend
 derivations** — like the Decision Replay Center, no second backend
 computation was needed. `lib/derive.ts`'s `computeExecutivePriorities()`

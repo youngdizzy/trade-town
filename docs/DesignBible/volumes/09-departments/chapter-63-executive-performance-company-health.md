@@ -632,3 +632,64 @@ save: after a real schema migration recovered a pre-existing session
 `60.0` — exactly `(20 occurrence + 100 substance) / 2` for one real,
 fully-substantive session, matching the formula precisely on real,
 unmodified game data.
+
+**CEO Company/Executive Health directive, Phase 5 — Self-Evaluation
+Health: PREDICTION → OUTCOME → ERROR ANALYSIS → CORRECTION → FUTURE
+IMPROVEMENT, not confidence alone.** The CEO's directive asked "Are
+predictions compared against outcomes? Are agents identifying recurring
+weaknesses?" and explicitly warned: "Do not reward agents merely for
+reporting that they made a mistake. Reward actual learning and reduced
+recurrence."
+
+*Root cause, confirmed by direct trace:* `_self_evaluation_health()`
+read only each department's average real opinion `confidence_pct` for
+the week — kept below as `engagement`, a real signal that departments
+are actively reviewing decisions, but never a prediction-vs-outcome
+comparison at all. Nothing in the old formula could distinguish a
+department that predicted correctly from one that didn't, or a company
+whose predictions were getting *more* accurate over time from one whose
+predictions were flat or worsening.
+
+*Fix:* a new `calibration_trend` component reuses real data this
+codebase already computes for a different reason —
+`app/discipline.py`'s own `GOOD_DISCIPLINE_TIERS`/`POOR_DISCIPLINE_TIERS`
+— to classify each real `DisciplineReview` as "aligned" (a good-tier
+process that won, or a poor-tier process that lost — the process
+correctly predicted the outcome) or "misaligned" (a good-tier process
+that still lost, or a poor-tier process that happened to win — see
+`_misalignment_rate()`). It then compares the real misalignment rate
+across the earlier half of real reviews on record versus the later
+half — the same "earlier vs. later real average" trend convention
+`app/wisdom.py`'s own `_learn_from_experience()` already established,
+reused here for a different real signal. A genuine *decrease* in
+misalignment over time — the organization's real predictions getting
+more accurate — earns credit; a flat or worsening rate earns none,
+regardless of how many mistakes were merely logged, directly answering
+the CEO's "reward actual learning and reduced recurrence" instruction.
+`_self_evaluation_health()` is now an equal blend of `engagement`
+(unchanged) and `calibration_trend`. Neutral 50.0 for either component
+with too little real history to say anything honest — fewer than 4
+real Discipline Reviews for the trend, no self-evaluations yet for
+engagement.
+
+Verified: 6 new tests (too little history stays neutral; a real
+misalignment rate dropping from 100% to 0% earns full trend credit; a
+flat, unchanging misalignment rate earns no credit — "reporting a
+mistake" without correction; a worsening rate is penalized; the real
+"adequate" middle tier counts toward neither aligned nor misaligned,
+matching discipline.py's own convention), 1 existing test updated with
+its corrected expected value, `_strong_executive_overrides()`'s
+"everything maxed" fixture extended with a real
+misaligned-then-aligned review history so it genuinely demonstrates
+full calibration improvement rather than resting on a stale default,
+full backend suite passing, `mypy`/`ruff` clean. Live-verified against
+a running save: `selfEvaluationHealth` read `55.4`, matching
+`(60.8 real engagement + 50.0 neutral trend) / 2` exactly — the save's
+real department engagement blended with the honest neutral default
+this specific save's single closed trade (below the 4-review minimum)
+correctly produces. A full live demonstration of the trend itself
+moving was not reachable in this session's save (the Gatekeeper's own
+real Weighted Executive Recommendation check — working exactly as
+intended — blocked every pending proposal this pass attempted to
+resolve, so no new real trades closed); the trend computation itself is
+covered by the 6 new unit tests above instead.

@@ -166,6 +166,35 @@ def _strong_executive_overrides() -> dict:
         )
         for agent_id in STUDENT_AGENT_IDS
     ]
+    # CEO Company/Executive Health directive, Phase 5 — self_evaluation_health
+    # now also reads a real calibration TREND across discipline_reviews
+    # (earlier-half vs later-half misalignment rate). "cio" is not a real
+    # student (STUDENT_AGENT_IDS), so these earlier, deliberately
+    # misaligned reviews affect only that trend, never talent_development's
+    # own post-graduation performance reading above. Placed first in the
+    # list (list order, not simDay, is what earlier/later means here — the
+    # same real-tick-append-order convention nexus.py's own discipline_reviews
+    # list already follows) so the real trend reads a full misaligned ->
+    # aligned improvement, maxing calibration_trend at 100.
+    earlier_misaligned_reviews = [
+        DisciplineReview(
+            id=f"early-{i}",
+            decisionId=f"d-early-{i}",
+            symbol="AAPL",
+            score=95.0,
+            tier="exemplary",
+            attendees=["cio"],
+            summary="x",
+            postDecisionReview=PostDecisionReview(),
+            outcome="loss",
+            tradePnlPct=-2.0,
+            holdDurationMinutes=60,
+            simDay=1,
+            createdAt="2026-01-01T00:00:00+00:00",
+        )
+        for i in range(len(STUDENT_AGENT_IDS))
+    ]
+    all_discipline_reviews = earlier_misaligned_reviews + strong_post_graduation_reviews
     founder_council_sessions = [
         FounderCouncilSession(id=f"c{i}", simDay=i, coachHighlight="x", keystoneNote="x", compassNote="x", createdAt="2026-01-01T00:00:00+00:00") for i in range(5)
     ]
@@ -178,7 +207,7 @@ def _strong_executive_overrides() -> dict:
         foundational_mentor_state=fm_state,
         founder_council_sessions=founder_council_sessions,
         gatekeeper_rejections=[],
-        discipline_reviews=strong_post_graduation_reviews,
+        discipline_reviews=all_discipline_reviews,
     )
 
 
@@ -622,10 +651,75 @@ class TestExecutiveTier:
         assert health.simulation_coverage == 50.0
 
     def test_self_evaluation_health_uses_the_latest_entry_per_department(self) -> None:
+        # CEO Company/Executive Health directive, Phase 5 — engagement
+        # (the latest-per-role average, unchanged) is now blended with a
+        # real calibration_trend component. With no discipline_reviews
+        # here, calibration_trend reads its own honest neutral 50.0.
         old = DepartmentSelfEvaluation(id="s1", role="research", departmentLabel="Research", weekEndingSimDay=7, decisionsReviewed=1, score=20.0, summary="x", createdAt="2026-01-01T00:00:00+00:00")
         new = DepartmentSelfEvaluation(id="s2", role="research", departmentLabel="Research", weekEndingSimDay=14, decisionsReviewed=1, score=90.0, summary="x", createdAt="2026-01-08T00:00:00+00:00")
         health = _health(self_evaluations=[old, new])
-        assert health.self_evaluation_health == 90.0
+        assert health.self_evaluation_health == 70.0
+
+    def _discipline_review(self, *, tier: str, outcome: str) -> DisciplineReview:
+        return DisciplineReview(
+            id=f"r-{tier}-{outcome}-{id(object())}",
+            decisionId="d1",
+            symbol="AAPL",
+            score=80.0,
+            tier=tier,  # type: ignore[arg-type]
+            attendees=["scout"],
+            summary="x",
+            postDecisionReview=PostDecisionReview(),
+            outcome=outcome,  # type: ignore[arg-type]
+            tradePnlPct=1.0,
+            holdDurationMinutes=60,
+            simDay=1,
+            createdAt="2026-01-01T00:00:00+00:00",
+        )
+
+    def test_self_evaluation_health_defaults_to_neutral_with_too_little_history(self) -> None:
+        reviews = [self._discipline_review(tier="exemplary", outcome="loss") for _ in range(3)]
+        health = _health(self_evaluations=[], discipline_reviews=reviews)
+        assert health.self_evaluation_health == 50.0
+
+    def test_self_evaluation_health_rewards_reduced_misalignment_over_time(self) -> None:
+        """CEO Company/Executive Health directive, Phase 5 — the exact
+        PREDICTION -> OUTCOME -> CORRECTION chain: an organization whose
+        real misalignment rate drops from 100% (earlier half, all
+        good-tier-process-but-lost) to 0% (later half, all
+        good-tier-process-and-won) demonstrates real learning."""
+        earlier = [self._discipline_review(tier="exemplary", outcome="loss") for _ in range(4)]
+        later = [self._discipline_review(tier="exemplary", outcome="win") for _ in range(4)]
+        health = _health(self_evaluations=[], discipline_reviews=earlier + later)
+        # engagement defaults to 50 (no self_evaluations); calibration_trend = 100.
+        assert health.self_evaluation_health == 75.0
+
+    def test_self_evaluation_health_does_not_reward_a_flat_misalignment_rate(self) -> None:
+        """Do not reward agents merely for reporting that they made a
+        mistake — a constant, unchanging misalignment rate earns no
+        real credit, since nothing was actually corrected."""
+        reviews = [self._discipline_review(tier="exemplary", outcome="loss") for _ in range(8)]
+        health = _health(self_evaluations=[], discipline_reviews=reviews)
+        # calibration_trend = 50 (no real change in misalignment rate).
+        assert health.self_evaluation_health == 50.0
+
+    def test_self_evaluation_health_penalizes_worsening_misalignment(self) -> None:
+        earlier = [self._discipline_review(tier="exemplary", outcome="win") for _ in range(4)]
+        later = [self._discipline_review(tier="exemplary", outcome="loss") for _ in range(4)]
+        health = _health(self_evaluations=[], discipline_reviews=earlier + later)
+        # engagement defaults to 50 (no self_evaluations); calibration_trend
+        # floors at 0 (misalignment rate rose from 0% to 100%).
+        assert health.self_evaluation_health == 25.0
+
+    def test_self_evaluation_health_ignores_the_adequate_middle_tier(self) -> None:
+        """An "adequate"-tier review counts toward neither aligned nor
+        misaligned — the same real middle-tier convention
+        app/discipline.py already established."""
+        earlier = [self._discipline_review(tier="adequate", outcome="loss") for _ in range(4)]
+        later = [self._discipline_review(tier="adequate", outcome="win") for _ in range(4)]
+        health = _health(self_evaluations=[], discipline_reviews=earlier + later)
+        # No checkable reviews in either half -> calibration_trend stays neutral 50.
+        assert health.self_evaluation_health == 50.0
 
     def test_institutional_memory_reuses_the_real_wisdom_score(self) -> None:
         health = _health(wisdom_state=WisdomState(score=72.5, tier="seasoned_wisdom", tierLabel="Seasoned Wisdom", factors=[], updatedAt="2026-01-01T00:00:00+00:00"))

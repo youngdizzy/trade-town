@@ -7,6 +7,30 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO Company/Executive Health directive, Phase 5 — Self-Evaluation Health: real prediction-vs-outcome
+  calibration trend, not confidence alone** (`backend/app/company_health.py`, `backend/tests/test_company_health.py`,
+  `docs/DesignBible/volumes/09-departments/chapter-63-executive-performance-company-health.md`): the CEO's
+  directive asked "Are predictions compared against outcomes? Are agents identifying recurring weaknesses?" and
+  explicitly warned: "Do not reward agents merely for reporting that they made a mistake. Reward actual learning
+  and reduced recurrence." Direct trace found `_self_evaluation_health()` read only each department's average
+  real opinion confidence for the week (kept as `engagement`, a real but different signal — active review
+  participation) — never a prediction-vs-outcome comparison. Fixed: a new `calibration_trend` component reuses
+  `app/discipline.py`'s own `GOOD_DISCIPLINE_TIERS`/`POOR_DISCIPLINE_TIERS` to classify each real
+  `DisciplineReview` as aligned (process tier correctly predicted the real outcome) or misaligned (a good-tier
+  process that still lost, or a poor-tier process that happened to win), then compares the real misalignment
+  rate across the earlier half of real reviews on record versus the later half — the same "earlier vs. later
+  real average" trend convention `app/wisdom.py`'s own `_learn_from_experience()` already established, reused
+  for a different real signal. A genuine decrease in misalignment over time earns credit; a flat or worsening
+  rate earns none, regardless of how many mistakes were merely logged. `_self_evaluation_health()` is now an
+  equal blend of `engagement` and `calibration_trend`, each neutral 50.0 with too little real history. Verified:
+  6 new tests, 1 existing test updated, the `_strong_executive_overrides()` "everything maxed" fixture extended
+  with a real misaligned-then-aligned review history, full backend suite passing, `mypy`/`ruff` clean.
+  Live-verified against a running save: `selfEvaluationHealth` read `55.4`, matching `(60.8 real engagement +
+  50.0 neutral trend) / 2` exactly — the trend itself correctly read the honest neutral default this save's
+  single closed trade (below the 4-review minimum) produces; the trend computation's real behavior is covered
+  by the new unit tests, since no additional real trades closed this pass (the Gatekeeper's own real Weighted
+  Executive Recommendation check, working as intended, blocked every proposal resolved during verification).
+
 - **CEO Company/Executive Health directive, Phase 4 — Founder Oversight: real substance, not lifetime
   session count** (`backend/app/schemas.py`, `backend/app/founders.py`, `backend/app/company_health.py`,
   `backend/tests/test_founders.py`, `backend/tests/test_company_health.py`,

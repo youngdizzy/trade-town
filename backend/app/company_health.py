@@ -39,6 +39,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from app.discipline import GOOD_DISCIPLINE_TIERS, POOR_DISCIPLINE_TIERS
 from app.education import all_lessons
 from app.foundational_mentors import STUDENT_AGENT_IDS
 from app.innovation import TIER_THRESHOLDS as INNOVATION_TIER_THRESHOLDS
@@ -357,13 +358,70 @@ def _department_consensus(meeting_log: list[ExecutiveMeetingLogEntry]) -> float:
     return coherent / len(opinions) * 100.0
 
 
-def _self_evaluation_health(self_evaluations: list[DepartmentSelfEvaluation]) -> float:
-    if not self_evaluations:
+def _misalignment_rate(reviews: list[DisciplineReview]) -> float | None:
+    """Real PREDICTION vs OUTCOME mismatch rate — a review is
+    "misaligned" when its real process tier and its real trade outcome
+    point opposite directions (a good-tier process that still lost, or
+    a poor-tier process that happened to win — see
+    app/discipline.py's own GOOD_DISCIPLINE_TIERS/POOR_DISCIPLINE_TIERS,
+    reused here rather than reinvented). An "adequate"-tier review
+    counts toward neither, the same real middle-tier convention
+    discipline.py already established. None if there is no real
+    checkable population yet."""
+    aligned = sum(1 for r in reviews if (r.tier in GOOD_DISCIPLINE_TIERS and r.outcome == "win") or (r.tier in POOR_DISCIPLINE_TIERS and r.outcome == "loss"))
+    misaligned = sum(1 for r in reviews if (r.tier in GOOD_DISCIPLINE_TIERS and r.outcome == "loss") or (r.tier in POOR_DISCIPLINE_TIERS and r.outcome == "win"))
+    checkable = aligned + misaligned
+    if checkable == 0:
+        return None
+    return misaligned / checkable
+
+
+def _self_evaluation_health(self_evaluations: list[DepartmentSelfEvaluation], discipline_reviews: list[DisciplineReview]) -> float:
+    """v0.7 Feature 50 Part 2/3, extended under the CEO's Company/
+    Executive Health directive: PREDICTION -> OUTCOME -> ERROR ANALYSIS
+    -> CORRECTION -> FUTURE IMPROVEMENT, not confidence alone.
+
+    The original formula read only each department's average opinion
+    confidence that week — a real signal that departments are actively
+    engaging with real decisions, kept below as `engagement`, but never
+    a prediction-vs-outcome comparison at all. The CEO's directive asked
+    "Are predictions compared against outcomes?" and explicitly warned:
+    "Do not reward agents merely for reporting that they made a
+    mistake. Reward actual learning and reduced recurrence."
+
+    The new `calibration_trend` component answers exactly that, reusing
+    real data this codebase already computes for a different reason
+    (app/discipline.py's own good/poor tier definitions) rather than
+    inventing a new statistic: it compares the real misalignment rate
+    (see `_misalignment_rate()` above) across the earlier half of real
+    Discipline Reviews on record versus the later half — the same
+    "earlier vs later real average" trend convention app/wisdom.py's
+    own `_learn_from_experience()` already established, applied to a
+    different real signal (misalignment rate, not raw score). A real
+    DECREASE in misalignment over time — the organization's own
+    predictions getting more accurate — earns credit; a flat or
+    worsening rate does not, regardless of how many mistakes were
+    merely logged. Neutral 50.0 with fewer than 4 real reviews on
+    record — not enough real history to say anything honest about a
+    trend yet."""
+    if not self_evaluations and len(discipline_reviews) < 4:
         return 50.0
-    latest_by_role: dict[str, float] = {}
-    for entry in self_evaluations:
-        latest_by_role[entry.role] = entry.score
-    return sum(latest_by_role.values()) / len(latest_by_role)
+    engagement = 50.0
+    if self_evaluations:
+        latest_by_role: dict[str, float] = {}
+        for entry in self_evaluations:
+            latest_by_role[entry.role] = entry.score
+        engagement = sum(latest_by_role.values()) / len(latest_by_role)
+
+    calibration_trend = 50.0
+    if len(discipline_reviews) >= 4:
+        midpoint = len(discipline_reviews) // 2
+        earlier_rate = _misalignment_rate(discipline_reviews[:midpoint])
+        later_rate = _misalignment_rate(discipline_reviews[midpoint:])
+        if earlier_rate is not None and later_rate is not None:
+            calibration_trend = max(0.0, min(100.0, 50.0 + (earlier_rate - later_rate) * 100.0))
+
+    return (engagement + calibration_trend) / 2.0
 
 
 def _institutional_memory(wisdom_state: WisdomState) -> float:
@@ -518,7 +576,7 @@ def compute_company_health(
         "risk_governance": _risk_governance(portfolio.trade_history, gatekeeper_rejections),
         "simulation_coverage": _simulation_coverage(meeting_log),
         "department_consensus": _department_consensus(meeting_log),
-        "self_evaluation_health": _self_evaluation_health(self_evaluations),
+        "self_evaluation_health": _self_evaluation_health(self_evaluations, discipline_reviews),
         "institutional_memory": _institutional_memory(wisdom_state),
         "innovation_velocity": _innovation_velocity(innovation_state),
         "talent_development": _talent_development(foundational_mentor_state, discipline_reviews),
