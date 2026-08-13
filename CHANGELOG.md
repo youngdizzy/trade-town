@@ -7,6 +7,20 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO Company/Executive Health directive — Office Expansion → Market Coverage rename, frontend follow-up**
+  (`frontend/src/types.ts`, `frontend/src/state/gameStore.ts`, `frontend/src/game/systems/NexusManager.ts`,
+  `frontend/src/ui/components/CampusMap/CampusMap.tsx`, `frontend/src/ui/components/CommandCenter/panels/CompanyPanel.tsx`,
+  `frontend/tests/commandCenter.spec.ts`): completes the backend rename below on the client — `CompanyHealth.officeExpansion`
+  is now `marketCoverage` everywhere in the frontend (type, store defaults, the Campus Map's `HQExpansionVisual` component
+  and its tooltip text, the Company panel's health-cell label). `tsc -b`/eslint/build clean. Live-verified: the Company tab's
+  full Company Health metric-label Playwright check (`commandCenter.spec.ts`) passes with the new "Market Coverage" label,
+  and the Campus Map's HQ Expansion visual renders correctly against real live data (confirmed via Playwright trace: "HQ
+  Expansion 33% — Framing"). Two unrelated pre-existing flaky tests surfaced on the full run (a Campus Map employee-count
+  check racing the live background sim tick between its own state fetch and the UI assertion, and a WASD player-movement
+  timing test) — neither touches Company Health or this rename; both reconfirmed failing in isolation with the exact same
+  symptom, consistent with live-ticking-related flakiness this session has already documented elsewhere, not a regression
+  from this change.
+
 - **CEO Company/Executive Health directive — Office Expansion renamed to Market Coverage, formula unchanged**
   (`backend/app/schemas.py`, `backend/app/company_health.py`, `backend/app/save_modules.py`,
   `backend/tests/test_company_health.py` + 4 other test files,

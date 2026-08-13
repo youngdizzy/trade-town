@@ -552,7 +552,7 @@ test.describe("Global Command Center", () => {
     // <option>Research</option> text is also matched by getByText, the
     // same legitimate multi-match case as the tier vocabulary above —
     // any match confirms the real Company Health label rendered.
-    for (const metric of ["Stability", "Efficiency", "Morale", "Research", "Capital", "Resources", "Reputation", "Technology", "Office", "Education"]) {
+    for (const metric of ["Stability", "Efficiency", "Morale", "Research", "Capital", "Resources", "Reputation", "Technology", "Market Coverage", "Education"]) {
       await expect(page.getByText(metric, { exact: true }).first()).toBeVisible();
     }
 

@@ -43,7 +43,9 @@ import { AnimatedGrid, DataRow, Glass, StatusPill, TerminalLabel } from "../Comm
  *   - Building Upgrade Levels / Construction stages (Empty Lot →
  *     Landmark, scaffolding, cranes, sounds) are cut outright — no
  *     per-building progression is tracked anywhere in this codebase, and
- *     `CompanyHealth.officeExpansion` is a single company-wide score, not
+ *     `CompanyHealth.marketCoverage` (renamed from `officeExpansion`
+ *     under the CEO's Company/Executive Health directive — same real
+ *     formula, honest name) is a single company-wide score, not
  *     11 independent per-building tracks; fabricating one would either
  *     duplicate that real number under 11 fake labels or invent a whole
  *     new random-progress system with no data behind it.
@@ -74,7 +76,9 @@ import { AnimatedGrid, DataRow, Glass, StatusPill, TerminalLabel } from "../Comm
  * Houses_Building_Stages_OLD/House_1_Stone_Stages.png, sliced into
  * assets/cute-fantasy-rpg/props/buildings/hq-expansion/stage-{1-5}.png).
  * It's deliberately still bound to the one real company-wide number from
- * the scope-cut above — `CompanyHealth.officeExpansion` — mapped onto
+ * the scope-cut above — `CompanyHealth.marketCoverage` (renamed from
+ * `officeExpansion` under the CEO's Company/Executive Health directive)
+ * — mapped onto
  * whichever of the 5 real stage frames it falls into. This is NOT the
  * brief's fabricated per-building construction system: one visual, tied
  * to one already-real score, not 11 invented per-building progress
@@ -94,8 +98,9 @@ const STATUS_META: Record<BuildingStatus, { label: string; dot: string; tone: "g
 const CATEGORIES: CampusBuildingCategory[] = ["research", "trading", "leadership", "housing", "entertainment", "operations"];
 
 /** Five real sprite frames (see this file's module docstring addendum),
- * mapped onto the one real company-wide `CompanyHealth.officeExpansion`
- * score — never a fabricated per-building progress track. */
+ * mapped onto the one real company-wide `CompanyHealth.marketCoverage`
+ * score (renamed from `officeExpansion`) — never a fabricated
+ * per-building progress track. */
 const HQ_EXPANSION_STAGES = [
   { id: "props/buildings/hq-expansion/stage-1", label: "Foundation" },
   { id: "props/buildings/hq-expansion/stage-2", label: "Framing" },
@@ -104,19 +109,19 @@ const HQ_EXPANSION_STAGES = [
   { id: "props/buildings/hq-expansion/stage-5", label: "Complete" },
 ] as const;
 
-function HQExpansionVisual({ officeExpansion }: { officeExpansion: number }) {
-  const stageIndex = Math.min(HQ_EXPANSION_STAGES.length - 1, Math.floor((officeExpansion / 100) * HQ_EXPANSION_STAGES.length));
+function HQExpansionVisual({ marketCoverage }: { marketCoverage: number }) {
+  const stageIndex = Math.min(HQ_EXPANSION_STAGES.length - 1, Math.floor((marketCoverage / 100) * HQ_EXPANSION_STAGES.length));
   const stage = HQ_EXPANSION_STAGES[stageIndex] ?? HQ_EXPANSION_STAGES[0];
   return (
     <div
       className="flex shrink-0 items-center gap-2 border-t border-cmd-border/50 pt-2 sm:border-l sm:border-t-0 sm:pl-3 sm:pt-0"
-      title={`Office Expansion — ${officeExpansion.toFixed(0)}% (${stage.label})`}
+      title={`Market Coverage — ${marketCoverage.toFixed(0)}% (${stage.label})`}
     >
       <img src={AssetLoader.get(stage.id).url} alt={`HQ expansion stage: ${stage.label}`} className="h-14 w-auto [image-rendering:pixelated]" />
       <div className="text-[9px]">
         <div className="uppercase tracking-wide text-cmd-textDim">HQ Expansion</div>
         <div className="text-cmd-cyan">
-          {officeExpansion.toFixed(0)}% — {stage.label}
+          {marketCoverage.toFixed(0)}% — {stage.label}
         </div>
       </div>
     </div>
@@ -275,7 +280,7 @@ export function CampusMap() {
                 <DataRow label="Company Priority" value={settings.companyPriority.replace("_", " ").toUpperCase()} />
                 <DataRow label="Work Mode" value={settings.workMode === "rest" ? "REST" : "WORK"} />
               </div>
-              <HQExpansionVisual officeExpansion={companyHealth.officeExpansion} />
+              <HQExpansionVisual marketCoverage={companyHealth.marketCoverage} />
             </div>
           </Glass>
 

@@ -335,7 +335,7 @@ export class NexusManager {
     resourceUsage: 50,
     reputation: 0,
     technologyLevel: 0,
-    officeExpansion: 0,
+    marketCoverage: 0,
     educationProgress: 0,
     teamChemistry: 50,
     recommendations: [],

@@ -2337,7 +2337,10 @@ export interface CompanyHealth {
   resourceUsage: number;
   reputation: number;
   technologyLevel: number;
-  officeExpansion: number;
+  /** CEO Company/Executive Health directive: renamed from
+   * "officeExpansion" — real watchlist growth beyond the seed symbols,
+   * never a facility/office-capability mechanic. Same real formula. */
+  marketCoverage: number;
   educationProgress: number;
   /** v0.7 Feature 43 — real support-vs-challenge ratio across recent AI
    * Debates (see backend/app/company_health.py's _team_chemistry). */
