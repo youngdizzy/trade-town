@@ -54,6 +54,8 @@ from app.schemas import (
     AgentKnowledgeState,
     AgentState,
     CompanyHealth,
+    CompanyHealthComponentDelta,
+    CompanyHealthDelta,
     CompanyHealthTier,
     Debate,
     DepartmentSelfEvaluation,
@@ -835,4 +837,51 @@ def compute_company_health(
         executiveTier=_tier(executive_overall, tier_thresholds),
         combinedOverall=round(combined_overall, 1),
         combinedTier=_tier(combined_overall, tier_thresholds),
+    )
+
+
+# CEO Company Health + Live Market Realism directive, Section 6 — the
+# explicit before/after delta breakdown the CEO asked to see (e.g. "+2.4
+# Decision Quality, -0.8 Efficiency..."), computed as a pure diff between
+# two already-real CompanyHealth readings this module already produces —
+# no new telemetry, no invented "reason"/"evidence" text (the only honest
+# source for either would be re-deriving which of the many real inputs
+# changed, which this function doesn't attempt; see CompanyHealthDelta's
+# own schema docstring). Only components whose score actually moved make
+# it into the list, sorted by magnitude (largest real movement first) so
+# a tick where nothing changed reports an empty list rather than
+# twenty-one honest zeroes.
+def diff_company_health(previous: CompanyHealth | None, current: CompanyHealth) -> CompanyHealthDelta | None:
+    if previous is None:
+        return None
+
+    components: list[CompanyHealthComponentDelta] = []
+    for key, label in _METRIC_LABELS.items():
+        prev_value = getattr(previous, key)
+        curr_value = getattr(current, key)
+        delta = round(curr_value - prev_value, 1)
+        if delta != 0.0:
+            components.append(
+                CompanyHealthComponentDelta(key=key, label=label, group="operational", previous=prev_value, current=curr_value, delta=delta)
+            )
+    for key, label in _EXECUTIVE_METRIC_LABELS.items():
+        prev_value = getattr(previous, key)
+        curr_value = getattr(current, key)
+        delta = round(curr_value - prev_value, 1)
+        if delta != 0.0:
+            components.append(
+                CompanyHealthComponentDelta(key=key, label=label, group="executive", previous=prev_value, current=curr_value, delta=delta)
+            )
+    components.sort(key=lambda c: abs(c.delta), reverse=True)
+
+    return CompanyHealthDelta(
+        previousUpdatedAt=previous.updated_at,
+        currentUpdatedAt=current.updated_at,
+        overallDelta=round(current.overall - previous.overall, 1),
+        executiveOverallDelta=round(current.executive_overall - previous.executive_overall, 1),
+        combinedOverallDelta=round(current.combined_overall - previous.combined_overall, 1),
+        tierChanged=current.tier != previous.tier,
+        executiveTierChanged=current.executive_tier != previous.executive_tier,
+        combinedTierChanged=current.combined_tier != previous.combined_tier,
+        components=components,
     )

@@ -3478,6 +3478,44 @@ class CompanyHealth(CamelModel):
     combined_tier: CompanyHealthTier = Field(default="stable", alias="combinedTier")
 
 
+# CEO Company Health + Live Market Realism directive, Section 6 — the
+# explicit before/after delta breakdown ("+2.4 Decision Quality, -0.8
+# Efficiency...") the CEO asked to see, rather than Company Health only
+# ever presenting itself as a single opaque snapshot. `group` distinguishes
+# which of CompanyHealth's two already-real, already-equal-weighted tiers
+# (see app/company_health.py's module docstring) a component belongs to —
+# no new weighting scheme, just a label on the existing one.
+CompanyHealthDeltaGroup = Literal["operational", "executive"]
+
+
+class CompanyHealthComponentDelta(CamelModel):
+    key: str
+    label: str
+    group: CompanyHealthDeltaGroup
+    previous: float
+    current: float
+    delta: float
+
+
+# One real diff between two already-computed CompanyHealth readings (see
+# app/company_health.py's diff_company_health()) — never a fabricated
+# "reason" or "evidence" string, since the only honest source for either
+# would be re-deriving which of the many real inputs changed, which this
+# module doesn't attempt. `components` holds only the entries that
+# actually moved, sorted by magnitude, so a tick where nothing changed
+# reports an empty list rather than eleven/ten zeroes.
+class CompanyHealthDelta(CamelModel):
+    previous_updated_at: str = Field(alias="previousUpdatedAt")
+    current_updated_at: str = Field(alias="currentUpdatedAt")
+    overall_delta: float = Field(alias="overallDelta")
+    executive_overall_delta: float = Field(alias="executiveOverallDelta")
+    combined_overall_delta: float = Field(alias="combinedOverallDelta")
+    tier_changed: bool = Field(alias="tierChanged")
+    executive_tier_changed: bool = Field(alias="executiveTierChanged")
+    combined_tier_changed: bool = Field(alias="combinedTierChanged")
+    components: list[CompanyHealthComponentDelta] = Field(default_factory=list)
+
+
 # v0.7 Feature 43 — Company DNA (app/company_dna.py). The one genuinely
 # net-new concept the Executive Intelligence Dashboard brief asked for —
 # everything else in its "Company Health" list already existed under a
@@ -6535,6 +6573,12 @@ class GameSaveState(CamelModel):
     )
     # v0.7 Feature 23 — Company Health & Stability System (app/company_health.py).
     company_health: CompanyHealth = Field(alias="companyHealth")
+    # CEO Company Health + Live Market Realism directive, Section 6 — the
+    # real tick-over-tick delta breakdown between this reading and the
+    # one before it (app/company_health.py's diff_company_health()). None
+    # on the very first tick of a fresh game (no prior reading to diff
+    # against yet).
+    company_health_delta: CompanyHealthDelta | None = Field(default=None, alias="companyHealthDelta")
     # v0.7 Feature 43 — Company DNA (app/company_dna.py).
     company_dna: CompanyDNA = Field(alias="companyDna")
     # v0.7 Feature 48 — Legacy: a small, permanent, capped per-trait

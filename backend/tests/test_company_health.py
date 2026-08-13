@@ -8,7 +8,7 @@ is randomized or invented.
 from __future__ import annotations
 
 from app.agents import all_agent_ids
-from app.company_health import compute_company_health
+from app.company_health import compute_company_health, diff_company_health
 from app.debate import generate_debate
 from app.education import all_lessons
 from app.foundational_mentors import STUDENT_AGENT_IDS, default_foundational_mentor_state
@@ -18,6 +18,7 @@ from app.schemas import (
     AgentKnowledgeState,
     AgentState,
     AnalystVote,
+    CompanyHealth,
     Debate,
     DebateTurn,
     DecisionConfidence,
@@ -334,6 +335,46 @@ def _health(**overrides):
     )
     defaults.update(overrides)
     return compute_company_health(**defaults)
+
+
+def _ch(**overrides) -> CompanyHealth:
+    """A full, directly-constructed CompanyHealth reading for
+    diff_company_health() tests — bypasses compute_company_health()
+    entirely so each test can isolate exactly one real before/after
+    change without needing to fabricate the raw inputs that would
+    produce it."""
+    defaults: dict = dict(
+        overall=70.0,
+        tier="good",
+        operationalStability=70.0,
+        departmentEfficiency=70.0,
+        employeeMorale=70.0,
+        researchProgress=70.0,
+        capitalHealth=70.0,
+        resourceUsage=70.0,
+        reputation=70.0,
+        technologyLevel=70.0,
+        marketCoverage=70.0,
+        educationProgress=70.0,
+        teamChemistry=70.0,
+        updatedAt="2026-01-01T00:00:00+00:00",
+        decisionQuality=70.0,
+        executiveAlignment=70.0,
+        riskGovernance=70.0,
+        simulationCoverage=70.0,
+        departmentConsensus=70.0,
+        selfEvaluationHealth=70.0,
+        institutionalMemory=70.0,
+        innovationVelocity=70.0,
+        talentDevelopment=70.0,
+        founderOversight=70.0,
+        executiveOverall=70.0,
+        executiveTier="good",
+        combinedOverall=70.0,
+        combinedTier="good",
+    )
+    defaults.update(overrides)
+    return CompanyHealth(**defaults)
 
 
 class TestOperationalStability:
@@ -1274,3 +1315,73 @@ class TestDepartmentConsensus:
         agree_health = _health(meeting_log=[_meeting_log_entry("m1", agree_only)])
         dissent_health = _health(meeting_log=[_meeting_log_entry("m2", evidence_backed_dissent)])
         assert agree_health.department_consensus == dissent_health.department_consensus == 100.0
+
+
+class TestDiffCompanyHealth:
+    """CEO Company Health + Live Market Realism directive, Section 6 —
+    diff_company_health() computes the explicit before/after delta
+    breakdown as a pure diff between two real CompanyHealth readings,
+    never fabricated "reason"/"evidence" text."""
+
+    def test_returns_none_when_no_previous_reading(self) -> None:
+        current = _ch()
+        assert diff_company_health(None, current) is None
+
+    def test_no_components_when_nothing_actually_changed(self) -> None:
+        previous = _ch(updatedAt="2026-01-01T00:00:00+00:00")
+        current = _ch(updatedAt="2026-01-01T01:00:00+00:00")
+        delta = diff_company_health(previous, current)
+        assert delta is not None
+        assert delta.components == []
+        assert delta.overall_delta == 0.0
+        assert delta.executive_overall_delta == 0.0
+        assert delta.combined_overall_delta == 0.0
+        assert delta.tier_changed is False
+        assert delta.executive_tier_changed is False
+        assert delta.combined_tier_changed is False
+        assert delta.previous_updated_at == "2026-01-01T00:00:00+00:00"
+        assert delta.current_updated_at == "2026-01-01T01:00:00+00:00"
+
+    def test_a_real_operational_change_appears_with_correct_values(self) -> None:
+        previous = _ch(reputation=40.0)
+        current = _ch(reputation=64.0)
+        delta = diff_company_health(previous, current)
+        assert delta is not None
+        assert len(delta.components) == 1
+        component = delta.components[0]
+        assert component.key == "reputation"
+        assert component.label == "Reputation"
+        assert component.group == "operational"
+        assert component.previous == 40.0
+        assert component.current == 64.0
+        assert component.delta == 24.0
+
+    def test_a_real_executive_change_appears_with_correct_group(self) -> None:
+        previous = _ch(decisionQuality=60.0)
+        current = _ch(decisionQuality=55.0)
+        delta = diff_company_health(previous, current)
+        assert delta is not None
+        assert len(delta.components) == 1
+        component = delta.components[0]
+        assert component.key == "decision_quality"
+        assert component.group == "executive"
+        assert component.delta == -5.0
+
+    def test_components_are_sorted_by_magnitude_descending(self) -> None:
+        previous = _ch(reputation=50.0, decisionQuality=50.0)
+        current = _ch(reputation=51.0, decisionQuality=80.0)
+        delta = diff_company_health(previous, current)
+        assert delta is not None
+        assert [c.key for c in delta.components] == ["decision_quality", "reputation"]
+
+    def test_overall_and_tier_deltas_are_computed(self) -> None:
+        previous = _ch(overall=60.0, tier="good", executiveOverall=55.0, executiveTier="stable", combinedOverall=57.5, combinedTier="stable")
+        current = _ch(overall=65.0, tier="good", executiveOverall=55.0, executiveTier="excellent", combinedOverall=60.0, combinedTier="stable")
+        delta = diff_company_health(previous, current)
+        assert delta is not None
+        assert delta.overall_delta == 5.0
+        assert delta.executive_overall_delta == 0.0
+        assert delta.combined_overall_delta == 2.5
+        assert delta.tier_changed is False
+        assert delta.executive_tier_changed is True
+        assert delta.combined_tier_changed is False

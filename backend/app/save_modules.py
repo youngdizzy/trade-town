@@ -129,6 +129,7 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
     "derived": (
         "company_score",
         "company_health",
+        "company_health_delta",
         "company_dna",
         "company_dna_legacy",
         "daily_objective_status",

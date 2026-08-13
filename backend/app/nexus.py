@@ -41,7 +41,7 @@ from app.capital_priority import cash_reserve_breached, priority_score, rank_tra
 from app.coach import generate_report as generate_coach_report
 from app.coach import record_report as record_coach_report_entry
 from app.company_dna import ACADEMY_COMPLETION_NUDGE, BLACK_BOX_BREAKTHROUGH_NUDGE, FOUNDER_RETIREMENT_NUDGE, SUCCESS_STUDY_NUDGE, compute_company_dna, nudge_legacy
-from app.company_health import compute_company_health
+from app.company_health import compute_company_health, diff_company_health
 from app.company_score import compute_company_score
 from app.config import settings
 from app.constitution import MISTAKE_ARTICLE_MAP, cite_article
@@ -2082,6 +2082,11 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         stable_threshold=effective_risk_limits.company_health_stable_threshold,
         needs_attention_threshold=effective_risk_limits.company_health_needs_attention_threshold,
     )
+    # CEO Company Health + Live Market Realism directive, Section 6 — the
+    # real tick-over-tick delta breakdown, diffed against `state.company_health`
+    # (this tick's pre-update value, i.e. what the CEO last actually saw)
+    # before it's replaced by the freshly computed `company_health` above.
+    company_health_delta = diff_company_health(state.company_health, company_health)
     # v0.7 Feature 43 — Company DNA. Cheap to recompute (a handful of
     # linear scans over already-in-memory lists), same "always current"
     # reasoning as company_health above.
@@ -2740,6 +2745,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "market_intelligence_reports": market_intelligence_reports,
             "market_intelligence_learning": market_intelligence_learning,
             "company_health": company_health,
+            "company_health_delta": company_health_delta,
             "company_dna": company_dna,
             "daily_objective_status": daily_objective_status,
             "risk_budget_status": risk_budget_status,

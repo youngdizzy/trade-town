@@ -110,6 +110,11 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         "marketIntelligenceLearning": [e.model_dump(by_alias=True) for e in state.market_intelligence_learning],
         # v0.7 Feature 23 — recomputed every tick like companyScore above.
         "companyHealth": state.company_health.model_dump(by_alias=True),
+        # CEO Company Health + Live Market Realism directive, Section 6 —
+        # None on the very first tick of a fresh game (no prior reading
+        # to diff against yet), same "not yet computed" convention other
+        # optional derived readings already use.
+        "companyHealthDelta": state.company_health_delta.model_dump(by_alias=True) if state.company_health_delta else None,
         "companyDna": state.company_dna.model_dump(by_alias=True),
         "dailyObjectiveStatus": state.daily_objective_status.model_dump(by_alias=True),
         # Prop-Firm Risk Intelligence Addendum, Piece 8 — recomputed every
