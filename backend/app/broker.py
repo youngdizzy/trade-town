@@ -34,7 +34,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 
 from app.portfolio import close_position, open_position, sim_minutes
-from app.schemas import AgentId, OrderSide, OrderType, PaperOrder, PaperPortfolio, PaperTrade, TimeState
+from app.schemas import AgentId, OrderSide, OrderType, PaperOrder, PaperPortfolio, PaperTrade, RiskLimits, TimeState
 
 logger = logging.getLogger("tradetown.broker")
 
@@ -120,13 +120,18 @@ def tick_broker(
     portfolio: PaperPortfolio,
     prices: dict[str, float],
     new_time: TimeState,
+    risk_limits: RiskLimits | None = None,
 ) -> tuple[PaperPortfolio, list[PaperTrade]]:
     """Evaluates every open order against the current watchlist prices:
     fills it (opening a new position, or closing the position it's
     linked to) if its trigger condition is met, cancels it if it's
     expired unfilled, otherwise leaves it open for a future tick.
     Returns the updated portfolio and any trades that closed as a result
-    of an exit order filling this tick."""
+    of an exit order filling this tick.
+
+    Piece 10b — `risk_limits`, when supplied, is threaded straight into
+    close_position() for the real distance-to-drawdown-ceiling snapshot
+    (see that function's own docstring)."""
     now_minutes = sim_minutes(new_time)
     open_orders = [o for o in portfolio.orders if o.status == "open"]
     if not open_orders:
@@ -162,6 +167,7 @@ def tick_broker(
                     market_conditions=market_conditions,
                     supporting_agents=[order.placed_by],
                     opposing_agents=[],
+                    risk_limits=risk_limits,
                 )
                 if trade:
                     newly_closed.append(trade)
@@ -221,6 +227,7 @@ class ExecutionProvider(ABC):
         portfolio: PaperPortfolio,
         prices: dict[str, float],
         new_time: TimeState,
+        risk_limits: RiskLimits | None = None,
     ) -> tuple[PaperPortfolio, list[PaperTrade]]: ...
 
 
@@ -265,8 +272,9 @@ class PaperExecutionProvider(ExecutionProvider):
         portfolio: PaperPortfolio,
         prices: dict[str, float],
         new_time: TimeState,
+        risk_limits: RiskLimits | None = None,
     ) -> tuple[PaperPortfolio, list[PaperTrade]]:
-        return tick_broker(portfolio, prices, new_time)
+        return tick_broker(portfolio, prices, new_time, risk_limits)
 
 
 def _select_execution_provider() -> ExecutionProvider:

@@ -36,7 +36,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.schemas import AgentId, OrderSide, PaperPortfolio, PaperPosition, PaperTrade, TimeState, TradingStyle
+from app.schemas import AgentId, OrderSide, PaperPortfolio, PaperPosition, PaperTrade, RiskLimits, TimeState, TradingStyle
 
 STARTING_BALANCE = 100_000.0
 MAX_TRADE_HISTORY = 50
@@ -177,6 +177,7 @@ def close_position(
     market_conditions: str,
     supporting_agents: list[AgentId],
     opposing_agents: list[AgentId],
+    risk_limits: RiskLimits | None = None,
 ) -> tuple[PaperPortfolio, PaperTrade | None]:
     """Realizes a position's P&L, returns cash to the balance, and appends
     a PaperTrade to the (capped) trade history. Returns the portfolio
@@ -189,7 +190,18 @@ def close_position(
     proceeds alongside the position's already-real entry_cost_usd
     (charged at open_position()); pnl/pnl_pct are net of both, and the
     combined round-trip cost is recorded on the trade
-    (transaction_cost_usd) for audit."""
+    (transaction_cost_usd) for audit.
+
+    Piece 10b — when `risk_limits` is supplied (every real caller in
+    app/nexus.py's tick() passes the currently-effective one), the
+    trade's real distance to the portfolio's own drawdown ceiling is
+    snapshotted both before and after this trade's P&L lands — the exact
+    same `max(0, max_drawdown_pct - lifetime_drawdown_pct)` formula
+    app/risk_engine.py's compute_risk_budget_status() already uses, just
+    read at two points in time instead of one. `risk_limits` is optional
+    so every existing test fixture and any future caller that hasn't
+    been threaded through yet keeps working — the trade's two new fields
+    are simply None then, never a fabricated value."""
     match = next((p for p in portfolio.positions if p.id == position_id), None)
     if match is None:
         return portfolio, None
@@ -202,6 +214,16 @@ def close_position(
     pnl = gross_pnl - total_cost
     pnl_pct = (pnl / (match.quantity * match.entry_price) * 100) if match.entry_price and match.quantity else 0.0
     proceeds = exit_notional - exit_cost
+
+    distance_before: float | None = None
+    distance_after: float | None = None
+    if risk_limits is not None:
+        lifetime_drawdown_before_pct = max(0.0, -portfolio.total_pnl_pct)
+        distance_before = round(max(0.0, risk_limits.max_drawdown_pct - lifetime_drawdown_before_pct), 2)
+        total_pnl_after = portfolio.total_pnl + pnl
+        total_pnl_pct_after = total_pnl_after / portfolio.starting_balance * 100 if portfolio.starting_balance else 0.0
+        lifetime_drawdown_after_pct = max(0.0, -total_pnl_pct_after)
+        distance_after = round(max(0.0, risk_limits.max_drawdown_pct - lifetime_drawdown_after_pct), 2)
 
     trade = PaperTrade(
         id=f"trade-{position_id}",
@@ -224,6 +246,8 @@ def close_position(
         closedSimMinutes=match.opened_sim_minutes + duration_minutes,
         tradingStyle=match.trading_style,
         transactionCostUsd=total_cost,
+        distanceToDrawdownCeilingBeforePct=distance_before,
+        distanceToDrawdownCeilingAfterPct=distance_after,
     )
     history = [*portfolio.trade_history, trade]
     if len(history) > MAX_TRADE_HISTORY:

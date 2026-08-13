@@ -148,6 +148,20 @@ class TestFlattenDayPositions:
         assert closed == []
         assert len(updated.positions) == 1
 
+    def test_threads_risk_limits_into_a_real_distance_to_drawdown_ceiling_snapshot(self) -> None:
+        day_pos = _position(symbol="AAPL", trading_style="day")
+        portfolio = default_portfolio().model_copy(update={"positions": [day_pos]})
+        _, closed = flatten_day_positions(portfolio, {"AAPL": 105.0}, now_sim_minutes=1440, risk_limits=default_risk_limits())
+        assert len(closed) == 1
+        assert closed[0].distance_to_drawdown_ceiling_before_pct == 20.0
+
+    def test_omitting_risk_limits_leaves_the_snapshot_honestly_none(self) -> None:
+        day_pos = _position(symbol="AAPL", trading_style="day")
+        portfolio = default_portfolio().model_copy(update={"positions": [day_pos]})
+        _, closed = flatten_day_positions(portfolio, {"AAPL": 105.0}, now_sim_minutes=1440)
+        assert len(closed) == 1
+        assert closed[0].distance_to_drawdown_ceiling_before_pct is None
+
 
 class TestDailyCircuitBreaker:
     def test_none_tier_when_within_all_thresholds(self) -> None:

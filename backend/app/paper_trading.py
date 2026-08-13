@@ -25,7 +25,7 @@ from __future__ import annotations
 import random
 
 from app.portfolio import close_position, mark_to_market, sim_minutes
-from app.schemas import AgentId, PaperPortfolio, PaperTrade, TimeState, WatchlistEntry
+from app.schemas import AgentId, PaperPortfolio, PaperTrade, RiskLimits, TimeState, WatchlistEntry
 
 MIN_HOLD_MINUTES = 120
 MAX_HOLD_MINUTES = 720
@@ -41,13 +41,17 @@ def tick_paper_trading(
     watchlist: list[WatchlistEntry],
     all_agent_ids: tuple[AgentId, ...],
     new_time: TimeState,
+    risk_limits: RiskLimits | None = None,
 ) -> tuple[PaperPortfolio, list[PaperTrade]]:
     """One tick of paper-trading upkeep: mark every open position to
     market, then roll closes for positions that have cleared their
     minimum hold. Returns the updated portfolio and the trades (if any)
     that closed this tick, so the caller (nexus.tick()) can hand them to
     Scribe/Coach for logging. Opening a position is app/broker.py's job
-    now — see this module's docstring."""
+    now — see this module's docstring.
+
+    Piece 10b — `risk_limits`, when supplied, is threaded straight into
+    close_position() for the real distance-to-drawdown-ceiling snapshot."""
     now_minutes = sim_minutes(new_time)
     prices = {w.symbol: w.last_price for w in watchlist}
 
@@ -74,6 +78,7 @@ def tick_paper_trading(
             market_conditions=market_conditions,
             supporting_agents=supporting,
             opposing_agents=opposing,
+            risk_limits=risk_limits,
         )
         if trade:
             closed.append(trade)

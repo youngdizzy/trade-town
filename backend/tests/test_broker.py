@@ -16,7 +16,8 @@ from app.broker import (
     place_order,
     tick_broker,
 )
-from app.portfolio import default_portfolio
+from app.portfolio import default_portfolio, open_position
+from app.risk_engine import default_risk_limits
 from app.schemas import TimeState
 
 
@@ -129,3 +130,41 @@ def test_paper_execution_provider_fills_a_market_order():
     updated, _ = provider.tick_broker(portfolio, {"AAPL": 105.0}, _time())
     assert len(updated.positions) == 1
     assert updated.positions[0].symbol == "AAPL"
+
+
+def test_tick_broker_threads_risk_limits_into_a_real_exit_fill():
+    """Prop-Firm Risk Intelligence Addendum, Piece 10b — an exit order
+    filling through tick_broker() must produce a trade with a real
+    distance-to-drawdown-ceiling snapshot when risk_limits is supplied,
+    and None when it isn't (same optional-parameter honesty as
+    app/portfolio.py's close_position() itself)."""
+    portfolio = open_position(
+        default_portfolio(),
+        position_id="pos-1",
+        symbol="AAPL",
+        price=100.0,
+        opened_by="scout",
+        confidence=90.0,
+        opened_sim_minutes=0,
+    )
+    portfolio = place_order(
+        portfolio,
+        order_id="order-tp",
+        symbol="AAPL",
+        side="sell",
+        order_type="take_profit",
+        quantity=portfolio.positions[0].quantity,
+        price=110.0,
+        placed_by="scout",
+        reason="test",
+        confidence=90.0,
+        linked_position_id="pos-1",
+    )
+
+    updated_with_limits, trades_with_limits = tick_broker(portfolio, {"AAPL": 110.0}, _time(), default_risk_limits())
+    assert len(trades_with_limits) == 1
+    assert trades_with_limits[0].distance_to_drawdown_ceiling_before_pct == 20.0
+
+    updated_without_limits, trades_without_limits = tick_broker(portfolio, {"AAPL": 110.0}, _time())
+    assert len(trades_without_limits) == 1
+    assert trades_without_limits[0].distance_to_drawdown_ceiling_before_pct is None

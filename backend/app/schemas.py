@@ -711,6 +711,19 @@ class PaperTrade(CamelModel):
     # audit visibility, not a separate deduction. Defaults to 0.0 so a
     # trade closed before this piece still validates during load.
     transaction_cost_usd: float = Field(default=0.0, alias="transactionCostUsd")
+    # Prop-Firm Risk Intelligence Addendum, Piece 10b, Requirement 24 —
+    # "distance to failure boundary before/after trade." Named
+    # deliberately "drawdown ceiling," not "failure boundary": this is
+    # the primary portfolio's own RiskLimits.max_drawdown_pct — a
+    # self-chosen ceiling with no external authority behind it (see
+    # RiskBudgetStatus's own docstring), the same honest distinction
+    # Piece 11's AccountRiskBudgetStatus already draws for a real
+    # Account's true externally-configurable boundary. None only when
+    # close_position() was called without a real RiskLimits in scope
+    # (a trade closed before this piece, or a test fixture that never
+    # supplied one) — never a fabricated value standing in for it.
+    distance_to_drawdown_ceiling_before_pct: float | None = Field(default=None, alias="distanceToDrawdownCeilingBeforePct")
+    distance_to_drawdown_ceiling_after_pct: float | None = Field(default=None, alias="distanceToDrawdownCeilingAfterPct")
 
 
 class PaperPortfolio(CamelModel):

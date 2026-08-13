@@ -6,6 +6,7 @@ wall-clock closed_at field)."""
 from __future__ import annotations
 
 from app.portfolio import TRANSACTION_COST_BPS, close_position, default_portfolio, open_position
+from app.risk_engine import default_risk_limits
 from app.schemas import PaperPosition
 
 
@@ -55,6 +56,109 @@ def test_close_position_missing_id_is_a_noop():
     )
     assert trade is None
     assert updated is portfolio
+
+
+class TestDistanceToDrawdownCeiling:
+    """Prop-Firm Risk Intelligence Addendum, Piece 10b — Requirement
+    24's "distance to failure boundary before/after trade," for the
+    primary portfolio's own real drawdown ceiling (RiskLimits.
+    max_drawdown_pct). risk_limits is optional so a caller that hasn't
+    threaded it through yet gets an honest None, never a fabricated
+    value."""
+
+    def test_none_when_risk_limits_not_supplied(self) -> None:
+        portfolio = _opened_portfolio()
+        _, trade = close_position(
+            portfolio,
+            position_id="pos-1",
+            exit_price=110.0,
+            duration_minutes=45,
+            reason="Target hit",
+            market_conditions="Trending up",
+            supporting_agents=["scout"],
+            opposing_agents=[],
+        )
+        assert trade is not None
+        assert trade.distance_to_drawdown_ceiling_before_pct is None
+        assert trade.distance_to_drawdown_ceiling_after_pct is None
+
+    def test_fresh_portfolio_starts_with_the_full_ceiling_as_distance_before(self) -> None:
+        limits = default_risk_limits()  # max_drawdown_pct default 20.0
+        portfolio = _opened_portfolio()
+        _, trade = close_position(
+            portfolio,
+            position_id="pos-1",
+            exit_price=110.0,
+            duration_minutes=45,
+            reason="Target hit",
+            market_conditions="Trending up",
+            supporting_agents=["scout"],
+            opposing_agents=[],
+            risk_limits=limits,
+        )
+        assert trade is not None
+        assert trade.distance_to_drawdown_ceiling_before_pct == 20.0
+
+    def test_a_real_winning_trade_increases_distance_after_vs_before(self) -> None:
+        limits = default_risk_limits()
+        portfolio = _opened_portfolio()
+        _, trade = close_position(
+            portfolio,
+            position_id="pos-1",
+            exit_price=150.0,  # a real, sizeable gain
+            duration_minutes=45,
+            reason="Target hit",
+            market_conditions="Trending up",
+            supporting_agents=["scout"],
+            opposing_agents=[],
+            risk_limits=limits,
+        )
+        assert trade is not None
+        assert trade.distance_to_drawdown_ceiling_before_pct == 20.0
+        # A real gain never shrinks the distance to the ceiling — floored
+        # at the ceiling itself once lifetime drawdown is already zero.
+        assert trade.distance_to_drawdown_ceiling_after_pct == 20.0
+
+    def test_a_real_losing_trade_already_underwater_shrinks_distance_after(self) -> None:
+        limits = default_risk_limits()
+        portfolio = _opened_portfolio()
+        # Simulate the portfolio already carrying a real 5% lifetime
+        # drawdown before this trade closes.
+        portfolio = portfolio.model_copy(update={"total_pnl": -5000.0, "total_pnl_pct": -5.0, "cash_balance": portfolio.cash_balance - 5000.0})
+        _, trade = close_position(
+            portfolio,
+            position_id="pos-1",
+            exit_price=80.0,  # a real loss on top of the existing drawdown
+            duration_minutes=45,
+            reason="Stop hit",
+            market_conditions="Trending down",
+            supporting_agents=[],
+            opposing_agents=["scout"],
+            risk_limits=limits,
+        )
+        assert trade is not None
+        assert trade.distance_to_drawdown_ceiling_before_pct == 15.0  # 20.0 - 5.0
+        assert trade.distance_to_drawdown_ceiling_after_pct is not None
+        assert trade.distance_to_drawdown_ceiling_after_pct < trade.distance_to_drawdown_ceiling_before_pct
+
+    def test_distance_floors_at_zero_past_the_ceiling(self) -> None:
+        limits = default_risk_limits()
+        portfolio = _opened_portfolio()
+        # Already past the real 20% ceiling before this trade even closes.
+        portfolio = portfolio.model_copy(update={"total_pnl": -25000.0, "total_pnl_pct": -25.0, "cash_balance": portfolio.cash_balance - 25000.0})
+        _, trade = close_position(
+            portfolio,
+            position_id="pos-1",
+            exit_price=100.0,
+            duration_minutes=45,
+            reason="n/a",
+            market_conditions="n/a",
+            supporting_agents=[],
+            opposing_agents=[],
+            risk_limits=limits,
+        )
+        assert trade is not None
+        assert trade.distance_to_drawdown_ceiling_before_pct == 0.0
 
 
 class TestTransactionCost:

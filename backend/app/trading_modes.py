@@ -183,12 +183,16 @@ def flatten_day_positions(
     portfolio: PaperPortfolio,
     prices: dict[str, float],
     now_sim_minutes: int,
+    risk_limits: RiskLimits | None = None,
 ) -> tuple[PaperPortfolio, list[PaperTrade]]:
     """Force-closes every open `"day"`-tagged position via the real
     close_position() — called once per sim-day rollover. A position's
     own tag governs it regardless of the company's *current* Trading
     Mode, so a CEO who opened a day trade and then switched to Swing
-    mid-hold still gets that specific position flattened honestly."""
+    mid-hold still gets that specific position flattened honestly.
+
+    Piece 10b — `risk_limits`, when supplied, is threaded straight into
+    close_position() for the real distance-to-drawdown-ceiling snapshot."""
     closed: list[PaperTrade] = []
     day_positions = [p for p in portfolio.positions if p.trading_style == "day"]
     for position in day_positions:
@@ -202,6 +206,7 @@ def flatten_day_positions(
             market_conditions=f"{position.symbol} flattened per Day Trading discipline (no overnight positions).",
             supporting_agents=[],
             opposing_agents=[],
+            risk_limits=risk_limits,
         )
         if trade is not None:
             closed.append(trade)
