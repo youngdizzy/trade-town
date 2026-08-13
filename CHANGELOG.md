@@ -7,6 +7,34 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Evaluation cost, funded-stage & payout tracking** (`backend/app/schemas.py`, `backend/app/accounts.py`,
+  `backend/app/prop_firm.py`, `backend/app/state.py`, `backend/app/routers/accounts.py`, `backend/tests/test_accounts.py`,
+  `backend/tests/test_prop_firm.py`, `frontend/src/types.ts`, `frontend/src/net/api.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/TreasuryPanel.tsx`,
+  `docs/DesignBible/volumes/10-broker-live-trading/chapter-69-multi-account-fund-management-system.md`): Piece 10a of
+  the CEO's Prop-Firm Risk Intelligence Addendum, Requirement 24. Five new optional `Account` fields
+  (`evaluation_cost`, `funded_stage_reached`, `funded_at_sim_day`, `payout_eligibility_min_profit_pct`,
+  `total_payouts_received`), all defaulted so an existing save still validates unchanged. Core honesty boundary:
+  whether an account reached the funded stage is a real, explicit CEO action (`mark_account_funded()`, refusing a
+  second call once already funded so `funded_at_sim_day` stays a permanent fact) — never an automatic pass/fail
+  inferred from the challenge profit target, since building an honest, evidence-based pass/fail read is Piece 10's job
+  (a real evaluation-policy simulator), not this piece's ledger-tracking scaffolding. `record_account_payout()`
+  requires `funded_stage_reached` first, matching how real prop-firm payouts work. New
+  `compute_evaluation_tracking_status()` derives `days_to_fund` and `payout_eligible` from those stored facts, wired
+  into `PropFirmStatus` as `evaluationTracking` (reusing the existing `GET /api/accounts/prop-firm/status` endpoint).
+  Three new endpoints: `POST /api/accounts/evaluation/configure`, `/mark-funded`, `/record-payout`. Surfaced in
+  `TreasuryPanel.tsx`'s `PropFirmCard`, right below the Risk-vs-Failure-Boundary section, with real save/mark-funded/
+  record-payout controls. Verified: 18 new backend tests, full backend suite 1691/1691 passed, `mypy`/`ruff` clean,
+  `tsc -b --noEmit`/`eslint`/`vite build` clean. Live-verified against the real running dev stack via direct API
+  calls — configured a real evaluation cost and payout threshold, marked a real account funded, recorded a real
+  payout, and confirmed `GET /api/accounts/prop-firm/status` returned every value correctly computed
+  (`evaluationCost: 150.0`, `fundedStageReached: true`, `fundedAtSimDay: 5`, `daysToFund: null` honestly since no
+  challenge start day was configured, `payoutEligible: false` correctly since 0% real profit was below the 8%
+  threshold, `totalPayoutsReceived: 500.0`); full-browser Playwright verification of the Command Center UI itself
+  remained blocked by the same pre-existing Chromium/sandbox instability on the "expand to Full Command Center"
+  interaction documented in Piece 11b's entry below, reproduced identically and confirmed unrelated to this piece's
+  code.
+
 - **Consecutive wins + real trading-day count** (`backend/app/trading_modes.py`, `backend/app/behavioral_risk.py`,
   `backend/app/risk_engine.py`, `backend/app/schemas.py`, `backend/tests/test_trading_modes.py`,
   `backend/tests/test_behavioral_risk.py`, `backend/tests/test_risk_engine.py`, `frontend/src/types.ts`,

@@ -502,6 +502,10 @@ function PropFirmCard({ account }: { account: Account }) {
   const [status, setStatus] = useState<PropFirmStatus | null>(null);
   const [statusLoading, setStatusLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Prop-Firm Risk Intelligence Addendum, Piece 10a.
+  const [evaluationCost, setEvaluationCost] = useState(account.evaluationCost?.toString() ?? "");
+  const [payoutThreshold, setPayoutThreshold] = useState(account.payoutEligibilityMinProfitPct?.toString() ?? "");
+  const [payoutAmount, setPayoutAmount] = useState("");
 
   const loadStatus = async () => {
     setStatusLoading(true);
@@ -556,6 +560,52 @@ function PropFirmCard({ account }: { account: Account }) {
         challengeProfitTargetPct: challengeTarget ? Number(challengeTarget) : null,
       });
       NexusManager.setAccounts(res.accounts);
+      await loadStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveEvaluationTracking = async () => {
+    if (saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await api.configureEvaluationTracking(account.id, evaluationCost ? Number(evaluationCost) : null, payoutThreshold ? Number(payoutThreshold) : null);
+      NexusManager.setAccounts(res.accounts);
+      await loadStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const markFunded = async () => {
+    if (saving) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await api.markAccountFunded(account.id);
+      NexusManager.setAccounts(res.accounts);
+      await loadStatus();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const recordPayout = async () => {
+    if (saving || !payoutAmount) return;
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await api.recordAccountPayout(account.id, Number(payoutAmount));
+      NexusManager.setAccounts(res.accounts);
+      setPayoutAmount("");
       await loadStatus();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -695,6 +745,96 @@ function PropFirmCard({ account }: { account: Account }) {
                     {reason}
                   </div>
                 ))}
+              </div>
+              <div className="mt-1 space-y-0.5 border-t border-cmd-border/40 pt-1 text-cmd-textDim">
+                <div className="text-[9px] uppercase tracking-wide text-cmd-textDim/80">Evaluation Cost, Funded Stage & Payouts</div>
+                <span>
+                  Evaluation cost: <span className="tabular-nums text-cmd-text">{status.evaluationTracking.evaluationCost !== null ? `$${status.evaluationTracking.evaluationCost.toFixed(2)}` : "not set"}</span>
+                </span>
+                {status.evaluationTracking.fundedStageReached ? (
+                  <div className="flex flex-col gap-0.5">
+                    <span className="text-cmd-green">
+                      Funded on sim day <span className="tabular-nums">{status.evaluationTracking.fundedAtSimDay}</span>
+                      {status.evaluationTracking.daysToFund !== null && (
+                        <>
+                          {" "}
+                          (<span className="tabular-nums">{status.evaluationTracking.daysToFund}</span> days from challenge start)
+                        </>
+                      )}
+                    </span>
+                    <span>
+                      Total payouts received: <span className="tabular-nums text-cmd-text">${status.evaluationTracking.totalPayoutsReceived.toFixed(2)}</span>
+                    </span>
+                    {status.evaluationTracking.payoutEligibilityMinProfitPct !== null && (
+                      <span>
+                        Payout eligibility: <span className="tabular-nums text-cmd-text">{status.evaluationTracking.payoutEligibilityMinProfitPct.toFixed(1)}%</span> profit —{" "}
+                        <span className={status.evaluationTracking.payoutEligible ? "text-cmd-green" : "text-cmd-amber"}>
+                          {status.evaluationTracking.payoutEligible ? "eligible" : "not yet eligible"}
+                        </span>
+                      </span>
+                    )}
+                    <div className="mt-1 flex items-center gap-1.5">
+                      <input
+                        type="number"
+                        min={0}
+                        placeholder="Payout $"
+                        value={payoutAmount}
+                        onChange={(e) => setPayoutAmount(e.target.value)}
+                        className="w-20 rounded-sm border border-cmd-border bg-cmd-bg/60 px-1.5 py-0.5 text-cmd-text focus:border-cmd-cyan/50 focus:outline-none"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void recordPayout()}
+                        disabled={saving || !payoutAmount}
+                        className="rounded-sm border border-cmd-green/50 px-2 py-1 text-cmd-green transition-colors hover:enabled:bg-cmd-green/10 disabled:opacity-40"
+                      >
+                        {saving ? "…" : "Record Payout"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <span>Not funded yet.</span>
+                    <button
+                      type="button"
+                      onClick={() => void markFunded()}
+                      disabled={saving}
+                      className="rounded-sm border border-cmd-green/50 px-2 py-1 text-cmd-green transition-colors hover:enabled:bg-cmd-green/10 disabled:opacity-40"
+                    >
+                      {saving ? "…" : "Mark Funded"}
+                    </button>
+                  </div>
+                )}
+                <div className="mt-1 flex flex-wrap items-center gap-1.5">
+                  <label className="flex items-center gap-1 text-cmd-textDim">
+                    Eval Cost $
+                    <input
+                      type="number"
+                      min={0}
+                      value={evaluationCost}
+                      onChange={(e) => setEvaluationCost(e.target.value)}
+                      className="w-16 rounded-sm border border-cmd-border bg-cmd-bg/60 px-1.5 py-0.5 text-cmd-text focus:border-cmd-cyan/50 focus:outline-none"
+                    />
+                  </label>
+                  <label className="flex items-center gap-1 text-cmd-textDim">
+                    Payout Threshold %
+                    <input
+                      type="number"
+                      min={0}
+                      value={payoutThreshold}
+                      onChange={(e) => setPayoutThreshold(e.target.value)}
+                      className="w-14 rounded-sm border border-cmd-border bg-cmd-bg/60 px-1.5 py-0.5 text-cmd-text focus:border-cmd-cyan/50 focus:outline-none"
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => void saveEvaluationTracking()}
+                    disabled={saving}
+                    className="rounded-sm border border-cmd-cyan/50 px-2 py-1 text-cmd-cyan transition-colors hover:enabled:bg-cmd-cyan/10 disabled:opacity-40"
+                  >
+                    {saving ? "…" : "Save"}
+                  </button>
+                </div>
               </div>
             </div>
           )}

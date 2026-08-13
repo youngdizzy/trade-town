@@ -433,6 +433,23 @@ export const api = {
       body: JSON.stringify({ accountId, ...rules }),
     }),
   getPropFirmStatus: (accountId: string) => request<PropFirmStatus>(`/accounts/prop-firm/status?account_id=${encodeURIComponent(accountId)}`),
+  // Prop-Firm Risk Intelligence Addendum, Piece 10a — evaluation cost /
+  // funded-stage / payout tracking.
+  configureEvaluationTracking: (accountId: string, evaluationCost: number | null, payoutEligibilityMinProfitPct: number | null) =>
+    request<{ accounts: Account[] }>("/accounts/evaluation/configure", {
+      method: "POST",
+      body: JSON.stringify({ accountId, evaluationCost, payoutEligibilityMinProfitPct }),
+    }),
+  markAccountFunded: (accountId: string) =>
+    request<{ accounts: Account[] }>("/accounts/evaluation/mark-funded", {
+      method: "POST",
+      body: JSON.stringify({ accountId }),
+    }),
+  recordAccountPayout: (accountId: string, amount: number) =>
+    request<{ accounts: Account[] }>("/accounts/evaluation/record-payout", {
+      method: "POST",
+      body: JSON.stringify({ accountId, amount }),
+    }),
   // Design Bible Chapter 69 Part 3 — Institutional Rule Engine.
   addCustomRule: (accountId: string, ruleType: RuleType, label: string, limit: number, weekday: Weekday | null) =>
     request<{ accounts: Account[] }>("/accounts/rules/add", {

@@ -518,6 +518,15 @@ export interface Account {
   challengeProfitTargetPct: number | null;
   // Design Bible Chapter 69 Part 3 — Institutional Rule Engine.
   customRules: Rule[];
+  // Prop-Firm Risk Intelligence Addendum, Piece 10a — real,
+  // CEO-recorded evaluation-cost / funded-stage / payout data. Never
+  // auto-derived from a probability model — only ever set by an
+  // explicit CEO action.
+  evaluationCost: number | null;
+  fundedStageReached: boolean;
+  fundedAtSimDay: number | null;
+  payoutEligibilityMinProfitPct: number | null;
+  totalPayoutsReceived: number;
 }
 
 // Design Bible Chapter 69 Part 2 — the Weekday-Aware Time System. Real,
@@ -577,7 +586,26 @@ export interface PropFirmStatus {
   challenge: ChallengeProgressStatus;
   complianceScore: PropFirmComplianceScore;
   riskBudget: AccountRiskBudgetStatus;
+  evaluationTracking: EvaluationTrackingStatus;
   leverageNote: string;
+}
+
+/** Prop-Firm Risk Intelligence Addendum, Piece 10a — evaluation cost,
+ * funded-stage, and payout tracking. fundedStageReached is a real,
+ * explicit CEO action (never a system-inferred pass/fail — that honest
+ * judgment call is Piece 10's job, a real evaluation-policy simulator).
+ * payoutEligible is null, not false, when no threshold was configured —
+ * "not eligible" and "no threshold set" are different honest states. */
+export interface EvaluationTrackingStatus {
+  accountId: string;
+  evaluationCost: number | null;
+  fundedStageReached: boolean;
+  fundedAtSimDay: number | null;
+  daysToFund: number | null;
+  payoutEligibilityMinProfitPct: number | null;
+  payoutEligible: boolean | null;
+  totalPayoutsReceived: number;
+  computedAt: string;
 }
 
 // Design Bible Chapter 69 Part 3 — Institutional Rule Engine (IRE). A

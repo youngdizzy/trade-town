@@ -1249,3 +1249,78 @@ opened its Prop Firm Rules panel, and confirmed the new section renders
 both the "no boundary configured" honest state and the
 `NOT_TRACKABLE_YET` risk-per-trade reason for real, unconfigured data —
 screenshotted.
+
+## Addendum — Evaluation Cost, Funded Stage & Payout Tracking (Prop-Firm Risk Intelligence Addendum, Piece 10a)
+
+**Origin.** Requirement 24's field-by-field audit found evaluation
+cost, funded-stage, and payout tracking as a genuine gap: this
+chapter's own `ScalingMilestoneStatus` docstring had already disclosed
+"no funded-account growth-stage concept existed anywhere in this
+codebase before this" — Piece 10a is the honest scaffolding that fills
+that gap, so the Quant Researcher and Model Validator (the Quantitative
+Research & Intelligence System's own agents) eventually have real data
+to evaluate Fast Pass and other evaluation policies against.
+
+**Five new, optional, defaulted `Account` fields**, none breaking a
+save created before this piece: `evaluation_cost` (a real dollar figure
+the CEO configures for what this evaluation cost to enter),
+`funded_stage_reached` / `funded_at_sim_day` (whether and when this
+account passed its evaluation), `payout_eligibility_min_profit_pct` (a
+real CEO-configured payout threshold), and `total_payouts_received` (a
+running total).
+
+**The core honesty boundary: funded-stage is CEO-recorded, never
+system-inferred.** It would be technically possible to auto-detect
+"funded" by comparing real profit against the challenge's own
+`challenge_profit_target_pct` — but doing so here would mean silently
+implementing exactly the kind of unvalidated pass/fail judgment
+Requirements 21/25 explicitly warn against ("no Fast Pass policy
+becomes production behavior merely because the source claims it
+works"). Building an honest, evidence-based pass/fail read is Piece
+10's whole job (a real evaluation-policy simulator with disclosed
+sample sizes and uncertainty) — this piece only tracks the ledger.
+`mark_account_funded()` is therefore a real, explicit, CEO-triggered
+action (`app/accounts.py`), refusing a second call once an account is
+already funded so `funded_at_sim_day` stays a permanent, non-overwritable
+historical fact rather than something a duplicate click could quietly
+re-date.
+
+**`record_account_payout()`** requires `funded_stage_reached` first —
+a real payout only makes sense once an evaluation has actually been
+passed, matching how funded-stage accounts work at a real prop firm —
+and adds a real, CEO-entered amount to the account's permanent running
+total; never a fabricated or projected figure.
+
+**`compute_evaluation_tracking_status()`** (`app/prop_firm.py`) is the
+one real derived value on top of those stored facts:
+`days_to_fund` is the gap between `challenge_start_sim_day` and
+`funded_at_sim_day`, real only when both exist. `payout_eligible` is
+computed by comparing the account's real current profit percentage
+against the configured `payout_eligibility_min_profit_pct` — `None`,
+not `False`, when no threshold was ever configured, since "not
+eligible" and "no threshold configured" are different honest states.
+Wired into `PropFirmStatus` as a new `evaluationTracking` field — no
+new GET route, reusing the existing `GET /api/accounts/prop-firm/
+status` endpoint the same way Piece 11's `riskBudget` field did.
+
+**New endpoints**, mirroring `configure_prop_firm_rules`'s own
+request/response shape: `POST /api/accounts/evaluation/configure`,
+`POST /api/accounts/evaluation/mark-funded`, `POST /api/accounts/
+evaluation/record-payout`.
+
+**Explicitly deferred to Piece 10.** "Probability of reaching funded
+stage" and any statistically-evaluated claim about Fast Pass or other
+evaluation-stage risk policies are not attempted here — this piece is
+ledger-tracking only, real numbers the CEO records by hand, not a
+simulation or a statistical read. That is Piece 10's real evaluation-
+level risk-policy simulator.
+
+**Verified:** 4 new tests in `TestConfigureEvaluationTracking`, 3 in
+`TestMarkAccountFunded`, 4 in `TestRecordAccountPayout` (all in
+`test_accounts.py`), and 7 new tests in
+`TestComputeEvaluationTrackingStatus` (`test_prop_firm.py`) — covering
+the honest fresh-account state, the real `days_to_fund` gap
+calculation and its `None` case, both real payout-eligibility
+directions, the funded-account re-mark refusal, and the
+funded-before-payout requirement. Full backend suite passed, `mypy
+app/`/`ruff check app/ tests/` clean.
