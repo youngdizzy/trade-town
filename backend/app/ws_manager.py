@@ -112,6 +112,9 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         "companyHealth": state.company_health.model_dump(by_alias=True),
         "companyDna": state.company_dna.model_dump(by_alias=True),
         "dailyObjectiveStatus": state.daily_objective_status.model_dump(by_alias=True),
+        # Prop-Firm Risk Intelligence Addendum, Piece 8 — recomputed every
+        # tick like dailyObjectiveStatus directly above.
+        "riskBudgetStatus": state.risk_budget_status.model_dump(by_alias=True),
         # v0.7 Feature 24 — already capped (MAX_EXECUTIVE_REVIEWS) like coachReports above.
         "executiveReviews": [r.model_dump(by_alias=True) for r in state.executive_reviews],
         # Design Bible Chapter 70 Part 1 — already capped (MAX_BOARD_REPORTS).
