@@ -7,6 +7,32 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Behavioral risk: same-direction (weak) + win-triggered escalation signals** (`backend/app/schemas.py`,
+  `backend/app/behavioral_risk.py`, `backend/tests/test_behavioral_risk.py`,
+  `frontend/src/types.ts`, `frontend/src/game/systems/NexusManager.ts`, `frontend/src/state/gameStore.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/TradingModesPanel.tsx`,
+  `docs/DesignBible/volumes/09-departments/chapter-66-institutional-safety-capital-protection.md`): Piece 8b of the
+  Prop-Firm Risk Intelligence Addendum's Requirement 10. Adding same-direction as a naive third independent
+  corroborating signal (alongside same-instrument/size-increase) was tried and rejected first — this codebase's own
+  direction is binary and matches a prior trade's side by pure chance roughly half the time, which would have made
+  the CEO's own "legitimate setup immediately following a loss must remain possible" case fail routinely. Same-
+  direction is real and reported, but — like the pre-existing repeated-rapid-reentry count — never independently
+  corroborates a `"triggered"` verdict on its own. Win-triggered escalation is a separate branch entirely
+  (`_win_side_check()`, entered only when the most recent closed trade was a real win, never both at once as
+  loss/win): reuses the exact same trailing-baseline size-increase math the loss side already established, but per
+  Requirement 10's own text can only ever reach `"warning"`, never `"triggered"` — proven directly by a test with a
+  50x size increase after a win that still never fails the Gatekeeper check, so legitimate confidence-driven growth
+  (e.g. after a strategy earns real certification) is never blocked by this signal. A real bug was caught while
+  writing tests, not after: the win-side implementation used `model_copy(update={"winSizeIncreasePct": ...})` — the
+  schema's camelCase alias, not the actual Python field name `win_size_increase_pct` — which pydantic silently
+  ignores, permanently leaving the field `None`; caught because the new tests asserted the real populated value, not
+  just the status, and fixed before this piece was considered complete. `TradingModesPanel.tsx`'s card is
+  restructured from a two-way to a three-way branch (loss-side / win-side / truly clear) since the old binary branch
+  would have rendered a loss-shaped card with every field blank for a real win-triggered warning.  Verified: 13 new
+  backend tests, 32 pre-existing tests in the same file unchanged, full backend suite 1654 total/1653 passed (the
+  one failure is the same pre-existing unrelated flaky test documented in the Piece 8a entry below), `mypy`/`ruff`
+  clean, `tsc -b --noEmit`/`eslint`/`vite build` clean, live-verified against the real running dev stack.
+
 - **Profit concentration / robustness check in Meridian's Model Validator** (`backend/app/model_validation.py`,
   `backend/tests/test_model_validation.py`,
   `docs/DesignBible/volumes/09-departments/chapter-62-innovation-lab-continuous-improvement.md`): Piece 8a of the

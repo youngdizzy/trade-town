@@ -3340,9 +3340,20 @@ export interface BehavioralCircuitBreakerRead {
   minutesSinceLoss: number | null;
   cooldownMinutes: number;
   sameInstrument: boolean | null;
+  /** Piece 8b — informational only, never independently corroborates a
+   * "triggered" verdict (see backend/app/behavioral_risk.py's docstring). */
+  sameDirection: boolean | null;
   sizeIncreasePct: number | null;
   consecutiveLosses: number;
   repeatedRapidReentryCount: number;
+  /** Piece 8b — win-triggered escalation. Populated only when the most
+   * recent closed trade was a real win; mutually exclusive with the
+   * previousLoss / sameInstrument / sizeIncreasePct fields above. Can
+   * only ever accompany status "clear" or "warning", never "triggered". */
+  previousWinSymbol: string | null;
+  previousWinPnl: number | null;
+  minutesSinceWin: number | null;
+  winSizeIncreasePct: number | null;
   computedAt: string;
 }
 

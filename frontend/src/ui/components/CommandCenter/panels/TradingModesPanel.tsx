@@ -251,17 +251,16 @@ export function TradingModesPanel() {
             <TerminalLabel>Behavioral Circuit Breaker — revenge-trading detector</TerminalLabel>
             <StatusPill tone={behavioralTone(behavioralCircuitBreaker.status)}>{behavioralCircuitBreaker.status.toUpperCase()}</StatusPill>
           </div>
-          {behavioralCircuitBreaker.status === "clear" ? (
-            <p className="text-[9px] text-cmd-textDim">No recent-loss behavioral pattern detected.</p>
-          ) : (
+          {behavioralCircuitBreaker.previousLossSymbol !== null ? (
             <>
-              <DataRow label="Previous Loss" value={behavioralCircuitBreaker.previousLossSymbol ?? "—"} />
+              <DataRow label="Previous Loss" value={behavioralCircuitBreaker.previousLossSymbol} />
               {behavioralCircuitBreaker.previousLossPnl !== null && (
                 <DataRow label="Previous Loss P&L" value={behavioralCircuitBreaker.previousLossPnl.toFixed(2)} valueClassName="text-cmd-red" />
               )}
               <DataRow label="Minutes Since Loss" value={behavioralCircuitBreaker.minutesSinceLoss ?? "—"} />
               <DataRow label="Cooldown Window" value={`${behavioralCircuitBreaker.cooldownMinutes} min`} />
               {behavioralCircuitBreaker.sameInstrument !== null && <DataRow label="Same Instrument" value={behavioralCircuitBreaker.sameInstrument ? "Yes" : "No"} />}
+              {behavioralCircuitBreaker.sameDirection !== null && <DataRow label="Same Direction" value={behavioralCircuitBreaker.sameDirection ? "Yes" : "No"} />}
               {behavioralCircuitBreaker.sizeIncreasePct !== null && (
                 <DataRow label="Size vs. Recent Normal" value={`${behavioralCircuitBreaker.sizeIncreasePct >= 0 ? "+" : ""}${behavioralCircuitBreaker.sizeIncreasePct.toFixed(0)}%`} />
               )}
@@ -272,6 +271,25 @@ export function TradingModesPanel() {
                 ))}
               </ul>
             </>
+          ) : behavioralCircuitBreaker.previousWinSymbol !== null && behavioralCircuitBreaker.winSizeIncreasePct !== null ? (
+            <>
+              <DataRow label="Previous Win" value={behavioralCircuitBreaker.previousWinSymbol} />
+              {behavioralCircuitBreaker.previousWinPnl !== null && (
+                <DataRow label="Previous Win P&L" value={`+${behavioralCircuitBreaker.previousWinPnl.toFixed(2)}`} valueClassName="text-cmd-green" />
+              )}
+              <DataRow label="Minutes Since Win" value={behavioralCircuitBreaker.minutesSinceWin ?? "—"} />
+              <DataRow label="Size vs. Recent Normal" value={`${behavioralCircuitBreaker.winSizeIncreasePct >= 0 ? "+" : ""}${behavioralCircuitBreaker.winSizeIncreasePct.toFixed(0)}%`} />
+              <ul className="mt-2 space-y-0.5 text-[9px] text-cmd-textDim">
+                {behavioralCircuitBreaker.reasons.map((reason, i) => (
+                  <li key={i}>• {reason}</li>
+                ))}
+              </ul>
+              <p className="mt-2 text-[8px] text-cmd-textDim/70">
+                Risk escalation after a win — informational only. This signal alone can never fail the Gatekeeper check or block a trade.
+              </p>
+            </>
+          ) : (
+            <p className="text-[9px] text-cmd-textDim">No recent-loss or post-win escalation behavioral pattern detected.</p>
           )}
           <p className="mt-2 text-[8px] text-cmd-textDim/70">
             This system detects observable behavioral risk. It does not claim to detect human emotion. A {"triggered"} read fails only the specific proposal's Gatekeeper check — never a blanket

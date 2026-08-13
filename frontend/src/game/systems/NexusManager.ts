@@ -488,9 +488,14 @@ export class NexusManager {
     minutesSinceLoss: null,
     cooldownMinutes: 60,
     sameInstrument: null,
+    sameDirection: null,
     sizeIncreasePct: null,
     consecutiveLosses: 0,
     repeatedRapidReentryCount: 0,
+    previousWinSymbol: null,
+    previousWinPnl: null,
+    minutesSinceWin: null,
+    winSizeIncreasePct: null,
     computedAt: new Date().toISOString(),
   };
   private static recoveryBriefings: RecoveryBriefing[] = [];

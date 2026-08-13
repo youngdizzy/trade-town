@@ -803,3 +803,105 @@ the real `research_boost` energy action, then opening the real
 Executive Voting popup and expanding Review Analysis) confirmed the new
 "Risk Budget Remaining" card renders real, correctly-formatted data —
 screenshotted.
+
+## Addendum — Same-Direction & Win-Triggered Escalation Signals (Prop-Firm Risk Intelligence Addendum, Piece 8b)
+
+**Status:** Real, implemented as two new signals inside the existing
+`app/behavioral_risk.py::compute_behavioral_check()` (Piece A, above) —
+not a second Gatekeeper check, not a new enforcement surface.
+
+**Origin.** Requirement 10 of the CEO's Prop-Firm Risk Intelligence
+Addendum: "expand Behavioral Circuit Breaker with nuanced revenge-
+trading signals... and detect risk escalation after wins too, never
+blocking on one weak signal alone." Authorized alongside Pieces 8/8a as
+"8, 8a, 8b."
+
+**Signal 6 — Same direction, deliberately weak.** The obvious literal
+reading — add `candidate.overallRecommendation == lastLoss.side` as a
+third independent corroborating signal alongside same-instrument and
+size-increase — was tried first and rejected before being implemented,
+because it would have been a real regression, not an improvement.
+Direction is binary (`OrderSide = Literal["buy", "sell"]`); this
+codebase's own test fixtures default every candidate and every trade to
+`"buy"`, and in real play a matching direction happens by pure chance
+roughly half the time. Treating that as independent corroboration on
+the same footing as a genuine symbol match or a real size spike would
+have made the CEO's own explicit "legitimate setup immediately
+following a loss must remain possible" requirement fail routinely —
+`TestComputeBehavioralCheck::test_case_b_legitimate_follow_up_never_
+triggers` (a different instrument, normal size, but rapid — the exact
+case that must stay non-triggering) would flip to `triggered` purely
+because a candidate happens to share a loss's direction. `sameDirection`
+is real, computed, and reported in `reasons`/the read's own field — but,
+matching signal 5's own precedent (`repeatedRapidReentryCount`, already
+informational-only), it never independently sets `corroborated = True`.
+It only ever adds context alongside an existing real corroboration.
+
+**Signal 7 — Win-triggered escalation, a separate read entirely.** A
+trade is either the most recent loss or the most recent win, never
+both, so `compute_behavioral_check()` now branches: `_loss_side_check()`
+(the five pre-existing signals, unchanged, plus signal 6) when the most
+recent closed trade lost money; a new `_win_side_check()` when it won.
+The win-side check reuses the exact same `_size_baseline_dollar_value()`
+math signal 4 already established — a candidate's dollar size compared
+against this account's own trailing normal — checked against a rapid
+re-entry after the win instead of the loss. Per Requirement 10's own
+text, this can only ever reach `"warning"`, **never** `"triggered"`:
+there is no loss to blame and no revenge-trading counterpart for a
+win, so a size increase after a win is real, CEO-visible evidence worth
+surfacing, but never strong enough alone to fail the Gatekeeper check.
+This is the real, load-bearing proof that legitimate confidence-driven
+size growth (the CEO's own example: after a strategy earns real
+certification) is never blocked by this signal — verified directly by
+`test_even_an_extreme_size_increase_after_a_win_never_triggers`, a 50x
+size increase after a win, still `!= "triggered"`.
+
+**A real bug caught during test-writing, not verification-after-the-
+fact.** The win-side implementation initially returned
+`base_read.model_copy(update={"winSizeIncreasePct": ...})` — using the
+schema's camelCase *alias* as the update key. Pydantic's `model_copy()`
+operates on actual Python field names, not aliases, so this silently
+dropped the update and left `win_size_increase_pct` permanently `None`.
+Caught immediately because the new tests asserted the real populated
+value, not just the status — a concrete example of why this session's
+own discipline (real assertions on real field values, not just "it
+didn't crash") catches bugs schema-shape checks alone would miss. Fixed
+to the correct snake_case field name before this piece was considered
+complete.
+
+**Schema.** `BehavioralCircuitBreakerRead` gained `sameDirection: bool |
+null`, and four win-side fields
+(`previousWinSymbol`/`previousWinPnl`/`minutesSinceWin`/
+`winSizeIncreasePct`) — mutually exclusive with the pre-existing
+`previousLoss*`/`sameInstrument`/`sizeIncreasePct` fields, since a read
+is always either a loss-side or a win-side result, never both.
+
+**Frontend.** `TradingModesPanel.tsx`'s existing Behavioral Circuit
+Breaker card is restructured from a two-way branch (`clear` vs.
+"has a loss") into a three-way branch (loss-side detail, win-side
+detail, or truly clear) — the old binary branch would have rendered a
+loss-shaped card with every field blank for a real win-triggered
+`"warning"`, which is what the bug would have looked like in the UI had
+the model_copy bug above shipped. `PsychologyDashboardPanel.tsx` needed
+no changes — its own card was already generic over `reasons`.
+
+**Verified:** 13 new backend tests (`TestSameDirectionSignal` — same-
+direction alone never triggers even though the CEO's own "legitimate
+setup" case now also matches direction, direction reported when true,
+direction correctly false, `None` in ambient mode, and same-instrument
+corroboration alone still triggers regardless of direction;
+`TestWinTriggeredEscalation` — a real size increase after a rapid win
+reaches `"warning"` not `"triggered"`, an extreme 50x increase still
+never triggers, normal size after a win stays `"clear"`, a win outside
+the cooldown window stays `"clear"`, ambient mode never flags it, no
+prior trade history for a baseline behaves the same honest "not
+evaluable" way the loss side already does, and win-side/loss-side
+fields never leak into each other's read). 32 pre-existing tests in the
+same file passing unchanged. Full backend suite: 1654 total, 1653
+passed (the same pre-existing, genuinely unseeded-random flaky test in
+`test_foundational_mentors.py` already documented in Chapter 62's Piece
+8a addendum, confirmed unrelated and passing in isolation).
+`mypy app/`/`ruff check app/ tests/` clean. `tsc -b --noEmit`/`npm run
+lint`/`npm run build` clean. Live-verified against the real running dev
+stack: the restructured card renders correctly for the real current
+game state (a genuinely clear read), screenshotted.
