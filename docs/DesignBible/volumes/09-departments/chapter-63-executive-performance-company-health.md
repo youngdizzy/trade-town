@@ -947,3 +947,54 @@ Verified: full backend suite passing (renamed `TestOfficeExpansion` ->
 `TestMarketCoverage`, same 2 tests plus every other test file that
 constructed a `CompanyHealth` fixture updated), `mypy`/`ruff` clean, and
 the migration path confirmed directly as above.
+
+**CEO Company Health + Live Market Realism directive, Section 6 — the
+real before/after delta breakdown.** The CEO's directive asked for
+Company Health to show its work: an explicit before/after breakdown
+("+2.4 Decision Quality, -0.8 Efficiency...") rather than only ever
+presenting the latest snapshot. `app/company_health.py`'s
+`diff_company_health(previous, current)` is a pure function computing
+that diff between two already-real `CompanyHealth` readings — every
+component it reports is a real score `compute_company_health()` already
+produces; nothing new is measured, and no "reason"/"evidence" text is
+fabricated for *why* a component moved (the schema's own docstring
+states this explicitly — the only honest source for that would be
+re-deriving which of the many real inputs changed, which this function
+doesn't attempt). Only components whose score actually moved make the
+list, sorted by real magnitude (largest movement first); a tick where
+nothing changed reports an empty component list rather than
+twenty-one honest zeroes.
+
+Wired into `app/nexus.py`'s `tick()` immediately after
+`compute_company_health()` runs: `state.company_health` (the object
+about to be replaced — i.e. what the CEO's last read actually was) is
+diffed against the freshly computed reading, so `companyHealthDelta` is
+always exactly one real tick's worth of movement, never accumulated or
+smoothed over a time window. `None` on a fresh game's very first tick
+(no prior reading exists yet to diff against). Threaded through
+`app/save_modules.py`'s `derived` module (the identical
+recomputed-every-tick category `company_health` itself already lives
+in — same reasoning, see that module's own docstring) and
+`ws_manager.py`'s broadcast payload alongside `companyHealth`.
+
+Frontend: a new "Health Delta" card on the Company tab, wired through
+the same five sites every other WS-broadcast field in this codebase
+uses (`types.ts`, `EventBus.ts`, `gameStore.ts`, `socket.ts`,
+`NexusManager.ts`). Shows the three headline deltas (Overall/Executive/
+Combined, with a "TIER CHANGED" flag when a tier boundary was actually
+crossed) plus every moved component labeled by its real Operational/
+Executive group, color-coded green for an improvement and red for a
+decline — never a generic "change happened" indicator divorced from
+the real sign and magnitude.
+
+Verified: 6 new backend tests covering no-previous-reading (`None`), a
+genuine no-op tick (empty component list, all deltas exactly `0.0`), a
+real isolated operational change, a real isolated executive change
+(confirming the `group` field), sort order by magnitude, and headline
+overall/tier delta computation — full backend suite (1769 tests),
+`mypy`, `ruff` clean. Frontend `tsc`/`lint`/`build` clean. Live-verified
+via Playwright against the running dev server: the Health Delta card
+rendered real values pulled straight off the WS broadcast (observed:
+"+0.1 Overall", "+0.0 Executive", "+0.1 Combined", "Team Chemistry
+(OPS) +0.5", "Employee Morale (OPS) +0.3", "Research Progress (OPS)
++0.2" — a genuine live tick's worth of real movement, not a fixture).

@@ -7,6 +7,30 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO Company Health + Live Market Realism directive, Section 6 — real tick-over-tick Company Health delta
+  breakdown** (`backend/app/schemas.py`, `backend/app/company_health.py`, `backend/app/nexus.py`,
+  `backend/app/save_modules.py`, `backend/app/ws_manager.py`, `backend/tests/test_company_health.py`,
+  `frontend/src/types.ts`, `frontend/src/game/systems/EventBus.ts`, `frontend/src/game/systems/NexusManager.ts`,
+  `frontend/src/net/socket.ts`, `frontend/src/state/gameStore.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/CompanyPanel.tsx`): the CEO asked to see the explicit
+  before/after delta behind every Company Health change (e.g. "+2.4 Decision Quality, -0.8 Efficiency..."),
+  not just the latest snapshot. `diff_company_health()` is a pure diff between the previous tick's real
+  `CompanyHealth` reading and the newly computed one — no new telemetry, no invented "reason"/"evidence" text
+  (the schema docstring states explicitly why that would require re-deriving which raw input changed, which
+  this function doesn't attempt). Only components whose score actually moved are included, sorted by real
+  magnitude; a no-op tick reports an empty list rather than twenty-one honest zeroes. Wired into `nexus.py`'s
+  tick() by diffing against `state.company_health` (the reading the CEO last actually saw) immediately before
+  it's replaced — every tick, so the delta is always exactly one tick's worth of real movement, never
+  accumulated or time-windowed. Threaded through `save_modules.py`'s `derived` module (the same
+  recomputed-every-tick category `company_health` itself lives in) and the WS broadcast payload, `None` on a
+  fresh game's very first tick (no prior reading to diff against). Frontend: a new "Health Delta" card on the
+  Company tab shows Overall/Executive/Combined headline deltas plus every moved component, color-coded by
+  sign. Verified: 6 new backend tests (no-previous-reading, no-op tick, real operational/executive changes,
+  magnitude sort order, overall/tier delta computation), full backend suite (1769 tests), `mypy`, `ruff`
+  clean; frontend `tsc`/`lint`/`build` clean; live-verified via Playwright against the running dev server —
+  the card renders real values pulled straight from the WS broadcast (e.g. "+0.1 Overall", "Team Chemistry
+  (OPS) +0.5").
+
 - **CEO Company Health + Live Market Realism directive — statistically realistic candlestick generation**
   (`backend/app/market_data.py`, `backend/app/nexus.py`, `backend/tests/test_market_data.py`,
   `frontend/src/ui/components/CommandCenter/lib/derive.ts`,
