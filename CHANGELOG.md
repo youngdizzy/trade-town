@@ -7,6 +7,30 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO Company/Executive Health directive, Phase 2 — Department Consensus: reused the Executive Consensus
+  Meter's own real "waiting vs. opposing" taxonomy** (`backend/app/company_health.py`,
+  `backend/tests/test_company_health.py`,
+  `docs/DesignBible/volumes/09-departments/chapter-63-executive-performance-company-health.md`): the same anti-
+  pattern as Phase 1, in the Executive tier — `_department_consensus()` counted only `stance == "agree"` as
+  positive, scoring `request_more_research`/`recommend_waiting` identically to real opposition, even though
+  `app/executive_intelligence.py`'s own `compute_executive_recommendation()` (Chapter 70 Part 2) already treats
+  those as a distinct, constructive "waiting" bucket. Fixed by reusing that exact same real taxonomy
+  (`_OPPOSING_STANCES = {"disagree", "recommend_rejecting"}`) rather than inventing a new one — a "waiting" stance
+  never counts against consensus, and even real opposition only counts against the score when it's
+  unsubstantiated (an opposing `DepartmentOpinion` with an empty `concerns` list — direct trace of every real
+  opinion generator found only one path that can produce this today, `_devils_advocate_opinion()`'s `major`
+  severity case driven by missing evidence/dissent alone). An opposing opinion *with* real concerns on record is
+  the CEO's own "GOOD DISAGREEMENT + EVIDENCE" case — coherent, not penalized. Live-verified with a concrete
+  before/after against a running save: a real CEO decision produced a real 9-opinion meeting log entry (4 agree,
+  5 request_more_research, 0 real opposition) that read 44.4 under the old formula and 100.0 under the fix — the
+  CEO's own named anti-pattern, caught on real, unmodified game data. Verified: 6 new tests (full agreement,
+  request_more_research not scored as disagreement, evidence-backed disagreement staying coherent, bare
+  unsubstantiated opposition still penalized, and an explicit "cannot be gamed by forcing universal agreement"
+  proof), full backend suite passing, `mypy`/`ruff` clean. No new schema fields or persisted telemetry — a pure
+  formula correction over data that already existed. Honest remaining gap: no real escalation/resolution
+  *workflow* state exists yet (the CEO's "escalate unresolved conflicts" step) — documented, not attempted this
+  phase.
+
 - **Per-trade distance-to-drawdown-ceiling snapshot** (`backend/app/schemas.py`, `backend/app/portfolio.py`,
   `backend/app/broker.py`, `backend/app/paper_trading.py`, `backend/app/trading_modes.py`, `backend/app/nexus.py`,
   `backend/tests/test_portfolio.py`, `backend/tests/test_broker.py`, `backend/tests/test_trading_modes.py`,

@@ -682,3 +682,76 @@ class TestCeoConfiguredTierThresholds:
         assert health.tier == "excellent"
         assert health.executive_tier == "excellent"
         assert health.combined_tier == "excellent"
+
+
+def _meeting_log_entry(entry_id: str, opinions: list[DepartmentOpinion]) -> ExecutiveMeetingLogEntry:
+    return ExecutiveMeetingLogEntry(
+        id=entry_id, proposalId=entry_id, symbol="AAPL", simDay=1, opinions=opinions, recommendedAction="trade_normally", recommendationReason="x",
+        ceoDecision="buy", networkAgreed=True, decisionGrade="A", decisionGradeScore=90.0, resolvedBy="ceo", createdAt="2026-01-01T00:00:00+00:00",
+    )
+
+
+class TestDepartmentConsensus:
+    """CEO Company/Executive Health directive, Phase 2: Department
+    Consensus must measure "can the organization reach a coherent,
+    evidence-supported decision," not "did everybody vote yes" — see
+    app/company_health.py's _department_consensus()."""
+
+    def test_no_opinions_yet_reads_neutral(self) -> None:
+        health = _health(meeting_log=[])
+        assert health.department_consensus == 50.0
+
+    def test_full_agreement_reads_full_consensus(self) -> None:
+        opinions = [DepartmentOpinion(role=role, departmentLabel=role, stance="agree", summary="x", confidencePct=90.0) for role in _ALL_ROLES]
+        health = _health(meeting_log=[_meeting_log_entry("m1", opinions)])
+        assert health.department_consensus == 100.0
+
+    def test_requesting_more_research_is_not_scored_as_disagreement(self) -> None:
+        """The exact anti-pattern the CEO named: a department asking for
+        more evidence before committing is a constructive, real epistemic
+        stance — not a vote against consensus. Under the OLD agree-only
+        formula, this scenario would have read 50.0 (half "no"); the
+        corrected formula reads 100.0 because none of these opinions are
+        real substantive opposition."""
+        opinions = [
+            DepartmentOpinion(role="research", departmentLabel="Research", stance="agree", summary="x", confidencePct=90.0),
+            DepartmentOpinion(role="quant", departmentLabel="Quant", stance="request_more_research", summary="x", confidencePct=50.0),
+            DepartmentOpinion(role="risk", departmentLabel="Risk", stance="recommend_waiting", summary="x", confidencePct=50.0),
+            DepartmentOpinion(role="simulation", departmentLabel="Simulation", stance="recommend_position_change", summary="x", confidencePct=50.0),
+        ]
+        health = _health(meeting_log=[_meeting_log_entry("m1", opinions)])
+        assert health.department_consensus == 100.0
+
+    def test_evidence_backed_disagreement_still_counts_as_coherent(self) -> None:
+        """The CEO's own "GOOD DISAGREEMENT + EVIDENCE" case: a real
+        substantive objection that names real concerns is healthy
+        organizational functioning, not a penalty."""
+        opinions = [
+            DepartmentOpinion(role="research", departmentLabel="Research", stance="agree", summary="x", confidencePct=90.0),
+            DepartmentOpinion(role="risk", departmentLabel="Risk", stance="disagree", summary="x", confidencePct=30.0, concerns=["Exposure factor is below the risk bar."]),
+        ]
+        health = _health(meeting_log=[_meeting_log_entry("m1", opinions)])
+        assert health.department_consensus == 100.0
+
+    def test_bare_unsubstantiated_opposition_counts_against_consensus(self) -> None:
+        """The one real case this metric should still penalize: a
+        genuinely opposing stance with no real evidence behind it at
+        all — an unsupported block, not a reasoned objection."""
+        opinions = [
+            DepartmentOpinion(role="research", departmentLabel="Research", stance="agree", summary="x", confidencePct=90.0),
+            DepartmentOpinion(role="devils_advocate", departmentLabel="Devil's Advocate", stance="recommend_rejecting", summary="x", confidencePct=25.0, concerns=[]),
+        ]
+        health = _health(meeting_log=[_meeting_log_entry("m1", opinions)])
+        assert health.department_consensus == 50.0
+
+    def test_cannot_be_gamed_by_forcing_universal_agreement_alone(self) -> None:
+        """Full agreement and full evidence-backed disagreement both read
+        100 — proving this metric cannot be raised merely by suppressing
+        real dissent, only by ensuring real objections are substantiated."""
+        agree_only = [DepartmentOpinion(role=role, departmentLabel=role, stance="agree", summary="x", confidencePct=90.0) for role in _ALL_ROLES]
+        evidence_backed_dissent = [
+            DepartmentOpinion(role=role, departmentLabel=role, stance="disagree", summary="x", confidencePct=30.0, concerns=["A real, named concern."]) for role in _ALL_ROLES
+        ]
+        agree_health = _health(meeting_log=[_meeting_log_entry("m1", agree_only)])
+        dissent_health = _health(meeting_log=[_meeting_log_entry("m2", evidence_backed_dissent)])
+        assert agree_health.department_consensus == dissent_health.department_consensus == 100.0

@@ -79,6 +79,15 @@ LEGENDARY_INNOVATOR_THRESHOLD = INNOVATION_TIER_THRESHOLDS[-1]
 
 RESTFUL_LOCATIONS = {"lobby", "break-room"}
 
+# Mirrors app/executive_intelligence.py::compute_executive_recommendation()'s
+# own real "opposing" bucket exactly — genuine substantive opposition,
+# distinct from the "waiting" bucket (request_more_research/
+# recommend_waiting/recommend_position_change), which is a constructive
+# epistemic stance, not disagreement. Reused rather than redefined so
+# _department_consensus() below reads the same real taxonomy the rest of
+# the Executive Intelligence Network already uses.
+_OPPOSING_STANCES = frozenset({"disagree", "recommend_rejecting"})
+
 _SEVERITY_PENALTY = {"critical": 15.0, "warning": 6.0, "info": 2.0}
 
 _TIER_THRESHOLDS: list[tuple[float, CompanyHealthTier]] = [
@@ -304,12 +313,47 @@ def _simulation_coverage(meeting_log: list[ExecutiveMeetingLogEntry]) -> float:
 
 
 def _department_consensus(meeting_log: list[ExecutiveMeetingLogEntry]) -> float:
+    """v0.7 Feature 50 Part 2/3, corrected under the CEO's Company/
+    Executive Health directive.
+
+    The original formula counted only `stance == "agree"` as a positive
+    signal, which is exactly the anti-pattern the CEO's directive named:
+    it measured "did everybody vote yes," not "can the organization
+    reach a coherent, evidence-supported decision." Direct trace of
+    every real opinion generator (app/executive_intelligence.py) found
+    `ExecutiveStance` already has six real values, not two — and
+    `compute_executive_recommendation()` in that same module already
+    treats `request_more_research`/`recommend_waiting`/
+    `recommend_position_change` as a distinct real "waiting" bucket,
+    genuinely different from real opposition
+    (`disagree`/`recommend_rejecting`). Reused here rather than
+    reinvented: a "waiting" stance is a legitimate, constructive
+    epistemic position — asking for more evidence is not disagreement —
+    so it counts as coherent alongside real agreement, never penalized.
+
+    Only real, substantive opposition can drag this score down, and even
+    then only when it's unsubstantiated: every opposing `DepartmentOpinion`
+    already carries a real `concerns` list (Design Bible Chapter 70 Part 2,
+    the Executive Consensus Meter) populated from that department's own
+    real computed data (a risk vote's reasoning, a Devil's Advocate
+    report's real hidden risks/weak assumptions, a Coach report's real
+    common mistakes). An opposing opinion WITH real concerns on record is
+    exactly the CEO's own "GOOD DISAGREEMENT + EVIDENCE" case — coherent,
+    not penalized. Only a real opposing opinion with an empty `concerns`
+    list (a bare, unsubstantiated block — confirmed by direct trace to be
+    reachable today only via `_devils_advocate_opinion()`'s `major`
+    severity path when it's driven by missing evidence or analyst dissent
+    alone, with no specific hidden risk or weak assumption named) counts
+    against the score. This module makes no attempt to model real
+    escalation or resolution workflows beyond what's already tracked —
+    see this function's Design Bible section for the honest remaining
+    gap."""
     recent = meeting_log[-EXECUTIVE_METRIC_WINDOW:]
     opinions = [op for e in recent for op in e.opinions]
     if not opinions:
         return 50.0
-    agree = sum(1 for op in opinions if op.stance == "agree")
-    return agree / len(opinions) * 100.0
+    coherent = sum(1 for op in opinions if op.stance not in _OPPOSING_STANCES or op.concerns)
+    return coherent / len(opinions) * 100.0
 
 
 def _self_evaluation_health(self_evaluations: list[DepartmentSelfEvaluation]) -> float:

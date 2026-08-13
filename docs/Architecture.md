@@ -2623,6 +2623,21 @@ whether consecutive same-category items were picked up by a *different*
 real agent. Live-verified: a running save's `teamChemistry` moved from a
 stuck `0.0` to a genuinely varying `31.1` purely from real ticking.
 
+**Department Consensus, corrected under the same directive.** The same
+anti-pattern in the Executive tier: `_department_consensus()` counted
+only `stance == "agree"` as positive, scoring a constructive
+`request_more_research` opinion identically to real opposition — even
+though `executive_intelligence.py`'s own `compute_executive_recommendation()`
+already treats `request_more_research`/`recommend_waiting`/
+`recommend_position_change` as a distinct "waiting" bucket. Fixed to
+reuse that exact real taxonomy: a waiting stance never counts against
+consensus, and real opposition only counts against the score when it's
+unsubstantiated (empty `concerns`) — an opposing opinion with real
+concerns on record is coherent, not penalized. Live-verified with a
+concrete before/after: a real 9-opinion meeting log entry (4 agree, 5
+request_more_research, 0 real opposition) read `44.4` under the old
+formula and `100.0` under the fix, on real, unmodified game data.
+
 **Executive Priorities and Department Health are both pure frontend
 derivations** — like the Decision Replay Center, no second backend
 computation was needed. `lib/derive.ts`'s `computeExecutivePriorities()`

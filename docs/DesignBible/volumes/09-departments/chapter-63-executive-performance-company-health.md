@@ -450,3 +450,84 @@ Health/Executive Health dimensions named in the CEO's directive
 Consensus, Self-Evaluation Health, Decision Quality calibration,
 Institutional Memory/Innovation Velocity linkage, Education) are
 tracked as later phases of the same directive, not started here.
+
+**CEO Company/Executive Health directive, Phase 2 — Department Consensus
+(the same "did everybody vote yes" anti-pattern, in the Executive
+tier):** the CEO's own priority list named Department Consensus
+(~20/100 in her review) alongside Team Chemistry, with an explicit
+instruction: "Do NOT solve this by forcing agents to agree... measures
+whether the organization can reach a coherent, evidence-supported
+decision, NOT whether everybody voted yes."
+
+*Root cause, found by direct trace:* `_department_consensus()` counted
+only `stance == "agree"` as a positive signal — everything else
+(`disagree`, `request_more_research`, `recommend_waiting`,
+`recommend_position_change`, `recommend_rejecting`) counted equally
+against the score, even though `app/executive_intelligence.py`'s
+`ExecutiveStance` already has six real values, and that same module's
+`compute_executive_recommendation()` (Design Bible Chapter 70 Part 2,
+the Executive Consensus Meter) already treats
+`request_more_research`/`recommend_waiting`/`recommend_position_change`
+as a real, distinct "waiting" bucket — a constructive, evidence-seeking
+stance, genuinely different from real opposition
+(`disagree`/`recommend_rejecting`). The old formula collapsed all of
+these into one "not agree" bucket, exactly the anti-pattern the CEO
+named.
+
+*Fix:* `_department_consensus()` now reuses that exact same real
+taxonomy (`_OPPOSING_STANCES = {"disagree", "recommend_rejecting"}`,
+matching `compute_executive_recommendation()`'s own `opposing` set)
+rather than inventing a new one. A "waiting" stance never counts against
+consensus — asking for more evidence is not disagreement. Only real
+opposition can drag the score down, and even then only when it's
+unsubstantiated: every `DepartmentOpinion` already carries a real
+`concerns` list (the same Chapter 70 Part 2 infrastructure), populated
+from that department's own real computed data (a risk vote's reasoning,
+a Devil's Advocate report's real hidden risks/weak assumptions, a Coach
+report's real common mistakes). An opposing opinion *with* real concerns
+on record is the CEO's own "GOOD DISAGREEMENT + EVIDENCE" case — coherent,
+not penalized. Direct trace of every real opinion generator in
+`app/executive_intelligence.py` found only one path that can produce a
+genuinely opposing opinion with an *empty* `concerns` list today:
+`_devils_advocate_opinion()`'s `major`-severity path when it's driven by
+missing evidence or analyst dissent alone, with no specific hidden risk
+or weak assumption named — every other generator (`_quant_opinion`,
+`_risk_opinion`, `_simulation_opinion`, `_decision_intelligence_opinion`,
+`_market_intelligence_opinion`) always populates `concerns` whenever it
+assigns an opposing stance.
+
+*Live-verified, with a concrete before/after:* against a running save, a
+real CEO decision on a pending proposal produced a real
+`ExecutiveMeetingLogEntry` with 9 department opinions — 4 `agree`, 5
+`request_more_research`, 0 real opposition. Under the OLD formula this
+read **44.4** (4/9 agree) — a "poor consensus" reading for an
+organization that was, in fact, functioning exactly as intended (five
+departments constructively asking for more evidence, none blocking).
+Under the FIXED formula the same real data reads **100.0** — none of
+the nine opinions are real substantive opposition. This is the CEO's own
+named anti-pattern, caught and corrected on real, live, unmodified game
+data — not a synthetic test case.
+
+Verified: 6 new tests in `test_company_health.py`'s new
+`TestDepartmentConsensus` class (full agreement, the exact
+"request_more_research is not disagreement" case, evidence-backed
+disagreement staying coherent, bare unsubstantiated opposition still
+counting against the score, and an explicit "cannot be gamed by forcing
+universal agreement" proof — full agreement and full evidence-backed
+disagreement both read 100), full backend suite passing, `mypy`/`ruff`
+clean. No new parameters, no new schema fields, no new persisted
+telemetry — this phase is a pure formula correction reusing data and
+taxonomy that already existed.
+
+Honest remaining gap, not attempted this phase: this module makes no
+attempt to model real escalation or resolution *workflows* (the CEO's
+numbered steps 4/5 — "challenge each other's evidence," "escalate
+unresolved conflicts") beyond what's already captured by the real
+`concerns` field: there is no persisted escalation state, no distinct
+"resolved" vs. "unresolved" marker on a real disagreement, and no
+tracked outcome of a challenge. `record_meeting_log_entry()` already
+logs every department's individual opinion regardless of the majority
+(the CEO's step 8, "record minority opinions," is already real and
+unchanged by this phase). A genuine escalation/resolution workflow, if
+ever built, would need new real state — not attempted here to keep this
+phase a pure, honest formula correction over already-real data.
