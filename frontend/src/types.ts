@@ -26,7 +26,7 @@ export type SceneId =
 // Points — see backend/app/founders.py's module docstring.
 // v0.7 — Vector, the Chief Quantitative Strategist, is the fourteenth.
 // Leads every Black Box Research Project (see backend/app/black_box.py).
-export type AgentId = "scout" | "atlas" | "echo" | "nova" | "scribe" | "coach" | "sentinel" | "pulse" | "guardian" | "cio" | "sage" | "keystone" | "compass" | "quant";
+export type AgentId = "scout" | "atlas" | "echo" | "nova" | "scribe" | "coach" | "sentinel" | "pulse" | "guardian" | "cio" | "sage" | "keystone" | "compass" | "quant" | "forge";
 export const AGENT_IDS: readonly AgentId[] = ["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio", "sage", "keystone", "compass", "quant"];
 
 /** Every room an agent's schedule (or a meeting/break override) can place them in. */
@@ -775,6 +775,33 @@ export interface StrategyMonteCarloResult {
   conditionalValueAtRisk99Pct: number;
   simDay: number;
   createdAt: string;
+}
+
+/** Quantitative Research & Intelligence System, Piece 7 — Forge, the
+ * Quant Developer. A real, standing engineering fact about the Monte
+ * Carlo bootstrap pipeline itself (backend/app/strategy_lab.py's
+ * MONTE_CARLO_PATHS, a fixed global constant) — NOT a per-strategy
+ * finding, since every real run shares that same constant. Recomputed
+ * fresh on every read, never persisted. Distinct from Meridian's
+ * ModelValidationReport, which reviews a strategy's evidence, never
+ * the sample-size adequacy of the tool that produced it. */
+export type MonteCarloReliabilityVerdict = "reliable" | "marginal" | "unreliable";
+
+export interface MonteCarloReliabilityAssessment {
+  developerAgentId: "forge";
+  pathsSimulated: number;
+  tailSampleCount95Pct: number;
+  tailSampleCount99Pct: number;
+  verdict95Pct: MonteCarloReliabilityVerdict;
+  verdict99Pct: MonteCarloReliabilityVerdict;
+  minReliableTailSamples: number;
+  minMarginalTailSamples: number;
+  recommendedPathsForReliable99Pct: number;
+  realResultsAudited: number;
+  observedPathCountsConsistent: boolean;
+  reasoning: string;
+  thresholdSource: string;
+  generatedAt: string;
 }
 
 /** SimulationResult is only ever tagged at the coarser 7-way TestScenario

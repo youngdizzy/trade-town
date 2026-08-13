@@ -168,6 +168,19 @@ export const AGENT_SCHEDULES: Record<AgentId, ScheduleBlock[]> = {
     { startHour: 22, endHour: 24, location: "break-room", task: "Reading quietly" },
     { startHour: 0, endHour: 6, location: "break-room", task: "Sleeping" },
   ],
+  // Quantitative Research & Intelligence System, Piece 7 — the Quant
+  // Developer. See backend/app/quant_developer.py.
+  forge: [
+    { startHour: 6, endHour: 9, location: "simulation-lab", task: "Auditing overnight Monte Carlo runs for sample reliability" },
+    { startHour: 9, endHour: 12, location: "simulation-lab", task: "Stress-testing the bootstrap pipeline" },
+    { startHour: 12, endHour: 13, location: "break-room", task: "Resting" },
+    { startHour: 13, endHour: 16, location: "simulation-lab", task: "Checking every real result against the audited path count" },
+    { startHour: 16, endHour: 19, location: "simulation-lab", task: "Writing up today's reliability findings" },
+    { startHour: 19, endHour: 20, location: "executive-boardroom", task: "Flagging any tooling gaps to the CEO" },
+    { startHour: 20, endHour: 22, location: "break-room", task: "Tinkering with a side project, off the clock" },
+    { startHour: 22, endHour: 24, location: "break-room", task: "Reading a systems-engineering paper" },
+    { startHour: 0, endHour: 6, location: "break-room", task: "Sleeping" },
+  ],
 };
 
 export function scheduleBlockForHour(agentId: AgentId, hour: number): ScheduleBlock {

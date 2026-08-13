@@ -202,6 +202,21 @@ export const AGENT_PROFILES: Record<AgentId, AgentProfile> = {
     wanderRadius: 18,
     idlePauseChance: 0.65,
   },
+  // Quantitative Research & Intelligence System, Piece 7 — the fifteenth
+  // agent (Forge, the Quant Developer). Works out of the Simulation Lab
+  // alongside Vector; no new scene, matching Vector's own precedent.
+  forge: {
+    id: "forge",
+    name: "Forge",
+    occupation: "Quantitative Systems Engineer",
+    personality: "Blunt and hands-on. Distrusts anything that hasn't been stress-tested, including its own tools.",
+    homeLocation: "simulation-lab",
+    tint: 0xe07a5f,
+    spriteId: "characters/player/player-forge",
+    badge: "\u{1F527}",
+    wanderRadius: 24,
+    idlePauseChance: 0.35,
+  },
 };
 
 export const LOCATION_TO_SCENE: Record<AgentLocation, SceneId> = {

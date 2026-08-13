@@ -65,6 +65,7 @@ import type {
   KnowledgeQualityScore,
   MarketIntelligenceRegime,
   ModelValidationReport,
+  MonteCarloReliabilityAssessment,
   ProcessAdherenceRead,
   ProcessAdherenceSummaryRead,
   RegimeReconciliation,
@@ -226,6 +227,10 @@ export const api = {
       `/executive/weighted-decision?proposalId=${encodeURIComponent(proposalId)}${profile ? `&profile=${encodeURIComponent(profile)}` : ""}`,
     ),
   getKnowledgeGraph: () => request<KnowledgeGraph>("/knowledge-graph"),
+  // Quantitative Research & Intelligence System, Piece 7 (Forge, the
+  // Quant Developer) — a real, standing pipeline-reliability fact,
+  // computed fresh on every call, same as getKnowledgeGraph above.
+  getMonteCarloReliability: () => request<MonteCarloReliabilityAssessment>("/quant-developer/monte-carlo-reliability"),
   submitQotdResponse: (questionId: string, response: string) =>
     request<{ question: QuestionOfTheDay }>("/mentor/qotd/respond", {
       method: "POST",

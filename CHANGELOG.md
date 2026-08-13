@@ -7,6 +7,34 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Forge, the Quant Developer** (`backend/app/quant_developer.py` new, `backend/app/schemas.py`, `backend/app/agents.py`,
+  `backend/app/schedule.py`, `backend/app/routers/quant_developer.py` new, `backend/app/main.py`,
+  `backend/tests/test_quant_developer.py` new, `backend/tests/test_academy.py`, `frontend/src/types.ts`,
+  `frontend/src/net/api.ts`, `frontend/src/game/systems/AgentProfiles.ts`, `frontend/src/game/systems/Schedule.ts`,
+  `frontend/src/game/systems/DialogueManager.ts`, `frontend/src/assets/animation-config.json`,
+  `frontend/src/ui/components/CommandCenter/lib/useMonteCarloReliability.ts` new,
+  `frontend/src/ui/components/CommandCenter/panels/sandbox/StrategyExecutiveDashboardView.tsx`,
+  `docs/DesignBible/volumes/07-ai-workforce.md`): Piece 7 — the final piece — of the Quantitative Research &
+  Intelligence System, and the one piece where the CEO's own answer explicitly overrode a docs-only
+  recommendation with "I want a new agent," deferring the concrete in-sim design to this piece. The fifteenth
+  agent, minted the same five-file way every prior new agent (Meridian, Sage, Keystone, Compass, Vector) already
+  was — a routine, precedented pattern, not unusual scope. Owns a real, non-duplicative gap none of the other
+  four quant roles ever look at: `app/strategy_lab.py`'s Monte Carlo bootstrap fixes `MONTE_CARLO_PATHS = 200`
+  for every real run, giving only 10 real samples in the 5% tail and 2 in the 1% tail — `StrategyMonteCarloResult`'s
+  own VaR99/CVaR99 fields (Piece 3) are 99th-percentile statistics read off just 2 real data points, a genuine
+  estimation-reliability problem regardless of the strategy's own edge. `assess_monte_carlo_reliability()`
+  computes this as a real, standing engineering fact about the pipeline itself (not per-strategy, since every
+  real run shares the identical constant), recomputed fresh on every read and cross-checked against every real
+  `StrategyMonteCarloResult` on file for path-count drift. `MIN_RELIABLE_TAIL_SAMPLES=20`/
+  `MIN_MARGINAL_TAIL_SAMPLES=10` is the one threshold across this whole six-piece system with no prior
+  in-codebase precedent — explicitly disclosed as a chosen bootstrap/tail-risk rule of thumb, not a measured
+  fact. Surfaced in a new "Monte Carlo Reliability — Forge, Quant Developer" card on the Sandbox panel's
+  company-wide Dashboard tab. Verified: 9 new tests, 1 existing fixture updated (Forge has no Academy-ladder
+  progression, same as Keystone/Compass/Vector before it), full backend suite 1627 passed, `mypy`/`ruff` clean,
+  `tsc -b --noEmit`/`eslint`/`vite build` clean, and live-verified end-to-end against the real running dev
+  stack (real 200/10/2 path/tail-sample counts, real marginal/unreliable verdicts, rendering correctly in
+  Command Center).
+
 - **Wiring Model Validator findings into institutional memory** (`backend/app/strategy_lab.py`,
   `backend/app/state.py`, `backend/app/knowledge_graph.py`, `backend/app/routers/knowledge_graph.py`,
   `backend/tests/test_strategy_lab.py`, `backend/tests/test_knowledge_graph.py`,

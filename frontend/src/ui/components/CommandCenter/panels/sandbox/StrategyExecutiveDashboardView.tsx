@@ -1,7 +1,63 @@
 import { useEffect, useState } from "react";
 import { api } from "@/net/api";
 import type { StrategyExecutiveDashboard, StrategyExecutiveDashboardEntry } from "@/types";
+import { useMonteCarloReliability } from "../../lib/useMonteCarloReliability";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../../ui";
+
+const RELIABILITY_TONE: Record<string, "green" | "amber" | "red"> = {
+  reliable: "green",
+  marginal: "amber",
+  unreliable: "red",
+};
+
+/**
+ * Quantitative Research & Intelligence System, Piece 7 — Forge, the
+ * Quant Developer. A real, standing engineering fact about the Monte
+ * Carlo bootstrap pipeline itself (not a per-strategy finding — see
+ * backend/app/quant_developer.py's module docstring), so it lives on
+ * this company-wide dashboard rather than the per-strategy
+ * Certification view.
+ */
+function MonteCarloReliabilityCard() {
+  const { assessment, loading, error } = useMonteCarloReliability(true);
+
+  if (loading && !assessment) {
+    return (
+      <Glass className="p-3">
+        <EmptyState>Forge is auditing the Monte Carlo pipeline…</EmptyState>
+      </Glass>
+    );
+  }
+  if (error) {
+    return (
+      <Glass className="p-3">
+        <div className="text-[9px] text-cmd-red">{error}</div>
+      </Glass>
+    );
+  }
+  if (!assessment) return null;
+
+  return (
+    <Glass className="p-3">
+      <div className="mb-1.5 flex items-center justify-between">
+        <TerminalLabel>Monte Carlo Reliability — Forge, Quant Developer</TerminalLabel>
+        {!assessment.observedPathCountsConsistent && <StatusPill tone="red">PATH COUNT DRIFT</StatusPill>}
+      </div>
+      <div className="grid grid-cols-2 gap-x-4 sm:grid-cols-4">
+        <DataRow label="Paths Simulated" value={assessment.pathsSimulated} />
+        <DataRow label="5% Tail Samples" value={assessment.tailSampleCount95Pct} />
+        <DataRow label="1% Tail Samples" value={assessment.tailSampleCount99Pct} />
+        <DataRow label="Real Results Audited" value={assessment.realResultsAudited} />
+      </div>
+      <div className="mt-1.5 flex flex-wrap items-center gap-2">
+        <StatusPill tone={RELIABILITY_TONE[assessment.verdict95Pct]}>VaR95/CVaR95: {assessment.verdict95Pct.toUpperCase()}</StatusPill>
+        <StatusPill tone={RELIABILITY_TONE[assessment.verdict99Pct]}>VaR99/CVaR99: {assessment.verdict99Pct.toUpperCase()}</StatusPill>
+      </div>
+      <p className="mt-1.5 text-[8px] italic text-cmd-textDim">{assessment.reasoning}</p>
+      <p className="mt-1 text-[8px] italic text-cmd-textDim">{assessment.thresholdSource}</p>
+    </Glass>
+  );
+}
 
 function Slot({ label, entry, tone }: { label: string; entry: StrategyExecutiveDashboardEntry | null; tone: "green" | "red" | "cyan" | "amber" | "purple" }) {
   return (
@@ -95,6 +151,8 @@ export function StrategyExecutiveDashboardView() {
           <Slot label="Highest Confidence" entry={dashboard.highestConfidenceStrategy} tone="cyan" />
         </div>
       </Glass>
+
+      <MonteCarloReliabilityCard />
     </div>
   );
 }

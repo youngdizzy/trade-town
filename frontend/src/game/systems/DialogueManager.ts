@@ -141,6 +141,17 @@ const AGENT_TASK_LINES: Record<AgentId, Record<string, string[]>> = {
     "Still turning the day's numbers over, off the clock": ["Off the clock, but the numbers don't know that."],
     "Reading quietly": ["Reading, not analyzing. Trying, anyway."],
   },
+  // Quantitative Research & Intelligence System, Piece 7 — the Quant
+  // Developer. See backend/app/quant_developer.py.
+  forge: {
+    "Auditing overnight Monte Carlo runs for sample reliability": ["Two hundred paths gives you two real samples in the 1% tail. That's not a stat, that's a guess."],
+    "Stress-testing the bootstrap pipeline": ["I don't care if the strategy's edge is real. I care if the tool measuring it is."],
+    "Checking every real result against the audited path count": ["Every result should use the documented path count. If one drifted, I want to know before anyone else does."],
+    "Writing up today's reliability findings": ["Writing it up plainly: reliable, marginal, or unreliable. No hedging on a sample-size problem."],
+    "Flagging any tooling gaps to the CEO": ["Heading up to flag a gap. It's not glamorous, but somebody has to own it."],
+    "Tinkering with a side project, off the clock": ["Off the clock, still tinkering. Old habit."],
+    "Reading a systems-engineering paper": ["Reading. Trying to steal a better idea for tomorrow."],
+  },
 };
 
 /** Shared fallback lines for override-driven tasks (meetings/breaks), independent of agent personality. */
@@ -175,6 +186,7 @@ const AGENT_GREETINGS: Record<AgentId, string[]> = {
   keystone: ["CEO.", "Good timing. I was just reviewing the numbers.", "Sit. Tell me what's on your mind."],
   compass: ["Ah, good timing.", "I was just about to ask myself a question — now I can ask you instead.", "Come in — curious what brought you by."],
   quant: ["CEO. I have real numbers, not a hunch.", "Good timing — let me show you what actually held up.", "Trust evidence over emotion. That's where I'd start."],
+  forge: ["CEO. Got a tooling problem to show you.", "Good timing — I just finished stress-testing something.", "Before you trust that number, ask how many samples it's built on."],
 };
 
 export interface DialogueSession {

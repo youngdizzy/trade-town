@@ -214,6 +214,20 @@
       "walk-up": { "row": 5, "frameCount": 6, "frameRate": 8, "repeat": -1 }
     }
   },
+  "_comment_forge": "Quantitative Research & Intelligence System, Piece 7 — the fifteenth agent (Forge, the Quant Developer), added the same way as every agent variant above: a palette-swapped copy of characters/player/player.png with the same 7-color remap table (2 hair + 5 shirt/pants), hand-picked as a warm copper/rust/terracotta combination (matching AGENT_PROFILES.forge's own tint) for an engineering/forge-adjacent read, distinct from every existing agent's tint (including Keystone's more muted tan/khaki).",
+  "characters/player/player-forge": {
+    "kind": "spritesheet",
+    "frameWidth": 32,
+    "frameHeight": 32,
+    "animations": {
+      "idle-down": { "row": 0, "frameCount": 6, "frameRate": 4, "repeat": -1 },
+      "walk-down": { "row": 1, "frameCount": 6, "frameRate": 8, "repeat": -1 },
+      "idle-up": { "row": 2, "frameCount": 6, "frameRate": 4, "repeat": -1 },
+      "idle-left": { "row": 3, "frameCount": 6, "frameRate": 4, "repeat": -1 },
+      "walk-left": { "row": 4, "frameCount": 6, "frameRate": 8, "repeat": -1 },
+      "walk-up": { "row": 5, "frameCount": 6, "frameRate": 8, "repeat": -1 }
+    }
+  },
 
   "characters/enemies/skeleton": {
     "kind": "spritesheet",
