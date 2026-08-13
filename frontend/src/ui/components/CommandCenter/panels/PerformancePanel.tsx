@@ -150,6 +150,11 @@ export function PerformancePanel() {
                 {t.transactionCostUsd > 0 && (
                   <div className="mt-0.5 text-[9px] text-cmd-textDim">Transaction cost: {formatMoney(t.transactionCostUsd)} (real, already netted above)</div>
                 )}
+                {t.distanceToDrawdownCeilingBeforePct !== null && t.distanceToDrawdownCeilingAfterPct !== null && (
+                  <div className="mt-0.5 text-[9px] text-cmd-textDim">
+                    Distance to drawdown ceiling: {t.distanceToDrawdownCeilingBeforePct.toFixed(1)}% → {t.distanceToDrawdownCeilingAfterPct.toFixed(1)}%
+                  </div>
+                )}
                 {(t.lessonsLearned ?? t.coachReview) && <div className="mt-0.5 text-[9px] text-cmd-textDim">{t.lessonsLearned ?? t.coachReview}</div>}
               </div>
             ))}

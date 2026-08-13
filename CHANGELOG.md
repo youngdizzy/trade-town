@@ -7,6 +7,26 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Per-trade distance-to-drawdown-ceiling snapshot** (`backend/app/schemas.py`, `backend/app/portfolio.py`,
+  `backend/app/broker.py`, `backend/app/paper_trading.py`, `backend/app/trading_modes.py`, `backend/app/nexus.py`,
+  `backend/tests/test_portfolio.py`, `backend/tests/test_broker.py`, `backend/tests/test_trading_modes.py`,
+  `frontend/src/types.ts`, `frontend/src/ui/components/CommandCenter/panels/PerformancePanel.tsx`,
+  `docs/DesignBible/volumes/09-departments/chapter-66-institutional-safety-capital-protection.md`): Piece 10b of the
+  CEO's Prop-Firm Risk Intelligence Addendum, Requirement 24 — "distance to failure boundary before/after trade,"
+  touching the real trade-execution pipeline as originally scoped. New `PaperTrade.distanceToDrawdownCeilingBeforePct`/
+  `AfterPct` (named honestly — "drawdown ceiling," not "failure boundary," since the primary portfolio only has
+  `RiskLimits.max_drawdown_pct`, a self-chosen ceiling, per the same distinction Piece 11 already drew), computed via
+  `close_position()`'s new optional `risk_limits` parameter, reusing the exact `remaining_drawdown_budget_pct` formula
+  `risk_engine.py`'s `compute_risk_budget_status()` already established. Every real caller
+  (`broker.py`'s `tick_broker()`/`ExecutionProvider`, `paper_trading.py`'s `tick_paper_trading()`, `trading_modes.py`'s
+  `flatten_day_positions()`) now threads through `nexus.py`'s currently-effective `RiskLimits`; the parameter stays
+  optional everywhere so an existing test fixture or a not-yet-threaded caller gets an honest `None`, never a fabricated
+  value. Verified: 12 new backend tests, full backend suite 1714/1714 passed, `mypy`/`ruff` clean, `tsc -b
+  --noEmit`/`eslint`/`vite build` clean. Live end-to-end verification via the real running dev stack's autonomous sim
+  loop was attempted (including a full simulated week advanced via `POST /api/time/advance`) but this particular
+  save's trade-proposal pipeline wasn't actively cycling during the session — stated honestly rather than claimed;
+  backend correctness instead rests on the 12 new tests directly exercising the real execution-pipeline functions.
+
 - **Evaluation-level risk-policy simulator** (`backend/app/evaluation_simulator.py`, `backend/app/schemas.py`,
   `backend/app/routers/sandbox.py`, `backend/tests/test_evaluation_simulator.py`, `frontend/src/types.ts`,
   `frontend/src/net/api.ts`,

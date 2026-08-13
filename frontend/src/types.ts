@@ -473,6 +473,15 @@ export interface PaperTrade {
    * exit) already subtracted from `pnl` above; kept here purely for
    * audit visibility. 0.0 for any trade closed before this piece. */
   transactionCostUsd: number;
+  /** Prop-Firm Risk Intelligence Addendum, Piece 10b — real distance to
+   * the primary portfolio's own drawdown ceiling (RiskLimits.
+   * maxDrawdownPct — a self-chosen ceiling, not a true externally-
+   * imposed boundary; see AccountRiskBudgetStatus for the one real
+   * externally-configurable boundary this codebase has), snapshotted
+   * before and after this trade. null when this trade closed without a
+   * real RiskLimits in scope — never a fabricated value. */
+  distanceToDrawdownCeilingBeforePct: number | null;
+  distanceToDrawdownCeilingAfterPct: number | null;
 }
 
 /** The company's one simulated trading account — entirely fictional. */

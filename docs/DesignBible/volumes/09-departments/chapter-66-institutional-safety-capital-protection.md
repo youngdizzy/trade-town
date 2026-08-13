@@ -1012,3 +1012,74 @@ Full Command Center expand interaction in this sandbox environment
 (confirmed, via a stashed-diff control run, to be a pre-existing
 Chromium/environment instability unrelated to this piece's code, not a
 regression it introduced).
+
+## Addendum — Per-Trade Distance-to-Drawdown-Ceiling Snapshot (Prop-Firm Risk Intelligence Addendum, Piece 10b)
+
+**Status:** Real, touches the trade-execution pipeline as originally
+scoped — `app/portfolio.py`'s `close_position()` (this codebase's one
+real execution choke point, per Piece 5's own docstring) plus every
+real caller: `app/broker.py`'s `tick_broker()`/`ExecutionProvider`,
+`app/paper_trading.py`'s `tick_paper_trading()`, and `app/
+trading_modes.py`'s `flatten_day_positions()`.
+
+**Origin.** Requirement 24's "distance to failure boundary before
+trade" / "distance to failure boundary after trade" — the two per-trade
+data points Piece 11's account-level `AccountRiskBudgetStatus` (a
+real-time snapshot, not a per-trade one) doesn't capture.
+
+**Named honestly: "drawdown ceiling," not "failure boundary."** The
+primary portfolio has no true externally-imposed boundary — only
+`RiskLimits.max_drawdown_pct`, a self-chosen ceiling with no external
+authority behind it (that schema's own docstring, and the same real
+distinction Piece 11 drew for `AccountRiskBudgetStatus` vs. this
+portfolio's `RiskBudgetStatus`). `PaperTrade.distance_to_drawdown_
+ceiling_before_pct`/`_after_pct` name that honestly rather than
+borrowing "failure boundary" language this portfolio doesn't actually
+have a claim to.
+
+**The exact formula, reused not reinvented.** `max(0, RiskLimits.
+max_drawdown_pct - max(0, -total_pnl_pct))`, read once against the real
+`total_pnl_pct` immediately before this trade's P&L lands and once
+immediately after — the identical `remaining_drawdown_budget_pct`
+formula `app/risk_engine.py`'s `compute_risk_budget_status()` already
+uses, just sampled at two points in time around one trade instead of
+once for the whole portfolio.
+
+**Optional by design, never fabricated when absent.** `close_position()`
+gained a new `risk_limits: RiskLimits | None = None` parameter — every
+real caller in `app/nexus.py`'s `tick()` now threads through the
+currently-*effective* `RiskLimits` (post circuit-breaker/travel-mode
+tightening, the same object Guardian's own risk watch already uses),
+but the parameter stays optional so every existing test fixture and any
+future caller that hasn't been threaded through yet gets an honest
+`None` on both new fields — never a fabricated number standing in for a
+real snapshot that was never taken.
+
+**Verified:** 12 new backend tests across three files — `test_portfolio.
+py`'s `TestDistanceToDrawdownCeiling` (5: `None` without `risk_limits`,
+a fresh portfolio starts at the full ceiling, a real winning trade never
+shrinks the distance, a real losing trade already underwater correctly
+shrinks it further, distance floors at zero past the ceiling);
+`test_broker.py`'s new test (2 assertions: a real exit-order fill
+through `tick_broker()` produces the real snapshot when `risk_limits`
+is supplied, and an honest `None` when it isn't); `test_trading_modes.
+py`'s two new tests on `flatten_day_positions()` (the real snapshot
+when `risk_limits` is supplied, `None` when it isn't). Full backend
+suite 1714/1714 passed, `mypy app/`/`ruff check app/ tests/` clean.
+`tsc -b --noEmit`/`eslint`/`vite build` clean after surfacing the two
+new fields in `PerformancePanel.tsx`'s Recent Trades card.
+
+**Live end-to-end verification, honestly incomplete.** The real running
+dev stack's own save (day 6→7 across this attempt) had zero real trade
+decisions/CEO decisions recorded even after a full simulated week
+advanced via the real `POST /api/time/advance` endpoint — this
+particular save's own trade-proposal pipeline wasn't actively cycling
+during this session, a pre-existing save-state condition confirmed
+unrelated to this change (no errors in the server log; `mypy`/the full
+test suite are both clean; the exact same real functions this piece
+touches are directly, thoroughly exercised by the 12 new tests above).
+Rather than claim a live trade was observed when one wasn't, this is
+stated plainly: backend correctness is verified by direct, comprehensive
+tests against the real execution-pipeline functions; a live trade
+closing through the actual running autonomous sim loop was not
+observed within this session's time budget.
