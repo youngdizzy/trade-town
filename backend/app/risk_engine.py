@@ -81,6 +81,16 @@ def trades_closed_today(trade_history: list[PaperTrade], sim_day: int) -> list[P
     return [t for t in trade_history if t.closed_sim_minutes // SIM_MINUTES_PER_DAY == sim_day]
 
 
+def distinct_trading_days(trade_history: list[PaperTrade]) -> int:
+    """Prop-Firm Risk Intelligence Addendum, Piece 11b — Requirement 24's
+    "number of trading days" data point. Counts distinct real sim days
+    with at least one real closed trade, reusing the exact
+    `closed_sim_minutes // SIM_MINUTES_PER_DAY` bucketing convention
+    app/prop_firm.py's compute_consistency_status() already established
+    — no new time-conversion logic."""
+    return len({t.closed_sim_minutes // SIM_MINUTES_PER_DAY for t in trade_history})
+
+
 def daily_realized_pnl_pct(portfolio: PaperPortfolio, sim_day: int) -> float:
     """Today's real realized P&L, as a % of the portfolio's real starting
     balance — the same fixed-reference convention app/portfolio.py's own
@@ -396,6 +406,7 @@ def compute_risk_budget_status(limits: RiskLimits, portfolio: PaperPortfolio, si
         remainingToDailyProfitTargetPct=round(remaining_to_daily_profit_target_pct, 2),
         tradingHalted=daily_status.trading_halted,
         haltReason=daily_status.halt_reason,
+        tradingDaysCount=distinct_trading_days(portfolio.trade_history),
         computedAt=_now_iso(),
     )
 

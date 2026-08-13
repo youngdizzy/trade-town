@@ -97,7 +97,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.schemas import BehavioralCircuitBreakerRead, BehavioralCircuitBreakerStatus, PaperTrade, TradeProposal
-from app.trading_modes import compute_consecutive_losses
+from app.trading_modes import compute_consecutive_losses, compute_consecutive_wins
 
 # How many of the account's own most recent closed trades (excluding the
 # loss itself) establish "recent normal" size — a real trailing window,
@@ -129,6 +129,7 @@ def default_behavioral_circuit_breaker() -> BehavioralCircuitBreakerRead:
         sameDirection=None,
         sizeIncreasePct=None,
         consecutiveLosses=0,
+        consecutiveWins=0,
         repeatedRapidReentryCount=0,
         previousWinSymbol=None,
         previousWinPnl=None,
@@ -176,6 +177,7 @@ def _loss_side_check(
     cooldown_minutes: int,
     size_increase_threshold_pct: float,
     consecutive_losses: int,
+    consecutive_wins: int,
     repeated_rapid_reentry_count: int,
 ) -> BehavioralCircuitBreakerRead:
     minutes_since_loss = now_sim_minutes - last_loss.closed_sim_minutes
@@ -195,6 +197,7 @@ def _loss_side_check(
             sameDirection=None,
             sizeIncreasePct=None,
             consecutiveLosses=consecutive_losses,
+            consecutiveWins=consecutive_wins,
             repeatedRapidReentryCount=repeated_rapid_reentry_count,
             computedAt=_now_iso(),
         )
@@ -244,6 +247,7 @@ def _loss_side_check(
         sameDirection=same_direction,
         sizeIncreasePct=size_increase_pct,
         consecutiveLosses=consecutive_losses,
+        consecutiveWins=consecutive_wins,
         repeatedRapidReentryCount=repeated_rapid_reentry_count,
         computedAt=_now_iso(),
     )
@@ -257,6 +261,7 @@ def _win_side_check(
     cooldown_minutes: int,
     size_increase_threshold_pct: float,
     consecutive_losses: int,
+    consecutive_wins: int,
     repeated_rapid_reentry_count: int,
 ) -> BehavioralCircuitBreakerRead:
     """Piece 8b — win-triggered escalation (Requirement 10: "detect risk
@@ -280,6 +285,7 @@ def _win_side_check(
         sameDirection=None,
         sizeIncreasePct=None,
         consecutiveLosses=consecutive_losses,
+        consecutiveWins=consecutive_wins,
         repeatedRapidReentryCount=repeated_rapid_reentry_count,
         previousWinSymbol=last_win.symbol,
         previousWinPnl=last_win.pnl,
@@ -315,15 +321,16 @@ def compute_behavioral_check(
     size_increase_threshold_pct: float,
 ) -> BehavioralCircuitBreakerRead:
     consecutive_losses = compute_consecutive_losses(trade_history)
+    consecutive_wins = compute_consecutive_wins(trade_history)
     repeated_rapid_reentry_count = _count_repeated_rapid_reentries(trade_history, cooldown_minutes)
 
     last_trade = trade_history[-1] if trade_history else None
 
     if last_trade is not None and last_trade.pnl < 0:
-        return _loss_side_check(candidate, trade_history, last_trade, now_sim_minutes, cooldown_minutes, size_increase_threshold_pct, consecutive_losses, repeated_rapid_reentry_count)
+        return _loss_side_check(candidate, trade_history, last_trade, now_sim_minutes, cooldown_minutes, size_increase_threshold_pct, consecutive_losses, consecutive_wins, repeated_rapid_reentry_count)
 
     if last_trade is not None and last_trade.pnl > 0:
-        return _win_side_check(candidate, trade_history, last_trade, now_sim_minutes, cooldown_minutes, size_increase_threshold_pct, consecutive_losses, repeated_rapid_reentry_count)
+        return _win_side_check(candidate, trade_history, last_trade, now_sim_minutes, cooldown_minutes, size_increase_threshold_pct, consecutive_losses, consecutive_wins, repeated_rapid_reentry_count)
 
     return BehavioralCircuitBreakerRead(
         status="clear",
@@ -336,6 +343,7 @@ def compute_behavioral_check(
         sameDirection=None,
         sizeIncreasePct=None,
         consecutiveLosses=consecutive_losses,
+        consecutiveWins=consecutive_wins,
         repeatedRapidReentryCount=repeated_rapid_reentry_count,
         previousWinSymbol=None,
         previousWinPnl=None,

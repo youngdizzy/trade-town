@@ -137,6 +137,16 @@ class TestComputeBehavioralCheck:
         # Cooldown timing keys off the most recent loss only.
         assert read.minutes_since_loss == 1000 - 50
 
+    def test_multiple_consecutive_wins_reflected_in_consecutive_wins(self) -> None:
+        wins = [
+            _trade(symbol="NEXA", pnl=10.0, opened_sim_minutes=0, closed_sim_minutes=10),
+            _trade(symbol="NEXA", pnl=10.0, opened_sim_minutes=20, closed_sim_minutes=30),
+            _trade(symbol="NEXA", pnl=10.0, opened_sim_minutes=40, closed_sim_minutes=50),
+        ]
+        read = compute_behavioral_check(None, wins, now_sim_minutes=1000, cooldown_minutes=60, size_increase_threshold_pct=50.0)
+        assert read.consecutive_wins == 3
+        assert read.consecutive_losses == 0
+
     def test_no_previous_trade_stays_clear_no_crash(self) -> None:
         candidate = _proposal()
         read = compute_behavioral_check(candidate, [], now_sim_minutes=0, cooldown_minutes=60, size_increase_threshold_pct=50.0)

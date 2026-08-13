@@ -286,6 +286,21 @@ def compute_consecutive_losses(trade_history: list[PaperTrade]) -> int:
     return count
 
 
+def compute_consecutive_wins(trade_history: list[PaperTrade]) -> int:
+    """Prop-Firm Risk Intelligence Addendum, Piece 11b — Requirement 24's
+    "consecutive wins" data point. Exact mirror of
+    compute_consecutive_losses() above, walking backward until a real
+    loss (pnl <= 0) or the history ends — a breakeven trade (pnl == 0)
+    breaks a win streak the same honest way it fails to extend one."""
+    count = 0
+    for trade in reversed(trade_history):
+        if trade.pnl > 0:
+            count += 1
+        else:
+            break
+    return count
+
+
 def compute_losing_streak(state: TradingModeState, trade_history: list[PaperTrade]) -> tuple[LosingStreakRead, TradingModeState]:
     """`losing_streak_acknowledged` auto-clears the instant a real win
     breaks the streak (consecutive_losses hits 0) — a CEO's

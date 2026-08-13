@@ -1456,6 +1456,12 @@ class RiskBudgetStatus(CamelModel):
     remaining_to_daily_profit_target_pct: float = Field(alias="remainingToDailyProfitTargetPct")
     trading_halted: bool = Field(alias="tradingHalted")
     halt_reason: str | None = Field(default=None, alias="haltReason")
+    # Prop-Firm Risk Intelligence Addendum, Piece 11b — Requirement 24's
+    # "number of trading days" data point: a real count of distinct sim
+    # days with at least one real closed trade, reusing the exact
+    # `closed_sim_minutes // 1440` day-bucketing convention
+    # app/prop_firm.py's compute_consistency_status() already established.
+    trading_days_count: int = Field(default=0, alias="tradingDaysCount")
     computed_at: str = Field(alias="computedAt")
 
 
@@ -4883,6 +4889,10 @@ class BehavioralCircuitBreakerRead(CamelModel):
     same_direction: bool | None = Field(default=None, alias="sameDirection")
     size_increase_pct: float | None = Field(default=None, alias="sizeIncreasePct")
     consecutive_losses: int = Field(alias="consecutiveLosses")
+    # Prop-Firm Risk Intelligence Addendum, Piece 11b — Requirement 24's
+    # "consecutive wins" data point, an exact mirror of consecutive_losses
+    # above (app/trading_modes.py's compute_consecutive_wins()).
+    consecutive_wins: int = Field(default=0, alias="consecutiveWins")
     repeated_rapid_reentry_count: int = Field(alias="repeatedRapidReentryCount")
     previous_win_symbol: str | None = Field(default=None, alias="previousWinSymbol")
     previous_win_pnl: float | None = Field(default=None, alias="previousWinPnl")

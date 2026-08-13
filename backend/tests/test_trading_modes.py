@@ -19,6 +19,7 @@ from app.trading_modes import (
     circuit_breaker_confidence_bonus,
     compute_adaptive_mode_recommendation,
     compute_consecutive_losses,
+    compute_consecutive_wins,
     compute_daily_circuit_breaker,
     compute_losing_streak,
     compute_trading_mode_health,
@@ -211,6 +212,23 @@ class TestConsecutiveLosses:
 
     def test_empty_history_is_zero(self) -> None:
         assert compute_consecutive_losses([]) == 0
+
+
+class TestConsecutiveWins:
+    def test_counts_trailing_wins_only(self) -> None:
+        history = [_trade(pnl=-100.0, closed_sim_minutes=1), _trade(pnl=50.0, closed_sim_minutes=2), _trade(pnl=30.0, closed_sim_minutes=3)]
+        assert compute_consecutive_wins(history) == 2
+
+    def test_zero_when_most_recent_is_a_loss(self) -> None:
+        history = [_trade(pnl=50.0, closed_sim_minutes=1), _trade(pnl=-100.0, closed_sim_minutes=2)]
+        assert compute_consecutive_wins(history) == 0
+
+    def test_breakeven_trade_breaks_a_win_streak(self) -> None:
+        history = [_trade(pnl=50.0, closed_sim_minutes=1), _trade(pnl=0.0, closed_sim_minutes=2)]
+        assert compute_consecutive_wins(history) == 0
+
+    def test_empty_history_is_zero(self) -> None:
+        assert compute_consecutive_wins([]) == 0
 
 
 class TestLosingStreak:

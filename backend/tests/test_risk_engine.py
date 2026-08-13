@@ -8,6 +8,7 @@ from app.risk_engine import (
     compute_daily_objective_status,
     compute_risk_budget_status,
     daily_realized_pnl_pct,
+    distinct_trading_days,
     evaluate_guardian_exposure,
     evaluate_sentinel_risk,
     monthly_realized_pnl_pct,
@@ -299,6 +300,35 @@ class TestComputeRiskBudgetStatus:
         status = compute_risk_budget_status(limits, portfolio, sim_day=1)
         assert status.trading_halted is False
         assert status.halt_reason is None
+
+    def test_trading_days_count_reflects_real_distinct_days(self) -> None:
+        limits = RiskLimits()
+        trades = [
+            _trade(pnl=100.0, closed_sim_minutes=30),
+            _trade(pnl=-50.0, closed_sim_minutes=1440 + 30),
+            _trade(pnl=20.0, closed_sim_minutes=1440 + 90),
+        ]
+        portfolio = _portfolio(trades=trades, starting=100_000.0)
+        status = compute_risk_budget_status(limits, portfolio, sim_day=1)
+        assert status.trading_days_count == 2
+
+
+class TestDistinctTradingDays:
+    """Prop-Firm Risk Intelligence Addendum, Piece 11b — Requirement 24's
+    "number of trading days" data point, reusing the exact
+    closed_sim_minutes // SIM_MINUTES_PER_DAY bucketing convention
+    app/prop_firm.py's compute_consistency_status() already established."""
+
+    def test_counts_distinct_days_not_trade_count(self) -> None:
+        trades = [_trade(pnl=10.0, closed_sim_minutes=30), _trade(pnl=10.0, closed_sim_minutes=60), _trade(pnl=10.0, closed_sim_minutes=90)]
+        assert distinct_trading_days(trades) == 1
+
+    def test_counts_multiple_real_distinct_days(self) -> None:
+        trades = [_trade(pnl=10.0, closed_sim_minutes=30), _trade(pnl=10.0, closed_sim_minutes=1440 + 30), _trade(pnl=10.0, closed_sim_minutes=2880 + 30)]
+        assert distinct_trading_days(trades) == 3
+
+    def test_empty_history_is_zero(self) -> None:
+        assert distinct_trading_days([]) == 0
 
 
 class TestEvaluateSentinelRiskExisting:
