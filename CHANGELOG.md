@@ -7,6 +7,48 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO Company/Executive Health directive — Innovation Velocity: the real IDEA -> HYPOTHESIS -> EVIDENCE ->
+  VALIDATION -> DEPLOYMENT -> MEASURED IMPROVEMENT pipeline, not Devil's Advocate critique quality alone**
+  (`backend/app/company_health.py`, `backend/app/nexus.py`, `backend/app/state.py`,
+  `backend/tests/test_company_health.py`,
+  `docs/DesignBible/volumes/09-departments/chapter-63-executive-performance-company-health.md`): the CEO named
+  a real pipeline this metric was supposed to reward, but direct trace found `_innovation_velocity()` read only
+  average real Devil's Advocate points relative to the Legendary Innovator threshold — a real signal, but only
+  one pipeline stage, and nothing about whether ideas ever moved or held up. Fixed: kept the original formula as
+  `_validation_rigor()` (unchanged) and added two new real ingredients — `_pipeline_progress()` (real depth
+  reached down `app/sandbox.py`'s own real, gated Strategy Lab `STAGE_ORDER`, a stage-for-stage match to the
+  CEO's named pipeline; reads real depth rather than a fabricated "ideal days per stage" velocity constant this
+  codebase has no data to support) and `_measured_improvement()` (for strategies that have actually reached real
+  deployment, credits their latest real `StrategyHealthAssessment.trend` — a real recent-vs-lifetime read over
+  actual `SimulationResult` history, never profit alone; neutral 50.0 when nothing has deployed yet).
+  `_innovation_velocity()` is now an equal three-way blend. Verified: 4 new tests, `_strong_executive_overrides()`'s
+  fixture extended with real deployed strategies carrying a real improving trend, 1 existing test corrected, full
+  backend suite passing, `mypy`/`ruff` clean. Live-verified against a running save: hand-computed `rigor` (39.4),
+  `pipeline_progress` (25.0, all 4 real strategies at real `historical_backtest`), and `measured_improvement`
+  (50.0 neutral, none deployed yet) produced `(39.4 + 25.0 + 50.0) / 3 = 38.1` — an exact match against the
+  server's live-reported `innovationVelocity: 38.1`.
+
+- **CEO Company/Executive Health directive — Institutional Memory: reusing and strengthening the real Wisdom
+  system with a genuinely distinct knowledge-retention signal, not duplicating it under a new name**
+  (`backend/app/company_health.py`, `backend/app/nexus.py`, `backend/app/state.py`,
+  `backend/tests/test_company_health.py`,
+  `docs/DesignBible/volumes/09-departments/chapter-63-executive-performance-company-health.md`): the CEO's
+  directive asked this dimension to "reuse/strengthen existing knowledge systems." `_institutional_memory()` was
+  a direct passthrough of the real, already-comprehensive `WisdomState.score` (`app/wisdom.py`'s eight-factor
+  composite) — honest, but missing whether that reflection had actually become durable in individual agents.
+  Fixed: a new `_knowledge_retention()` component reads the real share of agents who have reached
+  `app/academy.py`'s real top "mentor" Academy KnowledgeLevel (gated only by real cumulative points from
+  completed research/Academy projects/meeting attendance) — genuinely distinct from Wisdom's own
+  `share_knowledge` factor (a raw mentorship-session tally, not depth of mastery).
+  `_institutional_memory()` is now an equal blend of `WisdomState.score` and `_knowledge_retention()`. Verified:
+  2 new tests, `_strong_executive_overrides()`'s fixture extended with every agent at real mentor level, 1
+  existing test corrected (25.0), full backend suite passing, `mypy`/`ruff` clean. Live-verified against a
+  running save: the real per-agent Academy state (fetched via `GET /api/load/archive/academy`, since
+  `agentKnowledge` is one of `/api/load`'s own documented archive-module fields and reads back a placeholder
+  default there — confirmed by cross-checking a temporary tick-time debug print) showed 5 of 11 agents at real
+  mentor level (45.5% retention); blending with the save's real `WisdomState.score` (45.1) by hand produced
+  `(45.1 + 45.5) / 2 = 45.3` — an exact match against the server's live-reported `institutionalMemory: 45.3`.
+
 - **CEO Company/Executive Health directive, Phase 6 — Decision Quality: real calibration between two
   independent process assessments, never touching money either way** (`backend/app/company_health.py`,
   `backend/tests/test_company_health.py`,

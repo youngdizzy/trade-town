@@ -743,3 +743,123 @@ decisions) and `calibration` (the honest neutral 50.0 — the save's one
 real closed-trade Discipline Review exists, but its underlying decision
 had already aged out of that same 30-decision window) by hand from the
 raw archive data produced `(82.3 + 50.0) / 2 = 66.1` — an exact match.
+
+**CEO Company/Executive Health directive, Institutional Memory —
+reusing and strengthening the real Wisdom system, not duplicating it
+under a new name.** The CEO's directive asked Institutional Memory to
+"reuse/strengthen existing knowledge systems," explicitly warning
+against building a second, competing system under a new label.
+
+*What was already real:* `_institutional_memory()` was a direct
+passthrough of `WisdomState.score` — already a real, comprehensive,
+non-fabricated eight-factor composite (`app/wisdom.py`'s
+`compute_wisdom_score()`: learning from experience, sharing knowledge,
+following principles, documenting lessons, avoiding repeated mistakes,
+completing research, improving communication, supporting
+collaboration). A pure passthrough of an already-real system is
+honest, but it left one real gap the CEO's directive named: whether the
+company's own reflection has actually become durable in individual
+agents, not just recorded as a weekly/monthly score.
+
+*Fix:* a new `_knowledge_retention()` component — the share of the
+company's real agents who have reached `app/academy.py`'s real,
+seven-level per-agent Academy KnowledgeLevel ladder's actual top tier
+("mentor," gated by real cumulative points from completed research,
+completed Academy projects, and meeting attendance — never fabricated,
+never gameable by anything but real completed work). This is
+deliberately distinct from Wisdom's own `share_knowledge` factor (which
+only tallies a raw `MemoryRecord` mentorship-session count, never actual
+depth of mastery reached), so the two are genuinely independent real
+signals, not one system read twice under two names.
+`_institutional_memory()` is now an equal blend of `WisdomState.score`
+and `_knowledge_retention()`. 0.0 for `_knowledge_retention()` with no
+agents on record — an honest floor, not a neutral guess, since a fresh
+company has genuinely retained nothing yet.
+
+Verified: 2 new tests (the exact blended arithmetic; agents who have
+genuinely reached real mentor level score higher than identically-wise
+agents who are all still novices), `_strong_executive_overrides()`'s
+fixture extended with every real agent at real mentor level, 1 existing
+default-state test corrected (25.0, from the new blend), full backend
+suite passing, `mypy`/`ruff` clean. Live-verified against a running save
+(day 38): independently recomputing `_knowledge_retention()` by hand
+from the real `agentKnowledge` archive module (`GET
+/api/load/archive/academy` — `agentKnowledge` is one of `/api/load`'s
+own documented archive-module fields, so it reads back a placeholder
+default there; the real data lives in the archive endpoint, the same
+"core vs. archive" split this chapter's own Phase verifications have
+used since Phase 3) found 5 of 11 real agents at real mentor level
+(45.5% retention); blending that with the save's real
+`WisdomState.score` (45.1) by hand produced `(45.1 + 45.5) / 2 = 45.3`
+— an exact match against the server's live-reported
+`institutionalMemory: 45.3`.
+
+**CEO Company/Executive Health directive, Innovation Velocity — the
+real pipeline the CEO named ("USEFUL IDEA -> TESTABLE HYPOTHESIS ->
+EVIDENCE -> VALIDATION -> DEPLOYMENT -> MEASURED IMPROVEMENT"), not
+Devil's Advocate critique quality alone.**
+
+*Root cause, found by direct trace:* the original formula read only
+average real Devil's Advocate points (`app/innovation.py`) relative to
+the real Legendary Innovator threshold — a real, non-fabricated signal,
+but only one stage of the pipeline the metric was actually named for
+("velocity"). Nothing measured whether ideas ever moved, or whether
+what shipped actually held up.
+
+*Fix — three real, equal-weighted ingredients, kept as
+`_validation_rigor()` (renamed, unchanged formula) plus two new ones:*
+
+- `_pipeline_progress()` — real depth reached down
+  `app/sandbox.py`'s own real, gated `STAGE_ORDER` (idea -> research ->
+  historical_backtest -> market_simulation -> paper_trading ->
+  limited_live_capital -> company_review -> approved -> retired), a
+  stage-for-stage match to the CEO's named pipeline. A true
+  time-to-deployment *velocity* would require a fabricated "ideal days
+  per stage" constant this codebase has no real data to support — the
+  CEO's directive explicitly forbids inventing such thresholds — so
+  this reads real pipeline *depth* instead: an honest, non-fabricated
+  stand-in.
+- `_measured_improvement()` — the pipeline's final real step. Only
+  strategies that have actually reached real deployment (stage index
+  >= "approved") count; each deployed strategy's latest real
+  `StrategyHealthAssessment.trend` (`app/strategy_lab.py`'s
+  `compute_strategy_health()` — a real recent-vs-lifetime-average read
+  over that strategy's own `SimulationResult` history, never profit
+  alone) is credited 100/50/0 for improving/stable/declining. Neutral
+  50.0 when nothing has deployed yet, or a deployed strategy has no
+  health read yet — an honest "not yet measurable" state, never a
+  penalty.
+
+`_innovation_velocity()` is now `(rigor + pipeline_progress +
+measured_improvement) / 3`. 0.0 only when the company has neither ever
+filed a Devil's Advocate challenge nor has any strategies on record at
+all.
+
+Verified: 4 new tests (the exact three-way blended arithmetic; real
+pipeline depth is rewarded independent of Devil's Advocate activity; a
+real improving trend outscores a real declining one for an identically
+deployed strategy; only the latest real health assessment per strategy
+counts, list order = chronological order — the same convention this
+module already uses elsewhere), `_strong_executive_overrides()`'s
+fixture extended with real approved strategies carrying a real
+improving health trend, 1 existing test's name and assertion corrected
+to reflect the blend, full backend suite passing, `mypy`/`ruff` clean.
+Live-verified against the same running save: independently recomputing
+`rigor` (39.4, real average Devil's Advocate points over 5 real agents),
+`pipeline_progress` (25.0, all 4 real strategies at real
+`historical_backtest`, stage index 2 of 8), and `measured_improvement`
+(50.0 neutral — none of the 4 real strategies have reached real
+deployment yet) by hand from the raw save data produced `(39.4 + 25.0 +
+50.0) / 3 = 38.1` — an exact match against the server's live-reported
+`innovationVelocity: 38.1`.
+
+Both phases' live verification surfaced and confirmed (not caused by
+either phase) a pre-existing, deliberate `/api/load` behavior worth
+recording here for the next Phase's verification pass: `agent_knowledge`
+is bundled under the "academy" archive module
+(`app/save_modules.py`'s `ARCHIVE_MODULES`), so `/api/load`'s top-level
+`agentKnowledge` field reads back a placeholder default (all agents at
+"novice") exactly like `trade_history`/`knowledge_archive` already do —
+the real, current per-agent Academy state must be fetched via `GET
+/api/load/archive/academy`, confirmed by cross-checking a temporary
+tick-time debug print against both endpoints during this verification.

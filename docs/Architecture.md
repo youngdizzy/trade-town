@@ -2692,6 +2692,42 @@ neutral 50.0 — the one real matching review's decision had aged out of
 the 30-decision window) produced `66.1`, an exact match to the server's
 reported value.
 
+**Institutional Memory, corrected under the same directive.** The real
+`WisdomState.score` passthrough was already an honest, comprehensive
+eight-factor composite (`app/wisdom.py`) — but nothing checked whether
+that reflection had actually become durable in individual agents. A new
+`_knowledge_retention()` component reads the real share of agents who
+have reached `app/academy.py`'s real top "mentor" Academy KnowledgeLevel
+(gated only by real cumulative points from completed research/Academy
+projects/meeting attendance) — genuinely distinct from Wisdom's own
+`share_knowledge` factor (a raw mentorship-session tally, not depth of
+mastery). `_institutional_memory()` is now an equal blend of
+`WisdomState.score` and `_knowledge_retention()`. Live-verified with
+hand-computed arithmetic from the raw save data (real per-agent Academy
+state fetched via `GET /api/load/archive/academy`, since `agentKnowledge`
+is one of `/api/load`'s own documented archive-module fields): 5 of 11
+real agents at real mentor level (45.5% retention) blended with the
+save's real wisdom score (45.1) produced `45.3`, an exact match to the
+server's reported value.
+
+**Innovation Velocity, corrected under the same directive.** The real
+formula read only average Devil's Advocate points relative to the
+Legendary Innovator threshold — one real pipeline stage, never whether
+ideas actually moved or held up. Kept unchanged as `_validation_rigor()`
+and blended equally with two new real ingredients: `_pipeline_progress()`
+(real depth reached down `app/sandbox.py`'s own real, gated Strategy Lab
+`STAGE_ORDER` — an honest, non-fabricated stand-in for "velocity," since
+a true time-to-deployment metric would need a fabricated ideal-days-
+per-stage constant this codebase has no data for) and
+`_measured_improvement()` (for real deployed strategies, credits their
+latest real `StrategyHealthAssessment.trend`, a recent-vs-lifetime read
+over actual `SimulationResult` history, never profit alone).
+Live-verified with hand-computed arithmetic from the raw save data:
+`rigor` (39.4), `pipeline_progress` (25.0, all 4 real strategies at real
+`historical_backtest`), and `measured_improvement` (50.0 neutral, none
+deployed yet) produced `38.1`, an exact match to the server's reported
+value.
+
 **Executive Priorities and Department Health are both pure frontend
 derivations** — like the Decision Replay Center, no second backend
 computation was needed. `lib/derive.ts`'s `computeExecutivePriorities()`
@@ -3445,9 +3481,9 @@ COMPANY tab — keeps working identically):
 | Risk Governance | real Gatekeeper approval rate (closed trades ÷ closed trades + rejections) — the same real signal `wisdom.py`'s `follow_principles` already reads, reused for a different question |
 | Simulation Coverage | % of recent Meeting Log entries whose Simulation opinion wasn't an honest "not yet stress-tested" |
 | Department Consensus | % of all recent Meeting Log opinions with an "agree" stance |
-| Self-Evaluation Health | mean of the latest weekly Self-Evaluation score per department |
-| Institutional Memory | the real `WisdomState.score`, reused directly |
-| Innovation Velocity | average real Innovation Points, normalized against the real Legendary Innovator threshold |
+| Self-Evaluation Health | mean of the latest weekly Self-Evaluation score per department, blended with a real prediction-vs-outcome calibration trend (see below) |
+| Institutional Memory | equal blend of the real `WisdomState.score` and the real share of agents who have reached Academy's top "mentor" KnowledgeLevel (see below) |
+| Innovation Velocity | equal blend of average real Innovation Points (normalized against the Legendary Innovator threshold), real Strategy Lab pipeline depth reached, and real post-deployment `StrategyHealthAssessment` trend (see below) |
 | Talent Development | real Academy graduation rate (graduated ÷ possible across active mentor tracks × students) |
 | Founder Oversight | real Founder Council session frequency, capped at 100 |
 

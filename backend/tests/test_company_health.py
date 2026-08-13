@@ -7,6 +7,7 @@ is randomized or invented.
 """
 from __future__ import annotations
 
+from app.agents import all_agent_ids
 from app.company_health import compute_company_health
 from app.debate import generate_debate
 from app.education import all_lessons
@@ -14,6 +15,7 @@ from app.foundational_mentors import STUDENT_AGENT_IDS, default_foundational_men
 from app.portfolio import default_portfolio
 from app.schemas import (
     AgentEnergy,
+    AgentKnowledgeState,
     AgentState,
     AnalystVote,
     Debate,
@@ -34,6 +36,8 @@ from app.schemas import (
     ResearchItem,
     RiskWarning,
     SignalCalibrationState,
+    Strategy,
+    StrategyHealthAssessment,
     TradeDecision,
     TradeProposal,
     WatchlistEntry,
@@ -222,6 +226,45 @@ def _strong_executive_overrides() -> dict:
     founder_council_sessions = [
         FounderCouncilSession(id=f"c{i}", simDay=i, coachHighlight="x", keystoneNote="x", compassNote="x", createdAt="2026-01-01T00:00:00+00:00") for i in range(5)
     ]
+    # CEO Company/Executive Health directive, Phase "Institutional
+    # Memory" — institutional_memory now also reads real per-agent
+    # Academy mastery (app/academy.py's is_mentor_level()), so every
+    # real agent needs to have actually reached the real top "mentor"
+    # KnowledgeLevel here, not just a high WisdomState.score.
+    agent_knowledge = {
+        agent_id: AgentKnowledgeState(agentId=agent_id, branch="x", points=100.0, tier=6, level="mentor") for agent_id in all_agent_ids()
+    }
+    # CEO Company/Executive Health directive, Phase "Innovation
+    # Velocity" — innovation_velocity now also reads real Strategy Lab
+    # pipeline depth and real post-deployment StrategyHealthAssessment
+    # trends, so this fixture needs real strategies that have actually
+    # reached the real furthest "approved" stage with a real "improving"
+    # health read, not just Devil's Advocate points.
+    strong_strategies = [
+        Strategy(id=f"strong-strategy-{i}", name=f"Strategy {i}", description="x", createdBy="scout", focusCategory="stock", createdAt="2026-01-01T00:00:00+00:00", stage="approved")
+        for i in range(3)
+    ]
+    strong_strategy_health_assessments = [
+        StrategyHealthAssessment(
+            id=f"health-{s.id}",
+            strategyId=s.id,
+            strategyName=s.name,
+            status="excellent",
+            trend="improving",
+            recentWinRate=90.0,
+            lifetimeWinRate=80.0,
+            recentAvgReturnPct=6.0,
+            lifetimeAvgReturnPct=3.0,
+            recentAvgDrawdownPct=2.0,
+            lifetimeAvgDrawdownPct=3.0,
+            recentSampleSize=5,
+            lifetimeSampleSize=10,
+            reasoning=["x"],
+            simDay=10,
+            createdAt="2026-01-10T00:00:00+00:00",
+        )
+        for s in strong_strategies
+    ]
     return dict(
         decisions=decisions,
         meeting_log=meeting_log,
@@ -232,6 +275,9 @@ def _strong_executive_overrides() -> dict:
         founder_council_sessions=founder_council_sessions,
         gatekeeper_rejections=[],
         discipline_reviews=all_discipline_reviews,
+        agent_knowledge=agent_knowledge,
+        strategies=strong_strategies,
+        strategy_health_assessments=strong_strategy_health_assessments,
     )
 
 
@@ -282,6 +328,9 @@ def _health(**overrides):
         founder_council_sessions=[],
         gatekeeper_rejections=[],
         discipline_reviews=[],
+        agent_knowledge={},
+        strategies=[],
+        strategy_health_assessments=[],
     )
     defaults.update(overrides)
     return compute_company_health(**defaults)
@@ -626,7 +675,11 @@ class TestExecutiveTier:
         assert health.executive_alignment == 50.0
         assert health.department_consensus == 50.0
         assert health.self_evaluation_health == 50.0
-        assert health.institutional_memory == 50.0
+        # CEO Company/Executive Health directive — institutional_memory is
+        # now an equal blend of WisdomState.score (50.0 neutral default)
+        # and real per-agent Academy mastery (0.0 — no agent_knowledge on
+        # record yet), not a pure WisdomState.score passthrough.
+        assert health.institutional_memory == 25.0
         assert health.talent_development == 0.0  # no active mentor track has any graduate yet
         assert health.simulation_coverage == 0.0  # honestly "no coverage" rather than neutral
         assert health.innovation_velocity == 0.0
@@ -796,13 +849,112 @@ class TestExecutiveTier:
         # No checkable reviews in either half -> calibration_trend stays neutral 50.
         assert health.self_evaluation_health == 50.0
 
-    def test_institutional_memory_reuses_the_real_wisdom_score(self) -> None:
-        health = _health(wisdom_state=WisdomState(score=72.5, tier="seasoned_wisdom", tierLabel="Seasoned Wisdom", factors=[], updatedAt="2026-01-01T00:00:00+00:00"))
-        assert health.institutional_memory == 72.5
+    def test_institutional_memory_blends_wisdom_score_and_knowledge_retention(self) -> None:
+        """CEO Company/Executive Health directive — institutional_memory
+        is now an equal blend of the real WisdomState.score and real
+        per-agent Academy mastery (see app/company_health.py's
+        _knowledge_retention()), not a pure WisdomState.score
+        passthrough."""
+        agent_knowledge = {
+            "scout": AgentKnowledgeState(agentId="scout", branch="x", points=100.0, tier=6, level="mentor"),
+            "atlas": AgentKnowledgeState(agentId="atlas", branch="x", points=0.0, tier=0, level="novice"),
+        }
+        health = _health(
+            wisdom_state=WisdomState(score=72.5, tier="seasoned_wisdom", tierLabel="Seasoned Wisdom", factors=[], updatedAt="2026-01-01T00:00:00+00:00"),
+            agent_knowledge=agent_knowledge,
+        )
+        # knowledge_retention = 1 real mentor / 2 real agents * 100 = 50.0
+        assert health.institutional_memory == 61.2
 
-    def test_innovation_velocity_normalizes_against_the_legendary_threshold(self) -> None:
-        health = _health(innovation_state={"scout": InnovationState(agentId="scout", points=17.5, tier=2, tierName="innovation_leader")})
-        assert health.innovation_velocity == 50.0
+    def test_institutional_memory_knowledge_retention_rewards_real_mentor_level_agents(self) -> None:
+        """A company whose agents have genuinely reached the real top
+        "mentor" Academy level scores higher than one whose agents are
+        all still novices, even with an identical WisdomState.score —
+        knowledge retention, not reflection alone."""
+        wisdom_state = WisdomState(score=50.0, tier="developing_judgment", tierLabel="Developing Judgment", factors=[], updatedAt="2026-01-01T00:00:00+00:00")
+        all_novice = {aid: AgentKnowledgeState(agentId=aid, branch="x", points=0.0, tier=0, level="novice") for aid in all_agent_ids()}
+        all_mentor = {aid: AgentKnowledgeState(agentId=aid, branch="x", points=100.0, tier=6, level="mentor") for aid in all_agent_ids()}
+        novice_health = _health(wisdom_state=wisdom_state, agent_knowledge=all_novice)
+        mentor_health = _health(wisdom_state=wisdom_state, agent_knowledge=all_mentor)
+        assert novice_health.institutional_memory == 25.0
+        assert mentor_health.institutional_memory == 75.0
+
+    @staticmethod
+    def _strategy(strategy_id: str, stage: str) -> Strategy:
+        return Strategy(id=strategy_id, name=strategy_id, description="x", createdBy="scout", focusCategory="stock", createdAt="2026-01-01T00:00:00+00:00", stage=stage)  # type: ignore[arg-type]
+
+    @staticmethod
+    def _health_assessment(assessment_id: str, strategy_id: str, trend: str, sim_day: int) -> StrategyHealthAssessment:
+        return StrategyHealthAssessment(
+            id=assessment_id,
+            strategyId=strategy_id,
+            strategyName=strategy_id,
+            status="excellent" if trend == "improving" else "declining",
+            trend=trend,  # type: ignore[arg-type]
+            recentWinRate=90.0,
+            lifetimeWinRate=80.0,
+            recentAvgReturnPct=5.0,
+            lifetimeAvgReturnPct=2.0,
+            recentAvgDrawdownPct=1.0,
+            lifetimeAvgDrawdownPct=2.0,
+            recentSampleSize=5,
+            lifetimeSampleSize=10,
+            reasoning=["x"],
+            simDay=sim_day,
+            createdAt="2026-01-01T00:00:00+00:00",
+        )
+
+    def test_innovation_velocity_blends_three_real_pipeline_signals(self) -> None:
+        """CEO Company/Executive Health directive — innovation_velocity
+        is now an equal blend of _validation_rigor() (the original,
+        unchanged Devil's Advocate reading), _pipeline_progress() (real
+        Strategy Lab stage depth), and _measured_improvement() (real
+        post-deployment StrategyHealthAssessment trend), not Devil's
+        Advocate points alone."""
+        health = _health(
+            innovation_state={"scout": InnovationState(agentId="scout", points=17.5, tier=2, tierName="innovation_leader")},
+            strategies=[self._strategy("s1", "research")],
+            strategy_health_assessments=[],
+        )
+        # rigor = 17.5/35*100 = 50.0; pipeline_progress = stage_index("research")=1 / 8 * 100 = 12.5;
+        # measured_improvement = 50.0 neutral (nothing has reached real deployment yet).
+        assert health.innovation_velocity == 37.5
+
+    def test_innovation_velocity_pipeline_progress_rewards_real_stage_depth(self) -> None:
+        """A strategy that has actually traveled further down the real,
+        gated Strategy Lab pipeline scores higher than one still at the
+        idea stage, with no Devil's Advocate activity either way."""
+        idea_health = _health(strategies=[self._strategy("s1", "idea")])
+        approved_health = _health(
+            strategies=[self._strategy("s2", "approved")],
+            strategy_health_assessments=[self._health_assessment("h1", "s2", "stable", 1)],
+        )
+        assert approved_health.innovation_velocity > idea_health.innovation_velocity
+
+    def test_innovation_velocity_measured_improvement_rewards_a_real_improving_trend(self) -> None:
+        """Two identically-deployed strategies, differing only in their
+        own real, independently-computed StrategyHealthAssessment
+        trend — the improving one scores higher."""
+        strategy = self._strategy("s1", "approved")
+        improving = _health(strategies=[strategy], strategy_health_assessments=[self._health_assessment("h1", "s1", "improving", 1)])
+        declining = _health(strategies=[strategy], strategy_health_assessments=[self._health_assessment("h2", "s1", "declining", 1)])
+        assert improving.innovation_velocity > declining.innovation_velocity
+
+    def test_innovation_velocity_uses_only_the_latest_health_assessment_per_strategy(self) -> None:
+        """List order = chronological order, the same convention this
+        module already uses elsewhere (e.g. talent_development's
+        post-graduation reviews) — an older "declining" read must not
+        outvote a newer real "improving" one for the same strategy."""
+        strategy = self._strategy("s1", "approved")
+        health = _health(
+            strategies=[strategy],
+            strategy_health_assessments=[
+                self._health_assessment("h1", "s1", "declining", 1),
+                self._health_assessment("h2", "s1", "improving", 5),
+            ],
+        )
+        only_improving = _health(strategies=[strategy], strategy_health_assessments=[self._health_assessment("h2", "s1", "improving", 5)])
+        assert health.innovation_velocity == only_improving.innovation_velocity
 
     def test_founder_oversight_caps_at_one_hundred(self) -> None:
         # All three notes real (the schema default), so both the

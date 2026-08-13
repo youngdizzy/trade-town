@@ -2057,6 +2057,14 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         # reads the exact same real, already-in-scope discipline_reviews
         # list every other tick-time consumer here does.
         discipline_reviews=discipline_reviews,
+        # CEO Company/Executive Health directive — Institutional Memory's
+        # real per-agent Academy mastery signal, and Innovation
+        # Velocity's real Strategy Lab pipeline-progress/measured-
+        # improvement signals, all already in scope at this point in the
+        # tick.
+        agent_knowledge=agent_knowledge,
+        strategies=strategies,
+        strategy_health_assessments=strategy_health_assessments,
         # v0.7 Design Bible Chapter 63 — CEO-configurable Company Health
         # tier thresholds, threaded the same way every other Chapter
         # 57-62 CEO control already is at this point in the tick.

@@ -39,13 +39,16 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from app.academy import is_mentor_level
 from app.discipline import GOOD_DISCIPLINE_TIERS, POOR_DISCIPLINE_TIERS
 from app.education import all_lessons
 from app.foundational_mentors import STUDENT_AGENT_IDS
 from app.innovation import TIER_THRESHOLDS as INNOVATION_TIER_THRESHOLDS
+from app.sandbox import STAGE_ORDER, stage_index
 from app.schemas import (
     AgentEnergy,
     AgentId,
+    AgentKnowledgeState,
     AgentState,
     CompanyHealth,
     CompanyHealthTier,
@@ -64,6 +67,8 @@ from app.schemas import (
     ResearchItem,
     RiskWarning,
     SignalCalibrationState,
+    Strategy,
+    StrategyHealthAssessment,
     TradeDecision,
     WatchlistEntry,
     WisdomState,
@@ -469,15 +474,115 @@ def _self_evaluation_health(self_evaluations: list[DepartmentSelfEvaluation], di
     return (engagement + calibration_trend) / 2.0
 
 
-def _institutional_memory(wisdom_state: WisdomState) -> float:
-    return wisdom_state.score
+def _knowledge_retention(agent_knowledge: dict[AgentId, AgentKnowledgeState]) -> float:
+    """CEO Company/Executive Health directive: Institutional Memory
+    should reuse and strengthen real existing knowledge systems, not
+    duplicate one under a new name. WisdomState.score (blended in below)
+    already IS a real, comprehensive institutional-memory reading — an
+    unweighted mean of eight real factors (learning from experience,
+    documenting lessons, avoiding repeated mistakes, and more; see
+    app/wisdom.py's own module docstring). What it does not read is
+    whether that reflection has actually become durable in individual
+    agents. app/academy.py's real seven-level per-agent KnowledgeLevel
+    ladder (`is_mentor_level()` marking its real top tier, reached only
+    by real cumulative points from completed research/Academy projects/
+    meeting attendance — never fabricated) is a genuinely distinct real
+    signal: Wisdom's own `share_knowledge` factor only tallies a raw
+    MemoryRecord mentorship-session count, never actual depth of mastery
+    reached. 0.0 with no agents — an honest floor, not a neutral guess,
+    since a fresh company has genuinely retained nothing yet."""
+    if not agent_knowledge:
+        return 0.0
+    mentors = sum(1 for state in agent_knowledge.values() if is_mentor_level(state))
+    return mentors / len(agent_knowledge) * 100.0
 
 
-def _innovation_velocity(innovation_state: dict[AgentId, InnovationState]) -> float:
+def _institutional_memory(wisdom_state: WisdomState, agent_knowledge: dict[AgentId, AgentKnowledgeState]) -> float:
+    """Equal blend of WisdomState.score (the company's own real weekly/
+    monthly reflection score) and _knowledge_retention() above (whether
+    that reflection has actually taken root in individual agents) — see
+    _knowledge_retention()'s own docstring for why these are two
+    genuinely distinct real signals, not one system read twice."""
+    return (wisdom_state.score + _knowledge_retention(agent_knowledge)) / 2.0
+
+
+def _validation_rigor(innovation_state: dict[AgentId, InnovationState]) -> float:
+    """The original, unchanged Innovation Velocity formula: real average
+    Devil's Advocate points (app/innovation.py) relative to the real
+    Legendary Innovator threshold — the desk's demonstrated ability to
+    find genuine weaknesses before capital is committed. Kept as one
+    real ingredient below rather than replaced, since it already is a
+    real, non-fabricated signal — just not the whole real pipeline the
+    CEO's directive named."""
     if not innovation_state:
         return 0.0
     avg_points = sum(s.points for s in innovation_state.values()) / len(innovation_state)
     return min(100.0, avg_points / LEGENDARY_INNOVATOR_THRESHOLD * 100.0)
+
+
+def _pipeline_progress(strategies: list[Strategy]) -> float:
+    """CEO Company/Executive Health directive: Innovation Velocity was
+    named for a pipeline ("USEFUL IDEA -> TESTABLE HYPOTHESIS -> EVIDENCE
+    -> VALIDATION -> DEPLOYMENT -> MEASURED IMPROVEMENT") but the
+    original formula (see _validation_rigor() above) read only one stage
+    of it — Devil's Advocate critique quality — and nothing about
+    whether ideas actually move. app/sandbox.py's own real, gated
+    STAGE_ORDER (idea -> research -> historical_backtest ->
+    market_simulation -> paper_trading -> limited_live_capital ->
+    company_review -> approved -> retired) is a stage-for-stage match to
+    that exact pipeline and is already tracked per real Strategy. A true
+    time-to-deployment velocity would need a fabricated "ideal days per
+    stage" constant this codebase has no real data to support (the CEO's
+    directive explicitly forbids inventing such thresholds), so this
+    reads real pipeline DEPTH instead — how far, on average, the
+    company's real strategies have actually traveled down the real
+    gated sequence, an honest, non-fabricated stand-in for velocity."""
+    if not strategies:
+        return 0.0
+    max_index = len(STAGE_ORDER) - 1
+    return sum(stage_index(s.stage) for s in strategies) / len(strategies) / max_index * 100.0
+
+
+def _measured_improvement(strategies: list[Strategy], strategy_health_assessments: list[StrategyHealthAssessment]) -> float:
+    """The pipeline's final real step: DEPLOYMENT -> MEASURED
+    IMPROVEMENT. app/strategy_lab.py's compute_strategy_health() already
+    produces a real, non-fabricated StrategyHealthAssessment.trend
+    ("improving"/"stable"/"declining") per strategy, comparing that
+    strategy's own recent real SimulationResults against its own
+    lifetime average — never profit alone, the same "recent vs. own
+    history" convention this module already uses elsewhere (e.g.
+    _self_evaluation_health()'s calibration_trend). Only strategies that
+    have actually reached real deployment (stage index >= "approved")
+    count — an idea still in backtesting has nothing to measure
+    improvement against yet. Neutral 50.0 when nothing has reached
+    deployment yet, or a deployed strategy has no health read on record
+    yet — an honest "not yet measurable" state, not a penalty."""
+    deployed = [s for s in strategies if stage_index(s.stage) >= stage_index("approved")]
+    if not deployed:
+        return 50.0
+    latest_by_strategy: dict[str, StrategyHealthAssessment] = {}
+    for assessment in strategy_health_assessments:
+        latest_by_strategy[assessment.strategy_id] = assessment
+    trend_credit = {"improving": 100.0, "stable": 50.0, "declining": 0.0}
+    scores = [trend_credit[latest_by_strategy[s.id].trend] for s in deployed if s.id in latest_by_strategy]
+    if not scores:
+        return 50.0
+    return sum(scores) / len(scores)
+
+
+def _innovation_velocity(innovation_state: dict[AgentId, InnovationState], strategies: list[Strategy], strategy_health_assessments: list[StrategyHealthAssessment]) -> float:
+    """Equal blend of the three real pipeline ingredients above:
+    _validation_rigor() (VALIDATION — catching weaknesses before capital
+    is committed), _pipeline_progress() (IDEA -> HYPOTHESIS -> EVIDENCE
+    -> DEPLOYMENT — real movement down the real Strategy Lab pipeline),
+    and _measured_improvement() (DEPLOYMENT -> MEASURED IMPROVEMENT —
+    whether deployed strategies actually hold up). 0.0 only when the
+    company has neither ever filed a Devil's Advocate challenge nor has
+    any strategies on record at all — an honest floor for a company that
+    genuinely has not started yet, not a fabricated penalty."""
+    if not innovation_state and not strategies:
+        return 0.0
+    return (_validation_rigor(innovation_state) + _pipeline_progress(strategies) + _measured_improvement(strategies, strategy_health_assessments)) / 3.0
 
 
 def _talent_development(foundational_mentor_state: FoundationalMentorState, discipline_reviews: list[DisciplineReview]) -> float:
@@ -584,6 +689,14 @@ def compute_company_health(
     founder_council_sessions: list[FounderCouncilSession],
     gatekeeper_rejections: list[GatekeeperRejection],
     discipline_reviews: list[DisciplineReview],
+    # CEO Company/Executive Health directive — Institutional Memory's
+    # real knowledge-retention signal (see _knowledge_retention()).
+    agent_knowledge: dict[AgentId, AgentKnowledgeState],
+    # CEO Company/Executive Health directive — Innovation Velocity's real
+    # pipeline-progress and measured-improvement signals (see
+    # _pipeline_progress() / _measured_improvement()).
+    strategies: list[Strategy],
+    strategy_health_assessments: list[StrategyHealthAssessment],
     # v0.7 Design Bible Chapter 63 — CEO-configurable tier thresholds
     # (RiskLimits.companyHealth*Threshold), defaulting to the exact
     # module constants above so existing behavior is unchanged until the
@@ -622,8 +735,8 @@ def compute_company_health(
         "simulation_coverage": _simulation_coverage(meeting_log),
         "department_consensus": _department_consensus(meeting_log),
         "self_evaluation_health": _self_evaluation_health(self_evaluations, discipline_reviews),
-        "institutional_memory": _institutional_memory(wisdom_state),
-        "innovation_velocity": _innovation_velocity(innovation_state),
+        "institutional_memory": _institutional_memory(wisdom_state, agent_knowledge),
+        "innovation_velocity": _innovation_velocity(innovation_state, strategies, strategy_health_assessments),
         "talent_development": _talent_development(foundational_mentor_state, discipline_reviews),
         "founder_oversight": _founder_oversight(founder_council_sessions),
     }
