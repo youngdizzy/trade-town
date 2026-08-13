@@ -8,7 +8,8 @@ from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.persistence import persist_modules
-from app.schemas import RiskLimits, TierAllocationLimits
+from app.risk_engine import project_loss_after_n_losses
+from app.schemas import ProjectedLossPath, RiskLimits, TierAllocationLimits
 from app.state import game_state
 
 router = APIRouter(prefix="/api/risk-limits", tags=["risk"])
@@ -98,3 +99,15 @@ async def update_risk_limits(payload: UpdateRiskLimitsRequest) -> RiskLimitsResp
         raise HTTPException(status_code=400, detail=error)
     persist_modules(state)
     return RiskLimitsResponse(riskLimits=state.risk_limits)
+
+
+@router.get("/projected-loss", response_model=ProjectedLossPath)
+async def projected_loss(n: int) -> ProjectedLossPath:
+    """Prop-Firm Risk Intelligence Addendum, Piece 11a. Read-only,
+    computed fresh from the primary portfolio's real current equity and
+    RiskLimits — no game-state lock needed, nothing here mutates the
+    save."""
+    if n < 0:
+        raise HTTPException(status_code=400, detail="n must be 0 or greater.")
+    state = await game_state.snapshot()
+    return project_loss_after_n_losses(state.risk_limits, state.paper_portfolio, n)

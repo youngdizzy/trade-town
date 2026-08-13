@@ -12,6 +12,7 @@ from app.risk_engine import (
     evaluate_sentinel_risk,
     monthly_realized_pnl_pct,
     portfolio_equity,
+    project_loss_after_n_losses,
     recommended_quantity,
     trades_closed_today,
     trades_opened_today,
@@ -370,3 +371,53 @@ class TestGuardianAndSizing:
         )
         portfolio = _portfolio(cash=1000.0, positions=[position])
         assert portfolio_equity(portfolio) == 1000.0 + 10.0 * 55.0
+
+
+class TestProjectLossAfterNLosses:
+    """Prop-Firm Risk Intelligence Addendum, Piece 11a — Requirement 23:
+    "projected loss after N consecutive losses." Compounds
+    risk_per_trade_pct against current equity, the exact same sizing
+    math recommended_quantity() already uses, projected forward — a
+    deterministic worst-case path, never a probability."""
+
+    def test_zero_losses_returns_a_single_point_path_at_current_equity(self) -> None:
+        limits = RiskLimits(riskPerTradePct=2.0)
+        portfolio = _portfolio(cash=100_000.0, starting=100_000.0)
+        path = project_loss_after_n_losses(limits, portfolio, 0)
+        assert path.equity_path == [100_000.0]
+        assert path.starting_equity == 100_000.0
+        assert path.projected_loss_pct == 0.0
+
+    def test_compounds_risk_per_trade_pct_across_each_loss(self) -> None:
+        limits = RiskLimits(riskPerTradePct=10.0)
+        portfolio = _portfolio(cash=100_000.0, starting=100_000.0)
+        path = project_loss_after_n_losses(limits, portfolio, 3)
+        # 100_000 -> 90_000 -> 81_000 -> 72_900 (each step -10%)
+        assert path.equity_path == [100_000.0, 90_000.0, 81_000.0, 72_900.0]
+        assert path.consecutive_losses == 3
+        assert path.risk_per_trade_pct == 10.0
+        assert path.projected_loss_pct == 27.1
+
+    def test_real_thresholds_produce_a_larger_projected_loss_at_five_than_at_three(self) -> None:
+        # Real losing-streak thresholds this codebase already uses
+        # (TradingModeState.losing_streak_pause_count=3,
+        # losing_streak_suspend_count=5) — not arbitrary numbers.
+        limits = RiskLimits(riskPerTradePct=5.0)
+        portfolio = _portfolio(cash=100_000.0, starting=100_000.0)
+        at_pause = project_loss_after_n_losses(limits, portfolio, 3)
+        at_suspend = project_loss_after_n_losses(limits, portfolio, 5)
+        assert at_suspend.projected_loss_pct > at_pause.projected_loss_pct
+
+    def test_assumption_is_always_disclosed(self) -> None:
+        limits = RiskLimits(riskPerTradePct=2.0)
+        portfolio = _portfolio(cash=100_000.0, starting=100_000.0)
+        path = project_loss_after_n_losses(limits, portfolio, 5)
+        assert "risk_per_trade_pct" in path.assumption
+        assert "worst-case" in path.assumption.lower()
+
+    def test_zero_equity_never_crashes(self) -> None:
+        limits = RiskLimits(riskPerTradePct=2.0)
+        portfolio = _portfolio(cash=0.0, starting=100_000.0)
+        path = project_loss_after_n_losses(limits, portfolio, 5)
+        assert path.equity_path[0] == 0.0
+        assert path.projected_loss_pct == 0.0

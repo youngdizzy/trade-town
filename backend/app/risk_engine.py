@@ -48,7 +48,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.schemas import DailyObjectiveStatus, PaperPortfolio, PaperTrade, RiskBudgetStatus, RiskLimits, RiskWarning
+from app.schemas import DailyObjectiveStatus, PaperPortfolio, PaperTrade, ProjectedLossPath, RiskBudgetStatus, RiskLimits, RiskWarning
 
 # Position sizing floor/ceiling, mirroring app/portfolio.py's
 # MIN_POSITION_SIZE — a proposed trade smaller than this isn't worth
@@ -396,5 +396,36 @@ def compute_risk_budget_status(limits: RiskLimits, portfolio: PaperPortfolio, si
         remainingToDailyProfitTargetPct=round(remaining_to_daily_profit_target_pct, 2),
         tradingHalted=daily_status.trading_halted,
         haltReason=daily_status.halt_reason,
+        computedAt=_now_iso(),
+    )
+
+
+def project_loss_after_n_losses(limits: RiskLimits, portfolio: PaperPortfolio, n: int) -> ProjectedLossPath:
+    """Prop-Firm Risk Intelligence Addendum, Piece 11a — Requirement 23:
+    "projected loss after N consecutive losses." Compounds
+    `risk_per_trade_pct` against current equity `n` times — the exact
+    same per-trade risk sizing `recommended_quantity()` already uses,
+    projected forward rather than applied to one trade. A deterministic
+    worst-case path, not a probability distribution (that needs real
+    Monte Carlo — Piece 10's job, not this function's). n=0 returns a
+    single-point path at today's real equity, never a crash."""
+    equity = portfolio_equity(portfolio)
+    path = [round(equity, 2)]
+    current = equity
+    for _ in range(max(0, n)):
+        current = current * (1 - limits.risk_per_trade_pct / 100.0)
+        path.append(round(current, 2))
+    projected_loss_pct = round((path[0] - path[-1]) / path[0] * 100.0, 2) if path[0] > 0 else 0.0
+    return ProjectedLossPath(
+        startingEquity=path[0],
+        equityPath=path,
+        consecutiveLosses=n,
+        riskPerTradePct=limits.risk_per_trade_pct,
+        projectedLossPct=projected_loss_pct,
+        assumption=(
+            "Assumes each loss trade loses exactly risk_per_trade_pct of equity at the time of that trade — "
+            "a conservative worst-case assumption (real losses are often smaller due to stop management or partial "
+            "fills), not a claim that every loss is always exactly this size."
+        ),
         computedAt=_now_iso(),
     )

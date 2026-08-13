@@ -1502,6 +1502,27 @@ class AccountRiskBudgetStatus(CamelModel):
     computed_at: str = Field(alias="computedAt")
 
 
+class ProjectedLossPath(CamelModel):
+    """Prop-Firm Risk Intelligence Addendum, Piece 11a — Requirement 23:
+    "projected loss after N consecutive losses." A real, deterministic
+    forward projection (not a probability — that needs real Monte Carlo,
+    which is Piece 10's job), computed by compounding
+    `RiskLimits.risk_per_trade_pct` against current equity `n` times —
+    the exact same sizing math `recommended_quantity()` already uses,
+    just applied forward instead of to one trade. `equity_path[0]` is
+    today's real equity; `equity_path[i]` is projected equity after `i`
+    consecutive losses. `assumption` states the one real simplification
+    this makes explicitly, never silently."""
+
+    starting_equity: float = Field(alias="startingEquity")
+    equity_path: list[float] = Field(alias="equityPath")
+    consecutive_losses: int = Field(alias="consecutiveLosses")
+    risk_per_trade_pct: float = Field(alias="riskPerTradePct")
+    projected_loss_pct: float = Field(alias="projectedLossPct")
+    assumption: str
+    computed_at: str = Field(alias="computedAt")
+
+
 class ScannerAlert(CamelModel):
     """Pulse's output — see app/scanner.py. `detected_by` is always
     "pulse" today; the field exists so a future version could let other
