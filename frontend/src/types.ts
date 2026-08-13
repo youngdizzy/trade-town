@@ -2542,6 +2542,12 @@ export interface Goal {
   updatedAt: string;
   completedAt: string | null;
   milestones: Milestone[];
+  /** CEO Company Health + Live Market Realism directive, Section 13 —
+   * real consecutive-tick stall count; isBlocked flips true once it
+   * crosses the real threshold (see backend/app/goals.py's
+   * GOAL_STALLED_THRESHOLD_TICKS). Never a fabricated reason string. */
+  stalledTicks: number;
+  isBlocked: boolean;
 }
 
 // Design Bible Chapter 64 (third pass) — the Executive Priority Engine.

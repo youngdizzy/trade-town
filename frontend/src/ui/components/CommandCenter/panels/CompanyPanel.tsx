@@ -693,6 +693,7 @@ export function CompanyPanel() {
                     <span className="truncate text-cmd-text">{g.title}</span>
                     <div className="flex flex-none items-center gap-1.5">
                       {priority && <StatusPill tone={priorityTone(priority.score)}>PRIORITY {priority.score.toFixed(0)}</StatusPill>}
+                      {g.isBlocked && <StatusPill tone="red">BLOCKED</StatusPill>}
                       <StatusPill tone={GOAL_STATUS_TONE[g.status]}>{g.status.toUpperCase()}</StatusPill>
                       {g.status === "active" && (
                         <button type="button" onClick={() => void cancelGoal(g.id)} className="text-cmd-textDim hover:text-cmd-red">
@@ -711,6 +712,9 @@ export function CompanyPanel() {
                     </span>
                   </div>
                   <Meter value={g.progressPct} tone={g.status === "completed" ? "green" : "cyan"} />
+                  {g.isBlocked && (
+                    <div className="mt-1 text-cmd-red">No real progress in {g.stalledTicks} consecutive ticks.</div>
+                  )}
                   {allocation && (
                     <div className="mt-1 flex items-center gap-1.5 text-cmd-textDim">
                       <span className="uppercase tracking-wide">Recommended attention</span>
