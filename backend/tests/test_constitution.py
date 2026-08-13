@@ -37,7 +37,7 @@ def _health(**overrides: float) -> CompanyHealth:
         resourceUsage=60.0,
         reputation=60.0,
         technologyLevel=60.0,
-        officeExpansion=60.0,
+        marketCoverage=60.0,
         educationProgress=60.0,
         recommendations=[],
         updatedAt="2026-01-01T00:00:00+00:00",

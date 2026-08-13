@@ -129,7 +129,7 @@ def _company_health(tier: str = "stable", recommendations: list[str] | None = No
         resourceUsage=60.0,
         reputation=60.0,
         technologyLevel=60.0,
-        officeExpansion=60.0,
+        marketCoverage=60.0,
         educationProgress=60.0,
         recommendations=recommendations or [],
         updatedAt=_now_iso(),

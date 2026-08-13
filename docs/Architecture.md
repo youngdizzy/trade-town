@@ -1924,8 +1924,10 @@ never built to be traversed that way.
 **Cut entirely, and why:** the brief's 7-stage Building Upgrade/
 Construction system (Empty Lot → ... → Landmark, scaffolding, cranes,
 construction sounds) — no per-building progression is tracked anywhere;
-`CompanyHealth.officeExpansion` is one company-wide 0-100 score, not 11
-independent per-building tracks, and reusing it under 11 fake per-building
+`CompanyHealth.marketCoverage` (renamed from `officeExpansion` under the
+CEO's Company/Executive Health directive — see below) is one
+company-wide 0-100 score, not 11 independent per-building tracks, and
+reusing it under 11 fake per-building
 labels would misattribute a company-wide number the same way earlier
 features' "misattribution trap" was avoided (see Feature 34's
 `_effective_risk_limits`). Per-building Daily Operating Cost/Power
@@ -1952,9 +1954,11 @@ House_1_Stone_Stages.png` sheet (each 48x112, equal-width slices) into
 `assets/cute-fantasy-rpg/props/buildings/hq-expansion/stage-{1-5}.png`,
 picked up automatically by `scripts/generate-assets.mjs` like every other
 asset. `CampusMap.tsx`'s new `HQExpansionVisual` component maps the one
-real company-wide `CompanyHealth.officeExpansion` score (0-100) onto
-whichever of the 5 stage frames it falls into
-(`Math.floor((officeExpansion / 100) * 5)`, clamped) and renders it next
+real company-wide `CompanyHealth.marketCoverage` score (0-100, renamed
+from `officeExpansion` under the CEO's Company/Executive Health
+directive — see below) onto whichever of the 5 stage frames it falls
+into (`Math.floor((marketCoverage / 100) * 5)`, clamped) and renders it
+next
 to the Campus Overview stats via `AssetLoader.get(id).url` — the same
 manifest-lookup convention every asset access in this codebase already
 uses, even though this is React UI code rather than a Phaser scene. This
@@ -2727,6 +2731,44 @@ Live-verified with hand-computed arithmetic from the raw save data:
 `historical_backtest`), and `measured_improvement` (50.0 neutral, none
 deployed yet) produced `38.1`, an exact match to the server's reported
 value.
+
+**Education Progress, corrected under the same directive.** The real
+`completed_lesson_ids / total lessons` formula was already honest
+(`grade_quiz()` never completes a lesson on a wrong answer) but credited
+only the outcome of the final correct attempt, never whether it took one
+real try or several. Blended equally with a new real
+`correct_quiz_attempts / quiz_attempts` accuracy reading —
+`EducationProgress`'s own two real counters, already incremented on
+every real quiz submission regardless of outcome. Two players with
+identical completed-lesson sets are now told apart by how many real
+wrong guesses it took to get there.
+
+**Department Efficiency, investigated and kept as-is under the same
+directive, per explicit CEO direction.** Traced every other real
+per-agent signal in this codebase for a genuine second component to
+blend with the real presence reading — both the free-text `current_task`
+schedule label and the structured `Task` system mark the prior task
+"completed" purely because the agent's schedule block changed on a real
+timer, never because real work was verifiably accomplished, so either
+would make a second component tautological (always ~100%) rather than a
+genuine signal. Asked the CEO rather than fabricate one; her call: keep
+the real, narrow, presence-only formula, now documented in code as
+exactly that — not a completed measure of real output.
+
+**Office Expansion renamed to Market Coverage under the same
+directive.** The formula was always real watchlist growth (extra
+symbols beyond the 8 seed symbols), never any facility/office-capability
+mechanic this codebase has never had. Asked the CEO whether to rename or
+build a genuine new facility metric (real new scope); her call: rename.
+`officeExpansion`/`office_expansion` is now `marketCoverage`/
+`market_coverage` everywhere — schema, backend formula
+(`_market_coverage()`), metric label, tests, and the Campus Map's
+`HQExpansionVisual` component. `CompanyHealth` lives in the `derived`
+save module (recomputed fresh every tick) and the renamed field has no
+default, so a save persisted before this rename hits
+`app/persistence.py`'s existing generic deep-merge-onto-fresh-defaults
+migration path on its first load after the rename — verified directly
+with a synthetic old-shaped save dict, no targeted fixup needed.
 
 **Executive Priorities and Department Health are both pure frontend
 derivations** — like the Decision Replay Center, no second backend

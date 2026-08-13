@@ -13,10 +13,13 @@ independently-invented readings of the same thing.
 Four of the ten map onto real state that has no prior aggregate reading
 anywhere else in this codebase: Resource Usage (AgentEnergy's real
 current/cap), Reputation (real HallOfFameEntry count), Technology Level
-(the real SignalCalibrationState.unlockedLevel progression), and Office
-Expansion (the real count of extra symbols added to the watchlist beyond
+(the real SignalCalibrationState.unlockedLevel progression), and Market
+Coverage (the real count of extra symbols added to the watchlist beyond
 the eight SEED_SYMBOLS via the "watch_symbol" Agent Energy action — see
-app/watchlist.py's EXTRA_SYMBOL_POOL). None of these are fabricated
+app/watchlist.py's EXTRA_SYMBOL_POOL; renamed from "Office Expansion"
+under the CEO's Company/Executive Health directive — the formula was
+always real watchlist growth, never a facility/office-capability
+mechanic this codebase has never had). None of these are fabricated
 company-management mechanics; every one is a real, already-tracked
 number this module is the first to actually read.
 
@@ -113,7 +116,7 @@ _METRIC_LABELS: dict[str, str] = {
     "resource_usage": "Resource Usage",
     "reputation": "Reputation",
     "technology_level": "Technology Level",
-    "office_expansion": "Office Expansion",
+    "market_coverage": "Market Coverage",
     "education_progress": "Education Progress",
     "team_chemistry": "Team Chemistry",
 }
@@ -161,6 +164,30 @@ def _operational_stability(risk_warnings: list[RiskWarning]) -> float:
 
 
 def _department_efficiency(agents: dict[AgentId, AgentState]) -> float:
+    """CEO Company/Executive Health directive: investigated whether this
+    could blend in a real "did they actually accomplish something"
+    signal, not just presence. Direct trace of every other real
+    per-agent signal in this codebase found none that would work: the
+    free-text `current_task` schedule label and the structured `Task`
+    system (`app/nexus.py`'s `_replace_working_task()`) both mark the
+    prior task "completed" purely because the agent's schedule block
+    changed — a real timer, not real evidence of accomplished work — so
+    every agent reads as continuously "completing tasks" regardless of
+    outcome, which would make a second component built on either of them
+    tautological (always ~100%), not a genuine additional signal.
+
+    Per explicit CEO direction, this stays presence-only — real (an
+    agent genuinely is or isn't at a real work location, not
+    fabricated), just intentionally narrow: it answers "is the
+    department staffed and present," not "is real output being
+    produced." `_research_progress()` and the Executive tier's
+    `_decision_quality()`/`_simulation_coverage()` are this codebase's
+    real output-quality signals; duplicating that coverage here under a
+    different name was rejected as the fabrication this module's own
+    conventions bar. A genuine second signal would need a real new
+    mechanic (e.g. Task completion gated by real downstream evidence,
+    not a schedule timer) — out of scope for this pass, documented here
+    rather than left unexplained."""
     if not agents:
         return 50.0
     working = sum(1 for a in agents.values() if a.location not in RESTFUL_LOCATIONS)
@@ -200,7 +227,14 @@ def _technology_level(signal_calibration: SignalCalibrationState) -> float:
     return (signal_calibration.unlocked_level - 1) / (SIGNAL_MAX_LEVEL - 1) * 100.0
 
 
-def _office_expansion(watchlist: list[WatchlistEntry]) -> float:
+def _market_coverage(watchlist: list[WatchlistEntry]) -> float:
+    """CEO Company/Executive Health directive: renamed from
+    `_office_expansion()` — the formula (real extra symbols added to the
+    watchlist beyond the 8 SEED_SYMBOLS, relative to the real
+    EXTRA_SYMBOL_POOL) never changed and never measured any facility/
+    office-capability mechanic; this codebase has no such mechanic (see
+    app/save_modules.py's own "No Buildings module" note). Same real
+    formula, honest name."""
     if not EXTRA_SYMBOL_POOL:
         return 100.0
     added = max(0, len(watchlist) - len(SEED_SYMBOLS))
@@ -208,10 +242,30 @@ def _office_expansion(watchlist: list[WatchlistEntry]) -> float:
 
 
 def _education_progress(education: EducationProgress) -> float:
+    """CEO Company/Executive Health directive: the original formula
+    (`completed_lesson_ids / total lessons`) is real and honest — every
+    entry in `completed_lesson_ids` requires a real correct quiz answer
+    (`app/education.py`'s `grade_quiz()` never marks a lesson complete on
+    a wrong answer) — but it is legitimately slow (a small, fixed
+    curriculum with no further growth once finished) and, on its own,
+    credits only the *outcome* of the final correct attempt, never
+    whether that understanding was solid or a lucky late guess after
+    several wrong ones.
+
+    Blended equally with a second real, already-tracked signal:
+    `correct_quiz_attempts / quiz_attempts` (`EducationProgress`'s own
+    two real counters, incremented by `grade_quiz()` on every real quiz
+    submission, right or wrong — never fabricated, never reset by a
+    retry). A player who answers correctly on the first real try scores
+    higher than one who needed several guesses to land on the same
+    completed lesson, even though both end up with an identical
+    `completed_lesson_ids` set — genuine understanding, not just
+    eventual completion. Neutral 50.0 for the accuracy half until at
+    least one real quiz has actually been attempted."""
     total = len(all_lessons())
-    if total == 0:
-        return 50.0
-    return len(education.completed_lesson_ids) / total * 100.0
+    completion = len(education.completed_lesson_ids) / total * 100.0 if total else 50.0
+    accuracy = education.correct_quiz_attempts / education.quiz_attempts * 100.0 if education.quiz_attempts else 50.0
+    return (completion + accuracy) / 2.0
 
 
 def _debate_collaboration_quality(debates: list[Debate]) -> float:
@@ -722,7 +776,7 @@ def compute_company_health(
         "resource_usage": _resource_usage(agent_energy),
         "reputation": _reputation(hall_of_fame),
         "technology_level": _technology_level(signal_calibration),
-        "office_expansion": _office_expansion(watchlist),
+        "market_coverage": _market_coverage(watchlist),
         "education_progress": _education_progress(education),
         "team_chemistry": _team_chemistry(debates, research),
     }
@@ -762,7 +816,7 @@ def compute_company_health(
         resourceUsage=round(metrics["resource_usage"], 1),
         reputation=round(metrics["reputation"], 1),
         technologyLevel=round(metrics["technology_level"], 1),
-        officeExpansion=round(metrics["office_expansion"], 1),
+        marketCoverage=round(metrics["market_coverage"], 1),
         educationProgress=round(metrics["education_progress"], 1),
         teamChemistry=round(metrics["team_chemistry"], 1),
         recommendations=recommendations,

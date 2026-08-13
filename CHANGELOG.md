@@ -7,6 +7,46 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO Company/Executive Health directive — Office Expansion renamed to Market Coverage, formula unchanged**
+  (`backend/app/schemas.py`, `backend/app/company_health.py`, `backend/app/save_modules.py`,
+  `backend/tests/test_company_health.py` + 4 other test files,
+  `docs/DesignBible/volumes/09-departments/chapter-63-executive-performance-company-health.md`): direct trace
+  confirmed the formula was always real watchlist growth (extra symbols beyond the 8 seed symbols), never any
+  facility/office-capability mechanic this codebase has never had. Asked the CEO whether to rename it or build a
+  genuine new facility-capability metric (real new scope, not a same-day fix); her call: rename.
+  `office_expansion`/`officeExpansion` is now `market_coverage`/`marketCoverage` everywhere in the backend — same
+  real formula throughout, this is a rename, not a behavior change. Migration note: `CompanyHealth` lives in the
+  `derived` save module (recomputed fresh every tick) and the field has no default, so a save persisted before
+  this rename hits `app/persistence.py`'s existing generic deep-merge-onto-fresh-defaults migration path on its
+  first load — verified directly with a synthetic old-shaped save dict, no targeted fixup needed. Full backend
+  suite passing, `mypy`/`ruff` clean.
+
+- **CEO Company/Executive Health directive — Department Efficiency investigated and kept presence-only, per
+  explicit CEO direction** (`backend/app/company_health.py`,
+  `docs/DesignBible/volumes/09-departments/chapter-63-executive-performance-company-health.md`): traced every
+  other real per-agent signal in this codebase for a genuine second component to blend with the real "agents at a
+  work location" presence reading — both the free-text `current_task` schedule label and the structured `Task`
+  system (`app/nexus.py`'s `_replace_working_task()`) mark the prior task "completed" purely because the agent's
+  schedule block changed on a real timer, never because real work was verifiably accomplished, so either would
+  make a second component tautological (always ~100%), not a genuine additional signal. Asked the CEO rather than
+  fabricate one; her answer: keep the real, narrow, presence-only formula. `_department_efficiency()`'s docstring
+  now documents this explicitly — what it measures, what it doesn't, and what a genuine future fix would require
+  (Task completion gated by real downstream evidence, not a schedule timer).
+
+- **CEO Company/Executive Health directive — Education Progress: real lesson completion blended with real quiz
+  accuracy, not completion alone** (`backend/app/company_health.py`, `backend/tests/test_company_health.py`,
+  `docs/DesignBible/volumes/09-departments/chapter-63-executive-performance-company-health.md`): the original
+  formula (`completed_lesson_ids / total lessons`) was already real and honest (`app/education.py`'s
+  `grade_quiz()` never completes a lesson on a wrong answer) but legitimately slow and, on its own, credited only
+  the outcome of the final correct attempt, never whether it took one real try or several. Fixed: blended equally
+  with `correct_quiz_attempts / quiz_attempts` — `EducationProgress`'s own two real counters, already incremented
+  on every real quiz submission regardless of outcome, never reset by a retry. Two players with identical
+  completed-lesson sets are now told apart by how many real wrong guesses it took to get there. Neutral 50.0 for
+  the accuracy half until at least one real quiz has been attempted. Verified: 3 new tests, 1 existing test
+  corrected, 1 downstream CEO-configurable-threshold test's fixture margin adjusted to avoid an unrelated
+  floating-point rounding boundary the shifted default now exposed, full backend suite passing, `mypy`/`ruff`
+  clean.
+
 - **CEO Company/Executive Health directive — Innovation Velocity: the real IDEA -> HYPOTHESIS -> EVIDENCE ->
   VALIDATION -> DEPLOYMENT -> MEASURED IMPROVEMENT pipeline, not Devil's Advocate critique quality alone**
   (`backend/app/company_health.py`, `backend/app/nexus.py`, `backend/app/state.py`,

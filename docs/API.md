@@ -289,7 +289,7 @@ perspective and exists purely to detect disconnects
     "overall": 71.4, "tier": "good", // excellent | good | stable | needs_attention | critical
     "operationalStability": 88.0, "departmentEfficiency": 66.7, "employeeMorale": 74.0,
     "researchProgress": 60.0, "capitalHealth": 58.4, "resourceUsage": 82.0,
-    "reputation": 20.0, "technologyLevel": 40.0, "officeExpansion": 25.0, "educationProgress": 15.0,
+    "reputation": 20.0, "technologyLevel": 40.0, "marketCoverage": 25.0, "educationProgress": 15.0,
     // v0.7 Feature 43 — real support-vs-challenge ratio across the most
     // recent 20 AI Debates (app/company_health.py's _team_chemistry).
     "teamChemistry": 62.5,

@@ -3432,7 +3432,13 @@ class CompanyHealth(CamelModel):
     resource_usage: float = Field(alias="resourceUsage")
     reputation: float
     technology_level: float = Field(alias="technologyLevel")
-    office_expansion: float = Field(alias="officeExpansion")
+    # CEO Company/Executive Health directive: renamed from
+    # "officeExpansion" — the formula was always real watchlist growth
+    # (extra symbols added beyond the 8 seed symbols), never a facility/
+    # office-capability mechanic (this codebase has none — see
+    # app/save_modules.py's own "No Buildings module" note). Same real
+    # formula, honest name.
+    market_coverage: float = Field(alias="marketCoverage")
     education_progress: float = Field(alias="educationProgress")
     # v0.7 Feature 43 — real support-vs-challenge ratio across recent AI
     # Debates (see app/company_health.py's _team_chemistry). Defaults to

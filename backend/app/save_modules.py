@@ -26,10 +26,12 @@ and how big it actually gets, not the field's feature name:
   (see routers/save.py's `/api/load/archive/{module}`).
 
 No "Buildings" module: this codebase has no persisted building/construction
-state beyond company_health.officeExpansion (a recomputed float, already in
-`derived`) — the Campus Map is derived from static Lobby layout data plus
-live agent locations, not saved state. Documented here rather than inventing
-an empty module for a section the spec named but this game doesn't have.
+state beyond company_health.marketCoverage (a recomputed float, already in
+`derived` — named for what it actually measures, real watchlist growth, not
+a facility/office-capability mechanic this game doesn't have) — the Campus
+Map is derived from static Lobby layout data plus live agent locations, not
+saved state. Documented here rather than inventing an empty module for a
+section the spec named but this game doesn't have.
 """
 from __future__ import annotations
 

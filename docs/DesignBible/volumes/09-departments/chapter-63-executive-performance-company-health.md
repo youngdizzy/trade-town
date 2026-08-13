@@ -62,7 +62,7 @@ Every one of these already exists and is already real:
 
 | System | Module | What it really does |
 |---|---|---|
-| Company Health Score | `app/company_health.py` | `compute_company_health()` — eleven real "Operational" sub-scores (v0.7 Feature 23: Operational Stability, Department Efficiency, Employee Morale, Research Progress, Capital Health, Resource Usage, Reputation, Technology Level, Office Expansion, Education Progress, Team Chemistry) producing `overall`/`tier`, plus ten more real "Executive" sub-scores (v0.7 Feature 50 Part 2/3: Decision Quality, Executive Alignment, Risk Governance, Simulation Coverage, Department Consensus, Self-Evaluation Health, Institutional Memory, Innovation Velocity, Talent Development, Founder Oversight) producing `executiveOverall`/`executiveTier`, and `combinedOverall`/`combinedTier` — an equal blend of the two, the true redesigned headline number. A real `recommendations` list names the two (or more, on a tie) weakest sub-scores in plain language, never generic filler. |
+| Company Health Score | `app/company_health.py` | `compute_company_health()` — eleven real "Operational" sub-scores (v0.7 Feature 23: Operational Stability, Department Efficiency, Employee Morale, Research Progress, Capital Health, Resource Usage, Reputation, Technology Level, Market Coverage, Education Progress, Team Chemistry) producing `overall`/`tier`, plus ten more real "Executive" sub-scores (v0.7 Feature 50 Part 2/3: Decision Quality, Executive Alignment, Risk Governance, Simulation Coverage, Department Consensus, Self-Evaluation Health, Institutional Memory, Innovation Velocity, Talent Development, Founder Oversight) producing `executiveOverall`/`executiveTier`, and `combinedOverall`/`combinedTier` — an equal blend of the two, the true redesigned headline number. A real `recommendations` list names the two (or more, on a tie) weakest sub-scores in plain language, never generic filler. |
 | Company Score | `app/company_score.py` | `compute_company_score()` — a different, older (v0.5) seven-metric read answering "is the company *performing* well" rather than Company Health's "is the company *healthy to keep operating*": Research Quality, Decision Quality, Risk Management, Paper Trading Performance, Team Coordination, Knowledge Growth, Simulation Success. A plain unweighted mean, no hidden weighting. |
 | Department Scorecards | `app/executive_intelligence.py`'s `generate_weekly_self_evaluations()` | One real `DepartmentSelfEvaluation` per department (all nine Executive Intelligence Network roles: research, quant, risk, simulation, decision_intelligence, coach, founders, devils_advocate, market_intelligence) per week, built entirely from that department's own real `DepartmentOpinion` entries already logged to the Executive Meeting Log over the trailing 7 sim days — `decisionsReviewed`, a real average-confidence `score`, `strengths`/`improvementAreas` derived from real agree/concern counts. A department with zero logged opinions that week gets an honest neutral 50.0 and "No real decisions reached the network this week" rather than a fabricated evaluation. |
 | Performance Review Cycle | `app/executive_review.py`'s `generate_executive_review()` | The CIO's real monthly Executive Review, generated on the same monthly cadence as the Coach's own `CoachReport` (see `app/nexus.py`'s monthly-cadence gate). Real department activity ranking, research/knowledge counts, conflict counts (real Debate Room challenge-stance turns), major events, flags, a real `companyScoreChange` period-over-period delta, long-term goals framed from real configured state, and Knowledge Connections (real "this builds on that" callbacks between same-category research/Academy items). |
@@ -863,3 +863,87 @@ is bundled under the "academy" archive module
 the real, current per-agent Academy state must be fetched via `GET
 /api/load/archive/academy`, confirmed by cross-checking a temporary
 tick-time debug print against both endpoints during this verification.
+
+**CEO Company/Executive Health directive — Education Progress: real
+lesson completion blended with real quiz accuracy, not completion
+alone.** The original formula (`completed_lesson_ids / total lessons`)
+was already real and honest — `app/education.py`'s `grade_quiz()` never
+marks a lesson complete on a wrong answer — but legitimately slow (a
+small, fixed curriculum with no further growth once finished) and, on
+its own, credited only the outcome of the final correct attempt, never
+whether that understanding was solid or a lucky guess after several
+wrong ones.
+
+*Fix:* blended equally with `correct_quiz_attempts / quiz_attempts` —
+`EducationProgress`'s own two real counters, already incremented by
+`grade_quiz()` on every real quiz submission, right or wrong, never
+reset by a retry. A player who answers correctly on the first real try
+now scores higher than one who needed several guesses to land on the
+same completed lesson, even though both end up with an identical
+`completed_lesson_ids` set. Neutral 50.0 for the accuracy half until at
+least one real quiz has actually been attempted.
+
+Verified: 3 new tests (the blended neutral default; a perfect-completion-
+and-perfect-accuracy ceiling; accuracy correctly discriminating between
+two players with identical completion but different real attempt
+counts), 1 existing test corrected (25.0, from the new blend), 1
+downstream CEO-configurable-threshold test's fixture margin adjusted to
+avoid an unrelated floating-point rounding boundary the shifted default
+now exposed, full backend suite passing, `mypy`/`ruff` clean.
+
+**CEO Company/Executive Health directive — Department Efficiency: kept
+presence-only, per explicit CEO direction, with the honest limit now
+documented in code.** Investigated whether a real second signal could
+be blended in (the pattern used everywhere else in this directive) —
+direct trace of every other real per-agent signal in this codebase
+found none that would work: both the free-text `current_task` schedule
+label and the structured `Task` system (`app/nexus.py`'s
+`_replace_working_task()`) mark the prior task "completed" purely
+because the agent's schedule block changed on a real timer, never
+because real work was verifiably accomplished, so every agent reads as
+continuously "completing tasks" regardless of outcome — building a
+second component on either would be tautological (always ~100%), not a
+genuine additional signal, and this codebase's own conventions bar
+fabricating one. Asked the CEO directly rather than manufacture a
+contrived pseudo-signal; her answer: keep the real, if narrow,
+presence-only formula, and document the honest limit in code so it's
+never mistaken for a completed, comprehensive metric. `_department_efficiency()`'s
+docstring now states this explicitly, including what a genuine future
+fix would require (Task completion gated by real downstream evidence,
+not a schedule timer) — a real new mechanic, out of scope for this
+pass.
+
+**CEO Company/Executive Health directive — Office Expansion renamed to
+Market Coverage, formula unchanged.** Direct trace confirmed the
+formula was always real watchlist growth (extra symbols added beyond
+the 8 `SEED_SYMBOLS`, relative to the real `EXTRA_SYMBOL_POOL`) and
+never measured any facility/office-capability mechanic — this codebase
+has never had one (`app/save_modules.py`'s own "No Buildings module"
+note already said as much). Asked the CEO whether to rename it or build
+a genuine new facility-capability metric from scratch (which would be
+real new scope, not a same-day fix); her answer: rename. `office_expansion`
+/`officeExpansion` is now `market_coverage`/`marketCoverage` everywhere
+— schema field, backend formula function (`_market_coverage()`),
+metric label ("Market Coverage"), tests, and (see the follow-up
+frontend commit) every UI surface that showed "Office"/"Office
+Expansion." Same real formula throughout — this is a rename, not a
+behavior change.
+
+Migration note: `CompanyHealth` lives in the `derived` save module
+(recomputed fresh every tick, per `app/save_modules.py`), and
+`officeExpansion` had no default value, so a save persisted before this
+rename fails direct Pydantic validation on load — exactly the case
+`app/persistence.py`'s existing generic `_migrate_dict()`/`load_modules()`
+deep-merge-onto-fresh-defaults path already exists to handle (see that
+module's own docstring: "a field renamed or restructured, not just
+added"). Verified directly: a synthetic old-shaped save dict (real
+`default_state()` output with `officeExpansion` substituted back in for
+`marketCoverage`) migrates cleanly through `_migrate_dict()` with no
+targeted fixup needed, since `market_coverage` is recomputed to a real
+value from the merged defaults on the very next tick regardless of
+whatever placeholder the migration itself produces.
+
+Verified: full backend suite passing (renamed `TestOfficeExpansion` ->
+`TestMarketCoverage`, same 2 tests plus every other test file that
+constructed a `CompanyHealth` fixture updated), `mypy`/`ruff` clean, and
+the migration path confirmed directly as above.

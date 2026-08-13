@@ -416,23 +416,70 @@ class TestTechnologyLevel:
         assert health.technology_level == 100.0
 
 
-class TestOfficeExpansion:
-    def test_seed_watchlist_only_is_zero_expansion(self) -> None:
-        health = _health(watchlist=default_watchlist())
-        assert health.office_expansion == 0.0
+class TestMarketCoverage:
+    """CEO Company/Executive Health directive — renamed from
+    TestOfficeExpansion/office_expansion. Same real formula (real extra
+    watchlist symbols beyond SEED_SYMBOLS), honest new name — see
+    app/company_health.py's _market_coverage() docstring."""
 
-    def test_added_symbols_increase_expansion(self) -> None:
+    def test_seed_watchlist_only_is_zero_coverage(self) -> None:
+        health = _health(watchlist=default_watchlist())
+        assert health.market_coverage == 0.0
+
+    def test_added_symbols_increase_coverage(self) -> None:
         extra = WatchlistEntry(symbol="AMZN", name="Amazon", lastPrice=100.0, dailyChangePct=0.0, status="queued", researchProgress=0.0, assignedAgent=None)
         watchlist = [*default_watchlist(), extra]
         health = _health(watchlist=watchlist)
-        assert health.office_expansion > 0.0
+        assert health.market_coverage > 0.0
         assert len(default_watchlist()) == len(SEED_SYMBOLS)
 
 
 class TestEducationProgress:
-    def test_no_completed_lessons_is_zero(self) -> None:
+    def test_no_completed_lessons_and_no_quiz_attempts_reads_the_blended_neutral_default(self) -> None:
+        """CEO Company/Executive Health directive — education_progress is
+        now an equal blend of real completion share and real quiz
+        accuracy. A brand-new player has 0% completion (real) blended
+        with a neutral 50.0 accuracy (no real quiz attempted yet, not a
+        fabricated zero) = 25.0, not the old formula's flat 0.0."""
         health = _health(education=EducationProgress())
-        assert health.education_progress == 0.0
+        assert health.education_progress == 25.0
+
+    def test_full_completion_with_perfect_accuracy_is_a_perfect_score(self) -> None:
+        from app.education import all_lessons
+
+        lesson_ids = [lesson.id for lesson in all_lessons()]
+        health = _health(
+            education=EducationProgress(
+                completedLessonIds=lesson_ids,
+                quizAttempts=len(lesson_ids),
+                correctQuizAttempts=len(lesson_ids),
+            )
+        )
+        assert health.education_progress == 100.0
+
+    def test_quiz_accuracy_rewards_getting_it_right_without_wrong_guesses(self) -> None:
+        """Two players who have both completed every real lesson
+        (identical `completed_lesson_ids`) are told apart by their real
+        quiz accuracy — the one who needed several wrong real attempts to
+        land on the same completed set scores lower."""
+        from app.education import all_lessons
+
+        lesson_ids = [lesson.id for lesson in all_lessons()]
+        first_try = _health(
+            education=EducationProgress(
+                completedLessonIds=lesson_ids,
+                quizAttempts=len(lesson_ids),
+                correctQuizAttempts=len(lesson_ids),
+            )
+        )
+        several_wrong_guesses = _health(
+            education=EducationProgress(
+                completedLessonIds=lesson_ids,
+                quizAttempts=len(lesson_ids) * 3,
+                correctQuizAttempts=len(lesson_ids),
+            )
+        )
+        assert first_try.education_progress > several_wrong_guesses.education_progress
 
 
 class TestOverallAndTier:
@@ -447,7 +494,7 @@ class TestOverallAndTier:
             health.resource_usage,
             health.reputation,
             health.technology_level,
-            health.office_expansion,
+            health.market_coverage,
             health.education_progress,
             health.team_chemistry,
         ]
@@ -469,7 +516,7 @@ class TestOverallAndTier:
             agent_energy=AgentEnergy(current=0.0, cap=100.0, updatedAt="2026-01-01T00:00:00+00:00"),
         )
         assert len(health.recommendations) >= 1
-        assert any("Resource Usage" in r or "Employee Morale" in r or "Department Efficiency" in r or "Technology Level" in r or "Office Expansion" in r or "Education Progress" in r for r in health.recommendations)
+        assert any("Resource Usage" in r or "Employee Morale" in r or "Department Efficiency" in r or "Technology Level" in r or "Market Coverage" in r or "Education Progress" in r for r in health.recommendations)
 
     def test_no_recommendations_when_every_metric_is_already_strong(self) -> None:
         from app.schemas import HallOfFameEntry
@@ -1131,7 +1178,16 @@ class TestCeoConfiguredTierThresholds:
 
     def test_ceo_lowered_excellent_threshold_reclassifies_the_same_score(self) -> None:
         default_health = _health()
-        lowered = _health(excellent_threshold=default_health.overall)
+        # CEO Company/Executive Health directive, Education Progress fix —
+        # the default fixture's raw (unrounded) overall now lands just
+        # under a .1 rounding boundary (54.0909... rounds display-side to
+        # 54.1), so using the exact rounded `overall` as the threshold
+        # would fail the real `>=` comparison against the raw value by a
+        # sliver. Subtracting a small margin keeps this test's real intent
+        # (a threshold clearly at-or-below the company's real score
+        # reclassifies it) without depending on which side of a rounding
+        # boundary the fixture's raw score happens to land on.
+        lowered = _health(excellent_threshold=default_health.overall - 0.5)
         assert lowered.tier == "excellent"
         assert default_health.tier != "excellent"
 
