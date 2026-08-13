@@ -12,6 +12,7 @@ from app.accounts import create_account
 from app.prop_firm import (
     LEVERAGE_NOTE,
     SCALING_TIER_THRESHOLDS_PCT,
+    compute_account_risk_budget_status,
     compute_challenge_progress,
     compute_compliance_score,
     compute_consistency_status,
@@ -95,6 +96,57 @@ class TestTrailingDrawdown:
         account = account.model_copy(update={"portfolio": drained})
         status = compute_trailing_drawdown(account)
         assert status.breached is False
+
+
+class TestComputeAccountRiskBudgetStatus:
+    """Prop-Firm Risk Intelligence Addendum, Piece 11 — Requirement 23:
+    risk relative to this account's real failure boundary
+    (trailing_drawdown_limit_pct), not notional size. Every field that
+    can't be honestly computed must be None with a NOT_TRACKABLE_YET
+    reason, never a fabricated number."""
+
+    def test_no_boundary_configured_is_honestly_not_trackable(self) -> None:
+        account = _account(starting_balance=10_000.0)
+        status = compute_account_risk_budget_status(account)
+        assert status.effective_failure_boundary_pct is None
+        assert status.current_distance_to_failure_pct is None
+        assert status.remaining_drawdown_budget_pct is None
+        assert any(r.startswith("NOT_TRACKABLE_YET: effective failure boundary") for r in status.not_trackable_reasons)
+
+    def test_boundary_configured_computes_real_distance_to_failure(self) -> None:
+        account = _account(starting_balance=10_000.0)
+        account = account.model_copy(update={"peak_equity": 10_000.0, "trailing_drawdown_limit_pct": 10.0})
+        drained = account.portfolio.model_copy(update={"cash_balance": 9_400.0})
+        account = account.model_copy(update={"portfolio": drained})
+        status = compute_account_risk_budget_status(account)
+        assert status.effective_failure_boundary_pct == 10.0
+        assert status.current_distance_to_failure_pct == 4.0
+        assert status.remaining_drawdown_budget_pct == 4.0
+
+    def test_distance_to_failure_floors_at_zero_past_the_boundary(self) -> None:
+        account = _account(starting_balance=10_000.0)
+        account = account.model_copy(update={"peak_equity": 10_000.0, "trailing_drawdown_limit_pct": 5.0})
+        drained = account.portfolio.model_copy(update={"cash_balance": 9_000.0})
+        account = account.model_copy(update={"portfolio": drained})
+        status = compute_account_risk_budget_status(account)
+        assert status.current_distance_to_failure_pct == 0.0
+
+    def test_risk_per_trade_pct_of_boundary_is_always_not_trackable(self) -> None:
+        # No live trade ever executes against a secondary Account today
+        # (app/accounts.py's own module docstring) — this must never be
+        # fabricated as a real, measured ratio, with or without a real
+        # boundary configured.
+        account = _account(starting_balance=10_000.0)
+        account = account.model_copy(update={"trailing_drawdown_limit_pct": 10.0})
+        status = compute_account_risk_budget_status(account)
+        assert status.risk_per_trade_pct_of_boundary is None
+        assert any(r.startswith("NOT_TRACKABLE_YET: risk per trade as % of failure boundary") for r in status.not_trackable_reasons)
+
+    def test_no_fabricated_values_survive_into_prop_firm_status(self) -> None:
+        account = _account(starting_balance=10_000.0)
+        status = compute_prop_firm_status(account, sim_day=1)
+        assert status.risk_budget.effective_failure_boundary_pct is None
+        assert status.risk_budget.account_id == account.id
 
 
 class TestConsistencyStatus:

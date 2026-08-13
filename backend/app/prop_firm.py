@@ -22,9 +22,12 @@ below states that honestly rather than fabricating a number.
 """
 from __future__ import annotations
 
+from datetime import datetime, timezone
+
 from app.accounts import account_equity
 from app.schemas import (
     Account,
+    AccountRiskBudgetStatus,
     ChallengeProgressStatus,
     ConsistencyStatus,
     PropFirmComplianceScore,
@@ -33,6 +36,10 @@ from app.schemas import (
     TrailingDrawdownStatus,
     Weekday,
 )
+
+
+def _now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat()
 
 LEVERAGE_NOTE = "Not applicable — this is a 100% cash, long-only paper account with no margin or leverage concept anywhere in this codebase (confirmed by Chapter 68's own research)."
 
@@ -192,6 +199,61 @@ def compute_compliance_score(account: Account, *, sim_day: int) -> PropFirmCompl
     )
 
 
+def compute_account_risk_budget_status(account: Account) -> AccountRiskBudgetStatus:
+    """Prop-Firm Risk Intelligence Addendum, Piece 11 — Requirement 23:
+    risk measured against this account's real failure boundary
+    (`trailing_drawdown_limit_pct`, the one real externally-configurable
+    boundary an Account carries), not notional account size. Reuses
+    `compute_trailing_drawdown()` above rather than re-deriving the
+    drawdown read — no new drawdown formula, only new packaging relative
+    to the boundary. See `AccountRiskBudgetStatus`'s own docstring for
+    why `risk_per_trade_pct_of_boundary` and the Monte Carlo-dependent
+    fields (probability of hitting the boundary, expected drawdown path)
+    are deliberately not computed here."""
+    equity = account_equity(account)
+    drawdown = compute_trailing_drawdown(account)
+    boundary = account.trailing_drawdown_limit_pct
+
+    not_trackable_reasons: list[str] = []
+    current_distance_to_failure_pct: float | None = None
+    remaining_drawdown_budget_pct: float | None = None
+    if boundary is None:
+        not_trackable_reasons.append(
+            "NOT_TRACKABLE_YET: effective failure boundary — this account has no real trailing-drawdown limit configured (app/accounts.py's configure_prop_firm_rules), so there is nothing real to measure distance-to-failure against."
+        )
+    else:
+        # Remaining room before the account's own real trailing-drawdown
+        # boundary breaches. The CEO's Requirement 23 names "current
+        # distance to failure" and "remaining risk budget" as separate
+        # asks, but this codebase has exactly one real externally-
+        # configurable boundary (trailing drawdown) — both resolve to
+        # the same real number for it, never two independently invented
+        # ones.
+        current_distance_to_failure_pct = round(max(0.0, boundary - drawdown.drawdown_pct), 2)
+        remaining_drawdown_budget_pct = current_distance_to_failure_pct
+
+    # Requirement 23: "risk per trade as a percentage of the failure
+    # boundary." No live trade ever executes against a secondary
+    # Account (app/accounts.py's own module docstring) — there is no
+    # real, measured risk-per-trade for one, only a hypothetical, which
+    # this function never fabricates as if it were real.
+    not_trackable_reasons.append(
+        "NOT_TRACKABLE_YET: risk per trade as % of failure boundary — no live TradeProposal execution routes to a secondary Account yet (app/accounts.py's own module docstring); there is no real, measured per-trade risk to express as a ratio."
+    )
+
+    return AccountRiskBudgetStatus(
+        accountId=account.id,
+        equity=round(equity, 2),
+        startingBalance=round(account.portfolio.starting_balance, 2),
+        effectiveFailureBoundaryPct=boundary,
+        currentDistanceToFailurePct=current_distance_to_failure_pct,
+        remainingDrawdownBudgetPct=remaining_drawdown_budget_pct,
+        riskPerTradePctOfBoundary=None,
+        notTrackableReasons=not_trackable_reasons,
+        computedAt=_now_iso(),
+    )
+
+
 def compute_prop_firm_status(account: Account, *, sim_day: int) -> PropFirmStatus:
     return PropFirmStatus(
         accountId=account.id,
@@ -201,5 +263,6 @@ def compute_prop_firm_status(account: Account, *, sim_day: int) -> PropFirmStatu
         scaling=compute_scaling_status(account),
         challenge=compute_challenge_progress(account, sim_day=sim_day),
         complianceScore=compute_compliance_score(account, sim_day=sim_day),
+        riskBudget=compute_account_risk_budget_status(account),
         leverageNote=LEVERAGE_NOTE,
     )

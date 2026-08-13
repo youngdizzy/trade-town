@@ -875,6 +875,9 @@ class PropFirmStatus(CamelModel):
     scaling: ScalingMilestoneStatus
     challenge: ChallengeProgressStatus
     compliance_score: PropFirmComplianceScore = Field(alias="complianceScore")
+    # Prop-Firm Risk Intelligence Addendum, Piece 11 — risk measured
+    # against this account's real failure boundary, not notional size.
+    risk_budget: "AccountRiskBudgetStatus" = Field(alias="riskBudget")
     # The Leverage System (addendum item 3) has no real foundation to
     # extend — this codebase is a 100%-cash, long-only paper account
     # with no margin field anywhere (confirmed by Chapter 68's own
@@ -1428,7 +1431,17 @@ class RiskBudgetStatus(CamelModel):
     "remaining" fields are the one new arithmetic step (limit minus
     current usage, floored at 0) — packaging, not a new formula. This is
     advisory only: nothing here changes what Sentinel/Guardian/Gatekeeper
-    actually enforce, which remains exactly as it was."""
+    actually enforce, which remains exactly as it was.
+
+    HONEST BOUNDARY (Piece 11, Requirement 23): `max_drawdown_pct` here is
+    the primary portfolio's own self-chosen ceiling (`RiskLimits`, a
+    CEO-configurable setting with no external authority behind it — see
+    RiskLimits's own docstring: "conservative but arbitrary"), not a true
+    externally-imposed failure boundary the way a real prop-firm
+    evaluation's trailing-drawdown rule is. See `AccountRiskBudgetStatus`
+    below for the one place this codebase has a genuinely
+    externally-configurable boundary (`Account.trailing_drawdown_limit_pct`)
+    to measure risk against instead."""
 
     equity: float
     starting_balance: float = Field(alias="startingBalance")
@@ -1443,6 +1456,49 @@ class RiskBudgetStatus(CamelModel):
     remaining_to_daily_profit_target_pct: float = Field(alias="remainingToDailyProfitTargetPct")
     trading_halted: bool = Field(alias="tradingHalted")
     halt_reason: str | None = Field(default=None, alias="haltReason")
+    computed_at: str = Field(alias="computedAt")
+
+
+class AccountRiskBudgetStatus(CamelModel):
+    """Prop-Firm Risk Intelligence Addendum, Piece 11 — Requirement 23:
+    "risk should be modeled relative to the account's actual failure
+    boundary... do NOT treat account notional size as the primary
+    definition of usable risk." Unlike `RiskBudgetStatus` above (the
+    primary portfolio's self-chosen `RiskLimits.max_drawdown_pct`
+    ceiling), `effective_failure_boundary_pct` here is the one real
+    externally-configurable boundary an `Account` actually carries —
+    `trailing_drawdown_limit_pct` (app/accounts.py's own
+    `configure_prop_firm_rules`) — the number a real prop-firm challenge
+    would actually disqualify the account for breaching, not a number
+    the CEO merely chose as her own risk tolerance.
+
+    Every field that cannot be honestly computed from real data is
+    `None`; `not_trackable_reasons` names exactly which requested metric
+    and why, each prefixed literally `NOT_TRACKABLE_YET:` (Requirement
+    23's own words) rather than silently omitting the field or
+    fabricating a number. `risk_per_trade_pct_of_boundary` is always one
+    of these for any real `Account` today: no live trade execution
+    routes to a secondary Account yet (app/accounts.py's own module
+    docstring), so "risk per trade" is not a real, measured quantity for
+    one — only a hypothetical could be computed, and this module never
+    fabricates a hypothetical as if it were measured.
+
+    "Probability of hitting the failure boundary" and "expected drawdown
+    path" (also named in Requirement 23) are deliberately NOT included
+    here — both require real forward simulation (Monte Carlo), which
+    this status read (a real-time snapshot, the same shape as every
+    other function in app/prop_firm.py) does not do. That is Piece 10's
+    job (the evaluation-level risk-policy simulator), not a duplicate
+    simulation bolted onto this snapshot."""
+
+    account_id: str = Field(alias="accountId")
+    equity: float
+    starting_balance: float = Field(alias="startingBalance")
+    effective_failure_boundary_pct: float | None = Field(default=None, alias="effectiveFailureBoundaryPct")
+    current_distance_to_failure_pct: float | None = Field(default=None, alias="currentDistanceToFailurePct")
+    remaining_drawdown_budget_pct: float | None = Field(default=None, alias="remainingDrawdownBudgetPct")
+    risk_per_trade_pct_of_boundary: float | None = Field(default=None, alias="riskPerTradePctOfBoundary")
+    not_trackable_reasons: list[str] = Field(default_factory=list, alias="notTrackableReasons")
     computed_at: str = Field(alias="computedAt")
 
 
