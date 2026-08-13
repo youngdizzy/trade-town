@@ -7,6 +7,29 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Consecutive wins + real trading-day count** (`backend/app/trading_modes.py`, `backend/app/behavioral_risk.py`,
+  `backend/app/risk_engine.py`, `backend/app/schemas.py`, `backend/tests/test_trading_modes.py`,
+  `backend/tests/test_behavioral_risk.py`, `backend/tests/test_risk_engine.py`, `frontend/src/types.ts`,
+  `frontend/src/state/gameStore.ts`, `frontend/src/game/systems/NexusManager.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/TradingModesPanel.tsx`,
+  `frontend/src/ui/components/CommandCenter/ExecutiveVoting.tsx`,
+  `docs/DesignBible/volumes/09-departments/chapter-66-institutional-safety-capital-protection.md`): Piece 11b of the
+  CEO's Prop-Firm Risk Intelligence Addendum, Requirement 24 ("new data TradeTown should track"). New
+  `compute_consecutive_wins()` is an exact mirror of the existing `compute_consecutive_losses()`, threaded through
+  `BehavioralCircuitBreakerRead`'s five construction sites as a new `consecutiveWins` field. New
+  `distinct_trading_days()` counts distinct real sim days with a closed trade, reusing the exact
+  `closed_sim_minutes // SIM_MINUTES_PER_DAY` bucketing convention `compute_consistency_status()` already
+  established — no new formula — wired into `RiskBudgetStatus` as `tradingDaysCount`. Requirement 24's
+  `entry_reason`/`exit_reason` `PaperTrade` split is explicitly deferred: `PaperTrade.reason` is a single combined
+  string with real consumers across `journal.py`, `mistakes.py`, `decision_vault.py`, `war_room.py`, and frontend
+  displays, and splitting it safely is a materially larger, separate change than this piece's "small and contained"
+  scope. Verified: 7 new backend tests, full backend suite 1673/1673 passed, `mypy`/`ruff` clean, `tsc -b
+  --noEmit`/`eslint`/`vite build` clean. Live-verified against the real running dev stack via direct API calls
+  (`GET /api/trading-modes/behavioral-circuit-breaker` and `GET /api/load` both returned real, correctly-computed
+  values) — full-browser Playwright verification of the Command Center UI itself was blocked by a pre-existing
+  Chromium/sandbox instability on the "expand to Full Command Center" interaction, confirmed unrelated to this
+  piece's code via a stashed-diff control run that reproduced the identical crash on unmodified `main`.
+
 - **Projected loss after N consecutive losses** (`backend/app/schemas.py`, `backend/app/risk_engine.py`,
   `backend/app/routers/risk.py`, `backend/tests/test_risk_engine.py`, `frontend/src/types.ts`,
   `frontend/src/net/api.ts`, `frontend/src/ui/components/CommandCenter/panels/TradingModesPanel.tsx`,

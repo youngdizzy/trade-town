@@ -1290,6 +1290,10 @@ export interface RiskBudgetStatus {
   remainingToDailyProfitTargetPct: number;
   tradingHalted: boolean;
   haltReason: string | null;
+  /** Piece 11b, Requirement 24 — distinct real sim days with at least
+   * one closed trade, reusing the same day-bucketing convention
+   * compute_consistency_status() already established. */
+  tradingDaysCount: number;
   computedAt: string;
 }
 
@@ -3377,6 +3381,9 @@ export interface BehavioralCircuitBreakerRead {
   sameDirection: boolean | null;
   sizeIncreasePct: number | null;
   consecutiveLosses: number;
+  /** Piece 11b, Requirement 24 — exact mirror of consecutiveLosses,
+   * walking backward until a real loss (pnl <= 0) or history ends. */
+  consecutiveWins: number;
   repeatedRapidReentryCount: number;
   /** Piece 8b — win-triggered escalation. Populated only when the most
    * recent closed trade was a real win; mutually exclusive with the

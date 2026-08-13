@@ -281,6 +281,11 @@ export function TradingModesPanel() {
             <TerminalLabel>Behavioral Circuit Breaker — revenge-trading detector</TerminalLabel>
             <StatusPill tone={behavioralTone(behavioralCircuitBreaker.status)}>{behavioralCircuitBreaker.status.toUpperCase()}</StatusPill>
           </div>
+          <DataRow
+            label="Consecutive Wins"
+            value={behavioralCircuitBreaker.consecutiveWins}
+            valueClassName={behavioralCircuitBreaker.consecutiveWins > 0 ? "text-cmd-green" : "text-cmd-text"}
+          />
           {behavioralCircuitBreaker.previousLossSymbol !== null ? (
             <>
               <DataRow label="Previous Loss" value={behavioralCircuitBreaker.previousLossSymbol} />

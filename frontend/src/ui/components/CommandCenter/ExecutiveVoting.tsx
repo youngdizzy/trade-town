@@ -870,6 +870,7 @@ export function ExecutiveVoting() {
                   valueClassName={riskBudgetStatus.remainingDailyLossBudgetPct <= riskBudgetStatus.maxDailyLossPct * 0.25 ? "text-cmd-red" : undefined}
                 />
                 <DataRow label="Distance to today's profit target" value={`${riskBudgetStatus.remainingToDailyProfitTargetPct.toFixed(1)}%`} />
+                <DataRow label="Trading days so far" value={riskBudgetStatus.tradingDaysCount} />
                 {riskBudgetStatus.haltReason && <div className="mt-1.5 text-[9px] text-cmd-amber">{riskBudgetStatus.haltReason}</div>}
                 <div className="mt-1.5 text-[9px] text-cmd-textDim">
                   Remaining permissible loss budget before this trade — not a new limit, just what&apos;s left of the existing ones above.

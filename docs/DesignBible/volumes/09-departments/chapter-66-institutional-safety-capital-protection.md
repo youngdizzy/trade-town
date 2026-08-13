@@ -955,3 +955,60 @@ clean. Live-verified against the real running dev stack: confirmed the
 computed values (-5.9% at 3 losses, -9.6% at 5 losses, from the real
 2% default `risk_per_trade_pct`) with the disclosed assumption text —
 screenshotted.
+
+## Addendum — Consecutive Wins & Real Trading-Day Count (Prop-Firm Risk Intelligence Addendum, Piece 11b)
+
+**Status:** Real, two of Requirement 24's requested new data points —
+scoped down to what could be added safely in one piece; a third
+(`entry_reason`/`exit_reason`) is deferred, see below.
+
+**Origin.** Requirement 24's field-by-field audit found `consecutive
+wins` and `number of trading days` as genuine gaps: this chapter's own
+`compute_consecutive_losses()` had no symmetric win-side counterpart,
+and the `closed_sim_minutes // SIM_MINUTES_PER_DAY` day-bucketing
+convention `app/prop_firm.py`'s `compute_consistency_status()` already
+established had never been exposed as its own materialized field.
+
+**`compute_consecutive_wins()`** (`app/trading_modes.py`) is an exact
+mirror of `compute_consecutive_losses()`, walking backward through
+trade history until a real loss (`pnl <= 0`, so a breakeven trade
+breaks a win streak the same honest way it fails to extend one) or the
+history ends. Threaded through `app/behavioral_risk.py`'s five
+`BehavioralCircuitBreakerRead` construction sites as a new
+`consecutiveWins` field alongside the existing `consecutiveLosses`,
+surfaced in `TradingModesPanel.tsx`'s Behavioral Circuit Breaker card.
+
+**`distinct_trading_days()`** (`app/risk_engine.py`) counts distinct
+real sim days with at least one closed trade, reusing the exact
+`closed_sim_minutes // SIM_MINUTES_PER_DAY` bucketing convention —
+no new time-conversion logic. Wired into `RiskBudgetStatus` as
+`tradingDaysCount`, surfaced in `ExecutiveVoting.tsx`'s Risk Budget
+Remaining card.
+
+**Explicitly deferred: `entry_reason`/`exit_reason`.** Requirement 24
+also asked for these as distinct fields. `PaperTrade.reason` today is a
+single combined string with several real consumers across
+`journal.py`, `mistakes.py`, `decision_vault.py`, `war_room.py`, and
+frontend displays — splitting it safely is a materially larger,
+separate change than "small and contained" Piece 11b scope. Left for a
+future piece rather than attempted here, per the Development Rules'
+"scope an honest subset, cut explicitly" discipline.
+
+**Verified:** 7 new backend tests (`TestConsecutiveWins` — trailing
+wins only, zero on a most-recent loss, a breakeven trade breaks a win
+streak, empty history is zero; `TestDistinctTradingDays` — counts
+distinct days not trade count, counts multiple real distinct days,
+empty history is zero; plus one behavioral-risk integration test
+confirming `consecutiveWins` reflects a real multi-win sequence and
+stays independent of `consecutiveLosses`), full backend suite
+1673/1673 passed, `mypy app/`/`ruff check app/ tests/` clean. `tsc -b
+--noEmit`/`npm run lint`/`npm run build` clean. Live-verified against
+the real running dev stack via direct API calls to the actually-running
+server (`GET /api/trading-modes/behavioral-circuit-breaker` returned
+real `consecutiveWins: 0`; `GET /api/load` returned real
+`riskBudgetStatus.tradingDaysCount: 0` for a fresh portfolio) — the
+Playwright browser automation itself proved unable to complete the
+Full Command Center expand interaction in this sandbox environment
+(confirmed, via a stashed-diff control run, to be a pre-existing
+Chromium/environment instability unrelated to this piece's code, not a
+regression it introduced).

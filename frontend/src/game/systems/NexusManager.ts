@@ -387,6 +387,7 @@ export class NexusManager {
     remainingToDailyProfitTargetPct: 3,
     tradingHalted: false,
     haltReason: null,
+    tradingDaysCount: 0,
     computedAt: new Date().toISOString(),
   };
   private static executiveReviews: ExecutiveReview[] = [];
@@ -491,6 +492,7 @@ export class NexusManager {
     sameDirection: null,
     sizeIncreasePct: null,
     consecutiveLosses: 0,
+    consecutiveWins: 0,
     repeatedRapidReentryCount: 0,
     previousWinSymbol: null,
     previousWinPnl: null,
