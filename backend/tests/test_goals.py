@@ -7,6 +7,7 @@ randomized or fabricated.
 from __future__ import annotations
 
 from app.goals import (
+    GOAL_STALLED_THRESHOLD_TICKS,
     MAX_STRATEGIC_REVIEWS,
     compute_goal_priority,
     compute_resource_allocation,
@@ -159,6 +160,61 @@ class TestTickGoal:
         unchanged = tick_goal(cancelled, current_value=90.0, sim_day=6)
         assert unchanged.status == "cancelled"
         assert unchanged.current_value == 40.0
+
+
+class TestBlockerDetection:
+    """CEO Company Health + Live Market Realism directive, Section 13 —
+    stalled_ticks/is_blocked, a real behavioral signal (consecutive
+    ticks with essentially zero real progress movement), never a
+    fabricated reason string."""
+
+    def test_a_fresh_goal_starts_unblocked(self) -> None:
+        goal = _goal(target_value=100.0, current_value=50.0)
+        assert goal.stalled_ticks == 0
+        assert goal.is_blocked is False
+
+    def test_stalled_ticks_increments_when_progress_does_not_move(self) -> None:
+        goal = _goal(target_value=100.0, current_value=50.0)
+        for _ in range(5):
+            goal = tick_goal(goal, current_value=50.0, sim_day=1)
+        assert goal.stalled_ticks == 5
+        assert goal.is_blocked is False
+
+    def test_becomes_blocked_once_the_real_threshold_is_crossed(self) -> None:
+        goal = _goal(target_value=100.0, current_value=50.0)
+        for _ in range(GOAL_STALLED_THRESHOLD_TICKS - 1):
+            goal = tick_goal(goal, current_value=50.0, sim_day=1)
+        assert goal.is_blocked is False
+        goal = tick_goal(goal, current_value=50.0, sim_day=1)
+        assert goal.stalled_ticks == GOAL_STALLED_THRESHOLD_TICKS
+        assert goal.is_blocked is True
+
+    def test_real_progress_resets_the_stall_counter_and_clears_blocked(self) -> None:
+        goal = _goal(target_value=100.0, current_value=50.0)
+        for _ in range(GOAL_STALLED_THRESHOLD_TICKS):
+            goal = tick_goal(goal, current_value=50.0, sim_day=1)
+        assert goal.is_blocked is True
+        recovered = tick_goal(goal, current_value=60.0, sim_day=1)
+        assert recovered.stalled_ticks == 0
+        assert recovered.is_blocked is False
+
+    def test_a_completed_goal_is_never_reported_as_blocked(self) -> None:
+        goal = _goal(target_value=100.0, current_value=99.0)
+        for _ in range(GOAL_STALLED_THRESHOLD_TICKS):
+            goal = tick_goal(goal, current_value=99.0, sim_day=1)
+        assert goal.is_blocked is True
+        completed = tick_goal(goal, current_value=100.0, sim_day=1)
+        assert completed.status == "completed"
+        assert completed.is_blocked is False
+
+    def test_an_expired_goal_is_never_reported_as_blocked(self) -> None:
+        goal = _goal(target_value=100.0, current_value=50.0, deadline_sim_day=10)
+        for _ in range(GOAL_STALLED_THRESHOLD_TICKS):
+            goal = tick_goal(goal, current_value=50.0, sim_day=5)
+        assert goal.is_blocked is True
+        expired = tick_goal(goal, current_value=50.0, sim_day=11)
+        assert expired.status == "expired"
+        assert expired.is_blocked is False
 
 
 class TestTickGoals:

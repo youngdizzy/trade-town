@@ -54,6 +54,25 @@ guarantees) — never a fabricated period-over-period number.
 A goal is always "reach at least targetValue" — every real metric below
 is a "higher is better" number, so a reduce-below-X goal type would need
 its own honest design, not invented here.
+
+CEO Company Health + Live Market Realism directive, Section 13 — the
+CEO asked Goals to also carry owner/supporting-departments/evidence/
+blockers/outcome. `progress_pct` and `status`/`completed_at` already are
+the real, honest "progress" and "outcome" the directive named. Blocker
+detection (`stalled_ticks`/`is_blocked` below) is new: a goal is
+"blocked" once it's gone `GOAL_STALLED_THRESHOLD_TICKS` consecutive real
+ticks active with essentially zero real progress movement — a genuine
+behavioral signal, not a fabricated reason string. `owner` and
+`supporting departments` are explicitly NOT added: a `Goal` tracks one
+company-wide metric (Company Health, Company Score, portfolio return,
+Academy level) that every department's real work already feeds into
+simultaneously — there is no real per-goal assignment mechanism
+anywhere in this codebase to attribute ownership to a single agent or a
+specific subset of departments without inventing one. `evidence` is
+likewise not a separate fabricated narrative field — the real numbers
+(`current_value`/`target_value`/`progress_pct`/`stalled_ticks`) already
+are the evidence; nothing here manufactures a second, less-honest
+summary of them.
 """
 from __future__ import annotations
 
@@ -105,6 +124,19 @@ _METRIC_MAX_TARGET: dict[GoalMetric, float | None] = {
 # milestone is generated for it — that would just be a second read of
 # the same real fact).
 MILESTONE_THRESHOLDS: tuple[float, ...] = (25.0, 50.0, 75.0)
+
+# CEO Company Health + Live Market Realism directive, Section 13 — how
+# many consecutive real ticks of essentially-zero progress movement
+# before a goal reads as genuinely blocked. Same order of magnitude as
+# TEAM_CHEMISTRY_WINDOW/EXECUTIVE_METRIC_WINDOW's own "recent behavior"
+# sizing elsewhere in this codebase (app/company_health.py) — long
+# enough that normal tick-to-tick noise never falsely flags a goal,
+# short enough to still mean something real inside one sim day.
+GOAL_STALLED_THRESHOLD_TICKS = 20
+# Real progress movements smaller than this are noise (float rounding),
+# not genuine advancement — the same reasoning `_progress_pct()`'s own
+# `round(..., 1)` already applies.
+_STALL_EPSILON_PCT = 0.05
 
 
 def _now_iso() -> str:
@@ -194,17 +226,24 @@ def _progress_pct(current_value: float, target_value: float) -> float:
 
 def tick_goal(goal: Goal, *, current_value: float, sim_day: int) -> Goal:
     """Recomputes one goal's real progress, including which real
-    milestones it has now crossed. A goal that's already completed or
-    cancelled never changes again — the same "a crossed milestone stays
-    crossed" convention `app/hall_of_fame.py` and `app/founders.py`
-    already establish for their own permanent records (and, at the
-    per-milestone level, that this goal's own `milestones` list already
-    follows)."""
+    milestones it has now crossed and whether it's now genuinely
+    blocked. A goal that's already completed or cancelled never changes
+    again — the same "a crossed milestone stays crossed" convention
+    `app/hall_of_fame.py` and `app/founders.py` already establish for
+    their own permanent records (and, at the per-milestone level, that
+    this goal's own `milestones` list already follows)."""
     if goal.status != "active":
         return goal
     progress_pct = _progress_pct(current_value, goal.target_value)
     now = _now_iso()
     milestones = _mark_reached_milestones(goal.milestones, progress_pct, now)
+    # CEO Company Health + Live Market Realism directive, Section 13 —
+    # real progress this tick resets the stall counter; essentially no
+    # movement extends it. Computed before the completed/expired checks
+    # below so a goal that just crossed its target on this very tick
+    # still reflects real progress rather than a stale stall count.
+    made_real_progress = abs(progress_pct - goal.progress_pct) >= _STALL_EPSILON_PCT
+    stalled_ticks = 0 if made_real_progress else goal.stalled_ticks + 1
     if current_value >= goal.target_value:
         return goal.model_copy(
             update={
@@ -214,6 +253,8 @@ def tick_goal(goal: Goal, *, current_value: float, sim_day: int) -> Goal:
                 "completed_at": now,
                 "updated_at": now,
                 "milestones": milestones,
+                "stalled_ticks": stalled_ticks,
+                "is_blocked": False,
             }
         )
     if goal.deadline_sim_day is not None and sim_day > goal.deadline_sim_day:
@@ -224,9 +265,20 @@ def tick_goal(goal: Goal, *, current_value: float, sim_day: int) -> Goal:
                 "status": "expired",
                 "updated_at": now,
                 "milestones": milestones,
+                "stalled_ticks": stalled_ticks,
+                "is_blocked": False,
             }
         )
-    return goal.model_copy(update={"current_value": round(current_value, 2), "progress_pct": progress_pct, "updated_at": now, "milestones": milestones})
+    return goal.model_copy(
+        update={
+            "current_value": round(current_value, 2),
+            "progress_pct": progress_pct,
+            "updated_at": now,
+            "milestones": milestones,
+            "stalled_ticks": stalled_ticks,
+            "is_blocked": stalled_ticks >= GOAL_STALLED_THRESHOLD_TICKS,
+        }
+    )
 
 
 def tick_goals(

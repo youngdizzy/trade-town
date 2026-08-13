@@ -6135,6 +6135,20 @@ class Goal(CamelModel):
     # empty list so a save from before this field existed still
     # validates during load.
     milestones: list[Milestone] = Field(default_factory=list)
+    # CEO Company Health + Live Market Realism directive, Section 13 —
+    # a real "blockers" signal: consecutive real ticks (see
+    # app/goals.py's GOAL_STALLED_THRESHOLD_TICKS) this goal has been
+    # active with essentially zero real progress_pct movement. Resets to
+    # 0 the moment real progress resumes — never a fabricated "reason"
+    # string, just the honest count of stalled ticks itself. Defaults to
+    # 0/False so a save from before these fields existed still validates
+    # during load. `owner`/`supporting departments` from the CEO's
+    # directive were explicitly cut, not silently dropped — see
+    # app/goals.py's own module docstring for why no real per-goal
+    # ownership/department-attribution mechanism exists in this
+    # codebase today.
+    stalled_ticks: int = Field(default=0, alias="stalledTicks")
+    is_blocked: bool = Field(default=False, alias="isBlocked")
 
 
 # v0.7 Design Bible Chapter 64 (third pass) — the Executive Priority
