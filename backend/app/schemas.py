@@ -5837,13 +5837,26 @@ class FounderCouncilSession(CamelModel):
     """v0.7 Feature 39 — the Founder Council. A real monthly sit-down
     between the Coach and both Founders, generated alongside the
     existing monthly CoachReport (see founders.py) — never a duplicate,
-    independently-invented meeting transcript."""
+    independently-invented meeting transcript.
+
+    CEO Company/Executive Health directive, Phase 4 — the three boolean
+    flags below record whether each note actually references real
+    company content that period (a real CoachReport strength/
+    recommendation, a real Library-of-Mistakes case or Discipline
+    Review, a real Reasoning Lab challenge or Reflection Chamber
+    session) versus founders.py's own honest "nothing to review yet"
+    fallback text. Default True — a save from before this field existed
+    is not retroactively assumed to have been a placeholder-only
+    session; see app/company_health.py's _founder_oversight()."""
 
     id: str
     sim_day: int = Field(alias="simDay")
     coach_highlight: str = Field(alias="coachHighlight")
     keystone_note: str = Field(alias="keystoneNote")
     compass_note: str = Field(alias="compassNote")
+    coach_highlight_is_real: bool = Field(default=True, alias="coachHighlightIsReal")
+    keystone_note_is_real: bool = Field(default=True, alias="keystoneNoteIsReal")
+    compass_note_is_real: bool = Field(default=True, alias="compassNoteIsReal")
     created_at: str = Field(alias="createdAt")
 
 

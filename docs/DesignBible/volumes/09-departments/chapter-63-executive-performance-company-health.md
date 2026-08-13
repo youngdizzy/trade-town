@@ -586,3 +586,49 @@ approving one real graduation via `POST
 from a stuck `0.0` to a real, nonzero `3.1`, with `graduatedSimDay`
 correctly recorded on the real persisted progress record — the CEO
 action and the score move together, live, unmodified.
+
+**CEO Company/Executive Health directive, Phase 4 — Founder Oversight:
+HIGH VISIBILITY + HIGH LEVERAGE + LOW MICROMANAGEMENT, not lifetime
+session count.** The CEO's directive asked whether the CEO "receives
+meaningful decision summaries," can "understand why important decisions
+were made," and whether "important disagreements" and "risks and
+uncertainties" are visible — explicitly: "Do not artificially increase
+the score."
+
+*Root cause, confirmed by direct trace:* `_founder_oversight()` was
+`min(100, session_count * 20)` — a company that held 5 Founder Council
+sessions with nothing real to discuss in any of them scored identically
+to one whose every session surfaced a real major decision or risk.
+Occurrence alone can't answer "does the CEO actually receive meaningful
+summaries."
+
+*Fix:* `FounderCouncilSession` gained three real boolean fields —
+`coachHighlightIsReal`, `keystoneNoteIsReal`, `compassNoteIsReal` — set
+in `app/founders.py`'s `generate_council_session()` from the exact same
+real truthy checks already used to choose that note's text (a real
+CoachReport strength/recommendation; a real Library-of-Mistakes case or
+Discipline Review, Keystone's own risk domain; a real Reasoning Lab
+challenge or Reflection Chamber lesson, Compass's own learning domain),
+never re-derived by string-matching the fallback text after the fact.
+`_founder_oversight()` is now an equal blend of the original occurrence
+reading (still real — a regular cadence matters, per "HIGH LEVERAGE," a
+single lucky substantive session shouldn't read as full oversight
+either) and a new real substance reading — the average, across every
+real session on record, of how many of its three notes actually
+referenced real content that period versus founders.py's own honest
+"nothing to review yet" placeholder. Backward-compatible: the three
+fields default `True` on load, so a save from before this field existed
+is not retroactively assumed to have been placeholder-only.
+
+Verified: 4 new tests in `test_company_health.py` (zero sessions still
+reads 0; five placeholder-only sessions read 50 while five substantive
+ones read 100 at the identical occurrence count; partial per-session
+substance averages correctly), 3 new tests in `test_founders.py`
+(`_is_real` flags read `False` with no real history, `True` with real
+history including via the recommendation fallback path), full backend
+suite passing, `mypy`/`ruff` clean. Live-verified against a running
+save: after a real schema migration recovered a pre-existing session
+(confirming the backward-compatible default), `founderOversight` read
+`60.0` — exactly `(20 occurrence + 100 substance) / 2` for one real,
+fully-substantive session, matching the formula precisely on real,
+unmodified game data.

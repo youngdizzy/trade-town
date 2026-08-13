@@ -428,7 +428,36 @@ def _talent_development(foundational_mentor_state: FoundationalMentorState, disc
 
 
 def _founder_oversight(council_sessions: list[FounderCouncilSession]) -> float:
-    return min(100.0, len(council_sessions) * 20.0)
+    """v0.7 Feature 39, extended under the CEO's Company/Executive
+    Health directive: HIGH VISIBILITY + HIGH LEVERAGE + LOW
+    MICROMANAGEMENT, not "how many sessions have ever occurred."
+
+    The original formula (`min(100, count * 20)`) counted lifetime
+    Founder Council sessions only — a company that held 5 sessions with
+    nothing real to discuss in any of them scored identically to one
+    whose every session surfaced a real major decision, a real risk, or
+    a real dissenting analysis. The CEO's directive asked whether the
+    CEO actually "receives meaningful decision summaries" and can
+    "understand why important decisions were made" — occurrence alone
+    can't answer that.
+
+    Now an equal blend of two real signals: the original occurrence
+    reading (still real — regular oversight cadence matters, per "HIGH
+    LEVERAGE," not a one-off), and a new real substance reading — the
+    average, across all real sessions on record, of how many of each
+    session's three real notes (`coach_highlight_is_real`,
+    `keystone_note_is_real`, `compass_note_is_real` — see
+    app/founders.py's `generate_council_session()`) actually referenced
+    real company content that period, versus its own honest "nothing to
+    review yet" fallback. 0.0 (unchanged) until the company has held at
+    least one real session — no oversight has ever happened yet."""
+    if not council_sessions:
+        return 0.0
+    occurrence = min(100.0, len(council_sessions) * 20.0)
+    substance = sum(
+        (int(s.coach_highlight_is_real) + int(s.keystone_note_is_real) + int(s.compass_note_is_real)) / 3.0 * 100.0 for s in council_sessions
+    ) / len(council_sessions)
+    return (occurrence + substance) / 2.0
 
 
 def compute_company_health(

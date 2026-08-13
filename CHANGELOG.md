@@ -7,6 +7,29 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO Company/Executive Health directive, Phase 4 — Founder Oversight: real substance, not lifetime
+  session count** (`backend/app/schemas.py`, `backend/app/founders.py`, `backend/app/company_health.py`,
+  `backend/tests/test_founders.py`, `backend/tests/test_company_health.py`,
+  `docs/DesignBible/volumes/09-departments/chapter-63-executive-performance-company-health.md`): the CEO's
+  directive asked "HIGH VISIBILITY + HIGH LEVERAGE + LOW MICROMANAGEMENT" — does the CEO receive meaningful
+  decision summaries, understand why decisions were made, see real risks and disagreements — explicitly: "Do
+  not artificially increase the score." Direct trace found `_founder_oversight()` was
+  `min(100, session_count * 20)` — a company with 5 sessions that had nothing real to discuss scored identically
+  to one whose every session surfaced a real major decision or risk. Fixed: `FounderCouncilSession` gained three
+  real boolean fields (`coachHighlightIsReal`/`keystoneNoteIsReal`/`compassNoteIsReal`), set in
+  `generate_council_session()` from the exact same real truthy checks already used to choose each note's text
+  (a real CoachReport strength/recommendation; a real Library-of-Mistakes case, Keystone's risk domain; a real
+  Reasoning Lab challenge or Reflection Chamber lesson, Compass's learning domain) — never re-derived by
+  string-matching fallback text after the fact. `_founder_oversight()` is now an equal blend of the original
+  occurrence reading (a regular cadence still matters) and a new real substance reading — the average, across
+  every real session, of how many of its three notes referenced real content versus founders.py's own honest
+  "nothing to review yet" placeholder. Backward-compatible: the three fields default `True` on load, so older
+  saves aren't retroactively assumed placeholder-only. Verified: 4 new tests in `test_company_health.py`, 3 new
+  tests in `test_founders.py`, full backend suite passing, `mypy`/`ruff` clean. Live-verified against a running
+  save: after a real schema migration recovered a pre-existing session (confirming the backward-compatible
+  default), `founderOversight` read `60.0` — exactly `(20 occurrence + 100 substance) / 2` for one real,
+  fully-substantive session, matching the formula precisely on real, unmodified game data.
+
 - **CEO Company/Executive Health directive, Phase 3 — Talent Development: real post-graduation performance,
   not mere XP** (`backend/app/company_health.py`, `backend/app/nexus.py`, `backend/app/state.py`,
   `backend/tests/test_company_health.py`,

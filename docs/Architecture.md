@@ -2650,6 +2650,18 @@ history yet reads a neutral 50 for that half, never a fabricated pass.
 Live-verified: approving a real pending graduation on a running save
 moved `talentDevelopment` from a stuck `0.0` to a real `3.1`.
 
+**Founder Oversight, corrected under the same directive.** The real
+`min(100, session_count * 20)` formula scored a company with 5 sessions
+of nothing real to discuss identically to one whose every session
+surfaced a real major decision or risk. Fixed: `FounderCouncilSession`
+gained three real boolean fields set from the exact truthy checks that
+already chose each note's text (a real CoachReport highlight, a real
+Library-of-Mistakes case, a real Reasoning Lab/Reflection Chamber
+lesson). `_founder_oversight()` is now an equal blend of real occurrence
+and real substance (how many of a session's three notes were real,
+versus founders.py's own honest placeholder). Live-verified: `60.0` for
+one real, fully-substantive session — exactly `(20 + 100) / 2`.
+
 **Executive Priorities and Department Health are both pure frontend
 derivations** — like the Decision Replay Center, no second backend
 computation was needed. `lib/derive.ts`'s `computeExecutivePriorities()`

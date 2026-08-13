@@ -636,9 +636,49 @@ class TestExecutiveTier:
         assert health.innovation_velocity == 50.0
 
     def test_founder_oversight_caps_at_one_hundred(self) -> None:
+        # All three notes real (the schema default), so both the
+        # occurrence and substance components read 100.
         sessions = [FounderCouncilSession(id=f"c{i}", simDay=i, coachHighlight="x", keystoneNote="x", compassNote="x", createdAt="2026-01-01T00:00:00+00:00") for i in range(10)]
         health = _health(founder_council_sessions=sessions)
         assert health.founder_oversight == 100.0
+
+    def test_no_council_sessions_yet_reads_zero(self) -> None:
+        health = _health(founder_council_sessions=[])
+        assert health.founder_oversight == 0.0
+
+    def test_founder_oversight_penalizes_placeholder_only_sessions(self) -> None:
+        """CEO Company/Executive Health directive, Phase 4 — five real
+        sessions that all landed on founders.py's own honest "nothing to
+        review yet" fallback (no real content in any of the three notes)
+        must read lower than five sessions that surfaced real company
+        content, even though both hit the same occurrence count."""
+        placeholder_sessions = [
+            FounderCouncilSession(
+                id=f"c{i}", simDay=i, coachHighlight="x", keystoneNote="x", compassNote="x",
+                coachHighlightIsReal=False, keystoneNoteIsReal=False, compassNoteIsReal=False,
+                createdAt="2026-01-01T00:00:00+00:00",
+            )
+            for i in range(5)
+        ]
+        real_sessions = [FounderCouncilSession(id=f"c{i}", simDay=i, coachHighlight="x", keystoneNote="x", compassNote="x", createdAt="2026-01-01T00:00:00+00:00") for i in range(5)]
+        placeholder_health = _health(founder_council_sessions=placeholder_sessions)
+        real_health = _health(founder_council_sessions=real_sessions)
+        # occurrence = min(100, 5*20) = 100 for both; substance = 0 vs 100.
+        assert placeholder_health.founder_oversight == 50.0
+        assert real_health.founder_oversight == 100.0
+        assert placeholder_health.founder_oversight < real_health.founder_oversight
+
+    def test_founder_oversight_averages_partial_substance_across_sessions(self) -> None:
+        """A single session with two of its three real notes and one
+        placeholder reads partial substance credit, not all-or-nothing."""
+        session = FounderCouncilSession(
+            id="c1", simDay=1, coachHighlight="x", keystoneNote="x", compassNote="x",
+            coachHighlightIsReal=True, keystoneNoteIsReal=True, compassNoteIsReal=False,
+            createdAt="2026-01-01T00:00:00+00:00",
+        )
+        health = _health(founder_council_sessions=[session])
+        # occurrence = min(100, 1*20) = 20; substance = 2/3 * 100 = 66.7.
+        assert health.founder_oversight == round((20.0 + 200.0 / 3.0) / 2.0, 1)
 
     def test_talent_development_reads_real_graduation_progress(self) -> None:
         # Isolated to a single real active track (tjr) — market_intelligence

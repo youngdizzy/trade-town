@@ -214,7 +214,14 @@ def generate_council_session(
     """v0.7 Feature 39 — the Founder Council: the Coach's real monthly
     sit-down with both Founders, generated alongside the existing
     monthly CoachReport (see nexus.py's own monthly-cadence gate) —
-    never a duplicate, independently-invented meeting transcript."""
+    never a duplicate, independently-invented meeting transcript.
+
+    CEO Company/Executive Health directive, Phase 4 — each note's real
+    `_is_real` flag (see FounderCouncilSession's own schema docstring)
+    is set from the exact same truthy check already used to choose that
+    note's text, never re-derived by string-matching the fallback text
+    after the fact."""
+    coach_highlight_is_real = latest_coach_report is not None and bool(latest_coach_report.strengths or latest_coach_report.recommendations)
     if latest_coach_report is None:
         coach_highlight = "No Coach Report has been filed yet this month."
     elif latest_coach_report.strengths:
@@ -236,6 +243,9 @@ def generate_council_session(
         coachHighlight=coach_highlight,
         keystoneNote=keystone_note,
         compassNote=compass_note,
+        coachHighlightIsReal=coach_highlight_is_real,
+        keystoneNoteIsReal=keystone_found is not None,
+        compassNoteIsReal=compass_found is not None,
         createdAt=created_at,
     )
 

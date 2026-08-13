@@ -285,6 +285,50 @@ class TestGenerateCouncilSession:
         )
         assert session.coach_highlight == "Tighten position sizing on high-volatility symbols."
 
+    def test_is_real_flags_are_false_with_no_history(self) -> None:
+        """CEO Company/Executive Health directive, Phase 4 — every note
+        that fell back to founders.py's own honest placeholder text
+        must record that real fact, not silently read as real."""
+        session = generate_council_session(
+            sim_day=30,
+            session_id="council-30",
+            created_at=_now_iso(),
+            latest_coach_report=None,
+            discipline_reviews=[],
+            case_studies=[],
+            reasoning_challenges=[],
+            reflection_sessions=[],
+        )
+        assert session.coach_highlight_is_real is False
+        assert session.keystone_note_is_real is False
+        assert session.compass_note_is_real is False
+
+    def test_is_real_flags_are_true_with_real_history(self) -> None:
+        report = _coach_report(strengths=["Research accuracy held above 70% all month."])
+        session = generate_council_session(
+            sim_day=30,
+            session_id="council-30",
+            created_at=_now_iso(),
+            latest_coach_report=report,
+            discipline_reviews=[_discipline_review()],
+            case_studies=[],
+            reasoning_challenges=[_reasoning_challenge()],
+            reflection_sessions=[],
+        )
+        assert session.coach_highlight_is_real is True
+        assert session.keystone_note_is_real is True
+        assert session.compass_note_is_real is True
+
+    def test_coach_highlight_is_real_even_via_the_recommendation_fallback(self) -> None:
+        """A real recommendation (not a strength) still counts as real
+        content — only the truly generic "no standout pattern" text
+        should read False."""
+        report = _coach_report(recommendations=["Tighten position sizing on high-volatility symbols."])
+        session = generate_council_session(
+            sim_day=30, session_id="council-30", created_at=_now_iso(), latest_coach_report=report, discipline_reviews=[], case_studies=[], reasoning_challenges=[], reflection_sessions=[]
+        )
+        assert session.coach_highlight_is_real is True
+
 
 class TestRecordCouncilSession:
     def test_caps_at_max_sessions(self) -> None:
