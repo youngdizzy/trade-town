@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/net/api";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { CandlestickChart } from "./CandlestickChart";
+import { marketTickerStats } from "./lib/derive";
 import { useCandles } from "./lib/useCandles";
 import { Glass, TerminalLabel } from "./ui";
 
@@ -9,7 +10,7 @@ const FALLBACK_TIMEFRAMES = ["1m", "5m", "15m", "1h", "4h", "1d"];
 
 /** General-purpose chart browser — symbol + timeframe pickers over the watchlist, for looking at any tracked market without needing a specific decision to drill into. */
 export function MarketChartPanel() {
-  const { watchlist } = useGameStore();
+  const { watchlist, marketEnvironment } = useGameStore();
   const [symbol, setSymbol] = useState(watchlist[0]?.symbol ?? "AAPL");
   const [timeframe, setTimeframe] = useState("1h");
   const [timeframes, setTimeframes] = useState<string[]>(FALLBACK_TIMEFRAMES);
@@ -32,6 +33,8 @@ export function MarketChartPanel() {
 
   const { candles, loading, error } = useCandles(symbol, timeframe, 100);
   const dataStatus = candles[0]?.dataStatus ?? null;
+  const watchlistEntry = watchlist.find((w) => w.symbol === symbol);
+  const ticker = marketTickerStats(candles, watchlistEntry);
 
   return (
     <Glass className="p-3">
@@ -64,6 +67,25 @@ export function MarketChartPanel() {
             ))}
           </div>
         </div>
+      </div>
+      <div className="mb-2 flex flex-wrap items-baseline gap-x-4 gap-y-1 border-b border-cmd-border/50 pb-2 text-[10px]">
+        <span className="text-lg font-semibold tabular-nums text-cmd-text">{ticker.price !== null ? `$${ticker.price.toFixed(2)}` : "—"}</span>
+        {ticker.changePct !== null && (
+          <span className={`tabular-nums font-medium ${ticker.changePct >= 0 ? "text-cmd-green" : "text-cmd-red"}`}>
+            {ticker.changePct >= 0 ? "+" : ""}
+            {ticker.changePct.toFixed(2)}%
+          </span>
+        )}
+        <span className="text-cmd-textDim">
+          VOL <span className="tabular-nums text-cmd-text">{ticker.volume !== null ? Math.round(ticker.volume).toLocaleString() : "—"}</span>
+        </span>
+        <span className="text-cmd-textDim">
+          VOLATILITY <span className="tabular-nums text-cmd-text">{ticker.volatilityPct !== null ? `${ticker.volatilityPct.toFixed(2)}%` : "—"}</span>
+        </span>
+        <span className="text-cmd-textDim">
+          REGIME <span className="text-cmd-cyan">{marketEnvironment.label}</span>
+        </span>
+        <span className="uppercase text-cmd-textDim">{timeframe}</span>
       </div>
       <CandlestickChart candles={candles} loading={loading} error={error} dataStatus={dataStatus} height={220} />
     </Glass>

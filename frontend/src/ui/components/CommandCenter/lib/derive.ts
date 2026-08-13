@@ -9,6 +9,7 @@ import type {
   BlackBoxState,
   BlackSwanReport,
   BlackSwanRiskTier,
+  Candle,
   CaseStudy,
   CeoDecisionRecord,
   CertificationStatus,
@@ -154,6 +155,37 @@ export function marketRegimeHeuristic(watchlist: WatchlistEntry[]): MarketRegime
     label,
     detail: `Heuristic over ${watchlist.length} tracked symbol${watchlist.length === 1 ? "" : "s"} — avg move ${avg >= 0 ? "+" : ""}${avg.toFixed(2)}%, avg |move| ${avgAbs.toFixed(2)}%.`,
   };
+}
+
+export interface MarketTickerStats {
+  price: number | null;
+  changePct: number | null;
+  volume: number | null;
+  /** Average per-bar (high-low) range as a %% of close over the visible
+   * sample — the same real "realized volatility" stand-in
+   * backend/app/market_data.py's own `volatility_pct()` already uses,
+   * computed here from the identical real candles the chart itself
+   * renders, not a second invented reading. */
+  volatilityPct: number | null;
+}
+
+/**
+ * CEO Company Health + Live Market Realism directive — "the player
+ * should be able to look at the chart and immediately understand what
+ * the market is doing right now." Every field here comes from data the
+ * chart already has (the real candles it renders) or the real watchlist
+ * entry for the same symbol — never a fabricated bid/ask/spread/session
+ * reading this codebase has no real source for (see market_data.py's
+ * own module docstring on that disclosed scope cut).
+ */
+export function marketTickerStats(candles: Candle[], watchlistEntry: WatchlistEntry | undefined): MarketTickerStats {
+  const latest = candles[candles.length - 1];
+  const price = latest?.close ?? watchlistEntry?.lastPrice ?? null;
+  const changePct = watchlistEntry?.dailyChangePct ?? null;
+  const volume = latest?.volume ?? null;
+  const ranges = candles.filter((c) => c.close > 0).map((c) => ((c.high - c.low) / c.close) * 100);
+  const volatilityPct = ranges.length > 0 ? ranges.reduce((s, r) => s + r, 0) / ranges.length : null;
+  return { price, changePct, volume, volatilityPct };
 }
 
 export type VoteDirection = "LONG" | "SHORT" | "NEUTRAL";
