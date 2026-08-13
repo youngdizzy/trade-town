@@ -929,3 +929,138 @@ random `test_low_aptitude_agent_racks_up_consecutive_failures_eventually`
 unrelated to this piece and passing on its own in isolation — the same
 category of known flake the Piece G addendum above already documented
 once). `mypy app/`/`ruff check app/ tests/` clean.
+
+## Addendum — Evaluation-Level Risk-Policy Simulator (Quantitative Research & Intelligence System, Requirements 21/22/23/25, Piece 10)
+
+**Status:** Real, a new module (`app/evaluation_simulator.py`) plus one
+new read-only, on-demand `GET /api/sandbox/evaluation-policy-comparison`
+endpoint. Never wired into the background sim tick or any autonomous
+agent decision — a real research computation the CEO requests, not a
+second `StrategyMonteCarloResult`-style auto-generated pipeline.
+
+**Origin.** The source video's central claim — "reaching the funded
+stage quickly may be preferable to spending a long time trading an
+account that cannot generate payouts" — is exactly the kind of claim
+Requirement 21 demands TradeTown treat as a hypothesis to test, never
+adopt as fact. This module is that test: a real Monte Carlo evaluation-
+level race simulator comparing four named, disclosed risk policies.
+
+**What's genuinely new vs. reused.** `app/strategy_lab.py`'s
+`run_strategy_monte_carlo()` already bootstraps a per-trade win/loss
+sequence from a strategy's own real, aggregated `SimulationResult`
+fields — that per-trade generating idea (draw a random outcome sized by
+real win rate/avg win/avg loss, compound it into cumulative equity) is
+reused as-is. What that function has never had, and what this module
+adds: a real three-way RACE CONDITION per simulated path — does the
+path hit its profit target before it hits its drawdown limit before it
+runs out of simulated time? Grep-confirmed absent anywhere in this
+codebase before this module (no `profit_target` vs. `drawdown_limit`
+vs. `max_trades` race existed in `strategy_lab.py`, `simulation.py`, or
+`whatif.py`).
+
+**A real sign-convention bug caught before it shipped.**
+`run_strategy_monte_carlo()`'s own formula
+(`-avg_loss_pct if it's a loss`) silently double-negates: a real
+`SimulationResult.avg_loss_pct` is already stored as a negative number
+(`app/simulation.py`'s own generator, e.g. loss ranges like
+`(-10.0, -1.5)`), so negating it again turns a real loss into a
+positive equity gain. Verified directly with a Python snippet before
+writing this module's own logic: feeding a 20%-win-rate/`avg_loss_pct=
+-8.0` strategy into that exact formula produces a **+233% cumulative
+gain**, not ruin — the existing test suite never actually exercises
+this path stochastically (`test_not_ready_when_ruin_probability_is_too_
+high` bypasses the real bootstrap with a hand-built fixture, confirmed
+by reading that test directly), so the quirk has shipped undetected.
+This module's own `_simulate_one_path()` deliberately does **not**
+inherit that negation — `avg_loss_pct` is applied directly, so a loss
+trade actually subtracts from equity (re-verified with the same
+snippet: the corrected formula produces a real -70% loss and 71%
+drawdown for the same inputs). `strategy_lab.py`'s own existing
+function was left untouched — fixing a latent quirk in a separate,
+already-shipped, already-tested module is out of this piece's scope;
+this is noted here so the discrepancy is documented, not silently
+carried forward into new code.
+
+**Four named policies, every one an explicit, disclosed hypothesis —
+never adopted as fact** (Requirement 21's own text: "the system must
+not conclude that aggressive risk is superior merely because it
+produces faster passes"): `conservative` (1.0% risk/trade),
+`moderate` (2.0%, matching `RiskLimits.risk_per_trade_pct`'s own real
+default), `aggressive` (3.0%), and `failure_boundary_relative` — sizes
+risk as exactly 1/8 of the account's own real `trailing_drawdown_limit_
+pct` when one is configured, one real test point from the source
+video's own suggested "1/4-1/8" range, never assumed optimal (per the
+CEO's own IMPLEMENTATION BOUNDARIES) and entirely omitted — not
+fabricated — when no account or no real boundary is available
+(disclosed in the report's own `limitations` as `NOT_TRACKABLE_YET`).
+
+**Every non-real-data number is a stated, disclosed assumption**, never
+silently baked in: `avg_win_pct`/`avg_loss_pct` are treated as generated
+under the 2.0% baseline risk (this codebase doesn't record what risk
+setting a `SimulationResult` actually used) and scaled linearly to each
+policy's real `risk_per_trade_pct`; 2.0 trades/day converts a simulated
+trade count into an implied day count (no real historical trades-per-
+day statistic exists to derive this from); 500 real Monte Carlo paths
+per policy, a real but modest, disclosed sample size; real account
+configuration (`challenge_profit_target_pct`/`trailing_drawdown_limit_
+pct`/`challenge_duration_days`) is used whenever present, with disclosed
+defaults (8%/10%/200 simulated trades) only when it's not.
+
+**Every requested metric, real and computed, never fabricated:**
+probability of passing/failing (split into drawdown-failure vs.
+time-expiry-failure), expected trades/trading-days/cost to pass (`None`
+when zero simulated paths passed — never a fabricated 0 or infinity),
+median and worst-case (p95) max drawdown, probability of hitting a real
+consecutive-loss streak (reusing `TradingModeState.losing_streak_
+suspend_count`'s own real default of 5, not a second invented
+threshold), a disclosed risk-adjusted-outcome heuristic (explicitly
+labeled a research heuristic, not a validated formula), and — Requirement
+21's "sensitivity to strategy quality" — the same simulation rerun at a
+real, disclosed ±5-percentage-point win-rate delta.
+
+**Explicitly NOT attempted, disclosed in every report's own
+`limitations`, never a silent gap:** real per-regime sensitivity
+(`StrategyRegimeTestReport`'s buckets track `avg_return_pct`, not the
+win_rate/avg_win_pct/avg_loss_pct triplet this simulator needs, and this
+codebase has no real per-regime trade data to derive that triplet from
+honestly); downstream funded-stage performance (Piece 10a's `Account.
+funded_stage_reached` is a real, explicit CEO action, never linked to a
+simulated path — this module refuses to claim a simulated evaluation
+outcome predicts a real funded account's real future performance).
+
+**Never declares a winner.** `EvaluationPolicyComparisonReport.
+conclusion` states explicitly: "no policy is declared superior" —
+readers are directed to weigh probability of passing against drawdown
+risk and consecutive-loss risk together (Requirement 25: speed is an
+objective to weigh, never a license to gamble), not to read the fastest
+policy's numbers in isolation.
+
+**New endpoint:** `GET /api/sandbox/evaluation-policy-comparison?
+strategyId=...&accountId=...` (accountId optional) — read-only, computed
+fresh every call, `None` when the strategy has no completed simulation
+runs yet (same honesty boundary as `/model-validation` and the Monte
+Carlo pipeline). Deliberately NOT auto-generated in the background sim
+tick the way `StrategyMonteCarloResult` is — a real, on-demand research
+computation the CEO requests, not a second autonomous pipeline running
+unattended.
+
+**Verified:** 15 new backend tests
+(`tests/test_evaluation_simulator.py` — `TestSimulateEvaluationPolicy`:
+a guaranteed winner always passes, a guaranteed loser never passes and
+correctly fails via drawdown-or-time-expiry, a guaranteed loser
+genuinely accumulates a real 5-trade consecutive-loss streak, a strong
+edge passes far more often than a weak edge, a higher risk-per-trade
+produces measurably more drawdown failures for the same losing edge,
+`expected_cost_to_pass` is only ever computed when paths actually
+passed, sensitivity-to-quality moves in the correct direction;
+`TestCompareEvaluationPolicies`: no completed runs returns `None`,
+exactly three policies without an account, the fourth
+`failure_boundary_relative` policy added correctly with a real account
+boundary (risk_per_trade_pct verified as the exact real `8.0 * 0.125 =
+1.0` computation), real account configuration overrides the disclosed
+defaults, defaults are disclosed when no account is configured, the
+conclusion never declares a winner, sample trade count reflects real
+aggregated data across multiple runs, and a different strategy's
+results never leak in), full backend suite passed, `mypy app/`/`ruff
+check app/ tests/` clean. All 15 tests re-run 5 times in a row with no
+flakes despite exercising real randomness.

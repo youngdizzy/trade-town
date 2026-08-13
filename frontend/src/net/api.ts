@@ -25,6 +25,7 @@ import type {
   EducationLesson,
   EducationProgress,
   EmergencyStopState,
+  EvaluationPolicyComparisonReport,
   ExecutiveAccuracyScore,
   ExecutiveRecommendation,
   WeightedExecutiveRecommendation,
@@ -585,6 +586,16 @@ export const api = {
   // strategy. Read-only, computed fresh every call; null if the
   // strategy has never been through Company Review yet.
   getSandboxModelValidation: (strategyId: string) => request<ModelValidationReport | null>(`/sandbox/model-validation?strategyId=${encodeURIComponent(strategyId)}`),
+  // Prop-Firm Risk Intelligence Addendum, Requirements 21/22/23/25
+  // (Piece 10) — a real, on-demand Monte Carlo comparison of four named
+  // evaluation-stage risk policies. Read-only, computed fresh every
+  // call, never auto-generated in the background; null if the strategy
+  // has no completed simulation runs yet.
+  getEvaluationPolicyComparison: (strategyId: string, accountId?: string) => {
+    const query = new URLSearchParams({ strategyId });
+    if (accountId) query.set("accountId", accountId);
+    return request<EvaluationPolicyComparisonReport | null>(`/sandbox/evaluation-policy-comparison?${query.toString()}`);
+  },
   // v0.7 Feature 54 (the brief self-numbered it "Feature 53," already
   // used above for Company Certification) — the Decision Memory
   // System. Both read-only, computed fresh every call, mirroring the

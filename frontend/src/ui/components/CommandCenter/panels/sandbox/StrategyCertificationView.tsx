@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { api } from "@/net/api";
-import type { Strategy, StrategyCertification, StrategyDossier } from "@/types";
+import type { EvaluationPolicyComparisonReport, Strategy, StrategyCertification, StrategyDossier } from "@/types";
 import { executiveStanceTone, experimentTierTone, strategyExecutiveActionTone, strategyLiquidityVerdictTone, strategyRegimeVerdictTone, strategyRiskRatingTone } from "../../lib/derive";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../../ui";
 
@@ -23,6 +23,12 @@ export function StrategyCertificationView({ selected }: { selected: Strategy }) 
   const [certification, setCertification] = useState<StrategyCertification | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Prop-Firm Risk Intelligence Addendum, Piece 10 — a real, on-demand
+  // Monte Carlo evaluation-policy comparison. Fetched separately (not
+  // part of Promise.all above) since it's slower and genuinely optional
+  // — null both while loading and when the strategy has no completed
+  // simulation runs to bootstrap from.
+  const [evaluationPolicies, setEvaluationPolicies] = useState<EvaluationPolicyComparisonReport | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,6 +46,22 @@ export function StrategyCertificationView({ selected }: { selected: Strategy }) 
       })
       .finally(() => {
         if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected.id]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setEvaluationPolicies(null);
+    api
+      .getEvaluationPolicyComparison(selected.id)
+      .then((res) => {
+        if (!cancelled) setEvaluationPolicies(res);
+      })
+      .catch(() => {
+        if (!cancelled) setEvaluationPolicies(null);
       });
     return () => {
       cancelled = true;
@@ -155,6 +177,65 @@ export function StrategyCertificationView({ selected }: { selected: Strategy }) 
             VaR/CVaR are real percentile and tail-mean reads off this same bootstrap's own sorted final-return array — no new simulation. VaR is the return level such that only
             5%/1% of paths did worse; CVaR is the mean return among exactly that worst 5%/1% of paths — what to expect given you're already in the tail.
           </p>
+        </Glass>
+      )}
+
+      {evaluationPolicies && (
+        <Glass className="p-3">
+          <div className="mb-1.5 flex items-center justify-between">
+            <TerminalLabel>Evaluation-Level Risk-Policy Comparison — {evaluationPolicies.policies[0]?.pathsSimulated ?? 0} paths/policy, real Monte Carlo race</TerminalLabel>
+          </div>
+          <p className="mb-2 text-[8px] italic text-cmd-textDim">{evaluationPolicies.researchQuestion}</p>
+          <div className="overflow-x-auto">
+            <table className="w-full min-w-[560px] border-collapse text-left text-[9px]">
+              <thead>
+                <tr className="border-b border-cmd-border/50 text-cmd-textDim">
+                  <th className="py-1 pr-2 font-normal">Policy</th>
+                  <th className="py-1 pr-2 font-normal">Risk/Trade</th>
+                  <th className="py-1 pr-2 font-normal">P(Pass)</th>
+                  <th className="py-1 pr-2 font-normal">P(Fail DD)</th>
+                  <th className="py-1 pr-2 font-normal">P(Fail Time)</th>
+                  <th className="py-1 pr-2 font-normal">Days to Pass</th>
+                  <th className="py-1 pr-2 font-normal">Median DD</th>
+                  <th className="py-1 pr-2 font-normal">Worst-Case DD</th>
+                  <th className="py-1 pr-2 font-normal">P(Loss Streak)</th>
+                </tr>
+              </thead>
+              <tbody>
+                {evaluationPolicies.policies.map((p) => (
+                  <tr key={p.policyId} className="border-b border-cmd-border/20">
+                    <td className="py-1 pr-2 text-cmd-text">{p.label}</td>
+                    <td className="py-1 pr-2 tabular-nums text-cmd-text">{p.riskPerTradePct.toFixed(2)}%</td>
+                    <td className="py-1 pr-2 tabular-nums text-cmd-green">{p.probabilityOfPassingPct.toFixed(1)}%</td>
+                    <td className="py-1 pr-2 tabular-nums text-cmd-red">{p.probabilityOfFailingDrawdownPct.toFixed(1)}%</td>
+                    <td className="py-1 pr-2 tabular-nums text-cmd-amber">{p.probabilityOfFailingTimeExpiryPct.toFixed(1)}%</td>
+                    <td className="py-1 pr-2 tabular-nums text-cmd-text">{p.expectedTradingDaysToPass !== null ? p.expectedTradingDaysToPass.toFixed(0) : "—"}</td>
+                    <td className="py-1 pr-2 tabular-nums text-cmd-amber">{p.medianMaxDrawdownPct.toFixed(1)}%</td>
+                    <td className="py-1 pr-2 tabular-nums text-cmd-red">{p.worstCaseMaxDrawdownPct.toFixed(1)}%</td>
+                    <td className="py-1 pr-2 tabular-nums text-cmd-text">
+                      {p.probabilityOfConsecutiveLossStreakPct.toFixed(1)}% (≥{p.consecutiveLossStreakThreshold})
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <p className="mt-2 text-[8px] italic text-cmd-amber">{evaluationPolicies.conclusion}</p>
+          <details className="mt-1.5">
+            <summary className="cursor-pointer text-[8px] text-cmd-textDim">Assumptions &amp; limitations ({evaluationPolicies.assumptions.length + evaluationPolicies.limitations.length})</summary>
+            <div className="mt-1 space-y-0.5">
+              {evaluationPolicies.assumptions.map((a, i) => (
+                <div key={`a-${i}`} className="text-[8px] italic text-cmd-textDim/80">
+                  · {a}
+                </div>
+              ))}
+              {evaluationPolicies.limitations.map((l, i) => (
+                <div key={`l-${i}`} className="text-[8px] italic text-cmd-textDim/80">
+                  · {l}
+                </div>
+              ))}
+            </div>
+          </details>
         </Glass>
       )}
 

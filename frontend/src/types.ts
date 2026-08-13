@@ -986,6 +986,59 @@ export interface StrategyConfidenceScore {
 // compute_experiment_tier() for the exact magnitude thresholds.
 export type ExperimentTier = "minor" | "moderate" | "major" | "transformational";
 
+// Quantitative Research & Intelligence System, Requirements 21/22/23/25
+// (Piece 10) — the evaluation-level risk-policy simulator. Every policy
+// is an explicit, disclosed HYPOTHESIS, never adopted as truth merely
+// because it's compared here.
+export type EvaluationRiskPolicyId = "conservative" | "moderate" | "aggressive" | "failure_boundary_relative";
+
+/** One risk policy's real Monte Carlo evaluation-simulation results.
+ * Speed (expectedTradesToPass/expectedTradingDaysToPass) is reported
+ * alongside failure and drawdown risk specifically so a reader can
+ * never read "fast" without also seeing "at what cost" (Requirement
+ * 25 — speed is an objective to weigh, never a license to gamble). */
+export interface EvaluationPolicySimulationResult {
+  policyId: EvaluationRiskPolicyId;
+  label: string;
+  riskPerTradePct: number;
+  pathsSimulated: number;
+  probabilityOfPassingPct: number;
+  probabilityOfFailingDrawdownPct: number;
+  probabilityOfFailingTimeExpiryPct: number;
+  expectedTradesToPass: number | null;
+  expectedTradingDaysToPass: number | null;
+  expectedCostToPass: number | null;
+  medianMaxDrawdownPct: number;
+  worstCaseMaxDrawdownPct: number;
+  probabilityOfConsecutiveLossStreakPct: number;
+  consecutiveLossStreakThreshold: number;
+  riskAdjustedOutcome: number;
+  probabilityOfPassingAtLowerQualityPct: number;
+  probabilityOfPassingAtHigherQualityPct: number;
+}
+
+/** Requirement 21's research question, answered honestly — this report
+ * never declares a winning policy (see `conclusion`). See
+ * `assumptions`/`limitations` for every disclosed number and scope
+ * cut this comparison makes. */
+export interface EvaluationPolicyComparisonReport {
+  id: string;
+  strategyId: string;
+  strategyName: string;
+  accountId: string | null;
+  sampleTradeCount: number;
+  profitTargetPct: number;
+  drawdownLimitPct: number;
+  maxTrades: number;
+  researchQuestion: string;
+  policies: EvaluationPolicySimulationResult[];
+  conclusion: string;
+  assumptions: string[];
+  limitations: string[];
+  simDay: number;
+  createdAt: string;
+}
+
 export interface StrategyDossier {
   strategyId: string;
   strategyName: string;

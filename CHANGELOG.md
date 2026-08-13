@@ -7,6 +7,43 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Evaluation-level risk-policy simulator** (`backend/app/evaluation_simulator.py`, `backend/app/schemas.py`,
+  `backend/app/routers/sandbox.py`, `backend/tests/test_evaluation_simulator.py`, `frontend/src/types.ts`,
+  `frontend/src/net/api.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/sandbox/StrategyCertificationView.tsx`,
+  `docs/DesignBible/volumes/09-departments/chapter-62-innovation-lab-continuous-improvement.md`): Piece 10 of the
+  CEO's Prop-Firm
+  Risk Intelligence Addendum, Requirements 21/22/23/25 — a real Monte Carlo evaluation-level race simulator (does a
+  simulated path hit its profit target before its drawdown limit before it runs out of simulated trades?) comparing
+  four named, explicitly disclosed risk-policy hypotheses (`conservative`/`moderate`/`aggressive`/
+  `failure_boundary_relative`), never adopting the source video's "reach funded fast" claim as fact. Reuses
+  `strategy_lab.py`'s real per-trade win/loss bootstrap generating idea; the day/trade-axis three-way race condition
+  is genuinely new (grep-confirmed absent from `strategy_lab.py`/`simulation.py`/`whatif.py` before this piece). Every
+  non-real-data number (baseline risk-scaling assumption, trades/day conversion, sample size, disclosed defaults) is
+  stated explicitly in every report's `assumptions`; real per-regime sensitivity and downstream funded-stage
+  performance are explicitly disclosed as NOT attempted in `limitations`, not silently omitted. Caught and avoided a
+  real sign-convention bug along the way: `run_strategy_monte_carlo()`'s existing formula double-negates
+  `avg_loss_pct` (already stored negative on a real `SimulationResult`), which a Python snippet confirmed turns a
+  20%-win-rate/-8% average loss strategy into a **+233% cumulative gain** instead of ruin in that function — this
+  module's own bootstrap deliberately does not inherit that negation, verified directly to produce a real -70%
+  loss/71% drawdown for the same inputs; `strategy_lab.py`'s own existing, already-shipped function was left
+  untouched as out of scope for this piece, documented rather than silently carried forward. The report's own
+  `conclusion` never declares a winning policy — explicitly directs comparing pass probability against drawdown and
+  consecutive-loss risk together (Requirement 25: speed is an objective to weigh, never a license to gamble). New
+  read-only `GET /api/sandbox/evaluation-policy-comparison` endpoint, computed fresh every call, deliberately not
+  auto-generated in the background sim tick. Surfaced in `StrategyCertificationView.tsx` (the Sandbox strategy
+  dossier), right after the existing Monte Carlo Testing card: a real comparison table across all returned policies
+  (risk/trade, pass/fail-drawdown/fail-time-expiry probabilities, expected days to pass, median/worst-case drawdown,
+  consecutive-loss-streak probability) plus the report's own real `conclusion`/`assumptions`/`limitations` text.
+  Verified: 15 new backend tests (re-run 5× with no flakes despite real randomness), full backend suite 1706/1706
+  passed, `mypy`/`ruff` clean, `tsc -b --noEmit`/`eslint`/`vite build` clean. Live-verified against the real running
+  dev stack via a direct API call against a real strategy with 11 completed simulation runs (333 real trades) —
+  every field returned real, correctly-computed values (e.g. conservative 74.4% pass probability vs. aggressive
+  72.4%, with aggressive's worst-case drawdown 17.33% vs. conservative's 11.93%, real evidence that a faster/riskier
+  policy in this sample did not clearly outperform); full-browser Playwright verification of the Command Center UI
+  itself remained blocked by the same pre-existing Chromium/sandbox instability on "expand to Full Command Center"
+  documented in Piece 11b's entry, confirmed unrelated to this piece's code via that same stashed-diff control run.
+
 - **Evaluation cost, funded-stage & payout tracking** (`backend/app/schemas.py`, `backend/app/accounts.py`,
   `backend/app/prop_firm.py`, `backend/app/state.py`, `backend/app/routers/accounts.py`, `backend/tests/test_accounts.py`,
   `backend/tests/test_prop_firm.py`, `frontend/src/types.ts`, `frontend/src/net/api.ts`,
