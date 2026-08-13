@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/net/api";
 import { useGameStore } from "@/ui/hooks/useGameStore";
-import type { AdaptiveModeRecommendation, BehavioralCircuitBreakerStatus, DailyCircuitBreakerTier, TradingMode, TradingModeHealthAssessment, TradingStylePerformance } from "@/types";
+import type { AdaptiveModeRecommendation, BehavioralCircuitBreakerStatus, DailyCircuitBreakerTier, ProjectedLossPath, TradingMode, TradingModeHealthAssessment, TradingStylePerformance } from "@/types";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
 
 /**
@@ -65,6 +65,11 @@ export function TradingModesPanel() {
   const [performance, setPerformance] = useState<TradingStylePerformance[] | null>(null);
   const [health, setHealth] = useState<TradingModeHealthAssessment[] | null>(null);
   const [togglingRecommendations, setTogglingRecommendations] = useState(false);
+  // Prop-Firm Risk Intelligence Addendum, Piece 11a — real, deterministic
+  // forward projections at this account's own real losing-streak
+  // thresholds, not an arbitrary N.
+  const [lossAtPause, setLossAtPause] = useState<ProjectedLossPath | null>(null);
+  const [lossAtSuspend, setLossAtSuspend] = useState<ProjectedLossPath | null>(null);
 
   useEffect(() => {
     setSelectedMode(tradingModes.mode);
@@ -76,6 +81,11 @@ export function TradingModesPanel() {
     api.getTradingStylePerformance().then(setPerformance).catch(() => setPerformance([]));
     api.getTradingModeHealth().then(setHealth).catch(() => setHealth([]));
   }, [tradingModes.mode, tradingModes.adaptiveRecommendationsEnabled, recoveryBriefings.length]);
+
+  useEffect(() => {
+    api.getProjectedLoss(losingStreak.pauseThreshold).then(setLossAtPause).catch(() => setLossAtPause(null));
+    api.getProjectedLoss(losingStreak.suspendThreshold).then(setLossAtSuspend).catch(() => setLossAtSuspend(null));
+  }, [losingStreak.pauseThreshold, losingStreak.suspendThreshold]);
 
   async function toggleAdaptiveRecommendations() {
     setError(null);
@@ -243,6 +253,26 @@ export function TradingModesPanel() {
             </button>
           ) : (
             <p className="mt-2 text-[9px] text-cmd-textDim">New proposals continue normally.</p>
+          )}
+          {(lossAtPause || lossAtSuspend) && (
+            <div className="mt-2 space-y-0.5 border-t border-cmd-border/40 pt-1.5 text-cmd-textDim">
+              <div className="text-[9px] uppercase tracking-wide text-cmd-textDim/80">Projected Loss If This Continues</div>
+              {lossAtPause && (
+                <DataRow
+                  label={`At ${lossAtPause.consecutiveLosses} consecutive losses`}
+                  value={`-${lossAtPause.projectedLossPct.toFixed(1)}%`}
+                  valueClassName="text-cmd-amber"
+                />
+              )}
+              {lossAtSuspend && (
+                <DataRow
+                  label={`At ${lossAtSuspend.consecutiveLosses} consecutive losses`}
+                  value={`-${lossAtSuspend.projectedLossPct.toFixed(1)}%`}
+                  valueClassName="text-cmd-red"
+                />
+              )}
+              <p className="text-[8px] italic text-cmd-textDim/70">{(lossAtPause ?? lossAtSuspend)?.assumption}</p>
+            </div>
           )}
         </Glass>
 

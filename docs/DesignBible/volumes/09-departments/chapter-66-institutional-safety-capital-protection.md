@@ -905,3 +905,53 @@ passed (the same pre-existing, genuinely unseeded-random flaky test in
 lint`/`npm run build` clean. Live-verified against the real running dev
 stack: the restructured card renders correctly for the real current
 game state (a genuinely clear read), screenshotted.
+
+## Addendum — Projected Loss After N Consecutive Losses (Prop-Firm Risk Intelligence Addendum, Piece 11a)
+
+**Status:** Real, implemented as a new function alongside `app/
+risk_engine.py`'s existing budget/sizing functions — not a probability
+engine, not a new module.
+
+**Origin.** Requirement 23's "projected loss after N consecutive
+losses." Authorized alongside Piece 11 as "11, 11a, 11b, 10, 10a, 10b."
+
+**A deterministic worst-case path, not a probability — stated
+honestly, never conflated.** New `project_loss_after_n_losses()`
+compounds `RiskLimits.risk_per_trade_pct` against current equity `n`
+times — literally the same per-trade sizing math `recommended_
+quantity()` (this chapter's own existing function) already uses,
+projected forward instead of applied to one trade. `ProjectedLossPath.
+assumption` states its one real simplification in plain English every
+time: it assumes each loss trade loses *exactly* `risk_per_trade_pct`
+of equity, a conservative worst-case, not a claim every real loss is
+this size. This function does not attempt a real probability
+distribution — that requires Monte Carlo (Piece 10's job) — and its own
+docstring says so, rather than silently presenting a deterministic path
+as if it carried a probability.
+
+**Real thresholds, not an arbitrary N.** Rather than inventing a
+default consecutive-loss count, the frontend calls this function at the
+two real, already-CEO-configurable losing-streak thresholds this
+codebase already has (Design Bible Chapter 75's `TradingModeState.
+losing_streak_pause_count`/`losing_streak_suspend_count`, defaults 3
+and 5) — the exact numbers the CEO already set as meaningful,
+surfaced right where they're already shown.
+
+**New real, read-only endpoint.** `GET /api/risk-limits/projected-
+loss?n=<int>` — computed fresh from the primary portfolio's real
+current equity and `RiskLimits`, no game-state lock (nothing mutates).
+Surfaced in `TradingModesPanel.tsx`'s existing Losing Streak Protection
+card, right below the pause/suspend thresholds it's computed from.
+
+**Verified:** 5 new backend tests (`TestProjectLossAfterNLosses` —
+zero losses returns a single-point path at current equity, the
+compounding math is correct across multiple losses, the real suspend
+threshold produces a larger projected loss than the real pause
+threshold, the assumption is always disclosed, and zero equity never
+crashes), full backend suite 1664/1664 passed, `mypy app/`/`ruff check
+app/ tests/` clean. `tsc -b --noEmit`/`npm run lint`/`npm run build`
+clean. Live-verified against the real running dev stack: confirmed the
+"Projected Loss If This Continues" section renders real, correctly-
+computed values (-5.9% at 3 losses, -9.6% at 5 losses, from the real
+2% default `risk_per_trade_pct`) with the disclosed assumption text —
+screenshotted.

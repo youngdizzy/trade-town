@@ -1310,6 +1310,20 @@ export interface AccountRiskBudgetStatus {
   computedAt: string;
 }
 
+/** Prop-Firm Risk Intelligence Addendum, Piece 11a — a real,
+ * deterministic forward projection (compounding riskPerTradePct against
+ * current equity), never a probability. See `assumption` for the one
+ * real simplification this makes, stated explicitly. */
+export interface ProjectedLossPath {
+  startingEquity: number;
+  equityPath: number[];
+  consecutiveLosses: number;
+  riskPerTradePct: number;
+  projectedLossPct: number;
+  assumption: string;
+  computedAt: string;
+}
+
 export interface RiskWarning {
   id: string;
   symbol: string;

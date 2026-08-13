@@ -7,6 +7,23 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Projected loss after N consecutive losses** (`backend/app/schemas.py`, `backend/app/risk_engine.py`,
+  `backend/app/routers/risk.py`, `backend/tests/test_risk_engine.py`, `frontend/src/types.ts`,
+  `frontend/src/net/api.ts`, `frontend/src/ui/components/CommandCenter/panels/TradingModesPanel.tsx`,
+  `docs/DesignBible/volumes/09-departments/chapter-66-institutional-safety-capital-protection.md`): Piece 11a of the
+  CEO's Prop-Firm Risk Intelligence Addendum, Requirement 23. New `project_loss_after_n_losses()` compounds
+  `RiskLimits.risk_per_trade_pct` against current equity `n` times — the exact same per-trade sizing math
+  `recommended_quantity()` already uses, projected forward — producing a deterministic worst-case path, explicitly
+  not a probability distribution (that needs real Monte Carlo, Piece 10's job); the one real simplification is
+  stated in plain English every time via a returned `assumption` field, never left implicit. Rather than inventing
+  an arbitrary default N, the frontend calls the new `GET /api/risk-limits/projected-loss?n=` endpoint at the two
+  real, already-CEO-configurable losing-streak thresholds this codebase already has (Chapter 75's
+  `losingStreakPauseCount`/`losingStreakSuspendCount`, defaults 3 and 5), surfaced in `TradingModesPanel.tsx`'s
+  existing Losing Streak Protection card right below those same thresholds. Verified: 5 new backend tests, full
+  backend suite 1664/1664 passed, `mypy`/`ruff` clean, `tsc -b --noEmit`/`eslint`/`vite build` clean, live-verified
+  against the real running dev stack (real -5.9%/-9.6% projections at the real 3/5-loss thresholds from the real 2%
+  default risk-per-trade) — screenshotted.
+
 - **Risk relative to an Account's real failure boundary** (`backend/app/schemas.py`, `backend/app/prop_firm.py`,
   `backend/tests/test_prop_firm.py`, `frontend/src/types.ts`,
   `frontend/src/ui/components/CommandCenter/panels/TreasuryPanel.tsx`,

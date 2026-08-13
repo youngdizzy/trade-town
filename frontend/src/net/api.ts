@@ -49,6 +49,7 @@ import type {
   PlayerVsAiState,
   PortfolioScenarioResult,
   PortfolioStressTestResult,
+  ProjectedLossPath,
   PropFirmStatus,
   QuestionOfTheDay,
   RuleEvaluationResult,
@@ -633,6 +634,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify(updates),
     }),
+  // Prop-Firm Risk Intelligence Addendum, Piece 11a — a real,
+  // deterministic forward projection, not a probability.
+  getProjectedLoss: (n: number) => request<ProjectedLossPath>(`/risk-limits/projected-loss?n=${encodeURIComponent(n)}`),
   // Design Bible Chapter 64 — the CEO's Goal creation/cancellation write
   // path. Real progress is never sent by the client; it's recomputed
   // server-side every tick (see backend/app/goals.py's tick_goals()).
