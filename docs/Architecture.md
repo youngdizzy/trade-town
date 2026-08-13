@@ -2638,6 +2638,18 @@ concrete before/after: a real 9-opinion meeting log entry (4 agree, 5
 request_more_research, 0 real opposition) read `44.4` under the old
 formula and `100.0` under the fix, on real, unmodified game data.
 
+**Talent Development, corrected under the same directive.** The real
+`graduation_status == "graduated"` gate (already tied to real completed
+lessons, real aptitude-weighted quizzes, and explicit CEO approval —
+never mere XP) never changed again once earned, regardless of how the
+agent performed afterward. Fixed: each graduated pair now blends that
+real training credit with a real post-graduation performance reading —
+the average of that agent's real `DisciplineReview` scores filed after
+the exact real day the CEO approved the graduation. No post-graduation
+history yet reads a neutral 50 for that half, never a fabricated pass.
+Live-verified: approving a real pending graduation on a running save
+moved `talentDevelopment` from a stuck `0.0` to a real `3.1`.
+
 **Executive Priorities and Department Health are both pure frontend
 derivations** — like the Decision Replay Center, no second backend
 computation was needed. `lib/derive.ts`'s `computeExecutivePriorities()`

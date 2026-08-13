@@ -50,6 +50,7 @@ from app.schemas import (
     CompanyHealthTier,
     Debate,
     DepartmentSelfEvaluation,
+    DisciplineReview,
     EducationProgress,
     ExecutiveMeetingLogEntry,
     FounderCouncilSession,
@@ -376,19 +377,54 @@ def _innovation_velocity(innovation_state: dict[AgentId, InnovationState]) -> fl
     return min(100.0, avg_points / LEGENDARY_INNOVATOR_THRESHOLD * 100.0)
 
 
-def _talent_development(foundational_mentor_state: FoundationalMentorState) -> float:
+def _talent_development(foundational_mentor_state: FoundationalMentorState, discipline_reviews: list[DisciplineReview]) -> float:
+    """v0.7 Feature 50 Part 2/3, extended under the CEO's Company/
+    Executive Health directive: TRAINING -> KNOWLEDGE -> APPLICATION ->
+    PERFORMANCE -> REVIEW -> IMPROVEMENT, not mere XP.
+
+    `graduation_status == "graduated"` was already real, not XP —
+    reaching it requires completing every real lesson in a mentor's
+    track (`_is_graduated_progress()`), each lesson auto-quizzed against
+    that employee's own real aptitude (`_agent_aptitude()`, itself an
+    average of real `DisciplineReview` scores the employee has
+    attended), and then an explicit CEO approval
+    (`approve_graduation()`) before it counts. That's the real TRAINING
+    -> KNOWLEDGE half of the chain. What was missing, per the CEO's
+    explicit instruction not to award credit "merely because a training
+    event occurred," is the APPLICATION -> PERFORMANCE half: does a
+    graduate's real on-the-job behavior actually hold up afterward?
+
+    Each graduated (agent, mentor) pair now contributes a blend of two
+    real signals: 100.0 for the real completed training (unchanged
+    structural credit), and a real "post-graduation performance" reading
+    — the average score of that same agent's real `DisciplineReview`s
+    filed strictly after `graduated_sim_day` (the exact real day the CEO
+    approved this graduation). A freshly-graduated agent with no
+    post-graduation reviews yet reads a neutral 50.0 for that half — an
+    honest "trained, application not yet demonstrable" state, not a
+    fabricated pass or a punitive zero. A graduate who goes on to post
+    genuinely strong real Discipline Scores earns close to full credit
+    for the pair; one whose real post-graduation scores are weak earns
+    less, even though they hold the same "graduated" badge — exactly the
+    CEO's "reward actual learning, not the training event" instruction.
+    A non-graduated real slot still contributes 0, unchanged."""
     active_mentors = [m for m in foundational_mentor_state.mentors if m.status == "active"]
     if not active_mentors:
         return 0.0
     total_slots = len(STUDENT_AGENT_IDS) * len(active_mentors)
-    graduated = 0
+    total_credit = 0.0
     for agent_id in STUDENT_AGENT_IDS:
         by_mentor = foundational_mentor_state.progress.get(agent_id, {})
         for mentor in active_mentors:
             progress = by_mentor.get(mentor.id)
-            if progress is not None and progress.graduation_status == "graduated":
-                graduated += 1
-    return graduated / total_slots * 100.0 if total_slots else 0.0
+            if progress is None or progress.graduation_status != "graduated":
+                continue
+            post_graduation_scores = [
+                r.score for r in discipline_reviews if agent_id in r.attendees and progress.graduated_sim_day is not None and r.sim_day > progress.graduated_sim_day
+            ]
+            application_score = sum(post_graduation_scores) / len(post_graduation_scores) if post_graduation_scores else 50.0
+            total_credit += (100.0 + application_score) / 2.0
+    return total_credit / total_slots if total_slots else 0.0
 
 
 def _founder_oversight(council_sessions: list[FounderCouncilSession]) -> float:
@@ -415,6 +451,7 @@ def compute_company_health(
     foundational_mentor_state: FoundationalMentorState,
     founder_council_sessions: list[FounderCouncilSession],
     gatekeeper_rejections: list[GatekeeperRejection],
+    discipline_reviews: list[DisciplineReview],
     # v0.7 Design Bible Chapter 63 — CEO-configurable tier thresholds
     # (RiskLimits.companyHealth*Threshold), defaulting to the exact
     # module constants above so existing behavior is unchanged until the
@@ -455,7 +492,7 @@ def compute_company_health(
         "self_evaluation_health": _self_evaluation_health(self_evaluations),
         "institutional_memory": _institutional_memory(wisdom_state),
         "innovation_velocity": _innovation_velocity(innovation_state),
-        "talent_development": _talent_development(foundational_mentor_state),
+        "talent_development": _talent_development(foundational_mentor_state, discipline_reviews),
         "founder_oversight": _founder_oversight(founder_council_sessions),
     }
     executive_overall = sum(executive_metrics.values()) / len(executive_metrics)

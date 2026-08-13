@@ -7,6 +7,28 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO Company/Executive Health directive, Phase 3 — Talent Development: real post-graduation performance,
+  not mere XP** (`backend/app/company_health.py`, `backend/app/nexus.py`, `backend/app/state.py`,
+  `backend/tests/test_company_health.py`,
+  `docs/DesignBible/volumes/09-departments/chapter-63-executive-performance-company-health.md`): the CEO's
+  directive named Talent Development (0/100), explicitly instructing "Do not award Talent Development merely
+  because a training event occurred... training completed → skill exposure → later application → measurable
+  improvement → development credit." Direct trace confirmed `graduation_status == "graduated"` was already real,
+  not XP — it requires completing every real lesson (each auto-quizzed against the employee's own real
+  aptitude, itself an average of real `DisciplineReview` scores) plus an explicit CEO approval — but the badge
+  never changed again regardless of how the agent performed afterward. Fixed: each graduated (agent, mentor)
+  pair now blends the real completed-training credit with a new real "post-graduation performance" reading —
+  the average of that same agent's real `DisciplineReview` scores filed strictly after the exact real day the
+  CEO approved that graduation (`graduated_sim_day`, already a persisted field — no new state). No post-graduation
+  reviews yet reads an honest neutral 50 for that half; strong real post-graduation performance earns close to
+  full credit; weak performance earns less, even under the identical badge. Verified: 4 new tests, 2 existing
+  tests updated with corrected expected values (both honestly lower than before), full backend suite passing,
+  `mypy`/`ruff` clean. New `discipline_reviews` parameter on `compute_company_health()`, threaded from
+  `nexus.py`'s already-in-scope list — no new persisted telemetry. Live-verified against a running save: eight
+  real employees were already `pending_approval` on the TJR mentor track; approving one real graduation via
+  `POST /api/foundational-mentors/approve-graduation` moved `talentDevelopment` from a stuck `0.0` to a real
+  `3.1`, with `graduatedSimDay` correctly recorded — the CEO's real action and the score moving together, live.
+
 - **CEO Company/Executive Health directive, Phase 2 — Department Consensus: reused the Executive Consensus
   Meter's own real "waiting vs. opposing" taxonomy** (`backend/app/company_health.py`,
   `backend/tests/test_company_health.py`,

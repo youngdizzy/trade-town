@@ -2052,6 +2052,11 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         foundational_mentor_state=foundational_mentor_state,
         founder_council_sessions=founder_council_sessions,
         gatekeeper_rejections=gatekeeper_rejections,
+        # CEO Company/Executive Health directive, Phase 3 — Talent
+        # Development's own real post-graduation performance signal
+        # reads the exact same real, already-in-scope discipline_reviews
+        # list every other tick-time consumer here does.
+        discipline_reviews=discipline_reviews,
         # v0.7 Design Bible Chapter 63 — CEO-configurable Company Health
         # tier thresholds, threaded the same way every other Chapter
         # 57-62 CEO control already is at this point in the tick.

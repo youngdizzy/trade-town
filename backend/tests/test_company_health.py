@@ -21,6 +21,7 @@ from app.schemas import (
     DecisionConfidence,
     DepartmentOpinion,
     DepartmentSelfEvaluation,
+    DisciplineReview,
     EducationProgress,
     EntityTransform,
     ExecutiveDepartmentRole,
@@ -29,6 +30,7 @@ from app.schemas import (
     FounderCouncilSession,
     InnovationState,
     PaperTrade,
+    PostDecisionReview,
     ResearchItem,
     RiskWarning,
     SignalCalibrationState,
@@ -132,13 +134,38 @@ def _strong_executive_overrides() -> dict:
     # spans all four — every real active track needs a real graduated
     # student here too, or talent_development would drag this "nothing
     # to recommend" fixture below the recommendation threshold.
+    #
+    # CEO Company/Executive Health directive, Phase 3 — talent_development
+    # now also reads real post-graduation DisciplineReview performance
+    # (see app/company_health.py's _talent_development()), so a genuinely
+    # "everything maxed" fixture needs a real graduatedSimDay plus real
+    # strong post-graduation reviews for every graduated student, not just
+    # the graduation badge itself.
     graduated_by_mentor = {
-        mentor_id: FoundationalMentorProgress(mentorId=mentor_id, graduationStatus="graduated")  # type: ignore[call-arg]
+        mentor_id: FoundationalMentorProgress(mentorId=mentor_id, graduationStatus="graduated", graduatedSimDay=1)  # type: ignore[call-arg]
         for mentor_id in ("tjr", "market_intelligence", "mark_douglas", "linda_raschke")
     }
     fm_state = default_foundational_mentor_state().model_copy(
         update={"progress": {agent_id: dict(graduated_by_mentor) for agent_id in STUDENT_AGENT_IDS}}
     )
+    strong_post_graduation_reviews = [
+        DisciplineReview(
+            id=f"post-grad-{agent_id}",
+            decisionId=f"d-post-grad-{agent_id}",
+            symbol="AAPL",
+            score=95.0,
+            tier="exemplary",
+            attendees=[agent_id],
+            summary="x",
+            postDecisionReview=PostDecisionReview(),
+            outcome="win",
+            tradePnlPct=5.0,
+            holdDurationMinutes=60,
+            simDay=10,
+            createdAt="2026-01-10T00:00:00+00:00",
+        )
+        for agent_id in STUDENT_AGENT_IDS
+    ]
     founder_council_sessions = [
         FounderCouncilSession(id=f"c{i}", simDay=i, coachHighlight="x", keystoneNote="x", compassNote="x", createdAt="2026-01-01T00:00:00+00:00") for i in range(5)
     ]
@@ -151,6 +178,7 @@ def _strong_executive_overrides() -> dict:
         foundational_mentor_state=fm_state,
         founder_council_sessions=founder_council_sessions,
         gatekeeper_rejections=[],
+        discipline_reviews=strong_post_graduation_reviews,
     )
 
 
@@ -200,6 +228,7 @@ def _health(**overrides):
         foundational_mentor_state=default_foundational_mentor_state(),
         founder_council_sessions=[],
         gatekeeper_rejections=[],
+        discipline_reviews=[],
     )
     defaults.update(overrides)
     return compute_company_health(**defaults)
@@ -618,13 +647,21 @@ class TestExecutiveTier:
         # on a fresh game, so they're explicitly parked back to "planned"
         # here to test the single-active-track case cleanly; see the next
         # test for the real multi-active-track denominator.
+        #
+        # CEO Company/Executive Health directive, Phase 3 — no
+        # graduatedSimDay and no discipline_reviews means each graduated
+        # pair's real post-graduation performance is honestly "not yet
+        # measurable" (neutral 50.0), so each pair now contributes
+        # (100 + 50) / 2 = 75 credit rather than a flat 100 — see
+        # test_talent_development_rewards_demonstrated_post_graduation_performance
+        # below for the case where real post-graduation data exists.
         fm_state = default_foundational_mentor_state()
         parked = {"market_intelligence", "mark_douglas", "linda_raschke"}
         fm_state = fm_state.model_copy(update={"mentors": [m.model_copy(update={"status": "planned"}) if m.id in parked else m for m in fm_state.mentors]})
         graduated = FoundationalMentorProgress(mentorId="tjr", graduationStatus="graduated")  # type: ignore[call-arg]
         fm_state = fm_state.model_copy(update={"progress": {agent_id: {"tjr": graduated} for agent_id in list(STUDENT_AGENT_IDS)[:4]}})
         health = _health(foundational_mentor_state=fm_state)
-        assert health.talent_development == 50.0
+        assert health.talent_development == 37.5
 
     def test_talent_development_divides_across_every_real_active_track(self) -> None:
         # v0.7 Feature 51 and Trading Psychology & Discipline Piece F — a
@@ -637,7 +674,72 @@ class TestExecutiveTier:
         graduated = FoundationalMentorProgress(mentorId="tjr", graduationStatus="graduated")  # type: ignore[call-arg]
         fm_state = fm_state.model_copy(update={"progress": {agent_id: {"tjr": graduated} for agent_id in list(STUDENT_AGENT_IDS)[:4]}})
         health = _health(foundational_mentor_state=fm_state)
-        assert health.talent_development == 12.5
+        assert health.talent_development == round(9.375, 1)
+
+    def _graduated_state(self, *, graduated_sim_day: int | None):
+        fm_state = default_foundational_mentor_state()
+        parked = {"market_intelligence", "mark_douglas", "linda_raschke"}
+        fm_state = fm_state.model_copy(update={"mentors": [m.model_copy(update={"status": "planned"}) if m.id in parked else m for m in fm_state.mentors]})
+        graduated = FoundationalMentorProgress(mentorId="tjr", graduationStatus="graduated", graduatedSimDay=graduated_sim_day)  # type: ignore[call-arg]
+        return fm_state.model_copy(update={"progress": {"scout": {"tjr": graduated}}})
+
+    def _review(self, *, agent_id: str, score: float, sim_day: int) -> DisciplineReview:
+        return DisciplineReview(
+            id=f"r-{agent_id}-{sim_day}",
+            decisionId="d1",
+            symbol="AAPL",
+            score=score,
+            tier="adequate",
+            attendees=[agent_id],  # type: ignore[list-item]
+            summary="x",
+            postDecisionReview=PostDecisionReview(),
+            outcome="win",
+            tradePnlPct=1.0,
+            holdDurationMinutes=60,
+            simDay=sim_day,
+            createdAt="2026-01-01T00:00:00+00:00",
+        )
+
+    def test_talent_development_rewards_demonstrated_post_graduation_performance(self) -> None:
+        """CEO Company/Executive Health directive, Phase 3 — the exact
+        TRAINING -> APPLICATION -> PERFORMANCE chain: a graduate whose
+        real post-graduation Discipline Scores are strong earns close to
+        full credit for that pair, not merely the graduation badge."""
+        fm_state = self._graduated_state(graduated_sim_day=5)
+        strong_reviews = [self._review(agent_id="scout", score=95.0, sim_day=day) for day in (6, 7, 8)]
+        health = _health(foundational_mentor_state=fm_state, discipline_reviews=strong_reviews)
+        # 1 graduated pair out of 8 real slots: (100 + 95) / 2 = 97.5 credit / 8 slots.
+        assert health.talent_development == round(97.5 / 8, 1)
+
+    def test_talent_development_does_not_award_full_credit_for_weak_post_graduation_performance(self) -> None:
+        """Do NOT award Talent Development merely because a training
+        event occurred — a real graduate whose post-graduation behavior
+        is weak earns less than one whose real behavior is strong, even
+        though both hold the same graduation badge."""
+        fm_state = self._graduated_state(graduated_sim_day=5)
+        weak_reviews = [self._review(agent_id="scout", score=20.0, sim_day=day) for day in (6, 7, 8)]
+        strong_health = _health(foundational_mentor_state=fm_state, discipline_reviews=[self._review(agent_id="scout", score=95.0, sim_day=6)])
+        weak_health = _health(foundational_mentor_state=fm_state, discipline_reviews=weak_reviews)
+        assert weak_health.talent_development < strong_health.talent_development
+
+    def test_talent_development_ignores_reviews_from_before_graduation(self) -> None:
+        """A weak review filed BEFORE this agent even graduated must not
+        count as real "post-graduation" performance — the whole point is
+        measuring what happened after training, not before it."""
+        fm_state = self._graduated_state(graduated_sim_day=5)
+        pre_graduation_only = [self._review(agent_id="scout", score=10.0, sim_day=1)]
+        health = _health(foundational_mentor_state=fm_state, discipline_reviews=pre_graduation_only)
+        # No real post-graduation review exists yet, so this pair reads
+        # the same honest neutral-50 fallback as having no reviews at all.
+        assert health.talent_development == round(75.0 / 8, 1)
+
+    def test_talent_development_ignores_other_agents_reviews(self) -> None:
+        """A strong review filed for a DIFFERENT real agent must not
+        count toward this graduate's own demonstrated performance."""
+        fm_state = self._graduated_state(graduated_sim_day=5)
+        someone_elses_review = [self._review(agent_id="echo", score=95.0, sim_day=6)]
+        health = _health(foundational_mentor_state=fm_state, discipline_reviews=someone_elses_review)
+        assert health.talent_development == round(75.0 / 8, 1)
 
     def test_executive_overall_is_the_mean_of_the_ten_executive_metrics_and_never_moves_the_operational_overall(self) -> None:
         baseline = _health()

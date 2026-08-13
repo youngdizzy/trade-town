@@ -275,6 +275,7 @@ def default_state() -> GameSaveState:
             foundational_mentor_state=default_foundational_mentors,
             founder_council_sessions=[],
             gatekeeper_rejections=[],
+            discipline_reviews=[],
         ),
         companyDna=compute_company_dna([], [], []),
         dailyObjectiveStatus=compute_daily_objective_status(default_risk_limits(), default_portfolio(), 1),

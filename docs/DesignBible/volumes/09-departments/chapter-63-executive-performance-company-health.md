@@ -531,3 +531,58 @@ logs every department's individual opinion regardless of the majority
 unchanged by this phase). A genuine escalation/resolution workflow, if
 ever built, would need new real state — not attempted here to keep this
 phase a pure, honest formula correction over already-real data.
+
+**CEO Company/Executive Health directive, Phase 3 — Talent Development:
+TRAINING → KNOWLEDGE → APPLICATION → PERFORMANCE, not mere XP.** The
+CEO's directive named Talent Development (0/100) with an explicit
+instruction: "Do not award Talent Development merely because a training
+event occurred... training completed → skill exposure → later
+application → measurable improvement → development credit."
+
+*What was already real, confirmed by direct trace:* `_talent_development()`'s
+`graduation_status == "graduated"` gate was never mere XP.
+`_is_graduated_progress()` in `app/foundational_mentors.py` requires
+completing every real lesson in a mentor's track, each lesson
+auto-quizzed against that employee's own real `_agent_aptitude()` — an
+average of real `DisciplineReview` scores the employee has attended —
+and then requires an explicit CEO approval via `approve_graduation()`
+before it counts at all. That is the real TRAINING → KNOWLEDGE half of
+the CEO's own chain, already built.
+
+*What was missing:* the APPLICATION → PERFORMANCE half. A graduate's
+"graduated" badge, once earned, never changed again regardless of how
+that agent actually performed afterward — exactly "credit merely
+because a training event occurred."
+
+*Fix:* each graduated (agent, mentor) pair now blends two real signals
+instead of a flat 100: the real completed-training credit (100.0,
+unchanged), and a new real "post-graduation performance" reading — the
+average score of that same agent's real `DisciplineReview`s filed
+strictly after `graduated_sim_day` (the exact real day the CEO approved
+this specific graduation — already a persisted field, not new state). A
+freshly-graduated agent with no post-graduation reviews yet reads a
+neutral 50.0 for that half (an honest "trained, application not yet
+demonstrable" state — not a fabricated pass, not a punitive zero). A
+graduate who goes on to post genuinely strong real Discipline Scores
+earns close to full credit for the pair; one whose real post-graduation
+scores are weak earns less, even holding the identical graduation
+badge. A non-graduated real slot still contributes 0, unchanged.
+
+Verified: 4 new tests (demonstrated strong performance earns more credit
+than weak performance under an identical graduation; a pre-graduation
+review never counts as post-graduation evidence; another agent's review
+never counts toward this agent's own credit), 2 existing tests updated
+with their new correct expected values (both now honestly lower than
+before, since a fresh graduate with no track record no longer reads a
+flat 100 for that pair), full backend suite passing, `mypy`/`ruff`
+clean. New parameter: `compute_company_health()` gained a
+`discipline_reviews` parameter, threaded from `app/nexus.py`'s own
+already-in-scope `discipline_reviews` list (no new persisted state) and
+from `app/state.py`'s `default_game_state()` (an honest empty list for
+a fresh company). Live-verified against a running save: eight real
+employees had already reached `pending_approval` on the TJR track;
+approving one real graduation via `POST
+/api/foundational-mentors/approve-graduation` moved `talentDevelopment`
+from a stuck `0.0` to a real, nonzero `3.1`, with `graduatedSimDay`
+correctly recorded on the real persisted progress record — the CEO
+action and the score move together, live, unmodified.
