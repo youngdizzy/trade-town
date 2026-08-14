@@ -4,7 +4,7 @@ honesty boundary. The original endpoints below are read-only, computed
 fresh per request from state this codebase already persisted — no
 GameSaveState field, no WS broadcast change.
 
-CEO directive "Features 31-35," Feature 31 adds the first real, mutable
+CEO directive "Features 31-35," Feature 31 added the first real, mutable
 endpoints in this router — the Compliance Incident Resolution Engine's
 lifecycle (see app/compliance_incidents.py). These ARE persisted
 (GameSaveState.compliance_incidents) and DO mutate state, deliberately
@@ -13,6 +13,10 @@ kept out of the WS broadcast the same way the rest of CAGS already is
 part of gameStore) — a 500-entry incident backlog has no reason to ride
 every real-time tick broadcast when the Compliance panel already fetches
 on demand.
+
+Feature 32 adds the CEO Override Governance endpoints on the same
+pattern (see app/override_governance.py) — real, persisted
+CeoOverrideEvaluations, also kept off the WS broadcast.
 """
 from __future__ import annotations
 
@@ -28,11 +32,14 @@ from app.audit_log import (
     filter_audit_log,
 )
 from app.compliance_incidents import compute_incident_summary
+from app.override_governance import compute_override_governance_summary
 from app.persistence import persist_modules
 from app.portfolio import sim_minutes
 from app.schemas import (
     AgentId,
     AuditEntry,
+    CeoOverrideEvaluation,
+    CeoOverrideGovernanceSummary,
     CeoOverrideRecord,
     ComplianceIncident,
     ComplianceIncidentSummary,
@@ -229,3 +236,41 @@ async def reopen_incident(incident_id: str, payload: NoteRequest) -> ComplianceI
         raise HTTPException(status_code=400, detail=error)
     persist_modules(state)
     return next(i for i in state.compliance_incidents if i.id == incident_id)
+
+
+# CEO directive "Features 31-35," Feature 32 — CEO Override Governance.
+# The real, persisted override-evaluation list and its one real
+# mutation (a reviewer's note), distinct from /overrides above (the
+# original ephemeral CeoOverrideRecord list, untouched).
+
+
+@router.get("/overrides/evaluations", response_model=list[CeoOverrideEvaluation])
+async def get_ceo_override_evaluations() -> list[CeoOverrideEvaluation]:
+    """The real, persisted override backlog — synced/refreshed every
+    tick from the real CeoDecisionRecord/ExecutiveMeetingLogEntry lists
+    (app/nexus.py's tick(), never recomputed from scratch each request)."""
+    state = await game_state.snapshot()
+    return state.ceo_override_evaluations
+
+
+@router.get("/overrides/summary", response_model=CeoOverrideGovernanceSummary)
+async def get_ceo_override_governance_summary() -> CeoOverrideGovernanceSummary:
+    """The real, disclosed aggregate over the override backlog — see
+    app/override_governance.py's compute_override_governance_summary()."""
+    state = await game_state.snapshot()
+    return compute_override_governance_summary(state.ceo_override_evaluations, len(state.ceo_decisions))
+
+
+class OverrideReviewRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+    reviewer: AgentId
+    note: str
+
+
+@router.post("/overrides/{evaluation_id}/review", response_model=CeoOverrideEvaluation)
+async def add_ceo_override_review(evaluation_id: str, payload: OverrideReviewRequest) -> CeoOverrideEvaluation:
+    state, error = await game_state.add_override_review(evaluation_id, payload.reviewer, payload.note)
+    if error is not None:
+        raise HTTPException(status_code=400, detail=error)
+    persist_modules(state)
+    return next(e for e in state.ceo_override_evaluations if e.id == evaluation_id)

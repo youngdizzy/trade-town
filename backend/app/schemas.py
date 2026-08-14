@@ -3316,6 +3316,14 @@ class CeoDecisionRecord(CamelModel):
     resolved_by: Literal["ceo", "auto", "delegated"] = Field(default="ceo", alias="resolvedBy")
     created_at: str = Field(alias="createdAt")
     resolved_at: str | None = Field(default=None, alias="resolvedAt")
+    # CEO directive "Features 31-35," Feature 32 — CEO Override
+    # Governance. A genuinely new mechanism (POST /api/executive/decide
+    # gained an optional `overrideReason` field), not a fabricated
+    # backfill: `None` for every decision recorded before this field
+    # existed, and for every decision where the CEO didn't type one, not
+    # coerced to an empty string. Only meaningful when `agreed_with_ai`
+    # is `False` — nothing reads it otherwise.
+    override_reason: str | None = Field(default=None, alias="overrideReason")
 
 
 # CEO directive "Features 26-30," Feature 29 — Prediction -> Outcome
@@ -5334,6 +5342,97 @@ class ComplianceIncidentSummary(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# CEO directive "Features 31-35," Feature 32 — CEO Override Governance
+# (app/override_governance.py). RESEARCH FINDING, recorded here per the
+# directive's own "research first" rule: `CeoDecisionRecord.outcome`
+# already resolves overrides that produced a real trade exactly like any
+# other decision ("pending" -> "correct"/"incorrect" once that trade
+# closes, via `grade_ceo_decisions()`) — only an override that resolved
+# to "wait" (no order placed) is `"undecidable"` forever. This module
+# never re-grades that outcome a second way; it only adds a genuinely
+# new axis alongside it: PROCESS QUALITY — was the override justified by
+# the evidence that existed at the moment the CEO decided, evaluated
+# from the real `ExecutiveMeetingLogEntry` for that same proposal
+# (`opinions`, `decisionGradeScore`), never from the trade's own P&L.
+# Process quality and outcome are computed, stored, and displayed as two
+# separate fields — never collapsed into one score — so a correct
+# process that lost money and a bad process that won are both shown
+# honestly, per the directive's explicit "no hindsight-only evaluation"
+# rule.
+OverrideProcessQuality = Literal[
+    "justified", "unjustified", "mixed", "not_enough_evidence"
+]
+
+
+class CeoOverrideEvaluation(CamelModel):
+    """One real override — a `CeoDecisionRecord` where
+    `agreed_with_ai=False` — carried alongside its own real process-
+    quality read and its real (never re-derived) outcome. `evidence`
+    below is drawn verbatim from the real `ExecutiveMeetingLogEntry`
+    (department `evidence`/`concerns` for the departments that
+    disagreed with the CEO's own eventual choice) — never a fabricated
+    justification. `overrideReason` is `None` whenever the CEO didn't
+    type one (see `CeoDecisionRecord.override_reason`'s own docstring)."""
+
+    id: str
+    decision_id: str = Field(alias="decisionId")
+    proposal_id: str = Field(alias="proposalId")
+    symbol: str
+    created_at: str = Field(alias="createdAt")
+    sim_day: int = Field(alias="simDay")
+    original_recommendation: AnalystChoice = Field(alias="originalRecommendation")
+    recommendation_source: Literal["executive_network"] = Field(default="executive_network", alias="recommendationSource")
+    ceo_decision: AnalystChoice = Field(alias="ceoDecision")
+    override_reason: str | None = Field(default=None, alias="overrideReason")
+    # `None` when no ExecutiveMeetingLogEntry exists for this proposal
+    # (an honest NOT_ENOUGH_EVIDENCE gap, never a fabricated confidence).
+    original_confidence_pct: float | None = Field(default=None, alias="originalConfidencePct")
+    original_decision_grade: DecisionGrade | None = Field(default=None, alias="originalDecisionGrade")
+    original_decision_grade_score: float | None = Field(default=None, alias="originalDecisionGradeScore")
+    risk_department_stance: ExecutiveStance | None = Field(default=None, alias="riskDepartmentStance")
+    department_agreement_pct: float | None = Field(default=None, alias="departmentAgreementPct")
+    # The real departments whose own `agree` stance was the one this
+    # override went against — feeds CeoOverrideGovernanceSummary's
+    # `departmentOverrideImpact` aggregate; never a full opinions dump.
+    agreeing_departments: list[ExecutiveDepartmentRole] = Field(default_factory=list, alias="agreeingDepartments")
+    evidence_at_decision_time: list[str] = Field(default_factory=list, alias="evidenceAtDecisionTime")
+    process_quality: OverrideProcessQuality = Field(alias="processQuality")
+    # Mirrors CeoDecisionRecord.outcome verbatim — never re-derived, and
+    # refreshed every tick alongside it so this stays in sync when a
+    # "pending" override's trade eventually closes.
+    outcome: Literal["pending", "correct", "incorrect", "undecidable"]
+    reviewer: AgentId | None = Field(default=None)
+    review_note: str | None = Field(default=None, alias="reviewNote")
+    reviewed_at: str | None = Field(default=None, alias="reviewedAt")
+    updated_at: str = Field(alias="updatedAt")
+
+
+class CeoOverrideGovernanceSummary(CamelModel):
+    """The one real, disclosed aggregate over the override backlog.
+    `overrideRatePct` is `None` (NOT_ENOUGH_EVIDENCE) when there are no
+    real decisions to divide by, never a fabricated 0%. Department
+    override-impact counts are real: for each real department role, how
+    many times that department's own real `agree` stance on a proposal's
+    recommended action was the one the CEO ultimately overrode —
+    computed from real `ExecutiveMeetingLogEntry.opinions`, never
+    invented."""
+
+    total_override_count: int = Field(alias="totalOverrideCount")
+    total_decision_count: int = Field(alias="totalDecisionCount")
+    override_rate_pct: float | None = Field(default=None, alias="overrideRatePct")
+    justified_count: int = Field(alias="justifiedCount")
+    unjustified_count: int = Field(alias="unjustifiedCount")
+    mixed_count: int = Field(alias="mixedCount")
+    not_enough_evidence_count: int = Field(alias="notEnoughEvidenceCount")
+    outcome_correct_count: int = Field(alias="outcomeCorrectCount")
+    outcome_incorrect_count: int = Field(alias="outcomeIncorrectCount")
+    outcome_pending_count: int = Field(alias="outcomePendingCount")
+    outcome_undecidable_count: int = Field(alias="outcomeUndecidableCount")
+    department_override_impact: dict[str, int] = Field(default_factory=dict, alias="departmentOverrideImpact")
+    sample_size_sufficient: bool = Field(alias="sampleSizeSufficient")
+    updated_at: str = Field(alias="updatedAt")
+
+
 # Design Bible Chapter 75 — Company Trading Modes & Institutional Capital
 # Protection (app/trading_modes.py). "day_trading"/"swing_trading"/
 # "hybrid" are the CEO's real operating policy; TradingStyle is the
@@ -7260,6 +7359,11 @@ class GameSaveState(CamelModel):
     # Resolution Engine (app/compliance_incidents.py).
     compliance_incidents: list[ComplianceIncident] = Field(
         default_factory=list, alias="complianceIncidents"
+    )
+    # CEO directive "Features 31-35," Feature 32 — CEO Override
+    # Governance (app/override_governance.py).
+    ceo_override_evaluations: list[CeoOverrideEvaluation] = Field(
+        default_factory=list, alias="ceoOverrideEvaluations"
     )
     # v0.7 Feature 49 (Phase 3) — the Foundational Mentor Program
     # (app/foundational_mentors.py). See FoundationalMentorState's own

@@ -53,6 +53,11 @@ class SubmitCeoDecisionRequest(BaseModel):
     # what "delegate" means — it only changes what gets recorded about
     # who decided.
     delegated: bool = False
+    # CEO directive "Features 31-35," Feature 32 — an optional real
+    # reason the CEO typed for this decision, stored on the resulting
+    # CeoDecisionRecord only when this decision is actually an override
+    # (see app/state.py's submit_ceo_decision).
+    override_reason: str | None = Field(default=None, alias="overrideReason")
 
 
 class SubmitCeoDecisionResponse(BaseModel):
@@ -70,7 +75,9 @@ class SubmitCeoDecisionResponse(BaseModel):
 
 @router.post("/decide", response_model=SubmitCeoDecisionResponse)
 async def decide(payload: SubmitCeoDecisionRequest) -> SubmitCeoDecisionResponse:
-    state, error = await game_state.submit_ceo_decision(payload.proposal_id, payload.choice, delegated=payload.delegated)
+    state, error = await game_state.submit_ceo_decision(
+        payload.proposal_id, payload.choice, delegated=payload.delegated, override_reason=payload.override_reason
+    )
     if error is not None:
         raise HTTPException(status_code=400, detail=error)
     persist_modules(state)

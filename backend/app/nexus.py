@@ -118,6 +118,7 @@ from app.prediction_tracking import MAX_PREDICTION_RECORDS, build_prediction_rec
 from app.failure_review import classify_failure, record_failure_classification, should_promote_failure_classification
 from app.audit_log import compute_audit_log
 from app.compliance_incidents import sync_incidents_from_audit_log
+from app.override_governance import sync_override_evaluations, refresh_override_outcomes
 from app.institutional_memory import (
     promote_case_study,
     promote_failure_classification,
@@ -204,6 +205,7 @@ from app.schemas import (
     CaseStudy,
     ComplianceIncident,
     CeoDecisionRecord,
+    CeoOverrideEvaluation,
     PredictionRecord,
     ChallengeReport,
     BlackSwanEventRecord,
@@ -1211,6 +1213,10 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # reached its final value for the tick — see that sync call's own
     # comment further down.
     compliance_incidents: list[ComplianceIncident] = list(state.compliance_incidents)
+    # CEO directive "Features 31-35," Feature 32 — CEO Override
+    # Governance (app/override_governance.py). Synced/refreshed near the
+    # end of this tick, same placement as compliance_incidents above.
+    ceo_override_evaluations: list[CeoOverrideEvaluation] = list(state.ceo_override_evaluations)
     # CEO directive "Features 26-30," Feature 26 — Institutional Memory
     # 2.0 (app/institutional_memory.py).
     institutional_memory: list[InstitutionalMemoryEntry] = list(state.institutional_memory)
@@ -2926,6 +2932,14 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     )
     compliance_incidents = sync_incidents_from_audit_log(compliance_incidents, audit_entries_for_incidents)
 
+    # CEO directive "Features 31-35," Feature 32 — sync new
+    # CeoOverrideEvaluations from this tick's own final ceo_decisions/
+    # executive_meeting_log, then refresh outcome on any override whose
+    # underlying trade closed this tick (grade_ceo_decisions() above
+    # already updated ceo_decisions' own outcome field by this point).
+    ceo_override_evaluations = sync_override_evaluations(ceo_override_evaluations, ceo_decisions, meeting_log)
+    ceo_override_evaluations = refresh_override_outcomes(ceo_override_evaluations, ceo_decisions)
+
     return state.model_copy(
         update={
             # NOTE: model_copy(update=...) writes directly into the model's
@@ -2995,6 +3009,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "case_studies": case_studies,
             "failure_classifications": failure_classifications,
             "compliance_incidents": compliance_incidents,
+            "ceo_override_evaluations": ceo_override_evaluations,
             "institutional_memory": institutional_memory,
             "agent_performance_reviews": agent_performance_reviews,
             "agent_skill_profiles": agent_skill_profiles,

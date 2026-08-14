@@ -180,6 +180,7 @@ from app.compliance_incidents import (
     submit_for_verification,
     verify_and_resolve,
 )
+from app.override_governance import add_override_review
 from app.institutional_memory import (
     promote_failed_strategy,
     promote_hall_of_fame_strategy,
@@ -1874,7 +1875,7 @@ class GameState:
             return self.data.viewed_trade_notification_ids
 
     async def submit_ceo_decision(
-        self, proposal_id: str, choice: AnalystChoice, *, delegated: bool = False
+        self, proposal_id: str, choice: AnalystChoice, *, delegated: bool = False, override_reason: str | None = None
     ) -> tuple[GameSaveState, str | None]:
         """Feature 12 — the CEO's (the player's) real buy/sell/wait call on
         a pending TradeProposal, applied under the same lock every other
@@ -1891,7 +1892,14 @@ class GameState:
         deriving `choice` from the Executive Intelligence Network's own
         real recommendation before calling this. The trade itself executes
         identically either way — this only changes what gets recorded
-        about who decided it (resolved_by="delegated" instead of "ceo")."""
+        about who decided it (resolved_by="delegated" instead of "ceo").
+
+        `override_reason` (CEO directive "Features 31-35," Feature 32) —
+        an optional real reason the CEO typed for this decision. Only
+        ever stored on the resulting CeoDecisionRecord when this decision
+        actually is an override (`choice != proposal.overall_recommendation`)
+        — silently ignored otherwise rather than stored where it means
+        nothing."""
         async with self.lock:
             proposal = next((p for p in self.data.trade_proposals if p.id == proposal_id), None)
             if proposal is None:
@@ -1969,6 +1977,9 @@ class GameState:
                 behavioral_cooldown_minutes=self.data.trading_modes.behavioral_cooldown_minutes,
                 behavioral_size_increase_threshold_pct=self.data.trading_modes.behavioral_size_increase_threshold_pct,
             )
+
+            if override_reason and not ceo_record.agreed_with_ai:
+                ceo_record = ceo_record.model_copy(update={"override_reason": override_reason})
 
             memory = list(self.data.memory)
             record_ceo_decision(memory, decision)
@@ -2269,6 +2280,25 @@ class GameState:
                 return self.data, f"Incident {incident_id!r} is {incident.status!r} — can only reopen a resolved incident."
             self.data = self.data.model_copy(
                 update={"compliance_incidents": [updated if i.id == incident_id else i for i in self.data.compliance_incidents]}
+            )
+            return self.data, None
+
+    # CEO directive "Features 31-35," Feature 32 — CEO Override
+    # Governance's one real mutation: a reviewer's note on an existing
+    # CeoOverrideEvaluation. Never gates or changes processQuality/outcome
+    # (see app/override_governance.py's add_override_review()).
+    async def add_override_review(self, evaluation_id: str, reviewer: AgentId, note: str) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            evaluation = next((e for e in self.data.ceo_override_evaluations if e.id == evaluation_id), None)
+            if evaluation is None:
+                return self.data, f"No CEO override evaluation with id {evaluation_id!r}."
+            updated = add_override_review(evaluation, reviewer=reviewer, note=note)
+            self.data = self.data.model_copy(
+                update={
+                    "ceo_override_evaluations": [
+                        updated if e.id == evaluation_id else e for e in self.data.ceo_override_evaluations
+                    ]
+                }
             )
             return self.data, None
 
