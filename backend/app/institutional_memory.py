@@ -68,6 +68,7 @@ from app.constitution import _significant_words
 from app.schemas import (
     CaseStudy,
     FailedStrategyArchiveEntry,
+    FailureClassification,
     InstitutionalMemoryEntry,
     InstitutionalMemorySource,
     MarketEnvironmentRegime,
@@ -284,6 +285,35 @@ def promote_prediction_outcome(record: PredictionRecord) -> InstitutionalMemoryE
         provenance=f"Promoted from PredictionRecord {record.id} (trade_direction, {record.predicted_direction}), resolved sim day {record.sim_day}.",
         relevancePct=0.0,
         supportingEvidence=list(record.attributed_agents),
+    )
+
+
+def promote_failure_classification(classification: FailureClassification) -> InstitutionalMemoryEntry:
+    """CEO directive Feature 30 — only ever called when
+    app/failure_review.py's should_promote_failure_classification() says
+    this classification has a real, named reason (never "unknown", which
+    has no real lesson to file). `originating_agent` follows the same
+    single-attribution honesty rule as promote_prediction_outcome() above
+    — a failure classification's `attributed_agents` is the trade's real
+    supporting agents, which is usually more than one."""
+    return InstitutionalMemoryEntry(
+        id=f"im-failure-{classification.id}",
+        source="failure_classification",
+        createdAt=_now_iso(),
+        simDay=classification.sim_day,
+        originatingAgent=classification.attributed_agents[0] if len(classification.attributed_agents) == 1 else None,
+        eventRef=classification.id,
+        marketRegime=None,
+        observation=(
+            f"{classification.symbol} closed at {classification.trade_pnl_pct:+.2f}% and was classified "
+            f"{classification.reason.replace('_', ' ')}: {classification.evidence}"
+        ),
+        interpretation=None,
+        lesson=f"Watch for {classification.reason.replace('_', ' ')} on future {classification.symbol} decisions before this trade's own real evidence.",
+        confidence=0.0,
+        provenance=f"Promoted from FailureClassification {classification.id} ({classification.reason}) on trade {classification.trade_id}, sim day {classification.sim_day}.",
+        relevancePct=0.0,
+        supportingEvidence=list(classification.attributed_agents),
     )
 
 

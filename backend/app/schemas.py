@@ -3336,6 +3336,31 @@ class CeoDecisionRecord(CamelModel):
 # research finding on why this is additive, not a duplicate).
 PredictionClaimType = Literal["trade_direction"]
 
+# CEO directive "Features 26-30," Feature 30 (Agent Debate + Failure
+# Review Board) — the real, post-hoc THESIS-FAILURE taxonomy, distinct
+# from CaseStudyCategory's behavioral/process taxonomy (see
+# app/failure_review.py's module docstring for the full research: a
+# trade can be process-perfect and still have a wrong thesis, or vice
+# versa, so this is a genuinely separate axis, not a duplicate). Seven
+# named values, each backed by a real, already-computed signal this
+# codebase reuses rather than recomputes — see app/failure_review.py's
+# classify_failure() for exactly which real field backs each one.
+# "external_shock" (a Black Swan event) was explicitly researched and
+# cut: `CrisisBriefing` (see below) is "Never persisted as its own
+# list" and has no `black_swan_event_id` link to any PaperTrade/
+# TradeDecision, so there is no honest per-trade evidence to classify
+# against — disclosed here rather than added as a permanently-dead
+# enum value no real code path could ever produce.
+FailureReason = Literal[
+    "bad_thesis",
+    "poor_execution",
+    "risk_management_failure",
+    "market_regime_misread",
+    "information_gap",
+    "process_violation",
+    "unknown",
+]
+
 
 class PredictionRecord(CamelModel):
     """One real, individually-addressable prediction, staked before its
@@ -3363,6 +3388,14 @@ class PredictionRecord(CamelModel):
     outcome: Literal["pending", "correct", "incorrect"] = "pending"
     resolved_trade_id: str | None = Field(default=None, alias="resolvedTradeId")
     resolved_pnl_pct: float | None = Field(default=None, alias="resolvedPnlPct")
+    # Feature 30 feed-back integration — filled only when `outcome`
+    # resolves to `"incorrect"`, from the real FailureClassification
+    # filed for the same resolved trade (matched by `resolved_trade_id`,
+    # see app/prediction_tracking.py's grade_predictions()). None for
+    # every pending/correct prediction, and also None for an incorrect
+    # one whose trade won no FailureClassification (a "wait"-turned-loss
+    # edge case, or a trade that predates this feature) — never guessed.
+    failure_reason: FailureReason | None = Field(default=None, alias="failureReason")
     sim_day: int = Field(alias="simDay")
     created_at: str = Field(alias="createdAt")
     resolved_at: str | None = Field(default=None, alias="resolvedAt")
@@ -4087,6 +4120,37 @@ class CaseStudy(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
+# CEO directive "Features 26-30," Feature 30 (Agent Debate + Failure
+# Review Board) — the final stage of the 26->27->28->29->30 learning
+# loop. Exactly one FailureClassification per real closed, losing trade
+# (see app/failure_review.py's classify_failure(), called from the same
+# nexus.py trade-close branch that already files this trade's
+# CaseStudy(s) — never a second, independently-triggered pass). Answers
+# a genuinely different question than CaseStudy: CaseStudy asks "what
+# behavioral/process mistake occurred" (app/mistakes.py); this asks "why
+# did the THESIS actually fail" — a well-disciplined process can still
+# rest on a wrong thesis, and vice versa. `reason` is picked by a fixed,
+# documented precedence over real, already-computed evidence (Discipline
+# Chamber factors, Process Adherence's trading-mode check, this trade's
+# own CaseStudy categories, the Market Intelligence Learning Loop) —
+# never a fabricated root cause, and `"unknown"` is the honest result
+# when nothing real fires rather than a guess.
+class FailureClassification(CamelModel):
+    id: str
+    trade_id: str = Field(alias="tradeId")
+    decision_id: str = Field(alias="decisionId")
+    symbol: str
+    reason: FailureReason
+    evidence: str
+    # The real supporting agents behind the failed decision (see
+    # PredictionRecord.attributed_agents above for the same convention)
+    # — never a fabricated per-agent apportionment of blame.
+    attributed_agents: list[AgentId] = Field(alias="attributedAgents")
+    trade_pnl_pct: float = Field(alias="tradePnlPct")
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
 # Trading Psychology & Discipline, Piece D — Loss/Win Classification,
 # formalized on top of the Discipline Chamber (Design Bible Chapter 74
 # addendum). The one company-wide, real aggregate over every trade this
@@ -4325,6 +4389,11 @@ InstitutionalMemorySource = Literal[
     "risk_event",
     "market_regime_shift",
     "prediction",
+    # Feature 30 — promoted from a FailureClassification whose reason is
+    # not "unknown" (an unclassifiable trade has no real lesson to file
+    # — see app/institutional_memory.py's should_promote_failure_
+    # classification()).
+    "failure_classification",
 ]
 
 # "active" — the current, standing read. "superseded" — a newer entry
@@ -7071,6 +7140,12 @@ class GameSaveState(CamelModel):
     # outcome was known.
     prediction_records: list[PredictionRecord] = Field(
         default_factory=list, alias="predictionRecords"
+    )
+    # CEO directive "Features 26-30," Feature 30 — the Failure Review
+    # Board (app/failure_review.py). One capped, permanent
+    # FailureClassification per real closed, losing trade.
+    failure_classifications: list[FailureClassification] = Field(
+        default_factory=list, alias="failureClassifications"
     )
     # v0.7 Feature 49 (Phase 3) — the Foundational Mentor Program
     # (app/foundational_mentors.py). See FoundationalMentorState's own

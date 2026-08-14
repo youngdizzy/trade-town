@@ -115,8 +115,10 @@ from app.mentor import compute_mentor_state, compute_thinking_profiles, generate
 from app.performance_review import compute_agent_performance_review, latest_review_for_agent, record_agent_performance_review
 from app.skill_progression import compute_agent_skill_profile, latest_skill_profile_for_agent, record_agent_skill_profile
 from app.prediction_tracking import MAX_PREDICTION_RECORDS, build_prediction_record, grade_predictions, should_promote_prediction_outcome
+from app.failure_review import classify_failure, record_failure_classification, should_promote_failure_classification
 from app.institutional_memory import (
     promote_case_study,
+    promote_failure_classification,
     promote_market_regime_shift,
     promote_prediction_outcome,
     promote_risk_event,
@@ -218,6 +220,7 @@ from app.schemas import (
     ExecutiveDepartmentRole,
     ExecutiveMeetingLogEntry,
     ExecutiveReview,
+    FailureClassification,
     FounderCouncilSession,
     FounderId,
     FounderLogEntry,
@@ -1196,6 +1199,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     agent_knowledge: dict[AgentId, AgentKnowledgeState] = state.agent_knowledge or default_agent_knowledge()
     discipline_reviews: list[DisciplineReview] = list(state.discipline_reviews)
     case_studies: list[CaseStudy] = list(state.case_studies)
+    # CEO directive "Features 26-30," Feature 30 — the Failure Review
+    # Board (app/failure_review.py).
+    failure_classifications: list[FailureClassification] = list(state.failure_classifications)
     # CEO directive "Features 26-30," Feature 26 — Institutional Memory
     # 2.0 (app/institutional_memory.py).
     institutional_memory: list[InstitutionalMemoryEntry] = list(state.institutional_memory)
@@ -1787,22 +1793,6 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     if len(ceo_decisions) > MAX_CEO_DECISIONS:
         del ceo_decisions[: len(ceo_decisions) - MAX_CEO_DECISIONS]
 
-    # CEO directive "Features 26-30," Feature 29 — the same real
-    # decision_id match, run right alongside grade_ceo_decisions above.
-    # Any prediction newly resolved this tick and honestly notable (real
-    # high confidence, resolved wrong) is promoted into Institutional
-    # Memory (Feature 26) — never every resolved prediction, never a
-    # re-promotion of one already filed in a prior tick.
-    pending_prediction_ids = {p.id for p in prediction_records if p.outcome == "pending"}
-    prediction_records = grade_predictions(prediction_records, paper_portfolio.trade_history)
-    if len(prediction_records) > MAX_PREDICTION_RECORDS:
-        del prediction_records[: len(prediction_records) - MAX_PREDICTION_RECORDS]
-    for prediction in prediction_records:
-        if prediction.id in pending_prediction_ids and prediction.outcome != "pending" and should_promote_prediction_outcome(prediction):
-            institutional_memory = record_institutional_memory(
-                institutional_memory, promote_prediction_outcome(prediction), current_sim_day=new_time.day
-            )
-
     # v0.7 Feature 20 — resolves any Gatekeeper rejection whose real
     # evaluation window has elapsed, purely from the symbol's own real
     # subsequent watchlist price movement (see app/gatekeeper.py).
@@ -1860,6 +1850,31 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                 new_case_studies = generate_case_studies(decision, debate, trade, discipline_review, id_prefix=f"case-{trade.id}")
                 case_studies = record_case_studies(case_studies, new_case_studies)
                 trade_case_studies = new_case_studies
+
+                # CEO directive "Features 26-30," Feature 30 — the
+                # Failure Review Board, the final stage of the
+                # 26->27->28->29->30 learning loop. One real
+                # FailureClassification per closed, losing trade, reusing
+                # this trade's own just-filed CaseStudy(s) above plus the
+                # real DisciplineReview and Market Intelligence Learning
+                # Loop entries already computed this tick — see
+                # app/failure_review.py for the full precedence order.
+                failure_classification = classify_failure(
+                    decision,
+                    trade,
+                    discipline_review,
+                    new_case_studies,
+                    market_intelligence_learning,
+                    classification_id=f"failure-{trade.id}",
+                    sim_day=new_time.day,
+                    created_at=_now_iso(),
+                )
+                failure_classifications = record_failure_classification(failure_classifications, failure_classification)
+                if should_promote_failure_classification(failure_classification):
+                    institutional_memory = record_institutional_memory(
+                        institutional_memory, promote_failure_classification(failure_classification), current_sim_day=new_time.day
+                    )
+
                 for case_study in new_case_studies:
                     record_case_study(memory, case_study, max_records=effective_risk_limits.max_memory_records)
                     institutional_memory = record_institutional_memory(
@@ -2018,6 +2033,27 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                 session = war_room_sessions[war_room_index]
                 comparison = compare_scenario_to_outcome(session.scenario_simulation, trade)
                 war_room_sessions[war_room_index] = session.model_copy(update={"outcome_comparison": comparison})
+
+    # CEO directive "Features 26-30," Feature 29 — the same real
+    # decision_id match, run right alongside grade_ceo_decisions above.
+    # Deliberately placed AFTER the closed_trades loop above (not
+    # alongside grade_ceo_decisions before it): this tick's own real
+    # FailureClassifications are only computed inside that loop, and
+    # Feature 30's feed-back (failure_reason below) needs them available
+    # for a prediction resolved on this very tick, not just a later one.
+    # Any prediction newly resolved this tick and honestly notable (real
+    # high confidence, resolved wrong) is promoted into Institutional
+    # Memory (Feature 26) — never every resolved prediction, never a
+    # re-promotion of one already filed in a prior tick.
+    pending_prediction_ids = {p.id for p in prediction_records if p.outcome == "pending"}
+    prediction_records = grade_predictions(prediction_records, paper_portfolio.trade_history, failure_classifications)
+    if len(prediction_records) > MAX_PREDICTION_RECORDS:
+        del prediction_records[: len(prediction_records) - MAX_PREDICTION_RECORDS]
+    for prediction in prediction_records:
+        if prediction.id in pending_prediction_ids and prediction.outcome != "pending" and should_promote_prediction_outcome(prediction):
+            institutional_memory = record_institutional_memory(
+                institutional_memory, promote_prediction_outcome(prediction), current_sim_day=new_time.day
+            )
 
     backtest_sessions, simulation_results, newly_completed_sims = tick_simulation_lab(
         backtest_sessions, simulation_results, strategies, watchlist, RESEARCHER_IDS, new_time
@@ -2625,6 +2661,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                 reflection_sessions=reflection_sessions,
                 agent_knowledge=agent_knowledge,
                 learning_events=learning_events,
+                failure_classifications=failure_classifications,
                 period_start_sim_day=review_period_start,
                 period_end_sim_day=new_time.day,
                 sim_day=new_time.day,
@@ -2650,6 +2687,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                 trades=paper_portfolio.trade_history,
                 reasoning_challenges=reasoning_challenges,
                 reflection_sessions=reflection_sessions,
+                failure_classifications=failure_classifications,
                 period_start_sim_day=skill_period_start,
                 period_end_sim_day=new_time.day,
                 sim_day=new_time.day,
@@ -2923,6 +2961,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "academy_state": academy_state,
             "discipline_reviews": discipline_reviews,
             "case_studies": case_studies,
+            "failure_classifications": failure_classifications,
             "institutional_memory": institutional_memory,
             "agent_performance_reviews": agent_performance_reviews,
             "agent_skill_profiles": agent_skill_profiles,

@@ -153,6 +153,9 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         "agentPerformanceReviews": [r.model_dump(by_alias=True) for r in state.agent_performance_reviews],
         "agentSkillProfiles": [p.model_dump(by_alias=True) for p in state.agent_skill_profiles],
         "predictionRecords": [p.model_dump(by_alias=True) for p in state.prediction_records],
+        # CEO directive "Features 26-30," Feature 30 — the Failure
+        # Review Board (app/failure_review.py).
+        "failureClassifications": [c.model_dump(by_alias=True) for c in state.failure_classifications],
         "learningEvents": [e.model_dump(by_alias=True) for e in state.learning_events],
         "decisionVault": [v.model_dump(by_alias=True) for v in state.decision_vault],
         # v0.7 Feature 55 — already capped (MAX_WAR_ROOM_SESSIONS) like decisionVault above.

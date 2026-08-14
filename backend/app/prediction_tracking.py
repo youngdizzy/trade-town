@@ -83,7 +83,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.schemas import CeoDecisionRecord, PaperTrade, PredictionRecord, TradeDecision
+from app.schemas import CeoDecisionRecord, FailureClassification, PaperTrade, PredictionRecord, TradeDecision
 
 MAX_PREDICTION_RECORDS = 150
 
@@ -128,16 +128,30 @@ def build_prediction_record(decision: TradeDecision, record: CeoDecisionRecord, 
     )
 
 
-def grade_predictions(records: list[PredictionRecord], trade_history: list[PaperTrade]) -> list[PredictionRecord]:
+def grade_predictions(
+    records: list[PredictionRecord],
+    trade_history: list[PaperTrade],
+    failure_classifications: list[FailureClassification] | None = None,
+) -> list[PredictionRecord]:
     """Resolves any "pending" record whose linked trade has since closed
     — matched by decision_id, the exact same real link
     `app/executive.py`'s `grade_ceo_decisions()` already uses. A record
     with no matching closed trade yet stays "pending" unchanged; nothing
     here ever resolves early or from data older than the record's own
-    `created_at`."""
+    `created_at`.
+
+    CEO directive Feature 30 feed-back: when a prediction resolves
+    "incorrect", `failure_reason` is filled from the real
+    FailureClassification app/failure_review.py already filed for the
+    same trade (matched by `trade.id`, the same real trade-close moment
+    both records are generated from) — never a second, independent
+    guess. Stays None when no classification exists yet for that trade
+    (e.g. `failure_classifications` omitted by an older caller, or the
+    trade predates Feature 30)."""
     if not records:
         return records
     by_decision_id: dict[str, PaperTrade] = {t.decision_id: t for t in trade_history if t.decision_id}
+    by_trade_id: dict[str, FailureClassification] = {c.trade_id: c for c in (failure_classifications or [])}
     updated: list[PredictionRecord] = []
     for prediction in records:
         if prediction.outcome != "pending":
@@ -148,12 +162,14 @@ def grade_predictions(records: list[PredictionRecord], trade_history: list[Paper
             updated.append(prediction)
             continue
         outcome = "correct" if trade.pnl > 0 else "incorrect"
+        classification = by_trade_id.get(trade.id) if outcome == "incorrect" else None
         updated.append(
             prediction.model_copy(
                 update={
                     "outcome": outcome,
                     "resolved_trade_id": trade.id,
                     "resolved_pnl_pct": trade.pnl_pct,
+                    "failure_reason": classification.reason if classification is not None else None,
                     "resolved_at": _now_iso(),
                 }
             )

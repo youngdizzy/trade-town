@@ -60,6 +60,7 @@ both.
 """
 from __future__ import annotations
 
+from collections import Counter
 from datetime import datetime, timezone
 
 from app.analytics import confidence_accuracy, research_accuracy
@@ -71,6 +72,7 @@ from app.schemas import (
     AgentRoleClass,
     CaseStudy,
     DisciplineReview,
+    FailureClassification,
     LearningEvent,
     PaperTrade,
     PerformanceDimension,
@@ -228,7 +230,11 @@ def _learning_trend(agent_id: AgentId, knowledge: AgentKnowledgeState | None, le
 
 
 def _recurring_mistakes(
-    agent_id: AgentId, mistake_studies: list[CaseStudy], trades_in_period: list[PaperTrade], decision_by_id: dict[str, TradeDecision]
+    agent_id: AgentId,
+    mistake_studies: list[CaseStudy],
+    trades_in_period: list[PaperTrade],
+    decision_by_id: dict[str, TradeDecision],
+    failure_classifications: list[FailureClassification] | None = None,
 ) -> PerformanceDimension:
     supported_trades = [t for t in trades_in_period if agent_id in t.supporting_agents]
     if not supported_trades:
@@ -239,12 +245,30 @@ def _recurring_mistakes(
         if decision is not None and agent_id in decision.supporting_agents:
             attributable += 1
     mistake_free_rate = round((1 - attributable / len(supported_trades)) * 100, 1)
+    evidence = (
+        f"{attributable} of {len(supported_trades)} supported trade(s) this period produced a real process-gap mistake case study "
+        "(higher = fewer real mistakes; a well-disciplined loss to market variance is never counted — app/mistakes.py's own distinction)."
+    )
+    # CEO directive Feature 30 feed-back — the Failure Review Board's own
+    # real classification of WHY those trades failed, layered onto this
+    # dimension's evidence string as real specificity; never changes
+    # `value`/`sample_size` above, which stay CaseStudy-derived exactly
+    # as before.
+    if failure_classifications:
+        attributed_reasons = [
+            c.reason
+            for c in failure_classifications
+            if agent_id in c.attributed_agents and any(t.id == c.trade_id for t in supported_trades)
+        ]
+        if attributed_reasons:
+            most_common = Counter(attributed_reasons).most_common(1)[0]
+            evidence += f' The Failure Review Board most often attributed these losses to "{most_common[0].replace("_", " ")}" ({most_common[1]} trade(s)).'
     return PerformanceDimension(
         id="recurring_mistakes",
         label="Recurring Mistakes (inverse)",
         value=mistake_free_rate,
         sampleSize=len(supported_trades),
-        evidence=f"{attributable} of {len(supported_trades)} supported trade(s) this period produced a real process-gap mistake case study (higher = fewer real mistakes; a well-disciplined loss to market variance is never counted — app/mistakes.py's own distinction).",
+        evidence=evidence,
     )
 
 
@@ -274,6 +298,7 @@ def compute_agent_performance_review(
     reflection_sessions: list[ReflectionSession],
     agent_knowledge: dict[AgentId, AgentKnowledgeState],
     learning_events: list[LearningEvent],
+    failure_classifications: list[FailureClassification] | None = None,
     period_start_sim_day: int,
     period_end_sim_day: int,
     sim_day: int,
@@ -301,7 +326,7 @@ def compute_agent_performance_review(
         _calibration(agent_id, trades_in_period),
         _collaboration(agent_id, reasoning_in_period, reflection_in_period),
         _learning_trend(agent_id, agent_knowledge.get(agent_id), learning_events),
-        _recurring_mistakes(agent_id, mistake_studies_in_period, trades_in_period, decision_by_id),
+        _recurring_mistakes(agent_id, mistake_studies_in_period, trades_in_period, decision_by_id, failure_classifications),
         _pnl_attribution(agent_id, trades_in_period),
     ]
 

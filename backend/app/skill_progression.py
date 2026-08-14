@@ -32,7 +32,7 @@ statistical reasoning, regime detection, prediction calibration,
 communication, collaboration, research quality) was checked individually
 against real, already-computed per-agent evidence:
 
-  MEASURABLE (5) — real, already-computed per-agent evidence exists:
+  MEASURABLE (6) — real, already-computed per-agent evidence exists:
     risk_management        -> app/performance_review.py's _risk_discipline()
                                (Position Sizing Discipline / Patience
                                Discipline Factors), reused directly, not
@@ -56,15 +56,26 @@ against real, already-computed per-agent evidence:
                                "Reasoning" trait already computes
                                (app/mentor.py's `_factor_average()`) —
                                the same real numbers, not a new formula.
+    regime_detection         -> CEO directive Feature 30 feed-back: the
+                               Failure Review Board (app/failure_review.py)
+                               attributes a real "market_regime_misread"
+                               reason to specific closed, losing trades,
+                               each with its own real attributed_agents —
+                               the first per-agent regime-call signal
+                               this codebase has ever had. A disclosed,
+                               negative-only proxy (see _regime_detection()
+                               below) — never a claim of positive
+                               regime-call confirmation, which still
+                               doesn't exist per-agent anywhere.
 
-  NOT_TRACKABLE_YET (6) — no per-agent attribution mechanism exists in
+  NOT_TRACKABLE_YET (5) — no per-agent attribution mechanism exists in
   this codebase today; `value` is permanently `None` with a stated,
   domain-specific structural reason rather than an occupation-label
   guess (see `_NOT_TRACKABLE_REASON` below for each domain's exact
   reasoning, cited against the real module that computes the company-
   level version of that signal):
     market_structure, quant_research, technical_fundamental_analysis,
-    execution, regime_detection, communication.
+    execution, communication.
 
 Two of the 11 (process_quality/learning_trend/recurring_mistakes/
 pnl_attribution's own kind of "meta" dimensions have no 1:1 skill-domain
@@ -92,6 +103,7 @@ from app.schemas import (
     AgentPerformanceReview,
     AgentSkillProfile,
     DisciplineReview,
+    FailureClassification,
     FoundationalMentorId,
     FoundationalMentorState,
     PaperTrade,
@@ -137,12 +149,15 @@ _SKILL_LABEL: dict[SkillDomainId, str] = {
 # each reason cites the real module that computes the COMPANY-level
 # version of this signal and explains exactly why it doesn't reduce to a
 # per-agent number, rather than a generic "not implemented."
+# "regime_detection" moved out of this dict — CEO directive Feature 30's
+# Failure Review Board (app/failure_review.py) added the first real
+# per-agent regime-call signal this codebase has ever had (see
+# _regime_detection() below), so it is measurable now.
 _NOT_TRACKABLE_REASON: dict[SkillDomainId, str] = {
     "market_structure": "app/market_intelligence.py computes real market-structure reads, but only company-wide — no mechanism attributes a specific structure call to one agent's individual judgment.",
     "quant_research": "app/model_validation.py's Model Validator (Meridian/CIO) is a company/strategy-level governance seat, not a per-agent quant-skill signal, and this directive's governance rule forbids repurposing it into one; no per-agent quant-research score exists distinct from Research Quality.",
     "technical_fundamental_analysis": "No mechanism records which analysis type (technical vs. fundamental) a given ResearchItem exercised or grades it — occupation titles like Echo's 'Technical Analyst' are labels, not measured evidence.",
     "execution": "Trade execution happens at the company/broker level (app/broker.py, app/portfolio.py), never attributed to any individual supporting agent.",
-    "regime_detection": "app/market_intelligence.py's regime classifier and its own Learning Loop grade yesterday's regime read against the outcome, but only at the company level — no per-agent regime-call accuracy record exists anywhere.",
     "communication": "No per-agent, per-period discriminating communication signal exists in this codebase — app/mentor.py's own ThinkingProfile explicitly reached the same conclusion and cut a Communication trait for the same reason.",
 }
 
@@ -213,6 +228,29 @@ def _statistical_reasoning(reviews_in_period: list[DisciplineReview]) -> tuple[f
     return value, len(reviews_in_period), evidence
 
 
+def _regime_detection(agent_id: AgentId, classifications_in_period: list[FailureClassification]) -> tuple[float | None, int, str]:
+    """CEO directive Feature 30 feed-back — this domain was documented as
+    NOT_TRACKABLE_YET ("no per-agent regime-call accuracy record exists
+    anywhere") until the Failure Review Board (app/failure_review.py)
+    started attributing a real "market_regime_misread" reason to specific
+    closed, losing trades, each with its own real `attributed_agents`.
+    That is the first real per-agent regime-call signal this codebase has
+    ever had — a disclosed, negative-only proxy (a real misread rate on
+    this agent's own losses), never a claim of positive regime-call
+    confirmation, which still doesn't exist per-agent anywhere."""
+    attributed = [c for c in classifications_in_period if agent_id in c.attributed_agents]
+    if not attributed:
+        return None, 0, "No FailureClassification filed for a losing trade this agent supported this period."
+    misreads = sum(1 for c in attributed if c.reason == "market_regime_misread")
+    value = round((1 - misreads / len(attributed)) * 100, 1)
+    evidence = (
+        f"{misreads} of {len(attributed)} classified losing trade(s) this agent supported this period were attributed "
+        '"market_regime_misread" by the Failure Review Board — a disclosed proxy (no per-agent POSITIVE regime-call '
+        "confirmation exists anywhere in this codebase, only this real negative misread attribution on real losses)."
+    )
+    return value, len(attributed), evidence
+
+
 def _training_recommendation(
     agent_id: AgentId, latest_review: AgentPerformanceReview | None, foundational_mentor_state: FoundationalMentorState
 ) -> tuple[SkillDomainId | None, FoundationalMentorId | None, str | None]:
@@ -246,6 +284,7 @@ def compute_agent_skill_profile(
     trades: list[PaperTrade],
     reasoning_challenges: list[ReasoningChallenge],
     reflection_sessions: list[ReflectionSession],
+    failure_classifications: list[FailureClassification] | None = None,
     period_start_sim_day: int,
     period_end_sim_day: int,
     sim_day: int,
@@ -263,12 +302,14 @@ def compute_agent_skill_profile(
     trades_in_period = [t for t in trades if period_start_sim_day <= t.closed_sim_minutes // 1440 <= period_end_sim_day]
     reasoning_in_period = [c for c in reasoning_challenges if period_start_sim_day <= c.sim_day <= period_end_sim_day]
     reflection_in_period = [s for s in reflection_sessions if period_start_sim_day <= s.sim_day <= period_end_sim_day]
+    classifications_in_period = [c for c in (failure_classifications or []) if period_start_sim_day <= c.sim_day <= period_end_sim_day]
 
     risk_dim = _risk_discipline(reviews_in_period)
     accuracy_dim = _decision_accuracy(agent_id, research)
     calibration_dim = _calibration(agent_id, trades_in_period)
     collaboration_dim = _collaboration(agent_id, reasoning_in_period, reflection_in_period)
     stat_value, stat_sample, stat_evidence = _statistical_reasoning(reviews_in_period)
+    regime_value, regime_sample, regime_evidence = _regime_detection(agent_id, classifications_in_period)
 
     measurable: dict[SkillDomainId, tuple[float | None, int, str]] = {
         "risk_management": (risk_dim.value, risk_dim.sample_size, risk_dim.evidence),
@@ -276,6 +317,7 @@ def compute_agent_skill_profile(
         "prediction_calibration": (calibration_dim.value, calibration_dim.sample_size, calibration_dim.evidence),
         "collaboration": (collaboration_dim.value, collaboration_dim.sample_size, collaboration_dim.evidence),
         "statistical_reasoning": (stat_value, stat_sample, stat_evidence),
+        "regime_detection": (regime_value, regime_sample, regime_evidence),
     }
 
     assessments: list[SkillAssessment] = []
