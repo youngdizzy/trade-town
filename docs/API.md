@@ -1509,6 +1509,17 @@ deliberately returns this field empty (it's an archive module — see
 that endpoint's own docstring); use this endpoint, the WS broadcast, or
 `GET /api/load/archive/knowledge_archive` for real data.
 
+### `GET /api/failures/{agent_id}`
+
+CEO directive "Features 26-30: Agent Intelligence, Learning &
+Institutional Memory System," Feature 30 — read-only, no body. Returns
+every real `FailureClassification` this agent is a real supporting
+agent on, oldest first. The full list is also broadcast on every WS
+tick (`failureClassifications`). Note: `GET /api/load` deliberately
+returns this field empty (it's an archive module — see that endpoint's
+own docstring); use this endpoint, the WS broadcast, or
+`GET /api/load/archive/knowledge_archive` for real data.
+
 ### `GET /api/market/regime-reconciliation`
 
 Design Bible Chapter 65's Regime Reconciliation — read-only, no body.
@@ -1942,6 +1953,7 @@ never needs to trim anything itself:
 | `agentPerformanceReviews` | last 150 (`MAX_AGENT_PERFORMANCE_REVIEWS`) | one real, 8-dimension review per agent per real week — CEO directive "Features 26-30," Feature 27 |
 | `agentSkillProfiles` | last 150 (`MAX_AGENT_SKILL_PROFILES`) | one real, 11-domain skill snapshot per agent per real week — CEO directive "Features 26-30," Feature 28 |
 | `predictionRecords` | last 150 (`MAX_PREDICTION_RECORDS`) | one real trade-direction prediction per real trade-causing decision, staked before its outcome was known — CEO directive "Features 26-30," Feature 29 |
+| `failureClassifications` | last 60 (`MAX_FAILURE_CLASSIFICATIONS`) | one real thesis-failure classification per real closed, losing trade — CEO directive "Features 26-30," Feature 30 |
 | `reasoningChallenges` | last 60 (`MAX_REASONING_CHALLENGES`) | one per real AI Debate practiced, on a fixed cadence — v0.7 Feature 29 |
 | `reflectionSessions` | last 80 (`MAX_REFLECTION_SESSIONS`) | one per real weekly/monthly cycle — v0.7 Feature 30 |
 | `questionArchive` | last 120 (`MAX_QUESTION_ARCHIVE`) | one `QuestionOfTheDay` per real in-game morning — v0.7 Feature 32 |

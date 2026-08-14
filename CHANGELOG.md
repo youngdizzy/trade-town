@@ -7,6 +7,60 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Features 26-30: Agent Intelligence, Learning & Institutional Memory System," Feature 30 —
+  Agent Debate + Failure Review Board** (`backend/app/failure_review.py`, `backend/app/schemas.py`,
+  `backend/app/institutional_memory.py`, `backend/app/nexus.py`, `backend/app/prediction_tracking.py`,
+  `backend/app/skill_progression.py`, `backend/app/performance_review.py`, `backend/app/save_modules.py`,
+  `backend/app/ws_manager.py`, `backend/app/main.py`, `backend/app/routers/failure_review.py`,
+  `backend/tests/test_failure_review.py`, `frontend/src/types.ts`, `frontend/src/net/socket.ts`,
+  `frontend/src/game/systems/NexusManager.ts`, `frontend/src/game/systems/EventBus.ts`,
+  `frontend/src/state/gameStore.ts`, `frontend/src/ui/components/CommandCenter/panels/DisciplinePanel.tsx`,
+  `frontend/tests/commandCenter.spec.ts`): the fifth and final stage of the CEO's 26→27→28→29→30 closed
+  learning loop. Researched first: `app/debate.py`/`app/devils_advocate.py` are both pre-decision-only (no
+  post-hoc failure-reason concept anywhere), and `app/mistakes.py`'s six `CaseStudyCategory` values already
+  answer a real but *different* question — what behavioral/process mistake occurred — never why the trade's
+  underlying THESIS actually failed; a trade can be process-perfect with a wrong thesis, or vice versa, so this
+  is a genuinely separate, non-duplicating axis. `classify_failure()` is a new synthesis layer reusing every
+  real signal already computed for a closed, losing trade — `app/discipline.py`'s own `DisciplineReview.factors`,
+  `app/process_adherence.py`'s `_trading_mode_check()` reused verbatim, this trade's own already-filed
+  `CaseStudy` categories, and the Market Intelligence Learning Loop's day-level `regime_consistent` read,
+  cross-referenced by real sim-day overlap with the trade's own hold window — never a second, independently
+  computed statistic. Seven named `FailureReason` values (`bad_thesis`, `poor_execution`,
+  `risk_management_failure`, `market_regime_misread`, `information_gap`, `process_violation`, `unknown`), picked
+  by a fixed, disclosed precedence order so a trade matching more than one real cause still gets exactly one
+  honest classification. An eighth candidate, `external_shock` (Black Swan events), was researched and
+  explicitly cut rather than shipped as a permanently-dead value: `CrisisBriefing` is "Never persisted as its
+  own list" and carries no per-trade-linkable event id. Wired into the same `nexus.py` trade-close branch that
+  already files this trade's `CaseStudy`(s), immediately after them — one real `FailureClassification` per
+  closed loss, capped and persisted the same way every other archive list in this codebase is. Feeds back into
+  all four earlier stages of the loop, closing it: a new `"failure_classification"` `InstitutionalMemorySource`
+  (Feature 26), promoted for every named reason except `"unknown"` (which has no real lesson to file);
+  `skill_progression.py`'s `regime_detection` domain — previously permanently `NOT_TRACKABLE_YET` because "no
+  per-agent regime-call accuracy record exists anywhere" — flips to genuinely measurable via real per-agent
+  `market_regime_misread` attribution, the single most valuable integration point the research surfaced
+  (Feature 28), disclosed as a negative-only proxy (no per-agent *positive* regime-call confirmation exists
+  anywhere in this codebase, only this real misread attribution on real losses); `PredictionRecord.failureReason`
+  (Feature 29), filled at `grade_predictions()`'s own resolution moment from the real `FailureClassification` on
+  the same trade — `grade_predictions()`'s call site was moved to run *after* the trade-close loop instead of
+  before it, so a prediction resolved on the very same tick its trade closes still gets a real reason, not just
+  a later one; and `performance_review.py`'s `recurring_mistakes` dimension evidence string gains real
+  classification specificity (never changes the underlying 0-100 value, which stays `CaseStudy`-derived exactly
+  as before). Governance-isolated exactly like Feature 29 and the Model Validator before it: purely
+  retrospective and promotion-only, touches none of `gatekeeper.py`/`risk_engine.py`/Circuit Breakers/Model
+  Validator, and can never block or alter a future trade. Extends `DisciplinePanel.tsx`'s existing DISCIPLINE
+  tab with a new "Failure Review Board" card (reason-distribution filter chips, per-trade evidence, real
+  attribution), sitting alongside the existing Discipline Chamber and Library of Mistakes & Successes cards.
+  20 new backend tests, full backend suite/`mypy`/`ruff` clean (6 pre-existing, unrelated `test_nexus.py`
+  failures confirmed via `git stash` against origin/HEAD to predate this change — a stale
+  `_apply_operating_mode()` positional-argument mismatch from earlier work), `tsc`/`eslint`/`vite build` clean,
+  live end-to-end verification against the running dev server (6 real CEO-decided trades produced 13 real
+  `FailureClassification` records with real evidence text, real attribution, and real P&L; the Feature 26/28/29
+  feed-back was independently confirmed live: real `"failure_classification"` Institutional Memory entries, a
+  real non-`None` `regime_detection` skill score, and real `PredictionRecord.failureReason` values) and
+  Playwright confirmed the new card renders correctly. Documented in Design Bible Chapter 74's addendum
+  (continuing the CLSIS/learning-loop narrative Features 27/28 already established there). This closes the CEO's
+  full "Features 26-30" directive.
+
 - **CEO directive "Features 26-30: Agent Intelligence, Learning & Institutional Memory System," Feature 29 —
   Prediction -> Outcome Tracking** (`backend/app/prediction_tracking.py`, `backend/app/institutional_memory.py`,
   `backend/app/schemas.py`, `backend/app/nexus.py`, `backend/app/state.py`, `backend/app/save_modules.py`,

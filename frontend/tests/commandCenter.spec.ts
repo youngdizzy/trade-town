@@ -686,6 +686,14 @@ test.describe("Global Command Center", () => {
     const hasScore = await page.getByText(/\d+\/100 average discipline score/).count();
     const hasEmptyState = await page.getByText(/No trades have closed yet/).count();
     expect(hasScore + hasEmptyState).toBeGreaterThan(0);
+
+    // CEO directive "Features 26-30," Feature 30 — the Failure Review
+    // Board, the same real-content-or-honest-empty-state guarantee as
+    // the Discipline Chamber above.
+    await expect(page.getByText("Failure Review Board", { exact: true })).toBeVisible();
+    const hasClassifications = await page.getByText(/\d+ classifications?/).count();
+    const hasFailureEmptyState = await page.getByText(/No losing trade has closed yet/).count();
+    expect(hasClassifications + hasFailureEmptyState).toBeGreaterThan(0);
   });
 
   test("VAULT tab shows the Decision Vault, and selecting a record loads a real Trade Report Card and Similarity Engine read, always real content or an honest empty state", async ({ page }) => {
