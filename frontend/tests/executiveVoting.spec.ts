@@ -261,3 +261,37 @@ test("Executive panel in the Command Center lists pending proposals and CEO trac
   await expect(page.getByText("CEO Track Record")).toBeVisible();
   await expect(page.getByText(/Pending Proposals/)).toBeVisible();
 });
+
+test("CEO directive Features 26-30, Feature 29 — the EXECUTIVE panel shows a real Prediction Ledger", async ({ page }) => {
+  await page.goto("/");
+  // /api/load deliberately returns archive modules (predictionRecords
+  // included) empty — see routers/save.py's own docstring — so real
+  // evidence is checked via the dedicated per-agent endpoint instead.
+  const predictions = await page.evaluate(async () => {
+    const res = await fetch("/api/predictions/scout");
+    return res.json();
+  });
+  expect(Array.isArray(predictions)).toBe(true);
+  for (const p of predictions) {
+    expect(p.claimType).toBe("trade_direction");
+    expect(["buy", "sell"]).toContain(p.predictedDirection);
+    expect(["pending", "correct", "incorrect"]).toContain(p.outcome);
+    expect(p.attributedAgents).toContain("scout");
+    // A resolved prediction always carries a real linked trade and P&L;
+    // a pending one never has hindsight data attached.
+    if (p.outcome === "pending") {
+      expect(p.resolvedTradeId).toBeNull();
+      expect(p.resolvedPnlPct).toBeNull();
+    } else {
+      expect(typeof p.resolvedTradeId).toBe("string");
+      expect(typeof p.resolvedPnlPct).toBe("number");
+    }
+  }
+
+  await continueGame(page);
+  await page.keyboard.press("Tab");
+  await clickExpand(page);
+  await clickTab(page, "EXECUTIVE");
+
+  await expect(page.getByText("Prediction Ledger", { exact: true })).toBeVisible();
+});

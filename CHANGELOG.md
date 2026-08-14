@@ -7,6 +7,41 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Features 26-30: Agent Intelligence, Learning & Institutional Memory System," Feature 29 —
+  Prediction -> Outcome Tracking** (`backend/app/prediction_tracking.py`, `backend/app/institutional_memory.py`,
+  `backend/app/schemas.py`, `backend/app/nexus.py`, `backend/app/state.py`, `backend/app/save_modules.py`,
+  `backend/app/ws_manager.py`, `backend/app/main.py`, `backend/app/routers/prediction_tracking.py`,
+  `backend/tests/test_prediction_tracking.py`, `backend/tests/test_institutional_memory.py`,
+  `frontend/src/types.ts`, `frontend/src/net/socket.ts`, `frontend/src/game/systems/NexusManager.ts`,
+  `frontend/src/game/systems/EventBus.ts`, `frontend/src/state/gameStore.ts`,
+  `frontend/src/ui/components/CommandCenter/lib/derive.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/ExecutivePanel.tsx`, `frontend/tests/executiveVoting.spec.ts`):
+  the fourth stage of the CEO's 26→27→28→29→30 closed learning loop. Disclosed naming collision:
+  `app/reasoning_lab.py` already carries an unrelated "v0.7 Feature 29" tag from an older, independent versioning
+  scheme — documented in both modules, same disambiguation `app/decision_vault.py` already established once
+  before. Researched first: three real pending→resolved lifecycles already existed (`CeoDecisionRecord`,
+  `GatekeeperRejection`/`OpportunityRejection`, `MarketIntelligenceLearningEntry`) and `app/analytics.py`'s
+  `confidence_accuracy()`/`research_accuracy()` already grade confidence-vs-outcome in aggregate, reused by
+  Feature 27's dimensions — but nothing persisted an individually-addressable per-prediction audit trail. That's
+  the one real gap this feature closes, scoped to the one claim type with a real, independently checkable later
+  truth: trade direction. `build_prediction_record()` runs at the same real decision moment `CeoDecisionRecord`
+  does (all three real resolve_proposal() call sites), reading the authoritative post-any-internal-downgrade
+  `ceo_decision`, never the caller's original proposed choice. `grade_predictions()` mirrors
+  `grade_ceo_decisions()`'s exact `decision_id`-matched resolution, run immediately after it, never regrading an
+  already-resolved record. A real, notable miscalibration (high stated confidence, resolved wrong) promotes into
+  Institutional Memory via a new `"prediction"` source — the exact value Feature 26 already reserved and
+  disclosed as pending this feature. Explicitly out of scope, disclosed rather than silently gapped:
+  `ResearchItem.confidence` (self-consistency threshold only, no real outcome link), `ModelValidationReport.verdict`
+  (advisory-only, never re-checked), a strategy's original expectancy claim (no terminal resolvable state), and
+  the three already-complete pending→resolved systems (read from, never re-persisted a second time — they keep
+  their own real frontend surfaces). Extends the existing `ExecutivePanel.tsx` (EXECUTIVE tab) with a new
+  "Prediction Ledger" card reusing its existing `StatusPill` pending/resolved conventions. 25 new backend tests,
+  full backend suite/`mypy`/`ruff` clean, `tsc`/`eslint`/`vite build` clean, live end-to-end verification against
+  the running dev server (a real `POST /api/executive/decide` "buy" call produced a real pending
+  `PredictionRecord` that later resolved to `"incorrect"` with a real linked trade and P&L once the position
+  closed) and Playwright confirmed the new card renders correctly. Documented in Design Bible Chapter 70's new
+  addendum.
+
 - **CEO directive "Features 26-30: Agent Intelligence, Learning & Institutional Memory System," Feature 28 —
   Academy + Skill Progression** (`backend/app/skill_progression.py`, `backend/app/schemas.py`,
   `backend/app/nexus.py`, `backend/app/save_modules.py`, `backend/app/ws_manager.py`, `backend/app/main.py`,

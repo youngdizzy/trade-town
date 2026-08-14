@@ -1495,6 +1495,20 @@ deliberately returns this field empty (it's an archive module — see
 that endpoint's own docstring); use this endpoint, the WS broadcast, or
 `GET /api/load/archive/knowledge_archive` for real data.
 
+### `GET /api/predictions/{agent_id}`
+
+CEO directive "Features 26-30: Agent Intelligence, Learning &
+Institutional Memory System," Feature 29 — read-only, no body. Returns
+every real `PredictionRecord` this agent is a real supporting agent on
+(pending and resolved both included), oldest first. Note: `app/
+reasoning_lab.py` carries an unrelated older "v0.7 Feature 29" tag (a
+disclosed naming collision, see that module's own docstring) — this
+endpoint is the CEO-directive Feature 29. The full list is also
+broadcast on every WS tick (`predictionRecords`). Note: `GET /api/load`
+deliberately returns this field empty (it's an archive module — see
+that endpoint's own docstring); use this endpoint, the WS broadcast, or
+`GET /api/load/archive/knowledge_archive` for real data.
+
 ### `GET /api/market/regime-reconciliation`
 
 Design Bible Chapter 65's Regime Reconciliation — read-only, no body.
@@ -1927,6 +1941,7 @@ never needs to trim anything itself:
 | `institutionalMemory` | last 200 (`MAX_INSTITUTIONAL_MEMORY`) | one promoted, reusable lesson per real case study/failed strategy/Hall of Fame induction/Model Validation finding/critical risk warning/regime shift — CEO directive "Features 26-30," Feature 26 |
 | `agentPerformanceReviews` | last 150 (`MAX_AGENT_PERFORMANCE_REVIEWS`) | one real, 8-dimension review per agent per real week — CEO directive "Features 26-30," Feature 27 |
 | `agentSkillProfiles` | last 150 (`MAX_AGENT_SKILL_PROFILES`) | one real, 11-domain skill snapshot per agent per real week — CEO directive "Features 26-30," Feature 28 |
+| `predictionRecords` | last 150 (`MAX_PREDICTION_RECORDS`) | one real trade-direction prediction per real trade-causing decision, staked before its outcome was known — CEO directive "Features 26-30," Feature 29 |
 | `reasoningChallenges` | last 60 (`MAX_REASONING_CHALLENGES`) | one per real AI Debate practiced, on a fixed cadence — v0.7 Feature 29 |
 | `reflectionSessions` | last 80 (`MAX_REFLECTION_SESSIONS`) | one per real weekly/monthly cycle — v0.7 Feature 30 |
 | `questionArchive` | last 120 (`MAX_QUESTION_ARCHIVE`) | one `QuestionOfTheDay` per real in-game morning — v0.7 Feature 32 |

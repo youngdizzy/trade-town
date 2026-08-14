@@ -1048,3 +1048,110 @@ the live dev stack that boosts a research item to a genuine trade
 proposal, opens the new panel, confirms all 9 departments render with
 real influence data, and confirms switching the Weight Profile dropdown
 live-previews a different published formula.
+
+## Addendum — Prediction -> Outcome Tracking (CEO directive "Features 26-30," Feature 29)
+
+**Naming collision, disclosed up front.** `app/reasoning_lab.py` already
+carries an unrelated "v0.7 Feature 29" tag from this codebase's older,
+independent versioning scheme (the Reasoning Lab — a process-quality
+practice log, structurally forbidden from reading a trade's real pnl).
+Every reference to "Feature 29" here means this directive's own
+26->27->28->29->30 numbering, not that older tag — the same
+disambiguation this codebase already applied once before for a
+"Feature 53"/"Feature 54" collision (see `app/decision_vault.py`'s own
+docstring).
+
+**Research finding.** An exhaustive grep for prediction/forecast/
+calibration/hindsight/resolve/pending_outcome across the whole backend
+found no general-purpose, per-claim prediction ledger — but three real,
+working pending -> resolved lifecycles already existed and needed to be
+understood before building anything: this chapter's own
+`CeoDecisionRecord` (`outcome: pending/correct/incorrect/undecidable`,
+resolved by `grade_ceo_decisions()` matching a closed `PaperTrade` by
+`decision_id`); `app/gatekeeper.py`/`app/opportunity_gatekeeper.py`'s
+`GatekeeperRejection`/`OpportunityRejection` (a fixed-window, price-
+resolved hypothetical-trade ledger); and `app/market_intelligence.py`'s
+`MarketIntelligenceLearningEntry` (a day-boundary-gated regime-call
+grading loop). `app/analytics.py`'s `confidence_accuracy()`/
+`research_accuracy()` already grade confidence-vs-outcome, but only in
+aggregate — reused verbatim by Chapter 74's Feature 27 `calibration`/
+`decision_accuracy` dimensions, never recomputed a second way. What none
+of these could provide: a persisted, individually-addressable per-
+prediction audit trail. That gap — and only that gap — is what
+`app/prediction_tracking.py` (new) fills.
+
+**What was built.** `PredictionRecord`, one real record per real
+trade-causing `TradeDecision` — the only claim type in this codebase
+with both a real forward-staked claim and a real, independently
+checkable later truth (trade direction). `build_prediction_record()`
+runs at the exact same real decision moment `CeoDecisionRecord` does
+(the three real call sites: `app/nexus.py`'s auto-resolution and
+stale-proposal-expiry paths, `app/state.py`'s CEO-manual-click path),
+reading `CeoDecisionRecord.ceo_decision` — the authoritative,
+post-any-internal-downgrade final choice, not the caller's original
+proposed one (`resolve_proposal()` can silently downgrade a real buy/
+sell to "wait" when the position sizes to zero, so trusting the
+original choice would misrepresent what was actually staked).
+`grade_predictions()` mirrors `grade_ceo_decisions()`'s exact
+`decision_id`-matched resolution, run immediately after it in
+`app/nexus.py`'s tick, and never regrades an already-resolved record.
+
+**Feeding back into Institutional Memory.** `InstitutionalMemorySource`
+gains `"prediction"` — the exact value Chapter 61's Feature 26 addendum
+already reserved and disclosed as pending this feature. Only a real,
+notable miscalibration (`HIGH_CONFIDENCE_MISS_THRESHOLD = 70.0` stated
+confidence, resolved incorrect) promotes via the new
+`promote_prediction_outcome()`, mirroring `institutional_memory.py`'s
+existing `promote_*` shape exactly — never every resolved prediction,
+which would flood institutional memory with routine, unremarkable
+outcomes.
+
+**Explicitly out of scope, disclosed rather than silently gapped:**
+`ResearchItem.confidence` (its own `>=70%` check is a self-consistency
+threshold against the research item's own claimed confidence, not a
+resolution against independent later truth — no real
+`research_item_id -> trade_id` link exists anywhere to build one
+honestly); `ModelValidationReport.verdict` (explicitly advisory-only per
+its own module docstring, never re-checked against later strategy
+performance anywhere in this codebase); a strategy's original Company
+Review expectancy claim (`compute_strategy_health()` is a continuously
+rolling read with no terminal resolvable state to snapshot and compare
+against). The three already-complete pending -> resolved systems named
+above are read from, never re-persisted a second time — `GatekeeperRejection`/
+`OpportunityRejection` keep their own real frontend surface in this same
+`ExecutivePanel.tsx`, and `MarketIntelligenceLearningEntry` keeps its own
+in `MarketIntelPanel.tsx`'s "Learning Loop."
+
+**Frontend.** Extends this chapter's own `ExecutivePanel.tsx`
+(`EXECUTIVE` tab) with a new "Prediction Ledger" card, placed alongside
+the existing Gatekeeper/Opportunity Gatekeeper cards and reusing their
+exact `StatusPill` pending/resolved tone conventions rather than
+inventing new visual language.
+
+**Verified.** 25 new backend tests (`tests/test_prediction_tracking.py`,
+plus new `TestPromotePredictionOutcome` cases in
+`tests/test_institutional_memory.py`) covering: no claim built for a
+"wait"/no-trade decision; the final post-downgrade `ceo_decision` is
+what's tracked, not a stale proposed choice; both buy and sell
+directions; a prediction staying honestly "pending" with no matching
+trade; correct/incorrect resolution from a real trade's real pnl sign;
+an already-resolved prediction never regraded even if a second trade
+later shares its `decision_id`; an unrelated trade never falsely
+resolving it; the high-confidence-miss promotion threshold (notable vs.
+not, correct vs. incorrect, pending vs. resolved); and Institutional
+Memory attribution (a single real supporting agent vs. multiple, never
+falsely narrowed to one). Full backend suite, `mypy`, `ruff` clean.
+`tsc -b --noEmit`, `eslint`, `vite build` clean. Live-verified against
+the running dev server: a real trade proposal was resolved via a real
+`POST /api/executive/decide` "buy" call, producing a real, pending
+`PredictionRecord` (`GET /api/predictions/{agent_id}`); after the
+underlying position closed, the same record resolved to `"incorrect"`
+with a real linked `resolvedTradeId` and the trade's own real
+`resolvedPnlPct` — never regraded on subsequent ticks. The new
+"Prediction Ledger" card rendered correctly in the EXECUTIVE tab
+(`frontend/tests/executiveVoting.spec.ts`'s new Feature 29 test, run
+against the live stack). Note: `GET /api/load` deliberately returns
+archive modules (including `predictionRecords`) empty — verification
+used the new per-agent endpoint and `GET /api/load/archive/
+knowledge_archive` instead, per `routers/save.py`'s own documented Save
+Architecture Redesign Phase 2 boundary.
