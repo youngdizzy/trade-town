@@ -438,6 +438,15 @@ export interface PaperPosition {
    * spread/order-book data, which this codebase does not have). 0.0 for
    * any position opened before this piece. */
   entryCostUsd: number;
+  /** CEO Company Health + Live Market Realism directive, Feature 24 —
+   * MAE (Maximum Adverse Excursion) / MFE (Maximum Favorable
+   * Excursion): a real running watermark of the worst/best
+   * unrealizedPnlPct this position has actually shown since it opened,
+   * updated every tick from the same real live prices unrealizedPnl
+   * already reads. Both start at 0.0 and only ever move toward their
+   * own real extreme. */
+  maePct: number;
+  mfePct: number;
 }
 
 /** One closed paper position — the Learning System's "training data" record (v0.5 brief Feature 5). */
@@ -482,6 +491,12 @@ export interface PaperTrade {
    * real RiskLimits in scope — never a fabricated value. */
   distanceToDrawdownCeilingBeforePct: number | null;
   distanceToDrawdownCeilingAfterPct: number | null;
+  /** CEO Company Health + Live Market Realism directive, Feature 24 —
+   * carried over from the PaperPosition this trade closed. See
+   * PaperPosition.maePct/mfePct above for the full explanation. 0.0 for
+   * any trade closed before this piece. */
+  maePct: number;
+  mfePct: number;
 }
 
 /** The company's one simulated trading account — entirely fictional. */

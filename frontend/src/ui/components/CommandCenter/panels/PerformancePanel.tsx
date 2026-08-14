@@ -155,6 +155,11 @@ export function PerformancePanel() {
                     Distance to drawdown ceiling: {t.distanceToDrawdownCeilingBeforePct.toFixed(1)}% → {t.distanceToDrawdownCeilingAfterPct.toFixed(1)}%
                   </div>
                 )}
+                {(t.maePct !== 0 || t.mfePct !== 0) && (
+                  <div className="mt-0.5 text-[9px] text-cmd-textDim">
+                    MAE: <span className="text-cmd-red">{formatPct(t.maePct)}</span> · MFE: <span className="text-cmd-green">{formatPct(t.mfePct)}</span>
+                  </div>
+                )}
                 {(t.lessonsLearned ?? t.coachReview) && <div className="mt-0.5 text-[9px] text-cmd-textDim">{t.lessonsLearned ?? t.coachReview}</div>}
               </div>
             ))}
