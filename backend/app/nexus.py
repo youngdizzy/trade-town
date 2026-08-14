@@ -113,6 +113,7 @@ from app.market_intelligence import (
 from app.memory import MAX_MEMORY_RECORDS, record
 from app.mentor import compute_mentor_state, compute_thinking_profiles, generate_question_of_the_day, record_question
 from app.performance_review import compute_agent_performance_review, latest_review_for_agent, record_agent_performance_review
+from app.skill_progression import compute_agent_skill_profile, latest_skill_profile_for_agent, record_agent_skill_profile
 from app.institutional_memory import (
     promote_case_study,
     promote_market_regime_shift,
@@ -190,6 +191,7 @@ from app.schemas import (
     AgentKnowledgeState,
     AgentOverride,
     AgentPerformanceReview,
+    AgentSkillProfile,
     AgentState,
     BlackBoxState,
     CalendarState,
@@ -1194,6 +1196,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # CEO directive "Features 26-30," Feature 27 — Agent Performance
     # Reviews (app/performance_review.py).
     agent_performance_reviews: list[AgentPerformanceReview] = list(state.agent_performance_reviews)
+    # CEO directive "Features 26-30," Feature 28 — Academy + Skill
+    # Progression (app/skill_progression.py).
+    agent_skill_profiles: list[AgentSkillProfile] = list(state.agent_skill_profiles)
     # Design Bible Chapter 74 — Self-Improvement Proposals and the
     # Institutional Evolution Engine (app/self_improvement.py,
     # app/evolution.py).
@@ -2597,6 +2602,33 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             )
             agent_performance_reviews = record_agent_performance_review(agent_performance_reviews, new_review)
 
+    # CEO directive "Features 26-30," Feature 28 — Academy + Skill
+    # Progression, one real evidence-cited skill snapshot per real agent
+    # per real trailing week (same weekly cadence as the Performance
+    # Review loop above, and deliberately run right after it so each
+    # skill snapshot can read that agent's freshly-computed
+    # weakest_dimension_id as its own training-recommendation trigger —
+    # the CEO's own "Review flags a weak dimension -> Academy recommends
+    # training" closed loop).
+    if is_evening and new_time.day % WEEKLY_INTERVAL_DAYS == 0:
+        skill_period_start = max(1, new_time.day - WEEKLY_INTERVAL_DAYS + 1)
+        for skill_agent_id in all_agent_ids():
+            new_skill_profile = compute_agent_skill_profile(
+                skill_agent_id,
+                discipline_reviews=discipline_reviews,
+                research=research,
+                trades=paper_portfolio.trade_history,
+                reasoning_challenges=reasoning_challenges,
+                reflection_sessions=reflection_sessions,
+                period_start_sim_day=skill_period_start,
+                period_end_sim_day=new_time.day,
+                sim_day=new_time.day,
+                previous_profile=latest_skill_profile_for_agent(agent_skill_profiles, skill_agent_id),
+                latest_review=latest_review_for_agent(agent_performance_reviews, skill_agent_id),
+                foundational_mentor_state=foundational_mentor_state,
+            )
+            agent_skill_profiles = record_agent_skill_profile(agent_skill_profiles, new_skill_profile)
+
     # v0.7 Feature 32 — Sage publishes one QuestionOfTheDay every in-game
     # morning (see app/mentor.py's module docstring for why the question
     # itself is drawn from a fixed, hand-authored library rather than
@@ -2862,6 +2894,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "case_studies": case_studies,
             "institutional_memory": institutional_memory,
             "agent_performance_reviews": agent_performance_reviews,
+            "agent_skill_profiles": agent_skill_profiles,
             "learning_events": learning_events,
             "self_improvement_proposals": self_improvement_proposals,
             "evolution_reports": evolution_reports,

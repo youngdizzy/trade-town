@@ -5927,6 +5927,80 @@ class CertificationRecord(CamelModel):
     history: list[CertificationHistoryEntry] = Field(default_factory=list)
 
 
+# CEO directive "Features 26-30," Feature 28 — Academy + Skill
+# Progression (the third stage of the 26->27->28->29->30 learning loop).
+# See app/skill_progression.py's module docstring for the full research
+# finding: this codebase already has a knowledge-points/tier system
+# (app/academy.py) and a curriculum/certification delivery engine
+# (app/foundational_mentors.py, immediately above), but no multi-domain,
+# per-agent SKILL score anywhere. Each of the 11 domains named in the
+# brief was checked individually against real, already-computed
+# per-agent evidence; 6 of 11 have no real attribution mechanism today
+# and are honestly NOT_TRACKABLE_YET rather than fabricated from an
+# occupation label — see skill_progression.py's own per-domain evidence
+# functions for exactly which is which and why.
+SkillDomainId = Literal[
+    "market_structure",
+    "risk_management",
+    "quant_research",
+    "technical_fundamental_analysis",
+    "execution",
+    "statistical_reasoning",
+    "regime_detection",
+    "prediction_calibration",
+    "communication",
+    "collaboration",
+    "research_quality",
+]
+
+
+class SkillAssessment(CamelModel):
+    """One real, evidence-cited read of one agent's one skill domain for
+    one real period. `value=None` means NOT_ENOUGH_EVIDENCE (a
+    measurable domain with no real data yet this period) or
+    NOT_TRACKABLE_YET (a domain with no attribution mechanism in this
+    codebase at all) — `evidence` always states honestly which one and
+    why, the same two-tier honesty shape as app/performance_review.py's
+    PerformanceDimension. `trend` is this domain's own real
+    improve/stagnate/regress read against the agent's previous real
+    assessment of the same domain — never against a different domain or
+    a fabricated baseline."""
+
+    domain_id: SkillDomainId = Field(alias="domainId")
+    label: str
+    value: float | None
+    sample_size: int = Field(alias="sampleSize")
+    evidence: str
+    trend: Literal["improving", "stagnant", "regressed", "not_enough_history"]
+
+
+class AgentSkillProfile(CamelModel):
+    """One real skill snapshot for one agent over one real period —
+    mirrors AgentPerformanceReview's own per-period, evidence-cited
+    shape. `recommended_domain_id`/`recommended_mentor_id` are the real
+    closed-loop hook the CEO's own worked example asked for
+    ("Performance Review flags a weak dimension -> Academy recommends
+    training"): set only when the agent's latest
+    AgentPerformanceReview.weakest_dimension_id maps to a skill domain
+    this module can measure AND a real, content-backed Foundational
+    Mentor track exists for it AND the agent hasn't already graduated
+    that track — see skill_progression.py's
+    SKILL_DOMAIN_RECOMMENDED_MENTOR for the exact, disclosed mapping.
+    `None`/`None` with a stated reason when no real recommendation
+    applies, never a forced default."""
+
+    id: str
+    agent_id: AgentId = Field(alias="agentId")
+    period_start_sim_day: int = Field(alias="periodStartSimDay")
+    period_end_sim_day: int = Field(alias="periodEndSimDay")
+    assessments: list[SkillAssessment]
+    recommended_domain_id: SkillDomainId | None = Field(default=None, alias="recommendedDomainId")
+    recommended_mentor_id: FoundationalMentorId | None = Field(default=None, alias="recommendedMentorId")
+    recommendation_reason: str | None = Field(default=None, alias="recommendationReason")
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
 class FoundationalMentorState(CamelModel):
     mentors: list[FoundationalMentorProfile] = Field(default_factory=list)
     # Real per-employee progress — the actual students. Keyed by the
@@ -6929,6 +7003,14 @@ class GameSaveState(CamelModel):
     # awareness/process-vs-outcome design.
     agent_performance_reviews: list[AgentPerformanceReview] = Field(
         default_factory=list, alias="agentPerformanceReviews"
+    )
+    # CEO directive "Features 26-30," Feature 28 — Academy + Skill
+    # Progression (app/skill_progression.py). One capped, permanent
+    # AgentSkillProfile per real agent per real weekly period — see that
+    # module's own docstring for the full evidence/NOT_TRACKABLE_YET/
+    # training-recommendation design.
+    agent_skill_profiles: list[AgentSkillProfile] = Field(
+        default_factory=list, alias="agentSkillProfiles"
     )
     # v0.7 Feature 49 (Phase 3) — the Foundational Mentor Program
     # (app/foundational_mentors.py). See FoundationalMentorState's own
