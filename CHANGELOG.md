@@ -7,6 +7,36 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO Company Health + Live Market Realism directive, Features 21-25 — Failure Boundary gate, MAE/MFE, Constitution
+  Article XIV** (`backend/app/gatekeeper.py`, `backend/app/portfolio.py`, `backend/app/schemas.py`,
+  `backend/app/constitution.py`, `backend/tests/test_gatekeeper.py`, `backend/tests/test_portfolio.py`,
+  `backend/tests/test_constitution.py`, `frontend/src/types.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/PerformancePanel.tsx`, `frontend/tests/constitution.spec.ts`):
+  researched first, per the directive's own explicit "do not duplicate existing systems" instruction, and found the
+  Prop-Firm Risk Intelligence Addendum (Piece 10a/10b/Piece 11) had already built almost everything — Features 21/22
+  ("Fast Pass" vs. conservative risk, "slow ≠ automatically safer") are fully covered by
+  `app/evaluation_simulator.py`'s real Monte Carlo evaluation-policy race, untouched here. Feature 23 fills the one
+  real gap Piece 11's own docstring disclosed ("no live TradeProposal execution routes to a secondary Account yet"):
+  `_failure_boundary_check()` is the Trade Gatekeeper's eleventh check (following the exact naming precedent the
+  Behavioral Circuit Breaker set as the tenth), reusing `app/portfolio.py`'s own real
+  `max(0, max_drawdown_pct - lifetime_drawdown_pct)` formula — read *before* the trade instead of only after — with
+  zero new risk engine and zero new plumbing (`portfolio`/`risk_limits` were already `evaluate_gatekeeper()`
+  parameters). Feature 24 adds `maePct`/`mfePct` (Maximum Adverse/Favorable Excursion) — confirmed genuinely missing
+  everywhere else on the CEO's telemetry list was already real — tracked as a running watermark in
+  `mark_to_market()` from the same real live prices `unrealizedPnlPct` already reads every tick (never a
+  retroactively regenerated candle series, which would have given the deliberately market-data-free `portfolio.py`
+  a new dependency), then copied onto the closed trade the same way `tradingStyle` already is. Feature 25 adds
+  Constitution Article XIV ("TradeTown optimizes for statistically validated expected value and long-term survival,
+  not simply win rate, individual trade size, or minimum risk"), seeded the same permanent way Articles IX-XIII
+  already were, verified non-duplicative first (the closest existing thing was report-conclusion prose scoped to
+  evaluation-policy comparison, not a company-wide citable rule) and noting that `app/opportunity_gatekeeper.py`
+  already enforces the real mechanism behind it. Verified: 6 new Gatekeeper tests + 6 new MAE/MFE tests + Constitution
+  tests updated for the 14th seeded Article; full backend suite 1791/1792 passing (the one failure, pre-existing
+  unseeded-random flakiness in `test_foundational_mentors.py`, already confirmed unrelated); mypy/ruff clean across
+  all 134 source files; frontend tsc/lint/build clean; the Gatekeeper's new eleventh check needed zero frontend
+  changes (`ExecutiveVoting.tsx` already renders every check dynamically); MAE/MFE surfaced in the Performance
+  panel's Recent Trades card, confirmed rendering cleanly via Playwright with zero console errors.
+
 - **CEO Company Health + Live Market Realism directive, Section 3 — formal Learning Event records**
   (`backend/app/schemas.py`, `backend/app/academy.py`, `backend/app/scribe.py`, `backend/app/nexus.py`,
   `backend/app/save_modules.py`, `backend/app/ws_manager.py`, `backend/tests/test_academy.py`,

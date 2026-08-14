@@ -1083,3 +1083,96 @@ stated plainly: backend correctness is verified by direct, comprehensive
 tests against the real execution-pipeline functions; a live trade
 closing through the actual running autonomous sim loop was not
 observed within this session's time budget.
+
+## Addendum — Failure Boundary Gate + MAE/MFE (CEO Company Health + Live Market Realism directive, Features 23/24)
+
+**Status:** Real. Extends the exact two systems the addenda above
+already built — `app/gatekeeper.py`'s check list and `app/portfolio.py`'s
+`close_position()`/`mark_to_market()` — rather than adding a third,
+parallel one. Researched first, per that directive's own explicit
+"do not duplicate existing systems" instruction: the Prop-Firm Risk
+Intelligence Addendum (this chapter's own Piece 10b above, plus Piece
+11's `compute_account_risk_budget_status()`) had already built almost
+everything Features 21-25 asked for — `app/evaluation_simulator.py`'s
+real Monte Carlo risk-policy race (Features 21/22, "Fast Pass" vs.
+conservative, in full) was found complete and untouched here.
+
+**Feature 23 — the real gap Piece 11 itself disclosed.**
+`compute_account_risk_budget_status()`'s own docstring names exactly
+why it can't gate anything: "no live TradeProposal execution routes to
+a secondary Account yet." Piece 10b (above) already snapshots the
+identical `max(0, max_drawdown_pct - lifetime_drawdown_pct)` formula
+for the PRIMARY portfolio — but only *after* a trade closes, for
+audit, never to gate one. `app/gatekeeper.py`'s new
+`_failure_boundary_check()` is the Gatekeeper's eleventh check
+(following the exact naming precedent the Behavioral Circuit Breaker
+set as the tenth — see `app/behavioral_risk.py`'s own docstring),
+reading that same real formula *before* the trade instead of after:
+does this proposal's own `RiskLimits.risk_per_trade_pct` fit inside the
+room actually remaining before the company's own real drawdown
+ceiling? Zero new risk engine — `portfolio` and `risk_limits` were
+already `evaluate_gatekeeper()` parameters, so this required no new
+plumbing anywhere real.
+
+**Feature 24 — MAE/MFE, confirmed genuinely missing.** Maximum Adverse/
+Favorable Excursion did not exist anywhere in this codebase (grep-
+confirmed zero matches). Every other item on the CEO's telemetry list —
+risk-per-trade, reward/risk (only as aggregate proxies, honestly
+disclosed as such elsewhere), hold duration, consecutive win/loss
+streaks, transaction cost, confidence, decision-source/agent, plan
+adherence — already existed. Rather than retroactively regenerating a
+candle series to reconstruct a position's price path (which would give
+`app/portfolio.py` a market-data dependency, breaking its own "pure
+data operations only" architecture boundary — see this module's
+opening docstring), `mark_to_market()` now tracks a real running
+watermark: `mae_pct = min(pos.mae_pct, pnl_pct)`,
+`mfe_pct = max(pos.mfe_pct, pnl_pct)`, computed every tick from the
+exact same real live prices `unrealized_pnl_pct` already reads — never
+a second, independently-derived read. `close_position()` copies the
+position's final watermark onto the closed `PaperTrade`, the same
+pattern `trading_style` already uses.
+
+**Verified:** 6 new `test_gatekeeper.py` tests (`TestFailureBoundaryCheck`
+— fresh portfolio passes, meaningful room remains despite a real
+drawdown, room smaller than this trade's own risk fails, an already-
+breached ceiling fails, a smaller risk-per-trade can still pass near
+the ceiling, a triggered read fails only its own check while every
+other check still passes independently) and 6 new `test_portfolio.py`
+tests (`TestMaeMfe` — a fresh position starts at 0.0/0.0, a price drop
+moves MAE only, a rise moves MFE only, a partial recovery never erases
+the real extreme that already happened, both watermarks can move
+across one real round trip, `close_position()` copies the real
+watermark onto the trade, a legacy position with no watermark still
+closes cleanly). Full backend suite 1791/1792 passing (the one
+failure, `test_foundational_mentors.py`'s unseeded-random test, is
+pre-existing flakiness confirmed unrelated by re-running it in
+isolation). `mypy app/`/`ruff check app/ tests/` clean across all 134
+source files. `tsc -b --noEmit`/`eslint`/`vite build` clean after
+adding `maePct`/`mfePct` to `PaperPosition`/`PaperTrade` in `types.ts`
+and surfacing them in `PerformancePanel.tsx`'s Recent Trades card
+alongside `transactionCostUsd`/`distanceToDrawdownCeiling`. The
+Gatekeeper's new eleventh check needed zero frontend changes —
+`ExecutiveVoting.tsx` already renders every check in
+`verdict.checks.map(...)` dynamically.
+
+**Feature 25 — Constitution Article XIV.** Documented separately in
+`app/constitution.py`'s own module docstring (Articles IX-XIII's
+"Probability First Trading Philosophy" precedent, extended by one more
+seeded-verbatim Article: "TradeTown optimizes for statistically
+validated expected value and long-term survival, not simply win rate,
+individual trade size, or minimum risk") — not repeated here since it
+touches no capital-protection mechanism directly, only names one that
+already exists (`app/opportunity_gatekeeper.py`'s
+`RiskLimits.min_expected_value_pct`).
+
+**Live end-to-end verification, honestly incomplete — same condition
+as Piece 10b above.** The running dev stack's own save had zero open
+positions and zero closed trades at verification time (a fresh day-1/
+day-3 save, not yet cycling through the trade-proposal pipeline).
+Backend correctness is verified by the 12 new direct, comprehensive
+tests against the real functions above; a live position accumulating a
+real MAE/MFE watermark, or a live proposal being rejected by the new
+eleventh check, was not observed within this session's time budget.
+The Performance panel was confirmed to render cleanly with zero
+console errors with the new fields in place (Playwright, debug spec
+removed after screenshotting).
