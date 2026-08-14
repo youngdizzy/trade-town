@@ -4,9 +4,24 @@ import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { NexusManager } from "@/game/systems/NexusManager";
 import { api } from "@/net/api";
 import { AGENT_IDS } from "@/types";
-import type { AgentId, ThinkingProfile } from "@/types";
+import type { AgentId, AgentRoleClass, ThinkingProfile } from "@/types";
 import { computeBestCollaborators, computeGrowthHistory } from "../lib/derive";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
+
+const ROLE_CLASS_LABEL: Record<AgentRoleClass, string> = {
+  researcher: "Researcher",
+  risk: "Risk",
+  quant: "Quant",
+  leadership: "Leadership",
+  mentor_support: "Mentor / Support",
+};
+
+const TREND_TONE: Record<string, "cyan" | "green" | "amber" | "red" | "neutral"> = {
+  improving: "green",
+  declining: "red",
+  stable: "cyan",
+  not_enough_history: "neutral",
+};
 
 /**
  * v0.7 Feature 44 — the Talent Discovery System (see
@@ -35,11 +50,15 @@ import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "..
  * a real coaching note, not a career-path promise.
  */
 export function TalentPanel() {
-  const { talent, thinkingProfiles, coachReports, disciplineReviews, reasoningChallenges, reflectionSessions, challengeReports, blackBox, debates } = useGameStore();
+  const { talent, thinkingProfiles, coachReports, disciplineReviews, reasoningChallenges, reflectionSessions, challengeReports, blackBox, debates, agentPerformanceReviews } = useGameStore();
   const [selectedAgent, setSelectedAgent] = useState<AgentId>(AGENT_IDS[0]!);
   const [acking, setAcking] = useState<string | null>(null);
 
   const profiles = useMemo(() => Object.values(thinkingProfiles) as ThinkingProfile[], [thinkingProfiles]);
+  const latestReview = useMemo(
+    () => [...agentPerformanceReviews].reverse().find((r) => r.agentId === selectedAgent) ?? null,
+    [agentPerformanceReviews, selectedAgent],
+  );
   const reports = useMemo(() => [...talent.reports].reverse(), [talent.reports]);
   const growthHistory = useMemo(
     () => computeGrowthHistory(selectedAgent, { disciplineReviews, reasoningChallenges, reflectionSessions, challengeReports, blackBox, coachReports }),
@@ -171,6 +190,50 @@ export function TalentPanel() {
           )}
         </Glass>
       </div>
+
+      <Glass className="p-3">
+        <div className="mb-1.5 flex items-center justify-between">
+          <TerminalLabel>Agent Performance Review — {AGENT_PROFILES[selectedAgent].name}</TerminalLabel>
+          {latestReview && (
+            <div className="flex items-center gap-1.5">
+              <StatusPill tone="purple">{ROLE_CLASS_LABEL[latestReview.roleClass]}</StatusPill>
+              <StatusPill tone={latestReview.status === "evaluated" ? "cyan" : "neutral"}>{latestReview.status.replace(/_/g, " ")}</StatusPill>
+              <StatusPill tone={TREND_TONE[latestReview.trend]}>{latestReview.trend.replace(/_/g, " ")}</StatusPill>
+            </div>
+          )}
+        </div>
+        <p className="mb-2 text-[9px] text-cmd-textDim">
+          CEO directive Feature 27 — one real, evidence-cited review per week (uses the same employee selector above). Process quality never sees trade P&amp;L; a dimension with no
+          real evidence shows N/E (not enough evidence), never a fake number.
+        </p>
+        {!latestReview ? (
+          <EmptyState>No performance review generated yet for this employee — reviews are computed weekly.</EmptyState>
+        ) : (
+          <>
+            <div className="mb-2 grid grid-cols-2 gap-1.5 sm:grid-cols-4">
+              <DataRow label="Process Quality" value={latestReview.processQualityAvg !== null ? latestReview.processQualityAvg.toFixed(1) : "N/E"} />
+              <DataRow label="Outcome Quality" value={latestReview.outcomeQualityAvg !== null ? latestReview.outcomeQualityAvg.toFixed(1) : "N/E"} />
+              <DataRow label="Evidence Count" value={latestReview.evidenceCount} />
+              <DataRow label="Coverage" value={`${latestReview.confidencePct.toFixed(0)}%`} />
+            </div>
+            <div className="grid grid-cols-1 gap-1.5 md:grid-cols-2">
+              {latestReview.dimensions.map((dim) => (
+                <div
+                  key={dim.id}
+                  className={`rounded-sm border p-1.5 text-[9px] ${dim.id === latestReview.weakestDimensionId ? "border-cmd-amber/50 bg-cmd-amber/5" : "border-cmd-border/60 bg-cmd-bg/40"}`}
+                >
+                  <div className="mb-0.5 flex items-center justify-between">
+                    <span className="text-cmd-text">{dim.label}</span>
+                    <span className="tabular-nums text-cmd-textDim">{dim.value !== null ? dim.value.toFixed(1) : "N/E"}</span>
+                  </div>
+                  {dim.value !== null && <Meter value={Math.max(0, Math.min(100, dim.value))} tone={dim.value >= 70 ? "green" : dim.value >= 40 ? "amber" : "red"} />}
+                  <div className="mt-0.5 text-cmd-textDim/80">{dim.evidence}</div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </Glass>
 
       <Glass className="p-3">
         <TerminalLabel>Performance Analysis — Thinking Profiles</TerminalLabel>

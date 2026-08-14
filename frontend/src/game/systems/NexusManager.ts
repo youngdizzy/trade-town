@@ -5,6 +5,7 @@ import type {
   AgentEnergy,
   AgentId,
   AgentKnowledgeState,
+  AgentPerformanceReview,
   BacktestSession,
   BlackBoxState,
   BlackSwanEventRecord,
@@ -162,6 +163,7 @@ interface NexusSnapshot {
   disciplineReviews: DisciplineReview[];
   caseStudies: CaseStudy[];
   institutionalMemory: InstitutionalMemoryEntry[];
+  agentPerformanceReviews: AgentPerformanceReview[];
   learningEvents: LearningEvent[];
   decisionVault: DecisionVaultEntry[];
   warRoomSessions: WarRoomSession[];
@@ -414,6 +416,7 @@ export class NexusManager {
   private static disciplineReviews: DisciplineReview[] = [];
   private static caseStudies: CaseStudy[] = [];
   private static institutionalMemory: InstitutionalMemoryEntry[] = [];
+  private static agentPerformanceReviews: AgentPerformanceReview[] = [];
   private static learningEvents: LearningEvent[] = [];
   private static decisionVault: DecisionVaultEntry[] = [];
   private static warRoomSessions: WarRoomSession[] = [];
@@ -825,6 +828,10 @@ export class NexusManager {
 
   static getInstitutionalMemory(): InstitutionalMemoryEntry[] {
     return this.institutionalMemory;
+  }
+
+  static getAgentPerformanceReviews(): AgentPerformanceReview[] {
+    return this.agentPerformanceReviews;
   }
 
   static getLearningEvents(): LearningEvent[] {
@@ -1497,6 +1504,11 @@ export class NexusManager {
     }
     this.institutionalMemory = update.institutionalMemory;
 
+    if (update.agentPerformanceReviews.length !== this.agentPerformanceReviews.length) {
+      EventBus.emit("agentPerformanceReviews:updated", update.agentPerformanceReviews);
+    }
+    this.agentPerformanceReviews = update.agentPerformanceReviews;
+
     if (update.learningEvents.length !== this.learningEvents.length) EventBus.emit("learningEvents:updated", update.learningEvents);
     this.learningEvents = update.learningEvents;
 
@@ -1736,6 +1748,7 @@ export class NexusManager {
     this.disciplineReviews = save.disciplineReviews;
     this.caseStudies = save.caseStudies;
     this.institutionalMemory = save.institutionalMemory ?? [];
+    this.agentPerformanceReviews = save.agentPerformanceReviews ?? [];
     this.learningEvents = save.learningEvents;
     this.decisionVault = save.decisionVault;
     this.warRoomSessions = save.warRoomSessions;

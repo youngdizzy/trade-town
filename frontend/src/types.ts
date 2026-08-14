@@ -4019,6 +4019,53 @@ export interface ThinkingProfile {
   updatedAt: string;
 }
 
+export type AgentRoleClass = "researcher" | "risk" | "quant" | "leadership" | "mentor_support";
+
+export type PerformanceDimensionId =
+  | "process_quality"
+  | "risk_discipline"
+  | "decision_accuracy"
+  | "calibration"
+  | "collaboration"
+  | "learning_trend"
+  | "recurring_mistakes"
+  | "pnl_attribution";
+
+/** `value === null` means NOT_ENOUGH_EVIDENCE for this one dimension —
+ * never a fake neutral number. `sampleSize` is always disclosed
+ * alongside `value`. */
+export interface PerformanceDimension {
+  id: PerformanceDimensionId;
+  label: string;
+  value: number | null;
+  sampleSize: number;
+  evidence: string;
+}
+
+/** CEO directive "Features 26-30," Feature 27 — Agent Performance
+ * Reviews (backend/app/performance_review.py). One real, evidence-
+ * cited review per agent per real weekly period — never a single
+ * blended "agent score." `processQualityAvg`/`outcomeQualityAvg` stay
+ * structurally separate; both may be null when no contributing
+ * dimension has real data yet. */
+export interface AgentPerformanceReview {
+  id: string;
+  agentId: AgentId;
+  roleClass: AgentRoleClass;
+  periodStartSimDay: number;
+  periodEndSimDay: number;
+  dimensions: PerformanceDimension[];
+  processQualityAvg: number | null;
+  outcomeQualityAvg: number | null;
+  evidenceCount: number;
+  confidencePct: number;
+  trend: "improving" | "declining" | "stable" | "not_enough_history";
+  weakestDimensionId: PerformanceDimensionId | null;
+  status: "evaluated" | "not_enough_evidence";
+  simDay: number;
+  createdAt: string;
+}
+
 export interface MentorState {
   tier: number;
   tierLabel: string;
@@ -4429,6 +4476,8 @@ export interface GameSaveState {
   caseStudies: CaseStudy[];
   // CEO directive "Features 26-30," Feature 26 — Institutional Memory 2.0.
   institutionalMemory: InstitutionalMemoryEntry[];
+  // CEO directive "Features 26-30," Feature 27 — Agent Performance Reviews.
+  agentPerformanceReviews: AgentPerformanceReview[];
   // CEO Company Health + Live Market Realism directive, Section 3 — one
   // capped, permanent LearningEvent per real Knowledge-tier crossing.
   learningEvents: LearningEvent[];

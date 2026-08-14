@@ -40,3 +40,31 @@ test("the Talent Discovery tab opens from the Command Center and shows Discovery
   const relevantErrors = consoleErrors.filter((e) => !e.includes("favicon"));
   expect(relevantErrors).toEqual([]);
 });
+
+test("CEO directive Features 26-30, Feature 27 — the TALENT tab shows a real Agent Performance Review", async ({ page }) => {
+  await page.goto("/");
+  const state = await page.evaluate(async () => {
+    const res = await fetch("/api/load");
+    return res.json();
+  });
+  expect(Array.isArray(state.agentPerformanceReviews)).toBe(true);
+  for (const review of state.agentPerformanceReviews) {
+    expect(["evaluated", "not_enough_evidence"]).toContain(review.status);
+    expect(Array.isArray(review.dimensions)).toBe(true);
+    expect(review.dimensions.length).toBe(8);
+    for (const dim of review.dimensions) {
+      // Every dimension must disclose a real sample size, and a value
+      // that's either a real number or an honest null — never a fake
+      // placeholder like -1 or a string.
+      expect(typeof dim.sampleSize).toBe("number");
+      expect(dim.value === null || typeof dim.value === "number").toBe(true);
+    }
+  }
+
+  await continueGame(page);
+  await clickButton(page, "Command ⌁");
+  await clickExpand(page);
+  await clickTab(page, "TALENT");
+
+  await expect(page.getByText(/Agent Performance Review —/)).toBeVisible();
+});

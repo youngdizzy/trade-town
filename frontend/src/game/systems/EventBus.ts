@@ -6,6 +6,7 @@ import type {
   AgentEnergy,
   AgentId,
   AgentKnowledgeState,
+  AgentPerformanceReview,
   AgentState,
   BacktestSession,
   BlackBoxState,
@@ -241,6 +242,7 @@ export interface GameEvents {
   "disciplineReviews:updated": DisciplineReview[];
   "caseStudies:updated": CaseStudy[];
   "institutionalMemory:updated": InstitutionalMemoryEntry[];
+  "agentPerformanceReviews:updated": AgentPerformanceReview[];
   "learningEvents:updated": LearningEvent[];
   "decisionVault:updated": DecisionVaultEntry[];
   "warRoomSessions:updated": WarRoomSession[];
