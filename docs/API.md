@@ -1454,6 +1454,23 @@ current real goals and sim day (`app/goals.py`'s
 `compute_resource_allocation()`, itself built directly on
 `rank_goals_by_priority()`) — never a second persisted copy.
 
+### `GET /api/institutional-memory/retrieve`
+
+CEO directive "Features 26-30: Agent Intelligence, Learning &
+Institutional Memory System," Feature 26 — read-only, no body. Query
+params `source` (`InstitutionalMemorySource`, optional) and
+`marketRegime` (`MarketEnvironmentRegime`, optional) narrow the search.
+Returns the single most relevant+corroborated *active*
+`InstitutionalMemoryEntry` matching the query, or `null` — honestly NOT
+ENOUGH EVIDENCE — when nothing on file matches, or when the single best
+match's relevance has decayed too far to responsibly surface. Confidence
+and relevance are recomputed fresh against the full current memory list
+on every call (`app/institutional_memory.py`'s
+`retrieve_relevant_memory()`), never trusted stale from whatever was
+stamped when the entry was written. The full list is also broadcast on
+every WS tick (`institutionalMemory`) — this endpoint is the one query
+that broadcast can't offer.
+
 ### `GET /api/market/regime-reconciliation`
 
 Design Bible Chapter 65's Regime Reconciliation — read-only, no body.
@@ -1883,6 +1900,7 @@ never needs to trim anything itself:
 | `strategicReviews` | last 20 (`MAX_STRATEGIC_REVIEWS`) | one real `StrategicReview` per monthly cycle, over CEO-authored goal progress — Design Bible Chapter 64 (fifth pass) |
 | `disciplineReviews` | last 60 (`MAX_DISCIPLINE_REVIEWS`) | one per closed trade — v0.7 Feature 26 |
 | `caseStudies` | last 60 (`MAX_CASE_STUDIES`) | one per detected real process-gap mistake — v0.7 Feature 27 |
+| `institutionalMemory` | last 200 (`MAX_INSTITUTIONAL_MEMORY`) | one promoted, reusable lesson per real case study/failed strategy/Hall of Fame induction/Model Validation finding/critical risk warning/regime shift — CEO directive "Features 26-30," Feature 26 |
 | `reasoningChallenges` | last 60 (`MAX_REASONING_CHALLENGES`) | one per real AI Debate practiced, on a fixed cadence — v0.7 Feature 29 |
 | `reflectionSessions` | last 80 (`MAX_REFLECTION_SESSIONS`) | one per real weekly/monthly cycle — v0.7 Feature 30 |
 | `questionArchive` | last 120 (`MAX_QUESTION_ARCHIVE`) | one `QuestionOfTheDay` per real in-game morning — v0.7 Feature 32 |

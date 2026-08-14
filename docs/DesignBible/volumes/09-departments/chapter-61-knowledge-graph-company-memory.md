@@ -480,3 +480,107 @@ backward over closed trades).
 Policy, this chapter is the required design-first step, satisfied before
 this pass began. The remaining CEO controls are a
 well-scoped, separate follow-up.
+
+## Addendum — Institutional Memory 2.0 (CEO directive "Features 26-30: Agent Intelligence, Learning & Institutional Memory System," Feature 26)
+
+**Research finding, documented before code was written:** this chapter's
+own existing infrastructure — `app/scribe.py`'s `MemoryRecord` (a flat,
+append-only company-history log) and `app/decision_vault.py`'s
+`KnowledgeQualityScore` (a fresh-computed relevance/pattern-frequency/
+historical-success composite over one record type, `DecisionVaultEntry`)
+— covers logging and single-record scoring, but neither promotes real
+evidence from *multiple* record types (a filed case study, a failed
+strategy, a Hall of Fame induction, a Model Validation finding, a
+critical risk warning, a market regime shift) into one queryable,
+contradiction-aware, confidence-scored store of reusable lessons. That
+gap is what this addendum closes — `app/institutional_memory.py`, a
+promotion layer sitting on top of the six sources above, not a second
+event log and not a second Knowledge Graph (`app/knowledge_graph.py`'s
+own non-causal-edge graph is untouched).
+
+**Design, reusing this codebase's own established formulas rather than
+inventing new math:**
+- **Observation / interpretation / lesson**, kept as three separate,
+  honestly-nullable fields per entry — an `InstitutionalMemoryEntry`
+  never states an interpretation as proven fact, matching the Knowledge
+  Graph's own "never `caused`" edge-labeling discipline above. A source
+  record with nothing to interpret (a routine risk warning) leaves
+  `interpretation`/`lesson` `null` rather than padding out invented
+  text.
+- **Confidence** — a real corroboration count (how many other active
+  entries share this entry's source, and its market regime when both
+  have one) normalized against a cap, the exact shape this chapter's own
+  `PATTERN_FREQUENCY_CAP` already established for Pattern Frequency
+  above, applied to institutional memory's own real match key.
+- **Relevance** — `compute_knowledge_quality_score()`'s exact recency-
+  decay formula, verbatim: `1 - age/span` over the memory list's own
+  real age span. Recomputed fresh at read time (`retrieve_relevant_memory()`),
+  never trusted from what was stamped at write time — the same
+  "computed fresh per request, never a second driftable copy"
+  discipline this chapter's Knowledge Quality Score section already
+  states for its own three signals.
+- **Contradiction / update handling** — `find_related_memory()` reuses
+  `app/constitution.py`'s exact significant-word-overlap check
+  (`_founder_verdict()`'s own redundancy detector) to surface candidate
+  related entries; it never decides on its own whether a match is an
+  update, a contradiction, or mere corroboration, since no signal in
+  this codebase can make that semantic call automatically. Making the
+  call explicit is `supersede_memory()`'s job: the old entry's `status`
+  flips to `"superseded"`/`"contradicted"` and links to the new entry
+  that replaced it — the old row stays on file permanently, never
+  deleted, preserving history exactly as the directive requires.
+- **Insufficient evidence** — `retrieve_relevant_memory()` returns
+  `None`, never a forced weak answer, when nothing on file matches the
+  query, or when the single best match's freshly recomputed relevance
+  has decayed below a disclosed threshold (`MIN_RELEVANCE_FOR_RETRIEVAL`,
+  a configurable research assumption this module's own choice, not
+  presented as established fact — the same provenance discipline
+  `app/model_validation.py`'s own threshold table uses).
+
+**Wiring — real event points only, no synthetic triggers:**
+`app/nexus.py`'s tick promotes a case study (mistake or success side)
+the moment `app/mistakes.py`/`app/successes.py` file one, a critical
+risk warning the moment it's genuinely new (the same gate the existing
+Article I/VII citation already uses), and a market regime shift the
+moment `app/market_environment.py` detects a real regime change.
+`app/state.py`'s `request_strategy_company_review()` promotes a non-
+`"approved"` `ModelValidationReport` (an `"approved"` verdict is the
+expected outcome of Meridian's process working normally, not a
+finding); `retire_strategy()` promotes whichever of the real
+`StrategyHallOfFameEntry`/`FailedStrategyArchiveEntry` was filed.
+Persisted under `knowledge_archive` in `app/save_modules.py` (alongside
+`case_studies`/`decision_vault`), broadcast via `app/ws_manager.py`'s
+`institutionalMemory` field, and readable through a new
+`GET /api/institutional-memory/retrieve` endpoint (mirroring this
+chapter's own `routers/decision_vault.py` read-only convention) for the
+one genuinely new query the full-state broadcast can't offer: "what's
+the single most relevant thing we know" for a given source/regime.
+
+**Explicit staging note:** `InstitutionalMemorySource` is deliberately
+scoped to the seven sources this codebase can honestly back today.
+`"prediction"` (Feature 29), `"agent_debate"`/`"performance_review"`
+(Features 30/27) are intentionally not added yet — each is deferred
+until its own feature is actually built and can honestly promote into
+this sink, per the CEO's own 26→27→28→29→30 pipeline order. This is a
+disclosed staging decision, not a silent gap.
+
+**Frontend:** extends this chapter's own `KnowledgeBasePanel.tsx`
+(Feature 47's "everything the company has learned" surface, OPS tab)
+with a second card, "Institutional Memory — promoted lessons," rather
+than a new dashboard page — source-filterable, showing confidence/
+relevance/status per entry and dimming (not hiding) a superseded/
+contradicted row. No new top-level Command Center tab was added.
+
+**Verified:** 30 new backend tests (`tests/test_institutional_memory.py`)
+covering every `promote_*()` function's real-field sourcing, confidence
+corroboration, relevance decay recomputed fresh at read time, cap
+behavior, `find_related_memory()`'s real-overlap-vs-unrelated-text/
+cross-source cases, `supersede_memory()`'s never-deletes-history
+behavior (including the already-superseded-can't-be-superseded-again
+case), and `retrieve_relevant_memory()`'s honest `None` behavior on no
+match and on decayed relevance; full backend suite (1822 tests), `mypy`,
+`ruff` all clean; `tsc -b --noEmit`, `eslint`, `vite build` all clean;
+live Playwright verification against the running dev stack confirmed a
+real `market_regime_shift` entry generated by the live simulation,
+returned correctly by `GET /api/institutional-memory/retrieve`, and
+rendered in the OPS tab's new card.
