@@ -55,6 +55,15 @@ explicitly out of scope for a documentation-driven addition); the
 existing six hooks above continue to cite only I-VIII, since those are
 the only Articles with a real, already-existing detector behind them.
 
+Article XIV — the CEO Company Health + Live Market Realism directive's
+Section 25 decision principle ("TradeTown optimizes for statistically
+validated expected value and long-term survival, not simply win rate,
+individual trade size, or minimum risk"), seeded the same way as
+IX-XIII: permanent from game start, no new Live Enforcement hook. See
+its own seed-list comment below for why this isn't purely aspirational
+text — `app/opportunity_gatekeeper.py` already enforces the real
+mechanism this Article names.
+
 Amendments — the CEO may create new Articles; Founders debate them;
 Coach evaluates them; Employees vote (advisory only); approved Articles
 become permanent. Every step is a real, checkable computation over the
@@ -139,6 +148,26 @@ _ARTICLE_SEED: list[tuple[str, str, str]] = [
         "XIII",
         "Statistics become meaningful only through consistent execution over a large sample of trades",
         "Statistics become meaningful only through consistent execution over a large sample of trades.",
+    ),
+    # Article XIV — the CEO Company Health + Live Market Realism
+    # directive's Section 25 decision principle, seeded verbatim exactly
+    # like IX-XIII above: a permanent foundational principle, not a
+    # live-amended one, so it's present from game start rather than
+    # only from whatever sim day a CEO happened to ratify it. Same
+    # deliberate scope boundary as IX-XIII: no new "Live Enforcement"
+    # citation hook was added — that would be new detection engineering
+    # for a documentation-driven addition. The principle isn't only
+    # aspirational text, though: app/opportunity_gatekeeper.py already
+    # enforces the real mechanism behind it (RiskLimits.min_expected_value_pct
+    # gates every pre-proposal candidate on real computed Expected Value,
+    # not win rate), so this Article names, in the company's own
+    # permanent law, a real behavior this codebase already has — the
+    # same "cited, not rebuilt" relationship this module's own docstring
+    # describes for Articles I-VIII's Live Enforcement hooks.
+    (
+        "XIV",
+        "TradeTown optimizes for statistically validated expected value and long-term survival, not simply win rate, individual trade size, or minimum risk",
+        "TradeTown optimizes for statistically validated expected value and long-term survival, not simply win rate, individual trade size, or minimum risk.",
     ),
 ]
 
