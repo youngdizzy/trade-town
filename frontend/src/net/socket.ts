@@ -13,6 +13,7 @@ import type {
   BlackSwanReport,
   CalendarState,
   CaseStudy,
+  InstitutionalMemoryEntry,
   CeoDecisionRecord,
   ChallengeReport,
   CoachReport,
@@ -169,6 +170,7 @@ type ServerMessage =
       academyState: AcademyState;
       disciplineReviews: DisciplineReview[];
       caseStudies: CaseStudy[];
+      institutionalMemory: InstitutionalMemoryEntry[];
       learningEvents: LearningEvent[];
       decisionVault: DecisionVaultEntry[];
       warRoomSessions: WarRoomSession[];
@@ -328,6 +330,7 @@ export class GameSocket {
             academyState: msg.academyState,
             disciplineReviews: msg.disciplineReviews,
             caseStudies: msg.caseStudies,
+            institutionalMemory: msg.institutionalMemory,
             learningEvents: msg.learningEvents,
             decisionVault: msg.decisionVault,
             warRoomSessions: msg.warRoomSessions,

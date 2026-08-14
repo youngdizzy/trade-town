@@ -15,6 +15,7 @@ import type {
   CalendarState,
   CeoDecisionRecord,
   CaseStudy,
+  InstitutionalMemoryEntry,
   ChallengeReport,
   CoachReport,
   CompanyDNA,
@@ -239,6 +240,7 @@ export interface GameEvents {
   "academyState:updated": AcademyState;
   "disciplineReviews:updated": DisciplineReview[];
   "caseStudies:updated": CaseStudy[];
+  "institutionalMemory:updated": InstitutionalMemoryEntry[];
   "learningEvents:updated": LearningEvent[];
   "decisionVault:updated": DecisionVaultEntry[];
   "warRoomSessions:updated": WarRoomSession[];

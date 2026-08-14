@@ -44,3 +44,36 @@ test("the OPS tab opens from the Command Center and shows the Knowledge Base tim
   const relevantErrors = consoleErrors.filter((e) => !e.includes("favicon"));
   expect(relevantErrors).toEqual([]);
 });
+
+test("CEO directive Features 26-30, Feature 26 — the OPS tab shows Institutional Memory with real promoted lessons", async ({ page }) => {
+  await page.goto("/");
+  const state = await page.evaluate(async () => {
+    const res = await fetch("/api/load");
+    return res.json();
+  });
+  expect(Array.isArray(state.institutionalMemory)).toBe(true);
+  for (const entry of state.institutionalMemory) {
+    expect(typeof entry.observation).toBe("string");
+    expect(entry.observation.length).toBeGreaterThan(0);
+    expect(["active", "superseded", "contradicted", "stale"]).toContain(entry.status);
+    expect(entry.confidence).toBeGreaterThanOrEqual(0);
+    expect(entry.relevancePct).toBeGreaterThanOrEqual(0);
+  }
+
+  await continueGame(page);
+  await clickButton(page, "Command ⌁");
+  await clickExpand(page);
+  await clickTab(page, "OPS");
+
+  await expect(page.getByText("Institutional Memory — promoted lessons", { exact: true })).toBeVisible();
+  // The live sim keeps ticking between the /api/load fetch above and this
+  // check, so assert against the DOM at check-time rather than the
+  // earlier snapshot: either real promoted entries are showing, or the
+  // honest empty state is — never neither.
+  const hasEntries = await page.getByTestId("institutional-memory-entry").first().isVisible().catch(() => false);
+  const hasEmptyState = await page
+    .getByText("No institutional memory filed yet", { exact: false })
+    .isVisible()
+    .catch(() => false);
+  expect(hasEntries || hasEmptyState).toBe(true);
+});

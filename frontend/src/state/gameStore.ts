@@ -14,6 +14,7 @@ import type {
   BlackSwanReport,
   CalendarState,
   CaseStudy,
+  InstitutionalMemoryEntry,
   CeoDecisionRecord,
   ChallengeReport,
   CoachReport,
@@ -181,6 +182,7 @@ export interface GameUiState {
   academyState: AcademyState;
   disciplineReviews: DisciplineReview[];
   caseStudies: CaseStudy[];
+  institutionalMemory: InstitutionalMemoryEntry[];
   learningEvents: LearningEvent[];
   decisionVault: DecisionVaultEntry[];
   warRoomSessions: WarRoomSession[];
@@ -479,6 +481,7 @@ class GameStore {
     academyState: { level: 1, levelLabel: "Training Room", totalPoints: 0, completedProjectCount: 0, updatedAt: new Date().toISOString() },
     disciplineReviews: [],
     caseStudies: [],
+    institutionalMemory: [],
     learningEvents: [],
     decisionVault: [],
     warRoomSessions: [],
@@ -779,6 +782,7 @@ class GameStore {
     EventBus.on("academyState:updated", (academyState) => this.set({ academyState }));
     EventBus.on("disciplineReviews:updated", (disciplineReviews) => this.set({ disciplineReviews }));
     EventBus.on("caseStudies:updated", (caseStudies) => this.set({ caseStudies }));
+    EventBus.on("institutionalMemory:updated", (institutionalMemory) => this.set({ institutionalMemory }));
     EventBus.on("learningEvents:updated", (learningEvents) => this.set({ learningEvents }));
     EventBus.on("decisionVault:updated", (decisionVault) => this.set({ decisionVault }));
     EventBus.on("warRoomSessions:updated", (warRoomSessions) => this.set({ warRoomSessions }));

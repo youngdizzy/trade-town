@@ -2854,6 +2854,44 @@ export interface CaseStudy {
   createdAt: string;
 }
 
+export type InstitutionalMemorySource =
+  | "behavioral_mistake"
+  | "behavioral_success"
+  | "strategy_failure"
+  | "strategy_success"
+  | "model_validation"
+  | "risk_event"
+  | "market_regime_shift";
+
+export type InstitutionalMemoryStatus = "active" | "superseded" | "contradicted" | "stale";
+
+/** CEO directive "Features 26-30," Feature 26 — Institutional Memory
+ * 2.0 (backend/app/institutional_memory.py). A promoted, reusable
+ * lesson — never a raw copy of the event log — separating observation
+ * (real fact) from interpretation (hedged) from lesson (actionable);
+ * either of the latter two may be null when the source has nothing
+ * honest to offer. A superseded/contradicted entry is never deleted —
+ * see supersededById/supersedesId. */
+export interface InstitutionalMemoryEntry {
+  id: string;
+  source: InstitutionalMemorySource;
+  createdAt: string;
+  simDay: number;
+  originatingAgent: AgentId | null;
+  eventRef: string;
+  marketRegime: MarketEnvironmentRegime | null;
+  observation: string;
+  interpretation: string | null;
+  lesson: string | null;
+  confidence: number;
+  provenance: string;
+  relevancePct: number;
+  status: InstitutionalMemoryStatus;
+  supersedesId: string | null;
+  supersededById: string | null;
+  supportingEvidence: string[];
+}
+
 /** v0.7 Feature 54 (the brief self-numbered it "Feature 53," already used
  * in this codebase's history for Company Certification) — the Decision
  * Memory System's Decision Vault. One permanent record per closed trade,
@@ -4389,6 +4427,8 @@ export interface GameSaveState {
   academyState: AcademyState;
   disciplineReviews: DisciplineReview[];
   caseStudies: CaseStudy[];
+  // CEO directive "Features 26-30," Feature 26 — Institutional Memory 2.0.
+  institutionalMemory: InstitutionalMemoryEntry[];
   // CEO Company Health + Live Market Realism directive, Section 3 — one
   // capped, permanent LearningEvent per real Knowledge-tier crossing.
   learningEvents: LearningEvent[];
