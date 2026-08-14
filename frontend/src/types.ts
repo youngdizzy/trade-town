@@ -2245,6 +2245,23 @@ export interface CeoDecisionRecord {
 // purely from real, independent trade data.
 export type PredictionClaimType = "trade_direction";
 
+// CEO directive "Features 26-30," Feature 30 — the Failure Review
+// Board (backend/app/failure_review.py). The real, post-hoc
+// THESIS-FAILURE taxonomy, distinct from CaseStudyCategory's
+// behavioral/process taxonomy: a trade can be process-perfect and
+// still have a wrong thesis, or vice versa. "external_shock" was
+// researched and explicitly cut (no per-trade-linkable Black Swan
+// event record exists) rather than shipped as a permanently-dead
+// value.
+export type FailureReason =
+  | "bad_thesis"
+  | "poor_execution"
+  | "risk_management_failure"
+  | "market_regime_misread"
+  | "information_gap"
+  | "process_violation"
+  | "unknown";
+
 export interface PredictionRecord {
   id: string;
   decisionId: string;
@@ -2256,9 +2273,29 @@ export interface PredictionRecord {
   outcome: "pending" | "correct" | "incorrect";
   resolvedTradeId: string | null;
   resolvedPnlPct: number | null;
+  /** CEO directive Feature 30 feed-back — filled only when `outcome`
+   * resolves "incorrect", from the real FailureClassification filed
+   * for the same trade. Null for pending/correct predictions. */
+  failureReason: FailureReason | null;
   simDay: number;
   createdAt: string;
   resolvedAt: string | null;
+}
+
+// CEO directive "Features 26-30," Feature 30 — one real
+// FailureClassification per closed, losing trade (backend/app/
+// failure_review.py's classify_failure()).
+export interface FailureClassification {
+  id: string;
+  tradeId: string;
+  decisionId: string;
+  symbol: string;
+  reason: FailureReason;
+  evidence: string;
+  attributedAgents: AgentId[];
+  tradePnlPct: number;
+  simDay: number;
+  createdAt: string;
 }
 
 export interface TimeState {
@@ -4558,6 +4595,8 @@ export interface GameSaveState {
   agentSkillProfiles: AgentSkillProfile[];
   // CEO directive "Features 26-30," Feature 29 — Prediction -> Outcome Tracking.
   predictionRecords: PredictionRecord[];
+  // CEO directive "Features 26-30," Feature 30 — the Failure Review Board.
+  failureClassifications: FailureClassification[];
   // CEO Company Health + Live Market Realism directive, Section 3 — one
   // capped, permanent LearningEvent per real Knowledge-tier crossing.
   learningEvents: LearningEvent[];

@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
-import type { CaseStudy, CaseStudyCategory, DisciplineReview, DisciplineTier } from "@/types";
+import type { CaseStudy, CaseStudyCategory, DisciplineReview, DisciplineTier, FailureClassification, FailureReason } from "@/types";
 import { SUCCESS_CASE_STUDY_CATEGORIES } from "@/types";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
 
@@ -27,6 +27,33 @@ const CATEGORY_LABEL: Record<CaseStudyCategory, string> = {
   patient_execution: "Patient Execution",
 };
 
+// CEO directive "Features 26-30," Feature 30 — the Failure Review
+// Board (backend/app/failure_review.py). A genuinely different
+// question than CATEGORY_LABEL above: that taxonomy names the
+// behavioral/process mistake; this one names why the THESIS actually
+// failed. "external_shock" was researched and explicitly cut backend-
+// side (no per-trade-linkable Black Swan record exists) so it never
+// appears here either.
+const FAILURE_REASON_LABEL: Record<FailureReason, string> = {
+  bad_thesis: "Bad Thesis",
+  poor_execution: "Poor Execution",
+  risk_management_failure: "Risk Management Failure",
+  market_regime_misread: "Market Regime Misread",
+  information_gap: "Information Gap",
+  process_violation: "Process Violation",
+  unknown: "Unknown",
+};
+
+const FAILURE_REASON_TONE: Record<FailureReason, "green" | "cyan" | "amber" | "red" | "purple"> = {
+  bad_thesis: "purple",
+  poor_execution: "amber",
+  risk_management_failure: "red",
+  market_regime_misread: "cyan",
+  information_gap: "amber",
+  process_violation: "red",
+  unknown: "cyan",
+};
+
 /**
  * v0.7 Features 26/27 — the Discipline Chamber and the Library of
  * Mistakes. Every number and category here is real, computed server-side
@@ -39,10 +66,11 @@ const CATEGORY_LABEL: Record<CaseStudyCategory, string> = {
  * pedagogical point of Feature 26.
  */
 export function DisciplinePanel() {
-  const { disciplineReviews, caseStudies } = useGameStore();
+  const { disciplineReviews, caseStudies, failureClassifications } = useGameStore();
   const [expandedReviewId, setExpandedReviewId] = useState<string | null>(null);
   const [expandedCaseId, setExpandedCaseId] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<CaseStudyCategory | null>(null);
+  const [expandedFailureId, setExpandedFailureId] = useState<string | null>(null);
 
   const recentReviews = useMemo(() => [...disciplineReviews].reverse(), [disciplineReviews]);
   const recentCaseStudies = useMemo(() => [...caseStudies].reverse().filter((c) => !categoryFilter || c.category === categoryFilter), [caseStudies, categoryFilter]);
@@ -60,6 +88,13 @@ export function DisciplinePanel() {
     for (const c of caseStudies) counts.set(c.category, (counts.get(c.category) ?? 0) + 1);
     return counts;
   }, [caseStudies]);
+
+  const recentFailures = useMemo(() => [...failureClassifications].reverse(), [failureClassifications]);
+  const failureReasonCounts = useMemo(() => {
+    const counts = new Map<FailureReason, number>();
+    for (const f of failureClassifications) counts.set(f.reason, (counts.get(f.reason) ?? 0) + 1);
+    return counts;
+  }, [failureClassifications]);
 
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -137,6 +172,35 @@ export function DisciplinePanel() {
           </div>
         )}
       </Glass>
+
+      <Glass className="max-h-96 overflow-y-auto p-3 lg:col-span-2">
+        <div className="mb-1.5 flex items-center justify-between">
+          <TerminalLabel>Failure Review Board</TerminalLabel>
+          <StatusPill tone="purple">{failureClassifications.length} classification{failureClassifications.length === 1 ? "" : "s"}</StatusPill>
+        </div>
+        {failureClassifications.length === 0 ? (
+          <EmptyState>No losing trade has closed yet — the Failure Review Board files one real, evidence-backed classification of WHY the thesis failed for every real closed loss (distinct from the behavioral mistakes above).</EmptyState>
+        ) : (
+          <>
+            <div className="mb-2 flex flex-wrap gap-1">
+              {(Object.keys(FAILURE_REASON_LABEL) as FailureReason[]).map((reason) => {
+                const count = failureReasonCounts.get(reason) ?? 0;
+                if (count === 0) return null;
+                return (
+                  <span key={reason} className="rounded-sm border border-cmd-border/60 px-1.5 py-0.5 text-[8px] uppercase tracking-wider text-cmd-textDim">
+                    {FAILURE_REASON_LABEL[reason]} ({count})
+                  </span>
+                );
+              })}
+            </div>
+            <div className="space-y-1.5">
+              {recentFailures.map((classification) => (
+                <FailureClassificationRow key={classification.id} classification={classification} expanded={expandedFailureId === classification.id} onToggle={() => setExpandedFailureId(expandedFailureId === classification.id ? null : classification.id)} />
+              ))}
+            </div>
+          </>
+        )}
+      </Glass>
     </div>
   );
 }
@@ -192,6 +256,26 @@ function PostDecisionList({ label, items }: { label: string; items: string[] }) 
           <li key={i}>{item}</li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+function FailureClassificationRow({ classification, expanded, onToggle }: { classification: FailureClassification; expanded: boolean; onToggle: () => void }) {
+  return (
+    <div className="rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-1.5 text-[9px]">
+      <button type="button" onClick={onToggle} className="flex w-full items-center justify-between gap-2 text-left">
+        <span className="flex items-center gap-1.5">
+          <span className="text-cmd-cyan">{classification.symbol}</span>
+          <StatusPill tone={FAILURE_REASON_TONE[classification.reason]}>{FAILURE_REASON_LABEL[classification.reason]}</StatusPill>
+        </span>
+        <span className="tabular-nums text-cmd-red">{classification.tradePnlPct.toFixed(1)}%</span>
+      </button>
+      <div className="mt-1 text-cmd-textDim">{classification.evidence}</div>
+      {expanded && classification.attributedAgents.length > 0 && (
+        <div className="mt-2 border-t border-cmd-border/50 pt-2 text-[9px] text-cmd-textDim">
+          Attributed: {classification.attributedAgents.map((a) => AGENT_PROFILES[a].name).join(", ")}
+        </div>
+      )}
     </div>
   );
 }

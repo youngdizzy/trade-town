@@ -9,6 +9,7 @@ import type {
   AgentPerformanceReview,
   AgentSkillProfile,
   PredictionRecord,
+  FailureClassification,
   AgentState,
   BacktestSession,
   BlackBoxState,
@@ -247,6 +248,7 @@ export interface GameEvents {
   "agentPerformanceReviews:updated": AgentPerformanceReview[];
   "agentSkillProfiles:updated": AgentSkillProfile[];
   "predictionRecords:updated": PredictionRecord[];
+  "failureClassifications:updated": FailureClassification[];
   "learningEvents:updated": LearningEvent[];
   "decisionVault:updated": DecisionVaultEntry[];
   "warRoomSessions:updated": WarRoomSession[];
