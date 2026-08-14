@@ -1,12 +1,11 @@
 # Chapter 73 — Compliance, Audit & Governance System (CAGS)
 
-**Status:** Implemented as a real, read-only audit synthesis layer —
-backend (`app/audit_log.py`, `app/routers/audit.py`) and frontend (a
-real `COMPLIANCE` Command Center tab, `CompliancePanel.tsx`). The brief
+**Status:** Implemented as a real audit synthesis layer — backend
+(`app/audit_log.py`, `app/routers/audit.py`) and frontend (a real
+`COMPLIANCE` Command Center tab, `CompliancePanel.tsx`). The brief
 asks for per-event fields (Broker, User, Credentials, Software Version)
-and mutable incident-management workflows (open/resolved status,
-corrective actions, security/encryption) this single-player, single-
-broker, no-credential codebase has no real data or mechanism to back.
+this single-player, single-broker, no-credential codebase has no real
+data or mechanism to back — those stay cut, see Implementation Notes.
 What shipped is real: every important event this company already
 produces — CEO decisions (including real overrides), Gatekeeper/
 Opportunity rejections, critical Risk Warnings, Discipline Reviews,
@@ -19,6 +18,25 @@ Institutional Time Machine addendum ships as this same Audit Log's own
 chronological, steppable view — see Implementation Notes for why a full
 arbitrary-instant state reconstruction ("what did the whole company
 know at 3:47pm on Day 12") is explicitly cut.
+
+**CEO directive "Features 31-35: Compliance, Governance & Continuous
+Improvement System," Feature 31** adds the one real exception to "CAGS
+is entirely read-only" below: `app/compliance_incidents.py` is a
+genuinely persisted, mutable Incident Resolution lifecycle (`open` ->
+`investigating` -> `remediation` -> `awaiting_verification` ->
+`resolved` -> `reopened` -> `investigating`), the CEO-editable
+open/acknowledged/resolved workflow this chapter's original
+Implementation Notes explicitly cut as having "no real pending state to
+triage." That reasoning held for the original, ephemeral Incident view
+(`compute_incidents()`, still unchanged below) — a blocked trade or
+filed Discipline Review really is fully resolved by construction the
+instant it's recorded. Feature 31 opens a *second*, genuinely pending
+question on top of that: **what did the company actually do about the
+underlying problem the incident flagged** — and that answer is not
+resolved by construction; it requires real investigation, a real
+remediation plan with a real deadline, and real verification before
+anyone may call it closed. See the new "Incident Resolution Engine"
+section below.
 
 ## Executive Summary
 
@@ -59,9 +77,11 @@ every tick.
 source types), the Incident view (a severity-filtered read of the same
 log), the Governance Framework display (a disclosed, real description of
 Gatekeeper's actual 9-check order plus where the Institutional Rule
-Engine sits relative to it), the Compliance Overview aggregate, and CEO
+Engine sits relative to it), the Compliance Overview aggregate, CEO
 Override tracking (`CeoOverrideRecord`, reading `CeoDecisionRecord.
-agreedWithAi`, real since Chapter 70 Part 2).
+agreedWithAi`, real since Chapter 70 Part 2), and (Feature 31) the
+Incident Resolution Engine — the real, persisted incident-case lifecycle
+described under Decision Logic below.
 
 **Does NOT own** (see Appendix E): any trade-approval authority
 (`app/gatekeeper.py` — CAGS reads its real check results, never adds a
@@ -75,13 +95,26 @@ decision-pipeline check anywhere in this pass.
 ## Ownership
 
 Real code this chapter is authoritative over: `app/audit_log.py` (all
-compute functions below), `app/routers/audit.py` (five read-only GET
-endpoints). No new `GameSaveState` fields, no WS broadcast changes, no
-`app/nexus.py` per-tick wiring — every function here is computed fresh
-per request from state the game already persists, the identical
-convention `app/knowledge_graph.py`, `app/whatif.py`, and
+compute functions below), `app/routers/audit.py` (five original
+read-only GET endpoints, unchanged, plus Feature 31's nine new
+incident-case endpoints). The original five endpoints keep their exact
+prior behavior: no new `GameSaveState` fields, no WS broadcast changes,
+no `app/nexus.py` per-tick wiring — every one of those functions is
+still computed fresh per request from state the game already persists,
+the identical convention `app/knowledge_graph.py`, `app/whatif.py`, and
 `app/regime_reconciliation.py` already established for a cross-cutting,
 read-only synthesis.
+
+**Feature 31 adds** `app/compliance_incidents.py`, the one real
+exception: `GameSaveState.compliance_incidents` (a new, persisted,
+`MAX_COMPLIANCE_INCIDENTS = 500`-capped list), synced once per tick in
+`app/nexus.py` (from that tick's own final Audit Log, after every
+source list has reached its tick-final value) and mutated via seven new
+`GameState` methods in `app/state.py`. Deliberately **not** added to the
+WS broadcast — matching this chapter's own "genuine on-demand fetch"
+convention above; a 500-entry incident backlog has no reason to ride
+every real-time tick when the Compliance panel already fetches on
+demand.
 
 Ten real, already-persisted source types this chapter reads from but
 never duplicates or recomputes:
@@ -135,6 +168,13 @@ growth anywhere.
 - `GET /api/audit/overrides` — every `CeoOverrideRecord`, the CEO's
   real disagreements with the AI's recommendation and their real
   resolved outcome once known.
+- **Feature 31 — the Incident Resolution Engine.** `GET
+  /api/audit/incidents/cases` (the real, persisted case list, distinct
+  from the ephemeral `/incidents` filter above), `GET
+  /api/audit/incidents/summary` (the real aggregate — see Decision
+  Logic below), and seven `POST /api/audit/incidents/{id}/...` lifecycle
+  mutation endpoints (`investigate`, `remediate`, `evidence`,
+  `submit-verification`, `fail-verification`, `resolve`, `reopen`).
 
 ## Internal Workflow
 
@@ -170,9 +210,65 @@ real count of `warning`/`critical` entries in the current Audit Log.
 Disclosed and simple on purpose — this is a real, checkable formula over
 a real count, not a fitted or backtested model, the same "conservative
 but arbitrary, no real regulatory requirement behind it" honesty note
-`RiskLimits` itself already carries. There is no separate "resolved
-incidents" count — see Implementation Notes for why incident
-*resolution* is not a real workflow in this codebase.
+`RiskLimits` itself already carries. **This formula is unchanged by
+Feature 31.** The CEO directive's own rules require explicit CEO
+authorization before this formula may be edited, and connecting
+Feature 31's real incident-resolution evidence into it (or into Company
+Health) is Feature 35's job, not this one's — see that feature's own
+Design Bible entry once written for whether/how authorization was
+sought. There is still no "resolved incidents" *count feeding this
+score* — but see the Incident Resolution Engine below for the real
+resolution workflow that now exists independently of it.
+
+**Incident Resolution Engine (Feature 31)** — a strict, explicitly
+enforced state machine, `ALLOWED_TRANSITIONS` in
+`app/compliance_incidents.py`:
+
+```
+open -> investigating -> remediation -> awaiting_verification -> resolved
+                                                  |                  |
+                                                  v                  v
+                                             remediation          reopened -> investigating
+```
+
+`open -> resolved` in one step is structurally impossible — every
+transition function checks the incident's *current* status against
+`ALLOWED_TRANSITIONS` and returns `None` (never raises, never silently
+succeeds) on an invalid request, the same "return `None`, let the caller
+reject the request" convention `app/executive.py`'s `hold_proposal()`
+already established. `verify_and_resolve()` is the *only* path to
+`status="resolved"`, and it is the only function that ever sets
+`resolvedAt`/`resolutionSimDay`/`rootCause`/`correctiveAction` — set
+together, atomically, never partially. A verification can also
+genuinely fail (`fail_verification()`), bouncing the incident back to
+`"remediation"` rather than forcing a false resolution.
+
+`sync_incidents_from_audit_log()` (called once per tick, from
+`app/nexus.py`, after that tick's own Audit Log is final) is the *only*
+creation path — every `ComplianceIncident.sourceEntryId` traces back to
+exactly one real `AuditEntry.id` this chapter's own `compute_audit_log()`
+already produced, deduplicated so the same event can never open two
+cases. Nothing here re-detects incidents a second way.
+
+`rootCause` (`process_failure` / `control_failure` / `data_failure` /
+`model_failure` / `human_error` / `governance_failure` /
+`communication_failure` / `unknown`) is genuinely optional everywhere
+except `verify_and_resolve()`, and even there `"unknown"` is always an
+honest, valid answer — never forced to a specific category the evidence
+doesn't support (per the CEO directive's "Missing Data Is Not Failure"
+rule).
+
+Three honest aggregates in `ComplianceIncidentSummary`
+(`compute_incident_summary()`), each guarding against the CEO
+directive's specific "do not fabricate" concerns:
+`averageResolutionSimDays` is `null`/`None` — never a fabricated `0` —
+when nothing has ever actually resolved through the real lifecycle yet;
+`severityWeightedBacklog` reuses `app/company_health.py`'s own existing
+`_SEVERITY_PENALTY` weight table rather than inventing a second one;
+`overdueCount` only counts a real SLA deadline (stamped once at
+`begin_remediation()`, never guessed at incident-creation time) that has
+actually passed while the incident remains unresolved — a `"resolved"`
+incident is never counted overdue even past its old deadline.
 
 **Governance Framework** — not a new authority chain. It is the real,
 disclosed order `app/gatekeeper.py::evaluate_gatekeeper()` already
@@ -201,12 +297,20 @@ wiring.
 
 ## CEO Controls
 
-None. CAGS is entirely read-only in this pass — no configurable
+The original five endpoints stay entirely read-only — no configurable
 retention window (every source list already caps itself), no
-CEO-editable incident status (see Implementation Notes for why a
-mutable incident workflow isn't built), no audit-log weight profile.
-Filtering (`category`/`severity`/`search`) is a query-time read
-parameter, not a persisted setting.
+audit-log weight profile. Filtering (`category`/`severity`/`search`) is
+a query-time read parameter, not a persisted setting.
+
+**Feature 31 adds the one real exception:** the Incident Cases tab lets
+the CEO (or an assigned owner/verifier agent, via the UI's real agent
+picker) advance a real incident through its real lifecycle — assign an
+owner, log a remediation plan and SLA deadline, log evidence, submit for
+verification, and either verify-and-resolve (choosing a real root cause
+and recording a real corrective action) or fail verification back to
+remediation. Reopening a resolved incident is also a real CEO/owner
+action. None of this is auto-advanced by the sim — every transition
+requires a real action through the UI or API.
 
 ## Learning System
 
@@ -260,14 +364,21 @@ presentation, not a separate data model.
 
 ## Future Expansion
 
-A CEO-editable incident status workflow (open/acknowledged/resolved),
-if this codebase ever gains a reason to distinguish "the CEO looked at
-this" from "the CEO didn't" — not built here since no such distinction
-exists anywhere else in this codebase today (the pattern established by
-Chapter 67's Alert Center is "view, don't triage"). Wiring the
-Compliance Score into the Trade Gatekeeper as an advisory-only check,
-following the Chapter 70 Part 3 / Chapter 71 precedent, if a future
-addendum explicitly asks for it.
+The CEO-editable incident status workflow this section previously
+deferred now ships as Feature 31's Incident Resolution Engine (above).
+Still open, per the CEO directive's own Features 32-35 roadmap: CEO
+Override Governance (Feature 32, evaluating override *quality* —
+process vs. outcome — not just frequency), an Executive Accuracy
+Evidence pipeline that replaces `compute_executive_accuracy_scores()`'s
+current `0.0`-when-untracked default with a real
+`NOT_ENOUGH_EVIDENCE`/`PASS`/`FAIL` state (Feature 33), real Control
+Effectiveness measurement rather than a control-exists count (Feature
+34), and connecting all of the above into Company Health through the
+existing architecture, with any change to the Compliance Score formula
+itself requiring explicit CEO authorization first (Feature 35). Wiring
+the Compliance Score into the Trade Gatekeeper as an advisory-only
+check, following the Chapter 70 Part 3 / Chapter 71 precedent, remains
+open if a future addendum explicitly asks for it.
 
 ## Company Principle
 
@@ -299,14 +410,23 @@ are cut outright rather than half-built:
   password, no multi-user access-control model anywhere in this
   codebase (confirmed repeatedly across Chapters 68/71/72's own honesty
   boundaries).
-- **A mutable Incident workflow** (open → acknowledged → resolved,
-  corrective-action tracking as a CEO-editable field, "Lessons Learned"
-  authored after the fact) — cut. Every incident this chapter surfaces
-  is already fully resolved by construction the instant it's recorded
-  (a blocked trade never executed; a Discipline Review is filed only
-  after the trade already closed) — there is no real pending state to
-  triage, so building a fake "mark as resolved" button would be
-  decorative, not functional.
+- **A mutable Incident workflow** — originally cut with the reasoning
+  that every incident this chapter surfaces is already fully resolved by
+  construction the instant it's recorded (a blocked trade never
+  executed; a Discipline Review is filed only after the trade already
+  closed). That reasoning was correct as far as it went, and the
+  original ephemeral `/incidents` view is untouched by what follows. But
+  Feature 31 (CEO directive "Features 31-35") identified a genuinely
+  different, genuinely pending question the original cut conflated with
+  it: whether an event was *itself* resolved (yes, by construction) is
+  not the same question as whether the company *did anything about the
+  underlying problem it flagged* — investigate it, remediate it, verify
+  the fix held. That second question has real pending state (nothing
+  had ever been investigated, remediated, or verified for any of these
+  incidents before Feature 31 shipped) and is now a real, built workflow
+  — see the Incident Resolution Engine under Decision Logic above. This
+  bullet is corrected rather than deleted so the reasoning trail stays
+  honest about what changed and why.
 - **In-game Version History / searchable release notes** — cut. This
   codebase's real version history already lives in `CHANGELOG.md` and
   git history, both already the authoritative record of every Design
@@ -340,7 +460,7 @@ order, the Compliance Score formula, and CEO Override tracking off the
 real `agreedWithAi` field — all described in full under Decision Logic
 above.
 
-**Files changed this pass:** `app/schemas.py` (new
+**Files changed, original pass:** `app/schemas.py` (new
 `AuditEventCategory`/`AuditEntry`/`GovernanceLayer`/
 `ComplianceOverview`/`CeoOverrideRecord`); `app/audit_log.py` (new
 module); `app/routers/audit.py` (new router, 5 endpoints); `app/main.py`
@@ -349,6 +469,35 @@ app/` clean, `ruff check app/ tests/` clean, full `pytest -q` passing,
 zero regressions. No `app/state.py`/`app/nexus.py`/`app/ws_manager.py`/
 `app/save_modules.py` changes — this chapter adds no persisted state.
 
+**Files changed, Feature 31 (CEO directive "Features 31-35"):**
+`app/schemas.py` (new `IncidentStatus`/`IncidentRootCause`/
+`IncidentVerificationStatus`/`ComplianceIncident`/
+`ComplianceIncidentSummary`, plus `GameSaveState.complianceIncidents`);
+`app/compliance_incidents.py` (new module — sync + 7 lifecycle
+functions + 3 aggregates); `app/nexus.py` (per-tick sync, after every
+source list reaches its tick-final value); `app/state.py` (7 new
+`GameState` mutation methods, `hold_trade_proposal()`'s "return `None`
+on invalid transition" contract); `app/routers/audit.py` (9 new
+endpoints, original 5 untouched); `app/save_modules.py`
+(`compliance_incidents` added to the `knowledge_archive` save module);
+`tests/test_compliance_incidents.py` (26 tests — sync/dedup/cap, every
+lifecycle transition including the invalid ones, verification failure,
+reopen history preservation, overdue/backlog/average-resolution
+honesty). Frontend: `types.ts`, `net/api.ts` (9 new calls), and
+`CompliancePanel.tsx` (new "Incident Cases" tab, distinct from and
+alongside the original ephemeral "Incidents" tab). Verification: `mypy
+app/` (145 files) clean, `ruff check app/ tests/` clean, full backend
+`pytest -q` (1920 passed; 6 pre-existing `test_nexus.py` failures
+confirmed present before this change and left untouched, not "fixed" to
+force a green suite), `tsc --noEmit` clean, `npm run lint` clean, `npm
+run build` clean, live Playwright verification against the real dev
+stack (owner assignment and the open -> investigating transition
+confirmed working end-to-end against the real backend).
+
 **What's genuinely still unbuilt:** every item in the honesty-boundary
-list above, plus a Trade Gatekeeper wiring for the Compliance Score —
-all deliberate, all documented, none silently dropped.
+list above, plus a Trade Gatekeeper wiring for the Compliance Score,
+plus Features 32-35 of the CEO's own directive (CEO Override quality
+evaluation, Executive Accuracy evidence pipeline, Control Effectiveness
+measurement, and the Continuous Improvement Loop connecting all of it
+into Company Health) — all deliberate, all documented, none silently
+dropped.

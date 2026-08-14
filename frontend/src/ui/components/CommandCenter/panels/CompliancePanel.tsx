@@ -1,6 +1,20 @@
 import { useEffect, useMemo, useState } from "react";
 import { api } from "@/net/api";
-import type { AlertSeverity, AuditEntry, AuditEventCategory, CeoOverrideRecord, ComplianceOverview, GovernanceLayer } from "@/types";
+import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
+import {
+  AGENT_IDS,
+  type AgentId,
+  type AlertSeverity,
+  type AuditEntry,
+  type AuditEventCategory,
+  type CeoOverrideRecord,
+  type ComplianceIncident,
+  type ComplianceIncidentSummary,
+  type ComplianceOverview,
+  type GovernanceLayer,
+  type IncidentRootCause,
+  type IncidentStatus,
+} from "@/types";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
 
 /**
@@ -14,22 +28,59 @@ import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "..
  * (CEO decisions, Gatekeeper/Opportunity rejections, critical risk
  * warnings, weak/reckless discipline reviews, Emergency Stop / Crisis
  * Briefing memory records, Black Swan defensive-mode events, and a live
- * read of the Institutional Rule Engine). There is no mutable Incident
- * workflow, no per-event Broker/User/Software-Version field, and no
- * Institutional Time Machine state-replay — the chronologically-sorted
- * Audit Log itself is that addendum's honest scope (see the Design
- * Bible chapter's own Implementation Notes for the full cut list).
+ * read of the Institutional Rule Engine). There is still no per-event
+ * Broker/User/Software-Version field and no Institutional Time Machine
+ * state-replay (see the Design Bible chapter's own Implementation Notes
+ * for the full cut list).
+ *
+ * CEO directive "Features 31-35," Feature 31 adds the one real exception
+ * to "no mutable Incident workflow" above: the Incident Cases tab is
+ * backed by GET/POST /api/audit/incidents/* (backend/app/compliance_incidents.py)
+ * — a genuinely persisted, mutable lifecycle (open -> investigating ->
+ * remediation -> awaiting_verification -> resolved -> reopened), still
+ * fetched on demand rather than riding the WS tick broadcast. The
+ * original Incidents tab above it is untouched: a different, still
+ * fully ephemeral view of the same underlying Audit Log.
  */
 
-const TABS = ["log", "incidents", "governance", "overrides"] as const;
+const TABS = ["log", "incidents", "cases", "governance", "overrides"] as const;
 type Tab = (typeof TABS)[number];
 
 const TAB_LABEL: Record<Tab, string> = {
   log: "Audit Log",
   incidents: "Incidents",
+  cases: "Incident Cases",
   governance: "Governance",
   overrides: "CEO Overrides",
 };
+
+const INCIDENT_STATUS_LABEL: Record<IncidentStatus, string> = {
+  open: "Open",
+  investigating: "Investigating",
+  remediation: "Remediation",
+  awaiting_verification: "Awaiting Verification",
+  resolved: "Resolved",
+  reopened: "Reopened",
+};
+
+const ROOT_CAUSE_LABEL: Record<IncidentRootCause, string> = {
+  process_failure: "Process Failure",
+  control_failure: "Control Failure",
+  data_failure: "Data Failure",
+  model_failure: "Model Failure",
+  human_error: "Human Error",
+  governance_failure: "Governance Failure",
+  communication_failure: "Communication Failure",
+  unknown: "Unknown (Root Cause Not Established)",
+};
+
+function incidentStatusTone(status: IncidentStatus): "red" | "amber" | "cyan" | "green" {
+  if (status === "resolved") return "green";
+  if (status === "reopened") return "red";
+  if (status === "open") return "amber";
+  if (status === "awaiting_verification") return "amber";
+  return "cyan";
+}
 
 const CATEGORY_OPTIONS: { value: AuditEventCategory | "all"; label: string }[] = [
   { value: "all", label: "All Categories" },
@@ -112,6 +163,7 @@ export function CompliancePanel() {
 
         {tab === "log" && <AuditLogTab />}
         {tab === "incidents" && <IncidentsTab />}
+        {tab === "cases" && <CasesTab />}
         {tab === "governance" && <GovernanceTab />}
         {tab === "overrides" && <OverridesTab />}
       </Glass>
@@ -275,6 +327,327 @@ function IncidentsTab() {
         open/acknowledged/resolved workflow: incident *resolution* is not a real mechanic anywhere in this codebase today.
       </p>
       <AuditEntryTable entries={entries} error={error} emptyText="No open incidents." />
+    </div>
+  );
+}
+
+function CasesTab() {
+  const [cases, setCases] = useState<ComplianceIncident[] | null>(null);
+  const [summary, setSummary] = useState<ComplianceIncidentSummary | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const load = () => {
+    api
+      .getComplianceIncidentCases()
+      .then((res) => setCases(res))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Failed to load incident cases."));
+    api.getComplianceIncidentSummary().then((res) => setSummary(res)).catch(() => undefined);
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const sorted = useMemo(() => {
+    if (!cases) return null;
+    const order: Record<IncidentStatus, number> = { open: 0, reopened: 1, investigating: 2, remediation: 3, awaiting_verification: 4, resolved: 5 };
+    return [...cases].sort((a, b) => order[a.status] - order[b.status] || b.simDay - a.simDay);
+  }, [cases]);
+
+  const handleUpdated = (updated: ComplianceIncident) => {
+    setCases((prev) => (prev ? prev.map((c) => (c.id === updated.id ? updated : c)) : prev));
+    api.getComplianceIncidentSummary().then((res) => setSummary(res)).catch(() => undefined);
+  };
+
+  return (
+    <div>
+      <p className="mb-2 text-[9px] text-cmd-textDim">
+        The real, persisted incident lifecycle — every case here is opened from a real Audit Log entry (never a second detection mechanism) and only advances through the enforced
+        stages below. There is no way to mark an incident RESOLVED without first passing through investigation, remediation, and verification.
+      </p>
+      <SummaryStrip summary={summary} />
+      {error && <EmptyState>{error}</EmptyState>}
+      {!error && !sorted && <EmptyState>Loading…</EmptyState>}
+      {!error && sorted && sorted.length === 0 && <EmptyState>No incident cases yet.</EmptyState>}
+      {!error && sorted && sorted.length > 0 && (
+        <div className="max-h-[28rem] space-y-1 overflow-y-auto">
+          {sorted.map((c) => (
+            <CaseRow key={c.id} incident={c} expanded={expandedId === c.id} onToggle={() => setExpandedId((v) => (v === c.id ? null : c.id))} onUpdated={handleUpdated} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SummaryStrip({ summary }: { summary: ComplianceIncidentSummary | null }) {
+  if (!summary) return null;
+  return (
+    <div className="mb-2 grid grid-cols-2 gap-x-4 gap-y-1 rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2 sm:grid-cols-4">
+      <DataRow label="Total Cases" value={summary.totalCount} />
+      <DataRow label="Open" value={summary.openCount} valueClassName={summary.openCount > 0 ? "text-cmd-amber" : "text-cmd-text"} />
+      <DataRow label="Resolved" value={summary.resolvedCount} valueClassName="text-cmd-green" />
+      <DataRow label="Overdue" value={summary.overdueCount} valueClassName={summary.overdueCount > 0 ? "text-cmd-red" : "text-cmd-text"} />
+      <DataRow label="Reopened" value={summary.reopenedIncidentCount} />
+      <DataRow label="Severity-Weighted Backlog" value={summary.severityWeightedBacklog} />
+      <DataRow
+        label="Avg Resolution (sim days)"
+        value={summary.averageResolutionSimDays === null ? "NOT ENOUGH EVIDENCE" : summary.averageResolutionSimDays.toFixed(1)}
+        valueClassName={summary.averageResolutionSimDays === null ? "text-cmd-textDim" : "text-cmd-text"}
+      />
+    </div>
+  );
+}
+
+function CaseRow({
+  incident,
+  expanded,
+  onToggle,
+  onUpdated,
+}: {
+  incident: ComplianceIncident;
+  expanded: boolean;
+  onToggle: () => void;
+  onUpdated: (updated: ComplianceIncident) => void;
+}) {
+  return (
+    <div className="rounded-sm border border-cmd-border/60 bg-cmd-bg/40">
+      <div onClick={onToggle} className="flex cursor-pointer items-center gap-2 px-2 py-1.5 hover:bg-cmd-panelLight/60">
+        <StatusPill tone={incidentStatusTone(incident.status)}>{INCIDENT_STATUS_LABEL[incident.status]}</StatusPill>
+        <StatusPill tone={severityTone(incident.severity)}>{incident.severity}</StatusPill>
+        <span className="text-cmd-cyan text-[9px]">{incident.department}</span>
+        <span className={`flex-1 truncate text-[9px] ${severityTextClass(incident.severity)}`}>{incident.summary}</span>
+        {incident.reopenedCount > 0 && <span className="text-[9px] text-cmd-red">reopened ×{incident.reopenedCount}</span>}
+        <span className="text-[9px] text-cmd-textDim">Day {incident.simDay}</span>
+      </div>
+      {expanded && (
+        <div className="border-t border-cmd-border/40 px-2 py-2 text-[9px]">
+          <div className="mb-1.5 text-cmd-textDim">{incident.detail}</div>
+          <div className="mb-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5 sm:grid-cols-3">
+            <DataRow label="Owner" value={incident.owner ? AGENT_PROFILES[incident.owner].name : "Unassigned"} />
+            <DataRow label="Deadline" value={incident.deadlineSimDay === null ? "Not set" : `Day ${incident.deadlineSimDay}`} />
+            <DataRow label="Verification" value={incident.verificationStatus.replace("_", " ")} />
+            <DataRow label="Root Cause" value={incident.rootCause ? ROOT_CAUSE_LABEL[incident.rootCause] : "Not yet determined"} />
+            <DataRow label="Verifier" value={incident.verifier ? AGENT_PROFILES[incident.verifier].name : "—"} />
+            <DataRow label="Resolved" value={incident.resolvedAt ? new Date(incident.resolvedAt).toLocaleString() : "Not resolved"} />
+          </div>
+          {incident.remediationPlan && (
+            <div className="mb-1.5">
+              <span className="text-cmd-textDim">Remediation plan: </span>
+              <span className="text-cmd-text">{incident.remediationPlan}</span>
+            </div>
+          )}
+          {incident.correctiveAction && (
+            <div className="mb-1.5">
+              <span className="text-cmd-textDim">Corrective action: </span>
+              <span className="text-cmd-text">{incident.correctiveAction}</span>
+            </div>
+          )}
+          {incident.evidence.length > 0 && (
+            <div className="mb-1.5">
+              <div className="text-cmd-textDim">Evidence trail:</div>
+              <ul className="list-inside list-disc text-cmd-text">
+                {incident.evidence.map((e, i) => (
+                  <li key={i}>{e}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <CaseActions incident={incident} onUpdated={onUpdated} />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CaseActions({ incident, onUpdated }: { incident: ComplianceIncident; onUpdated: (updated: ComplianceIncident) => void }) {
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [owner, setOwner] = useState<AgentId>("scout");
+  const [remediationPlan, setRemediationPlan] = useState("");
+  const [deadlineSimDay, setDeadlineSimDay] = useState(incident.simDay + 5);
+  const [failNote, setFailNote] = useState("");
+  const [reopenNote, setReopenNote] = useState("");
+  const [evidenceNote, setEvidenceNote] = useState("");
+  const [verifier, setVerifier] = useState<AgentId>("sentinel");
+  const [rootCause, setRootCause] = useState<IncidentRootCause>("unknown");
+  const [correctiveAction, setCorrectiveAction] = useState("");
+
+  const run = (fn: () => Promise<ComplianceIncident>) => {
+    setBusy(true);
+    setActionError(null);
+    fn()
+      .then((updated) => onUpdated(updated))
+      .catch((err: unknown) => setActionError(err instanceof Error ? err.message : "Action failed."))
+      .finally(() => setBusy(false));
+  };
+
+  const selectClass = "rounded-sm border border-cmd-border bg-cmd-bg/60 px-1.5 py-1 text-[9px] text-cmd-text outline-none focus:border-cmd-cyan/50";
+  const inputClass = selectClass;
+  const buttonClass = "rounded-sm border border-cmd-cyan/50 bg-cmd-cyan/10 px-2 py-1 text-[9px] uppercase tracking-wide text-cmd-cyan hover:bg-cmd-cyan/20 disabled:opacity-40";
+
+  return (
+    <div className="mt-1.5 space-y-1.5 border-t border-cmd-border/40 pt-1.5">
+      {actionError && <div className="text-cmd-red">{actionError}</div>}
+
+      {incident.status === "open" && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <select value={owner} onChange={(e) => setOwner(e.target.value as AgentId)} className={selectClass}>
+            {AGENT_IDS.map((id) => (
+              <option key={id} value={id}>
+                {AGENT_PROFILES[id].name}
+              </option>
+            ))}
+          </select>
+          <button type="button" disabled={busy} className={buttonClass} onClick={() => run(() => api.startInvestigatingIncident(incident.id, owner))}>
+            Start Investigating
+          </button>
+        </div>
+      )}
+
+      {incident.status === "reopened" && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <select value={owner} onChange={(e) => setOwner(e.target.value as AgentId)} className={selectClass}>
+            {AGENT_IDS.map((id) => (
+              <option key={id} value={id}>
+                {AGENT_PROFILES[id].name}
+              </option>
+            ))}
+          </select>
+          <button type="button" disabled={busy} className={buttonClass} onClick={() => run(() => api.startInvestigatingIncident(incident.id, owner))}>
+            Resume Investigating
+          </button>
+        </div>
+      )}
+
+      {incident.status === "investigating" && (
+        <div className="space-y-1">
+          <textarea
+            value={remediationPlan}
+            onChange={(e) => setRemediationPlan(e.target.value)}
+            placeholder="Real remediation plan…"
+            rows={2}
+            className={`${inputClass} w-full`}
+          />
+          <div className="flex flex-wrap items-center gap-1.5">
+            <label className="text-cmd-textDim">Deadline (sim day):</label>
+            <input
+              type="number"
+              value={deadlineSimDay}
+              onChange={(e) => setDeadlineSimDay(Number(e.target.value))}
+              className={`${inputClass} w-20`}
+            />
+            <button
+              type="button"
+              disabled={busy || remediationPlan.trim().length === 0}
+              className={buttonClass}
+              onClick={() => run(() => api.beginIncidentRemediation(incident.id, remediationPlan.trim(), deadlineSimDay))}
+            >
+              Begin Remediation
+            </button>
+          </div>
+        </div>
+      )}
+
+      {incident.status === "remediation" && (
+        <div>
+          <button type="button" disabled={busy} className={buttonClass} onClick={() => run(() => api.submitIncidentForVerification(incident.id))}>
+            Submit For Verification
+          </button>
+        </div>
+      )}
+
+      {incident.status === "awaiting_verification" && (
+        <div className="space-y-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
+            <select value={verifier} onChange={(e) => setVerifier(e.target.value as AgentId)} className={selectClass}>
+              {AGENT_IDS.map((id) => (
+                <option key={id} value={id}>
+                  {AGENT_PROFILES[id].name}
+                </option>
+              ))}
+            </select>
+            <select value={rootCause} onChange={(e) => setRootCause(e.target.value as IncidentRootCause)} className={selectClass}>
+              {(Object.keys(ROOT_CAUSE_LABEL) as IncidentRootCause[]).map((rc) => (
+                <option key={rc} value={rc}>
+                  {ROOT_CAUSE_LABEL[rc]}
+                </option>
+              ))}
+            </select>
+          </div>
+          <textarea
+            value={correctiveAction}
+            onChange={(e) => setCorrectiveAction(e.target.value)}
+            placeholder="Real corrective action taken…"
+            rows={2}
+            className={`${inputClass} w-full`}
+          />
+          <div className="flex flex-wrap items-center gap-1.5">
+            <button
+              type="button"
+              disabled={busy || correctiveAction.trim().length === 0}
+              className={buttonClass}
+              onClick={() => run(() => api.verifyAndResolveIncident(incident.id, verifier, rootCause, correctiveAction.trim()))}
+            >
+              Verify &amp; Resolve
+            </button>
+            <input
+              type="text"
+              value={failNote}
+              onChange={(e) => setFailNote(e.target.value)}
+              placeholder="Why the fix did not hold…"
+              className={`${inputClass} flex-1`}
+            />
+            <button
+              type="button"
+              disabled={busy || failNote.trim().length === 0}
+              className="rounded-sm border border-cmd-red/50 bg-cmd-red/10 px-2 py-1 text-[9px] uppercase tracking-wide text-cmd-red hover:bg-cmd-red/20 disabled:opacity-40"
+              onClick={() => run(() => api.failIncidentVerification(incident.id, failNote.trim()))}
+            >
+              Fail Verification
+            </button>
+          </div>
+        </div>
+      )}
+
+      {incident.status === "resolved" && (
+        <div className="flex flex-wrap items-center gap-1.5">
+          <input
+            type="text"
+            value={reopenNote}
+            onChange={(e) => setReopenNote(e.target.value)}
+            placeholder="Same underlying issue recurred…"
+            className={`${inputClass} flex-1`}
+          />
+          <button
+            type="button"
+            disabled={busy || reopenNote.trim().length === 0}
+            className="rounded-sm border border-cmd-red/50 bg-cmd-red/10 px-2 py-1 text-[9px] uppercase tracking-wide text-cmd-red hover:bg-cmd-red/20 disabled:opacity-40"
+            onClick={() => run(() => api.reopenIncident(incident.id, reopenNote.trim()))}
+          >
+            Reopen
+          </button>
+        </div>
+      )}
+
+      <div className="flex items-center gap-1.5">
+        <input
+          type="text"
+          value={evidenceNote}
+          onChange={(e) => setEvidenceNote(e.target.value)}
+          placeholder="Log real evidence…"
+          className={`${inputClass} flex-1`}
+        />
+        <button
+          type="button"
+          disabled={busy || evidenceNote.trim().length === 0}
+          className="rounded-sm border border-cmd-border px-2 py-1 text-[9px] uppercase tracking-wide text-cmd-textDim hover:text-cmd-text disabled:opacity-40"
+          onClick={() => run(() => api.addIncidentEvidence(incident.id, evidenceNote.trim()))}
+        >
+          Add Evidence
+        </button>
+      </div>
     </div>
   );
 }

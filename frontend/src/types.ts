@@ -3577,6 +3577,64 @@ export interface CeoOverrideRecord {
   createdAt: string;
 }
 
+// CEO directive "Features 31-35: Compliance, Governance & Continuous
+// Improvement System," Feature 31 — the Compliance Incident Resolution
+// Engine (backend/app/compliance_incidents.py). Unlike the rest of CAGS
+// above, ComplianceIncident IS persisted (GameSaveState.complianceIncidents)
+// and mutable via the lifecycle endpoints below — still fetched on demand,
+// not part of the WS broadcast/gameStore (a 500-entry backlog has no
+// reason to ride every tick).
+export type IncidentStatus = "open" | "investigating" | "remediation" | "awaiting_verification" | "resolved" | "reopened";
+
+export type IncidentRootCause =
+  | "process_failure"
+  | "control_failure"
+  | "data_failure"
+  | "model_failure"
+  | "human_error"
+  | "governance_failure"
+  | "communication_failure"
+  | "unknown";
+
+export type IncidentVerificationStatus = "not_verified" | "verified" | "verification_failed";
+
+export interface ComplianceIncident {
+  id: string;
+  sourceEntryId: string;
+  category: AuditEventCategory;
+  severity: AlertSeverity;
+  department: string;
+  summary: string;
+  detail: string;
+  relatedId: string | null;
+  createdAt: string;
+  simDay: number;
+  status: IncidentStatus;
+  owner: AgentId | null;
+  evidence: string[];
+  remediationPlan: string | null;
+  deadlineSimDay: number | null;
+  resolvedAt: string | null;
+  resolutionSimDay: number | null;
+  verificationStatus: IncidentVerificationStatus;
+  verifier: AgentId | null;
+  rootCause: IncidentRootCause | null;
+  correctiveAction: string | null;
+  reopenedCount: number;
+  updatedAt: string;
+}
+
+export interface ComplianceIncidentSummary {
+  totalCount: number;
+  openCount: number;
+  resolvedCount: number;
+  overdueCount: number;
+  reopenedIncidentCount: number;
+  severityWeightedBacklog: number;
+  averageResolutionSimDays: number | null;
+  updatedAt: string;
+}
+
 // Design Bible Chapter 75 — Company Trading Modes & Institutional
 // Capital Protection (see backend/app/trading_modes.py). tradingModes/
 // dailyCircuitBreaker/losingStreak/recoveryBriefings are real, part of

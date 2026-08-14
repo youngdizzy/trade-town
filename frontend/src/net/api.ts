@@ -19,6 +19,8 @@ import type {
   CeoOverrideRecord,
   ChallengeReport,
   ClientSaveSnapshot,
+  ComplianceIncident,
+  ComplianceIncidentSummary,
   ComplianceOverview,
   Debate,
   DefensiveModeState,
@@ -38,6 +40,7 @@ import type {
   GovernanceLayer,
   GoalAllocation,
   GoalCategory,
+  IncidentRootCause,
   GoalMetric,
   GoalPriority,
   HoldReason,
@@ -298,6 +301,45 @@ export const api = {
   getGovernance: () => request<GovernanceLayer[]>("/audit/governance"),
   getComplianceOverview: () => request<ComplianceOverview>("/audit/overview"),
   getCeoOverrides: () => request<CeoOverrideRecord[]>("/audit/overrides"),
+  // CEO directive "Features 31-35," Feature 31 — the Compliance
+  // Incident Resolution Engine's real, persisted case list and its
+  // lifecycle mutations (backend/app/routers/audit.py's new
+  // /incidents/cases endpoints, distinct from the ephemeral /incidents
+  // filter above).
+  getComplianceIncidentCases: () => request<ComplianceIncident[]>("/audit/incidents/cases"),
+  getComplianceIncidentSummary: () => request<ComplianceIncidentSummary>("/audit/incidents/summary"),
+  startInvestigatingIncident: (incidentId: string, owner: AgentId) =>
+    request<ComplianceIncident>(`/audit/incidents/${encodeURIComponent(incidentId)}/investigate`, {
+      method: "POST",
+      body: JSON.stringify({ owner }),
+    }),
+  beginIncidentRemediation: (incidentId: string, remediationPlan: string, deadlineSimDay: number) =>
+    request<ComplianceIncident>(`/audit/incidents/${encodeURIComponent(incidentId)}/remediate`, {
+      method: "POST",
+      body: JSON.stringify({ remediationPlan, deadlineSimDay }),
+    }),
+  addIncidentEvidence: (incidentId: string, note: string) =>
+    request<ComplianceIncident>(`/audit/incidents/${encodeURIComponent(incidentId)}/evidence`, {
+      method: "POST",
+      body: JSON.stringify({ note }),
+    }),
+  submitIncidentForVerification: (incidentId: string) =>
+    request<ComplianceIncident>(`/audit/incidents/${encodeURIComponent(incidentId)}/submit-verification`, { method: "POST" }),
+  failIncidentVerification: (incidentId: string, note: string) =>
+    request<ComplianceIncident>(`/audit/incidents/${encodeURIComponent(incidentId)}/fail-verification`, {
+      method: "POST",
+      body: JSON.stringify({ note }),
+    }),
+  verifyAndResolveIncident: (incidentId: string, verifier: AgentId, rootCause: IncidentRootCause, correctiveAction: string) =>
+    request<ComplianceIncident>(`/audit/incidents/${encodeURIComponent(incidentId)}/resolve`, {
+      method: "POST",
+      body: JSON.stringify({ verifier, rootCause, correctiveAction }),
+    }),
+  reopenIncident: (incidentId: string, note: string) =>
+    request<ComplianceIncident>(`/audit/incidents/${encodeURIComponent(incidentId)}/reopen`, {
+      method: "POST",
+      body: JSON.stringify({ note }),
+    }),
   // Design Bible Chapter 75 — Company Trading Modes & Institutional
   // Capital Protection. tradingModes/dailyCircuitBreaker/losingStreak/
   // recoveryBriefings are already live via the WS tick broadcast (see

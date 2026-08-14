@@ -1704,6 +1704,76 @@ false, with its real `outcome` once graded. Sourced directly from
 `CeoDecisionRecord`, the same real field Chapter 70 Part 2 already
 tracks for CEO Accuracy.
 
+### Incident Resolution Engine — CEO directive "Features 31-35," Feature 31
+
+The one real, persisted, mutable slice of CAGS (`app/compliance_incidents.py`)
+— distinct from and additive to the five endpoints above, which stay
+byte-for-byte unchanged. See
+`docs/DesignBible/volumes/09-departments/chapter-73-compliance-audit-governance-system.md`
+for the full lifecycle diagram and honesty reasoning.
+
+**`GET /api/audit/incidents/cases`** — the real, persisted
+`ComplianceIncident[]` backlog, distinct from the ephemeral
+`/api/audit/incidents` filter above; these are stateful records
+`app/nexus.py`'s `tick()` syncs from the real Audit Log and the POST
+endpoints below mutate. Fields: `id`, `sourceEntryId` (the one real link
+back to the originating `AuditEntry`), `category`, `severity`,
+`department`, `summary`, `detail`, `relatedId`, `createdAt`/`simDay`
+(the source entry's own real values, never today's date), `status`
+(`open`/`investigating`/`remediation`/`awaiting_verification`/
+`resolved`/`reopened`), `owner`, `evidence: string[]`,
+`remediationPlan`, `deadlineSimDay`, `resolvedAt`, `resolutionSimDay`,
+`verificationStatus` (`not_verified`/`verified`/`verification_failed`),
+`verifier`, `rootCause` (8 categories including `unknown`, `null` until
+resolved), `correctiveAction`, `reopenedCount`, `updatedAt`.
+
+**`GET /api/audit/incidents/summary`** — the real `ComplianceIncidentSummary`
+aggregate: `totalCount`/`openCount`/`resolvedCount`/`overdueCount`/
+`reopenedIncidentCount`, `severityWeightedBacklog` (reuses
+`app/company_health.py`'s own `_SEVERITY_PENALTY` table), and
+`averageResolutionSimDays` — `null`, never a fabricated `0`, when
+nothing has ever actually resolved.
+
+**`POST /api/audit/incidents/{id}/investigate`** — body `{ owner:
+AgentId }`. Valid only from `open`/`reopened`; sets `status:
+"investigating"`.
+
+**`POST /api/audit/incidents/{id}/remediate`** — body `{
+remediationPlan: string, deadlineSimDay: int }`. Valid only from
+`investigating`; sets `status: "remediation"` and stamps the real SLA
+deadline (never guessed earlier).
+
+**`POST /api/audit/incidents/{id}/evidence`** — body `{ note: string }`.
+Valid at any status; appends to the permanent `evidence` trail without
+changing `status`.
+
+**`POST /api/audit/incidents/{id}/submit-verification`** — no body.
+Valid only from `remediation`; sets `status: "awaiting_verification"`.
+
+**`POST /api/audit/incidents/{id}/fail-verification`** — body `{ note:
+string }`. Valid only from `awaiting_verification`; bounces back to
+`status: "remediation"` (never a forced resolution) and sets
+`verificationStatus: "verification_failed"`.
+
+**`POST /api/audit/incidents/{id}/resolve`** — body `{ verifier:
+AgentId, rootCause: IncidentRootCause, correctiveAction: string }`.
+Valid only from `awaiting_verification`; the *only* endpoint that ever
+sets `resolvedAt`/`resolutionSimDay`/`rootCause`/`correctiveAction` —
+together, atomically. `rootCause: "unknown"` is always a valid, honest
+answer.
+
+**`POST /api/audit/incidents/{id}/reopen`** — body `{ note: string }`.
+Valid only from `resolved`; sets `status: "reopened"` and increments
+`reopenedCount`, preserving the prior resolution's `resolvedAt`/
+`rootCause`/`correctiveAction` as real, unwritten history.
+
+Every mutation endpoint above returns `400` with a real, specific reason
+string (never a silent no-op) if the incident's *current* status doesn't
+allow that transition — e.g. calling `/resolve` on an `open` incident.
+None of these nine endpoints are on the WS broadcast — the Compliance
+panel fetches this data on demand, the same convention the original five
+CAGS endpoints already established.
+
 ### `GET /api/situation-room`
 
 Design Bible Chapter 73.5 — Mobile Command Center & Remote Operations.

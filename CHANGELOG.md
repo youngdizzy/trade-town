@@ -7,6 +7,50 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Features 31-35: Compliance, Governance & Continuous Improvement System," Feature 31 —
+  Compliance Incident Resolution Engine** (`backend/app/schemas.py`, `backend/app/compliance_incidents.py`,
+  `backend/app/nexus.py`, `backend/app/state.py`, `backend/app/save_modules.py`, `backend/app/routers/audit.py`,
+  `backend/tests/test_compliance_incidents.py`, `frontend/src/types.ts`, `frontend/src/net/api.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/CompliancePanel.tsx`): the first stage of the CEO's
+  31→32→33→34→35 Compliance closed loop — per the directive's own staging rule, 32-35 do not start until this
+  feature is tested, verified, and documented. Researched first: `app/audit_log.py`'s `compute_incidents()`
+  already existed as a real filter over the Audit Log (`severity != "info"`), but by that module's own docstring
+  is "computed fresh per request (never persisted, never a new `GameSaveState` field)" — the Compliance panel's
+  own UI text already disclosed the exact gap: "incident resolution is not a real mechanic anywhere in this
+  codebase today." `compliance_incidents.py` closes exactly that gap, strictly downstream of the existing Audit
+  Log (never a second incident-detection system): `sync_incidents_from_audit_log()` is the only creation path,
+  opening one `ComplianceIncident` per real, currently-open `AuditEntry`, deduplicated by `sourceEntryId`. A
+  strict `ALLOWED_TRANSITIONS` state machine (`open` → `investigating` → `remediation` →
+  `awaiting_verification` → `resolved`, with a real failed-verification bounce back to `remediation` and a real
+  `resolved` → `reopened` → `investigating` recurrence path) makes `open` → `resolved` in one step structurally
+  impossible — every transition function returns `None` (never raises, never silently succeeds) on an invalid
+  request, `app/executive.py`'s `hold_proposal()` contract reused verbatim. `root_cause` (8 categories including
+  `unknown`) is optional everywhere except the one real resolving call, where `unknown` is always an honest,
+  valid answer, never forced. Synced once per tick in `nexus.py` from that tick's own final Audit Log; historical
+  preservation means the first sync opens every incident using its real source `AuditEntry`'s own
+  `created_at`/`sim_day`, never today's date, with every resolution field at its honest default since none of
+  these incidents has ever actually been resolved. Seven new `GameState` lifecycle methods, nine new
+  `/api/audit/incidents/*` endpoints (original five CAGS endpoints byte-for-byte unchanged), deliberately kept
+  off the WS broadcast matching this router's own existing on-demand-fetch precedent. `ComplianceIncidentSummary`
+  never fabricates: `averageResolutionSimDays` is `null` (not `0`) when nothing has resolved yet;
+  `severityWeightedBacklog` reuses `company_health.py`'s own `_SEVERITY_PENALTY` table rather than a second
+  scale. **Compliance Score is unchanged this pass** — still reads only the original ephemeral filter; this
+  directive's own rules require explicit CEO authorization before that formula changes, and wiring this
+  feature's real evidence into it is Feature 35's job. Frontend adds a new "Incident Cases" tab in
+  `CompliancePanel.tsx` alongside the untouched original "Incidents" tab, with a real per-case lifecycle-action
+  form that only shows actions valid from that incident's current status. 26 new backend tests, `mypy app/` (145
+  files)/`ruff check app/ tests/` clean, full backend suite (1920 passed; the same 6 pre-existing
+  `test_nexus.py` `_apply_operating_mode()` failures noted under Feature 30 below, confirmed present on the base
+  branch before this change and left untouched), `tsc`/`eslint`/`vite build` clean, live Playwright verification
+  against the real dev stack (two real cases rendered from this save's actual Audit Log, `averageResolutionSimDays`
+  correctly showed "NOT ENOUGH EVIDENCE" rather than 0, and a real `investigate` transition was driven through
+  the UI end-to-end — status pill changed OPEN → INVESTIGATING, owner populated). One real bug caught during
+  live verification and fixed before commit: `ComplianceIncident.verification_status` was the only field in the
+  new schema missing its explicit camelCase `Field(alias=...)`, so it serialized as `verification_status`
+  instead of `verificationStatus` until fixed. Documented in Design Bible Chapter 73's addendum (the chapter's
+  original "mutable Incident workflow — cut" reasoning is corrected in place, not deleted, to keep the honesty
+  trail intact about what changed and why).
+
 - **CEO directive "Features 26-30: Agent Intelligence, Learning & Institutional Memory System," Feature 30 —
   Agent Debate + Failure Review Board** (`backend/app/failure_review.py`, `backend/app/schemas.py`,
   `backend/app/institutional_memory.py`, `backend/app/nexus.py`, `backend/app/prediction_tracking.py`,

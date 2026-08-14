@@ -8208,6 +8208,123 @@ documented, and live-verified, with Feature 30's own outputs feeding
 back into the other four exactly as the directive's closed-loop framing
 asked for.
 
+## CEO directive "Features 31-35: Compliance, Governance & Continuous Improvement System" — Feature 31, Compliance Incident Resolution Engine
+
+Research first, per this directive's own explicit rule: `app/audit_log.py`'s
+`compute_incidents()` already existed as a real, working filter over the
+Audit Log (`severity != "info"`) — but it is, by that module's own
+docstring, "computed fresh per request (never persisted, never a new
+`GameSaveState` field)". The CAGS panel's own UI text already disclosed
+the exact gap this feature closes: "There is no open/acknowledged/
+resolved workflow: incident resolution is not a real mechanic anywhere
+in this codebase today." That sentence, not a rename or a guess, is
+Feature 31's actual scope.
+
+`app/compliance_incidents.py` (new module) adds a real, persisted
+incident-case lifecycle strictly downstream of the existing Audit Log —
+`sync_incidents_from_audit_log()` is the *only* creation path, opening
+one `ComplianceIncident` per real, currently-open `AuditEntry`,
+deduplicated by `sourceEntryId` so the same event can never open two
+cases. The lifecycle (`open -> investigating -> remediation ->
+awaiting_verification -> resolved`, with `awaiting_verification` able to
+bounce back to `remediation` on a failed verification, and `resolved`
+able to `reopen` back to `investigating` on recurrence) is enforced by
+an explicit `ALLOWED_TRANSITIONS` map so `open -> resolved` in one step
+is structurally, not just conventionally, impossible — every transition
+function returns `None` (never raises) on an invalid request, the same
+contract `app/executive.py`'s `hold_proposal()` already established.
+`root_cause` is genuinely optional everywhere except the one call that
+actually resolves an incident (`verify_and_resolve()`), and even there
+`"unknown"` is always a valid, honest answer, never forced.
+
+Synced once per tick in `app/nexus.py`, from that tick's own final Audit
+Log (after every source list — `ceo_decisions`, `gatekeeper_rejections`,
+`risk_warnings`, etc. — has reached its tick-final value), so no
+incident-worthy event from a given tick is missed. Historical
+preservation: the first sync after this feature ships opens each
+incident using the *source `AuditEntry`'s own real* `created_at`/
+`sim_day`, never today's date — every one of these incidents starts
+`status="open"`/`verification_status="not_verified"` with every
+resolution field at its honest default, because none of them has ever
+actually been through a real resolution workflow; that is the literal,
+disclosed truth, not fabricated history.
+
+Seven new `GameState` methods in `app/state.py`
+(`start_investigating_incident`, `begin_incident_remediation`,
+`add_incident_evidence`, `submit_incident_for_verification`,
+`fail_incident_verification`, `verify_and_resolve_incident`,
+`reopen_incident`) each return `tuple[GameSaveState, str | None]` — an
+error string on an invalid transition, never a silent no-op — and nine
+new endpoints in `app/routers/audit.py`
+(`GET /api/audit/incidents/cases`, `GET /api/audit/incidents/summary`,
+seven `POST /api/audit/incidents/{id}/...`), all additive; the original
+five CAGS endpoints are byte-for-byte unchanged. `compliance_incidents`
+was deliberately **not** added to the WS broadcast — matching
+`ws_manager.py`'s existing precedent that not every persisted field
+needs to ride the real-time tick channel — since the Compliance panel
+already fetches CAGS data on demand.
+
+`ComplianceIncidentSummary` (`compute_incident_summary()`) computes
+three honest aggregates that directly satisfy this directive's own "do
+not fabricate" rule: `averageResolutionSimDays` is `null` — never `0` —
+when nothing has ever actually resolved; `severityWeightedBacklog`
+reuses `app/company_health.py`'s own existing `_SEVERITY_PENALTY` table
+rather than inventing a second severity scale; `overdueCount` only
+counts a real SLA deadline (stamped once, at `begin_remediation()`, not
+guessed at incident-creation time) that has actually passed while still
+unresolved.
+
+**Compliance Score is unchanged this pass.** The formula (`100 -
+min(60, 5 × open incidents)`, floored at 40) still reads only from the
+original ephemeral Audit Log filter, exactly as before. This directive's
+own rules require explicit CEO authorization before that formula may be
+edited, and wiring Feature 31's real resolution evidence into it (or
+into Company Health) is Feature 35's stated job, not this one's.
+
+**Frontend:** a new "Incident Cases" tab in `CompliancePanel.tsx`,
+alongside (not replacing) the original, still-fully-ephemeral
+"Incidents" tab. Shows the real summary strip (including "NOT ENOUGH
+EVIDENCE" — not "0%" — for `averageResolutionSimDays` when nothing has
+resolved yet), an expandable case list, and a real lifecycle-action form
+per case (owner/verifier pickers reuse `AGENT_PROFILES`, root-cause
+picker exposes all eight categories including "Unknown") that only shows
+the actions valid from that incident's *current* status — mirroring the
+backend's own enforced state machine in the UI rather than trusting the
+client to know the rules. `types.ts`/`net/api.ts` gained the matching
+mirror types and 9 new `api.*` calls.
+
+**Verified**: 26 new tests (`tests/test_compliance_incidents.py`) —
+sync/dedup/cap, every lifecycle transition including the invalid ones
+(`open` cannot skip to `resolved`; `investigating` cannot skip to
+`awaiting_verification`), verification failure bouncing to `remediation`
+rather than a forced resolution, reopen preserving the original
+resolution's `root_cause`/`resolved_at` as real history, overdue/backlog/
+average-resolution honesty (`None` never a fabricated `0`), and summary
+aggregation. `mypy app/` (145 files) clean, `ruff check app/ tests/`
+clean, full backend `pytest -q` (1920 passed; the same 6 pre-existing
+`test_nexus.py` `_apply_operating_mode()` failures noted under Feature
+30 above, confirmed present on the base branch via `git stash` before
+this feature touched anything, left untouched). `tsc --noEmit`, `eslint
+--max-warnings 0`, `vite build` all clean. Live Playwright verification
+against the real dev stack: the Incident Cases tab rendered two real
+cases from this save's actual Audit Log, the summary strip showed
+`averageResolutionSimDays` as "NOT ENOUGH EVIDENCE" (not `0`), and a
+real `POST /api/audit/incidents/{id}/investigate` call was driven
+through the UI end-to-end — the case's status pill changed from OPEN to
+INVESTIGATING and its owner field populated with the selected agent,
+confirmed by screenshot. One real bug was caught during this live
+verification and fixed before commit: `ComplianceIncident.verification_status`
+was missing its `Field(alias="verificationStatus")`, the only field in
+the new schema without an explicit camelCase alias — it serialized as
+`verification_status` until fixed.
+
+Per this directive's own staging rule, Features 32 (CEO Override
+Governance), 33 (Executive Accuracy Evidence System), 34 (Compliance
+Control Effectiveness), and 35 (the Continuous Compliance Improvement
+Loop, including the CEO-authorization gate on the Compliance Score
+formula itself) do not begin until this feature is fully tested,
+verified, and documented — which this entry closes out.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing
