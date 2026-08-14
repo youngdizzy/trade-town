@@ -7,6 +7,26 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO Company Health + Live Market Realism directive, Section 13 — real Goal blocker detection**
+  (`backend/app/schemas.py`, `backend/app/goals.py`, `backend/tests/test_goals.py`, `frontend/src/types.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/CompanyPanel.tsx`): the CEO asked Goals to also carry
+  owner/supporting-departments/evidence/blockers/outcome. `progress_pct`/`status`/`completed_at` were already
+  the real, honest "progress" and "outcome." New: `stalled_ticks`/`is_blocked` — a real behavioral signal
+  (consecutive real ticks with essentially zero progress movement, `GOAL_STALLED_THRESHOLD_TICKS = 20`), never
+  a fabricated "reason" string. `tick_goal()` resets the counter the instant real progress resumes and clears
+  `is_blocked` automatically once a goal completes or expires (a resolved goal is never shown as blocked).
+  `owner`/`supporting departments` were explicitly investigated and cut, not silently dropped: a `Goal` tracks
+  one company-wide metric every department's real work already feeds into simultaneously, and this codebase
+  has no real per-goal ownership/attribution mechanism to draw from without inventing one — documented in
+  `app/goals.py`'s own module docstring. `evidence` is likewise not a manufactured narrative field — the real
+  numbers (`current_value`/`target_value`/`progress_pct`/`stalled_ticks`) already are the evidence. Frontend:
+  the Company tab's goal cards show a red "BLOCKED" pill plus the real stalled-tick count. Verified: 6 new
+  tests (starts unblocked, counter increments, threshold crossing, reset on real progress, completed/expired
+  goals never read as blocked), full backend suite (1775 tests), `mypy`/`ruff` clean; frontend `tsc`/`lint`/
+  `build` clean; live-verified against the running dev server — created a real goal via `POST
+  /api/goals/create`, let the live sim tick it forward in real time, and confirmed the BLOCKED pill and "No
+  real progress in 33 consecutive ticks." rendered once the real backend crossed the threshold.
+
 - **CEO Company Health + Live Market Realism directive, Section 6 — real tick-over-tick Company Health delta
   breakdown** (`backend/app/schemas.py`, `backend/app/company_health.py`, `backend/app/nexus.py`,
   `backend/app/save_modules.py`, `backend/app/ws_manager.py`, `backend/tests/test_company_health.py`,

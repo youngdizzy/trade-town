@@ -439,3 +439,49 @@ this chapter has no further pass to design against — any genuinely new
 capability (e.g. CEO-configurable milestone thresholds, promoted from a
 constant the same way Chapter 63's tier thresholds were) would be a new
 chapter revision, not a continuation of this one's original scope.
+
+**CEO Company Health + Live Market Realism directive, Section 13 —
+Blocker Detection (sixth pass).** The CEO's directive asked Goals to
+also carry owner/supporting-departments/evidence/blockers/outcome.
+`progress_pct` and `status`/`completed_at` were already the real,
+honest "progress" and "outcome" this chapter names. `owner` and
+`supporting departments` were investigated and explicitly cut, not
+silently dropped: a `Goal` tracks one company-wide metric (Company
+Health, Company Score, portfolio return, Academy level) that every
+department's real work already feeds into simultaneously — there is no
+real per-goal assignment mechanism anywhere in this codebase to
+attribute ownership to a single agent or a specific department subset
+without inventing one, and this chapter's own Decision Logic section
+has always drawn a hard line against inventing mechanics a system
+doesn't actually have. `evidence` is likewise not a second, manufactured
+narrative field — the real numbers (`current_value`/`target_value`/
+`progress_pct`/`stalled_ticks`) already are the evidence.
+
+`blockers` is the one genuinely new real signal: `stalled_ticks`/
+`is_blocked` on `Goal`, computed in `tick_goal()`. A goal accumulates
+one stalled tick for every real tick it stays active with essentially
+zero real `progress_pct` movement (`_STALL_EPSILON_PCT`, the same
+rounding-noise reasoning `_progress_pct()`'s own `round(..., 1)`
+already applies), and resets to zero the instant real progress resumes.
+`is_blocked` flips true once `stalled_ticks` crosses
+`GOAL_STALLED_THRESHOLD_TICKS` (20 — the same order of magnitude as
+`TEAM_CHEMISTRY_WINDOW`/`EXECUTIVE_METRIC_WINDOW`'s own "recent
+behavior" sizing in `app/company_health.py`), and is forced back to
+`false` the moment a goal completes or expires — a resolved goal is
+never shown as blocked. Frontend: the Company tab's goal cards show a
+red "BLOCKED" pill plus the real stalled-tick count
+(`frontend/src/ui/components/CommandCenter/panels/CompanyPanel.tsx`).
+
+Verified: 6 new backend tests (fresh goal starts unblocked, counter
+increments under real stagnation, threshold crossing, reset on real
+progress, completed/expired goals never read as blocked), full backend
+suite (1775 tests), `mypy`/`ruff` clean, frontend `tsc`/`lint`/`build`
+clean. Live-verified against the running dev server: created a real
+goal via `POST /api/goals/create` (targeting Academy Level, a metric
+that genuinely doesn't move tick-to-tick without real Academy
+progress), let the live sim tick it forward in real wall-clock time
+(~2s/tick), and confirmed `isBlocked` flipped `true` at exactly
+`stalledTicks == 20` via direct `GET /api/load` polling before
+confirming the same real transition rendered live in the Command Center
+UI as the red "BLOCKED" pill and "No real progress in 33 consecutive
+ticks." — not a fixture.
