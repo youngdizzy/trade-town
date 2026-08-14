@@ -5307,7 +5307,7 @@ class ComplianceIncident(CamelModel):
 
     resolved_at: str | None = Field(default=None, alias="resolvedAt")
     resolution_sim_day: int | None = Field(default=None, alias="resolutionSimDay")
-    verification_status: IncidentVerificationStatus = "not_verified"
+    verification_status: IncidentVerificationStatus = Field(default="not_verified", alias="verificationStatus")
     verifier: AgentId | None = Field(default=None)
     root_cause: IncidentRootCause | None = Field(default=None, alias="rootCause")
     corrective_action: str | None = Field(default=None, alias="correctiveAction")
