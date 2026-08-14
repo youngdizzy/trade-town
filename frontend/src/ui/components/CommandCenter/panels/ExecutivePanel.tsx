@@ -1,7 +1,15 @@
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { CONFIDENCE_TIER_LABEL } from "@/types";
 import { EventBus } from "@/game/systems/EventBus";
-import { computeCeoStats, computeGatekeeperStats, computeOpportunityGatekeeperStats, confidenceTierTone, mistakeTagForCeoDecision, priorityScoreFor } from "../lib/derive";
+import {
+  computeCeoStats,
+  computeGatekeeperStats,
+  computeOpportunityGatekeeperStats,
+  computePredictionStats,
+  confidenceTierTone,
+  mistakeTagForCeoDecision,
+  priorityScoreFor,
+} from "../lib/derive";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../ui";
 
 const CHOICE_TONE: Record<string, "green" | "red" | "amber"> = { buy: "green", sell: "red", wait: "amber" };
@@ -21,6 +29,11 @@ const GK_OUTCOME_LABEL: Record<string, string> = {
   would_have_lost: "WOULD HAVE LOST",
   pending: "PENDING",
 };
+const PREDICTION_OUTCOME_TONE: Record<string, "green" | "red" | "cyan"> = {
+  correct: "green",
+  incorrect: "red",
+  pending: "cyan",
+};
 
 /**
  * Feature 12's history/stats view — every number here comes straight off
@@ -31,13 +44,15 @@ const GK_OUTCOME_LABEL: Record<string, string> = {
  * own doc comment for why overrides can't grade the AI itself.
  */
 export function ExecutivePanel() {
-  const { tradeProposals, ceoDecisions, decisions, gatekeeperRejections, opportunityRejections, warRoomSessions } = useGameStore();
+  const { tradeProposals, ceoDecisions, decisions, gatekeeperRejections, opportunityRejections, warRoomSessions, predictionRecords } = useGameStore();
   const stats = computeCeoStats(ceoDecisions);
   const recent = [...ceoDecisions].reverse().slice(0, 12);
   const gkStats = computeGatekeeperStats(decisions, gatekeeperRejections);
   const recentRejections = [...gatekeeperRejections].reverse().slice(0, 8);
   const oppStats = computeOpportunityGatekeeperStats(opportunityRejections);
   const recentOppRejections = [...opportunityRejections].reverse().slice(0, 8);
+  const predictionStats = computePredictionStats(predictionRecords);
+  const recentPredictions = [...predictionRecords].reverse().slice(0, 8);
 
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
@@ -129,6 +144,41 @@ export function ExecutivePanel() {
                       {r.expectedValueAtRejectionPct.toFixed(1)}%
                     </div>
                     {r.reasons[0] && <div className="text-cmd-textDim">{r.reasons[0]}</div>}
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </Glass>
+
+        <Glass className="p-3">
+          <TerminalLabel>Prediction Ledger</TerminalLabel>
+          <div className="mb-1.5 text-[9px] text-cmd-textDim">
+            CEO directive Feature 29 — every real trade-direction claim is staked before its outcome is known, then resolved purely from the trade&apos;s
+            own real closed P&amp;L. Never regraded, never resolved early.
+          </div>
+          <DataRow label="Total predictions" value={predictionStats.totalPredictions} />
+          <DataRow label="Resolved" value={predictionStats.resolvedPredictions} />
+          <DataRow label="Accuracy" value={predictionStats.accuracyPct === null ? "N/A" : `${Math.round(predictionStats.accuracyPct)}%`} />
+          <DataRow label="Awaiting resolution" value={predictionStats.pendingPredictions} />
+
+          <div className="mt-3">
+            <div className="mb-1 text-[9px] uppercase tracking-wide text-cmd-textDim">Recent Predictions</div>
+            {recentPredictions.length === 0 ? (
+              <div className="text-cmd-textDim">No predictions staked yet.</div>
+            ) : (
+              <div className="space-y-1.5">
+                {recentPredictions.map((p) => (
+                  <div key={p.id} className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-1.5 text-[9px]">
+                    <div className="mb-0.5 flex items-center justify-between gap-2">
+                      <span className="font-cmdmono text-cmd-cyan">
+                        {p.symbol} · {p.predictedDirection.toUpperCase()}
+                      </span>
+                      <StatusPill tone={PREDICTION_OUTCOME_TONE[p.outcome]}>{p.outcome.toUpperCase()}</StatusPill>
+                    </div>
+                    <div className="text-cmd-textDim">
+                      {Math.round(p.confidencePct)}% confidence{p.resolvedPnlPct !== null ? ` · real P&L ${p.resolvedPnlPct >= 0 ? "+" : ""}${p.resolvedPnlPct.toFixed(1)}%` : ""}
+                    </div>
                   </div>
                 ))}
               </div>

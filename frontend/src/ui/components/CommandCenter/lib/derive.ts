@@ -47,6 +47,7 @@ import type {
   PaperTrade,
   PerformancePeriod,
   PerformanceSnapshot,
+  PredictionRecord,
   ReasoningChallenge,
   ReflectionSession,
   ResearchCategory,
@@ -850,6 +851,33 @@ export function computeOpportunityGatekeeperStats(rejections: OpportunityRejecti
     wouldHaveWon,
     wouldHaveLost,
     rejectionAccuracy: resolved.length ? (wouldHaveLost / resolved.length) * 100 : null,
+  };
+}
+
+// CEO directive "Features 26-30," Feature 29 — Prediction -> Outcome
+// Tracking. Every number here is read straight off real PredictionRecord
+// state (backend/app/prediction_tracking.py) — resolved-only accuracy,
+// never blended with still-pending claims.
+export interface PredictionStats {
+  totalPredictions: number;
+  resolvedPredictions: number;
+  pendingPredictions: number;
+  correctPredictions: number;
+  incorrectPredictions: number;
+  accuracyPct: number | null;
+}
+
+export function computePredictionStats(records: PredictionRecord[]): PredictionStats {
+  const resolved = records.filter((r) => r.outcome !== "pending");
+  const correct = resolved.filter((r) => r.outcome === "correct").length;
+  const incorrect = resolved.filter((r) => r.outcome === "incorrect").length;
+  return {
+    totalPredictions: records.length,
+    resolvedPredictions: resolved.length,
+    pendingPredictions: records.length - resolved.length,
+    correctPredictions: correct,
+    incorrectPredictions: incorrect,
+    accuracyPct: resolved.length ? (correct / resolved.length) * 100 : null,
   };
 }
 

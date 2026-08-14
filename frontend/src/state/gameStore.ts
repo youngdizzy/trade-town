@@ -7,6 +7,7 @@ import type {
   AgentKnowledgeState,
   AgentPerformanceReview,
   AgentSkillProfile,
+  PredictionRecord,
   AlertEntry,
   AgentState,
   BacktestSession,
@@ -187,6 +188,7 @@ export interface GameUiState {
   institutionalMemory: InstitutionalMemoryEntry[];
   agentPerformanceReviews: AgentPerformanceReview[];
   agentSkillProfiles: AgentSkillProfile[];
+  predictionRecords: PredictionRecord[];
   learningEvents: LearningEvent[];
   decisionVault: DecisionVaultEntry[];
   warRoomSessions: WarRoomSession[];
@@ -488,6 +490,7 @@ class GameStore {
     institutionalMemory: [],
     agentPerformanceReviews: [],
     agentSkillProfiles: [],
+    predictionRecords: [],
     learningEvents: [],
     decisionVault: [],
     warRoomSessions: [],
@@ -791,6 +794,7 @@ class GameStore {
     EventBus.on("institutionalMemory:updated", (institutionalMemory) => this.set({ institutionalMemory }));
     EventBus.on("agentPerformanceReviews:updated", (agentPerformanceReviews) => this.set({ agentPerformanceReviews }));
     EventBus.on("agentSkillProfiles:updated", (agentSkillProfiles) => this.set({ agentSkillProfiles }));
+    EventBus.on("predictionRecords:updated", (predictionRecords) => this.set({ predictionRecords }));
     EventBus.on("learningEvents:updated", (learningEvents) => this.set({ learningEvents }));
     EventBus.on("decisionVault:updated", (decisionVault) => this.set({ decisionVault }));
     EventBus.on("warRoomSessions:updated", (warRoomSessions) => this.set({ warRoomSessions }));

@@ -2236,6 +2236,31 @@ export interface CeoDecisionRecord {
   resolvedAt: string | null;
 }
 
+// CEO directive "Features 26-30," Feature 29 — Prediction -> Outcome
+// Tracking (backend/app/prediction_tracking.py). Not the same "Feature
+// 29" as the older v0.7-numbering-scheme Reasoning Lab (an unrelated,
+// disclosed naming collision — see that module's own docstring). One
+// real, individually-addressable prediction per real trade-causing
+// decision, staked before its outcome was known and resolved later
+// purely from real, independent trade data.
+export type PredictionClaimType = "trade_direction";
+
+export interface PredictionRecord {
+  id: string;
+  decisionId: string;
+  symbol: string;
+  claimType: PredictionClaimType;
+  predictedDirection: "buy" | "sell";
+  confidencePct: number;
+  attributedAgents: AgentId[];
+  outcome: "pending" | "correct" | "incorrect";
+  resolvedTradeId: string | null;
+  resolvedPnlPct: number | null;
+  simDay: number;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
 export interface TimeState {
   day: number;
   hour: number; // 0-23
@@ -4531,6 +4556,8 @@ export interface GameSaveState {
   agentPerformanceReviews: AgentPerformanceReview[];
   // CEO directive "Features 26-30," Feature 28 — Academy + Skill Progression.
   agentSkillProfiles: AgentSkillProfile[];
+  // CEO directive "Features 26-30," Feature 29 — Prediction -> Outcome Tracking.
+  predictionRecords: PredictionRecord[];
   // CEO Company Health + Live Market Realism directive, Section 3 — one
   // capped, permanent LearningEvent per real Knowledge-tier crossing.
   learningEvents: LearningEvent[];

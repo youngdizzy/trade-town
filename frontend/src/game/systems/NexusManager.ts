@@ -7,6 +7,7 @@ import type {
   AgentKnowledgeState,
   AgentPerformanceReview,
   AgentSkillProfile,
+  PredictionRecord,
   BacktestSession,
   BlackBoxState,
   BlackSwanEventRecord,
@@ -166,6 +167,7 @@ interface NexusSnapshot {
   institutionalMemory: InstitutionalMemoryEntry[];
   agentPerformanceReviews: AgentPerformanceReview[];
   agentSkillProfiles: AgentSkillProfile[];
+  predictionRecords: PredictionRecord[];
   learningEvents: LearningEvent[];
   decisionVault: DecisionVaultEntry[];
   warRoomSessions: WarRoomSession[];
@@ -420,6 +422,7 @@ export class NexusManager {
   private static institutionalMemory: InstitutionalMemoryEntry[] = [];
   private static agentPerformanceReviews: AgentPerformanceReview[] = [];
   private static agentSkillProfiles: AgentSkillProfile[] = [];
+  private static predictionRecords: PredictionRecord[] = [];
   private static learningEvents: LearningEvent[] = [];
   private static decisionVault: DecisionVaultEntry[] = [];
   private static warRoomSessions: WarRoomSession[] = [];
@@ -839,6 +842,10 @@ export class NexusManager {
 
   static getAgentSkillProfiles(): AgentSkillProfile[] {
     return this.agentSkillProfiles;
+  }
+
+  static getPredictionRecords(): PredictionRecord[] {
+    return this.predictionRecords;
   }
 
   static getLearningEvents(): LearningEvent[] {
@@ -1521,6 +1528,11 @@ export class NexusManager {
     }
     this.agentSkillProfiles = update.agentSkillProfiles;
 
+    if (update.predictionRecords.length !== this.predictionRecords.length) {
+      EventBus.emit("predictionRecords:updated", update.predictionRecords);
+    }
+    this.predictionRecords = update.predictionRecords;
+
     if (update.learningEvents.length !== this.learningEvents.length) EventBus.emit("learningEvents:updated", update.learningEvents);
     this.learningEvents = update.learningEvents;
 
@@ -1762,6 +1774,7 @@ export class NexusManager {
     this.institutionalMemory = save.institutionalMemory ?? [];
     this.agentPerformanceReviews = save.agentPerformanceReviews ?? [];
     this.agentSkillProfiles = save.agentSkillProfiles ?? [];
+    this.predictionRecords = save.predictionRecords ?? [];
     this.learningEvents = save.learningEvents;
     this.decisionVault = save.decisionVault;
     this.warRoomSessions = save.warRoomSessions;
