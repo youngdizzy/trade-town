@@ -3318,6 +3318,56 @@ class CeoDecisionRecord(CamelModel):
     resolved_at: str | None = Field(default=None, alias="resolvedAt")
 
 
+# CEO directive "Features 26-30," Feature 29 — Prediction -> Outcome
+# Tracking (app/prediction_tracking.py). Not the same "Feature 29" as
+# app/reasoning_lab.py's older v0.7 versioning-scheme tag (a real,
+# unrelated, pre-existing naming collision between two independent
+# numbering systems — see that module's own docstring; this directive's
+# own 26-30 numbering is what's meant everywhere in this schema and its
+# sibling module). `claim_type` is a single real value today
+# ("trade_direction") — the one claim this codebase can honestly stake
+# BEFORE its outcome is known and resolve later against a real,
+# independent trade P&L, mirroring CeoDecisionRecord's own real
+# pending -> resolved lifecycle above, generalized to a persisted,
+# individually-addressable per-prediction record (which
+# app/analytics.py's confidence_accuracy()/research_accuracy() — the
+# existing aggregate calibration formulas Feature 27 already reuses —
+# structurally cannot provide; see the module docstring for the full
+# research finding on why this is additive, not a duplicate).
+PredictionClaimType = Literal["trade_direction"]
+
+
+class PredictionRecord(CamelModel):
+    """One real, individually-addressable prediction, staked before its
+    outcome is knowable and resolved later purely from real, independent
+    data. `confidence_pct` and `predicted_direction` are the exact real
+    values already stamped on the originating `TradeDecision`/
+    `CeoDecisionRecord` at decision time — nothing here is a new
+    computation. `outcome` stays `"pending"` until a real closed
+    `PaperTrade` matches this record's `decision_id` (the same real link
+    `app/journal.py` already stamps onto every closed trade for
+    `CeoDecisionRecord`'s own grading) — never resolved early, never
+    resolved from data that predates `created_at`."""
+
+    id: str
+    decision_id: str = Field(alias="decisionId")
+    symbol: str
+    claim_type: PredictionClaimType = Field(alias="claimType")
+    predicted_direction: Literal["buy", "sell"] = Field(alias="predictedDirection")
+    confidence_pct: float = Field(alias="confidencePct")
+    # The real supporting agents behind this trade decision (see
+    # app/executive.py's resolve_proposal) — never a fabricated
+    # per-agent confidence split; this is one real, shared claim
+    # multiple agents' real votes actually backed.
+    attributed_agents: list[AgentId] = Field(alias="attributedAgents")
+    outcome: Literal["pending", "correct", "incorrect"] = "pending"
+    resolved_trade_id: str | None = Field(default=None, alias="resolvedTradeId")
+    resolved_pnl_pct: float | None = Field(default=None, alias="resolvedPnlPct")
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+    resolved_at: str | None = Field(default=None, alias="resolvedAt")
+
+
 # v0.7 Feature 22 — Market Environment Simulation. Every regime is
 # computed server-side from the same real trend/volatility signals
 # app/market_data.py already exposes (trend_pct/volatility_pct,
@@ -4255,15 +4305,17 @@ class KnowledgeQualityScore(CamelModel):
 
 
 # CEO directive "Features 26-30: Agent Intelligence, Learning &
-# Institutional Memory System" — Feature 26 (Institutional Memory 2.0).
-# See app/institutional_memory.py's module docstring for the full design
-# rationale. Deliberately scoped to only the seven source kinds this
+# Institutional Memory System" — Feature 26 (Institutional Memory 2.0),
+# extended by Feature 29 (Prediction -> Outcome Tracking, see
+# app/prediction_tracking.py) which added "prediction" below. See
+# app/institutional_memory.py's module docstring for the full design
+# rationale. Deliberately scoped to only the eight source kinds this
 # codebase can honestly back today with a real originating record;
-# "prediction" (Feature 29), "agent_debate"/"performance_review"
-# (Features 30/27) are intentionally NOT added here — each is deferred
-# until its own feature is actually built and can honestly promote into
-# this sink, matching the CEO's own 26→27→28→29→30 pipeline order. This
-# is a disclosed staging decision, not a silent gap.
+# "agent_debate"/"performance_review" (Features 30/27) are intentionally
+# NOT added here — each is deferred until its own feature is actually
+# built and can honestly promote into this sink, matching the CEO's own
+# 26→27→28→29→30 pipeline order. This is a disclosed staging decision,
+# not a silent gap.
 InstitutionalMemorySource = Literal[
     "behavioral_mistake",
     "behavioral_success",
@@ -4272,6 +4324,7 @@ InstitutionalMemorySource = Literal[
     "model_validation",
     "risk_event",
     "market_regime_shift",
+    "prediction",
 ]
 
 # "active" — the current, standing read. "superseded" — a newer entry
@@ -7011,6 +7064,13 @@ class GameSaveState(CamelModel):
     # training-recommendation design.
     agent_skill_profiles: list[AgentSkillProfile] = Field(
         default_factory=list, alias="agentSkillProfiles"
+    )
+    # CEO directive "Features 26-30," Feature 29 — Prediction -> Outcome
+    # Tracking (app/prediction_tracking.py). One capped, permanent
+    # PredictionRecord per real trade-direction claim staked before its
+    # outcome was known.
+    prediction_records: list[PredictionRecord] = Field(
+        default_factory=list, alias="predictionRecords"
     )
     # v0.7 Feature 49 (Phase 3) — the Foundational Mentor Program
     # (app/foundational_mentors.py). See FoundationalMentorState's own

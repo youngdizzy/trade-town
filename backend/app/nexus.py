@@ -114,9 +114,11 @@ from app.memory import MAX_MEMORY_RECORDS, record
 from app.mentor import compute_mentor_state, compute_thinking_profiles, generate_question_of_the_day, record_question
 from app.performance_review import compute_agent_performance_review, latest_review_for_agent, record_agent_performance_review
 from app.skill_progression import compute_agent_skill_profile, latest_skill_profile_for_agent, record_agent_skill_profile
+from app.prediction_tracking import MAX_PREDICTION_RECORDS, build_prediction_record, grade_predictions, should_promote_prediction_outcome
 from app.institutional_memory import (
     promote_case_study,
     promote_market_regime_shift,
+    promote_prediction_outcome,
     promote_risk_event,
     record_institutional_memory,
 )
@@ -197,6 +199,7 @@ from app.schemas import (
     CalendarState,
     CaseStudy,
     CeoDecisionRecord,
+    PredictionRecord,
     ChallengeReport,
     BlackSwanEventRecord,
     BlackSwanReport,
@@ -877,6 +880,7 @@ def _apply_operating_mode(
     memory: list[MemoryRecord],
     decisions: list[TradeDecision],
     ceo_decisions: list[CeoDecisionRecord],
+    prediction_records: list[PredictionRecord],
     gatekeeper_rejections: list[GatekeeperRejection],
     news: list[NewsItem],
     challenge_reports: list[ChallengeReport],
@@ -1027,6 +1031,9 @@ def _apply_operating_mode(
         record_ceo_decision(memory, decision, max_records=risk_limits.max_memory_records)
         decisions.append(decision)
         ceo_decisions.append(record)
+        new_prediction = build_prediction_record(decision, record, sim_day=sim_day)
+        if new_prediction is not None:
+            prediction_records.append(new_prediction)
 
         challenge_report = next((c for c in reversed(challenge_reports) if c.proposal_id == proposal.id), None)
         meeting_log = record_meeting_log_entry(
@@ -1169,6 +1176,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     decisions = list(state.decisions)
     trade_proposals = list(state.trade_proposals)
     ceo_decisions = list(state.ceo_decisions)
+    # CEO directive "Features 26-30," Feature 29 — Prediction -> Outcome
+    # Tracking (app/prediction_tracking.py).
+    prediction_records: list[PredictionRecord] = list(state.prediction_records)
     debates: list[Debate] = list(state.debates)
     gatekeeper_rejections: list[GatekeeperRejection] = list(state.gatekeeper_rejections)
     opportunity_rejections: list[OpportunityRejection] = list(state.opportunity_rejections)
@@ -1704,6 +1714,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         memory,
         decisions,
         ceo_decisions,
+        prediction_records,
         gatekeeper_rejections,
         news,
         challenge_reports,
@@ -1737,6 +1748,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         record_ceo_decision(memory, expired_decision, max_records=effective_risk_limits.max_memory_records)
         decisions.append(expired_decision)
         ceo_decisions.append(expired_record)
+        new_expired_prediction = build_prediction_record(expired_decision, expired_record, sim_day=new_time.day)
+        if new_expired_prediction is not None:
+            prediction_records.append(new_expired_prediction)
         expired_challenge_report = next((c for c in reversed(challenge_reports) if c.proposal_id == expired.id), None)
         meeting_log = record_meeting_log_entry(
             meeting_log,
@@ -1772,6 +1786,22 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     ceo_decisions = grade_ceo_decisions(ceo_decisions, paper_portfolio.trade_history)
     if len(ceo_decisions) > MAX_CEO_DECISIONS:
         del ceo_decisions[: len(ceo_decisions) - MAX_CEO_DECISIONS]
+
+    # CEO directive "Features 26-30," Feature 29 — the same real
+    # decision_id match, run right alongside grade_ceo_decisions above.
+    # Any prediction newly resolved this tick and honestly notable (real
+    # high confidence, resolved wrong) is promoted into Institutional
+    # Memory (Feature 26) — never every resolved prediction, never a
+    # re-promotion of one already filed in a prior tick.
+    pending_prediction_ids = {p.id for p in prediction_records if p.outcome == "pending"}
+    prediction_records = grade_predictions(prediction_records, paper_portfolio.trade_history)
+    if len(prediction_records) > MAX_PREDICTION_RECORDS:
+        del prediction_records[: len(prediction_records) - MAX_PREDICTION_RECORDS]
+    for prediction in prediction_records:
+        if prediction.id in pending_prediction_ids and prediction.outcome != "pending" and should_promote_prediction_outcome(prediction):
+            institutional_memory = record_institutional_memory(
+                institutional_memory, promote_prediction_outcome(prediction), current_sim_day=new_time.day
+            )
 
     # v0.7 Feature 20 — resolves any Gatekeeper rejection whose real
     # evaluation window has elapsed, purely from the symbol's own real
@@ -2869,6 +2899,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "decisions": decisions,
             "trade_proposals": trade_proposals,
             "ceo_decisions": ceo_decisions,
+            "prediction_records": prediction_records,
             "debates": debates,
             "gatekeeper_rejections": gatekeeper_rejections,
             "opportunity_rejections": opportunity_rejections,

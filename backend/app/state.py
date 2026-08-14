@@ -46,6 +46,7 @@ from app.devils_advocate import MAX_CHALLENGE_REPORTS, generate_challenge_report
 from app.emergency_stop import activate_emergency_stop as _activate_emergency_stop
 from app.emergency_stop import resume_trading as _resume_trading
 from app.executive import MAX_CEO_DECISIONS, MAX_PROPOSAL_HOLDS, AnalystChoice, hold_proposal, modify_proposal, resolve_proposal
+from app.prediction_tracking import MAX_PREDICTION_RECORDS, build_prediction_record
 from app.executive_intelligence import (
     compute_executive_accuracy_scores,
     compute_executive_recommendation,
@@ -1982,6 +1983,13 @@ class GameState:
             if len(ceo_decisions) > MAX_CEO_DECISIONS:
                 del ceo_decisions[: len(ceo_decisions) - MAX_CEO_DECISIONS]
 
+            prediction_records = list(self.data.prediction_records)
+            new_prediction = build_prediction_record(decision, ceo_record, sim_day=self.data.time.day)
+            if new_prediction is not None:
+                prediction_records.append(new_prediction)
+                if len(prediction_records) > MAX_PREDICTION_RECORDS:
+                    del prediction_records[: len(prediction_records) - MAX_PREDICTION_RECORDS]
+
             gatekeeper_rejections = list(self.data.gatekeeper_rejections)
             verdict = decision.gatekeeper_verdict
             if verdict is not None and not verdict.approved and current_price is not None:
@@ -2009,6 +2017,7 @@ class GameState:
                     "paper_portfolio": portfolio,
                     "decisions": decisions,
                     "ceo_decisions": ceo_decisions,
+                    "prediction_records": prediction_records,
                     "gatekeeper_rejections": gatekeeper_rejections,
                     "memory": memory,
                     "executive_meeting_log": meeting_log,

@@ -16,20 +16,25 @@ from app.institutional_memory import (
     promote_hall_of_fame_strategy,
     promote_market_regime_shift,
     promote_model_validation,
+    promote_prediction_outcome,
     promote_risk_event,
     record_institutional_memory,
     retrieve_relevant_memory,
     should_promote_model_validation,
     supersede_memory,
 )
+from app.prediction_tracking import build_prediction_record
 from app.schemas import (
+    AgentId,
     CaseStudy,
+    CeoDecisionRecord,
     FailedStrategyArchiveEntry,
     InstitutionalMemoryEntry,
     ModelValidationCheck,
     ModelValidationReport,
     RiskWarning,
     StrategyHallOfFameEntry,
+    TradeDecision,
 )
 
 
@@ -344,3 +349,61 @@ class TestRetrieveRelevantMemory:
 
     def test_min_relevance_constant_is_a_real_positive_threshold(self) -> None:
         assert MIN_RELEVANCE_FOR_RETRIEVAL > 0.0
+
+
+def _resolved_prediction(*, confidence: float, outcome: str, agents: list[AgentId] | None = None, pnl_pct: float = -2.0):
+    decision = TradeDecision(
+        id="decision-pred-1",
+        symbol="NEXA",
+        outcome="trade",
+        researchSummary="test",
+        technicalSummary="test",
+        fundamentalSummary="test",
+        riskSummary="test",
+        supportingAgents=agents if agents is not None else ["scout"],
+        opposingAgents=[],
+        confidence=confidence,
+        finalReasoning="test",
+        orderId="pos-1",
+        createdAt=_now_iso(),
+    )
+    record = CeoDecisionRecord(
+        id="ceo-pred-1",
+        proposalId="proposal-1",
+        symbol="NEXA",
+        category="stock",  # type: ignore[arg-type]
+        aiRecommendation="buy",  # type: ignore[arg-type]
+        ceoDecision="buy",  # type: ignore[arg-type]
+        agreedWithAi=True,
+        decisionId="decision-pred-1",
+        outcome="pending",  # type: ignore[arg-type]
+        createdAt=_now_iso(),
+    )
+    prediction = build_prediction_record(decision, record, sim_day=5)
+    assert prediction is not None
+    return prediction.model_copy(update={"outcome": outcome, "resolved_pnl_pct": pnl_pct, "resolved_trade_id": "trade-1", "resolved_at": _now_iso()})
+
+
+class TestPromotePredictionOutcome:
+    def test_promotion_cites_the_real_source_prediction(self) -> None:
+        prediction = _resolved_prediction(confidence=85.0, outcome="incorrect")
+        entry = promote_prediction_outcome(prediction)
+        assert entry.source == "prediction"
+        assert entry.event_ref == prediction.id
+        assert "85" in entry.observation
+        assert "NEXA" in entry.observation
+
+    def test_single_supporting_agent_is_attributed(self) -> None:
+        prediction = _resolved_prediction(confidence=85.0, outcome="incorrect", agents=["scout"])
+        entry = promote_prediction_outcome(prediction)
+        assert entry.originating_agent == "scout"
+
+    def test_multiple_supporting_agents_are_not_falsely_attributed_to_one(self) -> None:
+        prediction = _resolved_prediction(confidence=85.0, outcome="incorrect", agents=["scout", "atlas"])
+        entry = promote_prediction_outcome(prediction)
+        assert entry.originating_agent is None
+
+    def test_recorded_entry_gets_fresh_confidence_and_relevance(self) -> None:
+        prediction = _resolved_prediction(confidence=85.0, outcome="incorrect")
+        memory = record_institutional_memory([], promote_prediction_outcome(prediction), current_sim_day=5)
+        assert memory[0].relevance_pct == 100.0

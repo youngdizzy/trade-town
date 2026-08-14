@@ -72,6 +72,7 @@ from app.schemas import (
     InstitutionalMemorySource,
     MarketEnvironmentRegime,
     ModelValidationReport,
+    PredictionRecord,
     RiskWarning,
     StrategyHallOfFameEntry,
     SUCCESS_CASE_STUDY_CATEGORIES,
@@ -252,6 +253,37 @@ def promote_market_regime_shift(
         provenance=f"Promoted from a real MarketEnvironmentEntry regime change ({event_ref}), sim day {sim_day}.",
         relevancePct=0.0,
         supportingEvidence=[],
+    )
+
+
+def promote_prediction_outcome(record: PredictionRecord) -> InstitutionalMemoryEntry:
+    """CEO directive Feature 29 — only called when
+    app/prediction_tracking.py's should_promote_prediction_outcome()
+    says this is a real, notable miscalibration (high stated confidence,
+    resolved wrong), not every resolved prediction. `originating_agent`
+    is only ever a single real agent id, matching every other multi-
+    agent-source promote_* function's own honesty rule above — this
+    record's real supporting agents may be more than one, so a single
+    attribution would misrepresent it unless exactly one agent backed
+    it."""
+    return InstitutionalMemoryEntry(
+        id=f"im-prediction-{record.id}",
+        source="prediction",
+        createdAt=_now_iso(),
+        simDay=record.sim_day,
+        originatingAgent=record.attributed_agents[0] if len(record.attributed_agents) == 1 else None,
+        eventRef=record.id,
+        marketRegime=None,
+        observation=(
+            f"A {record.confidence_pct:.0f}% confidence {record.predicted_direction.upper()} prediction on "
+            f"{record.symbol} resolved incorrect (real P&L {record.resolved_pnl_pct:+.2f}%)."
+        ),
+        interpretation="High stated confidence did not track the real outcome — a real calibration gap, not necessarily a process failure.",
+        lesson=f"Treat future high-confidence {record.symbol} calls with extra scrutiny until calibration on this symbol improves.",
+        confidence=0.0,
+        provenance=f"Promoted from PredictionRecord {record.id} (trade_direction, {record.predicted_direction}), resolved sim day {record.sim_day}.",
+        relevancePct=0.0,
+        supportingEvidence=list(record.attributed_agents),
     )
 
 
