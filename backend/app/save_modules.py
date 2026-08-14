@@ -170,6 +170,7 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         "agent_skill_profiles",
         "prediction_records",
         "failure_classifications",
+        "compliance_incidents",
         "learning_events",
         "decision_vault",
         "war_room_sessions",

@@ -5226,6 +5226,114 @@ class CeoOverrideRecord(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
+# CEO directive "Features 31-35: Compliance, Governance & Continuous
+# Improvement System," Feature 31 — the Compliance Incident Resolution
+# Engine. Research finding, documented here per the directive's own
+# "research first" rule: `app/audit_log.py`'s `compute_incidents()` is a
+# PURE, EPHEMERAL FILTER over the Audit Log (severity != "info"),
+# recomputed fresh on every `GET /api/audit/incidents` call, never
+# persisted — the panel's own disclosed UI text says so directly:
+# "There is no open/acknowledged/resolved workflow: incident resolution
+# is not a real mechanic anywhere in this codebase today." That is the
+# real, confirmed gap this schema closes — a genuine, persisted,
+# stateful incident record, never a second audit log and never a
+# duplicate detection mechanism (every ComplianceIncident is created
+# FROM a real AuditEntry the existing `compute_audit_log()` already
+# produces, matched 1:1 by `source_entry_id`, never independently
+# detected a second way).
+IncidentStatus = Literal[
+    "open",
+    "investigating",
+    "remediation",
+    "awaiting_verification",
+    "resolved",
+    "reopened",
+]
+
+# The real, ordered lifecycle the CEO's own brief specified. Enforced as
+# an explicit allowed-transitions map (see app/compliance_incidents.py's
+# ALLOWED_TRANSITIONS) — OPEN -> RESOLVED in one step is structurally
+# impossible, never merely discouraged by convention.
+IncidentRootCause = Literal[
+    "process_failure",
+    "control_failure",
+    "data_failure",
+    "model_failure",
+    "human_error",
+    "governance_failure",
+    "communication_failure",
+    "unknown",
+]
+
+IncidentVerificationStatus = Literal["not_verified", "verified", "verification_failed"]
+
+
+class ComplianceIncident(CamelModel):
+    """One real incident case, opened from a real Audit Log entry the
+    instant it's created (never a fabricated backfill) and carried
+    through a real, enforced lifecycle. `created_at`/`sim_day` are always
+    the real source AuditEntry's own values — an incident's origin is
+    never rewritten. `resolved_at`/`root_cause`/`corrective_action`/
+    `verifier` stay `None` (UNKNOWN / NOT AVAILABLE, never a fabricated
+    default) until a real `verify_and_resolve()` call sets them together,
+    the one and only real path to `status="resolved"`. `reopened_count`
+    and `status="reopened"` preserve history rather than rewriting it —
+    a reopened incident's original `created_at`/`resolved_at` from its
+    first resolution are never cleared, only superseded by the new
+    lifecycle fields that follow."""
+
+    id: str
+    # The real AuditEntry.id this incident was opened from — the one
+    # real link back to its originating record (a CeoDecisionRecord, a
+    # GatekeeperRejection, a RiskWarning, a DisciplineReview, ...).
+    source_entry_id: str = Field(alias="sourceEntryId")
+    category: AuditEventCategory
+    severity: AlertSeverity
+    department: str
+    summary: str
+    detail: str
+    related_id: str | None = Field(default=None, alias="relatedId")
+    created_at: str = Field(alias="createdAt")
+    sim_day: int = Field(alias="simDay")
+
+    status: IncidentStatus = "open"
+    owner: AgentId | None = Field(default=None)
+    evidence: list[str] = Field(default_factory=list)
+    remediation_plan: str | None = Field(default=None, alias="remediationPlan")
+    # A real in-game-day SLA deadline, stamped only once remediation
+    # actually begins (begin_remediation()) — never guessed at creation
+    # time before anyone has assessed the real work involved.
+    deadline_sim_day: int | None = Field(default=None, alias="deadlineSimDay")
+
+    resolved_at: str | None = Field(default=None, alias="resolvedAt")
+    resolution_sim_day: int | None = Field(default=None, alias="resolutionSimDay")
+    verification_status: IncidentVerificationStatus = "not_verified"
+    verifier: AgentId | None = Field(default=None)
+    root_cause: IncidentRootCause | None = Field(default=None, alias="rootCause")
+    corrective_action: str | None = Field(default=None, alias="correctiveAction")
+
+    reopened_count: int = Field(default=0, alias="reopenedCount")
+    updated_at: str = Field(alias="updatedAt")
+
+
+# CEO directive "Features 31-35," Feature 31 — a real, disclosed
+# aggregate over the persisted incident backlog. Every field here is
+# either a direct count or a value computed by a named, documented
+# function in app/compliance_incidents.py (never a second,
+# independently-blended score). `average_resolution_sim_days` is `None`
+# (NOT_ENOUGH_EVIDENCE) when nothing has ever been resolved through a
+# real lifecycle yet — never a fabricated 0.
+class ComplianceIncidentSummary(CamelModel):
+    total_count: int = Field(alias="totalCount")
+    open_count: int = Field(alias="openCount")
+    resolved_count: int = Field(alias="resolvedCount")
+    overdue_count: int = Field(alias="overdueCount")
+    reopened_incident_count: int = Field(alias="reopenedIncidentCount")
+    severity_weighted_backlog: float = Field(alias="severityWeightedBacklog")
+    average_resolution_sim_days: float | None = Field(default=None, alias="averageResolutionSimDays")
+    updated_at: str = Field(alias="updatedAt")
+
+
 # Design Bible Chapter 75 — Company Trading Modes & Institutional Capital
 # Protection (app/trading_modes.py). "day_trading"/"swing_trading"/
 # "hybrid" are the CEO's real operating policy; TradingStyle is the
@@ -7146,6 +7254,12 @@ class GameSaveState(CamelModel):
     # FailureClassification per real closed, losing trade.
     failure_classifications: list[FailureClassification] = Field(
         default_factory=list, alias="failureClassifications"
+    )
+    # CEO directive "Features 31-35: Compliance, Governance & Continuous
+    # Improvement System," Feature 31 — the Compliance Incident
+    # Resolution Engine (app/compliance_incidents.py).
+    compliance_incidents: list[ComplianceIncident] = Field(
+        default_factory=list, alias="complianceIncidents"
     )
     # v0.7 Feature 49 (Phase 3) — the Foundational Mentor Program
     # (app/foundational_mentors.py). See FoundationalMentorState's own

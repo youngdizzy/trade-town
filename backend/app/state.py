@@ -117,6 +117,7 @@ from app.schemas import (
     EntityTransform,
     FounderState,
     FoundationalMentorId,
+    IncidentRootCause,
     FoundationalResourceType,
     GameSaveState,
     GatekeeperRejection,
@@ -169,6 +170,15 @@ from app.strategy_lab import (
     generate_strategy_executive_review,
     generate_strategy_founder_approval,
     generate_strategy_retirement_outcome,
+)
+from app.compliance_incidents import (
+    add_evidence,
+    begin_remediation,
+    fail_verification,
+    reopen,
+    start_investigating,
+    submit_for_verification,
+    verify_and_resolve,
 )
 from app.institutional_memory import (
     promote_failed_strategy,
@@ -2153,6 +2163,114 @@ class GameState:
         hour, minute = divmod(total_minutes, 60)
         new_time = TimeState(day=day, hour=hour, minute=minute)
         self.data = nexus.tick(self.data, new_time, minutes)
+
+    # CEO directive "Features 31-35: Compliance, Governance & Continuous
+    # Improvement System," Feature 31 — the Compliance Incident
+    # Resolution Engine's real lifecycle mutations. Every method below
+    # follows hold_trade_proposal()/modify_trade_proposal()'s own exact
+    # pattern: locate the real incident, call the pure transition
+    # function in app/compliance_incidents.py, return the same
+    # "None means invalid transition, tell the caller" contract those
+    # methods already established — never a silent no-op, never a
+    # forced transition.
+    async def start_investigating_incident(self, incident_id: str, owner: AgentId) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            incident = next((i for i in self.data.compliance_incidents if i.id == incident_id), None)
+            if incident is None:
+                return self.data, f"No compliance incident with id {incident_id!r}."
+            updated = start_investigating(incident, owner=owner)
+            if updated is None:
+                return self.data, f"Incident {incident_id!r} is {incident.status!r} — cannot start investigating from that status."
+            self.data = self.data.model_copy(
+                update={"compliance_incidents": [updated if i.id == incident_id else i for i in self.data.compliance_incidents]}
+            )
+            return self.data, None
+
+    async def begin_incident_remediation(
+        self, incident_id: str, remediation_plan: str, deadline_sim_day: int
+    ) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            incident = next((i for i in self.data.compliance_incidents if i.id == incident_id), None)
+            if incident is None:
+                return self.data, f"No compliance incident with id {incident_id!r}."
+            updated = begin_remediation(incident, remediation_plan=remediation_plan, deadline_sim_day=deadline_sim_day)
+            if updated is None:
+                return self.data, f"Incident {incident_id!r} is {incident.status!r} — cannot begin remediation from that status."
+            self.data = self.data.model_copy(
+                update={"compliance_incidents": [updated if i.id == incident_id else i for i in self.data.compliance_incidents]}
+            )
+            return self.data, None
+
+    async def add_incident_evidence(self, incident_id: str, note: str) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            incident = next((i for i in self.data.compliance_incidents if i.id == incident_id), None)
+            if incident is None:
+                return self.data, f"No compliance incident with id {incident_id!r}."
+            updated = add_evidence(incident, note=note)
+            self.data = self.data.model_copy(
+                update={"compliance_incidents": [updated if i.id == incident_id else i for i in self.data.compliance_incidents]}
+            )
+            return self.data, None
+
+    async def submit_incident_for_verification(self, incident_id: str) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            incident = next((i for i in self.data.compliance_incidents if i.id == incident_id), None)
+            if incident is None:
+                return self.data, f"No compliance incident with id {incident_id!r}."
+            updated = submit_for_verification(incident)
+            if updated is None:
+                return self.data, f"Incident {incident_id!r} is {incident.status!r} — cannot submit for verification from that status."
+            self.data = self.data.model_copy(
+                update={"compliance_incidents": [updated if i.id == incident_id else i for i in self.data.compliance_incidents]}
+            )
+            return self.data, None
+
+    async def fail_incident_verification(self, incident_id: str, note: str) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            incident = next((i for i in self.data.compliance_incidents if i.id == incident_id), None)
+            if incident is None:
+                return self.data, f"No compliance incident with id {incident_id!r}."
+            updated = fail_verification(incident, note=note)
+            if updated is None:
+                return self.data, f"Incident {incident_id!r} is {incident.status!r} — verification can only fail from awaiting_verification."
+            self.data = self.data.model_copy(
+                update={"compliance_incidents": [updated if i.id == incident_id else i for i in self.data.compliance_incidents]}
+            )
+            return self.data, None
+
+    async def verify_and_resolve_incident(
+        self, incident_id: str, verifier: AgentId, root_cause: IncidentRootCause, corrective_action: str
+    ) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            incident = next((i for i in self.data.compliance_incidents if i.id == incident_id), None)
+            if incident is None:
+                return self.data, f"No compliance incident with id {incident_id!r}."
+            updated = verify_and_resolve(
+                incident,
+                verifier=verifier,
+                root_cause=root_cause,
+                corrective_action=corrective_action,
+                sim_day=self.data.time.day,
+            )
+            if updated is None:
+                return self.data, f"Incident {incident_id!r} is {incident.status!r} — can only resolve from awaiting_verification."
+            self.data = self.data.model_copy(
+                update={"compliance_incidents": [updated if i.id == incident_id else i for i in self.data.compliance_incidents]}
+            )
+            return self.data, None
+
+    async def reopen_incident(self, incident_id: str, note: str) -> tuple[GameSaveState, str | None]:
+        async with self.lock:
+            incident = next((i for i in self.data.compliance_incidents if i.id == incident_id), None)
+            if incident is None:
+                return self.data, f"No compliance incident with id {incident_id!r}."
+            updated = reopen(incident, note=note)
+            if updated is None:
+                return self.data, f"Incident {incident_id!r} is {incident.status!r} — can only reopen a resolved incident."
+            self.data = self.data.model_copy(
+                update={"compliance_incidents": [updated if i.id == incident_id else i for i in self.data.compliance_incidents]}
+            )
+            return self.data, None
 
     async def tick(self, minutes: int) -> GameSaveState:
         """Advance the game clock and run one NEXUS orchestration step. Called by the sim loop."""

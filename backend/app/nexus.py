@@ -116,6 +116,8 @@ from app.performance_review import compute_agent_performance_review, latest_revi
 from app.skill_progression import compute_agent_skill_profile, latest_skill_profile_for_agent, record_agent_skill_profile
 from app.prediction_tracking import MAX_PREDICTION_RECORDS, build_prediction_record, grade_predictions, should_promote_prediction_outcome
 from app.failure_review import classify_failure, record_failure_classification, should_promote_failure_classification
+from app.audit_log import compute_audit_log
+from app.compliance_incidents import sync_incidents_from_audit_log
 from app.institutional_memory import (
     promote_case_study,
     promote_failure_classification,
@@ -200,6 +202,7 @@ from app.schemas import (
     BlackBoxState,
     CalendarState,
     CaseStudy,
+    ComplianceIncident,
     CeoDecisionRecord,
     PredictionRecord,
     ChallengeReport,
@@ -1202,6 +1205,12 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # CEO directive "Features 26-30," Feature 30 — the Failure Review
     # Board (app/failure_review.py).
     failure_classifications: list[FailureClassification] = list(state.failure_classifications)
+    # CEO directive "Features 31-35," Feature 31 — the Compliance
+    # Incident Resolution Engine (app/compliance_incidents.py). Synced
+    # near the end of this tick, once every other list below has
+    # reached its final value for the tick — see that sync call's own
+    # comment further down.
+    compliance_incidents: list[ComplianceIncident] = list(state.compliance_incidents)
     # CEO directive "Features 26-30," Feature 26 — Institutional Memory
     # 2.0 (app/institutional_memory.py).
     institutional_memory: list[InstitutionalMemoryEntry] = list(state.institutional_memory)
@@ -2894,6 +2903,29 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         updatedAt=_now_iso(),
     )
 
+    # CEO directive "Features 31-35: Compliance, Governance & Continuous
+    # Improvement System," Feature 31 — sync real ComplianceIncidents
+    # from this tick's own final Audit Log (app/audit_log.py's real,
+    # already-built compute_audit_log(), never a second incident-
+    # detection system). Placed here, immediately before the tick's
+    # final return, so every list it reads (ceo_decisions,
+    # gatekeeper_rejections, opportunity_rejections, risk_warnings,
+    # discipline_reviews, memory, black_swan_events) has already reached
+    # its fully-updated value for this tick — no incident-worthy event
+    # from this tick is missed.
+    audit_entries_for_incidents = compute_audit_log(
+        ceo_decisions=ceo_decisions,
+        gatekeeper_rejections=gatekeeper_rejections,
+        opportunity_rejections=opportunity_rejections,
+        risk_warnings=risk_warnings,
+        discipline_reviews=discipline_reviews,
+        memory=memory,
+        black_swan_events=black_swan_events,
+        accounts=state.accounts,
+        current_sim_day=new_time.day,
+    )
+    compliance_incidents = sync_incidents_from_audit_log(compliance_incidents, audit_entries_for_incidents)
+
     return state.model_copy(
         update={
             # NOTE: model_copy(update=...) writes directly into the model's
@@ -2962,6 +2994,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "discipline_reviews": discipline_reviews,
             "case_studies": case_studies,
             "failure_classifications": failure_classifications,
+            "compliance_incidents": compliance_incidents,
             "institutional_memory": institutional_memory,
             "agent_performance_reviews": agent_performance_reviews,
             "agent_skill_profiles": agent_skill_profiles,
