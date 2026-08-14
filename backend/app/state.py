@@ -169,6 +169,13 @@ from app.strategy_lab import (
     generate_strategy_founder_approval,
     generate_strategy_retirement_outcome,
 )
+from app.institutional_memory import (
+    promote_failed_strategy,
+    promote_hall_of_fame_strategy,
+    promote_model_validation,
+    record_institutional_memory,
+    should_promote_model_validation,
+)
 from app.model_validation import cap_strategy_model_validations, generate_model_validation_report
 from app.talent import mark_talent_report_viewed
 from app.watchlist import default_watchlist
@@ -1530,15 +1537,22 @@ class GameState:
             strategy_model_validations = cap_strategy_model_validations([*self.data.strategy_model_validations, model_validation])
             strategy_executive_reviews = cap_strategy_executive_reviews([*self.data.strategy_executive_reviews, executive_review])
             strategy_founder_approvals = cap_strategy_founder_approvals([*self.data.strategy_founder_approvals, founder_approval])
-            self.data = self.data.model_copy(
-                update={
-                    "strategies": strategies,
-                    "strategy_reviews": strategy_reviews,
-                    "strategy_model_validations": strategy_model_validations,
-                    "strategy_executive_reviews": strategy_executive_reviews,
-                    "strategy_founder_approvals": strategy_founder_approvals,
-                }
-            )
+            update: dict[str, object] = {
+                "strategies": strategies,
+                "strategy_reviews": strategy_reviews,
+                "strategy_model_validations": strategy_model_validations,
+                "strategy_executive_reviews": strategy_executive_reviews,
+                "strategy_founder_approvals": strategy_founder_approvals,
+            }
+            # Feature 26 — only a non-"approved" verdict is a real
+            # lesson worth promoting (see should_promote_model_
+            # validation()); a routine approval is the expected outcome
+            # of Meridian's process working normally, not a finding.
+            if should_promote_model_validation(model_validation):
+                update["institutional_memory"] = record_institutional_memory(
+                    self.data.institutional_memory, promote_model_validation(model_validation), current_sim_day=self.data.time.day
+                )
+            self.data = self.data.model_copy(update=update)
             return self.data, None
 
     async def decide_strategy_review(self, review_id: str, approve: bool) -> tuple[GameSaveState, str | None]:
@@ -1631,11 +1645,17 @@ class GameState:
                 update["strategy_hall_of_fame"] = cap_strategy_hall_of_fame([*self.data.strategy_hall_of_fame, hall_of_fame_entry])
                 update["company_dna_legacy"] = nudge_legacy(dict(self.data.company_dna_legacy), "research_rigor", STRATEGY_HALL_OF_FAME_NUDGE)
                 record_strategy_hall_of_fame_entry(memory, hall_of_fame_entry, max_records=self.data.risk_limits.max_memory_records)
+                update["institutional_memory"] = record_institutional_memory(
+                    self.data.institutional_memory, promote_hall_of_fame_strategy(hall_of_fame_entry), current_sim_day=self.data.time.day
+                )
             else:
                 assert failed_archive_entry is not None
                 new_failed_archive = cap_strategy_failed_archive([*self.data.strategy_failed_archive, failed_archive_entry])
                 update["strategy_failed_archive"] = new_failed_archive
                 record_strategy_failed_archive_entry(memory, failed_archive_entry, max_records=self.data.risk_limits.max_memory_records)
+                update["institutional_memory"] = record_institutional_memory(
+                    self.data.institutional_memory, promote_failed_strategy(failed_archive_entry), current_sim_day=self.data.time.day
+                )
                 # Design Bible Chapter 74 Part 1 — the Strategy Retirement
                 # Cluster generator, checked at the one real place a
                 # retirement happens (a real CEO/player action, not

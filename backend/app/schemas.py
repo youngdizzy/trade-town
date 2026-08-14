@@ -4254,6 +4254,93 @@ class KnowledgeQualityScore(CamelModel):
     overall_score: float = Field(alias="overallScore")
 
 
+# CEO directive "Features 26-30: Agent Intelligence, Learning &
+# Institutional Memory System" — Feature 26 (Institutional Memory 2.0).
+# See app/institutional_memory.py's module docstring for the full design
+# rationale. Deliberately scoped to only the seven source kinds this
+# codebase can honestly back today with a real originating record;
+# "prediction" (Feature 29), "agent_debate"/"performance_review"
+# (Features 30/27) are intentionally NOT added here — each is deferred
+# until its own feature is actually built and can honestly promote into
+# this sink, matching the CEO's own 26→27→28→29→30 pipeline order. This
+# is a disclosed staging decision, not a silent gap.
+InstitutionalMemorySource = Literal[
+    "behavioral_mistake",
+    "behavioral_success",
+    "strategy_failure",
+    "strategy_success",
+    "model_validation",
+    "risk_event",
+    "market_regime_shift",
+]
+
+# "active" — the current, standing read. "superseded" — a newer entry
+# now supersedes this one (an intentional update, not a contradiction);
+# see supersede_memory(). "contradicted" — a newer observation disagreed
+# with this one, and both are kept (see find_contradicting_or_related())
+# rather than the newer one silently overwriting the older. "stale" —
+# reserved for a future recency-based downgrade; nothing in this piece
+# sets it automatically today (retrieve_relevant_memory() already
+# demotes low-relevance active entries at read time instead), but the
+# state exists so a later feature can mark an entry stale without a
+# schema change.
+InstitutionalMemoryStatus = Literal["active", "superseded", "contradicted", "stale"]
+
+
+class InstitutionalMemoryEntry(CamelModel):
+    """One durable, reusable lesson — never a raw copy of the event log
+    (see app/scribe.py's MemoryRecord for that; this is a promotion
+    layer on top of it, not a replacement). Deliberately separates three
+    things a naive "memory" often conflates:
+
+      observation   — what actually, verifiably happened (a real fact
+                       drawn straight from the source record's own
+                       fields, e.g. a CaseStudy's own missed_information,
+                       a ModelValidationReport's own evidence_summary).
+      interpretation — a plausible read of *why*, hedged, never a proven
+                       causal claim (matches app/knowledge_graph.py's own
+                       existing non-causal-edge discipline). None when
+                       the source record has nothing to interpret from.
+      lesson         — the actionable takeaway a future decision should
+                       weigh. None when the source doesn't warrant one
+                       (e.g. a routine "insufficient data" risk event).
+
+    `confidence` reuses decision_vault.py's PATTERN_FREQUENCY_CAP-shaped
+    formula (how many other memories from the same source/symbol/regime
+    corroborate this one) — never an invented number. `relevance_pct`
+    reuses compute_knowledge_quality_score()'s exact recency-decay
+    formula verbatim. `provenance` is a plain-text citation of exactly
+    which source record (`event_ref`) this entry was promoted from, so
+    every memory is traceable back to real evidence, never asserted
+    free-floating.
+
+    Contradiction/update handling never overwrites history: an entry
+    that's superseded or contradicted keeps its own row, with
+    `supersedes_id`/`superseded_by_id` linking the chain — see
+    supersede_memory()."""
+
+    id: str
+    source: InstitutionalMemorySource
+    created_at: str = Field(alias="createdAt")
+    sim_day: int = Field(alias="simDay")
+    originating_agent: AgentId | None = Field(default=None, alias="originatingAgent")
+    # id of the CaseStudy/FailedStrategyArchiveEntry/StrategyHallOfFameEntry/
+    # ModelValidationReport/RiskWarning/MarketEnvironmentEntry this was
+    # promoted from — the real audit-trail link.
+    event_ref: str = Field(alias="eventRef")
+    market_regime: MarketEnvironmentRegime | None = Field(default=None, alias="marketRegime")
+    observation: str
+    interpretation: str | None = None
+    lesson: str | None = None
+    confidence: float
+    provenance: str
+    relevance_pct: float = Field(alias="relevancePct")
+    status: InstitutionalMemoryStatus = "active"
+    supersedes_id: str | None = Field(default=None, alias="supersedesId")
+    superseded_by_id: str | None = Field(default=None, alias="supersededById")
+    supporting_evidence: list[str] = Field(default_factory=list, alias="supportingEvidence")
+
+
 # v0.7 Feature 55 (the brief self-numbered it "Feature 54," already used
 # above for the Decision Memory System — see app/war_room.py's module
 # docstring for the collision note) — the Executive Decision Simulator's
@@ -6698,6 +6785,19 @@ class GameSaveState(CamelModel):
     # v0.7 Feature 27 — the Library of Mistakes (app/mistakes.py). One
     # capped, permanent CaseStudy per detected real process-gap mistake.
     case_studies: list[CaseStudy] = Field(default_factory=list, alias="caseStudies")
+    # CEO directive "Features 26-30," Feature 26 — Institutional Memory
+    # 2.0 (app/institutional_memory.py). One capped, permanent
+    # InstitutionalMemoryEntry promoted from a real CaseStudy,
+    # FailedStrategyArchiveEntry, StrategyHallOfFameEntry,
+    # ModelValidationReport, RiskWarning, or market regime shift — see
+    # that module's own docstring for the full promotion/contradiction/
+    # relevance design. Distinct from case_studies above (this codebase's
+    # own separately-numbered "Feature 26," the Library of Mistakes) —
+    # the same kind of feature-number collision app/war_room.py's module
+    # docstring already discloses for "Feature 54"/"Feature 55."
+    institutional_memory: list[InstitutionalMemoryEntry] = Field(
+        default_factory=list, alias="institutionalMemory"
+    )
     # CEO Company Health + Live Market Realism directive, Section 3 —
     # one capped, permanent LearningEvent per real Knowledge-tier
     # crossing (see app/academy.py's award_points()).

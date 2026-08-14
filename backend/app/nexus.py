@@ -112,6 +112,12 @@ from app.market_intelligence import (
 )
 from app.memory import MAX_MEMORY_RECORDS, record
 from app.mentor import compute_mentor_state, compute_thinking_profiles, generate_question_of_the_day, record_question
+from app.institutional_memory import (
+    promote_case_study,
+    promote_market_regime_shift,
+    promote_risk_event,
+    record_institutional_memory,
+)
 from app.mistakes import generate_case_studies, record_case_studies
 from app.opportunity_gatekeeper import build_opportunity_rejection, evaluate_opportunity, grade_opportunity_rejections
 from app.successes import generate_success_studies, record_success_studies
@@ -213,6 +219,7 @@ from app.schemas import (
     Goal,
     HallOfFameEntry,
     InnovationState,
+    InstitutionalMemoryEntry,
     LearningEvent,
     MarketEnvironmentRegime,
     MarketIntelligenceLearningEntry,
@@ -1175,6 +1182,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     agent_knowledge: dict[AgentId, AgentKnowledgeState] = state.agent_knowledge or default_agent_knowledge()
     discipline_reviews: list[DisciplineReview] = list(state.discipline_reviews)
     case_studies: list[CaseStudy] = list(state.case_studies)
+    # CEO directive "Features 26-30," Feature 26 — Institutional Memory
+    # 2.0 (app/institutional_memory.py).
+    institutional_memory: list[InstitutionalMemoryEntry] = list(state.institutional_memory)
     # CEO Company Health + Live Market Realism directive, Section 3 —
     # one capped, permanent LearningEvent per real Knowledge-tier
     # crossing (see app/academy.py's award_points()).
@@ -1343,6 +1353,14 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         if warning.severity == "critical" and warning.id not in previous_warning_ids:
             constitution_citations = cite_article(constitution_citations, "I", "risk_department", warning.message, new_time.day)
             constitution_citations = cite_article(constitution_citations, "VII", "risk_department", warning.message, new_time.day)
+            # Feature 26 — only a genuinely NEW critical warning is
+            # promoted, the same real "not already on the previous
+            # tick's watch" gate as the Article citations right above,
+            # so a standing warning that persists across many ticks
+            # never floods institutional memory with duplicates.
+            institutional_memory = record_institutional_memory(
+                institutional_memory, promote_risk_event(warning, sim_day=new_time.day), current_sim_day=new_time.day
+            )
 
     # --- v0.6.3 Feature 12: CEO Approval pipeline --------------------------
     # Every high-confidence research completion becomes a TradeProposal
@@ -1378,6 +1396,22 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                 category="market",
                 timestamp=_now_iso(),
             )
+        )
+        # Feature 26 — the same real regime-change entry the news
+        # headline above was just built from, promoted into
+        # institutional memory so a future decision can weigh "setups
+        # from a different regime shouldn't be assumed reliable here."
+        latest_regime_entry = market_environment.timeline[-1]
+        institutional_memory = record_institutional_memory(
+            institutional_memory,
+            promote_market_regime_shift(
+                regime=latest_regime_entry.regime,
+                label=latest_regime_entry.label,
+                detail=latest_regime_entry.detail,
+                event_ref=latest_regime_entry.id,
+                sim_day=new_time.day,
+            ),
+            current_sim_day=new_time.day,
         )
 
     # Design Bible Chapter 75 — Company Trading Modes & Institutional
@@ -1788,6 +1822,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                 trade_case_studies = new_case_studies
                 for case_study in new_case_studies:
                     record_case_study(memory, case_study, max_records=effective_risk_limits.max_memory_records)
+                    institutional_memory = record_institutional_memory(
+                        institutional_memory, promote_case_study(case_study), current_sim_day=new_time.day
+                    )
                     news.append(
                         NewsItem(
                             id=f"news-case-study-{case_study.id}",
@@ -1849,6 +1886,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                 trade_case_studies = new_success_studies
                 for success_study in new_success_studies:
                     record_case_study(memory, success_study, max_records=effective_risk_limits.max_memory_records)
+                    institutional_memory = record_institutional_memory(
+                        institutional_memory, promote_case_study(success_study), current_sim_day=new_time.day
+                    )
                     news.append(
                         NewsItem(
                             id=f"news-case-study-{success_study.id}",
@@ -2791,6 +2831,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "academy_state": academy_state,
             "discipline_reviews": discipline_reviews,
             "case_studies": case_studies,
+            "institutional_memory": institutional_memory,
             "learning_events": learning_events,
             "self_improvement_proposals": self_improvement_proposals,
             "evolution_reports": evolution_reports,
