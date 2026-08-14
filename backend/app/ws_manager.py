@@ -145,6 +145,7 @@ def build_state_message(state: GameSaveState) -> dict[str, Any]:
         "academyState": state.academy_state.model_dump(by_alias=True),
         "disciplineReviews": [r.model_dump(by_alias=True) for r in state.discipline_reviews],
         "caseStudies": [c.model_dump(by_alias=True) for c in state.case_studies],
+        "learningEvents": [e.model_dump(by_alias=True) for e in state.learning_events],
         "decisionVault": [v.model_dump(by_alias=True) for v in state.decision_vault],
         # v0.7 Feature 55 — already capped (MAX_WAR_ROOM_SESSIONS) like decisionVault above.
         "warRoomSessions": [w.model_dump(by_alias=True) for w in state.war_room_sessions],

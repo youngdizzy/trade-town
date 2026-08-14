@@ -165,6 +165,7 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
     ),
     "knowledge_archive": (
         "case_studies",
+        "learning_events",
         "decision_vault",
         "war_room_sessions",
         "question_archive",

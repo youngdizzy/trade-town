@@ -3689,6 +3689,39 @@ class AgentKnowledgeState(CamelModel):
     level: KnowledgeLevel
 
 
+# CEO Company Health + Live Market Realism directive, Section 3 — the
+# five real, already-existing places app/academy.py's award_points()
+# is called from: research completion, an Academy project finishing,
+# meeting attendance, a mentorship bonus, and a supporting agent
+# reflecting on a filed case study (Design Bible Chapter 74 Part 1's
+# Academy Integration hook, app/nexus.py's ACADEMY_CASE_STUDY_NUDGE call
+# sites) — never a sixth, invented source.
+LearningEventSource = Literal["research_completion", "academy_project", "meeting_attendance", "mentorship", "case_study_reflection"]
+
+
+# A formal, structured record of one real Knowledge-tier crossing,
+# replacing the free-text-only app/scribe.py Memory entry as the
+# queryable source of truth (that Memory entry is kept, unchanged, as
+# the human-readable company-history version of the same real event —
+# see app/scribe.py's record_knowledge_tier_up()). Every field is read
+# directly off the real AgentKnowledgeState transition award_points()
+# already computes — never a second, independently-invented reading,
+# and never a fabricated "why" narrative: pointsAwarded/totalPoints
+# already are the real evidence.
+class LearningEvent(CamelModel):
+    id: str
+    agent_id: AgentId = Field(alias="agentId")
+    skill_domain: str = Field(alias="skillDomain")
+    previous_competency: int = Field(alias="previousCompetency")
+    previous_level: KnowledgeLevel = Field(alias="previousLevel")
+    new_competency: int = Field(alias="newCompetency")
+    new_level: KnowledgeLevel = Field(alias="newLevel")
+    source: LearningEventSource
+    points_awarded: float = Field(alias="pointsAwarded")
+    total_points: float = Field(alias="totalPoints")
+    created_at: str = Field(alias="createdAt")
+
+
 class AcademyState(CamelModel):
     level: int
     level_label: str = Field(alias="levelLabel")
@@ -6645,6 +6678,10 @@ class GameSaveState(CamelModel):
     # v0.7 Feature 27 — the Library of Mistakes (app/mistakes.py). One
     # capped, permanent CaseStudy per detected real process-gap mistake.
     case_studies: list[CaseStudy] = Field(default_factory=list, alias="caseStudies")
+    # CEO Company Health + Live Market Realism directive, Section 3 —
+    # one capped, permanent LearningEvent per real Knowledge-tier
+    # crossing (see app/academy.py's award_points()).
+    learning_events: list[LearningEvent] = Field(default_factory=list, alias="learningEvents")
     # v0.7 — the Decision Memory System's Decision Vault
     # (app/decision_vault.py). One capped, permanent DecisionVaultEntry
     # per closed paper trade, joining every real artifact already

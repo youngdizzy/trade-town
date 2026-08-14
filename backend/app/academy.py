@@ -45,7 +45,12 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.schemas import AcademyState, AgentId, AgentKnowledgeState, KnowledgeLevel
+from app.schemas import AcademyState, AgentId, AgentKnowledgeState, KnowledgeLevel, LearningEvent, LearningEventSource
+
+# CEO Company Health + Live Market Realism directive, Section 3 — same
+# capped-permanent-history convention as MAX_CASE_STUDIES (app/mistakes.py)
+# / MAX_DISCIPLINE_REVIEWS (app/discipline.py).
+MAX_LEARNING_EVENTS = 60
 
 KNOWLEDGE_BRANCH: dict[AgentId, str] = {
     "scout": "Market Structure",
@@ -118,10 +123,17 @@ def default_agent_knowledge() -> dict[AgentId, AgentKnowledgeState]:
     return {agent_id: AgentKnowledgeState(agentId=agent_id, branch=branch, points=0.0, tier=0, level="novice") for agent_id, branch in KNOWLEDGE_BRANCH.items()}
 
 
-def award_points(knowledge: dict[AgentId, AgentKnowledgeState], agent_id: AgentId, amount: float) -> tuple[dict[AgentId, AgentKnowledgeState], AgentKnowledgeState | None]:
-    """Returns (updated_knowledge, tier_up_or_None) — tier_up is only
-    non-None the instant a threshold is actually crossed, so the caller
-    logs exactly one real memory entry per real tier-up."""
+def award_points(
+    knowledge: dict[AgentId, AgentKnowledgeState], agent_id: AgentId, amount: float, *, source: LearningEventSource
+) -> tuple[dict[AgentId, AgentKnowledgeState], LearningEvent | None]:
+    """Returns (updated_knowledge, learning_event_or_None) — the event is
+    only non-None the instant a real tier threshold is actually crossed,
+    so the caller records exactly one real Learning Event (and one real
+    memory entry — see app/scribe.py's record_knowledge_tier_up()) per
+    real tier-up. `source` names which of the five real places this
+    award came from (CEO Company Health + Live Market Realism
+    directive, Section 3) — never invented, always the caller's own
+    real reason for calling this function."""
     state = knowledge.get(agent_id)
     if state is None:
         return knowledge, None
@@ -129,23 +141,53 @@ def award_points(knowledge: dict[AgentId, AgentKnowledgeState], agent_id: AgentI
     new_tier = _tier_for_points(new_points)
     updated = state.model_copy(update={"points": new_points, "tier": new_tier, "level": _level_for_tier(new_tier)})
     new_knowledge = {**knowledge, agent_id: updated}
-    tier_up = updated if new_tier > state.tier else None
-    return new_knowledge, tier_up
+    if new_tier <= state.tier:
+        return new_knowledge, None
+    event = LearningEvent(
+        id=f"learning-{agent_id}-{new_tier}",
+        agentId=agent_id,
+        skillDomain=state.branch,
+        previousCompetency=state.tier,
+        previousLevel=state.level,
+        newCompetency=new_tier,
+        newLevel=updated.level,
+        source=source,
+        pointsAwarded=round(amount, 1),
+        totalPoints=new_points,
+        createdAt=_now_iso(),
+    )
+    return new_knowledge, event
 
 
-def maybe_run_mentorship(knowledge: dict[AgentId, AgentKnowledgeState]) -> tuple[dict[AgentId, AgentKnowledgeState], tuple[AgentId, AgentId] | None]:
+def record_learning_event(learning_events: list[LearningEvent], event: LearningEvent) -> list[LearningEvent]:
+    """Appends one real LearningEvent, capped at MAX_LEARNING_EVENTS —
+    same append-and-trim pattern as app/mistakes.py's record_case_studies()."""
+    updated = [*learning_events, event]
+    if len(updated) > MAX_LEARNING_EVENTS:
+        del updated[: len(updated) - MAX_LEARNING_EVENTS]
+    return updated
+
+
+def maybe_run_mentorship(
+    knowledge: dict[AgentId, AgentKnowledgeState],
+) -> tuple[dict[AgentId, AgentKnowledgeState], tuple[AgentId, AgentId] | None, LearningEvent | None]:
     """A modest, honestly-grounded substitute for the brief's senior/
     junior mentorship system — see module docstring. Returns (updated,
-    (mentor_id, mentee_id)) the moment the real points gap crosses
-    MENTORSHIP_GAP_THRESHOLD; (knowledge, None) if nothing qualifies."""
+    (mentor_id, mentee_id), learning_event) the moment the real points
+    gap crosses MENTORSHIP_GAP_THRESHOLD; (knowledge, None, None) if
+    nothing qualifies. `learning_event` is only non-None if the
+    mentorship bonus itself crossed a real tier threshold — previously
+    this real event was silently discarded (the caller only recorded
+    the mentorship session, never a resulting tier-up); now returned
+    like every other award_points() call site."""
     if len(knowledge) < 2:
-        return knowledge, None
+        return knowledge, None, None
     ranked = sorted(knowledge.values(), key=lambda s: s.points, reverse=True)
     mentor, mentee = ranked[0], ranked[-1]
     if mentor.points - mentee.points < MENTORSHIP_GAP_THRESHOLD:
-        return knowledge, None
-    updated_knowledge, _tier_up = award_points(knowledge, mentee.agent_id, MENTORSHIP_BONUS_POINTS)
-    return updated_knowledge, (mentor.agent_id, mentee.agent_id)
+        return knowledge, None, None
+    updated_knowledge, learning_event = award_points(knowledge, mentee.agent_id, MENTORSHIP_BONUS_POINTS, source="mentorship")
+    return updated_knowledge, (mentor.agent_id, mentee.agent_id), learning_event
 
 
 def compute_academy_state(knowledge: dict[AgentId, AgentKnowledgeState], completed_project_count: int) -> AcademyState:

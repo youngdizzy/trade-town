@@ -31,6 +31,7 @@ from app.schemas import (
     FailedStrategyArchiveEntry,
     HallOfFameEntry,
     HoldReason,
+    LearningEvent,
     MemoryRecord,
     MeetingMinutes,
     PaperOrder,
@@ -217,13 +218,13 @@ def record_academy_project(memory: list[MemoryRecord], project: AcademyProject, 
     record(memory, "academy", f"Academy: {project.title}", project.summary, max_records=max_records)
 
 
-def record_knowledge_tier_up(memory: list[MemoryRecord], state: AgentKnowledgeState, max_records: int = MAX_MEMORY_RECORDS) -> None:
+def record_knowledge_tier_up(memory: list[MemoryRecord], event: LearningEvent, max_records: int = MAX_MEMORY_RECORDS) -> None:
     record(
         memory,
         "academy",
-        f"{AGENT_PROFILES[state.agent_id].name} advances in {state.branch}",
-        f"{AGENT_PROFILES[state.agent_id].name} has reached {state.level.title()} level (Tier {state.tier}) in {state.branch}, "
-        f"with {state.points:.1f} knowledge points earned through real completed work.",
+        f"{AGENT_PROFILES[event.agent_id].name} advances in {event.skill_domain}",
+        f"{AGENT_PROFILES[event.agent_id].name} has reached {event.new_level.title()} level (Tier {event.new_competency}) in {event.skill_domain}, "
+        f"with {event.total_points:.1f} knowledge points earned through real completed work.",
         max_records=max_records,
     )
 

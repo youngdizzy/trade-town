@@ -28,6 +28,7 @@ from app.academy import (
     compute_academy_state,
     default_agent_knowledge,
     maybe_run_mentorship,
+    record_learning_event,
 )
 from app.academy_research import MAX_ACADEMY_LIBRARY, default_academy_projects, tick_academy_projects
 from app.agent_energy import RESEARCH_BOOST_AMOUNT, regen_daily, spend
@@ -212,6 +213,7 @@ from app.schemas import (
     Goal,
     HallOfFameEntry,
     InnovationState,
+    LearningEvent,
     MarketEnvironmentRegime,
     MarketIntelligenceLearningEntry,
     MarketIntelligenceReport,
@@ -1173,6 +1175,10 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     agent_knowledge: dict[AgentId, AgentKnowledgeState] = state.agent_knowledge or default_agent_knowledge()
     discipline_reviews: list[DisciplineReview] = list(state.discipline_reviews)
     case_studies: list[CaseStudy] = list(state.case_studies)
+    # CEO Company Health + Live Market Realism directive, Section 3 —
+    # one capped, permanent LearningEvent per real Knowledge-tier
+    # crossing (see app/academy.py's award_points()).
+    learning_events: list[LearningEvent] = list(state.learning_events)
     # Design Bible Chapter 74 — Self-Improvement Proposals and the
     # Institutional Evolution Engine (app/self_improvement.py,
     # app/evolution.py).
@@ -1226,9 +1232,12 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         )
         # v0.7 Feature 25 — every real completed research item earns the
         # assigned agent real Knowledge Points (app/academy.py).
-        agent_knowledge, tier_up = award_points(agent_knowledge, item.assigned_agent, RESEARCH_COMPLETION_POINTS * knowledge_multiplier)
-        if tier_up is not None:
-            record_knowledge_tier_up(memory, tier_up, max_records=effective_risk_limits.max_memory_records)
+        agent_knowledge, learning_event = award_points(
+            agent_knowledge, item.assigned_agent, RESEARCH_COMPLETION_POINTS * knowledge_multiplier, source="research_completion"
+        )
+        if learning_event is not None:
+            record_knowledge_tier_up(memory, learning_event, max_records=effective_risk_limits.max_memory_records)
+            learning_events = record_learning_event(learning_events, learning_event)
 
     # v0.7 Feature 45 — the Research Sandbox. An "idea"-stage strategy
     # advances to "research" the moment real completed research backs its
@@ -1247,9 +1256,12 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         if len(academy_completed_projects) > MAX_ACADEMY_LIBRARY:
             del academy_completed_projects[: len(academy_completed_projects) - MAX_ACADEMY_LIBRARY]
         record_academy_project(memory, newly_completed_project, max_records=effective_risk_limits.max_memory_records)
-        agent_knowledge, tier_up = award_points(agent_knowledge, newly_completed_project.assigned_agent, ACADEMY_PROJECT_POINTS * knowledge_multiplier)
-        if tier_up is not None:
-            record_knowledge_tier_up(memory, tier_up, max_records=effective_risk_limits.max_memory_records)
+        agent_knowledge, learning_event = award_points(
+            agent_knowledge, newly_completed_project.assigned_agent, ACADEMY_PROJECT_POINTS * knowledge_multiplier, source="academy_project"
+        )
+        if learning_event is not None:
+            record_knowledge_tier_up(memory, learning_event, max_records=effective_risk_limits.max_memory_records)
+            learning_events = record_learning_event(learning_events, learning_event)
         news.append(
             NewsItem(
                 id=f"news-academy-{newly_completed_project.id}",
@@ -1798,7 +1810,12 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                     # supporting agents nudge their own AgentKnowledgeState
                     # for having reflected on a real, filed mistake.
                     for supporting_agent in decision.supporting_agents:
-                        agent_knowledge, _ = award_points(agent_knowledge, supporting_agent, ACADEMY_CASE_STUDY_NUDGE)
+                        agent_knowledge, learning_event = award_points(
+                            agent_knowledge, supporting_agent, ACADEMY_CASE_STUDY_NUDGE, source="case_study_reflection"
+                        )
+                        if learning_event is not None:
+                            record_knowledge_tier_up(memory, learning_event, max_records=effective_risk_limits.max_memory_records)
+                            learning_events = record_learning_event(learning_events, learning_event)
                 # Design Bible Chapter 74 Part 1 — the Recurring Mistake
                 # Pattern generator, checked once per trade after that
                 # trade's own case studies are already real and recorded.
@@ -1859,7 +1876,12 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                     # Design Bible Chapter 74 Part 1 — same real Academy
                     # hook as the loss branch above.
                     for supporting_agent in decision.supporting_agents:
-                        agent_knowledge, _ = award_points(agent_knowledge, supporting_agent, ACADEMY_CASE_STUDY_NUDGE)
+                        agent_knowledge, learning_event = award_points(
+                            agent_knowledge, supporting_agent, ACADEMY_CASE_STUDY_NUDGE, source="case_study_reflection"
+                        )
+                        if learning_event is not None:
+                            record_knowledge_tier_up(memory, learning_event, max_records=effective_risk_limits.max_memory_records)
+                            learning_events = record_learning_event(learning_events, learning_event)
                 # Trading Psychology & Discipline, Piece D — the Library
                 # of Successes' own tie into CLSIS, checked once per trade
                 # after that trade's own success studies are already real
@@ -2015,9 +2037,10 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # "collaboration" grounded in the meeting system that already exists.
     if len(meeting_minutes) > mm_count_before_meeting:
         for attendee in meeting_minutes[-1].participants:
-            agent_knowledge, tier_up = award_points(agent_knowledge, attendee, MEETING_ATTENDANCE_POINTS * knowledge_multiplier)
-            if tier_up is not None:
-                record_knowledge_tier_up(memory, tier_up, max_records=effective_risk_limits.max_memory_records)
+            agent_knowledge, learning_event = award_points(agent_knowledge, attendee, MEETING_ATTENDANCE_POINTS * knowledge_multiplier, source="meeting_attendance")
+            if learning_event is not None:
+                record_knowledge_tier_up(memory, learning_event, max_records=effective_risk_limits.max_memory_records)
+                learning_events = record_learning_event(learning_events, learning_event)
 
     if random.random() < 0.04:
         news.append(
@@ -2422,10 +2445,18 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # app/academy.py's module docstring). Checked far less often than
     # every tick since the real points gap it watches moves slowly.
     if is_evening and new_time.day % MENTORSHIP_CHECK_INTERVAL_DAYS == 0:
-        agent_knowledge, pairing = maybe_run_mentorship(agent_knowledge)
+        agent_knowledge, pairing, mentorship_learning_event = maybe_run_mentorship(agent_knowledge)
         if pairing is not None:
             mentor_id, mentee_id = pairing
             record_mentorship_session(memory, agent_knowledge, mentor_id, mentee_id, max_records=effective_risk_limits.max_memory_records)
+        # CEO Company Health + Live Market Realism directive, Section 3
+        # — a real, pre-existing gap: a mentorship bonus crossing a real
+        # tier threshold used to be silently discarded (only the
+        # mentorship session itself was ever recorded, never a
+        # resulting tier-up). Fixed alongside this Piece.
+        if mentorship_learning_event is not None:
+            record_knowledge_tier_up(memory, mentorship_learning_event, max_records=effective_risk_limits.max_memory_records)
+            learning_events = record_learning_event(learning_events, mentorship_learning_event)
 
     # v0.7 Feature 29 — the Reasoning Lab. Files one real ReasoningChallenge
     # from the company's most recent real AI Debate + its linked
@@ -2760,6 +2791,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "academy_state": academy_state,
             "discipline_reviews": discipline_reviews,
             "case_studies": case_studies,
+            "learning_events": learning_events,
             "self_improvement_proposals": self_improvement_proposals,
             "evolution_reports": evolution_reports,
             "decision_vault": decision_vault,
