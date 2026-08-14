@@ -7,6 +7,8 @@ import {
   type AlertSeverity,
   type AuditEntry,
   type AuditEventCategory,
+  type CeoOverrideEvaluation,
+  type CeoOverrideGovernanceSummary,
   type CeoOverrideRecord,
   type ComplianceIncident,
   type ComplianceIncidentSummary,
@@ -14,6 +16,7 @@ import {
   type GovernanceLayer,
   type IncidentRootCause,
   type IncidentStatus,
+  type OverrideProcessQuality,
 } from "@/types";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
 
@@ -41,9 +44,18 @@ import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "..
  * fetched on demand rather than riding the WS tick broadcast. The
  * original Incidents tab above it is untouched: a different, still
  * fully ephemeral view of the same underlying Audit Log.
+ *
+ * Feature 32 adds the Override Governance tab — real, persisted
+ * CeoOverrideEvaluations (backend/app/override_governance.py), still
+ * fetched on demand. Distinct from the original CEO Overrides tab above
+ * (still the ephemeral CeoOverrideRecord list): this tab adds real
+ * PROCESS QUALITY evidence (was the override justified given evidence
+ * at decision time) alongside — never merged with — the real OUTCOME
+ * (mirrored from CeoDecisionRecord.outcome, never re-derived), per the
+ * directive's explicit "no hindsight-only evaluation" rule.
  */
 
-const TABS = ["log", "incidents", "cases", "governance", "overrides"] as const;
+const TABS = ["log", "incidents", "cases", "governance", "overrides", "overrideGovernance"] as const;
 type Tab = (typeof TABS)[number];
 
 const TAB_LABEL: Record<Tab, string> = {
@@ -52,7 +64,22 @@ const TAB_LABEL: Record<Tab, string> = {
   cases: "Incident Cases",
   governance: "Governance",
   overrides: "CEO Overrides",
+  overrideGovernance: "Override Governance",
 };
+
+const PROCESS_QUALITY_LABEL: Record<OverrideProcessQuality, string> = {
+  justified: "Justified",
+  unjustified: "Unjustified",
+  mixed: "Mixed Evidence",
+  not_enough_evidence: "Not Enough Evidence",
+};
+
+function processQualityTone(quality: OverrideProcessQuality): "red" | "amber" | "cyan" | "green" {
+  if (quality === "justified") return "green";
+  if (quality === "unjustified") return "red";
+  if (quality === "mixed") return "amber";
+  return "cyan";
+}
 
 const INCIDENT_STATUS_LABEL: Record<IncidentStatus, string> = {
   open: "Open",
@@ -166,6 +193,7 @@ export function CompliancePanel() {
         {tab === "cases" && <CasesTab />}
         {tab === "governance" && <GovernanceTab />}
         {tab === "overrides" && <OverridesTab />}
+        {tab === "overrideGovernance" && <OverrideGovernanceTab />}
       </Glass>
     </div>
   );
@@ -799,6 +827,181 @@ function OverridesTab() {
           ))}
         </tbody>
       </table>
+    </div>
+  );
+}
+
+function OverrideGovernanceTab() {
+  const [evaluations, setEvaluations] = useState<CeoOverrideEvaluation[] | null>(null);
+  const [summary, setSummary] = useState<CeoOverrideGovernanceSummary | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  const load = () => {
+    api
+      .getCeoOverrideEvaluations()
+      .then((res) => setEvaluations(res))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Failed to load override evaluations."));
+    api.getCeoOverrideGovernanceSummary().then((res) => setSummary(res)).catch(() => undefined);
+  };
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  const sorted = useMemo(() => (evaluations ? [...evaluations].reverse() : null), [evaluations]);
+
+  const handleUpdated = (updated: CeoOverrideEvaluation) => {
+    setEvaluations((prev) => (prev ? prev.map((e) => (e.id === updated.id ? updated : e)) : prev));
+  };
+
+  return (
+    <div>
+      <p className="mb-2 text-[9px] text-cmd-textDim">
+        Every real CEO override, evaluated on two separate axes never collapsed into one score: PROCESS QUALITY (was the override justified by the evidence available at the moment
+        the CEO decided) and OUTCOME (mirrored from the underlying trade&apos;s real P&amp;L, never re-derived here). A correct decision can still lose; a bad decision can still win.
+      </p>
+      <OverrideSummaryStrip summary={summary} />
+      {error && <EmptyState>{error}</EmptyState>}
+      {!error && !sorted && <EmptyState>Loading…</EmptyState>}
+      {!error && sorted && sorted.length === 0 && <EmptyState>No CEO decisions have disagreed with the AI&apos;s recommendation yet.</EmptyState>}
+      {!error && sorted && sorted.length > 0 && (
+        <div className="max-h-[28rem] space-y-1 overflow-y-auto">
+          {sorted.map((e) => (
+            <OverrideEvaluationRow key={e.id} evaluation={e} expanded={expandedId === e.id} onToggle={() => setExpandedId((v) => (v === e.id ? null : e.id))} onUpdated={handleUpdated} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function OverrideSummaryStrip({ summary }: { summary: CeoOverrideGovernanceSummary | null }) {
+  if (!summary) return null;
+  return (
+    <div className="mb-2 grid grid-cols-2 gap-x-4 gap-y-1 rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2 sm:grid-cols-4">
+      <DataRow label="Total Overrides" value={summary.totalOverrideCount} />
+      <DataRow
+        label="Override Rate"
+        value={summary.overrideRatePct === null ? "NOT ENOUGH EVIDENCE" : `${summary.overrideRatePct.toFixed(1)}%`}
+        valueClassName={summary.overrideRatePct === null ? "text-cmd-textDim" : "text-cmd-text"}
+      />
+      <DataRow label="Justified" value={summary.justifiedCount} valueClassName="text-cmd-green" />
+      <DataRow label="Unjustified" value={summary.unjustifiedCount} valueClassName={summary.unjustifiedCount > 0 ? "text-cmd-red" : "text-cmd-text"} />
+      <DataRow label="Mixed Evidence" value={summary.mixedCount} />
+      <DataRow label="Not Enough Evidence" value={summary.notEnoughEvidenceCount} />
+      <DataRow label="Outcome Correct / Incorrect" value={`${summary.outcomeCorrectCount} / ${summary.outcomeIncorrectCount}`} />
+      <DataRow
+        label="Sample Size"
+        value={summary.sampleSizeSufficient ? "Sufficient for trends" : "Too small for trends"}
+        valueClassName={summary.sampleSizeSufficient ? "text-cmd-text" : "text-cmd-textDim"}
+      />
+    </div>
+  );
+}
+
+function OverrideEvaluationRow({
+  evaluation,
+  expanded,
+  onToggle,
+  onUpdated,
+}: {
+  evaluation: CeoOverrideEvaluation;
+  expanded: boolean;
+  onToggle: () => void;
+  onUpdated: (updated: CeoOverrideEvaluation) => void;
+}) {
+  const [reviewer, setReviewer] = useState<AgentId>("cio");
+  const [note, setNote] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  const submitReview = () => {
+    setBusy(true);
+    setActionError(null);
+    api
+      .addCeoOverrideReview(evaluation.id, reviewer, note.trim())
+      .then((updated) => {
+        onUpdated(updated);
+        setNote("");
+      })
+      .catch((err: unknown) => setActionError(err instanceof Error ? err.message : "Failed to record review."))
+      .finally(() => setBusy(false));
+  };
+
+  return (
+    <div className="rounded-sm border border-cmd-border/60 bg-cmd-bg/40">
+      <div onClick={onToggle} className="flex cursor-pointer items-center gap-2 px-2 py-1.5 hover:bg-cmd-panelLight/60">
+        <StatusPill tone={processQualityTone(evaluation.processQuality)}>{PROCESS_QUALITY_LABEL[evaluation.processQuality]}</StatusPill>
+        <StatusPill tone={outcomeTone(evaluation.outcome)}>{evaluation.outcome}</StatusPill>
+        <span className="font-cmdmono text-cmd-cyan text-[9px]">{evaluation.symbol}</span>
+        <span className="flex-1 truncate text-[9px] text-cmd-textDim">
+          AI said <span className="uppercase text-cmd-text">{evaluation.originalRecommendation}</span> — CEO chose <span className="uppercase text-cmd-text">{evaluation.ceoDecision}</span>
+        </span>
+        <span className="text-[9px] text-cmd-textDim">Day {evaluation.simDay}</span>
+      </div>
+      {expanded && (
+        <div className="border-t border-cmd-border/40 px-2 py-2 text-[9px]">
+          <div className="mb-1.5 grid grid-cols-2 gap-x-3 gap-y-0.5 sm:grid-cols-3">
+            <DataRow label="Original Confidence" value={evaluation.originalConfidencePct === null ? "NOT ENOUGH EVIDENCE" : `${evaluation.originalConfidencePct.toFixed(0)}%`} />
+            <DataRow label="Decision Grade" value={evaluation.originalDecisionGrade ?? "—"} />
+            <DataRow label="Risk Dept. Stance" value={evaluation.riskDepartmentStance ?? "—"} />
+            <DataRow label="Department Agreement" value={evaluation.departmentAgreementPct === null ? "—" : `${evaluation.departmentAgreementPct.toFixed(0)}%`} />
+            <DataRow label="Recommendation Source" value="Executive Network" />
+          </div>
+          {evaluation.overrideReason && (
+            <div className="mb-1.5">
+              <span className="text-cmd-textDim">CEO&apos;s stated reason: </span>
+              <span className="text-cmd-text">{evaluation.overrideReason}</span>
+            </div>
+          )}
+          {evaluation.evidenceAtDecisionTime.length > 0 && (
+            <div className="mb-1.5">
+              <div className="text-cmd-textDim">Real dissenting evidence on file at decision time:</div>
+              <ul className="list-inside list-disc text-cmd-text">
+                {evaluation.evidenceAtDecisionTime.map((item, i) => (
+                  <li key={i}>{item}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          {evaluation.reviewer && (
+            <div className="mb-1.5">
+              <span className="text-cmd-textDim">Reviewed by {AGENT_PROFILES[evaluation.reviewer].name}: </span>
+              <span className="text-cmd-text">{evaluation.reviewNote}</span>
+            </div>
+          )}
+          {actionError && <div className="mb-1.5 text-cmd-red">{actionError}</div>}
+          <div className="flex flex-wrap items-center gap-1.5 border-t border-cmd-border/40 pt-1.5">
+            <select
+              value={reviewer}
+              onChange={(e) => setReviewer(e.target.value as AgentId)}
+              className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-1.5 py-1 text-[9px] text-cmd-text outline-none focus:border-cmd-cyan/50"
+            >
+              {AGENT_IDS.map((id) => (
+                <option key={id} value={id}>
+                  {AGENT_PROFILES[id].name}
+                </option>
+              ))}
+            </select>
+            <input
+              type="text"
+              value={note}
+              onChange={(e) => setNote(e.target.value)}
+              placeholder="Add a real review note…"
+              className="flex-1 rounded-sm border border-cmd-border bg-cmd-bg/60 px-1.5 py-1 text-[9px] text-cmd-text outline-none focus:border-cmd-cyan/50"
+            />
+            <button
+              type="button"
+              disabled={busy || note.trim().length === 0}
+              className="rounded-sm border border-cmd-cyan/50 bg-cmd-cyan/10 px-2 py-1 text-[9px] uppercase tracking-wide text-cmd-cyan hover:bg-cmd-cyan/20 disabled:opacity-40"
+              onClick={submitReview}
+            >
+              Record Review
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

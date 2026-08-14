@@ -7,6 +7,44 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Features 31-35: Compliance, Governance & Continuous Improvement System," Feature 32 —
+  CEO Override Governance** (`backend/app/schemas.py`, `backend/app/override_governance.py`,
+  `backend/app/nexus.py`, `backend/app/state.py`, `backend/app/routers/executive.py`,
+  `backend/app/routers/audit.py`, `backend/app/save_modules.py`, `backend/tests/test_override_governance.py`,
+  `frontend/src/types.ts`, `frontend/src/net/api.ts`, `frontend/src/ui/components/CommandCenter/panels/CompliancePanel.tsx`):
+  the second stage of the CEO's 31→32→33→34→35 Compliance closed loop. Research first, and a correction to an
+  earlier-session assumption: CEO overrides are NOT permanently stuck at `outcome="undecidable"`.
+  `resolve_proposal()`'s `outcome="pending" if order_id is not None else "undecidable"` is keyed on whether a real
+  order was placed, not on `agreedWithAi` — an override that produces a real trade (CEO buys when the network said
+  wait) gets graded exactly like any other decision once that trade closes via `grade_ceo_decisions()`; only an
+  override resolving to "wait" (no order at all) stays undecidable, correctly, since nothing real exists to grade.
+  `override_governance.py` never re-grades that outcome a second way. What it genuinely adds is PROCESS QUALITY —
+  was the override justified by evidence available at the moment the CEO decided, independent of the trade's
+  eventual P&L (no hindsight contamination). Built entirely from the real, already-persisted
+  `ExecutiveMeetingLogEntry` for that proposal (department opinions, `decisionGrade`/`decisionGradeScore`) — never
+  a fabricated confidence score, never a second copy of `risk_engine.py`'s own logic. A disclosed 2x2 heuristic
+  (strong/weak recommendation × contested/uncontested department opinion, reusing the exact B- `GRADE_THRESHOLDS`
+  cutoff already shown to the CEO) yields justified/unjustified/mixed, with not_enough_evidence when no meeting
+  log entry exists for the proposal. Process quality and outcome are stored and displayed as two separate fields,
+  never collapsed into one score — a justified override that lost money and an unjustified override that won are
+  both shown honestly. `overrideReason` is a genuinely new, optional CEO-provided text field on
+  `POST /api/executive/decide` (`None` for every prior decision, never a fabricated backfill). New
+  `GameSaveState.ceoOverrideEvaluations` list, synced/outcome-refreshed every tick after `ceoDecisions`/
+  `executiveMeetingLog` reach their tick-final values; one new `addOverrideReview()` mutation (a real reviewer
+  note that never touches process quality or outcome); 3 new `/api/audit/overrides/*` endpoints, additive to the
+  original 5 CAGS endpoints and Feature 31's incident endpoints, kept off the WS broadcast. Summary honesty:
+  `overrideRatePct` is `null`, never a fabricated 0%, when there are no decisions to divide by;
+  `sampleSizeSufficient` gates trend interpretation on a disclosed floor (`MIN_OVERRIDE_SAMPLE_FOR_TREND = 5`);
+  `departmentOverrideImpact` counts real department-agreement data, never invented. Frontend adds a new "Override
+  Governance" tab in `CompliancePanel.tsx` alongside the untouched original "CEO Overrides" tab, with a real
+  review-note form. 20 new backend tests (the full 2x2 process-quality truth table, sync/dedup, override-reason
+  carry-through, outcome mirroring, review notes never touching quality/outcome, summary aggregation), `mypy
+  app/` (146 files)/`ruff check app/ tests/` clean, full backend suite (1940 passed; same 6 pre-existing,
+  unrelated `test_nexus.py` failures noted under Feature 31), `tsc`/`eslint`/`vite build` clean, live Playwright
+  verification against the real dev stack (a real override evaluation correctly showed NOT ENOUGH EVIDENCE and
+  UNDECIDABLE for a decision predating the meeting-log feature, and a real review was recorded end-to-end through
+  the UI). Documented in Design Bible Chapter 73's addendum, alongside Feature 31's.
+
 - **CEO directive "Features 31-35: Compliance, Governance & Continuous Improvement System," Feature 31 —
   Compliance Incident Resolution Engine** (`backend/app/schemas.py`, `backend/app/compliance_incidents.py`,
   `backend/app/nexus.py`, `backend/app/state.py`, `backend/app/save_modules.py`, `backend/app/routers/audit.py`,

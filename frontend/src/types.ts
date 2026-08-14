@@ -3635,6 +3635,54 @@ export interface ComplianceIncidentSummary {
   updatedAt: string;
 }
 
+// CEO directive "Features 31-35," Feature 32 — CEO Override Governance
+// (backend/app/override_governance.py). Persisted (GameSaveState.ceoOverrideEvaluations),
+// still fetched on demand — same convention as ComplianceIncident above.
+export type OverrideProcessQuality = "justified" | "unjustified" | "mixed" | "not_enough_evidence";
+
+export interface CeoOverrideEvaluation {
+  id: string;
+  decisionId: string;
+  proposalId: string;
+  symbol: string;
+  createdAt: string;
+  simDay: number;
+  originalRecommendation: AnalystChoice;
+  recommendationSource: "executive_network";
+  ceoDecision: AnalystChoice;
+  overrideReason: string | null;
+  originalConfidencePct: number | null;
+  originalDecisionGrade: DecisionGrade | null;
+  originalDecisionGradeScore: number | null;
+  riskDepartmentStance: ExecutiveStance | null;
+  departmentAgreementPct: number | null;
+  agreeingDepartments: ExecutiveDepartmentRole[];
+  evidenceAtDecisionTime: string[];
+  processQuality: OverrideProcessQuality;
+  outcome: "pending" | "correct" | "incorrect" | "undecidable";
+  reviewer: AgentId | null;
+  reviewNote: string | null;
+  reviewedAt: string | null;
+  updatedAt: string;
+}
+
+export interface CeoOverrideGovernanceSummary {
+  totalOverrideCount: number;
+  totalDecisionCount: number;
+  overrideRatePct: number | null;
+  justifiedCount: number;
+  unjustifiedCount: number;
+  mixedCount: number;
+  notEnoughEvidenceCount: number;
+  outcomeCorrectCount: number;
+  outcomeIncorrectCount: number;
+  outcomePendingCount: number;
+  outcomeUndecidableCount: number;
+  departmentOverrideImpact: Record<string, number>;
+  sampleSizeSufficient: boolean;
+  updatedAt: string;
+}
+
 // Design Bible Chapter 75 — Company Trading Modes & Institutional
 // Capital Protection (see backend/app/trading_modes.py). tradingModes/
 // dailyCircuitBreaker/losingStreak/recoveryBriefings are real, part of

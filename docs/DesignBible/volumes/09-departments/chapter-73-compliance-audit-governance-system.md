@@ -79,8 +79,8 @@ log), the Governance Framework display (a disclosed, real description of
 Gatekeeper's actual 9-check order plus where the Institutional Rule
 Engine sits relative to it), the Compliance Overview aggregate, CEO
 Override tracking (`CeoOverrideRecord`, reading `CeoDecisionRecord.
-agreedWithAi`, real since Chapter 70 Part 2), and (Feature 31) the
-Incident Resolution Engine — the real, persisted incident-case lifecycle
+agreedWithAi`, real since Chapter 70 Part 2), (Feature 31) the Incident
+Resolution Engine, and (Feature 32) CEO Override Governance — both
 described under Decision Logic below.
 
 **Does NOT own** (see Appendix E): any trade-approval authority
@@ -115,6 +115,12 @@ WS broadcast — matching this chapter's own "genuine on-demand fetch"
 convention above; a 500-entry incident backlog has no reason to ride
 every real-time tick when the Compliance panel already fetches on
 demand.
+
+**Feature 32 adds** `app/override_governance.py`, on the identical
+pattern: `GameSaveState.ceo_override_evaluations` (a new, persisted,
+`MAX_OVERRIDE_EVALUATIONS = 500`-capped list), synced and refreshed once
+per tick, mutated via one new `GameState` method (`add_override_review`),
+also kept off the WS broadcast.
 
 Ten real, already-persisted source types this chapter reads from but
 never duplicates or recomputes:
@@ -175,6 +181,15 @@ growth anywhere.
   Logic below), and seven `POST /api/audit/incidents/{id}/...` lifecycle
   mutation endpoints (`investigate`, `remediate`, `evidence`,
   `submit-verification`, `fail-verification`, `resolve`, `reopen`).
+- **Feature 32 — CEO Override Governance.** `GET
+  /api/audit/overrides/evaluations` (the real, persisted
+  `CeoOverrideEvaluation` list, distinct from the ephemeral
+  `CeoOverrideRecord` list above), `GET /api/audit/overrides/summary`
+  (the real aggregate — see Decision Logic below), and `POST
+  /api/audit/overrides/{id}/review` (a reviewer's note, never a change
+  to `processQuality`/`outcome`). `POST /api/executive/decide` also
+  gained an optional `overrideReason` field — a real, new CEO-provided
+  mechanism, `None` for every decision before it existed.
 
 ## Internal Workflow
 
@@ -270,6 +285,46 @@ when nothing has ever actually resolved through the real lifecycle yet;
 actually passed while the incident remains unresolved — a `"resolved"`
 incident is never counted overdue even past its old deadline.
 
+**CEO Override Governance (Feature 32)** — the CEO directive's own
+brief warned "CEO OVERRIDES: 138, 69.0% — do not assume this is good or
+bad." Research first: `CeoDecisionRecord.outcome` (`app/executive.py`'s
+`resolve_proposal()`) already resolves an override that produces a real
+trade exactly like any other decision — `outcome="pending" if
+order_id is not None else "undecidable"` is keyed on whether a real
+order was placed, **not** on `agreed_with_ai`. Only an override that
+resolves to `"wait"` (no order at all) stays `"undecidable"` forever,
+correctly, since there is nothing real to grade. Feature 32 never
+re-grades that outcome a second way — `refresh_override_outcomes()`
+only mirrors it every tick.
+
+What Feature 32 genuinely adds is a second axis, PROCESS QUALITY,
+answering "was the override justified by evidence available at the
+moment the CEO decided" — independent of the trade's eventual P&L (no
+hindsight contamination, per the directive's own explicit rule). Built
+entirely from the real, already-persisted `ExecutiveMeetingLogEntry`
+for that same proposal (`opinions`, `decisionGrade`/`decisionGradeScore`)
+— never a fabricated confidence score, and never a second copy of
+`app/risk_engine.py`'s own logic (only the Risk department's own
+already-recorded opinion `stance` is read). A disclosed 2x2 heuristic —
+"strong" (`decisionGradeScore >= 80.0`, reusing the exact B- boundary
+`app/executive.py`'s own `GRADE_THRESHOLDS` already established) crossed
+with "contested" (fewer than half the real department opinions on file
+plainly agreed with the recommended action) — yields
+`justified`/`unjustified`/`mixed`, with `not_enough_evidence` when no
+`ExecutiveMeetingLogEntry` exists for the proposal at all. Process
+quality and outcome are two separate, never-collapsed fields: a
+justified override that lost money and an unjustified override that won
+are both shown honestly.
+
+`overrideReason` is a genuinely new, real, optional CEO-provided text
+field on `POST /api/executive/decide` — `None` for every decision
+recorded before it existed, never a fabricated backfill. Sample-size
+honesty: `CeoOverrideGovernanceSummary.overrideRatePct` is `None`
+(never a fabricated 0%) when there are no real decisions to divide by,
+and `sampleSizeSufficient` gates trend interpretation on a disclosed,
+arbitrary floor (`MIN_OVERRIDE_SAMPLE_FOR_TREND = 5`), the same honesty
+convention this chapter's own Compliance Score already carries.
+
 **Governance Framework** — not a new authority chain. It is the real,
 disclosed order `app/gatekeeper.py::evaluate_gatekeeper()` already
 checks in (confidence → risk manager alignment → CEO/AI agreement → AI
@@ -302,7 +357,7 @@ retention window (every source list already caps itself), no
 audit-log weight profile. Filtering (`category`/`severity`/`search`) is
 a query-time read parameter, not a persisted setting.
 
-**Feature 31 adds the one real exception:** the Incident Cases tab lets
+**Feature 31 adds the first real exception:** the Incident Cases tab lets
 the CEO (or an assigned owner/verifier agent, via the UI's real agent
 picker) advance a real incident through its real lifecycle — assign an
 owner, log a remediation plan and SLA deadline, log evidence, submit for
@@ -311,6 +366,14 @@ and recording a real corrective action) or fail verification back to
 remediation. Reopening a resolved incident is also a real CEO/owner
 action. None of this is auto-advanced by the sim — every transition
 requires a real action through the UI or API.
+
+**Feature 32 adds a second:** the Override Governance tab lets a
+reviewer (via the UI's real agent picker) attach a real review note to
+an existing override evaluation — visible alongside the real,
+automatically-computed process-quality/outcome read, never replacing or
+gating either. The CEO may also now type a real reason at the moment of
+an override decision (`overrideReason` on `POST /api/executive/decide`)
+— optional, and honestly `None` when not provided.
 
 ## Learning System
 
@@ -365,20 +428,23 @@ presentation, not a separate data model.
 ## Future Expansion
 
 The CEO-editable incident status workflow this section previously
-deferred now ships as Feature 31's Incident Resolution Engine (above).
-Still open, per the CEO directive's own Features 32-35 roadmap: CEO
-Override Governance (Feature 32, evaluating override *quality* —
-process vs. outcome — not just frequency), an Executive Accuracy
-Evidence pipeline that replaces `compute_executive_accuracy_scores()`'s
-current `0.0`-when-untracked default with a real
-`NOT_ENOUGH_EVIDENCE`/`PASS`/`FAIL` state (Feature 33), real Control
-Effectiveness measurement rather than a control-exists count (Feature
-34), and connecting all of the above into Company Health through the
-existing architecture, with any change to the Compliance Score formula
-itself requiring explicit CEO authorization first (Feature 35). Wiring
-the Compliance Score into the Trade Gatekeeper as an advisory-only
-check, following the Chapter 70 Part 3 / Chapter 71 precedent, remains
-open if a future addendum explicitly asks for it.
+deferred now ships as Feature 31's Incident Resolution Engine, and
+override *quality* evaluation (process vs. outcome, not just frequency)
+now ships as Feature 32's CEO Override Governance (both above). Still
+open, per the CEO directive's own Features 33-35 roadmap: an Executive
+Accuracy Evidence pipeline that replaces
+`compute_executive_accuracy_scores()`'s current `0.0`-when-untracked
+default with a real `NOT_ENOUGH_EVIDENCE`/`PASS`/`FAIL` state (Feature
+33), real Control Effectiveness measurement rather than a control-exists
+count (Feature 34), and connecting all of the above into Company Health
+through the existing architecture, with any change to the Compliance
+Score formula itself requiring explicit CEO authorization first (Feature
+35). Wiring the Compliance Score into the Trade Gatekeeper as an
+advisory-only check, following the Chapter 70 Part 3 / Chapter 71
+precedent, remains open if a future addendum explicitly asks for it.
+Also open: prompting for `overrideReason` directly in the quick-decision
+UI (`ExecutiveVoting.tsx`) — the field is real and working via the API
+today, just not yet surfaced at the moment of the decision itself.
 
 ## Company Principle
 
@@ -494,10 +560,38 @@ run build` clean, live Playwright verification against the real dev
 stack (owner assignment and the open -> investigating transition
 confirmed working end-to-end against the real backend).
 
+**Files changed, Feature 32 (CEO directive "Features 31-35"):**
+`app/schemas.py` (new `OverrideProcessQuality`/`CeoOverrideEvaluation`/
+`CeoOverrideGovernanceSummary`, plus `GameSaveState.ceoOverrideEvaluations`
+and a new optional `overrideReason` on `CeoDecisionRecord`);
+`app/override_governance.py` (new module — process-quality heuristic,
+sync, outcome-refresh, review, summary); `app/nexus.py` (per-tick
+sync/refresh, after `ceo_decisions`/`executive_meeting_log` reach their
+tick-final values); `app/state.py` (`submit_ceo_decision()` gained an
+optional `override_reason` param; one new `add_override_review()`
+method); `app/routers/executive.py` (`SubmitCeoDecisionRequest` gained
+`overrideReason`); `app/routers/audit.py` (3 new endpoints);
+`app/save_modules.py` (`ceo_override_evaluations` added to
+`knowledge_archive`); `tests/test_override_governance.py` (20 tests —
+the full 2x2 process-quality truth table plus not-enough-evidence,
+sync/dedup, override-reason carry-through, outcome mirroring, review
+notes never touching quality/outcome, summary aggregation). Frontend:
+`types.ts`, `net/api.ts` (4 new calls), and `CompliancePanel.tsx` (new
+"Override Governance" tab, distinct from the original ephemeral "CEO
+Overrides" tab). Verification: `mypy app/` (146 files) clean, `ruff
+check app/ tests/` clean, full backend `pytest -q` (1940 passed; same 6
+pre-existing `test_nexus.py` failures, unchanged), `tsc --noEmit`
+clean, `npm run lint` clean, `npm run build` clean, live Playwright
+verification against the real dev stack (a real override evaluation
+rendered with an honest `NOT_ENOUGH_EVIDENCE`/`UNDECIDABLE` read for a
+decision that predates the meeting-log feature, and a real
+`POST /api/audit/overrides/{id}/review` call was driven through the UI
+end-to-end — the reviewer's name and note appeared immediately).
+
 **What's genuinely still unbuilt:** every item in the honesty-boundary
 list above, plus a Trade Gatekeeper wiring for the Compliance Score,
-plus Features 32-35 of the CEO's own directive (CEO Override quality
-evaluation, Executive Accuracy evidence pipeline, Control Effectiveness
-measurement, and the Continuous Improvement Loop connecting all of it
-into Company Health) — all deliberate, all documented, none silently
-dropped.
+plus Features 33-35 of the CEO's own directive (Executive Accuracy
+evidence pipeline, Control Effectiveness measurement, and the
+Continuous Improvement Loop connecting all of it into Company Health),
+plus surfacing `overrideReason` directly in the quick-decision UI — all
+deliberate, all documented, none silently dropped.

@@ -1774,6 +1774,51 @@ None of these nine endpoints are on the WS broadcast — the Compliance
 panel fetches this data on demand, the same convention the original five
 CAGS endpoints already established.
 
+### CEO Override Governance — CEO directive "Features 31-35," Feature 32
+
+`app/override_governance.py`. Real, persisted, additive to `/overrides`
+above (untouched).
+
+**`GET /api/audit/overrides/evaluations`** — the real, persisted
+`CeoOverrideEvaluation[]` backlog, synced/refreshed every tick. Fields:
+`id`, `decisionId`, `proposalId`, `symbol`, `createdAt`, `simDay`,
+`originalRecommendation`, `recommendationSource` (always
+`"executive_network"` today — the real source of the AI recommendation
+the CEO overrode), `ceoDecision`, `overrideReason` (`null` unless the
+CEO typed one), `originalConfidencePct`/`originalDecisionGrade`/
+`originalDecisionGradeScore` (the average real department confidence
+and the real proposal-quality grade/score at decision time — all `null`
+together when no `ExecutiveMeetingLogEntry` exists for the proposal),
+`riskDepartmentStance`, `departmentAgreementPct`, `agreeingDepartments`
+(the real department roles whose `agree` stance this override went
+against), `evidenceAtDecisionTime` (real dissenting departments'
+`evidence`/`concerns`), `processQuality`
+(`justified`/`unjustified`/`mixed`/`not_enough_evidence` — see the
+Design Bible chapter's Decision Logic for the exact heuristic),
+`outcome` (mirrored verbatim from `CeoDecisionRecord.outcome`, never
+re-derived), `reviewer`/`reviewNote`/`reviewedAt` (`null` until a real
+review is recorded), `updatedAt`.
+
+**`GET /api/audit/overrides/summary`** — the real
+`CeoOverrideGovernanceSummary` aggregate: `totalOverrideCount`/
+`totalDecisionCount`, `overrideRatePct` (`null`, never a fabricated 0%,
+when `totalDecisionCount` is 0), `justifiedCount`/`unjustifiedCount`/
+`mixedCount`/`notEnoughEvidenceCount`, `outcomeCorrectCount`/
+`outcomeIncorrectCount`/`outcomePendingCount`/`outcomeUndecidableCount`,
+`departmentOverrideImpact` (a real `role -> count` map), and
+`sampleSizeSufficient` (a disclosed floor, `MIN_OVERRIDE_SAMPLE_FOR_TREND
+= 5`, gating whether the counts above should be read as a meaningful
+trend).
+
+**`POST /api/audit/overrides/{id}/review`** — body `{ reviewer:
+AgentId, note: string }`. Records a real reviewer note; never changes
+`processQuality` or `outcome`.
+
+**`POST /api/executive/decide`** also gained an optional `overrideReason`
+field on the request body — stored on the resulting `CeoDecisionRecord`
+only when the decision is actually an override (`choice !=
+proposal.overallRecommendation`); silently ignored otherwise.
+
 ### `GET /api/situation-room`
 
 Design Bible Chapter 73.5 — Mobile Command Center & Remote Operations.

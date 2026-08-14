@@ -8325,6 +8325,96 @@ Loop, including the CEO-authorization gate on the Compliance Score
 formula itself) do not begin until this feature is fully tested,
 verified, and documented — which this entry closes out.
 
+## CEO directive "Features 31-35: Compliance, Governance & Continuous Improvement System" — Feature 32, CEO Override Governance
+
+Research first: the CEO's own brief warned "CEO OVERRIDES: 138, 69.0% —
+do not assume this is good or bad." Tracing `CeoDecisionRecord.outcome`
+(`app/executive.py`'s `resolve_proposal()`) corrected an earlier-session
+assumption — overrides are **not** permanently stuck at `"undecidable"`.
+`outcome="pending" if order_id is not None else "undecidable"` is keyed
+on whether a real order was placed, not on `agreed_with_ai`: an override
+that produces a real trade (CEO buys when the network said wait) gets
+graded exactly like any other decision once that trade closes via
+`grade_ceo_decisions()`; only an override resolving to `"wait"` (no
+order at all) stays `"undecidable"` forever, correctly, since there's
+nothing real to grade. `app/override_governance.py` never re-grades that
+outcome a second way.
+
+What this feature genuinely adds is PROCESS QUALITY — was the override
+justified by evidence available at decision time, independent of the
+trade's eventual P&L (no hindsight contamination, the directive's own
+explicit rule). Built entirely from the real, already-persisted
+`ExecutiveMeetingLogEntry` for that proposal (`opinions`,
+`decisionGrade`/`decisionGradeScore`) — never a fabricated confidence
+score and never a second copy of `app/risk_engine.py`'s own logic (only
+the Risk department's own already-recorded opinion stance is read). A
+disclosed 2x2 heuristic — "strong" (`decisionGradeScore >= 80.0`,
+reusing the exact B- boundary `app/executive.py`'s own `GRADE_THRESHOLDS`
+already established) crossed with "contested" (fewer than half the real
+department opinions on file plainly agreed with the recommended action)
+— yields `justified`/`unjustified`/`mixed`, with `not_enough_evidence`
+when no `ExecutiveMeetingLogEntry` exists for the proposal at all.
+Process quality and outcome are two separate, never-collapsed fields.
+
+`GameSaveState.ceo_override_evaluations` (new, persisted,
+`MAX_OVERRIDE_EVALUATIONS = 500`-capped), synced and outcome-refreshed
+once per tick in `app/nexus.py`, after `ceo_decisions` and
+`executive_meeting_log` reach their tick-final values. One new
+`GameState.add_override_review()` mutation method (a real reviewer note
+that never touches `processQuality`/`outcome`). Three new endpoints in
+`app/routers/audit.py` (`GET /overrides/evaluations`, `GET
+/overrides/summary`, `POST /overrides/{id}/review`), additive to the
+original five CAGS endpoints and Feature 31's incident endpoints, kept
+off the WS broadcast matching this router's existing precedent.
+`POST /api/executive/decide` gained an optional `overrideReason` field
+— a genuinely new CEO-provided mechanism (stored only when the decision
+is actually an override), `None` for every decision recorded before it
+existed.
+
+`CeoOverrideGovernanceSummary.overrideRatePct` is `null`, never a
+fabricated 0%, when there are no real decisions to divide by;
+`sampleSizeSufficient` gates trend interpretation on a disclosed,
+arbitrary floor (`MIN_OVERRIDE_SAMPLE_FOR_TREND = 5`), matching the
+honesty convention this chapter's own Compliance Score already carries.
+`departmentOverrideImpact` counts real department-agreement data (which
+departments' own `agree` stance an override went against), never
+invented.
+
+**Frontend:** a new "Override Governance" tab in `CompliancePanel.tsx`,
+alongside the untouched original "CEO Overrides" tab. Shows the real
+summary strip (override rate, justified/unjustified/mixed/not-enough-
+evidence counts, outcome counts, sample-size sufficiency) and an
+expandable evaluation list with a real review-note form
+(reviewer-agent picker reuses `AGENT_PROFILES`).
+
+**Verified**: 20 new tests (`tests/test_override_governance.py`) —
+the full 2x2 process-quality truth table plus the not-enough-evidence
+branch, sync/dedup by `decision_id`, never-creates-for-an-agreeing-
+decision, override-reason carry-through, outcome mirroring (never
+re-derived, confirmed via a `TestRefreshOverrideOutcomes` case that also
+asserts a no-op refresh returns the identical list object), review notes
+never touching `processQuality`/`outcome`, and summary aggregation
+(honest `null` rate on zero decisions, the real sample-size floor, real
+department-impact counts). `mypy app/` (146 files)/`ruff check app/
+tests/` clean, full backend `pytest -q` (1940 passed; same 6
+pre-existing `test_nexus.py` failures noted under Feature 31, still
+unrelated and untouched). `tsc --noEmit`/`eslint --max-warnings 0`/`vite
+build` all clean. Live Playwright verification against the real dev
+stack: the Override Governance tab rendered a real evaluation for this
+save's one actual CEO override, correctly showing `NOT ENOUGH EVIDENCE`
+and `UNDECIDABLE` (this particular decision predates the meeting-log
+feature and resolved to "wait") rather than any fabricated value, and a
+real `POST /api/audit/overrides/{id}/review` call was driven through the
+UI end-to-end — the reviewer's name and note appeared immediately,
+confirmed by screenshot.
+
+Per this directive's own staging rule, Features 33 (Executive Accuracy
+Evidence System), 34 (Compliance Control Effectiveness), and 35 (the
+Continuous Compliance Improvement Loop, including the CEO-authorization
+gate on the Compliance Score formula itself) do not begin until this
+feature is fully tested, verified, and documented — which this entry
+closes out.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

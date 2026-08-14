@@ -18,6 +18,8 @@ import type {
   CeoDecisionRecord,
   CeoOverrideRecord,
   ChallengeReport,
+  CeoOverrideEvaluation,
+  CeoOverrideGovernanceSummary,
   ClientSaveSnapshot,
   ComplianceIncident,
   ComplianceIncidentSummary,
@@ -185,7 +187,7 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ tradeId }),
     }),
-  submitCeoDecision: (proposalId: string, choice: AnalystChoice, delegated = false) =>
+  submitCeoDecision: (proposalId: string, choice: AnalystChoice, delegated = false, overrideReason?: string) =>
     request<{
       tradeProposals: TradeProposal[];
       ceoDecisions: CeoDecisionRecord[];
@@ -194,7 +196,7 @@ export const api = {
       gatekeeperRejections: GatekeeperRejection[];
     }>("/executive/decide", {
       method: "POST",
-      body: JSON.stringify({ proposalId, choice, delegated }),
+      body: JSON.stringify({ proposalId, choice, delegated, overrideReason: overrideReason ?? null }),
     }),
   regenerateDebate: (proposalId: string) =>
     request<{ debates: Debate[] }>("/executive/debate/regenerate", {
@@ -339,6 +341,16 @@ export const api = {
     request<ComplianceIncident>(`/audit/incidents/${encodeURIComponent(incidentId)}/reopen`, {
       method: "POST",
       body: JSON.stringify({ note }),
+    }),
+  // CEO directive "Features 31-35," Feature 32 — CEO Override
+  // Governance's real, persisted override-evaluation list and its one
+  // real mutation (a reviewer's note).
+  getCeoOverrideEvaluations: () => request<CeoOverrideEvaluation[]>("/audit/overrides/evaluations"),
+  getCeoOverrideGovernanceSummary: () => request<CeoOverrideGovernanceSummary>("/audit/overrides/summary"),
+  addCeoOverrideReview: (evaluationId: string, reviewer: AgentId, note: string) =>
+    request<CeoOverrideEvaluation>(`/audit/overrides/${encodeURIComponent(evaluationId)}/review`, {
+      method: "POST",
+      body: JSON.stringify({ reviewer, note }),
     }),
   // Design Bible Chapter 75 — Company Trading Modes & Institutional
   // Capital Protection. tradingModes/dailyCircuitBreaker/losingStreak/
