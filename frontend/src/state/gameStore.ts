@@ -6,6 +6,7 @@ import type {
   AgentId,
   AgentKnowledgeState,
   AgentPerformanceReview,
+  AgentSkillProfile,
   AlertEntry,
   AgentState,
   BacktestSession,
@@ -185,6 +186,7 @@ export interface GameUiState {
   caseStudies: CaseStudy[];
   institutionalMemory: InstitutionalMemoryEntry[];
   agentPerformanceReviews: AgentPerformanceReview[];
+  agentSkillProfiles: AgentSkillProfile[];
   learningEvents: LearningEvent[];
   decisionVault: DecisionVaultEntry[];
   warRoomSessions: WarRoomSession[];
@@ -485,6 +487,7 @@ class GameStore {
     caseStudies: [],
     institutionalMemory: [],
     agentPerformanceReviews: [],
+    agentSkillProfiles: [],
     learningEvents: [],
     decisionVault: [],
     warRoomSessions: [],
@@ -787,6 +790,7 @@ class GameStore {
     EventBus.on("caseStudies:updated", (caseStudies) => this.set({ caseStudies }));
     EventBus.on("institutionalMemory:updated", (institutionalMemory) => this.set({ institutionalMemory }));
     EventBus.on("agentPerformanceReviews:updated", (agentPerformanceReviews) => this.set({ agentPerformanceReviews }));
+    EventBus.on("agentSkillProfiles:updated", (agentSkillProfiles) => this.set({ agentSkillProfiles }));
     EventBus.on("learningEvents:updated", (learningEvents) => this.set({ learningEvents }));
     EventBus.on("decisionVault:updated", (decisionVault) => this.set({ decisionVault }));
     EventBus.on("warRoomSessions:updated", (warRoomSessions) => this.set({ warRoomSessions }));

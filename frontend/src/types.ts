@@ -4073,6 +4073,57 @@ export interface MentorState {
   updatedAt: string;
 }
 
+// CEO directive "Features 26-30," Feature 28 — Academy + Skill
+// Progression (backend/app/skill_progression.py). 11 named domains; 6
+// are honestly NOT_TRACKABLE_YET (value always null) because no
+// per-agent attribution mechanism exists for them today — see that
+// module's own docstring for exactly which and why.
+export type SkillDomainId =
+  | "market_structure"
+  | "risk_management"
+  | "quant_research"
+  | "technical_fundamental_analysis"
+  | "execution"
+  | "statistical_reasoning"
+  | "regime_detection"
+  | "prediction_calibration"
+  | "communication"
+  | "collaboration"
+  | "research_quality";
+
+/** `value === null` means NOT_ENOUGH_EVIDENCE (measurable domain, no
+ * data yet this period) or NOT_TRACKABLE_YET (no attribution mechanism
+ * exists at all) — `evidence` always states honestly which. `trend` is
+ * this domain's own real improve/stagnate/regress read against the
+ * agent's own previous assessment of the SAME domain. */
+export interface SkillAssessment {
+  domainId: SkillDomainId;
+  label: string;
+  value: number | null;
+  sampleSize: number;
+  evidence: string;
+  trend: "improving" | "stagnant" | "regressed" | "not_enough_history";
+}
+
+/** One real skill snapshot for one agent over one real period.
+ * `recommendedDomainId`/`recommendedMentorId` are the real closed-loop
+ * hook the CEO's own worked example asked for — set only when the
+ * agent's latest Agent Performance Review's weakest dimension maps to a
+ * measurable skill domain with a real, content-backed Foundational
+ * Mentor track the agent hasn't already graduated. */
+export interface AgentSkillProfile {
+  id: string;
+  agentId: AgentId;
+  periodStartSimDay: number;
+  periodEndSimDay: number;
+  assessments: SkillAssessment[];
+  recommendedDomainId: SkillDomainId | null;
+  recommendedMentorId: string | null;
+  recommendationReason: string | null;
+  simDay: number;
+  createdAt: string;
+}
+
 // v0.7 Feature 49 (Phase 3, revised) — the Foundational Mentor Program /
 // Professional Academy (see backend/app/foundational_mentors.py's
 // module docstring for the full content-attribution boundary and the
@@ -4478,6 +4529,8 @@ export interface GameSaveState {
   institutionalMemory: InstitutionalMemoryEntry[];
   // CEO directive "Features 26-30," Feature 27 — Agent Performance Reviews.
   agentPerformanceReviews: AgentPerformanceReview[];
+  // CEO directive "Features 26-30," Feature 28 — Academy + Skill Progression.
+  agentSkillProfiles: AgentSkillProfile[];
   // CEO Company Health + Live Market Realism directive, Section 3 — one
   // capped, permanent LearningEvent per real Knowledge-tier crossing.
   learningEvents: LearningEvent[];

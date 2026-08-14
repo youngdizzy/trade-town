@@ -15,6 +15,7 @@ import type {
   CaseStudy,
   InstitutionalMemoryEntry,
   AgentPerformanceReview,
+  AgentSkillProfile,
   CeoDecisionRecord,
   ChallengeReport,
   CoachReport,
@@ -173,6 +174,7 @@ type ServerMessage =
       caseStudies: CaseStudy[];
       institutionalMemory: InstitutionalMemoryEntry[];
       agentPerformanceReviews: AgentPerformanceReview[];
+      agentSkillProfiles: AgentSkillProfile[];
       learningEvents: LearningEvent[];
       decisionVault: DecisionVaultEntry[];
       warRoomSessions: WarRoomSession[];
@@ -334,6 +336,7 @@ export class GameSocket {
             caseStudies: msg.caseStudies,
             institutionalMemory: msg.institutionalMemory,
             agentPerformanceReviews: msg.agentPerformanceReviews,
+            agentSkillProfiles: msg.agentSkillProfiles,
             learningEvents: msg.learningEvents,
             decisionVault: msg.decisionVault,
             warRoomSessions: msg.warRoomSessions,

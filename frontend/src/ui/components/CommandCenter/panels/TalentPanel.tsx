@@ -23,6 +23,13 @@ const TREND_TONE: Record<string, "cyan" | "green" | "amber" | "red" | "neutral">
   not_enough_history: "neutral",
 };
 
+const SKILL_TREND_TONE: Record<string, "cyan" | "green" | "amber" | "red" | "neutral"> = {
+  improving: "green",
+  stagnant: "cyan",
+  regressed: "red",
+  not_enough_history: "neutral",
+};
+
 /**
  * v0.7 Feature 44 — the Talent Discovery System (see
  * backend/app/talent.py's module docstring for the full research
@@ -50,7 +57,8 @@ const TREND_TONE: Record<string, "cyan" | "green" | "amber" | "red" | "neutral">
  * a real coaching note, not a career-path promise.
  */
 export function TalentPanel() {
-  const { talent, thinkingProfiles, coachReports, disciplineReviews, reasoningChallenges, reflectionSessions, challengeReports, blackBox, debates, agentPerformanceReviews } = useGameStore();
+  const { talent, thinkingProfiles, coachReports, disciplineReviews, reasoningChallenges, reflectionSessions, challengeReports, blackBox, debates, agentPerformanceReviews, agentSkillProfiles } =
+    useGameStore();
   const [selectedAgent, setSelectedAgent] = useState<AgentId>(AGENT_IDS[0]!);
   const [acking, setAcking] = useState<string | null>(null);
 
@@ -58,6 +66,10 @@ export function TalentPanel() {
   const latestReview = useMemo(
     () => [...agentPerformanceReviews].reverse().find((r) => r.agentId === selectedAgent) ?? null,
     [agentPerformanceReviews, selectedAgent],
+  );
+  const latestSkillProfile = useMemo(
+    () => [...agentSkillProfiles].reverse().find((p) => p.agentId === selectedAgent) ?? null,
+    [agentSkillProfiles, selectedAgent],
   );
   const reports = useMemo(() => [...talent.reports].reverse(), [talent.reports]);
   const growthHistory = useMemo(
@@ -228,6 +240,47 @@ export function TalentPanel() {
                   </div>
                   {dim.value !== null && <Meter value={Math.max(0, Math.min(100, dim.value))} tone={dim.value >= 70 ? "green" : dim.value >= 40 ? "amber" : "red"} />}
                   <div className="mt-0.5 text-cmd-textDim/80">{dim.evidence}</div>
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+      </Glass>
+
+      <Glass className="p-3">
+        <TerminalLabel>Skill Progression — {AGENT_PROFILES[selectedAgent].name}</TerminalLabel>
+        <p className="mb-2 text-[9px] text-cmd-textDim">
+          CEO directive Feature 28 — 11 named skill domains, computed weekly (uses the same employee selector above). 5 domains reuse real, already-computed evidence; 6 have no
+          per-agent attribution mechanism in this codebase today and honestly read N/T (not trackable yet) rather than a guessed number.
+        </p>
+        {!latestSkillProfile ? (
+          <EmptyState>No skill profile generated yet for this employee — profiles are computed weekly.</EmptyState>
+        ) : (
+          <>
+            {latestSkillProfile.recommendedDomainId && latestSkillProfile.recommendationReason && (
+              <div className="mb-2 rounded-sm border border-cmd-cyan/50 bg-cmd-cyan/5 p-2 text-[9px]">
+                <div className="mb-0.5 flex items-center gap-1.5">
+                  <StatusPill tone="cyan">Training Recommended</StatusPill>
+                  <span className="text-cmd-text">{latestSkillProfile.recommendedMentorId} track</span>
+                </div>
+                <div className="text-cmd-textDim">{latestSkillProfile.recommendationReason}</div>
+              </div>
+            )}
+            <div className="grid grid-cols-1 gap-1.5 md:grid-cols-2">
+              {latestSkillProfile.assessments.map((a) => (
+                <div
+                  key={a.domainId}
+                  className={`rounded-sm border p-1.5 text-[9px] ${a.domainId === latestSkillProfile.recommendedDomainId ? "border-cmd-amber/50 bg-cmd-amber/5" : "border-cmd-border/60 bg-cmd-bg/40"}`}
+                >
+                  <div className="mb-0.5 flex items-center justify-between gap-2">
+                    <span className="text-cmd-text">{a.label}</span>
+                    <div className="flex items-center gap-1.5">
+                      <span className="tabular-nums text-cmd-textDim">{a.value !== null ? a.value.toFixed(1) : "N/T"}</span>
+                      <StatusPill tone={SKILL_TREND_TONE[a.trend]}>{a.trend.replace(/_/g, " ")}</StatusPill>
+                    </div>
+                  </div>
+                  {a.value !== null && <Meter value={Math.max(0, Math.min(100, a.value))} tone={a.value >= 70 ? "green" : a.value >= 40 ? "amber" : "red"} />}
+                  <div className="mt-0.5 text-cmd-textDim/80">{a.evidence}</div>
                 </div>
               ))}
             </div>
