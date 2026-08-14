@@ -7,6 +7,40 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO Company Health + Live Market Realism directive, Section 3 — formal Learning Event records**
+  (`backend/app/schemas.py`, `backend/app/academy.py`, `backend/app/scribe.py`, `backend/app/nexus.py`,
+  `backend/app/save_modules.py`, `backend/app/ws_manager.py`, `backend/tests/test_academy.py`,
+  `frontend/src/types.ts`, `frontend/src/game/systems/EventBus.ts`, `frontend/src/state/gameStore.ts`,
+  `frontend/src/net/socket.ts`, `frontend/src/game/systems/NexusManager.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/AcademyPanel.tsx`): the CEO asked for a formal record of
+  every real Knowledge-tier crossing — agent, skill/domain, previous competency, new competency, source,
+  evidence, timestamp. `app/academy.py`'s `award_points()` already computed every one of those fields
+  internally (the tier-up transition) but only ever surfaced it as a free-text `app/scribe.py` Memory entry,
+  never a structured, queryable record. New `LearningEvent` schema captures the transition directly off the
+  real `AgentKnowledgeState` change — never a fabricated "why" narrative, since `pointsAwarded`/`totalPoints`
+  already are the real evidence. `award_points()` now requires an explicit `source` naming exactly which of
+  the five real places in this codebase actually calls it — `research_completion`, `academy_project`,
+  `meeting_attendance`, `mentorship`, or `case_study_reflection` (a supporting agent nudged for reflecting on
+  a filed case study) — never a fabricated sixth reason; two of those five were only found by re-running
+  `mypy` after the first four call sites were wired up, which caught two remaining unannotated call sites
+  and led to `case_study_reflection` being added as a genuinely distinct fifth source rather than
+  shoehorned into one of the other four. Each real tier-up is appended to a new capped (60), permanent
+  `learningEvents` archive list (same cap-and-trim pattern as `app/mistakes.py`'s Library of Mistakes),
+  broadcast live over the WebSocket tick. Along the way, fixed a real pre-existing gap:
+  `maybe_run_mentorship()` computed its own tier-up via `award_points()` but discarded the result, so a
+  mentorship bonus that itself crossed a tier threshold was silently never recorded anywhere (no Memory
+  entry, no Learning Event) — it now returns the event alongside the pairing, recorded through the same path
+  as every other source. Frontend: a new "Learning Events" card in the Command Center's KNOWLEDGE tab shows
+  each event's agent, skill domain, previous → new level, real source, and points awarded, most recent
+  first. Verified: `test_academy.py` extended (24 tests, including the new `LearningEvent` field assertions,
+  `record_learning_event()`'s cap behavior, and `maybe_run_mentorship()`'s fixed 3-tuple return), full
+  backend suite (1778/1779 passing — the one failure is pre-existing, unseeded-random flakiness in
+  `test_foundational_mentors.py`, confirmed unrelated by re-running it in isolation 5/5 clean both with and
+  without this change), `mypy`/`ruff` clean; frontend `tsc`/`lint`/`build` clean; live-verified against the
+  running dev stack — connected directly to the WebSocket broadcast and confirmed a real persisted
+  `LearningEvent` (Pulse crossing to Advanced in Statistics via a finished Academy project) was present on
+  the wire, then confirmed via Playwright that the same event rendered correctly in the Command Center.
+
 - **CEO Company Health + Live Market Realism directive, Section 13 — real Goal blocker detection**
   (`backend/app/schemas.py`, `backend/app/goals.py`, `backend/tests/test_goals.py`, `frontend/src/types.ts`,
   `frontend/src/ui/components/CommandCenter/panels/CompanyPanel.tsx`): the CEO asked Goals to also carry

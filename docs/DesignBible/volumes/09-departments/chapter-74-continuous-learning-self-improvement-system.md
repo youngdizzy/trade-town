@@ -375,6 +375,36 @@ graph nodes, and six of eight Self-Improvement Proposal categories —
 see Deferred Features. See Part 2 below for the Institutional Evolution
 Engine and its own Company Evolution Score.
 
+**Pass — Learning Events (CEO Company Health + Live Market Realism
+directive, Section 3):** the one real Academy Integration hook named in
+the table above (row 111) — a filed `CaseStudy`/`SuccessStudy` nudging
+the generating agent's `AgentKnowledgeState.points` — plus `app/
+academy.py`'s other three real point-award call sites (research
+completion, an Academy project finishing, meeting attendance) and the
+mentorship bonus all previously surfaced only as a free-text
+`app/scribe.py` Memory entry the instant a real Knowledge Tier was
+crossed, with no structured, queryable record of the transition itself.
+`award_points()` now returns a real `LearningEvent`
+(`agentId`/`skillDomain`/`previousCompetency`+`previousLevel`/
+`newCompetency`+`newLevel`/`source`/`pointsAwarded`/`totalPoints`/
+`createdAt`) instead of the raw `AgentKnowledgeState`, requiring an
+explicit `source` naming exactly which of these five real callers
+triggered the award — `research_completion`, `academy_project`,
+`meeting_attendance`, `mentorship`, or `case_study_reflection` — never
+a fabricated sixth reason. Each event is appended to a capped (60),
+permanent `learningEvents` archive list (same cap-and-trim pattern as
+`app/mistakes.py`'s `MAX_CASE_STUDIES`), broadcast live over the
+WebSocket tick and surfaced in the Command Center's KNOWLEDGE tab
+(`AcademyPanel.tsx`'s "Learning Events" card). The existing Memory entry
+is kept unchanged as the human-readable company-history version of the
+same real event — `LearningEvent` is the queryable structured version,
+not a replacement. Along the way, fixed a real pre-existing gap:
+`maybe_run_mentorship()` computed its own tier-up via `award_points()`
+but discarded the result, so a mentorship bonus that itself crossed a
+tier threshold was silently never recorded anywhere (no Memory entry,
+no `LearningEvent`) — it now returns the `LearningEvent` alongside the
+pairing, recorded through the same path as every other source.
+
 ---
 
 # Part 2 — Institutional Evolution Engine
