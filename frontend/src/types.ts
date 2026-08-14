@@ -2627,6 +2627,29 @@ export interface AcademyState {
   updatedAt: string;
 }
 
+// CEO Company Health + Live Market Realism directive, Section 3 — the
+// five real, already-existing places backend/app/academy.py's
+// award_points() is called from.
+export type LearningEventSource = "research_completion" | "academy_project" | "meeting_attendance" | "mentorship" | "case_study_reflection";
+
+// A formal, structured record of one real Knowledge-tier crossing,
+// mirroring backend/app/schemas.py's LearningEvent. Every field is real,
+// read directly off the AgentKnowledgeState transition award_points()
+// computed — never a fabricated "why" narrative.
+export interface LearningEvent {
+  id: string;
+  agentId: AgentId;
+  skillDomain: string;
+  previousCompetency: number;
+  previousLevel: KnowledgeLevel;
+  newCompetency: number;
+  newLevel: KnowledgeLevel;
+  source: LearningEventSource;
+  pointsAwarded: number;
+  totalPoints: number;
+  createdAt: string;
+}
+
 // v0.7 Feature 25.5 — Company Knowledge Graph (see
 // backend/app/knowledge_graph.py). Computed fresh on every
 // GET /api/knowledge-graph call, the same "expensive-ish to compute,
@@ -4351,6 +4374,9 @@ export interface GameSaveState {
   academyState: AcademyState;
   disciplineReviews: DisciplineReview[];
   caseStudies: CaseStudy[];
+  // CEO Company Health + Live Market Realism directive, Section 3 — one
+  // capped, permanent LearningEvent per real Knowledge-tier crossing.
+  learningEvents: LearningEvent[];
   decisionVault: DecisionVaultEntry[];
   warRoomSessions: WarRoomSession[];
   portfolioIntelligence: PortfolioIntelligence;

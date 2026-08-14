@@ -41,6 +41,7 @@ import type {
   HallOfFameEntry,
   InnovationState,
   InstitutionalSurvivalScore,
+  LearningEvent,
   MarketEnvironmentState,
   MarketIntelligenceLearningEntry,
   MarketIntelligenceReport,
@@ -180,6 +181,7 @@ export interface GameUiState {
   academyState: AcademyState;
   disciplineReviews: DisciplineReview[];
   caseStudies: CaseStudy[];
+  learningEvents: LearningEvent[];
   decisionVault: DecisionVaultEntry[];
   warRoomSessions: WarRoomSession[];
   portfolioIntelligence: PortfolioIntelligence;
@@ -477,6 +479,7 @@ class GameStore {
     academyState: { level: 1, levelLabel: "Training Room", totalPoints: 0, completedProjectCount: 0, updatedAt: new Date().toISOString() },
     disciplineReviews: [],
     caseStudies: [],
+    learningEvents: [],
     decisionVault: [],
     warRoomSessions: [],
     portfolioIntelligence: {
@@ -776,6 +779,7 @@ class GameStore {
     EventBus.on("academyState:updated", (academyState) => this.set({ academyState }));
     EventBus.on("disciplineReviews:updated", (disciplineReviews) => this.set({ disciplineReviews }));
     EventBus.on("caseStudies:updated", (caseStudies) => this.set({ caseStudies }));
+    EventBus.on("learningEvents:updated", (learningEvents) => this.set({ learningEvents }));
     EventBus.on("decisionVault:updated", (decisionVault) => this.set({ decisionVault }));
     EventBus.on("warRoomSessions:updated", (warRoomSessions) => this.set({ warRoomSessions }));
     EventBus.on("portfolioIntelligence:updated", (portfolioIntelligence) => this.set({ portfolioIntelligence }));

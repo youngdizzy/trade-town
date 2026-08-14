@@ -38,6 +38,7 @@ import type {
   HallOfFameEntry,
   InnovationState,
   InstitutionalSurvivalScore,
+  LearningEvent,
   MarketEnvironmentState,
   MarketIntelligenceLearningEntry,
   MarketIntelligenceReport,
@@ -159,6 +160,7 @@ interface NexusSnapshot {
   academyState: AcademyState;
   disciplineReviews: DisciplineReview[];
   caseStudies: CaseStudy[];
+  learningEvents: LearningEvent[];
   decisionVault: DecisionVaultEntry[];
   warRoomSessions: WarRoomSession[];
   portfolioIntelligence: PortfolioIntelligence;
@@ -409,6 +411,7 @@ export class NexusManager {
   };
   private static disciplineReviews: DisciplineReview[] = [];
   private static caseStudies: CaseStudy[] = [];
+  private static learningEvents: LearningEvent[] = [];
   private static decisionVault: DecisionVaultEntry[] = [];
   private static warRoomSessions: WarRoomSession[] = [];
   private static portfolioIntelligence: PortfolioIntelligence = {
@@ -815,6 +818,10 @@ export class NexusManager {
 
   static getCaseStudies(): CaseStudy[] {
     return this.caseStudies;
+  }
+
+  static getLearningEvents(): LearningEvent[] {
+    return this.learningEvents;
   }
 
   static getDecisionVault(): DecisionVaultEntry[] {
@@ -1478,6 +1485,9 @@ export class NexusManager {
     if (update.caseStudies.length !== this.caseStudies.length) EventBus.emit("caseStudies:updated", update.caseStudies);
     this.caseStudies = update.caseStudies;
 
+    if (update.learningEvents.length !== this.learningEvents.length) EventBus.emit("learningEvents:updated", update.learningEvents);
+    this.learningEvents = update.learningEvents;
+
     if (update.decisionVault.length !== this.decisionVault.length) EventBus.emit("decisionVault:updated", update.decisionVault);
     this.decisionVault = update.decisionVault;
 
@@ -1713,6 +1723,7 @@ export class NexusManager {
     this.academyState = save.academyState;
     this.disciplineReviews = save.disciplineReviews;
     this.caseStudies = save.caseStudies;
+    this.learningEvents = save.learningEvents;
     this.decisionVault = save.decisionVault;
     this.warRoomSessions = save.warRoomSessions;
     this.portfolioIntelligence = save.portfolioIntelligence;

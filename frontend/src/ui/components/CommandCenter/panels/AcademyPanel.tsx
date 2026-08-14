@@ -3,7 +3,7 @@ import { useGameStore } from "@/ui/hooks/useGameStore";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { careerLevelLabel, companyMajor } from "@/game/systems/careerLevels";
 import { INNOVATION_TIER_LABEL } from "@/game/systems/innovation";
-import type { AgentKnowledgeState, InnovationState } from "@/types";
+import type { AgentKnowledgeState, InnovationState, LearningEvent, LearningEventSource } from "@/types";
 import { KnowledgeGraphView } from "../KnowledgeGraphView";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
 
@@ -17,6 +17,17 @@ function innovationTone(tier: number): "cyan" | "amber" | "green" {
   return "cyan";
 }
 
+// CEO Company Health + Live Market Realism directive, Section 3 — the
+// five real sources named in backend/app/schemas.py's LearningEventSource,
+// given a readable label rather than a fabricated sixth category.
+const LEARNING_EVENT_SOURCE_LABEL: Record<LearningEventSource, string> = {
+  research_completion: "Research completed",
+  academy_project: "Academy project finished",
+  meeting_attendance: "Meeting attendance",
+  mentorship: "Mentorship bonus",
+  case_study_reflection: "Case study reflection",
+};
+
 /**
  * v0.7 Feature 25 — the AI Academy & Knowledge Network. Every number here
  * is real: agentKnowledge/academyState are recomputed server-side every
@@ -29,7 +40,7 @@ function innovationTone(tier: number): "cyan" | "amber" | "green" {
  * archive (see backend/app/academy_research.py).
  */
 export function AcademyPanel() {
-  const { academyState, agentKnowledge, academyProjects, academyCompletedProjects, memory, executiveReviews, innovationState } = useGameStore();
+  const { academyState, agentKnowledge, academyProjects, academyCompletedProjects, memory, executiveReviews, innovationState, learningEvents } = useGameStore();
   const activeProject = academyProjects[0];
   const knowledgeStates = Object.values(agentKnowledge) as AgentKnowledgeState[];
   const rankedKnowledge = [...knowledgeStates].sort((a, b) => b.points - a.points);
@@ -38,6 +49,7 @@ export function AcademyPanel() {
   const latestReview = executiveReviews[executiveReviews.length - 1];
   const knowledgeConnections = latestReview?.knowledgeConnections ?? [];
   const rankedInnovation = (Object.values(innovationState) as InnovationState[]).sort((a, b) => b.points - a.points);
+  const recentLearningEvents = [...learningEvents].reverse().slice(0, 8) as LearningEvent[];
 
   return (
     <div className="relative grid grid-cols-1 gap-3 lg:grid-cols-3">
@@ -159,6 +171,32 @@ export function AcademyPanel() {
               <div key={m.id} className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-1.5 text-[9px]">
                 <div className="mb-0.5 text-cmd-cyan">{m.title}</div>
                 <div className="text-cmd-textDim">{m.body}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </Glass>
+
+      <Glass className="p-3 lg:col-span-3">
+        {/* CEO Company Health + Live Market Realism directive, Section 3 —
+            a formal, structured record of every real Knowledge-tier
+            crossing (see backend/app/schemas.py's LearningEvent), replacing
+            free-text-only Memory entries as the queryable source of truth
+            for "who learned what, from where, and when." */}
+        <TerminalLabel>Learning Events</TerminalLabel>
+        {recentLearningEvents.length === 0 ? (
+          <EmptyState>No Learning Events recorded yet — one is filed the instant an agent's real knowledge points cross a tier threshold.</EmptyState>
+        ) : (
+          <div className="mt-1.5 max-h-56 space-y-1 overflow-y-auto">
+            {recentLearningEvents.map((event) => (
+              <div key={event.id} className="flex items-center gap-2 border-b border-cmd-border/40 py-1 text-[9px] last:border-0">
+                <span className="w-16 flex-none truncate text-cmd-cyan">{AGENT_PROFILES[event.agentId].name}</span>
+                <span className="w-28 flex-none truncate text-cmd-textDim">{event.skillDomain}</span>
+                <span className="flex-1 truncate text-cmd-text">
+                  {event.previousLevel} → {event.newLevel}
+                </span>
+                <span className="w-36 flex-none truncate text-cmd-textDim">{LEARNING_EVENT_SOURCE_LABEL[event.source]}</span>
+                <span className="w-12 flex-none text-right tabular-nums text-cmd-textDim">+{event.pointsAwarded.toFixed(1)}p</span>
               </div>
             ))}
           </div>

@@ -40,6 +40,7 @@ import type {
   HallOfFameEntry,
   InnovationState,
   InstitutionalSurvivalScore,
+  LearningEvent,
   MarketEnvironmentState,
   MarketIntelligenceLearningEntry,
   MarketIntelligenceReport,
@@ -168,6 +169,7 @@ type ServerMessage =
       academyState: AcademyState;
       disciplineReviews: DisciplineReview[];
       caseStudies: CaseStudy[];
+      learningEvents: LearningEvent[];
       decisionVault: DecisionVaultEntry[];
       warRoomSessions: WarRoomSession[];
       portfolioIntelligence: PortfolioIntelligence;
@@ -326,6 +328,7 @@ export class GameSocket {
             academyState: msg.academyState,
             disciplineReviews: msg.disciplineReviews,
             caseStudies: msg.caseStudies,
+            learningEvents: msg.learningEvents,
             decisionVault: msg.decisionVault,
             warRoomSessions: msg.warRoomSessions,
             portfolioIntelligence: msg.portfolioIntelligence,

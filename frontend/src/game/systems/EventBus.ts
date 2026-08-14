@@ -44,6 +44,7 @@ import type {
   HallOfFameEntry,
   InnovationState,
   InstitutionalSurvivalScore,
+  LearningEvent,
   MarketEnvironmentState,
   MarketIntelligenceLearningEntry,
   MarketIntelligenceReport,
@@ -238,6 +239,7 @@ export interface GameEvents {
   "academyState:updated": AcademyState;
   "disciplineReviews:updated": DisciplineReview[];
   "caseStudies:updated": CaseStudy[];
+  "learningEvents:updated": LearningEvent[];
   "decisionVault:updated": DecisionVaultEntry[];
   "warRoomSessions:updated": WarRoomSession[];
   "portfolioIntelligence:updated": PortfolioIntelligence;
