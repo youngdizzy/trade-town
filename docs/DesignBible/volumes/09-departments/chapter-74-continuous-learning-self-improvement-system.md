@@ -994,3 +994,132 @@ PLANNED`/`Mark Douglas Track — PLANNED` for this specific, older save;
 the new content is proven by the automated test suite and the direct
 `default_foundational_mentor_state()` call above instead of a second
 live screenshot of a fresh game.
+
+## Addendum — Academy + Skill Progression (CEO directive "Features 26-30," Feature 28)
+
+**Research finding, documented before code was written.** `app/
+academy.py` and `app/foundational_mentors.py` are the two closest
+existing systems, and neither is a multi-domain per-agent skill score.
+`academy.py`'s `AgentKnowledgeState` is a single scalar (`points`/`tier`/
+`level`) plus one fixed, static `branch` string per agent — it never
+breaks down into domains and never changes what it measures.
+`foundational_mentors.py` is a real curriculum/certification delivery
+engine (named-educator tracks, real lessons/quizzes, a genuine
+active/suspended/revoked `CertificationRecord` lifecycle) — but its
+tracks are curricula, not the 11 skill domains the brief names, and
+graduating one produces a pass/fail certification, never a 0-100 skill
+score with real history. A direct grep for `Skill*`/`SkillDomain`/
+`SkillScore` across the whole backend and frontend returned zero hits —
+confirmed genuinely new territory, not a rename of something that
+already existed.
+
+**What was built:** `app/skill_progression.py`, a third sibling module
+(not a merge into either of the two above) defining the skill-domain
+taxonomy the brief actually asked for. Each of the 11 named domains
+(market structure, risk management, quant research, technical/
+fundamental analysis, execution, statistical reasoning, regime
+detection, prediction calibration, communication, collaboration,
+research quality) was checked individually against real, already-
+computed per-agent evidence:
+
+- **5 measurable, real evidence, no new formula invented:**
+  `risk_management` reuses `app/performance_review.py`'s
+  `_risk_discipline()` (Position Sizing Discipline / Patience Discipline
+  Factors); `research_quality` reuses `_decision_accuracy()`
+  (`app/analytics.py`'s `research_accuracy()`); `prediction_calibration`
+  reuses `_calibration()` (`app/analytics.py`'s `confidence_accuracy()`
+  — the literal name in the brief matches a real dimension already);
+  `collaboration` reuses `_collaboration()` (Reasoning Lab contributions
+  + Reflection Chamber insights). `statistical_reasoning` is a
+  **disclosed proxy** — this codebase has no dedicated statistics-
+  methodology signal, so it reuses the exact Assumptions Challenged /
+  Cross-Examination Discipline Factor average `app/mentor.py`'s
+  `ThinkingProfile` "Reasoning" trait already computes (`_factor_
+  average()`), stated as a proxy in the assessment's own `evidence`
+  string rather than presented as a distinct measurement.
+- **6 honestly `NOT_TRACKABLE_YET`, permanently, not a temporary
+  evidence shortage:** `market_structure`, `quant_research`,
+  `technical_fundamental_analysis`, `execution`, `regime_detection`,
+  `communication` have no per-agent attribution mechanism anywhere in
+  this codebase — each real company-level computation that's closest
+  (`app/market_intelligence.py`'s structure/regime classifiers, `app/
+  model_validation.py`'s Model Validator) is cited by name in the
+  assessment's `evidence` string, with the specific structural reason it
+  doesn't reduce to a per-agent number (e.g. `quant_research`: the Model
+  Validator is a company/strategy-level governance seat this directive's
+  own rules forbid repurposing into a per-agent skill signal).
+  `communication` mirrors this chapter's own `ThinkingProfile`, which
+  already reached and documented the identical conclusion for the same
+  reason.
+
+**The real closed loop.** `AgentSkillProfile.recommendedDomainId`/
+`recommendedMentorId`/`recommendationReason` are set only when all
+three hold: the agent's latest `AgentPerformanceReview.weakestDimensionId`
+maps to one of the 4 skill domains with a genuine 1:1 Performance-Review
+analog (`risk_discipline`→`risk_management`,
+`decision_accuracy`→`research_quality`,
+`calibration`→`prediction_calibration`,
+`collaboration`→`collaboration` — `process_quality`/`learning_trend`/
+`recurring_mistakes`/`pnl_attribution` have no single matching domain
+and are deliberately left unmapped); a real, **content-backed**
+Foundational Mentor track exists for that domain (`SKILL_DOMAIN_
+RECOMMENDED_MENTOR`, covering only `tjr`/`mark_douglas`/`linda_raschke`/
+`market_intelligence` — the four tracks with real written lessons per
+`foundational_mentors.py`'s own `_LESSON_SPECS_BY_MENTOR`; the other
+three roadmap tracks are still `"planned"` with zero content, so they
+are never recommended); and the agent hasn't already graduated that
+track (`FoundationalMentorState.progress`). `collaboration` has no
+mapped mentor — Mike Bellafiore's "Trading Team Development" focus area
+exists but has zero written lessons, so it is deliberately left
+unrecommended rather than pointing the CEO at an empty track. This is
+the literal mechanism the CEO's own worked example asked for ("agent
+misjudges volatility regime → Performance Review flags it → Academy
+recommends training → agent completes it → evaluated on subsequent
+decisions → improvement becomes evidence of learning") — implemented
+for the 4 domains where every link in that chain is real, rather than
+faked for the domain (`regime_detection`) the worked example happened to
+name, which remains `NOT_TRACKABLE_YET`.
+
+**Improve/stagnate/regress, real history, no new lifecycle invented.**
+`SkillAssessment.trend` compares this period's real value against the
+same agent's own previous real assessment of the *same* domain
+(`TREND_CHANGE_THRESHOLD_PCT`, reused directly from `app/performance_
+review.py` rather than a second, possibly-drifting threshold) —
+`improving`/`regressed`/`stagnant`/`not_enough_history`. This is a
+measurement-level signal, deliberately separate from `foundational_
+mentors.py`'s own certification revoke/suspend lifecycle (which remains
+that module's sole authority over active/suspended/revoked status) —
+Feature 28 does not duplicate or touch that lifecycle, only reads
+`graduationStatus` from it for the recommendation gate above.
+
+**Cadence.** Computed weekly in `app/nexus.py`, on the same real
+`WEEKLY_INTERVAL_DAYS` gate as Feature 27's Agent Performance Reviews,
+deliberately run immediately after that loop in the same tick so each
+skill snapshot reads that week's freshly-computed `weakestDimensionId`
+rather than a stale prior-week value.
+
+**Frontend:** extends the existing `TalentPanel.tsx` (`TALENT` tab),
+adding a new "Skill Progression" card between the Agent Performance
+Review card and the Thinking Profiles card, reusing the panel's existing
+employee selector rather than a new one or a new tab — the same
+placement precedent Feature 27 established.
+
+**Verified:** 20 new backend tests (`tests/test_skill_progression.py`)
+covering the full 11-domain taxonomy on every profile, the 6
+`NOT_TRACKABLE_YET` domains staying `null` even against heavy real input
+data, each of the 5 measurable domains' real evidence, the
+improving/regressed/stagnant/not-enough-history trend cases, the
+training-recommendation gate (no review → no recommendation; an
+unmapped weak dimension → no recommendation; a mapped weak dimension →
+the correct real track; an already-graduated track → no recommendation),
+and record/latest capping and filtering. Full backend suite, `mypy
+app/`, `ruff check app/ tests/` clean. `tsc -b --noEmit`, `npm run
+lint`, `npm run build` clean. Live-verified against the running dev
+server: `GET /api/skill-profiles/{agentId}/latest` and a real `POST /api/
+time/advance` to two consecutive week boundaries on a fresh save
+produced 30 real `AgentSkillProfile` records (15 agents × 2 weeks) with
+the exact expected honesty shape — 5 domains carrying real evidence, 6
+permanently `null` with their disclosed structural reason — and the new
+"Skill Progression" card rendered correctly in the TALENT tab
+(`frontend/tests/talent.spec.ts`'s new Feature 28 test, run against the
+live stack).

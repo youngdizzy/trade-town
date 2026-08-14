@@ -7,6 +7,37 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Features 26-30: Agent Intelligence, Learning & Institutional Memory System," Feature 28 —
+  Academy + Skill Progression** (`backend/app/skill_progression.py`, `backend/app/schemas.py`,
+  `backend/app/nexus.py`, `backend/app/save_modules.py`, `backend/app/ws_manager.py`, `backend/app/main.py`,
+  `backend/app/routers/skill_progression.py`, `backend/tests/test_skill_progression.py`,
+  `frontend/src/types.ts`, `frontend/src/net/socket.ts`, `frontend/src/game/systems/NexusManager.ts`,
+  `frontend/src/game/systems/EventBus.ts`, `frontend/src/state/gameStore.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/TalentPanel.tsx`, `frontend/tests/talent.spec.ts`): the
+  third stage of the CEO's 26→27→28→29→30 closed learning loop. Researched first: `app/academy.py` is a
+  single-scalar knowledge-points/tier ladder (one `points` number, one fixed `branch` string per agent) and
+  `app/foundational_mentors.py` is a curriculum/certification delivery engine (real lessons/quizzes, a genuine
+  active/suspended/revoked lifecycle) — neither is a multi-domain per-agent skill score, and a grep for
+  `Skill*`/`SkillDomain` across the whole codebase returned zero hits, confirming genuinely new territory. Of the
+  11 domains named in the brief, 5 reuse real evidence already computed by `performance_review.py`/`mentor.py`
+  (risk management, research quality, prediction calibration, collaboration, statistical reasoning as a disclosed
+  proxy); the other 6 (market structure, quant research, technical/fundamental analysis, execution, regime
+  detection, communication) have no per-agent attribution mechanism anywhere in this codebase and stay honestly
+  `NOT_TRACKABLE_YET` — never fabricated from an occupation label — each citing the real company-level system
+  closest to it and why it doesn't reduce to a per-agent number. Closes the loop the CEO's own worked example
+  asked for: a weak Performance Review dimension now drives a real training recommendation naming a real,
+  content-backed Foundational Mentor track (only the 4 tracks with real written lessons are ever recommended),
+  skipped once the agent has already graduated it. `SkillAssessment.trend` (improving/regressed/stagnant/
+  not_enough_history) is a real improve/stagnate/regress read against the agent's own previous assessment of the
+  same domain, deliberately separate from `foundational_mentors.py`'s own certification revoke/suspend lifecycle
+  rather than a second one. Wired into the same weekly `nexus.py` cadence as Agent Performance Reviews,
+  immediately after so each skill snapshot reads that week's fresh `weakestDimensionId`. Extends the existing
+  `TalentPanel.tsx` (TALENT tab) with a new card reusing its existing employee selector. 20 new backend tests,
+  full backend suite/`mypy`/`ruff` clean, `tsc`/`eslint`/`vite build` clean, live verification against the
+  running dev server (a real `POST /api/time/advance` across two week boundaries on a fresh save produced 30 real
+  `AgentSkillProfile` records — 15 agents × 2 weeks — with the exact expected honesty shape) and Playwright
+  confirmed the new card renders correctly. Documented in Design Bible Chapter 74's new addendum.
+
 - **CEO directive "Features 26-30: Agent Intelligence, Learning & Institutional Memory System," Feature 27 —
   Agent Performance Reviews** (`backend/app/performance_review.py`, `backend/app/schemas.py`,
   `backend/app/nexus.py`, `backend/app/save_modules.py`, `backend/app/ws_manager.py`, `backend/app/main.py`,

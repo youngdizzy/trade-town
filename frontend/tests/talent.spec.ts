@@ -68,3 +68,36 @@ test("CEO directive Features 26-30, Feature 27 — the TALENT tab shows a real A
 
   await expect(page.getByText(/Agent Performance Review —/)).toBeVisible();
 });
+
+test("CEO directive Features 26-30, Feature 28 — the TALENT tab shows a real Agent Skill Profile", async ({ page }) => {
+  await page.goto("/");
+  // /api/load deliberately returns archive modules (agentSkillProfiles
+  // included) empty — see routers/save.py's own docstring — so real
+  // evidence is checked via the dedicated per-agent endpoint instead.
+  const profile = await page.evaluate(async () => {
+    const res = await fetch("/api/skill-profiles/scout/latest");
+    return res.json();
+  });
+  if (profile) {
+    expect(Array.isArray(profile.assessments)).toBe(true);
+    expect(profile.assessments.length).toBe(11);
+    for (const a of profile.assessments) {
+      // Every domain must disclose a real sample size and evidence
+      // string, and a value that's either a real number or an honest
+      // null (NOT_ENOUGH_EVIDENCE or NOT_TRACKABLE_YET) — never a fake
+      // placeholder.
+      expect(typeof a.sampleSize).toBe("number");
+      expect(a.value === null || typeof a.value === "number").toBe(true);
+      expect(typeof a.evidence).toBe("string");
+      expect(a.evidence.length).toBeGreaterThan(0);
+      expect(["improving", "stagnant", "regressed", "not_enough_history"]).toContain(a.trend);
+    }
+  }
+
+  await continueGame(page);
+  await clickButton(page, "Command ⌁");
+  await clickExpand(page);
+  await clickTab(page, "TALENT");
+
+  await expect(page.getByText(/Skill Progression —/)).toBeVisible();
+});

@@ -1481,6 +1481,20 @@ weekly — see `app/nexus.py`'s tick). The full list is also broadcast on
 every WS tick (`agentPerformanceReviews`) — this endpoint is a
 convenience for fetching one agent's latest review directly.
 
+### `GET /api/skill-profiles/{agent_id}/latest`
+
+CEO directive "Features 26-30: Agent Intelligence, Learning &
+Institutional Memory System," Feature 28 — read-only, no body. Returns
+the most recent real `AgentSkillProfile` on file for `agent_id`, or
+`null` if none has been generated yet (profiles are only generated
+weekly — see `app/nexus.py`'s tick, immediately after the Agent
+Performance Review loop). The full list is also broadcast on every WS
+tick (`agentSkillProfiles`) — this endpoint is a convenience for
+fetching one agent's latest profile directly. Note: `GET /api/load`
+deliberately returns this field empty (it's an archive module — see
+that endpoint's own docstring); use this endpoint, the WS broadcast, or
+`GET /api/load/archive/knowledge_archive` for real data.
+
 ### `GET /api/market/regime-reconciliation`
 
 Design Bible Chapter 65's Regime Reconciliation — read-only, no body.
@@ -1912,6 +1926,7 @@ never needs to trim anything itself:
 | `caseStudies` | last 60 (`MAX_CASE_STUDIES`) | one per detected real process-gap mistake — v0.7 Feature 27 |
 | `institutionalMemory` | last 200 (`MAX_INSTITUTIONAL_MEMORY`) | one promoted, reusable lesson per real case study/failed strategy/Hall of Fame induction/Model Validation finding/critical risk warning/regime shift — CEO directive "Features 26-30," Feature 26 |
 | `agentPerformanceReviews` | last 150 (`MAX_AGENT_PERFORMANCE_REVIEWS`) | one real, 8-dimension review per agent per real week — CEO directive "Features 26-30," Feature 27 |
+| `agentSkillProfiles` | last 150 (`MAX_AGENT_SKILL_PROFILES`) | one real, 11-domain skill snapshot per agent per real week — CEO directive "Features 26-30," Feature 28 |
 | `reasoningChallenges` | last 60 (`MAX_REASONING_CHALLENGES`) | one per real AI Debate practiced, on a fixed cadence — v0.7 Feature 29 |
 | `reflectionSessions` | last 80 (`MAX_REFLECTION_SESSIONS`) | one per real weekly/monthly cycle — v0.7 Feature 30 |
 | `questionArchive` | last 120 (`MAX_QUESTION_ARCHIVE`) | one `QuestionOfTheDay` per real in-game morning — v0.7 Feature 32 |

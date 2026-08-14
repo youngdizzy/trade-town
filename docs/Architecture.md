@@ -7820,6 +7820,122 @@ pattern (real process/risk/collaboration/learning data, honest `null`
 for research-dependent and trade-dependent dimensions with no data that
 week); rendered correctly in the TALENT tab's new card.
 
+## CEO directive "Features 26-30: Agent Intelligence, Learning & Institutional Memory System" — Feature 28, Academy + Skill Progression
+
+GOAL (from the directive): real, domain-specific skills across 11 named
+domains (market structure, risk management, quant research, technical/
+fundamental analysis, execution, statistical reasoning, regime
+detection, prediction calibration, communication, collaboration,
+research quality) — never invented merely to populate UI. Skills need
+real evidence ("training + demonstrated performance = evidence of
+skill," never "completed lesson = automatically expert"); must support
+improve/stagnate/regress/reassessment with real skill history; must
+connect Feature 27's `weakestDimensionId`/`trend` to real Academy
+training recommendations, per the CEO's worked example: "agent
+misjudges volatility regime → Performance Review flags it → Academy
+recommends training → agent completes it → evaluated on subsequent
+decisions → improvement becomes evidence of learning." Per this
+feature's own staging rule, it did not start until Feature 27 was
+tested and integrated.
+
+**Research first.** `app/academy.py` is a single-scalar knowledge-
+points/tier ladder — one `points` number and one fixed, static `branch`
+string per agent (e.g. Scout→"Market Structure"), never a domain
+breakdown, and the branch never changes. `app/foundational_mentors.py`
+is a real curriculum/certification delivery engine — named-educator
+tracks (`tjr`, `al_brooks`, `linda_raschke`, `mark_douglas`,
+`tom_hougaard`, `mike_bellafiore`, `market_intelligence`), real lessons/
+quizzes, and a genuine active/suspended/revoked `CertificationRecord`
+lifecycle — but its tracks are curricula, not the brief's 11 skill
+domains, and graduating one produces a pass/fail certification, never a
+0-100 skill score with real history. A direct grep for
+`Skill*`/`SkillDomain`/`SkillScore` across the entire backend and
+frontend returned zero hits, confirming this is genuinely new territory,
+not a rename.
+
+**What was built**: `app/skill_progression.py`, a third sibling module
+(not a merge into either system above). `compute_agent_skill_profile()`
+computes one real `AgentSkillProfile` per agent per real week, across
+all 11 domains:
+
+| Domain | Status | Real source |
+|---|---|---|
+| Risk Management | Measurable | `performance_review.py`'s `_risk_discipline()` (Position Sizing / Patience Discipline Factors) |
+| Research Quality | Measurable | `performance_review.py`'s `_decision_accuracy()` (`analytics.py`'s `research_accuracy()`) |
+| Prediction Calibration | Measurable | `performance_review.py`'s `_calibration()` (`analytics.py`'s `confidence_accuracy()`) |
+| Collaboration | Measurable | `performance_review.py`'s `_collaboration()` (Reasoning Lab + Reflection Chamber) |
+| Statistical & Critical Reasoning | Measurable, disclosed proxy | `mentor.py`'s `_factor_average()` on Assumptions Challenged / Cross-Examination — the same real numbers `ThinkingProfile`'s "Reasoning" trait already uses |
+| Market Structure | `NOT_TRACKABLE_YET` | `market_intelligence.py`'s classifier is company-wide, not per-agent-attributed |
+| Quant Research | `NOT_TRACKABLE_YET` | `model_validation.py`'s Model Validator is a governance seat, not a per-agent skill signal — and this directive's own rules forbid repurposing it into one |
+| Technical / Fundamental Analysis | `NOT_TRACKABLE_YET` | no mechanism tags which analysis type a `ResearchItem` exercised |
+| Execution | `NOT_TRACKABLE_YET` | trade execution is company/broker-level (`broker.py`, `portfolio.py`), never per-agent |
+| Regime Detection | `NOT_TRACKABLE_YET` | `market_intelligence.py`'s Learning Loop grades yesterday's regime read, but only company-wide |
+| Communication | `NOT_TRACKABLE_YET` | no per-agent discriminating signal — `mentor.py`'s `ThinkingProfile` already reached and documented this same conclusion |
+
+Every `NOT_TRACKABLE_YET` domain's `evidence` string names the specific
+real module closest to it and states exactly why it doesn't reduce to a
+per-agent number — never silently omitted, never fabricated from an
+occupation label.
+
+**The closed loop.** `AgentSkillProfile.recommendedDomainId`/
+`recommendedMentorId`/`recommendationReason` fire only when three real
+conditions hold: the agent's latest `AgentPerformanceReview.
+weakestDimensionId` maps to one of the 4 domains with a genuine 1:1
+Performance-Review analog (`risk_discipline`→`risk_management`,
+`decision_accuracy`→`research_quality`,
+`calibration`→`prediction_calibration`,
+`collaboration`→`collaboration`); a content-backed Foundational Mentor
+track exists for it (`SKILL_DOMAIN_RECOMMENDED_MENTOR` covers only
+`tjr`/`mark_douglas`/`market_intelligence`/`linda_raschke` — the four
+tracks with real written lessons; the other three roadmap tracks are
+still `"planned"` with zero content and are never recommended); and the
+agent hasn't already graduated that track. `collaboration` has no
+mapped mentor track — Mike Bellafiore's "Trading Team Development" focus
+area exists but has zero written lessons, so it stays deliberately
+unrecommended rather than pointing at an empty track.
+
+**Improve/stagnate/regress**: `SkillAssessment.trend` compares this
+period's real value against the agent's own previous real assessment of
+the *same* domain (`TREND_CHANGE_THRESHOLD_PCT`, reused directly from
+`performance_review.py`) — `improving`/`regressed`/`stagnant`/
+`not_enough_history`. Deliberately separate from `foundational_
+mentors.py`'s own certification revoke/suspend lifecycle, which remains
+that module's sole authority — this is a measurement, not a lifecycle
+action.
+
+**Wiring**: `app/nexus.py`'s tick computes one profile per real agent at
+the same weekly cadence as Agent Performance Reviews, run immediately
+after that loop so each skill snapshot reads that week's freshly-
+computed `weakestDimensionId`. Persisted under `save_modules.py`'s
+`knowledge_archive` module, capped at `MAX_AGENT_SKILL_PROFILES = 150`,
+broadcast via `ws_manager.py`'s `agentSkillProfiles` field, and readable
+per-agent via `GET /api/skill-profiles/{agent_id}/latest`.
+
+**Frontend**: extends `TalentPanel.tsx` (`TALENT` tab) with a new "Skill
+Progression" card between the Agent Performance Review card and the
+Thinking Profiles card, reusing the panel's existing employee selector.
+
+**Verified**: 20 new tests (`tests/test_skill_progression.py`) covering
+the full 11-domain taxonomy on every profile, the 6 `NOT_TRACKABLE_YET`
+domains staying `null` even against heavy real input data, each of the 5
+measurable domains' real evidence, the improving/regressed/stagnant/
+not-enough-history trend cases against a real previous assessment, and
+the training-recommendation gate (no review, an unmapped weak dimension,
+an already-graduated track — each correctly yielding no recommendation
+— and a mapped weak dimension correctly yielding the real track). Full
+backend suite, `mypy`, `ruff` clean. `tsc -b --noEmit`, `eslint`,
+`vite build` clean. Live verification against the running dev server: a
+real `POST /api/time/advance` across two week boundaries on a fresh save
+produced 30 real `AgentSkillProfile` records (15 agents × 2 weeks) with
+the exact expected honesty shape (5 domains with real evidence, 6
+permanently `null` with their disclosed reason); the new card rendered
+correctly in the TALENT tab (`frontend/tests/talent.spec.ts`, run against
+the live stack). Note: `GET /api/load` deliberately returns archive
+modules (including `agentSkillProfiles`) empty — verification used the
+new per-agent endpoint and `GET /api/load/archive/knowledge_archive`
+instead, per `routers/save.py`'s own documented Save Architecture
+Redesign Phase 2 boundary.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing
