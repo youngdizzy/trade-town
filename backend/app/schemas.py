@@ -5690,6 +5690,91 @@ class ThinkingProfile(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# CEO directive "Features 26-30," Feature 27 — Agent Performance Reviews.
+# See app/performance_review.py's module docstring for the full research
+# finding and design rationale. `AgentRoleClass` is this codebase's first
+# machine-usable role taxonomy over AGENT_PROFILES (previously only
+# free-text `occupation` strings existed) — used to interpret a missing
+# dimension correctly (e.g. Sentinel having no decisionAccuracy data is
+# expected, not a red flag) rather than to force every dimension to a
+# number regardless of role.
+AgentRoleClass = Literal["researcher", "risk", "quant", "leadership", "mentor_support"]
+
+# Every dimension this codebase can honestly back today with real,
+# already-computed or trivially-derived evidence. Deliberately excludes
+# the CEO's "prediction accuracy"/"contribution to success or failure via
+# debate" as SEPARATE dimensions beyond decision_accuracy/process_quality
+# — those become real once Features 29 (Prediction Tracking) and 30
+# (Debate + Failure Review) exist to honestly feed them; this is a
+# disclosed staging decision, matching Feature 26's own.
+PerformanceDimensionId = Literal[
+    "process_quality",
+    "risk_discipline",
+    "decision_accuracy",
+    "calibration",
+    "collaboration",
+    "learning_trend",
+    "recurring_mistakes",
+    "pnl_attribution",
+]
+
+
+class PerformanceDimension(CamelModel):
+    """`value=None` means NOT_ENOUGH_EVIDENCE for this one dimension —
+    never a fake neutral number. `sample_size` is always disclosed
+    alongside `value` so a caller never has to guess how much evidence
+    backs it (the same discipline app/process_adherence.py's
+    ProcessAdherenceRead already established for its own nullable
+    score_pct)."""
+
+    id: PerformanceDimensionId
+    label: str
+    value: float | None
+    sample_size: int = Field(alias="sampleSize")
+    evidence: str
+
+
+class AgentPerformanceReview(CamelModel):
+    """One real, evidence-cited review of one agent over one real
+    period — never a single blended "agent score." `process_quality_avg`/
+    `outcome_quality_avg` are kept structurally separate (a good process
+    that lost to real market variance never drags down process_quality;
+    a lucky win from a weak process never inflates it), mirroring
+    app/discipline.py's own process-score-never-sees-pnl discipline.
+    Both are `None` when none of their contributing dimensions has real
+    data yet — never averaged from a partial fake baseline. `role_class`
+    lets a reader correctly interpret which dimensions are expected to
+    be `None` for this agent's real role (e.g. Sentinel structurally
+    never gets research assignments, so decisionAccuracy is honestly
+    always NOT_ENOUGH_EVIDENCE for it — that's not a gap in the review,
+    it's the truth about the role)."""
+
+    id: str
+    agent_id: AgentId = Field(alias="agentId")
+    role_class: AgentRoleClass = Field(alias="roleClass")
+    period_start_sim_day: int = Field(alias="periodStartSimDay")
+    period_end_sim_day: int = Field(alias="periodEndSimDay")
+    dimensions: list[PerformanceDimension]
+    process_quality_avg: float | None = Field(default=None, alias="processQualityAvg")
+    outcome_quality_avg: float | None = Field(default=None, alias="outcomeQualityAvg")
+    # Sum of every dimension's own real sample_size — the review's total
+    # real evidentiary weight, disclosed rather than hidden inside an
+    # opaque composite.
+    evidence_count: int = Field(alias="evidenceCount")
+    # What share of the 8 real dimensions above actually had evidence
+    # this period — a real coverage percentage, not a claim about how
+    # GOOD the agent is.
+    confidence_pct: float = Field(alias="confidencePct")
+    trend: Literal["improving", "declining", "stable", "not_enough_history"]
+    # The lowest-scoring measured dimension this period — the real hook
+    # Feature 28 (Academy training recommendations) will read from once
+    # it exists; None when no dimension has real data at all.
+    weakest_dimension_id: PerformanceDimensionId | None = Field(default=None, alias="weakestDimensionId")
+    status: Literal["evaluated", "not_enough_evidence"]
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
 class MentorState(CamelModel):
     tier: int
     tier_label: str = Field(alias="tierLabel")
@@ -6837,6 +6922,14 @@ class GameSaveState(CamelModel):
         default_factory=dict, alias="thinkingProfiles"
     )
     mentor_state: MentorState = Field(alias="mentorState")
+    # CEO directive "Features 26-30," Feature 27 — Agent Performance
+    # Reviews (app/performance_review.py). One capped, permanent
+    # AgentPerformanceReview per real agent per real weekly period —
+    # see that module's own docstring for the full evidence/role-
+    # awareness/process-vs-outcome design.
+    agent_performance_reviews: list[AgentPerformanceReview] = Field(
+        default_factory=list, alias="agentPerformanceReviews"
+    )
     # v0.7 Feature 49 (Phase 3) — the Foundational Mentor Program
     # (app/foundational_mentors.py). See FoundationalMentorState's own
     # docstring for how this differs from mentor_state above.

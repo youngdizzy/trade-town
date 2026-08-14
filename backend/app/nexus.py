@@ -112,6 +112,7 @@ from app.market_intelligence import (
 )
 from app.memory import MAX_MEMORY_RECORDS, record
 from app.mentor import compute_mentor_state, compute_thinking_profiles, generate_question_of_the_day, record_question
+from app.performance_review import compute_agent_performance_review, latest_review_for_agent, record_agent_performance_review
 from app.institutional_memory import (
     promote_case_study,
     promote_market_regime_shift,
@@ -188,6 +189,7 @@ from app.schemas import (
     AgentId,
     AgentKnowledgeState,
     AgentOverride,
+    AgentPerformanceReview,
     AgentState,
     BlackBoxState,
     CalendarState,
@@ -1189,6 +1191,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # one capped, permanent LearningEvent per real Knowledge-tier
     # crossing (see app/academy.py's award_points()).
     learning_events: list[LearningEvent] = list(state.learning_events)
+    # CEO directive "Features 26-30," Feature 27 — Agent Performance
+    # Reviews (app/performance_review.py).
+    agent_performance_reviews: list[AgentPerformanceReview] = list(state.agent_performance_reviews)
     # Design Bible Chapter 74 — Self-Improvement Proposals and the
     # Institutional Evolution Engine (app/self_improvement.py,
     # app/evolution.py).
@@ -2568,6 +2573,30 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         new_self_evaluations = generate_weekly_self_evaluations(meeting_log, sim_day=new_time.day)
         self_evaluations = record_self_evaluations(self_evaluations, new_self_evaluations)
 
+    # CEO directive "Features 26-30," Feature 27 — Agent Performance
+    # Reviews, one real evidence-cited review per real agent per real
+    # trailing week (same weekly cadence as Self-Evaluation above).
+    if is_evening and new_time.day % WEEKLY_INTERVAL_DAYS == 0:
+        review_period_start = max(1, new_time.day - WEEKLY_INTERVAL_DAYS + 1)
+        for review_agent_id in all_agent_ids():
+            new_review = compute_agent_performance_review(
+                review_agent_id,
+                discipline_reviews=discipline_reviews,
+                research=research,
+                trades=paper_portfolio.trade_history,
+                decisions=decisions,
+                case_studies=case_studies,
+                reasoning_challenges=reasoning_challenges,
+                reflection_sessions=reflection_sessions,
+                agent_knowledge=agent_knowledge,
+                learning_events=learning_events,
+                period_start_sim_day=review_period_start,
+                period_end_sim_day=new_time.day,
+                sim_day=new_time.day,
+                previous_review=latest_review_for_agent(agent_performance_reviews, review_agent_id),
+            )
+            agent_performance_reviews = record_agent_performance_review(agent_performance_reviews, new_review)
+
     # v0.7 Feature 32 — Sage publishes one QuestionOfTheDay every in-game
     # morning (see app/mentor.py's module docstring for why the question
     # itself is drawn from a fixed, hand-authored library rather than
@@ -2832,6 +2861,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             "discipline_reviews": discipline_reviews,
             "case_studies": case_studies,
             "institutional_memory": institutional_memory,
+            "agent_performance_reviews": agent_performance_reviews,
             "learning_events": learning_events,
             "self_improvement_proposals": self_improvement_proposals,
             "evolution_reports": evolution_reports,
