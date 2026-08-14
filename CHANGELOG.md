@@ -7,6 +7,33 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Features 26-30: Agent Intelligence, Learning & Institutional Memory System," Feature 27 —
+  Agent Performance Reviews** (`backend/app/performance_review.py`, `backend/app/schemas.py`,
+  `backend/app/nexus.py`, `backend/app/save_modules.py`, `backend/app/ws_manager.py`, `backend/app/main.py`,
+  `backend/app/routers/performance_review.py`, `backend/tests/test_performance_review.py`,
+  `frontend/src/types.ts`, `frontend/src/net/socket.ts`, `frontend/src/game/systems/NexusManager.ts`,
+  `frontend/src/game/systems/EventBus.ts`, `frontend/src/state/gameStore.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/TalentPanel.tsx`, `frontend/tests/talent.spec.ts`): the
+  second stage of the CEO's 26→27→28→29→30 closed learning loop, built as a synthesis layer over real evidence
+  rather than a parallel scoring engine — not started until Feature 26 was tested and integrated, per this
+  feature's own staging rule. Researched first: found `app/coach.py`'s `AgentScore` (scoped to only 4 researcher
+  agents) and `app/mentor.py`'s `ThinkingProfile` (universal, but fake-defaulting every trait to a neutral 50.0
+  with zero evidence) — `mentor.py`'s own module docstring already named "a real per-agent weakness signal" as
+  an explicit, unbuilt scope cut. Eight real dimensions per agent per real week (process quality, risk
+  discipline, decision accuracy, calibration, collaboration, learning trend, recurring mistakes, P&L
+  attribution), each either real evidence or an honest `NOT_ENOUGH_EVIDENCE` (`value=null`), reusing
+  `process_adherence.py`'s exact nullable-score/disclosed-sample-size shape. `processQualityAvg`/
+  `outcomeQualityAvg` stay structurally separate, mirroring `discipline.py`'s own process-score-never-sees-pnl
+  discipline. `AGENT_ROLE_CLASS` is this codebase's first machine-usable role taxonomy over `AGENT_PROFILES`, so
+  a missing dimension (e.g. Sentinel having no `decisionAccuracy` data) reads as the honest truth about the
+  role, not a gap — confirmed live: a real review for Sentinel showed exactly that pattern after a real
+  `POST /api/time/advance` to a week boundary generated 15 real reviews (one per agent). `trend`/
+  `weakestDimensionId` are the real hook Feature 28's future training recommendations will read from, per the
+  CEO's own worked example, without building Feature 28 yet. Extends the existing `TalentPanel.tsx` (TALENT
+  tab) with a new card reusing its existing employee selector, rather than a new tab. 21 new backend tests, full
+  backend suite (1843 tests)/`mypy`/`ruff` clean, `tsc`/`eslint`/`vite build` clean, live Playwright
+  verification confirmed real per-agent data end-to-end. Documented in Design Bible Chapter 74's new addendum.
+
 - **CEO directive "Features 26-30: Agent Intelligence, Learning & Institutional Memory System," Feature 26 —
   Institutional Memory 2.0** (`backend/app/institutional_memory.py`, `backend/app/schemas.py`,
   `backend/app/nexus.py`, `backend/app/state.py`, `backend/app/save_modules.py`, `backend/app/ws_manager.py`,
