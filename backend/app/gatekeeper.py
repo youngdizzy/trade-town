@@ -211,6 +211,34 @@ def _behavioral_check(
     return GatekeeperCheck(id="behavioral", label="Behavioral Circuit Breaker", passed=passed, detail=detail)
 
 
+# CEO Company Health + Live Market Realism directive, Feature 23 — the
+# Gatekeeper's eleventh check, and the one real gap the Prop-Firm Risk
+# Intelligence Addendum (Piece 10b/Piece 11) explicitly disclosed rather
+# than filled: app/prop_firm.py's compute_account_risk_budget_status()
+# already computes "remaining room before the drawdown ceiling" for a
+# real Account, but its own docstring names the exact reason it can't
+# gate anything with that number — "no live TradeProposal execution
+# routes to a secondary Account yet." app/portfolio.py's
+# close_position() (Piece 10b) already snapshots the identical real
+# formula — max(0, max_drawdown_pct - lifetime_drawdown_pct) — for the
+# PRIMARY portfolio, but only AFTER a trade closes, for audit, never to
+# gate anything. This check reuses that exact formula, read BEFORE the
+# trade instead of after: does this proposal's own real
+# RiskLimits.risk_per_trade_pct fit inside the room actually remaining
+# before the company's own real drawdown ceiling? No new risk engine —
+# same math, same inputs, read one step earlier.
+def _failure_boundary_check(portfolio: PaperPortfolio, risk_limits: RiskLimits) -> GatekeeperCheck:
+    lifetime_drawdown_pct = max(0.0, -portfolio.total_pnl_pct)
+    remaining_pct = round(max(0.0, risk_limits.max_drawdown_pct - lifetime_drawdown_pct), 2)
+    passed = risk_limits.risk_per_trade_pct < remaining_pct
+    detail = (
+        f"{remaining_pct:.2f}% of drawdown room remains before the {risk_limits.max_drawdown_pct:.2f}% ceiling; "
+        f"this trade's own risk-per-trade is {risk_limits.risk_per_trade_pct:.2f}% — "
+        f"{'within' if passed else 'would exceed'} the remaining budget."
+    )
+    return GatekeeperCheck(id="failure_boundary", label="Failure Boundary Distance", passed=passed, detail=detail)
+
+
 def evaluate_gatekeeper(
     proposal: TradeProposal,
     ceo_choice: AnalystChoice,
@@ -266,6 +294,7 @@ def evaluate_gatekeeper(
             behavioral_cooldown_minutes if behavioral_cooldown_minutes is not None else BEHAVIORAL_COOLDOWN_MINUTES,
             behavioral_size_increase_threshold_pct if behavioral_size_increase_threshold_pct is not None else BEHAVIORAL_SIZE_INCREASE_THRESHOLD_PCT,
         ),
+        _failure_boundary_check(portfolio, risk_limits),
     ]
     approved = all(c.passed for c in checks)
     if approved:

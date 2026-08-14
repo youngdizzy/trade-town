@@ -20,6 +20,7 @@ from app.gatekeeper import (
     _correlation_check,
     _debate_check,
     _exposure_check,
+    _failure_boundary_check,
     _risk_manager_check,
     _risk_warning_check,
     evaluate_gatekeeper,
@@ -283,6 +284,50 @@ class TestBehavioralCheck:
         assert all(c.passed for c in verdict.checks if c.id != "behavioral")
 
 
+class TestFailureBoundaryCheck:
+    """CEO Company Health + Live Market Realism directive, Feature 23 —
+    the Gatekeeper's eleventh check. Reuses app/portfolio.py's own
+    real max(0, max_drawdown_pct - lifetime_drawdown_pct) formula
+    (Piece 10b), read before the trade instead of after."""
+
+    def test_passes_with_full_room_remaining(self) -> None:
+        check = _failure_boundary_check(default_portfolio(), RiskLimits())
+        assert check.passed is True
+
+    def test_passes_when_meaningful_room_remains_despite_a_real_drawdown(self) -> None:
+        portfolio = default_portfolio().model_copy(update={"total_pnl_pct": -5.0})
+        # 20% ceiling - 5% real drawdown = 15% remaining, well above the 2% default risk-per-trade.
+        check = _failure_boundary_check(portfolio, RiskLimits())
+        assert check.passed is True
+
+    def test_fails_when_remaining_room_is_smaller_than_this_trades_own_risk(self) -> None:
+        portfolio = default_portfolio().model_copy(update={"total_pnl_pct": -19.0})
+        # 20% ceiling - 19% real drawdown = 1% remaining, below the 2% default risk-per-trade.
+        check = _failure_boundary_check(portfolio, RiskLimits())
+        assert check.passed is False
+
+    def test_fails_once_the_ceiling_is_already_breached(self) -> None:
+        portfolio = default_portfolio().model_copy(update={"total_pnl_pct": -25.0})
+        check = _failure_boundary_check(portfolio, RiskLimits())
+        assert check.passed is False
+        assert "0.00%" in check.detail
+
+    def test_a_smaller_risk_per_trade_can_still_pass_near_the_ceiling(self) -> None:
+        portfolio = default_portfolio().model_copy(update={"total_pnl_pct": -19.5})
+        # 20% ceiling - 19.5% real drawdown = 0.5% remaining.
+        limits = RiskLimits(riskPerTradePct=0.25)
+        check = _failure_boundary_check(portfolio, limits)
+        assert check.passed is True
+
+    def test_a_triggered_read_fails_only_its_own_check(self) -> None:
+        proposal = _proposal(symbol="NEXA", confidence_score=90.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}))
+        portfolio = default_portfolio().model_copy(update={"total_pnl_pct": -25.0})
+        verdict = evaluate_gatekeeper(proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], default_market_intelligence_state(), now_sim_minutes=0)
+        assert verdict.approved is False
+        assert any(c.id == "failure_boundary" and not c.passed for c in verdict.checks)
+        assert all(c.passed for c in verdict.checks if c.id != "failure_boundary")
+
+
 class TestEvaluateGatekeeper:
     def test_approves_when_every_check_passes(self) -> None:
         proposal = _proposal(confidence_score=90.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}))
@@ -295,7 +340,10 @@ class TestEvaluateGatekeeper:
         # TestWeightedExecutiveCheck below for the real behavior).
         # 10th check: the Behavioral Circuit Breaker, vacuously passing
         # here since this portfolio has no trade history at all.
-        assert len(verdict.checks) == 10
+        # 11th check: Failure Boundary Distance — a fresh portfolio has
+        # 0% lifetime drawdown, so the full 20% default ceiling is
+        # remaining room, well above the 2% default risk-per-trade.
+        assert len(verdict.checks) == 11
         assert all(c.passed for c in verdict.checks)
         assert "APPROVED" in verdict.summary
 

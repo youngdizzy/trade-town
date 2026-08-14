@@ -649,6 +649,18 @@ class PaperPosition(CamelModel):
     # into the trade's net pnl. Defaults to 0.0 so a position opened
     # before this piece still validates during load.
     entry_cost_usd: float = Field(default=0.0, alias="entryCostUsd")
+    # CEO Company Health + Live Market Realism directive, Feature 24 —
+    # MAE (Maximum Adverse Excursion) / MFE (Maximum Favorable
+    # Excursion), the worst and best unrealized_pnl_pct this position
+    # has actually shown since it opened. A real running watermark,
+    # updated every tick in app/portfolio.py's mark_to_market() from the
+    # same real live prices unrealized_pnl_pct already reads — never a
+    # retroactively regenerated candle series, and never fabricated:
+    # both start at 0.0 (a fresh position has shown no movement yet) and
+    # only ever move toward their own real extreme. Defaults to 0.0 so a
+    # position opened before this piece still validates during load.
+    mae_pct: float = Field(default=0.0, alias="maePct")
+    mfe_pct: float = Field(default=0.0, alias="mfePct")
 
 
 class PaperTrade(CamelModel):
@@ -724,6 +736,14 @@ class PaperTrade(CamelModel):
     # supplied one) — never a fabricated value standing in for it.
     distance_to_drawdown_ceiling_before_pct: float | None = Field(default=None, alias="distanceToDrawdownCeilingBeforePct")
     distance_to_drawdown_ceiling_after_pct: float | None = Field(default=None, alias="distanceToDrawdownCeilingAfterPct")
+    # CEO Company Health + Live Market Realism directive, Feature 24 —
+    # carried over from the PaperPosition this trade closed
+    # (app/portfolio.py's close_position() copies it automatically, same
+    # pattern as trading_style above). See PaperPosition.mae_pct/mfe_pct
+    # for the full real-watermark explanation. Defaults to 0.0 so a
+    # trade closed before this piece still validates during load.
+    mae_pct: float = Field(default=0.0, alias="maePct")
+    mfe_pct: float = Field(default=0.0, alias="mfePct")
 
 
 class PaperPortfolio(CamelModel):

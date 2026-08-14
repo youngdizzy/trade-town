@@ -142,6 +142,8 @@ def open_position(
         openedSimMinutes=opened_sim_minutes,
         tradingStyle=trading_style,
         entryCostUsd=entry_cost,
+        maePct=0.0,
+        mfePct=0.0,
     )
     return portfolio.model_copy(
         update={
@@ -154,7 +156,16 @@ def open_position(
 def mark_to_market(portfolio: PaperPortfolio, prices: dict[str, float]) -> PaperPortfolio:
     """Refreshes every open position's current_price/unrealized_pnl from a
     symbol->price map (the Watchlist's last prices) — called every tick so
-    the Coach Dashboard and Brain Room HUD always show live paper P&L."""
+    the Coach Dashboard and Brain Room HUD always show live paper P&L.
+
+    CEO Company Health + Live Market Realism directive, Feature 24 —
+    also updates mae_pct/mfe_pct, a real running watermark of the worst
+    and best unrealized_pnl_pct this position has actually shown since
+    it opened. Both start at 0.0 (a fresh position has shown no
+    movement yet, per open_position()) and only ever move toward their
+    own real extreme — never a retroactively regenerated candle series,
+    just the same real live price this function already reads, tracked
+    tick over tick."""
     if not portfolio.positions:
         return portfolio
     updated: list[PaperPosition] = []
@@ -163,7 +174,13 @@ def mark_to_market(portfolio: PaperPortfolio, prices: dict[str, float]) -> Paper
         direction = 1 if pos.side == "buy" else -1
         pnl = (price - pos.entry_price) * pos.quantity * direction
         pnl_pct = ((price - pos.entry_price) / pos.entry_price * 100 * direction) if pos.entry_price else 0.0
-        updated.append(pos.model_copy(update={"current_price": price, "unrealized_pnl": pnl, "unrealized_pnl_pct": pnl_pct}))
+        mae_pct = min(pos.mae_pct, pnl_pct)
+        mfe_pct = max(pos.mfe_pct, pnl_pct)
+        updated.append(
+            pos.model_copy(
+                update={"current_price": price, "unrealized_pnl": pnl, "unrealized_pnl_pct": pnl_pct, "mae_pct": mae_pct, "mfe_pct": mfe_pct}
+            )
+        )
     return portfolio.model_copy(update={"positions": updated})
 
 
@@ -248,6 +265,8 @@ def close_position(
         transactionCostUsd=total_cost,
         distanceToDrawdownCeilingBeforePct=distance_before,
         distanceToDrawdownCeilingAfterPct=distance_after,
+        maePct=match.mae_pct,
+        mfePct=match.mfe_pct,
     )
     history = [*portfolio.trade_history, trade]
     if len(history) > MAX_TRADE_HISTORY:
