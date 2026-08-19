@@ -1604,6 +1604,92 @@ reads "insufficient evidence," never a silent pass). Read-only, computed
 fresh every call (several real backtests run in sequence — budget a few
 seconds); nothing here is persisted.
 
+`ResearchExperimentRecord` also carries `overfittingDiagnosis`
+(CEO directive "Professional Quant Firm Phase," Feature 39) — the same
+five verdicts above relabeled into a real, deterministic
+`robust`/`fragile`/`insufficient_data`/`overfit_suspected`/
+`oos_failure`/`pending_validation` classification (see
+`app/overfitting_diagnostics.py`'s own module docstring for the exact
+priority rule). Alongside `conclusion`, not a replacement for it.
+
+### `POST /api/sandbox/register-strategy-version`
+
+CEO directive "Professional Quant Firm Phase," Feature 37 — real,
+persisted `CompiledStrategyDefinition` version history. Body:
+`{ "name": "...", "sourceText": "...", "timeframe": "1h", "createdBy": "quant" }`.
+Unlike `POST /compile-strategy` (stateless preview, unchanged), this
+computes the REAL next version from this strategy name's own persisted
+history (`GameSaveState.compiledStrategyVersions`, keyed by the same
+real slug `compile-strategy` already derives from `name`) rather than
+trusting a caller-supplied number, and permanently appends it — prior
+versions are never overwritten. Returns the new
+`CompiledStrategyDefinition`.
+
+### `GET /api/sandbox/strategy-versions?name=...`
+
+Same directive, Feature 37 — the full, real, persisted version history
+for one strategy name (oldest first). Returns
+`CompiledStrategyDefinition[]`; empty if this name has never been
+registered via the endpoint above (a stateless `/compile-strategy`
+preview alone never appears here).
+
+### `POST /api/sandbox/quant-research-lab/experiments`
+
+CEO directive "Professional Quant Firm Phase," Feature 36 — files a
+real, hypothesis-driven experiment into the permanent Quant Research
+Lab archive. Body: `{ "definition": CompiledStrategyDefinition,
+"hypothesis": "...", "researcherAgentId": "quant", "symbols": [...],
+"timeframe": "...", "candlesPerSymbol": 6000 }` (`symbols`/`timeframe`/
+`candlesPerSymbol` optional). Runs the same real
+`run_research_experiment()` pipeline `POST /research-experiment` uses
+(no duplicate backtest math), then permanently persists the result to
+`GameSaveState.quantResearchExperiments` — a deliberate, disclosed
+departure from this directive family's usual compute-fresh-never-persist
+convention (see `QuantResearchExperiment`'s own docstring in
+`app/schemas.py`). Returns `{ "experiment": QuantResearchExperiment,
+"similarExperiments": QuantResearchExperimentSimilarity[] }` —
+`similarExperiments` surfaces any real near-duplicate already on file
+(same compiled definition + timeframe, or overlapping hypothesis
+wording) without blocking the new filing.
+
+### `GET /api/sandbox/quant-research-lab/experiments`
+
+Same directive, Feature 36 — real search over every permanently-
+persisted experiment (most recent first). Optional query params:
+`symbol`, `definitionId`, `timeframe`, `agentId`, `outcome`
+(`promising`/`rejected`/`inconclusive`). Returns
+`QuantResearchExperiment[]`; an empty result is itself a real, honest
+answer, never fabricated evidence.
+
+### `GET /api/sandbox/quant-research-lab/similar?hypothesis=...&definitionId=...&timeframe=...`
+
+Same directive, Feature 36 — a real, standalone duplicate check a
+CEO/agent can run BEFORE spending compute on the `POST .../experiments`
+endpoint above (which also runs this same check internally). Returns
+`QuantResearchExperimentSimilarity[]`.
+
+### `POST /api/sandbox/strategy-tournament`
+
+CEO directive "Professional Quant Firm Phase," Feature 40 — the Quant
+Strategy Tournament. Body: `{ "definitions": CompiledStrategyDefinition[],
+"symbols": [...], "timeframe": "...", "candlesPerSymbol": 6000 }`
+(at least 2 definitions required, `400` otherwise). Runs every candidate
+through the same real `run_research_experiment()` pipeline once each,
+then compares real results via named-slot superlatives
+(`highestExpectancy`/`highestProfitFactor`/`highestSharpeRatio`/
+`lowestMaxDrawdown`/`mostWalkForwardStable` — never a fabricated
+composite score) and 8 staged elimination rounds (see
+`app/strategy_tournament.py`'s own module docstring for the exact,
+disclosed round-by-round rule — Round 7 "Portfolio interaction" is
+explicitly disclosed as architecturally blocked, since this codebase has
+no cross-strategy portfolio-level backtest). Returns a
+`StrategyTournamentResult`; `productionCandidates` is a real, cited
+LABEL for CEO visibility only — never an autonomous production
+promotion, never a bypass of this codebase's separate risk/governance
+approval flow. Read-only, computed fresh every call (runs the full
+research pipeline once per candidate — budget several seconds per
+strategy); nothing here is persisted.
+
 ### `POST /api/constitution/propose` / `advance` / `decide`
 
 v0.7 Feature 46 — the Company Constitution. All three return

@@ -7,6 +7,50 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Professional Quant Firm Phase" — Features 36-40: Quant Research → Strategy → Backtest →
+  Validation → Tournament** (new: `backend/app/overfitting_diagnostics.py`, `backend/app/quant_research_lab.py`,
+  `backend/app/strategy_registry.py`, `backend/app/strategy_tournament.py`; modified:
+  `backend/app/analytics.py`, `backend/app/schemas.py`, `backend/app/backtest_primitives.py`,
+  `backend/app/ema_pullback_research.py`, `backend/app/strategy_engine.py`, `backend/app/research_experiment.py`,
+  `backend/app/strategy_compiler.py`, `backend/app/state.py`, `backend/app/save_modules.py`,
+  `backend/app/routers/sandbox.py`; frontend: `frontend/src/types.ts`, `frontend/src/net/api.ts`, new
+  `frontend/src/ui/components/CommandCenter/panels/sandbox/QuantResearchLabView.tsx`, modified
+  `SandboxPanel.tsx`/`StrategyCompilerView.tsx`): a research-first audit found Feature 38 (Professional
+  Backtesting Engine) already ~80% real — extended `aggregate_bucket()` (the one authoritative bucket
+  aggregation, flowing to every existing caller) with real Sharpe/Sortino/Calmar ratios, longest winning
+  streak, largest win/loss R, and average holding bars (real `bars_held`, threaded through `ExitResult`/
+  `simulate_exit()`), reusing `analytics.py`'s existing disclosed statistics formulas (now public) rather than
+  a second implementation. Surfaced and fixed a real fabrication bug in the process: `strategy_engine.py`'s
+  compiled-strategy `SimulationResult` was hardcoding `sharpeRatio=0.0, sortinoRatio=0.0` despite having a
+  real per-symbol closed-trade return sequence to compute them from. Feature 39 (Walk-Forward + OOS
+  Validation) also already existed in substance (`walk_forward.py`/`parameter_sensitivity.py`/
+  `cost_sensitivity.py` each already produced a real verdict) — the genuine gap was vocabulary, closed by
+  `overfitting_diagnostics.py`'s real, deterministic relabeling into the directive's own requested
+  ROBUST/FRAGILE/INSUFFICIENT_DATA/OVERFIT_SUSPECTED/OOS_FAILURE/PENDING_VALIDATION terms (no new statistic).
+  Feature 40 (Quant Strategy Tournament) was genuinely, entirely missing — new `strategy_tournament.py` compares
+  candidates via named-slot superlatives (never a fabricated composite score) and 8 staged elimination rounds;
+  Round 7 (portfolio interaction) is explicitly disclosed as architecturally blocked (no cross-strategy
+  portfolio-level backtest exists in this codebase) rather than approximated. Features 36 (Quant Research Lab)
+  and 37 (Strategy Factory versioning) deliberately depart from this directive family's usual compute-fresh,
+  never-persist convention — a real, permanent, searchable `QuantResearchExperiment` archive
+  (`GameSaveState.quantResearchExperiments`, capped at 100, following the existing `strategy_hall_of_fame`
+  precedent) with a real, simple, disclosed word-overlap duplicate-detection heuristic, and real, persisted
+  `CompiledStrategyDefinition` version history (`strategy_registry.py`, keyed by the strategy compiler's own
+  real name slug, replacing a previously caller-supplied, untrusted `previousVersion`). New frontend
+  QUANT RESEARCH LAB sub-tab (no new top-level nav) exercises all three write paths plus the tournament runner
+  and archive search. Also fixed a real, unrelated gap this work surfaced: `save_modules.py`'s `MODULE_FIELDS`
+  self-check would have silently broken app startup/save-load for the two new persisted fields had they not
+  been registered — caught by importing `app.main` directly, not by `pytest` collection alone. See
+  `docs/Architecture.md`'s own section for the full research-first audit, architectural reasoning (why this
+  extends the newer `CompiledStrategyDefinition` pipeline and not the legacy `Strategy`/`StrategyStage` one),
+  and every disclosed scope cut. New backend test files `test_overfitting_diagnostics.py`,
+  `test_quant_research_lab.py`, `test_strategy_registry.py`, `test_strategy_tournament.py`; extended
+  `test_backtest_primitives.py`, `test_ema_pullback_research.py`, `test_research_experiment.py`. Full backend
+  suite (2,350 tests), `mypy app/` (173 files), `ruff check app/ tests/` all clean. Frontend `tsc --noEmit`,
+  `eslint`, `vite build` clean; new Playwright coverage in `tests/sandbox.spec.ts` drives the real flow
+  end-to-end (compile → file experiment → register version → compile a second definition → run a real
+  2-strategy tournament → search the archive) against the live dev stack — all 4 tests in that file pass.
+
 - **Strategy compiler/engine: RSI, MACD, and Stochastic triggers** (`backend/app/technical_indicators.py`,
   `backend/app/strategy_engine.py`, `backend/app/strategy_compiler.py`, four backend test files modified): the
   recommended next phase from the prior "Next Research + Validation Pass" directive's own final report — the

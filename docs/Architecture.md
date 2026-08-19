@@ -10518,6 +10518,205 @@ still-unsupported indicator were found and fixed — switched to `vwap`
 whole project's engineering discipline has caught and fixed several
 times before.
 
+## CEO directive "Professional Quant Firm Phase" — Features 36-40: Quant Research → Strategy → Backtest → Validation → Tournament
+
+**Research-first audit, before any code.** This directive asked for five
+capabilities (Quant Research Lab, Strategy Factory, Professional
+Backtesting Engine, Walk-Forward/OOS Validation, Quant Strategy
+Tournament) explicitly against the risk of duplicating work already
+built in the prior two passes. The audit found:
+
+- **Feature 38 (Professional Backtesting Engine) was ~80% already real**
+  — `app/strategy_engine.py`'s bar-by-bar compiled-strategy backtest and
+  `app/backtest_primitives.py`'s `aggregate_bucket()` already computed
+  real win rate/expectancy/profit factor/max drawdown/longest losing
+  streak from real closed trades. Genuinely missing: Sharpe/Sortino/
+  Calmar ratios, longest winning streak, largest win/loss, and average
+  holding time. Building these surfaced a real fabrication bug:
+  `strategy_engine.py`'s own `SimulationResult` construction (feeding
+  the compiled-strategy Monte Carlo bootstrap) was hardcoding
+  `sharpeRatio=0.0, sortinoRatio=0.0` as literal placeholders, even
+  though — unlike `app/simulation.py`'s RNG-only engine, which
+  genuinely has no real per-trade return sequence — this engine DOES
+  have one (`EmaPullbackTradeRecord.r_multiple_realized`). Fixed by
+  making `app/analytics.py`'s existing disclosed Sharpe/Sortino/
+  downside-deviation formulas public (`mean`/`population_stdev`/
+  `downside_deviation`, previously `_mean`/`_population_stdev`/
+  `_downside_deviation`) and reusing them from `aggregate_bucket()` —
+  never a second, duplicate statistics implementation. `bars_held` (a
+  real bar-count, never wall-clock time — this is a historical replay,
+  not a live clock) is a new field threaded through `ExitResult` →
+  `simulate_exit()`'s forward walk → `EmaPullbackTradeRecord`.
+  `calmarRatio` is a real, disclosed, NOT-annualized analog
+  (`expectancy_r / abs(max_drawdown)`, both in R) — this bar-based
+  replay has no real calendar-based way to compute an annualized
+  professional Calmar figure honestly. All three new ratios read `None`
+  (never a fabricated `0.0`) below 2 closed trades or when the
+  underlying variance/drawdown is genuinely zero.
+
+- **Feature 39 (Walk-Forward + OOS Validation) already existed in
+  substance** — `app/walk_forward.py`, `app/parameter_sensitivity.py`,
+  and `app/cost_sensitivity.py` each already computed a real, independent
+  verdict over real evidence. The only genuine gap was vocabulary: three
+  modules, three different words (`unstable`/`fragile`/
+  `cost_sensitive`) for overlapping "does this generalize" questions,
+  none matching the directive's own requested
+  ROBUST/FRAGILE/INSUFFICIENT_DATA/OVERFIT_SUSPECTED/OOS_FAILURE/
+  PENDING_VALIDATION vocabulary. `app/overfitting_diagnostics.py`'s
+  `classify_overfitting_risk()` is a real, deterministic relabeling
+  function (documented priority order: an unstable walk-forward result
+  always reads `oos_failure` regardless of other axes; a fragile
+  parameter-sensitivity or cost-sensitive verdict reads
+  `overfit_suspected`; all-insufficient reads `insufficient_data`;
+  partial evidence reads `pending_validation`; everything favorable
+  reads `robust`) — no new statistic, no new backtest. Wired into
+  `ResearchExperimentRecord.overfittingDiagnosis`, alongside (never
+  replacing) that record's own existing `conclusion` synthesis.
+
+- **Feature 40 (Quant Strategy Tournament) was genuinely, entirely
+  missing** — a repo-wide search for "tournament" found zero hits.
+  `app/strategy_tournament.py` is new. It never fabricates a composite
+  ranking score (the directive's own explicit "a 90%-win-rate strategy
+  with catastrophic tail losses must not automatically beat a
+  lower-win-rate strategy with stronger expectancy" requirement): ranking
+  happens entirely through named-slot superlatives (reusing
+  `StrategyExecutiveDashboardEntry`'s existing "always cites the real
+  strategy and metric that earned it the slot" pattern — highest
+  expectancy, highest profit factor, highest Sharpe, lowest max
+  drawdown, most walk-forward-stable) and 8 staged elimination rounds,
+  each gated on one real, existing verdict (basic validity → cost
+  realism → OOS/look-ahead validity → walk-forward → session robustness
+  [soft, real data, no fabricated diversity threshold] → parameter
+  robustness → portfolio interaction → final research review).
+  **Round 7 (portfolio interaction) is explicitly disclosed as
+  architecturally blocked** rather than approximated: this codebase has
+  no cross-strategy portfolio-level backtest, correlation model, or
+  combined-exposure simulation — every real backtest here tests one
+  strategy on one symbol at a time. Every entrant passes Round 7
+  automatically with `blocked: true` and a disclosed reason.
+  `productionCandidates` is a real, cited LABEL for CEO visibility only
+  — it is never an autonomous production promotion and never bypasses
+  this codebase's own separate risk/governance approval flow
+  (`app/gatekeeper.py`'s `TradeGatekeeper`, `StrategyReview`, Model
+  Validation).
+
+- **Feature 36 (Quant Research Lab) and Feature 37 (Strategy Factory
+  versioning) required a deliberate, disclosed departure from this
+  directive family's usual CAGS (compute-fresh, never-persist)
+  convention** — the directive's own explicit "searchable" and "preserve
+  historical versions, never silently overwrite" requirements are
+  meaningless without real storage. `app/quant_research_lab.py`'s
+  `QuantResearchExperiment` wraps an already-real
+  `ResearchExperimentRecord` with a real hypothesis, researcher agent
+  id, and a disclosed `outcome` (`promising`/`rejected`/`inconclusive`)
+  derived from that same real evidence (never a second, independent
+  judgment call) — persisted to `GameSaveState.quantResearchExperiments`,
+  an ever-growing, never-deleted archive following this codebase's own
+  established `strategy_hall_of_fame`/`strategy_failed_archive`
+  precedent (capped at 100, oldest-first, same bounded-growth
+  convention). `find_similar_experiments()` is a real, simple, disclosed
+  word-overlap (Jaccard) heuristic — never a semantic/NLP similarity
+  claim — combined with an exact same-definition-and-timeframe match, so
+  a CEO/agent can check for equivalent prior research before
+  commissioning new work (the directive's own explicit requirement).
+  `app/strategy_registry.py`'s `register_strategy_version()` reuses
+  `app/strategy_compiler.py`'s already-real, deterministic slug
+  (`strategy_definition_slug()`, now exposed — the same slug
+  `compile_strategy_text()` always derived from a strategy's `name`) as
+  the persisted registry key, and computes the real next version number
+  from that key's own persisted history length — replacing the
+  previously caller-supplied, explicitly-disclosed-as-untrusted
+  `previousVersion` parameter on the stateless `/compile-strategy`
+  preview (left unchanged) with a real, trustworthy one on the new,
+  separate `/register-strategy-version` endpoint. Deliberately uncapped
+  (unlike the Research Lab archive): capping would both violate "never
+  silently overwrite" and corrupt the version count, and a strategy's
+  real version count is expected to stay small (each version is a
+  deliberate edit, not a high-frequency event).
+
+**Architectural decision: two deliberately separate strategy pipelines.**
+This codebase has TWO strategy concepts — the legacy, CEO-gated
+`Strategy`/`StrategyStage` AI-idea pipeline (`idea` → `research` → ... →
+`approved`/`retired`, real live-trading tie-in via
+`evaluate_risk_gate()`/`StrategyReview`) and the newer, deterministic,
+English-text-compiled `CompiledStrategyDefinition` pipeline
+(`app/strategy_compiler.py`/`app/strategy_engine.py`, backtest-only, no
+live-trading tie-in). Features 36-40's own vocabulary (hypothesis,
+walk-forward, tournament, OOS) maps onto the newer pipeline far more
+naturally, so this whole directive extends ONLY that stack. This is a
+deliberate choice to keep two genuinely different, real capabilities
+separate — not a Rule 5 ("one owner per capability") violation, the same
+reasoning this codebase already applies to `app/signal_correlation.py`
+vs. `app/evidence_confluence.py`.
+
+**A real gap this work surfaced and fixed, unrelated to the five
+features themselves:** `app/save_modules.py`'s `MODULE_FIELDS` map
+(which partitions `GameSaveState` into save-file modules) has a
+startup-time self-check that raises `AssertionError` if any
+`GameSaveState` field is missing from it — a real safety net that would
+otherwise let a schema field silently fail to persist. Adding
+`compiled_strategy_versions`/`quant_research_experiments` to
+`GameSaveState` without also registering them in `MODULE_FIELDS`
+(grouped in the `"company"` module, alongside
+`strategy_hall_of_fame`/`strategy_failed_archive` — the same real,
+ever-growing, never-recomputed mutated state) broke `app.main` import
+entirely. Caught by importing `app.main` directly during verification,
+not by `pytest` collection alone (both `test_persistence.py` and
+`test_save_modules.py` also failed to collect until the fix landed) —
+now a standing verification step for any future `GameSaveState` field
+addition.
+
+**Files.** New: `app/overfitting_diagnostics.py`, `app/quant_research_lab.py`,
+`app/strategy_registry.py`, `app/strategy_tournament.py`. Modified:
+`app/analytics.py` (public statistics helpers), `app/schemas.py`
+(`EmaPullbackTradeRecord.barsHeld`; `EmaPullbackStatsBucket`'s Feature
+38 fields; `OverfittingDiagnosis`; `QuantResearchExperiment`/
+`QuantResearchExperimentSimilarity`/`SubmitQuantResearchExperimentResult`;
+`StrategyTournamentEntry`/`StrategyTournamentRoundResult`/
+`StrategyTournamentResult`; two new `GameSaveState` fields),
+`app/backtest_primitives.py` (`ExitResult.bars_held`, `aggregate_bucket()`
+extensions), `app/ema_pullback_research.py` / `app/strategy_engine.py`
+(pass `bars_held` through; fix the `SimulationResult` fabrication),
+`app/research_experiment.py` (wires `overfitting_diagnosis`),
+`app/strategy_compiler.py` (`strategy_definition_slug()` extracted),
+`app/state.py` (`register_compiled_strategy_version()`,
+`submit_quant_research_experiment()`), `app/save_modules.py`,
+`app/routers/sandbox.py` (6 new endpoints). Frontend: `types.ts`/
+`api.ts` extended; new `QuantResearchLabView.tsx` sub-tab in the
+existing Sandbox panel (no new top-level nav); `StrategyCompilerView.tsx`
+surfaces the new overfitting diagnosis.
+
+**Testing.** New backend test files: `test_overfitting_diagnostics.py`,
+`test_quant_research_lab.py`, `test_strategy_registry.py`,
+`test_strategy_tournament.py`; extended `test_backtest_primitives.py`
+(hand-traced `bars_held` fixtures), `test_ema_pullback_research.py`
+(hand-traced Sharpe/Sortino/Calmar fixture against a fixed R-multiple
+sequence, plus a dedicated "reads `None` not `0.0` when undefined"
+test), `test_research_experiment.py`. Full backend suite (2,350 tests),
+`mypy app/` (173 files), `ruff check app/ tests/` all clean. Frontend:
+`tsc --noEmit`, `eslint`, `vite build` clean; new Playwright coverage in
+`tests/sandbox.spec.ts` drives the real flow end-to-end against the live
+dev stack (compile → file experiment → register version → compile a
+second definition → run a real 2-strategy tournament → search the
+archive) — all 4 tests in that file pass.
+
+**Honest, disclosed scope cuts, per the directive's own "STOP and
+explain the blocker rather than fabricating an approximation"
+instruction:** Round 7 (portfolio interaction) above is the primary one.
+Session robustness (Round 5) is real data but a SOFT round — no
+non-fabricated diversity threshold exists yet, so it never eliminates,
+only annotates. Regime-breakdown comparison (as opposed to session
+breakdown, which IS real and used) is not available for compiled
+strategies — `CompiledStrategyBacktestResult` has `sessionBreakdown`/
+`instrumentBreakdown` but no `regimeBreakdown` field; adding one was out
+of scope for this pass. The Quant Research Lab's duplicate-detection
+heuristic is real but simple (word-overlap, never semantic/NLP) — the
+Research Lab and version registry endpoints have no dedicated router
+HTTP integration tests, matching this codebase's existing convention for
+`app/routers/sandbox.py` (business logic is unit-tested directly;
+Playwright covers the real end-to-end HTTP path instead — see the
+Testing section above).
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing
