@@ -7,6 +7,35 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Features 31-35: Compliance, Governance & Continuous Improvement System," Feature 34 —
+  Compliance Control Effectiveness** (`backend/app/control_effectiveness.py`, `backend/app/schemas.py`,
+  `backend/app/routers/audit.py`, `backend/tests/test_control_effectiveness.py`, `frontend/src/types.ts`,
+  `frontend/src/net/api.ts`, `frontend/src/ui/components/CommandCenter/panels/CompliancePanel.tsx`): the fourth
+  stage of the CEO's 31→32→33→34→35 Compliance closed loop, answering the directive's core question — did each
+  real Gatekeeper check actually prevent or detect what it was designed to address, not just how often it
+  exists/fires. Needed no new persisted state: all 11 real checks (`app/gatekeeper.py::evaluate_gatekeeper()`)
+  already run on every real trade decision and are stored on `TradeDecision.gatekeeperVerdict.checks`, and
+  `GatekeeperRejection.outcome` (v0.7 Feature 20) already grades every blocked trade's real
+  `would_have_won`/`would_have_lost` from real subsequent price movement — this feature is a pure,
+  computed-fresh-per-request join over both, the original CAGS convention. Attribution honesty: since a
+  rejection can have multiple checks failing at once, a real outcome is only credited to a control when it was
+  the *sole* failing check for that decision — every multi-check-failure case counts separately as
+  `ambiguousAttributionCount`, never guessed at. Five evaluation states, not two: `not_yet_tested` (never once
+  failed — CONTROL EXISTS, never yet had the chance to prove CONTROL WORKS), `insufficient_data` (too few
+  confirmed outcomes, floor reused verbatim from Feature 33's `MIN_ACCURACY_SAMPLE_FOR_VERDICT = 3`), `mixed`
+  (enough confirmed evidence but the prevented-vs-false-positive split lands in the ambiguous 40-60% band — real
+  mixed evidence, never collapsed into `insufficient_data`), and `effective`/`ineffective` only once the sample
+  floor is cleared and the 60%/40% split (reused a third time from `ExecutiveVoting.tsx`'s own convention)
+  clearly favors one side. `controlRegression` flags a real earlier-effective/later-ineffective split in a
+  control's own confirmed history — never a hardcoded flag. New `GET /api/audit/controls/effectiveness`
+  endpoint; new "Control Effectiveness" Compliance panel tab. 15 new backend tests, `mypy app/` (147
+  files)/`ruff check app/ tests/` clean, full backend suite (1960 passed; same 6 pre-existing `test_nexus.py`
+  failures, plus one independently-reconfirmed-flaky `test_foundational_mentors.py` test unrelated to this
+  change), `tsc`/`eslint`/`vite build` clean, live Playwright verification against the real dev stack — a real
+  live CEO-approved BUY on SPY drove a real `TradeDecision`/`gatekeeperVerdict` through the actual Gatekeeper,
+  and the new tab correctly rendered all 11 controls as `triggeredCount: 1, passedCount: 1` immediately after.
+  Documented in Design Bible Chapter 73.
+
 - **CEO directive "Features 31-35: Compliance, Governance & Continuous Improvement System," Feature 33 —
   Executive Accuracy Evidence System** (`backend/app/executive_intelligence.py`, `backend/app/schemas.py`,
   `backend/app/weighted_decisions.py`, `backend/tests/test_executive_intelligence.py`, `frontend/src/types.ts`,

@@ -1852,6 +1852,38 @@ field on the request body — stored on the resulting `CeoDecisionRecord`
 only when the decision is actually an override (`choice !=
 proposal.overallRecommendation`); silently ignored otherwise.
 
+### Compliance Control Effectiveness — CEO directive "Features 31-35," Feature 34
+
+`app/control_effectiveness.py`. Read-only, computed fresh per request —
+no new `GameSaveState` field, the same original CAGS convention as the
+five original `/api/audit/*` endpoints (untouched).
+
+**`GET /api/audit/controls/effectiveness`** — the real
+`ControlEffectivenessSummary` over all 11 real Gatekeeper checks.
+`controls: ControlEffectivenessRecord[]`, one per check, each with:
+`controlId`/`controlLabel`/`purpose`/`owner` (the check's own real,
+disclosed behavior and owning module — never invented); `triggeredCount`
+(every real decision this check was evaluated for) /`passedCount`/
+`failedCount`; `soleReasonRejectionCount` (rejections where this was the
+*only* failing check — the only case an outcome can be unambiguously
+attributed to it); `confirmedPreventedCount`/`confirmedFalsePositiveCount`
+(from the matching `GatekeeperRejection.outcome`,
+`would_have_lost`/`would_have_won`); `pendingEvaluationCount` (still
+`pending`, or the matching rejection record was evicted by
+`MAX_GATEKEEPER_REJECTIONS` — either way, not yet confirmed);
+`ambiguousAttributionCount` (rejections where this check failed
+alongside at least one other — the outcome cannot be honestly credited
+to any single one of them); `effectivenessState`
+(`effective`/`ineffective`/`mixed`/`insufficient_data`/`not_yet_tested`
+— see the Design Bible chapter's Decision Logic for the exact
+thresholds); `controlRegression` (`true` only when a real
+earlier/later split of this control's own confirmed history reads
+`effective` then `ineffective`); `lastTriggeredAt`/`lastEvaluatedAt`.
+Summary counts (`totalControls`, `effectiveCount`, `ineffectiveCount`,
+`mixedCount`, `insufficientDataCount`, `notYetTestedCount`,
+`regressedControlCount`, `updatedAt`) are pure tallies over `controls`,
+never a second independently-computed number.
+
 ### `GET /api/situation-room`
 
 Design Bible Chapter 73.5 — Mobile Command Center & Remote Operations.

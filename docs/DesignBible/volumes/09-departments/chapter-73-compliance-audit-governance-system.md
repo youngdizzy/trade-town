@@ -190,6 +190,13 @@ growth anywhere.
   to `processQuality`/`outcome`). `POST /api/executive/decide` also
   gained an optional `overrideReason` field — a real, new CEO-provided
   mechanism, `None` for every decision before it existed.
+- **Feature 34 — Compliance Control Effectiveness.** `GET
+  /api/audit/controls/effectiveness` — per-control effectiveness for all
+  11 real Gatekeeper checks, computed fresh from
+  `TradeDecision.gatekeeperVerdict.checks` and
+  `GatekeeperRejection.outcome` (see Decision Logic below). Read-only,
+  same computed-fresh-per-request convention as the original five
+  endpoints above — no new persisted state, unlike Features 31/32.
 
 ## Internal Workflow
 
@@ -325,6 +332,62 @@ and `sampleSizeSufficient` gates trend interpretation on a disclosed,
 arbitrary floor (`MIN_OVERRIDE_SAMPLE_FOR_TREND = 5`), the same honesty
 convention this chapter's own Compliance Score already carries.
 
+**Compliance Control Effectiveness (Feature 34)** — the CEO directive's
+own core question: "did the control prevent or detect the problem it
+was designed to address," not just how often it exists or fires.
+Research first: all 11 real Gatekeeper checks
+(`app/gatekeeper.py::evaluate_gatekeeper()`) already run unconditionally
+on every real trade decision and are stored, per-decision, on
+`TradeDecision.gatekeeperVerdict.checks` — so `triggeredCount` is a real
+count of every time a control actually ran, never a fabricated "how
+often could this fire" estimate. `passedCount`/`failedCount` are a
+direct tally over the same real per-decision checks.
+
+Proving CONTROL WORKS (not just CONTROL EXISTS) needs real evidence a
+rejection was right or wrong — the only honest source is the
+already-real `GatekeeperRejection.outcome` grading
+(`would_have_won`/`would_have_lost`, resolved purely from real
+subsequent watchlist price movement, never a placed order). But
+`evaluate_gatekeeper()`'s `approved = all(c.passed for c in checks)`
+means a single rejection can have several checks failing at once, so an
+outcome can only be attributed to one specific control when that
+control was the *sole* failing check for that decision
+(`soleReasonRejectionCount`) — every other case counts as
+`ambiguousAttributionCount` instead, never guessed at. Among sole-reason
+rejections, `would_have_lost` means the block was correct
+(`confirmedPreventedCount`); `would_have_won` means the block was a
+false positive (`confirmedFalsePositiveCount`); still-`pending` or a
+rejection record no longer on file (evicted by
+`MAX_GATEKEEPER_REJECTIONS`) both count as `pendingEvaluationCount` —
+not yet confirmed either way, never assumed.
+
+`effectivenessState` is `not_yet_tested` when a control has never once
+failed a decision (CONTROL EXISTS, never yet had the chance to prove
+CONTROL WORKS — the directive's own "NO TRIGGERS ≠ FAILURE" rule,
+literally implemented, not just disclosed in prose), `insufficient_data`
+when it has failed decisions but fewer than
+`MIN_CONTROL_SAMPLE_FOR_VERDICT = 3` confirmed outcomes exist yet (the
+same evidence-floor pattern Feature 33's `MIN_ACCURACY_SAMPLE_FOR_VERDICT`
+established), `mixed` when there IS enough confirmed evidence but the
+prevented-vs-false-positive split lands in the ambiguous 40-60% middle
+band (real mixed evidence, deliberately never collapsed into
+`insufficient_data`, which would misreport it as no evidence), and only
+`effective`/`ineffective` once that sample floor is cleared and the
+split clearly favors one side — the same 60%/40% convention Feature 33
+already reused from `ExecutiveVoting.tsx`'s own pre-existing
+green/amber/red thresholds, reused a third time here for one consistent
+evidence-grading language across the whole Compliance system.
+
+`controlRegression` answers the directive's "if a previously effective
+control begins failing, flag CONTROL REGRESSION" instruction with a real
+computation, not a hardcoded flag: a control's own confirmed,
+sole-reason outcome history is sorted chronologically and split into an
+earlier half and a more recent half — only when each half
+independently clears the same sample floor — and regression is flagged
+only when the earlier half read `effective` and the recent half now
+reads `ineffective`. A single bad recent outcome, or a sample too thin
+to support both halves' own verdicts, never triggers it.
+
 **Governance Framework** — not a new authority chain. It is the real,
 disclosed order `app/gatekeeper.py::evaluate_gatekeeper()` already
 checks in (confidence → risk manager alignment → CEO/AI agreement → AI
@@ -428,18 +491,19 @@ presentation, not a separate data model.
 ## Future Expansion
 
 The CEO-editable incident status workflow this section previously
-deferred now ships as Feature 31's Incident Resolution Engine, and
-override *quality* evaluation (process vs. outcome, not just frequency)
-now ships as Feature 32's CEO Override Governance (both above). Still
-open, per the CEO directive's own Features 33-35 roadmap: an Executive
-Accuracy Evidence pipeline that replaces
-`compute_executive_accuracy_scores()`'s current `0.0`-when-untracked
-default with a real `NOT_ENOUGH_EVIDENCE`/`PASS`/`FAIL` state (Feature
-33), real Control Effectiveness measurement rather than a control-exists
-count (Feature 34), and connecting all of the above into Company Health
-through the existing architecture, with any change to the Compliance
-Score formula itself requiring explicit CEO authorization first (Feature
-35). Wiring the Compliance Score into the Trade Gatekeeper as an
+deferred now ships as Feature 31's Incident Resolution Engine, override
+*quality* evaluation (process vs. outcome, not just frequency) now ships
+as Feature 32's CEO Override Governance, the Executive Accuracy Evidence
+pipeline now ships as Feature 33 (Chapter 70 Part 4 — replaces
+`compute_executive_accuracy_scores()`'s old `0.0`-when-untracked default
+with a real `NOT_ENOUGH_EVIDENCE`/`PASS`/`FAIL`/`INCONCLUSIVE` state),
+and real per-control effectiveness measurement (did the control actually
+prevent or detect what it was designed to address, not just how often it
+exists/fires) now ships as Feature 34, below. Still open, per the CEO
+directive's own Feature 35: connecting all of the above into Company
+Health through the existing architecture, with any change to the
+Compliance Score formula itself requiring explicit CEO authorization
+first. Wiring the Compliance Score into the Trade Gatekeeper as an
 advisory-only check, following the Chapter 70 Part 3 / Chapter 71
 precedent, remains open if a future addendum explicitly asks for it.
 Also open: prompting for `overrideReason` directly in the quick-decision
@@ -588,10 +652,49 @@ decision that predates the meeting-log feature, and a real
 `POST /api/audit/overrides/{id}/review` call was driven through the UI
 end-to-end — the reviewer's name and note appeared immediately).
 
+**Files changed, Feature 34 (CEO directive "Features 31-35"):**
+`app/schemas.py` (new `GatekeeperControlEffectivenessState`/
+`ControlEffectivenessRecord`/`ControlEffectivenessSummary` — no new
+`GameSaveState` field, since this reads state that already exists);
+`app/control_effectiveness.py` (new module — a static catalog of all 11
+real Gatekeeper checks' purpose/owner text, plus a pure
+`compute_control_effectiveness()` reading `state.decisions` +
+`state.gatekeeper_rejections`); `app/routers/audit.py` (one new
+read-only endpoint, `GET /api/audit/controls/effectiveness`, on the
+original CAGS computed-fresh-per-request convention — no per-tick sync,
+no `nexus.py`/`state.py`/`save_modules.py` change);
+`tests/test_control_effectiveness.py` (15 tests — not-yet-tested vs.
+never-triggered, sole-reason attribution for both outcomes, pending and
+missing-rejection handling, ambiguous multi-check-failure attribution,
+every evaluation-state boundary including the honest `mixed` state, and
+control-regression detection on both a genuine earlier/later split and a
+consistently-effective control that must never falsely regress).
+Frontend: `types.ts`, `net/api.ts` (1 new call), and
+`CompliancePanel.tsx` (new "Control Effectiveness" tab, alongside the
+five CAGS tabs above it). Verification: `mypy app/` (147 files) clean,
+`ruff check app/ tests/` clean, full backend `pytest -q` (1960 passed;
+same 6 pre-existing `test_nexus.py` failures, unchanged, plus one
+independently-confirmed-flaky `test_foundational_mentors.py` test that
+passed in isolation), `tsc --noEmit` clean, `npm run lint` clean, `npm
+run build` clean, live Playwright verification against the real dev
+stack: a real live CEO-approved BUY on SPY drove a real `TradeDecision`
+with a real `gatekeeperVerdict` through the actual Gatekeeper, and the
+Control Effectiveness tab correctly rendered all 11 controls as
+`triggeredCount: 1, passedCount: 1` — real live evidence, not a mock.
+
+**What genuinely still separates CONTROL EXISTS from CONTROL WORKS,
+honestly:** attribution is only unambiguous when a control was the
+*sole* failing check for a rejection — multi-check-failure rejections
+are counted as `ambiguousAttributionCount` rather than guessed at, so a
+control that mostly fails alongside others will show a real
+`effectivenessState` built from a smaller confirmed sample than its raw
+`failedCount` might suggest. That's the honest cost of never inventing
+an attribution the evidence doesn't support.
+
 **What's genuinely still unbuilt:** every item in the honesty-boundary
 list above, plus a Trade Gatekeeper wiring for the Compliance Score,
-plus Features 33-35 of the CEO's own directive (Executive Accuracy
-evidence pipeline, Control Effectiveness measurement, and the
-Continuous Improvement Loop connecting all of it into Company Health),
-plus surfacing `overrideReason` directly in the quick-decision UI — all
-deliberate, all documented, none silently dropped.
+plus Feature 35 of the CEO's own directive (the Continuous Improvement
+Loop connecting Features 31-34's real evidence into Company Health
+through the existing architecture), plus surfacing `overrideReason`
+directly in the quick-decision UI — all deliberate, all documented, none
+silently dropped.

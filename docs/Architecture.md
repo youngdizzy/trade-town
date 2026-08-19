@@ -8500,6 +8500,97 @@ including the CEO-authorization gate on the Compliance Score formula
 itself) do not begin until this feature is fully tested, verified, and
 documented — which this entry closes out.
 
+## CEO directive "Features 31-35: Compliance, Governance & Continuous Improvement System" — Feature 34, Compliance Control Effectiveness
+
+Research first: this feature needed no new persisted state at all,
+because the real evidence it needed already existed in two places.
+`app/gatekeeper.py::evaluate_gatekeeper()` already runs all 11 real
+checks unconditionally on every real trade decision and stores the full
+per-check result on `TradeDecision.gatekeeperVerdict.checks` — a real
+count of every time a control actually ran was sitting there already,
+never needing a new counter bumped anywhere. And `GatekeeperRejection`
+(v0.7 Feature 20) already grades every blocked trade's real, un-invented
+outcome (`would_have_won`/`would_have_lost`, resolved purely from real
+subsequent watchlist price movement — no order was ever placed, so
+there's no fabricated P&L to grade). Feature 34
+(`app/control_effectiveness.py`) is a pure, computed-fresh-per-request
+join over those two already-real sources — the original CAGS
+convention, not Feature 31/32's persisted-and-synced pattern, because
+this is a derived read with no CEO-actionable mutation.
+
+**The attribution honesty problem, solved rather than glossed over:**
+`evaluate_gatekeeper()`'s `approved = all(c.passed for c in checks)`
+means one rejected decision can have several checks failing
+simultaneously. A real `would_have_won`/`would_have_lost` outcome can
+only be honestly credited to ONE specific control when that control was
+the *sole* failing check for that decision. Every multi-check-failure
+rejection is counted separately as `ambiguousAttributionCount` — never
+guessed at, never split evenly across the failing checks, never
+attributed to "whichever one seems most likely." This is the same
+"never invent prevented incidents" discipline the CEO directive applies
+everywhere else in Features 31-35.
+
+**Five honest evaluation states, not two:** a control that has never
+once failed a decision reads `not_yet_tested` — CONTROL EXISTS, but has
+never had the chance to prove CONTROL WORKS, the directive's own "NO
+TRIGGERS ≠ FAILURE" rule implemented literally rather than just
+disclosed in prose. `insufficient_data` covers real failures with too
+few confirmed (non-pending, sole-reason) outcomes yet
+(`MIN_CONTROL_SAMPLE_FOR_VERDICT = 3`, reusing Feature 33's own
+`MIN_ACCURACY_SAMPLE_FOR_VERDICT` evidence-floor convention verbatim).
+A middle design decision caught during implementation: the initial draft
+collapsed a real, sufficiently-sampled but genuinely mixed
+prevented-vs-false-positive split (the 40-60% band) into
+`insufficient_data` too — which would have misreported real mixed
+evidence as no evidence at all, a direct violation of the directive's
+"missing data is not failure, but bad performance is not missing data"
+distinction. Fixed before shipping by adding a fifth state, `mixed`,
+so a control with real, ample, genuinely inconclusive evidence is never
+confused with a control nobody has tested yet. Only `effective`/
+`ineffective` require both the sample floor and a clear (60%/40%) split
+— the same threshold Feature 33 already reused from
+`ExecutiveVoting.tsx`'s own pre-existing convention, reused a third time
+here for one consistent evidence-grading language across Features
+32-34.
+
+**Control regression, computed rather than flagged by hand:** the
+directive asks for "if a previously effective control begins failing,
+flag CONTROL REGRESSION." Implemented as a real chronological split of
+each control's own confirmed, sole-reason outcome history into an
+earlier half and a more recent half — both independently required to
+clear the same sample floor — flagged only when the earlier half read
+`effective` and the recent half now reads `ineffective`. A lone bad
+recent outcome, or a history too thin to support both halves' own
+verdicts, never triggers it.
+
+**Verified**: 15 new tests (`tests/test_control_effectiveness.py`) —
+never-triggered vs. triggered-but-never-failed (both correctly
+`not_yet_tested`), sole-reason attribution for both real outcomes,
+still-pending and missing-rejection-record handling, two-checks-failing-
+together attribution (confirmed never credited to either check alone),
+every evaluation-state boundary (including the `mixed` fix above), and
+control-regression detection on both a genuine earlier-effective/
+later-ineffective split and a consistently-effective control that must
+never falsely regress. `mypy app/` (147 files)/`ruff check app/ tests/`
+clean, full backend `pytest -q` (1960 passed; same 6 pre-existing
+`test_nexus.py` failures noted under Features 31-33, unchanged, plus one
+`test_foundational_mentors.py` test independently reconfirmed flaky —
+passed cleanly in isolation, unrelated to this change). `tsc
+--noEmit`/`eslint --max-warnings 0`/`vite build` all clean. Live
+Playwright verification against the real dev stack went further than a
+static read: a real pending SPY BUY proposal was approved live through
+the actual Executive Voting UI, driving a real `TradeDecision` with a
+real `gatekeeperVerdict` through the real Gatekeeper end-to-end, and the
+Control Effectiveness tab correctly re-rendered all 11 controls with
+`triggeredCount: 1, passedCount: 1` immediately after — live evidence
+flowing through the real pipeline, not a mock or a fixture.
+
+Per this directive's own staging rule, Feature 35 (the Continuous
+Compliance Improvement Loop, including the CEO-authorization gate on
+the Compliance Score formula itself) does not begin until this feature
+is fully tested, verified, and documented — which this entry closes
+out.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing
