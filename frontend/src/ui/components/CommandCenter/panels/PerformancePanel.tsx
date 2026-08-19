@@ -1,9 +1,11 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
+import { api } from "@/net/api";
+import type { SymbolPerformanceRead, SymbolPerformanceSummary } from "@/types";
 import type { FinancialPeriod } from "../lib/financials";
 import { computePeriodFinancials, simMonthNumber } from "../lib/financials";
 import { computeTradeStats, formatMoney, formatPct } from "../lib/derive";
-import { DataRow, EmptyState, Glass, TerminalLabel } from "../ui";
+import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../ui";
 
 const PERIODS: FinancialPeriod[] = ["today", "week", "month", "prevMonth", "allTime"];
 
@@ -23,6 +25,16 @@ export function PerformancePanel() {
   const financials = computePeriodFinancials(period, paperPortfolio.tradeHistory, paperPortfolio.startingBalance, time, openUnrealized);
   const prevMonth = computePeriodFinancials("prevMonth", paperPortfolio.tradeHistory, paperPortfolio.startingBalance, time, openUnrealized);
   const allTimeStats = computeTradeStats(paperPortfolio.tradeHistory);
+
+  // CEO directive "Next Professional Trading Firm Phase," Priority 2 —
+  // real, on-demand symbol-level P&L attribution
+  // (backend/app/performance_attribution.py), no WS-broadcast field
+  // backs it, the same on-demand pattern this Command Center already
+  // uses for Exit Efficiency in the Discipline panel.
+  const [symbolPerformance, setSymbolPerformance] = useState<SymbolPerformanceSummary | null>(null);
+  useEffect(() => {
+    api.getPerformanceBySymbol().then(setSymbolPerformance).catch(() => undefined);
+  }, []);
 
   const netPositive = financials.netPnl >= 0;
   const monthLabel =
@@ -129,9 +141,13 @@ export function PerformancePanel() {
           <DataRow label="Avg loss" value={formatMoney(-allTimeStats.avgLoss)} valueClassName="text-cmd-red" />
         </div>
         <div className="mt-2 text-[9px] text-cmd-textDim">
-          Performance-by-strategy and performance-by-market-regime breakdowns aren&apos;t tracked yet — closed trades aren&apos;t currently linked to a Strategy id. See CHANGELOG.md.
+          Performance-by-agent and performance-by-strategy breakdowns aren&apos;t built yet — a trade&apos;s
+          multiple supporting/opposing agents have no CEO-authorized credit-split rule, and closed trades
+          aren&apos;t currently linked to a Strategy id. See CHANGELOG.md.
         </div>
       </Glass>
+
+      <SymbolPerformanceSection summary={symbolPerformance} />
 
       <Glass className="p-3">
         <TerminalLabel>Recent Trades — Post-Trade Learning</TerminalLabel>
@@ -171,6 +187,60 @@ export function PerformancePanel() {
           </div>
         )}
       </Glass>
+    </div>
+  );
+}
+
+/** CEO directive "Next Professional Trading Firm Phase," Priority 2 —
+ * "What is making money? Where is the edge strongest?" answered with
+ * real, computed-fresh symbol-level attribution. */
+function SymbolPerformanceSection({ summary }: { summary: SymbolPerformanceSummary | null }) {
+  return (
+    <Glass className="p-3">
+      <div className="mb-1.5 flex items-center justify-between">
+        <TerminalLabel>Performance by Symbol</TerminalLabel>
+        <span className="text-[9px] text-cmd-textDim">Most profitable symbol first — real, computed fresh from closed trades</span>
+      </div>
+      {summary === null ? (
+        <EmptyState>Loading…</EmptyState>
+      ) : summary.reads.length === 0 ? (
+        <EmptyState>No trade has closed yet.</EmptyState>
+      ) : (
+        <div className="space-y-1">
+          {summary.reads.map((r) => (
+            <SymbolPerformanceRow key={r.symbol} read={r} />
+          ))}
+        </div>
+      )}
+    </Glass>
+  );
+}
+
+function SymbolPerformanceRow({ read }: { read: SymbolPerformanceRead }) {
+  return (
+    <div className="rounded-sm border border-cmd-border/40 bg-cmd-bg/30 px-2 py-1.5 text-[9px]">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-cmdmono text-cmd-cyan">{read.symbol}</span>
+        <span className={read.totalPnl >= 0 ? "text-cmd-green" : "text-cmd-red"}>{formatMoney(read.totalPnl)}</span>
+        <span className="text-cmd-textDim">
+          {read.tradeCount} trade{read.tradeCount === 1 ? "" : "s"} · {read.winRatePct.toFixed(0)}% win rate
+        </span>
+        {read.evidenceState === "not_enough_data" ? (
+          <StatusPill tone="amber">NOT ENOUGH DATA</StatusPill>
+        ) : (
+          <>
+            <span className="text-cmd-textDim">
+              Expectancy: <span className={read.expectancyPct !== null && read.expectancyPct >= 0 ? "text-cmd-green" : "text-cmd-red"}>{formatPct(read.expectancyPct ?? 0)}</span>
+            </span>
+            <span className="text-cmd-textDim">Profit factor: {read.profitFactor === null ? "N/A (no losses yet)" : read.profitFactor.toFixed(2)}</span>
+          </>
+        )}
+      </div>
+      <div className="mt-0.5 text-cmd-textDim">
+        Avg winner: <span className="text-cmd-green">{read.avgWinnerPct === null ? "—" : formatPct(read.avgWinnerPct)}</span> · Avg loser:{" "}
+        <span className="text-cmd-red">{read.avgLoserPct === null ? "—" : formatPct(read.avgLoserPct)}</span> · Best: {formatPct(read.bestTradePnlPct)} · Worst:{" "}
+        {formatPct(read.worstTradePnlPct)}
+      </div>
     </div>
   );
 }

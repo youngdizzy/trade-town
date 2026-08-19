@@ -82,6 +82,7 @@ import type {
   SessionRegimeEvidenceSummary,
   RiskLimits,
   SimilarTradesSummary,
+  SymbolPerformanceSummary,
   Strategy,
   StrategyCertification,
   StrategyDossier,
@@ -197,6 +198,10 @@ export const api = {
   // CEO directive "Professional Trading Firm Transformation" — Post-
   // Trade Review, Exit Efficiency. Read-only, computed fresh per request.
   getExitEfficiency: () => request<ExitEfficiencySummary>("/trades/exit-efficiency"),
+  // CEO directive "Next Professional Trading Firm Phase," Priority 2 —
+  // Unified P&L Reporting, scoped to symbol-level attribution this
+  // pass. Read-only, computed fresh per request.
+  getPerformanceBySymbol: () => request<SymbolPerformanceSummary>("/trades/performance-by-symbol"),
   submitCeoDecision: (proposalId: string, choice: AnalystChoice, delegated = false, overrideReason?: string) =>
     request<{
       tradeProposals: TradeProposal[];

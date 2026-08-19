@@ -545,6 +545,44 @@ export interface ExitEfficiencySummary {
   updatedAt: string;
 }
 
+// CEO directive "Next Professional Trading Firm Phase," Priority 2 —
+// Unified Professional P&L/Performance Reporting, scoped this pass to
+// real, unambiguous SYMBOL-level attribution (see
+// backend/app/performance_attribution.py's module docstring for why
+// agent- and strategy-level breakdowns are deliberately not built yet).
+export type SymbolPerformanceEvidenceState = "sufficient_evidence" | "not_enough_data";
+
+export interface SymbolPerformanceRead {
+  symbol: string;
+  tradeCount: number;
+  winCount: number;
+  lossCount: number;
+  winRatePct: number;
+  totalPnl: number;
+  avgPnlPct: number;
+  /** null when this symbol has no winning (or no losing) trades yet — never a fabricated 0. */
+  avgWinnerPct: number | null;
+  avgLoserPct: number | null;
+  /** Standard win-rate/avg-win/avg-loss decomposition — algebraically the same as avgPnlPct
+   * under this same win/loss partition, shown separately because the decomposition itself is
+   * diagnostic. null below tradeCount's disclosed minimum sample (see evidenceState). */
+  expectancyPct: number | null;
+  /** Gross profit / gross loss. null — a real "undefined," not a fabricated infinity — when
+   * this symbol has zero losing trades yet. */
+  profitFactor: number | null;
+  avgMaePct: number;
+  avgMfePct: number;
+  bestTradePnlPct: number;
+  worstTradePnlPct: number;
+  evidenceState: SymbolPerformanceEvidenceState;
+}
+
+/** `reads` sorted by totalPnl descending — the most profitable symbol first. */
+export interface SymbolPerformanceSummary {
+  reads: SymbolPerformanceRead[];
+  updatedAt: string;
+}
+
 /** The company's one simulated trading account — entirely fictional. */
 export interface PaperPortfolio {
   cashBalance: number;
