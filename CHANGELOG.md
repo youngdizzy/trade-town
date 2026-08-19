@@ -7,6 +7,32 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Next Professional Trading Firm Phase," Priority 2 — Unified Professional P&L Reporting
+  (symbol-level)** (`backend/app/performance_attribution.py`, `backend/app/routers/trades.py`,
+  `backend/app/schemas.py`, `backend/tests/test_performance_attribution.py`, `frontend/src/types.ts`,
+  `frontend/src/net/api.ts`, `frontend/src/ui/components/CommandCenter/panels/PerformancePanel.tsx`):
+  audited every existing P&L/reporting surface (`app/analytics.py`'s `PerformanceSnapshot`, the All-Time Trade
+  Journal, `DecisionVaultEntry`, `app/exit_efficiency.py`) and confirmed real per-trade/whole-portfolio data
+  but zero symbol-, agent-, or strategy-level aggregation anywhere. **What shipped**: new
+  `app/performance_attribution.py` — SYMBOL-level attribution only, computed fresh over `trade_history` (CAGS,
+  no new `GameSaveState` field): trade count, win rate, total P&L, avg P&L%, avg winner/loser, expectancy (the
+  standard decomposition — verified algebraically identical to avg P&L% under the same win/loss partition),
+  profit factor (gross profit ÷ gross loss, `None` — a real "undefined," never a fabricated infinity — with
+  zero losses), avg MAE/MFE, best/worst trade; derived ratios withheld below `MIN_SYMBOL_SAMPLE_FOR_VERDICT = 3`
+  trades. New `GET /api/trades/performance-by-symbol` endpoint; new "Performance by Symbol" Performance panel
+  section, most-profitable-first. **Deliberately NOT built, each for a specific disclosed reason**: AGENT-level
+  (a trade's `supportingAgents`/`opposingAgents` is a list with no CEO-authorized credit-split rule — inventing
+  one would be a fabricated convention); STRATEGY-level (`DecisionVaultEntry.strategyId` always `None` on a
+  live trade); SESSION/MARKET REGIME (`DecisionVaultEntry` only covers CEO-proposal-path closes — broker
+  fills/hold-duration closes/day-end flattens never get a vault entry, so a join would silently under-report
+  them — a partial-coverage report dressed up as complete is its own dishonesty); TIMEFRAME (no per-trade
+  chart-timeframe concept exists; `PerformancePeriod` already covers time-bucketed reporting). 10 new tests,
+  `mypy app/` (152 files)/`ruff check app/ tests/` clean, full backend suite (2034 passed; same 6 pre-existing
+  unrelated `test_nexus.py` failures), `tsc -b --noEmit`/`eslint`/`vite build` clean, live-verified against the
+  real dev stack (the endpoint and the new panel section both rendered the current save's real SPY/AAPL trades,
+  correctly sorted and correctly gated to NOT_ENOUGH_DATA at the current sample size). Documented in
+  `docs/Architecture.md`.
+
 - **CEO directive "Next Professional Trading Firm Phase," Priority 1 — Execution Realism**
   (`backend/app/execution_quality.py`, `backend/app/portfolio.py`, `backend/app/broker.py`,
   `backend/app/executive.py`, `backend/app/paper_trading.py`, `backend/app/trading_modes.py`,
@@ -41,10 +67,12 @@ development milestones, not semver releases.
   `entrySlippageBps=14.73`; `POST /api/time/advance` → the same position's forced close recording a real
   `exitSlippageBps`; the Performance panel rendering that exact value). Documented in `docs/Architecture.md`.
 
-  **8-priority classification** (condensed; see `docs/Architecture.md` for detail on Priority 1):
+  **8-priority classification** (condensed; see `docs/Architecture.md` for detail on Priorities 1-2):
   Priority 1 Execution Realism — MINIMAL → **implemented this pass**. Priority 2 Unified P&L Reporting —
-  PARTIAL (per-trade/per-position data is real and rich; no symbol- or agent-level aggregation exists
-  anywhere) — deferred, candidate for next pass. Priority 3 Talent→Specialization→Performance — BLOCKED BY
+  PARTIAL (per-trade/per-position data is real and rich; no symbol- or agent-level aggregation existed
+  anywhere) → **symbol-level implemented this pass** (see the dedicated entry below); agent/strategy/session/
+  regime/timeframe breakdowns remain deferred, each for a specific disclosed reason (see that entry).
+  Priority 3 Talent→Specialization→Performance — BLOCKED BY
   ARCHITECTURE: `app/research.py`'s confidence is an explicitly-disclosed random walk ("not derived from any
   real analysis"), and `ResearchCategory` is a broad asset-class taxonomy with no indicator/setup dimension —
   neither "route specialized research to specialists" nor "measure specialist research quality" is honestly

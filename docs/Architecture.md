@@ -9047,6 +9047,67 @@ Performance panel's Recent Trades section rendered the exact real value
 — "Slippage: 14.7bps in / 14.7bps out (real, already reflected in
 entry/exit price)".
 
+### Priority 2 — Unified Professional P&L/Performance Reporting (symbol-level)
+
+**Audit:** every existing P&L/reporting surface — `app/analytics.py`'s
+`PerformanceSnapshot` (win rate, real Sharpe/Sortino, whole-history
+only), `PerformancePanel.tsx`'s "All-Time Trade Journal" (same
+whole-history rollup), `app/decision_vault.py`'s per-trade
+`DecisionVaultEntry`, `app/exit_efficiency.py`'s per-trade capture read
+— has real, rich per-trade and whole-portfolio data, but a grep-
+confirmed zero symbol-, agent-, or strategy-level P&L AGGREGATION
+anywhere in the codebase.
+
+**What shipped:** `app/performance_attribution.py` (new module,
+CAGS convention — computed fresh over `state.paper_portfolio.
+trade_history`, no new `GameSaveState` field) adds SYMBOL-level
+attribution only — the one axis with zero apportionment ambiguity and
+100% real-data coverage, since every `PaperTrade` already carries its
+own real `symbol`. Per symbol: trade count, win/loss counts, win rate,
+total P&L, avg P&L%, avg winner/loser (`None` when a symbol has no
+winners or no losers yet, never a fabricated `0`), expectancy (the
+standard win-rate/avg-win/avg-loss decomposition — algebraically
+identical to the simple average P&L% under the same win/loss
+partition, verified by a dedicated test), profit factor (gross profit
+÷ gross loss — `None`, a real "undefined," rather than a fabricated
+infinity, when a symbol has zero losing trades), average MAE/MFE, and
+best/worst trade. Derived ratios (expectancy, profit factor) are
+withheld below `MIN_SYMBOL_SAMPLE_FOR_VERDICT = 3` trades (the same
+disclosed-arbitrary-floor convention as `MIN_SESSION_REGIME_SAMPLE`
+etc.) — raw counts and total P&L still show at any sample size, since
+those are real regardless. New `GET /api/trades/performance-by-symbol`
+endpoint; new "Performance by Symbol" Performance panel section,
+sorted most-profitable-first.
+
+**Explicitly NOT built this pass, each for a specific disclosed
+reason, not convenience:** AGENT-level attribution — a trade's
+`supportingAgents`/`opposingAgents` is a real LIST, and there is no
+existing, CEO-authorized rule for how to split credit across multiple
+agents on one trade; inventing one unilaterally would be a fabricated
+convention wearing a real metric's name. STRATEGY-level — `Decision
+VaultEntry.strategy_id` is always `None` on a live Trading Floor trade
+(already disclosed by the Session Trading Education work). SESSION/
+MARKET REGIME breakdowns — `DecisionVaultEntry` does carry a real
+`session`/`market_regime` per trade, but only for trades closed through
+the CEO-proposal path (`app/nexus.py`'s `build_vault_entry()` call
+site); broker fills, hold-duration closes, and day-end flattens never
+get a vault entry, so a join against it would silently under-report
+those trades' real P&L — a partial-coverage join dressed up as a full
+report is its own kind of dishonesty, left for a dedicated pass.
+TIMEFRAME — no per-trade "chart timeframe analyzed" concept exists to
+group by; `PerformancePeriod` (today/week/month) already covers
+time-bucketed reporting and isn't duplicated here.
+
+**Verified**: 10 new tests (`test_performance_attribution.py`),
+`mypy app/` (152 files)/`ruff check app/ tests/` clean, full backend
+`pytest -q` (2034 passed; same 6 pre-existing `test_nexus.py`
+failures). `tsc -b --noEmit`/`npm run lint`/`npm run build` all clean.
+Live-verified against the real dev stack: the endpoint returned the
+current save's real SPY/AAPL trades, correctly sorted most-profitable-
+first (least-loss symbol first, since neither had a winner yet) and
+correctly gated to `NOT_ENOUGH_DATA` at the current 1-trade-per-symbol
+sample; the Performance panel's new section rendered that exact data.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing
