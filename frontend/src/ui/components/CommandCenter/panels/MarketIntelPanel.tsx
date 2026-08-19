@@ -1,8 +1,30 @@
+import { useEffect, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
+import { api } from "@/net/api";
 import { EXECUTIVE_ACTION_LABEL } from "@/types";
-import type { MarketDebateSpecialist } from "@/types";
+import type { MarketDebateSpecialist, SessionRegimeEvidence, SessionRegimeEvidenceState, SessionRegimeEvidenceSummary } from "@/types";
 import { executiveActionTone, latestMarketIntelligenceReport, marketQualityTone, momentumTone, newsRiskTone, recentMarketIntelligenceLearning } from "../lib/derive";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
+
+function sessionEvidenceTone(state: SessionRegimeEvidenceState): "green" | "red" | "amber" | "cyan" {
+  switch (state) {
+    case "favorable":
+      return "green";
+    case "unfavorable":
+      return "red";
+    case "mixed":
+      return "amber";
+    case "not_enough_evidence":
+      return "cyan";
+  }
+}
+
+const SESSION_EVIDENCE_LABEL: Record<SessionRegimeEvidenceState, string> = {
+  favorable: "Favorable",
+  unfavorable: "Unfavorable",
+  mixed: "Mixed",
+  not_enough_evidence: "Not Enough Evidence",
+};
 
 const SPECIALIST_ICON: Record<MarketDebateSpecialist, string> = {
   liquidity: "💧",
@@ -27,6 +49,18 @@ export function MarketIntelPanel() {
   const { marketIntelligence: mi, marketIntelligenceReports, marketIntelligenceLearning } = useGameStore();
   const latestReport = latestMarketIntelligenceReport(marketIntelligenceReports);
   const recentLearning = recentMarketIntelligenceLearning(marketIntelligenceLearning, 10);
+
+  // CEO directive "Session Trading Education & Agent Training" — real,
+  // on-demand SESSION x REGIME evidence (backend/app/session_evidence.py),
+  // no WS-broadcast field backs it, the same on-demand pattern this
+  // Command Center already uses for Regime Reconciliation.
+  const [sessionEvidence, setSessionEvidence] = useState<SessionRegimeEvidenceSummary | null>(null);
+  useEffect(() => {
+    api.getSessionRegimeEvidence().then(setSessionEvidence).catch(() => undefined);
+  }, []);
+  const currentBucket: SessionRegimeEvidence | undefined = sessionEvidence?.buckets.find(
+    (b) => b.session === mi.session.current && b.regime === mi.regime
+  );
 
   return (
     <div className="space-y-3">
@@ -236,6 +270,51 @@ export function MarketIntelPanel() {
               </div>
             ))}
           </div>
+        )}
+      </Glass>
+
+      <Glass className="p-3">
+        <div className="mb-1.5 flex items-center justify-between">
+          <TerminalLabel>Session × Regime Evidence</TerminalLabel>
+          <span className="text-[9px] text-cmd-textDim">Session context is evidence, not a signal — real closed-trade outcomes only</span>
+        </div>
+        {sessionEvidence === null ? (
+          <EmptyState>Loading…</EmptyState>
+        ) : (
+          <>
+            <div className="mb-2 rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2">
+              <div className="mb-1 flex items-center gap-2">
+                <span className="text-[9px] uppercase tracking-wide text-cmd-textDim">Current pairing — {mi.session.label}</span>
+                {currentBucket && <StatusPill tone={sessionEvidenceTone(currentBucket.evidenceState)}>{SESSION_EVIDENCE_LABEL[currentBucket.evidenceState]}</StatusPill>}
+              </div>
+              {currentBucket ? (
+                <div className="text-[9px] text-cmd-text">
+                  {currentBucket.sampleSize} real observation{currentBucket.sampleSize === 1 ? "" : "s"} under this regime
+                  {currentBucket.winRatePct !== null && ` — ${currentBucket.winRatePct.toFixed(0)}% favorable`}
+                </div>
+              ) : (
+                <div className="text-[9px] text-cmd-textDim">
+                  NOT ENOUGH EVIDENCE for this session/regime pairing yet (0 real observations, {sessionEvidence.minSampleSize} required).
+                </div>
+              )}
+            </div>
+            {sessionEvidence.buckets.length === 0 ? (
+              <EmptyState>No closed trade has ever been recorded under any session/regime pairing yet.</EmptyState>
+            ) : (
+              <div className="max-h-48 space-y-1 overflow-y-auto">
+                {sessionEvidence.buckets.map((b) => (
+                  <div key={`${b.session}-${b.regime}`} className="flex items-center gap-2 rounded-sm border border-cmd-border/40 bg-cmd-bg/30 px-2 py-1 text-[9px]">
+                    <StatusPill tone={sessionEvidenceTone(b.evidenceState)}>{SESSION_EVIDENCE_LABEL[b.evidenceState]}</StatusPill>
+                    <span className="text-cmd-text">{b.session.replace(/_/g, " ")}</span>
+                    <span className="text-cmd-textDim">× {b.regime.replace(/_/g, " ")}</span>
+                    <span className="ml-auto text-cmd-textDim">
+                      {b.sampleSize} obs{b.winRatePct !== null && ` — ${b.winRatePct.toFixed(0)}%`}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </Glass>
     </div>

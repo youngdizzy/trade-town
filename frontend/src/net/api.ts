@@ -78,6 +78,7 @@ import type {
   ProcessAdherenceRead,
   ProcessAdherenceSummaryRead,
   RegimeReconciliation,
+  SessionRegimeEvidenceSummary,
   RiskLimits,
   SimilarTradesSummary,
   Strategy,
@@ -156,6 +157,9 @@ export const api = {
     request<Candle[]>(`/market/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&limit=${limit}`),
   getTimeframes: () => request<string[]>("/market/timeframes"),
   getRegimeReconciliation: () => request<RegimeReconciliation>("/market/regime-reconciliation"),
+  // CEO directive "Session Trading Education & Agent Training". Read-only,
+  // computed fresh per request.
+  getSessionRegimeEvidence: () => request<SessionRegimeEvidenceSummary>("/market/session-evidence"),
   spendEnergy: (action: string, researchId?: string) =>
     request<{ agentEnergy: AgentEnergy }>("/energy/spend", {
       method: "POST",

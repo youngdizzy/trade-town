@@ -2402,6 +2402,33 @@ export interface RegimeReconciliation {
   rationale: string;
 }
 
+// CEO directive "Session Trading Education & Agent Training" — real
+// SESSION x REGIME evidence over this company's own closed trades (see
+// backend/app/session_evidence.py). Computed fresh per request from the
+// already-real Decision Vault — never a second persisted copy.
+// Deliberately a two-axis read (session x regime -> outcome), not a
+// five-axis session x regime x strategy x setup x outcome read — no
+// "setup" taxonomy and no real strategy attribution exists on live
+// decisions yet (DecisionVaultEntry.strategyId is always null today).
+export type SessionRegimeEvidenceState = "favorable" | "unfavorable" | "mixed" | "not_enough_evidence";
+
+export interface SessionRegimeEvidence {
+  session: TradingSession;
+  regime: MarketIntelligenceRegime;
+  sampleSize: number;
+  winCount: number;
+  lossCount: number;
+  winRatePct: number | null;
+  avgPnlPct: number | null;
+  evidenceState: SessionRegimeEvidenceState;
+}
+
+export interface SessionRegimeEvidenceSummary {
+  buckets: SessionRegimeEvidence[];
+  minSampleSize: number;
+  updatedAt: string;
+}
+
 // v0.7 Feature 23 — Company Health & Stability System. Ten real,
 // documented sub-scores (see backend/app/company_health.py) — a
 // different question from v0.5's CompanyScore ("is the company healthy
