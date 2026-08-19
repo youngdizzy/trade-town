@@ -91,6 +91,14 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         "strategy_health_assessments",
         "strategy_hall_of_fame",
         "strategy_failed_archive",
+        # CEO directive "Professional Quant Firm Phase," Features 36/37 —
+        # real, persisted CompiledStrategyDefinition version history and
+        # Quant Research Lab experiment archive (see app/
+        # strategy_registry.py / app/quant_research_lab.py). Grouped
+        # with strategy_hall_of_fame/strategy_failed_archive above: both
+        # are real, ever-growing, never-recomputed mutated state.
+        "compiled_strategy_versions",
+        "quant_research_experiments",
         "goals",
         "strategic_reviews",
         # Design Bible Chapter 69 Part 1 — Multi-Account & Fund

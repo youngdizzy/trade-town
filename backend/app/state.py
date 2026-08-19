@@ -112,6 +112,7 @@ from app.schemas import (
     BlackBoxProject,
     BlackSwanRiskTier,
     ClientSaveRequest,
+    CompiledStrategyDefinition,
     DefensiveModeState,
     EducationProgress,
     EntityTransform,
@@ -134,6 +135,7 @@ from app.schemas import (
     SignalCalibrationState,
     SignalChoice,
     Strategy,
+    SubmitQuantResearchExperimentResult,
     TalentState,
     TestScenario,
     TierAllocationLimits,
@@ -141,6 +143,10 @@ from app.schemas import (
     TimeState,
     TradingMode,
 )
+from app.quant_research_lab import cap_quant_research_experiments, file_quant_research_experiment, find_similar_experiments
+from app.research_experiment import run_research_experiment
+from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME
+from app.strategy_registry import register_strategy_version
 from app.foundational_mentors import (
     add_custom_lesson as add_custom_academy_lesson_entry,
     add_custom_mentor as add_custom_academy_mentor_entry,
@@ -2311,6 +2317,55 @@ class GameState:
                 }
             )
             return self.data, None
+
+    async def register_compiled_strategy_version(
+        self, *, name: str, source_text: str, timeframe: str = "1h", created_by: AgentId = "quant"
+    ) -> tuple[GameSaveState, CompiledStrategyDefinition]:
+        """CEO directive "Professional Quant Firm Phase," Feature 37 —
+        real, persisted `CompiledStrategyDefinition` version history
+        (see app/strategy_registry.py). Under the same lock every other
+        state mutation uses; the real next version number is derived
+        from this strategy's own persisted history, never a
+        caller-supplied guess."""
+        async with self.lock:
+            new_definition, updated_registry = register_strategy_version(
+                self.data.compiled_strategy_versions, name=name, source_text=source_text, timeframe=timeframe, created_by=created_by
+            )
+            self.data = self.data.model_copy(update={"compiled_strategy_versions": updated_registry})
+            return self.data, new_definition
+
+    async def submit_quant_research_experiment(
+        self,
+        definition: CompiledStrategyDefinition,
+        *,
+        hypothesis: str,
+        researcher_agent_id: AgentId,
+        symbols: list[str] | None = None,
+        timeframe: str | None = None,
+        candles_per_symbol: int | None = None,
+    ) -> tuple[GameSaveState, SubmitQuantResearchExperimentResult]:
+        """CEO directive "Professional Quant Firm Phase," Feature 36 —
+        the Quant Research Lab's real, persisted experiment filing.
+        Runs the already-real app/research_experiment.py pipeline once
+        (no duplicate backtest math), checks it against every
+        already-persisted experiment for a real near-duplicate (app/
+        quant_research_lab.py's find_similar_experiments()), then
+        permanently appends the new record — matching this codebase's
+        own ever-growing, never-deleted archive convention. Under the
+        same lock every other state mutation uses."""
+        resolved_timeframe = timeframe if timeframe is not None else DEFAULT_TIMEFRAME
+        resolved_candles = candles_per_symbol if candles_per_symbol is not None else DEFAULT_CANDLES_PER_SYMBOL
+        record = run_research_experiment(definition, symbols=symbols, timeframe=resolved_timeframe, candles_per_symbol=resolved_candles)
+
+        async with self.lock:
+            similar = find_similar_experiments(self.data.quant_research_experiments, hypothesis=hypothesis, definition_id=definition.id, timeframe=resolved_timeframe)
+            experiment_id = f"experiment-{definition.id}-{definition.version}-{len(self.data.quant_research_experiments)}"
+            experiment = file_quant_research_experiment(
+                record, experiment_id=experiment_id, hypothesis=hypothesis, researcher_agent_id=researcher_agent_id, created_at=_now_iso()
+            )
+            updated = cap_quant_research_experiments([*self.data.quant_research_experiments, experiment])
+            self.data = self.data.model_copy(update={"quant_research_experiments": updated})
+            return self.data, SubmitQuantResearchExperimentResult(experiment=experiment, similarExperiments=similar)
 
     async def tick(self, minutes: int) -> GameSaveState:
         """Advance the game clock and run one NEXUS orchestration step. Called by the sim loop."""

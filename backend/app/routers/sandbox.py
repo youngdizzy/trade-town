@@ -13,7 +13,9 @@ from app.leakage_audit import audit_definition_for_look_ahead
 from app.parameter_sensitivity import run_parameter_sensitivity
 from app.persistence import persist_modules
 from app.research_experiment import run_research_experiment
+from app.quant_research_lab import find_similar_experiments
 from app.schemas import (
+    AgentId,
     BacktestSession,
     CompiledStrategyBacktestResult,
     CompiledStrategyDefinition,
@@ -25,6 +27,8 @@ from app.schemas import (
     LookAheadAuditResult,
     ModelValidationReport,
     ParameterSensitivityResult,
+    QuantResearchExperiment,
+    QuantResearchExperimentSimilarity,
     ResearchExperimentRecord,
     Strategy,
     StrategyCertification,
@@ -34,15 +38,18 @@ from app.schemas import (
     StrategyFounderApproval,
     StrategyHallOfFameEntry,
     StrategyReview,
+    StrategyTournamentResult,
+    SubmitQuantResearchExperimentResult,
     SurvivorshipBiasRead,
     TestScenario,
     WalkForwardValidationResult,
 )
 from app.state import game_state
-from app.strategy_compiler import compile_strategy_text
+from app.strategy_compiler import compile_strategy_text, strategy_definition_slug
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL as ENGINE_DEFAULT_CANDLES_PER_SYMBOL
 from app.strategy_engine import run_compiled_strategy_backtest
 from app.strategy_lab import compute_strategy_certification, compute_strategy_executive_dashboard, generate_strategy_dossier
+from app.strategy_tournament import run_strategy_tournament
 from app.survivorship import check_survivorship_bias
 from app.walk_forward import DEFAULT_WINDOW_BARS, run_walk_forward_validation
 
@@ -89,6 +96,35 @@ class RetireStrategyRequest(BaseModel):
 
     strategy_id: str = Field(alias="strategyId")
     reason: str
+
+
+class RegisterStrategyVersionRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str
+    source_text: str = Field(alias="sourceText")
+    timeframe: str = "1h"
+    created_by: AgentId = Field(default="quant", alias="createdBy")
+
+
+class SubmitQuantResearchExperimentRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    definition: CompiledStrategyDefinition
+    hypothesis: str
+    researcher_agent_id: AgentId = Field(alias="researcherAgentId")
+    symbols: list[str] | None = None
+    timeframe: str | None = None
+    candles_per_symbol: int | None = Field(default=None, alias="candlesPerSymbol")
+
+
+class StrategyTournamentRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    definitions: list[CompiledStrategyDefinition]
+    symbols: list[str] | None = None
+    timeframe: str | None = None
+    candles_per_symbol: int | None = Field(default=None, alias="candlesPerSymbol")
 
 
 class StrategyStateResponse(BaseModel):
@@ -335,6 +371,114 @@ async def research_experiment(
     app/research_experiment.py's own module docstring). Read-only,
     computed fresh every call — nothing here is persisted."""
     return run_research_experiment(definition, timeframe=definition.timeframe, candles_per_symbol=candles_per_symbol)
+
+
+@router.post("/register-strategy-version", response_model=CompiledStrategyDefinition)
+async def register_strategy_version_endpoint(payload: RegisterStrategyVersionRequest) -> CompiledStrategyDefinition:
+    """CEO directive "Professional Quant Firm Phase," Feature 37 — real,
+    persisted strategy version history (see app/strategy_registry.py).
+    Unlike `POST /compile-strategy` (stateless preview, unchanged), this
+    endpoint computes the real next version from this strategy's own
+    persisted history and permanently records it — `version` on the
+    response is never a caller-supplied guess."""
+    state, new_definition = await game_state.register_compiled_strategy_version(
+        name=payload.name, source_text=payload.source_text, timeframe=payload.timeframe, created_by=payload.created_by
+    )
+    persist_modules(state)
+    return new_definition
+
+
+@router.get("/strategy-versions", response_model=list[CompiledStrategyDefinition])
+async def strategy_versions(name: str = Query(..., min_length=1)) -> list[CompiledStrategyDefinition]:
+    """Same directive, Feature 37 — the full, real, persisted version
+    history for one strategy name (oldest first), so a CEO/agent can see
+    every prior version rather than only the latest. An empty list
+    means this strategy has never been registered via
+    `POST /register-strategy-version` (a `POST /compile-strategy`
+    preview alone never appears here)."""
+    state = await game_state.snapshot()
+    return state.compiled_strategy_versions.get(strategy_definition_slug(name), [])
+
+
+@router.post("/quant-research-lab/experiments", response_model=SubmitQuantResearchExperimentResult)
+async def submit_quant_research_experiment(payload: SubmitQuantResearchExperimentRequest) -> SubmitQuantResearchExperimentResult:
+    """CEO directive "Professional Quant Firm Phase," Feature 36 — files
+    a real, hypothesis-driven experiment into the Quant Research Lab.
+    Runs the same real `run_research_experiment()` pipeline as
+    `POST /research-experiment` (no duplicate backtest math), then
+    permanently persists the result — a deliberate, disclosed departure
+    from this directive family's usual CAGS convention (see
+    `QuantResearchExperiment`'s own docstring). `similarExperiments` on
+    the response surfaces any real near-duplicate already on file (the
+    directive's own "check before creating a new experiment whether an
+    equivalent one exists") without blocking the new filing."""
+    state, result = await game_state.submit_quant_research_experiment(
+        payload.definition,
+        hypothesis=payload.hypothesis,
+        researcher_agent_id=payload.researcher_agent_id,
+        symbols=payload.symbols,
+        timeframe=payload.timeframe,
+        candles_per_symbol=payload.candles_per_symbol,
+    )
+    persist_modules(state)
+    return result
+
+
+@router.get("/quant-research-lab/experiments", response_model=list[QuantResearchExperiment])
+async def search_quant_research_experiments(
+    symbol: str | None = Query(default=None),
+    definition_id: str | None = Query(default=None, alias="definitionId"),
+    timeframe: str | None = Query(default=None),
+    agent_id: str | None = Query(default=None, alias="agentId"),
+    outcome: str | None = Query(default=None),
+) -> list[QuantResearchExperiment]:
+    """Same directive, Feature 36 — real search over every permanently-
+    persisted experiment (most recent first), so a CEO/agent can check
+    prior research before commissioning new work. Every filter is
+    optional and real (a direct field match against the persisted
+    record); an empty result is itself a real, honest answer ("nothing
+    on file"), never fabricated evidence."""
+    state = await game_state.snapshot()
+    results = list(reversed(state.quant_research_experiments))
+    if symbol is not None:
+        results = [e for e in results if symbol in e.record.symbols_tested]
+    if definition_id is not None:
+        results = [e for e in results if e.record.definition_id == definition_id]
+    if timeframe is not None:
+        results = [e for e in results if e.record.timeframe == timeframe]
+    if agent_id is not None:
+        results = [e for e in results if e.researcher_agent_id == agent_id]
+    if outcome is not None:
+        results = [e for e in results if e.outcome == outcome]
+    return results
+
+
+@router.get("/quant-research-lab/similar", response_model=list[QuantResearchExperimentSimilarity])
+async def check_similar_quant_research_experiments(
+    hypothesis: str = Query(..., min_length=1),
+    definition_id: str = Query(..., alias="definitionId"),
+    timeframe: str = Query(...),
+) -> list[QuantResearchExperimentSimilarity]:
+    """Same directive, Feature 36 — a real, standalone duplicate check a
+    CEO/agent can run BEFORE spending real compute on
+    `POST /quant-research-lab/experiments` (that endpoint also runs
+    this same check and surfaces it on its own response)."""
+    state = await game_state.snapshot()
+    return find_similar_experiments(state.quant_research_experiments, hypothesis=hypothesis, definition_id=definition_id, timeframe=timeframe)
+
+
+@router.post("/strategy-tournament", response_model=StrategyTournamentResult)
+async def strategy_tournament(payload: StrategyTournamentRequest) -> StrategyTournamentResult:
+    """CEO directive "Professional Quant Firm Phase," Feature 40 — the
+    Quant Strategy Tournament (see app/strategy_tournament.py's own
+    module docstring for the full, disclosed round-by-round rule and
+    the one architecturally-blocked round). Read-only and computed
+    fresh every call — every candidate is run through the same real
+    `run_research_experiment()` pipeline once each, no duplicate
+    backtest math, nothing persisted."""
+    if len(payload.definitions) < 2:
+        raise HTTPException(status_code=400, detail="A tournament needs at least 2 candidate strategies to compare.")
+    return run_strategy_tournament(payload.definitions, symbols=payload.symbols, timeframe=payload.timeframe, candles_per_symbol=payload.candles_per_symbol)
 
 
 @router.get("/certification", response_model=StrategyCertification)

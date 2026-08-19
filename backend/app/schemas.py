@@ -8721,6 +8721,23 @@ class GameSaveState(CamelModel):
     strategy_failed_archive: list[FailedStrategyArchiveEntry] = Field(
         default_factory=list, alias="strategyFailedArchive"
     )
+    # CEO directive "Professional Quant Firm Phase," Feature 37 — real,
+    # persisted CompiledStrategyDefinition version history, keyed by
+    # that definition's own real slug id (app/strategy_compiler.py's
+    # compile_strategy_text() computes the same id for the same name
+    # every time). Append-only, matching strategy_hall_of_fame's own
+    # "never silently overwrite" precedent — see app/strategy_registry.py.
+    compiled_strategy_versions: dict[str, list[CompiledStrategyDefinition]] = Field(
+        default_factory=dict, alias="compiledStrategyVersions"
+    )
+    # CEO directive "Professional Quant Firm Phase," Feature 36 — the
+    # Quant Research Lab's permanent, ever-growing, never-deleted
+    # experiment record (see app/quant_research_lab.py and
+    # QuantResearchExperiment's own docstring for the disclosed
+    # departure from this directive family's usual CAGS convention).
+    quant_research_experiments: list[QuantResearchExperiment] = Field(
+        default_factory=list, alias="quantResearchExperiments"
+    )
     hall_of_fame: list[HallOfFameEntry] = Field(
         default_factory=list, alias="hallOfFame"
     )

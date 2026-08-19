@@ -215,6 +215,16 @@ def _find_ambiguities(text: str) -> list[StrategyAmbiguity]:
     return ambiguities
 
 
+def strategy_definition_slug(name: str) -> str:
+    """The same real, deterministic slug `compile_strategy_text()`
+    computes internally for `CompiledStrategyDefinition.id` — exposed
+    separately so a caller (app/strategy_registry.py's
+    `register_strategy_version()`) can look up a strategy's own
+    persisted version history by this same real key BEFORE compiling a
+    new version, without duplicating this regex."""
+    return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "strategy"
+
+
 def compile_strategy_text(
     *,
     name: str,
@@ -227,7 +237,7 @@ def compile_strategy_text(
     same `CompiledStrategyDefinition` out, every time — no randomness,
     no external call, no hidden state."""
     now_iso = datetime.now(timezone.utc).isoformat()
-    definition_id = re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or "strategy"
+    definition_id = strategy_definition_slug(name)
     version = (previous_version + 1) if previous_version is not None else 1
 
     ambiguities = _find_ambiguities(source_text)
