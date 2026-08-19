@@ -9108,6 +9108,59 @@ first (least-loss symbol first, since neither had a winner yet) and
 correctly gated to `NOT_ENOUGH_DATA` at the current 1-trade-per-symbol
 sample; the Performance panel's new section rendered that exact data.
 
+### Priority 5 — Research Data Integrity
+
+**Audit:** every subsystem that could plausibly back a trading decision
+was checked for what data it actually consumes (grep-confirmed, not
+assumed). `app/market_data.py`'s `MockMarketDataProvider` is the only
+real `MarketDataProvider` implementation (`_select_provider()`
+recognizes no other value) — a real regime-switching stochastic
+process, `get_candles()` always delivers exactly the requested count
+(no gaps), deterministically seeded from `(symbol, timeframe)` only
+(reproducible across repeated fetches), while `get_quote()`'s live walk
+uses an unseeded RNG (genuinely NOT reproducible run-to-run — a real
+distinction, not an oversight). `app/market_intelligence.py` performs
+real technical-analysis math over that same mock candle series. But
+`app/research.py`'s confidence gauge and `app/simulation.py`'s backtest
+metrics BOTH have zero `get_candles()` calls anywhere — pure random-
+number generation with no underlying price series at all. No real
+broker adapter and no user-data upload mechanism exist anywhere.
+
+**What shipped:** `app/data_provenance.py` (new module) ships this as
+ONE honest, whole-codebase audit report — not a provenance field
+grafted onto `ResearchItem`/`SimulationResult`, since tagging either
+with a candle-derived category would be fabricated (neither touches
+candle data). New `DataCategory` enum
+(`real`/`synthetic`/`simulated`/`user_provided`/`unavailable`),
+distinct from and reusing rather than duplicating the existing
+per-`Candle` `DataStatus` enum — `DataCategory` classifies a whole
+subsystem, the coarser question this directive actually asks. Seven
+named sources, each with a real, disclosed `detail` string: Live
+Quotes & Candles (`simulated`, and the ONLY row that's live-measured —
+the endpoint actually calls the configured provider and compares
+requested vs. delivered candle count on every request, rather than
+asserting a hardcoded 100%), Research Desk (`synthetic`), Sandbox
+Backtests (`synthetic`), Strategy Lab Monte Carlo Testing (`synthetic`
+— a real bootstrap technique over a synthetic underlying), Strategy Lab
+Liquidity & Market Structure Validation (`simulated` — reuses
+`market_intelligence.py`'s real math), Real market data
+(`unavailable`), User-provided data (`unavailable`). New
+`GET /api/market/data-provenance` endpoint; new "Data Integrity — What
+Backs This Company's Data" Market Intelligence panel section.
+
+**Verified**: 7 new tests (`test_data_provenance.py`, including a
+provider stub that delivers fewer candles than requested — proving
+coverage is genuinely measured, not hardcoded — and an erroring
+provider stub proving a failed live check reads `unavailable` rather
+than crashing). `mypy app/` (153 files)/`ruff check app/ tests/` clean,
+full backend `pytest -q` (2041 passed; same 6 pre-existing
+`test_nexus.py` failures). `tsc -b --noEmit`/`npm run lint`/`npm run
+build` all clean. Live-verified against the real dev stack: the
+endpoint's live candle check returned 100% coverage (20/20 delivered)
+against the real `MockMarketDataProvider`; the Market Intelligence
+panel's new section rendered every real source with its correct
+category, coverage, and reproducibility.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

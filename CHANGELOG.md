@@ -7,6 +7,31 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Next Professional Trading Firm Phase," Priority 5 — Research Data Integrity**
+  (`backend/app/data_provenance.py`, `backend/app/routers/market.py`, `backend/app/schemas.py`,
+  `backend/tests/test_data_provenance.py`, `frontend/src/types.ts`, `frontend/src/net/api.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/MarketIntelPanel.tsx`): audited every subsystem that could
+  plausibly back a trading decision for what data it actually consumes (grep-confirmed, not assumed). Found
+  `app/market_intelligence.py` performs real technical-analysis math over `MockMarketDataProvider`'s real
+  (mock) candle series — but `app/research.py`'s confidence gauge and `app/simulation.py`'s backtest metrics
+  BOTH have zero `get_candles()` calls anywhere, pure random-number generation with no underlying price series
+  at all. No real broker adapter and no user-data upload mechanism exist anywhere. **What shipped**: new
+  `app/data_provenance.py` — ONE honest, whole-codebase audit report (not a provenance field grafted onto
+  `ResearchItem`/`SimulationResult`, since tagging either with a candle-derived category would be fabricated).
+  New `DataCategory` enum (`real`/`synthetic`/`simulated`/`user_provided`/`unavailable`), distinct from and
+  reusing rather than duplicating the existing per-`Candle` `DataStatus` enum. Seven named sources: Live Quotes
+  & Candles (`simulated`, and the ONLY row that's live-measured — actually calls the configured provider and
+  compares requested vs. delivered candle count on every request, never a hardcoded 100%), Research Desk
+  (`synthetic`), Sandbox Backtests (`synthetic`), Strategy Lab Monte Carlo Testing (`synthetic`), Strategy Lab
+  Liquidity/Market Structure Validation (`simulated`), Real market data (`unavailable`), User-provided data
+  (`unavailable`). New `GET /api/market/data-provenance` endpoint; new "Data Integrity" Market Intelligence
+  panel section. 7 new tests (a provider stub delivering fewer candles than requested proves coverage is
+  genuinely measured; an erroring provider stub proves a failed live check reads `unavailable` rather than
+  crashing), `mypy app/` (153 files)/`ruff check app/ tests/` clean, full backend suite (2041 passed; same 6
+  pre-existing unrelated `test_nexus.py` failures), `tsc -b --noEmit`/`eslint`/`vite build` clean, live-verified
+  against the real dev stack (the endpoint's live check returned real 100% coverage; the panel rendered every
+  real source and category). Documented in `docs/Architecture.md`.
+
 - **CEO directive "Next Professional Trading Firm Phase," Priority 2 — Unified Professional P&L Reporting
   (symbol-level)** (`backend/app/performance_attribution.py`, `backend/app/routers/trades.py`,
   `backend/app/schemas.py`, `backend/tests/test_performance_attribution.py`, `frontend/src/types.ts`,
@@ -80,8 +105,11 @@ development milestones, not semver releases.
   Behavior — PARTIAL (`Debate.finalRecommendation` is fixed before the debate runs, already named in the prior
   Gap Analysis as higher-risk since it touches live voting/governance) — deferred pending a dedicated,
   carefully-scoped pass. Priority 5 Research Data Integrity — PARTIAL (`Candle.data_status`/`DataStatus`
-  already exists as a 7-value enum but only `"simulated"` is ever set; `SimulationResult`/`ResearchItem` carry
-  no provenance field) — deferred, candidate for next pass. Priority 6 Market Session Intelligence — MATURE
+  already existed as a 7-value enum but only `"simulated"` was ever set; `SimulationResult`/`ResearchItem`
+  carried no provenance field) → **implemented this pass as a whole-codebase audit report** (see the dedicated
+  entry below) — per-item provenance on `ResearchItem`/`SimulationResult` themselves remains undone, disclosed
+  as fabrication-risk (neither ever touches candle data, so tagging either with a candle-derived category would
+  be false). Priority 6 Market Session Intelligence — MATURE
   (this session's prior "Session Trading Education & Agent Training" work); a Strategy × Session comparison on
   *live* trades remains blocked by the same `DecisionVaultEntry.strategyId == None` gap already disclosed
   there — not re-solved here. Priority 7 Professional Strategy Research (indicator library) — BLOCKED BY
