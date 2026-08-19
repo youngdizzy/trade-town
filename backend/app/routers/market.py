@@ -8,9 +8,17 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
+from app.data_provenance import compute_data_provenance_report
 from app.market_data import TIMEFRAME_ORDER, market_data_provider
 from app.regime_reconciliation import compute_regime_reconciliation
-from app.schemas import Candle, EconomicIntelligenceReport, EconomicIntelligenceState, RegimeReconciliation, SessionRegimeEvidenceSummary
+from app.schemas import (
+    Candle,
+    DataProvenanceReport,
+    EconomicIntelligenceReport,
+    EconomicIntelligenceState,
+    RegimeReconciliation,
+    SessionRegimeEvidenceSummary,
+)
 from app.session_evidence import compute_session_regime_evidence
 from app.state import game_state
 
@@ -65,6 +73,17 @@ async def get_session_regime_evidence() -> SessionRegimeEvidenceSummary:
     actually traded under yet."""
     state = await game_state.snapshot()
     return compute_session_regime_evidence(state.decision_vault)
+
+
+@router.get("/data-provenance", response_model=DataProvenanceReport)
+async def get_data_provenance() -> DataProvenanceReport:
+    """CEO directive "Next Professional Trading Firm Phase," Priority 5
+    (see app/data_provenance.py). A whole-codebase audit of which named
+    subsystem's data is REAL/SYNTHETIC/SIMULATED/USER_PROVIDED/
+    UNAVAILABLE — the live candle check re-runs against the currently-
+    configured provider on every request; never a hardcoded assumption."""
+    state = await game_state.snapshot()
+    return compute_data_provenance_report(state.watchlist, market_data_provider)
 
 
 @router.get("/economic-intelligence", response_model=EconomicIntelligenceState)

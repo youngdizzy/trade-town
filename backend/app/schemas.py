@@ -886,6 +886,52 @@ class SymbolPerformanceSummary(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# CEO directive "Next Professional Trading Firm Phase," Priority 5 —
+# Research Data Integrity (app/data_provenance.py). Distinct from, and
+# reusing rather than duplicating, `DataStatus` above (which already
+# tags an individual `Candle`'s own live/delayed/historical/simulated/
+# stale/error/no_data read) — `DataCategory` classifies a whole
+# SUBSYSTEM's data source, the coarser question this directive actually
+# asks ("what category did this research result come from"). RESEARCH
+# FINDING that shaped this scope: `app/research.py`'s confidence gauge
+# and `app/simulation.py`'s backtest metrics both never call
+# `MarketDataProvider.get_candles()` at all — a per-`ResearchItem`/
+# `SimulationResult` provenance field would therefore be fabricated if
+# it claimed any candle-derived category, so this ships as one honest,
+# whole-codebase audit report instead of a per-item field grafted onto
+# systems that don't touch real (or simulated) price data in the first
+# place.
+DataCategory = Literal["real", "synthetic", "simulated", "user_provided", "unavailable"]
+
+
+class DataSourceRead(CamelModel):
+    """One named subsystem's real, disclosed data category.
+    `reproducible` / `coverage_pct` are `None` when not meaningfully
+    applicable to that subsystem (e.g. a `synthetic` source has no
+    "coverage" of a price series that was never fetched)."""
+
+    subsystem: str
+    category: DataCategory
+    detail: str
+    reproducible: bool | None = None
+    coverage_pct: float | None = Field(default=None, alias="coveragePct")
+
+
+class DataProvenanceReport(CamelModel):
+    """The whole-codebase audit: every named subsystem that could
+    plausibly back a trading decision, and which of REAL/SYNTHETIC/
+    SIMULATED/USER_PROVIDED/UNAVAILABLE its actual data source is.
+    `sources` is a fixed architectural enumeration (this codebase's
+    module boundaries, not live game state), except the "Live Quotes &
+    Candles" row's `coveragePct`/`category`, which are live-measured
+    against the currently-configured `MarketDataProvider` on every
+    request — never a hardcoded assumption about what the provider
+    would return."""
+
+    sources: list[DataSourceRead]
+    updated_at: str = Field(alias="updatedAt")
+
+
 class PaperPortfolio(CamelModel):
     """The company's one simulated trading account. Starting balance and
     every position/order/trade in it are fictional — see
