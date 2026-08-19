@@ -32,6 +32,7 @@ from app.audit_log import (
     filter_audit_log,
 )
 from app.compliance_incidents import compute_incident_summary
+from app.control_effectiveness import compute_control_effectiveness
 from app.override_governance import compute_override_governance_summary
 from app.persistence import persist_modules
 from app.portfolio import sim_minutes
@@ -44,6 +45,7 @@ from app.schemas import (
     ComplianceIncident,
     ComplianceIncidentSummary,
     ComplianceOverview,
+    ControlEffectivenessSummary,
     GovernanceLayer,
     IncidentRootCause,
 )
@@ -274,3 +276,21 @@ async def add_ceo_override_review(evaluation_id: str, payload: OverrideReviewReq
         raise HTTPException(status_code=400, detail=error)
     persist_modules(state)
     return next(e for e in state.ceo_override_evaluations if e.id == evaluation_id)
+
+
+# CEO directive "Features 31-35," Feature 34 — Compliance Control
+# Effectiveness. Read-only, computed fresh per request from state this
+# codebase already persisted — no GameSaveState field, no WS broadcast
+# change, the same original CAGS convention this router's own module
+# docstring describes (see app/control_effectiveness.py's module
+# docstring for the full research finding and attribution-honesty rule).
+
+
+@router.get("/controls/effectiveness", response_model=ControlEffectivenessSummary)
+async def get_control_effectiveness() -> ControlEffectivenessSummary:
+    """Per-control effectiveness for all 11 real Gatekeeper checks — did
+    each control actually prevent or detect what it was designed to
+    address, backed only by confirmed, unambiguously-attributed real
+    outcomes (see app/control_effectiveness.py)."""
+    state = await game_state.snapshot()
+    return compute_control_effectiveness(state.decisions, state.gatekeeper_rejections)

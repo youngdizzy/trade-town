@@ -5448,6 +5448,81 @@ class CeoOverrideGovernanceSummary(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# CEO directive "Features 31-35," Feature 34 — Compliance Control
+# Effectiveness (app/control_effectiveness.py). RESEARCH FINDING: every
+# one of app/gatekeeper.py's 11 real checks already runs, unconditionally,
+# on every real trade decision and is stored, per-decision, on
+# `TradeDecision.gatekeeper_verdict.checks` — so `triggeredCount` here is
+# never a fabricated "how often could this fire" estimate, it is a real
+# count of every time this exact control actually ran. Distinguishing
+# CONTROL EXISTS from CONTROL WORKS needs real proof a rejection was
+# right or wrong; the only honest source for that is the already-real
+# `GatekeeperRejection.outcome` grading (would_have_won/would_have_lost,
+# resolved from real watchlist price movement — see
+# grade_gatekeeper_rejections()). A rejection can fail more than one
+# check at once (`approved = all(c.passed for c in checks)`), so an
+# outcome can only be attributed to ONE specific control when that
+# control was the SOLE failing check for that decision — every other
+# case is counted as `ambiguousAttributionCount`, never guessed at.
+GatekeeperControlEffectivenessState = Literal["effective", "ineffective", "mixed", "insufficient_data", "not_yet_tested"]
+
+
+class ControlEffectivenessRecord(CamelModel):
+    """One real Gatekeeper check's effectiveness record. `purpose` and
+    `owner` are the check's own real, disclosed docstring/module —
+    describing what the control already does, never inventing new
+    behavior. `effectivenessState` is `not_yet_tested` when the control
+    has never once failed a decision (CONTROL EXISTS, never yet had a
+    chance to prove CONTROL WORKS — NO TRIGGERS is not FAILURE),
+    `insufficient_data` when it has failed decisions but too few have a
+    confirmed (non-pending, sole-reason) outcome yet to support any
+    verdict, `mixed` when there IS enough confirmed evidence but the
+    prevented-vs-false-positive split lands in the ambiguous middle band
+    (real evidence that just doesn't clearly say "works" or "doesn't" —
+    never collapsed into insufficient_data, which would misreport real
+    mixed evidence as no evidence), and only `effective`/`ineffective`
+    once `MIN_CONTROL_SAMPLE_FOR_VERDICT` confirmed, unambiguous outcomes
+    exist and clearly clear one side of the threshold — the same
+    evidence-floor pattern Feature 33's `MIN_ACCURACY_SAMPLE_FOR_VERDICT`
+    already established. `controlRegression` is true only when an earlier half
+    of this control's own confirmed history read `effective` and the
+    more recent half now reads `ineffective` — a real, computed
+    before/after split, never a hardcoded flag."""
+
+    control_id: str = Field(alias="controlId")
+    control_label: str = Field(alias="controlLabel")
+    purpose: str
+    owner: str
+    triggered_count: int = Field(alias="triggeredCount")
+    passed_count: int = Field(alias="passedCount")
+    failed_count: int = Field(alias="failedCount")
+    sole_reason_rejection_count: int = Field(alias="soleReasonRejectionCount")
+    confirmed_prevented_count: int = Field(alias="confirmedPreventedCount")
+    confirmed_false_positive_count: int = Field(alias="confirmedFalsePositiveCount")
+    pending_evaluation_count: int = Field(alias="pendingEvaluationCount")
+    ambiguous_attribution_count: int = Field(alias="ambiguousAttributionCount")
+    effectiveness_state: GatekeeperControlEffectivenessState = Field(alias="effectivenessState")
+    control_regression: bool = Field(default=False, alias="controlRegression")
+    last_triggered_at: str | None = Field(default=None, alias="lastTriggeredAt")
+    last_evaluated_at: str | None = Field(default=None, alias="lastEvaluatedAt")
+
+
+class ControlEffectivenessSummary(CamelModel):
+    """The Control Effectiveness Dashboard's real aggregate — a pure
+    count over `controls`, never a second independently-computed
+    number."""
+
+    controls: list[ControlEffectivenessRecord]
+    total_controls: int = Field(alias="totalControls")
+    effective_count: int = Field(alias="effectiveCount")
+    ineffective_count: int = Field(alias="ineffectiveCount")
+    mixed_count: int = Field(alias="mixedCount")
+    insufficient_data_count: int = Field(alias="insufficientDataCount")
+    not_yet_tested_count: int = Field(alias="notYetTestedCount")
+    regressed_control_count: int = Field(alias="regressedControlCount")
+    updated_at: str = Field(alias="updatedAt")
+
+
 # Design Bible Chapter 75 — Company Trading Modes & Institutional Capital
 # Protection (app/trading_modes.py). "day_trading"/"swing_trading"/
 # "hybrid" are the CEO's real operating policy; TradingStyle is the
