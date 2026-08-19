@@ -8960,6 +8960,93 @@ Hitting the live endpoint against the current save's own real closed SPY trade p
 
 **Verified**: 11 new tests (`tests/test_exit_efficiency.py`, including two written specifically to cover the live-caught edge case and its defensive fallback). `mypy app/` (150 files)/`ruff check app/ tests/` clean, full backend `pytest -q` (2000 passed; same 6 pre-existing `test_nexus.py` failures, unrelated and unchanged). `tsc -b --noEmit`/`npm run lint`/`npm run build` all clean. Live Playwright verification against the real dev stack, both before and after the fix: the Discipline panel's new Exit Efficiency section rendered the exact real API data — "SPY Day 22 -2.42% range -2.3% → 0.0% — 0% captured" — matching the corrected endpoint response exactly.
 
+## CEO directive "Next Professional Trading Firm Phase"
+
+A continuation of the Professional Trading Firm Transformation directive
+above, structured as 8 explicit, ranked priorities with the same
+research-first, implement-only-what's-genuinely-missing discipline. This
+pass covers Priority 1 in full; the remaining 7 are researched,
+classified, and either deferred with reasoning or documented (never
+implemented, per the directive's own explicit "do not promote Model
+Validation to a blocking gate without CEO authorization" instruction for
+Priority 8) — see the CHANGELOG.md entry for the full 8-priority
+classification table.
+
+### Priority 1 — Execution Realism
+
+The prior Gap Analysis above already flagged Execution as MINIMAL
+("Real order types + 1-tick latency + flat 5bps cost, but zero
+slippage/spread/market-impact/partial-fills"). This pass closed exactly
+that gap, and only that gap.
+
+**Audit, confirmed by tracing every real fill point in the codebase:**
+`app/broker.py`'s `_fill_price()` (market/limit/take-profit/stop/
+stop-loss) and `app/executive.py`'s `resolve_proposal()` (the CEO's own
+direct buy/sell) both filled at exactly the observed signal price, every
+time — as did the two other real "market-style, no guaranteed price"
+close paths, `app/paper_trading.py`'s hold-duration auto-close and
+`app/trading_modes.py`'s day-end flatten. A real 1-tick order-placement
+latency (`place_order()`) and a real flat transaction-cost model
+(`TRANSACTION_COST_BPS`) already existed; slippage did not.
+
+**What shipped:** `app/execution_quality.py` (new module) — a real,
+disclosed, formula-based slippage rate in basis points, driven only by
+that tick's own already-real `MarketIntelligenceState`:
+`MarketQualityScore.score` (0-100, already a real composite of
+volatility deviation, structure clarity, session liquidity,
+liquidity-sweep risk, and news activity) sets the baseline, refined by
+the specific symbol's own real `LiquidityRead.liquidity_score` when one
+exists. `BASE_SLIPPAGE_BPS = 2.0` (best realistic conditions) to
+`MAX_SLIPPAGE_BPS = 20.0` (worst) — always adverse to the trader (a buy
+fills higher, a sell fills lower), the same "disclosed, formula-based
+simplification, never derived from real bid-ask spread or order-book
+depth because this codebase has neither" standard `TRANSACTION_COST_BPS`
+already established, just now varying tick-to-tick with real conditions
+instead of staying a flat constant.
+
+Applied at all four real fill points, each via an optional
+`market_intelligence: MarketIntelligenceState | None = None` parameter
+(None-safe — any existing caller or test fixture keeps its old exact-fill
+behavior unchanged): `app/broker.py::tick_broker()` for "market" orders
+and triggered "stop"/"stop_loss" orders (which behave as a market order
+the instant they trigger, in any real market); `app/executive.py::
+resolve_proposal()` for the CEO's direct buy/sell; `app/paper_trading.py
+::tick_paper_trading()`'s hold-duration close; `app/trading_modes.py::
+flatten_day_positions()`'s day-end flatten. `app/nexus.py`'s `tick()`
+threads its own already-computed `market_intelligence` into all three
+call sites it owns (the fourth, `resolve_proposal()`, already received
+it). `PaperPosition`/`PaperTrade` gained `entrySlippageBps`/
+`exitSlippageBps` (both default `0.0`) for audit visibility, mirroring
+`entryCostUsd`/`transactionCostUsd`'s existing pattern exactly —
+`app/portfolio.py`'s `open_position()`/`close_position()` compute no
+slippage themselves (that decision-layer computation, which reads
+`MarketIntelligenceState`, has no place in this pure-data-ledger
+module); they only record what the caller already applied.
+
+**Explicitly NOT modeled, disclosed rather than faked:** partial fills,
+order-book depth, and gap-through behavior — this codebase has no
+order-book-depth or tick-by-tick intra-candle gap data to honestly
+derive them from, the same boundary `TRANSACTION_COST_BPS` already drew.
+Limit and take-profit orders are never slipped — "this price or better"
+is a limit order's actual definition, so leaving them exact IS the
+realistic behavior, not a missing feature.
+
+**Verified**: 23 new tests (`test_execution_quality.py` covering the
+formula itself; targeted additions to `test_broker.py`, `test_portfolio.py`,
+`test_trading_modes.py`, `test_executive.py`, and a new
+`test_paper_trading.py` — no test file previously existed for that
+module's own logic). `mypy app/` (151 files)/`ruff check app/ tests/`
+clean, full backend `pytest -q` (2024 passed; same 6 pre-existing
+`test_nexus.py` failures, reconfirmed unrelated by testing against the
+clean pre-change tree). `tsc -b --noEmit`/`npm run lint`/`npm run build`
+all clean. Live-verified against the real running dev stack: a real
+`POST /api/executive/decide` buy recorded `entrySlippageBps=14.73` on
+the resulting position; `POST /api/time/advance` then forced that same
+position's hold-duration close, recording a real `exitSlippageBps`; the
+Performance panel's Recent Trades section rendered the exact real value
+— "Slippage: 14.7bps in / 14.7bps out (real, already reflected in
+entry/exit price)".
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

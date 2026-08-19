@@ -7,6 +7,60 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Next Professional Trading Firm Phase," Priority 1 — Execution Realism**
+  (`backend/app/execution_quality.py`, `backend/app/portfolio.py`, `backend/app/broker.py`,
+  `backend/app/executive.py`, `backend/app/paper_trading.py`, `backend/app/trading_modes.py`,
+  `backend/app/nexus.py`, `backend/app/schemas.py`, `backend/tests/test_execution_quality.py`,
+  `backend/tests/test_paper_trading.py`, plus targeted additions to `test_portfolio.py`/`test_broker.py`/
+  `test_trading_modes.py`/`test_executive.py`, `frontend/src/types.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/PerformancePanel.tsx`): an 8-priority continuation
+  directive; this pass implements Priority 1 in full (the remaining 7 researched, classified, and either
+  deferred with reasoning or — Priority 8 — documented-only per the directive's own explicit "do not promote
+  Model Validation to a blocking gate without CEO authorization" instruction; full classification table
+  below). **The gap** (already flagged MINIMAL by the prior Gap Analysis): every real fill point in the
+  codebase — `app/broker.py`'s `_fill_price()`, `app/executive.py`'s `resolve_proposal()` (the CEO's own
+  direct buy/sell), `app/paper_trading.py`'s hold-duration auto-close, `app/trading_modes.py`'s day-end
+  flatten — executed at exactly the observed signal price, every time, despite a real 1-tick order latency and
+  a real flat transaction-cost model already existing. **What shipped**: new `app/execution_quality.py` — a
+  real, disclosed, formula-based slippage rate (`BASE_SLIPPAGE_BPS = 2.0` to `MAX_SLIPPAGE_BPS = 20.0`) driven
+  only by that tick's already-real `MarketIntelligenceState` (`MarketQualityScore.score` + the symbol's own
+  `LiquidityRead.liquidity_score` when available) — never a random number, always adverse to the trader, the
+  same "disclosed, formula-based, never derived from real bid-ask/order-book data because this codebase has
+  neither" standard `TRANSACTION_COST_BPS` already established. Applied only to genuinely uncertain fills
+  (market orders, and stop/stop-loss orders once triggered); limit/take-profit orders stay unslipped — "this
+  price or better" is their real definition, not a gap. All four real fill points now thread an optional
+  `market_intelligence` parameter (None-safe, non-breaking); `PaperPosition`/`PaperTrade` gained
+  `entrySlippageBps`/`exitSlippageBps` (default `0.0`) mirroring `entryCostUsd`/`transactionCostUsd`'s existing
+  audit-field pattern — `app/portfolio.py` computes no slippage itself, only records what the caller applied.
+  **Explicitly not modeled** (disclosed, not faked): partial fills, order-book depth, gap-through behavior —
+  no data exists in this codebase to honestly derive them from. New "Slippage: Xbps in / Ybps out" line in the
+  Performance panel's Recent Trades, next to the existing Transaction cost line. 23 new tests, `mypy app/` (151
+  files)/`ruff check app/ tests/` clean, full backend suite (2024 passed; same 6 pre-existing unrelated
+  `test_nexus.py` failures, reconfirmed against the clean pre-change tree), `tsc -b --noEmit`/`eslint`/`vite
+  build` clean, live-verified against the real dev stack (`POST /api/executive/decide` → a real position with
+  `entrySlippageBps=14.73`; `POST /api/time/advance` → the same position's forced close recording a real
+  `exitSlippageBps`; the Performance panel rendering that exact value). Documented in `docs/Architecture.md`.
+
+  **8-priority classification** (condensed; see `docs/Architecture.md` for detail on Priority 1):
+  Priority 1 Execution Realism — MINIMAL → **implemented this pass**. Priority 2 Unified P&L Reporting —
+  PARTIAL (per-trade/per-position data is real and rich; no symbol- or agent-level aggregation exists
+  anywhere) — deferred, candidate for next pass. Priority 3 Talent→Specialization→Performance — BLOCKED BY
+  ARCHITECTURE: `app/research.py`'s confidence is an explicitly-disclosed random walk ("not derived from any
+  real analysis"), and `ResearchCategory` is a broad asset-class taxonomy with no indicator/setup dimension —
+  neither "route specialized research to specialists" nor "measure specialist research quality" is honestly
+  buildable without a large new real-analysis subsystem; deferred, not faked. Priority 4 Team Chemistry Causal
+  Behavior — PARTIAL (`Debate.finalRecommendation` is fixed before the debate runs, already named in the prior
+  Gap Analysis as higher-risk since it touches live voting/governance) — deferred pending a dedicated,
+  carefully-scoped pass. Priority 5 Research Data Integrity — PARTIAL (`Candle.data_status`/`DataStatus`
+  already exists as a 7-value enum but only `"simulated"` is ever set; `SimulationResult`/`ResearchItem` carry
+  no provenance field) — deferred, candidate for next pass. Priority 6 Market Session Intelligence — MATURE
+  (this session's prior "Session Trading Education & Agent Training" work); a Strategy × Session comparison on
+  *live* trades remains blocked by the same `DecisionVaultEntry.strategyId == None` gap already disclosed
+  there — not re-solved here. Priority 7 Professional Strategy Research (indicator library) — BLOCKED BY
+  ARCHITECTURE, same root cause as Priority 3. Priority 8 Model Validation blocking-gate migration — per the
+  directive's own explicit instruction, **documented only, not implemented**: `ModelValidationReport`'s 6 real
+  checks remain advisory-only; no CEO authorization for a blocking gate exists in this repository.
+
 - **CEO directive "Professional Trading Firm Transformation" — Gap Analysis + Exit Efficiency**
   (`backend/app/exit_efficiency.py`, `backend/app/schemas.py`, `backend/app/routers/trades.py`,
   `backend/tests/test_exit_efficiency.py`, `frontend/src/types.ts`, `frontend/src/net/api.ts`,
