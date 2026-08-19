@@ -20,6 +20,7 @@ import type {
   ChallengeReport,
   CeoOverrideEvaluation,
   CeoOverrideGovernanceSummary,
+  ControlEffectivenessSummary,
   ClientSaveSnapshot,
   ComplianceIncident,
   ComplianceIncidentSummary,
@@ -352,6 +353,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ reviewer, note }),
     }),
+  // CEO directive "Features 31-35," Feature 34 — Compliance Control
+  // Effectiveness. Read-only, computed fresh per request.
+  getControlEffectiveness: () => request<ControlEffectivenessSummary>("/audit/controls/effectiveness"),
   // Design Bible Chapter 75 — Company Trading Modes & Institutional
   // Capital Protection. tradingModes/dailyCircuitBreaker/losingStreak/
   // recoveryBriefings are already live via the WS tick broadcast (see

@@ -3690,6 +3690,43 @@ export interface CeoOverrideGovernanceSummary {
   updatedAt: string;
 }
 
+// CEO directive "Features 31-35," Feature 34 — Compliance Control
+// Effectiveness (see backend/app/control_effectiveness.py). Read-only,
+// fetched on demand — no WS-broadcast field backs it, the same CAGS
+// convention as CeoOverrideGovernanceSummary above.
+export type GatekeeperControlEffectivenessState = "effective" | "ineffective" | "mixed" | "insufficient_data" | "not_yet_tested";
+
+export interface ControlEffectivenessRecord {
+  controlId: string;
+  controlLabel: string;
+  purpose: string;
+  owner: string;
+  triggeredCount: number;
+  passedCount: number;
+  failedCount: number;
+  soleReasonRejectionCount: number;
+  confirmedPreventedCount: number;
+  confirmedFalsePositiveCount: number;
+  pendingEvaluationCount: number;
+  ambiguousAttributionCount: number;
+  effectivenessState: GatekeeperControlEffectivenessState;
+  controlRegression: boolean;
+  lastTriggeredAt: string | null;
+  lastEvaluatedAt: string | null;
+}
+
+export interface ControlEffectivenessSummary {
+  controls: ControlEffectivenessRecord[];
+  totalControls: number;
+  effectiveCount: number;
+  ineffectiveCount: number;
+  mixedCount: number;
+  insufficientDataCount: number;
+  notYetTestedCount: number;
+  regressedControlCount: number;
+  updatedAt: string;
+}
+
 // Design Bible Chapter 75 — Company Trading Modes & Institutional
 // Capital Protection (see backend/app/trading_modes.py). tradingModes/
 // dailyCircuitBreaker/losingStreak/recoveryBriefings are real, part of

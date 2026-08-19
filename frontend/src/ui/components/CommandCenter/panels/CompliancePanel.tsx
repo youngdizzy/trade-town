@@ -13,6 +13,9 @@ import {
   type ComplianceIncident,
   type ComplianceIncidentSummary,
   type ComplianceOverview,
+  type ControlEffectivenessRecord,
+  type ControlEffectivenessSummary,
+  type GatekeeperControlEffectivenessState,
   type GovernanceLayer,
   type IncidentRootCause,
   type IncidentStatus,
@@ -53,9 +56,17 @@ import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "..
  * at decision time) alongside — never merged with — the real OUTCOME
  * (mirrored from CeoDecisionRecord.outcome, never re-derived), per the
  * directive's explicit "no hindsight-only evaluation" rule.
+ *
+ * Feature 34 adds the Control Effectiveness tab — a genuinely new
+ * question CAGS never answered before: did each real Gatekeeper check
+ * (backend/app/gatekeeper.py) actually prevent or detect what it was
+ * designed to address, not just how often it exists/fires. Read-only,
+ * computed fresh per request (backend/app/control_effectiveness.py) —
+ * no new persisted state, same on-demand pattern as every CAGS tab
+ * above it.
  */
 
-const TABS = ["log", "incidents", "cases", "governance", "overrides", "overrideGovernance"] as const;
+const TABS = ["log", "incidents", "cases", "governance", "overrides", "overrideGovernance", "controlEffectiveness"] as const;
 type Tab = (typeof TABS)[number];
 
 const TAB_LABEL: Record<Tab, string> = {
@@ -65,6 +76,7 @@ const TAB_LABEL: Record<Tab, string> = {
   governance: "Governance",
   overrides: "CEO Overrides",
   overrideGovernance: "Override Governance",
+  controlEffectiveness: "Control Effectiveness",
 };
 
 const PROCESS_QUALITY_LABEL: Record<OverrideProcessQuality, string> = {
@@ -194,6 +206,7 @@ export function CompliancePanel() {
         {tab === "governance" && <GovernanceTab />}
         {tab === "overrides" && <OverridesTab />}
         {tab === "overrideGovernance" && <OverrideGovernanceTab />}
+        {tab === "controlEffectiveness" && <ControlEffectivenessTab />}
       </Glass>
     </div>
   );
@@ -999,6 +1012,111 @@ function OverrideEvaluationRow({
             >
               Record Review
             </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function controlEffectivenessTone(state: GatekeeperControlEffectivenessState): "green" | "red" | "amber" | "cyan" | "neutral" {
+  switch (state) {
+    case "effective":
+      return "green";
+    case "ineffective":
+      return "red";
+    case "mixed":
+      return "amber";
+    case "insufficient_data":
+      return "cyan";
+    case "not_yet_tested":
+      return "neutral";
+  }
+}
+
+const CONTROL_EFFECTIVENESS_LABEL: Record<GatekeeperControlEffectivenessState, string> = {
+  effective: "Effective",
+  ineffective: "Ineffective",
+  mixed: "Mixed Evidence",
+  insufficient_data: "Insufficient Data",
+  not_yet_tested: "Not Yet Tested",
+};
+
+function ControlEffectivenessTab() {
+  const [summary, setSummary] = useState<ControlEffectivenessSummary | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .getControlEffectiveness()
+      .then((res) => setSummary(res))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Failed to load control effectiveness."));
+  }, []);
+
+  return (
+    <div>
+      <p className="mb-2 text-[9px] text-cmd-textDim">
+        Did each real Gatekeeper check actually prevent or detect what it was designed to address — not just how often it exists or fires. A control that has never once failed a
+        decision reads NOT YET TESTED, never a fabricated &quot;effective&quot;. An outcome is only credited to a control when it was the sole reason a trade was blocked; when
+        several checks failed together, the outcome cannot be honestly attributed to any one of them.
+      </p>
+      {error && <EmptyState>{error}</EmptyState>}
+      {!error && !summary && <EmptyState>Loading…</EmptyState>}
+      {!error && summary && (
+        <>
+          <div className="mb-2 grid grid-cols-2 gap-x-4 gap-y-1 rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2 sm:grid-cols-5">
+            <DataRow label="Effective" value={summary.effectiveCount} valueClassName="text-cmd-green" />
+            <DataRow label="Ineffective" value={summary.ineffectiveCount} valueClassName={summary.ineffectiveCount > 0 ? "text-cmd-red" : "text-cmd-text"} />
+            <DataRow label="Mixed Evidence" value={summary.mixedCount} />
+            <DataRow label="Insufficient Data" value={summary.insufficientDataCount} />
+            <DataRow label="Not Yet Tested" value={summary.notYetTestedCount} />
+            {summary.regressedControlCount > 0 && (
+              <DataRow label="Control Regression" value={summary.regressedControlCount} valueClassName="text-cmd-red" />
+            )}
+          </div>
+          <div className="max-h-[28rem] space-y-1 overflow-y-auto">
+            {summary.controls.map((c) => (
+              <ControlEffectivenessRow
+                key={c.controlId}
+                control={c}
+                expanded={expandedId === c.controlId}
+                onToggle={() => setExpandedId((v) => (v === c.controlId ? null : c.controlId))}
+              />
+            ))}
+          </div>
+        </>
+      )}
+    </div>
+  );
+}
+
+function ControlEffectivenessRow({ control, expanded, onToggle }: { control: ControlEffectivenessRecord; expanded: boolean; onToggle: () => void }) {
+  return (
+    <div className="rounded-sm border border-cmd-border/60 bg-cmd-bg/30">
+      <button type="button" onClick={onToggle} className="flex w-full items-center gap-2 px-2 py-1.5 text-left">
+        <StatusPill tone={controlEffectivenessTone(control.effectivenessState)}>{CONTROL_EFFECTIVENESS_LABEL[control.effectivenessState]}</StatusPill>
+        {control.controlRegression && <StatusPill tone="red">Regression</StatusPill>}
+        <span className="flex-1 font-cmdmono text-[10px] text-cmd-text">{control.controlLabel}</span>
+        <span className="text-[9px] text-cmd-textDim">{control.triggeredCount} evaluated</span>
+      </button>
+      {expanded && (
+        <div className="border-t border-cmd-border/40 px-2 py-1.5 text-[9px] leading-relaxed">
+          <div className="mb-1.5 text-cmd-textDim">{control.purpose}</div>
+          <div className="mb-1.5">
+            <span className="text-cmd-textDim">Owner: </span>
+            <span className="text-cmd-text">{control.owner}</span>
+          </div>
+          <div className="mb-1.5 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
+            <DataRow label="Triggered / Passed" value={`${control.triggeredCount} / ${control.passedCount}`} />
+            <DataRow label="Failed (Blocked)" value={control.failedCount} />
+            <DataRow label="Sole-Reason Rejections" value={control.soleReasonRejectionCount} />
+            <DataRow label="Confirmed Prevented" value={control.confirmedPreventedCount} valueClassName="text-cmd-green" />
+            <DataRow label="Confirmed False Positive" value={control.confirmedFalsePositiveCount} valueClassName={control.confirmedFalsePositiveCount > 0 ? "text-cmd-red" : "text-cmd-text"} />
+            <DataRow label="Pending Evaluation" value={control.pendingEvaluationCount} />
+            <DataRow label="Ambiguous Attribution" value={control.ambiguousAttributionCount} />
+            <DataRow label="Last Triggered" value={control.lastTriggeredAt ? new Date(control.lastTriggeredAt).toLocaleString() : "—"} />
+            <DataRow label="Last Evaluated" value={control.lastEvaluatedAt ? new Date(control.lastEvaluatedAt).toLocaleString() : "—"} />
           </div>
         </div>
       )}
