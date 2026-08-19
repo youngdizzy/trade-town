@@ -7,6 +7,76 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Professional Trading Firm — Market-Analysis Knowledge + Session Intelligence Expansion,"
+  Phases 1-4, 6, 8** (`backend/app/technical_indicators.py`, `backend/app/technical_patterns.py`,
+  `backend/app/technical_analysis.py`, `backend/app/signal_correlation.py`, `backend/app/model_validation.py`,
+  `backend/app/foundational_mentors.py`, `backend/app/routers/executive.py`, `backend/app/routers/market.py`,
+  `backend/app/schemas.py`, six new backend test files, `frontend/src/types.ts`, `frontend/src/net/api.ts`,
+  `frontend/src/ui/components/CommandCenter/ExecutiveVoting.tsx`,
+  `frontend/src/ui/components/CommandCenter/panels/MarketIntelPanel.tsx`): Phase 0's research (a full grep
+  audit) found zero existing implementations of any market-analysis framework this directive asked about —
+  no confluence engine, no FVG/order-block/candlestick/Fibonacci detection, no RSI/MACD/Stochastic/ATR/VWAP,
+  no Elliott Wave/harmonic/Gann. Built what real math/geometry over real (mock) OHLCV data can honestly
+  support, and drew an explicit line where it can't:
+  - **Phase 3 (indicators)**: `technical_indicators.py` — real SMA/EMA/RSI/MACD/Stochastic/ATR/VWAP, every
+    value `None` (never fabricated) below its own real minimum bar count. Parabolic SAR/SuperTrend
+    deliberately omitted (more implementation-sensitive; not added merely because a list asked for them).
+  - **Phase 1-2 (structure, liquidity, candles, Fibonacci)**: `technical_patterns.py` — swing structure
+    labeling (HH/HL/LH/LL), fair value gaps with real fill tracking, candlestick patterns (engulfing/hammer/
+    shooting star/doji — a real misclassification bug fixed: hammer/shooting-star must be checked before
+    doji, since a long-wick small-body candle also satisfies doji's broader small-body rule), session range +
+    retest, Fibonacci retracement/extension levels, and one disclosed order-block proxy definition. Reuses
+    `market_intelligence.py`'s existing swing/session detection rather than duplicating it. Elliott Wave,
+    harmonic patterns (Bat/Butterfly/Crab), Gann, and classical chart patterns (double tops, head & shoulders,
+    triangles) are explicitly NOT auto-detected — the directive itself warns against forcing ambiguous wave
+    counts or treating unvalidated frameworks as predictive; these become Academy lesson content only (below),
+    honestly disclosing the absence of a detector rather than implying one exists.
+  - **Phase 6 (Confluence Engine)**: `signal_correlation.py` — audited the six real analyst votes'
+    actual mechanisms (`executive.py::generate_analyst_votes()`, `voting.py::researcher_vote()`) and found
+    they are NOT all mutually independent: news and macro votes are both driven by the identical
+    `ResearchItem.confidence` value through the same probabilistic roll (the same evidence, counted twice,
+    not two independent reads), and execution is a pure majority tally of the other five (zero new evidence).
+    `assess_confluence()` reports both a naive confirmation count and a real independent-evidence count,
+    never claiming fewer confirmations makes a worse setup — only an honest accounting of how much of the
+    naive tally is genuinely new information. New `GET /api/executive/confluence?proposalId=...` and an
+    "Confluence Engine" section in the Executive Voting UI. Purely informational — never gates the
+    Gatekeeper/Risk/Model Validation pipeline.
+  - **Phase 4 (sessions)**: new `GET /api/market/session-range` exposes `compute_session_range()`'s real
+    per-session high/low/retest, reusing `market_intelligence.py`'s existing session-boundary detection
+    (no second session engine).
+  - **Phase 8 (anti-overfitting)**: two new Model Validator checks — `regime_dependence` (flags real sign
+    disagreement in `avg_return_pct` across tested regime buckets — a strategy can clear every bucket's own
+    weak/strong verdict individually while its edge is really a bet on one regime) and
+    `optimization_scrutiny` (flags the "too good, too soon" shape of a result: an implausibly high win rate
+    on a sample still below the Certification gate's minimum trade count — never automatic rejection, only
+    a flag for closer scrutiny). Feature/parameter-count/iteration tracking the directive also asks for is
+    disclosed as `not_trackable_yet`: `Strategy` has no such fields and `sandbox.py`'s real generation
+    pipeline doesn't track them today — not fabricated.
+  - **Academy curriculum**: `al_brooks`'s first real lesson content (8 lessons — price action, candlestick
+    signals, breakouts, false breakouts/retests, trading ranges, classical chart patterns honestly disclosed
+    as undetected, reversal confirmation, probability not certainty), filling a roadmap track that shipped
+    with zero lessons since the original build. 8 more `market_intelligence` lessons (orders 16-23 — FVGs,
+    order blocks, Fibonacci, trend/momentum/divergence/volume indicators, Elliott Wave/harmonic/Gann framed
+    explicitly as unvalidated hypotheses with no auto-detector, the Heikin-Ashi/Renko derived-chart rule, and
+    confluence/anti-overfitting). All original TradeTown-authored content, never a transcription of any real
+    educator's actual published work.
+  - **Definition-of-Done point 12** (derived charts can never affect real execution prices): proved
+    structurally in `test_derived_chart_safety.py` rather than behaviorally, since neither Heikin-Ashi nor
+    Renko exists anywhere in this codebase yet (confirmed by source inspection) — `portfolio.py`'s one real
+    execution surface (`open_position()`/`close_position()`) never imports `technical_indicators.py` or
+    `technical_patterns.py`, and both functions take a plain `float` price, not a derived-chart type.
+  - **Explicitly deferred, unchanged from the prior directive's own scoping**: Phase 5 (Research/Sandbox
+    foundation), Phase 7 (research experiments/backtesting), and Phase 9 (agent decision process) all still
+    depend on the not-yet-built TechnicalIndicators/StrategyRuleEngine/WalkForwardValidator/Monte Carlo
+    pipeline documented in `docs/Architecture.md` — this pass adds real indicator/pattern VALUES as evidence
+    (a safe, tractable step) but does not wire them into any live trading decision, since the hypothesis-
+    testing pipeline this same directive's own Phase 7 demands to validate that inclusion doesn't exist yet.
+  - 49 new tests (`test_technical_indicators.py`, `test_technical_patterns.py`, `test_signal_correlation.py`,
+    `test_technical_analysis.py`, `test_derived_chart_safety.py`, plus additions to
+    `test_foundational_mentors.py`/`test_model_validation.py`). Full backend suite: 2115 passed, 0 failed.
+    `mypy app/` (157 files) / `ruff check app/ tests/` clean. `tsc -b --noEmit` / `eslint` / `vite build` all
+    clean. See `docs/Architecture.md` for the full phase-by-phase detail.
+
 - **CEO directive "Next Phase: Professional Trading Firm Intelligence," Phases 4-9 — researched, scoped, and
   documented (no code this entry)**: **Phase 4** (session specialization education) audited — the existing
   15-lesson `market_intelligence` curriculum (Asia/London/New York/Overlap/Transitions/decision-process,
