@@ -853,6 +853,39 @@ read off an existing system (see the mapping table in
 "not yet stress-tested"/"not yet challenged" when no `ChallengeReport`
 exists for the proposal yet, rather than fabricating one.
 
+### `GET /api/executive/accuracy`
+
+Design Bible Chapter 70 Part 2 — the Executive Accuracy Score.
+`compute_executive_accuracy_scores()`, real and computed fresh every
+request off `CeoDecisionRecord.outcome` (closed-trade-only, never a
+counterfactual). Returns one `ExecutiveAccuracyScore` per department:
+
+```json
+{
+  "role": "research",
+  "departmentLabel": "Research",
+  "decisionsTracked": 0,
+  "correctCount": 0,
+  "accuracyPct": null,
+  "evaluationState": "not_enough_evidence"
+}
+```
+
+**CEO directive "Features 31-35," Feature 33** — `accuracyPct` is
+`null`, never a fabricated `0.0`, whenever `decisionsTracked` is below
+the disclosed floor (`MIN_ACCURACY_SAMPLE_FOR_VERDICT = 3`, in
+`app/executive_intelligence.py`). `evaluationState`
+(`pass`/`fail`/`inconclusive`/`not_enough_evidence`) is published
+alongside the raw percentage: `pass` at `accuracyPct >= 60`, `fail`
+below `40`, `inconclusive` between — thresholds reused verbatim from
+this codebase's own existing Command Center UI convention, not invented
+for this feature. Reused unchanged by `GET /api/audit/overview`'s
+`executiveAccuracy` field and by `compute_accuracy_multiplier()`
+(`app/weighted_decisions.py`), which already treats `decisionsTracked
+== 0` as the neutral `1.0×` (never a penalty for a track record that
+doesn't exist yet) and now also guards the nullable `accuracyPct`
+before dividing.
+
 ### `GET /api/board/roster`
 
 Design Bible Chapter 70 Part 1 — Executive Board & CEO Intelligence

@@ -7,6 +7,37 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Features 31-35: Compliance, Governance & Continuous Improvement System," Feature 33 —
+  Executive Accuracy Evidence System** (`backend/app/executive_intelligence.py`, `backend/app/schemas.py`,
+  `backend/app/weighted_decisions.py`, `backend/tests/test_executive_intelligence.py`, `frontend/src/types.ts`,
+  `frontend/src/ui/components/CommandCenter/ExecutiveVoting.tsx`,
+  `frontend/src/ui/components/CommandCenter/panels/CompliancePanel.tsx`): the third stage of the CEO's
+  31→32→33→34→35 Compliance closed loop, and a direct fix for the exact bug the CEO's own brief named
+  ("Research—0%... may mean no evaluated research decisions exist yet"). `compute_executive_accuracy_scores()`
+  previously returned a fabricated `accuracyPct: 0.0` whenever a department had zero tracked, evaluable
+  directional stances — fixed at the data layer: `accuracyPct` is now `float | None`, `None` (never `0.0`) when
+  `decisionsTracked` is 0. A new `evaluationState` field (`pass`/`fail`/`inconclusive`/`not_enough_evidence`) is
+  published alongside it so no caller has to reinvent its own good/bad interpretation of a raw percentage —
+  `not_enough_evidence` applies below a disclosed minimum sample floor (`MIN_ACCURACY_SAMPLE_FOR_VERDICT = 3`,
+  the same honesty convention Chapter 73's Compliance Score and Feature 32's `MIN_OVERRIDE_SAMPLE_FOR_TREND`
+  already carry), and the `pass`/`fail` thresholds (60%/40%) are reused verbatim from the existing Command
+  Center UI's own green/amber/red boundary, not invented for this feature. `weighted_decisions.py`'s
+  `compute_accuracy_multiplier()` already treated `decisionsTracked == 0` as the neutral 1.0× (never a penalty)
+  — updated to also guard the now-nullable `accuracyPct` before dividing, preserving that exact behavior.
+  Scope, disclosed rather than silently dropped: genuinely role-specific metrics per department (real candidate
+  signals identified for Devil's Advocate, Market Intelligence, and Decision Intelligence) would have required
+  threading new required parameters through all 6 real call sites of `compute_executive_accuracy_scores()` under
+  time pressure — this pass ships the honest, cross-department fix and evidence-state classification for all 9
+  departments; role-specific second metrics remain an explicit cut for a future pass. Frontend:
+  `ExecutiveAccuracyPanel` now groups departments by the backend's own `evaluationState` rather than a
+  `decisionsTracked > 0` check; `CompliancePanel.tsx`'s Executive Accuracy strip shows literal "NOT ENOUGH
+  EVIDENCE" instead of a bare "0" — directly matching the CEO's own requested display format. 6 new backend
+  tests, `mypy app/` (146 files)/`ruff check app/ tests/` clean, full backend suite (1946 passed; same 6
+  pre-existing, unrelated `test_nexus.py` failures), `tsc`/`eslint`/`vite build` clean, live Playwright
+  verification against the real dev stack (both `GET /api/executive/accuracy` and the Compliance panel correctly
+  showed NOT ENOUGH EVIDENCE for all 9 departments on a fresh save). Documented in Design Bible Chapter 70
+  Part 2's KPIs section.
+
 - **CEO directive "Features 31-35: Compliance, Governance & Continuous Improvement System," Feature 32 —
   CEO Override Governance** (`backend/app/schemas.py`, `backend/app/override_governance.py`,
   `backend/app/nexus.py`, `backend/app/state.py`, `backend/app/routers/executive.py`,

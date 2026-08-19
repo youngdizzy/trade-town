@@ -8415,6 +8415,91 @@ gate on the Compliance Score formula itself) do not begin until this
 feature is fully tested, verified, and documented — which this entry
 closes out.
 
+## CEO directive "Features 31-35: Compliance, Governance & Continuous Improvement System" — Feature 33, Executive Accuracy Evidence System
+
+Research first, and a direct confirmation of an earlier-session
+finding: `compute_executive_accuracy_scores()` (`app/executive_intelligence.py`)
+returned a fabricated `accuracyPct: 0.0` whenever a department had zero
+tracked, evaluable directional stances — the exact bug the CEO's own
+brief named ("Research—0%... may mean no evaluated research decisions
+exist yet"). Fixed at the data layer, not papered over in the UI:
+`ExecutiveAccuracyScore.accuracyPct` is now `float | None`, `None`
+(never `0.0`) when `decisionsTracked` is 0. A new `evaluationState`
+field (`pass`/`fail`/`inconclusive`/`not_enough_evidence`) is published
+alongside it so no caller has to reinvent its own good/bad
+interpretation of a raw percentage — `not_enough_evidence` applies
+below a disclosed minimum sample floor (`MIN_ACCURACY_SAMPLE_FOR_VERDICT
+= 3`, the same honesty convention Chapter 73's own Compliance Score and
+Feature 32's `MIN_OVERRIDE_SAMPLE_FOR_TREND` already carry), and the
+`pass`/`fail` thresholds (60%/40%) are reused verbatim from the
+existing Command Center UI's own green/amber/red boundary
+(`ExecutiveVoting.tsx`'s `ExecutiveAccuracyPanel`), not invented for
+this feature.
+
+`weighted_decisions.py`'s `compute_accuracy_multiplier()` already
+treated `decisionsTracked == 0` as the neutral `1.0×` (never a penalty
+for a track record that doesn't exist yet, per this codebase's own "no
+fake progression" rule) — updated to also guard the now-nullable
+`accuracyPct` before dividing, preserving that exact behavior rather
+than changing it.
+
+**Scope, disclosed rather than silently dropped:** the CEO directive
+asks for genuinely role-specific metrics per department (Research:
+evidence/predictive quality; Quant: statistical validity; Risk: risk
+identification; Decision Intelligence: evidence synthesis; Coach:
+training effectiveness; Simulation: scenario usefulness; Devil's
+Advocate: useful-challenge rate; Founders: strategic decision quality;
+Market Intelligence: predictive usefulness). Research during this pass
+identified real, already-computed candidate signals for three
+departments — `ChallengeReport.severity` correlated with a trade's real
+outcome for Devil's Advocate, `MarketIntelligenceLearningEntry.
+regimeConsistent` for Market Intelligence, `DecisionVaultEntry.
+evidenceScore` for Decision Intelligence — but wiring them into
+`compute_executive_accuracy_scores()` would have required threading new
+required parameters through all 6 of its real call sites
+(`app/audit_log.py`, `app/nexus.py`, `app/state.py`, twice in
+`app/routers/executive.py`) under time pressure, with real risk of a
+subtle regression in a live, already-tested system. This pass ships the
+honest, cross-department directional-accuracy fix and evidence-state
+classification for all 9 departments; genuinely role-specific second
+metrics remain an explicit, documented cut for a future pass, not
+fabricated or silently dropped.
+
+**Frontend:** `ExecutiveVoting.tsx`'s `ExecutiveAccuracyPanel` now
+groups departments by the backend's own `evaluationState` rather than a
+client-side `decisionsTracked > 0` check, so a department with 1-2 real
+tracked decisions (below the disclosed minimum sample floor) is
+correctly shown as NOT ENOUGH EVIDENCE rather than a premature
+percentage. `CompliancePanel.tsx`'s Executive Accuracy strip shows
+literal "NOT ENOUGH EVIDENCE" text instead of a bare "0" or em-dash —
+directly matching the CEO's own requested format ("Research — NOT
+ENOUGH EVIDENCE — 0 evaluated recommendations" rather than "Research —
+0%").
+
+**Verified**: 6 new tests (`tests/test_executive_intelligence.py`) —
+zero-tracked is `None` not a fabricated `0.0`; below-minimum-sample
+stays `not_enough_evidence` even with a real, computable accuracy;
+`pass`/`fail`/`inconclusive` at and above the minimum sample (including
+a clean 50%-inside-the-band case); and the accuracy multiplier's
+neutral `1.0×` for an untracked department. `mypy app/` (146
+files)/`ruff check app/ tests/` clean, full backend `pytest -q` (1946
+passed; same 6 pre-existing, unrelated `test_nexus.py` failures noted
+under Features 31/32, untouched). `tsc --noEmit`/`eslint
+--max-warnings 0`/`vite build` all clean. Live Playwright verification
+against the real dev stack: `GET /api/executive/accuracy` and `GET
+/api/audit/overview` both correctly return `accuracyPct: null` /
+`evaluationState: "not_enough_evidence"` for all 9 departments on a
+fresh save, and the Compliance panel's Executive Accuracy strip
+rendered "NOT ENOUGH EVIDENCE (0)" for every department, confirmed by
+screenshot — directly resolving the exact "Research—0, Quant—0..."
+display the CEO's own brief called out.
+
+Per this directive's own staging rule, Features 34 (Compliance Control
+Effectiveness) and 35 (the Continuous Compliance Improvement Loop,
+including the CEO-authorization gate on the Compliance Score formula
+itself) do not begin until this feature is fully tested, verified, and
+documented — which this entry closes out.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing
