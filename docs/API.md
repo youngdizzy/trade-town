@@ -295,15 +295,18 @@ perspective and exists purely to detect disconnects
     "teamChemistry": 62.5,
     "recommendations": ["Reputation is low (20/100) — worth attention."],
     "updatedAt": "...",
-    // v0.7 Feature 50 (Part 2/3) — the Company Health redesign. Ten
+    // v0.7 Feature 50 (Part 2/3) — the Company Health redesign. Eleven
     // more real Executive-tier dimensions, additive alongside the
     // eleven Operational ones above (never replacing them — see
     // app/company_health.py's module docstring). recommendations above
     // now also includes the weakest of these when below 70.
+    // complianceHealth (CEO directive "Features 31-35," Feature 35) is
+    // the newest — see this doc's Continuous Compliance Improvement
+    // Loop section above.
     "decisionQuality": 82.4, "executiveAlignment": 66.7, "riskGovernance": 100.0,
     "simulationCoverage": 50.0, "departmentConsensus": 75.0, "selfEvaluationHealth": 68.1,
     "institutionalMemory": 71.2, "innovationVelocity": 20.0, "talentDevelopment": 12.5,
-    "founderOversight": 40.0,
+    "founderOversight": 40.0, "complianceHealth": 50.0,
     "executiveOverall": 58.7, "executiveTier": "stable",
     // The true redesigned headline number — an equal blend of `overall`
     // and `executiveOverall`, so neither tier silently outweighs the other.
@@ -1883,6 +1886,48 @@ Summary counts (`totalControls`, `effectiveCount`, `ineffectiveCount`,
 `mixedCount`, `insufficientDataCount`, `notYetTestedCount`,
 `regressedControlCount`, `updatedAt`) are pure tallies over `controls`,
 never a second independently-computed number.
+
+### Continuous Compliance Improvement Loop — CEO directive "Features 31-35," Feature 35
+
+`app/continuous_improvement.py`. Read-only, computed fresh per request
+over `state.compliance_incidents` (already persisted by Feature 31) —
+no new `GameSaveState` field, the same original CAGS convention as
+Feature 34.
+
+**`GET /api/audit/continuous-improvement`** — the real
+`ContinuousImprovementSummary`. `remediations:
+RemediationEffectivenessRecord[]`, one per incident that has ever been
+resolved at least once, each with: `incidentId`/`rootCause`/
+`correctiveAction`/`category`/`department`/`resolvedAt`/
+`resolutionSimDay` (mirrored from the real `ComplianceIncident`);
+`reopenedCount` (a real, CEO-driven `reopen()` — the strongest possible
+evidence a fix failed); `recurrenceCount` (other real incidents sharing
+this one's exact `rootCause`/`category`/`department` signature that
+opened after this incident's own resolution); `effectivenessState`
+(`effective`/`partially_effective`/`ineffective`/`not_enough_evidence`
+— `ineffective` whenever `reopenedCount > 0`, `not_enough_evidence`
+before `REMEDIATION_EVAL_WINDOW_SIM_DAYS = 5` real sim-days have passed
+since resolution, `effective` once that window has passed with zero
+recurrence, `partially_effective` once it has passed with at least one
+same-signature recurrence — see the Design Bible chapter's Decision
+Logic for the full reasoning). `rootCauseRecurrences:
+RootCauseRecurrence[]`, one per distinct real `rootCause` ever recorded,
+with `incidentCount`/`recurringFailure` (`true` once
+`RECURRING_FAILURE_MIN_COUNT = 2` real incidents share it)/
+`firstOccurredAt`/`lastOccurredAt`/`incidentIds`. Summary counts
+(`effectiveCount`, `partiallyEffectiveCount`, `ineffectiveCount`,
+`notEnoughEvidenceCount`, `recurringFailureCount`, `updatedAt`) are pure
+tallies, never a second independently-computed number.
+
+This feature also adds `complianceHealth` to `CompanyHealth` (see the
+`GET /api/load`/WS `"state"` message's existing `companyHealth` field)
+— a new, additive Executive-tier dimension blending real incident
+resolution, the remediation-effectiveness distribution above, and
+Feature 34's control-effectiveness distribution. It does **not** change
+`GET /api/audit/overview`'s `complianceScore` field — that formula
+(`app/audit_log.py::compute_compliance_score()`) is deliberately
+untouched; see the Design Bible chapter's "Compliance Score formula —
+the documented limitation" note for why.
 
 ### `GET /api/situation-room`
 

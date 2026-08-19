@@ -197,6 +197,11 @@ growth anywhere.
   `GatekeeperRejection.outcome` (see Decision Logic below). Read-only,
   same computed-fresh-per-request convention as the original five
   endpoints above — no new persisted state, unlike Features 31/32.
+- **Feature 35 — the Continuous Compliance Improvement Loop.** `GET
+  /api/audit/continuous-improvement` — real remediation effectiveness
+  and root-cause recurrence over `state.compliance_incidents` (see
+  Decision Logic below). Read-only, same computed-fresh-per-request
+  convention as Feature 34.
 
 ## Internal Workflow
 
@@ -233,14 +238,16 @@ Disclosed and simple on purpose — this is a real, checkable formula over
 a real count, not a fitted or backtested model, the same "conservative
 but arbitrary, no real regulatory requirement behind it" honesty note
 `RiskLimits` itself already carries. **This formula is unchanged by
-Feature 31.** The CEO directive's own rules require explicit CEO
-authorization before this formula may be edited, and connecting
-Feature 31's real incident-resolution evidence into it (or into Company
-Health) is Feature 35's job, not this one's — see that feature's own
-Design Bible entry once written for whether/how authorization was
-sought. There is still no "resolved incidents" *count feeding this
-score* — but see the Incident Resolution Engine below for the real
-resolution workflow that now exists independently of it.
+Features 31, 32, 34, or 35.** The CEO directive's own Feature 35 rules
+require explicit CEO authorization before this specific formula may be
+edited — see this section's own "Compliance Score formula — the
+documented limitation" note below for the full disclosure, the proposed
+change, and confirmation that no such authorization has been sought or
+given, so nothing here touches it. There is still no "resolved
+incidents" *count feeding this score* — but see the Incident Resolution
+Engine below for the real resolution workflow that now exists
+independently of it, and Feature 35's real Company Health connection
+below for where that evidence DOES flow today.
 
 **Incident Resolution Engine (Feature 31)** — a strict, explicitly
 enforced state machine, `ALLOWED_TRANSITIONS` in
@@ -388,6 +395,89 @@ only when the earlier half read `effective` and the recent half now
 reads `ineffective`. A single bad recent outcome, or a sample too thin
 to support both halves' own verdicts, never triggers it.
 
+**Continuous Compliance Improvement Loop (Feature 35)** — closes the
+loop the CEO directive named: INCIDENT (Feature 31) -> ROOT CAUSE (the
+real, CEO-recorded `rootCause`, set only at `verify_and_resolve()`) ->
+REMEDIATION (the real `correctiveAction` text) -> MONITORING/OUTCOME/
+EFFECTIVENESS REVIEW (this feature) -> COMPANY HEALTH (below). No new
+persisted state — every incident this reads already existed from
+Feature 31.
+
+*Remediation effectiveness.* `compute_remediation_effectiveness()`
+grades every incident that has ever been resolved at least once. The
+strongest possible evidence a fix failed is a real, CEO-driven
+`reopen()` — an incident with `reopenedCount > 0` always reads
+`ineffective`, regardless of the observation window below. Short of
+that, `REMEDIATION_EVAL_WINDOW_SIM_DAYS = 5` (reused verbatim from the
+Incident Cases UI's own existing default SLA window,
+`CompliancePanel.tsx`'s `deadlineSimDay = incident.simDay + 5` — this
+codebase's own established real expectation for how long a remediation
+reasonably takes, not a fourth invented number) must elapse since
+resolution before "no recurrence yet" honestly reads `effective` rather
+than `not_enough_evidence`. Once that window has passed, a real OTHER
+incident sharing this one's exact (`rootCause`, `category`,
+`department`) signature that opened *after* this incident's resolution
+reads `partially_effective` — this specific fix never reopened, but the
+same underlying problem class showed up again elsewhere.
+
+*Recurring failure.* `compute_root_cause_recurrence()` implements the
+directive's own literal wording — "the same root cause repeatedly
+produces incidents" — as a real, coarser, disclosed-as-broader count per
+`rootCause` alone (not narrowed by category/department the way
+per-incident effectiveness scoring above is): `RECURRING_FAILURE_MIN_COUNT
+= 2` (recurring honestly means "happened more than once," a structural
+count, not a statistical rate, so this floor is deliberately lower than
+the rate-verdict floors Features 33/34 use).
+
+*Company Health connection.* Feature 35's real evidence connects into
+the EXISTING Company Health architecture (Chapter 63,
+`app/company_health.py`) as a genuinely new, additive eleventh
+Executive-tier dimension, `complianceHealth` — never a rewrite of any
+existing dimension. `_compliance_health()` blends three real, distinct
+signals equally: incident resolution rate, the remediation-effectiveness
+distribution above, and Feature 34's control-effectiveness distribution
+— each defaulting to the neutral 50.0 `_risk_governance()` already
+established for "no real evidence yet" (never a fabricated 0 or 100),
+minus a real, disclosed, capped penalty (`min(30.0, recurring_failure_count
+× 10.0)`) for any confirmed recurring failure.
+
+*Compliance Score formula — the documented limitation.* The CEO
+directive's own Feature 35 rules are explicit: if the existing
+Compliance Score formula (`app/audit_log.py::compute_compliance_score()`
+— `100 - min(60, 5 × open_incident_count)`) is inadequate, the correct
+response is (1) document the limitation, (2) propose a change, (3)
+determine whether the CEO has explicitly authorized changing the
+formula, (4) only change it if explicitly authorized. Documented here,
+per that rule:
+
+- *The limitation:* the formula counts open incidents only. It has no
+  way to reward a company that resolves incidents quickly and
+  effectively, and no way to penalize one that resolves them but the
+  same root cause keeps recurring (RECURRING FAILURE) or whose controls
+  have regressed (CONTROL REGRESSION, Feature 34). Two companies with
+  identical open-incident counts score identically today even if one
+  has a spotless remediation record and the other reopens the same
+  incident every week.
+- *The proposed change (not applied):* fold a bounded adjustment from
+  Feature 35's real remediation-effectiveness and recurring-failure
+  evidence into the formula — for example, a real bonus for a
+  genuinely high effective-remediation rate and a real penalty mirroring
+  `_compliance_health()`'s own recurrence penalty, both capped the same
+  conservative way the existing `min(60, ...)` term already is.
+- *Authorization:* not sought, and not given. The CEO directive that
+  commissioned Features 31-35 authorized building the evidence
+  (Features 31/32/34/35) and connecting it to Company Health (this
+  section, above) — it did not separately authorize rewriting
+  `compute_compliance_score()` itself, and no later instruction in this
+  session did either.
+- *Result:* `compute_compliance_score()` is byte-for-byte unchanged by
+  this feature. The real evidence lives in `complianceHealth`
+  (Company Health) and `GET /api/audit/continuous-improvement`
+  (this router) instead. If a future CEO instruction explicitly
+  authorizes changing the Compliance Score formula itself, that
+  authorization — quoted verbatim — belongs in this section before any
+  such change ships.
+
 **Governance Framework** — not a new authority chain. It is the real,
 disclosed order `app/gatekeeper.py::evaluate_gatekeeper()` already
 checks in (confidence → risk manager alignment → CEO/AI agreement → AI
@@ -497,18 +587,22 @@ as Feature 32's CEO Override Governance, the Executive Accuracy Evidence
 pipeline now ships as Feature 33 (Chapter 70 Part 4 — replaces
 `compute_executive_accuracy_scores()`'s old `0.0`-when-untracked default
 with a real `NOT_ENOUGH_EVIDENCE`/`PASS`/`FAIL`/`INCONCLUSIVE` state),
-and real per-control effectiveness measurement (did the control actually
+real per-control effectiveness measurement (did the control actually
 prevent or detect what it was designed to address, not just how often it
-exists/fires) now ships as Feature 34, below. Still open, per the CEO
-directive's own Feature 35: connecting all of the above into Company
-Health through the existing architecture, with any change to the
-Compliance Score formula itself requiring explicit CEO authorization
-first. Wiring the Compliance Score into the Trade Gatekeeper as an
-advisory-only check, following the Chapter 70 Part 3 / Chapter 71
-precedent, remains open if a future addendum explicitly asks for it.
-Also open: prompting for `overrideReason` directly in the quick-decision
-UI (`ExecutiveVoting.tsx`) — the field is real and working via the API
-today, just not yet surfaced at the moment of the decision itself.
+exists/fires) now ships as Feature 34, and the Continuous Compliance
+Improvement Loop — real remediation effectiveness, real recurring-
+failure detection, and connecting all of the above into Company Health
+through the existing architecture — now ships as Feature 35, above.
+Per that feature's own Feature-35 rules, no change to the Compliance
+Score formula itself was authorized, so none was made (see that
+section's "documented limitation" note for the full disclosure and
+proposed-but-not-applied change). Wiring the Compliance Score into the
+Trade Gatekeeper as an advisory-only check, following the Chapter 70
+Part 3 / Chapter 71 precedent, remains open if a future addendum
+explicitly asks for it. Also open: prompting for `overrideReason`
+directly in the quick-decision UI (`ExecutiveVoting.tsx`) — the field is
+real and working via the API today, just not yet surfaced at the moment
+of the decision itself.
 
 ## Company Principle
 
@@ -691,10 +785,57 @@ control that mostly fails alongside others will show a real
 `failedCount` might suggest. That's the honest cost of never inventing
 an attribution the evidence doesn't support.
 
+**Files changed, Feature 35 (CEO directive "Features 31-35"):**
+`app/schemas.py` (new `RemediationEffectivenessState`/
+`RemediationEffectivenessRecord`/`RootCauseRecurrence`/
+`ContinuousImprovementSummary`, plus a new `complianceHealth` field on
+`CompanyHealth` — no new `GameSaveState` field for the loop itself,
+since this reads Feature 31's already-persisted incidents);
+`app/continuous_improvement.py` (new module —
+`compute_remediation_effectiveness()`, `compute_root_cause_recurrence()`,
+`compute_continuous_improvement_summary()`); `app/company_health.py`
+(new `_compliance_health()`, wired into `compute_company_health()` as
+the executive tier's 11th dimension — two new required parameters,
+`compliance_incidents`/`current_sim_day`, threaded through both real
+call sites in `app/nexus.py`/`app/state.py`); `app/routers/audit.py`
+(one new read-only endpoint, `GET /api/audit/continuous-improvement`);
+`tests/test_continuous_improvement.py` (13 tests — never-resolved
+exclusion, the observation-window boundary, reopened-always-wins even
+past the window, same-signature recurrence with correct
+category/department narrowing, recurring-failure detection at and below
+the floor, summary aggregation) plus `tests/test_company_health.py`
+(one fixture update so the existing "everything maxed, no
+recommendations" test also supplies real strong compliance evidence).
+Frontend: `types.ts`, `net/api.ts` (1 new call), `CompliancePanel.tsx`
+(new "Continuous Improvement" tab), `CompanyPanel.tsx` (new "Compliance
+Health" cell in the Executive Health grid, "Ten" corrected to "Eleven"),
+and two client-side default `CompanyHealth` placeholders
+(`NexusManager.ts`/`gameStore.ts`) updated with the new required field.
+Verification: `mypy app/` (149 files) clean, `ruff check app/ tests/`
+clean, full backend `pytest -q` (1974 passed; same 6 pre-existing
+`test_nexus.py` failures, unchanged), `tsc -b --noEmit` clean (caught
+and fixed two missing-required-field errors in the client-side
+placeholders that a bare, unscoped `tsc --noEmit` invocation had
+missed — the project's own `npm run typecheck`/`build` scripts use
+`tsc -b --noEmit`, the composite-project-aware form, which is what
+actually gates CI), `npm run lint` clean, `npm run build` clean, live
+Playwright verification against the real dev stack: a real incident was
+driven through its full real lifecycle
+(investigate -> remediate -> submit-verification -> resolve) via the
+live API, and the Continuous Improvement tab correctly rendered it as
+NOT ENOUGH EVIDENCE (the observation window hadn't elapsed yet) with
+the real corrective-action text and root cause; the Company panel's new
+Compliance Health cell read 35, independently hand-verified against the
+formula: `(1 resolved / 19 total incidents × 100 + 50 neutral
+remediation + 50 neutral controls) / 3 = 35.1`.
+
 **What's genuinely still unbuilt:** every item in the honesty-boundary
 list above, plus a Trade Gatekeeper wiring for the Compliance Score,
-plus Feature 35 of the CEO's own directive (the Continuous Improvement
-Loop connecting Features 31-34's real evidence into Company Health
-through the existing architecture), plus surfacing `overrideReason`
-directly in the quick-decision UI — all deliberate, all documented, none
-silently dropped.
+plus everything the "Compliance Score formula — the documented
+limitation" note above discloses (a real, proposed, but explicitly
+not-CEO-authorized change to `compute_compliance_score()`), plus
+surfacing `overrideReason` directly in the quick-decision UI — all
+deliberate, all documented, none silently dropped. With Feature 35
+shipped, the CEO's own 31->32->33->34->35 loop is complete: every stage
+the directive named now has a real, working, honestly-evidenced
+implementation.

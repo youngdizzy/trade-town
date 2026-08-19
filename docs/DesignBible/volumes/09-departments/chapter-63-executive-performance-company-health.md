@@ -62,7 +62,7 @@ Every one of these already exists and is already real:
 
 | System | Module | What it really does |
 |---|---|---|
-| Company Health Score | `app/company_health.py` | `compute_company_health()` — eleven real "Operational" sub-scores (v0.7 Feature 23: Operational Stability, Department Efficiency, Employee Morale, Research Progress, Capital Health, Resource Usage, Reputation, Technology Level, Market Coverage, Education Progress, Team Chemistry) producing `overall`/`tier`, plus ten more real "Executive" sub-scores (v0.7 Feature 50 Part 2/3: Decision Quality, Executive Alignment, Risk Governance, Simulation Coverage, Department Consensus, Self-Evaluation Health, Institutional Memory, Innovation Velocity, Talent Development, Founder Oversight) producing `executiveOverall`/`executiveTier`, and `combinedOverall`/`combinedTier` — an equal blend of the two, the true redesigned headline number. A real `recommendations` list names the two (or more, on a tie) weakest sub-scores in plain language, never generic filler. |
+| Company Health Score | `app/company_health.py` | `compute_company_health()` — eleven real "Operational" sub-scores (v0.7 Feature 23: Operational Stability, Department Efficiency, Employee Morale, Research Progress, Capital Health, Resource Usage, Reputation, Technology Level, Market Coverage, Education Progress, Team Chemistry) producing `overall`/`tier`, plus eleven more real "Executive" sub-scores (v0.7 Feature 50 Part 2/3: Decision Quality, Executive Alignment, Risk Governance, Simulation Coverage, Department Consensus, Self-Evaluation Health, Institutional Memory, Innovation Velocity, Talent Development, Founder Oversight; CEO directive "Features 31-35," Feature 35 adds an eleventh, Compliance Health — see that feature's own note below) producing `executiveOverall`/`executiveTier`, and `combinedOverall`/`combinedTier` — an equal blend of the two, the true redesigned headline number. A real `recommendations` list names the two (or more, on a tie) weakest sub-scores in plain language, never generic filler. |
 | Company Score | `app/company_score.py` | `compute_company_score()` — a different, older (v0.5) seven-metric read answering "is the company *performing* well" rather than Company Health's "is the company *healthy to keep operating*": Research Quality, Decision Quality, Risk Management, Paper Trading Performance, Team Coordination, Knowledge Growth, Simulation Success. A plain unweighted mean, no hidden weighting. |
 | Department Scorecards | `app/executive_intelligence.py`'s `generate_weekly_self_evaluations()` | One real `DepartmentSelfEvaluation` per department (all nine Executive Intelligence Network roles: research, quant, risk, simulation, decision_intelligence, coach, founders, devils_advocate, market_intelligence) per week, built entirely from that department's own real `DepartmentOpinion` entries already logged to the Executive Meeting Log over the trailing 7 sim days — `decisionsReviewed`, a real average-confidence `score`, `strengths`/`improvementAreas` derived from real agree/concern counts. A department with zero logged opinions that week gets an honest neutral 50.0 and "No real decisions reached the network this week" rather than a fabricated evaluation. |
 | Performance Review Cycle | `app/executive_review.py`'s `generate_executive_review()` | The CIO's real monthly Executive Review, generated on the same monthly cadence as the Coach's own `CoachReport` (see `app/nexus.py`'s monthly-cadence gate). Real department activity ranking, research/knowledge counts, conflict counts (real Debate Room challenge-stance turns), major events, flags, a real `companyScoreChange` period-over-period delta, long-term goals framed from real configured state, and Knowledge Connections (real "this builds on that" callbacks between same-category research/Academy items). |
@@ -278,6 +278,24 @@ industry-benchmark ingestion would all require either an LLM dependency
 or an external data source this codebase does not have — not invented
 or stubbed here, the same honesty boundary every other chapter in this
 volume already holds.
+
+**CEO directive "Features 31-35," Feature 35 — Compliance Health.** The
+Continuous Compliance Improvement Loop's real Company Health connection
+(see `docs/DesignBible/volumes/09-departments/chapter-73-compliance-audit-governance-system.md`
+for the full feature). A genuinely new, additive eleventh
+Executive-tier dimension — `_compliance_health()` in
+`app/company_health.py` — never a rewrite of any existing dimension and
+never the separate Compliance Score formula (`app/audit_log.py`'s
+`compute_compliance_score()`, which stays completely untouched). A real,
+disclosed blend of three genuinely different evidence sources: real
+incident resolution rate (`state.compliance_incidents`), real
+remediation effectiveness (Feature 35's own
+`compute_remediation_effectiveness()`), and real control effectiveness
+(Feature 34's `compute_control_effectiveness()`), each defaulting to the
+neutral 50.0 this file's own `_risk_governance()` already established
+for "no real evidence yet," minus a real, capped penalty for any
+confirmed RECURRING FAILURE. See that Design Bible chapter's own
+Decision Logic section for the exact formula.
 
 ## Company Principle
 

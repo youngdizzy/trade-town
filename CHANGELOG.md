@@ -7,6 +7,39 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Features 31-35: Compliance, Governance & Continuous Improvement System," Feature 35 —
+  Continuous Compliance Improvement Loop** (`backend/app/continuous_improvement.py`, `backend/app/company_health.py`,
+  `backend/app/schemas.py`, `backend/app/nexus.py`, `backend/app/state.py`, `backend/app/routers/audit.py`,
+  `backend/tests/test_continuous_improvement.py`, `backend/tests/test_company_health.py`, `frontend/src/types.ts`,
+  `frontend/src/net/api.ts`, `frontend/src/ui/components/CommandCenter/panels/CompliancePanel.tsx`,
+  `frontend/src/ui/components/CommandCenter/panels/CompanyPanel.tsx`, `frontend/src/game/systems/NexusManager.ts`,
+  `frontend/src/state/gameStore.ts`): the fifth and final stage of the CEO's 31→32→33→34→35 Compliance closed
+  loop. Closes INCIDENT → ROOT CAUSE → REMEDIATION → MONITORING → OUTCOME → EFFECTIVENESS REVIEW → COMPANY HEALTH
+  needing no new persisted state — Feature 31's `ComplianceIncident` already carried `rootCause`/
+  `correctiveAction`; this reads two already-real signals to grade whether a fix held: a real `reopen()` (the
+  strongest possible evidence of failure, always wins) and whether another incident sharing the exact same
+  (root cause, category, department) signature opened after resolution. Four honest states — `effective`/
+  `partially_effective`/`ineffective`/`not_enough_evidence` — with a real, disclosed observation window
+  (`REMEDIATION_EVAL_WINDOW_SIM_DAYS = 5`, reused verbatim from the Incident Cases UI's own existing SLA
+  default) before "no recurrence yet" honestly reads as effective. RECURRING FAILURE detection
+  (`RECURRING_FAILURE_MIN_COUNT = 2`) flags any root cause producing 2+ incidents, per the directive's literal
+  wording. Connected into Company Health through the EXISTING architecture: a new `complianceHealth` 11th
+  Executive-tier dimension blending incident resolution rate, remediation effectiveness, and Feature 34's
+  control effectiveness — never a rewrite of `compute_compliance_score()` in `audit_log.py`, which stays
+  completely untouched. Per the directive's own CEO-authorization gate: the formula's real limitation (counts
+  open incidents only, no reward for effective remediation, no penalty for recurring failure) is documented in
+  full in Design Bible Chapter 73 along with a concrete proposed change — not applied, since no explicit CEO
+  authorization to change that specific formula was sought or given. New `GET /api/audit/continuous-improvement`
+  endpoint; new "Continuous Improvement" Compliance panel tab; new "Compliance Health" cell in the Company
+  panel's Executive Health grid. 13 new backend tests plus 1 updated fixture, `mypy app/` (149 files)/`ruff
+  check app/ tests/` clean, full backend suite (1974 passed; same 6 pre-existing `test_nexus.py` failures),
+  `tsc -b --noEmit`/`eslint`/`vite build` clean (the composite-project-aware `tsc -b` command caught two
+  missing-required-field errors a bare `tsc --noEmit` had silently missed), live Playwright verification
+  against the real dev stack — a real incident was driven through its full real lifecycle via the live API and
+  rendered correctly as NOT ENOUGH EVIDENCE with real corrective-action text, and the Compliance Health cell's
+  live value (35) was independently hand-verified against the formula. Documented in Design Bible Chapter 73
+  and Chapter 63. With this entry, the CEO's own Features 31-35 directive is complete.
+
 - **CEO directive "Features 31-35: Compliance, Governance & Continuous Improvement System," Feature 34 —
   Compliance Control Effectiveness** (`backend/app/control_effectiveness.py`, `backend/app/schemas.py`,
   `backend/app/routers/audit.py`, `backend/tests/test_control_effectiveness.py`, `frontend/src/types.ts`,

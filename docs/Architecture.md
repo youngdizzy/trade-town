@@ -8591,6 +8591,124 @@ the Compliance Score formula itself) does not begin until this feature
 is fully tested, verified, and documented — which this entry closes
 out.
 
+## CEO directive "Features 31-35: Compliance, Governance & Continuous Improvement System" — Feature 35, Continuous Compliance Improvement Loop
+
+The final stage of the CEO's own 31->32->33->34->35 closed loop.
+Research first, and it paid off: closing the loop needed no new
+persisted state at all, because `ComplianceIncident` (Feature 31)
+already carried every fact the loop's own named stages
+(INCIDENT -> ROOT CAUSE -> REMEDIATION) need — `rootCause` (set only at
+real resolution, never guessed earlier) and `correctiveAction` (the
+CEO's own real text). What this feature adds is the missing
+MONITORING/OUTCOME/EFFECTIVENESS REVIEW/COMPANY HEALTH stages, read
+purely from two already-real signals: whether the CEO ever explicitly
+`reopen()`ed that exact case, and whether another real incident sharing
+the same root cause later opened.
+
+**The evidence-honesty design decision, made and reversed once during
+implementation:** the first draft of `_evaluation_state()`-style logic
+for remediation effectiveness collapsed a real, sufficiently-sampled but
+genuinely mixed signal into the same `not_enough_evidence` bucket used
+for actual missing data. Concretely: an incident whose observation
+window had elapsed with zero direct reopens, but where the same root
+cause *had* recurred elsewhere, doesn't cleanly separate into "fix
+worked" or "fix failed" — but bucketing it as "not enough evidence"
+would misreport real, conclusive-in-its-own-way evidence as no evidence
+at all, directly violating the CEO directive's own "missing data is not
+failure, but bad performance is not missing data" distinction (the same
+class of fix Feature 34 needed for its `mixed` state, applied here to a
+different axis). Fixed before shipping: `partially_effective` is its
+own explicit fourth state, distinct from both `effective` and
+`not_enough_evidence` — the fix held for its own specific incident
+(never reopened) but the broader problem class it was meant to address
+struck again elsewhere, an honest middle finding, not a forced binary.
+
+**Reused, not reinvented, conventions:** `REMEDIATION_EVAL_WINDOW_SIM_DAYS
+= 5` is the Incident Cases UI's own pre-existing default SLA window
+(`CompliancePanel.tsx`'s `deadlineSimDay = incident.simDay + 5`) — a
+real number this codebase already treats as "how long a remediation
+reasonably takes," not a fourth invented constant.
+`RECURRING_FAILURE_MIN_COUNT = 2` is deliberately *not* the
+`MIN_..._FOR_VERDICT = 3` floor Features 33/34 both use — that floor
+exists to support a statistical rate verdict (pass/fail across a
+sample); recurring-failure detection is a structural count ("has this
+happened more than once"), and 2 is the honest, literal reading of
+"recurring."
+
+**Company Health, connected through the existing architecture, exactly
+as instructed.** `_compliance_health()` in `app/company_health.py`
+computes a genuinely new eleventh Executive-tier dimension,
+`complianceHealth`, blending three distinct real signals — incident
+resolution rate, this feature's own remediation-effectiveness
+distribution, and Feature 34's control-effectiveness distribution —
+each defaulting to the same neutral 50.0 `_risk_governance()` already
+established for "no real evidence yet." This required threading two new
+parameters (`compliance_incidents`, `current_sim_day`) through
+`compute_company_health()`'s signature and both of its real call sites
+(`app/nexus.py`, `app/state.py`) — caught immediately by `tsc -b
+--noEmit` on the frontend side (two client-side default `CompanyHealth`
+object literals, `NexusManager.ts`/`gameStore.ts`, needed the new
+required field too). Note for future verification passes: a bare `npx
+tsc --noEmit` invocation silently missed both errors because this is a
+composite TypeScript project (`tsconfig.json` references
+`tsconfig.app.json`/`tsconfig.node.json`) — only `tsc -b --noEmit` (the
+form `npm run typecheck`/`npm run build` actually use) resolves project
+references and catches this class of error. Re-verified with the
+correct command before this feature was considered done.
+
+**The Compliance Score formula — documented, proposed, not changed,
+exactly per the directive's own gate.** The CEO directive's Feature 35
+rules require: if the existing formula
+(`app/audit_log.py::compute_compliance_score()`) is inadequate,
+document the limitation, propose a change, determine whether the CEO
+has explicitly authorized changing it, and only change it if so
+authorized. That authorization was neither sought by this feature's own
+scope nor given by any instruction in this session — the CEO directive
+that commissioned Features 31-35 authorized building and connecting the
+evidence, not rewriting this specific formula. So
+`compute_compliance_score()` is byte-for-byte unchanged; the real
+limitation (it counts open incidents only, with no way to reward fast
+effective remediation or penalize recurring failure) and a concrete
+proposed change are both documented in full in the Design Bible chapter
+(Chapter 73's "Compliance Score formula — the documented limitation"
+note) rather than silently applied or silently ignored.
+
+**Verified**: 13 new tests (`tests/test_continuous_improvement.py`) —
+never-resolved incidents excluded entirely, the observation-window
+boundary (one sim-day short of the window vs. exactly at it), a
+reopened incident always ineffective even long past the window, a
+same-signature recurrence correctly requiring category AND department
+to match (not just root cause), a same-signature incident that opened
+*before* resolution correctly not counted as recurrence, recurring
+failure at and below `RECURRING_FAILURE_MIN_COUNT`, sort order, and
+summary aggregation — plus one updated fixture in
+`tests/test_company_health.py` (the existing "everything maxed, no
+recommendations" test needed one real, long-settled, never-reopened,
+non-recurring resolved incident, or `complianceHealth`'s honest neutral
+default would have dragged that fixture below the recommendation
+threshold — exactly the intended behavior, not a bug to route around).
+`mypy app/` (149 files)/`ruff check app/ tests/` clean, full backend
+`pytest -q` (1974 passed; same 6 pre-existing `test_nexus.py` failures
+noted under Features 31-34, unchanged). `tsc -b --noEmit`/`npm run
+lint`/`npm run build` all clean (after the composite-project fix
+above). Live Playwright verification against the real dev stack: a real
+incident (a real CEO override on AAPL, already in the live backlog) was
+driven through its full real lifecycle —
+investigate -> remediate -> submit-verification -> resolve — via the
+live API with a real root cause (`human_error`) and real corrective
+action text, and the Continuous Improvement tab correctly rendered it
+as NOT ENOUGH EVIDENCE (the 5-sim-day window had not yet elapsed) with
+that exact real text visible. The Company panel's new Compliance Health
+cell read 35, independently hand-verified against the live API response
+and the formula: `(1 resolved ÷ 19 total incidents × 100 + 50 neutral
+remediation + 50 neutral controls) ÷ 3 = 35.1`.
+
+With this entry, the CEO's own 31->32->33->34->35 Compliance,
+Governance & Continuous Improvement System directive is complete: every
+named stage has a real, tested, documented, live-verified
+implementation, and the Compliance Score itself was never manipulated
+to reach any particular number.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing
