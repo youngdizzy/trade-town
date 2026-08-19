@@ -9432,6 +9432,139 @@ the current save's real trades by session (`asian`) and regime
 breakdown exactly; the Performance panel's new section rendered that
 same data in two side-by-side columns.
 
+### Phase 4 — Session specialization education (audited, not extended this pass)
+
+`app/foundational_mentors.py`'s `market_intelligence` track already has
+15 real lessons (orders 1-15, including 9-14 added by the earlier
+"Session Trading Education & Agent Training" work): Asia, London, New
+York, the London/New York Overlap, session transitions, and an 8-step
+decision-process capstone, every one of them grounded in a real,
+checkable function (`_SESSION_QUALITY` weights, `compute_market_
+structure()`, `compute_liquidity()`, `session_evidence.py`) and framed
+as hypotheses to test, never guaranteed rules — independently arriving
+at the exact same discipline this new directive's Phase 4 asks for
+("treat these as hypotheses agents must test using data").
+
+**A real, specific, disclosed gap found on audit**: two named concepts
+from this directive's own Phase 4 brief — a session's own real high/low
+acting as a later reference/liquidity level (e.g., "Asian high/low"),
+and breakout/fakeout behavior at a session open — have no backing
+computation anywhere in this codebase (grep-confirmed: zero matches for
+`session_high`/`session_low`/`asian_high`/any session-range concept).
+Teaching this honestly, consistent with every other lesson in this
+track, would require a new real function (a session-window high/low
+computed from real candle timestamps, plus a real check for whether
+later price broke or rejected it) before a lesson citing it could be
+written — content-only prose with no checkable mechanism behind it
+would break this track's own established convention. Not built this
+pass; a real, moderately-scoped addition to `app/market_intelligence.py`
+for a future pass, not a large undertaking on the scale of Phase 5
+below.
+
+### Phases 5-8 — Research/Sandbox foundation, strategy knowledge base, the 50 EMA strategy, and specialization (researched, scoped, deliberately NOT implemented this pass)
+
+**Audit — what actually touches real (mock) candle data today.**
+`app/market_intelligence.py` performs genuine technical analysis
+(volatility, liquidity zones, market structure/BOS detection) over real
+`MockMarketDataProvider` candles — grep-confirmed as the ONE real
+technical-analysis engine in this codebase. `app/research.py`'s
+confidence gauge and `app/simulation.py`'s backtest metrics both have
+zero `get_candles()` calls anywhere (already established by Priority
+5's Research Data Integrity audit above) — pure random-number
+generation with no underlying price series. There is no indicator
+library (EMA/RSI/MACD/Stochastic/etc.), no rule-based strategy
+evaluation engine that walks a real candle series bar-by-bar applying
+entry/exit conditions, and no walk-forward or out-of-sample split
+testing anywhere in this codebase.
+
+**What genuine Phases 5-7 would require** — a real, honestly-scoped
+architecture, not a documentation gap:
+
+1. **A `TechnicalIndicators` module** — standard, well-known formulas
+   (EMA, RSI, MACD, Stochastic, ATR/Chandelier Exit, VWAP, moving
+   averages) computed over real candle closes/highs/lows/volumes. This
+   piece alone is honest and tractable: pure math over data this
+   codebase already generates, no fabrication risk. `CANDLE_WINDOW = 40`
+   (the window `market_intelligence.py` currently fetches) is too short
+   for some of these (a real 50-period EMA needs 50+ bars of history)
+   — a real implementation would request a longer window via
+   `MarketDataProvider.get_candles()`'s own `limit` parameter, which
+   already supports it.
+2. **A `StrategyRuleEngine`** — the genuinely large piece: a real
+   bar-by-bar walk through a candle series, evaluating a named
+   strategy's entry/exit rules (e.g., this directive's own 50 EMA
+   breakout-pullback specification: track price vs. the 50 EMA, detect
+   a close-confirmed break, wait for a real pullback of 2+ bearish/
+   bullish candles, identify the real swing high/low before the
+   pullback, require a body close beyond it, size a stop via a real
+   volatility-aware method like Chandelier Exit, evaluate a 2R target as
+   one test configuration) and producing a REAL trade sequence (not
+   `app/simulation.py`'s current random aggregate scalars) — this is the
+   piece that would let a strategy be genuinely, not fabricatedly,
+   tested.
+3. **A `WalkForwardValidator`** — chronologically splits a real candle
+   series into in-sample/out-of-sample windows, running the same rule
+   engine on each split independently, so a strategy that "looks good"
+   in-sample but fails out-of-sample is flagged rather than reported as
+   simply profitable — directly answering this directive's own explicit
+   "do not optimize the strategy until it looks good" instruction.
+4. **A real Monte Carlo robustness layer** — bootstraps over the REAL
+   trade sequence the rule engine actually produced (the same real-
+   input, real-technique pattern `app/strategy_lab.py`'s existing Monte
+   Carlo Testing already uses for `SimulationResult`'s aggregate stats —
+   just fed a genuinely real underlying sequence for the first time
+   instead of a synthetic one).
+
+**Why this was not attempted this pass, explicitly, not silently
+skipped:** this is a real subsystem comparable in scope to the existing
+Strategy Validation Laboratory (`app/sandbox.py` + `app/strategy_lab.py`
++ `app/simulation.py` combined, which this codebase built across
+multiple dedicated passes, not one). Attempting a rushed slice of it —
+say, the indicator library alone, wired into nothing — would not
+honestly advance Phase 6 (the strategy knowledge base) or Phase 7 (the
+50 EMA strategy), both of which explicitly require the full genuine
+test-and-validate pipeline the directive itself demands ("independently
+test... win rate, expectancy, profit factor, drawdown... walk-forward
+performance, Monte Carlo robustness... do not optimize the strategy
+until it looks good"). Shipping half of that pipeline and reporting
+Phase 6/7 as "started" would be exactly the kind of fabricated progress
+this whole directive explicitly forbids. Phase 8 (measurable, evidence-
+based agent specialization) is downstream of Phases 5-7 existing at
+all — an agent cannot earn a real "excellent at London breakout setups"
+label without a real, tested strategy and real, attributable results to
+earn it from, so it is equally deferred, for the same reason.
+
+**Recommendation**: treat Phases 5-7 as their own dedicated, CEO-scoped
+engineering pass — the four pieces above, in the order listed (indicator
+library first, since it is real, tractable, and immediately useful even
+before the rule engine exists), with the 50 EMA strategy as the FIRST
+real strategy encoded once the rule engine and walk-forward validator
+both exist, exactly as this directive's own Phase 7 frames it: "a
+RESEARCHABLE strategy hypothesis, not a guaranteed profitable strategy."
+
+### Phase 9 — the learning loop (audited: largely already real)
+
+Checked every question this directive's Phase 9 asks against what
+already exists in this codebase, rather than assuming a gap: "what did
+we believe" / "what actually happened" — `app/decision_vault.py`'s
+`DecisionVaultEntry` (extended for full coverage by Phase 2 above).
+"Which signal was correct/misleading" — Phase 1's Trade Attribution
+above (`agreed_with_side_traded` per real analyst vote). "Which setup
+worked/failed" — `app/mistakes.py`/`app/successes.py`'s CaseStudy
+filing plus `app/failure_review.py`'s `FailureReason` taxonomy (WHY the
+thesis failed). "What market regime/session existed" — Phase 3 above.
+"Was risk appropriate relative to the failure boundary" — Piece 10b's
+real distance-to-drawdown-ceiling snapshot, before and after, on every
+trade. "Did the trade follow the strategy rules" / "did execution
+differ from the research thesis" — the one real gap: with no
+`strategyId` on a live trade (the same disclosed limit named throughout
+this whole directive) there is no "the rules" to check adherence
+against yet; this becomes answerable once Phase 5-7's rule engine
+exists and a live trade can cite the specific strategy rule set it
+followed. No new code needed this pass — the loop is real and already
+wired for everything except the one piece that depends on the
+not-yet-built strategy engine.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

@@ -7,6 +7,28 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Next Phase: Professional Trading Firm Intelligence," Phases 4-9 — researched, scoped, and
+  documented (no code this entry)**: **Phase 4** (session specialization education) audited — the existing
+  15-lesson `market_intelligence` curriculum (Asia/London/New York/Overlap/Transitions/decision-process,
+  earlier "Session Trading Education" work) already independently matches this directive's own "treat as
+  hypotheses, never guaranteed rules" requirement; one real, specific gap found (session high/low as a later
+  reference level, and breakout/fakeout behavior — grep-confirmed no backing computation exists) is disclosed
+  as a real but moderately-scoped future addition, not built this pass. **Phases 5-7** (Research/Sandbox
+  foundation, the strategy knowledge base, the 50 EMA breakout-pullback strategy) researched thoroughly:
+  confirmed `app/research.py`/`app/simulation.py` still have zero real candle-data access (Priority 5's
+  earlier finding), no indicator library, no bar-by-bar rule-evaluation engine, and no walk-forward/Monte
+  Carlo testing exist anywhere. A full architectural plan (4 real components: TechnicalIndicators, a
+  StrategyRuleEngine, a WalkForwardValidator, and a real Monte Carlo layer feeding off the rule engine's actual
+  trade sequences) is documented in `docs/Architecture.md` — explicitly NOT implemented this pass, since it is
+  a subsystem comparable in scope to the existing Strategy Validation Laboratory (built across multiple
+  dedicated passes originally) and a rushed partial slice would misrepresent Phase 6/7 as "started" when the
+  directive's own explicit requirement (real walk-forward/out-of-sample/Monte Carlo testing before any
+  strategy is trusted) couldn't yet be honestly met. **Phase 8** (evidence-based agent specialization) is
+  downstream of Phases 5-7 existing at all and deferred for the same reason. **Phase 9** (the learning loop)
+  audited question-by-question against this directive's own list — found already real and wired for
+  everything except strategy-rule adherence checking (which depends on Phases 5-7's not-yet-built rule
+  engine); no new code needed. See `docs/Architecture.md` for the full phase-by-phase detail.
+
 - **CEO directive "Next Phase: Professional Trading Firm Intelligence," Phase 3 — Session + Market Regime P&L**
   (`backend/app/performance_attribution.py`, `backend/app/routers/trades.py`, `backend/app/schemas.py`,
   `backend/tests/test_performance_attribution.py`, `frontend/src/types.ts`, `frontend/src/net/api.ts`,
