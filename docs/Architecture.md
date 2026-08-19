@@ -10164,6 +10164,287 @@ clean. Frontend: `tsc --noEmit`, `eslint`, `vite build` clean;
 the new Strategy Compiler compile→backtest flow and the new Evidence
 Confluence display) pass against the live running dev stack.
 
+## CEO directive "Professional Quant Trading Firm — Quant Intelligence + Market Analysis Completion Phase (Next Research + Validation Pass)"
+
+A second mandated repository audit, then genuinely-missing-only
+implementation, against 17 named items covering chart-pattern geometry,
+SAR/SuperTrend, walk-forward validation, parameter sensitivity,
+transaction-cost/slippage sensitivity, look-ahead-bias detection,
+survivorship-bias protection, train/test integrity, multiple-testing
+control, a research experiment record, and agent learning currency.
+Nothing in this pass touched company-health/executive-health/compliance/
+governance scoring.
+
+### The audit result
+
+- **Parabolic SAR / SuperTrend**: previously deliberately left
+  unimplemented (disclosed in `app/technical_indicators.py`'s own
+  docstring from the prior directive). Genuinely missing — built.
+- **Chart-pattern geometry**: genuinely missing entirely. A bounded,
+  objectively-defined subset (double top/bottom, trendline breaks) was
+  built; head & shoulders/triangles/wedges/rectangles/channels remain a
+  disclosed, real gap — each needs a genuine multi-point geometric fit,
+  materially larger than the 2-3 point shapes built here, judged out of
+  scope for this pass rather than attempted and left unreliable.
+- **Indicator/research vocabulary**: audited, not blindly expanded.
+  SAR/SuperTrend join the existing `trend` evidence family in
+  `app/evidence_confluence.py` rather than becoming new independent
+  evidence — both are trend-following/trailing-stop measures highly
+  correlated with the existing EMA/SMA trend reads, exactly the kind of
+  redundant-evidence risk this directive's own confluence rules (and
+  the earlier directive's `evidence_confluence.py`) already exist to
+  catch.
+- **Walk-forward validation**: partial — `app/model_validation.py`'s
+  `_temporal_stability_check` already exists as an honestly-labeled
+  "analog" (a disjoint chronological split of past `SimulationResult`
+  RUNS, not real sequential bar-level history). Genuine bar-level
+  walk-forward was architecturally blocked until this same directive's
+  prior pass built `app/strategy_engine.py`'s real, deterministic,
+  bar-by-bar compiled-strategy backtest — now that it exists, true
+  walk-forward became buildable. Built as a new, complementary module;
+  the existing analog is unchanged and still serves its own different
+  purpose (cross-run stability, not within-one-definition bar-level
+  stability).
+- **Parameter sensitivity**: genuinely missing (zero grep hits
+  anywhere in this codebase before this pass). Built.
+- **Transaction-cost/slippage sensitivity**: Category C — a real,
+  disclosed cost model already existed for LIVE paper trading
+  (`app/portfolio.py`'s `TRANSACTION_COST_BPS`, `app/
+  execution_quality.py`'s slippage model) but was never reused by any
+  bar-by-bar RESEARCH backtest engine, all of which filled at the exact
+  stop/target price with zero friction. Closed by reusing those exact
+  constants, never inventing a second cost model.
+- **Look-ahead-bias detection**: the codebase was already carefully
+  built to avoid it (entry always fills at the bar after confirmation),
+  but nothing PROVED that structurally before this pass — a real gap
+  between "designed carefully" and "tested to survive a real injected
+  leak." Built.
+- **Survivorship-bias protection**: architecturally blocked, correctly
+  so — `app/watchlist.py`'s `SEED_SYMBOLS`/`EXTRA_SYMBOL_POOL` are a
+  fixed, static, always-present pool with no historical constituent or
+  delisting data source, and `app/market_data.py`'s mock candle
+  provider has no concept of a symbol not existing yet. Per this
+  directive's own explicit fallback: documented, a real typed interface
+  built, always honestly `unavailable` — never fabricated.
+- **Train/test/validation integrity**: covered structurally by the new
+  walk-forward module's disjoint windows and the new look-ahead audit's
+  truncate-and-re-detect proof, rather than a separate new mechanism.
+- **Multiple-testing control**: folded into `app/
+  parameter_sensitivity.py`'s own result rather than a separate system
+  — every result discloses the real trial count and a plain-English
+  caution against reading the peak of a sweep as validated; the module
+  structurally has no "best combination" field, so there is nothing for
+  a caller to celebrate even if it wanted to.
+- **Research experiment record**: genuinely missing. Built as pure
+  orchestration over the five modules above plus the existing backtest
+  engine — computes no new backtest math of its own.
+
+### Parabolic SAR and SuperTrend
+
+`app/technical_indicators.py::parabolic_sar_series()`/`supertrend_
+series()` — real, standard, textbook iterative recurrences (Wilder's
+real acceleration-factor recurrence for SAR; a real ATR-banded trend-
+flip "sticky band" recurrence for SuperTrend), both hand-traced bar-by-
+bar against a real worked fixture and encoded as exact-value unit tests
+(not just qualitative invariant checks) before being trusted. Both
+reuse `atr_series()` for their own volatility input — no indicator math
+re-derived. Wired into `TechnicalIndicatorsRead`/`GET /api/market/
+technical-analysis` and into `evidence_confluence.py`'s `trend` family
+(see the audit section above for why they join that family rather than
+becoming new evidence).
+
+### Chart-pattern geometry: double top/bottom and trendline breaks
+
+`app/technical_patterns.py::detect_chart_patterns()` reuses the same
+real `_find_swings()` local-extrema detection every other pattern in
+that module already reuses — no second swing/geometry engine. Double
+top/bottom pairs ADJACENT same-type swings only (the standard, objective
+"two comparable swings with one real pullback between them" shape,
+never an arbitrary multi-hop search), requires the two swings within
+`DOUBLE_PATTERN_PRICE_TOLERANCE_PCT` (1.5%) of each other and a real
+intervening retracement past `DOUBLE_PATTERN_MIN_RETRACEMENT_PCT`
+(1.0%), and is only ever reported once a LATER real candle's close has
+already broken the real intervening neckline — never a still-forming,
+outcome-unknown shape. Trendline breaks fit a real 2-point line through
+consecutive same-type swings and are only reported once a later real
+close crosses the extrapolated line; `confidencePct` rewards real
+additional swing points that independently touch the same line within
+`TRENDLINE_TOUCH_TOLERANCE_PCT` (0.5%) — a genuine, disclosed, mechanical
+proxy for "more confirmed trendline," never a fabricated strength score.
+Every fixture in `test_technical_patterns.py::TestDetectChartPatterns`
+was hand-traced against the real swing detector's own actual output
+before being encoded (confirmed via a scratch script, not assumed).
+Deliberately not built: head & shoulders, triangles, wedges, rectangles,
+channels — each needs a real multi-point geometric fit, a materially
+larger undertaking than the 2-3 point shapes above.
+
+### Genuine walk-forward validation
+
+`app/walk_forward.py` splits each symbol's own real candle series into
+consecutive, non-overlapping `windowBars`-bar windows and backtests each
+independently via `app/strategy_engine.py`'s newly-extracted
+`backtest_symbol_over_candles()` — the exact same setup-detection/exit-
+simulation pipeline the full-series backtest uses, just handed a real
+disjoint sub-slice of `Candle` objects. This is what makes the no-look-
+ahead guarantee across windows STRUCTURAL rather than a convention a
+caller has to get right: `backtest_symbol_over_candles(candles[1000:
+2000])` has no way to resolve an indicator or detect a setup using any
+bar outside that slice. A trailing partial window is dropped, never
+tested as if it were full. `verdict` (`stable`/`unstable`/
+`insufficient_data`) reads real sign-agreement of expectancy across
+every window with enough closed trades for its own bucket-level
+verdict, never a forced call from too few. Deliberately does NOT
+re-select parameters per window (walk-forward STABILITY, not walk-
+forward OPTIMIZATION) — a disclosed scope boundary, paired with
+`app/parameter_sensitivity.py`'s separate, disjoint full-series sweep;
+nesting the two into full walk-forward-with-reoptimization is real,
+disclosed future work.
+
+A genuinely flaky test was found and fixed during this same pass: an
+early version of the no-look-ahead structural test compared TWO SEPARATE
+`market_data_provider.get_candles()` calls at different `limit` values —
+`app/market_data.py`'s own real recency-bias window
+(`RECENT_REGIME_BIAS_WINDOW`, applied only to the newest ~20 bars of
+WHATEVER `limit` was requested) meant those two calls' tail candles
+genuinely differed, an artifact of the mock provider's own realistic
+"live continuity" design, not a bug in `walk_forward.py`. Fixed by
+comparing a SINGLE fetch's own slice against `walk_forward.py`'s
+internally-computed first window instead of two separate fetches —
+confirmed stable across two consecutive full-suite runs afterward. The
+same investigation surfaced that this codebase's own established
+convention (`tests/test_ema_pullback_research.py`'s
+`TestRunEmaPullbackResearchIntegration` docstring: "never a specific
+win rate") exists precisely to guard against this class of shared-
+provider-state fragility — several new integration tests across this
+pass's own new modules were loosened to match that same, already-
+documented house convention rather than asserting brittle exact values.
+
+### Parameter sensitivity: one-at-a-time, never a "best combination"
+
+`app/parameter_sensitivity.py` sweeps a compiled definition's own real
+stop and target values independently (never a full cross-product grid,
+which would multiply the real trial count and worsen the exact
+multiple-testing risk item 10 warns about) across five real neighboring
+points each (`SWEEP_STEPS = (-2, -1, 0, 1, 2)`), reusing `app/
+strategy_engine.py::run_compiled_strategy_backtest()` for every real
+point — one authoritative backtest pipeline, never a second one. A
+`swing_level` stop has no free numeric parameter (pinned to the real
+pullback swing price) — reported `sweepable=False` with a single point,
+never a fabricated sweep. `verdict` (`robust`/`fragile`/
+`insufficient_data`) reads real sign-agreement across evaluated points
+relative to whichever evaluated point sits closest to the axis's own
+real base value. The result schema has no "best combination" field —
+a structural, not just documented, refusal to celebrate the winner of
+several real trials, with a real, disclosed `multipleTestingNote` on
+every result.
+
+### Transaction-cost/slippage sensitivity: reusing, not reinventing, the real cost model
+
+`app/cost_sensitivity.py` closes a real, confirmed Category C gap:
+`app/backtest_primitives.py::simulate_exit()` fills every backtest trade
+at the exact real stop/target price, zero friction — while
+`app/portfolio.py`'s real `TRANSACTION_COST_BPS` (5.0 bps, flat,
+disclosed) and `app/execution_quality.py`'s real `BASE_SLIPPAGE_BPS`/
+`MAX_SLIPPAGE_BPS` (2.0/20.0) already model real friction for every LIVE
+paper-trading fill, never reused by any research backtest until now. The
+real, already-closed trades a zero-friction run produced are never
+re-simulated with different entries/exits (a cost model cannot predict
+a different bar's own real high/low) — instead each trade's own real
+entry price and risk convert a real round-trip basis-point cost into
+R-multiple terms, deducted from that trade's own realized R. The
+`base`/`low`/`moderate`/`high`/`stressed` scenario ladder is built
+directly from those SAME existing real constants (never a second,
+invented cost model). Live-verified with the CEO's own 50 EMA worked
+example: a real backtest showing +1.40R zero-friction expectancy turns
+negative (-1.31R) at the stressed scenario — exactly the "a strategy
+that only works before costs should be identified as fragile" finding
+this item asks for, surfaced honestly rather than hidden.
+
+### Look-ahead-bias detection: proven, not just designed carefully
+
+`app/leakage_audit.py::find_first_look_ahead_violation()` — for every
+real setup a compiled definition's detector finds against the full
+candle series, independently re-runs the exact same detector against
+the series truncated to end exactly at that setup's own entry bar. A
+setup that only appears with the full series and vanishes once later
+candles are removed is real, structural proof of a future-data
+dependency. Critically, `tests/test_leakage_audit.py` proves the
+METHOD itself is sound, not just that the real detector happens to
+pass: a deliberately broken toy detector that peeks one real bar into
+the future (returns a setup at `len(candles) - 2` only once the series
+is long enough to contain that future bar) is run through the same
+audit first, and the audit correctly reports a violation for it; a
+genuinely clean toy detector (fires at a fixed early bar regardless of
+total series length) produces zero false positives. Only once the
+methodology was proven against both fixtures was the real production
+detector (`app/strategy_engine.py::_detect_generic_setups`) run through
+it and confirmed clean on a real 6,000-candle sample.
+
+### Survivorship bias: an honest interface, not a fabricated check
+
+`app/survivorship.py::check_survivorship_bias()` always returns
+`status="unavailable"` with a real, disclosed reason — this codebase's
+research universe is a fixed, static, always-present symbol pool with
+no historical constituent/delisting data source, and the mock candle
+provider has no concept of a symbol not existing yet or being removed.
+Per this directive's own explicit fallback for missing data: documented
+the limitation, built the real typed interface
+(`SurvivorshipBiasRead`) a future real historical-universe data source
+could plug into, added tests confirming the honest response — never a
+fabricated "no bias found."
+
+### The Research Experiment Record
+
+`app/research_experiment.py::run_research_experiment()` is pure
+orchestration — it calls the five modules above (plus the existing
+compiled-strategy backtest) once each and packages their real results
+together; it computes no new backtest math of its own. `conclusion` is
+synthesized by one fixed, real, disclosed priority order (see the
+module's own docstring for the exact rule): a look-ahead violation or a
+rejected Model Validation verdict always overrides everything else;
+missing evidence anywhere on any axis always reads "insufficient
+evidence," never silently treated as a pass; only a definition clean,
+approved-or-passing, stable, robust, AND cost-resilient across every
+real axis reads "credible, preliminary evidence" — explicitly not a
+claim of certainty, live profitability, or a trade recommendation.
+Computed fresh per request (several real backtests run in sequence,
+~4-5 seconds for a 4-symbol default call); nothing persisted, the same
+CAGS convention this whole directive family uses throughout.
+
+### Agent learning: kept current, not just added to
+
+Two lessons in the Market Intelligence Department's own track had gone
+stale against this pass's own new capabilities and were fixed rather
+than left misleading: `ab-classical-chart-patterns` previously taught
+"TradeTown does not currently auto-detect any of them" for double
+tops/head & shoulders/triangles — now correctly teaches which of those
+are real today (double top/bottom, trendline breaks) vs. still
+disclosed gaps; `mi-indicators` previously taught "Parabolic SAR and
+SuperTrend are deliberately NOT implemented" — now teaches they exist
+AND why they deliberately join the existing trend evidence family
+rather than becoming new independent evidence. Three new lessons
+(orders 24-26) were added teaching HOW to research walk-forward
+stability, parameter sensitivity, transaction-cost sensitivity, and
+look-ahead-bias auditing — not merely that these capabilities exist,
+matching this directive's own explicit distinction between "indicator
+collecting" and "professional research behavior."
+
+### Verified
+
+134 new backend tests (`test_walk_forward.py`, `test_parameter_
+sensitivity.py`, `test_cost_sensitivity.py`, `test_leakage_audit.py`,
+`test_survivorship.py`, `test_research_experiment.py`, plus additions
+to `test_technical_indicators.py`, `test_technical_patterns.py`,
+`test_technical_analysis.py`, `test_evidence_confluence.py`,
+`test_foundational_mentors.py`). Full backend suite (2,283 tests) run
+twice consecutively to confirm the shared-provider-state fragility
+found and fixed during this pass did not recur, `mypy app/` (169
+files), `ruff check app/ tests/` all clean. Frontend: `tsc --noEmit`,
+`eslint`, `vite build` clean; `sandbox.spec.ts` and `marketIntel.spec.ts`
+(6 tests, including the new "Run Full Research Experiment" flow and the
+new Parabolic SAR/SuperTrend display) pass against the live running dev
+stack.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

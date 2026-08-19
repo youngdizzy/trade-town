@@ -1504,6 +1504,93 @@ indicator outside the engine's current `price_close/open/high/low`,
 silently skipping unsupported conditions. Read-only, computed fresh every
 call; never wired into any agent or live trading decision.
 
+### `POST /api/sandbox/walk-forward-validation?candlesPerSymbol=6000&windowBars=1000`
+
+CEO directive "...Quant Intelligence + Market Analysis Completion Phase
+(Next Research + Validation Pass)," item 4. Body: a
+`CompiledStrategyDefinition`. Splits each symbol's own real candle
+series into consecutive, non-overlapping `windowBars`-bar windows and
+independently backtests the SAME fixed definition against each — a
+real, disjoint chronological walk-forward, never a claim of parameter
+re-optimization per window (see `app/walk_forward.py`'s own module
+docstring). Returns a `WalkForwardValidationResult`:
+
+```json
+{
+  "id": "walk-forward-...", "definitionId": "...", "definitionVersion": 1, "windowBars": 1000,
+  "symbols": [ { "symbol": "AAPL", "windows": [ { "windowIndex": 1, "startTimestamp": "...", "endTimestamp": "...", "bucket": {"...": "..."} } ], "positiveWindowCount": 3, "negativeWindowCount": 1, "evaluatedWindowCount": 4, "detail": "..." } ],
+  "verdict": "stable", "detail": "...", "dataHonestyNote": "...", "generatedAt": "..."
+}
+```
+
+`verdict` (`stable`/`unstable`/`insufficient_data`) reads real sign-
+agreement of expectancy across every window with enough closed trades
+for its own bucket-level verdict — `insufficient_data` below 3 such
+evaluated windows, never a forced call. Same `400` refusal conditions as
+`backtest-compiled-strategy`.
+
+### `POST /api/sandbox/parameter-sensitivity?candlesPerSymbol=6000`
+
+Same directive, item 5. Body: a `CompiledStrategyDefinition`. Sweeps the
+definition's own real stop and target values independently (one-
+parameter-at-a-time, never a full grid search) across five real
+neighboring points each. Returns a `ParameterSensitivityResult`
+(`stopAxis`/`targetAxis`, each `{ parameter, sweepable, baseValue,
+points: [{ label, value, bucket }], detail }`, plus `verdict`
+(`robust`/`fragile`/`insufficient_data`) and a `multipleTestingNote`
+disclosing the real trial count). A `swing_level` stop has no free
+numeric parameter — reported as `sweepable: false` with an empty
+`points` list, never a fabricated sweep. This schema has no "best
+combination" field by design.
+
+### `POST /api/sandbox/cost-sensitivity?candlesPerSymbol=6000`
+
+Same directive, item 6. Body: a `CompiledStrategyDefinition`. Re-uses
+the exact real, already-closed trades a zero-friction backtest produced
+and deducts a real round-trip basis-point cost from each trade's own
+realized R-multiple, across a base/low/moderate/high/stressed scenario
+ladder built from this codebase's own existing real
+`TRANSACTION_COST_BPS`/`BASE_SLIPPAGE_BPS`/`MAX_SLIPPAGE_BPS` constants
+(never a second, invented cost model). Returns a `CostSensitivityResult`
+(`scenarios: [{ label, costBpsPerLeg, bucket }]`, `verdict`
+(`cost_resilient`/`cost_sensitive`/`insufficient_data`)).
+
+### `POST /api/sandbox/look-ahead-audit?candlesPerSymbol=6000`
+
+Same directive, item 7. Body: a `CompiledStrategyDefinition`. For every
+real setup the definition's own detector finds against the full candle
+series, independently re-detects it against the series truncated to end
+exactly at that setup's own entry bar — a real, structural proof (not a
+code-review claim) that detection never depended on a future candle.
+Returns a `LookAheadAuditResult` (`setupsChecked`, `violations: [{
+entryIndex, entryTimestamp, direction, detail }]`, `verdict`
+(`clean`/`violations_found`/`insufficient_data`)).
+
+### `GET /api/sandbox/survivorship-bias?symbol=...`
+
+Same directive, item 8. Read-only. Always returns
+`{ "symbol": "...", "status": "unavailable", "detail": "..." }` — a
+real, disclosed data-availability interface, never a fabricated check.
+This codebase's research universe (`app/watchlist.py`'s `SEED_SYMBOLS`/
+`EXTRA_SYMBOL_POOL`) is a fixed, static, always-present pool with no
+historical constituent/delisting data source behind it.
+
+### `POST /api/sandbox/research-experiment?candlesPerSymbol=6000`
+
+Same directive, item 11 — the Research Desk's one reproducible
+experiment record. Body: a `CompiledStrategyDefinition`. Bundles
+real results from `backtest-compiled-strategy`,
+`walk-forward-validation`, `parameter-sensitivity`, `cost-sensitivity`,
+and `look-ahead-audit` for the SAME definition into one
+`ResearchExperimentRecord`, plus a `conclusion` string synthesized by a
+real, disclosed, deterministic rule over those five verdicts (see
+`app/research_experiment.py`'s own module docstring for the exact
+priority order — a look-ahead violation or a rejected Model Validation
+verdict always overrides everything else; any missing evidence anywhere
+reads "insufficient evidence," never a silent pass). Read-only, computed
+fresh every call (several real backtests run in sequence — budget a few
+seconds); nothing here is persisted.
+
 ### `POST /api/constitution/propose` / `advance` / `decide`
 
 v0.7 Feature 46 — the Company Constitution. All three return
@@ -1745,6 +1832,10 @@ Computed fresh per request over the same real (mock) candle series `GET
     "stochasticPercentD": 68.0,
     "atr14": 1.2,
     "vwap": 101.1,
+    "parabolicSar": 99.8,
+    "parabolicSarTrend": "up",
+    "supertrend": 100.2,
+    "supertrendTrend": "up",
     "detail": "3 of 3 headline indicators computable from 100 real candle(s) on file."
   },
   "swingStructure": { "symbol": "NEXA", "labels": ["higher_low", "higher_high"], "detail": "..." },
@@ -1752,7 +1843,8 @@ Computed fresh per request over the same real (mock) candle series `GET
   "candlestickPatterns": { "symbol": "NEXA", "patterns": [], "detail": "..." },
   "fibonacci": { "symbol": "NEXA", "swingHigh": 105.0, "swingLow": 98.0, "levels": [{"ratio": 0.618, "price": 100.7}], "detail": "..." },
   "orderBlock": { "symbol": "NEXA", "direction": "none", "priceHigh": null, "priceLow": null, "timestamp": null, "detail": "..." },
-  "supportResistance": { "symbol": "NEXA", "levels": [{"price": 99.0, "touches": 3, "role": "support"}], "detail": "..." }
+  "supportResistance": { "symbol": "NEXA", "levels": [{"price": 99.0, "touches": 3, "role": "support"}], "detail": "..." },
+  "chartPatterns": { "symbol": "NEXA", "timeframe": "1h", "patterns": [], "detail": "..." }
 }
 ```
 
@@ -1767,7 +1859,17 @@ Analysis Completion Phase," Phase B) clusters the same real swing-high/
 low series `swingStructure` already computes into price bands (≥2
 touches within 0.5% of the cluster's own running mean, capped at 8
 levels), classifying each as `support`/`resistance` against the current
-close — never a second swing detector.
+close — never a second swing detector. `parabolicSar`/`supertrend`
+(that same directive's "Next Research + Validation Pass") are real,
+deterministic, unit-tested indicator values — deliberately grouped into
+the SAME `trend` evidence family as EMA/SMA by `GET
+/api/market/evidence-confluence` below, never counted as new
+independent evidence. `chartPatterns` is real double top/bottom and
+trendline-break detection (`app/technical_patterns.py::
+detect_chart_patterns()`) — only ever populated once a real neckline/
+trendline break has already been confirmed by a later real close, never
+a still-forming shape; head & shoulders/triangles/wedges/rectangles/
+channels remain a disclosed, real gap.
 
 ### `GET /api/market/evidence-confluence?symbol=...&timeframe=1h&limit=100`
 

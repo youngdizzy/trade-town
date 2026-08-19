@@ -7,6 +7,64 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Professional Quant Trading Firm — Quant Intelligence + Market Analysis Completion Phase
+  (Next Research + Validation Pass)"** (`backend/app/technical_indicators.py`, `backend/app/technical_patterns.py`,
+  `backend/app/evidence_confluence.py`, `backend/app/strategy_engine.py`, `backend/app/walk_forward.py`,
+  `backend/app/parameter_sensitivity.py`, `backend/app/cost_sensitivity.py`, `backend/app/leakage_audit.py`,
+  `backend/app/survivorship.py`, `backend/app/research_experiment.py`, `backend/app/foundational_mentors.py`,
+  `backend/app/schemas.py`, `backend/app/routers/sandbox.py`, six new backend test files plus five modified,
+  `frontend/src/types.ts`, `frontend/src/net/api.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/MarketIntelPanel.tsx`,
+  `frontend/src/ui/components/CommandCenter/panels/sandbox/StrategyCompilerView.tsx`,
+  `frontend/tests/sandbox.spec.ts`, `frontend/tests/marketIntel.spec.ts`): a second mandated repository audit
+  against 17 named items (chart-pattern geometry, SAR/SuperTrend, walk-forward validation, parameter
+  sensitivity, transaction-cost/slippage sensitivity, look-ahead-bias detection, survivorship-bias protection,
+  train/test integrity, multiple-testing control, a research experiment record, agent learning) found: Parabolic
+  SAR/SuperTrend previously deliberately unimplemented (now built, real, hand-traced, unit-tested — both
+  deliberately join the existing `trend` evidence family in `evidence_confluence.py` rather than becoming new
+  independent evidence, since they're trend-following measures highly correlated with the existing EMA/SMA
+  reads); chart-pattern geometry entirely missing (a bounded, objectively-defined subset — double top/bottom,
+  trendline breaks — now built, confirmation-gated so a still-forming shape is never reported; head &
+  shoulders/triangles/wedges/rectangles/channels remain a disclosed, real gap needing a materially larger
+  multi-point geometric fit); genuine bar-level walk-forward validation architecturally blocked until the prior
+  pass's `strategy_engine.py` compiled-strategy backtest existed to make it buildable (now built —
+  `walk_forward.py` backtests a fixed definition against real, disjoint, non-overlapping chronological windows,
+  a structural not just claimed no-look-ahead guarantee, complementing rather than replacing
+  `model_validation.py`'s own existing whole-run-list `_temporal_stability_check` analog); parameter sensitivity
+  genuinely missing (now built — one-parameter-at-a-time real stop/target sweeps, never a full grid search,
+  with no "best combination" field by design and a disclosed multiple-testing caution on every result);
+  transaction-cost/slippage sensitivity a real, disconnected gap (live paper trading already had a real cost
+  model — `portfolio.py`'s `TRANSACTION_COST_BPS`, `execution_quality.py`'s slippage constants — never reused
+  by any bar-by-bar research backtest, all of which filled at the exact stop/target price with zero friction;
+  now closed by reusing those exact constants across a base/low/moderate/high/stressed ladder); look-ahead-bias
+  detection designed-carefully-but-never-proven (now built — a real truncate-and-re-detect audit whose own test
+  suite proves the methodology catches a deliberately-injected leak, not just that the real detector happens to
+  pass); survivorship-bias protection architecturally blocked, correctly so (this codebase's research universe
+  is a fixed, static, always-present symbol pool with no historical constituent/delisting data source — per the
+  directive's own explicit fallback, documented and built as a real, always-honest `unavailable` interface,
+  never fabricated); and a research experiment record genuinely missing (now built as pure orchestration over
+  the five modules above, synthesizing one disclosed, deterministic conclusion from their five real verdicts —
+  a look-ahead violation or rejected Model Validation always overrides everything else, missing evidence
+  anywhere always reads "insufficient evidence," never a silent pass). A genuinely flaky test was found and
+  fixed mid-pass: comparing two separate `market_data_provider.get_candles()` calls at different `limit` values
+  hit the mock provider's own real recency-bias window (applied only to the newest ~20 bars of whatever `limit`
+  was requested), a real artifact of its "live continuity" design, not a bug — fixed by comparing a single
+  fetch's own slice instead, and several new integration tests were loosened to match this codebase's own
+  already-documented house convention against asserting exact backtest values (`test_ema_pullback_research.py`'s
+  own `TestRunEmaPullbackResearchIntegration` docstring). Two Academy lessons that had gone stale against this
+  pass's own new capabilities were fixed rather than left misleading (chart patterns, SAR/SuperTrend previously
+  taught as "not implemented"); three new lessons teach agents HOW to research walk-forward stability, parameter
+  sensitivity, cost sensitivity, and look-ahead-bias auditing. Six new endpoints:
+  `POST /api/sandbox/walk-forward-validation`, `/parameter-sensitivity`, `/cost-sensitivity`,
+  `/look-ahead-audit`, `/research-experiment`, `GET /api/sandbox/survivorship-bias`. 134 new backend tests. Full
+  backend suite (2,283 tests, run twice consecutively to confirm no flakiness remained), `mypy app/` (169
+  files), `ruff check app/ tests/` all clean. **Frontend**: Parabolic SAR/SuperTrend values and a new Chart
+  Patterns section added to Market Intelligence's existing Technical Analysis block; a new "Run Full Research
+  Experiment" button in the Strategy Compiler surfacing the bundled record (conclusion banner plus dedicated
+  Walk-Forward/Parameter Sensitivity/Cost Sensitivity/Look-Ahead Audit sections). `tsc`/`eslint`/`vite build`
+  clean; live-verified end to end via Playwright, coverage folded into the existing `sandbox.spec.ts` and
+  `marketIntel.spec.ts` specs rather than left as a scratch file.
+
 - **CEO directive "Professional Trading Firm — Market-Analysis Knowledge + Session Intelligence Expansion,"
   Phase 15 — the 50 EMA breakout + pullback strategy, converted into a formal research hypothesis**
   (`backend/app/ema_pullback_research.py`, `backend/app/technical_indicators.py`, `backend/app/schemas.py`,
