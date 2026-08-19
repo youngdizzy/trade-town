@@ -11,8 +11,9 @@ import { StrategyHallOfFameView } from "./sandbox/StrategyHallOfFameView";
 import { StrategyFailedArchiveView } from "./sandbox/StrategyFailedArchiveView";
 import { StrategyExecutiveDashboardView } from "./sandbox/StrategyExecutiveDashboardView";
 import { EmaPullbackResearchView } from "./sandbox/EmaPullbackResearchView";
+import { StrategyCompilerView } from "./sandbox/StrategyCompilerView";
 
-const SUB_TABS = ["PIPELINE", "LIBRARY", "CERTIFICATION", "HEALTH", "EVOLUTION", "HALL OF FAME", "FAILED ARCHIVE", "DASHBOARD", "50 EMA RESEARCH"] as const;
+const SUB_TABS = ["PIPELINE", "LIBRARY", "CERTIFICATION", "HEALTH", "EVOLUTION", "HALL OF FAME", "FAILED ARCHIVE", "DASHBOARD", "50 EMA RESEARCH", "STRATEGY COMPILER"] as const;
 type SubTab = (typeof SUB_TABS)[number];
 
 const STRATEGY_SCOPED: ReadonlySet<SubTab> = new Set(["PIPELINE", "CERTIFICATION", "HEALTH", "EVOLUTION"]);
@@ -40,9 +41,14 @@ const STRATEGY_SCOPED: ReadonlySet<SubTab> = new Set(["PIPELINE", "CERTIFICATION
  * 50 EMA breakout + pullback strategy against real (mock) candle
  * history, kept explicitly separate from the CEO-supplied source
  * material's own claimed win rate — see
- * backend/app/ema_pullback_research.py). See docs/Architecture.md's
- * Feature 52 sections for the full honesty boundary each sub-view
- * observes.
+ * backend/app/ema_pullback_research.py), and STRATEGY COMPILER (CEO
+ * directive "Professional Quant Trading Firm — Quant Intelligence +
+ * Market Analysis Completion Phase," Phase F — a real, deterministic
+ * English-language strategy compiler and generic backtest engine, never
+ * an LLM guess; ambiguous phrasing is refused, not silently converted
+ * into an invented threshold — see backend/app/strategy_compiler.py /
+ * backend/app/strategy_engine.py). See docs/Architecture.md's Feature
+ * 52 sections for the full honesty boundary each sub-view observes.
  */
 export function SandboxPanel() {
   const {
@@ -90,6 +96,7 @@ export function SandboxPanel() {
       {subTab === "FAILED ARCHIVE" && <StrategyFailedArchiveView entries={strategyFailedArchive} />}
       {subTab === "DASHBOARD" && <StrategyExecutiveDashboardView />}
       {subTab === "50 EMA RESEARCH" && <EmaPullbackResearchView />}
+      {subTab === "STRATEGY COMPILER" && <StrategyCompilerView />}
 
       {STRATEGY_SCOPED.has(subTab) && (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">

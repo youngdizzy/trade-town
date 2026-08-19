@@ -26,7 +26,7 @@ function BucketRow({ bucket }: { bucket: EmaPullbackStatsBucket }) {
   );
 }
 
-function BucketGroup({ title, buckets }: { title: string; buckets: EmaPullbackStatsBucket[] }) {
+export function BucketGroup({ title, buckets }: { title: string; buckets: EmaPullbackStatsBucket[] }) {
   if (buckets.length === 0) return null;
   return (
     <Glass className="p-3">

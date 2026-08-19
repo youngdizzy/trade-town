@@ -1,5 +1,5 @@
 import { test, expect } from "@playwright/test";
-import { clickButton, clickExpand, clickTab, continueGame } from "./helpers";
+import { clickButton, clickExpand, clickRobust, clickTab, continueGame } from "./helpers";
 
 /**
  * v0.7 Feature 51 — Market Intelligence Department. Same real-app
@@ -65,6 +65,40 @@ test("the Market Intelligence tab opens from the Command Center and shows the re
   await expect(
     page.getByText(/No prior brief has been graded against a real outcome yet/).or(page.getByText(/predicted/)).first(),
   ).toBeVisible();
+
+  const relevantErrors = consoleErrors.filter((e) => !e.includes("favicon") && !e.includes("Failed to process file"));
+  expect(relevantErrors).toEqual([]);
+});
+
+/**
+ * CEO directive "Professional Quant Trading Firm — Quant Intelligence +
+ * Market Analysis Completion Phase," Phases B/D — real support/resistance
+ * clustering (backend/app/technical_patterns.py) and the evidence-family
+ * confluence engine (backend/app/evidence_confluence.py), surfaced inside
+ * the existing Technical Analysis section once a real symbol is selected.
+ */
+test("Technical Analysis shows Evidence Confluence for a selected symbol", async ({ page }) => {
+  const consoleErrors: string[] = [];
+  page.on("console", (msg) => {
+    if (msg.type() === "error") consoleErrors.push(msg.text());
+  });
+  page.on("pageerror", (e) => consoleErrors.push(String(e)));
+
+  await page.goto("/");
+  await continueGame(page);
+
+  await clickButton(page, "Command ⌁");
+  await clickExpand(page);
+  await clickTab(page, "MARKETINTEL");
+
+  await expect(page.getByText("Technical Analysis — Real Indicators & Patterns")).toBeVisible();
+  await expect(page.getByText("Select a symbol above for its real indicator/pattern read.")).toBeVisible();
+
+  await clickRobust(page, () => page.getByRole("button", { name: "AAPL", exact: true }), { label: "AAPL symbol chip" });
+  await expect(page.getByText("Evidence Confluence — AAPL")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Raw Signal Count", { exact: true })).toBeVisible();
+  await expect(page.getByText("Independent Families", { exact: true })).toBeVisible();
+  await expect(page.getByText("Majority Direction", { exact: true })).toBeVisible();
 
   const relevantErrors = consoleErrors.filter((e) => !e.includes("favicon") && !e.includes("Failed to process file"));
   expect(relevantErrors).toEqual([]);

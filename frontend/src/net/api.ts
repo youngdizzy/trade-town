@@ -20,6 +20,8 @@ import type {
   ChallengeReport,
   CeoOverrideEvaluation,
   CeoOverrideGovernanceSummary,
+  CompiledStrategyBacktestResult,
+  CompiledStrategyDefinition,
   ContinuousImprovementSummary,
   ControlEffectivenessSummary,
   ClientSaveSnapshot,
@@ -32,6 +34,7 @@ import type {
   EducationLesson,
   EducationProgress,
   EmaPullbackResearchResult,
+  EvidenceConfluenceRead,
   ExitEfficiencySummary,
   EmergencyStopState,
   EvaluationPolicyComparisonReport,
@@ -182,6 +185,13 @@ export const api = {
   getSessionRange: (symbol: string, session: TradingSession, timeframe = "1h", limit = 100) =>
     request<SessionRangeRead>(
       `/market/session-range?symbol=${encodeURIComponent(symbol)}&session=${encodeURIComponent(session)}&timeframe=${encodeURIComponent(timeframe)}&limit=${limit}`
+    ),
+  // CEO directive "Professional Quant Trading Firm — Quant Intelligence
+  // + Market Analysis Completion Phase," Phase D. Read-only, computed
+  // fresh per request — see backend/app/evidence_confluence.py.
+  getEvidenceConfluence: (symbol: string, timeframe = "1h", limit = 100) =>
+    request<EvidenceConfluenceRead>(
+      `/market/evidence-confluence?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&limit=${limit}`
     ),
   spendEnergy: (action: string, researchId?: string) =>
     request<{ agentEnergy: AgentEnergy }>("/energy/spend", {
@@ -694,6 +704,20 @@ export const api = {
   // fresh every call — see backend/app/ema_pullback_research.py.
   getEmaPullbackResearch: (candlesPerSymbol?: number) =>
     request<EmaPullbackResearchResult>(`/sandbox/ema-pullback-research${candlesPerSymbol ? `?candlesPerSymbol=${candlesPerSymbol}` : ""}`),
+  // CEO directive "Professional Quant Trading Firm — Quant Intelligence
+  // + Market Analysis Completion Phase," Phase F. Stateless — computed
+  // fresh every call, nothing persisted — see
+  // backend/app/strategy_compiler.py / backend/app/strategy_engine.py.
+  compileStrategy: (name: string, sourceText: string, timeframe = "1h") =>
+    request<CompiledStrategyDefinition>("/sandbox/compile-strategy", {
+      method: "POST",
+      body: JSON.stringify({ name, sourceText, timeframe }),
+    }),
+  backtestCompiledStrategy: (definition: CompiledStrategyDefinition, candlesPerSymbol?: number) =>
+    request<CompiledStrategyBacktestResult>(`/sandbox/backtest-compiled-strategy${candlesPerSymbol ? `?candlesPerSymbol=${candlesPerSymbol}` : ""}`, {
+      method: "POST",
+      body: JSON.stringify(definition),
+    }),
   // v0.7 Feature 53 — Company Certification. Read-only, computed fresh
   // every call — `certified` is always a live read of current real
   // state (see StrategyCertification's own docstring in types.ts).

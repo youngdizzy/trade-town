@@ -1199,6 +1199,97 @@ export interface EmaPullbackResearchResult {
   generatedAt: string;
 }
 
+// CEO directive "Professional Quant Trading Firm — Quant Intelligence +
+// Market Analysis Completion Phase," Phase F — the English-language
+// strategy compiler + generic backtest engine. See
+// backend/app/strategy_compiler.py / backend/app/strategy_engine.py.
+export type StrategyIndicatorName = "price_close" | "price_open" | "price_high" | "price_low" | "sma" | "ema" | "rsi" | "macd_line" | "macd_signal" | "macd_histogram" | "stochastic_percent_k" | "stochastic_percent_d" | "atr" | "vwap";
+
+export interface StrategyIndicatorRef {
+  indicator: StrategyIndicatorName;
+  period: number | null;
+}
+
+export type StrategyConditionOperator = "gt" | "gte" | "lt" | "lte" | "eq" | "crosses_above" | "crosses_below";
+
+export interface StrategyCondition {
+  id: string;
+  left: StrategyIndicatorRef;
+  operator: StrategyConditionOperator;
+  rightIndicator: StrategyIndicatorRef | null;
+  rightValue: number | null;
+  detail: string;
+}
+
+export type StrategySequenceStepType = "initial_state" | "trigger" | "requirement" | "entry";
+export type CandleDirection = "bullish" | "bearish";
+
+export interface StrategySequenceStep {
+  id: string;
+  stepType: StrategySequenceStepType;
+  condition: StrategyCondition | null;
+  minConsecutiveBars: number | null;
+  candleDirection: CandleDirection | null;
+  detail: string;
+}
+
+export type StrategyStopMethod = "chandelier" | "swing_level" | "fixed_percent";
+
+export interface StrategyStopSpec {
+  method: StrategyStopMethod;
+  atrPeriod: number | null;
+  atrMultiplier: number | null;
+  percent: number | null;
+}
+
+export type StrategyTargetMethod = "r_multiple" | "fixed_percent";
+
+export interface StrategyTargetSpec {
+  method: StrategyTargetMethod;
+  value: number;
+}
+
+export interface StrategyAmbiguity {
+  phrase: string;
+  context: string;
+  reason: string;
+  suggestedResolution: string | null;
+}
+
+export type CompiledStrategyStatus = "compiled" | "ambiguous" | "invalid";
+
+export interface CompiledStrategyDefinition {
+  id: string;
+  name: string;
+  sourceText: string;
+  version: number;
+  createdBy: AgentId;
+  createdAt: string;
+  timeframe: string;
+  sequence: StrategySequenceStep[];
+  stop: StrategyStopSpec | null;
+  target: StrategyTargetSpec | null;
+  ambiguities: StrategyAmbiguity[];
+  status: CompiledStrategyStatus;
+  detail: string;
+}
+
+export interface CompiledStrategyBacktestResult {
+  id: string;
+  definitionId: string;
+  definitionVersion: number;
+  symbolsTested: string[];
+  timeframe: string;
+  candlesPerSymbol: number;
+  overall: EmaPullbackStatsBucket;
+  sessionBreakdown: EmaPullbackStatsBucket[];
+  instrumentBreakdown: EmaPullbackStatsBucket[];
+  modelValidation: ModelValidationReport | null;
+  monteCarlo: StrategyMonteCarloResult | null;
+  dataHonestyNote: string;
+  generatedAt: string;
+}
+
 // Deliberately distinct from the trade-scoped ExecutiveAction —
 // strategy-lifecycle semantics differ from single-trade semantics.
 export type StrategyExecutiveAction = "advance" | "request_more_evidence" | "hold_for_improvement" | "reject";
@@ -1981,6 +2072,38 @@ export interface ConfluenceRead {
   detail: string;
 }
 
+// CEO directive "Professional Quant Trading Firm — Quant Intelligence +
+// Market Analysis Completion Phase," Phase D — the evidence-family
+// confluence layer over raw indicator/pattern signals. Distinct from
+// ConfluenceRead above (analyst votes). See
+// backend/app/evidence_confluence.py.
+export type EvidenceFamily = "trend" | "momentum" | "volume" | "liquidity" | "price_structure" | "pattern" | "levels";
+export type EvidenceDirection = "bullish" | "bearish" | "neutral";
+
+export interface EvidenceSignal {
+  name: string;
+  family: EvidenceFamily;
+  direction: EvidenceDirection;
+  detail: string;
+}
+
+export interface EvidenceFamilyRead {
+  family: EvidenceFamily;
+  signals: EvidenceSignal[];
+  netDirection: EvidenceDirection;
+  detail: string;
+}
+
+export interface EvidenceConfluenceRead {
+  symbol: string;
+  families: EvidenceFamilyRead[];
+  rawSignalCount: number;
+  independentFamilyCount: number;
+  majorityDirection: EvidenceDirection;
+  agreeingFamilies: EvidenceFamily[];
+  detail: string;
+}
+
 // Same directive, Phases 1-3 — real technical indicator/pattern reads.
 // Every nullable field is `null` (never fabricated) below that
 // concept's own real minimum bar count — see
@@ -2066,6 +2189,24 @@ export interface TechnicalAnalysisRead {
   candlestickPatterns: CandlestickPatternRead;
   fibonacci: FibonacciRead;
   orderBlock: OrderBlockRead;
+  supportResistance: SupportResistanceRead;
+}
+
+// CEO directive "Professional Quant Trading Firm — Quant Intelligence +
+// Market Analysis Completion Phase," Phase B — real, static support/
+// resistance levels. See backend/app/technical_patterns.py::
+// detect_support_resistance_levels().
+export interface SupportResistanceLevel {
+  price: number;
+  touches: number;
+  role: "support" | "resistance";
+  detail: string;
+}
+
+export interface SupportResistanceRead {
+  symbol: string;
+  levels: SupportResistanceLevel[];
+  detail: string;
 }
 
 export interface SessionRangeRead {

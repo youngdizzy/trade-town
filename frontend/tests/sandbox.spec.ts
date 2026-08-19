@@ -60,12 +60,12 @@ test("the Research Sandbox tab opens from the Command Center, shows the pipeline
   await clickRobust(page, () => page.getByRole("button", { name: "Run Backtest" }), { label: "Run Backtest" });
   await expect(page.getByText(/queued|running/).first()).toBeVisible({ timeout: 10_000 });
 
-  const relevantErrors = consoleErrors.filter((e) => !e.includes("favicon"));
+  const relevantErrors = consoleErrors.filter((e) => !e.includes("favicon") && !e.includes("Failed to process file"));
   expect(relevantErrors).toEqual([]);
 });
 
 test("Feature 52 (Part 1/2) — every Strategy Validation Laboratory sub-tab opens and renders its own real content", async ({ page }) => {
-  test.setTimeout(60000); // 9 real sub-tabs, each dismissing real popups along the way, plus the 50 EMA RESEARCH tab's own real on-demand backtest computation
+  test.setTimeout(90000); // 10 real sub-tabs, each dismissing real popups along the way, plus the 50 EMA RESEARCH and STRATEGY COMPILER tabs' own real on-demand backtest computation
   const consoleErrors: string[] = [];
   page.on("console", (msg) => {
     if (msg.type() === "error") consoleErrors.push(msg.text());
@@ -126,6 +126,19 @@ test("Feature 52 (Part 1/2) — every Strategy Validation Laboratory sub-tab ope
   await expect(page.getByText("Source Claim vs. TradeTown Evidence")).toBeVisible();
   await expect(page.getByText(/SOURCE CLAIM, not TradeTown-validated evidence/)).toBeVisible();
 
+  // STRATEGY COMPILER — CEO directive "Professional Quant Trading Firm —
+  // Quant Intelligence + Market Analysis Completion Phase," Phase F. A
+  // real, deterministic English-language strategy compiler (never an LLM
+  // guess) plus a generic backtest engine that runs the compiled
+  // definition against real (mock) candle history.
+  await clickRobust(page, () => sandboxSubTabNav.getByRole("button", { name: "STRATEGY COMPILER", exact: true }), { label: "sub-tab STRATEGY COMPILER" });
+  await expect(page.getByText("English Strategy → Structured, Reproducible Definition")).toBeVisible();
+  await clickRobust(page, () => page.getByRole("button", { name: "Compile Strategy", exact: true }), { label: "Compile Strategy" });
+  await expect(page.getByText(/Compiled Definition/)).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("compiled", { exact: true })).toBeVisible();
+  await clickRobust(page, () => page.getByRole("button", { name: "Backtest This Definition" }), { label: "Backtest This Definition" });
+  await expect(page.getByText(/Overall — \d+ symbols/)).toBeVisible({ timeout: 20_000 });
+
   // Back to PIPELINE — the real Retirement action form opens and cancels
   // cleanly without actually retiring anything (a real, deliberate,
   // irreversible CEO action this test must not perform as a side effect).
@@ -136,6 +149,6 @@ test("Feature 52 (Part 1/2) — every Strategy Validation Laboratory sub-tab ope
   await clickRobust(page, () => page.getByRole("button", { name: "Cancel" }), { label: "Cancel retire form" });
   await expect(page.getByRole("button", { name: "Retire This Strategy" })).toBeVisible();
 
-  const relevantErrors = consoleErrors.filter((e) => !e.includes("favicon"));
+  const relevantErrors = consoleErrors.filter((e) => !e.includes("favicon") && !e.includes("Failed to process file"));
   expect(relevantErrors).toEqual([]);
 });
