@@ -1,9 +1,30 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
+import { api } from "@/net/api";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
-import type { CaseStudy, CaseStudyCategory, DisciplineReview, DisciplineTier, FailureClassification, FailureReason } from "@/types";
+import type { CaseStudy, CaseStudyCategory, DisciplineReview, DisciplineTier, ExitEfficiencyState, ExitEfficiencySummary, FailureClassification, FailureReason, TradeExitEfficiency } from "@/types";
 import { SUCCESS_CASE_STUDY_CATEGORIES } from "@/types";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
+
+function exitEfficiencyTone(state: ExitEfficiencyState): "green" | "red" | "amber" | "cyan" {
+  switch (state) {
+    case "efficient_exit":
+      return "green";
+    case "poor_exit":
+      return "red";
+    case "average_exit":
+      return "amber";
+    case "not_enough_data":
+      return "cyan";
+  }
+}
+
+const EXIT_EFFICIENCY_LABEL: Record<ExitEfficiencyState, string> = {
+  efficient_exit: "Efficient Exit",
+  average_exit: "Average Exit",
+  poor_exit: "Poor Exit",
+  not_enough_data: "Not Enough Data",
+};
 
 const TIER_TONE: Record<DisciplineTier, "green" | "cyan" | "amber" | "red"> = {
   exemplary: "green",
@@ -95,6 +116,16 @@ export function DisciplinePanel() {
     for (const f of failureClassifications) counts.set(f.reason, (counts.get(f.reason) ?? 0) + 1);
     return counts;
   }, [failureClassifications]);
+
+  // CEO directive "Professional Trading Firm Transformation" — real,
+  // on-demand Exit Efficiency (backend/app/exit_efficiency.py), no WS-
+  // broadcast field backs it, the same on-demand pattern this Command
+  // Center already uses elsewhere.
+  const [exitEfficiency, setExitEfficiency] = useState<ExitEfficiencySummary | null>(null);
+  useEffect(() => {
+    api.getExitEfficiency().then(setExitEfficiency).catch(() => undefined);
+  }, []);
+  const recentExitReads = useMemo(() => (exitEfficiency ? [...exitEfficiency.reads].reverse() : []), [exitEfficiency]);
 
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -201,6 +232,56 @@ export function DisciplinePanel() {
           </>
         )}
       </Glass>
+
+      <Glass className="max-h-96 overflow-y-auto p-3 lg:col-span-2">
+        <div className="mb-1.5 flex items-center justify-between">
+          <TerminalLabel>Exit Efficiency</TerminalLabel>
+          <span className="text-[9px] text-cmd-textDim">
+            Where a trade closed within its own real observed range — never how the decision was made, never why the thesis failed
+          </span>
+        </div>
+        {exitEfficiency === null ? (
+          <EmptyState>Loading…</EmptyState>
+        ) : exitEfficiency.reads.length === 0 ? (
+          <EmptyState>No trade has closed yet.</EmptyState>
+        ) : (
+          <>
+            <div className="mb-2 grid grid-cols-2 gap-x-4 gap-y-1 rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2 sm:grid-cols-5">
+              <DataRow
+                label="Avg Capture"
+                value={exitEfficiency.avgCapturePct === null ? "NOT ENOUGH DATA" : `${exitEfficiency.avgCapturePct.toFixed(0)}%`}
+                valueClassName={exitEfficiency.avgCapturePct === null ? "text-cmd-textDim" : "text-cmd-text"}
+              />
+              <DataRow label="Efficient" value={exitEfficiency.efficientExitCount} valueClassName="text-cmd-green" />
+              <DataRow label="Average" value={exitEfficiency.averageExitCount} />
+              <DataRow label="Poor" value={exitEfficiency.poorExitCount} valueClassName={exitEfficiency.poorExitCount > 0 ? "text-cmd-red" : "text-cmd-text"} />
+              <DataRow label="Not Enough Data" value={exitEfficiency.notEnoughDataCount} />
+            </div>
+            <div className="space-y-1">
+              {recentExitReads.map((read) => (
+                <ExitEfficiencyRow key={read.tradeId} read={read} />
+              ))}
+            </div>
+          </>
+        )}
+      </Glass>
+    </div>
+  );
+}
+
+function ExitEfficiencyRow({ read }: { read: TradeExitEfficiency }) {
+  return (
+    <div className="flex items-center gap-2 rounded-sm border border-cmd-border/40 bg-cmd-bg/30 px-2 py-1 text-[9px]">
+      <StatusPill tone={exitEfficiencyTone(read.evidenceState)}>{EXIT_EFFICIENCY_LABEL[read.evidenceState]}</StatusPill>
+      <span className="font-cmdmono text-cmd-cyan">{read.symbol}</span>
+      <span className="text-cmd-textDim">Day {read.simDay}</span>
+      <span className={read.pnlPct >= 0 ? "text-cmd-green" : "text-cmd-red"}>
+        {read.pnlPct >= 0 ? "+" : ""}
+        {read.pnlPct.toFixed(2)}%
+      </span>
+      <span className="ml-auto text-cmd-textDim">
+        range {read.maePct.toFixed(1)}% → {read.mfePct.toFixed(1)}%{read.capturePct !== null && ` — ${read.capturePct.toFixed(0)}% captured`}
+      </span>
     </div>
   );
 }

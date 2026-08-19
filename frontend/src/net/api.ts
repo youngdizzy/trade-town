@@ -30,6 +30,7 @@ import type {
   DefensiveModeState,
   EducationLesson,
   EducationProgress,
+  ExitEfficiencySummary,
   EmergencyStopState,
   EvaluationPolicyComparisonReport,
   ExecutiveAccuracyScore,
@@ -193,6 +194,9 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ tradeId }),
     }),
+  // CEO directive "Professional Trading Firm Transformation" — Post-
+  // Trade Review, Exit Efficiency. Read-only, computed fresh per request.
+  getExitEfficiency: () => request<ExitEfficiencySummary>("/trades/exit-efficiency"),
   submitCeoDecision: (proposalId: string, choice: AnalystChoice, delegated = false, overrideReason?: string) =>
     request<{
       tradeProposals: TradeProposal[];

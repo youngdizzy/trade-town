@@ -499,6 +499,36 @@ export interface PaperTrade {
   mfePct: number;
 }
 
+// CEO directive "Professional Trading Firm Transformation" — Post-Trade
+// Review, Exit Efficiency (see backend/app/exit_efficiency.py). A real,
+// continuous read of where a trade closed within its OWN observed
+// high/low range — 100 means it closed at the best point ever reached,
+// 0 means the worst. Distinct from and never touching the Discipline
+// Chamber's outcome-blind process score or the Failure Review Board's
+// WHY-the-thesis-failed classification above.
+export type ExitEfficiencyState = "efficient_exit" | "average_exit" | "poor_exit" | "not_enough_data";
+
+export interface TradeExitEfficiency {
+  tradeId: string;
+  symbol: string;
+  pnlPct: number;
+  maePct: number;
+  mfePct: number;
+  capturePct: number | null;
+  evidenceState: ExitEfficiencyState;
+  simDay: number;
+}
+
+export interface ExitEfficiencySummary {
+  reads: TradeExitEfficiency[];
+  avgCapturePct: number | null;
+  efficientExitCount: number;
+  averageExitCount: number;
+  poorExitCount: number;
+  notEnoughDataCount: number;
+  updatedAt: string;
+}
+
 /** The company's one simulated trading account — entirely fictional. */
 export interface PaperPortfolio {
   cashBalance: number;
