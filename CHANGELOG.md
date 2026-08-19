@@ -57,7 +57,19 @@ development milestones, not semver releases.
   Invalidation A, the Chandelier Stop formula, all four exit-simulation outcomes including the conservative
   same-bar-gap convention, and bucket-aggregation math) plus 4 new `atr_series()` tests and 3 integration
   tests against the real market data provider. Full backend suite, `mypy app/` (159 files)/`ruff check app/
-  tests/` all clean. See `docs/Architecture.md` for the full rule-by-rule detail.
+  tests/` all clean. See `docs/Architecture.md` for the full rule-by-rule detail. **Frontend**
+  (`frontend/src/types.ts`, `frontend/src/net/api.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/SandboxPanel.tsx`,
+  `frontend/src/ui/components/CommandCenter/panels/sandbox/EmaPullbackResearchView.tsx`,
+  `frontend/tests/sandbox.spec.ts`): a new "50 EMA RESEARCH" sub-tab in the Strategy Validation Laboratory,
+  keeping the Source Claim vs. TradeTown Evidence comparison visually and structurally separate, plus the full
+  R-multiple sweep/baseline/session/regime/instrument/breakout-size breakdowns and the reused Model
+  Validation/Monte Carlo panels. `tsc`/`eslint`/`vite build` clean; live-verified end to end against the real
+  running dev stack via Playwright. Along the way, fixed a real, pre-existing test bug this change exposed:
+  the sandbox spec's EVOLUTION sub-tab click used an unscoped exact-name locator that also matches the Command
+  Center's unrelated top-level "EVOLUTION" (AI Workforce) tab, which shares the identical accessible name —
+  scoped the click to the Sandbox sub-tab nav bar specifically; confirmed via `git stash` that this failure
+  pre-dates and is unrelated to this pass's own changes.
 
 - **CEO directive "Professional Trading Firm — Market-Analysis Knowledge + Session Intelligence Expansion,"
   Phases 1-4, 6, 8** (`backend/app/technical_indicators.py`, `backend/app/technical_patterns.py`,
