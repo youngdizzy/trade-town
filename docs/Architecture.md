@@ -9161,6 +9161,122 @@ against the real `MockMarketDataProvider`; the Market Intelligence
 panel's new section rendered every real source with its correct
 category, coverage, and reproducibility.
 
+### Priority 8 — Model Validation blocking-gate migration plan (documentation only, per explicit CEO instruction)
+
+The directive was explicit: research and document only what a blocking
+gate would require — do not implement it, since no CEO authorization
+for that change exists in this repository. Nothing in this section was
+coded; everything below is a design document for a future,
+CEO-authorized pass.
+
+**Current architecture.** `app/model_validation.py` (Quantitative
+Research & Intelligence System, Piece 4) generates one
+`ModelValidationReport` per Company Review cycle
+(`generate_model_validation_report()`), with six checks (`Model
+ValidationCheck`, each `passed: bool | None` — `None` when the
+underlying artifact doesn't exist yet, never silently coerced):
+sample size, regime breadth, tail risk, liquidity, expectancy, and
+temporal stability (a walk-forward split into an earlier/later half of
+each strategy's own run history). Every numeric threshold is a cited
+reuse of an existing, already-load-bearing `app/strategy_lab.py`
+constant (`CERTIFICATION_MIN_TRADE_COUNT`, `CERTIFICATION_MAX_RUIN_PCT`,
+etc.) — Piece 4 introduces no new numeric bar of its own, per its own
+module docstring.
+
+**Current authority (verified by reading the actual gate functions,
+not assumed).** `ModelValidationReport`'s own schema docstring states
+it plainly: "Advisory-only: nothing in app/sandbox.py's
+apply_review_decision()/begin_company_review() control flow reads
+verdict." Confirmed by tracing the real 8-stage pipeline's actual gate
+functions: `maybe_advance_after_research()`/`maybe_advance_after_
+result()` (automatic, research/backtest-result driven),
+`evaluate_risk_gate()` (Guardian's average-drawdown threshold, gates
+Market Simulation → Paper Trading), `begin_limited_live()` (CEO-
+supplied capital amount + a minimum trial-days check), and the
+terminal `apply_review_decision(strategy, review, approve, sim_day)` —
+which reads only the five-reviewer `StrategyReview.overall_verdict`
+(technical/fundamental/devil's-advocate/quant/risk) and the CEO's own
+`approve` boolean. `ModelValidationReport.verdict` is not an input to
+any of these. The only real, functional coupling between Model
+Validation and the pipeline today is `_devils_advocate_verdict()`'s
+`exclude_cio` flag — a separation-of-duties guarantee (Meridian/CIO
+cannot simultaneously serve as that same cycle's rotating Devil's
+Advocate), not a gate.
+
+**Dependencies a blocking gate would introduce.** `apply_review_
+decision()` would need a new required (or optional-but-then-defaulting-
+to-blocking) parameter carrying the current cycle's `ModelValidation
+Report`, threaded from every real call site (currently: the CEO's
+manual Company Review decision endpoint, and Automation Mode's auto-
+resolution path in `app/nexus.py` — both would need updating in
+lockstep, since Automation Mode may not have a human in the loop to
+override a false-positive block). `begin_company_review()` itself might
+also need gating (blocking entry to Company Review, not just exit from
+it), which would require deciding whether "not enough evidence yet"
+(`passed=None` checks) blocks identically to an actual failing check —
+today's advisory report treats them differently in its own reasoning
+text but a binary gate collapses that distinction unless explicitly
+redesigned not to.
+
+**Risks.** (1) **False blocks on thin evidence**: several checks
+(sample size, regime breadth, temporal stability) require a real
+minimum run count neither this codebase nor a genuinely new strategy
+idea may have yet — a blocking gate could stall every strategy at
+Company Review indefinitely in the early game, not just weak ones. (2)
+**Non-independence**: the module's own docstring already discloses
+Meridian "does not re-derive these numbers from a separate raw-data
+pipeline — none exists in this codebase" — every check reads the exact
+same evidence Vector's research and the risk seats already reviewed.
+Promoting a non-independent read to a hard veto changes what kind of
+authority it claims to have, which is itself a governance decision, not
+a technical one. (3) **Automation Mode interaction**: Executive mode
+auto-resolves Company Review without a human in the loop today: a
+blocking gate firing there with no override path could freeze the
+Strategy pipeline silently. (4) **Precedent**: this codebase has exactly
+one other advisory-to-blocking precedent worth studying before
+repeating its shape — the Trade Gatekeeper (`app/gatekeeper.py`) is
+already a hard veto on individual trades, and was built as one from the
+start rather than promoted later; there is no existing "we migrated an
+advisory system to a blocking one" precedent to reuse here.
+
+**Migration plan, if CEO-authorized in the future:** (1) Decide the
+policy question first, in writing, before any code: does `passed=None`
+(not-enough-evidence) block, warn, or pass by default? (2) Add an
+explicit `override` path mirroring the Gatekeeper's own existing
+CEO-override convention, so a false block never silently stalls a
+strategy with no recourse. (3) Thread `ModelValidationReport` into
+`apply_review_decision()` and `begin_company_review()` as a real,
+required input at both the real call sites identified above
+(CEO-manual and Automation-Mode-auto). (4) Decide whether ALL SIX
+checks must pass, or a named subset (e.g., tail risk and expectancy
+only) — a full-unanimity gate is likely too strict given risk #1 above.
+(5) Add a CEO-visible "why this strategy is blocked" surface distinct
+from today's purely-informational report display, so a block is never
+silent.
+
+**Required tests for a future pass:** every existing behavioral
+guarantee in the 44 tests already in `test_model_validation.py` must
+keep passing unchanged (the report-generation logic itself would not
+change, only how its output is consumed); new tests would need to cover
+the gate itself (blocks on a real failing check, passes on all-real-
+passing checks, the chosen `passed=None` policy, the override path
+firing and being audit-logged, Automation Mode's behavior when blocked
+with no human present) and a full `app/sandbox.py` regression pass
+(every existing stage-transition test must still pass with the new
+parameter threaded through, non-breaking for any caller that doesn't
+opt in — mirroring this session's own `risk_limits`/`market_
+intelligence` optional-parameter convention used throughout Priorities
+1-2 above).
+
+**Governance implications.** This is exactly the kind of decision the
+Development Rules' own separation-of-duties principle exists to
+protect: turning an advisory read into a hard veto changes who actually
+controls capital deployment in this simulated company, and should be a
+deliberate CEO choice made with the risks above in view — not a default
+outcome of "the checks already exist, so wiring them up seems
+harmless." No such authorization exists in this repository today, so no
+code changes were made.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

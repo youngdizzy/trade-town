@@ -114,8 +114,11 @@ development milestones, not semver releases.
   *live* trades remains blocked by the same `DecisionVaultEntry.strategyId == None` gap already disclosed
   there — not re-solved here. Priority 7 Professional Strategy Research (indicator library) — BLOCKED BY
   ARCHITECTURE, same root cause as Priority 3. Priority 8 Model Validation blocking-gate migration — per the
-  directive's own explicit instruction, **documented only, not implemented**: `ModelValidationReport`'s 6 real
-  checks remain advisory-only; no CEO authorization for a blocking gate exists in this repository.
+  directive's own explicit instruction, **documented only, not implemented** (full migration plan — current
+  architecture, current authority verified by tracing every real sandbox.py gate function, dependencies, 4
+  concrete risks, a 5-step migration plan, required tests, governance implications — now in
+  `docs/Architecture.md`'s Priority 8 section): `ModelValidationReport`'s 6 real checks remain advisory-only;
+  no CEO authorization for a blocking gate exists in this repository.
 
 - **CEO directive "Professional Trading Firm Transformation" — Gap Analysis + Exit Efficiency**
   (`backend/app/exit_efficiency.py`, `backend/app/schemas.py`, `backend/app/routers/trades.py`,
