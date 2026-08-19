@@ -1486,6 +1486,17 @@ outside the compiler's recognized vocabulary yields `status="invalid"`
 with an empty `sequence`, `stop: null`, `target: null` — never a guess.
 Stateless: nothing compiled here is persisted; `version` is always `1`
 unless a caller supplies `previousVersion` for its own bookkeeping.
+The recognized trigger vocabulary (CEO directive "...Quant Intelligence
++ Market Analysis Completion Phase (Next Research + Validation Pass)")
+now also includes real RSI/Stochastic threshold triggers ("RSI above
+70," "the 14 Stochastic is below 20" — period optional, defaults to 14)
+and a real MACD line/signal-line crossover ("MACD crosses above the
+signal line," always the standard 12/26/9 defaults). "Above N" always
+compiles to a real long-biased trigger, "below N" to short — the
+MOMENTUM reading, not mean-reversion (a mean-reversion-phrased strategy
+like "RSI below 30, buy the bounce" is correctly refused as a real
+trigger/entry direction contradiction — see `app/strategy_compiler.py`'s
+own module docstring). At most one trigger is recognized per strategy.
 
 ### `POST /api/sandbox/backtest-compiled-strategy?candlesPerSymbol=6000`
 
@@ -1500,9 +1511,11 @@ Returns a `CompiledStrategyBacktestResult` (`overall`/`sessionBreakdown`/
 `dataHonestyNote`) shaped like the EMA pullback result above. `400` if
 `definition.status !== "compiled"` or the definition references an
 indicator outside the engine's current `price_close/open/high/low`,
-`ema`, `sma` vocabulary — the engine refuses to guess rather than
-silently skipping unsupported conditions. Read-only, computed fresh every
-call; never wired into any agent or live trading decision.
+`ema`, `sma`, `rsi`, `macd_line`/`macd_signal`/`macd_histogram`,
+`stochastic_percent_k`/`stochastic_percent_d` vocabulary — the engine
+refuses to guess rather than silently skipping unsupported conditions.
+Read-only, computed fresh every call; never wired into any agent or live
+trading decision.
 
 ### `POST /api/sandbox/walk-forward-validation?candlesPerSymbol=6000&windowBars=1000`
 

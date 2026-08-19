@@ -7,6 +7,35 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Strategy compiler/engine: RSI, MACD, and Stochastic triggers** (`backend/app/technical_indicators.py`,
+  `backend/app/strategy_engine.py`, `backend/app/strategy_compiler.py`, four backend test files modified): the
+  recommended next phase from the prior "Next Research + Validation Pass" directive's own final report — the
+  compiler's trigger vocabulary was EMA/SMA-only, so walk-forward validation and parameter sensitivity could
+  only ever exercise EMA/SMA-crossover strategies, even though `StrategyIndicatorName` already listed
+  rsi/macd_line/macd_signal/macd_histogram/stochastic_percent_k/stochastic_percent_d as valid schema values
+  with nothing able to produce or resolve them. Added `rsi_series()`/`macd_series()`/`stochastic_series()` —
+  real, full historical series versions of the existing scalar `rsi()`/`macd()`/`stochastic()` (needed to
+  resolve an indicator at an arbitrary historical bar during a backtest replay, the same reason
+  `ema_series()`/`atr_series()` already exist), each cross-validated against its own scalar sibling before
+  being trusted. `strategy_engine.py`'s `SUPPORTED_INDICATORS` now covers all six new indicator names — MACD
+  always uses the methodology's own standard 12/26/9 defaults and Stochastic's smoothing is fixed at the
+  standard 3 (`StrategyIndicatorRef` has no room for a stated triple/pair, a real, disclosed v1 simplification,
+  not a schema change); RSI series lookups reuse `backtest_primitives.py`'s existing `atr_at()` directly
+  (identical index alignment) rather than a duplicate formula. `strategy_compiler.py` gained real trigger
+  patterns for "RSI above/below N" (period optional, default 14), the Stochastic mirror, and "MACD crosses
+  above/below the signal line" — with a real, disclosed directional convention (never a guess): "above N"
+  compiles to a real long-biased trigger, "below N" to short, the MOMENTUM reading, deliberately not
+  mean-reversion (which would need a trigger direction opposite its own threshold side, unrepresentable in this
+  v1 grammar) — a mean-reversion-phrased strategy ("RSI below 30, buy the bounce") is correctly refused as a
+  real trigger/entry direction contradiction, never silently miscompiled, verified with a dedicated test. At
+  most one trigger is recognized per strategy (EMA/SMA, then RSI, then Stochastic, then MACD, in priority
+  order). Two stale test fixtures that had used `rsi` as their own example of a still-unsupported indicator
+  were fixed (switched to `vwap`, still genuinely unsupported). No frontend changes needed — the existing
+  Strategy Compiler UI's free-text input already accepts the new vocabulary unchanged; live-verified via
+  Playwright (typing an RSI momentum strategy into the real textarea compiled and backtested successfully). 31
+  new backend tests. Full backend suite (2,314 tests, run twice consecutively), `mypy app/`, `ruff check app/
+  tests/` all clean.
+
 - **CEO directive "Professional Quant Trading Firm — Quant Intelligence + Market Analysis Completion Phase
   (Next Research + Validation Pass)"** (`backend/app/technical_indicators.py`, `backend/app/technical_patterns.py`,
   `backend/app/evidence_confluence.py`, `backend/app/strategy_engine.py`, `backend/app/walk_forward.py`,

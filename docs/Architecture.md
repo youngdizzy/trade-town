@@ -10445,6 +10445,79 @@ files), `ruff check app/ tests/` all clean. Frontend: `tsc --noEmit`,
 new Parabolic SAR/SuperTrend display) pass against the live running dev
 stack.
 
+### Addendum: RSI/MACD/Stochastic strategy-compiler vocabulary
+
+Follow-through on that same pass's own final report ("Recommended Next
+Professional-Quant Phase"): the strategy compiler's trigger vocabulary
+was limited to EMA/SMA crosses, so walk-forward validation and
+parameter sensitivity could only ever exercise EMA/SMA-crossover
+strategies — even though `StrategyIndicatorName` (app/schemas.py) had
+already listed `rsi`/`macd_line`/`macd_signal`/`macd_histogram`/
+`stochastic_percent_k`/`stochastic_percent_d` as valid values with
+nothing able to produce or resolve them.
+
+`app/technical_indicators.py` gained `rsi_series()`/`macd_series()`/
+`stochastic_series()` — real, full historical series versions of the
+already-real scalar `rsi()`/`macd()`/`stochastic()` functions, needed to
+resolve an indicator value at an arbitrary historical bar during a
+backtest replay (the same reason `ema_series()`/`atr_series()` already
+exist). Each was cross-validated against its own scalar sibling at
+multiple real candle-series lengths (`series[-1] == scalar()` for the
+same inputs) before being trusted, matching this codebase's own
+established series/scalar-consistency testing convention.
+
+`app/strategy_engine.py`'s `SUPPORTED_INDICATORS` now includes all six
+of those indicator names. `StrategyIndicatorRef` has only ONE `period`
+field — no room for a stated MACD fast/slow/signal triple or a stated
+Stochastic period/smoothing pair — so MACD always uses the methodology's
+own standard 12/26/9 defaults and Stochastic's smoothing is fixed at the
+standard 3 (only its %K period is caller-stated), a real, disclosed v1
+simplification rather than a schema change, consistent with the
+Chandelier Stop's own existing "state it explicitly or take the
+standard default" pattern. RSI series lookups at an arbitrary historical
+index reuse `app/backtest_primitives.py`'s existing `atr_at()` directly
+— RSI's own real series alignment (first entry at candle index `period`)
+is identical to ATR's, so a second, duplicate lookup formula was not
+written.
+
+`app/strategy_compiler.py` gained real trigger patterns: "RSI above/
+below N" (optional stated period, defaulting to 14), the Stochastic
+mirror, and "MACD crosses above/below the signal line." A real,
+disclosed directional convention, not a guess: "above N" always compiles
+to a real long-biased trigger (`operator="gt"`, matching the engine's
+own existing threshold-trigger semantics — "higher value = bullish"),
+"below N" to short — the MOMENTUM/breakout reading ("RSI breaking above
+70 confirms strong momentum, buy the continuation"), deliberately NOT
+the mean-reversion reading ("RSI below 30 is oversold, buy the bounce")
+— that reading needs a trigger direction OPPOSITE its own threshold
+side, which this compiler's v1 grammar has no way to express. A
+mean-reversion-phrased strategy is correctly refused as a real
+trigger/entry direction contradiction (`status="ambiguous"`), the exact
+same check the EMA/SMA trigger already enforces — never silently
+miscompiled into the wrong direction. At most one trigger is recognized
+per strategy; EMA/SMA is tried first, then RSI, then Stochastic, then
+MACD.
+
+No frontend changes were needed or made — the existing Strategy
+Compiler UI's free-text input already accepts any English strategy
+description, so the new vocabulary flows through the same unmodified
+"Compile Strategy" → "Backtest This Definition" → "Run Full Research
+Experiment" flow. Live-verified via a real Playwright run: typing "Buy
+when RSI is above 70, then enter when price closes above the previous
+swing high. Place a 2% stop and 4% target." into the real textarea
+compiled to a real 2-step `RSI(14) above 70` trigger + swing-high entry
+sequence with zero ambiguities, and backtested successfully.
+
+31 new backend tests. Full backend suite (2,314 tests, run twice
+consecutively), `mypy app/` (169 files), `ruff check app/ tests/` all
+clean. Two stale test fixtures (in `test_strategy_engine.py` and
+`test_walk_forward.py`) that had used `rsi` as their own example of a
+still-unsupported indicator were found and fixed — switched to `vwap`
+(still genuinely unsupported, unchanged this pass) — the same class of
+"a prior pass's own placeholder example became real" staleness this
+whole project's engineering discipline has caught and fixed several
+times before.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing
