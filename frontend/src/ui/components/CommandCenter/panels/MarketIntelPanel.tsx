@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { api } from "@/net/api";
 import { EXECUTIVE_ACTION_LABEL } from "@/types";
-import type { DataCategory, DataProvenanceReport, MarketDebateSpecialist, SessionRegimeEvidence, SessionRegimeEvidenceState, SessionRegimeEvidenceSummary } from "@/types";
+import type { DataCategory, DataProvenanceReport, MarketDebateSpecialist, SessionRegimeEvidence, SessionRegimeEvidenceState, SessionRegimeEvidenceSummary, TechnicalAnalysisRead } from "@/types";
 import { executiveActionTone, latestMarketIntelligenceReport, marketQualityTone, momentumTone, newsRiskTone, recentMarketIntelligenceLearning } from "../lib/derive";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
 
@@ -87,6 +87,32 @@ export function MarketIntelPanel() {
 
   // CEO directive "Next Professional Trading Firm Phase," Priority 5 —
   // real, on-demand data-provenance audit (backend/app/data_provenance.py).
+  // CEO directive "Professional Trading Firm — Market-Analysis Knowledge
+  // + Session Intelligence Expansion," Phases 1-3 — real technical
+  // indicator/pattern reads for one symbol at a time, fetched on demand
+  // (backend/app/technical_analysis.py). Never persisted, never wired
+  // into any live trading decision.
+  const [taSymbol, setTaSymbol] = useState<string | null>(null);
+  const [technicalAnalysis, setTechnicalAnalysis] = useState<TechnicalAnalysisRead | null>(null);
+  const [taLoading, setTaLoading] = useState(false);
+  useEffect(() => {
+    if (!taSymbol) return;
+    let cancelled = false;
+    setTaLoading(true);
+    api
+      .getTechnicalAnalysis(taSymbol)
+      .then((res) => {
+        if (!cancelled) setTechnicalAnalysis(res);
+      })
+      .catch(() => undefined)
+      .finally(() => {
+        if (!cancelled) setTaLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [taSymbol]);
+
   const [dataProvenance, setDataProvenance] = useState<DataProvenanceReport | null>(null);
   useEffect(() => {
     api.getDataProvenance().then(setDataProvenance).catch(() => undefined);
@@ -221,6 +247,93 @@ export function MarketIntelPanel() {
               );
             })}
           </div>
+        )}
+      </Glass>
+
+      <Glass className="p-3">
+        <div className="mb-1.5 flex items-center justify-between">
+          <TerminalLabel>Technical Analysis — Real Indicators &amp; Patterns</TerminalLabel>
+          <span className="text-[9px] text-cmd-textDim">Computed fresh, never wired into any live decision</span>
+        </div>
+        {mi.liquidity.length === 0 ? (
+          <EmptyState>No real candle data sampled yet.</EmptyState>
+        ) : (
+          <>
+            <div className="mb-2 flex flex-wrap gap-1">
+              {mi.liquidity.map((liq) => (
+                <button
+                  key={liq.symbol}
+                  type="button"
+                  onClick={() => setTaSymbol(liq.symbol === taSymbol ? null : liq.symbol)}
+                  className={`rounded-sm border px-2 py-1 font-cmdmono text-[9px] transition-colors ${
+                    taSymbol === liq.symbol ? "border-cmd-cyan text-cmd-cyan" : "border-cmd-border/60 text-cmd-textDim hover:border-cmd-cyan/40"
+                  }`}
+                >
+                  {liq.symbol}
+                </button>
+              ))}
+            </div>
+            {!taSymbol && <EmptyState>Select a symbol above for its real indicator/pattern read.</EmptyState>}
+            {taSymbol && taLoading && <div className="text-[9px] text-cmd-textDim">Computing…</div>}
+            {taSymbol && !taLoading && technicalAnalysis && technicalAnalysis.symbol === taSymbol && (
+              <div className="space-y-2 text-[9px]">
+                <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2 sm:grid-cols-3">
+                  <DataRow label="SMA20" value={technicalAnalysis.indicators.sma20?.toFixed(2) ?? "—"} />
+                  <DataRow label="EMA20" value={technicalAnalysis.indicators.ema20?.toFixed(2) ?? "—"} />
+                  <DataRow label="RSI14" value={technicalAnalysis.indicators.rsi14?.toFixed(1) ?? "—"} />
+                  <DataRow label="MACD" value={technicalAnalysis.indicators.macdLine?.toFixed(3) ?? "—"} />
+                  <DataRow label="Stoch %K" value={technicalAnalysis.indicators.stochasticPercentK?.toFixed(1) ?? "—"} />
+                  <DataRow label="ATR14" value={technicalAnalysis.indicators.atr14?.toFixed(2) ?? "—"} />
+                  <DataRow label="VWAP" value={technicalAnalysis.indicators.vwap?.toFixed(2) ?? "—"} />
+                </div>
+                <div className="text-cmd-textDim">{technicalAnalysis.indicators.detail}</div>
+                <div className="rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2">
+                  <div className="text-cmd-textDim">Swing Structure</div>
+                  <div className="text-cmd-text">{technicalAnalysis.swingStructure.labels.length > 0 ? technicalAnalysis.swingStructure.labels.join(" → ").replace(/_/g, " ") : "No real swing labels yet"}</div>
+                </div>
+                {technicalAnalysis.fairValueGaps.gaps.length > 0 && (
+                  <div className="rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2">
+                    <div className="mb-0.5 text-cmd-textDim">Fair Value Gaps</div>
+                    {technicalAnalysis.fairValueGaps.gaps.map((g, i) => (
+                      <div key={i} className="flex items-center justify-between">
+                        <span className={g.direction === "bullish" ? "text-cmd-green" : "text-cmd-red"}>{g.direction}</span>
+                        <span className="tabular-nums text-cmd-text">
+                          {g.gapLow.toFixed(2)} – {g.gapHigh.toFixed(2)}
+                        </span>
+                        <StatusPill tone={g.filled ? "cyan" : "amber"}>{g.filled ? "filled" : "open"}</StatusPill>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {technicalAnalysis.candlestickPatterns.patterns.length > 0 && (
+                  <div className="rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2">
+                    <div className="mb-0.5 text-cmd-textDim">Candlestick Patterns</div>
+                    {technicalAnalysis.candlestickPatterns.patterns.map((p, i) => (
+                      <div key={i} className="text-cmd-text">
+                        {p.pattern.replace(/_/g, " ")} — <span className="text-cmd-textDim">{p.detail}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                {technicalAnalysis.fibonacci.levels.length > 0 && (
+                  <div className="rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2">
+                    <div className="mb-0.5 text-cmd-textDim">Fibonacci Levels (swing {technicalAnalysis.fibonacci.swingLow.toFixed(2)} – {technicalAnalysis.fibonacci.swingHigh.toFixed(2)})</div>
+                    <div className="flex flex-wrap gap-x-3 gap-y-0.5">
+                      {technicalAnalysis.fibonacci.levels.map((lv, i) => (
+                        <span key={i} className="tabular-nums text-cmd-text">
+                          {lv.ratio} → {lv.price.toFixed(2)}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                <div className="rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2">
+                  <div className="text-cmd-textDim">Order Block</div>
+                  <div className="text-cmd-text">{technicalAnalysis.orderBlock.detail}</div>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </Glass>
 

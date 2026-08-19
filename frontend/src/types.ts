@@ -1906,6 +1906,119 @@ export interface ExecutiveRecommendation {
   estimatedRiskPct: number | null;
 }
 
+// CEO directive "Professional Trading Firm — Market-Analysis Knowledge +
+// Session Intelligence Expansion," Phase 6 — the Confluence Engine. See
+// backend/app/signal_correlation.py's module docstring for the real
+// correlation audit this is built on.
+export interface CorrelatedSignalPair {
+  roleA: AnalystRole;
+  roleB: AnalystRole;
+  reason: string;
+}
+
+export interface ConfluenceRead {
+  naiveConfirmationCount: number;
+  independentEvidenceCount: number;
+  correlatedPairs: CorrelatedSignalPair[];
+  detail: string;
+}
+
+// Same directive, Phases 1-3 — real technical indicator/pattern reads.
+// Every nullable field is `null` (never fabricated) below that
+// concept's own real minimum bar count — see
+// backend/app/technical_indicators.py / technical_patterns.py.
+export interface TechnicalIndicatorsRead {
+  symbol: string;
+  sma20: number | null;
+  ema20: number | null;
+  rsi14: number | null;
+  macdLine: number | null;
+  macdSignal: number | null;
+  macdHistogram: number | null;
+  stochasticPercentK: number | null;
+  stochasticPercentD: number | null;
+  atr14: number | null;
+  vwap: number | null;
+  detail: string;
+}
+
+export type SwingStructureLabel = "higher_high" | "higher_low" | "lower_high" | "lower_low";
+
+export interface SwingStructureRead {
+  symbol: string;
+  labels: SwingStructureLabel[];
+  detail: string;
+}
+
+export interface FairValueGap {
+  direction: "bullish" | "bearish";
+  gapHigh: number;
+  gapLow: number;
+  timestamp: string;
+  filled: boolean;
+}
+
+export interface FairValueGapRead {
+  symbol: string;
+  gaps: FairValueGap[];
+  detail: string;
+}
+
+export type CandlestickPatternType = "bullish_engulfing" | "bearish_engulfing" | "hammer" | "shooting_star" | "doji";
+
+export interface CandlestickPattern {
+  pattern: CandlestickPatternType;
+  timestamp: string;
+  detail: string;
+}
+
+export interface CandlestickPatternRead {
+  symbol: string;
+  patterns: CandlestickPattern[];
+  detail: string;
+}
+
+export interface FibonacciLevel {
+  ratio: number;
+  price: number;
+}
+
+export interface FibonacciRead {
+  symbol: string;
+  swingHigh: number;
+  swingLow: number;
+  levels: FibonacciLevel[];
+  detail: string;
+}
+
+export interface OrderBlockRead {
+  symbol: string;
+  direction: "bullish" | "bearish" | "none";
+  priceHigh: number | null;
+  priceLow: number | null;
+  timestamp: string | null;
+  detail: string;
+}
+
+export interface TechnicalAnalysisRead {
+  symbol: string;
+  indicators: TechnicalIndicatorsRead;
+  swingStructure: SwingStructureRead;
+  fairValueGaps: FairValueGapRead;
+  candlestickPatterns: CandlestickPatternRead;
+  fibonacci: FibonacciRead;
+  orderBlock: OrderBlockRead;
+}
+
+export interface SessionRangeRead {
+  symbol: string;
+  session: TradingSession;
+  rangeHigh: number;
+  rangeLow: number;
+  retested: boolean;
+  detail: string;
+}
+
 // Design Bible Chapter 70 Part 2 — Executive Accuracy Score. Scored only
 // over trades actually taken and since closed with a real outcome; see
 // backend/app/executive_intelligence.py's compute_executive_accuracy_scores.

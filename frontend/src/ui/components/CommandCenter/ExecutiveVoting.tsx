@@ -4,6 +4,7 @@ import type {
   AnalystChoice,
   AnalystVote,
   ChallengeSeverity,
+  ConfluenceRead,
   DebateTurn,
   ExecutiveAccuracyScore,
   ExecutiveAction,
@@ -96,6 +97,15 @@ export function ExecutiveVoting() {
   const [execIntel, setExecIntel] = useState<ExecutiveRecommendation | null>(null);
   const [execIntelLoading, setExecIntelLoading] = useState(false);
   const [execIntelError, setExecIntelError] = useState<string | null>(null);
+  // CEO directive "Professional Trading Firm — Market-Analysis Knowledge
+  // + Session Intelligence Expansion," Phase 6 — the Confluence Engine,
+  // computed fresh per proposal (never persisted — see
+  // backend/app/signal_correlation.py).
+  const [showConfluence, setShowConfluence] = useState(false);
+  const [confluence, setConfluence] = useState<ConfluenceRead | null>(null);
+  const [confluenceProposalId, setConfluenceProposalId] = useState<string | null>(null);
+  const [confluenceLoading, setConfluenceLoading] = useState(false);
+  const [confluenceError, setConfluenceError] = useState<string | null>(null);
   const [expandedScenario, setExpandedScenario] = useState<ScenarioType | null>(null);
   const [submitting, setSubmitting] = useState<AnalystChoice | null>(null);
   const [holding, setHolding] = useState<HoldReason | null>(null);
@@ -196,6 +206,34 @@ export function ExecutiveVoting() {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showExecIntel, proposal?.id]);
+
+  // CEO directive "Professional Trading Firm — Market-Analysis Knowledge
+  // + Session Intelligence Expansion," Phase 6 — same fetch-fresh-on-open
+  // pattern as the Executive Intelligence Network above.
+  useEffect(() => {
+    if (!showConfluence || !proposal) return;
+    let cancelled = false;
+    setConfluenceLoading(true);
+    setConfluenceError(null);
+    api
+      .getConfluence(proposal.id)
+      .then((res) => {
+        if (!cancelled) {
+          setConfluence(res);
+          setConfluenceProposalId(proposal.id);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setConfluenceError(err instanceof Error ? err.message : String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setConfluenceLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [showConfluence, proposal?.id]);
 
   // Design Bible Chapter 70 Part 2 — Executive Accuracy Score, fetched
   // fresh whenever the section is opened; company-wide, so not keyed on
@@ -499,6 +537,26 @@ export function ExecutiveVoting() {
               })}
             </div>
           </Glass>
+
+          <button
+            type="button"
+            onClick={() => setShowConfluence(!showConfluence)}
+            className="w-full rounded-sm border border-cmd-border px-3 py-1.5 text-cmd-textDim transition-colors hover:border-cmd-cyan/50 hover:text-cmd-cyan"
+          >
+            {showConfluence ? "HIDE CONFLUENCE ENGINE ▲" : "OPEN CONFLUENCE ENGINE ▼"}
+          </button>
+
+          {showConfluence && (
+            <Glass className="p-3">
+              <div className="mb-1.5 flex items-center justify-between">
+                <TerminalLabel>Confluence — Independent Evidence Count</TerminalLabel>
+                <span className="text-[9px] text-cmd-textDim">Informational only — never gates the Gatekeeper.</span>
+              </div>
+              {confluenceLoading && <div className="text-[9px] text-cmd-textDim">Auditing evidence independence…</div>}
+              {confluenceError && <div className="text-[9px] text-cmd-red">{confluenceError}</div>}
+              {!confluenceLoading && confluence && confluenceProposalId === proposal.id && <ConfluencePanel confluence={confluence} />}
+            </Glass>
+          )}
 
           <button
             type="button"
@@ -1233,6 +1291,46 @@ function WhatIfPanel({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+/**
+ * CEO directive "Professional Trading Firm — Market-Analysis Knowledge +
+ * Session Intelligence Expansion," Phase 6 — the Confluence Engine's
+ * panel. `independentEvidenceCount` is never a claim that fewer
+ * confirmations means a worse setup — only an honest count of how much
+ * of the naive tally is genuinely new information (see
+ * backend/app/signal_correlation.py's module docstring for the real
+ * correlation audit this is built on).
+ */
+function ConfluencePanel({ confluence }: { confluence: ConfluenceRead }) {
+  const divergent = confluence.independentEvidenceCount !== confluence.naiveConfirmationCount;
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-3 rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2 text-[9px]">
+        <div className="flex-1">
+          <div className="text-cmd-textDim">Naive Confirmation Count</div>
+          <div className="text-lg text-cmd-text">{confluence.naiveConfirmationCount}</div>
+        </div>
+        <div className="flex-1">
+          <div className="text-cmd-textDim">Independent Evidence Count</div>
+          <div className={`text-lg ${divergent ? "text-cmd-amber" : "text-cmd-green"}`}>{confluence.independentEvidenceCount}</div>
+        </div>
+      </div>
+      <div className="text-[9px] text-cmd-text">{confluence.detail}</div>
+      {confluence.correlatedPairs.length > 0 && (
+        <div className="space-y-1">
+          {confluence.correlatedPairs.map((pair, i) => (
+            <div key={i} className="rounded-sm border border-cmd-amber/40 bg-cmd-amber/5 p-2 text-[9px]">
+              <div className="text-cmd-amber">
+                {ROLE_LABEL[pair.roleA]} ↔ {ROLE_LABEL[pair.roleB]} — correlated, not independent
+              </div>
+              <div className="mt-0.5 text-cmd-textDim">{pair.reason}</div>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

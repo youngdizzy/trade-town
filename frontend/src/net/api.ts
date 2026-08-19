@@ -82,11 +82,15 @@ import type {
   RegimePerformanceSummary,
   RegimeReconciliation,
   SessionPerformanceSummary,
+  SessionRangeRead,
   SessionRegimeEvidenceSummary,
   RiskLimits,
   SimilarTradesSummary,
   SymbolPerformanceSummary,
+  TechnicalAnalysisRead,
+  ConfluenceRead,
   TradeAttributionSummary,
+  TradingSession,
   Strategy,
   StrategyCertification,
   StrategyDossier,
@@ -166,6 +170,18 @@ export const api = {
   // CEO directive "Session Trading Education & Agent Training". Read-only,
   // computed fresh per request.
   getSessionRegimeEvidence: () => request<SessionRegimeEvidenceSummary>("/market/session-evidence"),
+  // CEO directive "Professional Trading Firm — Market-Analysis Knowledge
+  // + Session Intelligence Expansion," Phases 1-4. Read-only, computed
+  // fresh per request — see backend/app/technical_analysis.py /
+  // technical_patterns.py.
+  getTechnicalAnalysis: (symbol: string, timeframe = "1h", limit = 100) =>
+    request<TechnicalAnalysisRead>(
+      `/market/technical-analysis?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&limit=${limit}`
+    ),
+  getSessionRange: (symbol: string, session: TradingSession, timeframe = "1h", limit = 100) =>
+    request<SessionRangeRead>(
+      `/market/session-range?symbol=${encodeURIComponent(symbol)}&session=${encodeURIComponent(session)}&timeframe=${encodeURIComponent(timeframe)}&limit=${limit}`
+    ),
   spendEnergy: (action: string, researchId?: string) =>
     request<{ agentEnergy: AgentEnergy }>("/energy/spend", {
       method: "POST",
@@ -254,6 +270,9 @@ export const api = {
     }),
   getWhatIfSimulation: (symbol: string) => request<WhatIfSimulation>(`/executive/whatif?symbol=${encodeURIComponent(symbol)}`),
   getExecutiveIntelligence: (proposalId: string) => request<ExecutiveRecommendation>(`/executive/intelligence?proposalId=${encodeURIComponent(proposalId)}`),
+  // CEO directive "Professional Trading Firm — Market-Analysis Knowledge
+  // + Session Intelligence Expansion," Phase 6 — the Confluence Engine.
+  getConfluence: (proposalId: string) => request<ConfluenceRead>(`/executive/confluence?proposalId=${encodeURIComponent(proposalId)}`),
   // Trading Psychology & Discipline, Piece C — the Process Adherence Score.
   getProcessAdherence: (decisionId: string) => request<ProcessAdherenceRead>(`/executive/decisions/${encodeURIComponent(decisionId)}/process-adherence`),
   getProcessAdherenceSummary: () => request<ProcessAdherenceSummaryRead>("/executive/process-adherence-summary"),

@@ -856,6 +856,41 @@ read off an existing system (see the mapping table in
 "not yet stress-tested"/"not yet challenged" when no `ChallengeReport`
 exists for the proposal yet, rather than fabricating one.
 
+### `GET /api/executive/confluence?proposalId=...`
+
+CEO directive "Professional Trading Firm — Market-Analysis Knowledge +
+Session Intelligence Expansion," Phase 6 — the Confluence Engine's
+real-time read for one pending `TradeProposal`. Read-only, stateless,
+computed fresh from the proposal's own `analystVotes`
+(`app/signal_correlation.py::assess_confluence()`). Never gates, vetoes,
+or adjusts the Gatekeeper/Risk/Model Validation pipeline — purely
+informational. Returns a `ConfluenceRead`:
+
+```json
+{
+  "naiveConfirmationCount": 3,
+  "independentEvidenceCount": 2,
+  "correlatedPairs": [
+    {
+      "roleA": "news",
+      "roleB": "macro",
+      "reason": "Both news and macro votes are driven by the same underlying ResearchItem.confidence value via the same probabilistic mechanism (app/voting.py's researcher_vote()) — the same evidence, expressed twice, not two independent reads."
+    }
+  ],
+  "detail": "3 vote(s) agree with BUY, but only 2 real independent evidence source(s) back it — see correlatedPairs for which votes share an underlying signal or contribute no new evidence."
+}
+```
+
+`404` if `proposalId` doesn't match a currently-pending `TradeProposal`.
+The correlation map is grounded in a real audit of the six analyst
+votes' actual mechanisms (`app/executive.py::generate_analyst_votes()`,
+`app/voting.py::researcher_vote()`) — never an arbitrary discount.
+`news`/`macro` share the same underlying `ResearchItem.confidence`
+random-roll; `execution` is a pure majority synthesis of the other five
+and is excluded from both counts entirely (never independent evidence).
+`technical`, `risk`, and `sentiment` are real, independent reads and are
+never discounted.
+
 ### `GET /api/executive/accuracy`
 
 Design Bible Chapter 70 Part 2 — the Executive Accuracy Score.
@@ -1581,6 +1616,73 @@ post-trade review axis — distinct from and never touching Discipline's
 outcome-blind process score (`GET` via the WS `discipline_reviews`
 broadcast) or `GET /api/failures/{agent_id}`'s WHY-the-thesis-failed
 classification above.
+
+### `GET /api/market/technical-analysis?symbol=...&timeframe=1h&limit=100`
+
+CEO directive "Professional Trading Firm — Market-Analysis Knowledge +
+Session Intelligence Expansion," Phases 1-3 — one bundled real
+"technical desk briefing" for a symbol (`app/technical_analysis.py`).
+Computed fresh per request over the same real (mock) candle series `GET
+/api/market/candles` returns for the same `symbol`/`timeframe`/`limit`.
+`400` for an unsupported timeframe or unknown symbol, same as
+`/candles`. Returns a `TechnicalAnalysisRead`:
+
+```json
+{
+  "symbol": "NEXA",
+  "indicators": {
+    "symbol": "NEXA",
+    "sma20": 101.4,
+    "ema20": 101.9,
+    "rsi14": 62.3,
+    "macdLine": 0.8,
+    "macdSignal": 0.5,
+    "macdHistogram": 0.3,
+    "stochasticPercentK": 74.0,
+    "stochasticPercentD": 68.0,
+    "atr14": 1.2,
+    "vwap": 101.1,
+    "detail": "3 of 3 headline indicators computable from 100 real candle(s) on file."
+  },
+  "swingStructure": { "symbol": "NEXA", "labels": ["higher_low", "higher_high"], "detail": "..." },
+  "fairValueGaps": { "symbol": "NEXA", "gaps": [], "detail": "..." },
+  "candlestickPatterns": { "symbol": "NEXA", "patterns": [], "detail": "..." },
+  "fibonacci": { "symbol": "NEXA", "swingHigh": 105.0, "swingLow": 98.0, "levels": [{"ratio": 0.618, "price": 100.7}], "detail": "..." },
+  "orderBlock": { "symbol": "NEXA", "direction": "none", "priceHigh": null, "priceLow": null, "timestamp": null, "detail": "..." }
+}
+```
+
+Every indicator/pattern field is `None`/empty (never a fabricated
+value) below that concept's own real minimum bar count — see
+`app/technical_indicators.py` and `app/technical_patterns.py`'s own
+module docstrings for each concept's exact real definition. None of
+these values are wired into `app/research.py`'s confidence gauge or any
+live trade decision — informational only.
+
+### `GET /api/market/session-range?symbol=...&session=asian&timeframe=1h&limit=100`
+
+Phase 4 of the same directive — a symbol's real high/low and retest
+status for one trading session (`asian`/`london`/`london_ny_overlap`/
+`new_york`/`ny_lunch_hour`/`market_open`/`market_close`/`closed`),
+computed only from that session's own real candles
+(`app/technical_patterns.py::compute_session_range()`, which reuses
+`app/market_intelligence.py`'s existing session-boundary detection —
+never a second session engine). Returns a `SessionRangeRead`:
+
+```json
+{
+  "symbol": "NEXA",
+  "session": "asian",
+  "rangeHigh": 105.0,
+  "rangeLow": 98.0,
+  "retested": true,
+  "detail": "Asian session real range: 98.0000 - 105.0000 across 12 real candle(s). A later candle traded back into this range."
+}
+```
+
+`rangeHigh`/`rangeLow` both read `0.0` (never a fabricated range) when
+no real candle in the fetched window falls inside that session's UTC
+hours.
 
 ### `GET /api/market/regime-reconciliation`
 
