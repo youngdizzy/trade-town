@@ -1936,7 +1936,7 @@ class GameState:
             weighted_recommendation = None
             if choice in ("buy", "sell"):
                 challenge_report_for_opinions = next((c for c in reversed(self.data.challenge_reports) if c.proposal_id == proposal_id), None)
-                opinions = generate_department_opinions(proposal, challenge_report_for_opinions, self.data.coach_reports, self.data.market_intelligence)
+                opinions = generate_department_opinions(proposal, challenge_report_for_opinions, self.data.coach_reports, self.data.market_intelligence, self.data.decision_vault)
                 raw_recommendation = compute_executive_recommendation(proposal, opinions)
                 accuracy_scores = compute_executive_accuracy_scores(self.data.executive_meeting_log, self.data.ceo_decisions)
                 weighted_recommendation = compute_weighted_recommendation(
@@ -1998,7 +1998,15 @@ class GameState:
             meeting_log = record_meeting_log_entry(
                 list(self.data.executive_meeting_log),
                 generate_meeting_log_entry(
-                    proposal, decision, ceo_record.ceo_decision, challenge_report, self.data.coach_reports, self.data.market_intelligence, sim_day=self.data.time.day, resolved_by=resolved_by
+                    proposal,
+                    decision,
+                    ceo_record.ceo_decision,
+                    challenge_report,
+                    self.data.coach_reports,
+                    self.data.market_intelligence,
+                    self.data.decision_vault,
+                    sim_day=self.data.time.day,
+                    resolved_by=resolved_by,
                 ),
             )
 

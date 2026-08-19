@@ -10,7 +10,8 @@ from fastapi import APIRouter, HTTPException, Query
 
 from app.market_data import TIMEFRAME_ORDER, market_data_provider
 from app.regime_reconciliation import compute_regime_reconciliation
-from app.schemas import Candle, EconomicIntelligenceReport, EconomicIntelligenceState, RegimeReconciliation
+from app.schemas import Candle, EconomicIntelligenceReport, EconomicIntelligenceState, RegimeReconciliation, SessionRegimeEvidenceSummary
+from app.session_evidence import compute_session_regime_evidence
 from app.state import game_state
 
 router = APIRouter(prefix="/api/market", tags=["market"])
@@ -52,6 +53,18 @@ async def get_regime_reconciliation() -> RegimeReconciliation:
     app/regime_reconciliation.py's own module docstring)."""
     state = await game_state.snapshot()
     return compute_regime_reconciliation(state.market_environment, state.market_intelligence)
+
+
+@router.get("/session-evidence", response_model=SessionRegimeEvidenceSummary)
+async def get_session_regime_evidence() -> SessionRegimeEvidenceSummary:
+    """CEO directive "Session Trading Education & Agent Training" — real
+    SESSION x REGIME evidence over this company's own closed trades (see
+    app/session_evidence.py). Computed fresh per request from the
+    already-persisted Decision Vault — never a second persisted copy,
+    never a fabricated statistic for a pairing this company hasn't
+    actually traded under yet."""
+    state = await game_state.snapshot()
+    return compute_session_regime_evidence(state.decision_vault)
 
 
 @router.get("/economic-intelligence", response_model=EconomicIntelligenceState)

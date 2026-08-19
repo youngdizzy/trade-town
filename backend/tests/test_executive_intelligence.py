@@ -28,8 +28,10 @@ from app.schemas import (
     CoachReport,
     ConfidenceFactor,
     DecisionConfidence,
+    DecisionVaultEntry,
     DepartmentOpinion,
     ExecutiveMeetingLogEntry,
+    LiquidityRead,
     TradeDecision,
     TradeProposal,
 )
@@ -109,82 +111,82 @@ def _coach_report(*, company_score: float = 70.0) -> CoachReport:
 
 class TestGenerateDepartmentOpinions:
     def test_all_nine_departments_produce_an_opinion(self) -> None:
-        opinions = generate_department_opinions(_proposal(), None, [], default_market_intelligence_state())
+        opinions = generate_department_opinions(_proposal(), None, [], default_market_intelligence_state(), [])
         roles = {o.role for o in opinions}
         assert roles == {"research", "quant", "risk", "simulation", "decision_intelligence", "coach", "founders", "devils_advocate", "market_intelligence"}
 
     def test_research_opinion_reuses_the_real_research_summary(self) -> None:
         proposal = _proposal()
-        opinions = generate_department_opinions(proposal, None, [], default_market_intelligence_state())
+        opinions = generate_department_opinions(proposal, None, [], default_market_intelligence_state(), [])
         research = next(o for o in opinions if o.role == "research")
         assert research.summary == proposal.research_summary
 
     def test_risk_opinion_reuses_the_real_risk_summary(self) -> None:
         proposal = _proposal(risk_summary="Sector concentration limit reached.")
-        opinions = generate_department_opinions(proposal, None, [], default_market_intelligence_state())
+        opinions = generate_department_opinions(proposal, None, [], default_market_intelligence_state(), [])
         risk = next(o for o in opinions if o.role == "risk")
         assert risk.summary == "Sector concentration limit reached."
 
     def test_risk_dissents_when_the_risk_analyst_voted_wait(self) -> None:
         proposal = _proposal(risk_vote_choice="wait")
-        opinions = generate_department_opinions(proposal, None, [], default_market_intelligence_state())
+        opinions = generate_department_opinions(proposal, None, [], default_market_intelligence_state(), [])
         risk = next(o for o in opinions if o.role == "risk")
         assert risk.stance == "disagree"
 
     def test_simulation_is_honestly_not_yet_stress_tested_without_a_challenge_report(self) -> None:
-        opinions = generate_department_opinions(_proposal(), None, [], default_market_intelligence_state())
+        opinions = generate_department_opinions(_proposal(), None, [], default_market_intelligence_state(), [])
         simulation = next(o for o in opinions if o.role == "simulation")
         assert simulation.stance == "request_more_research"
         assert "not yet" in simulation.summary.lower()
 
     def test_simulation_reads_the_real_worst_case_scenario_off_the_challenge_report(self) -> None:
         report = _challenge_report(worst_case="Flash crash wipes out 8% in one bar.")
-        opinions = generate_department_opinions(_proposal(), report, [], default_market_intelligence_state())
+        opinions = generate_department_opinions(_proposal(), report, [], default_market_intelligence_state(), [])
         simulation = next(o for o in opinions if o.role == "simulation")
         assert "Flash crash wipes out 8%" in simulation.summary
 
     def test_devils_advocate_is_honestly_not_yet_challenged_without_a_report(self) -> None:
-        opinions = generate_department_opinions(_proposal(), None, [], default_market_intelligence_state())
+        opinions = generate_department_opinions(_proposal(), None, [], default_market_intelligence_state(), [])
         devils_advocate = next(o for o in opinions if o.role == "devils_advocate")
         assert devils_advocate.stance == "request_more_research"
         assert "not yet challenged" in devils_advocate.summary.lower()
 
     def test_devils_advocate_reads_the_real_final_recommendation_off_the_challenge_report(self) -> None:
         report = _challenge_report(severity="major")
-        opinions = generate_department_opinions(_proposal(), report, [], default_market_intelligence_state())
+        opinions = generate_department_opinions(_proposal(), report, [], default_market_intelligence_state(), [])
         devils_advocate = next(o for o in opinions if o.role == "devils_advocate")
         assert devils_advocate.stance == "recommend_rejecting"
         assert devils_advocate.summary == report.final_recommendation
 
     def test_founders_is_honest_about_no_history_when_no_comparisons_exist(self) -> None:
         report = _challenge_report(historical_comparisons=[])
-        opinions = generate_department_opinions(_proposal(), report, [], default_market_intelligence_state())
+        opinions = generate_department_opinions(_proposal(), report, [], default_market_intelligence_state(), [])
         founders = next(o for o in opinions if o.role == "founders")
         assert founders.stance == "agree"
         assert "no past company history" in founders.summary.lower()
 
     def test_founders_reuses_the_real_historical_comparison_titles(self) -> None:
         report = _challenge_report(historical_comparisons=["Chased a breakout that reversed (NEXA, Day 12)"])
-        opinions = generate_department_opinions(_proposal(), report, [], default_market_intelligence_state())
+        opinions = generate_department_opinions(_proposal(), report, [], default_market_intelligence_state(), [])
         founders = next(o for o in opinions if o.role == "founders")
         assert founders.stance == "recommend_waiting"
         assert "Chased a breakout that reversed" in founders.summary
 
     def test_coach_is_honest_about_no_report_yet(self) -> None:
-        opinions = generate_department_opinions(_proposal(), None, [], default_market_intelligence_state())
+        opinions = generate_department_opinions(_proposal(), None, [], default_market_intelligence_state(), [])
         coach = next(o for o in opinions if o.role == "coach")
         assert "no coach report" in coach.summary.lower()
 
     def test_coach_reuses_the_real_latest_report(self) -> None:
         report = _coach_report(company_score=85.0)
-        opinions = generate_department_opinions(_proposal(), None, [report], default_market_intelligence_state())
+        opinions = generate_department_opinions(_proposal(), None, [report], default_market_intelligence_state(), [])
         coach = next(o for o in opinions if o.role == "coach")
         assert coach.summary == "Consistent process discipline"
         assert coach.confidence_pct == 85.0
 
     def test_decision_intelligence_reuses_the_real_confidence_engine(self) -> None:
         proposal = _proposal(tier="poor", score=20.0)
-        opinions = generate_department_opinions(proposal, None, [], default_market_intelligence_state())
+        opinions = generate_department_opinions(proposal, None, [], default_market_intelligence_state(), [])
         decision_intelligence = next(o for o in opinions if o.role == "decision_intelligence")
         assert decision_intelligence.stance == "recommend_rejecting"
         assert decision_intelligence.confidence_pct == 20.0
@@ -193,17 +195,95 @@ class TestGenerateDepartmentOpinions:
     def test_quant_reads_real_technical_and_research_factors(self) -> None:
         factors = [ConfidenceFactor(name="technical", score=80.0, weight=0.2, detail="d"), ConfidenceFactor(name="research", score=60.0, weight=0.15, detail="d")]
         proposal = _proposal(factors=factors)
-        opinions = generate_department_opinions(proposal, None, [], default_market_intelligence_state())
+        opinions = generate_department_opinions(proposal, None, [], default_market_intelligence_state(), [])
         quant = next(o for o in opinions if o.role == "quant")
         assert quant.confidence_pct == 70.0  # (80 + 60) / 2
         assert "80" in quant.summary and "60" in quant.summary
+
+
+class TestMarketIntelligenceOpinionSessionEvidence:
+    """CEO directive "Session Trading Education & Agent Training" — the
+    real integration point session context reaches the live decision
+    pipeline through: the market_intelligence opinion's own summary/
+    evidence must cite real SESSION x REGIME evidence (app/session_evidence.py),
+    honestly reporting NOT ENOUGH EVIDENCE below the floor, and must
+    never change `stance` — session evidence is explanation, never
+    permission."""
+
+    def _vault_entry(self, *, entry_id: str, session: str, market_regime: str, pnl_pct: float) -> DecisionVaultEntry:
+        return DecisionVaultEntry(
+            id=entry_id,
+            tradeId=f"trade-{entry_id}",
+            decisionId=f"decision-{entry_id}",
+            symbol="NEXA",
+            simDay=1,
+            session=session,  # type: ignore[arg-type]
+            strategyId=None,
+            marketRegime=market_regime,  # type: ignore[arg-type]
+            marketRegimeLabel="test regime",
+            liquidityContext=LiquidityRead(symbol="NEXA", zones=[], sweepDetected=False, sweepDirection="none", liquidityScore=50.0, detail="test"),
+            evidenceScore=70.0,
+            confidenceScore=70.0,
+            confidenceTier="strong",  # type: ignore[arg-type]
+            capitalAllocationGrade="B",  # type: ignore[arg-type]
+            decisionGrade="B",  # type: ignore[arg-type]
+            decisionGradeScore=80.0,
+            disciplineTier="sound",  # type: ignore[arg-type]
+            disciplineScore=75.0,
+            patienceGrade="B",  # type: ignore[arg-type]
+            positionSize=10.0,
+            entryPrice=100.0,
+            exitPrice=100.0 + pnl_pct,
+            pnl=pnl_pct * 10.0,
+            pnlPct=pnl_pct,
+            holdDurationMinutes=60,
+            rMultiple=None,
+            caseStudyId=None,
+            caseStudyCategory=None,
+            executiveNotes=None,
+            lessonsLearned="test",
+            companyDnaChange=None,
+            ceoOverride=False,
+            createdAt=_now_iso(),
+        )
+
+    def _mi_state_with_session(self, session: str):
+        base = default_market_intelligence_state()
+        return base.model_copy(update={"session": base.session.model_copy(update={"current": session}), "regime": "sideways_range"})
+
+    def test_no_matching_vault_entries_cites_not_enough_evidence(self) -> None:
+        mi = self._mi_state_with_session("london")
+        opinions = generate_department_opinions(_proposal(), None, [], mi, [])
+        market_intel = next(o for o in opinions if o.role == "market_intelligence")
+        assert "NOT ENOUGH EVIDENCE" in market_intel.summary
+        assert any("NOT ENOUGH EVIDENCE" in e for e in market_intel.evidence)
+
+    def test_enough_matching_evidence_cites_real_sample_and_win_rate(self) -> None:
+        mi = self._mi_state_with_session("asian")
+        vault = [self._vault_entry(entry_id=f"e{i}", session="asian", market_regime="sideways_range", pnl_pct=1.0) for i in range(6)]
+        opinions = generate_department_opinions(_proposal(), None, [], mi, vault)
+        market_intel = next(o for o in opinions if o.role == "market_intelligence")
+        assert "6 real observations" in market_intel.summary
+        assert "100% favorable" in market_intel.summary
+
+    def test_session_evidence_never_changes_stance(self) -> None:
+        # A poor-quality proposal stays recommend_waiting regardless of
+        # how favorable the (unrelated) session evidence looks — session
+        # context informs the explanation, never the stance itself.
+        proposal = _proposal(tier="poor", score=20.0)
+        mi = self._mi_state_with_session("london").model_copy(update={"quality": default_market_intelligence_state().quality.model_copy(update={"tier": "poor"})})
+        vault = [self._vault_entry(entry_id=f"e{i}", session="london", market_regime="sideways_range", pnl_pct=5.0) for i in range(10)]
+        opinions = generate_department_opinions(proposal, None, [], mi, vault)
+        market_intel = next(o for o in opinions if o.role == "market_intelligence")
+        assert market_intel.stance == "recommend_waiting"
+        assert "100% favorable" in market_intel.summary
 
 
 class TestComputeExecutiveRecommendation:
     def test_no_concerns_recommends_trading_normally(self) -> None:
         proposal = _proposal(tier="elite", score=96.0)
         report = _challenge_report(severity="none_found")
-        opinions = generate_department_opinions(proposal, report, [_coach_report(company_score=90.0)], default_market_intelligence_state())
+        opinions = generate_department_opinions(proposal, report, [_coach_report(company_score=90.0)], default_market_intelligence_state(), [])
         recommendation = compute_executive_recommendation(proposal, opinions)
         assert recommendation.action == "trade_normally"
         assert recommendation.proposal_id == "proposal-1"
@@ -211,13 +291,13 @@ class TestComputeExecutiveRecommendation:
     def test_major_devils_advocate_concern_recommends_reducing_risk(self) -> None:
         proposal = _proposal()
         report = _challenge_report(severity="major")
-        opinions = generate_department_opinions(proposal, report, [], default_market_intelligence_state())
+        opinions = generate_department_opinions(proposal, report, [], default_market_intelligence_state(), [])
         recommendation = compute_executive_recommendation(proposal, opinions)
         assert recommendation.action == "reduce_risk"
 
     def test_no_simulation_yet_recommends_focusing_on_simulation(self) -> None:
         proposal = _proposal(tier="good", score=75.0)
-        opinions = generate_department_opinions(proposal, None, [], default_market_intelligence_state())
+        opinions = generate_department_opinions(proposal, None, [], default_market_intelligence_state(), [])
         recommendation = compute_executive_recommendation(proposal, opinions)
         assert recommendation.action == "focus_on_simulation"
 
@@ -225,13 +305,13 @@ class TestComputeExecutiveRecommendation:
         factors = [ConfidenceFactor(name="research", score=20.0, weight=0.15, detail="d")]
         proposal = _proposal(tier="good", score=75.0, factors=factors)
         report = _challenge_report(severity="none_found")
-        opinions = generate_department_opinions(proposal, report, [], default_market_intelligence_state())
+        opinions = generate_department_opinions(proposal, report, [], default_market_intelligence_state(), [])
         recommendation = compute_executive_recommendation(proposal, opinions)
         assert recommendation.action == "research_more"
 
     def test_confidence_pct_is_the_real_average_of_opinion_confidences(self) -> None:
         proposal = _proposal()
-        opinions = generate_department_opinions(proposal, None, [], default_market_intelligence_state())
+        opinions = generate_department_opinions(proposal, None, [], default_market_intelligence_state(), [])
         recommendation = compute_executive_recommendation(proposal, opinions)
         expected = round(sum(o.confidence_pct for o in opinions) / len(opinions), 1)
         assert recommendation.confidence_pct == expected
@@ -239,7 +319,7 @@ class TestComputeExecutiveRecommendation:
     def test_supporting_and_opposing_reflect_real_opinion_stances(self) -> None:
         proposal = _proposal(tier="elite", score=96.0)
         report = _challenge_report(severity="none_found")
-        opinions = generate_department_opinions(proposal, report, [_coach_report(company_score=90.0)], default_market_intelligence_state())
+        opinions = generate_department_opinions(proposal, report, [_coach_report(company_score=90.0)], default_market_intelligence_state(), [])
         recommendation = compute_executive_recommendation(proposal, opinions)
         for role in recommendation.supporting:
             assert next(o for o in opinions if o.role == role).stance == "agree"
@@ -273,32 +353,32 @@ class TestGenerateMeetingLogEntry:
     def test_reuses_the_decisions_own_grade_rather_than_recomputing(self) -> None:
         proposal = _proposal()
         decision = _decision(decision_grade="A+", decision_grade_score=98.0)
-        entry = generate_meeting_log_entry(proposal, decision, "buy", None, [], default_market_intelligence_state(), sim_day=5, resolved_by="ceo")
+        entry = generate_meeting_log_entry(proposal, decision, "buy", None, [], default_market_intelligence_state(), [], sim_day=5, resolved_by="ceo")
         assert entry.decision_grade == "A+"
         assert entry.decision_grade_score == 98.0
 
     def test_buy_choice_agreeing_with_trade_normally_is_network_agreed(self) -> None:
         proposal = _proposal(tier="elite", score=96.0)
         report = _challenge_report(severity="none_found")
-        opinions = generate_department_opinions(proposal, report, [_coach_report(company_score=90.0)], default_market_intelligence_state())
+        opinions = generate_department_opinions(proposal, report, [_coach_report(company_score=90.0)], default_market_intelligence_state(), [])
         recommendation = compute_executive_recommendation(proposal, opinions)
         assert recommendation.action == "trade_normally"
-        entry = generate_meeting_log_entry(proposal, _decision(), "buy", report, [_coach_report(company_score=90.0)], default_market_intelligence_state(), sim_day=1, resolved_by="ceo")
+        entry = generate_meeting_log_entry(proposal, _decision(), "buy", report, [_coach_report(company_score=90.0)], default_market_intelligence_state(), [], sim_day=1, resolved_by="ceo")
         assert entry.network_agreed is True
 
     def test_wait_choice_against_trade_normally_is_not_network_agreed(self) -> None:
         proposal = _proposal(tier="elite", score=96.0)
         report = _challenge_report(severity="none_found")
         coach_reports = [_coach_report(company_score=90.0)]
-        opinions = generate_department_opinions(proposal, report, coach_reports, default_market_intelligence_state())
+        opinions = generate_department_opinions(proposal, report, coach_reports, default_market_intelligence_state(), [])
         recommendation = compute_executive_recommendation(proposal, opinions)
         assert recommendation.action == "trade_normally"
-        entry = generate_meeting_log_entry(proposal, _decision(), "wait", report, coach_reports, default_market_intelligence_state(), sim_day=1, resolved_by="ceo")
+        entry = generate_meeting_log_entry(proposal, _decision(), "wait", report, coach_reports, default_market_intelligence_state(), [], sim_day=1, resolved_by="ceo")
         assert entry.network_agreed is False
 
     def test_carries_the_real_proposal_and_provenance_fields(self) -> None:
         proposal = _proposal()
-        entry = generate_meeting_log_entry(proposal, _decision(), "buy", None, [], default_market_intelligence_state(), sim_day=7, resolved_by="auto")
+        entry = generate_meeting_log_entry(proposal, _decision(), "buy", None, [], default_market_intelligence_state(), [], sim_day=7, resolved_by="auto")
         assert entry.proposal_id == proposal.id
         assert entry.symbol == proposal.symbol
         assert entry.sim_day == 7
@@ -311,7 +391,7 @@ class TestGenerateMeetingLogEntry:
         log: list[ExecutiveMeetingLogEntry] = []
         proposal = _proposal()
         for i in range(MAX_MEETING_LOG_ENTRIES + 5):
-            entry = generate_meeting_log_entry(proposal.model_copy(update={"id": f"p{i}"}), _decision(), "buy", None, [], default_market_intelligence_state(), sim_day=i, resolved_by="ceo")
+            entry = generate_meeting_log_entry(proposal.model_copy(update={"id": f"p{i}"}), _decision(), "buy", None, [], default_market_intelligence_state(), [], sim_day=i, resolved_by="ceo")
             log = record_meeting_log_entry(log, entry)
         assert len(log) == MAX_MEETING_LOG_ENTRIES
         # Oldest entries roll off first — the newest survives.
@@ -333,7 +413,7 @@ class TestGenerateWeeklySelfEvaluations:
 
     def test_entries_outside_the_trailing_window_are_excluded(self) -> None:
         proposal = _proposal()
-        old_entry = generate_meeting_log_entry(proposal, _decision(), "buy", None, [], default_market_intelligence_state(), sim_day=1, resolved_by="ceo")
+        old_entry = generate_meeting_log_entry(proposal, _decision(), "buy", None, [], default_market_intelligence_state(), [], sim_day=1, resolved_by="ceo")
         evaluations = generate_weekly_self_evaluations([old_entry], sim_day=20)
         for e in evaluations:
             assert e.decisions_reviewed == 0
@@ -342,7 +422,7 @@ class TestGenerateWeeklySelfEvaluations:
         proposal = _proposal(tier="elite", score=96.0)
         report = _challenge_report(severity="none_found")
         coach_reports = [_coach_report(company_score=90.0)]
-        entry = generate_meeting_log_entry(proposal, _decision(), "buy", report, coach_reports, default_market_intelligence_state(), sim_day=10, resolved_by="ceo")
+        entry = generate_meeting_log_entry(proposal, _decision(), "buy", report, coach_reports, default_market_intelligence_state(), [], sim_day=10, resolved_by="ceo")
         evaluations = generate_weekly_self_evaluations([entry], sim_day=12)
         research_eval = next(e for e in evaluations if e.role == "research")
         assert research_eval.decisions_reviewed == 1

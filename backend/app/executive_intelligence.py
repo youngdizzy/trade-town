@@ -82,6 +82,7 @@ from app.schemas import (
     ChallengeReport,
     CoachReport,
     DecisionConfidence,
+    DecisionVaultEntry,
     DepartmentOpinion,
     DepartmentSelfEvaluation,
     ExecutiveAccuracyScore,
@@ -95,6 +96,7 @@ from app.schemas import (
     TradeDecision,
     TradeProposal,
 )
+from app.session_evidence import compute_session_regime_evidence, lookup_session_regime_evidence
 
 MAX_MEETING_LOG_ENTRIES = 200
 MAX_SELF_EVAL_HISTORY = 250
@@ -311,7 +313,21 @@ def _devils_advocate_opinion(challenge_report: ChallengeReport | None) -> Depart
 # the same moment shares the same real MarketIntelligenceState read).
 # Never recomputed here — reads app/market_intelligence.py's own already-
 # computed Market Quality Score directly.
-def _market_intelligence_opinion(market_intelligence: MarketIntelligenceState) -> DepartmentOpinion:
+#
+# CEO directive "Session Trading Education & Agent Training" — the real
+# integration point session context reaches the live decision pipeline
+# through: `decision_vault` (already in scope at every real call site
+# below) feeds app/session_evidence.py's real SESSION x REGIME evidence,
+# looked up for the CURRENT real session/regime pairing and cited
+# directly in this opinion's own summary/evidence — the exact GOOD-
+# explanation format the directive asks for ("N historical observations,
+# X% favorable" or an honest "NOT ENOUGH EVIDENCE"), reached through this
+# already-real, already-informational department-opinion channel. This
+# NEVER changes `stance` (still driven purely by the real Market Quality
+# tier above) and never touches the Trade Gatekeeper or RiskLimits —
+# session evidence informs the explanation text only, exactly the
+# directive's own "session context is evidence, not permission" rule.
+def _market_intelligence_opinion(market_intelligence: MarketIntelligenceState, decision_vault: list[DecisionVaultEntry]) -> DepartmentOpinion:
     stance_by_tier: dict[str, ExecutiveStance] = {
         "excellent": "agree",
         "good": "agree",
@@ -321,20 +337,37 @@ def _market_intelligence_opinion(market_intelligence: MarketIntelligenceState) -
     }
     quality = market_intelligence.quality
     stance = stance_by_tier[quality.tier]
-    summary = f"{market_intelligence.regime_label} — {quality.reasoning}"
+
+    session_evidence_summary = compute_session_regime_evidence(decision_vault)
+    bucket = lookup_session_regime_evidence(session_evidence_summary, market_intelligence.session.current, market_intelligence.regime)
+    if bucket is None or bucket.evidence_state == "not_enough_evidence":
+        sample = bucket.sample_size if bucket is not None else 0
+        session_note = (
+            f"NOT ENOUGH EVIDENCE for {market_intelligence.session.label} under this regime yet "
+            f"({sample} real observation{'s' if sample != 1 else ''}, {session_evidence_summary.min_sample_size} required)."
+        )
+    else:
+        session_note = (
+            f"{market_intelligence.session.label} under this regime: {bucket.sample_size} real observations, "
+            f"{bucket.win_rate_pct:.0f}% favorable ({bucket.evidence_state})."
+        )
+
+    summary = f"{market_intelligence.regime_label} — {quality.reasoning} {session_note}"
     return DepartmentOpinion(
         role="market_intelligence",
         departmentLabel=_DEPARTMENT_LABELS["market_intelligence"],
         stance=stance,
         summary=summary,
         confidencePct=quality.confidence_pct,
-        evidence=[market_intelligence.regime_label, quality.reasoning],
+        evidence=[market_intelligence.regime_label, quality.reasoning, session_note],
         concerns=[quality.reasoning] if stance in ("recommend_waiting", "recommend_rejecting") else [],
         benefits=[quality.reasoning] if stance == "agree" else [],
     )
 
 
-def generate_department_opinions(proposal: TradeProposal, challenge_report: ChallengeReport | None, coach_reports: list[CoachReport], market_intelligence: MarketIntelligenceState) -> list[DepartmentOpinion]:
+def generate_department_opinions(
+    proposal: TradeProposal, challenge_report: ChallengeReport | None, coach_reports: list[CoachReport], market_intelligence: MarketIntelligenceState, decision_vault: list[DecisionVaultEntry]
+) -> list[DepartmentOpinion]:
     return [
         _research_opinion(proposal),
         _quant_opinion(proposal),
@@ -344,7 +377,7 @@ def generate_department_opinions(proposal: TradeProposal, challenge_report: Chal
         _coach_opinion(coach_reports),
         _founders_opinion(challenge_report),
         _devils_advocate_opinion(challenge_report),
-        _market_intelligence_opinion(market_intelligence),
+        _market_intelligence_opinion(market_intelligence, decision_vault),
     ]
 
 
@@ -447,11 +480,12 @@ def generate_meeting_log_entry(
     challenge_report: ChallengeReport | None,
     coach_reports: list[CoachReport],
     market_intelligence: MarketIntelligenceState,
+    decision_vault: list[DecisionVaultEntry],
     *,
     sim_day: int,
     resolved_by: Literal["ceo", "auto", "delegated"],
 ) -> ExecutiveMeetingLogEntry:
-    opinions = generate_department_opinions(proposal, challenge_report, coach_reports, market_intelligence)
+    opinions = generate_department_opinions(proposal, challenge_report, coach_reports, market_intelligence, decision_vault)
     recommendation = compute_executive_recommendation(proposal, opinions)
     if ceo_decision in ("buy", "sell"):
         network_agreed = recommendation.action in _TRADING_ACTIONS

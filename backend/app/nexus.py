@@ -894,6 +894,7 @@ def _apply_operating_mode(
     challenge_reports: list[ChallengeReport],
     coach_reports: list[CoachReport],
     meeting_log: list[ExecutiveMeetingLogEntry],
+    decision_vault: list[DecisionVaultEntry],
     sim_day: int,
     market_intelligence: MarketIntelligenceState,
     war_room_sessions: list[WarRoomSession],
@@ -1003,7 +1004,7 @@ def _apply_operating_mode(
         weighted_recommendation = None
         if proposal.overall_recommendation != "wait":
             pre_resolve_challenge_report = next((c for c in reversed(challenge_reports) if c.proposal_id == proposal.id), None)
-            opinions = generate_department_opinions(proposal, pre_resolve_challenge_report, coach_reports, market_intelligence)
+            opinions = generate_department_opinions(proposal, pre_resolve_challenge_report, coach_reports, market_intelligence, decision_vault)
             raw_recommendation = compute_executive_recommendation(proposal, opinions)
             if raw_recommendation.action == "pause_trading":
                 still_pending.append(proposal)
@@ -1046,7 +1047,7 @@ def _apply_operating_mode(
         challenge_report = next((c for c in reversed(challenge_reports) if c.proposal_id == proposal.id), None)
         meeting_log = record_meeting_log_entry(
             meeting_log,
-            generate_meeting_log_entry(proposal, decision, record.ceo_decision, challenge_report, coach_reports, market_intelligence, sim_day=sim_day, resolved_by="auto"),
+            generate_meeting_log_entry(proposal, decision, record.ceo_decision, challenge_report, coach_reports, market_intelligence, decision_vault, sim_day=sim_day, resolved_by="auto"),
         )
 
         verdict = decision.gatekeeper_verdict
@@ -1741,6 +1742,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         challenge_reports,
         coach_reports,
         meeting_log,
+        decision_vault,
         new_time.day,
         market_intelligence,
         war_room_sessions,
@@ -1776,7 +1778,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         meeting_log = record_meeting_log_entry(
             meeting_log,
             generate_meeting_log_entry(
-                expired, expired_decision, expired_record.ceo_decision, expired_challenge_report, coach_reports, market_intelligence, sim_day=new_time.day, resolved_by="auto"
+                expired, expired_decision, expired_record.ceo_decision, expired_challenge_report, coach_reports, market_intelligence, decision_vault, sim_day=new_time.day, resolved_by="auto"
             ),
         )
         news.append(

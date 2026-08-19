@@ -305,7 +305,7 @@ def build_war_room_session(
     candles: list,
     risk_limits: RiskLimits,
 ) -> WarRoomSession:
-    opinions = generate_department_opinions(proposal, challenge_report, coach_reports, market_intelligence)
+    opinions = generate_department_opinions(proposal, challenge_report, coach_reports, market_intelligence, decision_vault)
     recommendation = compute_executive_recommendation(proposal, opinions)
 
     simulation = run_whatif_simulation(proposal.symbol, candles)

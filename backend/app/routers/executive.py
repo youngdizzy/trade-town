@@ -223,7 +223,7 @@ async def executive_intelligence(proposal_id: str = Query(..., alias="proposalId
     if proposal is None:
         raise HTTPException(status_code=404, detail="Unknown or already-resolved proposal.")
     challenge_report = next((c for c in reversed(state.challenge_reports) if c.proposal_id == proposal_id), None)
-    opinions = generate_department_opinions(proposal, challenge_report, state.coach_reports, state.market_intelligence)
+    opinions = generate_department_opinions(proposal, challenge_report, state.coach_reports, state.market_intelligence, state.decision_vault)
     recommendation = compute_executive_recommendation(proposal, opinions)
     try:
         candles = market_data_provider.get_candles(proposal.symbol, PROPOSAL_TIMEFRAME, PROPOSAL_CANDLE_COUNT)
@@ -302,7 +302,7 @@ async def weighted_decision(
     if proposal is None:
         raise HTTPException(status_code=404, detail="Unknown or already-resolved proposal.")
     challenge_report = next((c for c in reversed(state.challenge_reports) if c.proposal_id == proposal_id), None)
-    opinions = generate_department_opinions(proposal, challenge_report, state.coach_reports, state.market_intelligence)
+    opinions = generate_department_opinions(proposal, challenge_report, state.coach_reports, state.market_intelligence, state.decision_vault)
     recommendation = compute_executive_recommendation(proposal, opinions)
     accuracy_scores = compute_executive_accuracy_scores(state.executive_meeting_log, state.ceo_decisions)
     active_profile = profile if profile is not None else state.settings.active_weight_profile
