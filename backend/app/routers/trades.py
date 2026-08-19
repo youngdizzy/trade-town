@@ -11,8 +11,9 @@ from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.exit_efficiency import compute_exit_efficiency
+from app.performance_attribution import compute_symbol_performance
 from app.persistence import persist_modules
-from app.schemas import ExitEfficiencySummary
+from app.schemas import ExitEfficiencySummary, SymbolPerformanceSummary
 from app.state import game_state
 
 router = APIRouter(prefix="/api/trades", tags=["trades"])
@@ -45,3 +46,13 @@ async def get_exit_efficiency() -> ExitEfficiencySummary:
     `trade_history` — no new GameSaveState field."""
     state = await game_state.snapshot()
     return compute_exit_efficiency(state.paper_portfolio.trade_history)
+
+
+@router.get("/performance-by-symbol", response_model=SymbolPerformanceSummary)
+async def get_performance_by_symbol() -> SymbolPerformanceSummary:
+    """CEO directive "Next Professional Trading Firm Phase," Priority 2
+    (see app/performance_attribution.py). Read-only, computed fresh per
+    request from the already-real `trade_history` — no new
+    GameSaveState field."""
+    state = await game_state.snapshot()
+    return compute_symbol_performance(state.paper_portfolio.trade_history)

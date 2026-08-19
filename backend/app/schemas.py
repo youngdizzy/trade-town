@@ -824,6 +824,68 @@ class ExitEfficiencySummary(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# CEO directive "Next Professional Trading Firm Phase," Priority 2 —
+# Unified Professional P&L/Performance Reporting (app/performance_
+# attribution.py). RESEARCH FINDING: no symbol-level P&L aggregation
+# existed anywhere in this codebase before this piece — `PerformancePanel
+# .tsx`'s "All-Time Trade Journal" already computes win rate/avg win/avg
+# loss, but only across the WHOLE trade history, never broken out per
+# symbol. Scoped to SYMBOL only this pass — real, unambiguous, 100%
+# real-data coverage (every PaperTrade already carries its own real
+# `symbol`). AGENT-level attribution is deliberately NOT built here: a
+# trade can carry multiple `supportingAgents`/`opposingAgents`, and
+# there is no existing, CEO-authorized rule for how to split credit
+# across them — inventing one unilaterally would be a fabricated
+# convention dressed up as a real metric. STRATEGY-level remains
+# blocked (`DecisionVaultEntry.strategyId` is always `None` on a live
+# Trading Floor trade — already disclosed in the Session Trading
+# Education work). See CHANGELOG.md for the full reasoning on both.
+SymbolPerformanceEvidenceState = Literal["sufficient_evidence", "not_enough_data"]
+
+
+class SymbolPerformanceRead(CamelModel):
+    """One symbol's real, computed-fresh performance record over
+    `state.paper_portfolio.trade_history`. `expectancy_pct` is the
+    standard win-rate/avg-win/avg-loss decomposition — algebraically
+    identical to `avg_pnl_pct` under this same win/loss partition (see
+    test_performance_attribution.py), exposed separately because
+    professional traders read the decomposition itself (win rate vs.
+    win/loss size asymmetry) as diagnostic, not because it's a second,
+    independently-derived number. `profit_factor` (gross profit / gross
+    loss) is `None`, not a fabricated infinity, when there are zero
+    losing trades to divide by — a real "undefined" state, not a
+    missing one. Both `expectancy_pct` and `profit_factor` are `None`
+    below `MIN_SYMBOL_SAMPLE_FOR_VERDICT` trades (`evidenceState` is
+    then `not_enough_data`) — raw counts/totalPnl still show, since
+    those are real regardless of sample size, only the derived ratios
+    are withheld."""
+
+    symbol: str
+    trade_count: int = Field(alias="tradeCount")
+    win_count: int = Field(alias="winCount")
+    loss_count: int = Field(alias="lossCount")
+    win_rate_pct: float = Field(alias="winRatePct")
+    total_pnl: float = Field(alias="totalPnl")
+    avg_pnl_pct: float = Field(alias="avgPnlPct")
+    avg_winner_pct: float | None = Field(default=None, alias="avgWinnerPct")
+    avg_loser_pct: float | None = Field(default=None, alias="avgLoserPct")
+    expectancy_pct: float | None = Field(default=None, alias="expectancyPct")
+    profit_factor: float | None = Field(default=None, alias="profitFactor")
+    avg_mae_pct: float = Field(alias="avgMaePct")
+    avg_mfe_pct: float = Field(alias="avgMfePct")
+    best_trade_pnl_pct: float = Field(alias="bestTradePnlPct")
+    worst_trade_pnl_pct: float = Field(alias="worstTradePnlPct")
+    evidence_state: SymbolPerformanceEvidenceState = Field(alias="evidenceState")
+
+
+class SymbolPerformanceSummary(CamelModel):
+    """`reads` sorted by `total_pnl` descending — the most profitable
+    symbol first, directly answering "what is making money?"."""
+
+    reads: list[SymbolPerformanceRead]
+    updated_at: str = Field(alias="updatedAt")
+
+
 class PaperPortfolio(CamelModel):
     """The company's one simulated trading account. Starting balance and
     every position/order/trade in it are fictional — see
