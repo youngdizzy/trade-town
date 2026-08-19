@@ -29,7 +29,40 @@ content at all. Nothing is ever guessed.
 THE KNOWN VOCABULARY (exactly what this compiler can express — see each
 pattern's own comment for the exact phrasing it matches):
   - a TRIGGER: price closing above/below a named EMA/SMA (the sustained-
-    side "breaks and closes above/below the N EMA" shape).
+    side "breaks and closes above/below the N EMA" shape); OR (CEO
+    directive "...Quant Intelligence + Market Analysis Completion Phase
+    (Next Research + Validation Pass)") an RSI/Stochastic %K threshold
+    ("RSI above 70," "the 14 Stochastic is below 20" — an explicit
+    period is optional, defaulting to the methodology's own standard 14)
+    or a real MACD line/signal-line crossover ("MACD crosses above the
+    signal line," always the methodology's own standard 12/26/9
+    defaults — this compiler's `StrategyIndicatorRef` has no room for a
+    stated fast/slow/signal triple, a real, disclosed v1 simplification,
+    not a silent guess). At most ONE trigger is ever recognized per
+    strategy — the first pattern that matches (EMA/SMA, then RSI, then
+    Stochastic, then MACD, in that priority order) wins; this compiler
+    does not attempt to combine multiple trigger types into one
+    sequence.
+
+    A REAL, DISCLOSED DIRECTIONAL CONVENTION FOR RSI/STOCHASTIC, NOT A
+    GUESS: "indicator above N" always compiles to a real LONG-biased
+    trigger (operator="gt"), "below N" to SHORT -- the exact same
+    mechanical "higher value = bullish, lower value = bearish" rule the
+    engine's own threshold-trigger branch already applies (see
+    app/strategy_engine.py's own module docstring), matching a
+    MOMENTUM/breakout reading of the threshold ("RSI breaking above 70
+    confirms strong momentum, buy the continuation"). This is
+    DELIBERATELY NOT the mean-reversion reading ("RSI below 30 is
+    oversold, buy the bounce") -- that reading needs a trigger direction
+    OPPOSITE its own threshold side, which this compiler's v1 grammar
+    cannot express (the entry step's own stated direction is compared
+    against the trigger's for a real contradiction, exactly the same
+    "trigger and entry directions must agree" check the EMA/SMA trigger
+    already enforces -- a mean-reversion-phrased strategy like "buy when
+    RSI is below 30, enter when price closes above the swing high" is
+    correctly flagged status="ambiguous" for this real, disclosed
+    reason, never silently miscompiled). Representing mean-reversion
+    RSI/Stochastic strategies is real, tractable future work.
   - a REQUIREMENT: "at least N bullish/bearish candles" (a real
     consecutive-candle-direction count, English number words 1-20
     supported).
@@ -45,12 +78,13 @@ pattern's own comment for the exact phrasing it matches):
 
 ANYTHING OUTSIDE THIS VOCABULARY is a real, disclosed gap in this
 compiler's coverage, not a claim that no other strategy shape exists.
-Growing the vocabulary (RSI/MACD/Stochastic-based triggers, pattern-
-based conditions referencing app/technical_patterns.py, multi-leg
-sequences) is real, tractable future work — deliberately not attempted
-in one pass, per this directive's own "do not add every possible
-indicator just for quantity" instruction; see this module's own
-`STATUS_COVERAGE_NOTE` for the exact, current disclosed scope.
+Growing the vocabulary further (pattern-based conditions referencing
+app/technical_patterns.py, multi-leg/multi-trigger sequences, a stated
+MACD fast/slow/signal triple) is real, tractable future work —
+deliberately not attempted in one pass, per this directive's own "do
+not add every possible indicator just for quantity" instruction; see
+this module's own `STATUS_COVERAGE_NOTE` for the exact, current
+disclosed scope.
 
 NO AMBIGUOUS STRATEGIES. `_AMBIGUOUS_PHRASE_PATTERNS` is a disclosed
 list of vague-quality-judgment phrases ("strong breakout," "significant
@@ -77,11 +111,12 @@ from app.schemas import (
 )
 
 STATUS_COVERAGE_NOTE = (
-    "This compiler recognizes a disclosed, limited vocabulary: an EMA/SMA close-above/below trigger, an "
+    "This compiler recognizes a disclosed, limited vocabulary: an EMA/SMA close-above/below trigger, an RSI/"
+    "Stochastic threshold trigger, a MACD line/signal-line crossover trigger (at most one trigger per strategy), an "
     "at-least-N-consecutive-candles pullback requirement, a breakout-of-the-prior-swing-level entry, a "
-    "Chandelier/swing-level/fixed-percent stop, and an R-multiple or fixed-percent target. RSI/MACD/Stochastic-"
-    "based triggers, pattern-based conditions (FVG/candlestick/order-block), and multi-leg sequences are real, "
-    "disclosed gaps in this compiler's current coverage, not evidence no such strategy shape exists."
+    "Chandelier/swing-level/fixed-percent stop, and an R-multiple or fixed-percent target. Pattern-based conditions "
+    "(FVG/candlestick/order-block), a stated MACD fast/slow/signal triple, and multi-leg/multi-trigger sequences "
+    "are real, disclosed gaps in this compiler's current coverage, not evidence no such strategy shape exists."
 )
 
 _NUMBER_WORDS: dict[str, int] = {
@@ -114,6 +149,18 @@ _AMBIGUOUS_PHRASE_PATTERNS: tuple[str, ...] = (
 _TRIGGER_PATTERN = re.compile(
     r"clos(?:e|es|ed)\s+(above|below)\s+the\s+(\d+)[\s-]*(?:period\s+)?(EMA|SMA)", re.IGNORECASE
 )
+
+# CEO directive "...Quant Intelligence + Market Analysis Completion
+# Phase (Next Research + Validation Pass)" — RSI/MACD/Stochastic
+# threshold/crossover triggers, closing the "RSI/MACD/Stochastic-based
+# triggers... real future increment" gap this module's own
+# `STATUS_COVERAGE_NOTE` previously disclosed. Real, standard threshold
+# phrasing: "RSI above/below N" (optionally with an explicit period,
+# e.g. "the 14 RSI is above 70"), the mirror for Stochastic, and a real
+# MACD line/signal-line crossover.
+_RSI_THRESHOLD_PATTERN = re.compile(r"(?:the\s+)?(\d+)?[\s-]*(?:period\s+)?RSI\s+(?:is\s+)?(above|below)\s+(\d+(?:\.\d+)?)", re.IGNORECASE)
+_STOCHASTIC_THRESHOLD_PATTERN = re.compile(r"(?:the\s+)?(\d+)?[\s-]*(?:period\s+)?stochastic\s+(?:is\s+)?(above|below)\s+(\d+(?:\.\d+)?)", re.IGNORECASE)
+_MACD_CROSS_PATTERN = re.compile(r"MACD(?:\s+line)?\s+crosses\s+(above|below)\s+(?:the\s+)?signal(?:\s+line)?", re.IGNORECASE)
 
 # Real requirement phrasing: "at least N bullish/bearish candles".
 _REQUIREMENT_PATTERN = re.compile(
@@ -195,6 +242,10 @@ def compile_strategy_text(
     direction: str | None = None  # "long" | "short"
 
     trigger_match = _TRIGGER_PATTERN.search(source_text)
+    rsi_match = _RSI_THRESHOLD_PATTERN.search(source_text) if not trigger_match else None
+    stochastic_match = _STOCHASTIC_THRESHOLD_PATTERN.search(source_text) if not trigger_match and not rsi_match else None
+    macd_match = _MACD_CROSS_PATTERN.search(source_text) if not trigger_match and not rsi_match and not stochastic_match else None
+
     if trigger_match:
         side, period_str, ma_kind = trigger_match.groups()
         direction = "long" if side.lower() == "above" else "short"
@@ -213,6 +264,64 @@ def compile_strategy_text(
                 stepType="trigger",
                 condition=condition,
                 detail=f"Trigger: real EMA/SMA cross-{'up' if direction == 'long' else 'down'} with close confirmation.",
+            )
+        )
+    elif rsi_match:
+        period_str, side, threshold_str = rsi_match.groups()
+        period = int(period_str) if period_str else 14
+        direction = "long" if side.lower() == "above" else "short"
+        operator = "gt" if direction == "long" else "lt"
+        condition = StrategyCondition(
+            id=f"{definition_id}-trigger-condition",
+            left=StrategyIndicatorRef(indicator="rsi", period=period),
+            operator=operator,  # type: ignore[arg-type]
+            rightValue=float(threshold_str),
+            detail=f"Real RSI({period}) {side.lower()} {threshold_str}, with a real sustained-side confirmation window before triggering (the engine's own standard requirement — never a bare single-bar spike).",
+        )
+        sequence.append(
+            StrategySequenceStep(
+                id=_next_step_id(),
+                stepType="trigger",
+                condition=condition,
+                detail=f"Trigger: real RSI({period}) {side.lower()} {threshold_str}.",
+            )
+        )
+    elif stochastic_match:
+        period_str, side, threshold_str = stochastic_match.groups()
+        period = int(period_str) if period_str else 14
+        direction = "long" if side.lower() == "above" else "short"
+        operator = "gt" if direction == "long" else "lt"
+        condition = StrategyCondition(
+            id=f"{definition_id}-trigger-condition",
+            left=StrategyIndicatorRef(indicator="stochastic_percent_k", period=period),
+            operator=operator,  # type: ignore[arg-type]
+            rightValue=float(threshold_str),
+            detail=f"Real Stochastic %K({period}) {side.lower()} {threshold_str}, with a real sustained-side confirmation window before triggering (the engine's own standard requirement).",
+        )
+        sequence.append(
+            StrategySequenceStep(
+                id=_next_step_id(),
+                stepType="trigger",
+                condition=condition,
+                detail=f"Trigger: real Stochastic %K({period}) {side.lower()} {threshold_str}.",
+            )
+        )
+    elif macd_match:
+        (side,) = macd_match.groups()
+        direction = "long" if side.lower() == "above" else "short"
+        condition = StrategyCondition(
+            id=f"{definition_id}-trigger-condition",
+            left=StrategyIndicatorRef(indicator="macd_line"),
+            operator="crosses_above" if direction == "long" else "crosses_below",
+            rightIndicator=StrategyIndicatorRef(indicator="macd_signal"),
+            detail=f"Real MACD line crosses {side.lower()} its own real signal line (the methodology's own standard 12/26/9 defaults).",
+        )
+        sequence.append(
+            StrategySequenceStep(
+                id=_next_step_id(),
+                stepType="trigger",
+                condition=condition,
+                detail=f"Trigger: real MACD line/signal-line cross-{'up' if direction == 'long' else 'down'}.",
             )
         )
 

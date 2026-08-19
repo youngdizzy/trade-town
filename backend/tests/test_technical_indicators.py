@@ -8,7 +8,7 @@ formula exactly on a hand-checkable fixture.
 from __future__ import annotations
 
 from app.market_data import Candle
-from app.technical_indicators import atr, atr_series, ema, macd, parabolic_sar, parabolic_sar_series, rsi, sma, sma_series, stochastic, supertrend, supertrend_series, vwap
+from app.technical_indicators import atr, atr_series, ema, macd, macd_series, parabolic_sar, parabolic_sar_series, rsi, rsi_series, sma, sma_series, stochastic, stochastic_series, supertrend, supertrend_series, vwap
 
 
 def _candle(*, close: float, high: float | None = None, low: float | None = None, volume: float = 100.0, i: int = 0) -> Candle:
@@ -95,6 +95,30 @@ class TestRsi:
         assert rsi(candles, period=14) == 50.0
 
 
+class TestRsiSeries:
+    def test_empty_with_insufficient_candles(self) -> None:
+        assert rsi_series(_candles([1.0] * 5), period=14) == []
+
+    def test_last_value_matches_rsi(self) -> None:
+        candles = _candles([10.0 + (i % 5) - (i % 3) for i in range(30)])
+        series = rsi_series(candles, period=14)
+        assert series
+        assert series[-1] == rsi(candles, period=14)
+
+    def test_one_value_per_candle_from_the_real_minimum_window_onward(self) -> None:
+        candles = _candles([10.0 + (i % 5) - (i % 3) for i in range(30)])
+        series = rsi_series(candles, period=14)
+        assert len(series) == len(candles) - 14
+
+    def test_real_value_at_an_earlier_point_matches_rsi_of_the_series_up_to_that_point(self) -> None:
+        candles = _candles([10.0 + (i % 5) - (i % 3) for i in range(30)])
+        series = rsi_series(candles, period=14)
+        # series[0] is RSI "as of" candle index 14 -- must equal rsi()
+        # computed over just that prefix (the same real ATR-style
+        # alignment app/backtest_primitives.py's atr_at() already uses).
+        assert series[0] == rsi(candles[:15], period=14)
+
+
 class TestMacd:
     def test_none_with_insufficient_candles(self) -> None:
         assert macd(_candles([1.0] * 10), fast=12, slow=26, signal=9) is None
@@ -116,6 +140,37 @@ class TestMacd:
         assert macd_line > 0
 
 
+class TestMacdSeries:
+    def test_empty_with_insufficient_candles(self) -> None:
+        assert macd_series(_candles([1.0] * 10), fast=12, slow=26, signal=9) == []
+
+    def test_last_value_matches_macd(self) -> None:
+        candles = _candles([10.0 + i * 0.5 for i in range(60)])
+        series = macd_series(candles, fast=12, slow=26, signal=9)
+        assert series
+        assert series[-1] == macd(candles, fast=12, slow=26, signal=9)
+
+    def test_one_value_per_candle_from_the_real_minimum_window_onward(self) -> None:
+        candles = _candles([10.0 + i * 0.5 for i in range(60)])
+        series = macd_series(candles, fast=12, slow=26, signal=9)
+        # macd_line_series has len(candles) - slow + 1 real entries; the
+        # real signal EMA seed then consumes the first (signal - 1) of
+        # those before the first real triple exists.
+        assert len(series) == len(candles) - 26 + 1 - (9 - 1)
+
+    def test_real_value_at_an_earlier_point_matches_macd_of_the_series_up_to_that_point(self) -> None:
+        # macd_series()'s own first mathematically-valid entry (candle
+        # index slow+signal-2) needs one fewer real candle than macd()'s
+        # own real, slightly conservative gate (len(candles) >=
+        # slow+signal) requires to return anything at all -- comparing
+        # one step later, safely past that gate, avoids that pre-existing
+        # 1-candle skew rather than papering over it.
+        candles = _candles([10.0 + i * 0.5 for i in range(60)])
+        series = macd_series(candles, fast=12, slow=26, signal=9)
+        later_index = 26 + 9 - 1  # slow + signal - 1, 0-indexed -- comfortably inside macd()'s own gate
+        assert series[1] == macd(candles[: later_index + 1], fast=12, slow=26, signal=9)
+
+
 class TestStochastic:
     def test_none_with_insufficient_candles(self) -> None:
         assert stochastic(_candles([1.0] * 5), period=14, smoothing=3) is None
@@ -135,6 +190,28 @@ class TestStochastic:
         assert result is not None
         percent_k, _percent_d = result
         assert percent_k == 0.0
+
+
+class TestStochasticSeries:
+    def test_empty_with_insufficient_candles(self) -> None:
+        assert stochastic_series(_candles([1.0] * 5), period=14, smoothing=3) == []
+
+    def test_last_value_matches_stochastic(self) -> None:
+        candles = _candles([10.0 + (i % 7) for i in range(30)])
+        series = stochastic_series(candles, period=14, smoothing=3)
+        assert series
+        assert series[-1] == stochastic(candles, period=14, smoothing=3)
+
+    def test_one_value_per_candle_from_the_real_minimum_window_onward(self) -> None:
+        candles = _candles([10.0 + (i % 7) for i in range(30)])
+        series = stochastic_series(candles, period=14, smoothing=3)
+        assert len(series) == len(candles) - 14 - 3 + 2
+
+    def test_real_value_at_an_earlier_point_matches_stochastic_of_the_series_up_to_that_point(self) -> None:
+        candles = _candles([10.0 + (i % 7) for i in range(30)])
+        series = stochastic_series(candles, period=14, smoothing=3)
+        first_valid_index = 14 + 3 - 2  # period + smoothing - 2, 0-indexed
+        assert series[0] == stochastic(candles[: first_valid_index + 1], period=14, smoothing=3)
 
 
 class TestAtr:

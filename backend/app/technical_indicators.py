@@ -134,6 +134,71 @@ def rsi(candles: list[Candle], period: int = 14) -> float | None:
     return round(100.0 - (100.0 / (1.0 + rs)), 2)
 
 
+def rsi_series(candles: list[Candle], period: int = 14) -> list[float]:
+    """The real, full RSI series (one value per candle from the point a
+    real `period`-bar Wilder-smoothed window exists onward) — `rsi()`
+    above returns just its last value. Same index alignment as
+    `atr_series()` (`rsi_series(candles, period)[0]` is the real RSI "as
+    of" candle index `period`, one bar later than `ema_series()`'s own
+    seed point, since RSI's first real gain/loss needs one prior close
+    the same way ATR's first true range does) — `app/backtest_
+    primitives.py`'s `atr_at()` is reused directly to look this series
+    up at an arbitrary historical index, never a second lookup formula.
+    `rsi_series(candles, period)[-1] == rsi(candles, period)` for the
+    same inputs — same real Wilder-smoothing formula, computed at every
+    window instead of only the last."""
+    if len(candles) < period + 1:
+        return []
+    closes = [c.close for c in candles]
+    deltas = [closes[i] - closes[i - 1] for i in range(1, len(closes))]
+    gains = [max(0.0, d) for d in deltas]
+    losses = [max(0.0, -d) for d in deltas]
+    avg_gain = sum(gains[:period]) / period
+    avg_loss = sum(losses[:period]) / period
+
+    def _rsi_value(avg_gain: float, avg_loss: float) -> float:
+        if avg_gain == 0 and avg_loss == 0:
+            return 50.0
+        if avg_loss == 0:
+            return 100.0
+        rs = avg_gain / avg_loss
+        return round(100.0 - (100.0 / (1.0 + rs)), 2)
+
+    series = [_rsi_value(avg_gain, avg_loss)]
+    for gain, loss in zip(gains[period:], losses[period:]):
+        avg_gain = (avg_gain * (period - 1) + gain) / period
+        avg_loss = (avg_loss * (period - 1) + loss) / period
+        series.append(_rsi_value(avg_gain, avg_loss))
+    return series
+
+
+def macd_series(candles: list[Candle], fast: int = 12, slow: int = 26, signal: int = 9) -> list[tuple[float, float, float]]:
+    """The real, full MACD series (one `(macd_line, signal_line,
+    histogram)` triple per candle from the point a real signal-line
+    window exists onward) — `macd()` below returns just its last triple.
+    Uses the exact same real `ema_series()` alignment `macd()` already
+    relies on, computed at every historical window instead of only the
+    latest. `macd_series(candles, ...)[-1] == macd(candles, ...)` for
+    the same inputs."""
+    if len(candles) < slow + signal:
+        return []
+    fast_series = ema_series(candles, fast)
+    slow_series = ema_series(candles, slow)
+    offset = len(fast_series) - len(slow_series)
+    if offset < 0:
+        return []
+    aligned_fast = fast_series[offset:]
+    macd_line_series = [f - s for f, s in zip(aligned_fast, slow_series)]
+    if len(macd_line_series) < signal:
+        return []
+    seed = sum(macd_line_series[:signal]) / signal
+    multiplier = 2.0 / (signal + 1)
+    signal_series = [seed]
+    for value in macd_line_series[signal:]:
+        signal_series.append((value - signal_series[-1]) * multiplier + signal_series[-1])
+    return [(round(macd_line_series[k + signal - 1], 4), round(sig, 4), round(macd_line_series[k + signal - 1] - sig, 4)) for k, sig in enumerate(signal_series)]
+
+
 def macd(candles: list[Candle], fast: int = 12, slow: int = 26, signal: int = 9) -> tuple[float, float, float] | None:
     """Moving Average Convergence/Divergence — returns (macd_line,
     signal_line, histogram), the three real, standard MACD outputs.
@@ -186,6 +251,29 @@ def stochastic(candles: list[Candle], period: int = 14, smoothing: int = 3) -> t
     percent_k = k_values[-1]
     percent_d = sum(k_values[-smoothing:]) / smoothing
     return round(percent_k, 2), round(percent_d, 2)
+
+
+def stochastic_series(candles: list[Candle], period: int = 14, smoothing: int = 3) -> list[tuple[float, float]]:
+    """The real, full Stochastic series (one `(percent_k, percent_d)`
+    pair per candle from the point a real smoothed window exists onward)
+    — `stochastic()` above returns just its last pair. Same real
+    high-low-range-position formula, computed at every historical window
+    instead of only the latest.
+    `stochastic_series(candles, ...)[-1] == stochastic(candles, ...)`
+    for the same inputs."""
+    if len(candles) < period + smoothing - 1:
+        return []
+    k_values: list[float] = []
+    for i in range(period - 1, len(candles)):
+        window = candles[i - period + 1 : i + 1]
+        highest = max(c.high for c in window)
+        lowest = min(c.low for c in window)
+        close = candles[i].close
+        k = 50.0 if highest == lowest else (close - lowest) / (highest - lowest) * 100.0
+        k_values.append(k)
+    if len(k_values) < smoothing:
+        return []
+    return [(round(k_values[i], 2), round(sum(k_values[i - smoothing + 1 : i + 1]) / smoothing, 2)) for i in range(smoothing - 1, len(k_values))]
 
 
 def atr(candles: list[Candle], period: int = 14) -> float | None:

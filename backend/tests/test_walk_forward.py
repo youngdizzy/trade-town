@@ -30,15 +30,15 @@ def _invalid_definition() -> CompiledStrategyDefinition:
 def _unsupported_indicator_definition() -> CompiledStrategyDefinition:
     now = datetime.now(timezone.utc).isoformat()
     return CompiledStrategyDefinition(
-        id="rsi-test",
-        name="RSI test",
+        id="vwap-test",
+        name="VWAP test",
         sourceText="x",
         version=1,
         createdBy="quant",
         createdAt=now,
         timeframe="1h",
         sequence=[
-            StrategySequenceStep(id="s1", stepType="trigger", detail="x", condition=StrategyCondition(id="c1", left=StrategyIndicatorRef(indicator="rsi", period=14), operator="gt", rightValue=70.0, detail="x")),
+            StrategySequenceStep(id="s1", stepType="trigger", detail="x", condition=StrategyCondition(id="c1", left=StrategyIndicatorRef(indicator="vwap", period=None), operator="gt", rightValue=70.0, detail="x")),
             StrategySequenceStep(id="s2", stepType="entry", detail="x"),
         ],
         stop=StrategyStopSpec(method="fixed_percent", percent=1.0),

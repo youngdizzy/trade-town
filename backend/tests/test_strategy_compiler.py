@@ -122,3 +122,95 @@ class TestSourceTextIsPreservedExactly:
     def test_source_text_round_trips_verbatim(self) -> None:
         result = compile_strategy_text(name="Audit", source_text=_CEO_EXAMPLE_TEXT)
         assert result.source_text == _CEO_EXAMPLE_TEXT
+
+
+class TestRsiStochasticMacdTriggers:
+    """CEO directive "...Quant Intelligence + Market Analysis Completion
+    Phase (Next Research + Validation Pass)" -- the real, disclosed
+    MOMENTUM-reading convention for RSI/Stochastic thresholds (see this
+    module's own docstring): "above N" always compiles to a real long-
+    biased trigger, "below N" to short. Never the mean-reversion
+    reading."""
+
+    def test_rsi_above_threshold_compiles_to_a_real_long_trigger(self) -> None:
+        text = "Buy when RSI is above 70, then enter when price closes above the previous swing high. Place a 2% stop and 4% target."
+        result = compile_strategy_text(name="X", source_text=text)
+        assert result.status == "compiled"
+        trigger = next(s for s in result.sequence if s.step_type == "trigger")
+        assert trigger.condition is not None
+        assert trigger.condition.left.indicator == "rsi"
+        assert trigger.condition.left.period == 14
+        assert trigger.condition.operator == "gt"
+        assert trigger.condition.right_value == 70.0
+
+    def test_rsi_below_threshold_with_an_explicit_period_compiles_correctly(self) -> None:
+        text = "Sell when the 21 RSI is below 25, then enter when price closes below the previous swing low. Place a 2% stop and 4% target."
+        result = compile_strategy_text(name="X", source_text=text)
+        assert result.status == "compiled"
+        trigger = next(s for s in result.sequence if s.step_type == "trigger")
+        assert trigger.condition is not None
+        assert trigger.condition.left.period == 21
+        assert trigger.condition.operator == "lt"
+        assert trigger.condition.right_value == 25.0
+
+    def test_a_mean_reversion_phrased_rsi_strategy_is_ambiguous_not_silently_miscompiled(self) -> None:
+        # "RSI below 30, buy" is the mean-reversion reading -- the
+        # trigger's own real short-biased direction (below N -> short)
+        # genuinely contradicts the entry's own stated long direction
+        # (closes above the swing high). This compiler refuses rather
+        # than guessing which reading was intended.
+        text = "Buy when RSI is below 30, then enter when price closes above the previous swing high. Place a 2% stop and 4% target."
+        result = compile_strategy_text(name="X", source_text=text)
+        assert result.status == "ambiguous"
+        assert any("contradicts" in a.reason for a in result.ambiguities)
+
+    def test_stochastic_threshold_compiles_with_the_stated_period(self) -> None:
+        text = "Buy when the 14 Stochastic is above 80, then enter when price closes above the previous swing high. Place a 2% stop and 4% target."
+        result = compile_strategy_text(name="X", source_text=text)
+        assert result.status == "compiled"
+        trigger = next(s for s in result.sequence if s.step_type == "trigger")
+        assert trigger.condition is not None
+        assert trigger.condition.left.indicator == "stochastic_percent_k"
+        assert trigger.condition.left.period == 14
+        assert trigger.condition.operator == "gt"
+
+    def test_stochastic_without_a_stated_period_defaults_to_fourteen(self) -> None:
+        text = "Sell when Stochastic is below 20, then enter when price closes below the previous swing low. Place a 2% stop and 4% target."
+        result = compile_strategy_text(name="X", source_text=text)
+        assert result.status == "compiled"
+        trigger = next(s for s in result.sequence if s.step_type == "trigger")
+        assert trigger.condition is not None
+        assert trigger.condition.left.period == 14
+
+    def test_macd_cross_above_signal_compiles_to_a_real_long_crossing_trigger(self) -> None:
+        text = "Buy when MACD crosses above the signal line, then enter when price closes above the previous swing high. Place a 2% stop and 4% target."
+        result = compile_strategy_text(name="X", source_text=text)
+        assert result.status == "compiled"
+        trigger = next(s for s in result.sequence if s.step_type == "trigger")
+        assert trigger.condition is not None
+        assert trigger.condition.left.indicator == "macd_line"
+        assert trigger.condition.operator == "crosses_above"
+        assert trigger.condition.right_indicator is not None
+        assert trigger.condition.right_indicator.indicator == "macd_signal"
+
+    def test_macd_line_crosses_below_signal_compiles_to_a_real_short_crossing_trigger(self) -> None:
+        text = "Sell when MACD line crosses below signal, then enter when price closes below the previous swing low. Place a 2% stop and 4% target."
+        result = compile_strategy_text(name="X", source_text=text)
+        assert result.status == "compiled"
+        trigger = next(s for s in result.sequence if s.step_type == "trigger")
+        assert trigger.condition is not None
+        assert trigger.condition.operator == "crosses_below"
+
+    def test_at_most_one_trigger_is_recognized_ema_takes_priority_over_rsi(self) -> None:
+        # A real text that could match BOTH the EMA pattern and the RSI
+        # pattern -- the EMA/SMA pattern's own real priority (checked
+        # first) wins; this compiler never tries to combine two trigger
+        # types into one sequence.
+        text = "Buy when price closes above the 50 EMA and RSI is above 70, then enter when price closes above the previous swing high. Place a 2% stop and 4% target."
+        result = compile_strategy_text(name="X", source_text=text)
+        triggers = [s for s in result.sequence if s.step_type == "trigger"]
+        assert len(triggers) == 1
+        assert triggers[0].condition is not None
+        assert triggers[0].condition.left.indicator == "price_close"
+        assert triggers[0].condition.right_indicator is not None
+        assert triggers[0].condition.right_indicator.indicator == "ema"

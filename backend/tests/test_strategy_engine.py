@@ -24,7 +24,7 @@ from app.schemas import (
 )
 from app.strategy_compiler import compile_strategy_text
 from app.strategy_engine import _detect_generic_setups, _resolve_stop, _resolve_target, _unsupported_indicators, run_compiled_strategy_backtest
-from app.technical_indicators import ema_series
+from app.technical_indicators import ema_series, macd_series, rsi_series, stochastic_series
 
 _LONG_TEXT = (
     "Buy when price closes above the 50 EMA, then wait for at least two bearish candles, "
@@ -189,13 +189,13 @@ class TestUnsupportedIndicators:
                 StrategySequenceStep(
                     id="s1",
                     stepType="trigger",
-                    condition=StrategyCondition(id="c1", left=StrategyIndicatorRef(indicator="rsi", period=14), operator="gt", rightValue=70.0, detail="x"),
+                    condition=StrategyCondition(id="c1", left=StrategyIndicatorRef(indicator="vwap", period=None), operator="gt", rightValue=70.0, detail="x"),
                     detail="x",
                 )
             ],
             stop=None, target=None, ambiguities=[], status="compiled", detail="x",
         )
-        assert _unsupported_indicators(definition) == {"rsi"}
+        assert _unsupported_indicators(definition) == {"vwap"}
 
     def test_empty_for_the_ceo_worked_example(self) -> None:
         definition = compile_strategy_text(name="X", source_text=_LONG_TEXT)
@@ -216,7 +216,7 @@ class TestRunCompiledStrategyBacktestRefusesRatherThanGuesses:
                 StrategySequenceStep(
                     id="s1",
                     stepType="trigger",
-                    condition=StrategyCondition(id="c1", left=StrategyIndicatorRef(indicator="rsi", period=14), operator="gt", rightValue=70.0, detail="x"),
+                    condition=StrategyCondition(id="c1", left=StrategyIndicatorRef(indicator="vwap", period=None), operator="gt", rightValue=70.0, detail="x"),
                     detail="x",
                 ),
                 StrategySequenceStep(id="s2", stepType="entry", detail="x"),
@@ -270,3 +270,157 @@ class TestRegimeAndBreakoutTagsAreReallyComputedNotHardcoded:
                 ratios.add(breakout_candle_range_ratio(candles, setup.entry_index - 1, recent_range_lookback=RECENT_RANGE_LOOKBACK))
         assert len(trends) > 1 or len(volatilities) > 1, "regime tags never varied across a real, diverse 8-symbol sample -- suspect a hardcoded constant"
         assert len(ratios) > 1, "breakout range ratio never varied across a real, diverse 8-symbol sample -- suspect a hardcoded constant"
+
+
+def _rsi_definition(*, period: int | None = None, operator: str = "gt", value: float = 70.0) -> CompiledStrategyDefinition:
+    """A real, hand-built definition referencing an `rsi` trigger --
+    exercises app/strategy_engine.py's own RSI wiring directly, since
+    app/strategy_compiler.py does not yet produce these conditions from
+    English text (a real, disclosed, separate future increment -- see
+    that module's own `STATUS_COVERAGE_NOTE`)."""
+    return CompiledStrategyDefinition(
+        id="rsi-test", name="RSI test", sourceText="x", version=1, createdBy="quant", createdAt="2024-01-01T00:00:00+00:00", timeframe="1h",
+        sequence=[
+            StrategySequenceStep(id="s1", stepType="trigger", detail="x", condition=StrategyCondition(id="c1", left=StrategyIndicatorRef(indicator="rsi", period=period), operator=operator, rightValue=value, detail="x")),  # type: ignore[arg-type]
+            StrategySequenceStep(id="s2", stepType="entry", detail="x"),
+        ],
+        stop=StrategyStopSpec(method="fixed_percent", percent=2.0),
+        target=StrategyTargetSpec(method="fixed_percent", value=4.0),
+        ambiguities=[], status="compiled", detail="x",
+    )
+
+
+def _macd_cross_definition() -> CompiledStrategyDefinition:
+    return CompiledStrategyDefinition(
+        id="macd-test", name="MACD test", sourceText="x", version=1, createdBy="quant", createdAt="2024-01-01T00:00:00+00:00", timeframe="1h",
+        sequence=[
+            StrategySequenceStep(
+                id="s1", stepType="trigger", detail="x",
+                condition=StrategyCondition(id="c1", left=StrategyIndicatorRef(indicator="macd_line", period=None), operator="crosses_above", rightIndicator=StrategyIndicatorRef(indicator="macd_signal", period=None), detail="x"),
+            ),
+            StrategySequenceStep(id="s2", stepType="entry", detail="x"),
+        ],
+        stop=StrategyStopSpec(method="fixed_percent", percent=2.0),
+        target=StrategyTargetSpec(method="fixed_percent", value=4.0),
+        ambiguities=[], status="compiled", detail="x",
+    )
+
+
+def _stochastic_definition(*, period: int | None = None) -> CompiledStrategyDefinition:
+    return CompiledStrategyDefinition(
+        id="stoch-test", name="Stochastic test", sourceText="x", version=1, createdBy="quant", createdAt="2024-01-01T00:00:00+00:00", timeframe="1h",
+        sequence=[
+            StrategySequenceStep(id="s1", stepType="trigger", detail="x", condition=StrategyCondition(id="c1", left=StrategyIndicatorRef(indicator="stochastic_percent_k", period=period), operator="lt", rightValue=20.0, detail="x")),
+            StrategySequenceStep(id="s2", stepType="entry", detail="x"),
+        ],
+        stop=StrategyStopSpec(method="fixed_percent", percent=2.0),
+        target=StrategyTargetSpec(method="fixed_percent", value=4.0),
+        ambiguities=[], status="compiled", detail="x",
+    )
+
+
+class TestRsiMacdStochasticAreNowSupported:
+    """CEO directive "...Quant Intelligence + Market Analysis Completion
+    Phase (Next Research + Validation Pass)" -- RSI/MACD/Stochastic
+    triggers, previously a disclosed real gap in this engine's
+    `SUPPORTED_INDICATORS`, now resolved against real, full-series
+    values cross-validated directly against app/technical_indicators.py's
+    own rsi_series()/macd_series()/stochastic_series() output."""
+
+    def test_rsi_is_no_longer_an_unsupported_indicator(self) -> None:
+        assert _unsupported_indicators(_rsi_definition()) == set()
+
+    def test_macd_is_no_longer_an_unsupported_indicator(self) -> None:
+        assert _unsupported_indicators(_macd_cross_definition()) == set()
+
+    def test_stochastic_is_no_longer_an_unsupported_indicator(self) -> None:
+        assert _unsupported_indicators(_stochastic_definition()) == set()
+
+    def test_resolve_rsi_matches_the_real_rsi_series_at_a_real_index(self) -> None:
+        from app.strategy_engine import _resolve
+
+        candles = market_data_provider.get_candles("AAPL", "1h", 200)
+        definition = _rsi_definition(period=14)
+        series = _build_series_cache_helper(candles, definition)
+        ref = definition.sequence[0].condition.left  # type: ignore[union-attr]
+        rsi_full = rsi_series(candles, 14)
+        for index in (100, 150, 199):
+            resolved = _resolve(ref, candles, series, index)
+            expected = rsi_full[index - 14] if 0 <= index - 14 < len(rsi_full) else None
+            assert resolved == expected
+
+    def test_resolve_macd_line_and_signal_match_the_real_macd_series_at_a_real_index(self) -> None:
+        from app.strategy_engine import _resolve
+
+        candles = market_data_provider.get_candles("AAPL", "1h", 200)
+        definition = _macd_cross_definition()
+        series = _build_series_cache_helper(candles, definition)
+        condition = definition.sequence[0].condition
+        assert condition is not None
+        macd_full = macd_series(candles, fast=12, slow=26, signal=9)
+        first_index = 26 + 9 - 2
+        for index in (100, 150, 199):
+            resolved_line = _resolve(condition.left, candles, series, index)
+            resolved_signal = _resolve(condition.right_indicator, candles, series, index)  # type: ignore[arg-type]
+            expected = macd_full[index - first_index] if 0 <= index - first_index < len(macd_full) else None
+            assert resolved_line == (expected[0] if expected else None)
+            assert resolved_signal == (expected[1] if expected else None)
+
+    def test_resolve_stochastic_percent_k_matches_the_real_stochastic_series_at_a_real_index(self) -> None:
+        from app.strategy_engine import _resolve
+
+        candles = market_data_provider.get_candles("AAPL", "1h", 200)
+        definition = _stochastic_definition(period=14)
+        series = _build_series_cache_helper(candles, definition)
+        ref = definition.sequence[0].condition.left  # type: ignore[union-attr]
+        stoch_full = stochastic_series(candles, period=14, smoothing=3)
+        first_index = 14 + 3 - 2
+        for index in (100, 150, 199):
+            resolved = _resolve(ref, candles, series, index)
+            expected = stoch_full[index - first_index] if 0 <= index - first_index < len(stoch_full) else None
+            assert resolved == (expected[0] if expected else None)
+
+    def test_a_real_rsi_triggered_definition_produces_real_backtestable_trades(self) -> None:
+        # RSI < 30 (oversold) fires often enough across a real 6-symbol,
+        # 6000-candle sample to produce real trades -- proving the whole
+        # wiring (compiler-independent construction -> engine detection
+        # -> stop/target resolution -> exit simulation) works end to end,
+        # not just that individual values resolve correctly in isolation.
+        definition = _rsi_definition(period=14, operator="lt", value=30.0)
+        result = run_compiled_strategy_backtest(definition, symbols=["AAPL", "MSFT", "SPY", "QQQ", "GLD", "XLF"], candles_per_symbol=6000)
+        assert result.overall.trade_count > 0
+
+    def test_a_real_macd_cross_definition_produces_real_backtestable_trades(self) -> None:
+        definition = _macd_cross_definition()
+        result = run_compiled_strategy_backtest(definition, symbols=["AAPL", "MSFT", "SPY", "QQQ", "GLD", "XLF"], candles_per_symbol=6000)
+        assert result.overall.trade_count > 0
+
+    def test_default_periods_are_used_when_the_definition_states_none(self) -> None:
+        # RSI/Stochastic period=None must fall back to the real, standard
+        # default (14) rather than crashing or silently resolving None.
+        candles = market_data_provider.get_candles("AAPL", "1h", 200)
+        from app.strategy_engine import _resolve
+
+        definition = _rsi_definition(period=None)
+        series = _build_series_cache_helper(candles, definition)
+        ref = definition.sequence[0].condition.left  # type: ignore[union-attr]
+        assert _resolve(ref, candles, series, 150) == rsi_series(candles, 14)[150 - 14]
+
+    def test_compiler_to_engine_end_to_end_for_a_real_rsi_momentum_strategy(self) -> None:
+        # Closes the real loop: app/strategy_compiler.py produces the
+        # RSI condition from real English text (not a hand-built
+        # fixture), and this engine backtests it -- proving the new
+        # vocabulary works through the real, full pipeline a CEO would
+        # actually use, not just via directly-constructed schema objects.
+        text = "Buy when RSI is above 70, then enter when price closes above the previous swing high. Place a 2% stop and 4% target."
+        definition = compile_strategy_text(name="RSI momentum", source_text=text)
+        assert definition.status == "compiled"
+        result = run_compiled_strategy_backtest(definition, symbols=["AAPL", "MSFT", "SPY", "QQQ", "GLD", "XLF"], candles_per_symbol=6000)
+        assert result.overall.trade_count > 0
+
+    def test_compiler_to_engine_end_to_end_for_a_real_macd_cross_strategy(self) -> None:
+        text = "Buy when MACD crosses above the signal line, then enter when price closes above the previous swing high. Place a 2% stop and 4% target."
+        definition = compile_strategy_text(name="MACD cross", source_text=text)
+        assert definition.status == "compiled"
+        result = run_compiled_strategy_backtest(definition, symbols=["AAPL", "MSFT", "SPY", "QQQ", "GLD", "XLF"], candles_per_symbol=6000)
+        assert result.overall.trade_count > 0

@@ -48,7 +48,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 
-from app.backtest_primitives import aggregate_bucket, breakout_candle_range_ratio, chandelier_stop, ema_at, regime_trend_at, regime_volatility_at, simulate_exit
+from app.backtest_primitives import aggregate_bucket, atr_at, breakout_candle_range_ratio, chandelier_stop, ema_at, regime_trend_at, regime_volatility_at, simulate_exit
 from app.market_data import Candle, market_data_provider
 from app.market_intelligence import _session_for_hour
 from app.model_validation import generate_model_validation_report
@@ -63,14 +63,33 @@ from app.schemas import (
     StrategyMonteCarloResult,
 )
 from app.strategy_lab import run_strategy_monte_carlo
-from app.technical_indicators import atr_series, ema_series, sma_series
+from app.technical_indicators import atr_series, ema_series, macd_series, rsi_series, sma_series, stochastic_series
 from app.watchlist import SEED_SYMBOLS
 
 # The only StrategyIndicatorName values app/strategy_compiler.py's
 # current vocabulary can ever produce — see that module's own
 # `STATUS_COVERAGE_NOTE`. Growing this set is real, tractable future
 # work paired with growing the compiler's own recognized phrasing.
-SUPPORTED_INDICATORS = frozenset({"price_close", "price_open", "price_high", "price_low", "ema", "sma"})
+SUPPORTED_INDICATORS = frozenset(
+    {"price_close", "price_open", "price_high", "price_low", "ema", "sma", "rsi", "macd_line", "macd_signal", "macd_histogram", "stochastic_percent_k", "stochastic_percent_d"}
+)
+
+# CEO directive "...Quant Intelligence + Market Analysis Completion
+# Phase (Next Research + Validation Pass)" — RSI/MACD/Stochastic
+# triggers. `StrategyIndicatorRef` carries only ONE `period` field (no
+# room for MACD's real fast/slow/signal triple or Stochastic's real
+# period/smoothing pair) — a real, disclosed v1 simplification: MACD
+# always uses the methodology's own standard published defaults
+# (12/26/9, the same defaults app/technical_indicators.py's own
+# `macd()` already uses), and Stochastic's smoothing is fixed at the
+# same standard default (3) while its %K period is the one the
+# compiled definition itself states. Not a guess — the same "state the
+# period explicitly or take the standard default" convention the
+# Chandelier Stop's own compiler pattern already established.
+_MACD_FAST, _MACD_SLOW, _MACD_SIGNAL = 12, 26, 9
+_STOCHASTIC_SMOOTHING = 3
+_DEFAULT_RSI_PERIOD = 14
+_DEFAULT_STOCHASTIC_PERIOD = 14
 
 DEFAULT_TIMEFRAME = "1h"
 DEFAULT_CANDLES_PER_SYMBOL = 6000
@@ -109,28 +128,61 @@ def _unsupported_indicators(definition: CompiledStrategyDefinition) -> set[str]:
 class _SeriesCache:
     ema: dict[int, list[float]]
     sma: dict[int, list[float]]
+    rsi: dict[int, list[float]]
+    macd: list[tuple[float, float, float]]
+    stochastic: dict[int, list[tuple[float, float]]]
 
 
 def _build_series_cache(candles: list[Candle], definition: CompiledStrategyDefinition) -> _SeriesCache:
     ema_periods: set[int] = set()
     sma_periods: set[int] = set()
+    rsi_periods: set[int] = set()
+    stochastic_periods: set[int] = set()
+    needs_macd = False
     for step in definition.sequence:
         if step.condition is None:
             continue
         for ref in (step.condition.left, step.condition.right_indicator):
-            if ref is None or ref.period is None:
+            if ref is None:
                 continue
-            if ref.indicator == "ema":
+            if ref.indicator == "ema" and ref.period is not None:
                 ema_periods.add(ref.period)
-            elif ref.indicator == "sma":
+            elif ref.indicator == "sma" and ref.period is not None:
                 sma_periods.add(ref.period)
+            elif ref.indicator == "rsi":
+                rsi_periods.add(ref.period or _DEFAULT_RSI_PERIOD)
+            elif ref.indicator in ("macd_line", "macd_signal", "macd_histogram"):
+                needs_macd = True
+            elif ref.indicator in ("stochastic_percent_k", "stochastic_percent_d"):
+                stochastic_periods.add(ref.period or _DEFAULT_STOCHASTIC_PERIOD)
     # A chandelier stop's own ATR series is a real volatility read, not
     # an EMA/SMA period — computed separately in the caller, not cached
     # here.
     return _SeriesCache(
         ema={p: ema_series(candles, p) for p in ema_periods},
         sma={p: sma_series(candles, p) for p in sma_periods},
+        rsi={p: rsi_series(candles, p) for p in rsi_periods},
+        macd=macd_series(candles, fast=_MACD_FAST, slow=_MACD_SLOW, signal=_MACD_SIGNAL) if needs_macd else [],
+        stochastic={p: stochastic_series(candles, period=p, smoothing=_STOCHASTIC_SMOOTHING) for p in stochastic_periods},
     )
+
+
+def _macd_at(macd_series_values: list[tuple[float, float, float]], index: int) -> tuple[float, float, float] | None:
+    """Real lookup for `_SeriesCache.macd` at an arbitrary historical
+    index — the same real index-alignment math `ema_at()`/`atr_at()`
+    already use, just for a fixed-default MACD series (see this
+    module's own `_MACD_FAST`/`_MACD_SLOW`/`_MACD_SIGNAL`)."""
+    first_index = _MACD_SLOW + _MACD_SIGNAL - 2
+    k = index - first_index
+    return macd_series_values[k] if 0 <= k < len(macd_series_values) else None
+
+
+def _stochastic_at(stochastic_series_values: list[tuple[float, float]], period: int, index: int) -> tuple[float, float] | None:
+    """Real lookup for `_SeriesCache.stochastic[period]` at an arbitrary
+    historical index — see `_macd_at()`'s own docstring."""
+    first_index = period + _STOCHASTIC_SMOOTHING - 2
+    k = index - first_index
+    return stochastic_series_values[k] if 0 <= k < len(stochastic_series_values) else None
 
 
 def _resolve(ref: StrategyIndicatorRef, candles: list[Candle], series: _SeriesCache, index: int) -> float | None:
@@ -146,6 +198,23 @@ def _resolve(ref: StrategyIndicatorRef, candles: list[Candle], series: _SeriesCa
         return ema_at(series.ema.get(ref.period, []), ref.period, index)
     if ref.indicator == "sma" and ref.period is not None:
         return ema_at(series.sma.get(ref.period, []), ref.period, index)
+    if ref.indicator == "rsi":
+        period = ref.period or _DEFAULT_RSI_PERIOD
+        # RSI's own real series alignment (first entry at candle index
+        # `period`) is identical to ATR's — `atr_at()` is reused
+        # directly rather than a second, duplicate lookup formula.
+        return atr_at(series.rsi.get(period, []), period, index)
+    if ref.indicator in ("macd_line", "macd_signal", "macd_histogram"):
+        triple = _macd_at(series.macd, index)
+        if triple is None:
+            return None
+        return {"macd_line": triple[0], "macd_signal": triple[1], "macd_histogram": triple[2]}[ref.indicator]
+    if ref.indicator in ("stochastic_percent_k", "stochastic_percent_d"):
+        period = ref.period or _DEFAULT_STOCHASTIC_PERIOD
+        pair = _stochastic_at(series.stochastic.get(period, []), period, index)
+        if pair is None:
+            return None
+        return pair[0] if ref.indicator == "stochastic_percent_k" else pair[1]
     return None
 
 
