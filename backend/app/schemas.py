@@ -3249,6 +3249,120 @@ class StrategyLiquidityValidation(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
+# CEO directive "Professional Trading Firm — Market-Analysis Knowledge +
+# Session Intelligence Expansion," Phase 15 — the 50 EMA breakout +
+# pullback strategy, converted from CEO-supplied source material into a
+# formal, reproducible research hypothesis (see app/ema_pullback_
+# research.py's module docstring for the full rule definitions and the
+# SOURCE CLAIM vs. TRADETOWN EVIDENCE distinction this whole schema
+# family exists to keep honest). Every field here is a real, computed
+# read over a real bar-by-bar rule replay against real (mock) OHLCV
+# candle history — never fabricated, never asserted as validated merely
+# because the source material claims the strategy works.
+EmaPullbackTradeOutcome = Literal["win", "loss", "open"]
+EmaPullbackRegimeTrend = Literal["trending_up", "trending_down", "ranging"]
+EmaPullbackRegimeVolatility = Literal["high", "normal", "low"]
+
+
+class EmaPullbackTradeRecord(CamelModel):
+    """One real, individually-traceable simulated trade from the rule
+    replay — never an aggregate statistic. `regimeTrend`/
+    `regimeVolatility` are a self-contained proxy computed only from this
+    same candle series (50 EMA slope; ATR vs. its own trailing median) —
+    a deliberately simpler, disclosed stand-in for
+    `app/market_intelligence.py`'s real 13-way MarketIntelligenceRegime
+    classifier, which needs live, cross-symbol sweep/reversal state this
+    historical replay has no access to (see the module docstring's own
+    ARCHITECTURALLY BLOCKED note)."""
+
+    symbol: str
+    direction: Literal["long", "short"]
+    entry_timestamp: str = Field(alias="entryTimestamp")
+    entry_price: float = Field(alias="entryPrice")
+    stop_price: float = Field(alias="stopPrice")
+    target_price: float = Field(alias="targetPrice")
+    exit_price: float | None = Field(default=None, alias="exitPrice")
+    outcome: EmaPullbackTradeOutcome
+    r_multiple_realized: float = Field(alias="rMultipleRealized")
+    entry_session: TradingSession = Field(alias="entrySession")
+    regime_trend: EmaPullbackRegimeTrend = Field(alias="regimeTrend")
+    regime_volatility: EmaPullbackRegimeVolatility = Field(alias="regimeVolatility")
+    breakout_candle_extended: bool = Field(alias="breakoutCandleExtended")
+    breakout_candle_range_ratio: float = Field(alias="breakoutCandleRangeRatio")
+    mae_r: float = Field(alias="maeR")
+    mfe_r: float = Field(alias="mfeR")
+
+
+class EmaPullbackStatsBucket(CamelModel):
+    """One real, honestly-sized bucket of trades — used identically for
+    the R-multiple sweep, the session/regime/instrument/breakout-size
+    breakdowns, and the confirmed-vs-naive-baseline comparison, so every
+    slice of this research reports the exact same fields the same way.
+    `verdict` is `None` (never a forced call) below
+    `MIN_TRADES_FOR_BUCKET_VERDICT`."""
+
+    label: str
+    trade_count: int = Field(alias="tradeCount")
+    win_count: int = Field(alias="winCount")
+    loss_count: int = Field(alias="lossCount")
+    open_count: int = Field(alias="openCount")
+    win_rate_pct: float | None = Field(default=None, alias="winRatePct")
+    avg_win_r: float | None = Field(default=None, alias="avgWinR")
+    avg_loss_r: float | None = Field(default=None, alias="avgLossR")
+    expectancy_r: float | None = Field(default=None, alias="expectancyR")
+    profit_factor: float | None = Field(default=None, alias="profitFactor")
+    max_drawdown_r: float | None = Field(default=None, alias="maxDrawdownR")
+    longest_losing_streak: int | None = Field(default=None, alias="longestLosingStreak")
+    verdict: Literal["enough_evidence", "not_enough_evidence"] | None = None
+    detail: str
+
+
+class EmaPullbackSourceClaimComparison(CamelModel):
+    """The CEO-supplied source material's own reported result, displayed
+    ONLY as an external claim for comparison — never treated as
+    TradeTown-validated evidence, and never used as an input to any
+    computation in this module. See `SOURCE_CLAIM_NOTE` in
+    app/ema_pullback_research.py."""
+
+    source_claim_trade_count: int = Field(alias="sourceClaimTradeCount")
+    source_claim_winners: int = Field(alias="sourceClaimWinners")
+    source_claim_win_rate_pct: float = Field(alias="sourceClaimWinRatePct")
+    tradetown_trade_count: int = Field(alias="tradetownTradeCount")
+    tradetown_win_rate_pct: float | None = Field(default=None, alias="tradetownWinRatePct")
+    detail: str
+
+
+class EmaPullbackResearchResult(CamelModel):
+    """The full research experiment result for one CEO-directed run —
+    computed fresh on request, never persisted, never wired into any
+    live trading decision, agent behavior, or the Gatekeeper/Risk
+    Authority/Model Validator pipeline. `modelValidation`/`monteCarlo`
+    reuse the existing Strategy Lab machinery unchanged (an ad hoc,
+    non-persisted Strategy/SimulationResult pair built from this run's
+    own real numbers is the only way they are invoked) — never a second,
+    parallel validation or risk engine."""
+
+    id: str
+    hypothesis: str
+    rules_disclosure: str = Field(alias="rulesDisclosure")
+    symbols_tested: list[str] = Field(alias="symbolsTested")
+    timeframe: str
+    candles_per_symbol: int = Field(alias="candlesPerSymbol")
+    reference_r_multiple: float = Field(alias="referenceRMultiple")
+    r_multiple_sweep: list[EmaPullbackStatsBucket] = Field(default_factory=list, alias="rMultipleSweep")
+    session_breakdown: list[EmaPullbackStatsBucket] = Field(default_factory=list, alias="sessionBreakdown")
+    regime_trend_breakdown: list[EmaPullbackStatsBucket] = Field(default_factory=list, alias="regimeTrendBreakdown")
+    regime_volatility_breakdown: list[EmaPullbackStatsBucket] = Field(default_factory=list, alias="regimeVolatilityBreakdown")
+    instrument_breakdown: list[EmaPullbackStatsBucket] = Field(default_factory=list, alias="instrumentBreakdown")
+    breakout_size_breakdown: list[EmaPullbackStatsBucket] = Field(default_factory=list, alias="breakoutSizeBreakdown")
+    confirmed_vs_naive_baseline: list[EmaPullbackStatsBucket] = Field(default_factory=list, alias="confirmedVsNaiveBaseline")
+    source_claim_comparison: EmaPullbackSourceClaimComparison = Field(alias="sourceClaimComparison")
+    model_validation: ModelValidationReport | None = Field(default=None, alias="modelValidation")
+    monte_carlo: StrategyMonteCarloResult | None = Field(default=None, alias="monteCarlo")
+    data_honesty_note: str = Field(alias="dataHonestyNote")
+    generated_at: str = Field(alias="generatedAt")
+
+
 # Distinct from the trade-scoped ExecutiveAction (trade_normally/
 # reduce_risk/wait/...) — a strategy graduating through the Validation
 # Laboratory needs strategy-lifecycle actions, not single-trade ones.

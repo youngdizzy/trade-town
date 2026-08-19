@@ -8,7 +8,7 @@ formula exactly on a hand-checkable fixture.
 from __future__ import annotations
 
 from app.market_data import Candle
-from app.technical_indicators import atr, ema, macd, rsi, sma, stochastic, vwap
+from app.technical_indicators import atr, atr_series, ema, macd, rsi, sma, stochastic, vwap
 
 
 def _candle(*, close: float, high: float | None = None, low: float | None = None, volume: float = 100.0, i: int = 0) -> Candle:
@@ -139,6 +139,28 @@ class TestAtr:
         result = atr(candles, period=14)
         assert result is not None
         assert result > 1.0
+
+
+class TestAtrSeries:
+    def test_empty_with_insufficient_candles(self) -> None:
+        assert atr_series(_candles([1.0] * 3), period=14) == []
+
+    def test_last_value_matches_atr(self) -> None:
+        candles = [_candle(close=10.0, high=11.0, low=9.0, i=i) for i in range(20)]
+        series = atr_series(candles, period=14)
+        assert series
+        assert series[-1] == atr(candles, period=14)
+
+    def test_one_value_per_candle_from_the_real_minimum_window_onward(self) -> None:
+        candles = [_candle(close=10.0, high=11.0, low=9.0, i=i) for i in range(20)]
+        series = atr_series(candles, period=14)
+        assert len(series) == len(candles) - 14
+
+    def test_real_value_at_an_earlier_point_matches_atr_of_the_series_up_to_that_point(self) -> None:
+        candles = [_candle(close=10.0 + i * 0.3, high=10.0 + i * 0.3 + 1, low=10.0 + i * 0.3 - 1, i=i) for i in range(30)]
+        series = atr_series(candles, period=14)
+        # series[0] is ATR "as of" candle index 14 -- must equal atr() computed over just that prefix.
+        assert series[0] == atr(candles[:15], period=14)
 
 
 class TestVwap:

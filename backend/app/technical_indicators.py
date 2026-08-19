@@ -188,6 +188,24 @@ def atr(candles: list[Candle], period: int = 14) -> float | None:
     return round(sum(window) / period, 4)
 
 
+def atr_series(candles: list[Candle], period: int = 14) -> list[float]:
+    """The real, full ATR series (one value per candle from the point a
+    real `period`-bar true-range window exists onward) — `atr()` above
+    returns just its last value; a real backtest that needs a volatility
+    read AT EVERY historical bar (e.g. a Chandelier Stop, computed at
+    each real trade's own entry bar, never with knowledge of bars after
+    it) needs the series itself. `atr_series(candles, period)[-1] ==
+    atr(candles, period)` for the same inputs — same real formula, just
+    computed at every window instead of only the last one."""
+    if len(candles) < period + 1:
+        return []
+    true_ranges: list[float] = []
+    for i in range(1, len(candles)):
+        high, low, prev_close = candles[i].high, candles[i].low, candles[i - 1].close
+        true_ranges.append(max(high - low, abs(high - prev_close), abs(low - prev_close)))
+    return [round(sum(true_ranges[i - period : i]) / period, 4) for i in range(period, len(true_ranges) + 1)]
+
+
 def vwap(candles: list[Candle]) -> float | None:
     """Volume-Weighted Average Price over the full real candle window
     supplied — the real, standard typical-price-times-volume sum divided

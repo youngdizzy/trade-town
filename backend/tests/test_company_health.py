@@ -1137,7 +1137,7 @@ class TestExecutiveTier:
         # test_talent_development_rewards_demonstrated_post_graduation_performance
         # below for the case where real post-graduation data exists.
         fm_state = default_foundational_mentor_state()
-        parked = {"market_intelligence", "mark_douglas", "linda_raschke"}
+        parked = {"market_intelligence", "mark_douglas", "linda_raschke", "al_brooks"}
         fm_state = fm_state.model_copy(update={"mentors": [m.model_copy(update={"status": "planned"}) if m.id in parked else m for m in fm_state.mentors]})
         graduated = FoundationalMentorProgress(mentorId="tjr", graduationStatus="graduated")  # type: ignore[call-arg]
         fm_state = fm_state.model_copy(update={"progress": {agent_id: {"tjr": graduated} for agent_id in list(STUDENT_AGENT_IDS)[:4]}})
@@ -1145,21 +1145,23 @@ class TestExecutiveTier:
         assert health.talent_development == 37.5
 
     def test_talent_development_divides_across_every_real_active_track(self) -> None:
-        # v0.7 Feature 51 and Trading Psychology & Discipline Piece F — a
-        # fresh game legitimately has four real active tracks (tjr,
-        # market_intelligence, mark_douglas, linda_raschke) until one
-        # graduates, so the real denominator is students × active tracks,
-        # not just students.
+        # v0.7 Feature 51, Trading Psychology & Discipline Piece F, and the
+        # CEO directive "Professional Trading Firm — Market-Analysis
+        # Knowledge + Session Intelligence Expansion" (al_brooks's first
+        # real lesson content) — a fresh game legitimately has five real
+        # active tracks (tjr, al_brooks, market_intelligence, mark_douglas,
+        # linda_raschke) until one graduates, so the real denominator is
+        # students × active tracks, not just students.
         fm_state = default_foundational_mentor_state()
-        assert sum(1 for m in fm_state.mentors if m.status == "active") == 4
+        assert sum(1 for m in fm_state.mentors if m.status == "active") == 5
         graduated = FoundationalMentorProgress(mentorId="tjr", graduationStatus="graduated")  # type: ignore[call-arg]
         fm_state = fm_state.model_copy(update={"progress": {agent_id: {"tjr": graduated} for agent_id in list(STUDENT_AGENT_IDS)[:4]}})
         health = _health(foundational_mentor_state=fm_state)
-        assert health.talent_development == round(9.375, 1)
+        assert health.talent_development == round(7.5, 1)
 
     def _graduated_state(self, *, graduated_sim_day: int | None):
         fm_state = default_foundational_mentor_state()
-        parked = {"market_intelligence", "mark_douglas", "linda_raschke"}
+        parked = {"market_intelligence", "mark_douglas", "linda_raschke", "al_brooks"}
         fm_state = fm_state.model_copy(update={"mentors": [m.model_copy(update={"status": "planned"}) if m.id in parked else m for m in fm_state.mentors]})
         graduated = FoundationalMentorProgress(mentorId="tjr", graduationStatus="graduated", graduatedSimDay=graduated_sim_day)  # type: ignore[call-arg]
         return fm_state.model_copy(update={"progress": {"scout": {"tjr": graduated}}})

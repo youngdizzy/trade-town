@@ -6,10 +6,12 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.ema_pullback_research import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME, run_ema_pullback_research
 from app.evaluation_simulator import compare_evaluation_policies
 from app.persistence import persist_modules
 from app.schemas import (
     BacktestSession,
+    EmaPullbackResearchResult,
     EvaluationPolicyComparisonReport,
     FailedStrategyArchiveEntry,
     ModelValidationReport,
@@ -185,6 +187,25 @@ async def strategy_executive_dashboard() -> StrategyExecutiveDashboard:
         state.strategy_failed_archive,
         sim_day=state.time.day,
     )
+
+
+@router.get("/ema-pullback-research", response_model=EmaPullbackResearchResult)
+async def ema_pullback_research(
+    timeframe: str = Query(DEFAULT_TIMEFRAME),
+    candles_per_symbol: int = Query(DEFAULT_CANDLES_PER_SYMBOL, alias="candlesPerSymbol", ge=200, le=20000),
+) -> EmaPullbackResearchResult:
+    """CEO directive "Professional Trading Firm — Market-Analysis
+    Knowledge + Session Intelligence Expansion," Phase 15 — the 50 EMA
+    breakout + pullback strategy, converted into a formal, reproducible
+    research hypothesis and independently backtested against this
+    codebase's own real (mock) candle history (see
+    app/ema_pullback_research.py's module docstring for the full rule
+    definitions and the SOURCE CLAIM vs. TRADETOWN EVIDENCE distinction
+    this endpoint exists to keep honest). Read-only, computed fresh every
+    call — nothing here is persisted, and no agent or live trading
+    decision is ever wired to this endpoint's result."""
+    state = await game_state.snapshot()
+    return run_ema_pullback_research(timeframe=timeframe, candles_per_symbol=candles_per_symbol, sim_day=state.time.day)
 
 
 @router.get("/certification", response_model=StrategyCertification)
