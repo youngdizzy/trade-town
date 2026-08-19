@@ -489,6 +489,7 @@ def backtest_symbol_over_candles(definition: CompiledStrategyDefinition, symbol:
                 breakoutCandleRangeRatio=range_ratio,
                 maeR=exit_result.mae_r,
                 mfeR=exit_result.mfe_r,
+                barsHeld=exit_result.bars_held,
             )
         )
     return trades
@@ -553,6 +554,7 @@ def run_compiled_strategy_backtest(
         focusCategory="stock",
         createdAt=now_iso,
     )
+    bucket_by_symbol = {bucket.label: bucket for bucket in instrument_breakdown}
     simulation_results: list[SimulationResult] = []
     for symbol, trades in instrument_buckets.items():
         closed = [t for t in trades if t.outcome != "open"]
@@ -575,6 +577,7 @@ def run_compiled_strategy_backtest(
         gross_win = sum(t.r_multiple_realized for t in wins)
         gross_loss = sum(abs(t.r_multiple_realized) for t in losses)
         profit_factor = (gross_win / gross_loss) if gross_loss > 0 else 0.0
+        bucket = bucket_by_symbol[symbol]
         simulation_results.append(
             SimulationResult(
                 id=f"compiled-{definition.id}-{symbol}",
@@ -584,8 +587,8 @@ def run_compiled_strategy_backtest(
                 totalReturnPct=round(total_return_pct, 2),
                 winRate=round(win_rate, 1),
                 maxDrawdownPct=round(abs(max_dd), 2),
-                sharpeRatio=0.0,
-                sortinoRatio=0.0,
+                sharpeRatio=bucket.sharpe_ratio if bucket.sharpe_ratio is not None else 0.0,
+                sortinoRatio=bucket.sortino_ratio if bucket.sortino_ratio is not None else 0.0,
                 tradeCount=len(closed),
                 runBy=definition.created_by,
                 completedAt=now_iso,

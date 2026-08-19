@@ -24,12 +24,26 @@ period (daily/weekly) return series to normalize against. Both are real
 statistics over a real (if capped at MAX_TRADE_HISTORY=50 in
 app/portfolio.py) return sequence — never a fabricated formula.
 
-SimulationResult.sharpe_ratio/sortino_ratio (the per-backtest-run ones,
-distinct from the PerformanceSnapshot ones above) remain an explicitly
-placeholder return-to-drawdown ratio — see app/simulation.py's module
-docstring for why: that engine has no real per-trade return sequence
-backing it at all (only randomly-generated aggregate scalars), so there
-is nothing real to compute a real Sharpe/Sortino FROM there yet.
+`app/simulation.py`'s own `SimulationResult.sharpe_ratio/sortino_ratio`
+(distinct from the PerformanceSnapshot ones above) remain an explicitly
+placeholder return-to-drawdown ratio — that engine has no real per-trade
+return sequence backing it at all (only randomly-generated aggregate
+scalars), so there is nothing real to compute a real Sharpe/Sortino FROM
+there yet.
+
+CEO directive "Professional Quant Firm Phase," Feature 38 — `app/
+strategy_engine.py`'s real, bar-by-bar compiled-strategy backtest DOES
+have a real per-trade return sequence (`EmaPullbackTradeRecord.
+r_multiple_realized`, chronologically ordered by `entry_timestamp`), so
+`mean()`/`population_stdev()`/`downside_deviation()` below are exported
+(no longer private) specifically so `app/backtest_primitives.py`'s
+`aggregate_bucket()` can compute a REAL Sharpe/Sortino for that engine's
+own trade buckets using the exact same real, disclosed formulas — never
+a second, duplicate statistics implementation. Closed a real fabrication
+bug in the process: `app/strategy_engine.py`'s own ad hoc
+`SimulationResult` construction had been hardcoding `sharpeRatio=0.0,
+sortinoRatio=0.0` as literal placeholders instead of computing them —
+see `app/backtest_primitives.py`'s own module docstring for the fix.
 """
 from __future__ import annotations
 
@@ -45,11 +59,11 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _mean(values: list[float]) -> float:
+def mean(values: list[float]) -> float:
     return sum(values) / len(values) if values else 0.0
 
 
-def _population_stdev(values: list[float], mean: float) -> float:
+def population_stdev(values: list[float], mean_value: float) -> float:
     """Population-style stdev (divides by len(values), not len(values)-1)
     — with at most 50 real trades on file (PaperPortfolio.MAX_TRADE_HISTORY
     in app/portfolio.py), this codebase's own real sample is always
@@ -59,11 +73,11 @@ def _population_stdev(values: list[float], mean: float) -> float:
     reasoning."""
     if len(values) < 2:
         return 0.0
-    variance = sum((v - mean) ** 2 for v in values) / len(values)
+    variance = sum((v - mean_value) ** 2 for v in values) / len(values)
     return math.sqrt(variance)
 
 
-def _downside_deviation(values: list[float]) -> float:
+def downside_deviation(values: list[float]) -> float:
     """Real Sortino input: root-mean-square of only the sub-zero returns
     (target = 0.0, since this codebase has no real risk-free rate to
     use as the minimum acceptable return — see this module's own
@@ -170,9 +184,9 @@ def compute_performance_snapshot(period: PerformancePeriod, portfolio: PaperPort
     max_drawdown_pct = abs(min([0.0, *losing_pcts]))
 
     returns = [t.pnl_pct for t in trades]
-    mean_return = _mean(returns)
-    stdev_return = _population_stdev(returns, mean_return)
-    downside_dev = _downside_deviation(returns)
+    mean_return = mean(returns)
+    stdev_return = population_stdev(returns, mean_return)
+    downside_dev = downside_deviation(returns)
     sharpe_ratio = round(mean_return / stdev_return, 2) if stdev_return > 0 else 0.0
     sortino_ratio = round(mean_return / downside_dev, 2) if downside_dev > 0 else 0.0
     avg_holding_minutes = sum(t.duration_minutes for t in trades) / len(trades) if trades else 0.0

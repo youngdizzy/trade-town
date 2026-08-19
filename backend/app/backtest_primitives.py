@@ -14,12 +14,28 @@ must be one authoritative implementation for each responsibility").
 app/ema_pullback_research.py's own hand-built rule-detection state
 machine (_detect_setups) is NOT here — that is genuinely specific to
 that one strategy's own rules, not a shared primitive.
+
+CEO directive "Professional Quant Firm Phase," Feature 38 — extended
+`aggregate_bucket()` with real Sharpe/Sortino/Calmar and real largest-
+win/largest-loss/longest-winning-streak/avg-holding-bars, all computed
+from this same one authoritative implementation so every existing
+caller (app/ema_pullback_research.py, app/strategy_engine.py, app/
+walk_forward.py, app/parameter_sensitivity.py, app/cost_sensitivity.py)
+gets them automatically. Sharpe/Sortino reuse app/analytics.py's own
+real, disclosed per-trade formulas (now exported, not duplicated) —
+closing a real fabrication bug this same audit found: app/
+strategy_engine.py's own ad hoc `SimulationResult` construction had
+been hardcoding `sharpeRatio=0.0, sortinoRatio=0.0` as literal
+placeholders instead of computing them from its own real
+`EmaPullbackTradeRecord.r_multiple_realized` sequence, which — unlike
+app/simulation.py's RNG-only engine — genuinely has one.
 """
 from __future__ import annotations
 
 from dataclasses import dataclass
 from statistics import median
 
+from app.analytics import downside_deviation, mean, population_stdev
 from app.market_data import Candle
 from app.schemas import EmaPullbackRegimeTrend, EmaPullbackRegimeVolatility, EmaPullbackStatsBucket, EmaPullbackTradeOutcome, EmaPullbackTradeRecord
 
@@ -139,6 +155,11 @@ class ExitResult:
     r_multiple_realized: float
     mae_r: float
     mfe_r: float
+    # CEO directive "Professional Quant Firm Phase," Feature 38 — the
+    # real number of bars walked before this trade's own real exit (or
+    # the full real path length for a trade that never closed within
+    # the caller's own max-hold-bars policy).
+    bars_held: int = 0
 
 
 def simulate_exit(direction: str, entry_price: float, stop_price: float, target_price: float, path: list[Candle]) -> ExitResult:
@@ -151,10 +172,10 @@ def simulate_exit(direction: str, entry_price: float, stop_price: float, target_
     never fabricated into a forced win or loss."""
     risk = abs(entry_price - stop_price)
     if risk <= 0:
-        return ExitResult(outcome="open", exit_price=None, r_multiple_realized=0.0, mae_r=0.0, mfe_r=0.0)
+        return ExitResult(outcome="open", exit_price=None, r_multiple_realized=0.0, mae_r=0.0, mfe_r=0.0, bars_held=len(path))
     mae = 0.0
     mfe = 0.0
-    for bar in path:
+    for i, bar in enumerate(path):
         adverse = (entry_price - bar.low) if direction == "long" else (bar.high - entry_price)
         favorable = (bar.high - entry_price) if direction == "long" else (entry_price - bar.low)
         mae = max(mae, adverse)
@@ -162,11 +183,11 @@ def simulate_exit(direction: str, entry_price: float, stop_price: float, target_
         stop_hit = bar.low <= stop_price if direction == "long" else bar.high >= stop_price
         target_hit = bar.high >= target_price if direction == "long" else bar.low <= target_price
         if stop_hit:
-            return ExitResult(outcome="loss", exit_price=stop_price, r_multiple_realized=-1.0, mae_r=round(mae / risk, 3), mfe_r=round(mfe / risk, 3))
+            return ExitResult(outcome="loss", exit_price=stop_price, r_multiple_realized=-1.0, mae_r=round(mae / risk, 3), mfe_r=round(mfe / risk, 3), bars_held=i + 1)
         if target_hit:
             r = (target_price - entry_price) / risk if direction == "long" else (entry_price - target_price) / risk
-            return ExitResult(outcome="win", exit_price=target_price, r_multiple_realized=round(r, 3), mae_r=round(mae / risk, 3), mfe_r=round(mfe / risk, 3))
-    return ExitResult(outcome="open", exit_price=None, r_multiple_realized=0.0, mae_r=round(mae / risk, 3), mfe_r=round(mfe / risk, 3))
+            return ExitResult(outcome="win", exit_price=target_price, r_multiple_realized=round(r, 3), mae_r=round(mae / risk, 3), mfe_r=round(mfe / risk, 3), bars_held=i + 1)
+    return ExitResult(outcome="open", exit_price=None, r_multiple_realized=0.0, mae_r=round(mae / risk, 3), mfe_r=round(mfe / risk, 3), bars_held=len(path))
 
 
 def aggregate_bucket(label: str, trades: list[EmaPullbackTradeRecord], *, min_trades_for_verdict: int = DEFAULT_MIN_TRADES_FOR_BUCKET_VERDICT) -> EmaPullbackStatsBucket:
@@ -201,17 +222,41 @@ def aggregate_bucket(label: str, trades: list[EmaPullbackTradeRecord], *, min_tr
     cumulative = 0.0
     peak = 0.0
     max_drawdown = 0.0
-    longest_streak = 0
-    current_streak = 0
+    longest_losing_streak = 0
+    current_losing_streak = 0
+    longest_winning_streak = 0
+    current_winning_streak = 0
     for t in sorted(closed, key=lambda x: x.entry_timestamp):
         cumulative += t.r_multiple_realized
         peak = max(peak, cumulative)
         max_drawdown = min(max_drawdown, cumulative - peak)
         if t.outcome == "loss":
-            current_streak += 1
-            longest_streak = max(longest_streak, current_streak)
+            current_losing_streak += 1
+            longest_losing_streak = max(longest_losing_streak, current_losing_streak)
+            current_winning_streak = 0
         else:
-            current_streak = 0
+            current_winning_streak += 1
+            longest_winning_streak = max(longest_winning_streak, current_winning_streak)
+            current_losing_streak = 0
+
+    largest_win_r = round(max((t.r_multiple_realized for t in wins), default=0.0), 3) if wins else None
+    largest_loss_r = round(min((t.r_multiple_realized for t in losses), default=0.0), 3) if losses else None
+    avg_holding_bars = round(sum(t.bars_held for t in closed) / len(closed), 2)
+
+    # Real Sharpe/Sortino, reusing app/analytics.py's own real, disclosed
+    # per-trade formulas (risk-free rate assumed 0, never annualized —
+    # see that module's own docstring) applied to this bucket's own real
+    # rMultipleRealized sequence rather than a second, duplicate
+    # statistics implementation. calmarRatio is this same codebase's own
+    # real, disclosed, NOT-annualized analog (expectancy over max
+    # drawdown, both in R).
+    r_multiples = [t.r_multiple_realized for t in closed]
+    mean_r = mean(r_multiples)
+    stdev_r = population_stdev(r_multiples, mean_r)
+    downside_r = downside_deviation(r_multiples)
+    sharpe_ratio = round(mean_r / stdev_r, 3) if stdev_r > 0 else None
+    sortino_ratio = round(mean_r / downside_r, 3) if downside_r > 0 else None
+    calmar_ratio = round(expectancy_r / abs(max_drawdown), 3) if max_drawdown < 0 else None
 
     verdict: str | None = "enough_evidence" if len(closed) >= min_trades_for_verdict else "not_enough_evidence"
     detail = (
@@ -233,7 +278,14 @@ def aggregate_bucket(label: str, trades: list[EmaPullbackTradeRecord], *, min_tr
         expectancyR=expectancy_r,
         profitFactor=profit_factor,
         maxDrawdownR=round(abs(max_drawdown), 3),
-        longestLosingStreak=longest_streak,
+        longestLosingStreak=longest_losing_streak,
+        longestWinningStreak=longest_winning_streak,
+        largestWinR=largest_win_r,
+        largestLossR=largest_loss_r,
+        avgHoldingBars=avg_holding_bars,
+        sharpeRatio=sharpe_ratio,
+        sortinoRatio=sortino_ratio,
+        calmarRatio=calmar_ratio,
         verdict=verdict,  # type: ignore[arg-type]
         detail=detail,
     )

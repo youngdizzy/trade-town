@@ -36,6 +36,7 @@ def _trade(*, outcome: str, entry_price: float = 100.0, stop_price: float = 98.0
         breakoutCandleRangeRatio=1.0,
         maeR=0.0,
         mfeR=r_multiple,
+        barsHeld=5,
     )
 
 

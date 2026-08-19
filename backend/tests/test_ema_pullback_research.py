@@ -188,7 +188,7 @@ class TestSimulateExit:
         assert result.r_multiple_realized == 2.0  # (100-90)/(105-100)
 
 
-def _trade(outcome: str, r: float, ts: str = "2024-01-01T00:00:00+00:00") -> EmaPullbackTradeRecord:
+def _trade(outcome: str, r: float, ts: str = "2024-01-01T00:00:00+00:00", bars_held: int = 5) -> EmaPullbackTradeRecord:
     return EmaPullbackTradeRecord(
         symbol="TEST",
         direction="long",
@@ -206,6 +206,7 @@ def _trade(outcome: str, r: float, ts: str = "2024-01-01T00:00:00+00:00") -> Ema
         breakoutCandleRangeRatio=1.0,
         maeR=0.0,
         mfeR=r if r > 0 else 0.0,
+        barsHeld=bars_held,
     )
 
 
@@ -241,6 +242,38 @@ class TestAggregateBucket:
         ]
         bucket = aggregate_bucket("streaks", trades)
         assert bucket.longest_losing_streak == 2
+
+    def test_feature_38_metrics_hand_traced_against_a_fixed_r_multiple_sequence(self) -> None:
+        # Real, hand-traced fixture: r-multiples [2.0, 2.0, -1.0] in entry order, bars_held [4, 6, 2].
+        trades = [
+            _trade("win", 2.0, "2024-01-01T00:00:00+00:00", bars_held=4),
+            _trade("win", 2.0, "2024-01-02T00:00:00+00:00", bars_held=6),
+            _trade("loss", -1.0, "2024-01-03T00:00:00+00:00", bars_held=2),
+        ]
+        bucket = aggregate_bucket("feature38", trades)
+
+        # mean = 1.0; population stdev = sqrt(((1)^2+(1)^2+(-2)^2)/3) = sqrt(2) -> sharpe = 1/sqrt(2)
+        assert bucket.sharpe_ratio == round(1.0 / (2.0**0.5), 3)
+        # downside deviation = sqrt((0^2+0^2+(-1)^2)/3) = sqrt(1/3) -> sortino = 1/sqrt(1/3)
+        assert bucket.sortino_ratio == round(1.0 / ((1 / 3) ** 0.5), 3)
+        # expectancy_r == mean_r == 1.0; max drawdown == -1.0 (peak 4.0 after the 2nd win, cumulative 3.0 after the loss)
+        assert bucket.expectancy_r == 1.0
+        assert bucket.max_drawdown_r == 1.0
+        assert bucket.calmar_ratio == 1.0
+        assert bucket.longest_winning_streak == 2
+        assert bucket.longest_losing_streak == 1
+        assert bucket.largest_win_r == 2.0
+        assert bucket.largest_loss_r == -1.0
+        assert bucket.avg_holding_bars == 4.0
+
+    def test_sharpe_sortino_calmar_are_none_not_zero_when_undefined(self) -> None:
+        # A single closed trade: population stdev/downside deviation are both undefined (len < 2),
+        # and max_drawdown never goes negative for one winning trade — all three must read None,
+        # never a fabricated 0.0 that would misleadingly look like "measured and exactly flat."
+        bucket = aggregate_bucket("single", [_trade("win", 2.0)])
+        assert bucket.sharpe_ratio is None
+        assert bucket.sortino_ratio is None
+        assert bucket.calmar_ratio is None
 
 
 class TestSourceClaimNeverInfluencesComputation:

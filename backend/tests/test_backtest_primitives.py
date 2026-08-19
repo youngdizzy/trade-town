@@ -89,3 +89,26 @@ class TestSimulateExit:
         # risk = 10; worst excursion = 100-92=8 -> 0.8R; best = 103-100=3 -> 0.3R
         assert result.mae_r == 0.8
         assert result.mfe_r == 0.3
+
+    def test_bars_held_counts_the_real_bar_index_the_exit_happened_on(self) -> None:
+        # Neither level touched on bars 0-1; target hit on bar 2 (the 3rd bar) — bars_held must be 3, not len(path).
+        path = [
+            _candle(0, 100, 101, 99, 100),
+            _candle(1, 100, 101, 99, 100),
+            _candle(2, 101, 111, 100, 110),
+        ]
+        result = simulate_exit("long", entry_price=100.0, stop_price=95.0, target_price=110.0, path=path)
+        assert result.outcome == "win"
+        assert result.bars_held == 3
+
+    def test_bars_held_on_an_open_trade_is_the_full_real_path_length(self) -> None:
+        path = [_candle(0, 100, 101, 99, 100), _candle(1, 100, 101, 99, 100), _candle(2, 100, 101, 99, 100)]
+        result = simulate_exit("long", entry_price=100.0, stop_price=90.0, target_price=120.0, path=path)
+        assert result.outcome == "open"
+        assert result.bars_held == 3
+
+    def test_bars_held_on_the_zero_risk_early_return_is_the_full_real_path_length(self) -> None:
+        path = [_candle(0, 100, 101, 99, 100), _candle(1, 100, 101, 99, 100)]
+        result = simulate_exit("long", entry_price=100.0, stop_price=100.0, target_price=110.0, path=path)
+        assert result.outcome == "open"
+        assert result.bars_held == 2

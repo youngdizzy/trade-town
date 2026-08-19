@@ -448,6 +448,7 @@ def _build_trade_records(
                 breakoutCandleRangeRatio=setup.breakout_range_ratio,
                 maeR=exit_result.mae_r,
                 mfeR=exit_result.mfe_r,
+                barsHeld=exit_result.bars_held,
             )
         )
     return records

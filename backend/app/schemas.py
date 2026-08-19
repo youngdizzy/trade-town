@@ -1375,15 +1375,27 @@ class BacktestSession(CamelModel):
 
 
 class SimulationResult(CamelModel):
-    """sharpe_ratio/sortino_ratio are explicitly placeholder formulas
-    (see app/simulation.py) — real risk-adjusted-return math needs a
-    real historical data source, which v0.5 does not have (see
-    app/market_data.py). v0.7 Feature 45 adds win_count/loss_count/
-    avg_win_pct/avg_loss_pct as the placeholder engine's own real
-    generating inputs (total_return_pct is now derived FROM them, not
-    the reverse — see app/simulation.py), so expected_value_pct/
-    profit_factor/risk_reward_ratio below are real, internally-consistent
-    derivations of this run's own numbers, never independently invented."""
+    """This class has two real producers with two different honesty
+    stories for sharpe_ratio/sortino_ratio. `app/simulation.py`'s RNG-only
+    Monte Carlo engine has no real per-trade return sequence at all, so
+    its sharpe_ratio/sortino_ratio remain an explicitly disclosed
+    placeholder return-to-drawdown ratio — real risk-adjusted-return math
+    needs a real historical data source that engine does not have (see
+    app/market_data.py). `app/strategy_engine.py`'s compiled-strategy
+    backtest (CEO directive "Professional Quant Firm Phase," Feature 38)
+    DOES have a real per-symbol closed-trade R-multiple sequence, so its
+    sharpe_ratio/sortino_ratio here are real — reused directly from
+    `app/backtest_primitives.py`'s `aggregate_bucket()` (the one
+    authoritative bucket-statistics implementation, same formulas as
+    `app/analytics.py`), falling back to 0.0 only in the honest
+    zero-variance edge case (every closed trade realized the identical
+    R-multiple), never a fabricated nonzero figure. v0.7 Feature 45 adds
+    win_count/loss_count/avg_win_pct/avg_loss_pct as the placeholder
+    engine's own real generating inputs (total_return_pct is now derived
+    FROM them, not the reverse — see app/simulation.py), so
+    expected_value_pct/profit_factor/risk_reward_ratio below are real,
+    internally-consistent derivations of this run's own numbers, never
+    independently invented."""
 
     id: str
     strategy_id: str = Field(alias="strategyId")
@@ -3433,6 +3445,13 @@ class EmaPullbackTradeRecord(CamelModel):
     breakout_candle_range_ratio: float = Field(alias="breakoutCandleRangeRatio")
     mae_r: float = Field(alias="maeR")
     mfe_r: float = Field(alias="mfeR")
+    # CEO directive "Professional Quant Firm Phase," Feature 38 — the
+    # real number of bars this trade's own forward walk covered before
+    # its real exit (stop/target hit), or the full real path length
+    # walked if it never closed within the caller's own max-hold-bars
+    # policy ("open"). A real, bar-count unit — never wall-clock time,
+    # since this is a historical bar-by-bar replay, not a live clock.
+    bars_held: int = Field(alias="barsHeld")
 
 
 class EmaPullbackStatsBucket(CamelModel):
@@ -3455,6 +3474,25 @@ class EmaPullbackStatsBucket(CamelModel):
     profit_factor: float | None = Field(default=None, alias="profitFactor")
     max_drawdown_r: float | None = Field(default=None, alias="maxDrawdownR")
     longest_losing_streak: int | None = Field(default=None, alias="longestLosingStreak")
+    # CEO directive "Professional Quant Firm Phase," Feature 38 — real
+    # additions to this one authoritative bucket shape, computed
+    # identically everywhere it's used (app/backtest_primitives.py's
+    # aggregate_bucket()). sharpeRatio/sortinoRatio reuse app/
+    # analytics.py's own real, disclosed per-trade formulas (risk-free
+    # rate assumed 0, never annualized — see that module's own
+    # docstring) applied to this bucket's own real closed-trade
+    # rMultipleRealized sequence. calmarRatio is this same codebase's
+    # own real, disclosed, NOT-annualized analog (expectancy over max
+    # drawdown, both in R) — never a claim of a real annualized
+    # professional Calmar figure, which this bar-based (not calendar-
+    # based) replay has no real way to compute honestly.
+    longest_winning_streak: int | None = Field(default=None, alias="longestWinningStreak")
+    largest_win_r: float | None = Field(default=None, alias="largestWinR")
+    largest_loss_r: float | None = Field(default=None, alias="largestLossR")
+    avg_holding_bars: float | None = Field(default=None, alias="avgHoldingBars")
+    sharpe_ratio: float | None = Field(default=None, alias="sharpeRatio")
+    sortino_ratio: float | None = Field(default=None, alias="sortinoRatio")
+    calmar_ratio: float | None = Field(default=None, alias="calmarRatio")
     verdict: Literal["enough_evidence", "not_enough_evidence"] | None = None
     detail: str
 
