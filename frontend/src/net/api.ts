@@ -20,6 +20,7 @@ import type {
   ChallengeReport,
   CeoOverrideEvaluation,
   CeoOverrideGovernanceSummary,
+  ContinuousImprovementSummary,
   ControlEffectivenessSummary,
   ClientSaveSnapshot,
   ComplianceIncident,
@@ -356,6 +357,9 @@ export const api = {
   // CEO directive "Features 31-35," Feature 34 — Compliance Control
   // Effectiveness. Read-only, computed fresh per request.
   getControlEffectiveness: () => request<ControlEffectivenessSummary>("/audit/controls/effectiveness"),
+  // CEO directive "Features 31-35," Feature 35 — the Continuous
+  // Compliance Improvement Loop. Read-only, computed fresh per request.
+  getContinuousImprovement: () => request<ContinuousImprovementSummary>("/audit/continuous-improvement"),
   // Design Bible Chapter 75 — Company Trading Modes & Institutional
   // Capital Protection. tradingModes/dailyCircuitBreaker/losingStreak/
   // recoveryBriefings are already live via the WS tick broadcast (see

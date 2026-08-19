@@ -423,7 +423,7 @@ export function CompanyPanel() {
           <StatusPill tone={TIER_TONE[companyHealth.executiveTier]}>{TIER_LABEL[companyHealth.executiveTier]}</StatusPill>
         </div>
         <p className="mb-2 text-[9px] text-cmd-textDim">
-          Ten dimensions computed from the Executive Intelligence Network&apos;s own real data — additive alongside Company Health above, never
+          Eleven dimensions computed from the Executive Intelligence Network&apos;s own real data — additive alongside Company Health above, never
           replacing it.
         </p>
         <div className="mb-2 flex items-baseline justify-between">
@@ -445,6 +445,7 @@ export function CompanyPanel() {
           <HealthCell label="Innovation Velocity" value={companyHealth.innovationVelocity} />
           <HealthCell label="Talent Development" value={companyHealth.talentDevelopment} />
           <HealthCell label="Founder Oversight" value={companyHealth.founderOversight} />
+          <HealthCell label="Compliance Health" value={companyHealth.complianceHealth} />
         </div>
         <div className="mt-3 flex items-center justify-between border-t border-cmd-border/50 pt-2">
           <span className="text-[9px] uppercase tracking-wide text-cmd-textDim">Combined Overall</span>

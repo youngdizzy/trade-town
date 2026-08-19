@@ -364,6 +364,7 @@ export class NexusManager {
     innovationVelocity: 0,
     talentDevelopment: 0,
     founderOversight: 0,
+    complianceHealth: 50,
     executiveOverall: 50,
     executiveTier: "stable",
     combinedOverall: 50,

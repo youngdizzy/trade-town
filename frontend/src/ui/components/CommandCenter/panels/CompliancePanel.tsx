@@ -13,6 +13,7 @@ import {
   type ComplianceIncident,
   type ComplianceIncidentSummary,
   type ComplianceOverview,
+  type ContinuousImprovementSummary,
   type ControlEffectivenessRecord,
   type ControlEffectivenessSummary,
   type GatekeeperControlEffectivenessState,
@@ -20,6 +21,9 @@ import {
   type IncidentRootCause,
   type IncidentStatus,
   type OverrideProcessQuality,
+  type RemediationEffectivenessRecord,
+  type RemediationEffectivenessState,
+  type RootCauseRecurrence,
 } from "@/types";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
 
@@ -64,9 +68,18 @@ import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "..
  * computed fresh per request (backend/app/control_effectiveness.py) —
  * no new persisted state, same on-demand pattern as every CAGS tab
  * above it.
+ *
+ * Feature 35 adds the Continuous Improvement tab — closes the loop:
+ * did a real remediation (Feature 31's own recorded correctiveAction)
+ * actually hold, and is any real root cause recurring across the
+ * incident backlog (backend/app/continuous_improvement.py). Also
+ * connects real evidence into Company Health's own existing
+ * architecture as a new complianceHealth Executive-tier dimension —
+ * never a rewrite of the separate Compliance Score above, which stays
+ * untouched pending explicit CEO authorization to change it.
  */
 
-const TABS = ["log", "incidents", "cases", "governance", "overrides", "overrideGovernance", "controlEffectiveness"] as const;
+const TABS = ["log", "incidents", "cases", "governance", "overrides", "overrideGovernance", "controlEffectiveness", "continuousImprovement"] as const;
 type Tab = (typeof TABS)[number];
 
 const TAB_LABEL: Record<Tab, string> = {
@@ -77,6 +90,7 @@ const TAB_LABEL: Record<Tab, string> = {
   overrides: "CEO Overrides",
   overrideGovernance: "Override Governance",
   controlEffectiveness: "Control Effectiveness",
+  continuousImprovement: "Continuous Improvement",
 };
 
 const PROCESS_QUALITY_LABEL: Record<OverrideProcessQuality, string> = {
@@ -207,6 +221,7 @@ export function CompliancePanel() {
         {tab === "overrides" && <OverridesTab />}
         {tab === "overrideGovernance" && <OverrideGovernanceTab />}
         {tab === "controlEffectiveness" && <ControlEffectivenessTab />}
+        {tab === "continuousImprovement" && <ContinuousImprovementTab />}
       </Glass>
     </div>
   );
@@ -1120,6 +1135,110 @@ function ControlEffectivenessRow({ control, expanded, onToggle }: { control: Con
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+function remediationEffectivenessTone(state: RemediationEffectivenessState): "green" | "red" | "amber" | "cyan" {
+  switch (state) {
+    case "effective":
+      return "green";
+    case "ineffective":
+      return "red";
+    case "partially_effective":
+      return "amber";
+    case "not_enough_evidence":
+      return "cyan";
+  }
+}
+
+const REMEDIATION_EFFECTIVENESS_LABEL: Record<RemediationEffectivenessState, string> = {
+  effective: "Effective",
+  partially_effective: "Partially Effective",
+  ineffective: "Ineffective",
+  not_enough_evidence: "Not Enough Evidence",
+};
+
+function ContinuousImprovementTab() {
+  const [summary, setSummary] = useState<ContinuousImprovementSummary | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    api
+      .getContinuousImprovement()
+      .then((res) => setSummary(res))
+      .catch((err: unknown) => setError(err instanceof Error ? err.message : "Failed to load the continuous improvement loop."));
+  }, []);
+
+  return (
+    <div>
+      <p className="mb-2 text-[9px] text-cmd-textDim">
+        The loop this closes: INCIDENT → ROOT CAUSE → REMEDIATION → MONITORING → OUTCOME → EFFECTIVENESS REVIEW → COMPANY HEALTH. A real
+        reopened incident is the strongest evidence a fix failed and always reads INEFFECTIVE. Short of that, a real observation window must
+        elapse before &quot;no recurrence yet&quot; honestly reads EFFECTIVE rather than NOT ENOUGH EVIDENCE.
+      </p>
+      {error && <EmptyState>{error}</EmptyState>}
+      {!error && !summary && <EmptyState>Loading…</EmptyState>}
+      {!error && summary && (
+        <>
+          <div className="mb-2 grid grid-cols-2 gap-x-4 gap-y-1 rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2 sm:grid-cols-5">
+            <DataRow label="Effective" value={summary.effectiveCount} valueClassName="text-cmd-green" />
+            <DataRow label="Partially Effective" value={summary.partiallyEffectiveCount} />
+            <DataRow label="Ineffective" value={summary.ineffectiveCount} valueClassName={summary.ineffectiveCount > 0 ? "text-cmd-red" : "text-cmd-text"} />
+            <DataRow label="Not Enough Evidence" value={summary.notEnoughEvidenceCount} />
+            <DataRow label="Recurring Failures" value={summary.recurringFailureCount} valueClassName={summary.recurringFailureCount > 0 ? "text-cmd-red" : "text-cmd-text"} />
+          </div>
+
+          <TerminalLabel>Root Cause Recurrence</TerminalLabel>
+          {summary.rootCauseRecurrences.length === 0 && <EmptyState>No incident has ever been resolved with a real root cause yet.</EmptyState>}
+          {summary.rootCauseRecurrences.length > 0 && (
+            <div className="mb-3 space-y-1">
+              {summary.rootCauseRecurrences.map((r) => (
+                <RootCauseRecurrenceRow key={r.rootCause} recurrence={r} />
+              ))}
+            </div>
+          )}
+
+          <TerminalLabel>Remediation Effectiveness</TerminalLabel>
+          {summary.remediations.length === 0 && <EmptyState>No incident has ever been resolved yet — nothing to review.</EmptyState>}
+          {summary.remediations.length > 0 && (
+            <div className="max-h-[24rem] space-y-1 overflow-y-auto">
+              {summary.remediations.map((r) => (
+                <RemediationRow key={r.incidentId} remediation={r} />
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
+function RootCauseRecurrenceRow({ recurrence }: { recurrence: RootCauseRecurrence }) {
+  return (
+    <div className="flex items-center gap-2 rounded-sm border border-cmd-border/60 bg-cmd-bg/30 px-2 py-1.5 text-[9px]">
+      {recurrence.recurringFailure && <StatusPill tone="red">Recurring</StatusPill>}
+      <span className="flex-1 font-cmdmono text-cmd-text">{ROOT_CAUSE_LABEL[recurrence.rootCause]}</span>
+      <span className="text-cmd-textDim">{recurrence.incidentCount} incident{recurrence.incidentCount === 1 ? "" : "s"}</span>
+    </div>
+  );
+}
+
+function RemediationRow({ remediation }: { remediation: RemediationEffectivenessRecord }) {
+  return (
+    <div className="rounded-sm border border-cmd-border/60 bg-cmd-bg/30 px-2 py-1.5 text-[9px]">
+      <div className="flex items-center gap-2">
+        <StatusPill tone={remediationEffectivenessTone(remediation.effectivenessState)}>
+          {REMEDIATION_EFFECTIVENESS_LABEL[remediation.effectivenessState]}
+        </StatusPill>
+        <span className="flex-1 font-cmdmono text-cmd-text">{ROOT_CAUSE_LABEL[remediation.rootCause]}</span>
+        <span className="text-cmd-textDim">{remediation.department}</span>
+      </div>
+      <div className="mt-1 text-cmd-textDim">{remediation.correctiveAction}</div>
+      <div className="mt-1 flex gap-4 text-cmd-textDim">
+        <span>Reopened: {remediation.reopenedCount}</span>
+        <span>Recurrence: {remediation.recurrenceCount}</span>
+      </div>
     </div>
   );
 }

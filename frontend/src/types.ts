@@ -2446,6 +2446,12 @@ export interface CompanyHealth {
   innovationVelocity: number;
   talentDevelopment: number;
   founderOversight: number;
+  /** CEO directive "Features 31-35," Feature 35 — a real blend of
+   * incident resolution, remediation effectiveness (Feature 35), and
+   * control effectiveness (Feature 34). Never a rewrite of the separate
+   * Compliance Score formula (backend/app/audit_log.py), which stays
+   * untouched. */
+  complianceHealth: number;
   executiveOverall: number;
   executiveTier: CompanyHealthTier;
   /** An equal blend of `overall` and `executiveOverall` — the true
@@ -3724,6 +3730,45 @@ export interface ControlEffectivenessSummary {
   insufficientDataCount: number;
   notYetTestedCount: number;
   regressedControlCount: number;
+  updatedAt: string;
+}
+
+// CEO directive "Features 31-35," Feature 35 — the Continuous
+// Compliance Improvement Loop (see backend/app/continuous_improvement.py).
+// Read-only, fetched on demand — no WS-broadcast field, the same CAGS
+// convention as ControlEffectivenessSummary above.
+export type RemediationEffectivenessState = "effective" | "partially_effective" | "ineffective" | "not_enough_evidence";
+
+export interface RemediationEffectivenessRecord {
+  incidentId: string;
+  rootCause: IncidentRootCause;
+  correctiveAction: string;
+  category: AuditEventCategory;
+  department: string;
+  resolvedAt: string;
+  resolutionSimDay: number;
+  reopenedCount: number;
+  recurrenceCount: number;
+  effectivenessState: RemediationEffectivenessState;
+}
+
+export interface RootCauseRecurrence {
+  rootCause: IncidentRootCause;
+  incidentCount: number;
+  recurringFailure: boolean;
+  firstOccurredAt: string;
+  lastOccurredAt: string;
+  incidentIds: string[];
+}
+
+export interface ContinuousImprovementSummary {
+  remediations: RemediationEffectivenessRecord[];
+  rootCauseRecurrences: RootCauseRecurrence[];
+  effectiveCount: number;
+  partiallyEffectiveCount: number;
+  ineffectiveCount: number;
+  notEnoughEvidenceCount: number;
+  recurringFailureCount: number;
   updatedAt: string;
 }
 
