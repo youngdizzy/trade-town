@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { api } from "@/net/api";
-import type { SymbolPerformanceRead, SymbolPerformanceSummary } from "@/types";
+import type { SymbolPerformanceRead, SymbolPerformanceSummary, TradeAttributionRecord, TradeAttributionSummary } from "@/types";
 import type { FinancialPeriod } from "../lib/financials";
 import { computePeriodFinancials, simMonthNumber } from "../lib/financials";
 import { computeTradeStats, formatMoney, formatPct } from "../lib/derive";
@@ -34,6 +34,14 @@ export function PerformancePanel() {
   const [symbolPerformance, setSymbolPerformance] = useState<SymbolPerformanceSummary | null>(null);
   useEffect(() => {
     api.getPerformanceBySymbol().then(setSymbolPerformance).catch(() => undefined);
+  }, []);
+
+  // CEO directive "Next Phase: Professional Trading Firm Intelligence,"
+  // Phase 1 — real per-trade agent-contribution evidence
+  // (backend/app/trade_attribution.py), same on-demand pattern.
+  const [tradeAttribution, setTradeAttribution] = useState<TradeAttributionSummary | null>(null);
+  useEffect(() => {
+    api.getTradeAttribution().then(setTradeAttribution).catch(() => undefined);
   }, []);
 
   const netPositive = financials.netPnl >= 0;
@@ -141,13 +149,16 @@ export function PerformancePanel() {
           <DataRow label="Avg loss" value={formatMoney(-allTimeStats.avgLoss)} valueClassName="text-cmd-red" />
         </div>
         <div className="mt-2 text-[9px] text-cmd-textDim">
-          Performance-by-agent and performance-by-strategy breakdowns aren&apos;t built yet — a trade&apos;s
-          multiple supporting/opposing agents have no CEO-authorized credit-split rule, and closed trades
-          aren&apos;t currently linked to a Strategy id. See CHANGELOG.md.
+          A numeric performance-by-agent P&amp;L split isn&apos;t built — a trade&apos;s multiple supporting/opposing
+          agents have no CEO-authorized credit-split rule (see Trade Attribution below for the real evidence
+          instead). Performance-by-strategy also isn&apos;t built — closed trades aren&apos;t currently linked to a
+          Strategy id. See CHANGELOG.md.
         </div>
       </Glass>
 
       <SymbolPerformanceSection summary={symbolPerformance} />
+
+      <TradeAttributionSection summary={tradeAttribution} />
 
       <Glass className="p-3">
         <TerminalLabel>Recent Trades — Post-Trade Learning</TerminalLabel>
@@ -240,6 +251,70 @@ function SymbolPerformanceRow({ read }: { read: SymbolPerformanceRead }) {
         Avg winner: <span className="text-cmd-green">{read.avgWinnerPct === null ? "—" : formatPct(read.avgWinnerPct)}</span> · Avg loser:{" "}
         <span className="text-cmd-red">{read.avgLoserPct === null ? "—" : formatPct(read.avgLoserPct)}</span> · Best: {formatPct(read.bestTradePnlPct)} · Worst:{" "}
         {formatPct(read.worstTradePnlPct)}
+      </div>
+    </div>
+  );
+}
+
+/** CEO directive "Next Phase: Professional Trading Firm Intelligence,"
+ * Phase 1 — real per-trade agent-contribution evidence. Deliberately
+ * never shows a dollar/percent split per agent — see each record's own
+ * creditSplitNote for why. */
+function TradeAttributionSection({ summary }: { summary: TradeAttributionSummary | null }) {
+  const recent = summary ? [...summary.records].reverse().slice(0, 8) : [];
+  return (
+    <Glass className="max-h-96 overflow-y-auto p-3">
+      <div className="mb-1.5 flex items-center justify-between">
+        <TerminalLabel>Trade Attribution — Who Advised What</TerminalLabel>
+        <span className="text-[9px] text-cmd-textDim">Real evidence, not a P&amp;L credit split</span>
+      </div>
+      {summary === null ? (
+        <EmptyState>Loading…</EmptyState>
+      ) : summary.records.length === 0 ? (
+        <EmptyState>No trade has closed yet.</EmptyState>
+      ) : (
+        <>
+          <div className="mb-2 text-[9px] text-cmd-textDim">{recent[0]?.creditSplitNote}</div>
+          <div className="space-y-1.5">
+            {recent.map((r) => (
+              <TradeAttributionRow key={r.tradeId} record={r} />
+            ))}
+          </div>
+        </>
+      )}
+    </Glass>
+  );
+}
+
+function TradeAttributionRow({ record }: { record: TradeAttributionRecord }) {
+  if (record.evidenceState === "no_decision_on_record") {
+    return (
+      <div className="rounded-sm border border-cmd-border/40 bg-cmd-bg/30 px-2 py-1.5 text-[9px]">
+        <div className="flex items-center gap-2">
+          <span className="font-cmdmono text-cmd-cyan">{record.symbol}</span>
+          <span className={record.pnl >= 0 ? "text-cmd-green" : "text-cmd-red"}>{formatMoney(record.pnl)}</span>
+          <StatusPill tone="amber">NO DECISION ON RECORD</StatusPill>
+        </div>
+      </div>
+    );
+  }
+  return (
+    <div className="rounded-sm border border-cmd-border/40 bg-cmd-bg/30 px-2 py-1.5 text-[9px]">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-cmdmono text-cmd-cyan">{record.symbol}</span>
+        <span className={record.pnl >= 0 ? "text-cmd-green" : "text-cmd-red"}>{formatMoney(record.pnl)}</span>
+        {record.ceoOverrodeTheDesk && <StatusPill tone="purple">CEO OVERRODE THE DESK</StatusPill>}
+        {record.gatekeeperApproved !== null && (
+          <StatusPill tone={record.gatekeeperApproved ? "green" : "red"}>{record.gatekeeperApproved ? "GATEKEEPER APPROVED" : "GATEKEEPER REJECTED"}</StatusPill>
+        )}
+      </div>
+      <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+        {record.contributions.map((c) => (
+          <span key={c.agentId} className="text-cmd-textDim">
+            <span className="text-cmd-text">{c.role}</span> ({c.agentId}): {c.choice}{" "}
+            <span className={c.agreedWithSideTraded ? "text-cmd-green" : "text-cmd-textDim"}>{c.agreedWithSideTraded ? "✓ agreed" : "did not agree"}</span>
+          </span>
+        ))}
       </div>
     </div>
   );

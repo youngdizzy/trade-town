@@ -606,6 +606,46 @@ export interface DataProvenanceReport {
   updatedAt: string;
 }
 
+// CEO directive "Next Phase: Professional Trading Firm Intelligence,"
+// Phase 1 — Symbol -> Agent Attribution. Preserves real per-agent
+// evidence per trade (who advised what, whether it agreed with the side
+// actually traded, real CEO-override/risk-approval provenance) — never
+// a numeric P&L-per-agent credit split, since no CEO-authorized
+// methodology for one exists (see backend/app/trade_attribution.py).
+export interface AgentContributionRead {
+  agentId: AgentId;
+  role: AnalystRole;
+  choice: VoteChoice;
+  reason: string;
+  agreedWithSideTraded: boolean;
+}
+
+export type TradeAttributionEvidenceState = "full_evidence" | "no_decision_on_record";
+
+export interface TradeAttributionRecord {
+  tradeId: string;
+  decisionId: string | null;
+  symbol: string;
+  contributions: AgentContributionRead[];
+  supportingAgents: AgentId[];
+  opposingAgents: AgentId[];
+  ceoChoice: AnalystChoice | null;
+  ceoOverrodeTheDesk: boolean | null;
+  gatekeeperApproved: boolean | null;
+  entrySlippageBps: number;
+  exitSlippageBps: number;
+  transactionCostUsd: number;
+  pnl: number;
+  pnlPct: number;
+  evidenceState: TradeAttributionEvidenceState;
+  creditSplitNote: string;
+}
+
+export interface TradeAttributionSummary {
+  records: TradeAttributionRecord[];
+  updatedAt: string;
+}
+
 /** The company's one simulated trading account — entirely fictional. */
 export interface PaperPortfolio {
   cashBalance: number;

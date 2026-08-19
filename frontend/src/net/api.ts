@@ -84,6 +84,7 @@ import type {
   RiskLimits,
   SimilarTradesSummary,
   SymbolPerformanceSummary,
+  TradeAttributionSummary,
   Strategy,
   StrategyCertification,
   StrategyDossier,
@@ -207,6 +208,10 @@ export const api = {
   // Research Data Integrity. Read-only; the candle row re-checks the
   // real provider live on every request.
   getDataProvenance: () => request<DataProvenanceReport>("/market/data-provenance"),
+  // CEO directive "Next Phase: Professional Trading Firm Intelligence,"
+  // Phase 1 — real per-trade agent-contribution evidence, never a
+  // numeric P&L credit split. Read-only, computed fresh per request.
+  getTradeAttribution: () => request<TradeAttributionSummary>("/trades/attribution"),
   submitCeoDecision: (proposalId: string, choice: AnalystChoice, delegated = false, overrideReason?: string) =>
     request<{
       tradeProposals: TradeProposal[];
