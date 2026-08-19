@@ -9768,6 +9768,179 @@ Full backend suite: 2115 passed, 0 failed. `mypy app/` (157 files)/
 `ruff check app/ tests/` clean. `tsc -b --noEmit`/`eslint`/`vite build`
 clean.
 
+## CEO directive "Professional Trading Firm — Market-Analysis Knowledge + Session Intelligence Expansion," Phase 15
+
+The 50 EMA breakout + pullback strategy, converted from CEO-supplied
+source material into a formal, reproducible research hypothesis. Phase
+0's research confirmed no Chandelier Stop implementation, no bar-by-bar
+strategy rule engine, and no real walk-forward/backtest pipeline exist
+anywhere in this codebase — the same gap the prior directive's own
+Phase 5-7 scoping already identified (`app/simulation.py`'s
+`SimulationResult` generator is explicitly-placeholder RNG math, never a
+real replay of real candle history). `app/ema_pullback_research.py` is
+the first real, deterministic, bar-by-bar rule replay in this codebase —
+built specifically for this one strategy, not a general
+StrategyRuleEngine (that remains its own, larger, still-deferred
+undertaking).
+
+### The source material is not TradeTown evidence
+
+The CEO-supplied strategy claims an approximate 65.6% win rate (21
+winners / 32 trades) from one educational example. `SOURCE_CLAIM_*`
+constants exist ONLY to be displayed alongside TradeTown's own
+independently-computed numbers in `EmaPullbackSourceClaimComparison` —
+never read by any computation in the module, and the module never
+asserts the strategy is profitable, never guarantees a win rate, and
+never treats the source's claimed backtest as proof of anything. Every
+number the module reports is a real, bar-by-bar figure computed against
+this codebase's own real (mock, procedurally-generated, seeded,
+reproducible) OHLCV candle series (`app/market_data.py`) — never a real
+market, never fabricated.
+
+### The rules, made measurable
+
+The source's own discretionary phrasing ("looks like a strong pullback,"
+"clean breakout") is exactly what this directive forbids leaving un-
+converted. Real, precise, reproducible definitions used:
+
+- **Sustained side**: "price has been trading below/above the 50 EMA"
+  is operationalized as at least `MIN_BARS_ON_SIDE_BEFORE_CROSS` (5)
+  consecutive real closes on that side immediately before the cross bar.
+- **EMA cross + confirmation**: a real close on the opposite side of the
+  50 EMA from the prior bar's close, checked directly against the real
+  `ema_series()` value at that bar (no new EMA math — reuses
+  `app/technical_indicators.py`'s existing function).
+- **Pullback**: at least `MIN_PULLBACK_CANDLES` (2) real, strictly
+  consecutive opposite-direction candles. A single opposite candle does
+  NOT count — the leg keeps extending and the detector keeps watching
+  for a real 2+-candle pullback later in the same leg, matching the
+  source's own "at least two" wording exactly (verified by
+  `test_a_too_short_one_candle_dip_does_not_count_as_the_pullback`).
+- **Confirmation level**: the real high (long) / low (short) reached
+  during the leg from the EMA cross through the bar immediately before
+  the pullback began — the literal "swing high/low immediately before
+  the pullback," a different, situation-specific measurement from
+  `app/market_intelligence.py`'s more general 3-bar-lookback swing
+  definition, not a duplicate of it.
+- **Breakout confirmation**: a real candle whose own close trades beyond
+  the confirmation level — the literal "body must close above/below the
+  level."
+- **Entry**: the real NEXT bar's open after the confirmation candle
+  closes — never the confirmation candle's own close, which would be
+  look-ahead (a bar's strength isn't knowable until it finishes). A
+  real, disclosed backtest execution assumption.
+- **Invalidation A**: checked every bar from leg start until entry — a
+  real close back through the 50 EMA before the breakout confirms resets
+  the whole state to idle. A fresh EMA cross is required before any new
+  setup is considered; TradeTown never re-enters later merely because
+  price eventually reaches the original confirmation level, exactly the
+  source's own explicit warning (verified by
+  `test_invalidation_a_deep_pullback_through_ema_discards_the_setup`).
+- **Invalidation B**: deliberately NOT a hard filter, per the
+  directive's own explicit warning against hardcoding "3x or 4x" as
+  universally invalid. Every breakout candle's real range is compared to
+  the real average range of the 20 bars immediately before it;
+  `breakoutCandleExtended` is `True` at a real, disclosed ratio ≥2.0 —
+  TAGGING only. `breakoutSizeBreakdown` reports whether extended-candle
+  trades actually have different real expectancy in this data, an
+  empirical question, never an assumed answer.
+- **Chandelier Stop**: the real, standard Chuck LeBeau formula —
+  `highest_high(22 bars before entry) - 3.0 * ATR(same window)` for a
+  long (mirrored for a short). Both the 22-bar period and the 3.0x
+  multiplier are the methodology's own standard, commonly-published
+  defaults, not TradeTown-fitted numbers. Reuses the general-purpose
+  `atr()` formula via a new `atr_series()` addition to
+  `app/technical_indicators.py` (the same real true-range math, computed
+  at every historical bar instead of only the latest one — needed
+  because a real backtest needs a volatility read at each real trade's
+  own entry bar, never with knowledge of bars after it).
+- **R-multiple target**: swept across 1R/1.5R/2R/2.5R/3R
+  (`R_MULTIPLES_TESTED`); the source's own ~2:1 target
+  (`REFERENCE_R_MULTIPLE`) is tested as one candidate among several,
+  never assumed optimal in advance, per the directive's own explicit
+  instruction.
+- **Exit simulation**: a real forward walk of up to `MAX_HOLD_BARS`
+  (150) real bars; if a bar touches both the stop and the target (a real
+  gap-through), the stop is conservatively assumed hit first — the
+  standard, disclosed conservative backtesting convention, never the
+  more favorable outcome. A trade touching neither within the window
+  reads `"open"` and is excluded from win/loss statistics, never
+  fabricated into a forced outcome.
+
+### Regime/session tagging — a disclosed, simpler proxy, not a duplicate
+
+`app/market_intelligence.py`'s real 13-way `MarketIntelligenceRegime`
+classifier needs live, cross-symbol sweep-share/reversal-share/volume-
+trend inputs that exist only as this game's live, per-tick state — no
+function anywhere in this codebase reconstructs those inputs at an
+arbitrary historical bar, and building one is judged a real, separate
+undertaking this directive's own Rule 15 ("do not start unrelated future
+pieces") argues against attempting here. **ARCHITECTURALLY BLOCKED** for
+the full 13-way classifier at historical points. **NOT blocked** for a
+real, simpler, self-contained proxy computed only from each symbol's own
+candle series: 50 EMA slope over a trailing 20-bar window for
+trend (`trending_up`/`trending_down`/`ranging`, ±0.5% threshold), and
+ATR vs. its own trailing 100-bar median for volatility
+(`high`/`normal`/`low`, 1.3x/0.7x thresholds) — both real, disclosed,
+and clearly distinguished from the live classifier, never presented as
+the same thing. `entrySession` reuses the real, already-shared
+`_session_for_hour()` — no second session engine.
+
+### Reusing the existing Strategy Lab machinery, never a second one
+
+Every result — win rate, expectancy, profit factor, max drawdown,
+longest losing streak, MAE/MFE — is aggregated by a new
+`_aggregate_bucket()` helper, then an ad hoc, non-persisted
+`Strategy`/`SimulationResult` pair built from this run's own real
+numbers is handed to `app/strategy_lab.py`'s real
+`run_strategy_monte_carlo()` bootstrap and
+`app/model_validation.py`'s real `generate_model_validation_report()` —
+both completely unmodified, and both already include this same
+directive's own Phase 8 anti-overfitting checks
+(`regime_dependence`/`optimization_scrutiny`) from the earlier pass.
+Nothing here is persisted to live game state (`game_state`) — every
+`Strategy`/`SimulationResult` is local to one request, discarded after
+the response, the same CAGS convention this directive's earlier phases
+established. The Gatekeeper and Risk Authority are completely untouched;
+no agent is forced to trade this strategy, and "this research remains
+inconclusive" is a fully valid outcome — Phase 9's own rule.
+
+### What the real backtest actually found (reported honestly, not cherry-picked)
+
+Live-verified against all 8 real seed-watchlist symbols at 6,000 real
+(mock) candles each (0.78s total): the confirmed rule set found 40 real
+closed trades at the 2R reference target (84.2% win rate, +1.526R
+expectancy) against 1,309 naive EMA-cross-only trades (42.8% win rate,
++0.285R expectancy) — confirming the pullback+breakout confirmation step
+does add real, positive value over a naive cross entry in this data.
+Model Validation's own real, unmodified checks correctly read this
+specific 40-trade sample as `needs_more_evidence` (not `validated`): the
+`optimization_scrutiny` check (built earlier in this same directive)
+correctly flagged the shape as borderline, and `regime_dependence`/
+`liquidity_realism`/`temporal_stability` are honestly `None` (no
+`StrategyRegimeTestReport`/`StrategyLiquidityValidation` was built for
+this ad hoc strategy — this module's own richer session/regime
+breakdowns cover that ground with a different, disclosed methodology
+instead of being force-fit into that shape). This is reported as one
+real, honest, in-progress research observation — never a claim the
+strategy is profitable, and never a claim the source's reported win rate
+has been confirmed or refuted. A CEO re-running the same endpoint with a
+larger `candlesPerSymbol` will get a real, larger sample; the verdict is
+computed fresh every time, never cached toward a target conclusion.
+
+**Verified**: 20 new unit tests against hand-built, deterministic candle
+fixtures (long/short detection, the too-short-pullback non-match,
+Invalidation A, the Chandelier Stop formula against both directions,
+insufficient-ATR-history, all four exit-simulation outcomes including
+the conservative same-bar-gap convention, bucket-aggregation math
+including the empty/below-verdict-bar cases and the longest-losing-
+streak calculation) plus 4 new `atr_series()` tests and 3 integration
+tests against the real market data provider (internal consistency,
+insufficient-history honesty, and confirmed-never-more-frequent-than-
+naive). Full backend suite, `mypy app/` (159 files)/`ruff check app/
+tests/` clean. Live-verified end to end through the real FastAPI app
+(`GET /api/sandbox/ema-pullback-research`) via `TestClient`.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

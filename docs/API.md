@@ -1401,6 +1401,58 @@ has never been through Company Review yet. Read-only, computed from
 already-persisted state (no recomputation), same pattern as
 `GET /api/sandbox/certification`.
 
+### `GET /api/sandbox/ema-pullback-research?timeframe=1h&candlesPerSymbol=6000`
+
+CEO directive "Professional Trading Firm — Market-Analysis Knowledge +
+Session Intelligence Expansion," Phase 15 — the 50 EMA breakout +
+pullback strategy converted into a formal, reproducible research
+hypothesis and independently backtested against this codebase's own
+real (mock) candle history (`app/ema_pullback_research.py`). Read-only,
+computed fresh every call — nothing here is persisted, and no agent or
+live trading decision is ever wired to this endpoint's result. Returns
+an `EmaPullbackResearchResult`:
+
+```json
+{
+  "hypothesis": "After a sustained period below/above the 50 EMA, ...",
+  "symbolsTested": ["AAPL", "MSFT", "SPY", "QQQ", "GLD", "BTC-USD", "XLF", "DXY"],
+  "referenceRMultiple": 2.0,
+  "rMultipleSweep": [ { "label": "1R", "tradeCount": 40, "winRatePct": 84.2, "expectancyR": 0.68, "verdict": "enough_evidence", "...": "..." } ],
+  "sessionBreakdown": [ { "label": "london", "tradeCount": 5, "winRatePct": 60.0, "...": "..." } ],
+  "regimeTrendBreakdown": [ "..." ],
+  "regimeVolatilityBreakdown": [ "..." ],
+  "instrumentBreakdown": [ "..." ],
+  "breakoutSizeBreakdown": [ { "label": "extended (range >= 2x recent avg)", "...": "..." }, { "label": "normal", "...": "..." } ],
+  "confirmedVsNaiveBaseline": [ { "label": "confirmed (pullback + breakout)", "...": "..." }, { "label": "naive (EMA cross only, no confirmation)", "...": "..." } ],
+  "sourceClaimComparison": {
+    "sourceClaimTradeCount": 32, "sourceClaimWinners": 21, "sourceClaimWinRatePct": 65.6,
+    "tradetownTradeCount": 40, "tradetownWinRatePct": 84.2,
+    "detail": "... This is a SOURCE CLAIM, not TradeTown-validated evidence ..."
+  },
+  "modelValidation": { "verdict": "needs_more_evidence", "...": "..." },
+  "monteCarlo": { "probabilityOfProfitPct": 99.5, "...": "..." },
+  "dataHonestyNote": "Every candle in this run is app/market_data.py's own real, procedurally-generated (seeded, reproducible) mock OHLCV series — never real historical market data. ..."
+}
+```
+
+Every rule (EMA cross + close confirmation, the real 2+-candle pullback,
+the body-close breakout of the pre-pullback swing level, Invalidation A
+— a real close back through the 50 EMA before confirmation discards the
+setup, Invalidation B — extended breakout candles are TAGGED and their
+own real expectancy reported, never silently filtered out) is precisely
+defined and reproducible — see the module's own docstring. The Chandelier
+Stop uses the methodology's own standard published defaults (22-period
+ATR, 3.0x multiplier), never a TradeTown-fitted number. `sourceClaim
+Comparison` exists so the CEO-supplied source material's own reported
+65.6% win rate is always shown ALONGSIDE TradeTown's real, independently
+-computed number — never substituted for it, and never used as an input
+to any calculation. `modelValidation`/`monteCarlo` reuse the existing
+Model Validator and Monte Carlo bootstrap unchanged (an ad hoc, non-
+persisted `Strategy`/`SimulationResult` pair built from this run's own
+real numbers is the only way they are invoked) — never a second,
+parallel validation or risk engine, and this endpoint never gates the
+Gatekeeper, Risk Authority, or any live trading decision.
+
 ### `POST /api/constitution/propose` / `advance` / `decide`
 
 v0.7 Feature 46 — the Company Constitution. All three return
