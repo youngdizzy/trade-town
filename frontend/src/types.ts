@@ -1141,6 +1141,64 @@ export interface ModelValidationReport {
   createdAt: string;
 }
 
+// CEO directive "Professional Trading Firm — Market-Analysis Knowledge +
+// Session Intelligence Expansion," Phase 15 — the 50 EMA breakout +
+// pullback strategy, converted into a formal, reproducible research
+// hypothesis and independently backtested against this codebase's own
+// real (mock) candle history. See backend/app/ema_pullback_research.py's
+// module docstring for the full rule definitions.
+export type EmaPullbackTradeOutcome = "win" | "loss" | "open";
+export type EmaPullbackRegimeTrend = "trending_up" | "trending_down" | "ranging";
+export type EmaPullbackRegimeVolatility = "high" | "normal" | "low";
+
+export interface EmaPullbackStatsBucket {
+  label: string;
+  tradeCount: number;
+  winCount: number;
+  lossCount: number;
+  openCount: number;
+  winRatePct: number | null;
+  avgWinR: number | null;
+  avgLossR: number | null;
+  expectancyR: number | null;
+  profitFactor: number | null;
+  maxDrawdownR: number | null;
+  longestLosingStreak: number | null;
+  verdict: "enough_evidence" | "not_enough_evidence" | null;
+  detail: string;
+}
+
+export interface EmaPullbackSourceClaimComparison {
+  sourceClaimTradeCount: number;
+  sourceClaimWinners: number;
+  sourceClaimWinRatePct: number;
+  tradetownTradeCount: number;
+  tradetownWinRatePct: number | null;
+  detail: string;
+}
+
+export interface EmaPullbackResearchResult {
+  id: string;
+  hypothesis: string;
+  rulesDisclosure: string;
+  symbolsTested: string[];
+  timeframe: string;
+  candlesPerSymbol: number;
+  referenceRMultiple: number;
+  rMultipleSweep: EmaPullbackStatsBucket[];
+  sessionBreakdown: EmaPullbackStatsBucket[];
+  regimeTrendBreakdown: EmaPullbackStatsBucket[];
+  regimeVolatilityBreakdown: EmaPullbackStatsBucket[];
+  instrumentBreakdown: EmaPullbackStatsBucket[];
+  breakoutSizeBreakdown: EmaPullbackStatsBucket[];
+  confirmedVsNaiveBaseline: EmaPullbackStatsBucket[];
+  sourceClaimComparison: EmaPullbackSourceClaimComparison;
+  modelValidation: ModelValidationReport | null;
+  monteCarlo: StrategyMonteCarloResult | null;
+  dataHonestyNote: string;
+  generatedAt: string;
+}
+
 // Deliberately distinct from the trade-scoped ExecutiveAction —
 // strategy-lifecycle semantics differ from single-trade semantics.
 export type StrategyExecutiveAction = "advance" | "request_more_evidence" | "hold_for_improvement" | "reject";

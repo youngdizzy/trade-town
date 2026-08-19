@@ -31,6 +31,7 @@ import type {
   DefensiveModeState,
   EducationLesson,
   EducationProgress,
+  EmaPullbackResearchResult,
   ExitEfficiencySummary,
   EmergencyStopState,
   EvaluationPolicyComparisonReport,
@@ -688,6 +689,11 @@ export const api = {
   // v0.7 Feature 52 (Part 2) — the brief's Executive Dashboard. Read-only,
   // computed fresh every call.
   getSandboxDashboard: () => request<StrategyExecutiveDashboard>("/sandbox/dashboard"),
+  // CEO directive "Professional Trading Firm — Market-Analysis Knowledge
+  // + Session Intelligence Expansion," Phase 15. Read-only, computed
+  // fresh every call — see backend/app/ema_pullback_research.py.
+  getEmaPullbackResearch: (candlesPerSymbol?: number) =>
+    request<EmaPullbackResearchResult>(`/sandbox/ema-pullback-research${candlesPerSymbol ? `?candlesPerSymbol=${candlesPerSymbol}` : ""}`),
   // v0.7 Feature 53 — Company Certification. Read-only, computed fresh
   // every call — `certified` is always a live read of current real
   // state (see StrategyCertification's own docstring in types.ts).

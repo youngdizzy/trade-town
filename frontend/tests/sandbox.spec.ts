@@ -65,6 +65,7 @@ test("the Research Sandbox tab opens from the Command Center, shows the pipeline
 });
 
 test("Feature 52 (Part 1/2) — every Strategy Validation Laboratory sub-tab opens and renders its own real content", async ({ page }) => {
+  test.setTimeout(60000); // 9 real sub-tabs, each dismissing real popups along the way, plus the 50 EMA RESEARCH tab's own real on-demand backtest computation
   const consoleErrors: string[] = [];
   page.on("console", (msg) => {
     if (msg.type() === "error") consoleErrors.push(msg.text());
@@ -97,8 +98,12 @@ test("Feature 52 (Part 1/2) — every Strategy Validation Laboratory sub-tab ope
   await expect(page.getByText(/Strategy Health — real simulation performance, not live P&L/)).toBeVisible();
 
   // EVOLUTION — the honest "Strategy Evolution" reframe (real stage
-  // history, never fabricated versioning).
-  await clickRobust(page, () => page.getByRole("button", { name: "EVOLUTION", exact: true }), { label: "sub-tab EVOLUTION" });
+  // history, never fabricated versioning). Scoped to the Sandbox
+  // sub-tab nav bar (identified by its own "PIPELINE" label) since the
+  // Command Center's own top-level "AI WORKFORCE" section has an
+  // unrelated "EVOLUTION" tab with the identical accessible name.
+  const sandboxSubTabNav = page.locator("nav").filter({ hasText: "PIPELINE" });
+  await clickRobust(page, () => sandboxSubTabNav.getByRole("button", { name: "EVOLUTION", exact: true }), { label: "sub-tab EVOLUTION" });
   await expect(page.getByText(/Real Journey — every stage this strategy has actually earned/)).toBeVisible();
 
   // HALL OF FAME / FAILED ARCHIVE — the two permanent retirement outcomes.
@@ -111,6 +116,15 @@ test("Feature 52 (Part 1/2) — every Strategy Validation Laboratory sub-tab ope
   await clickRobust(page, () => page.getByRole("button", { name: "DASHBOARD", exact: true }), { label: "sub-tab DASHBOARD" });
   await expect(page.getByText(/Portfolio Overview — real stage counts/)).toBeVisible({ timeout: 10_000 });
   await expect(page.getByText(/Named Slots — each citing the real metric that earned it/)).toBeVisible();
+
+  // 50 EMA RESEARCH — CEO directive "Market-Analysis Knowledge + Session
+  // Intelligence Expansion," Phase 15. A real, on-demand bar-by-bar
+  // backtest, kept explicitly separate from the source material's own
+  // claimed win rate.
+  await clickRobust(page, () => page.getByRole("button", { name: "50 EMA RESEARCH", exact: true }), { label: "sub-tab 50 EMA RESEARCH" });
+  await expect(page.getByText("50 EMA Breakout + Pullback — Research Hypothesis")).toBeVisible({ timeout: 15_000 });
+  await expect(page.getByText("Source Claim vs. TradeTown Evidence")).toBeVisible();
+  await expect(page.getByText(/SOURCE CLAIM, not TradeTown-validated evidence/)).toBeVisible();
 
   // Back to PIPELINE — the real Retirement action form opens and cancels
   // cleanly without actually retiring anything (a real, deliberate,
