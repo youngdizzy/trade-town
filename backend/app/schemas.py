@@ -4352,6 +4352,47 @@ class DecisionVaultEntry(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
+# CEO directive "Session Trading Education & Agent Training" — real
+# SESSION × REGIME evidence (app/session_evidence.py), computed fresh
+# over the already-real DecisionVaultEntry list above. Deliberately a
+# two-axis read (session × regime → outcome), not the directive's own
+# five-axis "session × regime × strategy × setup × outcome" framing —
+# DecisionVaultEntry.strategyId is None on every real entry today and no
+# "setup" taxonomy exists anywhere in this codebase, so those two axes
+# are not honestly buildable from real data yet (see
+# app/session_evidence.py's own module docstring for the full
+# disclosure, never silently dropped).
+SessionRegimeEvidenceState = Literal["favorable", "unfavorable", "mixed", "not_enough_evidence"]
+
+
+class SessionRegimeEvidence(CamelModel):
+    """One real (session, regime) pairing's outcome record, built purely
+    from real closed `DecisionVaultEntry.pnlPct` values. `evidenceState`
+    is `not_enough_evidence` below `MIN_SESSION_REGIME_SAMPLE` real
+    observations — never a forced favorable/unfavorable read on a thin
+    sample."""
+
+    session: TradingSession
+    regime: MarketIntelligenceRegime
+    sample_size: int = Field(alias="sampleSize")
+    win_count: int = Field(alias="winCount")
+    loss_count: int = Field(alias="lossCount")
+    win_rate_pct: float | None = Field(default=None, alias="winRatePct")
+    avg_pnl_pct: float | None = Field(default=None, alias="avgPnlPct")
+    evidence_state: SessionRegimeEvidenceState = Field(alias="evidenceState")
+
+
+class SessionRegimeEvidenceSummary(CamelModel):
+    """The real, disclosed aggregate — `buckets` only ever contains
+    pairings this company has actually closed a real trade under; a
+    pairing never seen simply never appears, rather than a fabricated
+    zero-evidence row."""
+
+    buckets: list[SessionRegimeEvidence]
+    min_sample_size: int = Field(alias="minSampleSize")
+    updated_at: str = Field(alias="updatedAt")
+
+
 class TradeReportCard(CamelModel):
     """The Decision Memory System's Trade Report Card — a pure
     relabeling of a DecisionVaultEntry's own real fields into the

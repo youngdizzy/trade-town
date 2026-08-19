@@ -608,6 +608,122 @@ _MARKET_INTELLIGENCE_LESSONS: tuple[_LessonSpec, ...] = (
         ),
         correct_index=0,
     ),
+    # CEO directive "Session Trading Education & Agent Training" — a real
+    # session-intelligence sub-module, orders 9-15, extending this same
+    # track rather than a new curriculum system. mi-session (order 5,
+    # above) already introduces real Session Intelligence mechanics
+    # (compute_session()'s real UTC windows); these seven lessons build
+    # the actual DECISION discipline on top of it — session context as
+    # evidence to check, never as a signal to act on — closing with the
+    # real 8-step process app/session_evidence.py and the existing
+    # Gatekeeper/risk pipeline already enforce end to end.
+    _LessonSpec(
+        id="mi-session-foundations",
+        order=9,
+        title="Session Context Is Evidence, Not a Signal",
+        simple_explanation="A session name alone — 'it's London right now' — is not a reason to trade. Session context can inform a decision the same way regime or volatility does, but it never replaces checking whether a real setup actually exists and whether the evidence supports it.",
+        deeper_explanation="app/session_evidence.py's compute_session_regime_evidence() is the literal enforcement of this idea: it never asks 'is London happening,' it asks 'how has this real (session, regime) pairing actually performed across this company's own real closed trades' — and it reports NOT_ENOUGH_EVIDENCE honestly whenever the sample is too thin to say anything, rather than assuming a session is good or bad. The department's own Probability First rule (mi-probability, above) already forbids treating any single signal as decisive; session is no exception.",
+        quiz_question="Which statement is correct about session context in TradeTown?",
+        quiz_options=(
+            "Session context informs a decision; it does not make the decision",
+            "Trading during London always produces a better outcome than trading during Asia",
+            "A trade should be entered automatically whenever a session opens",
+            "Session context replaces the need to check the Trade Gatekeeper",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="mi-session-asia",
+        order=10,
+        title="Reading the Asian Session",
+        simple_explanation="The Asian session (00:00-08:00 UTC in TradeTown's fixed windows) is a real, lower-weighted session in the Market Quality Score — historically thinner participation than London or New York. That's a real starting hypothesis about liquidity, not a proven rule about this company's own results.",
+        deeper_explanation="app/market_intelligence.py's _SESSION_QUALITY weights 'asian' at 45/100 — real, but only one input (weight 0.2) into the broader Market Quality Score alongside volatility, structure, and news. Whether a specific strategy actually performs better or worse during Asia is a separate, checkable question app/session_evidence.py answers from this company's own real closed DecisionVaultEntry history — never assumed from the quality weight alone.",
+        quiz_question="TradeTown's Market Quality Score weights the Asian session lower than London or New York. What does that real weight NOT tell you on its own?",
+        quiz_options=(
+            "Whether a specific strategy has actually performed well or poorly during Asia in this company's own real trade history",
+            "That the Asian session exists in TradeTown's fixed UTC windows",
+            "That session is one input among several in the Market Quality Score",
+            "That liquidity assumptions should be treated as hypotheses to check",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="mi-session-london",
+        order=11,
+        title="Reading the London Session",
+        simple_explanation="London (08:00-13:00 UTC) carries a real Market Quality weight of 70/100 — noticeably higher than Asia. A common real-world hypothesis is that the London open can move price out of a range the Asian session established. TradeTown has the real pieces to check that hypothesis (session data, structure/liquidity reads) — it does not assert it as fact.",
+        deeper_explanation="app/market_intelligence.py's compute_market_structure() and compute_liquidity() (mi-structure/mi-liquidity, above) run on the same real candle history regardless of session — there is no London-specific breakout detector. A department opinion citing 'London is active' alongside a real structure break or liquidity-zone sweep is combining two real, independent signals; citing 'London is active' alone is not.",
+        quiz_question="What should an agent check before treating a London-session breakout idea as worth acting on?",
+        quiz_options=(
+            "Whether real structure/liquidity signals (Break of Structure, a liquidity sweep) actually support it, and whether session×regime evidence backs it — not the session label alone",
+            "Nothing further — London being active is sufficient on its own",
+            "Whether the CEO is currently online",
+            "The color of the candlestick chart",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="mi-session-new-york",
+        order=12,
+        title="Reading the New York Session",
+        simple_explanation="New York (17:00-21:00 UTC, with a dedicated Market Open window at 13:30-14:00 and Market Close at 20:30-21:00) carries the same real 70/100 quality weight as London, plus real, separately-tracked Market Open/Close windows for the highest-participation minutes. More activity is real — it is not automatically higher-quality activity.",
+        deeper_explanation="High volume alongside a surprisingly small price move is exactly what mi-institutional (above) calls a real but indirect proxy — 'absorption' — never proof of favorable conditions. New York's higher participation can widen spreads and increase noise as easily as it can create a genuine move; the Market Quality Score's own volatility and structure-clarity components (not the session label) are what actually separates the two.",
+        quiz_question="Why doesn't TradeTown treat 'New York is active' as automatically meaning 'better trading conditions'?",
+        quiz_options=(
+            "Because high activity does not automatically mean high-quality trades — volatility and structure clarity are checked separately, not assumed from participation alone",
+            "Because New York is scored identically to a closed market",
+            "Because the Market Quality Score ignores volume entirely",
+            "Because New York never actually has real volatility",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="mi-session-overlap",
+        order=13,
+        title="The London/New York Overlap",
+        simple_explanation="The Overlap (13:00-16:00 UTC) carries the highest real Market Quality weight in TradeTown, 90/100 — both sessions' participants are active at once, which can mean faster, larger moves as well as faster, larger mistakes.",
+        deeper_explanation="This higher weight feeds the Market Quality Score exactly like every other session weight — it does NOT change app/schemas.py's own RiskLimits (risk_per_trade_pct, max_open_positions, max_drawdown_pct, ...) or app/gatekeeper.py's checks in any special-cased way. The existing risk and governance pipeline is authoritative regardless of how favorable a session looks; a busier session is a reason for a closer look, never an automatic reason to size up.",
+        quiz_question="Should an agent's position sizing automatically increase during the London/New York Overlap because it's the highest-quality session?",
+        quiz_options=(
+            "No — RiskLimits and the Trade Gatekeeper remain the authority on sizing and approval regardless of session; the Overlap is not a special case",
+            "Yes — always double size during the Overlap",
+            "Yes, because the Gatekeeper is skipped during the Overlap",
+            "It doesn't matter — risk limits don't apply to the Overlap",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="mi-session-transitions",
+        order=14,
+        title="Session Transitions",
+        simple_explanation="The moment one session hands off to the next — Asia into London, London into New York — is when conditions are most likely to actually change, not just the clock. The real question isn't 'what session is it now,' it's 'did anything real actually change.'",
+        deeper_explanation="Six real, checkable questions frame a transition: did VolatilityRead's real currentPct/historicalAvgPct comparison move? did SessionRead's real component of the Market Quality Score change? did the prior session's real structure (compute_market_structure()) establish a meaningful range? did price break or reject that range (a real Break of Structure or liquidity sweep)? does session_evidence.py show this strategy has historically performed during this transition? and — the one that matters most — is there enough real evidence (MIN_SESSION_REGIME_SAMPLE observations) to trust that read at all?",
+        quiz_question="What should an agent check first when a session transition occurs, according to TradeTown's own real data?",
+        quiz_options=(
+            "Whether volatility, liquidity, or structure actually changed — not merely that the clock crossed into a new session window",
+            "Nothing — the new session name is sufficient on its own",
+            "Only the CEO's mood",
+            "Whether the transition happened on a weekend",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="mi-session-decision-process",
+        order=15,
+        title="How To Actually Use Session Context",
+        simple_explanation="This is the most important lesson in the module: session context earns a place in a REAL structured process, and it never skips a real step of that process just because the session looks favorable.",
+        deeper_explanation=(
+            "The real, existing pipeline, unchanged by this lesson: (1) identify the current session — app/market_intelligence.py's compute_session(); (2) identify the current regime — the same module's 13-way _classify_regime(); (3) identify the setup/proposal actually being considered — a real TradeProposal, never a hypothetical; (4) check session×regime evidence — app/session_evidence.py's compute_session_regime_evidence(), honestly reporting NOT_ENOUGH_EVIDENCE below MIN_SESSION_REGIME_SAMPLE real observations, never assumed favorable; (5) evaluate current real conditions — the Market Quality Score, VolatilityRead, active RiskWarnings; (6) a real proposal is generated only when the existing confidence/setup conditions in app/executive.py's generate_proposal() are already satisfied — session never creates a proposal by itself; (7) the real Trade Gatekeeper (app/gatekeeper.py, all 11 checks) always runs, unchanged; (8) execution happens only once every existing requirement — Gatekeeper approval and RiskLimits — is satisfied. Steps 3 through 7 are never skipped, no matter how favorable a session appears."
+        ),
+        quiz_question="According to TradeTown's real decision process, which steps must never be skipped just because a session looks favorable?",
+        quiz_options=(
+            "Checking the actual setup, the real evidence, current conditions, and running the Trade Gatekeeper and risk pipeline (steps 3 through 7)",
+            "None — a favorable session can skip straight to execution",
+            "Only the confidence check, everything else can be skipped",
+            "All of them can be skipped once the Overlap begins",
+        ),
+        correct_index=0,
+    ),
 )
 
 _LESSON_SPECS_BY_MENTOR: dict[FoundationalMentorId, tuple[_LessonSpec, ...]] = {

@@ -104,7 +104,7 @@ class TestDefaultState:
         assert by_id["tjr"].status == "active"
         assert len(by_id["tjr"].lessons) == 8
         assert by_id["market_intelligence"].status == "active"
-        assert len(by_id["market_intelligence"].lessons) == 8
+        assert len(by_id["market_intelligence"].lessons) == 15
         assert by_id["mark_douglas"].status == "active"
         assert len(by_id["mark_douglas"].lessons) == 2
         assert by_id["linda_raschke"].status == "active"
@@ -155,11 +155,29 @@ class TestMarketIntelligenceTrack:
         assert _ROADMAP_ORDER[-1] == "market_intelligence"
         assert _ROADMAP_ORDER[-2] == "mike_bellafiore"
 
-    def test_eight_real_lessons_in_order(self):
+    def test_fifteen_real_lessons_in_order(self):
+        # CEO directive "Session Trading Education & Agent Training"
+        # extended the original 8-lesson track with a 7-lesson real
+        # session-intelligence sub-module (orders 9-15).
         state = default_foundational_mentor_state()
         mentor = next(m for m in state.mentors if m.id == "market_intelligence")
-        assert len(mentor.lessons) == 8
-        assert [lesson.order for lesson in sorted(mentor.lessons, key=lambda x: x.order)] == list(range(1, 9))
+        assert len(mentor.lessons) == 15
+        assert [lesson.order for lesson in sorted(mentor.lessons, key=lambda x: x.order)] == list(range(1, 16))
+
+    def test_session_intelligence_sub_module_lesson_ids(self):
+        state = default_foundational_mentor_state()
+        mentor = next(m for m in state.mentors if m.id == "market_intelligence")
+        ids = {lesson.id for lesson in mentor.lessons}
+        for expected in (
+            "mi-session-foundations",
+            "mi-session-asia",
+            "mi-session-london",
+            "mi-session-new-york",
+            "mi-session-overlap",
+            "mi-session-transitions",
+            "mi-session-decision-process",
+        ):
+            assert expected in ids
 
     def test_every_lesson_has_exactly_one_real_correct_answer(self):
         state = default_foundational_mentor_state()
@@ -171,8 +189,20 @@ class TestMarketIntelligenceTrack:
     def test_focus_areas_match_the_brief(self):
         state = default_foundational_mentor_state()
         mentor = next(m for m in state.mentors if m.id == "market_intelligence")
-        for topic in ("Market Structure", "Liquidity", "Volatility", "Market Regimes", "Probability Thinking", "Risk Context"):
+        for topic in ("Market Structure", "Liquidity", "Volatility", "Market Regimes", "Probability Thinking", "Risk Context", "Session Characteristics"):
             assert topic in mentor.focus_areas
+
+    def test_lessons_pass_the_probability_first_language_audit(self):
+        # Same regression guard TestMarkDouglasAndLindaRaschkeTracks runs
+        # — the session-intelligence sub-module content is exactly the
+        # kind of prose that could accidentally drift into "London is
+        # better" certainty language.
+        from app.probability_language import audit_model
+
+        state = default_foundational_mentor_state()
+        mentor = next(m for m in state.mentors if m.id == "market_intelligence")
+        for lesson in mentor.lessons:
+            assert audit_model(lesson) == {}
 
     def test_employees_can_auto_progress_through_it_once_active(self):
         state = default_foundational_mentor_state()
