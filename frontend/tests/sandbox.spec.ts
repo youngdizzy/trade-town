@@ -163,3 +163,76 @@ test("Feature 52 (Part 1/2) — every Strategy Validation Laboratory sub-tab ope
   const relevantErrors = consoleErrors.filter((e) => !e.includes("favicon") && !e.includes("Failed to process file"));
   expect(relevantErrors).toEqual([]);
 });
+
+test("CEO directive 'Professional Quant Firm Phase' — the QUANT RESEARCH LAB sub-tab files a real experiment, registers a real version, and runs a real 2-strategy tournament", async ({ page }) => {
+  test.setTimeout(180000); // compile + file experiment (one full research-experiment run) + register version + a second compile + tournament (two full research-experiment runs)
+  const consoleErrors: string[] = [];
+  page.on("console", (msg) => {
+    if (msg.type() === "error") consoleErrors.push(msg.text());
+  });
+
+  await page.goto("/");
+  await continueGame(page);
+
+  await clickButton(page, "Command ⌁");
+  await clickExpand(page);
+  await clickTab(page, "SANDBOX");
+  await clickRobust(page, () => page.getByRole("button", { name: "QUANT RESEARCH LAB", exact: true }), { label: "sub-tab QUANT RESEARCH LAB" });
+  await expect(page.getByText("Compile a Definition")).toBeVisible();
+
+  // A unique name per run: POST /register-strategy-version and
+  // POST /quant-research-lab/experiments are real, persisted state
+  // mutations against this dev server's own real save file, so re-running
+  // this test against an already-registered "50 EMA Pullback" would find
+  // pre-existing version history from a prior run rather than a fresh one.
+  const uniqueName = `50 EMA Pullback ${Date.now()}`;
+  await page.getByPlaceholder("Strategy name").fill(uniqueName);
+
+  // Compile the first definition, then exercise Feature 36 (file a
+  // hypothesis-driven experiment) and Feature 37 (register a real
+  // persisted version) against it.
+  await clickRobust(page, () => page.getByRole("button", { name: "Compile", exact: true }), { label: "Compile" });
+  await expect(page.getByText("Feature 36 — File to the Quant Research Lab")).toBeVisible({ timeout: 15_000 });
+
+  const hypothesis = `The 50 EMA breakout works better during the London session (${Date.now()}).`;
+  await page.getByPlaceholder(/50 EMA breakout \+ pullback setup performs better/).fill(hypothesis);
+  await clickRobust(page, () => page.getByRole("button", { name: "File Experiment", exact: true }), { label: "File Experiment" });
+  await expect(page.getByText(/^Filed as experiment-/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(/^(promising|inconclusive|rejected)$/)).toBeVisible();
+
+  await expect(page.getByText("Never registered")).toBeVisible();
+  await clickRobust(page, () => page.getByRole("button", { name: "Register This Text as a New Version", exact: true }), { label: "Register This Text as a New Version" });
+  await expect(page.getByText("v1", { exact: true })).toBeVisible({ timeout: 15_000 });
+
+  // Feature 40 — add this definition to the tournament roster, compile a
+  // second, different definition, add it too, then run the real
+  // tournament and check its comparison table / superlatives / rounds
+  // all render.
+  await clickRobust(page, () => page.getByRole("button", { name: "Add To Roster", exact: true }), { label: "Add To Roster" });
+  await expect(page.getByText("Tournament Roster (1)")).toBeVisible();
+
+  await page.getByPlaceholder("Strategy name").fill(`20 EMA Pullback ${Date.now()}`);
+  await page.getByPlaceholder(/Describe the strategy in plain English/).fill("Buy when price closes above the 20 EMA, then enter when price closes above the previous swing high. Place the stop at the Chandelier Stop and target 3R.");
+  await clickRobust(page, () => page.getByRole("button", { name: "Compile", exact: true }), { label: "Compile (second definition)" });
+  await expect(page.getByText("Feature 36 — File to the Quant Research Lab")).toBeVisible({ timeout: 15_000 });
+  await clickRobust(page, () => page.getByRole("button", { name: "Add To Roster", exact: true }), { label: "Add To Roster (second)" });
+  await expect(page.getByText("Tournament Roster (2)")).toBeVisible();
+
+  await clickRobust(page, () => page.getByRole("button", { name: "Run Tournament", exact: true }), { label: "Run Tournament" });
+  await expect(page.getByText(/Tournament Comparison/)).toBeVisible({ timeout: 60_000 });
+  await expect(page.getByText("Named Superlatives — one real dimension per slot, never blended")).toBeVisible();
+  await expect(page.getByText("Elimination Rounds")).toBeVisible();
+  await expect(page.getByText(/Round 7 — Portfolio interaction/)).toBeVisible();
+  await expect(page.getByText("architecturally blocked").first()).toBeVisible();
+  await expect(page.getByText(/never an autonomous production promotion/)).toBeVisible();
+
+  // The permanent search view — the experiment filed above must be
+  // findable, since nothing in the Quant Research Lab is ever deleted.
+  await clickRobust(page, () => page.getByRole("button", { name: "Load All", exact: true }), { label: "Load All (search)" });
+  // .last(): the textarea above still literally contains this same text too — the search-results
+  // card renders after it in the DOM.
+  await expect(page.getByText(hypothesis).last()).toBeVisible({ timeout: 15_000 });
+
+  const relevantErrors = consoleErrors.filter((e) => !e.includes("favicon") && !e.includes("Failed to process file"));
+  expect(relevantErrors).toEqual([]);
+});

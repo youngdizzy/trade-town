@@ -26,7 +26,11 @@ import type {
   CostSensitivityResult,
   LookAheadAuditResult,
   ParameterSensitivityResult,
+  QuantResearchExperiment,
+  QuantResearchExperimentSimilarity,
   ResearchExperimentRecord,
+  StrategyTournamentResult,
+  SubmitQuantResearchExperimentResult,
   SurvivorshipBiasRead,
   WalkForwardValidationResult,
   ControlEffectivenessSummary,
@@ -752,6 +756,40 @@ export const api = {
     request<ResearchExperimentRecord>(`/sandbox/research-experiment${candlesPerSymbol ? `?candlesPerSymbol=${candlesPerSymbol}` : ""}`, {
       method: "POST",
       body: JSON.stringify(definition),
+    }),
+  // CEO directive "Professional Quant Firm Phase," Feature 37 — real,
+  // persisted strategy version history. See
+  // backend/app/strategy_registry.py.
+  registerStrategyVersion: (name: string, sourceText: string, timeframe = "1h") =>
+    request<CompiledStrategyDefinition>("/sandbox/register-strategy-version", {
+      method: "POST",
+      body: JSON.stringify({ name, sourceText, timeframe }),
+    }),
+  getStrategyVersions: (name: string) => request<CompiledStrategyDefinition[]>(`/sandbox/strategy-versions?name=${encodeURIComponent(name)}`),
+  // CEO directive "Professional Quant Firm Phase," Feature 36 — the
+  // Quant Research Lab's real, persisted, searchable experiment record.
+  // See backend/app/quant_research_lab.py.
+  submitQuantResearchExperiment: (definition: CompiledStrategyDefinition, hypothesis: string, researcherAgentId: AgentId) =>
+    request<SubmitQuantResearchExperimentResult>("/sandbox/quant-research-lab/experiments", {
+      method: "POST",
+      body: JSON.stringify({ definition, hypothesis, researcherAgentId }),
+    }),
+  searchQuantResearchExperiments: (filters: { symbol?: string; definitionId?: string; timeframe?: string; agentId?: string; outcome?: string } = {}) => {
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(filters)) if (value) query.set(key, value);
+    const suffix = query.toString();
+    return request<QuantResearchExperiment[]>(`/sandbox/quant-research-lab/experiments${suffix ? `?${suffix}` : ""}`);
+  },
+  checkSimilarQuantResearchExperiments: (hypothesis: string, definitionId: string, timeframe: string) =>
+    request<QuantResearchExperimentSimilarity[]>(
+      `/sandbox/quant-research-lab/similar?${new URLSearchParams({ hypothesis, definitionId, timeframe }).toString()}`
+    ),
+  // CEO directive "Professional Quant Firm Phase," Feature 40 — the
+  // Quant Strategy Tournament. See backend/app/strategy_tournament.py.
+  runStrategyTournament: (definitions: CompiledStrategyDefinition[]) =>
+    request<StrategyTournamentResult>("/sandbox/strategy-tournament", {
+      method: "POST",
+      body: JSON.stringify({ definitions }),
     }),
   getSurvivorshipBias: (symbol: string) => request<SurvivorshipBiasRead>(`/sandbox/survivorship-bias?symbol=${encodeURIComponent(symbol)}`),
   // v0.7 Feature 53 — Company Certification. Read-only, computed fresh

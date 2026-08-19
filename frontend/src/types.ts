@@ -1164,6 +1164,16 @@ export interface EmaPullbackStatsBucket {
   profitFactor: number | null;
   maxDrawdownR: number | null;
   longestLosingStreak: number | null;
+  // CEO directive "Professional Quant Firm Phase," Feature 38 — real
+  // additions computed identically everywhere this bucket shape is
+  // used. See backend/app/backtest_primitives.py's aggregate_bucket().
+  longestWinningStreak: number | null;
+  largestWinR: number | null;
+  largestLossR: number | null;
+  avgHoldingBars: number | null;
+  sharpeRatio: number | null;
+  sortinoRatio: number | null;
+  calmarRatio: number | null;
   verdict: "enough_evidence" | "not_enough_evidence" | null;
   detail: string;
 }
@@ -1415,7 +1425,98 @@ export interface ResearchExperimentRecord {
   parameterSensitivity: ParameterSensitivityResult;
   costSensitivity: CostSensitivityResult;
   lookAheadAudit: LookAheadAuditResult;
+  overfittingDiagnosis: OverfittingDiagnosis;
   conclusion: string;
+  dataHonestyNote: string;
+  generatedAt: string;
+}
+
+// CEO directive "Professional Quant Firm Phase," Feature 39 — a real
+// relabeling of walk-forward/parameter-sensitivity/cost-sensitivity
+// verdicts into one shared vocabulary. See
+// backend/app/overfitting_diagnostics.py.
+export type OverfittingVerdict = "robust" | "fragile" | "insufficient_data" | "overfit_suspected" | "oos_failure" | "pending_validation";
+
+export interface OverfittingDiagnosis {
+  verdict: OverfittingVerdict;
+  detail: string;
+  walkForwardVerdict: "stable" | "unstable" | "insufficient_data";
+  parameterSensitivityVerdict: "robust" | "fragile" | "insufficient_data";
+  costSensitivityVerdict: "cost_resilient" | "cost_sensitive" | "insufficient_data";
+}
+
+// CEO directive "Professional Quant Firm Phase," Feature 36 — the
+// Quant Research Lab's real, PERSISTED, searchable experiment record.
+// See backend/app/quant_research_lab.py.
+export type QuantResearchOutcome = "promising" | "rejected" | "inconclusive";
+
+export interface QuantResearchExperiment {
+  id: string;
+  hypothesis: string;
+  researcherAgentId: AgentId;
+  outcome: QuantResearchOutcome;
+  outcomeReason: string;
+  record: ResearchExperimentRecord;
+  createdAt: string;
+}
+
+export interface QuantResearchExperimentSimilarity {
+  experimentId: string;
+  hypothesis: string;
+  overlapScore: number;
+  reason: string;
+}
+
+export interface SubmitQuantResearchExperimentResult {
+  experiment: QuantResearchExperiment;
+  similarExperiments: QuantResearchExperimentSimilarity[];
+}
+
+// CEO directive "Professional Quant Firm Phase," Feature 40 — the
+// Quant Strategy Tournament. See backend/app/strategy_tournament.py.
+export interface StrategyTournamentEntry {
+  definitionId: string;
+  definitionName: string;
+  definitionVersion: number;
+  tradeCount: number;
+  winRatePct: number | null;
+  expectancyR: number | null;
+  profitFactor: number | null;
+  maxDrawdownR: number | null;
+  sharpeRatio: number | null;
+  sortinoRatio: number | null;
+  calmarRatio: number | null;
+  walkForwardPositiveWindowPct: number | null;
+  walkForwardVerdict: "stable" | "unstable" | "insufficient_data";
+  parameterSensitivityVerdict: "robust" | "fragile" | "insufficient_data";
+  costSensitivityVerdict: "cost_resilient" | "cost_sensitive" | "insufficient_data";
+  lookAheadVerdict: "clean" | "violations_found" | "insufficient_data";
+  modelValidationVerdict: "approved" | "rejected" | "needs_more_evidence" | "not_validatable" | null;
+  overfittingVerdict: OverfittingVerdict;
+  eliminatedAtRound: number | null;
+  eliminationReason: string | null;
+}
+
+export interface StrategyTournamentRoundResult {
+  roundNumber: number;
+  name: string;
+  description: string;
+  survivors: string[];
+  eliminated: string[];
+  blocked: boolean;
+  detail: string;
+}
+
+export interface StrategyTournamentResult {
+  id: string;
+  entries: StrategyTournamentEntry[];
+  rounds: StrategyTournamentRoundResult[];
+  highestExpectancy: StrategyExecutiveDashboardEntry | null;
+  highestProfitFactor: StrategyExecutiveDashboardEntry | null;
+  highestSharpeRatio: StrategyExecutiveDashboardEntry | null;
+  lowestMaxDrawdown: StrategyExecutiveDashboardEntry | null;
+  mostWalkForwardStable: StrategyExecutiveDashboardEntry | null;
+  productionCandidates: string[];
   dataHonestyNote: string;
   generatedAt: string;
 }

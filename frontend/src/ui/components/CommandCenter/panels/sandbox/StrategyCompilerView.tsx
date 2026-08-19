@@ -17,6 +17,16 @@ function conclusionTone(conclusion: string): "green" | "amber" | "red" | "purple
   return (prefix && CONCLUSION_TONE[prefix]) || "purple";
 }
 
+// CEO directive "Professional Quant Firm Phase," Feature 39.
+const OVERFITTING_TONE: Record<string, "green" | "amber" | "red" | "purple"> = {
+  robust: "green",
+  fragile: "amber",
+  overfit_suspected: "amber",
+  oos_failure: "red",
+  insufficient_data: "purple",
+  pending_validation: "purple",
+};
+
 const CEO_EXAMPLE_TEXT =
   "Buy when price closes above the 50 EMA, then wait for at least two bearish candles, then enter when price closes above the previous swing high. Place the stop at the Chandelier Stop and target 2R.";
 
@@ -326,6 +336,14 @@ export function StrategyCompilerView() {
                 </div>
               ))}
             </div>
+          </Glass>
+
+          <Glass className="p-3">
+            <div className="mb-1.5 flex items-center justify-between">
+              <TerminalLabel>Overfitting Diagnosis</TerminalLabel>
+              <StatusPill tone={OVERFITTING_TONE[experiment.overfittingDiagnosis.verdict] ?? "purple"}>{experiment.overfittingDiagnosis.verdict.replace(/_/g, " ")}</StatusPill>
+            </div>
+            <div className="text-[9px] text-cmd-text">{experiment.overfittingDiagnosis.detail}</div>
           </Glass>
 
           <Glass className="p-3">

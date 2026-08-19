@@ -12,8 +12,9 @@ import { StrategyFailedArchiveView } from "./sandbox/StrategyFailedArchiveView";
 import { StrategyExecutiveDashboardView } from "./sandbox/StrategyExecutiveDashboardView";
 import { EmaPullbackResearchView } from "./sandbox/EmaPullbackResearchView";
 import { StrategyCompilerView } from "./sandbox/StrategyCompilerView";
+import { QuantResearchLabView } from "./sandbox/QuantResearchLabView";
 
-const SUB_TABS = ["PIPELINE", "LIBRARY", "CERTIFICATION", "HEALTH", "EVOLUTION", "HALL OF FAME", "FAILED ARCHIVE", "DASHBOARD", "50 EMA RESEARCH", "STRATEGY COMPILER"] as const;
+const SUB_TABS = ["PIPELINE", "LIBRARY", "CERTIFICATION", "HEALTH", "EVOLUTION", "HALL OF FAME", "FAILED ARCHIVE", "DASHBOARD", "50 EMA RESEARCH", "STRATEGY COMPILER", "QUANT RESEARCH LAB"] as const;
 type SubTab = (typeof SUB_TABS)[number];
 
 const STRATEGY_SCOPED: ReadonlySet<SubTab> = new Set(["PIPELINE", "CERTIFICATION", "HEALTH", "EVOLUTION"]);
@@ -47,8 +48,16 @@ const STRATEGY_SCOPED: ReadonlySet<SubTab> = new Set(["PIPELINE", "CERTIFICATION
  * English-language strategy compiler and generic backtest engine, never
  * an LLM guess; ambiguous phrasing is refused, not silently converted
  * into an invented threshold — see backend/app/strategy_compiler.py /
- * backend/app/strategy_engine.py). See docs/Architecture.md's Feature
- * 52 sections for the full honesty boundary each sub-view observes.
+ * backend/app/strategy_engine.py), and QUANT RESEARCH LAB (CEO directive
+ * "Professional Quant Firm Phase," Features 36/37/40 — files a real,
+ * hypothesis-driven experiment into a permanent, searchable archive,
+ * registers real persisted strategy version history, and runs a
+ * multi-strategy tournament across every real validation axis via
+ * named-slot superlatives and staged elimination rounds, never a
+ * fabricated composite score — see backend/app/quant_research_lab.py /
+ * backend/app/strategy_registry.py / backend/app/strategy_tournament.py).
+ * See docs/Architecture.md's Feature 52 sections for the full honesty
+ * boundary each sub-view observes.
  */
 export function SandboxPanel() {
   const {
@@ -97,6 +106,7 @@ export function SandboxPanel() {
       {subTab === "DASHBOARD" && <StrategyExecutiveDashboardView />}
       {subTab === "50 EMA RESEARCH" && <EmaPullbackResearchView />}
       {subTab === "STRATEGY COMPILER" && <StrategyCompilerView />}
+      {subTab === "QUANT RESEARCH LAB" && <QuantResearchLabView />}
 
       {STRATEGY_SCOPED.has(subTab) && (
         <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
