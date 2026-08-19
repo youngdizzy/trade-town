@@ -9889,8 +9889,14 @@ the same thing. `entrySession` reuses the real, already-shared
 ### Reusing the existing Strategy Lab machinery, never a second one
 
 Every result — win rate, expectancy, profit factor, max drawdown,
-longest losing streak, MAE/MFE — is aggregated by a new
-`_aggregate_bucket()` helper, then an ad hoc, non-persisted
+longest losing streak, MAE/MFE — is aggregated by an `aggregate_bucket()`
+helper (originally private to this module; extracted into the shared
+`app/backtest_primitives.py` during the later "Quant Intelligence +
+Market Analysis Completion Phase" pass below, so the generic strategy
+engine built in that pass reuses the exact same math rather than a
+second copy — this module's own behavior is unchanged by that
+extraction, verified by its full pre-existing test suite), then an ad
+hoc, non-persisted
 `Strategy`/`SimulationResult` pair built from this run's own real
 numbers is handed to `app/strategy_lab.py`'s real
 `run_strategy_monte_carlo()` bootstrap and
@@ -9940,6 +9946,223 @@ insufficient-history honesty, and confirmed-never-more-frequent-than-
 naive). Full backend suite, `mypy app/` (159 files)/`ruff check app/
 tests/` clean. Live-verified end to end through the real FastAPI app
 (`GET /api/sandbox/ema-pullback-research`) via `TestClient`.
+
+## CEO directive "Professional Quant Trading Firm — Quant Intelligence + Market Analysis Completion Phase"
+
+A mandated repository audit first, then genuinely-missing-only
+implementation, against 7 named capabilities. Nothing in this pass
+touched company-health/executive-health/compliance/governance scoring —
+Rule 3 forbade it and no formula in that family was read or written.
+
+### The audit result, capability by capability
+
+- **Technical indicators** (Phase A): already real
+  (`app/technical_indicators.py`). Extended, not duplicated: added
+  `sma_series()` alongside the existing `ema_series()`, same index-
+  alignment convention (first value represents candle index
+  `period - 1`). Parabolic SAR/SuperTrend remain a disclosed, real gap,
+  unchanged from the prior directive's own scoping.
+- **Session/range tracking** (Phase C): already real
+  (`app/technical_patterns.py::compute_session_range()`, reusing
+  `app/market_intelligence.py`'s session-boundary detection). Unchanged
+  this pass.
+- **Confluence at the analyst-vote layer**: already real
+  (`app/signal_correlation.py`, from the prior directive). Genuinely
+  missing one layer down, at the raw indicator/pattern layer — built
+  this pass as `app/evidence_confluence.py` (below), deliberately kept
+  distinct from `signal_correlation.py` rather than merged into it,
+  since the two operate on different inputs (raw signals vs. the six
+  analyst votes).
+- **The 13-way `MarketIntelligenceRegime` classifier's real capture**:
+  already genuinely real and already going forward-looking, contrary to
+  what the directive's own Phase G assumed might need building.
+  `DecisionVaultEntry.market_regime`/`market_regime_label`
+  (`app/schemas.py`) already capture the live classifier's real output
+  at the moment of every real trade decision — not a proxy.
+  `MarketIntelligenceReport.snapshot` (`MarketIntelligenceState`)
+  already captures one real, permanent daily snapshot per in-game
+  evening (v0.7 Feature 51, `nexus.py`'s `is_evening` gate). Both were
+  read and confirmed by inspection, not rebuilt — no new capture
+  infrastructure was needed. See "Regime/session tagging" above for
+  why the EMA-slope/ATR-median PROXY remains correctly scoped to
+  synthetic backtest history only, which has no live per-tick state to
+  draw the real classifier from.
+- **Pattern detection — support/resistance** (Phase B): genuinely
+  missing. Built (below).
+- **Pattern detection — complex chart geometry**: still genuinely
+  missing. Double top/bottom, head & shoulders, and triangle/wedge/
+  rectangle breakout detection are a real, disclosed gap, not attempted
+  this pass — geometric multi-point pattern matching is a materially
+  larger undertaking than the swing-clustering approach used for
+  support/resistance, and was judged out of scope for this pass rather
+  than attempted and left unreliable.
+- **English strategy → reproducible strategy** (Phase F): genuinely
+  missing — no DSL, no compiler, no generic backtest engine existed
+  anywhere. Built (below), the flagship addition of this pass.
+- **Anti-overfitting validation** (Phase E): already real, 9 of the 14
+  explicitly-listed checks present (`app/model_validation.py`, several
+  from the prior directive's own Phase 8). Extended with
+  `symbol_robustness` (below). Walk-forward validation, parameter-
+  sensitivity, transaction-cost/slippage-sensitivity, explicit look-
+  ahead-bias/survivorship-bias/train-test-leakage checks, and multiple-
+  testing/data-mining risk remain a disclosed, real gap — none of these
+  were silently declared "already covered" by an existing check under a
+  different name; each would need its own real, distinct mechanism this
+  pass did not build.
+
+### Phase B: real support/resistance, no new swing detector
+
+`detect_support_resistance_levels()` (`app/technical_patterns.py`)
+clusters the same real swing highs/lows `compute_market_structure()`
+already finds via `_find_swings()` — no second swing detector. All
+swing prices (highs and lows together) are sorted and greedily grouped:
+a price joins the current cluster if it's within `LEVEL_CLUSTER_TOLERANCE_PCT`
+(0.5%) of that cluster's own running mean, else it starts a new one. A
+cluster becomes a reported level only once it has `MIN_TOUCHES_FOR_LEVEL`
+(2) real swing touches, capped at `MAX_LEVELS_RETURNED` (8, sorted by
+touch count then re-sorted by price). `role` is classified mechanically
+against the current close (`support` if the close is above the level,
+else `resistance`) — never a source-material label, never a fabricated
+strength score. Surfaced inside `TechnicalAnalysisRead.supportResistance`
+(`compute_technical_analysis()`) and the Command Center's existing
+Technical Analysis block, never a separate panel.
+
+### Phase D: evidence-family confluence, distinct from signal_correlation.py
+
+`app/evidence_confluence.py::assess_evidence_confluence()` collects
+real signals across six families — `trend` (price vs. EMA20/SMA20,
+deliberately correlated on purpose, to demonstrate the engine's own
+value), `momentum` (RSI14, MACD histogram, Stochastic %K), `volume`
+(price vs. VWAP), `price_structure` (break-of-structure, reused from
+`compute_market_structure()`), `liquidity` (liquidity sweep, fair value
+gap, order block), and `pattern` (most recent candlestick) — then
+groups them. Each family's `netDirection` is `bullish`/`bearish` only
+when every directional signal inside it genuinely agrees; real internal
+disagreement reads `neutral`, never silently resolved toward a
+majority. `majorityDirection` is computed from the families' own net
+directions (excluding the informational-only `levels` family).
+`rawSignalCount` counts only signals whose own direction matches
+`majorityDirection` — mirroring `signal_correlation.py`'s
+`naive_confirmation_count` semantics one layer up — while
+`independentFamilyCount` counts agreeing FAMILIES, so five correlated
+momentum readings can never masquerade as five independent
+confirmations. New `GET /api/market/evidence-confluence` endpoint;
+surfaced in `MarketIntelPanel.tsx` alongside Technical Analysis.
+
+### Phase E: symbol_robustness
+
+`_symbol_robustness_check()` (`app/model_validation.py`) groups a
+strategy's `SimulationResult`s by `.symbol`, computes each symbol's own
+aggregated `total_return_pct`, and checks whether the sign agrees
+across at least 2 distinct symbols — `passed=None` (needs more
+evidence, not a failure) when the sample spans fewer than 2 symbols,
+matching this validator's existing honesty convention for every other
+check. Wired into `generate_model_validation_report()`'s check list
+immediately after `optimization_scrutiny`.
+
+### Phase F: the English strategy compiler + generic backtest engine
+
+**`app/strategy_compiler.py`** — a deterministic, disclosed-vocabulary
+pattern-matcher, never an LLM call (this entire codebase makes zero
+live LLM calls at runtime; every agent utterance elsewhere is templated
+or pre-authored). `compile_strategy_text()` recognizes a real, limited
+grammar: EMA/SMA crossing triggers, a minimum-consecutive-candles
+requirement, a previous-swing-high/low entry trigger, three stop
+methods (Chandelier/swing-level/fixed-percent), and two target methods
+(R-multiple/fixed-percent). An explicit `_AMBIGUOUS_PHRASE_PATTERNS`
+list ("strong breakout," "significant volume," "near support," "near
+resistance," "strong momentum," "clean pullback," "clean breakout,"
+"big/large candle," "looks strong," "looks like," "good setup,"
+"decent volume," "obvious," "solid trend/setup/move") is checked FIRST
+— any match is reported as a real `StrategyAmbiguity` with a
+`suggestedResolution` where one exists, and blocks `status="compiled"`
+outright, per the directive's explicit "NO AMBIGUOUS STRATEGIES" rule.
+Text that matches none of the recognized patterns (e.g. a moon-phase
+strategy) compiles to `status="invalid"` with an empty `sequence`,
+`stop: null`, `target: null` — the compiler never guesses at intent it
+doesn't recognize. A direction contradiction between the trigger and
+entry steps (e.g. a bullish trigger paired with a bearish entry
+condition) is also caught and reported, not silently compiled. Every
+compiled `CompiledStrategyDefinition` is versioned (`version` defaults
+to `1`; an optional `previousVersion` param exists for a future
+persistence layer's own bookkeeping) and stateless — nothing compiled
+here is persisted by this endpoint itself, the same CAGS convention
+this whole family of directives has used throughout.
+
+**`app/strategy_engine.py`** — a generic bar-by-bar state machine
+driven entirely by a compiled definition's own trigger/requirement/
+entry steps and stop/target specs, rather than a strategy-specific
+hand-built detector. `SUPPORTED_INDICATORS` is currently limited to
+`price_close/open/high/low`, `ema`, `sma` — RSI/MACD/Stochastic-based
+triggers are a disclosed, real future increment. `run_compiled_strategy_
+backtest()` refuses outright (never silently skips or guesses) when the
+definition's `status != "compiled"` or it references an indicator
+outside that set. When it does run, it computes a real per-symbol
+regime series (`REGIME_EMA_PERIOD=50`, `REGIME_ATR_PERIOD=14` —
+deliberately independent of whatever period the compiled strategy's own
+trigger indicator happens to use, so regime tags stay comparable across
+arbitrary compiled strategies) and feeds real trade records through the
+exact same `app/backtest_primitives.py` helpers, `run_strategy_monte_
+carlo()`, and `generate_model_validation_report()` that `app/
+ema_pullback_research.py` already uses — one authoritative backtest
+pipeline, not a second one.
+
+**A real fabrication bug, caught during this same pass's own Phase G
+audit and fixed before commit**: an early version of
+`strategy_engine.py` built every trade record with literal, hardcoded
+`regimeTrend="ranging"`, `regimeVolatility="normal"`,
+`breakoutCandleExtended=False`, `breakoutCandleRangeRatio=1.0` —
+constants that were never actually computed from that trade's own real
+setup. Caught by re-auditing whether the disclosed regime proxy was
+genuinely being computed everywhere it claimed to be (exactly the kind
+of check Rule 2's "do not fabricate" demands). Fixed by extracting
+`regime_trend_at()`/`regime_volatility_at()`/
+`breakout_candle_range_ratio()` (along with the Chandelier Stop/exit-
+simulation/bucket-aggregation math) out of `ema_pullback_research.py`'s
+previously-private functions into the new shared `app/
+backtest_primitives.py`, then wiring real calls into
+`strategy_engine.py`'s trade construction using the dedicated regime
+series above. A regression test
+(`TestRegimeAndBreakoutTagsAreReallyComputedNotHardcoded`) asserts the
+tags genuinely vary across a real multi-symbol sample — a hardcoded
+constant could never satisfy that assertion.
+
+**Cross-validated, not just unit-tested**: the CEO's own 50 EMA worked
+example text, compiled through `strategy_compiler.py` and run through
+the new generic `strategy_engine.py`, was compared against the hand-
+built `ema_pullback_research.py::_detect_setups()`'s own real output on
+the same real candle series. An initial apparent mismatch on one
+symbol was root-caused (not assumed to be a bug) to a genuine
+structural difference: the hand-built detector runs one combined
+long-OR-short state machine, so tracking a long setup can make it
+structurally blind to a concurrent short trigger and vice versa, while
+a standalone single-direction compiled definition has no such
+competition and can legitimately find more real setups. Manually
+traced one such "extra" setup and confirmed it was a real, valid
+breakdown pattern, not a false positive. The test suite asserts the
+hand-built engine's setups are a subset of the generic engine's
+setups, not exact equality — the honest relationship, not a convenient
+one.
+
+New endpoints: `POST /api/sandbox/compile-strategy`,
+`POST /api/sandbox/backtest-compiled-strategy` (see `docs/API.md`).
+Surfaced as a new "STRATEGY COMPILER" sub-tab in the Strategy
+Validation Laboratory (`StrategyCompilerView.tsx`), reusing
+`EmaPullbackResearchView.tsx`'s own `BucketGroup` component for the
+session/instrument breakdowns rather than a second display component.
+
+### Verified
+
+51 new backend tests (`test_backtest_primitives.py`,
+`test_strategy_compiler.py`, `test_strategy_engine.py`,
+`test_evidence_confluence.py`, plus additions to
+`test_model_validation.py`, `test_technical_indicators.py`,
+`test_technical_patterns.py`, `test_ema_pullback_research.py`). Full
+backend suite (2,221 tests), `mypy app/`, `ruff check app/ tests/` all
+clean. Frontend: `tsc --noEmit`, `eslint`, `vite build` clean;
+`sandbox.spec.ts` and `marketIntel.spec.ts` (6 tests total, including
+the new Strategy Compiler compile→backtest flow and the new Evidence
+Confluence display) pass against the live running dev stack.
 
 ## Save format compatibility
 

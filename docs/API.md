@@ -1453,6 +1453,57 @@ real numbers is the only way they are invoked) — never a second,
 parallel validation or risk engine, and this endpoint never gates the
 Gatekeeper, Risk Authority, or any live trading decision.
 
+### `POST /api/sandbox/compile-strategy`
+
+CEO directive "Professional Quant Trading Firm — Quant Intelligence +
+Market Analysis Completion Phase," Phase F. Body:
+`{ "name": "...", "sourceText": "...", "timeframe": "1h", "previousVersion": null }`.
+Runs the English strategy description through `app/strategy_compiler.py`'s
+deterministic, disclosed-vocabulary pattern-matcher (never an LLM call —
+this endpoint, like the rest of this codebase, makes no live LLM calls at
+runtime) and returns a `CompiledStrategyDefinition`:
+
+```json
+{
+  "id": "compiled-...", "name": "50 EMA Pullback", "sourceText": "...",
+  "version": 1, "createdBy": "quant", "timeframe": "1h",
+  "sequence": [ { "id": "...", "stepType": "trigger", "condition": {"...": "..."}, "detail": "..." } ],
+  "stop": { "method": "chandelier", "atrPeriod": 22, "atrMultiplier": 3.0, "percent": null },
+  "target": { "method": "r_multiple", "value": 2.0 },
+  "ambiguities": [],
+  "status": "compiled",
+  "detail": "..."
+}
+```
+
+`status` is `"compiled"` only when every required piece (trigger, entry,
+stop, target) was recognized with zero ambiguities. Vague phrasing
+("strong breakout," "significant volume," "near support," "clean
+pullback," etc.) is matched against an explicit banned-phrase list and
+reported in `ambiguities` (with a `suggestedResolution` where one exists)
+rather than being silently converted into an invented threshold; text
+outside the compiler's recognized vocabulary yields `status="invalid"`
+with an empty `sequence`, `stop: null`, `target: null` — never a guess.
+Stateless: nothing compiled here is persisted; `version` is always `1`
+unless a caller supplies `previousVersion` for its own bookkeeping.
+
+### `POST /api/sandbox/backtest-compiled-strategy?candlesPerSymbol=6000`
+
+Body: a `CompiledStrategyDefinition` (typically one just returned by
+`compile-strategy`). Runs `app/strategy_engine.py`'s generic backtest
+runner — a bar-by-bar state machine driven entirely by the compiled
+definition's own trigger/requirement/entry sequence and stop/target
+specs — against real (mock) candle history, through the same Monte Carlo
+bootstrap and Model Validator pipeline `ema-pullback-research` uses.
+Returns a `CompiledStrategyBacktestResult` (`overall`/`sessionBreakdown`/
+`instrumentBreakdown` buckets, `modelValidation`, `monteCarlo`,
+`dataHonestyNote`) shaped like the EMA pullback result above. `400` if
+`definition.status !== "compiled"` or the definition references an
+indicator outside the engine's current `price_close/open/high/low`,
+`ema`, `sma` vocabulary — the engine refuses to guess rather than
+silently skipping unsupported conditions. Read-only, computed fresh every
+call; never wired into any agent or live trading decision.
+
 ### `POST /api/constitution/propose` / `advance` / `decide`
 
 v0.7 Feature 46 — the Company Constitution. All three return
@@ -1700,7 +1751,8 @@ Computed fresh per request over the same real (mock) candle series `GET
   "fairValueGaps": { "symbol": "NEXA", "gaps": [], "detail": "..." },
   "candlestickPatterns": { "symbol": "NEXA", "patterns": [], "detail": "..." },
   "fibonacci": { "symbol": "NEXA", "swingHigh": 105.0, "swingLow": 98.0, "levels": [{"ratio": 0.618, "price": 100.7}], "detail": "..." },
-  "orderBlock": { "symbol": "NEXA", "direction": "none", "priceHigh": null, "priceLow": null, "timestamp": null, "detail": "..." }
+  "orderBlock": { "symbol": "NEXA", "direction": "none", "priceHigh": null, "priceLow": null, "timestamp": null, "detail": "..." },
+  "supportResistance": { "symbol": "NEXA", "levels": [{"price": 99.0, "touches": 3, "role": "support"}], "detail": "..." }
 }
 ```
 
@@ -1709,6 +1761,49 @@ value) below that concept's own real minimum bar count — see
 `app/technical_indicators.py` and `app/technical_patterns.py`'s own
 module docstrings for each concept's exact real definition. None of
 these values are wired into `app/research.py`'s confidence gauge or any
+live trade decision — informational only. `supportResistance` (CEO
+directive "Professional Quant Trading Firm — Quant Intelligence + Market
+Analysis Completion Phase," Phase B) clusters the same real swing-high/
+low series `swingStructure` already computes into price bands (≥2
+touches within 0.5% of the cluster's own running mean, capped at 8
+levels), classifying each as `support`/`resistance` against the current
+close — never a second swing detector.
+
+### `GET /api/market/evidence-confluence?symbol=...&timeframe=1h&limit=100`
+
+CEO directive "Professional Quant Trading Firm — Quant Intelligence +
+Market Analysis Completion Phase," Phase D (`app/evidence_confluence.py`).
+Groups the same real indicator/pattern signals `technical-analysis`
+computes into evidence families (`trend`/`momentum`/`volume`/
+`liquidity`/`price_structure`/`pattern`) and distinguishes the RAW signal
+count from the count of INDEPENDENT families agreeing — deliberately one
+layer below `app/signal_correlation.py`, which already covers redundancy
+across the six analyst votes, not the raw indicator layer. Returns an
+`EvidenceConfluenceRead`:
+
+```json
+{
+  "symbol": "NEXA",
+  "families": [
+    { "family": "trend", "signals": [{"name": "price_vs_ema20", "family": "trend", "direction": "bullish", "detail": "..."}], "netDirection": "bullish", "detail": "..." }
+  ],
+  "rawSignalCount": 7,
+  "independentFamilyCount": 3,
+  "majorityDirection": "bullish",
+  "agreeingFamilies": ["trend", "momentum", "volume"],
+  "detail": "..."
+}
+```
+
+`netDirection` per family is `"bullish"`/`"bearish"` only when every
+directional signal in that family agrees; any real internal
+disagreement reads `"neutral"` rather than being silently resolved
+toward the majority. `rawSignalCount` counts only signals whose own
+direction matches `majorityDirection` (mirroring
+`signal_correlation.py`'s `naiveConfirmationCount` semantics); a raw
+count well above `independentFamilyCount` is the whole point of this
+endpoint — it means several of those "confirmations" are really the
+same underlying evidence read more than once. Never wired into any
 live trade decision — informational only.
 
 ### `GET /api/market/session-range?symbol=...&session=asian&timeframe=1h&limit=100`

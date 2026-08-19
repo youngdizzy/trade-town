@@ -71,6 +71,74 @@ development milestones, not semver releases.
   scoped the click to the Sandbox sub-tab nav bar specifically; confirmed via `git stash` that this failure
   pre-dates and is unrelated to this pass's own changes.
 
+- **CEO directive "Professional Quant Trading Firm — Quant Intelligence + Market Analysis Completion Phase"**
+  (`backend/app/backtest_primitives.py`, `backend/app/strategy_compiler.py`, `backend/app/strategy_engine.py`,
+  `backend/app/evidence_confluence.py`, `backend/app/technical_patterns.py`, `backend/app/technical_indicators.py`,
+  `backend/app/technical_analysis.py`, `backend/app/model_validation.py`, `backend/app/ema_pullback_research.py`,
+  `backend/app/schemas.py`, `backend/app/routers/market.py`, `backend/app/routers/sandbox.py`, five new backend
+  test files plus four modified, `frontend/src/types.ts`, `frontend/src/net/api.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/MarketIntelPanel.tsx`,
+  `frontend/src/ui/components/CommandCenter/panels/SandboxPanel.tsx`,
+  `frontend/src/ui/components/CommandCenter/panels/sandbox/StrategyCompilerView.tsx`,
+  `frontend/tests/sandbox.spec.ts`, `frontend/tests/marketIntel.spec.ts`): the mandated repository audit
+  classified the 7 named capabilities before any code was written. Technical indicators, session/range
+  tracking, and confluence at the analyst-vote layer (`signal_correlation.py`) were already real and are
+  extended, not duplicated. The 13-way `MarketIntelligenceRegime` classifier's live, per-decision capture was
+  also already real — `DecisionVaultEntry.market_regime`/`market_regime_label` and
+  `MarketIntelligenceReport.snapshot` already record the genuine classifier's real output at decision time and
+  once per in-game evening respectively; nothing needed building there. Pattern detection had no
+  support/resistance detector anywhere in the codebase (genuinely missing); no English-to-DSL strategy
+  compiler, no generic backtest engine, and no evidence-family-level confluence layer existed at all
+  (genuinely missing); anti-overfitting validation had 9 of the 14 explicitly-listed checks. **Phase B**: a
+  real support/resistance detector clustering the existing swing-high/low detector's own output (2+ touches,
+  0.5% price tolerance, capped at 8 levels, support/resistance classified against the current close) — reuses
+  `_find_swings()`, no second swing detector. Complex chart-pattern geometry (double top/bottom, head &
+  shoulders, triangle/wedge/rectangle breakouts) is a disclosed, real gap, not built this pass. **Phase D**:
+  `evidence_confluence.py` groups raw trend/momentum/volume/liquidity/price-structure/pattern signals into
+  evidence families and reports both `rawSignalCount` (signals agreeing with the eventual majority direction)
+  and `independentFamilyCount` (families agreeing), so five correlated momentum readings can never masquerade
+  as five independent confirmations — deliberately one layer below `signal_correlation.py`, which already
+  covers the six analyst votes. **Phase E**: added `symbol_robustness` (sign-agreement of aggregated returns
+  across ≥2 distinct symbols; `needs_more_evidence` on a single-symbol sample) to `model_validation.py`'s
+  existing anti-overfitting suite. Walk-forward, parameter-sensitivity, and transaction-cost/slippage-
+  sensitivity checks remain a disclosed, real gap. **Phase F, the flagship addition**: `strategy_compiler.py`
+  is a deterministic, disclosed-vocabulary pattern-matcher (never an LLM call — this entire codebase makes
+  zero live LLM calls at runtime) that converts an English strategy description into a structured, versioned
+  `CompiledStrategyDefinition` (trigger/requirement/entry sequence, stop, target). Vague phrasing ("strong
+  breakout," "significant volume," "near support," "clean pullback," etc.) is matched against an explicit
+  banned-phrase list and reported as a real ambiguity, never silently converted into an invented threshold;
+  text the compiler doesn't recognize compiles to `status="invalid"` with an empty sequence rather than being
+  guessed at. `strategy_engine.py` then runs a compiled definition against real (mock) candle history through
+  the same Monte Carlo bootstrap and Model Validator pipeline `ema_pullback_research.py` already uses —
+  refusing outright, rather than guessing, when the definition is ambiguous/invalid or names an indicator
+  outside the current `price_close/open/high/low`, `ema`, `sma` vocabulary (RSI/MACD/Stochastic-based
+  triggers and multi-step sequence topologies beyond trigger → optional requirement → entry are a disclosed,
+  real future increment). Cross-validated by compiling the CEO's own 50 EMA worked example and comparing its
+  output against the hand-built `ema_pullback_research.py` detector's real output on the same real candle
+  series: the generic engine finds a strict superset of the hand-built detector's setups, a real structural
+  difference (the hand-built detector runs one combined long/short state machine; a single-direction compiled
+  definition has no such competition) confirmed by manually tracing one "extra" setup, not a bug — the test
+  suite asserts the subset relationship rather than exact equality. A genuine fabrication bug was caught and
+  fixed during this same pass's own Phase G audit: `strategy_engine.py`'s trade records were silently
+  hardcoding `regimeTrend="ranging"`/`regimeVolatility="normal"` instead of computing them; fixed by extracting
+  the regime-tagging helpers (along with the Chandelier Stop/exit-simulation/bucket-aggregation math) out of
+  `ema_pullback_research.py`'s previously-private functions into a new shared `backtest_primitives.py`, so
+  both modules now share one authoritative implementation, and wiring a dedicated 50-EMA/14-ATR regime series
+  per symbol into the generic engine's trade construction (`ema_pullback_research.py` itself is behavior-
+  unchanged — all 20 of its existing tests still pass against the refactor). New endpoints:
+  `GET /api/market/evidence-confluence`, `POST /api/sandbox/compile-strategy`,
+  `POST /api/sandbox/backtest-compiled-strategy`. 51 new backend tests. Full backend suite (2,221 tests),
+  `mypy app/`, `ruff check app/ tests/` all clean. **Frontend**: a new "STRATEGY COMPILER" sub-tab in the
+  Strategy Validation Laboratory (compile → review ambiguities/steps/stop/target → backtest on demand, reusing
+  the 50 EMA sub-tab's own bucket/Model-Validation display components), and a new Evidence Confluence section
+  plus a Support/Resistance section inside Market Intelligence's existing Technical Analysis block. `tsc`/
+  `eslint`/`vite build` clean; live-verified against the real running dev stack via Playwright, with the new
+  coverage folded into the existing `sandbox.spec.ts` and `marketIntel.spec.ts` specs rather than left as a
+  separate scratch file. Along the way, renamed the Compile button's own accessible label from "Compile" to
+  "Compile Strategy" after discovering it collided (via Playwright's substring accessible-name matching) with
+  the "STRATEGY COMPILER" sub-tab button's own name — a real, deliberate accessibility fix, not just a test
+  workaround, since both labels were within full authorial control.
+
 - **CEO directive "Professional Trading Firm — Market-Analysis Knowledge + Session Intelligence Expansion,"
   Phases 1-4, 6, 8** (`backend/app/technical_indicators.py`, `backend/app/technical_patterns.py`,
   `backend/app/technical_analysis.py`, `backend/app/signal_correlation.py`, `backend/app/model_validation.py`,
