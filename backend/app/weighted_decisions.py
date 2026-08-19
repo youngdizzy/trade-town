@@ -105,7 +105,7 @@ def compute_accuracy_multiplier(score: ExecutiveAccuracyScore) -> float:
     never penalized for a track record that simply doesn't exist yet
     (this codebase's own "no fake progression" rule). Otherwise a real,
     published 0.5-1.5 range centered on 50% accuracy."""
-    if score.decisions_tracked == 0:
+    if score.decisions_tracked == 0 or score.accuracy_pct is None:
         return 1.0
     return round(0.5 + (score.accuracy_pct / 100.0), 3)
 

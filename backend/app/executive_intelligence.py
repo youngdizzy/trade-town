@@ -87,6 +87,7 @@ from app.schemas import (
     ExecutiveAccuracyScore,
     ExecutiveAction,
     ExecutiveDepartmentRole,
+    ExecutiveEvidenceState,
     ExecutiveMeetingLogEntry,
     ExecutiveRecommendation,
     ExecutiveStance,
@@ -565,9 +566,55 @@ _DIRECTIONAL_STANCE_PREDICTS_PROFIT: dict[str, bool] = {
 }
 
 
+# CEO directive "Features 31-35," Feature 33 — Executive Accuracy
+# Evidence System. Real, disclosed floor before a tracked accuracy
+# reads as a meaningful PASS/FAIL/INCONCLUSIVE verdict rather than
+# still-thin evidence — the same honesty convention Chapter 73's own
+# Compliance Score and Feature 32's MIN_OVERRIDE_SAMPLE_FOR_TREND
+# already carry. Below this, a department may have 1-2 real tracked
+# calls but not enough for the verdict to mean anything yet.
+MIN_ACCURACY_SAMPLE_FOR_VERDICT = 3
+
+# Reused verbatim from the existing Command Center UI's own real
+# green/amber/red boundary (frontend/src/ui/components/CommandCenter/
+# ExecutiveVoting.tsx's ExecutiveAccuracyPanel) — not a new number
+# invented for this feature.
+_PASS_THRESHOLD_PCT = 60.0
+_FAIL_THRESHOLD_PCT = 40.0
+
+
+def _evaluation_state(tracked: int, accuracy_pct: float | None) -> ExecutiveEvidenceState:
+    if tracked < MIN_ACCURACY_SAMPLE_FOR_VERDICT or accuracy_pct is None:
+        return "not_enough_evidence"
+    if accuracy_pct >= _PASS_THRESHOLD_PCT:
+        return "pass"
+    if accuracy_pct < _FAIL_THRESHOLD_PCT:
+        return "fail"
+    return "inconclusive"
+
+
 def compute_executive_accuracy_scores(
     meeting_log: list[ExecutiveMeetingLogEntry], ceo_decisions: list[CeoDecisionRecord]
 ) -> list[ExecutiveAccuracyScore]:
+    """Directional accuracy — did this department's real stance predict
+    whether the trade it was cast on eventually closed profitable —
+    tracked identically across all nine departments; the one real,
+    cross-department signal this codebase already had. A genuinely
+    role-specific second metric per department (Research: evidence
+    quality; Quant: statistical validity; Risk: risk identification;
+    ...) is a real, disclosed, deliberate cut this pass, not fabricated
+    or silently dropped — see this feature's CHANGELOG/Architecture.md
+    entry for the concrete real data sources identified during research
+    (ChallengeReport, MarketIntelligenceLearningEntry, DecisionVaultEntry)
+    and why wiring them in required more cross-referencing than this
+    pass safely had room for.
+
+    `accuracyPct` is `None` (NOT_ENOUGH_EVIDENCE), never a fabricated
+    `0.0`, when a department has zero tracked, evaluable stances yet —
+    the CEO directive's own named bug fix. `evaluationState` exposes
+    PASS/FAIL/INCONCLUSIVE/NOT_ENOUGH_EVIDENCE explicitly rather than
+    leaving every caller to reinvent its own good/bad interpretation of
+    a raw percentage."""
     resolved_by_proposal: dict[str, bool] = {
         r.proposal_id: r.outcome == "correct" for r in ceo_decisions if r.outcome in ("correct", "incorrect")
     }
@@ -586,8 +633,15 @@ def compute_executive_accuracy_scores(
             tracked += 1
             if predicted_profitable == was_profitable:
                 correct += 1
-        accuracy = round(correct / tracked * 100.0, 1) if tracked else 0.0
+        accuracy = round(correct / tracked * 100.0, 1) if tracked else None
         scores.append(
-            ExecutiveAccuracyScore(role=role, departmentLabel=_DEPARTMENT_LABELS[role], decisionsTracked=tracked, correctCount=correct, accuracyPct=accuracy)
+            ExecutiveAccuracyScore(
+                role=role,
+                departmentLabel=_DEPARTMENT_LABELS[role],
+                decisionsTracked=tracked,
+                correctCount=correct,
+                accuracyPct=accuracy,
+                evaluationState=_evaluation_state(tracked, accuracy),
+            )
         )
     return scores

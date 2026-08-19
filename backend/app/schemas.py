@@ -2246,12 +2246,27 @@ class DepartmentSelfEvaluation(CamelModel):
 # since closed with a real, known P&L (see
 # compute_executive_accuracy_scores() in app/executive_intelligence.py)
 # — never a counterfactual judgment about a trade that never happened.
+#
+# CEO directive "Features 31-35," Feature 33 — Executive Accuracy
+# Evidence System. `accuracy_pct` is `None` (NOT_ENOUGH_EVIDENCE), never
+# a fabricated `0.0`, when `decisions_tracked` is 0 — the exact bug the
+# CEO's own brief named ("Research—0%... may mean no evaluated research
+# decisions exist yet"). `evaluation_state` makes that distinction
+# explicit for every caller rather than leaving each one to reinvent its
+# own interpretation of a raw percentage — see
+# compute_executive_accuracy_scores()'s own docstring for the exact,
+# disclosed thresholds (reused from this codebase's own existing UI
+# convention, not invented for this feature).
+ExecutiveEvidenceState = Literal["pass", "fail", "inconclusive", "not_enough_evidence"]
+
+
 class ExecutiveAccuracyScore(CamelModel):
     role: ExecutiveDepartmentRole
     department_label: str = Field(alias="departmentLabel")
     decisions_tracked: int = Field(alias="decisionsTracked")
     correct_count: int = Field(alias="correctCount")
-    accuracy_pct: float = Field(alias="accuracyPct")
+    accuracy_pct: float | None = Field(default=None, alias="accuracyPct")
+    evaluation_state: ExecutiveEvidenceState = Field(default="not_enough_evidence", alias="evaluationState")
 
 
 # Design Bible Chapter 70 Part 3 — Weighted Executive Decision Engine

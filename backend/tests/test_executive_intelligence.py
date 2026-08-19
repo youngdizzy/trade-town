@@ -11,6 +11,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.executive_intelligence import (
+    MIN_ACCURACY_SAMPLE_FOR_VERDICT,
+    compute_executive_accuracy_scores,
     compute_executive_recommendation,
     generate_department_opinions,
     generate_meeting_log_entry,
@@ -19,7 +21,18 @@ from app.executive_intelligence import (
     record_self_evaluations,
 )
 from app.market_intelligence import default_market_intelligence_state
-from app.schemas import AnalystVote, ChallengeReport, CoachReport, ConfidenceFactor, DecisionConfidence, ExecutiveMeetingLogEntry, TradeDecision, TradeProposal
+from app.schemas import (
+    AnalystVote,
+    CeoDecisionRecord,
+    ChallengeReport,
+    CoachReport,
+    ConfidenceFactor,
+    DecisionConfidence,
+    DepartmentOpinion,
+    ExecutiveMeetingLogEntry,
+    TradeDecision,
+    TradeProposal,
+)
 
 
 def _now_iso() -> str:
@@ -343,3 +356,107 @@ class TestGenerateWeeklySelfEvaluations:
         for day in range(1, 400, 7):
             history = record_self_evaluations(history, generate_weekly_self_evaluations([], sim_day=day))
         assert len(history) == MAX_SELF_EVAL_HISTORY
+
+
+def _meeting_entry_for_accuracy(*, proposal_id: str, stance: str, sim_day: int = 1) -> ExecutiveMeetingLogEntry:
+    opinions = [DepartmentOpinion(role="research", departmentLabel="Research", stance=stance, summary="x", confidencePct=70.0)]  # type: ignore[arg-type]
+    return ExecutiveMeetingLogEntry(
+        id=f"meeting-{proposal_id}",
+        proposalId=proposal_id,
+        symbol="NEXA",
+        simDay=sim_day,
+        opinions=opinions,
+        recommendedAction="trade_normally",
+        recommendationReason="x",
+        ceoDecision="buy",
+        networkAgreed=True,
+        decisionGrade="A",
+        decisionGradeScore=90.0,
+        resolvedBy="ceo",
+        createdAt=_now_iso(),
+    )
+
+
+def _resolved_decision(*, proposal_id: str, outcome: str) -> CeoDecisionRecord:
+    return CeoDecisionRecord(
+        id=f"ceo-{proposal_id}",
+        proposalId=proposal_id,
+        symbol="NEXA",
+        category="stock",  # type: ignore[arg-type]
+        aiRecommendation="buy",
+        ceoDecision="buy",
+        agreedWithAi=True,
+        decisionId=f"decision-{proposal_id}",
+        outcome=outcome,  # type: ignore[arg-type]
+        resolvedBy="ceo",
+        createdAt=_now_iso(),
+    )
+
+
+class TestComputeExecutiveAccuracyScores:
+    """CEO directive "Features 31-35," Feature 33 — the exact bug the
+    CEO's own brief named: accuracy must be None (NOT_ENOUGH_EVIDENCE),
+    never a fabricated 0.0, when a department has no tracked, evaluable
+    stances yet. Real evaluation_state must reflect a disclosed,
+    reused-not-invented threshold."""
+
+    def test_zero_tracked_is_none_not_a_fabricated_zero(self) -> None:
+        scores = compute_executive_accuracy_scores([], [])
+        research = next(s for s in scores if s.role == "research")
+        assert research.decisions_tracked == 0
+        assert research.accuracy_pct is None
+        assert research.evaluation_state == "not_enough_evidence"
+
+    def test_below_min_sample_stays_not_enough_evidence_even_with_a_real_accuracy(self) -> None:
+        n = MIN_ACCURACY_SAMPLE_FOR_VERDICT - 1
+        entries = [_meeting_entry_for_accuracy(proposal_id=f"p{i}", stance="agree") for i in range(n)]
+        decisions = [_resolved_decision(proposal_id=f"p{i}", outcome="correct") for i in range(n)]
+        scores = compute_executive_accuracy_scores(entries, decisions)
+        research = next(s for s in scores if s.role == "research")
+        assert research.decisions_tracked == n
+        assert research.accuracy_pct == 100.0
+        assert research.evaluation_state == "not_enough_evidence"
+
+    def test_high_accuracy_at_min_sample_is_pass(self) -> None:
+        n = MIN_ACCURACY_SAMPLE_FOR_VERDICT
+        entries = [_meeting_entry_for_accuracy(proposal_id=f"p{i}", stance="agree") for i in range(n)]
+        decisions = [_resolved_decision(proposal_id=f"p{i}", outcome="correct") for i in range(n)]
+        scores = compute_executive_accuracy_scores(entries, decisions)
+        research = next(s for s in scores if s.role == "research")
+        assert research.accuracy_pct == 100.0
+        assert research.evaluation_state == "pass"
+
+    def test_low_accuracy_at_min_sample_is_fail(self) -> None:
+        n = MIN_ACCURACY_SAMPLE_FOR_VERDICT
+        entries = [_meeting_entry_for_accuracy(proposal_id=f"p{i}", stance="agree") for i in range(n)]
+        decisions = [_resolved_decision(proposal_id=f"p{i}", outcome="incorrect") for i in range(n)]
+        scores = compute_executive_accuracy_scores(entries, decisions)
+        research = next(s for s in scores if s.role == "research")
+        assert research.accuracy_pct == 0.0
+        assert research.evaluation_state == "fail"
+
+    def test_mid_accuracy_is_inconclusive(self) -> None:
+        # An even count >= MIN_ACCURACY_SAMPLE_FOR_VERDICT so alternating
+        # correct/incorrect lands on a clean 50% inside the 40-60 band.
+        count = MIN_ACCURACY_SAMPLE_FOR_VERDICT if MIN_ACCURACY_SAMPLE_FOR_VERDICT % 2 == 0 else MIN_ACCURACY_SAMPLE_FOR_VERDICT + 1
+        proposal_ids = [f"p{i}" for i in range(count)]
+        entries = [_meeting_entry_for_accuracy(proposal_id=pid, stance="agree") for pid in proposal_ids]
+        decisions = [
+            _resolved_decision(proposal_id=pid, outcome="correct" if i % 2 == 0 else "incorrect")
+            for i, pid in enumerate(proposal_ids)
+        ]
+        scores = compute_executive_accuracy_scores(entries, decisions)
+        research = next(s for s in scores if s.role == "research")
+        assert research.accuracy_pct == 50.0
+        assert research.evaluation_state == "inconclusive"
+
+
+class TestComputeAccuracyMultiplier:
+    def test_untracked_department_gets_the_neutral_multiplier_not_a_penalty(self) -> None:
+        from app.schemas import ExecutiveAccuracyScore
+        from app.weighted_decisions import compute_accuracy_multiplier
+
+        score = ExecutiveAccuracyScore(
+            role="research", departmentLabel="Research", decisionsTracked=0, correctCount=0, accuracyPct=None, evaluationState="not_enough_evidence"
+        )
+        assert compute_accuracy_multiplier(score) == 1.0
