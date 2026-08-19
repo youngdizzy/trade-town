@@ -1707,12 +1707,19 @@ export interface ExecutiveRecommendation {
 // Design Bible Chapter 70 Part 2 — Executive Accuracy Score. Scored only
 // over trades actually taken and since closed with a real outcome; see
 // backend/app/executive_intelligence.py's compute_executive_accuracy_scores.
+// CEO directive "Features 31-35," Feature 33 — Executive Accuracy
+// Evidence System. `accuracyPct` is `null` (NOT_ENOUGH_EVIDENCE), never
+// a fabricated 0, when `decisionsTracked` is 0 (or below the backend's
+// disclosed minimum sample floor — see `evaluationState`).
+export type ExecutiveEvidenceState = "pass" | "fail" | "inconclusive" | "not_enough_evidence";
+
 export interface ExecutiveAccuracyScore {
   role: ExecutiveDepartmentRole;
   departmentLabel: string;
   decisionsTracked: number;
   correctCount: number;
-  accuracyPct: number;
+  accuracyPct: number | null;
+  evaluationState: ExecutiveEvidenceState;
 }
 
 export const EXECUTIVE_DEPARTMENT_LABEL: Record<ExecutiveDepartmentRole, string> = {

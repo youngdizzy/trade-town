@@ -240,13 +240,13 @@ function OverviewCard({ overview, error }: { overview: ComplianceOverview | null
       </div>
       {overview.executiveAccuracy.length > 0 && (
         <div className="mt-2 border-t border-cmd-border/50 pt-2">
-          <TerminalLabel>Executive Accuracy — reused from Chapter 70 Part 2</TerminalLabel>
+          <TerminalLabel>Executive Accuracy — reused from Chapter 70 Part 2, evidence states from Feature 33</TerminalLabel>
           <div className="grid grid-cols-2 gap-1.5 sm:grid-cols-4">
             {overview.executiveAccuracy.map((a) => (
               <div key={a.role} className="rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-1.5 text-[9px]">
                 <div className="text-cmd-textDim">{a.departmentLabel}</div>
-                <div className="text-cmd-text tabular-nums">
-                  {a.decisionsTracked > 0 ? `${a.accuracyPct.toFixed(0)}%` : "—"} <span className="text-cmd-textDim">({a.decisionsTracked})</span>
+                <div className={a.evaluationState === "not_enough_evidence" ? "text-cmd-textDim tabular-nums" : "text-cmd-text tabular-nums"}>
+                  {a.accuracyPct === null ? "NOT ENOUGH EVIDENCE" : `${a.accuracyPct.toFixed(0)}%`} <span className="text-cmd-textDim">({a.decisionsTracked})</span>
                 </div>
               </div>
             ))}

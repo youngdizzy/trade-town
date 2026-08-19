@@ -1378,37 +1378,44 @@ function ExecutiveIntelligencePanel({ recommendation }: { recommendation: Execut
  * Design Bible Chapter 70 Part 2 — Executive Accuracy Score. Scored only
  * over trades the CEO actually took and that have since closed with a
  * real outcome (see backend/app/executive_intelligence.py's
- * compute_executive_accuracy_scores) — a department with 0 decisions
- * tracked has simply had nothing real to score yet, not a 0% grade.
+ * compute_executive_accuracy_scores). CEO directive "Features 31-35,"
+ * Feature 33 — `evaluationState` (not a hand-rolled threshold check
+ * here) is the one real source of truth for "does this department have
+ * enough evidence yet," including the backend's disclosed minimum
+ * sample floor (MIN_ACCURACY_SAMPLE_FOR_VERDICT) — a department can
+ * have 1-2 real tracked decisions and still honestly read
+ * NOT_ENOUGH_EVIDENCE, not just 0.
  */
 function ExecutiveAccuracyPanel({ scores }: { scores: ExecutiveAccuracyScore[] }) {
-  const tracked = scores.filter((s) => s.decisionsTracked > 0);
-  const untracked = scores.filter((s) => s.decisionsTracked === 0);
+  const evaluated = scores.filter((s) => s.evaluationState !== "not_enough_evidence" && s.accuracyPct !== null);
+  const notEnoughEvidence = scores.filter((s) => s.evaluationState === "not_enough_evidence");
   return (
     <div className="space-y-1.5">
-      {tracked.length === 0 && (
+      {evaluated.length === 0 && (
         <div className="text-[9px] text-cmd-textDim">No closed, tracked trades yet — every department's accuracy is still unscored.</div>
       )}
-      {tracked
+      {evaluated
         .slice()
-        .sort((a, b) => b.accuracyPct - a.accuracyPct)
-        .map((s) => (
-          <div key={s.role} className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-2 text-[9px]">
-            <div className="mb-1 flex items-center justify-between gap-2">
-              <span className="text-cmd-text">{s.departmentLabel}</span>
-              <span className={s.accuracyPct >= 60 ? "text-cmd-green" : s.accuracyPct >= 40 ? "text-cmd-amber" : "text-cmd-red"}>
-                {s.accuracyPct.toFixed(0)}%
-              </span>
+        .sort((a, b) => (b.accuracyPct ?? 0) - (a.accuracyPct ?? 0))
+        .map((s) => {
+          const pct = s.accuracyPct as number;
+          const tone = s.evaluationState === "pass" ? "green" : s.evaluationState === "fail" ? "red" : "amber";
+          return (
+            <div key={s.role} className="rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-2 text-[9px]">
+              <div className="mb-1 flex items-center justify-between gap-2">
+                <span className="text-cmd-text">{s.departmentLabel}</span>
+                <span className={tone === "green" ? "text-cmd-green" : tone === "red" ? "text-cmd-red" : "text-cmd-amber"}>{pct.toFixed(0)}%</span>
+              </div>
+              <Meter value={pct} tone={tone} />
+              <div className="mt-1 text-[8px] text-cmd-textDim">
+                {s.correctCount}/{s.decisionsTracked} closed, real trades called correctly — {s.evaluationState.toUpperCase()}.
+              </div>
             </div>
-            <Meter value={s.accuracyPct} tone={s.accuracyPct >= 60 ? "green" : s.accuracyPct >= 40 ? "amber" : "red"} />
-            <div className="mt-1 text-[8px] text-cmd-textDim">
-              {s.correctCount}/{s.decisionsTracked} closed, real trades called correctly.
-            </div>
-          </div>
-        ))}
-      {untracked.length > 0 && (
+          );
+        })}
+      {notEnoughEvidence.length > 0 && (
         <div className="text-[8px] text-cmd-textDim">
-          Not yet scored (no closed, directional trades tracked): {untracked.map((s) => s.departmentLabel).join(", ")}.
+          NOT ENOUGH EVIDENCE yet: {notEnoughEvidence.map((s) => `${s.departmentLabel} (${s.decisionsTracked})`).join(", ")}.
         </div>
       )}
     </div>
