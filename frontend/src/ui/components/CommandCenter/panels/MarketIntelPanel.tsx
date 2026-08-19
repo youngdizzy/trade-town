@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { api } from "@/net/api";
 import { EXECUTIVE_ACTION_LABEL } from "@/types";
-import type { MarketDebateSpecialist, SessionRegimeEvidence, SessionRegimeEvidenceState, SessionRegimeEvidenceSummary } from "@/types";
+import type { DataCategory, DataProvenanceReport, MarketDebateSpecialist, SessionRegimeEvidence, SessionRegimeEvidenceState, SessionRegimeEvidenceSummary } from "@/types";
 import { executiveActionTone, latestMarketIntelligenceReport, marketQualityTone, momentumTone, newsRiskTone, recentMarketIntelligenceLearning } from "../lib/derive";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
 
@@ -24,6 +24,29 @@ const SESSION_EVIDENCE_LABEL: Record<SessionRegimeEvidenceState, string> = {
   unfavorable: "Unfavorable",
   mixed: "Mixed",
   not_enough_evidence: "Not Enough Evidence",
+};
+
+function dataCategoryTone(category: DataCategory): "green" | "red" | "amber" | "cyan" {
+  switch (category) {
+    case "real":
+      return "green";
+    case "simulated":
+      return "cyan";
+    case "synthetic":
+      return "amber";
+    case "user_provided":
+      return "cyan";
+    case "unavailable":
+      return "red";
+  }
+}
+
+const DATA_CATEGORY_LABEL: Record<DataCategory, string> = {
+  real: "Real",
+  synthetic: "Synthetic",
+  simulated: "Simulated",
+  user_provided: "User-Provided",
+  unavailable: "Unavailable",
 };
 
 const SPECIALIST_ICON: Record<MarketDebateSpecialist, string> = {
@@ -61,6 +84,13 @@ export function MarketIntelPanel() {
   const currentBucket: SessionRegimeEvidence | undefined = sessionEvidence?.buckets.find(
     (b) => b.session === mi.session.current && b.regime === mi.regime
   );
+
+  // CEO directive "Next Professional Trading Firm Phase," Priority 5 —
+  // real, on-demand data-provenance audit (backend/app/data_provenance.py).
+  const [dataProvenance, setDataProvenance] = useState<DataProvenanceReport | null>(null);
+  useEffect(() => {
+    api.getDataProvenance().then(setDataProvenance).catch(() => undefined);
+  }, []);
 
   return (
     <div className="space-y-3">
@@ -315,6 +345,32 @@ export function MarketIntelPanel() {
               </div>
             )}
           </>
+        )}
+      </Glass>
+
+      <Glass className="p-3">
+        <div className="mb-1.5 flex items-center justify-between">
+          <TerminalLabel>Data Integrity — What Backs This Company&apos;s Data</TerminalLabel>
+          <span className="text-[9px] text-cmd-textDim">Real / Synthetic / Simulated / User-Provided / Unavailable, per subsystem</span>
+        </div>
+        {dataProvenance === null ? (
+          <EmptyState>Loading…</EmptyState>
+        ) : (
+          <div className="space-y-1">
+            {dataProvenance.sources.map((source) => (
+              <div key={source.subsystem} className="rounded-sm border border-cmd-border/40 bg-cmd-bg/30 px-2 py-1.5 text-[9px]">
+                <div className="flex flex-wrap items-center gap-2">
+                  <StatusPill tone={dataCategoryTone(source.category)}>{DATA_CATEGORY_LABEL[source.category]}</StatusPill>
+                  <span className="text-cmd-text">{source.subsystem}</span>
+                  {source.coveragePct !== null && <span className="ml-auto text-cmd-textDim">Coverage: {source.coveragePct.toFixed(0)}%</span>}
+                  {source.reproducible !== null && (
+                    <span className="text-cmd-textDim">{source.reproducible ? "Reproducible" : "Not reproducible run-to-run"}</span>
+                  )}
+                </div>
+                <div className="mt-0.5 text-cmd-textDim">{source.detail}</div>
+              </div>
+            ))}
+          </div>
         )}
       </Glass>
     </div>

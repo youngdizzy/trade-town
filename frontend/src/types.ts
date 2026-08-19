@@ -583,6 +583,29 @@ export interface SymbolPerformanceSummary {
   updatedAt: string;
 }
 
+// CEO directive "Next Professional Trading Firm Phase," Priority 5 —
+// Research Data Integrity. Distinct from DataStatus above (which tags
+// one Candle's own live/delayed/historical/simulated/stale/error/
+// no_data read) — DataCategory classifies a whole SUBSYSTEM's data
+// source, the coarser question this directive asks.
+export type DataCategory = "real" | "synthetic" | "simulated" | "user_provided" | "unavailable";
+
+export interface DataSourceRead {
+  subsystem: string;
+  category: DataCategory;
+  detail: string;
+  /** null when not meaningfully applicable to this subsystem. */
+  reproducible: boolean | null;
+  coveragePct: number | null;
+}
+
+/** sources is a fixed architectural enumeration except the "Live Quotes & Candles" row,
+ * whose coveragePct/category are live-measured against the real provider on every request. */
+export interface DataProvenanceReport {
+  sources: DataSourceRead[];
+  updatedAt: string;
+}
+
 /** The company's one simulated trading account — entirely fictional. */
 export interface PaperPortfolio {
   cashBalance: number;
