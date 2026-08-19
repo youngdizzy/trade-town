@@ -38,6 +38,15 @@ stable, robust, AND cost-resilient across every real axis reads
 ceiling, never a claim of certainty. See the function's own body for the
 exact real rule; it is intentionally simple and auditable rather than a
 black-box score.
+
+CEO directive "Professional Quant Firm Phase," Feature 39 adds
+`overfitting_diagnosis` alongside `conclusion` — the directive's own
+requested ROBUST/FRAGILE/INSUFFICIENT_DATA/OVERFIT_SUSPECTED/
+OOS_FAILURE/PENDING_VALIDATION vocabulary, computed by app/
+overfitting_diagnostics.py purely by relabeling the same walk-forward/
+parameter-sensitivity/cost-sensitivity verdicts `_synthesize_conclusion`
+already reads — a second, narrower lens on the same real evidence, never
+a second set of statistics.
 """
 from __future__ import annotations
 
@@ -45,6 +54,7 @@ from datetime import datetime, timezone
 
 from app.cost_sensitivity import run_cost_sensitivity
 from app.leakage_audit import audit_definition_for_look_ahead
+from app.overfitting_diagnostics import classify_overfitting_risk
 from app.parameter_sensitivity import run_parameter_sensitivity
 from app.schemas import CompiledStrategyDefinition, ResearchExperimentRecord
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME, run_compiled_strategy_backtest
@@ -117,6 +127,7 @@ def run_research_experiment(
 
     model_validation_verdict = backtest.model_validation.verdict if backtest.model_validation is not None else None
     conclusion = _synthesize_conclusion((model_validation_verdict, walk_forward.verdict, parameter_sensitivity.verdict, cost_sensitivity.verdict, look_ahead_audit.verdict))
+    overfitting_diagnosis = classify_overfitting_risk(walk_forward, parameter_sensitivity, cost_sensitivity)
 
     return ResearchExperimentRecord(
         id=f"experiment-{definition.id}-{definition.version}",
@@ -132,6 +143,7 @@ def run_research_experiment(
         parameterSensitivity=parameter_sensitivity,
         costSensitivity=cost_sensitivity,
         lookAheadAudit=look_ahead_audit,
+        overfittingDiagnosis=overfitting_diagnosis,
         conclusion=conclusion,
         dataHonestyNote=(
             "Every real number in this record comes from app/market_data.py's own real, procedurally-generated (seeded, reproducible) "

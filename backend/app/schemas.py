@@ -3889,6 +3889,31 @@ class SurvivorshipBiasRead(CamelModel):
     detail: str
 
 
+OverfittingVerdict = Literal[
+    "robust", "fragile", "insufficient_data", "overfit_suspected", "oos_failure", "pending_validation"
+]
+
+
+class OverfittingDiagnosis(CamelModel):
+    """CEO directive "Professional Quant Firm Phase," Feature 39 — a
+    real, deterministic classification into the directive's own
+    requested vocabulary (ROBUST / FRAGILE / INSUFFICIENT_DATA /
+    OVERFIT_SUSPECTED / OOS_FAILURE / PENDING_VALIDATION), computed
+    purely by re-reading three already-real, already-tested verdicts
+    (`WalkForwardValidationResult.verdict`, `ParameterSensitivityResult.
+    verdict`, `CostSensitivityResult.verdict`) — see app/
+    overfitting_diagnostics.py for the exact, disclosed priority rule.
+    This class introduces no new statistic of its own; it only relabels
+    existing real evidence into one shared vocabulary so a CEO/agent
+    never has to reconcile three differently-worded verdicts by hand."""
+
+    verdict: OverfittingVerdict
+    detail: str
+    walk_forward_verdict: Literal["stable", "unstable", "insufficient_data"] = Field(alias="walkForwardVerdict")
+    parameter_sensitivity_verdict: Literal["robust", "fragile", "insufficient_data"] = Field(alias="parameterSensitivityVerdict")
+    cost_sensitivity_verdict: Literal["cost_resilient", "cost_sensitive", "insufficient_data"] = Field(alias="costSensitivityVerdict")
+
+
 class ResearchExperimentRecord(CamelModel):
     """CEO directive "...Quant Intelligence + Market Analysis Completion
     Phase (Next Research + Validation Pass)," item 11 — the Research
@@ -3919,7 +3944,152 @@ class ResearchExperimentRecord(CamelModel):
     parameter_sensitivity: ParameterSensitivityResult = Field(alias="parameterSensitivity")
     cost_sensitivity: CostSensitivityResult = Field(alias="costSensitivity")
     look_ahead_audit: LookAheadAuditResult = Field(alias="lookAheadAudit")
+    # CEO directive "Professional Quant Firm Phase," Feature 39 — the
+    # unified overfitting-diagnostic classification (see
+    # app/overfitting_diagnostics.py), packaged alongside `conclusion`
+    # rather than replacing it: `conclusion` is this module's own
+    # broader synthesis (it also weighs model validation and look-ahead
+    # cleanliness); `overfitting_diagnosis` is narrowly the directive's
+    # own requested generalization read (walk-forward + parameter +
+    # cost sensitivity only).
+    overfitting_diagnosis: OverfittingDiagnosis = Field(alias="overfittingDiagnosis")
     conclusion: str
+    data_honesty_note: str = Field(alias="dataHonestyNote")
+    generated_at: str = Field(alias="generatedAt")
+
+
+QuantResearchOutcome = Literal["promising", "rejected", "inconclusive"]
+
+
+class QuantResearchExperiment(CamelModel):
+    """CEO directive "Professional Quant Firm Phase," Feature 36 — the
+    Quant Research Lab's one real, PERSISTED, searchable experiment
+    record. Wraps an already-real `ResearchExperimentRecord` (this
+    schema adds no new backtest math) with the hypothesis-driven
+    metadata the directive asks for: a real testable hypothesis (free
+    CEO/agent text, never a hard-coded conclusion — `record.conclusion`/
+    `record.overfitting_diagnosis` are independently computed real
+    evidence, checked against the hypothesis, not derived from it), the
+    researcher who filed it, and a real, disclosed `outcome` derived
+    from that already-real evidence (see app/quant_research_lab.py's
+    `_classify_outcome()`).
+
+    DEPARTURE FROM CAGS, DISCLOSED. Every other schema in this directive
+    family (`ResearchExperimentRecord` included) is computed fresh per
+    request and never persisted. Feature 36 explicitly requires
+    "searchable" and duplicate-detection, which is meaningless without
+    real storage — so this one schema deliberately departs from CAGS and
+    follows this codebase's own established ever-growing,
+    never-deleted precedent instead (`StrategyHallOfFameEntry`/
+    `FailedStrategyArchiveEntry` below): every experiment, including a
+    rejected one, stays permanently in `GameSaveState.
+    quant_research_experiments` — matching the directive's own "failed
+    research must produce searchable institutional knowledge, never
+    deleted merely because it looks bad.\""""
+
+    id: str
+    hypothesis: str
+    researcher_agent_id: AgentId = Field(alias="researcherAgentId")
+    outcome: QuantResearchOutcome
+    outcome_reason: str = Field(alias="outcomeReason")
+    record: ResearchExperimentRecord
+    created_at: str = Field(alias="createdAt")
+
+
+class QuantResearchExperimentSimilarity(CamelModel):
+    """One real, disclosed near-duplicate match against an already-
+    persisted experiment — see app/quant_research_lab.py's
+    `find_similar_experiments()` for the exact (simple, disclosed
+    word-overlap) heuristic. Never a claim of semantic/NLP
+    understanding of the hypothesis text."""
+
+    experiment_id: str = Field(alias="experimentId")
+    hypothesis: str
+    overlap_score: float = Field(alias="overlapScore")
+    reason: str
+
+
+class SubmitQuantResearchExperimentResult(CamelModel):
+    """The real response to filing a new Quant Research Lab experiment
+    — the newly-persisted record plus any real near-duplicate prior
+    experiments this codebase found (the directive's own "check before
+    creating a new experiment whether an equivalent one exists"),
+    surfaced for CEO/agent judgment rather than silently blocked."""
+
+    experiment: QuantResearchExperiment
+    similar_experiments: list[QuantResearchExperimentSimilarity] = Field(default_factory=list, alias="similarExperiments")
+
+
+class StrategyTournamentEntry(CamelModel):
+    """One real comparison row — every field a direct, unmodified read
+    from that strategy's own `ResearchExperimentRecord` (see
+    app/strategy_tournament.py). Never a fabricated composite score:
+    app/strategy_tournament.py's ranking work happens entirely through
+    named-slot superlatives (`StrategyTournamentResult`'s own
+    `highest_*`/`lowest_*` fields) and staged elimination
+    (`StrategyTournamentResult.rounds`), each citing one real, named
+    dimension at a time — never a single blended number."""
+
+    definition_id: str = Field(alias="definitionId")
+    definition_name: str = Field(alias="definitionName")
+    definition_version: int = Field(alias="definitionVersion")
+    trade_count: int = Field(alias="tradeCount")
+    win_rate_pct: float | None = Field(default=None, alias="winRatePct")
+    expectancy_r: float | None = Field(default=None, alias="expectancyR")
+    profit_factor: float | None = Field(default=None, alias="profitFactor")
+    max_drawdown_r: float | None = Field(default=None, alias="maxDrawdownR")
+    sharpe_ratio: float | None = Field(default=None, alias="sharpeRatio")
+    sortino_ratio: float | None = Field(default=None, alias="sortinoRatio")
+    calmar_ratio: float | None = Field(default=None, alias="calmarRatio")
+    walk_forward_positive_window_pct: float | None = Field(default=None, alias="walkForwardPositiveWindowPct")
+    walk_forward_verdict: Literal["stable", "unstable", "insufficient_data"] = Field(alias="walkForwardVerdict")
+    parameter_sensitivity_verdict: Literal["robust", "fragile", "insufficient_data"] = Field(alias="parameterSensitivityVerdict")
+    cost_sensitivity_verdict: Literal["cost_resilient", "cost_sensitive", "insufficient_data"] = Field(alias="costSensitivityVerdict")
+    look_ahead_verdict: Literal["clean", "violations_found", "insufficient_data"] = Field(alias="lookAheadVerdict")
+    model_validation_verdict: ModelValidationVerdict | None = Field(default=None, alias="modelValidationVerdict")
+    overfitting_verdict: OverfittingVerdict = Field(alias="overfittingVerdict")
+    eliminated_at_round: int | None = Field(default=None, alias="eliminatedAtRound")
+    elimination_reason: str | None = Field(default=None, alias="eliminationReason")
+
+
+class StrategyTournamentRoundResult(CamelModel):
+    """One real elimination round. `blocked=True` means this round's own
+    real gate cannot be evaluated because the underlying capability does
+    not exist yet in this codebase (see app/strategy_tournament.py's own
+    module docstring for exactly which round this applies to and why) —
+    every entrant passes a blocked round automatically, and `detail`
+    discloses the architectural gap rather than fabricating a result."""
+
+    round_number: int = Field(alias="roundNumber")
+    name: str
+    description: str
+    survivors: list[str] = Field(default_factory=list)
+    eliminated: list[str] = Field(default_factory=list)
+    blocked: bool = False
+    detail: str
+
+
+class StrategyTournamentResult(CamelModel):
+    """CEO directive "Professional Quant Firm Phase," Feature 40 — the
+    Quant Strategy Tournament. Computed fresh per request (CAGS — the
+    same convention `ResearchExperimentRecord` uses; nothing here is
+    persisted), by running every candidate `CompiledStrategyDefinition`
+    through the already-real `run_research_experiment()` pipeline once
+    each (see app/strategy_tournament.py) — no new backtest math, no
+    second validation engine. `production_candidates` is a real, cited
+    LABEL (every real round survived) for CEO visibility only — it is
+    never an autonomous production promotion and never bypasses this
+    codebase's own separate risk/governance approval flow."""
+
+    id: str
+    entries: list[StrategyTournamentEntry] = Field(default_factory=list)
+    rounds: list[StrategyTournamentRoundResult] = Field(default_factory=list)
+    highest_expectancy: StrategyExecutiveDashboardEntry | None = Field(default=None, alias="highestExpectancy")
+    highest_profit_factor: StrategyExecutiveDashboardEntry | None = Field(default=None, alias="highestProfitFactor")
+    highest_sharpe_ratio: StrategyExecutiveDashboardEntry | None = Field(default=None, alias="highestSharpeRatio")
+    lowest_max_drawdown: StrategyExecutiveDashboardEntry | None = Field(default=None, alias="lowestMaxDrawdown")
+    most_walk_forward_stable: StrategyExecutiveDashboardEntry | None = Field(default=None, alias="mostWalkForwardStable")
+    production_candidates: list[str] = Field(default_factory=list, alias="productionCandidates")
     data_honesty_note: str = Field(alias="dataHonestyNote")
     generated_at: str = Field(alias="generatedAt")
 

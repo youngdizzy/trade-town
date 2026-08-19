@@ -73,6 +73,10 @@ class TestRunResearchExperimentIntegration:
         assert record.look_ahead_audit.definition_id == definition.id
         assert record.conclusion  # a real, non-empty synthesized conclusion
         assert record.symbols_tested == ["AAPL", "MSFT"]
+        # Feature 39 — overfitting_diagnosis is a real relabeling of the same three verdicts.
+        assert record.overfitting_diagnosis.walk_forward_verdict == record.walk_forward.verdict
+        assert record.overfitting_diagnosis.parameter_sensitivity_verdict == record.parameter_sensitivity.verdict
+        assert record.overfitting_diagnosis.cost_sensitivity_verdict == record.cost_sensitivity.verdict
 
     def test_an_invalid_definition_still_produces_a_full_record_with_every_axis_honestly_refusing(self) -> None:
         definition = compile_strategy_text(name="x", source_text="Buy when the moon is full.")
@@ -83,6 +87,7 @@ class TestRunResearchExperimentIntegration:
         assert record.cost_sensitivity.verdict == "insufficient_data"
         assert record.look_ahead_audit.verdict == "insufficient_data"
         assert record.conclusion  # still a real, honest conclusion, never a crash
+        assert record.overfitting_diagnosis.verdict == "insufficient_data"
 
     def test_the_conclusion_is_consistent_with_the_records_own_real_verdicts(self) -> None:
         definition = compile_strategy_text(name="x", source_text=_CEO_TEXT)
