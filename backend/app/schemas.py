@@ -2221,9 +2221,15 @@ HoldReason = Literal["more_research", "delay"]
 
 
 class AnalystVote(CamelModel):
-    """One analyst's independent stance on a trade proposal, with real
-    supporting evidence — never a bare choice with no backing. See
-    app/executive.py for exactly what data backs each role's vote."""
+    """One analyst's stance on a trade proposal, with real supporting
+    evidence — never a bare choice with no backing. See app/executive.py
+    for exactly what data backs each role's vote. NOT every role's vote
+    is genuinely independent of the others — see
+    app/signal_correlation.py's real, disclosed correlation map (the CEO
+    directive "Market-Analysis Knowledge + Session Intelligence
+    Expansion," Phase 6, Confluence Engine): news/macro are both driven
+    by the same underlying research-item confidence value, and execution
+    synthesizes the other five rather than adding new evidence."""
 
     role: AnalystRole
     agent_id: AgentId = Field(alias="agentId")
@@ -2747,6 +2753,166 @@ class MarketStructureRead(CamelModel):
         "expansion",
         "compression",
     ] = Field(alias="structureState")
+    detail: str
+
+
+# CEO directive "Professional Trading Firm — Market-Analysis Knowledge +
+# Session Intelligence Expansion," Phases 1-2 (app/technical_patterns.py).
+# All real, computed-fresh pattern reads over real (mock) candle data,
+# extending — never duplicating — app/market_intelligence.py's existing
+# real swing-detection (`compute_market_structure()`) and its module
+# docstring's honesty conventions. None of these are wired into any live
+# trade decision (see app/technical_patterns.py's own module docstring
+# for why: a new pattern earns a place in a real decision only once the
+# hypothesis-testing pipeline this whole directive demands exists, and it
+# does not yet — see docs/Architecture.md's Phase 5-7 scoping).
+SwingStructureLabel = Literal["higher_high", "higher_low", "lower_high", "lower_low"]
+
+
+class SwingStructureRead(CamelModel):
+    """The classic HH/HL/LH/LL sequence, chronologically merged from the
+    real swing highs/lows `app/market_intelligence.py`'s own
+    `_find_swings()` already detects (reused directly, not
+    re-implemented) — each label real relative to its own immediately
+    preceding same-type swing, never a fabricated trend call."""
+
+    symbol: str
+    labels: list[SwingStructureLabel] = Field(default_factory=list)
+    detail: str
+
+
+class FairValueGap(CamelModel):
+    """One real 3-candle imbalance: `direction="bullish"` when candle 1's
+    high sits below candle 3's low (a real, standard FVG definition —
+    price traded through this zone without a full real trade on the
+    middle candle), `"bearish"` the mirror case. `filled` is real and
+    checkable — whether any later real candle's range has already traded
+    back into `[gap_low, gap_high]`."""
+
+    direction: Literal["bullish", "bearish"]
+    gap_high: float = Field(alias="gapHigh")
+    gap_low: float = Field(alias="gapLow")
+    timestamp: str
+    filled: bool
+
+
+class FairValueGapRead(CamelModel):
+    symbol: str
+    gaps: list[FairValueGap] = Field(default_factory=list)
+    detail: str
+
+
+CandlestickPatternType = Literal["bullish_engulfing", "bearish_engulfing", "hammer", "shooting_star", "doji"]
+
+
+class CandlestickPattern(CamelModel):
+    """One real, geometrically-checkable candlestick pattern on one real
+    candle (or real candle pair, for the two engulfing types) — see
+    app/technical_patterns.py for each pattern's exact real definition.
+    Naming a pattern here is never a claim it predicts the next move —
+    see this read's own `detail` and the Academy lesson backing it for
+    that honesty boundary."""
+
+    pattern: CandlestickPatternType
+    timestamp: str
+    detail: str
+
+
+class CandlestickPatternRead(CamelModel):
+    symbol: str
+    patterns: list[CandlestickPattern] = Field(default_factory=list)
+    detail: str
+
+
+class SessionRangeRead(CamelModel):
+    """One real session's own real high/low over the candles that fell
+    inside its real UTC window (the same `_session_for_hour()` boundaries
+    `app/market_intelligence.py`'s `compute_session()` already uses,
+    reused directly). `retested` is real and checkable — whether any
+    later candle (outside that session's own window) traded back into
+    `[range_low, range_high]`, the real, professional "does the prior
+    session's range act as a reference level later" question — never
+    asserted as reliably true, only reported as observed or not."""
+
+    symbol: str
+    session: TradingSession
+    range_high: float = Field(alias="rangeHigh")
+    range_low: float = Field(alias="rangeLow")
+    retested: bool
+    detail: str
+
+
+class FibonacciLevel(CamelModel):
+    ratio: float
+    price: float
+
+
+class FibonacciRead(CamelModel):
+    """Real retracement/extension price LEVELS computed from the symbol's
+    own most recent real swing high/low (reused from
+    `app/market_intelligence.py`'s real swing detection) — never a claim
+    that price will react at any of them. `detail` states this plainly;
+    see the Academy lesson backing this read for the full "candidate
+    area requiring confirmation, not a guaranteed level" framing this
+    directive itself requires."""
+
+    symbol: str
+    swing_high: float = Field(alias="swingHigh")
+    swing_low: float = Field(alias="swingLow")
+    levels: list[FibonacciLevel] = Field(default_factory=list)
+    detail: str
+
+
+class OrderBlockRead(CamelModel):
+    """A real, disclosed, ONE-SPECIFIC-DEFINITION proxy for an "order
+    block" — professional usage of this term varies; this reads the last
+    opposite-direction candle immediately before a real Break of
+    Structure `app/market_intelligence.py`'s `compute_market_structure()`
+    already detected (reused directly). `detail` discloses this is one
+    named, checkable definition among several real ones in use, not a
+    claim of institutional order-flow data this codebase does not have."""
+
+    symbol: str
+    direction: Literal["bullish", "bearish", "none"]
+    price_high: float | None = Field(default=None, alias="priceHigh")
+    price_low: float | None = Field(default=None, alias="priceLow")
+    timestamp: str | None = None
+    detail: str
+
+
+# CEO directive "Professional Trading Firm — Market-Analysis Knowledge +
+# Session Intelligence Expansion," Phase 6 — the Confluence Engine
+# (app/signal_correlation.py). RESEARCH FINDING that shaped this: a full
+# audit of app/voting.py's researcher_vote() found the "news" and
+# "macro" analyst votes are BOTH driven by the identical underlying
+# ResearchItem.confidence value via the same probabilistic mechanism —
+# not two independent readings, the same single signal expressed twice
+# — and the "execution" vote is a pure majority tally of the other five,
+# contributing zero new evidence. This is a real correlation/redundancy
+# finding, not an invented one — see app/signal_correlation.py's own
+# module docstring for the full audit trail. Explicitly NOT the
+# "Plan Adherence" confluence checklist app/process_adherence.py already
+# disclosed as unbuildable (PLANNED vs. ACTUAL conditions) — this reads
+# the CURRENT proposal's real evidence for genuine independence, never a
+# plan-adherence audit.
+class CorrelatedSignalPair(CamelModel):
+    role_a: AnalystRole = Field(alias="roleA")
+    role_b: AnalystRole = Field(alias="roleB")
+    reason: str
+
+
+class ConfluenceRead(CamelModel):
+    """`naive_confirmation_count` is what a naive count would report
+    (every vote agreeing with the desk's real overall direction).
+    `independent_evidence_count` is the real, deduplicated count once
+    correlated pairs are folded together and the non-independent
+    execution-synthesis vote is excluded — never higher than
+    `naive_confirmation_count`, and the gap between them is the real
+    point of this read."""
+
+    naive_confirmation_count: int = Field(alias="naiveConfirmationCount")
+    independent_evidence_count: int = Field(alias="independentEvidenceCount")
+    correlated_pairs: list[CorrelatedSignalPair] = Field(default_factory=list, alias="correlatedPairs")
     detail: str
 
 
