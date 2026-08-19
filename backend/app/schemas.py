@@ -746,6 +746,64 @@ class PaperTrade(CamelModel):
     mfe_pct: float = Field(default=0.0, alias="mfePct")
 
 
+# CEO directive "Professional Trading Firm Transformation" — Post-Trade
+# Review, Exit Efficiency (app/exit_efficiency.py). RESEARCH FINDING:
+# `PaperTrade.maePct`/`mfePct` (Feature 24, above) already carry a real
+# running watermark of the worst/best paper P&L% a closed position ever
+# saw — computed live in app/portfolio.py's mark_to_market(), never a
+# retroactive reconstruction. That real data was never read by any
+# post-trade review module (Discipline Chamber, mistakes.py/successes.py,
+# app/failure_review.py) until now. This is a genuinely new, third axis
+# — distinct from Discipline's outcome-blind PROCESS score and
+# failure_review.py's WHY-the-thesis-failed classification — answering
+# "how well was the EXIT managed relative to the trade's own real price
+# path," for both wins and losses alike. Purely additive: computed fresh
+# per request, no new GameSaveState field, and never reads or changes
+# any existing score/classification.
+ExitEfficiencyState = Literal["efficient_exit", "average_exit", "poor_exit", "not_enough_data"]
+
+
+class TradeExitEfficiency(CamelModel):
+    """One real closed trade's exit-efficiency read. `capturePct` is the
+    real, continuous "Edge Ratio" professional traders already use —
+    where, within this trade's OWN real observed high-low range
+    (`maePct` to `mfePct`), it actually closed: 100 means it closed at
+    the best point ever seen, 0 means it closed at the worst point ever
+    seen, 50 means it closed exactly in the middle. Works identically
+    for a win or a loss — a losing trade that recovered most of the way
+    from its own worst drawdown before closing reads a real, honest
+    capturePct just like a winning trade that gave back most of its
+    peak gain does. `None` (state `not_enough_data`) only when
+    `maePct == mfePct == 0.0` — genuinely ambiguous between "this trade
+    never really moved" and "this trade closed before the codebase ever
+    tracked a watermark on it" (both default to the same 0.0/0.0), never
+    guessed at either way."""
+
+    trade_id: str = Field(alias="tradeId")
+    symbol: str
+    pnl_pct: float = Field(alias="pnlPct")
+    mae_pct: float = Field(alias="maePct")
+    mfe_pct: float = Field(alias="mfePct")
+    capture_pct: float | None = Field(default=None, alias="capturePct")
+    state: ExitEfficiencyState = Field(alias="evidenceState")
+    sim_day: int = Field(alias="simDay")
+
+
+class ExitEfficiencySummary(CamelModel):
+    """The real, disclosed aggregate — every count a direct tally over
+    `reads`, `avgCapturePct` computed only over trades with a real,
+    non-ambiguous `capturePct`, never a fabricated company-wide average
+    that silently drops the ambiguous trades without disclosing it."""
+
+    reads: list[TradeExitEfficiency]
+    avg_capture_pct: float | None = Field(default=None, alias="avgCapturePct")
+    efficient_exit_count: int = Field(alias="efficientExitCount")
+    average_exit_count: int = Field(alias="averageExitCount")
+    poor_exit_count: int = Field(alias="poorExitCount")
+    not_enough_data_count: int = Field(alias="notEnoughDataCount")
+    updated_at: str = Field(alias="updatedAt")
+
+
 class PaperPortfolio(CamelModel):
     """The company's one simulated trading account. Starting balance and
     every position/order/trade in it are fictional — see

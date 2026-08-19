@@ -10,7 +10,9 @@ from __future__ import annotations
 from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.exit_efficiency import compute_exit_efficiency
 from app.persistence import persist_modules
+from app.schemas import ExitEfficiencySummary
 from app.state import game_state
 
 router = APIRouter(prefix="/api/trades", tags=["trades"])
@@ -33,3 +35,13 @@ async def ack_notification(payload: AckNotificationRequest) -> AckNotificationRe
     viewed_ids = await game_state.ack_trade_notification(payload.trade_id)
     persist_modules(await game_state.snapshot())
     return AckNotificationResponse(viewedTradeNotificationIds=viewed_ids)
+
+
+@router.get("/exit-efficiency", response_model=ExitEfficiencySummary)
+async def get_exit_efficiency() -> ExitEfficiencySummary:
+    """CEO directive "Professional Trading Firm Transformation" — Post-
+    Trade Review, Exit Efficiency (see app/exit_efficiency.py). Read-
+    only, computed fresh per request from the already-real
+    `trade_history` — no new GameSaveState field."""
+    state = await game_state.snapshot()
+    return compute_exit_efficiency(state.paper_portfolio.trade_history)
