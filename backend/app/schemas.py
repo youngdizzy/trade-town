@@ -649,6 +649,15 @@ class PaperPosition(CamelModel):
     # into the trade's net pnl. Defaults to 0.0 so a position opened
     # before this piece still validates during load.
     entry_cost_usd: float = Field(default=0.0, alias="entryCostUsd")
+    # CEO directive "Next Professional Trading Firm Phase," Priority 1
+    # (Execution Realism, app/execution_quality.py) — the real slippage,
+    # in basis points, actually applied to this position's fill price at
+    # entry. Derived from this tick's own real MarketIntelligenceState
+    # (MarketQualityScore.score + this symbol's own LiquidityRead, when
+    # available) — never a fabricated or random number, and 0.0 for any
+    # entry where no MarketIntelligenceState was supplied (a test
+    # fixture, or a position opened before this piece existed).
+    entry_slippage_bps: float = Field(default=0.0, alias="entrySlippageBps")
     # CEO Company Health + Live Market Realism directive, Feature 24 —
     # MAE (Maximum Adverse Excursion) / MFE (Maximum Favorable
     # Excursion), the worst and best unrealized_pnl_pct this position
@@ -723,6 +732,17 @@ class PaperTrade(CamelModel):
     # audit visibility, not a separate deduction. Defaults to 0.0 so a
     # trade closed before this piece still validates during load.
     transaction_cost_usd: float = Field(default=0.0, alias="transactionCostUsd")
+    # CEO directive "Next Professional Trading Firm Phase," Priority 1
+    # (Execution Realism, app/execution_quality.py) — the real slippage,
+    # in basis points, actually applied at entry (carried over from the
+    # PaperPosition this trade closed) and at exit (applied fresh by
+    # close_position()'s own caller at the moment of close). Both 0.0 for
+    # any fill where no MarketIntelligenceState was supplied. Distinct
+    # from transaction_cost_usd above (a flat commission/spread proxy) —
+    # slippage instead varies tick-to-tick with this tick's own real
+    # market-quality/liquidity read, never a flat constant.
+    entry_slippage_bps: float = Field(default=0.0, alias="entrySlippageBps")
+    exit_slippage_bps: float = Field(default=0.0, alias="exitSlippageBps")
     # Prop-Firm Risk Intelligence Addendum, Piece 10b, Requirement 24 —
     # "distance to failure boundary before/after trade." Named
     # deliberately "drawdown ceiling," not "failure boundary": this is

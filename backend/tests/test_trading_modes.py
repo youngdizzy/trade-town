@@ -6,6 +6,7 @@ signal. See the module's own docstring for the full honesty boundary.
 from __future__ import annotations
 
 from app.discipline import DisciplineReview
+from app.market_intelligence import default_market_intelligence_state
 from app.portfolio import default_portfolio
 from app.risk_engine import default_risk_limits
 from app.schemas import PaperPosition, PaperPortfolio, PaperTrade, RegimeReconciliation, TradingModeState, TradingStyle
@@ -161,6 +162,28 @@ class TestFlattenDayPositions:
         _, closed = flatten_day_positions(portfolio, {"AAPL": 105.0}, now_sim_minutes=1440)
         assert len(closed) == 1
         assert closed[0].distance_to_drawdown_ceiling_before_pct is None
+
+    def test_flatten_applies_real_slippage_when_market_intelligence_is_supplied(self) -> None:
+        # CEO directive "Next Professional Trading Firm Phase," Priority
+        # 1 (Execution Realism) -- flattening a long ("buy") position
+        # closes via a sell, which must fill at-or-below the signal
+        # price, never a fabricated favorable fill.
+        day_pos = _position(symbol="AAPL", trading_style="day")
+        portfolio = default_portfolio().model_copy(update={"positions": [day_pos]})
+        _, closed = flatten_day_positions(
+            portfolio, {"AAPL": 105.0}, now_sim_minutes=1440, market_intelligence=default_market_intelligence_state()
+        )
+        assert len(closed) == 1
+        assert closed[0].exit_price <= 105.0
+        assert closed[0].exit_slippage_bps > 0.0
+
+    def test_flatten_omitting_market_intelligence_fills_at_exactly_signal_price(self) -> None:
+        day_pos = _position(symbol="AAPL", trading_style="day")
+        portfolio = default_portfolio().model_copy(update={"positions": [day_pos]})
+        _, closed = flatten_day_positions(portfolio, {"AAPL": 105.0}, now_sim_minutes=1440)
+        assert len(closed) == 1
+        assert closed[0].exit_price == 105.0
+        assert closed[0].exit_slippage_bps == 0.0
 
 
 class TestDailyCircuitBreaker:

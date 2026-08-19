@@ -31,6 +31,15 @@ variation from one of those two non-real sources — this piece declines
 to, the same reasoning app/simulation.py's own disclosed-placeholder
 Sharpe/Sortino already established for a different metric it also
 couldn't honestly compute from real data.
+
+CEO directive "Next Professional Trading Firm Phase," Priority 1
+(Execution Realism, app/execution_quality.py) — open_position()/
+close_position() now also accept an optional, pre-computed
+entry_slippage_bps/exit_slippage_bps value for audit-trail purposes
+only. This module still computes none of that itself (see
+execution_quality.py's own module docstring for why that decision-layer
+computation belongs with the callers, not here) — it only records what
+the caller already applied to `price`/`exit_price` before calling in.
 """
 from __future__ import annotations
 
@@ -99,6 +108,7 @@ def open_position(
     side: OrderSide = "buy",
     quantity: float | None = None,
     trading_style: TradingStyle | None = None,
+    entry_slippage_bps: float = 0.0,
 ) -> PaperPortfolio:
     """Commits POSITION_SIZE_FRACTION of current cash to a new position at
     `price`, unless the caller already knows the exact size it wants (see
@@ -115,7 +125,18 @@ def open_position(
     entry transaction cost (see TRANSACTION_COST_BPS/module docstring) is
     deducted from cash alongside the notional, and recorded on the
     position (entry_cost_usd) so close_position() can include it in the
-    trade's real net pnl."""
+    trade's real net pnl.
+
+    `entry_slippage_bps` (CEO directive "Next Professional Trading Firm
+    Phase," Priority 1, app/execution_quality.py) — metadata only: this
+    function applies no slippage itself (that decision-layer computation
+    reads MarketIntelligenceState, which has no place in this
+    pure-data-operations module — see module docstring). The caller
+    already applied it to `price` before calling this function; the
+    value is recorded here purely so close_position() can carry it onto
+    the closed PaperTrade for audit, the same pattern trading_style
+    already uses. Defaults to 0.0 for any caller that hasn't been
+    threaded through yet."""
     if quantity is None:
         budget = max(portfolio.cash_balance * POSITION_SIZE_FRACTION, 0.0)
         if budget < MIN_POSITION_SIZE or price <= 0:
@@ -142,6 +163,7 @@ def open_position(
         openedSimMinutes=opened_sim_minutes,
         tradingStyle=trading_style,
         entryCostUsd=entry_cost,
+        entrySlippageBps=entry_slippage_bps,
         maePct=0.0,
         mfePct=0.0,
     )
@@ -195,6 +217,7 @@ def close_position(
     supporting_agents: list[AgentId],
     opposing_agents: list[AgentId],
     risk_limits: RiskLimits | None = None,
+    exit_slippage_bps: float = 0.0,
 ) -> tuple[PaperPortfolio, PaperTrade | None]:
     """Realizes a position's P&L, returns cash to the balance, and appends
     a PaperTrade to the (capped) trade history. Returns the portfolio
@@ -218,7 +241,14 @@ def close_position(
     read at two points in time instead of one. `risk_limits` is optional
     so every existing test fixture and any future caller that hasn't
     been threaded through yet keeps working — the trade's two new fields
-    are simply None then, never a fabricated value."""
+    are simply None then, never a fabricated value.
+
+    `exit_slippage_bps` (CEO directive "Next Professional Trading Firm
+    Phase," Priority 1, app/execution_quality.py) — metadata only, same
+    convention as open_position()'s entry_slippage_bps: the caller
+    already applied it to `exit_price`. Recorded on the closed trade
+    alongside the position's own entry_slippage_bps for a full round-
+    trip audit trail. Defaults to 0.0."""
     match = next((p for p in portfolio.positions if p.id == position_id), None)
     if match is None:
         return portfolio, None
@@ -267,6 +297,8 @@ def close_position(
         distanceToDrawdownCeilingAfterPct=distance_after,
         maePct=match.mae_pct,
         mfePct=match.mfe_pct,
+        entrySlippageBps=match.entry_slippage_bps,
+        exitSlippageBps=exit_slippage_bps,
     )
     history = [*portfolio.trade_history, trade]
     if len(history) > MAX_TRADE_HISTORY:

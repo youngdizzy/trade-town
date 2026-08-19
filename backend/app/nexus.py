@@ -1380,7 +1380,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # Runs before this tick's own decision/order-placement step below, so
     # a market order approved this tick is guaranteed one full tick of
     # latency before it can fill (see app/broker.py's place_order()).
-    paper_portfolio, broker_closed_trades = execution_provider.tick_broker(paper_portfolio, prices, new_time, effective_risk_limits)
+    paper_portfolio, broker_closed_trades = execution_provider.tick_broker(
+        paper_portfolio, prices, new_time, effective_risk_limits, market_intelligence
+    )
 
     # --- v0.6: Guardian's standing risk watch ------------------------------
     # Reflects the current portfolio, not an accumulating log — refreshed
@@ -1462,7 +1464,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # flattened position's realized P&L is part of *today's* real daily
     # number the breaker checks next).
     if is_new_sim_day:
-        paper_portfolio, flattened_trades = flatten_day_positions(paper_portfolio, prices, now_sim_minutes, effective_risk_limits)
+        paper_portfolio, flattened_trades = flatten_day_positions(
+            paper_portfolio, prices, now_sim_minutes, effective_risk_limits, market_intelligence
+        )
         if flattened_trades:
             record(
                 memory,
@@ -1795,7 +1799,9 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # confidence/price data, and before the meeting call so a just-closed
     # trade or completed simulation can be discussed in a meeting the same
     # tick it happens (matching how research completions already work).
-    paper_portfolio, closed_trades = tick_paper_trading(paper_portfolio, watchlist, all_agent_ids(), new_time, effective_risk_limits)
+    paper_portfolio, closed_trades = tick_paper_trading(
+        paper_portfolio, watchlist, all_agent_ids(), new_time, effective_risk_limits, market_intelligence
+    )
     paper_portfolio, closed_trades = _journal_closed_trades(paper_portfolio, [*broker_closed_trades, *closed_trades], decisions)
     # Trimmed after _journal_closed_trades (not right after the append
     # above) so a trade closing this very tick can still look its

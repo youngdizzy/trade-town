@@ -61,6 +61,7 @@ from app.strategy_lab import (
     HEALTH_RETIRE_CANDIDATE_RETURN_PCT,
     HEALTH_RETIRE_CANDIDATE_WIN_RATE,
 )
+from app.execution_quality import apply_slippage
 from app.portfolio import close_position
 from app.schemas import (
     AdaptiveModeRecommendation,
@@ -68,7 +69,9 @@ from app.schemas import (
     DailyCircuitBreakerTier,
     DisciplineReview,
     LosingStreakRead,
+    MarketIntelligenceState,
     MemoryRecord,
+    OrderSide,
     PaperPortfolio,
     PaperTrade,
     RecoveryBriefing,
@@ -184,6 +187,7 @@ def flatten_day_positions(
     prices: dict[str, float],
     now_sim_minutes: int,
     risk_limits: RiskLimits | None = None,
+    market_intelligence: MarketIntelligenceState | None = None,
 ) -> tuple[PaperPortfolio, list[PaperTrade]]:
     """Force-closes every open `"day"`-tagged position via the real
     close_position() — called once per sim-day rollover. A position's
@@ -192,21 +196,32 @@ def flatten_day_positions(
     mid-hold still gets that specific position flattened honestly.
 
     Piece 10b — `risk_limits`, when supplied, is threaded straight into
-    close_position() for the real distance-to-drawdown-ceiling snapshot."""
+    close_position() for the real distance-to-drawdown-ceiling snapshot.
+
+    CEO directive "Next Professional Trading Firm Phase," Priority 1
+    (Execution Realism) — a forced end-of-day flatten is a market-style
+    exit (no guaranteed price, unlike a limit order), so real slippage
+    applies via app/execution_quality.py when `market_intelligence` is
+    supplied; None (the default) keeps the exact pre-slippage fill."""
     closed: list[PaperTrade] = []
     day_positions = [p for p in portfolio.positions if p.trading_style == "day"]
     for position in day_positions:
-        price = prices.get(position.symbol, position.current_price)
+        signal_price = prices.get(position.symbol, position.current_price)
+        closing_side: OrderSide = "sell" if position.side == "buy" else "buy"
+        exit_price, exit_slippage_bps = apply_slippage(
+            signal_price, action_side=closing_side, market_intelligence=market_intelligence, symbol=position.symbol
+        )
         portfolio, trade = close_position(
             portfolio,
             position_id=position.id,
-            exit_price=price,
+            exit_price=exit_price,
             duration_minutes=now_sim_minutes - position.opened_sim_minutes,
             reason="Day Trading Mode — flattened at day-end",
             market_conditions=f"{position.symbol} flattened per Day Trading discipline (no overnight positions).",
             supporting_agents=[],
             opposing_agents=[],
             risk_limits=risk_limits,
+            exit_slippage_bps=exit_slippage_bps,
         )
         if trade is not None:
             closed.append(trade)

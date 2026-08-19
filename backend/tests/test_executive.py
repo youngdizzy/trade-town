@@ -236,6 +236,31 @@ class TestResolveProposal:
         assert decision.outcome == "trade"
         assert record.ceo_decision == "sell"
 
+    def test_a_buy_fills_with_real_slippage_worse_than_the_real_signal_price(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """CEO directive "Next Professional Trading Firm Phase," Priority
+        1 (Execution Realism) — the CEO's own direct buy is a
+        market-style instant fill, so it gets real, disclosed slippage
+        via app/execution_quality.py just like a "market" order placed
+        through app/broker.py does."""
+        monkeypatch.setattr("app.executive.evaluate_gatekeeper", self._stub_approved_verdict)
+        proposal = self._proposal()
+        portfolio = default_portfolio()
+        new_portfolio, _, _ = resolve_proposal(
+            proposal, "buy", portfolio=portfolio, risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=100, market_intelligence=default_market_intelligence_state()
+        )
+        assert new_portfolio.positions[0].entry_price > 100.0
+        assert new_portfolio.positions[0].entry_slippage_bps > 0.0
+
+    def test_a_sell_fills_with_real_slippage_worse_than_the_real_signal_price(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("app.executive.evaluate_gatekeeper", self._stub_approved_verdict)
+        proposal = self._proposal()
+        portfolio = default_portfolio()
+        new_portfolio, _, _ = resolve_proposal(
+            proposal, "sell", portfolio=portfolio, risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=100, market_intelligence=default_market_intelligence_state()
+        )
+        assert new_portfolio.positions[0].entry_price < 100.0
+        assert new_portfolio.positions[0].entry_slippage_bps > 0.0
+
     def test_wait_places_no_trade(self) -> None:
         proposal = self._proposal()
         portfolio = default_portfolio()

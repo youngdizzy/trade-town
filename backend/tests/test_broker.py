@@ -16,6 +16,7 @@ from app.broker import (
     place_order,
     tick_broker,
 )
+from app.market_intelligence import default_market_intelligence_state
 from app.portfolio import default_portfolio, open_position
 from app.risk_engine import default_risk_limits
 from app.schemas import TimeState
@@ -168,3 +169,108 @@ def test_tick_broker_threads_risk_limits_into_a_real_exit_fill():
     updated_without_limits, trades_without_limits = tick_broker(portfolio, {"AAPL": 110.0}, _time())
     assert len(trades_without_limits) == 1
     assert trades_without_limits[0].distance_to_drawdown_ceiling_before_pct is None
+
+
+class TestSlippage:
+    """CEO directive "Next Professional Trading Firm Phase," Priority 1
+    (Execution Realism, app/execution_quality.py)."""
+
+    def test_a_market_order_fills_worse_than_its_signal_price_when_market_intelligence_is_supplied(self) -> None:
+        portfolio = place_order(
+            default_portfolio(),
+            order_id="order-1",
+            symbol="AAPL",
+            side="buy",
+            order_type="market",
+            quantity=10,
+            price=100.0,
+            placed_by="quant",
+            reason="test",
+            confidence=80.0,
+        )
+        updated, _ = tick_broker(portfolio, {"AAPL": 100.0}, _time(), None, default_market_intelligence_state())
+        assert len(updated.positions) == 1
+        # A buy's real fill must be at-or-above the signal price -- never
+        # a fabricated favorable fill.
+        assert updated.positions[0].entry_price >= 100.0
+        assert updated.positions[0].entry_slippage_bps > 0.0
+
+    def test_a_market_order_fills_exactly_at_signal_price_when_no_market_intelligence_is_supplied(self) -> None:
+        portfolio = place_order(
+            default_portfolio(),
+            order_id="order-1",
+            symbol="AAPL",
+            side="buy",
+            order_type="market",
+            quantity=10,
+            price=100.0,
+            placed_by="quant",
+            reason="test",
+            confidence=80.0,
+        )
+        updated, _ = tick_broker(portfolio, {"AAPL": 100.0}, _time())
+        assert updated.positions[0].entry_price == 100.0
+        assert updated.positions[0].entry_slippage_bps == 0.0
+
+    def test_a_limit_take_profit_order_fills_at_exactly_its_price_never_slipped(self) -> None:
+        # A limit order's whole definition is "this price or better" --
+        # real slippage never touches it, even with real
+        # MarketIntelligenceState supplied.
+        portfolio = open_position(
+            default_portfolio(),
+            position_id="pos-1",
+            symbol="AAPL",
+            price=100.0,
+            opened_by="scout",
+            confidence=90.0,
+            opened_sim_minutes=0,
+        )
+        portfolio = place_order(
+            portfolio,
+            order_id="order-tp",
+            symbol="AAPL",
+            side="sell",
+            order_type="take_profit",
+            quantity=portfolio.positions[0].quantity,
+            price=110.0,
+            placed_by="scout",
+            reason="test",
+            confidence=90.0,
+            linked_position_id="pos-1",
+        )
+        updated, trades = tick_broker(portfolio, {"AAPL": 110.0}, _time(), None, default_market_intelligence_state())
+        assert len(trades) == 1
+        assert trades[0].exit_price == 110.0
+        assert trades[0].exit_slippage_bps == 0.0
+
+    def test_a_triggered_stop_loss_fills_worse_than_its_trigger_price(self) -> None:
+        # A stop order becomes a market order the moment it triggers, in
+        # any real market -- real slippage applies to it, unlike a limit
+        # order.
+        portfolio = open_position(
+            default_portfolio(),
+            position_id="pos-1",
+            symbol="AAPL",
+            price=100.0,
+            opened_by="scout",
+            confidence=90.0,
+            opened_sim_minutes=0,
+        )
+        portfolio = place_order(
+            portfolio,
+            order_id="order-sl",
+            symbol="AAPL",
+            side="sell",
+            order_type="stop_loss",
+            quantity=portfolio.positions[0].quantity,
+            price=95.0,
+            placed_by="scout",
+            reason="test",
+            confidence=90.0,
+            linked_position_id="pos-1",
+        )
+        updated, trades = tick_broker(portfolio, {"AAPL": 95.0}, _time(), None, default_market_intelligence_state())
+        assert len(trades) == 1
+        # A sell's real fill must be at-or-below the trigger price.
+        assert trades[0].exit_price <= 95.0
+        assert trades[0].exit_slippage_bps > 0.0

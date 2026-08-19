@@ -343,3 +343,55 @@ class TestTransactionCost:
         assert trade is not None
         exit_cost = round(10.0 * 105.0 * (TRANSACTION_COST_BPS / 10_000), 2)
         assert trade.transaction_cost_usd == exit_cost  # entry side contributed 0.0
+
+
+class TestSlippageMetadata:
+    """CEO directive "Next Professional Trading Firm Phase," Priority 1
+    (Execution Realism, app/execution_quality.py). open_position()/
+    close_position() apply no slippage themselves — they only record
+    whatever the caller already computed, so these tests cover the
+    metadata plumbing, not the slippage formula itself (see
+    test_execution_quality.py for that)."""
+
+    def test_open_position_records_the_callers_entry_slippage_bps(self) -> None:
+        portfolio = open_position(
+            default_portfolio(),
+            position_id="pos-1",
+            symbol="AAPL",
+            price=100.0,
+            opened_by="scout",
+            confidence=90.0,
+            opened_sim_minutes=1000,
+            entry_slippage_bps=4.2,
+        )
+        assert portfolio.positions[0].entry_slippage_bps == 4.2
+
+    def test_open_position_defaults_entry_slippage_bps_to_zero(self) -> None:
+        portfolio = _opened_portfolio()
+        assert portfolio.positions[0].entry_slippage_bps == 0.0
+
+    def test_close_position_carries_entry_slippage_from_the_position_and_records_exit_slippage(self) -> None:
+        portfolio = open_position(
+            default_portfolio(),
+            position_id="pos-1",
+            symbol="AAPL",
+            price=100.0,
+            opened_by="scout",
+            confidence=90.0,
+            opened_sim_minutes=1000,
+            entry_slippage_bps=4.2,
+        )
+        _, trade = close_position(
+            portfolio,
+            position_id="pos-1",
+            exit_price=110.0,
+            duration_minutes=45,
+            reason="Target hit",
+            market_conditions="Trending up",
+            supporting_agents=["scout"],
+            opposing_agents=[],
+            exit_slippage_bps=6.7,
+        )
+        assert trade is not None
+        assert trade.entry_slippage_bps == 4.2
+        assert trade.exit_slippage_bps == 6.7

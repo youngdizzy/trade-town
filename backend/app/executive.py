@@ -42,6 +42,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from app.confidence import compute_confidence
+from app.execution_quality import apply_slippage
 from app.gatekeeper import MIN_CONFIDENCE, evaluate_gatekeeper
 from app.market_data import Candle as ProviderCandle
 from app.market_data import MarketDataProvider
@@ -60,6 +61,7 @@ from app.schemas import (
     GatekeeperVerdict,
     MarketIntelligenceState,
     NewsItem,
+    OrderSide,
     PaperPortfolio,
     PaperTrade,
     RiskLimits,
@@ -434,17 +436,32 @@ def resolve_proposal(
             )
             if gatekeeper_verdict.approved:
                 position_id = f"pos-{proposal.id}"
+                # CEO directive "Next Professional Trading Firm Phase,"
+                # Priority 1 (Execution Realism) — the CEO's own direct
+                # buy/sell is a market-style instant fill (no order book,
+                # no queued latency), so it gets real, disclosed slippage
+                # exactly like a "market" order placed through
+                # app/broker.py does. `price` (used above for the
+                # position-sizing ceiling) stays the real signal price;
+                # only the actual fill uses the slipped price, matching
+                # the SIGNAL PRICE -> ACTUAL FILL distinction this
+                # directive asked for.
+                fill_side: OrderSide = "buy" if ceo_choice == "buy" else "sell"
+                fill_price, entry_slippage_bps = apply_slippage(
+                    price, action_side=fill_side, market_intelligence=market_intelligence, symbol=proposal.symbol
+                )
                 portfolio = open_position(
                     portfolio,
                     position_id=position_id,
                     symbol=proposal.symbol,
-                    price=price,
+                    price=fill_price,
                     opened_by="atlas",
                     confidence=proposal.confidence,
                     opened_sim_minutes=now_sim_minutes,
-                    side="buy" if ceo_choice == "buy" else "sell",
+                    side=fill_side,
                     quantity=quantity,
                     trading_style=proposal.trading_style,
+                    entry_slippage_bps=entry_slippage_bps,
                 )
                 order_id = position_id
             # else: the Gatekeeper vetoed it — ceo_choice is deliberately

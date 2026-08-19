@@ -33,8 +33,19 @@ import os
 from abc import ABC, abstractmethod
 from datetime import datetime, timezone
 
+from app.execution_quality import apply_slippage
 from app.portfolio import close_position, open_position, sim_minutes
-from app.schemas import AgentId, OrderSide, OrderType, PaperOrder, PaperPortfolio, PaperTrade, RiskLimits, TimeState
+from app.schemas import (
+    AgentId,
+    MarketIntelligenceState,
+    OrderSide,
+    OrderType,
+    PaperOrder,
+    PaperPortfolio,
+    PaperTrade,
+    RiskLimits,
+    TimeState,
+)
 
 logger = logging.getLogger("tradetown.broker")
 
@@ -90,7 +101,7 @@ def place_order(
 
 
 def _fill_price(order: PaperOrder, current_price: float) -> float | None:
-    """Returns the price an order would fill at this tick, or None if
+    """Returns the price an order would trigger at this tick, or None if
     its trigger condition hasn't been met yet. "limit" and "take_profit"
     share one direction convention (buy fills at-or-below the target,
     sell fills at-or-above it) since a take-profit order is just a limit
@@ -98,7 +109,18 @@ def _fill_price(order: PaperOrder, current_price: float) -> float | None:
     share the opposite convention (buy fills at-or-above the trigger —
     a breakout entry — sell fills at-or-below it — a protective exit).
     See PaperOrder's docstring in schemas.py for the same explanation
-    from the data-model side."""
+    from the data-model side.
+
+    CEO directive "Next Professional Trading Firm Phase," Priority 1
+    (Execution Realism) — this is still the pre-slippage TRIGGER price
+    only; tick_broker() below applies real slippage on top of this
+    return value for "market" and triggered "stop"/"stop_loss" orders
+    (both behave as a market order once their condition is met, in any
+    real market). "limit"/"take_profit" orders fill at exactly this
+    trigger price, unslipped — a limit order's whole definition is
+    "this price or better," so leaving it exact IS the realistic
+    behavior, not a gap. See app/execution_quality.py's module
+    docstring for the full reasoning."""
     if order.order_type == "market":
         return current_price
     if order.order_type in ("limit", "take_profit"):
@@ -116,11 +138,20 @@ def _fill_price(order: PaperOrder, current_price: float) -> float | None:
     return None
 
 
+# Order types that behave as a market order from the moment their
+# trigger condition is met, in any real market — so, per CEO directive
+# "Next Professional Trading Firm Phase," Priority 1, real slippage
+# applies to their fill. "limit"/"take_profit" are deliberately excluded
+# (see _fill_price()'s docstring).
+_SLIPPAGE_ELIGIBLE_ORDER_TYPES: frozenset[OrderType] = frozenset({"market", "stop", "stop_loss"})
+
+
 def tick_broker(
     portfolio: PaperPortfolio,
     prices: dict[str, float],
     new_time: TimeState,
     risk_limits: RiskLimits | None = None,
+    market_intelligence: MarketIntelligenceState | None = None,
 ) -> tuple[PaperPortfolio, list[PaperTrade]]:
     """Evaluates every open order against the current watchlist prices:
     fills it (opening a new position, or closing the position it's
@@ -131,7 +162,15 @@ def tick_broker(
 
     Piece 10b — `risk_limits`, when supplied, is threaded straight into
     close_position() for the real distance-to-drawdown-ceiling snapshot
-    (see that function's own docstring)."""
+    (see that function's own docstring).
+
+    CEO directive "Next Professional Trading Firm Phase," Priority 1
+    (Execution Realism) — `market_intelligence`, when supplied, drives
+    real slippage on "market" and triggered "stop"/"stop_loss" fills via
+    app/execution_quality.py; None (the default, for any caller or test
+    fixture that hasn't been threaded through yet) means every fill
+    stays exactly at its pre-slippage trigger price, unchanged from
+    before this piece existed."""
     now_minutes = sim_minutes(new_time)
     open_orders = [o for o in portfolio.orders if o.status == "open"]
     if not open_orders:
@@ -145,8 +184,14 @@ def tick_broker(
         if price is None:
             continue
 
-        fill_price = _fill_price(order, price)
-        if fill_price is not None:
+        trigger_price = _fill_price(order, price)
+        if trigger_price is not None:
+            slippage_bps = 0.0
+            fill_price = trigger_price
+            if order.order_type in _SLIPPAGE_ELIGIBLE_ORDER_TYPES:
+                fill_price, slippage_bps = apply_slippage(
+                    trigger_price, action_side=order.side, market_intelligence=market_intelligence, symbol=order.symbol
+                )
             if order.linked_position_id:
                 position = next((p for p in portfolio.positions if p.id == order.linked_position_id), None)
                 if position is None:
@@ -168,6 +213,7 @@ def tick_broker(
                     supporting_agents=[order.placed_by],
                     opposing_agents=[],
                     risk_limits=risk_limits,
+                    exit_slippage_bps=slippage_bps,
                 )
                 if trade:
                     newly_closed.append(trade)
@@ -182,6 +228,7 @@ def tick_broker(
                     opened_sim_minutes=now_minutes,
                     side=order.side,
                     quantity=order.quantity,
+                    entry_slippage_bps=slippage_bps,
                 )
             resolved.append(order.model_copy(update={"status": "filled", "filled_price": fill_price, "filled_at": _now_iso()}))
 
@@ -228,6 +275,7 @@ class ExecutionProvider(ABC):
         prices: dict[str, float],
         new_time: TimeState,
         risk_limits: RiskLimits | None = None,
+        market_intelligence: MarketIntelligenceState | None = None,
     ) -> tuple[PaperPortfolio, list[PaperTrade]]: ...
 
 
@@ -273,8 +321,9 @@ class PaperExecutionProvider(ExecutionProvider):
         prices: dict[str, float],
         new_time: TimeState,
         risk_limits: RiskLimits | None = None,
+        market_intelligence: MarketIntelligenceState | None = None,
     ) -> tuple[PaperPortfolio, list[PaperTrade]]:
-        return tick_broker(portfolio, prices, new_time, risk_limits)
+        return tick_broker(portfolio, prices, new_time, risk_limits, market_intelligence)
 
 
 def _select_execution_provider() -> ExecutionProvider:

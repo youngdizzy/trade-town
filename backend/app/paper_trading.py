@@ -24,8 +24,9 @@ from __future__ import annotations
 
 import random
 
+from app.execution_quality import apply_slippage
 from app.portfolio import close_position, mark_to_market, sim_minutes
-from app.schemas import AgentId, PaperPortfolio, PaperTrade, RiskLimits, TimeState, WatchlistEntry
+from app.schemas import AgentId, MarketIntelligenceState, OrderSide, PaperPortfolio, PaperTrade, RiskLimits, TimeState, WatchlistEntry
 
 MIN_HOLD_MINUTES = 120
 MAX_HOLD_MINUTES = 720
@@ -42,6 +43,7 @@ def tick_paper_trading(
     all_agent_ids: tuple[AgentId, ...],
     new_time: TimeState,
     risk_limits: RiskLimits | None = None,
+    market_intelligence: MarketIntelligenceState | None = None,
 ) -> tuple[PaperPortfolio, list[PaperTrade]]:
     """One tick of paper-trading upkeep: mark every open position to
     market, then roll closes for positions that have cleared their
@@ -51,7 +53,15 @@ def tick_paper_trading(
     now — see this module's docstring.
 
     Piece 10b — `risk_limits`, when supplied, is threaded straight into
-    close_position() for the real distance-to-drawdown-ceiling snapshot."""
+    close_position() for the real distance-to-drawdown-ceiling snapshot.
+
+    CEO directive "Next Professional Trading Firm Phase," Priority 1
+    (Execution Realism) — this hold-duration close is a market-style
+    exit (a random-roll thesis reassessment, not a limit/take-profit
+    order with a guaranteed price), so real slippage applies via
+    app/execution_quality.py when `market_intelligence` is supplied.
+    None (the default) keeps the exact pre-slippage fill this module
+    has always used."""
     now_minutes = sim_minutes(new_time)
     prices = {w.symbol: w.last_price for w in watchlist}
 
@@ -64,7 +74,11 @@ def tick_paper_trading(
             continue
         if held_for < MAX_HOLD_MINUTES and random.random() >= CLOSE_CHANCE_PER_TICK:
             continue
-        exit_price = prices.get(pos.symbol, pos.current_price)
+        signal_price = prices.get(pos.symbol, pos.current_price)
+        closing_side: OrderSide = "sell" if pos.side == "buy" else "buy"
+        exit_price, exit_slippage_bps = apply_slippage(
+            signal_price, action_side=closing_side, market_intelligence=market_intelligence, symbol=pos.symbol
+        )
         reason = "Take-profit target reached" if pos.unrealized_pnl > 0 else "Stop-loss / thesis reassessment"
         market_conditions = f"{pos.symbol} moved from {pos.entry_price:.2f} to {exit_price:.2f} over a {held_for}-minute simulated hold."
         supporting = [pos.opened_by]
@@ -79,6 +93,7 @@ def tick_paper_trading(
             supporting_agents=supporting,
             opposing_agents=opposing,
             risk_limits=risk_limits,
+            exit_slippage_bps=exit_slippage_bps,
         )
         if trade:
             closed.append(trade)
