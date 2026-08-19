@@ -7,6 +7,26 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Next Phase: Professional Trading Firm Intelligence," Phase 3 — Session + Market Regime P&L**
+  (`backend/app/performance_attribution.py`, `backend/app/routers/trades.py`, `backend/app/schemas.py`,
+  `backend/tests/test_performance_attribution.py`, `frontend/src/types.ts`, `frontend/src/net/api.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/PerformancePanel.tsx`): previously deferred honestly
+  (`DecisionVaultEntry` carries real session/regime per trade, but only CEO-proposal-path closes got a vault
+  entry, so a join would have under-reported day-flattened trades) — Phase 2's fix above closed that gap,
+  making this join honest. New `compute_session_performance()`/`compute_regime_performance()` join
+  `trade_history` with `decision_vault` by `trade_id`, reusing the exact same 12-metric shape
+  `SymbolPerformanceRead` already established (refactored into a shared `_group_metrics()` helper so the
+  formula isn't tripled — the already-shipped symbol schema itself is untouched). A trade with no matching
+  vault entry is excluded and counted (`tradesExcludedNoVaultEntry`), never fabricated into a bucket. New
+  `GET /api/trades/performance-by-session` and `GET /api/trades/performance-by-regime` endpoints; new
+  "Performance by Session & Market Regime" Performance panel section. Still honestly out of reach and named
+  explicitly: "which strategies work during London" (strategy id still always `None`) and a numeric
+  agent-performance ranking by session (Phase 1's Trade Attribution gives evidence, never a credit-weighted
+  ranking). 12 new tests, `mypy app/` (154 files)/`ruff check app/ tests/` clean, full backend suite (2066
+  passed, 0 failed), `tsc -b --noEmit`/`eslint`/`vite build` clean, live-verified against the real dev stack
+  (both endpoints correctly grouped real trades by session/regime, matching the symbol-level totals exactly;
+  the panel rendered that same data). Documented in `docs/Architecture.md`.
+
 - **CEO directive "Next Phase: Professional Trading Firm Intelligence," Phases 1-2 — Trade Attribution
   Evidence + Decision Vault coverage expansion** (`backend/app/trade_attribution.py`, `backend/app/nexus.py`,
   `backend/app/routers/trades.py`, `backend/app/schemas.py`, `backend/tests/test_trade_attribution.py`, plus a

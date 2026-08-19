@@ -9387,6 +9387,51 @@ session has had.
 **Verified**: `mypy app/` (154 files)/`ruff check app/ tests/` clean,
 full backend `pytest -q` (2059 passed, 0 failed).
 
+### Phase 3 — Session + Market Regime P&L
+
+Previously deferred honestly in the "Next Professional Trading Firm
+Phase" work above: `DecisionVaultEntry` carries real `session`/
+`market_regime` per trade, but at the time only trades closed through
+the CEO-proposal path got a vault entry at all — a join would have
+silently under-reported day-end-flattened trades. Phase 2's fix closed
+that gap, making this join honest.
+
+**What shipped.** `app/performance_attribution.py` gains
+`compute_session_performance()`/`compute_regime_performance()`, joining
+`trade_history` with `decision_vault` by `trade_id`. Refactored the
+shared 12-metric computation (win rate, expectancy, profit factor, avg
+winner/loser, avg MAE/MFE, best/worst trade — the exact same formula
+Priority 2's `SymbolPerformanceRead` already established) into a private
+`_group_metrics()` helper so all three axes compute identically without
+tripling the formula — the already-shipped `SymbolPerformanceRead`
+schema itself stays completely untouched; `SessionPerformanceRead`/
+`RegimePerformanceRead` are separate schemas reusing the same shape. A
+trade with no matching vault entry (an evicted decision past the
+200-entry cap, or the still-unreachable broker order-book path) is
+excluded from both breakdowns and counted in `trades_excluded_no_vault_
+entry` — never fabricated into a bucket. New `GET /api/trades/
+performance-by-session` and `GET /api/trades/performance-by-regime`
+endpoints; new "Performance by Session & Market Regime" Performance
+panel section (two side-by-side breakdowns).
+
+**Still honestly out of reach**, named explicitly rather than
+implemented partially: "which strategies work during London" (strategy
+id is still always `None` on a live trade) and "which agents perform
+best during New York" as a numeric ranking (Phase 1's Trade Attribution
+gives real evidence of who was involved, never a credit-weighted
+ranking — see Phase 1 above for why).
+
+**Verified**: 12 new tests (`test_performance_attribution.py`, including
+one proving a trade with no vault entry is excluded and counted, not
+silently dropped or fabricated). `mypy app/` (154 files)/`ruff check
+app/ tests/` clean, full backend `pytest -q` (2066 passed, 0 failed).
+`tsc -b --noEmit`/`npm run lint`/`npm run build` all clean. Live-
+verified against the real dev stack: both endpoints correctly grouped
+the current save's real trades by session (`asian`) and regime
+(`weak_uptrend`), with totals matching the existing symbol-level
+breakdown exactly; the Performance panel's new section rendered that
+same data in two side-by-side columns.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing
