@@ -583,6 +583,61 @@ export interface SymbolPerformanceSummary {
   updatedAt: string;
 }
 
+// CEO directive "Next Phase: Professional Trading Firm Intelligence,"
+// Phase 3 — Session + Market Regime P&L. Same 12-metric shape as
+// SymbolPerformanceRead above, joined via the real Decision Vault (a
+// trade with no matching vault entry is excluded and counted in
+// tradesExcludedNoVaultEntry, never fabricated into a bucket).
+export interface SessionPerformanceRead {
+  session: TradingSession;
+  tradeCount: number;
+  winCount: number;
+  lossCount: number;
+  winRatePct: number;
+  totalPnl: number;
+  avgPnlPct: number;
+  avgWinnerPct: number | null;
+  avgLoserPct: number | null;
+  expectancyPct: number | null;
+  profitFactor: number | null;
+  avgMaePct: number;
+  avgMfePct: number;
+  bestTradePnlPct: number;
+  worstTradePnlPct: number;
+  evidenceState: SymbolPerformanceEvidenceState;
+}
+
+export interface SessionPerformanceSummary {
+  reads: SessionPerformanceRead[];
+  tradesExcludedNoVaultEntry: number;
+  updatedAt: string;
+}
+
+export interface RegimePerformanceRead {
+  regime: MarketIntelligenceRegime;
+  tradeCount: number;
+  winCount: number;
+  lossCount: number;
+  winRatePct: number;
+  totalPnl: number;
+  avgPnlPct: number;
+  avgWinnerPct: number | null;
+  avgLoserPct: number | null;
+  expectancyPct: number | null;
+  profitFactor: number | null;
+  avgMaePct: number;
+  avgMfePct: number;
+  bestTradePnlPct: number;
+  worstTradePnlPct: number;
+  evidenceState: SymbolPerformanceEvidenceState;
+}
+
+export interface RegimePerformanceSummary {
+  reads: RegimePerformanceRead[];
+  tradesExcludedNoVaultEntry: number;
+  updatedAt: string;
+}
+
 // CEO directive "Next Professional Trading Firm Phase," Priority 5 —
 // Research Data Integrity. Distinct from DataStatus above (which tags
 // one Candle's own live/delayed/historical/simulated/stale/error/

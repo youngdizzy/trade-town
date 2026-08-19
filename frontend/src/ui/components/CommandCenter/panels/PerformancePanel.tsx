@@ -1,7 +1,16 @@
 import { useEffect, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { api } from "@/net/api";
-import type { SymbolPerformanceRead, SymbolPerformanceSummary, TradeAttributionRecord, TradeAttributionSummary } from "@/types";
+import type {
+  RegimePerformanceRead,
+  RegimePerformanceSummary,
+  SessionPerformanceRead,
+  SessionPerformanceSummary,
+  SymbolPerformanceRead,
+  SymbolPerformanceSummary,
+  TradeAttributionRecord,
+  TradeAttributionSummary,
+} from "@/types";
 import type { FinancialPeriod } from "../lib/financials";
 import { computePeriodFinancials, simMonthNumber } from "../lib/financials";
 import { computeTradeStats, formatMoney, formatPct } from "../lib/derive";
@@ -42,6 +51,17 @@ export function PerformancePanel() {
   const [tradeAttribution, setTradeAttribution] = useState<TradeAttributionSummary | null>(null);
   useEffect(() => {
     api.getTradeAttribution().then(setTradeAttribution).catch(() => undefined);
+  }, []);
+
+  // CEO directive "Next Phase: Professional Trading Firm Intelligence,"
+  // Phase 3 — real session/regime P&L via the real Decision Vault join.
+  const [sessionPerformance, setSessionPerformance] = useState<SessionPerformanceSummary | null>(null);
+  useEffect(() => {
+    api.getPerformanceBySession().then(setSessionPerformance).catch(() => undefined);
+  }, []);
+  const [regimePerformance, setRegimePerformance] = useState<RegimePerformanceSummary | null>(null);
+  useEffect(() => {
+    api.getPerformanceByRegime().then(setRegimePerformance).catch(() => undefined);
   }, []);
 
   const netPositive = financials.netPnl >= 0;
@@ -158,6 +178,8 @@ export function PerformancePanel() {
 
       <SymbolPerformanceSection summary={symbolPerformance} />
 
+      <SessionRegimePerformanceSection sessionSummary={sessionPerformance} regimeSummary={regimePerformance} />
+
       <TradeAttributionSection summary={tradeAttribution} />
 
       <Glass className="p-3">
@@ -251,6 +273,82 @@ function SymbolPerformanceRow({ read }: { read: SymbolPerformanceRead }) {
         Avg winner: <span className="text-cmd-green">{read.avgWinnerPct === null ? "—" : formatPct(read.avgWinnerPct)}</span> · Avg loser:{" "}
         <span className="text-cmd-red">{read.avgLoserPct === null ? "—" : formatPct(read.avgLoserPct)}</span> · Best: {formatPct(read.bestTradePnlPct)} · Worst:{" "}
         {formatPct(read.worstTradePnlPct)}
+      </div>
+    </div>
+  );
+}
+
+/** CEO directive "Next Phase: Professional Trading Firm Intelligence,"
+ * Phase 3 — real session/regime P&L via the real Decision Vault join.
+ * "Which strategies/agents work during London?" isn't answerable yet
+ * (strategy id and agent credit-split are both real, disclosed gaps —
+ * see Trade Attribution below and CHANGELOG.md), but "which sessions/
+ * regimes produce the highest expectancy?" now is. */
+function SessionRegimePerformanceSection({ sessionSummary, regimeSummary }: { sessionSummary: SessionPerformanceSummary | null; regimeSummary: RegimePerformanceSummary | null }) {
+  return (
+    <Glass className="p-3">
+      <div className="mb-1.5 flex items-center justify-between">
+        <TerminalLabel>Performance by Session &amp; Market Regime</TerminalLabel>
+        <span className="text-[9px] text-cmd-textDim">Real Decision Vault join — most profitable first</span>
+      </div>
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div>
+          <div className="mb-1 text-[9px] uppercase tracking-wide text-cmd-textDim">Session</div>
+          {sessionSummary === null ? (
+            <EmptyState>Loading…</EmptyState>
+          ) : sessionSummary.reads.length === 0 ? (
+            <EmptyState>No trade has closed with a real vault entry yet.</EmptyState>
+          ) : (
+            <div className="space-y-1">
+              {sessionSummary.reads.map((r) => (
+                <GroupPerformanceRow key={r.session} label={r.session.replace(/_/g, " ")} read={r} />
+              ))}
+              {sessionSummary.tradesExcludedNoVaultEntry > 0 && (
+                <div className="text-[9px] text-cmd-textDim">
+                  {sessionSummary.tradesExcludedNoVaultEntry} closed trade{sessionSummary.tradesExcludedNoVaultEntry === 1 ? "" : "s"} excluded — no matching Decision Vault entry.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+        <div>
+          <div className="mb-1 text-[9px] uppercase tracking-wide text-cmd-textDim">Market Regime</div>
+          {regimeSummary === null ? (
+            <EmptyState>Loading…</EmptyState>
+          ) : regimeSummary.reads.length === 0 ? (
+            <EmptyState>No trade has closed with a real vault entry yet.</EmptyState>
+          ) : (
+            <div className="space-y-1">
+              {regimeSummary.reads.map((r) => (
+                <GroupPerformanceRow key={r.regime} label={r.regime.replace(/_/g, " ")} read={r} />
+              ))}
+              {regimeSummary.tradesExcludedNoVaultEntry > 0 && (
+                <div className="text-[9px] text-cmd-textDim">
+                  {regimeSummary.tradesExcludedNoVaultEntry} closed trade{regimeSummary.tradesExcludedNoVaultEntry === 1 ? "" : "s"} excluded — no matching Decision Vault entry.
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </Glass>
+  );
+}
+
+function GroupPerformanceRow({ label, read }: { label: string; read: SessionPerformanceRead | RegimePerformanceRead }) {
+  return (
+    <div className="rounded-sm border border-cmd-border/40 bg-cmd-bg/30 px-2 py-1 text-[9px]">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-cmdmono text-cmd-cyan">{label}</span>
+        <span className={read.totalPnl >= 0 ? "text-cmd-green" : "text-cmd-red"}>{formatMoney(read.totalPnl)}</span>
+        <span className="text-cmd-textDim">
+          {read.tradeCount} · {read.winRatePct.toFixed(0)}% win
+        </span>
+        {read.evidenceState === "not_enough_data" ? (
+          <StatusPill tone="amber">THIN</StatusPill>
+        ) : (
+          <span className="text-cmd-textDim">Exp: {formatPct(read.expectancyPct ?? 0)}</span>
+        )}
       </div>
     </div>
   );

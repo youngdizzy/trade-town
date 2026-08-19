@@ -79,7 +79,9 @@ import type {
   MonteCarloReliabilityAssessment,
   ProcessAdherenceRead,
   ProcessAdherenceSummaryRead,
+  RegimePerformanceSummary,
   RegimeReconciliation,
+  SessionPerformanceSummary,
   SessionRegimeEvidenceSummary,
   RiskLimits,
   SimilarTradesSummary,
@@ -204,6 +206,11 @@ export const api = {
   // Unified P&L Reporting, scoped to symbol-level attribution this
   // pass. Read-only, computed fresh per request.
   getPerformanceBySymbol: () => request<SymbolPerformanceSummary>("/trades/performance-by-symbol"),
+  // CEO directive "Next Phase: Professional Trading Firm Intelligence,"
+  // Phase 3 — real session/regime P&L via the real Decision Vault join.
+  // Read-only, computed fresh per request.
+  getPerformanceBySession: () => request<SessionPerformanceSummary>("/trades/performance-by-session"),
+  getPerformanceByRegime: () => request<RegimePerformanceSummary>("/trades/performance-by-regime"),
   // CEO directive "Next Professional Trading Firm Phase," Priority 5 —
   // Research Data Integrity. Read-only; the candle row re-checks the
   // real provider live on every request.
