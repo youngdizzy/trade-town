@@ -438,6 +438,13 @@ export interface PaperPosition {
    * spread/order-book data, which this codebase does not have). 0.0 for
    * any position opened before this piece. */
   entryCostUsd: number;
+  /** CEO directive "Next Professional Trading Firm Phase," Priority 1
+   * (Execution Realism) — the real slippage, in basis points, applied
+   * to this position's fill price at entry. Derived from that tick's
+   * real MarketIntelligenceState (see backend/app/execution_quality.py)
+   * — never fabricated or random. 0.0 for any entry filled without a
+   * MarketIntelligenceState in scope. */
+  entrySlippageBps: number;
   /** CEO Company Health + Live Market Realism directive, Feature 24 —
    * MAE (Maximum Adverse Excursion) / MFE (Maximum Favorable
    * Excursion): a real running watermark of the worst/best
@@ -482,6 +489,15 @@ export interface PaperTrade {
    * exit) already subtracted from `pnl` above; kept here purely for
    * audit visibility. 0.0 for any trade closed before this piece. */
   transactionCostUsd: number;
+  /** CEO directive "Next Professional Trading Firm Phase," Priority 1
+   * (Execution Realism) — real slippage in basis points, applied at
+   * entry (carried over from the position this trade closed) and at
+   * exit. Distinct from transactionCostUsd above (a flat commission/
+   * spread proxy) — slippage instead varies tick-to-tick with that
+   * tick's own real market-quality/liquidity read. 0.0 for any fill
+   * without a MarketIntelligenceState in scope. */
+  entrySlippageBps: number;
+  exitSlippageBps: number;
   /** Prop-Firm Risk Intelligence Addendum, Piece 10b — real distance to
    * the primary portfolio's own drawdown ceiling (RiskLimits.
    * maxDrawdownPct — a self-chosen ceiling, not a true externally-

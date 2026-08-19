@@ -150,6 +150,11 @@ export function PerformancePanel() {
                 {t.transactionCostUsd > 0 && (
                   <div className="mt-0.5 text-[9px] text-cmd-textDim">Transaction cost: {formatMoney(t.transactionCostUsd)} (real, already netted above)</div>
                 )}
+                {(t.entrySlippageBps > 0 || t.exitSlippageBps > 0) && (
+                  <div className="mt-0.5 text-[9px] text-cmd-textDim">
+                    Slippage: {t.entrySlippageBps.toFixed(1)}bps in / {t.exitSlippageBps.toFixed(1)}bps out (real, already reflected in entry/exit price)
+                  </div>
+                )}
                 {t.distanceToDrawdownCeilingBeforePct !== null && t.distanceToDrawdownCeilingAfterPct !== null && (
                   <div className="mt-0.5 text-[9px] text-cmd-textDim">
                     Distance to drawdown ceiling: {t.distanceToDrawdownCeilingBeforePct.toFixed(1)}% → {t.distanceToDrawdownCeilingAfterPct.toFixed(1)}%
