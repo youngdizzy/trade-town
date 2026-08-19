@@ -65,7 +65,7 @@ test("the Research Sandbox tab opens from the Command Center, shows the pipeline
 });
 
 test("Feature 52 (Part 1/2) — every Strategy Validation Laboratory sub-tab opens and renders its own real content", async ({ page }) => {
-  test.setTimeout(90000); // 10 real sub-tabs, each dismissing real popups along the way, plus the 50 EMA RESEARCH and STRATEGY COMPILER tabs' own real on-demand backtest computation
+  test.setTimeout(140000); // 10 real sub-tabs, each dismissing real popups along the way, plus the 50 EMA RESEARCH and STRATEGY COMPILER tabs' own real on-demand backtest + full research-experiment computation
   const consoleErrors: string[] = [];
   page.on("console", (msg) => {
     if (msg.type() === "error") consoleErrors.push(msg.text());
@@ -138,6 +138,17 @@ test("Feature 52 (Part 1/2) — every Strategy Validation Laboratory sub-tab ope
   await expect(page.getByText("compiled", { exact: true })).toBeVisible();
   await clickRobust(page, () => page.getByRole("button", { name: "Backtest This Definition" }), { label: "Backtest This Definition" });
   await expect(page.getByText(/Overall — \d+ symbols/)).toBeVisible({ timeout: 20_000 });
+
+  // "Next Research + Validation Pass" — one bundled real experiment
+  // record (walk-forward stability, one-parameter-at-a-time stop/target
+  // sensitivity, transaction-cost/slippage sensitivity, and a
+  // structural look-ahead audit) for this same compiled definition.
+  await clickRobust(page, () => page.getByRole("button", { name: "Run Full Research Experiment", exact: true }), { label: "Run Full Research Experiment" });
+  await expect(page.getByText(/Research Experiment —/)).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText("Walk-Forward Stability", { exact: true })).toBeVisible();
+  await expect(page.getByText("Parameter Sensitivity", { exact: true })).toBeVisible();
+  await expect(page.getByText("Cost / Slippage Sensitivity", { exact: true })).toBeVisible();
+  await expect(page.getByText("Look-Ahead Audit", { exact: true })).toBeVisible();
 
   // Back to PIPELINE — the real Retirement action form opens and cancels
   // cleanly without actually retiring anything (a real, deliberate,

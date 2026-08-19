@@ -23,6 +23,12 @@ import type {
   CompiledStrategyBacktestResult,
   CompiledStrategyDefinition,
   ContinuousImprovementSummary,
+  CostSensitivityResult,
+  LookAheadAuditResult,
+  ParameterSensitivityResult,
+  ResearchExperimentRecord,
+  SurvivorshipBiasRead,
+  WalkForwardValidationResult,
   ControlEffectivenessSummary,
   ClientSaveSnapshot,
   ComplianceIncident,
@@ -718,6 +724,36 @@ export const api = {
       method: "POST",
       body: JSON.stringify(definition),
     }),
+  // CEO directive "...Quant Intelligence + Market Analysis Completion
+  // Phase (Next Research + Validation Pass)." Read-only, computed fresh
+  // per request — see the matching backend module's own docstring for
+  // each endpoint's real methodology.
+  walkForwardValidation: (definition: CompiledStrategyDefinition, candlesPerSymbol?: number, windowBars?: number) =>
+    request<WalkForwardValidationResult>(
+      `/sandbox/walk-forward-validation?${[candlesPerSymbol ? `candlesPerSymbol=${candlesPerSymbol}` : "", windowBars ? `windowBars=${windowBars}` : ""].filter(Boolean).join("&")}`,
+      { method: "POST", body: JSON.stringify(definition) }
+    ),
+  parameterSensitivity: (definition: CompiledStrategyDefinition, candlesPerSymbol?: number) =>
+    request<ParameterSensitivityResult>(`/sandbox/parameter-sensitivity${candlesPerSymbol ? `?candlesPerSymbol=${candlesPerSymbol}` : ""}`, {
+      method: "POST",
+      body: JSON.stringify(definition),
+    }),
+  costSensitivity: (definition: CompiledStrategyDefinition, candlesPerSymbol?: number) =>
+    request<CostSensitivityResult>(`/sandbox/cost-sensitivity${candlesPerSymbol ? `?candlesPerSymbol=${candlesPerSymbol}` : ""}`, {
+      method: "POST",
+      body: JSON.stringify(definition),
+    }),
+  lookAheadAudit: (definition: CompiledStrategyDefinition, candlesPerSymbol?: number) =>
+    request<LookAheadAuditResult>(`/sandbox/look-ahead-audit${candlesPerSymbol ? `?candlesPerSymbol=${candlesPerSymbol}` : ""}`, {
+      method: "POST",
+      body: JSON.stringify(definition),
+    }),
+  runResearchExperiment: (definition: CompiledStrategyDefinition, candlesPerSymbol?: number) =>
+    request<ResearchExperimentRecord>(`/sandbox/research-experiment${candlesPerSymbol ? `?candlesPerSymbol=${candlesPerSymbol}` : ""}`, {
+      method: "POST",
+      body: JSON.stringify(definition),
+    }),
+  getSurvivorshipBias: (symbol: string) => request<SurvivorshipBiasRead>(`/sandbox/survivorship-bias?symbol=${encodeURIComponent(symbol)}`),
   // v0.7 Feature 53 — Company Certification. Read-only, computed fresh
   // every call — `certified` is always a live read of current real
   // state (see StrategyCertification's own docstring in types.ts).

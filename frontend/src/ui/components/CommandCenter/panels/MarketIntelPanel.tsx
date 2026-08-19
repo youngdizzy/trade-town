@@ -304,6 +304,16 @@ export function MarketIntelPanel() {
                   <DataRow label="Stoch %K" value={technicalAnalysis.indicators.stochasticPercentK?.toFixed(1) ?? "—"} />
                   <DataRow label="ATR14" value={technicalAnalysis.indicators.atr14?.toFixed(2) ?? "—"} />
                   <DataRow label="VWAP" value={technicalAnalysis.indicators.vwap?.toFixed(2) ?? "—"} />
+                  <DataRow
+                    label="Parabolic SAR"
+                    value={technicalAnalysis.indicators.parabolicSar !== null ? `${technicalAnalysis.indicators.parabolicSar.toFixed(2)} (${technicalAnalysis.indicators.parabolicSarTrend})` : "—"}
+                    valueClassName={technicalAnalysis.indicators.parabolicSarTrend === "up" ? "text-cmd-green" : technicalAnalysis.indicators.parabolicSarTrend === "down" ? "text-cmd-red" : undefined}
+                  />
+                  <DataRow
+                    label="SuperTrend"
+                    value={technicalAnalysis.indicators.supertrend !== null ? `${technicalAnalysis.indicators.supertrend.toFixed(2)} (${technicalAnalysis.indicators.supertrendTrend})` : "—"}
+                    valueClassName={technicalAnalysis.indicators.supertrendTrend === "up" ? "text-cmd-green" : technicalAnalysis.indicators.supertrendTrend === "down" ? "text-cmd-red" : undefined}
+                  />
                 </div>
                 <div className="text-cmd-textDim">{technicalAnalysis.indicators.detail}</div>
                 <div className="rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2">
@@ -364,6 +374,22 @@ export function MarketIntelPanel() {
                   <div className="text-cmd-textDim">Order Block</div>
                   <div className="text-cmd-text">{technicalAnalysis.orderBlock.detail}</div>
                 </div>
+                {technicalAnalysis.chartPatterns.patterns.length > 0 && (
+                  <div className="rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2">
+                    <div className="mb-0.5 text-cmd-textDim">Chart Patterns (double top/bottom, trendline breaks)</div>
+                    <div className="space-y-1">
+                      {technicalAnalysis.chartPatterns.patterns.map((p) => (
+                        <div key={p.patternId} className="flex items-center justify-between">
+                          <span className={p.direction === "bullish" ? "text-cmd-green" : "text-cmd-red"}>{p.patternType.replace(/_/g, " ")}</span>
+                          <span className="tabular-nums text-cmd-text">
+                            {p.priceLow.toFixed(2)} – {p.priceHigh.toFixed(2)}
+                          </span>
+                          <span className="text-cmd-textDim">{p.confidencePct.toFixed(0)}% confidence</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </>

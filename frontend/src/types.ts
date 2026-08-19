@@ -1290,6 +1290,136 @@ export interface CompiledStrategyBacktestResult {
   generatedAt: string;
 }
 
+// CEO directive "...Quant Intelligence + Market Analysis Completion
+// Phase (Next Research + Validation Pass)" — genuine walk-forward
+// validation. See backend/app/walk_forward.py.
+export interface WalkForwardWindowResult {
+  windowIndex: number;
+  startTimestamp: string;
+  endTimestamp: string;
+  bucket: EmaPullbackStatsBucket;
+}
+
+export interface WalkForwardSymbolResult {
+  symbol: string;
+  windows: WalkForwardWindowResult[];
+  positiveWindowCount: number;
+  negativeWindowCount: number;
+  evaluatedWindowCount: number;
+  detail: string;
+}
+
+export interface WalkForwardValidationResult {
+  id: string;
+  definitionId: string;
+  definitionVersion: number;
+  windowBars: number;
+  symbols: WalkForwardSymbolResult[];
+  verdict: "stable" | "unstable" | "insufficient_data";
+  detail: string;
+  dataHonestyNote: string;
+  generatedAt: string;
+}
+
+// Same directive — real one-parameter-at-a-time stop/target
+// sensitivity. See backend/app/parameter_sensitivity.py.
+export interface ParameterSensitivityPoint {
+  label: string;
+  value: number;
+  bucket: EmaPullbackStatsBucket;
+}
+
+export interface ParameterSensitivityAxisResult {
+  parameter: "stop" | "target";
+  sweepable: boolean;
+  baseValue: number | null;
+  points: ParameterSensitivityPoint[];
+  detail: string;
+}
+
+export interface ParameterSensitivityResult {
+  id: string;
+  definitionId: string;
+  definitionVersion: number;
+  stopAxis: ParameterSensitivityAxisResult | null;
+  targetAxis: ParameterSensitivityAxisResult | null;
+  verdict: "robust" | "fragile" | "insufficient_data";
+  detail: string;
+  multipleTestingNote: string;
+  dataHonestyNote: string;
+  generatedAt: string;
+}
+
+// Same directive — real transaction-cost/slippage sensitivity, reusing
+// this codebase's own existing real cost constants. See
+// backend/app/cost_sensitivity.py.
+export interface CostSensitivityScenario {
+  label: string;
+  costBpsPerLeg: number;
+  bucket: EmaPullbackStatsBucket;
+}
+
+export interface CostSensitivityResult {
+  id: string;
+  definitionId: string;
+  definitionVersion: number;
+  scenarios: CostSensitivityScenario[];
+  verdict: "cost_resilient" | "cost_sensitive" | "insufficient_data";
+  detail: string;
+  dataHonestyNote: string;
+  generatedAt: string;
+}
+
+// Same directive — a real, structural look-ahead audit. See
+// backend/app/leakage_audit.py.
+export interface LookAheadViolation {
+  entryIndex: number;
+  entryTimestamp: string;
+  direction: string;
+  detail: string;
+}
+
+export interface LookAheadAuditResult {
+  id: string;
+  definitionId: string;
+  definitionVersion: number;
+  setupsChecked: number;
+  violations: LookAheadViolation[];
+  verdict: "clean" | "violations_found" | "insufficient_data";
+  detail: string;
+  generatedAt: string;
+}
+
+// Same directive — a real, disclosed data-availability interface, not a
+// real check. See backend/app/survivorship.py.
+export interface SurvivorshipBiasRead {
+  symbol: string;
+  status: "unavailable";
+  detail: string;
+}
+
+// Same directive — the Research Desk's one reproducible experiment
+// record, bundling every real validation axis above for one compiled
+// definition. See backend/app/research_experiment.py.
+export interface ResearchExperimentRecord {
+  id: string;
+  definitionId: string;
+  definitionName: string;
+  definitionVersion: number;
+  sourceText: string;
+  symbolsTested: string[];
+  timeframe: string;
+  candlesPerSymbol: number;
+  backtest: CompiledStrategyBacktestResult;
+  walkForward: WalkForwardValidationResult;
+  parameterSensitivity: ParameterSensitivityResult;
+  costSensitivity: CostSensitivityResult;
+  lookAheadAudit: LookAheadAuditResult;
+  conclusion: string;
+  dataHonestyNote: string;
+  generatedAt: string;
+}
+
 // Deliberately distinct from the trade-scoped ExecutiveAction —
 // strategy-lifecycle semantics differ from single-trade semantics.
 export type StrategyExecutiveAction = "advance" | "request_more_evidence" | "hold_for_improvement" | "reject";
@@ -2120,6 +2250,10 @@ export interface TechnicalIndicatorsRead {
   stochasticPercentD: number | null;
   atr14: number | null;
   vwap: number | null;
+  parabolicSar: number | null;
+  parabolicSarTrend: "up" | "down" | null;
+  supertrend: number | null;
+  supertrendTrend: "up" | "down" | null;
   detail: string;
 }
 
@@ -2190,6 +2324,36 @@ export interface TechnicalAnalysisRead {
   fibonacci: FibonacciRead;
   orderBlock: OrderBlockRead;
   supportResistance: SupportResistanceRead;
+  chartPatterns: ChartPatternRead;
+}
+
+// CEO directive "...Quant Intelligence + Market Analysis Completion
+// Phase (Next Research + Validation Pass)" — real double top/bottom and
+// trendline-break detection. See backend/app/technical_patterns.py::
+// detect_chart_patterns().
+export type ChartPatternType = "double_top" | "double_bottom" | "trendline_break_up" | "trendline_break_down";
+
+export interface ChartPattern {
+  patternId: string;
+  patternType: ChartPatternType;
+  direction: "bullish" | "bearish";
+  confidencePct: number;
+  priceLow: number;
+  priceHigh: number;
+  formedAt: string;
+  confirmedAt: string;
+  formationDetail: string;
+  invalidationDetail: string;
+  source: string;
+  timeframe: string;
+  symbol: string;
+}
+
+export interface ChartPatternRead {
+  symbol: string;
+  timeframe: string;
+  patterns: ChartPattern[];
+  detail: string;
 }
 
 // CEO directive "Professional Quant Trading Firm — Quant Intelligence +

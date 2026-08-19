@@ -100,6 +100,13 @@ test("Technical Analysis shows Evidence Confluence for a selected symbol", async
   await expect(page.getByText("Independent Families", { exact: true })).toBeVisible();
   await expect(page.getByText("Majority Direction", { exact: true })).toBeVisible();
 
+  // "Next Research + Validation Pass" — real Parabolic SAR/SuperTrend
+  // indicator values and real chart-pattern (double top/bottom,
+  // trendline break) detection, both surfaced in this same Technical
+  // Analysis block.
+  await expect(page.getByText("Parabolic SAR", { exact: true })).toBeVisible();
+  await expect(page.getByText("SuperTrend", { exact: true })).toBeVisible();
+
   const relevantErrors = consoleErrors.filter((e) => !e.includes("favicon") && !e.includes("Failed to process file"));
   expect(relevantErrors).toEqual([]);
 });
