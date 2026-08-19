@@ -7,6 +7,32 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Professional Trading Firm Transformation" — Gap Analysis + Exit Efficiency**
+  (`backend/app/exit_efficiency.py`, `backend/app/schemas.py`, `backend/app/routers/trades.py`,
+  `backend/tests/test_exit_efficiency.py`, `frontend/src/types.ts`, `frontend/src/net/api.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/DisciplinePanel.tsx`): research-first gap analysis across
+  16 professional-firm areas (Research Desk, Portfolio Management, Risk, Execution, Market Intelligence, Model
+  Validation, Performance Attribution, Post-Trade Review, Knowledge, Continuous Learning, Investment Committee,
+  Reporting, Agent Intelligence, Team Chemistry, Talent Development, Company Health) via 4 parallel research
+  passes, ranked CRITICAL/HIGH/MEDIUM/LOW/DEFERRED, then only the single highest-priority piece implemented —
+  full table in `docs/Architecture.md`. Highlights: Portfolio Management is already SUBSTANTIAL
+  (`app/portfolio_intelligence.py`'s real Pearson correlation/category exposure/Portfolio Heat); Research Desk
+  is structurally mature but every backtest/regime-test/stress-test is a transformation of one synthetic RNG
+  engine, never independent data; Performance Attribution is genuinely MINIMAL (no real $/% P&L by symbol or
+  agent exists anywhere); Team Chemistry's Debate has zero causal effect on outcomes (`finalRecommendation` is
+  fixed before the debate runs). **Chosen and implemented**: `PaperTrade.maePct`/`mfePct` (a real, live-computed
+  watermark on every closed trade) was read by zero post-trade review modules — new `app/exit_efficiency.py`
+  computes a real, continuous "Edge Ratio" `capturePct` per trade (`(pnlPct − maePct) / (mfePct − maePct) ×
+  100`), honestly covering wins and losses with one formula, purely additive — never touching Discipline's
+  process score or `failure_review.py`'s classification. New `GET /api/trades/exit-efficiency` endpoint; new
+  "Exit Efficiency" Discipline Chamber panel section. **A real bug caught during live verification, not shipped
+  uncaught**: the real close price can land beyond the last tracked watermark (confirmed live:
+  `pnlPct=-2.42%` vs. `maePct=-2.32%`), producing an invalid out-of-range `capturePct` — fixed by widening the
+  effective range to include the real close price itself, re-verified live against the real save. 11 new tests
+  (2 covering the live-caught edge case), `mypy app/` (150 files)/`ruff check app/ tests/` clean, full backend
+  suite (2000 passed; same 6 pre-existing unrelated `test_nexus.py` failures), `tsc -b --noEmit`/`eslint`/`vite
+  build` clean, live Playwright verification before and after the fix. Documented in `docs/Architecture.md`.
+
 - **CEO directive "Session Trading Education & Agent Training" + Final Agent-Trading Investigation**
   (`backend/app/foundational_mentors.py`, `backend/app/session_evidence.py`, `backend/app/schemas.py`,
   `backend/app/executive_intelligence.py`, `backend/app/nexus.py`, `backend/app/state.py`,

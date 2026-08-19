@@ -8917,6 +8917,49 @@ NOT ENOUGH EVIDENCE, and the Market Intelligence panel's new section
 rendered that exact real data — "1 real observation under this regime —
 0% favorable" — matching the API response exactly.
 
+## CEO directive "Professional Trading Firm Transformation" — Gap Analysis + Exit Efficiency
+
+A research-first directive with an explicit process: map the whole
+professional-firm architecture across 16 named areas, rank the real
+gaps, and implement only the single highest-priority piece — not a
+implement-everything pass. Four parallel research agents (Research
+Desk/Model Validation, Portfolio Management/Execution, Performance
+Attribution/Post-Trade Review, Team Chemistry/Talent Development)
+combined with this session's own existing depth on Compliance/Audit,
+Session Intelligence, Academy/Foundational Mentors, Executive
+Intelligence, and Company Health.
+
+### Gap Analysis (condensed — full table delivered to the CEO)
+
+| Area | Maturity | Real gap named |
+|---|---|---|
+| Research Desk | PARTIAL/SUBSTANTIAL structure, MINIMAL evidentiary grounding | Every backtest/regime-test/stress-test/Monte-Carlo run is a transformation of the same one synthetic RNG engine (`app/simulation.py`) — never independent real data; no structured `hypothesis`/`assumptions` field (collapsed into prose) |
+| Portfolio Management | SUBSTANTIAL | `app/portfolio_intelligence.py` already computes real Pearson correlation, category exposure, tiered Portfolio Heat, capital efficiency, tick-recomputed, feeding position sizing/black-swan/a dedicated panel — no risk-contribution-per-position/covariance VaR yet |
+| Execution | MINIMAL | Real order types + 1-tick latency + flat 5bps cost, but zero slippage/spread/market-impact/partial-fills — a 10-share and 10,000-share order of the same symbol fill identically |
+| Market Intelligence | MATURE | — (this session's prior work) |
+| Model Validation | SUBSTANTIAL, advisory-only by design | `ModelValidationReport`'s 6 real checks (sample size, regime breadth, tail risk, liquidity, expectancy, temporal stability) never gate `sandbox.py`'s actual stage advancement — a documented future decision, not touched here; Meridian/CIO confirmed to never trade or own risk limits |
+| Performance Attribution | **MINIMAL** | No real $/% P&L breakdown by symbol or by agent exists anywhere; `DecisionVaultEntry.strategyId` is structurally always `None` on live trades |
+| Post-Trade Review | SUBSTANTIAL (strongest subsystem) | `PaperTrade.maePct`/`mfePct` — a real, live-computed watermark on every closed trade — was read by zero review modules |
+| Team Chemistry | PARTIAL | `Debate.finalRecommendation` is fixed *before* the debate runs — turns narrate an already-decided outcome, never resolve anything themselves |
+| Talent Development | SUBSTANTIAL | Real training→application distinction (graduation + post-graduation `DisciplineReview` performance), but `KNOWLEDGE_BRANCH` specialization is completely disconnected from mentor tracks |
+| Investment Committee, Knowledge, Reporting (weekly/monthly), Agent Intelligence, Company Health | MATURE/SUBSTANTIAL | Minor named gaps only (e.g. daily `BoardReport`/`PerformanceSnapshot` never joined into one briefing) |
+
+**Ranking:** CRITICAL — MAE/MFE-informed Exit Efficiency (chosen, implemented below). HIGH — Execution realism (slippage/spread derivable from real `VolatilityRead`/`LiquidityRead`, but touches the core fill path company-wide), Team Chemistry causality (touches actual voting/governance — higher risk). MEDIUM — Reporting unification, P&L attribution by symbol/agent, Talent-specialization link. DEFERRED, explicitly — the Research Desk's synthetic-data-source gap (not honestly fixable without a real market-data feed this codebase has never had), and promoting `ModelValidationReport` to a blocking gate (would require explicit CEO authorization per the directive's own separation-of-duties rule; not sought or given).
+
+### Why Exit Efficiency first
+
+Real data already computed on every trade (zero fabrication risk), purely additive (touches no existing scoring formula — Discipline's process score and `failure_review.py`'s `FailureReason` classification stay completely untouched), directly named in the directive's own Post-Trade Review section ("MAE, MFE"), and closes the one gap in the codebase's strongest subsystem where evidence already exists but goes unused.
+
+### What shipped
+
+`app/exit_efficiency.py` (new module, no new `GameSaveState` field, computed fresh over `state.paper_portfolio.trade_history` — the original CAGS convention): a single, continuous "Edge Ratio" formula — `capture_pct = (pnl_pct − mae_pct) / (mfe_pct − mae_pct) × 100` — honestly covering wins and losses alike (100 = closed at the best point the trade's own real range ever reached, 0 = the worst). New `GET /api/trades/exit-efficiency` endpoint; new "Exit Efficiency" section in the Discipline Chamber panel, sitting alongside — never replacing — Discipline Reviews, the Library of Mistakes & Successes, and the Failure Review Board.
+
+### A real bug found during live verification, not shipped uncaught
+
+Hitting the live endpoint against the current save's own real closed SPY trade produced an invalid, out-of-range `capturePct` of **-4.3%**. Root cause, traced to real code: `close_position()`'s own `exit_price` computes `pnlPct` at the actual moment of close, while `maePct`/`mfePct` are last updated by `mark_to_market()`'s own tick cadence — two genuinely different points in the tick cycle, so the real close (`pnlPct = -2.42%`) landed slightly beyond the last tracked watermark (`maePct = -2.32%`). Fixed by widening the effective range used in the formula to `min(maePct, pnlPct)`..`max(mfePct, pnlPct)` — the real range this trade's P&L is actually known to have covered, including its own real final point; this is honest, not a fudge, since the close price is itself a real observation of the trade's path. The untracked-watermark detection (`maePct == mfePct == 0.0`, the real ambiguous "never tracked" case) still reads the raw fields, so it is not weakened by this fix. Re-verified live after the fix: the same real trade now correctly reads `capturePct = 0.0` (closed at the worst point of its own real range) — coherent with, and complementary to, that same trade's independently-computed Discipline Review (92/100, exemplary process) and Failure Review Board classification (poor execution) already shown alongside it.
+
+**Verified**: 11 new tests (`tests/test_exit_efficiency.py`, including two written specifically to cover the live-caught edge case and its defensive fallback). `mypy app/` (150 files)/`ruff check app/ tests/` clean, full backend `pytest -q` (2000 passed; same 6 pre-existing `test_nexus.py` failures, unrelated and unchanged). `tsc -b --noEmit`/`npm run lint`/`npm run build` all clean. Live Playwright verification against the real dev stack, both before and after the fix: the Discipline panel's new Exit Efficiency section rendered the exact real API data — "SPY Day 22 -2.42% range -2.3% → 0.0% — 0% captured" — matching the corrected endpoint response exactly.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

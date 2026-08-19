@@ -1556,6 +1556,32 @@ returns this field empty (it's an archive module — see that endpoint's
 own docstring); use this endpoint, the WS broadcast, or
 `GET /api/load/archive/knowledge_archive` for real data.
 
+### `GET /api/trades/exit-efficiency`
+
+CEO directive "Professional Trading Firm Transformation" — Post-Trade
+Review, Exit Efficiency (`app/exit_efficiency.py`). Read-only, computed
+fresh per request over the already-real `trade_history` — no new
+`GameSaveState` field. Returns an `ExitEfficiencySummary`: `reads:
+TradeExitEfficiency[]`, one per closed `PaperTrade`, each with
+`pnlPct`/`maePct`/`mfePct` (mirrored verbatim) and `capturePct` — a
+real, continuous "Edge Ratio": `(pnlPct − maePct) / (mfePct − maePct) ×
+100`, honestly covering wins and losses alike (100 = closed at the best
+point the trade's own real observed range ever reached, 0 = the
+worst). The effective range is widened to also include `pnlPct` itself
+(`min(maePct, pnlPct)`..`max(mfePct, pnlPct)`) since the real close
+price can land slightly beyond the last `mark_to_market()`-tracked
+watermark — confirmed live, not hypothetical. `evidenceState`
+(`efficient_exit`/`average_exit`/`poor_exit`/`not_enough_data` —
+`not_enough_data` only when the RAW `maePct == mfePct == 0.0`, genuinely
+ambiguous between "never moved" and "never tracked," never guessed at
+either way). Summary counts (`avgCapturePct`, `efficientExitCount`,
+`averageExitCount`, `poorExitCount`, `notEnoughDataCount`, `updatedAt`)
+are pure tallies over `reads`. This is a genuinely new, third
+post-trade review axis — distinct from and never touching Discipline's
+outcome-blind process score (`GET` via the WS `discipline_reviews`
+broadcast) or `GET /api/failures/{agent_id}`'s WHY-the-thesis-failed
+classification above.
+
 ### `GET /api/market/regime-reconciliation`
 
 Design Bible Chapter 65's Regime Reconciliation — read-only, no body.
