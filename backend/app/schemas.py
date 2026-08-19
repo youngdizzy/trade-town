@@ -932,6 +932,69 @@ class DataProvenanceReport(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# CEO directive "Next Phase: Professional Trading Firm Intelligence,"
+# Phase 1 — Symbol -> Agent Attribution (app/trade_attribution.py).
+# RESEARCH FINDING that shaped this scope: no P&L credit-splitting
+# methodology exists anywhere in this codebase, and the directive itself
+# explicitly forbids inventing one unilaterally ("do not arbitrarily
+# assign 100% credit to the agent that clicked BUY/SELL... surface that
+# a CEO credit-split rule is required instead of silently inventing
+# one"). What this module builds instead, per the directive's own
+# fallback instruction ("preserve the original attribution evidence so
+# that attribution can be audited later"): a real, non-fabricated
+# per-trade EVIDENCE record — which agent/role voted what, whether that
+# vote matched the side actually traded, real risk/CEO-override
+# provenance, and the trade's real execution/P&L — joined entirely from
+# data this codebase already permanently stores (TradeDecision.votes,
+# CeoDecisionRecord, PaperTrade). No numeric P&L-per-agent split is
+# computed or implied anywhere in this record.
+class AgentContributionRead(CamelModel):
+    """One analyst's real, permanently-recorded vote on this trade's
+    original proposal, reconstructed from `TradeDecision.votes` (role
+    inferred via the fixed `ROLE_TO_AGENT` mapping in app/executive.py
+    — the same six real seats Executive Voting already uses)."""
+
+    agent_id: AgentId = Field(alias="agentId")
+    role: AnalystRole
+    choice: VoteChoice
+    reason: str
+    agreed_with_side_traded: bool = Field(alias="agreedWithSideTraded")
+
+
+TradeAttributionEvidenceState = Literal["full_evidence", "no_decision_on_record"]
+
+
+class TradeAttributionRecord(CamelModel):
+    """One closed trade's real, auditable evidence trail. `evidenceState`
+    is `no_decision_on_record` (contributions/ceo fields empty/None)
+    only when `PaperTrade.decisionId` never resolved to a real
+    `TradeDecision` — never fabricated to fill the gap. `credit_split_
+    note` is a fixed, honest disclosure — see this module's own
+    docstring for why no numeric split exists."""
+
+    trade_id: str = Field(alias="tradeId")
+    decision_id: str | None = Field(default=None, alias="decisionId")
+    symbol: str
+    contributions: list[AgentContributionRead] = Field(default_factory=list)
+    supporting_agents: list[AgentId] = Field(default_factory=list, alias="supportingAgents")
+    opposing_agents: list[AgentId] = Field(default_factory=list, alias="opposingAgents")
+    ceo_choice: AnalystChoice | None = Field(default=None, alias="ceoChoice")
+    ceo_overrode_the_desk: bool | None = Field(default=None, alias="ceoOverrodeTheDesk")
+    gatekeeper_approved: bool | None = Field(default=None, alias="gatekeeperApproved")
+    entry_slippage_bps: float = Field(alias="entrySlippageBps")
+    exit_slippage_bps: float = Field(alias="exitSlippageBps")
+    transaction_cost_usd: float = Field(alias="transactionCostUsd")
+    pnl: float
+    pnl_pct: float = Field(alias="pnlPct")
+    evidence_state: TradeAttributionEvidenceState = Field(alias="evidenceState")
+    credit_split_note: str = Field(alias="creditSplitNote")
+
+
+class TradeAttributionSummary(CamelModel):
+    records: list[TradeAttributionRecord]
+    updated_at: str = Field(alias="updatedAt")
+
+
 class PaperPortfolio(CamelModel):
     """The company's one simulated trading account. Starting balance and
     every position/order/trade in it are fictional — see

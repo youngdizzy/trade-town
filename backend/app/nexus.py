@@ -1463,6 +1463,21 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # sim-day rollover, before this tick's Circuit Breaker read (a
     # flattened position's realized P&L is part of *today's* real daily
     # number the breaker checks next).
+    #
+    # CEO directive "Next Phase: Professional Trading Firm Intelligence,"
+    # Phase 2 (Decision Vault coverage expansion) — RESEARCH FINDING: a
+    # flattened trade previously never reached _journal_closed_trades()
+    # below (only the memory alert a few lines down read it), so it never
+    # got a decision_id, a DisciplineReview, a CaseStudy, a Failure
+    # Review classification, or a DecisionVaultEntry — every other real
+    # close path (hold-duration, and the broker order-book path, which a
+    # grep-confirmed audit found has zero live callers today) already
+    # flowed through that pipeline. `flattened_trades` is now merged into
+    # the same real closed-trade list a few lines below so a day-end
+    # flatten gets the exact same real learning-loop treatment as every
+    # other close — no new pipeline built, the existing one just wasn't
+    # being fed this real data.
+    flattened_trades: list[PaperTrade] = []
     if is_new_sim_day:
         paper_portfolio, flattened_trades = flatten_day_positions(
             paper_portfolio, prices, now_sim_minutes, effective_risk_limits, market_intelligence
@@ -1802,7 +1817,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     paper_portfolio, closed_trades = tick_paper_trading(
         paper_portfolio, watchlist, all_agent_ids(), new_time, effective_risk_limits, market_intelligence
     )
-    paper_portfolio, closed_trades = _journal_closed_trades(paper_portfolio, [*broker_closed_trades, *closed_trades], decisions)
+    paper_portfolio, closed_trades = _journal_closed_trades(paper_portfolio, [*broker_closed_trades, *closed_trades, *flattened_trades], decisions)
     # Trimmed after _journal_closed_trades (not right after the append
     # above) so a trade closing this very tick can still look its
     # originating decision up by id before the oldest entries are evicted.

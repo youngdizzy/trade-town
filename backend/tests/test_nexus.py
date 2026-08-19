@@ -12,8 +12,10 @@ from datetime import datetime, timezone
 
 from app.market_intelligence import default_market_intelligence_state
 from app.nexus import MAX_DECISIONS, _apply_operating_mode, _trim_decisions
-from app.portfolio import default_portfolio
-from app.schemas import AnalystVote, ConfidenceFactor, DecisionConfidence, RiskLimits, TradeDecision, TradeProposal
+from app.nexus import tick as nexus_tick
+from app.portfolio import default_portfolio, open_position
+from app.schemas import AnalystVote, ConfidenceFactor, DecisionConfidence, RiskLimits, TimeState, TradeDecision, TradeProposal
+from app.state import default_state
 
 
 def _decision(n: int) -> TradeDecision:
@@ -117,11 +119,13 @@ class TestApplyOperatingModePauseTrading:
             [],  # memory
             [],  # decisions
             [],  # ceo_decisions
+            [],  # prediction_records
             [],  # gatekeeper_rejections
             [],  # news
             [],  # challenge_reports
             [],  # coach_reports
             [],  # meeting_log
+            [],  # decision_vault
             1,  # sim_day
             market_intelligence,
             [],  # war_room_sessions
@@ -172,11 +176,13 @@ class TestApplyOperatingModeEmergencyStop:
             [],  # memory
             [],  # decisions
             [],  # ceo_decisions
+            [],  # prediction_records
             [],  # gatekeeper_rejections
             [],  # news
             [],  # challenge_reports
             [],  # coach_reports
             [],  # meeting_log
+            [],  # decision_vault
             1,  # sim_day
             default_market_intelligence_state(),
             [],  # war_room_sessions
@@ -198,3 +204,58 @@ class TestApplyOperatingModeEmergencyStop:
         # Control: confirms the new gate only fires when actually active.
         remaining, _, _ = self._call(operating_mode="executive", emergency_stop_active=False)
         assert remaining == []
+
+
+class TestFlattenedTradesReachTheLearningLoop:
+    """CEO directive "Next Phase: Professional Trading Firm Intelligence,"
+    Phase 2 (Decision Vault coverage expansion). RESEARCH FINDING: a day-
+    end flattened trade (app/trading_modes.py's flatten_day_positions())
+    was appended to trade_history but never passed into
+    _journal_closed_trades() — so it never got a decisionId, a
+    DisciplineReview, or a DecisionVaultEntry, unlike every other real
+    close path. Fixed by merging flattened_trades into the same real
+    closed-trade list hold-duration/broker closes already flow through —
+    no new pipeline, the existing one just wasn't being fed this data.
+    This test exercises the real, full nexus.tick() rather than a unit
+    of _journal_closed_trades() directly, since the bug was specifically
+    in the wiring between them."""
+
+    def test_a_day_flattened_position_gets_a_real_decision_id_discipline_review_and_vault_entry(self) -> None:
+        state = default_state()
+        portfolio = open_position(
+            default_portfolio(),
+            position_id="pos-flatten-test",
+            symbol="AAPL",
+            price=100.0,
+            opened_by="scout",
+            confidence=90.0,
+            opened_sim_minutes=0,
+            side="buy",
+            trading_style="day",
+        )
+        decision = TradeDecision(
+            id="decision-flatten-test",
+            symbol="AAPL",
+            outcome="trade",
+            votes=[],
+            researchSummary="x",
+            technicalSummary="x",
+            fundamentalSummary="x",
+            riskSummary="x",
+            supportingAgents=["scout"],
+            opposingAgents=[],
+            confidence=90.0,
+            finalReasoning="x",
+            createdAt="2026-01-01T00:00:00+00:00",
+        )
+        state = state.model_copy(update={"paper_portfolio": portfolio, "decisions": [decision]})
+
+        # new_time.day != state.time.day (1) triggers is_new_sim_day, the
+        # real condition flatten_day_positions() fires under.
+        result = nexus_tick(state, TimeState(day=2, hour=0, minute=0), 5)
+
+        flattened = next((t for t in result.paper_portfolio.trade_history if t.symbol == "AAPL" and "flattened" in t.reason.lower()), None)
+        assert flattened is not None
+        assert flattened.decision_id == "decision-flatten-test"
+        assert any(r.id == f"discipline-{flattened.id}" for r in result.discipline_reviews)
+        assert any(v.trade_id == flattened.id for v in result.decision_vault)

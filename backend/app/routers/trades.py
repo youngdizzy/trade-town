@@ -13,8 +13,9 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.exit_efficiency import compute_exit_efficiency
 from app.performance_attribution import compute_symbol_performance
 from app.persistence import persist_modules
-from app.schemas import ExitEfficiencySummary, SymbolPerformanceSummary
+from app.schemas import ExitEfficiencySummary, SymbolPerformanceSummary, TradeAttributionSummary
 from app.state import game_state
+from app.trade_attribution import compute_trade_attribution_history
 
 router = APIRouter(prefix="/api/trades", tags=["trades"])
 
@@ -56,3 +57,15 @@ async def get_performance_by_symbol() -> SymbolPerformanceSummary:
     GameSaveState field."""
     state = await game_state.snapshot()
     return compute_symbol_performance(state.paper_portfolio.trade_history)
+
+
+@router.get("/attribution", response_model=TradeAttributionSummary)
+async def get_trade_attribution() -> TradeAttributionSummary:
+    """CEO directive "Next Phase: Professional Trading Firm Intelligence,"
+    Phase 1 (see app/trade_attribution.py). Real per-trade evidence —
+    who advised what, real CEO-override/risk-approval provenance, real
+    execution detail — never a numeric P&L-per-agent credit split (no
+    CEO-authorized methodology for one exists). Computed fresh per
+    request; no new GameSaveState field."""
+    state = await game_state.snapshot()
+    return compute_trade_attribution_history(state.paper_portfolio.trade_history, state.decisions, state.ceo_decisions)
