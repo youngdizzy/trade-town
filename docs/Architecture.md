@@ -8709,6 +8709,214 @@ named stage has a real, tested, documented, live-verified
 implementation, and the Compliance Score itself was never manipulated
 to reach any particular number.
 
+## CEO directive "Session Trading Education & Agent Training" + Final Agent-Trading Investigation
+
+Two linked deliverables, in the order the directive itself required:
+trace the real pipeline and prove — not assume — why agents trade as
+little as they appear to, and separately (research-first, extending
+rather than duplicating) teach agents the real concept of session-aware
+trading while keeping education and live trading decisions genuinely
+separate.
+
+### The investigation, traced end to end with evidence
+
+MARKET DATA (`app/market_data.py`'s `MockMarketDataProvider`, a
+deterministic synthetic GARCH(1,1) walk — this codebase has no real
+market-data API key anywhere) -> RESEARCH -> PROPOSAL
+(`app/executive.py::generate_proposal()`, gated by `app/nexus.py::_generate_trade_proposals()`
+on `FUTURE_TRADE_CONFIDENCE_THRESHOLD = 85.0`, `MAX_PENDING_PROPOSALS = 5`,
+one pending proposal per symbol) -> ANALYST VOTES/CONFIDENCE
+(`app/confidence.py`, `MIN_CONFIDENCE = 55.0`) -> GATEKEEPER
+(`app/gatekeeper.py::evaluate_gatekeeper()`'s 11 real checks,
+`approved = all(c.passed for c in checks)`) -> RISK AUTHORITY
+(`RiskLimits` defaults: `max_open_positions=8`, `risk_per_trade_pct=2.0`,
+`max_drawdown_pct=20.0`) -> GOVERNANCE
+(`app/nexus.py::_apply_operating_mode()`) -> EXECUTION
+(`app/portfolio.py::open_position()`).
+
+Every stage up through the Gatekeeper is real, working, and not
+unusually strict for a fresh company — proposal generation fires
+roughly every 10-45 real seconds across the 4 researchers, and none of
+the Gatekeeper/RiskLimits defaults are pathological for an empty
+portfolio's first few trades. The pipeline's first, controlling stop
+point is `_apply_operating_mode()`'s own literal first line:
+
+```python
+if operating_mode == "learning" or not trade_proposals:
+    return trade_proposals, portfolio, meeting_log
+```
+
+`OperatingMode` defaults to `"learning"` (`app/schemas.py`,
+`operating_mode: OperatingMode = Field(default="learning", ...)`). In
+Learning Mode this function is a complete no-op — every real
+`TradeProposal` sits pending until a real CEO click on
+`POST /api/executive/decide`, exactly as `app/executive.py`'s own module
+docstring and the v0.7 changelog document ("Learning Mode is unchanged
+v0.6.3 behavior — every TradeProposal waits for a real CEO click").
+Unclicked proposals accumulate up to `MAX_PENDING_PROPOSALS = 5`, then
+new research simply stops generating new ones, and any individual
+proposal auto-expires to "wait" after `PROPOSAL_EXPIRY_SIM_MINUTES` (3
+in-game days) regardless of mode.
+
+**Classification: INTENTIONAL BEHAVIOR, not a bug.** This is the CEO
+Delegation feature's own deliberate design — the entire premise of
+Learning Mode is that the player makes every real call. A fresh or
+unattended save showing few or no real trades is this mode working
+exactly as built, not evidence that agents "need to be smarter,"
+Gatekeeper thresholds are too strict, or proposal generation is too
+rare. Per the directive's own instruction — "if the agents are correctly
+waiting, preserve that behavior" — nothing about operating-mode
+defaults, Gatekeeper thresholds, `RiskLimits` defaults, or proposal
+generation cadence was changed by this work. Switching to Assisted or
+Executive Mode, or actively resolving proposals, is the CEO's own real
+lever here — not a code change. A secondary, real observation for any
+future pass: past that gate, `agreement` (more than half of 5
+independent analyst votes) and the single-vote `risk_manager` veto are
+the two most plausible frequent Gatekeeper blockers among the 11 real
+checks — both real, working, intentional conservatism, not bugs either.
+
+### Research first: what already existed
+
+`app/foundational_mentors.py` is the real per-agent curriculum/
+progression system — employees are the students
+(`STUDENT_AGENT_IDS`), auto-graded on their own real
+`DisciplineReview` aptitude, CEO approves graduation. Its
+`market_intelligence` track already had one session lesson
+(`mi-session`, order 5) built on `app/market_intelligence.py`'s real
+`compute_session()` (fixed UTC windows: asian/london/london_ny_overlap/
+new_york/ny_lunch_hour/market_open/market_close/closed) and
+`_SESSION_QUALITY` weights feeding the real Market Quality Score. This
+is where the directive's "extend it, do not create a duplicate Academy"
+rule pointed — `app/education.py`'s 18-lesson curriculum is the
+separate, player-facing system, not the agent one.
+
+`app/decision_vault.py` already stamps a real `session`
+(`TradingSession`) and `market_regime` (`MarketIntelligenceRegime`) on
+every `DecisionVaultEntry` — one per real closed trade. This is the only
+honest substrate for "does this company's own trading actually perform
+differently by session." But `DecisionVaultEntry.strategyId` is `None`
+on every real entry today (that field's own docstring: "no ordinary
+Trading Floor trade links back to a specific Strategy object") and no
+"setup" taxonomy exists anywhere in this codebase. The directive's own
+"SESSION x REGIME x STRATEGY x SETUP x OUTCOME" five-axis framing is
+therefore not honestly buildable from real data yet — building it would
+mean fabricating two axes this codebase's own real state doesn't carry.
+Session evidence in this pass is a real, honest **two-axis** read
+(SESSION x REGIME -> OUTCOME); the STRATEGY/SETUP gap is disclosed here
+and in `app/session_evidence.py`'s own module docstring, never papered
+over.
+
+`app/probability_language.py`'s existing certainty-language audit
+(`audit_model()`, already enforced on the `mark_douglas`/
+`linda_raschke` tracks) was extended to also cover the
+`market_intelligence` track, including all 7 new lessons — every new
+lesson passes the same regression guard against "London is better"
+-style certainty drift.
+
+### What shipped
+
+**Curriculum** (`app/foundational_mentors.py`, `_MARKET_INTELLIGENCE_LESSONS`
+orders 9-15, appended to — never replacing — the existing 8 lessons):
+`mi-session-foundations` (session context is evidence, not a signal —
+teaches the directive's own "session context informs a decision; it
+does not make the decision" line verbatim), `mi-session-asia`,
+`mi-session-london`, `mi-session-new-york`, `mi-session-overlap`
+(explicitly teaches that risk sizing never auto-increases during the
+Overlap — `RiskLimits`/the Gatekeeper remain authoritative regardless of
+session), `mi-session-transitions` (the six real, checkable transition
+questions), and the capstone `mi-session-decision-process`, which
+teaches the real 8-step pipeline (session -> regime -> setup ->
+evidence check -> conditions -> proposal -> Gatekeeper -> execution)
+mapped onto the actual real functions at each step, explicit that steps
+3 through 7 are never skipped. Every wrong quiz answer is wrong for a
+real reason (never a banned-certainty-phrase distractor), matching the
+existing track's own established pattern.
+
+**Real evidence** (`app/session_evidence.py`, new module, no new
+`GameSaveState` field — computed fresh over the already-persisted
+Decision Vault, the same original CAGS convention): `MIN_SESSION_REGIME_SAMPLE
+= 5` disclosed floor; `favorable`/`unfavorable`/`mixed`/
+`not_enough_evidence` states (the same 60%/40% threshold convention
+Features 33/34 already established, reused a fourth time here). New
+`GET /api/market/session-evidence` read-only endpoint; new "Session x
+Regime Evidence" section in the Market Intelligence Command Center
+panel, live-verified showing the real current save's own single closed
+trade correctly reading NOT ENOUGH EVIDENCE.
+
+**Reaching the real decision pipeline, without bypassing governance**:
+the `market_intelligence` department opinion
+(`app/executive_intelligence.py::_market_intelligence_opinion()`) now
+cites the real evidence lookup for the current session/regime pairing
+directly in its `summary`/`evidence` fields — the GOOD-explanation
+format the directive asked for ("N real observations, X% favorable" or
+an honest "NOT ENOUGH EVIDENCE"). This reaches every real proposal
+through the already-real `DepartmentOpinion`/Executive Meeting Log/War
+Room channels. It is deliberately informational only:
+`stance` still derives purely from the real Market Quality tier (proven
+by a dedicated test — a poor-quality proposal stays
+`recommend_waiting` even when the cited session evidence is 100%
+favorable), and neither the Trade Gatekeeper nor `RiskLimits` read this
+evidence at all. `decision_vault` was threaded as a new required
+parameter through `generate_department_opinions()`,
+`generate_meeting_log_entry()`, and `_apply_operating_mode()` and all
+six real call sites (`app/nexus.py` x2, `app/state.py` x2,
+`app/war_room.py`, `app/routers/executive.py` x2) — the same "new
+required parameter threaded through every real call site" discipline
+Feature 35's Company Health wiring already established.
+
+### An honest, disclosed limitation found during verification
+
+`FoundationalMentorState` is built once by `default_foundational_mentor_state()`
+at new-game creation and persisted as-is forever — no sync-on-load
+mechanism anywhere in this codebase merges newly-added code lesson
+content into an existing save's `mentors[].lessons` (confirmed: no
+`foundational_mentor_state` handling exists in `app/persistence.py`;
+the only real mechanism for adding a lesson to an existing save is the
+CEO's own explicit `add_custom_lesson()`). This is a pre-existing
+architectural property of this system, not something this feature
+introduced. Live-verified: the current dev save (created before this
+change) still reads 8 `market_intelligence` lessons; a fresh call to
+`default_foundational_mentor_state()` correctly returns all 15 in
+order. **New games get the new curriculum immediately; existing saves
+do not retroactively gain it.** Not fixed here — building a general
+lesson-content migration/merge system was judged out of scope for this
+pass and is named here rather than silently left undiscovered.
+
+### What was deliberately NOT built (disclosed, not fabricated)
+
+No interactive "you must choose WAIT" training minigame — research
+confirmed neither `app/sandbox.py` (Strategy pipeline stage-gating, no
+decision-branching) nor `app/war_room.py` (evaluates an existing
+proposal's quality, never "should a trade exist at all") has a
+scenario-branching engine to extend; building one from scratch would be
+a large new subsystem, not an extension of something real. No dedicated
+new "session post-trade review" generator — `DecisionVaultEntry`
+already stamps session/regime at trade close and
+`app/session_evidence.py` already aggregates real outcomes over exactly
+that data, so a second review-generation touchpoint would duplicate
+rather than add. No five-axis SESSION x REGIME x STRATEGY x SETUP x
+OUTCOME evidence (see above). No change to `operating_mode` defaults,
+Gatekeeper thresholds, `RiskLimits` defaults, or proposal-generation
+cadence (see the investigation above — the correct action was to leave
+correctly-waiting behavior alone, not manufacture trade frequency).
+
+**Verified**: 25 new/updated backend tests (10 in `test_session_evidence.py`,
+13 in `test_foundational_mentors.py` including a new
+probability-language audit for the `market_intelligence` track, 3 in
+`test_executive_intelligence.py`'s new `TestMarketIntelligenceOpinionSessionEvidence`
+covering the not-enough-evidence path, the sufficient-evidence path, and
+the stance-never-changes guarantee). `mypy app/` (149 files)/`ruff check
+app/ tests/` clean, full backend `pytest -q` (1989 passed; same 6
+pre-existing `test_nexus.py` failures — a stale test helper missing an
+unrelated required argument from an earlier feature, confirmed
+unrelated to and unchanged by this work). `tsc -b --noEmit`/`npm run
+lint`/`npm run build` all clean. Live Playwright verification against
+the real dev stack: `GET /api/market/session-evidence` returned the
+current save's real single closed trade correctly bucketed and reading
+NOT ENOUGH EVIDENCE, and the Market Intelligence panel's new section
+rendered that exact real data — "1 real observation under this regime —
+0% favorable" — matching the API response exactly.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

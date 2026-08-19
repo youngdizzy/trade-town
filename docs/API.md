@@ -1574,6 +1574,28 @@ request from the current real `MarketEnvironmentState`/
 `compute_regime_reconciliation()`) — never a second persisted copy, the
 same convention as `GET /api/goals/priorities`.
 
+### `GET /api/market/session-evidence`
+
+CEO directive "Session Trading Education & Agent Training" — real,
+computed-fresh SESSION x REGIME evidence over this company's own closed
+trades (`app/session_evidence.py`), never a second persisted copy.
+Returns a `SessionRegimeEvidenceSummary`: `buckets:
+SessionRegimeEvidence[]`, one per (`session`, `regime`) pairing this
+company has ever actually closed a real trade under (a pairing never
+seen simply never appears — no fabricated zero-evidence row), each with
+`sampleSize`/`winCount`/`lossCount`/`winRatePct`/`avgPnlPct` and
+`evidenceState` (`favorable`/`unfavorable`/`mixed`/`not_enough_evidence`
+— `not_enough_evidence` below `minSampleSize`, a real disclosed floor of
+5). Deliberately a two-axis read, not the five-axis "session x regime x
+strategy x setup x outcome" the original brief described — `DecisionVaultEntry.strategyId`
+is `None` on every real entry today and no "setup" taxonomy exists
+anywhere in this codebase, so those two axes aren't honestly buildable
+from real data yet (see the module's own docstring for the full
+disclosure). This same evidence is also cited directly in the
+`market_intelligence` department opinion on every real trade proposal
+(`GET /api/executive/intelligence` and the Executive Meeting Log) —
+informational only, never read by the Trade Gatekeeper or `RiskLimits`.
+
 ### `GET /api/market/economic-intelligence` / `GET /api/market/economic-intelligence/reports`
 
 Design Bible Chapter 71 — the Economic Intelligence Center. Read-only, no
@@ -2052,6 +2074,17 @@ broker orders are never force-closed — see `app/emergency_stop.py`'s
 module docstring for the exact enforcement boundary. Both calls write a
 real, permanent Company Memory entry (category `"emergency"`) — this is
 the feature's own "incident report," not a second parallel record.
+
+CEO directive "Session Trading Education & Agent Training" extended the
+`market_intelligence` track's `FoundationalMentorState.mentors[].lessons`
+(carried on `GET /api/load`/the WS `"state"` message, not a dedicated
+GET endpoint) from 8 to 15 real lessons — a 7-lesson session-intelligence
+sub-module (`mi-session-foundations` through `mi-session-decision-process`)
+on top of the existing `mi-session` lesson — using the exact same
+`FoundationalMentorLesson` shape and endpoints below. Note: existing
+saves keep whatever lesson count they were created with (no
+lesson-content sync-on-load exists in this codebase); only a new game
+gets the extended curriculum immediately.
 
 ### `POST /api/foundational-mentors/*`
 

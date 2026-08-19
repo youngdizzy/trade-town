@@ -7,6 +7,48 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Session Trading Education & Agent Training" + Final Agent-Trading Investigation**
+  (`backend/app/foundational_mentors.py`, `backend/app/session_evidence.py`, `backend/app/schemas.py`,
+  `backend/app/executive_intelligence.py`, `backend/app/nexus.py`, `backend/app/state.py`,
+  `backend/app/war_room.py`, `backend/app/routers/executive.py`, `backend/app/routers/market.py`,
+  `backend/tests/test_session_evidence.py`, `backend/tests/test_foundational_mentors.py`,
+  `backend/tests/test_executive_intelligence.py`, `frontend/src/types.ts`, `frontend/src/net/api.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/MarketIntelPanel.tsx`): two linked deliverables. **The
+  investigation**, traced end to end with evidence before any conclusion: the pipeline's first, controlling
+  stop point is `app/nexus.py::_apply_operating_mode()`'s own literal first line, a no-op whenever
+  `operating_mode == "learning"` (the documented default) — every real `TradeProposal` waits for a real CEO
+  click, exactly as this codebase's own v0.6.3 CEO Delegation design intends. **Classification: INTENTIONAL
+  BEHAVIOR, not a bug** — nothing about operating-mode defaults, Gatekeeper thresholds, `RiskLimits` defaults,
+  or proposal-generation cadence was changed; correctly-waiting behavior was preserved, not "fixed." **The
+  curriculum**: research first found the real system to extend — `app/foundational_mentors.py`'s
+  `market_intelligence` track already had one session lesson built on real `compute_session()`/Market Quality
+  Score mechanics. Extended (never duplicated) with 7 new lessons (orders 9-15) covering Asia/London/New
+  York/Overlap/Transitions and a capstone teaching the real 8-step decision process (session → regime → setup
+  → evidence check → conditions → proposal → Gatekeeper → execution), explicit that steps 3-7 are never
+  skipped — all content passing the existing `probability_language` certainty-language audit, newly extended to
+  cover this track too. **The evidence**: new `app/session_evidence.py`, a real, computed-fresh SESSION × REGIME
+  aggregate over the already-persisted Decision Vault (which already stamps real session/regime/pnl per closed
+  trade) — no new `GameSaveState` field. Honestly scoped to two axes: `DecisionVaultEntry.strategyId` is `None`
+  on every real entry today and no "setup" taxonomy exists anywhere in this codebase, so the original five-axis
+  session × regime × strategy × setup × outcome framing isn't buildable from real data yet — disclosed, not
+  fabricated. `MIN_SESSION_REGIME_SAMPLE = 5`; favorable/unfavorable/mixed/not_enough_evidence states. **Reaching
+  the real pipeline without bypassing governance**: the `market_intelligence` department opinion now cites this
+  real evidence in its summary ("N real observations, X% favorable" or "NOT ENOUGH EVIDENCE") on every real
+  proposal — informational only, `stance` still derives purely from the real Market Quality tier (verified: a
+  poor-quality proposal stays `recommend_waiting` even with 100%-favorable cited evidence), and neither the
+  Gatekeeper nor `RiskLimits` read it. New `GET /api/market/session-evidence` endpoint; new "Session × Regime
+  Evidence" Market Intelligence panel section. **Disclosed limitation found during verification**:
+  `FoundationalMentorState` has no lesson-content sync-on-load anywhere in this codebase — existing saves keep
+  whatever lesson count they were created with; only new games get the extended curriculum immediately. **Not
+  built** (disclosed, not fabricated): an interactive WAIT-scenario minigame (no existing scenario-branching
+  engine to extend — `app/sandbox.py`/`app/war_room.py` both presuppose a trade candidate already exists), a
+  dedicated session post-trade-review generator (the Decision Vault + the new evidence module already serve
+  this), and the five-axis evidence model. 25 new/updated tests, `mypy app/` (149 files)/`ruff check app/
+  tests/` clean, full backend suite (1989 passed; same 6 pre-existing `test_nexus.py` failures, confirmed
+  unrelated), `tsc -b --noEmit`/`eslint`/`vite build` clean, live Playwright verification against the real dev
+  stack (the new panel section rendered the real current save's own single closed trade, correctly reading NOT
+  ENOUGH EVIDENCE, matching the API response exactly). Documented in `docs/Architecture.md`.
+
 - **CEO directive "Features 31-35: Compliance, Governance & Continuous Improvement System," Feature 35 —
   Continuous Compliance Improvement Loop** (`backend/app/continuous_improvement.py`, `backend/app/company_health.py`,
   `backend/app/schemas.py`, `backend/app/nexus.py`, `backend/app/state.py`, `backend/app/routers/audit.py`,
