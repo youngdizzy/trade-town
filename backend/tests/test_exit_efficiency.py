@@ -103,3 +103,29 @@ class TestComputeExitEfficiency:
         trade = _trade(pnl_pct=1.0, mae_pct=-1.0, mfe_pct=2.0, closed_sim_minutes=1440 * 3 + 100)
         summary = compute_exit_efficiency([trade])
         assert summary.reads[0].sim_day == 3
+
+    def test_a_real_close_price_beyond_the_tracked_watermark_never_produces_an_out_of_range_capture(self) -> None:
+        # Live-verified real case: mark_to_market's last tick recorded
+        # maePct=-2.32%, but close_position()'s own exit_price realized
+        # pnlPct=-2.42% -- the real close landed beyond the last tracked
+        # watermark. capture_pct must still land in [0, 100], never go
+        # negative.
+        trade = _trade(pnl_pct=-2.42, mae_pct=-2.32, mfe_pct=0.0)
+        summary = compute_exit_efficiency([trade])
+        assert summary.reads[0].capture_pct is not None
+        assert 0.0 <= summary.reads[0].capture_pct <= 100.0
+        # The real close price becomes the new effective worst point, so
+        # this trade closed at the worst point of its own real range.
+        assert summary.reads[0].capture_pct == 0.0
+        assert summary.reads[0].state == "poor_exit"
+
+    def test_a_zero_width_but_genuinely_tracked_range_defensively_reads_full_capture(self) -> None:
+        # maePct/mfePct/pnlPct all equal the same real nonzero value --
+        # not naturally reachable via mark_to_market's own real
+        # invariant (maePct <= 0 <= mfePct always), but the formula must
+        # still behave defensively (never divide by zero, never guess a
+        # fabricated 50%) if it ever is.
+        trade = _trade(pnl_pct=-1.0, mae_pct=-1.0, mfe_pct=-1.0)
+        summary = compute_exit_efficiency([trade])
+        assert summary.reads[0].capture_pct == 100.0
+        assert summary.reads[0].state == "efficient_exit"

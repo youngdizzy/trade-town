@@ -30,13 +30,33 @@ closing reads a real, meaningful `capturePct` exactly like a winning
 trade that gave back most of its peak gain does, with no separate
 win/loss branch needed.
 
+A REAL EDGE CASE, FOUND DURING LIVE VERIFICATION: `maePct`/`mfePct` are
+last updated by `mark_to_market()`'s own tick cadence, while
+`pnlPct` is computed from `close_position()`'s own `exit_price` at the
+actual moment of close (net of the real round-trip transaction cost) —
+two genuinely different points in the tick cycle. A live-verified real
+trade closed at `pnlPct=-2.42%` with a recorded `maePct` of only
+`-2.32%` — the real close price landed slightly beyond the last tracked
+watermark. Rather than let that produce a nonsensical out-of-range
+`capturePct` (it did, briefly: -4.3%), the effective range used for the
+formula is widened to `min(maePct, pnlPct)`..`max(mfePct, pnlPct)` — the
+real range this trade's P&L is actually known to have covered,
+including its own real final point. This is honest, not a fudge: the
+close price IS a real observation of this trade's P&L path, so it
+belongs in the range regardless of whether a mark-to-market tick
+happened to land exactly there first.
+
 THE HONESTY BOUNDARY: `maePct`/`mfePct` both default to `0.0` (see their
 own schema docstrings — a trade closed before this watermark existed,
 or one closed before a single mark-to-market tick ever ran, both read
-identically). `mfePct - maePct == 0.0` is therefore genuinely ambiguous
-between "this trade never really moved" and "no real watermark was ever
-tracked" — this module reports `not_enough_data` rather than guessing
-either way, never a fabricated 50%.
+identically). The RAW `mfePct == maePct == 0.0` (before the close-price
+widening above) is therefore genuinely ambiguous between "this trade
+never really moved" and "no real watermark was ever tracked" — this
+module reports `not_enough_data` rather than guessing either way, never
+a fabricated 50%. (A trade with a real, nonzero, but perfectly flat
+watermark — `maePct == mfePct == pnlPct`, its P&L never moved for the
+entire tracked hold — is real, tracked data, not this ambiguous case,
+and reads a real 100%: it closed at the only point it was ever at.)
 """
 from __future__ import annotations
 
@@ -66,8 +86,14 @@ def _evidence_state(capture_pct: float | None) -> ExitEfficiencyState:
 def compute_exit_efficiency(trade_history: list[PaperTrade]) -> ExitEfficiencySummary:
     reads: list[TradeExitEfficiency] = []
     for trade in trade_history:
-        trade_range = trade.mfe_pct - trade.mae_pct
-        capture_pct = round((trade.pnl_pct - trade.mae_pct) / trade_range * 100.0, 1) if trade_range > 0 else None
+        watermark_tracked = trade.mae_pct != 0.0 or trade.mfe_pct != 0.0
+        if not watermark_tracked:
+            capture_pct = None
+        else:
+            effective_mae = min(trade.mae_pct, trade.pnl_pct)
+            effective_mfe = max(trade.mfe_pct, trade.pnl_pct)
+            trade_range = effective_mfe - effective_mae
+            capture_pct = round((trade.pnl_pct - effective_mae) / trade_range * 100.0, 1) if trade_range > 0 else 100.0
         reads.append(
             TradeExitEfficiency(
                 tradeId=trade.id,
