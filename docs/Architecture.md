@@ -9277,6 +9277,116 @@ outcome of "the checks already exist, so wiring them up seems
 harmless." No such authorization exists in this repository today, so no
 code changes were made.
 
+## CEO directive "Next Phase: Professional Trading Firm Intelligence"
+
+A continuation of the "Next Professional Trading Firm Phase" directive
+above, restated with more explicit phase structure. Phases 1 and 2 below
+are the first implemented under this restated directive; Phases 3+
+(session/regime P&L, Research/Sandbox foundation, the strategy knowledge
+base) are researched and either implemented or explicitly scoped for a
+future pass — see CHANGELOG.md for the phase-by-phase classification.
+
+### Phase 1 — Symbol -> Agent Attribution
+
+**Audit.** Can TradeTown answer "which agent(s) were responsible for
+this trade, and how much P&L should each receive credit for?" Found
+real, permanently-stored per-role evidence never previously unified:
+`TradeDecision.votes` — a real vote (choice + reasoning) from every one
+of the six real analyst seats (`app/executive.py`'s
+`generate_analyst_votes()`: Echo/technical, Scout/news, Nova/macro,
+Sentinel/risk, Pulse/sentiment, Atlas/execution-synthesis), preserved
+forever on the decision record, not just held transiently on the
+resolved proposal. Confirmed by grep: zero P&L-credit-splitting
+methodology anywhere in this codebase — no function, constant, or
+documented convention for dividing a trade's P&L across the agents who
+influenced it.
+
+**What shipped.** `app/trade_attribution.py` (new module) does exactly
+what the directive's own fallback instruction asks for when no
+credit-split methodology exists and inventing one is explicitly
+forbidden — "preserve the original attribution evidence so that
+attribution can be audited later." Joins three real records per trade:
+`TradeDecision.votes` (role reconstructed via the fixed `ROLE_TO_AGENT`
+map), `CeoDecisionRecord` (real CEO-override provenance —
+`agreed_with_ai is False`), and `PaperTrade` (real execution detail,
+including Priority 1's real `entrySlippageBps`/`exitSlippageBps`, and
+final P&L). `AgentContributionRead.agreed_with_side_traded` is a real,
+checkable fact — did this agent's vote match the side actually traded —
+never a credit weight. `evidence_state` is `no_decision_on_record`
+(never fabricated) when `PaperTrade.decisionId` doesn't resolve to a
+real `TradeDecision` still on record (a real, disclosed limit: the
+`decisions` list is capped at 200, `trade_history` at 50 — the decisions
+cap is generously larger, so this should be rare in practice, and this
+module makes no attempt to distinguish "never existed" from "evicted
+first," reporting both identically and honestly). Every record carries a
+fixed `credit_split_note` disclosing exactly why no numeric split exists
+— a structural test (`test_never_computes_or_stores_a_numeric_per_
+agent_pnl_split`) confirms no field on `AgentContributionRead` carries a
+dollar or percentage value, so this can't silently regress into a
+fabricated split later. New `GET /api/trades/attribution` endpoint; new
+"Trade Attribution — Who Advised What" Performance panel section.
+
+**Verified**: 11 new tests (`test_trade_attribution.py`). `mypy app/`
+(154 files)/`ruff check app/ tests/` clean. Live-verified against the
+real dev stack: the endpoint returned a real trade's actual 6-role vote
+breakdown (e.g. Nova/macro dissenting "sell" while the desk traded
+"buy," correctly read as `agreedWithSideTraded: false`) with correct
+`ceoOverrodeTheDesk`/`gatekeeperApproved` fields and the honest
+disclosure string; the Performance panel's new section rendered that
+exact data.
+
+### Phase 2 — Decision Vault coverage expansion
+
+**Audit.** Traced every real trade-CLOSING code path in the codebase
+(not assumed from the schema): `app/broker.py`'s order-book path
+(`place_order()`/`tick_broker()`, covering market/limit/stop/take-profit
+orders) is real, tested code — but `app/trading_modes.py`'s own module
+docstring states plainly, grep-confirmed before this pass: "the ONE
+real, live position-opening call site this codebase has —
+app/executive.py's resolve_proposal()... never through app/broker.py's
+place_order()/tick_broker() path, which is real but confirmed unused by
+any live caller." This means `portfolio.orders` is always empty in real
+gameplay, and `tick_broker()`'s closes are dead code today — a real,
+tested seam for a feature not yet wired to fire, not a live coverage
+gap. The one real, live gap: `app/trading_modes.py`'s
+`flatten_day_positions()` (the day-end forced close for
+`"day"`-tagged positions) appended its trades to `trade_history` but
+`app/nexus.py`'s `tick()` never passed them into `_journal_closed_
+trades()` — the same function every other real close (hold-duration,
+and the broker path if it were ever live) already flows through to get
+a `decisionId`, a `DisciplineReview`, a `CaseStudy`/Failure Review
+classification, and a `DecisionVaultEntry`.
+
+**What shipped.** A minimal, correct extension exactly per the
+directive's own instruction ("extend its existing schema/storage/event
+architecture only where necessary... do NOT rebuild the Decision
+Vault"): `flattened_trades` is now merged into the same real
+closed-trade list passed to `_journal_closed_trades()` — no new
+pipeline, the existing one just wasn't being fed this real data. A new
+`nexus.tick()` integration test (`TestFlattenedTradesReachTheLearningLoop`
+in `test_nexus.py` — the first test in this codebase to exercise the
+real, full `tick()` function rather than a smaller unit, since the bug
+was specifically in the wiring between two of its steps) confirms a
+day-flattened position now gets a real `decisionId`, a real
+`DisciplineReview`, and a real `DecisionVaultEntry`.
+
+**A second, unrelated bug fixed while investigating test failures
+during this pass**: the 6 `test_nexus.py` failures reported as
+"pre-existing, unrelated" throughout this entire session (Directive D's
+Priorities 1, 2, 5, 8 above) turned out to be a genuine bug in the test
+fixtures themselves, not the real code — both `_apply_operating_mode()`
+test call sites were missing the `prediction_records` positional
+argument entirely, silently shifting every subsequent positional
+argument by one and starving the two trailing required parameters
+(`active_weight_profile`/`custom_department_weights`) of a value. Fixed
+both call sites (added the missing `prediction_records` and
+`decision_vault` arguments in their correct positions); the full backend
+suite is now **2059 passed, 0 failed** — the cleanest baseline this
+session has had.
+
+**Verified**: `mypy app/` (154 files)/`ruff check app/ tests/` clean,
+full backend `pytest -q` (2059 passed, 0 failed).
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

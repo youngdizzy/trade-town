@@ -7,6 +7,38 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Next Phase: Professional Trading Firm Intelligence," Phases 1-2 — Trade Attribution
+  Evidence + Decision Vault coverage expansion** (`backend/app/trade_attribution.py`, `backend/app/nexus.py`,
+  `backend/app/routers/trades.py`, `backend/app/schemas.py`, `backend/tests/test_trade_attribution.py`, plus a
+  new full-`nexus.tick()` integration test in `test_nexus.py`, `frontend/src/types.ts`, `frontend/src/net/api.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/PerformancePanel.tsx`): a restated continuation of the
+  directive above, phased explicitly. **Phase 1** audited whether TradeTown can answer "which agents were
+  responsible for this trade, and how much P&L should each get credit for" — found real, permanently-stored
+  per-role evidence (`TradeDecision.votes`, one real vote per each of the six real analyst seats) but confirmed,
+  by grep, zero P&L-credit-splitting methodology anywhere, and the directive explicitly forbids inventing one.
+  Per its own fallback instruction ("preserve the original attribution evidence so it can be audited later"),
+  new `app/trade_attribution.py` joins `TradeDecision.votes` (role reconstructed via the fixed `ROLE_TO_AGENT`
+  map), `CeoDecisionRecord` (real override provenance), and `PaperTrade` (real execution/P&L, including
+  Priority 1's real slippage) into one auditable record per trade — never a numeric split (a structural test
+  confirms no field on the per-agent record carries a dollar or percent value; every record carries a fixed,
+  honest disclosure explaining why). New `GET /api/trades/attribution` endpoint; new "Trade Attribution — Who
+  Advised What" Performance panel section. **Phase 2** traced every real trade-closing path and found
+  `app/broker.py`'s order-book path (market/limit/stop orders) has zero live callers anywhere in the game loop
+  — confirmed via `app/trading_modes.py`'s own module docstring, a real but currently-unreachable path, not a
+  live gap. The one real, live gap: `flatten_day_positions()`'s day-end forced closes were appended to
+  `trade_history` but never routed through `_journal_closed_trades()` — so they never got a `decisionId`, a
+  `DisciplineReview`, a `CaseStudy`, or a `DecisionVaultEntry`, unlike every other real close. Fixed by merging
+  `flattened_trades` into the same real closed-trade list hold-duration closes already flow through — no new
+  pipeline built. **A second bug fixed while investigating test failures during this pass**: the 6
+  `test_nexus.py` failures this entire session has reported as "pre-existing, unrelated" turned out to be a
+  genuine test-fixture bug (both `_apply_operating_mode()` test call sites were missing the
+  `prediction_records` positional argument, silently shifting every argument after it) — not a bug in the real
+  code. Fixed; full backend suite is now **2059 passed, 0 failed**, the cleanest baseline this session has had.
+  22 new/updated tests total, `mypy app/` (154 files)/`ruff check app/ tests/` clean, `tsc -b --noEmit`/`eslint`/
+  `vite build` clean, live-verified against the real dev stack (the attribution endpoint returned a real 6-role
+  vote breakdown with a genuine dissenting vote correctly read as disagreeing; the Performance panel rendered
+  that exact data). Documented in `docs/Architecture.md`.
+
 - **CEO directive "Next Professional Trading Firm Phase," Priority 5 — Research Data Integrity**
   (`backend/app/data_provenance.py`, `backend/app/routers/market.py`, `backend/app/schemas.py`,
   `backend/tests/test_data_provenance.py`, `frontend/src/types.ts`, `frontend/src/net/api.ts`,
