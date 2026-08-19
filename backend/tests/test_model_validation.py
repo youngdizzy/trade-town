@@ -17,6 +17,7 @@ from app.model_validation import (
     _concentration_check,
     _optimization_scrutiny_check,
     _regime_dependence_check,
+    _symbol_robustness_check,
     _temporal_stability_check,
     generate_model_validation_report,
 )
@@ -142,13 +143,13 @@ def _liquidity(*, strategy_id: str = "strategy-1", verdict: str = "favorable") -
         createdAt=_now_iso(),
     )
 
-def _results(count: int, *, trade_count_each: int = 5, expected_value_pct: float = 1.0, strategy_id: str = "strategy-1") -> list[SimulationResult]:
+def _results(count: int, *, trade_count_each: int = 5, expected_value_pct: float = 1.0, strategy_id: str = "strategy-1", symbols: list[str] | None = None) -> list[SimulationResult]:
     return [
         SimulationResult(
             id=f"result-{strategy_id}-{i}",
             strategyId=strategy_id,
             strategyName="Momentum Breakout",
-            symbol="NEXA",
+            symbol=symbols[i % len(symbols)] if symbols else "NEXA",
             totalReturnPct=10.0,
             winRate=60.0,
             maxDrawdownPct=10.0,
@@ -399,9 +400,19 @@ class TestVerdictLogic:
         strategy = _strategy()
         # trade_count_each=15 across 4 runs (2 per chronological half) gives
         # each half 30 real trades — clears the temporal_stability check's
-        # own per-half CERTIFICATION_MIN_TRADE_COUNT floor too.
+        # own per-half CERTIFICATION_MIN_TRADE_COUNT floor too. Two real
+        # symbols (both with the same real positive totalReturnPct=10.0)
+        # so symbol_robustness has real, agreeing evidence to evaluate
+        # rather than reading not_evaluable on a single-symbol sample.
         report = generate_model_validation_report(
-            strategy, _results(4, trade_count_each=15, expected_value_pct=1.0), _monte_carlo(probability_of_ruin_pct=5.0), _regime_test(tested_count=2, any_weak=False), _liquidity(verdict="favorable"), "review-1", 0, sim_day=10
+            strategy,
+            _results(4, trade_count_each=15, expected_value_pct=1.0, symbols=["NEXA", "AAPL"]),
+            _monte_carlo(probability_of_ruin_pct=5.0),
+            _regime_test(tested_count=2, any_weak=False),
+            _liquidity(verdict="favorable"),
+            "review-1",
+            0,
+            sim_day=10,
         )
         assert report.verdict == "approved"
         assert all(c.passed is True for c in report.checks)
@@ -622,3 +633,36 @@ class TestOptimizationScrutinyCheck:
     def test_threshold_source_cites_the_new_disclosed_constant(self) -> None:
         check = _optimization_scrutiny_check([])
         assert "SUSPICIOUS_WIN_RATE_FLOOR_PCT" in check.threshold_source
+
+
+class TestSymbolRobustnessCheck:
+    """CEO directive "Professional Quant Trading Firm — Quant
+    Intelligence + Market Analysis Completion Phase," Phase E — flags a
+    strategy whose real edge only appears on one instrument, reusing
+    each SimulationResult's own real `symbol` rather than a second data
+    pipeline."""
+
+    def test_not_evaluable_with_zero_results(self) -> None:
+        check = _symbol_robustness_check([])
+        assert check.passed is None
+
+    def test_not_evaluable_with_only_one_real_symbol(self) -> None:
+        check = _symbol_robustness_check(_results(4, trade_count_each=5))  # all symbol="NEXA"
+        assert check.passed is None
+
+    def test_passes_when_every_real_symbol_agrees_on_sign(self) -> None:
+        check = _symbol_robustness_check(_results(4, trade_count_each=5, symbols=["NEXA", "AAPL"]))
+        assert check.passed is True
+
+    def test_fails_when_real_symbols_disagree_on_sign(self) -> None:
+        results = [
+            SimulationResult(id="r1", strategyId="strategy-1", strategyName="Momentum Breakout", symbol="NEXA", totalReturnPct=10.0, winRate=60.0, maxDrawdownPct=5.0, sharpeRatio=1.5, sortinoRatio=1.5, tradeCount=20, runBy="quant", completedAt=_now_iso(), expectedValuePct=1.0),  # type: ignore[arg-type]
+            SimulationResult(id="r2", strategyId="strategy-1", strategyName="Momentum Breakout", symbol="AAPL", totalReturnPct=-8.0, winRate=40.0, maxDrawdownPct=15.0, sharpeRatio=-1.0, sortinoRatio=-1.0, tradeCount=20, runBy="quant", completedAt=_now_iso(), expectedValuePct=-1.0),  # type: ignore[arg-type]
+        ]
+        check = _symbol_robustness_check(results)
+        assert check.passed is False
+
+    def test_evidence_names_every_real_symbol(self) -> None:
+        check = _symbol_robustness_check(_results(4, trade_count_each=5, symbols=["NEXA", "AAPL"]))
+        assert "NEXA" in check.evidence
+        assert "AAPL" in check.evidence

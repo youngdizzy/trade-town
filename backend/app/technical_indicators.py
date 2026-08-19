@@ -61,6 +61,19 @@ def sma(candles: list[Candle], period: int) -> float | None:
     return round(sum(c.close for c in window) / period, 4)
 
 
+def sma_series(candles: list[Candle], period: int) -> list[float]:
+    """The real, full SMA series (one value per candle from the point a
+    real `period`-bar window exists onward) — `sma()` above returns just
+    its last value. Same index alignment as `ema_series()` below
+    (`sma_series(candles, period)[0]` is the real SMA "as of" candle
+    index `period - 1`) since both are windowed averages seeded from the
+    same first `period` closes."""
+    if period < 1 or len(candles) < period:
+        return []
+    closes = [c.close for c in candles]
+    return [round(sum(closes[i - period + 1 : i + 1]) / period, 4) for i in range(period - 1, len(closes))]
+
+
 def ema_series(candles: list[Candle], period: int) -> list[float]:
     """The real, full EMA series (one value per candle from the point a
     real seed average exists onward) — `ema()` below returns just its

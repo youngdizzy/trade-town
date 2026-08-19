@@ -1,12 +1,15 @@
 """CEO directive "Professional Trading Firm — Market-Analysis Knowledge
-+ Session Intelligence Expansion," Phases 1-3 — a thin aggregator that
-bundles app/technical_indicators.py's real indicator values and app/
-technical_patterns.py's real pattern/structure reads into one "technical
-desk briefing" for a symbol, so the frontend can fetch one read instead
-of fanning out across many separate requests. No new computation lives
-here — every field is a direct pass-through of an already-real,
-already-tested function from those two modules. Never wired into any
-live trading decision — see those modules' own docstrings for why.
++ Session Intelligence Expansion," Phases 1-3 (extended by "Professional
+Quant Trading Firm — Quant Intelligence + Market Analysis Completion
+Phase," Phase B's real support/resistance levels) — a thin aggregator
+that bundles app/technical_indicators.py's real indicator values and
+app/technical_patterns.py's real pattern/structure reads into one
+"technical desk briefing" for a symbol, so the frontend can fetch one
+read instead of fanning out across many separate requests. No new
+computation lives here — every field is a direct pass-through of an
+already-real, already-tested function from those two modules. Never
+wired into any live trading decision — see those modules' own
+docstrings for why.
 """
 from __future__ import annotations
 
@@ -18,6 +21,7 @@ from app.technical_patterns import (
     detect_candlestick_patterns,
     detect_fair_value_gaps,
     detect_order_block,
+    detect_support_resistance_levels,
     label_swing_structure,
 )
 
@@ -52,4 +56,5 @@ def compute_technical_analysis(symbol: str, candles: list[Candle]) -> TechnicalA
         candlestickPatterns=detect_candlestick_patterns(symbol, candles),
         fibonacci=compute_fibonacci_levels(symbol, candles),
         orderBlock=detect_order_block(symbol, candles),
+        supportResistance=detect_support_resistance_levels(symbol, candles),
     )

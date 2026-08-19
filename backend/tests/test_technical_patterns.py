@@ -8,11 +8,13 @@ from __future__ import annotations
 
 from app.market_data import Candle
 from app.technical_patterns import (
+    MIN_TOUCHES_FOR_LEVEL,
     compute_fibonacci_levels,
     compute_session_range,
     detect_candlestick_patterns,
     detect_fair_value_gaps,
     detect_order_block,
+    detect_support_resistance_levels,
     label_swing_structure,
 )
 
@@ -173,3 +175,37 @@ class TestDetectOrderBlock:
         read = detect_order_block("TEST", _flat(100.0, 5))
         assert read.direction == "none"
         assert read.price_high is None
+
+
+class TestDetectSupportResistanceLevels:
+    def test_not_enough_candles_reads_no_levels(self) -> None:
+        read = detect_support_resistance_levels("TEST", _flat(100.0, 5))
+        assert read.levels == []
+
+    def test_a_real_repeated_swing_low_clusters_into_a_real_support_level(self) -> None:
+        prices = [110, 108, 104, 100, 104, 108, 112, 108, 104, 100, 104, 108, 112, 108, 104, 100, 104, 108, 110]
+        candles = [_candle(o=p, h=p + 1, low=p - 1, c=p, i=i) for i, p in enumerate(prices)]
+        read = detect_support_resistance_levels("TEST", candles)
+        support = next((lv for lv in read.levels if lv.role == "support"), None)
+        assert support is not None
+        assert support.touches >= MIN_TOUCHES_FOR_LEVEL
+        assert support.price == 99.0
+
+    def test_a_single_unconfirmed_swing_never_becomes_a_level(self) -> None:
+        # A real, but non-repeating, swing sequence -- no two swings land
+        # within the real clustering tolerance of each other.
+        prices = [100, 99, 98, 150, 98, 99, 100, 99, 98, 210, 98, 99, 100]
+        candles = [_candle(o=p, h=p + 1, low=p - 1, c=p, i=i) for i, p in enumerate(prices)]
+        read = detect_support_resistance_levels("TEST", candles)
+        assert all(lv.touches >= MIN_TOUCHES_FOR_LEVEL for lv in read.levels)
+
+    def test_role_is_mechanical_relative_to_the_real_current_close(self) -> None:
+        prices = [110, 108, 104, 100, 104, 108, 112, 108, 104, 100, 104, 108, 112, 108, 104, 100, 104, 108, 110]
+        candles = [_candle(o=p, h=p + 1, low=p - 1, c=p, i=i) for i, p in enumerate(prices)]
+        read = detect_support_resistance_levels("TEST", candles)
+        current_close = candles[-1].close
+        for lv in read.levels:
+            if lv.price < current_close:
+                assert lv.role == "support"
+            elif lv.price > current_close:
+                assert lv.role == "resistance"

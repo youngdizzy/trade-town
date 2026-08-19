@@ -96,6 +96,14 @@ module already has on hand rather than any new raw-data pipeline.
     research assumption with no existing in-codebase precedent, held to
     the same honesty standard as `CONCENTRATION_MAX_SINGLE_RUN_SHARE_PCT`
     below.
+  - `symbol_robustness` (CEO directive "Professional Quant Trading
+    Firm — Quant Intelligence + Market Analysis Completion Phase,"
+    Phase E — one of that directive's own explicitly-named checks):
+    flags real sign disagreement in each real symbol's own aggregated
+    `total_return_pct` across `strategy_results` — real profit on some
+    instruments, real loss on others. No new input: `SimulationResult`
+    already carries its own real `symbol`, grouped directly rather than
+    threading a second data pipeline through this function's signature.
 This directive's own Phase 8 also asks to "track number of
 features/signals used, parameter changes, strategy iterations,
 hypotheses tested" — `Strategy` has no such fields, and none of the
@@ -481,6 +489,47 @@ def _optimization_scrutiny_check(strategy_results: list[SimulationResult]) -> Mo
     )
 
 
+def _symbol_robustness_check(strategy_results: list[SimulationResult]) -> ModelValidationCheck:
+    """CEO directive "Professional Quant Trading Firm — Quant
+    Intelligence + Market Analysis Completion Phase," Phase E — real
+    symbol robustness, one of the directive's own explicitly-named
+    anti-overfitting checks. No new input needed: `SimulationResult`
+    already carries its own real `symbol`, so this groups the exact same
+    `strategy_results` every other check here already reads — never a
+    second, parallel per-symbol data pipeline. Distinct from
+    `_regime_dependence_check`: this checks whether the edge survives
+    across DIFFERENT real instruments, not different market regimes on
+    the same instrument."""
+    by_symbol: dict[str, list[SimulationResult]] = {}
+    for r in strategy_results:
+        by_symbol.setdefault(r.symbol, []).append(r)
+    if len(by_symbol) < 2:
+        return ModelValidationCheck(
+            id="symbol_robustness",
+            label="Not A Single-Symbol-Dependent Edge (Anti-Overfitting)",
+            passed=None,
+            evidence=f"Real runs on file for only {len(by_symbol)} real symbol(s) — at least 2 distinct symbols are needed to compare sign agreement.",
+            reasoning="Cannot evaluate symbol robustness with real runs on only one (or zero) real symbols.",
+            thresholdSource="No new threshold — checks real sign agreement of each real symbol's own aggregated total_return_pct",
+        )
+    per_symbol_return = {symbol: sum(r.total_return_pct for r in results) for symbol, results in by_symbol.items()}
+    signs = {v > 0 for v in per_symbol_return.values() if v != 0}
+    passed = len(signs) <= 1
+    returns_summary = ", ".join(f"{symbol}: {value:+.2f}%" for symbol, value in sorted(per_symbol_return.items()))
+    return ModelValidationCheck(
+        id="symbol_robustness",
+        label="Not A Single-Symbol-Dependent Edge (Anti-Overfitting)",
+        passed=passed,
+        evidence=f"Real aggregated return across {len(by_symbol)} real symbol(s): {returns_summary}.",
+        reasoning=(
+            "Real return sign agrees across every real symbol tested — the edge is not a bet on one specific instrument."
+            if passed
+            else "Real return sign disagrees across real symbols tested — real profit on some instruments, real loss on others. A strategy whose edge only appears on one symbol is a real, disclosed overfitting risk, not yet a generalizable edge."
+        ),
+        thresholdSource="No new threshold — checks real sign agreement of each real symbol's own aggregated total_return_pct",
+    )
+
+
 def _compute_verdict(checks: list[ModelValidationCheck], strategy_results: list[SimulationResult]) -> ModelValidationVerdict:
     if not strategy_results:
         return "not_validatable"
@@ -521,6 +570,7 @@ def generate_model_validation_report(
         _concentration_check(strategy_results),
         _regime_dependence_check(regime_test),
         _optimization_scrutiny_check(strategy_results),
+        _symbol_robustness_check(strategy_results),
     ]
     verdict = _compute_verdict(checks, strategy_results)
     passed_count = sum(1 for c in checks if c.passed is True)
@@ -529,7 +579,7 @@ def generate_model_validation_report(
     evidence_summary = f"{passed_count} of {len(checks)} real checks passed, {failed_count} failed, {not_evaluable_count} not yet evaluable — verdict: {verdict}."
     data_sources_and_assumptions = [
         "This report reuses already-computed evidence (Monte Carlo bootstrap, regime test, liquidity validation, real trade/expectancy history) rather than re-deriving statistics from raw data — no separate raw-data pipeline exists in this codebase.",
-        "Every numeric threshold used is a cited reuse of an existing Strategy Lab Certification-gate constant, except regime_dependence (no new threshold) and optimization_scrutiny (SUSPICIOUS_WIN_RATE_FLOOR_PCT, a new disclosed research assumption) — see each check's own thresholdSource.",
+        "Every numeric threshold used is a cited reuse of an existing Strategy Lab Certification-gate constant, except regime_dependence/symbol_robustness (no new threshold, real sign agreement only) and optimization_scrutiny (SUSPICIOUS_WIN_RATE_FLOOR_PCT, a new disclosed research assumption) — see each check's own thresholdSource.",
         "Independence here is organizational/decision independence (Meridian did not author this strategy's research or risk read, and is excluded from serving as this same cycle's Devil's Advocate) — not a claim of statistical independence from the underlying data.",
         "Advisory-only: this verdict does not gate Company Review, the Gatekeeper, Risk Authority, or any Circuit Breaker.",
         "CEO directive 'Market-Analysis Knowledge + Session Intelligence Expansion,' Phase 8 also asks to track feature/signal count, parameter changes, strategy iterations, and hypotheses tested per strategy — Strategy has no such fields and app/sandbox.py's real generation pipeline does not track them today. Not fabricated here; not_trackable_yet, the same disclosure app/process_adherence.py already uses for its own genuinely un-trackable checks.",

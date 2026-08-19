@@ -2880,6 +2880,36 @@ class OrderBlockRead(CamelModel):
     detail: str
 
 
+# CEO directive "Professional Quant Trading Firm — Quant Intelligence +
+# Market Analysis Completion Phase," Phase B — real, static support/
+# resistance levels. Genuinely missing before this: app/confidence.py's
+# own module docstring already disclosed support & resistance as
+# deliberately left out (no computation existed anywhere in this
+# codebase — confirmed by a full grep audit). Reuses
+# app/market_intelligence.py's existing real swing-high/low detection
+# (`_find_swings()`) directly rather than a second swing detector — a
+# "level" here is a real cluster of >= MIN_TOUCHES_FOR_LEVEL swing
+# prices within a real, disclosed price tolerance of each other, never
+# a single, unconfirmed swing point.
+class SupportResistanceLevel(CamelModel):
+    price: float
+    touches: int
+    role: Literal["support", "resistance"]
+    detail: str
+
+
+class SupportResistanceRead(CamelModel):
+    """`role` is real and mechanical — "support" when the real current
+    close sits above the level, "resistance" when below — the same
+    real, standard convention every price-action trader uses, never a
+    claim that the level will actually hold. See
+    app/technical_patterns.py::detect_support_resistance_levels()."""
+
+    symbol: str
+    levels: list[SupportResistanceLevel] = Field(default_factory=list)
+    detail: str
+
+
 # CEO directive "Professional Trading Firm — Market-Analysis Knowledge +
 # Session Intelligence Expansion," Phase 6 — the Confluence Engine
 # (app/signal_correlation.py). RESEARCH FINDING that shaped this: a full
@@ -2913,6 +2943,71 @@ class ConfluenceRead(CamelModel):
     naive_confirmation_count: int = Field(alias="naiveConfirmationCount")
     independent_evidence_count: int = Field(alias="independentEvidenceCount")
     correlated_pairs: list[CorrelatedSignalPair] = Field(default_factory=list, alias="correlatedPairs")
+    detail: str
+
+
+# CEO directive "Professional Quant Trading Firm — Quant Intelligence +
+# Market Analysis Completion Phase," Phase D — the evidence-family
+# confluence layer over INDICATOR/PATTERN signals. Distinct from
+# `ConfluenceRead` above (which operates on the six analyst VOTES) and
+# from app/signal_correlation.py's own module docstring's own audit of
+# THAT layer — this instead groups the raw technical-indicator/pattern
+# signals app/technical_indicators.py and app/technical_patterns.py
+# already compute into real evidence FAMILIES (trend/momentum/volume/
+# liquidity/price-structure/pattern), so "EMA bullish + MACD bullish +
+# Stochastic bullish" reads as ONE real momentum/trend family agreeing,
+# never three independent confirmations. See app/evidence_confluence.py.
+EvidenceFamily = Literal["trend", "momentum", "volume", "liquidity", "price_structure", "pattern", "levels"]
+EvidenceDirection = Literal["bullish", "bearish", "neutral"]
+
+
+class EvidenceSignal(CamelModel):
+    """One real, individually-named signal read — never a bare
+    'bullish'/'bearish' verdict with no disclosed source. `detail`
+    always names the real convention behind the direction (e.g. "RSI
+    read >55, a real, conventional bullish-leaning threshold — never
+    asserted as a TradeTown-validated predictive edge"), the same
+    disclosure discipline `app/technical_indicators.py`'s own `rsi()`
+    docstring already established for its ">70 overbought" convention."""
+
+    name: str
+    family: EvidenceFamily
+    direction: EvidenceDirection
+    detail: str
+
+
+class EvidenceFamilyRead(CamelModel):
+    """One real evidence family's own net read across every real signal
+    assigned to it. `net_direction` is `"neutral"` both when every real
+    signal in the family reads neutral AND when the family's real
+    signals genuinely disagree with each other (a real, disclosed
+    "mixed" case is never silently resolved toward whichever direction
+    has one more vote) — `detail` always distinguishes the two."""
+
+    family: EvidenceFamily
+    signals: list[EvidenceSignal] = Field(default_factory=list)
+    net_direction: EvidenceDirection = Field(alias="netDirection")
+    detail: str
+
+
+class EvidenceConfluenceRead(CamelModel):
+    """`raw_signal_count` is what a naive count would report (every real
+    directional signal found, regardless of family). `independent_
+    family_count` is the real, deduplicated count of DISTINCT evidence
+    families whose own net direction agrees with the majority direction
+    — never higher than the number of real families with any signal at
+    all, and the gap between `raw_signal_count` and this number is the
+    real point of this read, the same "quality of evidence, not
+    quantity" discipline `app/signal_correlation.py` already established
+    one layer up (over analyst votes rather than raw indicator/pattern
+    signals)."""
+
+    symbol: str
+    families: list[EvidenceFamilyRead] = Field(default_factory=list)
+    raw_signal_count: int = Field(alias="rawSignalCount")
+    independent_family_count: int = Field(alias="independentFamilyCount")
+    majority_direction: EvidenceDirection = Field(alias="majorityDirection")
+    agreeing_families: list[EvidenceFamily] = Field(default_factory=list, alias="agreeingFamilies")
     detail: str
 
 
@@ -2954,6 +3049,7 @@ class TechnicalAnalysisRead(CamelModel):
     candlestick_patterns: CandlestickPatternRead = Field(alias="candlestickPatterns")
     fibonacci: FibonacciRead
     order_block: OrderBlockRead = Field(alias="orderBlock")
+    support_resistance: SupportResistanceRead = Field(alias="supportResistance")
 
 
 class VolatilityRead(CamelModel):
@@ -3357,6 +3453,182 @@ class EmaPullbackResearchResult(CamelModel):
     breakout_size_breakdown: list[EmaPullbackStatsBucket] = Field(default_factory=list, alias="breakoutSizeBreakdown")
     confirmed_vs_naive_baseline: list[EmaPullbackStatsBucket] = Field(default_factory=list, alias="confirmedVsNaiveBaseline")
     source_claim_comparison: EmaPullbackSourceClaimComparison = Field(alias="sourceClaimComparison")
+    model_validation: ModelValidationReport | None = Field(default=None, alias="modelValidation")
+    monte_carlo: StrategyMonteCarloResult | None = Field(default=None, alias="monteCarlo")
+    data_honesty_note: str = Field(alias="dataHonestyNote")
+    generated_at: str = Field(alias="generatedAt")
+
+
+# CEO directive "Professional Quant Trading Firm — Quant Intelligence +
+# Market Analysis Completion Phase," Phase F — the English-language
+# strategy compiler. Every field here is a real, structured, versioned,
+# reproducible representation — never a natural-language string treated
+# as if it were precise. See app/strategy_compiler.py's module docstring
+# for the full deterministic compilation approach (a real pattern-
+# matcher against a disclosed known vocabulary, never an LLM guess) and
+# app/strategy_engine.py for how a CompiledStrategyDefinition is
+# actually replayed against real candle history.
+StrategyIndicatorName = Literal[
+    "price_close", "price_open", "price_high", "price_low", "sma", "ema", "rsi", "macd_line", "macd_signal", "macd_histogram", "stochastic_percent_k", "stochastic_percent_d", "atr", "vwap"
+]
+
+
+class StrategyIndicatorRef(CamelModel):
+    """One real, computable value at a given bar — either a raw OHLC
+    field or a named indicator from app/technical_indicators.py (the one
+    authoritative implementation; this DSL never re-derives its own
+    indicator math). `period` is required for every indicator except
+    vwap and the raw price fields."""
+
+    indicator: StrategyIndicatorName
+    period: int | None = None
+
+
+StrategyConditionOperator = Literal["gt", "gte", "lt", "lte", "eq", "crosses_above", "crosses_below"]
+
+
+class StrategyCondition(CamelModel):
+    """One real, evaluable boolean condition comparing a real indicator
+    value against either another real indicator value or a literal
+    threshold. `crosses_above`/`crosses_below` are real, checkable
+    two-bar transitions (true only on the bar where the relationship
+    just flipped), never a same-bar snapshot mislabeled as a cross."""
+
+    id: str
+    left: StrategyIndicatorRef
+    operator: StrategyConditionOperator
+    right_indicator: StrategyIndicatorRef | None = Field(default=None, alias="rightIndicator")
+    right_value: float | None = Field(default=None, alias="rightValue")
+    detail: str
+
+
+StrategySequenceStepType = Literal["initial_state", "trigger", "requirement", "entry"]
+CandleDirection = Literal["bullish", "bearish"]
+
+
+class StrategySequenceStep(CamelModel):
+    """One real, ordered step in the strategy's own real sequence — the
+    literal state-machine shape the CEO's own worked example describes
+    (INITIAL CONDITION -> TRIGGER -> PULLBACK -> ENTRY), not flattened
+    into a single AND-of-conditions filter, which would silently discard
+    the real sequential/stateful meaning of "wait for X, THEN Y."
+    `requirement` steps (e.g. "at least two bearish candles") carry
+    `min_consecutive_bars` + `candle_direction` rather than a
+    `StrategyCondition`, since a consecutive-count requirement is a
+    real, different shape of check than a same-bar comparison."""
+
+    id: str
+    step_type: StrategySequenceStepType = Field(alias="stepType")
+    condition: StrategyCondition | None = None
+    min_consecutive_bars: int | None = Field(default=None, alias="minConsecutiveBars")
+    candle_direction: CandleDirection | None = Field(default=None, alias="candleDirection")
+    detail: str
+
+
+StrategyStopMethod = Literal["chandelier", "swing_level", "fixed_percent"]
+
+
+class StrategyStopSpec(CamelModel):
+    """A real, named, reproducible stop-placement method — never a bare
+    number with no disclosed derivation. `chandelier` reuses the exact
+    same real formula app/ema_pullback_research.py's own Chandelier Stop
+    uses (`atr_period`/`atr_multiplier` params); `swing_level` places the
+    stop at the real leg extreme the sequence's own trigger step
+    established (no separate params needed); `fixed_percent` is a real,
+    simple percent-of-entry-price distance, disclosed as the least
+    market-structure-aware of the three."""
+
+    method: StrategyStopMethod
+    atr_period: int | None = Field(default=None, alias="atrPeriod")
+    atr_multiplier: float | None = Field(default=None, alias="atrMultiplier")
+    percent: float | None = None
+
+
+StrategyTargetMethod = Literal["r_multiple", "fixed_percent"]
+
+
+class StrategyTargetSpec(CamelModel):
+    method: StrategyTargetMethod
+    value: float
+
+
+class StrategyAmbiguity(CamelModel):
+    """One real, disclosed piece of source text this compiler
+    deliberately refused to silently convert into an invented threshold
+    — per the directive's own explicit rule: "the compiler must NOT
+    silently invent arbitrary thresholds... mark the strategy as
+    ambiguous... prevent a supposedly precise backtest until the
+    ambiguity is resolved." `suggested_resolution` is a real, disclosed
+    hint (e.g. "specify a numeric ATR multiple"), never an auto-applied
+    default."""
+
+    phrase: str
+    context: str
+    reason: str
+    suggested_resolution: str | None = Field(default=None, alias="suggestedResolution")
+
+
+CompiledStrategyStatus = Literal["compiled", "ambiguous", "invalid"]
+
+
+class CompiledStrategyDefinition(CamelModel):
+    """The one real, structured, versioned, reproducible representation
+    a compiled strategy takes — deterministic, auditable, and directly
+    backtestable by app/strategy_engine.py. `source_text` preserves the
+    CEO's/agent's own original English exactly, so every compiled field
+    below can be audited back against what was actually said.
+    `status == "compiled"` is the only status app/strategy_engine.py
+    will ever backtest — "ambiguous"/"invalid" definitions are real,
+    disclosed, blocked states, never silently backtested with invented
+    values filled in."""
+
+    id: str
+    name: str
+    source_text: str = Field(alias="sourceText")
+    version: int
+    created_by: AgentId = Field(alias="createdBy")
+    created_at: str = Field(alias="createdAt")
+    timeframe: str
+    sequence: list[StrategySequenceStep] = Field(default_factory=list)
+    stop: StrategyStopSpec | None = None
+    target: StrategyTargetSpec | None = None
+    ambiguities: list[StrategyAmbiguity] = Field(default_factory=list)
+    status: CompiledStrategyStatus
+    detail: str
+
+
+class CompileStrategyRequest(CamelModel):
+    name: str
+    source_text: str = Field(alias="sourceText")
+    timeframe: str = "1h"
+    # Compilation itself is stateless (computed fresh every call, the
+    # same CAGS convention every other new read this codebase adds
+    # follows) — this codebase does not yet persist compiled strategy
+    # definitions. A caller re-compiling a strategy it already tracks
+    # elsewhere (e.g. a future persistence layer) can pass the prior
+    # version here to get a real, incremented `version` on the result;
+    # omitted, a fresh compile always reads version 1.
+    previous_version: int | None = Field(default=None, alias="previousVersion")
+
+
+class CompiledStrategyBacktestResult(CamelModel):
+    """A real bar-by-bar replay of one `CompiledStrategyDefinition`
+    (status == "compiled" only) against real (mock) candle history —
+    the same real per-symbol trade-record/bucket-aggregation shape
+    app/ema_pullback_research.py already established, reused directly
+    rather than re-invented, so every compiled strategy's results are
+    directly comparable to that same reference strategy's own real
+    numbers."""
+
+    id: str
+    definition_id: str = Field(alias="definitionId")
+    definition_version: int = Field(alias="definitionVersion")
+    symbols_tested: list[str] = Field(alias="symbolsTested")
+    timeframe: str
+    candles_per_symbol: int = Field(alias="candlesPerSymbol")
+    overall: EmaPullbackStatsBucket
+    session_breakdown: list[EmaPullbackStatsBucket] = Field(default_factory=list, alias="sessionBreakdown")
+    instrument_breakdown: list[EmaPullbackStatsBucket] = Field(default_factory=list, alias="instrumentBreakdown")
     model_validation: ModelValidationReport | None = Field(default=None, alias="modelValidation")
     monte_carlo: StrategyMonteCarloResult | None = Field(default=None, alias="monteCarlo")
     data_honesty_note: str = Field(alias="dataHonestyNote")

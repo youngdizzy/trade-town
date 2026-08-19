@@ -162,18 +162,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from statistics import median
 
+from app.backtest_primitives import aggregate_bucket, breakout_candle_range_ratio, chandelier_stop, ema_at, regime_trend_at, regime_volatility_at, simulate_exit
 from app.market_data import Candle, market_data_provider
 from app.market_intelligence import _session_for_hour
 from app.model_validation import generate_model_validation_report
 from app.schemas import (
-    EmaPullbackRegimeTrend,
-    EmaPullbackRegimeVolatility,
     EmaPullbackResearchResult,
     EmaPullbackSourceClaimComparison,
-    EmaPullbackStatsBucket,
-    EmaPullbackTradeOutcome,
     EmaPullbackTradeRecord,
     ModelValidationReport,
     SimulationResult,
@@ -247,84 +243,9 @@ class _Setup:
     breakout_extended: bool
 
 
-@dataclass
-class _ExitResult:
-    outcome: EmaPullbackTradeOutcome
-    exit_price: float | None
-    r_multiple_realized: float
-    mae_r: float
-    mfe_r: float
-
-
-def _ema_at(ema_vals: list[float], period: int, index: int) -> float | None:
-    k = index - period + 1
-    return ema_vals[k] if 0 <= k < len(ema_vals) else None
-
-
-def _atr_at(atr_vals: list[float], period: int, index: int) -> float | None:
-    k = index - period
-    return atr_vals[k] if 0 <= k < len(atr_vals) else None
-
-
 def _hour_of(candle: Candle) -> float:
     ts = datetime.fromisoformat(candle.timestamp)
     return ts.hour + ts.minute / 60.0
-
-
-def _regime_trend_at(ema50: list[float], index: int) -> EmaPullbackRegimeTrend:
-    now = _ema_at(ema50, EMA_PERIOD, index - 1)
-    then = _ema_at(ema50, EMA_PERIOD, index - 1 - TREND_SLOPE_LOOKBACK)
-    if now is None or then is None or then == 0:
-        return "ranging"
-    pct_change = (now - then) / abs(then) * 100
-    if pct_change > TREND_SLOPE_THRESHOLD_PCT:
-        return "trending_up"
-    if pct_change < -TREND_SLOPE_THRESHOLD_PCT:
-        return "trending_down"
-    return "ranging"
-
-
-def _regime_volatility_at(atr_general: list[float], index: int) -> EmaPullbackRegimeVolatility:
-    now = _atr_at(atr_general, GENERAL_ATR_PERIOD, index - 1)
-    if now is None:
-        return "normal"
-    k = (index - 1) - GENERAL_ATR_PERIOD
-    window = atr_general[max(0, k - VOLATILITY_MEDIAN_LOOKBACK + 1) : k + 1]
-    if len(window) < 5:
-        return "normal"
-    baseline = median(window)
-    if baseline <= 0:
-        return "normal"
-    ratio = now / baseline
-    if ratio >= VOLATILITY_HIGH_RATIO:
-        return "high"
-    if ratio <= VOLATILITY_LOW_RATIO:
-        return "low"
-    return "normal"
-
-
-def _breakout_ratio(candles: list[Candle], confirmation_index: int) -> float:
-    window_start = max(0, confirmation_index - RECENT_RANGE_LOOKBACK)
-    window = candles[window_start:confirmation_index]
-    if not window:
-        return 1.0
-    avg_range = sum(c.high - c.low for c in window) / len(window)
-    if avg_range <= 0:
-        return 1.0
-    breakout_range = candles[confirmation_index].high - candles[confirmation_index].low
-    return round(breakout_range / avg_range, 3)
-
-
-def _chandelier_stop(candles: list[Candle], atr_chandelier: list[float], entry_index: int, direction: str) -> float | None:
-    atr_value = _atr_at(atr_chandelier, CHANDELIER_ATR_PERIOD, entry_index - 1)
-    if atr_value is None:
-        return None
-    window = candles[max(0, entry_index - CHANDELIER_ATR_PERIOD) : entry_index]
-    if not window:
-        return None
-    if direction == "long":
-        return round(max(c.high for c in window) - CHANDELIER_ATR_MULTIPLIER * atr_value, 4)
-    return round(min(c.low for c in window) + CHANDELIER_ATR_MULTIPLIER * atr_value, 4)
 
 
 def _detect_setups(candles: list[Candle], ema50: list[float]) -> list[_Setup]:
@@ -341,8 +262,8 @@ def _detect_setups(candles: list[Candle], ema50: list[float]) -> list[_Setup]:
 
     for i in range(EMA_PERIOD, len(candles)):
         c = candles[i]
-        ema_now = _ema_at(ema50, EMA_PERIOD, i)
-        ema_prev = _ema_at(ema50, EMA_PERIOD, i - 1)
+        ema_now = ema_at(ema50, EMA_PERIOD, i)
+        ema_prev = ema_at(ema50, EMA_PERIOD, i - 1)
         if ema_now is None or ema_prev is None:
             continue
 
@@ -357,7 +278,7 @@ def _detect_setups(candles: list[Candle], ema50: list[float]) -> list[_Setup]:
                 j = i - 1
                 target_below = crossed_up
                 while j >= EMA_PERIOD:
-                    ema_j = _ema_at(ema50, EMA_PERIOD, j)
+                    ema_j = ema_at(ema50, EMA_PERIOD, j)
                     if ema_j is None:
                         break
                     on_side = candles[j].close < ema_j if target_below else candles[j].close > ema_j
@@ -396,7 +317,7 @@ def _detect_setups(candles: list[Candle], ema50: list[float]) -> list[_Setup]:
                 confirmation_level = leg_extreme
                 broke = c.close > confirmation_level if direction == "long" else c.close < confirmation_level
                 if broke:
-                    ratio = _breakout_ratio(candles, i)
+                    ratio = breakout_candle_range_ratio(candles, i, recent_range_lookback=RECENT_RANGE_LOOKBACK)
                     entry_index = i + 1
                     if entry_index < len(candles):
                         setups.append(
@@ -424,7 +345,7 @@ def _detect_setups(candles: list[Candle], ema50: list[float]) -> list[_Setup]:
         if phase == "awaiting_breakout":
             broke = c.close > confirmation_level if direction == "long" else c.close < confirmation_level
             if broke:
-                ratio = _breakout_ratio(candles, i)
+                ratio = breakout_candle_range_ratio(candles, i, recent_range_lookback=RECENT_RANGE_LOOKBACK)
                 entry_index = i + 1
                 if entry_index < len(candles):
                     setups.append(
@@ -456,8 +377,8 @@ def _detect_naive_crosses(candles: list[Candle], ema50: list[float]) -> list[_Se
     bars_above = 0
     for i in range(EMA_PERIOD, len(candles)):
         c = candles[i]
-        ema_now = _ema_at(ema50, EMA_PERIOD, i)
-        ema_prev = _ema_at(ema50, EMA_PERIOD, i - 1)
+        ema_now = ema_at(ema50, EMA_PERIOD, i)
+        ema_prev = ema_at(ema50, EMA_PERIOD, i - 1)
         if ema_now is None or ema_prev is None:
             continue
         crossed_up = candles[i - 1].close <= ema_prev and c.close > ema_now
@@ -487,30 +408,6 @@ def _detect_naive_crosses(candles: list[Candle], ema50: list[float]) -> list[_Se
     return setups
 
 
-def _simulate_exit(direction: str, entry_price: float, stop_price: float, target_price: float, path: list[Candle]) -> _ExitResult:
-    risk = abs(entry_price - stop_price)
-    if risk <= 0:
-        return _ExitResult(outcome="open", exit_price=None, r_multiple_realized=0.0, mae_r=0.0, mfe_r=0.0)
-    mae = 0.0
-    mfe = 0.0
-    for bar in path:
-        adverse = (entry_price - bar.low) if direction == "long" else (bar.high - entry_price)
-        favorable = (bar.high - entry_price) if direction == "long" else (entry_price - bar.low)
-        mae = max(mae, adverse)
-        mfe = max(mfe, favorable)
-        stop_hit = bar.low <= stop_price if direction == "long" else bar.high >= stop_price
-        target_hit = bar.high >= target_price if direction == "long" else bar.low <= target_price
-        if stop_hit:
-            # Conservative convention: a bar that touches both the stop
-            # and the target is scored as the stop, never the more
-            # favorable outcome.
-            return _ExitResult(outcome="loss", exit_price=stop_price, r_multiple_realized=-1.0, mae_r=round(mae / risk, 3), mfe_r=round(mfe / risk, 3))
-        if target_hit:
-            r = (target_price - entry_price) / risk if direction == "long" else (entry_price - target_price) / risk
-            return _ExitResult(outcome="win", exit_price=target_price, r_multiple_realized=round(r, 3), mae_r=round(mae / risk, 3), mfe_r=round(mfe / risk, 3))
-    return _ExitResult(outcome="open", exit_price=None, r_multiple_realized=0.0, mae_r=round(mae / risk, 3), mfe_r=round(mfe / risk, 3))
-
-
 def _build_trade_records(
     symbol: str,
     candles: list[Candle],
@@ -522,7 +419,7 @@ def _build_trade_records(
 ) -> list[EmaPullbackTradeRecord]:
     records: list[EmaPullbackTradeRecord] = []
     for setup in setups:
-        stop_price = _chandelier_stop(candles, atr_chandelier, setup.entry_index, setup.direction)
+        stop_price = chandelier_stop(candles, atr_chandelier, setup.entry_index, setup.direction, atr_period=CHANDELIER_ATR_PERIOD, atr_multiplier=CHANDELIER_ATR_MULTIPLIER)
         if stop_price is None:
             continue
         entry_price = setup.entry_price
@@ -531,7 +428,7 @@ def _build_trade_records(
             continue
         target_price = entry_price + r_multiple * risk if setup.direction == "long" else entry_price - r_multiple * risk
         path = candles[setup.entry_index + 1 : setup.entry_index + 1 + MAX_HOLD_BARS]
-        exit_result = _simulate_exit(setup.direction, entry_price, stop_price, target_price, path)
+        exit_result = simulate_exit(setup.direction, entry_price, stop_price, target_price, path)
         entry_candle = candles[setup.entry_index]
         records.append(
             EmaPullbackTradeRecord(
@@ -545,8 +442,8 @@ def _build_trade_records(
                 outcome=exit_result.outcome,
                 rMultipleRealized=exit_result.r_multiple_realized,
                 entrySession=_session_for_hour(_hour_of(entry_candle)),
-                regimeTrend=_regime_trend_at(ema50, setup.entry_index),
-                regimeVolatility=_regime_volatility_at(atr_general, setup.entry_index),
+                regimeTrend=regime_trend_at(ema50, EMA_PERIOD, setup.entry_index, slope_lookback=TREND_SLOPE_LOOKBACK, slope_threshold_pct=TREND_SLOPE_THRESHOLD_PCT),
+                regimeVolatility=regime_volatility_at(atr_general, GENERAL_ATR_PERIOD, setup.entry_index, median_lookback=VOLATILITY_MEDIAN_LOOKBACK, high_ratio=VOLATILITY_HIGH_RATIO, low_ratio=VOLATILITY_LOW_RATIO),
                 breakoutCandleExtended=setup.breakout_extended,
                 breakoutCandleRangeRatio=setup.breakout_range_ratio,
                 maeR=exit_result.mae_r,
@@ -554,70 +451,6 @@ def _build_trade_records(
             )
         )
     return records
-
-
-def _aggregate_bucket(label: str, trades: list[EmaPullbackTradeRecord]) -> EmaPullbackStatsBucket:
-    closed = [t for t in trades if t.outcome != "open"]
-    wins = [t for t in closed if t.outcome == "win"]
-    losses = [t for t in closed if t.outcome == "loss"]
-    open_trades = [t for t in trades if t.outcome == "open"]
-    trade_count = len(trades)
-    if not closed:
-        return EmaPullbackStatsBucket(
-            label=label,
-            tradeCount=trade_count,
-            winCount=0,
-            lossCount=0,
-            openCount=len(open_trades),
-            detail=f"No real closed trades in this bucket ({trade_count} total, {len(open_trades)} still open at the end of the tested history).",
-        )
-    win_rate_pct = round(len(wins) / len(closed) * 100, 1)
-    avg_win_r = round(sum(t.r_multiple_realized for t in wins) / len(wins), 3) if wins else 0.0
-    avg_loss_r = round(sum(abs(t.r_multiple_realized) for t in losses) / len(losses), 3) if losses else 0.0
-    expectancy_r = round((len(wins) / len(closed)) * avg_win_r - (len(losses) / len(closed)) * avg_loss_r, 3)
-    gross_win = sum(t.r_multiple_realized for t in wins)
-    gross_loss = sum(abs(t.r_multiple_realized) for t in losses)
-    profit_factor = round(gross_win / gross_loss, 3) if gross_loss > 0 else (round(gross_win, 3) if gross_win > 0 else 0.0)
-
-    cumulative = 0.0
-    peak = 0.0
-    max_drawdown = 0.0
-    longest_streak = 0
-    current_streak = 0
-    for t in sorted(closed, key=lambda x: x.entry_timestamp):
-        cumulative += t.r_multiple_realized
-        peak = max(peak, cumulative)
-        max_drawdown = min(max_drawdown, cumulative - peak)
-        if t.outcome == "loss":
-            current_streak += 1
-            longest_streak = max(longest_streak, current_streak)
-        else:
-            current_streak = 0
-
-    verdict: str | None = "enough_evidence" if len(closed) >= MIN_TRADES_FOR_BUCKET_VERDICT else "not_enough_evidence"
-    detail = (
-        f"{len(closed)} real closed trade(s) ({len(wins)} win, {len(losses)} loss, {len(open_trades)} still open) — "
-        f"win rate {win_rate_pct}%, expectancy {expectancy_r:+.2f}R."
-    )
-    if verdict == "not_enough_evidence":
-        detail += f" Below the {MIN_TRADES_FOR_BUCKET_VERDICT}-trade bar this module uses for a bucket-level read — treat as a preliminary signal only."
-
-    return EmaPullbackStatsBucket(
-        label=label,
-        tradeCount=trade_count,
-        winCount=len(wins),
-        lossCount=len(losses),
-        openCount=len(open_trades),
-        winRatePct=win_rate_pct,
-        avgWinR=avg_win_r,
-        avgLossR=avg_loss_r,
-        expectancyR=expectancy_r,
-        profitFactor=profit_factor,
-        maxDrawdownR=round(abs(max_drawdown), 3),
-        longestLosingStreak=longest_streak,
-        verdict=verdict,  # type: ignore[arg-type]
-        detail=detail,
-    )
 
 
 def run_ema_pullback_research(
@@ -657,41 +490,41 @@ def run_ema_pullback_research(
         naive_setups = _detect_naive_crosses(candles, ema50)
         naive_trades.extend(_build_trade_records(symbol, candles, naive_setups, ema50, atr_chandelier, atr_general, REFERENCE_R_MULTIPLE))
 
-    r_multiple_sweep = [_aggregate_bucket(f"{r:g}R", all_trades_by_r[r]) for r in R_MULTIPLES_TESTED]
+    r_multiple_sweep = [aggregate_bucket(f"{r:g}R", all_trades_by_r[r], min_trades_for_verdict=MIN_TRADES_FOR_BUCKET_VERDICT) for r in R_MULTIPLES_TESTED]
 
     session_buckets: dict[str, list[EmaPullbackTradeRecord]] = {}
     for t in reference_trades:
         session_buckets.setdefault(t.entry_session, []).append(t)
-    session_breakdown = [_aggregate_bucket(session, trades) for session, trades in sorted(session_buckets.items())]
+    session_breakdown = [aggregate_bucket(session, trades, min_trades_for_verdict=MIN_TRADES_FOR_BUCKET_VERDICT) for session, trades in sorted(session_buckets.items())]
 
     trend_buckets: dict[str, list[EmaPullbackTradeRecord]] = {}
     for t in reference_trades:
         trend_buckets.setdefault(t.regime_trend, []).append(t)
-    regime_trend_breakdown = [_aggregate_bucket(trend, trades) for trend, trades in sorted(trend_buckets.items())]
+    regime_trend_breakdown = [aggregate_bucket(trend, trades, min_trades_for_verdict=MIN_TRADES_FOR_BUCKET_VERDICT) for trend, trades in sorted(trend_buckets.items())]
 
     vol_buckets: dict[str, list[EmaPullbackTradeRecord]] = {}
     for t in reference_trades:
         vol_buckets.setdefault(t.regime_volatility, []).append(t)
-    regime_volatility_breakdown = [_aggregate_bucket(vol, trades) for vol, trades in sorted(vol_buckets.items())]
+    regime_volatility_breakdown = [aggregate_bucket(vol, trades, min_trades_for_verdict=MIN_TRADES_FOR_BUCKET_VERDICT) for vol, trades in sorted(vol_buckets.items())]
 
     instrument_buckets: dict[str, list[EmaPullbackTradeRecord]] = {}
     for t in reference_trades:
         instrument_buckets.setdefault(t.symbol, []).append(t)
-    instrument_breakdown = [_aggregate_bucket(sym, trades) for sym, trades in sorted(instrument_buckets.items())]
+    instrument_breakdown = [aggregate_bucket(sym, trades, min_trades_for_verdict=MIN_TRADES_FOR_BUCKET_VERDICT) for sym, trades in sorted(instrument_buckets.items())]
 
     extended = [t for t in reference_trades if t.breakout_candle_extended]
     normal = [t for t in reference_trades if not t.breakout_candle_extended]
     breakout_size_breakdown = [
-        _aggregate_bucket(f"extended (range >= {EXTENDED_BREAKOUT_RANGE_RATIO:g}x recent avg)", extended),
-        _aggregate_bucket("normal", normal),
+        aggregate_bucket(f"extended (range >= {EXTENDED_BREAKOUT_RANGE_RATIO:g}x recent avg)", extended, min_trades_for_verdict=MIN_TRADES_FOR_BUCKET_VERDICT),
+        aggregate_bucket("normal", normal, min_trades_for_verdict=MIN_TRADES_FOR_BUCKET_VERDICT),
     ]
 
     confirmed_vs_naive_baseline = [
-        _aggregate_bucket("confirmed (pullback + breakout)", reference_trades),
-        _aggregate_bucket("naive (EMA cross only, no confirmation)", naive_trades),
+        aggregate_bucket("confirmed (pullback + breakout)", reference_trades, min_trades_for_verdict=MIN_TRADES_FOR_BUCKET_VERDICT),
+        aggregate_bucket("naive (EMA cross only, no confirmation)", naive_trades, min_trades_for_verdict=MIN_TRADES_FOR_BUCKET_VERDICT),
     ]
 
-    tradetown_bucket = _aggregate_bucket("reference", reference_trades)
+    tradetown_bucket = aggregate_bucket("reference", reference_trades, min_trades_for_verdict=MIN_TRADES_FOR_BUCKET_VERDICT)
     closed_reference = [t for t in reference_trades if t.outcome != "open"]
     source_claim_comparison = EmaPullbackSourceClaimComparison(
         sourceClaimTradeCount=SOURCE_CLAIM_TRADE_COUNT,

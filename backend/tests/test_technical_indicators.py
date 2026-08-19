@@ -8,7 +8,7 @@ formula exactly on a hand-checkable fixture.
 from __future__ import annotations
 
 from app.market_data import Candle
-from app.technical_indicators import atr, atr_series, ema, macd, rsi, sma, stochastic, vwap
+from app.technical_indicators import atr, atr_series, ema, macd, rsi, sma, sma_series, stochastic, vwap
 
 
 def _candle(*, close: float, high: float | None = None, low: float | None = None, volume: float = 100.0, i: int = 0) -> Candle:
@@ -32,6 +32,22 @@ class TestSma:
     def test_uses_only_the_trailing_window_not_the_whole_series(self) -> None:
         candles = _candles([1000.0, 1000.0, 10.0, 20.0, 30.0])
         assert sma(candles, period=3) == round((10.0 + 20.0 + 30.0) / 3, 4)
+
+
+class TestSmaSeries:
+    def test_empty_with_insufficient_candles(self) -> None:
+        assert sma_series(_candles([1.0, 2.0]), period=5) == []
+
+    def test_last_value_matches_sma(self) -> None:
+        candles = _candles([10.0 + i for i in range(20)])
+        series = sma_series(candles, period=5)
+        assert series
+        assert series[-1] == sma(candles, period=5)
+
+    def test_first_value_matches_sma_of_the_real_seed_window(self) -> None:
+        candles = _candles([10.0 + i for i in range(20)])
+        series = sma_series(candles, period=5)
+        assert series[0] == sma(candles[:5], period=5)
 
 
 class TestEma:

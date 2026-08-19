@@ -43,6 +43,8 @@ from app.schemas import (
     FibonacciRead,
     OrderBlockRead,
     SessionRangeRead,
+    SupportResistanceLevel,
+    SupportResistanceRead,
     SwingStructureLabel,
     SwingStructureRead,
     TradingSession,
@@ -53,6 +55,15 @@ from app.schemas import (
 # own schema docstring and the Academy lesson backing this function).
 FIBONACCI_RETRACEMENT_RATIOS: tuple[float, ...] = (0.236, 0.382, 0.5, 0.618, 0.786)
 FIBONACCI_EXTENSION_RATIOS: tuple[float, ...] = (1.272, 1.618)
+
+# CEO directive "Professional Quant Trading Firm — Quant Intelligence +
+# Market Analysis Completion Phase," Phase B — real, disclosed research
+# assumptions for support/resistance clustering, no existing in-codebase
+# precedent to cite (the same honesty standard app/model_validation.py's
+# own new thresholds are held to).
+LEVEL_CLUSTER_TOLERANCE_PCT = 0.5
+MIN_TOUCHES_FOR_LEVEL = 2
+MAX_LEVELS_RETURNED = 8
 
 _DISCLOSED_PROXY_NOTE = (
     "One specific, named, checkable definition of a real order block used here: the last opposite-direction "
@@ -226,3 +237,60 @@ def detect_order_block(symbol: str, candles: list[Candle]) -> OrderBlockRead:
                 detail=_DISCLOSED_PROXY_NOTE,
             )
     return OrderBlockRead(symbol=symbol, direction="none", detail=_DISCLOSED_PROXY_NOTE)
+
+
+def detect_support_resistance_levels(symbol: str, candles: list[Candle]) -> SupportResistanceRead:
+    """Real, static support/resistance levels: clusters the symbol's own
+    real swing highs AND lows (reusing `app/market_intelligence.py`'s
+    `_find_swings()` directly — the same real local-extrema detection
+    `compute_market_structure()` already uses, never a second swing
+    detector) into price bands within `LEVEL_CLUSTER_TOLERANCE_PCT` of
+    each other. A band needs at least `MIN_TOUCHES_FOR_LEVEL` real swing
+    points before it counts as a real level — a single, unconfirmed
+    swing is never reported as "the" support/resistance. `role` is
+    mechanical (support below the real current close, resistance above)
+    — the same real, standard price-action convention every trader
+    uses, never a claim the level will actually hold."""
+    if len(candles) < SWING_LOOKBACK * 2 + 2:
+        return SupportResistanceRead(symbol=symbol, levels=[], detail="Not enough real candle history yet to detect support/resistance levels.")
+    highs, lows = _find_swings(candles)
+    swing_prices = [price for _i, price in highs] + [price for _i, price in lows]
+    if len(swing_prices) < MIN_TOUCHES_FOR_LEVEL:
+        return SupportResistanceRead(symbol=symbol, levels=[], detail="Not enough real swing points yet to cluster into a level.")
+
+    swing_prices.sort()
+    clusters: list[list[float]] = [[swing_prices[0]]]
+    for price in swing_prices[1:]:
+        cluster_mean = sum(clusters[-1]) / len(clusters[-1])
+        if cluster_mean > 0 and abs(price - cluster_mean) / cluster_mean * 100 <= LEVEL_CLUSTER_TOLERANCE_PCT:
+            clusters[-1].append(price)
+        else:
+            clusters.append([price])
+
+    current_close = candles[-1].close
+    levels: list[SupportResistanceLevel] = []
+    for cluster in clusters:
+        if len(cluster) < MIN_TOUCHES_FOR_LEVEL:
+            continue
+        level_price = round(sum(cluster) / len(cluster), 4)
+        role = "support" if current_close > level_price else "resistance"
+        levels.append(
+            SupportResistanceLevel(
+                price=level_price,
+                touches=len(cluster),
+                role=role,  # type: ignore[arg-type]
+                detail=f"Real cluster of {len(cluster)} swing point(s) within {LEVEL_CLUSTER_TOLERANCE_PCT:g}% of {level_price:.2f}, currently read as {role} (real close {current_close:.2f}).",
+            )
+        )
+
+    levels.sort(key=lambda lv: lv.touches, reverse=True)
+    levels = levels[:MAX_LEVELS_RETURNED]
+    levels.sort(key=lambda lv: lv.price)
+
+    detail = (
+        f"{len(levels)} real level(s) found from {len(swing_prices)} real swing point(s), each requiring >= {MIN_TOUCHES_FOR_LEVEL} touches "
+        f"within {LEVEL_CLUSTER_TOLERANCE_PCT:g}% of each other."
+        if levels
+        else f"{len(swing_prices)} real swing point(s) found, but none clustered into a real >= {MIN_TOUCHES_FOR_LEVEL}-touch level."
+    )
+    return SupportResistanceRead(symbol=symbol, levels=levels, detail=detail)

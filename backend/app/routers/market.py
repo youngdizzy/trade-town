@@ -9,6 +9,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 
 from app.data_provenance import compute_data_provenance_report
+from app.evidence_confluence import assess_evidence_confluence
 from app.market_data import TIMEFRAME_ORDER, market_data_provider
 from app.regime_reconciliation import compute_regime_reconciliation
 from app.schemas import (
@@ -16,6 +17,7 @@ from app.schemas import (
     DataProvenanceReport,
     EconomicIntelligenceReport,
     EconomicIntelligenceState,
+    EvidenceConfluenceRead,
     RegimeReconciliation,
     SessionRangeRead,
     SessionRegimeEvidenceSummary,
@@ -96,6 +98,29 @@ async def get_session_range(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     return compute_session_range(symbol.upper(), candles, session)
+
+
+@router.get("/evidence-confluence", response_model=EvidenceConfluenceRead)
+async def get_evidence_confluence(
+    symbol: str = Query(..., min_length=1, max_length=16),
+    timeframe: str = Query("1h"),
+    limit: int = Query(100, ge=MIN_LIMIT, le=MAX_LIMIT),
+) -> EvidenceConfluenceRead:
+    """CEO directive "Professional Quant Trading Firm — Quant
+    Intelligence + Market Analysis Completion Phase," Phase D — the
+    evidence-family confluence layer over raw indicator/pattern signals
+    (see app/evidence_confluence.py's module docstring for exactly which
+    real signals are grouped into which family and why). Distinct from
+    GET /api/executive/confluence, which operates one layer up on the
+    six analyst VOTES. Computed fresh per request; never wired into any
+    live trading decision."""
+    if timeframe not in TIMEFRAME_ORDER:
+        raise HTTPException(status_code=400, detail=f"Unsupported timeframe {timeframe!r}. Supported: {TIMEFRAME_ORDER}")
+    try:
+        candles = market_data_provider.get_candles(symbol.upper(), timeframe, limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return assess_evidence_confluence(symbol.upper(), candles)
 
 
 @router.get("/regime-reconciliation", response_model=RegimeReconciliation)

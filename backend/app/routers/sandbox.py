@@ -11,6 +11,9 @@ from app.evaluation_simulator import compare_evaluation_policies
 from app.persistence import persist_modules
 from app.schemas import (
     BacktestSession,
+    CompiledStrategyBacktestResult,
+    CompiledStrategyDefinition,
+    CompileStrategyRequest,
     EmaPullbackResearchResult,
     EvaluationPolicyComparisonReport,
     FailedStrategyArchiveEntry,
@@ -26,6 +29,9 @@ from app.schemas import (
     TestScenario,
 )
 from app.state import game_state
+from app.strategy_compiler import compile_strategy_text
+from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL as ENGINE_DEFAULT_CANDLES_PER_SYMBOL
+from app.strategy_engine import run_compiled_strategy_backtest
 from app.strategy_lab import compute_strategy_certification, compute_strategy_executive_dashboard, generate_strategy_dossier
 
 router = APIRouter(prefix="/api/sandbox", tags=["sandbox"])
@@ -206,6 +212,44 @@ async def ema_pullback_research(
     decision is ever wired to this endpoint's result."""
     state = await game_state.snapshot()
     return run_ema_pullback_research(timeframe=timeframe, candles_per_symbol=candles_per_symbol, sim_day=state.time.day)
+
+
+@router.post("/compile-strategy", response_model=CompiledStrategyDefinition)
+async def compile_strategy(payload: CompileStrategyRequest) -> CompiledStrategyDefinition:
+    """CEO directive "Professional Quant Trading Firm — Quant
+    Intelligence + Market Analysis Completion Phase," Phase F — compiles
+    real English-language strategy text into a structured, deterministic,
+    reproducible `CompiledStrategyDefinition` (see app/strategy_
+    compiler.py's module docstring for exactly what vocabulary this
+    recognizes and why ambiguous phrases are refused rather than
+    guessed). Stateless — compilation is computed fresh every call and
+    nothing is persisted; `status != "compiled"` means the definition is
+    not yet backtestable (see its own `detail`/`ambiguities`)."""
+    return compile_strategy_text(
+        name=payload.name,
+        source_text=payload.source_text,
+        timeframe=payload.timeframe,
+        previous_version=payload.previous_version,
+    )
+
+
+@router.post("/backtest-compiled-strategy", response_model=CompiledStrategyBacktestResult)
+async def backtest_compiled_strategy(
+    definition: CompiledStrategyDefinition,
+    candles_per_symbol: int = Query(ENGINE_DEFAULT_CANDLES_PER_SYMBOL, alias="candlesPerSymbol", ge=200, le=20000),
+) -> CompiledStrategyBacktestResult:
+    """Same directive, Phase F — the generic backtest runner
+    (app/strategy_engine.py) for a `CompiledStrategyDefinition` this
+    endpoint's own `POST /compile-strategy` produced. Refuses (with a
+    clear, honest reason in `dataHonestyNote`) rather than silently
+    guessing whenever `definition.status != "compiled"` or the
+    definition references an indicator outside this engine's current v1
+    scope — see that module's own module docstring. Read-only, computed
+    fresh every call; reuses the existing Monte Carlo bootstrap and
+    Model Validator unchanged, never a second risk or validation engine,
+    and never wired into any live trading decision."""
+    state = await game_state.snapshot()
+    return run_compiled_strategy_backtest(definition, timeframe=definition.timeframe, candles_per_symbol=candles_per_symbol, sim_day=state.time.day)
 
 
 @router.get("/certification", response_model=StrategyCertification)
