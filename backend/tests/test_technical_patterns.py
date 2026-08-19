@@ -12,6 +12,7 @@ from app.technical_patterns import (
     compute_fibonacci_levels,
     compute_session_range,
     detect_candlestick_patterns,
+    detect_chart_patterns,
     detect_fair_value_gaps,
     detect_order_block,
     detect_support_resistance_levels,
@@ -209,3 +210,102 @@ class TestDetectSupportResistanceLevels:
                 assert lv.role == "support"
             elif lv.price > current_close:
                 assert lv.role == "resistance"
+
+
+def _ohlc(rows: list[tuple[float, float, float, float]]) -> list[Candle]:
+    return [_candle(o=o, h=h, low=lo, c=c, i=i) for i, (o, h, lo, c) in enumerate(rows)]
+
+
+# Hand-verified fixtures (see the CEO directive "Next Research +
+# Validation Pass" implementation notes) — each was traced against
+# app.market_intelligence._find_swings()'s own real output and the
+# detector's own real formulas before being encoded here, not derived by
+# running the function against itself.
+_DOUBLE_TOP_ROWS: list[tuple[float, float, float, float]] = [
+    (100, 101, 99, 100), (99, 100, 98, 99), (98, 99, 97, 98),
+    (105, 106, 104, 105),  # swing high #1
+    (98, 99, 97, 98), (97, 98, 96, 97), (96, 97, 90, 90.5),
+    (91, 92, 89, 90),  # swing low (neckline)
+    (92, 93, 91, 92), (95, 96, 94, 95), (98, 99, 97, 98),
+    (105.2, 106.2, 104.2, 105.2),  # swing high #2, ~0.19% from #1
+    (98, 99, 97, 98), (97, 98, 96, 97), (96, 97, 95, 96),
+    (89, 90, 85, 86),  # real close below the neckline -- confirmation
+    (85, 86, 84, 85), (84, 85, 83, 84),
+]
+
+_DOUBLE_BOTTOM_ROWS: list[tuple[float, float, float, float]] = [
+    (100, 101, 99, 100), (99, 100, 98, 99), (98, 99, 97, 98),
+    (95, 96, 94, 95),  # swing low #1
+    (98, 99, 97, 98), (99, 100, 98, 99), (103, 110, 102, 109.5),
+    (108, 109, 107, 108),  # swing high (neckline)
+    (107, 108, 106, 107), (104, 105, 103, 104), (98, 99, 97, 98),
+    (95.19, 96.19, 94.19, 95.19),  # swing low #2, ~0.2% from #1
+    (98, 99, 97, 98), (99, 100, 98, 99), (100, 101, 99, 100),
+    (108, 112, 107, 111),  # real close above the neckline -- confirmation
+    (112, 113, 111, 112), (113, 114, 112, 113),
+]
+
+_TRENDLINE_BREAK_ROWS: list[tuple[float, float, float, float]] = [
+    (100, 105, 99, 104), (99, 104, 98, 103), (98, 103, 97, 102),
+    (95, 100, 90, 96),  # swing low #1 (low=90)
+    (98, 103, 97, 102), (99, 104, 98, 103), (100, 105, 99, 104),
+    (98, 103, 95, 99),  # swing low #2 (low=95, a real rising line)
+    (99, 104, 98, 103), (100, 109, 99, 104), (101, 110, 100, 105),
+    (98, 103, 80, 81),  # real close well below the extrapolated line
+    (79, 80, 78, 79), (78, 79, 77, 78),
+]
+
+
+class TestDetectChartPatterns:
+    def test_not_enough_candles_reads_no_patterns(self) -> None:
+        read = detect_chart_patterns("TEST", _ohlc(_DOUBLE_TOP_ROWS[:3]))
+        assert read.patterns == []
+
+    def test_a_real_confirmed_double_top(self) -> None:
+        read = detect_chart_patterns("TEST", _ohlc(_DOUBLE_TOP_ROWS))
+        assert len(read.patterns) == 1
+        p = read.patterns[0]
+        assert p.pattern_type == "double_top"
+        assert p.direction == "bearish"
+        assert p.price_low == 89.0
+        assert p.price_high == 106.2
+        assert p.confidence_pct == 87.4  # 0.19% price gap vs the 1.5% tolerance -> 100*(1-0.19/1.5)
+
+    def test_a_real_confirmed_double_bottom(self) -> None:
+        read = detect_chart_patterns("TEST", _ohlc(_DOUBLE_BOTTOM_ROWS))
+        assert len(read.patterns) == 1
+        p = read.patterns[0]
+        assert p.pattern_type == "double_bottom"
+        assert p.direction == "bullish"
+        assert p.price_low == 94.0
+        assert p.price_high == 110.0
+
+    def test_an_unconfirmed_shape_is_never_reported(self) -> None:
+        # The same real double-top geometry, truncated right after the
+        # second swing high forms -- no later real close has broken the
+        # neckline yet, so this must NOT be reported as a pattern (never
+        # a still-forming, outcome-unknown shape).
+        read = detect_chart_patterns("TEST", _ohlc(_DOUBLE_TOP_ROWS[:12]))
+        assert read.patterns == []
+
+    def test_a_real_confirmed_trendline_break(self) -> None:
+        read = detect_chart_patterns("TEST", _ohlc(_TRENDLINE_BREAK_ROWS))
+        breaks = [p for p in read.patterns if p.pattern_type == "trendline_break_down"]
+        assert len(breaks) == 1
+        p = breaks[0]
+        assert p.direction == "bearish"
+        assert p.price_low == 81.0
+        assert p.price_high == 95.0
+        assert p.confidence_pct == 50.0  # exactly the 2 defining points, no extra real touch
+
+    def test_confidence_is_bounded_zero_to_one_hundred_across_every_detected_pattern(self) -> None:
+        for rows in (_DOUBLE_TOP_ROWS, _DOUBLE_BOTTOM_ROWS, _TRENDLINE_BREAK_ROWS):
+            read = detect_chart_patterns("TEST", _ohlc(rows))
+            for p in read.patterns:
+                assert 0.0 <= p.confidence_pct <= 100.0
+
+    def test_every_pattern_carries_the_real_symbol_and_timeframe(self) -> None:
+        read = detect_chart_patterns("NEXA", _ohlc(_DOUBLE_TOP_ROWS), timeframe="4h")
+        for p in read.patterns:
+            assert p.symbol == "NEXA"
+            assert p.timeframe == "4h"

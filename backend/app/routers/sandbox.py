@@ -6,18 +6,26 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.cost_sensitivity import run_cost_sensitivity
 from app.ema_pullback_research import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME, run_ema_pullback_research
 from app.evaluation_simulator import compare_evaluation_policies
+from app.leakage_audit import audit_definition_for_look_ahead
+from app.parameter_sensitivity import run_parameter_sensitivity
 from app.persistence import persist_modules
+from app.research_experiment import run_research_experiment
 from app.schemas import (
     BacktestSession,
     CompiledStrategyBacktestResult,
     CompiledStrategyDefinition,
     CompileStrategyRequest,
+    CostSensitivityResult,
     EmaPullbackResearchResult,
     EvaluationPolicyComparisonReport,
     FailedStrategyArchiveEntry,
+    LookAheadAuditResult,
     ModelValidationReport,
+    ParameterSensitivityResult,
+    ResearchExperimentRecord,
     Strategy,
     StrategyCertification,
     StrategyDossier,
@@ -26,13 +34,17 @@ from app.schemas import (
     StrategyFounderApproval,
     StrategyHallOfFameEntry,
     StrategyReview,
+    SurvivorshipBiasRead,
     TestScenario,
+    WalkForwardValidationResult,
 )
 from app.state import game_state
 from app.strategy_compiler import compile_strategy_text
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL as ENGINE_DEFAULT_CANDLES_PER_SYMBOL
 from app.strategy_engine import run_compiled_strategy_backtest
 from app.strategy_lab import compute_strategy_certification, compute_strategy_executive_dashboard, generate_strategy_dossier
+from app.survivorship import check_survivorship_bias
+from app.walk_forward import DEFAULT_WINDOW_BARS, run_walk_forward_validation
 
 router = APIRouter(prefix="/api/sandbox", tags=["sandbox"])
 
@@ -250,6 +262,79 @@ async def backtest_compiled_strategy(
     and never wired into any live trading decision."""
     state = await game_state.snapshot()
     return run_compiled_strategy_backtest(definition, timeframe=definition.timeframe, candles_per_symbol=candles_per_symbol, sim_day=state.time.day)
+
+
+@router.post("/walk-forward-validation", response_model=WalkForwardValidationResult)
+async def walk_forward_validation(
+    definition: CompiledStrategyDefinition,
+    candles_per_symbol: int = Query(ENGINE_DEFAULT_CANDLES_PER_SYMBOL, alias="candlesPerSymbol", ge=200, le=20000),
+    window_bars: int = Query(DEFAULT_WINDOW_BARS, alias="windowBars", ge=200, le=20000),
+) -> WalkForwardValidationResult:
+    """CEO directive "...Quant Intelligence + Market Analysis Completion
+    Phase (Next Research + Validation Pass)," item 4 — genuine walk-
+    forward validation (see app/walk_forward.py's own module docstring
+    for the real, disjoint-chronological-window methodology and its
+    disclosed scope boundary vs. walk-forward optimization). Read-only,
+    computed fresh every call."""
+    return run_walk_forward_validation(definition, timeframe=definition.timeframe, candles_per_symbol=candles_per_symbol, window_bars=window_bars)
+
+
+@router.post("/parameter-sensitivity", response_model=ParameterSensitivityResult)
+async def parameter_sensitivity(
+    definition: CompiledStrategyDefinition,
+    candles_per_symbol: int = Query(ENGINE_DEFAULT_CANDLES_PER_SYMBOL, alias="candlesPerSymbol", ge=200, le=20000),
+) -> ParameterSensitivityResult:
+    """Same directive, item 5 — real, one-parameter-at-a-time stop/target
+    sensitivity (see app/parameter_sensitivity.py's own module docstring
+    for the disclosed sweep methodology). Never surfaces a "best"
+    combination by design."""
+    return run_parameter_sensitivity(definition, timeframe=definition.timeframe, candles_per_symbol=candles_per_symbol)
+
+
+@router.post("/cost-sensitivity", response_model=CostSensitivityResult)
+async def cost_sensitivity(
+    definition: CompiledStrategyDefinition,
+    candles_per_symbol: int = Query(ENGINE_DEFAULT_CANDLES_PER_SYMBOL, alias="candlesPerSymbol", ge=200, le=20000),
+) -> CostSensitivityResult:
+    """Same directive, item 6 — real transaction-cost/slippage
+    sensitivity, reusing this codebase's own existing real cost
+    constants (see app/cost_sensitivity.py's own module docstring)."""
+    return run_cost_sensitivity(definition, timeframe=definition.timeframe, candles_per_symbol=candles_per_symbol)
+
+
+@router.post("/look-ahead-audit", response_model=LookAheadAuditResult)
+async def look_ahead_audit(
+    definition: CompiledStrategyDefinition,
+    candles_per_symbol: int = Query(ENGINE_DEFAULT_CANDLES_PER_SYMBOL, alias="candlesPerSymbol", ge=200, le=20000),
+) -> LookAheadAuditResult:
+    """Same directive, item 7 — a real, structural look-ahead audit (the
+    truncate-and-re-detect methodology; see app/leakage_audit.py's own
+    module docstring)."""
+    return audit_definition_for_look_ahead(definition, timeframe=definition.timeframe, candles_per_symbol=candles_per_symbol)
+
+
+@router.get("/survivorship-bias", response_model=SurvivorshipBiasRead)
+async def survivorship_bias(symbol: str = Query(..., min_length=1, max_length=16)) -> SurvivorshipBiasRead:
+    """Same directive, item 8 — a real, disclosed data-availability
+    interface, not a real check (see app/survivorship.py's own module
+    docstring for exactly why this codebase has no historical-universe
+    data to audit yet)."""
+    return check_survivorship_bias(symbol)
+
+
+@router.post("/research-experiment", response_model=ResearchExperimentRecord)
+async def research_experiment(
+    definition: CompiledStrategyDefinition,
+    candles_per_symbol: int = Query(ENGINE_DEFAULT_CANDLES_PER_SYMBOL, alias="candlesPerSymbol", ge=200, le=20000),
+) -> ResearchExperimentRecord:
+    """Same directive, item 11 — the Research Desk's one real,
+    reproducible experiment record: bundles a real backtest, walk-
+    forward validation, parameter sensitivity, cost sensitivity, and a
+    look-ahead audit for the same compiled definition into one packaged
+    result with a real, disclosed conclusion-synthesis rule (see
+    app/research_experiment.py's own module docstring). Read-only,
+    computed fresh every call — nothing here is persisted."""
+    return run_research_experiment(definition, timeframe=definition.timeframe, candles_per_symbol=candles_per_symbol)
 
 
 @router.get("/certification", response_model=StrategyCertification)

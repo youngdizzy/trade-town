@@ -42,12 +42,16 @@ class TestRawCountVsIndependentCount:
         # than one signal shares a family — never the reverse.
         assert result.raw_signal_count >= result.independent_family_count
 
-    def test_trend_family_groups_ema_and_sma_together(self) -> None:
+    def test_trend_family_groups_ema_sma_sar_and_supertrend_together(self) -> None:
         candles = _uptrend_candles(60)
         result = assess_evidence_confluence("TEST", candles)
         trend_family = next((f for f in result.families if f.family == "trend"), None)
         assert trend_family is not None
-        assert len(trend_family.signals) == 2  # price_vs_ema20 + price_vs_sma20, one real family
+        # price_vs_ema20, price_vs_sma20, parabolic_sar, supertrend -- four
+        # real, individually-computed signals, all one real family (CEO
+        # directive "Next Research + Validation Pass": SAR/SuperTrend join
+        # the existing trend family rather than becoming a new one).
+        assert {s.name for s in trend_family.signals} == {"price_vs_ema20", "price_vs_sma20", "parabolic_sar", "supertrend"}
         assert trend_family.net_direction == "bullish"
 
     def test_levels_family_never_counted_toward_independent_count(self) -> None:

@@ -15,12 +15,21 @@ families before this module — a real, genuine gap, not a duplicate of
 app/signal_correlation.py's real but differently-scoped audit.
 
 THE FAMILIES, AND WHY EACH SIGNAL IS ASSIGNED WHERE IT IS:
-  trend           Price vs. EMA(20) and price vs. SMA(20) — both real,
-                  standard trend reads, and REAL EVIDENCE THIS ENGINE
-                  EXISTS TO CATCH: they are highly correlated (both are
-                  "is price above its own recent moving average"),
-                  exactly the "not necessarily independent confirmation"
-                  problem this directive names.
+  trend           Price vs. EMA(20), price vs. SMA(20), and (CEO
+                  directive "Next Research + Validation Pass") the real
+                  Parabolic SAR and SuperTrend trend reads — all four
+                  real, standard trend reads, and REAL EVIDENCE THIS
+                  ENGINE EXISTS TO CATCH: they are highly correlated
+                  (all four are some form of "is price above its own
+                  recent trend reference"), exactly the "not necessarily
+                  independent confirmation" problem this directive
+                  names. SAR/SuperTrend deliberately join this SAME
+                  family rather than becoming a new one — see this
+                  module's own worked example above (the directive's
+                  own "EMA bullish + MACD bullish + Supertrend bullish +
+                  price above moving average" is a real, direct
+                  illustration of trend-family redundancy, not four
+                  independent votes).
   momentum        RSI(14), MACD histogram, Stochastic %K — three real,
                   standard momentum reads that commonly agree with each
                   other for the same underlying reason (they are all
@@ -77,7 +86,7 @@ from __future__ import annotations
 from app.market_data import Candle
 from app.market_intelligence import compute_liquidity, compute_market_structure
 from app.schemas import EvidenceConfluenceRead, EvidenceDirection, EvidenceFamily, EvidenceFamilyRead, EvidenceSignal
-from app.technical_indicators import ema, macd, rsi, sma, stochastic, vwap
+from app.technical_indicators import ema, macd, parabolic_sar, rsi, sma, stochastic, supertrend, vwap
 from app.technical_patterns import detect_candlestick_patterns, detect_fair_value_gaps, detect_order_block
 
 RSI_BULLISH_THRESHOLD = 55.0
@@ -104,6 +113,16 @@ def _collect_signals(symbol: str, candles: list[Candle]) -> list[EvidenceSignal]
     if sma20 is not None:
         direction = "bullish" if close > sma20 else ("bearish" if close < sma20 else "neutral")
         signals.append(EvidenceSignal(name="price_vs_sma20", family="trend", direction=direction, detail=f"Real close ({close:.2f}) vs. real SMA(20) ({sma20:.2f}) — a real, standard trend read, highly correlated with the EMA(20) read above."))
+    sar_result = parabolic_sar(candles)
+    if sar_result is not None:
+        _sar_value, sar_trend = sar_result
+        direction = "bullish" if sar_trend == "up" else "bearish"
+        signals.append(EvidenceSignal(name="parabolic_sar", family="trend", direction=direction, detail=f"Real Parabolic SAR trend = {sar_trend} — a real trailing-stop trend read, highly correlated with the EMA/SMA reads above (same underlying trend family, never counted as independent of them)."))
+    supertrend_result = supertrend(candles)
+    if supertrend_result is not None:
+        _st_value, st_trend = supertrend_result
+        direction = "bullish" if st_trend == "up" else "bearish"
+        signals.append(EvidenceSignal(name="supertrend", family="trend", direction=direction, detail=f"Real SuperTrend trend = {st_trend} — a real ATR-banded trend read, the exact 'Supertrend bullish' evidence this directive's own worked example names, deliberately kept in the trend family rather than a new one."))
 
     # -- momentum --
     rsi14 = rsi(candles)

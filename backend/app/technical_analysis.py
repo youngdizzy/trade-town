@@ -1,7 +1,9 @@
 """CEO directive "Professional Trading Firm — Market-Analysis Knowledge
 + Session Intelligence Expansion," Phases 1-3 (extended by "Professional
 Quant Trading Firm — Quant Intelligence + Market Analysis Completion
-Phase," Phase B's real support/resistance levels) — a thin aggregator
+Phase," Phase B's real support/resistance levels, and by that same
+directive's "Next Research + Validation Pass" — real Parabolic SAR/
+SuperTrend values and real chart-pattern detection) — a thin aggregator
 that bundles app/technical_indicators.py's real indicator values and
 app/technical_patterns.py's real pattern/structure reads into one
 "technical desk briefing" for a symbol, so the frontend can fetch one
@@ -15,10 +17,11 @@ from __future__ import annotations
 
 from app.market_data import Candle
 from app.schemas import TechnicalAnalysisRead, TechnicalIndicatorsRead
-from app.technical_indicators import atr, ema, macd, rsi, sma, stochastic, vwap
+from app.technical_indicators import atr, ema, macd, parabolic_sar, rsi, sma, stochastic, supertrend, vwap
 from app.technical_patterns import (
     compute_fibonacci_levels,
     detect_candlestick_patterns,
+    detect_chart_patterns,
     detect_fair_value_gaps,
     detect_order_block,
     detect_support_resistance_levels,
@@ -29,6 +32,8 @@ from app.technical_patterns import (
 def compute_technical_indicators(symbol: str, candles: list[Candle]) -> TechnicalIndicatorsRead:
     macd_result = macd(candles)
     stochastic_result = stochastic(candles)
+    sar_result = parabolic_sar(candles)
+    supertrend_result = supertrend(candles)
     computed = [v is not None for v in (sma(candles, period=20), rsi(candles), atr(candles))]
     detail = f"{sum(computed)} of 3 headline indicators computable from {len(candles)} real candle(s) on file." if candles else "No real candles on file for this symbol yet."
     return TechnicalIndicatorsRead(
@@ -43,11 +48,15 @@ def compute_technical_indicators(symbol: str, candles: list[Candle]) -> Technica
         stochasticPercentD=stochastic_result[1] if stochastic_result else None,
         atr14=atr(candles),
         vwap=vwap(candles),
+        parabolicSar=sar_result[0] if sar_result else None,
+        parabolicSarTrend=sar_result[1] if sar_result else None,  # type: ignore[arg-type]
+        supertrend=supertrend_result[0] if supertrend_result else None,
+        supertrendTrend=supertrend_result[1] if supertrend_result else None,  # type: ignore[arg-type]
         detail=detail,
     )
 
 
-def compute_technical_analysis(symbol: str, candles: list[Candle]) -> TechnicalAnalysisRead:
+def compute_technical_analysis(symbol: str, candles: list[Candle], timeframe: str = "1h") -> TechnicalAnalysisRead:
     return TechnicalAnalysisRead(
         symbol=symbol,
         indicators=compute_technical_indicators(symbol, candles),
@@ -57,4 +66,5 @@ def compute_technical_analysis(symbol: str, candles: list[Candle]) -> TechnicalA
         fibonacci=compute_fibonacci_levels(symbol, candles),
         orderBlock=detect_order_block(symbol, candles),
         supportResistance=detect_support_resistance_levels(symbol, candles),
+        chartPatterns=detect_chart_patterns(symbol, candles, timeframe),
     )

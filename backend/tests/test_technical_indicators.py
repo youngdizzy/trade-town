@@ -8,7 +8,7 @@ formula exactly on a hand-checkable fixture.
 from __future__ import annotations
 
 from app.market_data import Candle
-from app.technical_indicators import atr, atr_series, ema, macd, rsi, sma, sma_series, stochastic, vwap
+from app.technical_indicators import atr, atr_series, ema, macd, parabolic_sar, parabolic_sar_series, rsi, sma, sma_series, stochastic, supertrend, supertrend_series, vwap
 
 
 def _candle(*, close: float, high: float | None = None, low: float | None = None, volume: float = 100.0, i: int = 0) -> Candle:
@@ -199,3 +199,81 @@ class TestVwap:
         result = vwap([low_vol, high_vol])
         assert result is not None
         assert result > 19.0  # pulled close to the high-volume bar's price
+
+
+# Hand-traced fixture for TestParabolicSar — the real Wilder recurrence
+# worked out by hand bar-by-bar (see the CEO directive "Next Research +
+# Validation Pass" implementation notes), not derived by running the
+# function against itself.
+def _sar_candles() -> list[Candle]:
+    rows = [
+        (10.0, 8.0, 9.0),
+        (11.0, 9.0, 10.5),
+        (12.0, 10.0, 11.5),
+        (13.0, 11.0, 12.5),
+        (11.5, 9.0, 9.5),
+        (8.5, 7.0, 7.5),
+    ]
+    return [_candle(high=h, low=lo, close=c, i=i) for i, (h, lo, c) in enumerate(rows)]
+
+
+class TestParabolicSar:
+    def test_empty_with_fewer_than_two_candles(self) -> None:
+        assert parabolic_sar_series(_candles([1.0])) == []
+        assert parabolic_sar(_candles([1.0])) is None
+
+    def test_real_hand_traced_recurrence_including_a_real_trend_flip(self) -> None:
+        series = parabolic_sar_series(_sar_candles())
+        # Hand-traced expected (sar_value, trend) pairs for candles[1..5] —
+        # see the module's own worked derivation. The acceleration factor
+        # climbs 0.02 -> 0.04 -> 0.06 -> 0.08 while new extreme points are
+        # made each bar, then bar 5's real low (7.0) breaks below the
+        # accumulated SAR (8.971...), flipping the trend to "down" and
+        # resetting SAR to the old extreme point (13.0).
+        assert series == [
+            (8.0, "up"),
+            (8.0, "up"),
+            (8.24, "up"),
+            (8.6208, "up"),
+            (13.0, "down"),
+        ]
+
+    def test_last_value_matches_the_series(self) -> None:
+        candles = _sar_candles()
+        assert parabolic_sar(candles) == parabolic_sar_series(candles)[-1]
+
+    def test_sar_never_penetrates_the_real_recent_low_high_it_is_clamped_against(self) -> None:
+        # Structural invariant, not just the one hand-traced fixture: in
+        # an uptrend, SAR must never sit above the low of either of the
+        # last two real bars (the real, standard non-penetration clamp).
+        candles = _sar_candles()
+        series = parabolic_sar_series(candles)
+        for i in range(2, len(candles)):
+            sar_value, trend = series[i - 1]
+            if trend == "up":
+                assert sar_value <= min(candles[i - 1].low, candles[i - 2].low) + 1e-6
+
+
+class TestSupertrend:
+    def test_empty_with_insufficient_candles(self) -> None:
+        assert supertrend_series(_candles([1.0, 2.0])) == []
+        assert supertrend(_candles([1.0, 2.0])) is None
+
+    def test_real_hand_traced_bands_including_a_real_trend_flip(self) -> None:
+        rows = [
+            (10.0, 8.0, 9.0),
+            (11.0, 9.0, 10.0),
+            (12.0, 10.0, 11.0),
+            (10.0, 8.0, 8.5),
+            (7.0, 5.0, 5.5),
+        ]
+        candles = [_candle(high=h, low=lo, close=c, i=i) for i, (h, lo, c) in enumerate(rows)]
+        series = supertrend_series(candles, period=2, multiplier=2.0)
+        # Hand-traced against the real ATR(period=2) series [2.0, 2.5, 3.25]
+        # this fixture produces — see the module's own worked derivation.
+        assert series == [(7.0, "up"), (7.0, "up"), (12.5, "down")]
+
+    def test_last_value_matches_the_series(self) -> None:
+        # Enough real bars for a real ATR(10) window to exist.
+        candles = [_candle(high=c.high, low=c.low, close=c.close, i=i) for i, c in enumerate(_sar_candles() * 3)]
+        assert supertrend(candles) == supertrend_series(candles)[-1]

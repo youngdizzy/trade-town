@@ -31,12 +31,15 @@ concept's inclusion in a real decision, per this directive's own Phase
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from app.market_data import Candle
 from app.market_intelligence import SWING_LOOKBACK, _find_swings, _session_for_hour, compute_market_structure
 from app.schemas import (
     CandlestickPattern,
     CandlestickPatternRead,
+    ChartPattern,
+    ChartPatternRead,
     FairValueGap,
     FairValueGapRead,
     FibonacciLevel,
@@ -64,6 +67,16 @@ FIBONACCI_EXTENSION_RATIOS: tuple[float, ...] = (1.272, 1.618)
 LEVEL_CLUSTER_TOLERANCE_PCT = 0.5
 MIN_TOUCHES_FOR_LEVEL = 2
 MAX_LEVELS_RETURNED = 8
+
+# Same directive's "Next Research + Validation Pass" — real, disclosed
+# research assumptions for the double top/bottom and trendline-break
+# chart-pattern detectors below. No existing in-codebase precedent to
+# cite for any of these; held to the same explicit-and-testable standard
+# every other threshold in this module already is.
+DOUBLE_PATTERN_PRICE_TOLERANCE_PCT = 1.5
+DOUBLE_PATTERN_MIN_RETRACEMENT_PCT = 1.0
+TRENDLINE_TOUCH_TOLERANCE_PCT = 0.5
+MAX_CHART_PATTERNS_RETURNED = 8
 
 _DISCLOSED_PROXY_NOTE = (
     "One specific, named, checkable definition of a real order block used here: the last opposite-direction "
@@ -294,3 +307,181 @@ def detect_support_resistance_levels(symbol: str, candles: list[Candle]) -> Supp
         else f"{len(swing_prices)} real swing point(s) found, but none clustered into a real >= {MIN_TOUCHES_FOR_LEVEL}-touch level."
     )
     return SupportResistanceRead(symbol=symbol, levels=levels, detail=detail)
+
+
+def _double_pattern_matches(symbol: str, candles: list[Candle], peaks: list[tuple[int, float]], troughs: list[tuple[int, float]], timeframe: str, *, kind: Literal["top", "bottom"]) -> list[ChartPattern]:
+    """Shared real geometry for double top (`kind="top"`, `peaks` = real
+    swing highs, `troughs` = real swing lows) and double bottom
+    (`kind="bottom"`, the mirror). Only ADJACENT same-type swing points
+    are ever paired — the standard, objective "two comparable swings with
+    one real pullback between them" shape, never an arbitrary multi-hop
+    search across the whole series. A pattern is only ever reported once
+    real CONFIRMATION (a real close through the real intervening
+    neckline) has already happened at a later real bar — never as a
+    still-forming, outcome-unknown shape."""
+    results: list[ChartPattern] = []
+    for k in range(len(peaks) - 1):
+        i1, p1 = peaks[k]
+        i2, p2 = peaks[k + 1]
+        between = [t for t in troughs if i1 < t[0] < i2]
+        if not between:
+            continue
+        neckline_idx, neckline_price = (min(between, key=lambda t: t[1]) if kind == "top" else max(between, key=lambda t: t[1]))
+        price_diff_pct = abs(p1 - p2) / ((p1 + p2) / 2) * 100 if (p1 + p2) else 100.0
+        if price_diff_pct > DOUBLE_PATTERN_PRICE_TOLERANCE_PCT:
+            continue
+        reference = min(p1, p2) if kind == "top" else max(p1, p2)
+        if reference == 0:
+            continue
+        retracement_pct = (reference - neckline_price) / reference * 100 if kind == "top" else (neckline_price - reference) / reference * 100
+        if retracement_pct < DOUBLE_PATTERN_MIN_RETRACEMENT_PCT:
+            continue
+        confirm_index: int | None = None
+        for j in range(i2 + 1, len(candles)):
+            if kind == "top" and candles[j].close < neckline_price:
+                confirm_index = j
+                break
+            if kind == "bottom" and candles[j].close > neckline_price:
+                confirm_index = j
+                break
+        if confirm_index is None:
+            continue
+        confidence = round(max(0.0, min(100.0, 100.0 * (1 - price_diff_pct / DOUBLE_PATTERN_PRICE_TOLERANCE_PCT))), 1)
+        direction: Literal["bullish", "bearish"] = "bearish" if kind == "top" else "bullish"
+        pattern_type: Literal["double_top", "double_bottom"] = "double_top" if kind == "top" else "double_bottom"
+        price_low = min(p1, p2, neckline_price)
+        price_high = max(p1, p2, neckline_price)
+        results.append(
+            ChartPattern(
+                patternId=f"{symbol}-{pattern_type}-{candles[i1].timestamp}-{candles[i2].timestamp}",
+                patternType=pattern_type,
+                direction=direction,
+                confidencePct=confidence,
+                priceLow=round(price_low, 4),
+                priceHigh=round(price_high, 4),
+                formedAt=candles[i2].timestamp,
+                confirmedAt=candles[confirm_index].timestamp,
+                formationDetail=(
+                    f"Real {kind} swing points {p1:.2f} ({candles[i1].timestamp}) and {p2:.2f} ({candles[i2].timestamp}), "
+                    f"{price_diff_pct:.2f}% apart (within the {DOUBLE_PATTERN_PRICE_TOLERANCE_PCT:g}% tolerance), with a real "
+                    f"{retracement_pct:.2f}% intervening retracement to the {neckline_price:.2f} neckline."
+                ),
+                invalidationDetail=(
+                    f"A real close back beyond {p2:.2f} before the neckline broke would have invalidated this setup instead; "
+                    f"already confirmed by a real close through the {neckline_price:.2f} neckline at {candles[confirm_index].timestamp}."
+                ),
+                source="technical_patterns.detect_chart_patterns",
+                timeframe=timeframe,
+                symbol=symbol,
+            )
+        )
+    return results
+
+
+def _trendline_break_matches(symbol: str, candles: list[Candle], swing_points: list[tuple[int, float]], timeframe: str, *, direction: Literal["up", "down"]) -> list[ChartPattern]:
+    """Real 2-point trendlines through ADJACENT same-type swings —
+    `direction="up"` connects consecutive real higher swing lows (a
+    rising support line), `direction="down"` connects consecutive real
+    lower swing highs (a falling resistance line). A pattern is only
+    reported once a later real candle's own close crosses the real
+    extrapolated line value — never a still-forming line whose break is
+    only assumed. `confidencePct` rewards real additional swing points
+    that independently touch the same line within tolerance — a genuine,
+    disclosed, mechanical proxy for "more confirmed trendline," never a
+    fabricated strength score."""
+    results: list[ChartPattern] = []
+    for k in range(len(swing_points) - 1):
+        i1, p1 = swing_points[k]
+        i2, p2 = swing_points[k + 1]
+        if direction == "up" and p2 <= p1:
+            continue
+        if direction == "down" and p2 >= p1:
+            continue
+        slope = (p2 - p1) / (i2 - i1)
+
+        def line_value(idx: int, *, _i1: int = i1, _p1: float = p1, _slope: float = slope) -> float:
+            return _p1 + _slope * (idx - _i1)
+
+        confirm_index: int | None = None
+        for j in range(i2 + 1, len(candles)):
+            line_at_j = line_value(j)
+            if direction == "up" and candles[j].close < line_at_j:
+                confirm_index = j
+                break
+            if direction == "down" and candles[j].close > line_at_j:
+                confirm_index = j
+                break
+        if confirm_index is None:
+            continue
+        touches = 2
+        for idx, price in swing_points:
+            if idx in (i1, i2) or not (i1 < idx < confirm_index):
+                continue
+            line_at_idx = line_value(idx)
+            if line_at_idx != 0 and abs(price - line_at_idx) / abs(line_at_idx) * 100 <= TRENDLINE_TOUCH_TOLERANCE_PCT:
+                touches += 1
+        confidence = round(min(95.0, 50.0 + (touches - 2) * 15.0), 1)
+        pattern_type: Literal["trendline_break_down", "trendline_break_up"] = "trendline_break_down" if direction == "up" else "trendline_break_up"
+        result_direction: Literal["bullish", "bearish"] = "bearish" if direction == "up" else "bullish"
+        confirm_price = candles[confirm_index].close
+        price_low = min(p1, p2, confirm_price)
+        price_high = max(p1, p2, confirm_price)
+        results.append(
+            ChartPattern(
+                patternId=f"{symbol}-{pattern_type}-{candles[i1].timestamp}-{candles[confirm_index].timestamp}",
+                patternType=pattern_type,
+                direction=result_direction,
+                confidencePct=confidence,
+                priceLow=round(price_low, 4),
+                priceHigh=round(price_high, 4),
+                formedAt=candles[i2].timestamp,
+                confirmedAt=candles[confirm_index].timestamp,
+                formationDetail=(
+                    f"Real {'rising support' if direction == 'up' else 'falling resistance'} trendline through swing points "
+                    f"{p1:.2f} ({candles[i1].timestamp}) and {p2:.2f} ({candles[i2].timestamp}), {touches} real touch(es) "
+                    f"within {TRENDLINE_TOUCH_TOLERANCE_PCT:g}% of the extrapolated line."
+                ),
+                invalidationDetail=(
+                    f"Already confirmed by a real close ({confirm_price:.2f}) crossing the extrapolated trendline "
+                    f"({line_value(confirm_index):.2f}) at {candles[confirm_index].timestamp}."
+                ),
+                source="technical_patterns.detect_chart_patterns",
+                timeframe=timeframe,
+                symbol=symbol,
+            )
+        )
+    return results
+
+
+def detect_chart_patterns(symbol: str, candles: list[Candle], timeframe: str = "1h") -> ChartPatternRead:
+    """CEO directive "Professional Quant Trading Firm — Quant Intelligence
+    + Market Analysis Completion Phase (Next Research + Validation
+    Pass)" — a bounded, objectively-defined subset of chart-pattern
+    geometry: double top, double bottom, and trendline breaks (both
+    directions). Reuses the same real `_find_swings()` local-extrema
+    detection every other pattern in this module already reuses — no
+    second swing detector. DELIBERATELY NOT HERE: head & shoulders,
+    triangles, wedges, rectangles, and channels — each needs a real
+    multi-point geometric fit (3+ independently-constrained points, not
+    the 2-3 point shapes below), a materially larger undertaking judged
+    out of scope for this pass rather than attempted and left unreliable
+    (see docs/Architecture.md for the full disclosed scope cut)."""
+    if len(candles) < SWING_LOOKBACK * 2 + 2:
+        return ChartPatternRead(symbol=symbol, timeframe=timeframe, patterns=[], detail="Not enough real candle history yet to detect a chart pattern.")
+
+    highs_idx, lows_idx = _find_swings(candles)
+    patterns: list[ChartPattern] = []
+    patterns += _double_pattern_matches(symbol, candles, highs_idx, lows_idx, timeframe, kind="top")
+    patterns += _double_pattern_matches(symbol, candles, lows_idx, highs_idx, timeframe, kind="bottom")
+    patterns += _trendline_break_matches(symbol, candles, lows_idx, timeframe, direction="up")
+    patterns += _trendline_break_matches(symbol, candles, highs_idx, timeframe, direction="down")
+    patterns.sort(key=lambda p: p.confirmed_at)
+    patterns = patterns[-MAX_CHART_PATTERNS_RETURNED:]
+
+    detail = (
+        f"{len(patterns)} real confirmed chart pattern(s) over {len(candles)} candles (double top/bottom + trendline break only — "
+        "head & shoulders/triangles/wedges/rectangles/channels are a disclosed, out-of-scope gap, not silently absent)."
+        if patterns
+        else "No real confirmed double top/bottom or trendline break pattern found in this candle window."
+    )
+    return ChartPatternRead(symbol=symbol, timeframe=timeframe, patterns=patterns, detail=detail)

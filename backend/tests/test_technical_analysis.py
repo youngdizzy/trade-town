@@ -7,7 +7,7 @@ from __future__ import annotations
 
 from app.market_data import Candle
 from app.technical_analysis import compute_technical_analysis, compute_technical_indicators
-from app.technical_indicators import rsi, sma
+from app.technical_indicators import parabolic_sar, rsi, sma, supertrend
 
 
 def _candle(*, close: float, i: int = 0) -> Candle:
@@ -31,6 +31,14 @@ class TestComputeTechnicalIndicators:
         read = compute_technical_indicators("TEST", candles)
         assert read.sma20 == sma(candles, period=20)
         assert read.rsi14 == rsi(candles)
+        sar_result = parabolic_sar(candles)
+        assert sar_result is not None
+        assert read.parabolic_sar == sar_result[0]
+        assert read.parabolic_sar_trend == sar_result[1]
+        supertrend_result = supertrend(candles)
+        assert supertrend_result is not None
+        assert read.supertrend == supertrend_result[0]
+        assert read.supertrend_trend == supertrend_result[1]
 
     def test_symbol_is_passed_through(self) -> None:
         read = compute_technical_indicators("NEXA", _candles(5))
@@ -47,12 +55,22 @@ class TestComputeTechnicalAnalysis:
         assert read.candlestick_patterns.symbol == "NEXA"
         assert read.fibonacci.symbol == "NEXA"
         assert read.order_block.symbol == "NEXA"
+        assert read.support_resistance.symbol == "NEXA"
+        assert read.chart_patterns.symbol == "NEXA"
+
+    def test_timeframe_is_threaded_into_the_chart_pattern_read(self) -> None:
+        read = compute_technical_analysis("NEXA", _candles(30), timeframe="4h")
+        assert read.chart_patterns.timeframe == "4h"
 
     def test_no_candles_reads_honest_empty_state_throughout(self) -> None:
         read = compute_technical_analysis("NEXA", [])
         assert read.indicators.sma20 is None
+        assert read.indicators.parabolic_sar is None
+        assert read.indicators.supertrend is None
         assert read.swing_structure.labels == []
         assert read.fair_value_gaps.gaps == []
         assert read.candlestick_patterns.patterns == []
         assert read.fibonacci.levels == []
         assert read.order_block.direction == "none"
+        assert read.support_resistance.levels == []
+        assert read.chart_patterns.patterns == []

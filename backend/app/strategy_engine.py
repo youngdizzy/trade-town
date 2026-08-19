@@ -360,6 +360,71 @@ def _resolve_target(definition: CompiledStrategyDefinition, entry_price: float, 
     return None
 
 
+def backtest_symbol_over_candles(definition: CompiledStrategyDefinition, symbol: str, candles: list[Candle]) -> list[EmaPullbackTradeRecord]:
+    """The real per-symbol backtest core, extracted so
+    `run_compiled_strategy_backtest()` below and
+    `app/walk_forward.py`'s real windowed validation can share the exact
+    same setup-detection -> stop/target-resolution -> exit-simulation ->
+    trade-record pipeline against WHATEVER real candle slice is passed
+    in — never a second copy. `app/walk_forward.py` calls this once per
+    real, disjoint chronological window (a plain sub-slice of the full
+    real series); this function itself has no notion of "windows," which
+    is exactly what makes the no-look-ahead guarantee across windows
+    structural rather than something a caller has to get right by
+    convention: a call with `candles[1000:2000]` can only ever resolve
+    indicators and detect setups using bars 1000-1999, full stop."""
+    if len(candles) < MIN_BARS_ON_SIDE_BEFORE_CROSS + MAX_HOLD_BARS + 60:
+        return []
+    series = _build_series_cache(candles, definition)
+    setups = _detect_generic_setups(candles, definition, series)
+
+    atr_series_values: list[float] = []
+    if definition.stop is not None and definition.stop.method == "chandelier" and definition.stop.atr_period is not None:
+        atr_series_values = atr_series(candles, definition.stop.atr_period)
+
+    regime_ema_values = ema_series(candles, REGIME_EMA_PERIOD)
+    regime_atr_values = atr_series(candles, REGIME_ATR_PERIOD)
+
+    trades: list[EmaPullbackTradeRecord] = []
+    for setup in setups:
+        stop_price = _resolve_stop(definition, candles, atr_series_values, setup)
+        if stop_price is None:
+            continue
+        target_price = _resolve_target(definition, setup.entry_price, stop_price, setup.direction)
+        if target_price is None:
+            continue
+        risk = abs(setup.entry_price - stop_price)
+        if risk <= 0:
+            continue
+        path = candles[setup.entry_index + 1 : setup.entry_index + 1 + MAX_HOLD_BARS]
+        exit_result = simulate_exit(setup.direction, setup.entry_price, stop_price, target_price, path)
+        entry_candle = candles[setup.entry_index]
+        ts = datetime.fromisoformat(entry_candle.timestamp)
+        confirmation_index = setup.entry_index - 1
+        range_ratio = breakout_candle_range_ratio(candles, confirmation_index, recent_range_lookback=RECENT_RANGE_LOOKBACK)
+        trades.append(
+            EmaPullbackTradeRecord(
+                symbol=symbol,
+                direction="long" if setup.direction == "long" else "short",  # type: ignore[arg-type]
+                entryTimestamp=entry_candle.timestamp,
+                entryPrice=setup.entry_price,
+                stopPrice=stop_price,
+                targetPrice=round(target_price, 4),
+                exitPrice=exit_result.exit_price,
+                outcome=exit_result.outcome,
+                rMultipleRealized=exit_result.r_multiple_realized,
+                entrySession=_session_for_hour(ts.hour + ts.minute / 60.0),
+                regimeTrend=regime_trend_at(regime_ema_values, REGIME_EMA_PERIOD, setup.entry_index, slope_lookback=TREND_SLOPE_LOOKBACK, slope_threshold_pct=TREND_SLOPE_THRESHOLD_PCT),
+                regimeVolatility=regime_volatility_at(regime_atr_values, REGIME_ATR_PERIOD, setup.entry_index, median_lookback=VOLATILITY_MEDIAN_LOOKBACK, high_ratio=VOLATILITY_HIGH_RATIO, low_ratio=VOLATILITY_LOW_RATIO),
+                breakoutCandleExtended=range_ratio >= EXTENDED_BREAKOUT_RANGE_RATIO,
+                breakoutCandleRangeRatio=range_ratio,
+                maeR=exit_result.mae_r,
+                mfeR=exit_result.mfe_r,
+            )
+        )
+    return trades
+
+
 def run_compiled_strategy_backtest(
     definition: CompiledStrategyDefinition,
     *,
@@ -401,57 +466,8 @@ def run_compiled_strategy_backtest(
 
     for symbol in test_symbols:
         candles = market_data_provider.get_candles(symbol, timeframe, candles_per_symbol)
-        if len(candles) < MIN_BARS_ON_SIDE_BEFORE_CROSS + MAX_HOLD_BARS + 60:
-            continue
-        series = _build_series_cache(candles, definition)
-        setups = _detect_generic_setups(candles, definition, series)
-
-        atr_series_values: list[float] = []
-        if definition.stop is not None and definition.stop.method == "chandelier" and definition.stop.atr_period is not None:
-            atr_series_values = atr_series(candles, definition.stop.atr_period)
-
-        # A real, disclosed regime-tagging proxy (see this module's own
-        # constants above) — computed once per symbol, independent of
-        # whatever indicator/period the compiled definition itself
-        # triggers on, so regime tagging stays a consistent, comparable
-        # reference across every compiled strategy this engine backtests.
-        regime_ema_values = ema_series(candles, REGIME_EMA_PERIOD)
-        regime_atr_values = atr_series(candles, REGIME_ATR_PERIOD)
-
-        for setup in setups:
-            stop_price = _resolve_stop(definition, candles, atr_series_values, setup)
-            if stop_price is None:
-                continue
-            target_price = _resolve_target(definition, setup.entry_price, stop_price, setup.direction)
-            if target_price is None:
-                continue
-            risk = abs(setup.entry_price - stop_price)
-            if risk <= 0:
-                continue
-            path = candles[setup.entry_index + 1 : setup.entry_index + 1 + MAX_HOLD_BARS]
-            exit_result = simulate_exit(setup.direction, setup.entry_price, stop_price, target_price, path)
-            entry_candle = candles[setup.entry_index]
-            ts = datetime.fromisoformat(entry_candle.timestamp)
-            confirmation_index = setup.entry_index - 1
-            range_ratio = breakout_candle_range_ratio(candles, confirmation_index, recent_range_lookback=RECENT_RANGE_LOOKBACK)
-            record = EmaPullbackTradeRecord(
-                symbol=symbol,
-                direction="long" if setup.direction == "long" else "short",  # type: ignore[arg-type]
-                entryTimestamp=entry_candle.timestamp,
-                entryPrice=setup.entry_price,
-                stopPrice=stop_price,
-                targetPrice=round(target_price, 4),
-                exitPrice=exit_result.exit_price,
-                outcome=exit_result.outcome,
-                rMultipleRealized=exit_result.r_multiple_realized,
-                entrySession=_session_for_hour(ts.hour + ts.minute / 60.0),
-                regimeTrend=regime_trend_at(regime_ema_values, REGIME_EMA_PERIOD, setup.entry_index, slope_lookback=TREND_SLOPE_LOOKBACK, slope_threshold_pct=TREND_SLOPE_THRESHOLD_PCT),
-                regimeVolatility=regime_volatility_at(regime_atr_values, REGIME_ATR_PERIOD, setup.entry_index, median_lookback=VOLATILITY_MEDIAN_LOOKBACK, high_ratio=VOLATILITY_HIGH_RATIO, low_ratio=VOLATILITY_LOW_RATIO),
-                breakoutCandleExtended=range_ratio >= EXTENDED_BREAKOUT_RANGE_RATIO,
-                breakoutCandleRangeRatio=range_ratio,
-                maeR=exit_result.mae_r,
-                mfeR=exit_result.mfe_r,
-            )
+        trades = backtest_symbol_over_candles(definition, symbol, candles)
+        for record in trades:
             all_trades.append(record)
             instrument_buckets.setdefault(symbol, []).append(record)
             session_buckets.setdefault(record.entry_session, []).append(record)

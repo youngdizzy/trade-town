@@ -2824,6 +2824,47 @@ class CandlestickPatternRead(CamelModel):
     detail: str
 
 
+ChartPatternType = Literal["double_top", "double_bottom", "trendline_break_up", "trendline_break_down"]
+
+
+class ChartPattern(CamelModel):
+    """CEO directive "Professional Quant Trading Firm — Quant Intelligence
+    + Market Analysis Completion Phase (Next Research + Validation
+    Pass)" — one real, objectively-detected structural chart pattern.
+    Every field is a real, checkable fact about the exact real bars that
+    produced it — `confidencePct` measures how cleanly THIS pattern's own
+    real geometry matched its definition (price symmetry / retracement
+    depth / trendline touch count), never a prediction that price will
+    actually follow through. Only ever reported once real CONFIRMATION
+    (a real close through the real neckline/trendline) has already
+    happened — never a "forming" pattern whose outcome is still unknown,
+    the same conservative, no-look-ahead boundary every other pattern in
+    `app/technical_patterns.py` already holds to. See
+    `app/technical_patterns.py::detect_chart_patterns()` for each
+    pattern type's exact real definition."""
+
+    pattern_id: str = Field(alias="patternId")
+    pattern_type: ChartPatternType = Field(alias="patternType")
+    direction: Literal["bullish", "bearish"]
+    confidence_pct: float = Field(alias="confidencePct")
+    price_low: float = Field(alias="priceLow")
+    price_high: float = Field(alias="priceHigh")
+    formed_at: str = Field(alias="formedAt")
+    confirmed_at: str = Field(alias="confirmedAt")
+    formation_detail: str = Field(alias="formationDetail")
+    invalidation_detail: str = Field(alias="invalidationDetail")
+    source: str
+    timeframe: str
+    symbol: str
+
+
+class ChartPatternRead(CamelModel):
+    symbol: str
+    timeframe: str
+    patterns: list[ChartPattern] = Field(default_factory=list)
+    detail: str
+
+
 class SessionRangeRead(CamelModel):
     """One real session's own real high/low over the candles that fell
     inside its real UTC window (the same `_session_for_hour()` boundaries
@@ -3031,6 +3072,10 @@ class TechnicalIndicatorsRead(CamelModel):
     stochastic_percent_d: float | None = Field(default=None, alias="stochasticPercentD")
     atr14: float | None = None
     vwap: float | None = None
+    parabolic_sar: float | None = Field(default=None, alias="parabolicSar")
+    parabolic_sar_trend: Literal["up", "down"] | None = Field(default=None, alias="parabolicSarTrend")
+    supertrend: float | None = None
+    supertrend_trend: Literal["up", "down"] | None = Field(default=None, alias="supertrendTrend")
     detail: str
 
 
@@ -3050,6 +3095,7 @@ class TechnicalAnalysisRead(CamelModel):
     fibonacci: FibonacciRead
     order_block: OrderBlockRead = Field(alias="orderBlock")
     support_resistance: SupportResistanceRead = Field(alias="supportResistance")
+    chart_patterns: ChartPatternRead = Field(alias="chartPatterns")
 
 
 class VolatilityRead(CamelModel):
@@ -3631,6 +3677,211 @@ class CompiledStrategyBacktestResult(CamelModel):
     instrument_breakdown: list[EmaPullbackStatsBucket] = Field(default_factory=list, alias="instrumentBreakdown")
     model_validation: ModelValidationReport | None = Field(default=None, alias="modelValidation")
     monte_carlo: StrategyMonteCarloResult | None = Field(default=None, alias="monteCarlo")
+    data_honesty_note: str = Field(alias="dataHonestyNote")
+    generated_at: str = Field(alias="generatedAt")
+
+
+class WalkForwardWindowResult(CamelModel):
+    """One real, disjoint chronological slice of a symbol's own real
+    candle series — the compiled definition is backtested against ONLY
+    this window's own bars (see app/walk_forward.py's own module
+    docstring for the structural no-look-ahead guarantee this gives)."""
+
+    window_index: int = Field(alias="windowIndex")
+    start_timestamp: str = Field(alias="startTimestamp")
+    end_timestamp: str = Field(alias="endTimestamp")
+    bucket: EmaPullbackStatsBucket
+
+
+class WalkForwardSymbolResult(CamelModel):
+    symbol: str
+    windows: list[WalkForwardWindowResult] = Field(default_factory=list)
+    positive_window_count: int = Field(alias="positiveWindowCount")
+    negative_window_count: int = Field(alias="negativeWindowCount")
+    evaluated_window_count: int = Field(alias="evaluatedWindowCount")
+    detail: str
+
+
+class WalkForwardValidationResult(CamelModel):
+    """CEO directive "...Quant Intelligence + Market Analysis Completion
+    Phase (Next Research + Validation Pass)," item 4 — genuine walk-
+    forward validation: the SAME fixed compiled definition (no per-
+    window parameter reselection — see app/walk_forward.py's own module
+    docstring for that disclosed scope boundary) re-run independently
+    against consecutive, non-overlapping real chronological windows of
+    each symbol's own real candle series. `verdict` describes STABILITY
+    (does the edge hold up window after window), never a claim of
+    walk-forward OPTIMIZATION (see app/parameter_sensitivity.py for
+    that separate, disjoint capability)."""
+
+    id: str
+    definition_id: str = Field(alias="definitionId")
+    definition_version: int = Field(alias="definitionVersion")
+    window_bars: int = Field(alias="windowBars")
+    symbols: list[WalkForwardSymbolResult] = Field(default_factory=list)
+    verdict: Literal["stable", "unstable", "insufficient_data"]
+    detail: str
+    data_honesty_note: str = Field(alias="dataHonestyNote")
+    generated_at: str = Field(alias="generatedAt")
+
+
+class ParameterSensitivityPoint(CamelModel):
+    """One real, full-series backtest of the SAME compiled definition
+    with exactly one stop/target parameter nudged to a neighboring real
+    value — see app/parameter_sensitivity.py for the sweep methodology."""
+
+    label: str
+    value: float
+    bucket: EmaPullbackStatsBucket
+
+
+class ParameterSensitivityAxisResult(CamelModel):
+    parameter: Literal["stop", "target"]
+    sweepable: bool
+    base_value: float | None = Field(default=None, alias="baseValue")
+    points: list[ParameterSensitivityPoint] = Field(default_factory=list)
+    detail: str
+
+
+class ParameterSensitivityResult(CamelModel):
+    """CEO directive "...Quant Intelligence + Market Analysis Completion
+    Phase (Next Research + Validation Pass)," item 5 — real, one-
+    parameter-at-a-time sensitivity over a compiled definition's own
+    stop and target values (never a full grid search — see
+    app/parameter_sensitivity.py's own module docstring for that
+    disclosed methodology choice). `verdict` describes ROBUSTNESS (does
+    the sign of the edge survive neighboring parameter choices), never a
+    recommendation to adopt any specific point — this schema has no
+    "best combination" field by design, per item 10's own warning
+    against celebrating the best of many trials."""
+
+    id: str
+    definition_id: str = Field(alias="definitionId")
+    definition_version: int = Field(alias="definitionVersion")
+    stop_axis: ParameterSensitivityAxisResult | None = Field(default=None, alias="stopAxis")
+    target_axis: ParameterSensitivityAxisResult | None = Field(default=None, alias="targetAxis")
+    verdict: Literal["robust", "fragile", "insufficient_data"]
+    detail: str
+    multiple_testing_note: str = Field(alias="multipleTestingNote")
+    data_honesty_note: str = Field(alias="dataHonestyNote")
+    generated_at: str = Field(alias="generatedAt")
+
+
+class CostSensitivityScenario(CamelModel):
+    """One real cost scenario — the SAME real, already-closed trades a
+    zero-friction backtest produced, with a real per-leg basis-point
+    friction cost deducted from each trade's own realized R-multiple
+    (never a re-run with different entries/exits — the setups themselves
+    never change, only what they were really worth after real friction).
+    See app/cost_sensitivity.py for where `cost_bps_per_leg` comes from."""
+
+    label: str
+    cost_bps_per_leg: float = Field(alias="costBpsPerLeg")
+    bucket: EmaPullbackStatsBucket
+
+
+class CostSensitivityResult(CamelModel):
+    """CEO directive "...Quant Intelligence + Market Analysis Completion
+    Phase (Next Research + Validation Pass)," item 6 — real transaction-
+    cost/slippage sensitivity, reusing this codebase's OWN existing real
+    cost constants (app/portfolio.py's `TRANSACTION_COST_BPS`, app/
+    execution_quality.py's `BASE_SLIPPAGE_BPS`/`MAX_SLIPPAGE_BPS` — the
+    same numbers live paper trading already charges on every fill) as
+    the scenario ladder, never invented friction numbers."""
+
+    id: str
+    definition_id: str = Field(alias="definitionId")
+    definition_version: int = Field(alias="definitionVersion")
+    scenarios: list[CostSensitivityScenario] = Field(default_factory=list)
+    verdict: Literal["cost_resilient", "cost_sensitive", "insufficient_data"]
+    detail: str
+    data_honesty_note: str = Field(alias="dataHonestyNote")
+    generated_at: str = Field(alias="generatedAt")
+
+
+class LookAheadViolation(CamelModel):
+    """One real, concrete look-ahead finding — a real setup the full
+    candle series found that could NOT be reproduced using only the
+    candles available up to and including its own entry bar. See
+    app/leakage_audit.py for the real truncate-and-re-detect
+    methodology."""
+
+    entry_index: int = Field(alias="entryIndex")
+    entry_timestamp: str = Field(alias="entryTimestamp")
+    direction: str
+    detail: str
+
+
+class LookAheadAuditResult(CamelModel):
+    """CEO directive "...Quant Intelligence + Market Analysis Completion
+    Phase (Next Research + Validation Pass)," item 7 — a real, structural
+    look-ahead audit: every real setup a compiled definition's own
+    generic detector finds against the full candle series is
+    independently re-detected against a series TRUNCATED to end exactly
+    at that setup's own entry bar. A setup that only appears with the
+    full series and vanishes (or changes) once later candles are removed
+    is real, structural proof of a future-data dependency — never a
+    guess or a code-review claim."""
+
+    id: str
+    definition_id: str = Field(alias="definitionId")
+    definition_version: int = Field(alias="definitionVersion")
+    setups_checked: int = Field(alias="setupsChecked")
+    violations: list[LookAheadViolation] = Field(default_factory=list)
+    verdict: Literal["clean", "violations_found", "insufficient_data"]
+    detail: str
+    generated_at: str = Field(alias="generatedAt")
+
+
+class SurvivorshipBiasRead(CamelModel):
+    """CEO directive "...Quant Intelligence + Market Analysis Completion
+    Phase (Next Research + Validation Pass)," item 8 — a real,
+    disclosed data-availability interface for survivorship-bias
+    checking, not a real check. See app/survivorship.py's own module
+    docstring for exactly why this always reads `unavailable`: this
+    codebase's research universe (app/watchlist.py's SEED_SYMBOLS/
+    EXTRA_SYMBOL_POOL) is a fixed, static, always-present pool with no
+    historical constituent or delisting data behind it — there is
+    nothing yet for a real check to audit. Defined now so a future real
+    historical-universe data source has a real, typed interface to
+    plug into, rather than survivorship bias being silently ignored."""
+
+    symbol: str
+    status: Literal["unavailable"]
+    detail: str
+
+
+class ResearchExperimentRecord(CamelModel):
+    """CEO directive "...Quant Intelligence + Market Analysis Completion
+    Phase (Next Research + Validation Pass)," item 11 — the Research
+    Desk's one real, reproducible record of a full research pass over a
+    compiled strategy: what was tested, on what data, using what
+    assumptions, and why the resulting conclusion was reached. Every
+    field below is a direct, unmodified result from an already-real,
+    already-tested module (app/strategy_engine.py, app/walk_forward.py,
+    app/parameter_sensitivity.py, app/cost_sensitivity.py, app/
+    leakage_audit.py, app/model_validation.py via the backtest result's
+    own `modelValidation`) — this schema orchestrates and packages,
+    never recomputes. `conclusion` is a real, disclosed synthesis rule
+    over those already-real verdicts (see app/research_experiment.py's
+    own module docstring for the exact rule) — never a fabricated
+    summary judgment. Computed fresh per request, never persisted — the
+    same CAGS convention this whole directive family uses throughout."""
+
+    id: str
+    definition_id: str = Field(alias="definitionId")
+    definition_name: str = Field(alias="definitionName")
+    definition_version: int = Field(alias="definitionVersion")
+    source_text: str = Field(alias="sourceText")
+    symbols_tested: list[str] = Field(alias="symbolsTested")
+    timeframe: str
+    candles_per_symbol: int = Field(alias="candlesPerSymbol")
+    backtest: CompiledStrategyBacktestResult
+    walk_forward: WalkForwardValidationResult = Field(alias="walkForward")
+    parameter_sensitivity: ParameterSensitivityResult = Field(alias="parameterSensitivity")
+    cost_sensitivity: CostSensitivityResult = Field(alias="costSensitivity")
+    look_ahead_audit: LookAheadAuditResult = Field(alias="lookAheadAudit")
+    conclusion: str
     data_honesty_note: str = Field(alias="dataHonestyNote")
     generated_at: str = Field(alias="generatedAt")
 

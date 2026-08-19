@@ -75,7 +75,7 @@ async def get_technical_analysis(
         candles = market_data_provider.get_candles(symbol.upper(), timeframe, limit)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
-    return compute_technical_analysis(symbol.upper(), candles)
+    return compute_technical_analysis(symbol.upper(), candles, timeframe)
 
 
 @router.get("/session-range", response_model=SessionRangeRead)

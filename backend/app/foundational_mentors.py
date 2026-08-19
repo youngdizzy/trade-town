@@ -56,11 +56,13 @@ explicitly on every mentor profile.
 WHAT'S REAL VS. ROADMAP: five of the seven roadmap tracks ship real
 lesson content — "tjr" (8 original lessons, `_TJR_LESSONS`, expanded
 from the original 6 to match this revision's wider TJR focus-area
-list), "market_intelligence" (23 lessons, `_MARKET_INTELLIGENCE_LESSONS`
+list), "market_intelligence" (26 lessons, `_MARKET_INTELLIGENCE_LESSONS`
 — the original 8 from v0.7 Feature 51, 7 more from the CEO directive
-"Session Trading Education & Agent Training" (orders 9-15), and 8 more
-from the CEO directive "Market-Analysis Knowledge + Session Intelligence
-Expansion" (orders 16-23) — not credited to any real external educator),
+"Session Trading Education & Agent Training" (orders 9-15), 8 more from
+the CEO directive "Market-Analysis Knowledge + Session Intelligence
+Expansion" (orders 16-23), and 3 more from that same directive's "Next
+Research + Validation Pass" (orders 24-26) — not credited to any real
+external educator),
 "al_brooks" (8 lessons, `_AL_BROOKS_LESSONS`, added by that same
 "Market-Analysis Knowledge + Session Intelligence Expansion" directive,
 Phases 1-2 — the track's first real content since the original build),
@@ -494,9 +496,12 @@ _LINDA_RASCHKE_LESSONS: tuple[_LessonSpec, ...] = (
 # liquidity are already taught there): this track focuses on the real
 # candlestick/breakout/reversal detection app/technical_patterns.py adds
 # for this same directive, plus the classical chart-pattern concepts
-# (triangles, double tops, head & shoulders) that codebase has no
-# auto-detector for — each such lesson says so honestly rather than
-# implying one exists.
+# (double tops, head & shoulders, triangles) — some of which (double
+# top/bottom, trendline breaks) gained real detection under the later
+# "Next Research + Validation Pass," the rest (head & shoulders,
+# triangles, wedges, rectangles, channels) still have none — each such
+# lesson says so honestly rather than implying a detector exists where
+# it doesn't.
 _AL_BROOKS_LESSONS: tuple[_LessonSpec, ...] = (
     _LessonSpec(
         id="ab-price-action-basics",
@@ -576,14 +581,14 @@ _AL_BROOKS_LESSONS: tuple[_LessonSpec, ...] = (
     _LessonSpec(
         id="ab-classical-chart-patterns",
         order=6,
-        title="Classical Chart Patterns: A Real Vocabulary, Not An Auto-Detector",
-        simple_explanation="Double tops/bottoms, head & shoulders, triangles, and wedges are real, well-known reversal and continuation patterns worth recognizing by eye. TradeTown does not currently auto-detect any of them — this lesson teaches the real vocabulary honestly, without implying a detector exists.",
-        deeper_explanation="A full grep audit of this codebase found no implementation of double/triple top or bottom detection, head & shoulders (or inverse), cup & handle, or triangle/wedge/rectangle classification — only real Fair Value Gap, order block, candlestick, session-range, and Fibonacci detection exist today (app/technical_patterns.py). Naming this boundary honestly here matters for the same reason this directive requires it for Elliott Wave and harmonic patterns: a named framework is not the same claim as a working detector.",
-        quiz_question="Does TradeTown currently auto-detect double tops, head & shoulders, or triangle patterns?",
+        title="Classical Chart Patterns: What's Real Today, What Isn't Yet",
+        simple_explanation="Double tops/bottoms and trendline breaks are now real, geometrically-detected patterns in TradeTown — but head & shoulders, triangles, wedges, rectangles, and channels are still real, well-known concepts worth recognizing by eye, without any auto-detector behind them yet.",
+        deeper_explanation="CEO directive 'Next Research + Validation Pass' added app/technical_patterns.py's detect_chart_patterns(): a real double top/bottom (two comparable swing highs/lows within a disclosed tolerance, an intervening real retracement past a disclosed minimum, confirmed only by a later real close through the neckline — never reported as a still-forming, outcome-unknown shape) and a real trendline break (a 2-point line through consecutive same-type swings, confirmed by a real close crossing the extrapolated line, with confidence rewarding real additional touches). Head & shoulders, triangles, wedges, rectangles, and channels each need a real multi-point geometric fit and remain a real, disclosed, out-of-scope gap — a named framework is still not the same claim as a working detector for those five.",
+        quiz_question="Which classical chart patterns does TradeTown actually auto-detect today?",
         quiz_options=(
-            "No — a full audit confirms none of these are implemented; they remain real concepts worth understanding manually",
-            "Yes, all of them are fully automated",
-            "Only double tops are detected",
+            "Double top, double bottom, and trendline breaks — geometrically defined and confirmation-gated; head & shoulders/triangles/wedges/rectangles/channels remain undetected",
+            "All classical chart patterns are fully automated",
+            "None of them — chart patterns are pure flavor text",
             "Only on weekends",
         ),
         correct_index=0,
@@ -937,13 +942,13 @@ _MARKET_INTELLIGENCE_LESSONS: tuple[_LessonSpec, ...] = (
         id="mi-indicators",
         order=20,
         title="Indicators: What They Measure, And What They Don't",
-        simple_explanation="RSI, MACD, Stochastic, moving averages, ATR, and VWAP are all real, standard-formula calculations over real candle data. Each measures a specific, narrow thing — none of them predicts the future, and several measure closely related information.",
-        deeper_explanation="app/technical_indicators.py computes each with its real textbook formula: SMA/EMA (trend, lagging), RSI/Stochastic (momentum/overbought-oversold, both derived from the same underlying price momentum), MACD (trend-following momentum, itself built from two EMAs), ATR (volatility, non-directional), and VWAP (a real volume-weighted average price, not a trend signal). Parabolic SAR and SuperTrend are deliberately NOT implemented here — both are more implementation-sensitive, and adding them without equal rigor would be exactly the 'indicator soup, added because the list asked for it' anti-pattern this directive warns against. They remain real, named, un-implemented research candidates.",
-        quiz_question="Why might RSI and Stochastic both agreeing NOT count as two fully independent confirmations?",
+        simple_explanation="RSI, MACD, Stochastic, moving averages, ATR, VWAP, Parabolic SAR, and SuperTrend are all real, standard-formula calculations over real candle data. Each measures a specific, narrow thing — none of them predicts the future, and several measure closely related information.",
+        deeper_explanation="app/technical_indicators.py computes each with its real textbook formula: SMA/EMA (trend, lagging), RSI/Stochastic (momentum/overbought-oversold, both derived from the same underlying price momentum), MACD (trend-following momentum, itself built from two EMAs), ATR (volatility, non-directional), VWAP (a real volume-weighted average price, not a trend signal), and — added under CEO directive 'Next Research + Validation Pass' — Parabolic SAR's real acceleration-factor recurrence and SuperTrend's real ATR-banded trend-flip logic. Both are real, standard, deterministic, unit-tested trend/trailing-stop reads, deliberately grouped into the SAME evidence family as EMA/SMA trend by app/evidence_confluence.py rather than counted as new independent evidence — they are highly correlated trend-following measures, not a fifth unrelated data source.",
+        quiz_question="Why do Parabolic SAR and SuperTrend join the same evidence family as the EMA/SMA trend reads, rather than becoming a new independent one?",
         quiz_options=(
-            "Because both are momentum oscillators derived from closely related underlying price-movement information, not two unrelated data sources",
-            "Because they always disagree",
-            "Because one of them is fabricated",
+            "Because all four are trend-following/trailing-stop-style reads of closely related underlying price-movement information, not independent data sources",
+            "Because SAR and SuperTrend are not really implemented",
+            "Because they always disagree with EMA/SMA",
             "Because TradeTown doesn't compute either one",
         ),
         correct_index=0,
@@ -990,6 +995,57 @@ _MARKET_INTELLIGENCE_LESSONS: tuple[_LessonSpec, ...] = (
             "Because RSI and MACD are never real",
             "Because moving averages are banned from TradeTown",
             "Because three agreeing signals are always wrong",
+        ),
+        correct_index=0,
+    ),
+    # CEO directive "...Quant Intelligence + Market Analysis Completion
+    # Phase (Next Research + Validation Pass)" — orders 24-26, extending
+    # this same mi- track a third time. Every lesson below cites a real
+    # function in app/walk_forward.py, app/parameter_sensitivity.py,
+    # app/cost_sensitivity.py, or app/leakage_audit.py, all built for
+    # this same directive.
+    _LessonSpec(
+        id="mi-walk-forward-and-parameter-sensitivity",
+        order=24,
+        title="Walk-Forward Stability & Parameter Sensitivity",
+        simple_explanation="A backtest run once over a whole history can hide a strategy that only worked in one lucky stretch, or only works with one narrowly-tuned parameter. Walk-forward validation re-tests the SAME fixed rules across several separate, disjoint chunks of real time; parameter sensitivity re-tests the same rules with the stop/target nudged to nearby values. Both ask the same real question from different angles: does this edge hold up, or does it collapse the moment anything shifts?",
+        deeper_explanation="app/walk_forward.py splits a symbol's own real candle series into consecutive, non-overlapping windows and backtests each independently — no signal in one window ever sees a candle from another, a structural (not just claimed) no-look-ahead guarantee. Its verdict (stable/unstable/insufficient_data) reads real sign-agreement of expectancy across evaluated windows, never a forced call from too few. app/parameter_sensitivity.py separately sweeps the definition's own real stop and target values one axis at a time across five real neighboring points, reporting robust/fragile/insufficient_data from real sign-agreement — and, by design, never surfaces a single 'best' combination, since celebrating one winning point out of several trials is exactly the overfitting trap this track's own confluence lesson warns about.",
+        quiz_question="Why does app/parameter_sensitivity.py's result schema have no 'best combination' field?",
+        quiz_options=(
+            "Because surfacing a single winning point out of several real trials would celebrate the best of many by chance, the same overfitting risk multiple-testing raises",
+            "Because the sweep doesn't actually run multiple real backtests",
+            "Because there is only ever one point to sweep",
+            "Because best-combination tracking was too slow to compute",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="mi-cost-sensitivity",
+        order=25,
+        title="Transaction Costs & Slippage: The Edge That Disappears",
+        simple_explanation="A backtest that fills every trade at the exact stop or target price, with zero commission and zero slippage, is measuring an edge that can't exist in real trading. A real edge has to survive real friction, not just a frictionless simulation.",
+        deeper_explanation="A full audit found this codebase's real bar-by-bar research engines (app/backtest_primitives.py's simulate_exit()) fill at the exact real stop/target price every time — real friction only ever applied to LIVE paper trades (app/portfolio.py's TRANSACTION_COST_BPS, app/execution_quality.py's slippage model), a genuine gap between what research measured and what live trading would actually pay. app/cost_sensitivity.py closes it by reusing those SAME real cost constants (never a second, invented cost model) across a base/low/moderate/high/stressed scenario ladder, deducting a real round-trip basis-point cost from each real trade's own realized R-multiple. A strategy whose real expectancy turns negative anywhere along that real ladder is reported cost_sensitive — a real, honest finding, not a hidden one.",
+        quiz_question="Why does app/cost_sensitivity.py reuse app/portfolio.py's own TRANSACTION_COST_BPS instead of inventing a new research-only cost number?",
+        quiz_options=(
+            "Because this codebase already has one real, disclosed cost model for live fills, and a second, different research-only number would be an unjustified parallel system",
+            "Because live trading has no real transaction costs",
+            "Because research backtests are exempt from all real costs",
+            "Because TRANSACTION_COST_BPS is randomly generated",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="mi-look-ahead-bias",
+        order=26,
+        title="Look-Ahead Bias: Proving It, Not Just Avoiding It",
+        simple_explanation="Careful code alone doesn't prove a backtest never peeked at the future — a real test that would actually FAIL if a future-data dependency existed is the only real proof. 'We wrote it carefully' is a design intention; 'we tested it and it survived' is evidence.",
+        deeper_explanation="app/leakage_audit.py's real truncate-and-re-detect method: for every real setup a compiled definition's detector finds against the full candle series, it independently re-runs the exact same detector against the series cut off right at that setup's own entry bar. A setup that only appears with the full series and vanishes once later candles are removed is real, structural proof of a future-data dependency — not a code-review claim. Its own test suite proves the METHOD works, not just that the real detector happens to pass: a deliberately broken detector that peeks one real bar into the future is run through the same audit first, and the audit correctly catches it.",
+        quiz_question="Why does app/leakage_audit.py's own test suite run the audit against a DELIBERATELY BROKEN detector, not just the real one?",
+        quiz_options=(
+            "To prove the audit methodology itself would actually catch a real look-ahead violation, not just trivially pass on a detector that happens to be clean",
+            "Because the real detector cannot be tested directly",
+            "Because broken detectors run faster in tests",
+            "Because the real detector is expected to fail eventually",
         ),
         correct_index=0,
     ),

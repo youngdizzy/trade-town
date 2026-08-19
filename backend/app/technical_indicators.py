@@ -21,15 +21,20 @@ describes a real, checkable property of the candle series it was
 computed from, exactly the same "process, not outcome" boundary
 `app/confidence.py`'s own docstring already establishes.
 
-WHAT'S DELIBERATELY NOT HERE: Parabolic SAR and SuperTrend (both real,
-named, well-known indicators) are NOT computed here — both are more
-implementation-sensitive than the others (SAR's iterative acceleration-
-factor recurrence, SuperTrend's ATR-banded trend-flip logic), and adding
-them without equal rigor to what's below would be exactly the "indicator
-soup, added because the list asked for it" anti-pattern this same
-directive explicitly warns against (see app/model_validation.py's new
-anti-overfitting checks). Documented as real, named, un-implemented
-research candidates in the Design Bible rather than half-built here.
+CEO directive "Professional Quant Trading Firm — Quant Intelligence +
+Market Analysis Completion Phase (Next Research + Validation Pass)":
+Parabolic SAR and SuperTrend, deliberately left out above, are now
+implemented below with the same rigor as every other indicator in this
+module — standard, textbook iterative formulas (SAR's real acceleration-
+factor recurrence; SuperTrend's real ATR-banded trend-flip logic), both
+deterministic and reproducible from the same real candle series. Neither
+is treated as a standalone trading signal here — see each function's own
+docstring, and app/evidence_confluence.py's own docstring for why both
+join the existing `trend` evidence family rather than becoming a new one
+(they are trend-following/trailing-stop indicators highly correlated
+with the EMA/SMA trend reads already in that family — counting them as
+independent evidence would be exactly the double-counting this same
+directive's own confluence rules forbid).
 
 WHAT THIS MODULE DOES NOT DO: none of these values are wired into
 `app/research.py`'s confidence gauge, `app/confidence.py`'s Decision
@@ -217,6 +222,130 @@ def atr_series(candles: list[Candle], period: int = 14) -> list[float]:
         high, low, prev_close = candles[i].high, candles[i].low, candles[i - 1].close
         true_ranges.append(max(high - low, abs(high - prev_close), abs(low - prev_close)))
     return [round(sum(true_ranges[i - period : i]) / period, 4) for i in range(period, len(true_ranges) + 1)]
+
+
+def parabolic_sar_series(candles: list[Candle], *, af_start: float = 0.02, af_step: float = 0.02, af_max: float = 0.2) -> list[tuple[float, str]]:
+    """The real, full Parabolic SAR series — Wellesley Wilder's standard
+    iterative recurrence, one `(sar_value, trend)` pair per candle from
+    index 1 onward (index 0 has no prior bar to seed a starting trend
+    from). `trend` is `"up"` while price trades above its own real SAR
+    dot, `"down"` while below — never a third state, since SAR is always
+    on one side of price by construction.
+
+    The real recurrence: `sar[i] = sar[i-1] + af * (ep - sar[i-1])`,
+    where `ep` (extreme point) is the highest high (uptrend) or lowest
+    low (downtrend) reached so far in the CURRENT trend leg, and `af`
+    (acceleration factor) starts at `af_start`, increases by `af_step`
+    every time a new real extreme point is made, capped at `af_max` —
+    all three real, standard, disclosed defaults (0.02/0.02/0.2), never
+    TradeTown-fitted. The real "SAR cannot penetrate the last two real
+    bars' own range" clamp is enforced every bar (an uptrend's SAR is
+    capped at the lower of the last two real lows; a downtrend's SAR is
+    floored at the higher of the last two real highs) — the standard
+    real safeguard against SAR jumping inside price action it hasn't
+    actually reached yet. A real close beyond the current SAR dot flips
+    the trend: the new SAR becomes the old extreme point, AF resets to
+    `af_start`, and a fresh extreme point starts accumulating from the
+    flip bar's own real high/low — never carrying stale state across the
+    flip."""
+    if len(candles) < 2:
+        return []
+    trend = "up" if candles[1].close >= candles[0].close else "down"
+    ep = candles[0].high if trend == "up" else candles[0].low
+    sar = candles[0].low if trend == "up" else candles[0].high
+    af = af_start
+    series: list[tuple[float, str]] = []
+    for i in range(1, len(candles)):
+        cur = candles[i]
+        prev_two = candles[max(0, i - 2) : i]
+        next_sar = sar + af * (ep - sar)
+        if trend == "up":
+            if prev_two:
+                next_sar = min(next_sar, *(c.low for c in prev_two))
+            if cur.low < next_sar:
+                trend = "down"
+                next_sar = ep
+                ep = cur.low
+                af = af_start
+            elif cur.high > ep:
+                ep = cur.high
+                af = min(af + af_step, af_max)
+        else:
+            if prev_two:
+                next_sar = max(next_sar, *(c.high for c in prev_two))
+            if cur.high > next_sar:
+                trend = "up"
+                next_sar = ep
+                ep = cur.high
+                af = af_start
+            elif cur.low < ep:
+                ep = cur.low
+                af = min(af + af_step, af_max)
+        sar = next_sar
+        series.append((round(sar, 4), trend))
+    return series
+
+
+def parabolic_sar(candles: list[Candle], *, af_start: float = 0.02, af_step: float = 0.02, af_max: float = 0.2) -> tuple[float, str] | None:
+    """The latest real `(sar_value, trend)` pair — see
+    `parabolic_sar_series()` for the full real recurrence."""
+    series = parabolic_sar_series(candles, af_start=af_start, af_step=af_step, af_max=af_max)
+    return series[-1] if series else None
+
+
+def supertrend_series(candles: list[Candle], *, period: int = 10, multiplier: float = 3.0) -> list[tuple[float, str]]:
+    """The real, full SuperTrend series — one `(supertrend_value, trend)`
+    pair per candle from the point a real `period`-bar ATR window exists
+    onward. The real, standard band recurrence: `basic_upper[i] =
+    (high[i]+low[i])/2 + multiplier * ATR[i]` (mirrored for
+    `basic_lower`), then each band only ever tightens toward price — a
+    real `final_upper[i]` only drops below `final_upper[i-1]` when the
+    real basic upper band itself is lower OR the prior real close already
+    broke above it (never loosens back away from price once tightened,
+    the standard real SuperTrend "sticky band" rule, mirrored for
+    `final_lower`). The real trend flips exactly when a real close
+    crosses the currently-active band; the line itself is always
+    `final_lower` while up-trending, `final_upper` while down-trending.
+    `period`/`multiplier` (10/3.0) are the methodology's own commonly-
+    published defaults, not TradeTown-fitted numbers."""
+    atr_values = atr_series(candles, period)
+    if not atr_values:
+        return []
+    offset = len(candles) - len(atr_values)
+    final_upper = 0.0
+    final_lower = 0.0
+    trend = "up"
+    series: list[tuple[float, str]] = []
+    for k, atr_value in enumerate(atr_values):
+        i = k + offset
+        cur = candles[i]
+        mid = (cur.high + cur.low) / 2.0
+        basic_upper = mid + multiplier * atr_value
+        basic_lower = mid - multiplier * atr_value
+        if k == 0:
+            final_upper = basic_upper
+            final_lower = basic_lower
+            trend = "up" if cur.close >= final_lower else "down"
+        else:
+            prev_close = candles[i - 1].close
+            final_upper = basic_upper if (basic_upper < final_upper or prev_close > final_upper) else final_upper
+            final_lower = basic_lower if (basic_lower > final_lower or prev_close < final_lower) else final_lower
+            if trend == "up":
+                if cur.close < final_lower:
+                    trend = "down"
+            else:
+                if cur.close > final_upper:
+                    trend = "up"
+        line = final_lower if trend == "up" else final_upper
+        series.append((round(line, 4), trend))
+    return series
+
+
+def supertrend(candles: list[Candle], *, period: int = 10, multiplier: float = 3.0) -> tuple[float, str] | None:
+    """The latest real `(supertrend_value, trend)` pair — see
+    `supertrend_series()` for the full real recurrence."""
+    series = supertrend_series(candles, period=period, multiplier=multiplier)
+    return series[-1] if series else None
 
 
 def vwap(candles: list[Candle]) -> float | None:
