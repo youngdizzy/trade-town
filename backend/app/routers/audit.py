@@ -32,6 +32,7 @@ from app.audit_log import (
     filter_audit_log,
 )
 from app.compliance_incidents import compute_incident_summary
+from app.continuous_improvement import compute_continuous_improvement_summary
 from app.control_effectiveness import compute_control_effectiveness
 from app.override_governance import compute_override_governance_summary
 from app.persistence import persist_modules
@@ -45,6 +46,7 @@ from app.schemas import (
     ComplianceIncident,
     ComplianceIncidentSummary,
     ComplianceOverview,
+    ContinuousImprovementSummary,
     ControlEffectivenessSummary,
     GovernanceLayer,
     IncidentRootCause,
@@ -294,3 +296,21 @@ async def get_control_effectiveness() -> ControlEffectivenessSummary:
     outcomes (see app/control_effectiveness.py)."""
     state = await game_state.snapshot()
     return compute_control_effectiveness(state.decisions, state.gatekeeper_rejections)
+
+
+# CEO directive "Features 31-35," Feature 35 — the Continuous Compliance
+# Improvement Loop. Read-only, computed fresh per request over
+# `state.compliance_incidents` (Feature 31, already persisted) — no new
+# GameSaveState field, the same original CAGS convention as Feature 34
+# (see app/continuous_improvement.py's module docstring).
+
+
+@router.get("/continuous-improvement", response_model=ContinuousImprovementSummary)
+async def get_continuous_improvement() -> ContinuousImprovementSummary:
+    """Did a real remediation actually hold, and is any real root cause
+    recurring across the real incident backlog — see
+    app/continuous_improvement.py for the exact evidence and honesty
+    rules."""
+    state = await game_state.snapshot()
+    current_sim_day = sim_minutes(state.time) // 1440
+    return compute_continuous_improvement_summary(state.compliance_incidents, current_sim_day=current_sim_day)

@@ -43,6 +43,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.academy import is_mentor_level
+from app.continuous_improvement import compute_remediation_effectiveness, compute_root_cause_recurrence
+from app.control_effectiveness import compute_control_effectiveness
 from app.discipline import GOOD_DISCIPLINE_TIERS, POOR_DISCIPLINE_TIERS
 from app.education import all_lessons
 from app.foundational_mentors import STUDENT_AGENT_IDS
@@ -53,6 +55,7 @@ from app.schemas import (
     AgentId,
     AgentKnowledgeState,
     AgentState,
+    ComplianceIncident,
     CompanyHealth,
     CompanyHealthComponentDelta,
     CompanyHealthDelta,
@@ -142,6 +145,7 @@ _EXECUTIVE_METRIC_LABELS: dict[str, str] = {
     "innovation_velocity": "Innovation Velocity",
     "talent_development": "Talent Development",
     "founder_oversight": "Founder Oversight",
+    "compliance_health": "Compliance Health",
 }
 
 # The window of most-recent debates a fresh Team Chemistry reading is
@@ -724,6 +728,64 @@ def _founder_oversight(council_sessions: list[FounderCouncilSession]) -> float:
     return (occurrence + substance) / 2.0
 
 
+# CEO directive "Features 31-35," Feature 35 — Continuous Compliance
+# Improvement, connected into Company Health through this EXISTING
+# architecture (a new, additive Executive-tier dimension, the same "new
+# dimension, never a rewrite" pattern every sibling above already
+# follows) rather than a second, parallel scoring system. Deliberately
+# NOT `app/audit_log.py::compute_compliance_score()` — that formula
+# stays untouched; see this function's own return-path comments and the
+# Design Bible/Architecture.md for the documented limitation and
+# proposed (not yet CEO-authorized) change to that separate formula.
+def _compliance_health(
+    compliance_incidents: list[ComplianceIncident],
+    decisions: list[TradeDecision],
+    gatekeeper_rejections: list[GatekeeperRejection],
+    current_sim_day: int,
+) -> float:
+    """A real, disclosed blend of three genuinely different real
+    evidence sources — incident resolution, remediation effectiveness
+    (Feature 35), and control effectiveness (Feature 34) — never a
+    single opaque number. Each component defaults to the neutral 50.0
+    this file's own `_risk_governance()` already established for "no
+    real evidence yet" (never a fabricated 0 or 100), and a real,
+    disclosed penalty subtracts for any confirmed RECURRING FAILURE
+    (the same root cause repeatedly producing incidents)."""
+    if not compliance_incidents:
+        resolution_component = 50.0
+    else:
+        resolved_count = sum(1 for i in compliance_incidents if i.status == "resolved")
+        resolution_component = resolved_count / len(compliance_incidents) * 100.0
+
+    remediations = compute_remediation_effectiveness(compliance_incidents, current_sim_day=current_sim_day)
+    scored_remediations = [r for r in remediations if r.effectiveness_state != "not_enough_evidence"]
+    if not scored_remediations:
+        remediation_component = 50.0
+    else:
+        effective = sum(1 for r in scored_remediations if r.effectiveness_state == "effective")
+        partially_effective = sum(1 for r in scored_remediations if r.effectiveness_state == "partially_effective")
+        remediation_component = (effective + 0.5 * partially_effective) / len(scored_remediations) * 100.0
+
+    control_summary = compute_control_effectiveness(decisions, gatekeeper_rejections)
+    scored_controls = [c for c in control_summary.controls if c.effectiveness_state not in ("not_yet_tested", "insufficient_data")]
+    if not scored_controls:
+        control_component = 50.0
+    else:
+        effective_controls = sum(1 for c in scored_controls if c.effectiveness_state == "effective")
+        mixed_controls = sum(1 for c in scored_controls if c.effectiveness_state == "mixed")
+        control_component = (effective_controls + 0.5 * mixed_controls) / len(scored_controls) * 100.0
+
+    recurrences = compute_root_cause_recurrence(compliance_incidents)
+    recurring_failure_count = sum(1 for r in recurrences if r.recurring_failure)
+    # Disclosed, capped penalty — same "conservative but arbitrary, no
+    # real regulatory requirement behind it" honesty note the Compliance
+    # Score formula itself already carries (app/audit_log.py).
+    recurrence_penalty = min(30.0, recurring_failure_count * 10.0)
+
+    blended = (resolution_component + remediation_component + control_component) / 3.0
+    return round(max(0.0, blended - recurrence_penalty), 1)
+
+
 def compute_company_health(
     *,
     agents: dict[AgentId, AgentState],
@@ -753,6 +815,14 @@ def compute_company_health(
     # _pipeline_progress() / _measured_improvement()).
     strategies: list[Strategy],
     strategy_health_assessments: list[StrategyHealthAssessment],
+    # CEO directive "Features 31-35," Feature 35 — Compliance Health's
+    # real incident/remediation/control evidence (see
+    # `_compliance_health()`). `current_sim_day` is the same real value
+    # every other sim-day-aware consumer in this codebase already has in
+    # scope (e.g. `is_overdue()`), needed so a fresh remediation isn't
+    # judged before its real observation window has elapsed.
+    compliance_incidents: list[ComplianceIncident],
+    current_sim_day: int,
     # v0.7 Design Bible Chapter 63 — CEO-configurable tier thresholds
     # (RiskLimits.companyHealth*Threshold), defaulting to the exact
     # module constants above so existing behavior is unchanged until the
@@ -795,6 +865,7 @@ def compute_company_health(
         "innovation_velocity": _innovation_velocity(innovation_state, strategies, strategy_health_assessments),
         "talent_development": _talent_development(foundational_mentor_state, discipline_reviews),
         "founder_oversight": _founder_oversight(founder_council_sessions),
+        "compliance_health": _compliance_health(compliance_incidents, decisions, gatekeeper_rejections, current_sim_day),
     }
     executive_overall = sum(executive_metrics.values()) / len(executive_metrics)
     combined_overall = (overall + executive_overall) / 2.0
@@ -833,6 +904,7 @@ def compute_company_health(
         innovationVelocity=round(executive_metrics["innovation_velocity"], 1),
         talentDevelopment=round(executive_metrics["talent_development"], 1),
         founderOversight=round(executive_metrics["founder_oversight"], 1),
+        complianceHealth=round(executive_metrics["compliance_health"], 1),
         executiveOverall=round(executive_overall, 1),
         executiveTier=_tier(executive_overall, tier_thresholds),
         combinedOverall=round(combined_overall, 1),

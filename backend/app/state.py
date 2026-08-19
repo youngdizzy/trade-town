@@ -298,6 +298,8 @@ def default_state() -> GameSaveState:
             agent_knowledge=agent_knowledge,
             strategies=default_strategies(),
             strategy_health_assessments=[],
+            compliance_incidents=[],
+            current_sim_day=1,
         ),
         companyDna=compute_company_dna([], [], []),
         dailyObjectiveStatus=compute_daily_objective_status(default_risk_limits(), default_portfolio(), 1),

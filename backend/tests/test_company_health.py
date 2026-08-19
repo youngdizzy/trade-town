@@ -9,6 +9,7 @@ from __future__ import annotations
 
 from app.agents import all_agent_ids
 from app.company_health import compute_company_health, diff_company_health
+from app.continuous_improvement import REMEDIATION_EVAL_WINDOW_SIM_DAYS
 from app.debate import generate_debate
 from app.education import all_lessons
 from app.foundational_mentors import STUDENT_AGENT_IDS, default_foundational_mentor_state
@@ -19,6 +20,7 @@ from app.schemas import (
     AgentState,
     AnalystVote,
     CompanyHealth,
+    ComplianceIncident,
     Debate,
     DebateTurn,
     DecisionConfidence,
@@ -266,6 +268,32 @@ def _strong_executive_overrides() -> dict:
         )
         for s in strong_strategies
     ]
+    # CEO directive "Features 31-35," Feature 35 — compliance_health now
+    # also reads real incident resolution/remediation evidence, so this
+    # "everything maxed" fixture needs one real, resolved, long-settled
+    # (well past REMEDIATION_EVAL_WINDOW_SIM_DAYS, never reopened, no
+    # same-signature recurrence) incident, or compliance_health would
+    # honestly (and correctly) read a lower score than a genuinely
+    # clean-compliance-record company would.
+    resolved_incident = ComplianceIncident(
+        id="strong-incident-1",
+        sourceEntryId="audit-strong-1",
+        category="gatekeeper_rejection",  # type: ignore[arg-type]
+        severity="warning",  # type: ignore[arg-type]
+        department="Trade Gatekeeper",
+        summary="x",
+        detail="x",
+        createdAt="2026-01-01T00:00:00+00:00",
+        simDay=1,
+        status="resolved",
+        resolvedAt="2026-01-01T00:00:00+00:00",
+        resolutionSimDay=1,
+        verificationStatus="verified",
+        verifier="sentinel",
+        rootCause="control_failure",
+        correctiveAction="Tightened the check.",
+        updatedAt="2026-01-01T00:00:00+00:00",
+    )
     return dict(
         decisions=decisions,
         meeting_log=meeting_log,
@@ -279,6 +307,8 @@ def _strong_executive_overrides() -> dict:
         agent_knowledge=agent_knowledge,
         strategies=strong_strategies,
         strategy_health_assessments=strong_strategy_health_assessments,
+        compliance_incidents=[resolved_incident],
+        current_sim_day=1 + REMEDIATION_EVAL_WINDOW_SIM_DAYS,
     )
 
 
@@ -332,6 +362,8 @@ def _health(**overrides):
         agent_knowledge={},
         strategies=[],
         strategy_health_assessments=[],
+        compliance_incidents=[],
+        current_sim_day=1,
     )
     defaults.update(overrides)
     return compute_company_health(**defaults)

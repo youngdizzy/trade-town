@@ -3595,6 +3595,15 @@ class CompanyHealth(CamelModel):
     innovation_velocity: float = Field(default=50.0, alias="innovationVelocity")
     talent_development: float = Field(default=50.0, alias="talentDevelopment")
     founder_oversight: float = Field(default=50.0, alias="founderOversight")
+    # CEO directive "Features 31-35," Feature 35 — the Continuous
+    # Compliance Improvement Loop's real Company Health connection: a
+    # genuinely new eleventh Executive-tier dimension (never a rewrite of
+    # `compute_compliance_score()` in app/audit_log.py, which stays
+    # untouched — see app/company_health.py's `_compliance_health()` for
+    # the real blend of incident resolution, remediation effectiveness,
+    # and control effectiveness this reads). Defaults to 50.0 (neutral)
+    # so a save from before this field existed still validates.
+    compliance_health: float = Field(default=50.0, alias="complianceHealth")
     executive_overall: float = Field(default=50.0, alias="executiveOverall")
     executive_tier: CompanyHealthTier = Field(default="stable", alias="executiveTier")
     # The true redesigned headline number — an equal blend of the
@@ -5520,6 +5529,85 @@ class ControlEffectivenessSummary(CamelModel):
     insufficient_data_count: int = Field(alias="insufficientDataCount")
     not_yet_tested_count: int = Field(alias="notYetTestedCount")
     regressed_control_count: int = Field(alias="regressedControlCount")
+    updated_at: str = Field(alias="updatedAt")
+
+
+# CEO directive "Features 31-35," Feature 35 — the Continuous Compliance
+# Improvement Loop (app/continuous_improvement.py). Closes the loop:
+# INCIDENT (Feature 31) -> ROOT CAUSE (real, CEO-recorded on
+# `verify_and_resolve()`) -> REMEDIATION (the real `correctiveAction`
+# text) -> MONITORING (a real, disclosed sim-day observation window) ->
+# OUTCOME (did the same incident reopen, or the same root cause recur
+# elsewhere) -> EFFECTIVENESS REVIEW (below) -> COMPANY HEALTH (a new
+# real `complianceHealth` sub-score, Chapter 63's existing architecture
+# — see app/company_health.py). Read-only, computed fresh per request
+# over already-persisted `state.compliance_incidents` — no new
+# GameSaveState field, the same original CAGS convention as Feature 34.
+RemediationEffectivenessState = Literal["effective", "partially_effective", "ineffective", "not_enough_evidence"]
+
+
+class RemediationEffectivenessRecord(CamelModel):
+    """One real, ever-resolved `ComplianceIncident`'s remediation
+    outcome. `reopenedCount > 0` is the strongest, most direct evidence a
+    fix failed — a CEO explicitly reopened that exact case — and always
+    reads `ineffective` regardless of the observation window below.
+    Short of that, `recurrenceCount` counts OTHER real incidents sharing
+    this one's exact (`rootCause`, `category`, `department`) signature
+    that opened *after* this incident's own `resolutionSimDay` — the
+    same underlying problem class showing up again elsewhere, even
+    though this specific case never reopened, reads `partially_effective`
+    rather than a flat `effective`. `not_enough_evidence` applies before
+    `REMEDIATION_EVAL_WINDOW_SIM_DAYS` of real simulated time has passed
+    since resolution — too soon to honestly claim a fix "held," the same
+    NO-TRIGGERS-≠-FAILURE discipline Feature 34 already established for
+    controls."""
+
+    incident_id: str = Field(alias="incidentId")
+    root_cause: IncidentRootCause = Field(alias="rootCause")
+    corrective_action: str = Field(alias="correctiveAction")
+    category: AuditEventCategory
+    department: str
+    resolved_at: str = Field(alias="resolvedAt")
+    resolution_sim_day: int = Field(alias="resolutionSimDay")
+    reopened_count: int = Field(alias="reopenedCount")
+    recurrence_count: int = Field(alias="recurrenceCount")
+    effectiveness_state: RemediationEffectivenessState = Field(alias="effectivenessState")
+
+
+class RootCauseRecurrence(CamelModel):
+    """Per-`rootCause` (not narrowed by category/department — the
+    directive's own literal "same root cause repeatedly produces
+    incidents" wording), a real count of every distinct incident this
+    root cause has ever been recorded on, coarser and broader than
+    `RemediationEffectivenessRecord.recurrenceCount`'s tighter
+    same-signature match, and disclosed as such — a genuine second,
+    coarser lens on the same real data, not a second independently
+    invented number. `recurringFailure` is `true` once
+    `RECURRING_FAILURE_MIN_COUNT` (= 2 — "recurring" honestly means
+    "happened more than once," a structural count, not a statistical
+    rate, so this floor is deliberately lower than the rate-verdict
+    floors Features 33/34 use) real incidents share it."""
+
+    root_cause: IncidentRootCause = Field(alias="rootCause")
+    incident_count: int = Field(alias="incidentCount")
+    recurring_failure: bool = Field(alias="recurringFailure")
+    first_occurred_at: str = Field(alias="firstOccurredAt")
+    last_occurred_at: str = Field(alias="lastOccurredAt")
+    incident_ids: list[str] = Field(default_factory=list, alias="incidentIds")
+
+
+class ContinuousImprovementSummary(CamelModel):
+    """The Continuous Improvement loop's real aggregate — every count
+    here is a direct tally over `remediations`/`rootCauseRecurrences`,
+    never a second, independently-blended number."""
+
+    remediations: list[RemediationEffectivenessRecord]
+    root_cause_recurrences: list[RootCauseRecurrence] = Field(alias="rootCauseRecurrences")
+    effective_count: int = Field(alias="effectiveCount")
+    partially_effective_count: int = Field(alias="partiallyEffectiveCount")
+    ineffective_count: int = Field(alias="ineffectiveCount")
+    not_enough_evidence_count: int = Field(alias="notEnoughEvidenceCount")
+    recurring_failure_count: int = Field(alias="recurringFailureCount")
     updated_at: str = Field(alias="updatedAt")
 
 

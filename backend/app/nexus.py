@@ -2228,6 +2228,12 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         agent_knowledge=agent_knowledge,
         strategies=strategies,
         strategy_health_assessments=strategy_health_assessments,
+        # CEO directive "Features 31-35," Feature 35 — Compliance
+        # Health's real evidence, already in scope at this point in the
+        # tick (the same real `compliance_incidents`/`new_time.day`
+        # every other tick-time consumer here already uses).
+        compliance_incidents=compliance_incidents,
+        current_sim_day=new_time.day,
         # v0.7 Design Bible Chapter 63 — CEO-configurable Company Health
         # tier thresholds, threaded the same way every other Chapter
         # 57-62 CEO control already is at this point in the tick.
