@@ -69,6 +69,43 @@ requires. THE CONCENTRATION CHECK below is the second and only other
 exception — see THE CONCENTRATION CHECK section for its own disclosed,
 non-reused threshold.
 
+THE ANTI-OVERFITTING CHECKS (CEO directive "Professional Trading Firm —
+Market-Analysis Knowledge + Session Intelligence Expansion," Phase 8 —
+"No Indicator Soup"): two further checks, both reusing evidence this
+module already has on hand rather than any new raw-data pipeline.
+  - `regime_dependence`: flags a strategy whose real per-regime
+    `avg_return_pct` (from the same `StrategyRegimeTestReport` buckets
+    `_regime_breadth_check` above already reads) disagrees in *sign*
+    across tested Testing Environments — real profit in one regime,
+    real loss in another. This is a distinct failure mode from
+    `regime_breadth`'s "weak bucket" verdict: a strategy can clear every
+    bucket's own `verdict` threshold and still be a strategy whose edge
+    is really a bet on one specific regime rather than a genuinely
+    regime-robust rule. No new numeric threshold — sign disagreement is
+    checkable with no invented number.
+  - `optimization_scrutiny`: flags a strategy whose real `win_rate` sits
+    at or above `SUSPICIOUS_WIN_RATE_FLOOR_PCT` while its real sample is
+    still below the Certification gate's own `CERTIFICATION_MIN_TRADE_COUNT`
+    — the classic "too good, too soon" shape of an overfit result, per
+    this directive's own explicit warning against "suspiciously
+    optimized results." This never claims the strategy IS overfit
+    (a real, larger sample could vindicate a genuinely strong edge) —
+    only that this specific combination of a small sample and an
+    implausibly high win rate deserves closer scrutiny before being
+    trusted. `SUSPICIOUS_WIN_RATE_FLOOR_PCT = 85.0` is a new, disclosed
+    research assumption with no existing in-codebase precedent, held to
+    the same honesty standard as `CONCENTRATION_MAX_SINGLE_RUN_SHARE_PCT`
+    below.
+This directive's own Phase 8 also asks to "track number of
+features/signals used, parameter changes, strategy iterations,
+hypotheses tested" — `Strategy` has no such fields, and none of the
+codebase's real strategy-generation pipeline (app/sandbox.py) tracks
+feature counts or parameter-change history today. Rather than fabricate
+a counter, this is disclosed as a genuine, currently un-trackable gap in
+`data_sources_and_assumptions` below (the same `not_trackable_yet`
+honesty pattern `app/process_adherence.py` already established for its
+own genuinely un-trackable checks).
+
 THE CONCENTRATION CHECK (Prop-Firm Risk Intelligence Addendum, Piece
 8a — Requirement 8, "CONSISTENCY ANALYSIS: track profit concentration
 [largest winning trade/day as % of total]"): the CEO's transcript
@@ -163,6 +200,12 @@ MAX_STRATEGY_MODEL_VALIDATIONS = 30
 # CHECK in this module's docstring). Not a reuse of any existing
 # Certification-gate constant, unlike every other threshold in this file.
 CONCENTRATION_MAX_SINGLE_RUN_SHARE_PCT = 50.0
+
+# CEO directive "Market-Analysis Knowledge + Session Intelligence
+# Expansion," Phase 8 — a new, disclosed research assumption (see THE
+# ANTI-OVERFITTING CHECKS in this module's docstring). Not a reuse of any
+# existing Certification-gate constant.
+SUSPICIOUS_WIN_RATE_FLOOR_PCT = 85.0
 
 
 def _now_iso() -> str:
@@ -362,6 +405,82 @@ def _concentration_check(strategy_results: list[SimulationResult]) -> ModelValid
     )
 
 
+def _regime_dependence_check(regime_test: StrategyRegimeTestReport | None) -> ModelValidationCheck:
+    """CEO directive "Market-Analysis Knowledge + Session Intelligence
+    Expansion," Phase 8 — see THE ANTI-OVERFITTING CHECKS in this
+    module's docstring. Distinct from `_regime_breadth_check`: flags real
+    sign disagreement in `avg_return_pct` across tested regime buckets,
+    not just a "weak" bucket verdict."""
+    if regime_test is None:
+        return ModelValidationCheck(
+            id="regime_dependence",
+            label="No Regime-Dependent Sign Reversal (Anti-Overfitting)",
+            passed=None,
+            evidence="No real Market Regime Testing on file yet for this strategy.",
+            reasoning="Cannot evaluate regime dependence without a real StrategyRegimeTestReport.",
+            thresholdSource="No new threshold — checks real sign agreement across app/strategy_lab.py's own tested regime buckets",
+        )
+    tested = [b for b in regime_test.buckets if b.tested]
+    if len(tested) < 2:
+        return ModelValidationCheck(
+            id="regime_dependence",
+            label="No Regime-Dependent Sign Reversal (Anti-Overfitting)",
+            passed=None,
+            evidence=f"Only {len(tested)} real tested regime bucket(s) on file — at least 2 are needed to compare sign agreement.",
+            reasoning="Cannot evaluate regime dependence with fewer than two real tested regime buckets.",
+            thresholdSource="No new threshold — checks real sign agreement across app/strategy_lab.py's own tested regime buckets",
+        )
+    signs = {b.avg_return_pct > 0 for b in tested if b.avg_return_pct != 0}
+    passed = len(signs) <= 1
+    returns_summary = ", ".join(f"{b.scenario}: {b.avg_return_pct:+.2f}%" for b in tested)
+    return ModelValidationCheck(
+        id="regime_dependence",
+        label="No Regime-Dependent Sign Reversal (Anti-Overfitting)",
+        passed=passed,
+        evidence=f"Real per-regime average return across {len(tested)} tested bucket(s): {returns_summary}.",
+        reasoning=(
+            "Real return sign agrees across every tested regime bucket — the edge is not a bet on one specific regime."
+            if passed
+            else "Real return sign disagrees across tested regime buckets — real profit in some regimes, real loss in others. A strategy can still clear each bucket's own weak/strong verdict individually while its edge is really regime-dependent, not regime-robust."
+        ),
+        thresholdSource="No new threshold — checks real sign agreement across app/strategy_lab.py's own tested regime buckets",
+    )
+
+
+def _optimization_scrutiny_check(strategy_results: list[SimulationResult]) -> ModelValidationCheck:
+    """CEO directive "Market-Analysis Knowledge + Session Intelligence
+    Expansion," Phase 8 — see THE ANTI-OVERFITTING CHECKS in this
+    module's docstring. Flags the "too good, too soon" shape of a
+    result — never a claim that the strategy IS overfit, only that this
+    specific small-sample/high-win-rate combination deserves closer
+    scrutiny before being trusted."""
+    if not strategy_results:
+        return ModelValidationCheck(
+            id="optimization_scrutiny",
+            label="Not Suspiciously Optimized For Its Own Sample Size (Anti-Overfitting)",
+            passed=None,
+            evidence="No real runs on file yet.",
+            reasoning="Cannot evaluate optimization scrutiny with zero real runs on file.",
+            thresholdSource=f"New disclosed research assumption, not a reuse of an existing constant: SUSPICIOUS_WIN_RATE_FLOOR_PCT = {SUSPICIOUS_WIN_RATE_FLOOR_PCT:.0f}%, compared against app/strategy_lab.py CERTIFICATION_MIN_TRADE_COUNT",
+        )
+    trade_count = sum(r.trade_count for r in strategy_results)
+    win_rate = sum(r.win_rate * r.trade_count for r in strategy_results) / trade_count if trade_count else 0.0
+    suspicious = trade_count < CERTIFICATION_MIN_TRADE_COUNT and win_rate >= SUSPICIOUS_WIN_RATE_FLOOR_PCT
+    passed = not suspicious
+    return ModelValidationCheck(
+        id="optimization_scrutiny",
+        label="Not Suspiciously Optimized For Its Own Sample Size (Anti-Overfitting)",
+        passed=passed,
+        evidence=f"Real trade-weighted win rate {win_rate:.1f}% across {trade_count} real trade(s) (flagged when win rate ≥{SUSPICIOUS_WIN_RATE_FLOOR_PCT:.0f}% on fewer than {CERTIFICATION_MIN_TRADE_COUNT} real trades).",
+        reasoning=(
+            "Real win rate does not show the small-sample/implausibly-high-win-rate shape of an overfit result."
+            if passed
+            else "This strategy's real win rate is implausibly high on a sample still below the Certification gate's own minimum trade count — the classic 'too good, too soon' shape of an overfit result. Not proof of overfitting: a larger real sample could still vindicate a genuinely strong edge. Flagged for closer scrutiny, not automatic rejection."
+        ),
+        thresholdSource=f"New disclosed research assumption, not a reuse of an existing constant: SUSPICIOUS_WIN_RATE_FLOOR_PCT = {SUSPICIOUS_WIN_RATE_FLOOR_PCT:.0f}%, compared against app/strategy_lab.py CERTIFICATION_MIN_TRADE_COUNT",
+    )
+
+
 def _compute_verdict(checks: list[ModelValidationCheck], strategy_results: list[SimulationResult]) -> ModelValidationVerdict:
     if not strategy_results:
         return "not_validatable"
@@ -400,6 +519,8 @@ def generate_model_validation_report(
         _expectancy_check(strategy_results),
         _temporal_stability_check(strategy_results),
         _concentration_check(strategy_results),
+        _regime_dependence_check(regime_test),
+        _optimization_scrutiny_check(strategy_results),
     ]
     verdict = _compute_verdict(checks, strategy_results)
     passed_count = sum(1 for c in checks if c.passed is True)
@@ -408,9 +529,10 @@ def generate_model_validation_report(
     evidence_summary = f"{passed_count} of {len(checks)} real checks passed, {failed_count} failed, {not_evaluable_count} not yet evaluable — verdict: {verdict}."
     data_sources_and_assumptions = [
         "This report reuses already-computed evidence (Monte Carlo bootstrap, regime test, liquidity validation, real trade/expectancy history) rather than re-deriving statistics from raw data — no separate raw-data pipeline exists in this codebase.",
-        "Every numeric threshold used is a cited reuse of an existing Strategy Lab Certification-gate constant; see each check's own thresholdSource.",
+        "Every numeric threshold used is a cited reuse of an existing Strategy Lab Certification-gate constant, except regime_dependence (no new threshold) and optimization_scrutiny (SUSPICIOUS_WIN_RATE_FLOOR_PCT, a new disclosed research assumption) — see each check's own thresholdSource.",
         "Independence here is organizational/decision independence (Meridian did not author this strategy's research or risk read, and is excluded from serving as this same cycle's Devil's Advocate) — not a claim of statistical independence from the underlying data.",
         "Advisory-only: this verdict does not gate Company Review, the Gatekeeper, Risk Authority, or any Circuit Breaker.",
+        "CEO directive 'Market-Analysis Knowledge + Session Intelligence Expansion,' Phase 8 also asks to track feature/signal count, parameter changes, strategy iterations, and hypotheses tested per strategy — Strategy has no such fields and app/sandbox.py's real generation pipeline does not track them today. Not fabricated here; not_trackable_yet, the same disclosure app/process_adherence.py already uses for its own genuinely un-trackable checks.",
     ]
     return ModelValidationReport(
         id=f"model-validation-{strategy.id}-{existing_review_count}",

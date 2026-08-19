@@ -18,6 +18,7 @@ from app.schemas import (
     AgentId,
     CeoDecisionRecord,
     ChallengeReport,
+    ConfluenceRead,
     Debate,
     ExecutiveAccuracyScore,
     ExecutiveRecommendation,
@@ -33,6 +34,7 @@ from app.schemas import (
     WeightProfile,
     WhatIfSimulation,
 )
+from app.signal_correlation import assess_confluence
 from app.state import game_state
 from app.weighted_decisions import compute_weighted_recommendation
 from app.whatif import run_whatif_simulation
@@ -238,6 +240,23 @@ async def executive_intelligence(proposal_id: str = Query(..., alias="proposalId
     except ValueError:
         pass
     return recommendation
+
+
+@router.get("/confluence", response_model=ConfluenceRead)
+async def confluence(proposal_id: str = Query(..., alias="proposalId")) -> ConfluenceRead:
+    """CEO directive "Professional Trading Firm — Market-Analysis
+    Knowledge + Session Intelligence Expansion," Phase 6 — the
+    Confluence Engine's real-time read for one pending TradeProposal.
+    Read-only and computed fresh from the proposal's own already-real
+    analyst_votes (see app/signal_correlation.py's module docstring for
+    the real correlation audit this is built on). Purely informational:
+    never gates, vetoes, or adjusts the Gatekeeper/Risk/Model Validation
+    pipeline."""
+    state = await game_state.snapshot()
+    proposal = next((p for p in state.trade_proposals if p.id == proposal_id), None)
+    if proposal is None:
+        raise HTTPException(status_code=404, detail="Unknown or already-resolved proposal.")
+    return assess_confluence(proposal.analyst_votes, proposal.overall_recommendation)
 
 
 @router.get("/decisions/{decision_id}/process-adherence", response_model=ProcessAdherenceRead)

@@ -11,7 +11,15 @@ persisting past the call.
 """
 from __future__ import annotations
 
-from app.model_validation import CONCENTRATION_MAX_SINGLE_RUN_SHARE_PCT, _concentration_check, _temporal_stability_check, generate_model_validation_report
+from app.model_validation import (
+    CONCENTRATION_MAX_SINGLE_RUN_SHARE_PCT,
+    SUSPICIOUS_WIN_RATE_FLOOR_PCT,
+    _concentration_check,
+    _optimization_scrutiny_check,
+    _regime_dependence_check,
+    _temporal_stability_check,
+    generate_model_validation_report,
+)
 from app.sandbox import (
     STRATEGY_DEVILS_ADVOCATES,
     _devils_advocate_verdict,
@@ -547,3 +555,70 @@ class TestNoFabricatedEvidence:
         strategy = _strategy()
         report = generate_model_validation_report(strategy, [], None, None, None, "review-1", 0, sim_day=10)
         assert all(c.threshold_source.strip() for c in report.checks)
+
+
+class TestRegimeDependenceCheck:
+    """CEO directive "Market-Analysis Knowledge + Session Intelligence
+    Expansion," Phase 8 — a distinct signal from regime_breadth: real
+    sign disagreement in avg_return_pct across tested buckets, even when
+    no bucket individually earns a "weak" verdict."""
+
+    def test_not_evaluable_with_no_regime_test(self) -> None:
+        check = _regime_dependence_check(None)
+        assert check.passed is None
+
+    def test_not_evaluable_with_fewer_than_two_tested_buckets(self) -> None:
+        report = _regime_test(tested_count=1)
+        check = _regime_dependence_check(report)
+        assert check.passed is None
+
+    def test_passes_when_every_tested_bucket_shares_the_same_sign(self) -> None:
+        report = _regime_test(tested_count=2, any_weak=False)
+        check = _regime_dependence_check(report)
+        assert check.passed is True
+
+    def test_fails_when_tested_buckets_disagree_on_sign_even_without_a_weak_verdict(self) -> None:
+        # Neither bucket is individually "weak" -- both clear a real bar
+        # -- but one is real profit and the other is real loss, which
+        # regime_breadth alone would not catch.
+        buckets = [
+            StrategyRegimeBucketPerformance(scenario="bull", regimes=["strong_bull_trend"], tested=True, runCount=3, avgReturnPct=8.0, avgWinRate=65.0, verdict="strong"),  # type: ignore[arg-type]
+            StrategyRegimeBucketPerformance(scenario="bear", regimes=["strong_bear_trend"], tested=True, runCount=3, avgReturnPct=-3.0, avgWinRate=45.0, verdict="neutral"),  # type: ignore[arg-type]
+        ]
+        report = StrategyRegimeTestReport(id="regime-x", strategyId="strategy-1", strategyName="Momentum Breakout", buckets=buckets, simDay=10, createdAt=_now_iso())
+        check = _regime_dependence_check(report)
+        assert check.passed is False
+        assert "bull" in check.evidence and "bear" in check.evidence
+
+    def test_threshold_source_is_never_blank(self) -> None:
+        assert _regime_dependence_check(None).threshold_source.strip()
+        assert _regime_dependence_check(_regime_test()).threshold_source.strip()
+
+
+class TestOptimizationScrutinyCheck:
+    """CEO directive "Market-Analysis Knowledge + Session Intelligence
+    Expansion," Phase 8 — flags the small-sample/implausibly-high-win-
+    rate shape of an overfit result, never a claim the strategy IS
+    overfit."""
+
+    def test_not_evaluable_with_zero_results(self) -> None:
+        check = _optimization_scrutiny_check([])
+        assert check.passed is None
+
+    def test_passes_with_an_ordinary_win_rate(self) -> None:
+        check = _optimization_scrutiny_check(_results(4, trade_count_each=5))  # winRate=60.0
+        assert check.passed is True
+
+    def test_passes_when_win_rate_is_high_but_sample_is_large(self) -> None:
+        results = [SimulationResult(id="r1", strategyId="strategy-1", strategyName="Momentum Breakout", symbol="NEXA", totalReturnPct=10.0, winRate=SUSPICIOUS_WIN_RATE_FLOOR_PCT, maxDrawdownPct=5.0, sharpeRatio=1.5, sortinoRatio=1.5, tradeCount=100, runBy="quant", completedAt=_now_iso(), expectedValuePct=1.0)]  # type: ignore[arg-type]
+        check = _optimization_scrutiny_check(results)
+        assert check.passed is True
+
+    def test_fails_when_win_rate_is_suspiciously_high_on_a_small_sample(self) -> None:
+        results = [SimulationResult(id="r1", strategyId="strategy-1", strategyName="Momentum Breakout", symbol="NEXA", totalReturnPct=10.0, winRate=SUSPICIOUS_WIN_RATE_FLOOR_PCT, maxDrawdownPct=5.0, sharpeRatio=1.5, sortinoRatio=1.5, tradeCount=3, runBy="quant", completedAt=_now_iso(), expectedValuePct=1.0)]  # type: ignore[arg-type]
+        check = _optimization_scrutiny_check(results)
+        assert check.passed is False
+
+    def test_threshold_source_cites_the_new_disclosed_constant(self) -> None:
+        check = _optimization_scrutiny_check([])
+        assert "SUSPICIOUS_WIN_RATE_FLOOR_PCT" in check.threshold_source

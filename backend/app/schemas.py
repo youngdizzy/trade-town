@@ -2916,6 +2916,46 @@ class ConfluenceRead(CamelModel):
     detail: str
 
 
+class TechnicalIndicatorsRead(CamelModel):
+    """Real SMA/EMA/RSI/MACD/Stochastic/ATR/VWAP values computed fresh
+    over a symbol's own real (mock) candle history
+    (`app/technical_indicators.py`). Every field is `None`, never a
+    fabricated value, whenever the candle history is below that
+    indicator's own real minimum bar count. Informational only — see
+    that module's own docstring for why none of these are wired into any
+    live trading decision yet."""
+
+    symbol: str
+    sma20: float | None = None
+    ema20: float | None = None
+    rsi14: float | None = None
+    macd_line: float | None = Field(default=None, alias="macdLine")
+    macd_signal: float | None = Field(default=None, alias="macdSignal")
+    macd_histogram: float | None = Field(default=None, alias="macdHistogram")
+    stochastic_percent_k: float | None = Field(default=None, alias="stochasticPercentK")
+    stochastic_percent_d: float | None = Field(default=None, alias="stochasticPercentD")
+    atr14: float | None = None
+    vwap: float | None = None
+    detail: str
+
+
+class TechnicalAnalysisRead(CamelModel):
+    """One bundled "technical desk briefing" for a symbol — real
+    indicator values (`app/technical_indicators.py`) alongside real
+    pattern/structure reads (`app/technical_patterns.py`), computed
+    fresh in a single call rather than requiring the frontend to fan out
+    across many separate requests. Never persisted, never wired into any
+    live trading decision — see each underlying module's own docstring."""
+
+    symbol: str
+    indicators: TechnicalIndicatorsRead
+    swing_structure: SwingStructureRead = Field(alias="swingStructure")
+    fair_value_gaps: FairValueGapRead = Field(alias="fairValueGaps")
+    candlestick_patterns: CandlestickPatternRead = Field(alias="candlestickPatterns")
+    fibonacci: FibonacciRead
+    order_block: OrderBlockRead = Field(alias="orderBlock")
+
+
 class VolatilityRead(CamelModel):
     """All four numbers are real, derived from the same real
     app/market_data.py `volatility_pct()` helper app/signal_calibration.py

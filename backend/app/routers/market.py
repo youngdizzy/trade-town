@@ -17,10 +17,15 @@ from app.schemas import (
     EconomicIntelligenceReport,
     EconomicIntelligenceState,
     RegimeReconciliation,
+    SessionRangeRead,
     SessionRegimeEvidenceSummary,
+    TechnicalAnalysisRead,
+    TradingSession,
 )
 from app.session_evidence import compute_session_regime_evidence
 from app.state import game_state
+from app.technical_analysis import compute_technical_analysis
+from app.technical_patterns import compute_session_range
 
 router = APIRouter(prefix="/api/market", tags=["market"])
 
@@ -48,6 +53,49 @@ async def get_candles(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     return [Candle.model_validate(c.__dict__) for c in candles]
+
+
+@router.get("/technical-analysis", response_model=TechnicalAnalysisRead)
+async def get_technical_analysis(
+    symbol: str = Query(..., min_length=1, max_length=16),
+    timeframe: str = Query("1h"),
+    limit: int = Query(100, ge=MIN_LIMIT, le=MAX_LIMIT),
+) -> TechnicalAnalysisRead:
+    """CEO directive "Professional Trading Firm — Market-Analysis
+    Knowledge + Session Intelligence Expansion," Phases 1-3 — one bundled
+    real "technical desk briefing" for a symbol (see
+    app/technical_analysis.py). Computed fresh per request over the same
+    real (mock) candle series GET /api/market/candles returns; never
+    persisted, never wired into any live trading decision."""
+    if timeframe not in TIMEFRAME_ORDER:
+        raise HTTPException(status_code=400, detail=f"Unsupported timeframe {timeframe!r}. Supported: {TIMEFRAME_ORDER}")
+    try:
+        candles = market_data_provider.get_candles(symbol.upper(), timeframe, limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return compute_technical_analysis(symbol.upper(), candles)
+
+
+@router.get("/session-range", response_model=SessionRangeRead)
+async def get_session_range(
+    symbol: str = Query(..., min_length=1, max_length=16),
+    session: TradingSession = Query(...),
+    timeframe: str = Query("1h"),
+    limit: int = Query(100, ge=MIN_LIMIT, le=MAX_LIMIT),
+) -> SessionRangeRead:
+    """CEO directive "Professional Trading Firm — Market-Analysis
+    Knowledge + Session Intelligence Expansion," Phase 4 — a symbol's
+    real high/low and retest status for one trading session, computed
+    only from that session's own real candles (see
+    app/technical_patterns.py::compute_session_range(), which reuses
+    app/market_intelligence.py's existing session-boundary detection)."""
+    if timeframe not in TIMEFRAME_ORDER:
+        raise HTTPException(status_code=400, detail=f"Unsupported timeframe {timeframe!r}. Supported: {TIMEFRAME_ORDER}")
+    try:
+        candles = market_data_provider.get_candles(symbol.upper(), timeframe, limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return compute_session_range(symbol.upper(), candles, session)
 
 
 @router.get("/regime-reconciliation", response_model=RegimeReconciliation)

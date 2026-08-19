@@ -93,24 +93,28 @@ class TestDefaultState:
         state = default_foundational_mentor_state()
         assert [m.id for m in state.mentors] == list(_ROADMAP_ORDER)
 
-    def test_four_of_seven_tracks_have_real_lesson_content(self):
-        # v0.7 Feature 51 (market_intelligence) and Trading Psychology &
-        # Discipline, Piece F (mark_douglas, linda_raschke) are the real,
-        # shipped-content tracks beyond tjr — the remaining three
-        # real-educator tracks stay roadmap-only, see this module's
-        # docstring for why.
+    def test_five_of_seven_tracks_have_real_lesson_content(self):
+        # v0.7 Feature 51 (market_intelligence), Trading Psychology &
+        # Discipline, Piece F (mark_douglas, linda_raschke), and the CEO
+        # directive "Market-Analysis Knowledge + Session Intelligence
+        # Expansion" (al_brooks's first real content, and 8 more
+        # market_intelligence lessons) are the real, shipped-content
+        # tracks beyond tjr — the remaining two real-educator tracks stay
+        # roadmap-only, see this module's docstring for why.
         state = default_foundational_mentor_state()
         by_id = {m.id: m for m in state.mentors}
         assert by_id["tjr"].status == "active"
         assert len(by_id["tjr"].lessons) == 8
         assert by_id["market_intelligence"].status == "active"
-        assert len(by_id["market_intelligence"].lessons) == 15
+        assert len(by_id["market_intelligence"].lessons) == 23
         assert by_id["mark_douglas"].status == "active"
         assert len(by_id["mark_douglas"].lessons) == 2
         assert by_id["linda_raschke"].status == "active"
         assert len(by_id["linda_raschke"].lessons) == 2
+        assert by_id["al_brooks"].status == "active"
+        assert len(by_id["al_brooks"].lessons) == 8
         for mentor_id in _ROADMAP_ORDER:
-            if mentor_id in ("tjr", "market_intelligence", "mark_douglas", "linda_raschke"):
+            if mentor_id in ("tjr", "market_intelligence", "mark_douglas", "linda_raschke", "al_brooks"):
                 continue
             assert by_id[mentor_id].status == "planned"
             assert by_id[mentor_id].lessons == []
@@ -155,14 +159,16 @@ class TestMarketIntelligenceTrack:
         assert _ROADMAP_ORDER[-1] == "market_intelligence"
         assert _ROADMAP_ORDER[-2] == "mike_bellafiore"
 
-    def test_fifteen_real_lessons_in_order(self):
+    def test_twenty_three_real_lessons_in_order(self):
         # CEO directive "Session Trading Education & Agent Training"
         # extended the original 8-lesson track with a 7-lesson real
-        # session-intelligence sub-module (orders 9-15).
+        # session-intelligence sub-module (orders 9-15). CEO directive
+        # "Market-Analysis Knowledge + Session Intelligence Expansion"
+        # extended it again with 8 more real lessons (orders 16-23).
         state = default_foundational_mentor_state()
         mentor = next(m for m in state.mentors if m.id == "market_intelligence")
-        assert len(mentor.lessons) == 15
-        assert [lesson.order for lesson in sorted(mentor.lessons, key=lambda x: x.order)] == list(range(1, 16))
+        assert len(mentor.lessons) == 23
+        assert [lesson.order for lesson in sorted(mentor.lessons, key=lambda x: x.order)] == list(range(1, 24))
 
     def test_session_intelligence_sub_module_lesson_ids(self):
         state = default_foundational_mentor_state()
@@ -286,7 +292,7 @@ class TestTickEmployeeProgress:
 
     def test_no_op_when_no_mentor_has_real_content_active(self):
         state = default_foundational_mentor_state()
-        state = state.model_copy(update={"active_mentor_id": "al_brooks"})
+        state = state.model_copy(update={"active_mentor_id": "mike_bellafiore"})
         state, newly_pending = tick_employee_progress(state, discipline_reviews=[], sim_day=1)
         assert state.progress == {}
         assert newly_pending == []
@@ -806,7 +812,7 @@ class TestSetActiveMentor:
 
     def test_rejects_a_track_with_no_lessons(self):
         state = default_foundational_mentor_state()
-        _, error = set_active_mentor(state, "al_brooks")  # type: ignore[arg-type]
+        _, error = set_active_mentor(state, "mike_bellafiore")  # type: ignore[arg-type]
         assert error is not None
 
     def test_rejects_the_already_active_track(self):

@@ -53,21 +53,26 @@ subject, never a transcription, summary, paraphrase, or quote of that
 person's actual published work. `_CONTENT_DISCLAIMER` states this
 explicitly on every mentor profile.
 
-WHAT'S REAL VS. ROADMAP: four of the seven roadmap tracks ship real
+WHAT'S REAL VS. ROADMAP: five of the seven roadmap tracks ship real
 lesson content — "tjr" (8 original lessons, `_TJR_LESSONS`, expanded
 from the original 6 to match this revision's wider TJR focus-area
-list), "market_intelligence" (8 lessons, `_MARKET_INTELLIGENCE_LESSONS`,
-v0.7 Feature 51 — not credited to any real external educator), and —
-Trading Psychology & Discipline, Piece F — "mark_douglas" and
+list), "market_intelligence" (23 lessons, `_MARKET_INTELLIGENCE_LESSONS`
+— the original 8 from v0.7 Feature 51, 7 more from the CEO directive
+"Session Trading Education & Agent Training" (orders 9-15), and 8 more
+from the CEO directive "Market-Analysis Knowledge + Session Intelligence
+Expansion" (orders 16-23) — not credited to any real external educator),
+"al_brooks" (8 lessons, `_AL_BROOKS_LESSONS`, added by that same
+"Market-Analysis Knowledge + Session Intelligence Expansion" directive,
+Phases 1-2 — the track's first real content since the original build),
+and — Trading Psychology & Discipline, Piece F — "mark_douglas" and
 "linda_raschke" (2 lessons each, `_MARK_DOUGLAS_LESSONS`/
 `_LINDA_RASCHKE_LESSONS`, deliberately a small honest start rather than
-backfilling to match TJR's 8). The remaining three named tracks
-(al_brooks, tom_hougaard, mike_bellafiore) are seeded as real, ordered,
-named roadmap entries — real display name, real track label, real
-focus-area topics — but deliberately ship with zero lessons and
-`status: "planned"` rather than fabricated placeholder shells.
-`_LESSON_SPECS_BY_MENTOR` is exactly where a future track's real
-content gets added.
+backfilling to match TJR's 8). The remaining two named tracks
+(tom_hougaard, mike_bellafiore) are seeded as real, ordered, named
+roadmap entries — real display name, real track label, real focus-area
+topics — but deliberately ship with zero lessons and `status: "planned"`
+rather than fabricated placeholder shells. `_LESSON_SPECS_BY_MENTOR` is
+exactly where a future track's real content gets added.
 
 AUTO-GRADED QUIZZES — the honest signal behind them. An employee's real
 `quiz_options`/`correct_index` content still exists (and is still used
@@ -481,6 +486,140 @@ _LINDA_RASCHKE_LESSONS: tuple[_LessonSpec, ...] = (
     ),
 )
 
+# CEO directive "Professional Trading Firm — Market-Analysis Knowledge +
+# Session Intelligence Expansion," Phases 1-2 — al_brooks's first real
+# content, filling a roadmap slot that shipped with zero lessons since
+# the original build (see this module's docstring). Deliberately
+# non-duplicative of mi-structure/mi-liquidity (market structure and
+# liquidity are already taught there): this track focuses on the real
+# candlestick/breakout/reversal detection app/technical_patterns.py adds
+# for this same directive, plus the classical chart-pattern concepts
+# (triangles, double tops, head & shoulders) that codebase has no
+# auto-detector for — each such lesson says so honestly rather than
+# implying one exists.
+_AL_BROOKS_LESSONS: tuple[_LessonSpec, ...] = (
+    _LessonSpec(
+        id="ab-price-action-basics",
+        order=1,
+        title="Price Action: Reading The Candles Themselves",
+        simple_explanation="Price action means judging a market primarily from its own real candles — their size, direction, and shape — rather than from an indicator derived from them. It's the most direct evidence a chart offers, and the foundation every other framework in this track builds on.",
+        deeper_explanation="TradeTown's real candlestick detection (app/technical_patterns.py's detect_candlestick_patterns()) is a direct price-action read: engulfing candles, hammers, shooting stars, and dojis are all judged purely from a candle's own open/high/low/close, with no indicator in between. This track and the Market Intelligence Department's track are complementary, not duplicates: Market Intelligence's mi-structure lesson already covers swing highs/lows and Break of Structure — this track picks up from there with candle-level reading, breakout behavior, and reversal recognition.",
+        quiz_question="What does 'price action' mean in TradeTown's real implementation?",
+        quiz_options=(
+            "Judging the market from a candle's own real open/high/low/close data directly, not from a derived indicator",
+            "Only ever looking at RSI",
+            "A random label with no real technique behind it",
+            "Trading based solely on news headlines",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="ab-candlestick-signals",
+        order=2,
+        title="Candlestick Signals: Engulfing, Hammer, Shooting Star, Doji",
+        simple_explanation="Four real, standard candle shapes are worth knowing cold: an engulfing candle whose real body covers the prior candle's body, a hammer's long lower wick rejecting a low, a shooting star's long upper wick rejecting a high, and a doji's tiny body showing real indecision.",
+        deeper_explanation="app/technical_patterns.py's detect_candlestick_patterns() checks each against its own exact geometric rule: bullish/bearish engulfing (one candle's real body fully covers the prior candle's real body, opposite direction), hammer/shooting_star (a small body positioned near one end of the range with a long opposite wick, checked BEFORE the doji rule so a real hammer is never misread as a doji), and doji (body under 10% of the candle's own real range). None of these are a prediction — each names a real shape that already happened.",
+        quiz_question="Why does TradeTown check hammer and shooting_star BEFORE doji in its real detection order?",
+        quiz_options=(
+            "Because a long-wick, small-body candle would otherwise also satisfy doji's broader small-body rule and be misclassified",
+            "Alphabetical order",
+            "It doesn't matter — order is irrelevant",
+            "Because doji is checked first in every other system",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="ab-breakouts-and-confirmation",
+        order=3,
+        title="Breakouts: Consolidation Into Expansion",
+        simple_explanation="A breakout is a real move out of a consolidation range — but the move alone doesn't confirm anything. A real close beyond the range, ideally on real expanded range/volume, is stronger evidence than a single wick poking through.",
+        deeper_explanation="TradeTown's real session-range tracking (app/technical_patterns.py's compute_session_range()) already gives a real, checkable range boundary (a session's own real high/low) and a real retested flag showing whether a later candle actually traded back into that range — the honest building block for judging whether a breakout held or immediately failed. TradeTown does not auto-classify a move as a 'confirmed breakout'; that judgment stays a real evidence-gathering step, not an automated label.",
+        quiz_question="What real, existing TradeTown data helps judge whether a breakout out of a session's range actually held?",
+        quiz_options=(
+            "compute_session_range()'s real high/low and its real retested flag showing whether price traded back into the range",
+            "A coin flip",
+            "The CEO's gut feeling alone",
+            "Nothing — breakouts are untracked",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="ab-false-breakouts-and-retests",
+        order=4,
+        title="False Breakouts & Retests",
+        simple_explanation="Not every breakout continues — a false breakout reverses back into the range shortly after, often trapping traders who entered on the initial move. A retest (price returning to the broken level before continuing) is a real, different, and generally healthier pattern.",
+        deeper_explanation="This is a real, honest evidence question, not an assumption: does this specific setup, in this specific session and regime, actually tend to hold or fail after breaking a range? app/session_evidence.py's compute_session_regime_evidence() is exactly the mechanism that answers a version of this question from TradeTown's own real closed-trade history, honestly reporting NOT_ENOUGH_EVIDENCE rather than guessing when the sample is too thin — the same discipline this directive requires for every session-behavior claim.",
+        quiz_question="How should a claim like 'this setup usually fails after a London breakout' be treated in TradeTown?",
+        quiz_options=(
+            "As a measurable hypothesis to check against this company's own real trade history, not an assumed rule",
+            "As an absolute law that always holds",
+            "As irrelevant since sessions don't matter",
+            "As something only true on Mondays",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="ab-trading-ranges",
+        order=5,
+        title="Trading Ranges & Consolidation",
+        simple_explanation="Markets spend real time consolidating between real expansion moves — a trading range. Recognizing a genuine range, rather than mistaking it for a fading trend, changes what kind of setup actually makes sense.",
+        deeper_explanation="TradeTown's real 13-way regime classifier (app/market_intelligence.py's _classify_regime()) already names 'sideways_range' as one of its real, threshold-based regime outcomes — not a separate concept this track invents, but the exact real signal a range is a checkable, named state, not a vague feeling. A real Fair Value Gap or session range forming and holding without expansion is real, additional evidence consistent with range conditions.",
+        quiz_question="What real TradeTown signal already names a trading-range condition explicitly?",
+        quiz_options=(
+            "app/market_intelligence.py's 13-way regime classifier, which includes a real 'sideways_range' outcome",
+            "Nothing — ranges are never labeled",
+            "The CEO's calendar",
+            "A random daily coin flip",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="ab-classical-chart-patterns",
+        order=6,
+        title="Classical Chart Patterns: A Real Vocabulary, Not An Auto-Detector",
+        simple_explanation="Double tops/bottoms, head & shoulders, triangles, and wedges are real, well-known reversal and continuation patterns worth recognizing by eye. TradeTown does not currently auto-detect any of them — this lesson teaches the real vocabulary honestly, without implying a detector exists.",
+        deeper_explanation="A full grep audit of this codebase found no implementation of double/triple top or bottom detection, head & shoulders (or inverse), cup & handle, or triangle/wedge/rectangle classification — only real Fair Value Gap, order block, candlestick, session-range, and Fibonacci detection exist today (app/technical_patterns.py). Naming this boundary honestly here matters for the same reason this directive requires it for Elliott Wave and harmonic patterns: a named framework is not the same claim as a working detector.",
+        quiz_question="Does TradeTown currently auto-detect double tops, head & shoulders, or triangle patterns?",
+        quiz_options=(
+            "No — a full audit confirms none of these are implemented; they remain real concepts worth understanding manually",
+            "Yes, all of them are fully automated",
+            "Only double tops are detected",
+            "Only on weekends",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="ab-reversal-confirmation",
+        order=7,
+        title="Reversal Confirmation vs. Failed Reversals",
+        simple_explanation="Spotting a possible reversal shape is only step one — a real reversal needs real confirmation (a break of the prior trend's own structure), and plenty of apparent reversals fail and the prior trend resumes.",
+        deeper_explanation="The real, checkable confirmation TradeTown already computes is a genuine Break of Structure in the opposite direction from the prior trend (app/market_intelligence.py's compute_market_structure(), reused directly by app/technical_patterns.py rather than re-implemented) — a new swing low below the prior one after an uptrend, or a new swing high above the prior one after a downtrend. A reversal-looking candle or pattern without that real structural break is still just a candidate, not confirmed evidence.",
+        quiz_question="What real, existing TradeTown signal counts as structural confirmation of a reversal?",
+        quiz_options=(
+            "A real Break of Structure in the opposite direction from the prior trend",
+            "Any single red candle",
+            "A news headline mentioning the symbol",
+            "The passage of exactly 24 hours",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="ab-probability-not-certainty",
+        order=8,
+        title="Reading Probability, Not Certainty",
+        simple_explanation="Every framework in this track — candlestick shapes, breakouts, ranges, reversals — describes a real pattern in past price. None of them, alone or combined, guarantees what happens next. Professional analysis means weighing real, disclosed evidence, never assuming certainty.",
+        deeper_explanation="This closes the track on the same real, structural rule the rest of TradeTown already enforces end to end: the Market Intelligence Department's own Probability First rule (app/market_intelligence.py's module docstring) forbids treating any signal as a guarantee; app/gatekeeper.py's Trade Gatekeeper still runs its full ten-check pipeline regardless of how convincing a price-action read looks; and 'no trade' remains a fully valid, often preferable outcome when the real evidence — however many patterns line up — still isn't sufficient.",
+        quiz_question="What should happen when a trade candidate has multiple price-action patterns lining up but the Trade Gatekeeper still rejects it?",
+        quiz_options=(
+            "The Gatekeeper's rejection stands — no pattern, or combination of patterns, overrides the real risk/evidence pipeline",
+            "The patterns should override the Gatekeeper automatically",
+            "The CEO should disable the Gatekeeper for that trade",
+            "More patterns always means the trade must be taken",
+        ),
+        correct_index=0,
+    ),
+)
+
 # v0.7 Feature 51 — the Market Intelligence Department's own Academy
 # track. Not attributed to any real external educator (see
 # _MARKET_INTELLIGENCE_CONTENT_NOTE above) — every lesson teaches a real
@@ -724,6 +863,136 @@ _MARKET_INTELLIGENCE_LESSONS: tuple[_LessonSpec, ...] = (
         ),
         correct_index=0,
     ),
+    # CEO directive "Professional Trading Firm — Market-Analysis
+    # Knowledge + Session Intelligence Expansion," Phases 1-3 and 6-8 —
+    # orders 16-23, extending this same track a second time rather than
+    # starting a new one. Every lesson below cites a real function in
+    # app/technical_patterns.py, app/technical_indicators.py, or
+    # app/signal_correlation.py (all built for this same directive) —
+    # or, where the underlying concept genuinely has no auto-detection
+    # in this codebase (classical chart patterns, Elliott Wave, harmonic
+    # patterns, Gann), the lesson says so plainly rather than implying a
+    # detector exists.
+    _LessonSpec(
+        id="mi-fvg-liquidity-imbalance",
+        order=16,
+        title="Fair Value Gaps & Price Imbalance",
+        simple_explanation="When price moves fast enough that three consecutive candles leave a real, checkable gap between them — no overlap at all — that gap is called a Fair Value Gap. It marks a real price imbalance, not a guarantee that price returns to fill it.",
+        deeper_explanation="app/technical_patterns.py's detect_fair_value_gaps() checks the standard 3-candle definition exactly: candle 1's high below candle 3's low (bullish) or candle 1's low above candle 3's high (bearish), with candle 2 the real displacement move between them. Each real gap also tracks a real filled flag — whether a later candle actually traded back into it — never assumed. Naming a gap is a description of what already happened, never a prediction that price will return to it.",
+        quiz_question="What does TradeTown's real Fair Value Gap detection actually check?",
+        quiz_options=(
+            "A real, exact 3-candle price gap with no overlap between candle 1 and candle 3 — a description of what happened, not a prediction it gets filled",
+            "A guess based on the candle's color alone",
+            "A guaranteed reversal signal",
+            "A random zone with no real geometric definition",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="mi-order-blocks",
+        order=17,
+        title="Order Blocks — One Disclosed Definition Among Several",
+        simple_explanation="\"Order block\" means different specific things to different professional traders. TradeTown takes one real, disclosed stance — the last opposite-direction candle immediately before a real Break of Structure — rather than pretending there's a single universal definition.",
+        deeper_explanation="app/technical_patterns.py's detect_order_block() reuses compute_market_structure()'s real Break of Structure detection directly (never a second structure engine) and reads the one candle immediately preceding it that closed the opposite direction from the break. This is a real, named, checkable proxy — not a claim of institutional order-flow data, which this codebase's MarketDataProvider does not have. Its own detail field discloses this boundary on every read.",
+        quiz_question="Why does TradeTown call its order block read a disclosed proxy rather than a definitive read?",
+        quiz_options=(
+            "Because \"order block\" has more than one real professional definition, and this codebase has no real institutional order-flow data to confirm any of them",
+            "Because it's randomly generated",
+            "Because order blocks don't really exist",
+            "Because only Al Brooks himself could confirm one",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="mi-fibonacci",
+        order=18,
+        title="Fibonacci — A Candidate Area, Never A Guarantee",
+        simple_explanation="Fibonacci retracement and extension levels (0.382, 0.5, 0.618, and others) mark candidate areas worth watching after a real swing — not a level that price is bound to respect.",
+        deeper_explanation="app/technical_patterns.py's compute_fibonacci_levels() reuses the same real swing-high/swing-low detection compute_market_structure() already performs (never a second swing engine) and computes real retracement ratios (0.236/0.382/0.5/0.618/0.786) and extension ratios (1.272/1.618) against that real swing range. No level is ever encoded as 'always reverses' — each is a real, checkable price, nothing more, exactly matching this directive's own explicit rule against treating any Fibonacci level as guaranteed.",
+        quiz_question="What is the correct way to treat a TradeTown Fibonacci level?",
+        quiz_options=(
+            "A candidate area worth watching, requiring its own separate confirmation before acting on it",
+            "A guaranteed reversal price",
+            "The exact price the market must close at",
+            "A random number unrelated to the real swing range",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="mi-candlestick-patterns",
+        order=19,
+        title="Candlestick Patterns — Real Shapes, Not Fortune-Telling",
+        simple_explanation="Engulfing candles, hammers, shooting stars, and dojis are real, geometrically-checkable candle shapes. Naming one describes what a candle looks like — it is never, on its own, a claim about what the next candle will do.",
+        deeper_explanation="app/technical_patterns.py's detect_candlestick_patterns() checks each shape against its own real, textbook geometric definition — body size relative to range, wick length relative to body, direction of the prior candle for engulfing patterns. Order matters in its own detection logic: a long-wick, small-body candle is checked against hammer/shooting-star's lopsided-wick definition before the broader doji check, so a real hammer is never misread as a doji.",
+        quiz_question="What does detecting a candlestick pattern in TradeTown actually confirm?",
+        quiz_options=(
+            "That a specific, real, geometrically-defined candle shape occurred — not a prediction of the next candle",
+            "A guaranteed reversal on the very next candle",
+            "That the CEO should trade immediately",
+            "Nothing real — it's flavor text",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="mi-indicators",
+        order=20,
+        title="Indicators: What They Measure, And What They Don't",
+        simple_explanation="RSI, MACD, Stochastic, moving averages, ATR, and VWAP are all real, standard-formula calculations over real candle data. Each measures a specific, narrow thing — none of them predicts the future, and several measure closely related information.",
+        deeper_explanation="app/technical_indicators.py computes each with its real textbook formula: SMA/EMA (trend, lagging), RSI/Stochastic (momentum/overbought-oversold, both derived from the same underlying price momentum), MACD (trend-following momentum, itself built from two EMAs), ATR (volatility, non-directional), and VWAP (a real volume-weighted average price, not a trend signal). Parabolic SAR and SuperTrend are deliberately NOT implemented here — both are more implementation-sensitive, and adding them without equal rigor would be exactly the 'indicator soup, added because the list asked for it' anti-pattern this directive warns against. They remain real, named, un-implemented research candidates.",
+        quiz_question="Why might RSI and Stochastic both agreeing NOT count as two fully independent confirmations?",
+        quiz_options=(
+            "Because both are momentum oscillators derived from closely related underlying price-movement information, not two unrelated data sources",
+            "Because they always disagree",
+            "Because one of them is fabricated",
+            "Because TradeTown doesn't compute either one",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="mi-derived-charts",
+        order=21,
+        title="Heikin-Ashi & Renko: Derived, Never Executable",
+        simple_explanation="Heikin-Ashi and Renko charts filter noise and can make a trend easier to read — but they are mathematically DERIVED from real price, not real price itself. TradeTown's real execution — entries, exits, stops, fills, P&L, risk — always uses the real, underlying price, never a derived representation.",
+        deeper_explanation="This is a hard architectural rule, not a style preference: app/portfolio.py's open_position()/close_position() only ever receive real Quote/Candle-sourced prices — nothing in TradeTown's execution path reads from a derived chart type. Neither Heikin-Ashi nor Renko is currently computed anywhere in this codebase (confirmed by a full grep audit); this lesson exists so the rule is understood BEFORE either is ever built, exactly as this directive requires.",
+        quiz_question="If TradeTown ever adds Heikin-Ashi or Renko charts, what must remain true?",
+        quiz_options=(
+            "Real execution (entries, exits, stops, fills, P&L, risk) must always use the real underlying price, never the derived chart's values",
+            "Execution should switch to using the derived chart's price instead",
+            "It doesn't matter which price is used for execution",
+            "Heikin-Ashi candles become the new real price once computed",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="mi-hypothesis-frameworks",
+        order=22,
+        title="Elliott Wave, Harmonic Patterns, & Gann: Hypotheses, Not Detectors",
+        simple_explanation="Elliott Wave counts, harmonic patterns (Bat, Butterfly, Crab), and Gann angles are real, named frameworks used by real traders — but TradeTown does not auto-detect any of them. Treat each as a research hypothesis with real ambiguity, never as a system with proven predictive power just because the framework has a name.",
+        deeper_explanation="A full grep audit of this codebase found zero implementations of Elliott Wave counting, harmonic XABCD/Fibonacci-ratio validation, or Gann angle computation — building an honest version of any of them would require forcing a specific wave count or angle onto every chart, which this directive explicitly forbids without a required invalidation level and alternative count. They remain real, named, documented research candidates — never a claim that TradeTown's own validated data has demonstrated predictive value for any of them, because no such validation exists yet.",
+        quiz_question="What is the correct stance on Elliott Wave, harmonic patterns, and Gann angles in TradeTown today?",
+        quiz_options=(
+            "Real, named frameworks worth understanding as hypotheses — none are auto-detected or validated as predictive in this codebase",
+            "All three are auto-detected and proven profitable",
+            "They should be ignored entirely as fake",
+            "TradeTown trades automatically whenever a wave count completes",
+        ),
+        correct_index=0,
+    ),
+    _LessonSpec(
+        id="mi-confluence-and-overfitting",
+        order=23,
+        title="Confluence, Independence, & The Anti-Overfitting Discipline",
+        simple_explanation="More agreeing signals is not automatically stronger evidence — if those signals are measuring the same underlying thing, they're the same evidence counted twice, not real confluence. And a strategy that looks better only because it grew more complex, not because out-of-sample results actually improved, is a real overfitting warning sign, not progress.",
+        deeper_explanation="app/signal_correlation.py's assess_confluence() is built on a real audit of TradeTown's own six analyst votes: news and macro votes are NOT mutually independent (both driven by the same underlying ResearchItem.confidence value through the same probabilistic mechanism), and the execution vote is a pure majority synthesis of the other five, contributing zero new evidence. Separately, app/model_validation.py's Meridian/CIO now runs two real anti-overfitting checks: regime_dependence (real sign disagreement in return across tested regime buckets — a strategy that only works in one regime) and optimization_scrutiny (an implausibly high win rate on a still-small sample — the classic 'too good, too soon' shape of an overfit result, flagged for scrutiny, never automatically rejected).",
+        quiz_question="Why doesn't TradeTown count 'RSI bullish + MACD bullish + a moving average bullish' as three independent confirmations?",
+        quiz_options=(
+            "Because those signals measure closely related momentum/trend information, so agreement among them is not automatically three genuinely independent evidence sources",
+            "Because RSI and MACD are never real",
+            "Because moving averages are banned from TradeTown",
+            "Because three agreeing signals are always wrong",
+        ),
+        correct_index=0,
+    ),
 )
 
 _LESSON_SPECS_BY_MENTOR: dict[FoundationalMentorId, tuple[_LessonSpec, ...]] = {
@@ -732,10 +1001,13 @@ _LESSON_SPECS_BY_MENTOR: dict[FoundationalMentorId, tuple[_LessonSpec, ...]] = {
     # Trading Psychology & Discipline, Piece F.
     "mark_douglas": _MARK_DOUGLAS_LESSONS,
     "linda_raschke": _LINDA_RASCHKE_LESSONS,
-    # The other three roadmap tracks (al_brooks, tom_hougaard,
-    # mike_bellafiore) intentionally have no entry here yet — see this
-    # module's docstring. Adding real content for one of them later is
-    # exactly: write its own _LessonSpec tuple and add it here.
+    # CEO directive "Professional Trading Firm — Market-Analysis
+    # Knowledge + Session Intelligence Expansion," Phases 1-2.
+    "al_brooks": _AL_BROOKS_LESSONS,
+    # The remaining two roadmap tracks (tom_hougaard, mike_bellafiore)
+    # intentionally have no entry here yet — see this module's
+    # docstring. Adding real content for one of them later is exactly:
+    # write its own _LessonSpec tuple and add it here.
 }
 
 
