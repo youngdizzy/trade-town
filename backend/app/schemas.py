@@ -886,6 +886,73 @@ class SymbolPerformanceSummary(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# CEO directive "Next Phase: Professional Trading Firm Intelligence,"
+# Phase 3 — Session + Market Regime P&L. Now honestly buildable because
+# Phase 2 (app/nexus.py) closed the one real Decision Vault coverage gap
+# (day-end flattened closes) — SESSION/MARKET REGIME context lives only
+# on `DecisionVaultEntry`, joined here by `trade_id`, never fabricated
+# for a trade with no matching vault entry (see `trades_excluded_no_
+# vault_entry` below). Same 12-metric shape as `SymbolPerformanceRead`
+# above (win rate, expectancy, profit factor, avg winner/loser, avg
+# MAE/MFE, best/worst trade) — duplicated as its own schema rather than
+# a shared base class so the already-shipped `SymbolPerformanceRead`
+# stays completely untouched by this addition.
+class SessionPerformanceRead(CamelModel):
+    session: TradingSession
+    trade_count: int = Field(alias="tradeCount")
+    win_count: int = Field(alias="winCount")
+    loss_count: int = Field(alias="lossCount")
+    win_rate_pct: float = Field(alias="winRatePct")
+    total_pnl: float = Field(alias="totalPnl")
+    avg_pnl_pct: float = Field(alias="avgPnlPct")
+    avg_winner_pct: float | None = Field(default=None, alias="avgWinnerPct")
+    avg_loser_pct: float | None = Field(default=None, alias="avgLoserPct")
+    expectancy_pct: float | None = Field(default=None, alias="expectancyPct")
+    profit_factor: float | None = Field(default=None, alias="profitFactor")
+    avg_mae_pct: float = Field(alias="avgMaePct")
+    avg_mfe_pct: float = Field(alias="avgMfePct")
+    best_trade_pnl_pct: float = Field(alias="bestTradePnlPct")
+    worst_trade_pnl_pct: float = Field(alias="worstTradePnlPct")
+    evidence_state: SymbolPerformanceEvidenceState = Field(alias="evidenceState")
+
+
+class SessionPerformanceSummary(CamelModel):
+    """`reads` sorted by `total_pnl` descending. `trades_excluded_no_
+    vault_entry` is a real, disclosed count — never silently dropped —
+    of closed trades with no matching `DecisionVaultEntry` to read
+    session context from (see this schema group's own comment above for
+    why that can still happen occasionally)."""
+
+    reads: list[SessionPerformanceRead]
+    trades_excluded_no_vault_entry: int = Field(alias="tradesExcludedNoVaultEntry")
+    updated_at: str = Field(alias="updatedAt")
+
+
+class RegimePerformanceRead(CamelModel):
+    regime: MarketIntelligenceRegime
+    trade_count: int = Field(alias="tradeCount")
+    win_count: int = Field(alias="winCount")
+    loss_count: int = Field(alias="lossCount")
+    win_rate_pct: float = Field(alias="winRatePct")
+    total_pnl: float = Field(alias="totalPnl")
+    avg_pnl_pct: float = Field(alias="avgPnlPct")
+    avg_winner_pct: float | None = Field(default=None, alias="avgWinnerPct")
+    avg_loser_pct: float | None = Field(default=None, alias="avgLoserPct")
+    expectancy_pct: float | None = Field(default=None, alias="expectancyPct")
+    profit_factor: float | None = Field(default=None, alias="profitFactor")
+    avg_mae_pct: float = Field(alias="avgMaePct")
+    avg_mfe_pct: float = Field(alias="avgMfePct")
+    best_trade_pnl_pct: float = Field(alias="bestTradePnlPct")
+    worst_trade_pnl_pct: float = Field(alias="worstTradePnlPct")
+    evidence_state: SymbolPerformanceEvidenceState = Field(alias="evidenceState")
+
+
+class RegimePerformanceSummary(CamelModel):
+    reads: list[RegimePerformanceRead]
+    trades_excluded_no_vault_entry: int = Field(alias="tradesExcludedNoVaultEntry")
+    updated_at: str = Field(alias="updatedAt")
+
+
 # CEO directive "Next Professional Trading Firm Phase," Priority 5 —
 # Research Data Integrity (app/data_provenance.py). Distinct from, and
 # reusing rather than duplicating, `DataStatus` above (which already

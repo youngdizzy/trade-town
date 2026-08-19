@@ -8,8 +8,13 @@ trades.
 """
 from __future__ import annotations
 
-from app.performance_attribution import MIN_SYMBOL_SAMPLE_FOR_VERDICT, compute_symbol_performance
-from app.schemas import PaperTrade
+from app.performance_attribution import (
+    MIN_SYMBOL_SAMPLE_FOR_VERDICT,
+    compute_regime_performance,
+    compute_session_performance,
+    compute_symbol_performance,
+)
+from app.schemas import DecisionVaultEntry, LiquidityRead, PaperTrade
 
 
 def _trade(*, trade_id: str, symbol: str = "AAPL", pnl: float, pnl_pct: float, mae_pct: float = 0.0, mfe_pct: float = 0.0) -> PaperTrade:
@@ -148,3 +153,113 @@ class TestComputeSymbolPerformance:
         read = summary.reads[0]
         assert read.best_trade_pnl_pct == 5.0
         assert read.worst_trade_pnl_pct == -3.0
+
+
+def _vault_entry(*, trade_id: str, session: str = "new_york", market_regime: str = "sideways_range") -> DecisionVaultEntry:
+    return DecisionVaultEntry(
+        id=f"vault-{trade_id}",
+        tradeId=trade_id,
+        decisionId=f"decision-{trade_id}",
+        symbol="AAPL",
+        simDay=1,
+        session=session,  # type: ignore[arg-type]
+        strategyId=None,
+        marketRegime=market_regime,  # type: ignore[arg-type]
+        marketRegimeLabel="test regime",
+        liquidityContext=LiquidityRead(symbol="AAPL", zones=[], sweepDetected=False, sweepDirection="none", liquidityScore=50.0, detail="test"),
+        evidenceScore=70.0,
+        confidenceScore=70.0,
+        confidenceTier="strong",  # type: ignore[arg-type]
+        capitalAllocationGrade="B",  # type: ignore[arg-type]
+        decisionGrade="B",  # type: ignore[arg-type]
+        decisionGradeScore=80.0,
+        disciplineTier="sound",  # type: ignore[arg-type]
+        disciplineScore=75.0,
+        patienceGrade="B",  # type: ignore[arg-type]
+        positionSize=10.0,
+        entryPrice=100.0,
+        exitPrice=101.0,
+        pnl=10.0,
+        pnlPct=1.0,
+        holdDurationMinutes=60,
+        rMultiple=None,
+        caseStudyId=None,
+        caseStudyCategory=None,
+        executiveNotes=None,
+        lessonsLearned="test lesson",
+        companyDnaChange=None,
+        ceoOverride=False,
+        createdAt="2024-01-01T00:00:00+00:00",
+    )
+
+
+class TestComputeSessionPerformance:
+    """CEO directive "Next Phase: Professional Trading Firm Intelligence,"
+    Phase 3 — joins the real Decision Vault for session context; a
+    trade with no matching vault entry must be excluded and counted,
+    never fabricated into a bucket."""
+
+    def test_groups_by_session_via_the_real_vault_join(self) -> None:
+        trades = [
+            _trade(trade_id="a", pnl=10.0, pnl_pct=1.0),
+            _trade(trade_id="b", pnl=5.0, pnl_pct=0.5),
+        ]
+        vault = [_vault_entry(trade_id="a", session="asian"), _vault_entry(trade_id="b", session="new_york")]
+        summary = compute_session_performance(trades, vault)
+        sessions = {r.session for r in summary.reads}
+        assert sessions == {"asian", "new_york"}
+        assert summary.trades_excluded_no_vault_entry == 0
+
+    def test_a_trade_with_no_matching_vault_entry_is_excluded_and_counted(self) -> None:
+        trades = [_trade(trade_id="a", pnl=10.0, pnl_pct=1.0), _trade(trade_id="orphan", pnl=5.0, pnl_pct=0.5)]
+        vault = [_vault_entry(trade_id="a", session="asian")]
+        summary = compute_session_performance(trades, vault)
+        assert summary.trades_excluded_no_vault_entry == 1
+        total_trades_in_reads = sum(r.trade_count for r in summary.reads)
+        assert total_trades_in_reads == 1
+
+    def test_empty_trade_history_produces_no_reads_and_no_exclusions(self) -> None:
+        summary = compute_session_performance([], [])
+        assert summary.reads == []
+        assert summary.trades_excluded_no_vault_entry == 0
+
+    def test_reads_sorted_by_total_pnl_descending(self) -> None:
+        trades = [
+            _trade(trade_id="a", pnl=-50.0, pnl_pct=-5.0),
+            _trade(trade_id="b", pnl=100.0, pnl_pct=10.0),
+        ]
+        vault = [_vault_entry(trade_id="a", session="asian"), _vault_entry(trade_id="b", session="london")]
+        summary = compute_session_performance(trades, vault)
+        assert [r.session for r in summary.reads] == ["london", "asian"]
+
+
+class TestComputeRegimePerformance:
+    def test_groups_by_regime_via_the_real_vault_join(self) -> None:
+        trades = [
+            _trade(trade_id="a", pnl=10.0, pnl_pct=1.0),
+            _trade(trade_id="b", pnl=5.0, pnl_pct=0.5),
+        ]
+        vault = [
+            _vault_entry(trade_id="a", market_regime="strong_bull_trend"),
+            _vault_entry(trade_id="b", market_regime="sideways_range"),
+        ]
+        summary = compute_regime_performance(trades, vault)
+        regimes = {r.regime for r in summary.reads}
+        assert regimes == {"strong_bull_trend", "sideways_range"}
+        assert summary.trades_excluded_no_vault_entry == 0
+
+    def test_a_trade_with_no_matching_vault_entry_is_excluded_and_counted(self) -> None:
+        trades = [_trade(trade_id="a", pnl=10.0, pnl_pct=1.0), _trade(trade_id="orphan", pnl=5.0, pnl_pct=0.5)]
+        vault = [_vault_entry(trade_id="a", market_regime="strong_bull_trend")]
+        summary = compute_regime_performance(trades, vault)
+        assert summary.trades_excluded_no_vault_entry == 1
+
+    def test_below_min_sample_still_withholds_expectancy_and_profit_factor(self) -> None:
+        trades = [_trade(trade_id="a", pnl=10.0, pnl_pct=1.0)]
+        assert len(trades) < MIN_SYMBOL_SAMPLE_FOR_VERDICT
+        vault = [_vault_entry(trade_id="a", market_regime="strong_bull_trend")]
+        summary = compute_regime_performance(trades, vault)
+        read = summary.reads[0]
+        assert read.evidence_state == "not_enough_data"
+        assert read.expectancy_pct is None
+        assert read.profit_factor is None

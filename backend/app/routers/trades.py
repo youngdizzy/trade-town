@@ -11,9 +11,15 @@ from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.exit_efficiency import compute_exit_efficiency
-from app.performance_attribution import compute_symbol_performance
+from app.performance_attribution import compute_regime_performance, compute_session_performance, compute_symbol_performance
 from app.persistence import persist_modules
-from app.schemas import ExitEfficiencySummary, SymbolPerformanceSummary, TradeAttributionSummary
+from app.schemas import (
+    ExitEfficiencySummary,
+    RegimePerformanceSummary,
+    SessionPerformanceSummary,
+    SymbolPerformanceSummary,
+    TradeAttributionSummary,
+)
 from app.state import game_state
 from app.trade_attribution import compute_trade_attribution_history
 
@@ -69,3 +75,24 @@ async def get_trade_attribution() -> TradeAttributionSummary:
     request; no new GameSaveState field."""
     state = await game_state.snapshot()
     return compute_trade_attribution_history(state.paper_portfolio.trade_history, state.decisions, state.ceo_decisions)
+
+
+@router.get("/performance-by-session", response_model=SessionPerformanceSummary)
+async def get_performance_by_session() -> SessionPerformanceSummary:
+    """CEO directive "Next Phase: Professional Trading Firm Intelligence,"
+    Phase 3 (see app/performance_attribution.py). Joins the real
+    Decision Vault for session context; a trade with no matching vault
+    entry is excluded and counted, never fabricated. Computed fresh per
+    request; no new GameSaveState field."""
+    state = await game_state.snapshot()
+    return compute_session_performance(state.paper_portfolio.trade_history, state.decision_vault)
+
+
+@router.get("/performance-by-regime", response_model=RegimePerformanceSummary)
+async def get_performance_by_regime() -> RegimePerformanceSummary:
+    """CEO directive "Next Phase: Professional Trading Firm Intelligence,"
+    Phase 3 (see app/performance_attribution.py). Same real Decision
+    Vault join as performance-by-session, grouped by market regime
+    instead. Computed fresh per request; no new GameSaveState field."""
+    state = await game_state.snapshot()
+    return compute_regime_performance(state.paper_portfolio.trade_history, state.decision_vault)
