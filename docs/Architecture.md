@@ -11400,6 +11400,67 @@ table anywhere that would need a new entry) — only the mirrored
 `NoTradeReasonCode` type union in `frontend/src/types.ts` gained the
 new value, for type-safety parity with the backend.
 
+### CEO directive "Command Center + Professional Quant Trading Firm Upgrade" — Executive View: real Problem/Cause/Severity/Action breakdown for weak Company Health areas
+
+The brief asked for an Executive View summarizing the seven-ish health
+categories with a Problem/Cause/Severity/Action/Status read per weak
+area. Research first confirmed `app/company_health.py` already computes
+22 real sub-scores (11 operational + 11 executive) and already
+identifies the real weakest two per tier — but only ever surfaced them
+as a flat string (`"X is low (score/100) — worth attention."`), naming
+WHICH metric was weak without ever saying WHY.
+
+New `_diagnose()` closes exactly that gap, for exactly those same real
+weak areas — never a parallel weak-area detector. Every branch restates
+the SAME raw real inputs `compute_company_health()` already reads for
+that metric's own score: real risk-warning counts and severities (with
+the exact real point penalty), real agent presence/mood counts, real
+research completion counts, real portfolio P&L, real Gatekeeper
+rejection counts against real closed trades, and so on. Wherever a
+metric is a blend with an existing standalone helper function
+(`_debate_collaboration_quality()`/`_cross_agent_research_handoffs()`
+for Team Chemistry, `_knowledge_retention()` for Institutional Memory,
+`_validation_rigor()`/`_pipeline_progress()`/`_measured_improvement()`
+for Innovation Velocity), `_diagnose()` calls that same real function
+directly and names whichever real component is actually weaker — so the
+cited evidence can never drift out of sync with the real formula it's
+describing. Where isolating one sub-component precisely would mean
+duplicating fragile inline logic that has no standalone function
+(Decision Quality's calibration check, Self-Evaluation's trend), the
+cause names the real blend honestly rather than fabricating false
+precision about which half is weaker.
+
+`severity` deliberately reuses the existing `CompanyHealthTier` banding
+(via the same `_tier()` helper `overall`/`executiveOverall`/
+`combinedOverall` already use) rather than inventing a second severity
+taxonomy — a weak area's score, by construction, is already below
+"good," so only "stable"/"needs_attention"/"critical" ever actually
+appear. `action` says "No direct lever" wherever that's honestly true:
+several of the 22 metrics are genuinely observational (agent mood,
+presence, real trading P&L) rather than something a CEO click can move,
+and claiming otherwise would be exactly the invented-actionability this
+codebase's conventions bar — roughly half the 22 get a real, specific
+lever (resolve open risk warnings, add watchlist symbols, complete
+Academy lessons, run more Simulation Lab sessions, hold Founder Council
+sessions, resolve compliance incidents, and more) and half honestly say
+there isn't one.
+
+**Deliberately has no `status` field**, though the brief's own structure
+asks for one: no real remediation-tracking mechanism (has a weak area
+been acknowledged, assigned to someone, or actually resolved?) exists
+anywhere in this codebase to report honestly — see
+`CompanyHealthWeakArea`'s own schema docstring. Fabricating an
+always-"open" placeholder would be exactly the kind of invented
+precision this codebase's conventions bar throughout.
+
+`CompanyPanel.tsx`'s existing flat "Recommendations" card is now a
+"Weak Areas" card: each real weak area renders its Problem, a severity
+pill (reusing the exact same `TIER_TONE`/`TIER_LABEL` maps the header's
+own overall-tier pill already uses — no new color/label convention),
+its real Cause, and its real Action. The old plain-string
+`recommendations` field is untouched (still populated identically) for
+any other consumer and for save-format backward compatibility.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

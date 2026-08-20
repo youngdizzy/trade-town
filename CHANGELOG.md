@@ -7,6 +7,36 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Command Center + Professional Quant Trading Firm Upgrade": Executive View —
+  real Problem/Cause/Severity/Action breakdown for weak Company Health areas** (backend:
+  `backend/app/company_health.py`, `backend/app/schemas.py`, `backend/tests/test_company_health.py`;
+  frontend: `frontend/src/types.ts`, `frontend/src/game/systems/NexusManager.ts`,
+  `frontend/src/state/gameStore.ts`, `frontend/src/ui/components/CommandCenter/panels/CompanyPanel.tsx`):
+  the existing `recommendations` list (a flat "X is low (score/100) — worth attention." string per weak
+  metric, kept unchanged for backward compatibility) already named which of the 22 real sub-scores were
+  weak, but not why. New `CompanyHealthWeakArea` extends each of those same weak areas with a real,
+  evidence-grounded `cause` and `action` — a new `_diagnose()` restates the SAME real raw inputs
+  `compute_company_health()` already reads for that metric's own score (real risk-warning counts and
+  severities, real agent presence/mood, real portfolio P&L, real Gatekeeper rejection counts, and so on),
+  calling the same standalone `_debate_collaboration_quality()`/`_cross_agent_research_handoffs()`/
+  `_knowledge_retention()`/`_validation_rigor()`/`_pipeline_progress()`/`_measured_improvement()` helpers
+  directly wherever one already exists so the cited evidence can never drift from the real formula.
+  `severity` reuses the existing `CompanyHealthTier` banding (via the same `_tier()` helper the
+  overall/executive/combined scores already use) rather than inventing a second taxonomy. `action` says
+  "No direct lever" wherever that's honestly true — several of these 22 metrics are genuinely
+  observational (agent mood, presence, real trading P&L), not something a CEO click can move, and
+  pretending otherwise would be exactly the invented-actionability this codebase's conventions bar.
+  **Deliberately has no `status` field**, though the brief's own structure asks for one: no real
+  remediation-tracking mechanism (acknowledged/assigned/resolved) exists anywhere in this codebase to
+  report honestly, and fabricating an always-"open" placeholder was rejected. `CompanyPanel.tsx`'s
+  existing "Recommendations" card is now a "Weak Areas" card showing each area's Problem/Cause/Action plus
+  a severity pill (reusing the same `TIER_TONE`/`TIER_LABEL` maps the header tier pill already uses). 6
+  new backend unit tests (weak areas track the same real weakest metrics as `recommendations`, empty when
+  every metric is strong, the real risk-warning count/penalty text, severity reuses the real tier bands,
+  no `status` field present, every populated area has non-empty problem/cause/action). Full backend suite,
+  `mypy app/` (176 files), `ruff check app/ tests/` all clean. Frontend `tsc -b --noEmit`, `eslint`,
+  `vite build` all clean.
+
 - **CEO directive "Command Center + Professional Quant Trading Firm Upgrade": session as a real,
   live trade-gating reason** (backend: `backend/app/opportunity_gatekeeper.py`, `backend/app/nexus.py`,
   `backend/app/schemas.py`, `backend/tests/test_opportunity_gatekeeper.py`; frontend:
