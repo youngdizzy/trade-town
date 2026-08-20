@@ -7,6 +7,39 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Command Center + Professional Quant Trading Firm Upgrade," Phase 2: chart
+  overlays (S/R, Fibonacci, FVG, Order Block, chart patterns) + a real MARKETCHART tab** (frontend:
+  `frontend/src/ui/components/CommandCenter/CandlestickChart.tsx`,
+  `frontend/src/ui/components/CommandCenter/FullCommandCenter.tsx`,
+  `frontend/src/ui/components/CommandCenter/MarketChartPanel.tsx`,
+  `frontend/src/ui/components/CommandCenter/lib/navigation.ts`, `frontend/tests/commandCenter.spec.ts`,
+  `frontend/tests/helpers.ts`): "Charts should feel like a LIVE MARKET," with support/resistance, liquidity
+  zones, order blocks, fair value gaps, and structure explicitly named. Zero new backend work —
+  `GET /api/market/technical-analysis` (an existing, real, already-tested "technical desk briefing"
+  endpoint) already returns every one of these as real, plottable price/timestamp data; its only prior UI
+  anywhere was `MarketIntelPanel`'s own Evidence Confluence card, never drawn on the actual chart.
+  `ChartOverlays` gains `lines` (support/resistance, Fibonacci — horizontal dashed levels, a finer dash than
+  the existing real order entry/mark-price lines so a genuine executed price is never visually confused with
+  an analysis read) and `zones` (Fair Value Gaps, Order Block, confirmed chart patterns — real price×time
+  regions, drawn as a background wash behind the candles). A new `xFor()` maps a real overlay timestamp to
+  its nearest real candle's x-position — index-based slotting, never a true time-scale axis, but honest: it
+  never invents a position for a moment outside the visible range. `MarketChartPanel.tsx` fetches real
+  technical analysis for the selected symbol/timeframe and offers five independent toggle buttons (S/R, FIB,
+  FVG, OB, PATTERNS) — S/R and FVG on by default, the rest opt-in to avoid a cluttered default view. The
+  chart also gains a real, first-class home: a new MARKETCHART tab (MARKETS area's own default/first tab),
+  reusing `MarketChartPanel.tsx` directly (the same component OVERVIEW already embeds) — never a second
+  chart implementation; this also closes a documentation/implementation gap from the earlier Phase 2 IA
+  redesign, whose own `lib/navigation.ts` comment had already (incorrectly) claimed the chart "surfaces"
+  under MARKETS before this commit actually built it. Visually verified live against the running dev stack
+  with real market data (screenshots): the default view is clean and readable; all five categories together
+  on a symbol with dense real data (MSFT: 1 S/R level, 7 Fib levels, 10 FVGs, a real bearish order block, 6
+  confirmed chart patterns) all render correctly with real prices/labels. `tsc -b --noEmit`, `eslint`,
+  `vite build` all clean. Playwright regression (`commandCenter.spec.ts` + `marketIntel.spec.ts` +
+  `marketObservatory.spec.ts`, 39 tests) against a freshly restarted live dev stack: 37 passed, 1 skipped, 1
+  failed — the same already-known pre-existing, unrelated movement test (an earlier run against a stale,
+  accidentally double-started dev server showed 38 failures from a corrupted Vite WS proxy — confirmed
+  environmental, not a code regression, by restarting cleanly and re-running).
+
 - **CEO directive "Command Center + Professional Quant Trading Firm Upgrade," Phase 2: Overview
   agent-thesis roll-up** (frontend: `frontend/src/ui/components/CommandCenter/panels/OverviewPanel.tsx`):
   the last piece of this phase's named Overview enhancements. Enhances the existing Team Status card

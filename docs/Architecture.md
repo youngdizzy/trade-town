@@ -11067,17 +11067,15 @@ existing spec file across the whole Playwright suite keep working
 without individually touching each one.
 
 **Explicitly scoped out of this pass** (real, separate, additive work,
-not started): chart overlays (regime shading, liquidity zones, support/
-resistance, order blocks, FVG, structure markers) — explicitly named
-in the same directive's Phase 2 section but requiring real new UI
-components (the top bar, failure-boundary gauge, and Overview
-agent-thesis roll-up were all picked up next — see below). Also out of
-scope this pass: everything from Phase 0's own gap list
-above except agent trading-status/narrative explainability, which was
-picked up next (see below) — session-as-a-live-gating-reason, the
-Strategy Library/Signal Confluence Engine's live wiring, curriculum
-expansion, joined post-trade view, live regime/session-based strategy
-selection all remain deferred.
+not started): regime shading on the chart specifically (the other named
+overlays — support/resistance, order blocks, FVG, chart-pattern
+structure markers — were all picked up next, see below). Also out of
+scope this pass: everything from Phase 0's own gap list above except
+agent trading-status/narrative explainability, which was picked up
+next (see below) — session-as-a-live-gating-reason, the Strategy
+Library/Signal Confluence Engine's live wiring, curriculum expansion,
+joined post-trade view, live regime/session-based strategy selection
+all remain deferred.
 
 ### CEO directive "Command Center + Professional Quant Trading Firm Upgrade" — real per-agent trading status + explainability (AI Desk)
 
@@ -11181,6 +11179,65 @@ the AI Desk's Roster tab already fetches (no new backend work) —
 counts of agents currently researching or awaiting a real CEO decision,
 and, when any exist, a highlighted list naming exactly which agents and
 their own real headline.
+
+### CEO directive "Command Center + Professional Quant Trading Firm Upgrade" — chart overlays + a real MARKETCHART tab
+
+"Charts should feel like a LIVE MARKET," with support/resistance,
+liquidity zones, order blocks, fair value gaps, and structure
+explicitly named. Zero new backend work: `GET /api/market/
+technical-analysis` (a real, already-tested "technical desk briefing"
+endpoint from an earlier directive) already returns every one of these
+as real, plottable price/timestamp data — `supportResistance.levels`,
+`fibonacci.levels`, `fairValueGaps.gaps`, `orderBlock`, `chartPatterns.
+patterns` — its only prior UI anywhere in the frontend was
+`MarketIntelPanel.tsx`'s own Evidence Confluence card, never drawn on
+the actual chart.
+
+`CandlestickChart.tsx`'s `ChartOverlays` interface gained two new
+shapes: `ChartOverlayLine` (a real horizontal price level — support/
+resistance, a Fibonacci ratio) and `ChartOverlayZone` (a real price×time
+region — a Fair Value Gap, an Order Block, or a confirmed chart
+pattern). Lines draw with a finer dash than the existing real order
+entry/mark-price lines, so a genuine executed price is never visually
+confused with an analysis read that carries no claim of being acted
+on. Zones draw as a semi-transparent background wash BEFORE the
+candles, so real candle bodies/wicks stay fully visible on top of
+them. A new `xFor()` helper maps a real overlay timestamp to its
+nearest real candle's x-position (index-based slotting, the same equal
+spacing every candle already uses) — never a true time-scale axis, but
+honest: it never invents a position for a moment outside the visible
+candle range. `zone.to === null` (an unfilled FVG, an Order Block with
+no real defined end) draws out to the chart's right edge rather than a
+fabricated end point.
+
+`MarketChartPanel.tsx` fetches real technical analysis for the
+selected symbol/timeframe (the same request already keyed on those two
+values) and offers five independent toggle buttons — S/R, FIB, FVG,
+OB, PATTERNS — each mapping the corresponding real backend field into
+`lines`/`zones`. S/R and FVG are on by default (the two categories that
+stayed visually clean and useful across every real watchlist symbol
+checked during verification); Fibonacci/Order Block/chart patterns are
+opt-in, since a symbol with many real confirmed chart patterns in a
+tight window can produce overlapping zone labels — a real, disclosed
+readability tradeoff for a dense read, not a bug, and exactly why that
+category defaults off rather than cluttering every chart by default.
+
+The chart also gained a real, first-class home: a new `MARKETCHART`
+tab, placed as MARKETS area's own default/first tab (`lib/
+navigation.ts`'s `PRIMARY_AREA_TABS`). This reuses `MarketChartPanel.tsx`
+directly — the exact same component `OVERVIEW` already embeds, never a
+second chart implementation — and closes a real documentation/
+implementation gap the earlier Phase 2 IA redesign left behind:
+`lib/navigation.ts`'s own comment had already (incorrectly) claimed
+the chart "surfaces" under MARKETS before this commit actually built
+that.
+
+Verified visually against the live running dev stack with real market
+data, not just automated assertions: the default view (S/R + FVG) is
+clean and readable; all five categories together on a symbol with
+dense real data (MSFT — 1 S/R level, 7 Fibonacci levels, 10 FVGs, a
+real bearish Order Block, 6 confirmed chart patterns) all render
+correctly with real prices and labels.
 
 ## Save format compatibility
 
