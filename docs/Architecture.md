@@ -11067,18 +11067,17 @@ existing spec file across the whole Playwright suite keep working
 without individually touching each one.
 
 **Explicitly scoped out of this pass** (real, separate, additive work,
-not started): the enhanced top bar (P&L, Emergency Stop indicator), the
-Overview screen's new failure-boundary gauge and agent-thesis roll-up,
-and chart overlays (regime shading, liquidity zones, support/
-resistance, order blocks, FVG, structure markers) — all explicitly
-named in the same directive's Phase 2 section but requiring real new
-UI components, not a navigation regrouping. Also out of scope this
-pass: everything from Phase 0's own gap list above except agent
-trading-status/narrative explainability, which was picked up next (see
-below) — session-as-a-live-gating-reason, the Strategy Library/Signal
-Confluence Engine's live wiring, curriculum expansion, joined
-post-trade view, live regime/session-based strategy selection all
-remain deferred.
+not started): the Overview screen's agent-thesis roll-up and chart
+overlays (regime shading, liquidity zones, support/resistance, order
+blocks, FVG, structure markers) — both explicitly named in the same
+directive's Phase 2 section but requiring real new UI components (the
+top bar and failure-boundary gauge were picked up next — see below).
+Also out of scope this pass: everything from Phase 0's own gap list
+above except agent trading-status/narrative explainability, which was
+picked up next (see below) — session-as-a-live-gating-reason, the
+Strategy Library/Signal Confluence Engine's live wiring, curriculum
+expansion, joined post-trade view, live regime/session-based strategy
+selection all remain deferred.
 
 ### CEO directive "Command Center + Professional Quant Trading Firm Upgrade" — real per-agent trading status + explainability (AI Desk)
 
@@ -11134,6 +11133,46 @@ same convention `app/routers/performance_review.py`'s/`trades.py`'s
 own diagnostic endpoints already use). The AI Desk's Roster tab
 (`AgentsPanel.tsx`) shows a real status pill plus the real headline/
 detail per agent card.
+
+### CEO directive "Command Center + Professional Quant Trading Firm Upgrade" — Top Bar P&L/Emergency Stop + Overview Failure Boundary gauge
+
+Two more explicitly named Phase 2 sections, both closed with genuinely
+zero new backend work — a real, already-computed, already-WS-broadcast
+field (`riskBudgetStatus`, from `app/risk_engine.py`'s
+`compute_risk_budget_status()`) had simply never been surfaced as a
+standing dashboard read anywhere; its only prior UI anywhere in the
+frontend was buried inside `ExecutiveVoting.tsx`'s own pre-trade popup
+(a "Risk Budget Remaining" card shown only while a specific proposal is
+open), never a persistent Overview/top-bar presence.
+
+`GlobalStatusBar.tsx` gained two new pills: P&L (`paperPortfolio.
+totalPnlPct`, the same real field `PerformancePanel`/`OverviewPanel`
+already read) always visible, and EMERGENCY STOP shown ONLY when
+`emergencyStop.active` is real and true — a deliberate choice to keep
+the bar quiet 99% of the time and make the one moment it matters
+impossible to miss, rather than a permanently-visible inert "NORMAL"
+pill. Clicking it jumps straight to the RISK tab via the same real
+`ui:commandCenterJump` event `QuickActionDock`/`CommandPalette` already
+use — no new activation control was built anywhere; the only real
+activate/resume flow remains `RiskPanel`'s own
+`EmergencyStopControl`/`EmergencyStopConfirm`, per the directive's own
+explicit "the emergency control must preserve existing safety
+architecture — do not invent a parallel risk-control system"
+instruction.
+
+`OverviewPanel.tsx` gained a new `FailureBoundaryCard` answering the
+directive's own framing directly: "how close are we to blowing the
+account?" It shows real equity, real lifetime drawdown used against
+the real configured max (as both a number and a Meter gauge that
+reddens as the budget depletes), a real distance-to-failure figure,
+today's remaining daily loss budget, and real tracked trading days —
+every one of these is a field `riskBudgetStatus` already carried.
+`remainingDrawdownBudgetPct` already IS "distance to failure" by that
+field's own pre-existing docstring ("limit minus current usage,
+floored at 0") — the only new arithmetic anywhere in this change is the
+client-side used-percent ratio (`lifetimeDrawdownPct / maxDrawdownPct`)
+that drives the gauge's own fill, computed from two numbers the backend
+already sends.
 
 ## Save format compatibility
 

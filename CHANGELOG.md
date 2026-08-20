@@ -7,6 +7,29 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Command Center + Professional Quant Trading Firm Upgrade," Phase 2: Top Bar
+  P&L/Emergency Stop + Overview Failure Boundary gauge** (frontend:
+  `frontend/src/ui/components/CommandCenter/panels/OverviewPanel.tsx`,
+  `frontend/src/ui/components/GlobalStatusBar.tsx`): both explicitly named Phase 2 sections, both closed
+  with zero new backend work — the real data already existed and was simply never surfaced anywhere
+  persistent. `GlobalStatusBar` gains a P&L pill (`paperPortfolio.totalPnlPct`, the same real field
+  `PerformancePanel`/`OverviewPanel` already read) and an EMERGENCY STOP pill that appears only when
+  `emergencyStop.active` is real and true — clicking it jumps straight to the RISK tab via the same real
+  `ui:commandCenterJump` event `QuickActionDock`/`CommandPalette` already use. No new activation control was
+  built — the only real activate/resume flow stays `RiskPanel`'s own `EmergencyStopControl`/
+  `EmergencyStopConfirm`, per the directive's own "do not invent a parallel risk-control system" instruction.
+  `OverviewPanel` gains a new Failure Boundary card answering "how close are we to blowing the account?"
+  directly — equity, lifetime drawdown used vs. the real max, a real distance-to-failure figure, today's
+  remaining loss budget, and a visual gauge that reddens as the budget depletes. Every value reuses
+  `riskBudgetStatus`, a real, already WS-broadcast field `backend/app/risk_engine.py`'s
+  `compute_risk_budget_status()` already computes — its only prior UI anywhere was buried inside
+  `ExecutiveVoting`'s pre-trade popup, never a standing dashboard read. `remainingDrawdownBudgetPct` already
+  IS "distance to failure" by its own docstring ("limit minus current usage, floored at 0"); no new backend
+  arithmetic was needed beyond the client-side used-percent ratio for the gauge's own fill. `tsc -b --noEmit`,
+  `eslint`, `vite build` all clean. Playwright regression (`globalStatusBar.spec.ts` +
+  `commandCenter.spec.ts`, 34 tests) against the live stack: 32 passed, 1 skipped, 1 failed — the same
+  already-known pre-existing, unrelated movement test.
+
 - **CEO directive "Command Center + Professional Quant Trading Firm Upgrade," Phase 2: real
   per-agent trading status + explainability (AI Desk)** (backend: new `backend/app/agent_trading_status.py`,
   `backend/app/routers/agent_trading_status.py`; modified `backend/app/main.py`, `backend/app/schemas.py`;
