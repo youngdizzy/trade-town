@@ -60,6 +60,8 @@ export function OverviewPanel({ onInspect, onNavigate }: { onInspect: (d: TradeD
         </button>
       </Glass>
 
+      <FailureBoundaryCard onNavigate={onNavigate} />
+
       <Glass className="p-3">
         <div className="mb-1.5 flex items-center justify-between">
           <TerminalLabel>Market Environment</TerminalLabel>
@@ -165,5 +167,50 @@ function ScoreCell({ label, value }: { label: string; value: number }) {
       <div className="text-[9px] uppercase tracking-wide text-cmd-textDim">{label}</div>
       <div className="text-cmd-text">{Math.round(value)}</div>
     </div>
+  );
+}
+
+/**
+ * CEO directive "Command Center + Professional Quant Trading Firm
+ * Upgrade," Phase 2 (Risk Visualization) — "the user should immediately
+ * know: how close are we to blowing the account?" Every real value here
+ * already existed (`riskBudgetStatus`, WS-broadcast, computed by
+ * backend/app/risk_engine.py's compute_risk_budget_status()) but had
+ * never been surfaced as a standing card anywhere — the only prior UI
+ * for it lived inside ExecutiveVoting's own pre-trade popup. No new
+ * backend field, no new arithmetic beyond what that endpoint already
+ * returns: `remainingDrawdownBudgetPct` already IS "distance to
+ * failure" (its own docstring: "limit minus current usage, floored at
+ * 0") — this card just gives it a permanent home.
+ */
+function FailureBoundaryCard({ onNavigate }: { onNavigate: (t: Tab) => void }) {
+  const { riskBudgetStatus } = useGameStore();
+  const usedPct = riskBudgetStatus.maxDrawdownPct > 0 ? Math.min(100, (riskBudgetStatus.lifetimeDrawdownPct / riskBudgetStatus.maxDrawdownPct) * 100) : 0;
+  const tone: "green" | "amber" | "red" = usedPct >= 75 ? "red" : usedPct >= 40 ? "amber" : "green";
+
+  return (
+    <Glass className={`p-3 ${tone === "red" ? "border-cmd-red/50" : tone === "amber" ? "border-cmd-amber/50" : ""}`}>
+      <div className="mb-1.5 flex items-center justify-between">
+        <TerminalLabel>Failure Boundary</TerminalLabel>
+        {riskBudgetStatus.tradingHalted && <StatusPill tone="red">HALTED</StatusPill>}
+      </div>
+      <div className="mb-1 flex items-baseline justify-between text-[9px]">
+        <span className="text-cmd-textDim">Lifetime drawdown used</span>
+        <span className={tone === "red" ? "text-cmd-red" : tone === "amber" ? "text-cmd-amber" : "text-cmd-text"}>
+          {riskBudgetStatus.lifetimeDrawdownPct.toFixed(1)}% of {riskBudgetStatus.maxDrawdownPct.toFixed(1)}% max
+        </span>
+      </div>
+      <Meter value={usedPct} tone={tone} />
+      <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1">
+        <DataRow label="Equity" value={`$${riskBudgetStatus.equity.toFixed(0)}`} />
+        <DataRow label="Distance to failure" value={`${riskBudgetStatus.remainingDrawdownBudgetPct.toFixed(1)}%`} valueClassName={tone === "red" ? "text-cmd-red" : undefined} />
+        <DataRow label="Today's loss budget left" value={`${riskBudgetStatus.remainingDailyLossBudgetPct.toFixed(1)}%`} />
+        <DataRow label="Trading days tracked" value={riskBudgetStatus.tradingDaysCount} />
+      </div>
+      {riskBudgetStatus.haltReason && <div className="mt-1.5 text-[9px] text-cmd-amber">{riskBudgetStatus.haltReason}</div>}
+      <button type="button" onClick={() => onNavigate("RISK")} className="mt-2 w-full rounded-sm border border-cmd-border py-1 text-cmd-textDim hover:text-cmd-cyan">
+        View Risk Panel →
+      </button>
+    </Glass>
   );
 }

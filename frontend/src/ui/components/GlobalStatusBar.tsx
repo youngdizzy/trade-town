@@ -1,5 +1,6 @@
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import type { CompanyHealthTier, MarketEnvironmentRegime, OperatingMode } from "@/types";
+import { EventBus } from "@/game/systems/EventBus";
 import { RISK_LEVEL_LABEL, riskLevel } from "./CommandCenter/lib/derive";
 
 /**
@@ -23,6 +24,17 @@ import { RISK_LEVEL_LABEL, riskLevel } from "./CommandCenter/lib/derive";
  * "Health" in the pill itself, to stay honest about what it actually
  * measures (see PortfolioIntelPanel.tsx's own "a reading, never an
  * automatic action" framing).
+ *
+ * CEO directive "Command Center + Professional Quant Trading Firm
+ * Upgrade," Phase 2 (Top Command Center Bar) — added P&L
+ * (paperPortfolio.totalPnlPct, the same real field PerformancePanel/
+ * OverviewPanel already read) and EMERGENCY STOP (emergencyStop.active,
+ * the same real GameSaveState.emergency_stop field RiskPanel's own
+ * activation control reads). The Emergency Stop pill is clickable — it
+ * jumps straight to the RISK tab via the same real ui:commandCenterJump
+ * event QuickActionDock/CommandPalette already use, never a second,
+ * parallel activation control (the only real activate/resume flow
+ * stays RiskPanel's own EmergencyStopControl/EmergencyStopConfirm).
  */
 const RISK_TONE: Record<"green" | "yellow" | "red", string> = {
   green: "text-bullish",
@@ -61,6 +73,7 @@ function StatusItem({
   tone,
   title,
   hideOnMobile = false,
+  onClick,
 }: {
   label: string;
   value: string;
@@ -73,26 +86,64 @@ function StatusItem({
    * user's own mobile-priority ordering); the remaining four are one tap
    * away in the Command Center's OVERVIEW tab. */
   hideOnMobile?: boolean;
+  /** Phase 2 Top Bar — when present, the item becomes a real button
+   * (e.g. Emergency Stop jumping straight to the RISK tab) rather than
+   * a passive readout. */
+  onClick?: () => void;
 }) {
-  return (
-    <div className={`items-center gap-1.5 ${hideOnMobile ? "hidden sm:flex" : "flex"}`} title={title}>
+  const content = (
+    <>
       <span className="opacity-60">{label}</span>
       <span className={`font-bold ${tone}`}>{value}</span>
+    </>
+  );
+  if (onClick) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        className={`items-center gap-1.5 ${hideOnMobile ? "hidden sm:flex" : "flex"}`}
+        title={title}
+      >
+        {content}
+      </button>
+    );
+  }
+  return (
+    <div className={`items-center gap-1.5 ${hideOnMobile ? "hidden sm:flex" : "flex"}`} title={title}>
+      {content}
     </div>
   );
 }
 
 export function GlobalStatusBar() {
-  const { riskWarnings, companyHealth, marketEnvironment, portfolioIntelligence, settings, currentScene } = useGameStore();
+  const { riskWarnings, companyHealth, marketEnvironment, portfolioIntelligence, settings, currentScene, paperPortfolio, emergencyStop } =
+    useGameStore();
   const inGame = currentScene !== "MainMenuScene";
   if (!inGame) return null;
 
   const level = riskLevel(riskWarnings);
+  const pnlPositive = paperPortfolio.totalPnlPct >= 0;
 
   return (
     <div className="pointer-events-none absolute left-0 right-0 top-11 flex justify-center px-4">
       <div className="pointer-events-auto flex flex-wrap items-center gap-x-4 gap-y-1 rounded bg-panel/80 px-3 py-1 font-pixel text-[9px] text-parchment shadow-pixel">
         <StatusItem label="RISK" value={RISK_LEVEL_LABEL[level]} tone={RISK_TONE[level]} title="Real-time Sentinel/Guardian risk severity" />
+        <StatusItem
+          label="P&L"
+          value={`${pnlPositive ? "+" : ""}${paperPortfolio.totalPnlPct.toFixed(1)}%`}
+          tone={pnlPositive ? "text-bullish" : "text-bearish"}
+          title={`Total real P&L — $${paperPortfolio.totalPnl.toFixed(2)} on $${paperPortfolio.startingBalance.toFixed(2)} starting capital`}
+        />
+        {emergencyStop.active && (
+          <StatusItem
+            label="EMERGENCY STOP"
+            value="ACTIVE"
+            tone="text-bearish"
+            title="Emergency Stop is active — click to open Risk Controls"
+            onClick={() => EventBus.emit("ui:commandCenterJump", { tab: "RISK" })}
+          />
+        )}
         <StatusItem
           label="COMPANY HEALTH"
           value={`${Math.round(companyHealth.overall)}`}
