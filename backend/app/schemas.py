@@ -4070,11 +4070,18 @@ class StrategyTournamentEntry(CamelModel):
 
 class StrategyTournamentRoundResult(CamelModel):
     """One real elimination round. `blocked=True` means this round's own
-    real gate cannot be evaluated because the underlying capability does
-    not exist yet in this codebase (see app/strategy_tournament.py's own
-    module docstring for exactly which round this applies to and why) —
-    every entrant passes a blocked round automatically, and `detail`
-    discloses the architectural gap rather than fabricating a result."""
+    FULL real gate (as the directive originally asked for it) cannot be
+    evaluated because the underlying capability does not exist yet in
+    this codebase (see app/strategy_tournament.py's own module docstring
+    for exactly which round this applies to and why) — every entrant
+    passes a blocked round automatically, and `detail` discloses the
+    architectural gap rather than fabricating a result. Round 7 sets
+    `blocked=True` alongside a real, partial signal
+    (`StrategyTournamentResult.pairCorrelations`) — real return
+    correlation is now computed, but a full portfolio-level backtest
+    (shared capital, combined position sizing, simultaneous multi-
+    strategy drawdown) still is not, so the round still never
+    eliminates."""
 
     round_number: int = Field(alias="roundNumber")
     name: str
@@ -4082,6 +4089,30 @@ class StrategyTournamentRoundResult(CamelModel):
     survivors: list[str] = Field(default_factory=list)
     eliminated: list[str] = Field(default_factory=list)
     blocked: bool = False
+    detail: str
+
+
+class StrategyPairCorrelation(CamelModel):
+    """CEO directive "Professional Quant Firm Phase," Feature 40, Round
+    7 follow-up — a REAL Pearson correlation coefficient (see
+    app/portfolio_intelligence.py's `pearson_correlation()`, reused
+    directly, never a second implementation) between two candidate
+    strategies' own already-computed walk-forward window expectancy
+    sequences for one shared symbol (the same window boundaries, since
+    both were tested with the same symbols/timeframe/candlesPerSymbol/
+    windowBars). `correlation` is `None` (never a fabricated `0.0`)
+    below 3 real paired windows with evidence on both sides. This is a
+    REAL, disclosed signal about how similarly two strategies' returns
+    moved — high positive correlation suggests less real diversification
+    benefit from running both — but it is explicitly NOT a full
+    portfolio-level backtest: it does not model shared capital, combined
+    position sizing, or simultaneous drawdown timing."""
+
+    definition_id_a: str = Field(alias="definitionIdA")
+    definition_id_b: str = Field(alias="definitionIdB")
+    symbol: str
+    correlation: float | None
+    windows_compared: int = Field(alias="windowsCompared")
     detail: str
 
 
@@ -4100,6 +4131,7 @@ class StrategyTournamentResult(CamelModel):
     id: str
     entries: list[StrategyTournamentEntry] = Field(default_factory=list)
     rounds: list[StrategyTournamentRoundResult] = Field(default_factory=list)
+    pair_correlations: list[StrategyPairCorrelation] = Field(default_factory=list, alias="pairCorrelations")
     highest_expectancy: StrategyExecutiveDashboardEntry | None = Field(default=None, alias="highestExpectancy")
     highest_profit_factor: StrategyExecutiveDashboardEntry | None = Field(default=None, alias="highestProfitFactor")
     highest_sharpe_ratio: StrategyExecutiveDashboardEntry | None = Field(default=None, alias="highestSharpeRatio")

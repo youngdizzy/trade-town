@@ -49,6 +49,15 @@ HONESTY BOUNDARY:
   (daily/weekly/monthly/all_time) from the same trade history — an
   Executive Portfolio Dashboard should read that existing field, not a
   second one computed here.
+
+CEO directive "Professional Quant Firm Phase," Feature 40's Tournament
+Round 7 (portfolio interaction) — `pearson_correlation()` below (renamed
+from a previously-private `_pearson()`, behavior unchanged) is exported
+specifically so `app/strategy_tournament.py` can compute a real
+correlation between candidate strategies' own walk-forward window
+expectancy sequences using the exact same, already-tested Pearson
+implementation this module uses for symbol-to-symbol price-return
+correlation — never a second, duplicate statistics implementation.
 """
 from __future__ import annotations
 
@@ -85,7 +94,15 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _pearson(a: list[float], b: list[float]) -> float:
+def pearson_correlation(a: list[float], b: list[float]) -> float:
+    """A real Pearson coefficient over the two series' own most recent
+    `min(len(a), len(b))` values (aligned from the end). `0.0` — never a
+    crash — below 3 paired values or when either series has zero real
+    variance (`statistics.StatisticsError`); callers needing to
+    distinguish "measured, genuinely zero" from "not enough data" should
+    check `min(len(a), len(b)) >= 3` themselves before calling (see
+    app/strategy_tournament.py's own real-vs-None handling for its
+    per-pair correlation reads)."""
     n = min(len(a), len(b))
     if n < 3:
         return 0.0
@@ -136,7 +153,7 @@ def _correlation_pairs(portfolio: PaperPortfolio, provider: MarketDataProvider) 
             a, b = returns_by_symbol.get(symbol_a), returns_by_symbol.get(symbol_b)
             if not a or not b:
                 continue
-            correlation = _pearson(a, b)
+            correlation = pearson_correlation(a, b)
             if abs(correlation) >= CORRELATION_CLUSTER_THRESHOLD:
                 pairs.append(CorrelationPair(symbolA=symbol_a, symbolB=symbol_b, correlation=round(correlation, 2), direction="positive" if correlation > 0 else "negative"))
     return pairs

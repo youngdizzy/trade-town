@@ -14,7 +14,7 @@ from app.portfolio_intelligence import (
     _correlation_pairs,
     _heat,
     _opportunity_cost,
-    _pearson,
+    pearson_correlation,
     _returns,
     compute_portfolio_intelligence,
 )
@@ -104,18 +104,18 @@ def _portfolio(*, cash_balance: float = 90000.0, starting_balance: float = 10000
 class TestPearson:
     def test_perfectly_correlated_series_returns_one(self) -> None:
         a = [1.0, 2.0, 3.0, 4.0, 5.0]
-        assert _pearson(a, a) == 1.0
+        assert pearson_correlation(a, a) == 1.0
 
     def test_perfectly_inverse_series_returns_negative_one(self) -> None:
         a = [1.0, 2.0, 3.0, 4.0, 5.0]
         b = [5.0, 4.0, 3.0, 2.0, 1.0]
-        assert round(_pearson(a, b), 6) == -1.0
+        assert round(pearson_correlation(a, b), 6) == -1.0
 
     def test_fewer_than_three_points_returns_zero_rather_than_a_fake_read(self) -> None:
-        assert _pearson([1.0, 2.0], [1.0, 2.0]) == 0.0
+        assert pearson_correlation([1.0, 2.0], [1.0, 2.0]) == 0.0
 
     def test_zero_variance_series_returns_zero_not_a_crash(self) -> None:
-        assert _pearson([1.0, 1.0, 1.0], [1.0, 2.0, 3.0]) == 0.0
+        assert pearson_correlation([1.0, 1.0, 1.0], [1.0, 2.0, 3.0]) == 0.0
 
 
 class TestReturns:

@@ -44,12 +44,17 @@ architecturally blocked rather than fabricating it:
    attaches the real per-session evidence count to `detail` for CEO/
    agent judgment.
 6. Parameter robustness — eliminates only a confirmed "fragile" verdict.
-7. Portfolio interaction — ARCHITECTURALLY BLOCKED. This codebase has no
-   cross-strategy portfolio-level backtest, correlation model, or
-   combined-exposure simulation (every backtest here is single-strategy,
-   single-symbol-at-a-time). Every entrant passes this round
-   automatically with `blocked=True` and a disclosed reason — never a
-   fabricated portfolio metric.
+7. Portfolio interaction — STILL PARTIALLY BLOCKED, now with one real
+   signal. This codebase has no cross-strategy portfolio-level backtest
+   (shared capital, combined position sizing, simultaneous multi-
+   strategy drawdown) — that full capability remains architecturally
+   unavailable, `blocked=True`. But it DOES now compute a real Pearson
+   correlation (reusing app/portfolio_intelligence.py's
+   `pearson_correlation()` — never a second implementation) between
+   each pair of candidates' own already-computed walk-forward window
+   expectancy sequences, per shared symbol (see `_assess_pair_
+   correlations()` below) — a real, disclosed diversification signal,
+   never a fabricated portfolio metric, and still never eliminates.
 8. Final research review — the closing gate: survivors must read
    "robust" on `overfitting_diagnosis` (Feature 39). Survivors of every
    real round become `production_candidates` — a real, cited LABEL for
@@ -63,16 +68,20 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from app.portfolio_intelligence import pearson_correlation
 from app.research_experiment import run_research_experiment
 from app.schemas import (
     CompiledStrategyDefinition,
     ResearchExperimentRecord,
     StrategyExecutiveDashboardEntry,
+    StrategyPairCorrelation,
     StrategyTournamentEntry,
     StrategyTournamentResult,
     StrategyTournamentRoundResult,
 )
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME
+
+MIN_PAIRED_WINDOWS_FOR_CORRELATION = 3
 
 
 def _walk_forward_positive_window_pct(record: ResearchExperimentRecord) -> float | None:
@@ -134,6 +143,52 @@ def _superlative(entries: list[StrategyTournamentEntry], *, metric_label: str, v
     best = max(candidates, key=lambda pair: pair[1]) if higher_is_better else min(candidates, key=lambda pair: pair[1])
     entry, value = best
     return StrategyExecutiveDashboardEntry(strategyId=entry.definition_id, strategyName=entry.definition_name, metricLabel=metric_label, metricValue=value)
+
+
+def _assess_pair_correlations(records: list[ResearchExperimentRecord]) -> list[StrategyPairCorrelation]:
+    """A real, disclosed diversification signal for Round 7 — see this
+    module's own docstring (point 7) for the exact honesty boundary.
+    For every pair of candidates and every symbol both were tested on,
+    aligns each strategy's own already-computed walk-forward windows by
+    `window_index` (identical boundaries for both, since both were run
+    against the same symbols/timeframe/candlesPerSymbol/windowBars) and
+    correlates their real `expectancy_r` sequences — never a fabricated
+    relationship, and `None` (never `0.0`) below `MIN_PAIRED_WINDOWS_
+    FOR_CORRELATION` real paired windows."""
+    pairs: list[StrategyPairCorrelation] = []
+    for i, record_a in enumerate(records):
+        for record_b in records[i + 1 :]:
+            symbols_a = {s.symbol: s for s in record_a.walk_forward.symbols}
+            symbols_b = {s.symbol: s for s in record_b.walk_forward.symbols}
+            for symbol in sorted(set(symbols_a) & set(symbols_b)):
+                windows_a = {w.window_index: w.bucket.expectancy_r for w in symbols_a[symbol].windows}
+                windows_b = {w.window_index: w.bucket.expectancy_r for w in symbols_b[symbol].windows}
+                shared_indices = sorted(set(windows_a) & set(windows_b))
+                paired: list[tuple[float, float]] = []
+                for idx in shared_indices:
+                    value_a, value_b = windows_a[idx], windows_b[idx]
+                    if value_a is not None and value_b is not None:
+                        paired.append((value_a, value_b))
+                if len(paired) < MIN_PAIRED_WINDOWS_FOR_CORRELATION:
+                    pairs.append(
+                        StrategyPairCorrelation(
+                            definitionIdA=record_a.definition_id, definitionIdB=record_b.definition_id, symbol=symbol,
+                            correlation=None, windowsCompared=len(paired),
+                            detail=f"Only {len(paired)} real paired window(s) with evidence on both sides — below the {MIN_PAIRED_WINDOWS_FOR_CORRELATION}-window bar this module uses for a real correlation read.",
+                        )
+                    )
+                    continue
+                a_values = [p[0] for p in paired]
+                b_values = [p[1] for p in paired]
+                correlation = round(pearson_correlation(a_values, b_values), 3)
+                pairs.append(
+                    StrategyPairCorrelation(
+                        definitionIdA=record_a.definition_id, definitionIdB=record_b.definition_id, symbol=symbol,
+                        correlation=correlation, windowsCompared=len(paired),
+                        detail=f"Real Pearson correlation over {len(paired)} shared, real walk-forward window(s) of expectancy — not a full portfolio-level backtest.",
+                    )
+                )
+    return pairs
 
 
 def run_strategy_tournament(
@@ -209,12 +264,16 @@ def run_strategy_tournament(
     )
     rounds.append(round_result)
 
+    pair_correlations = _assess_pair_correlations(records)
     rounds.append(
         StrategyTournamentRoundResult(
             roundNumber=7, name="Portfolio interaction",
-            description="ARCHITECTURALLY BLOCKED — this codebase has no cross-strategy portfolio-level backtest, correlation model, or combined-exposure simulation.",
+            description="PARTIALLY BLOCKED — a real per-symbol return-correlation signal is now computed (see pairCorrelations), but a full portfolio-level backtest (shared capital, combined position sizing, simultaneous drawdown) is still architecturally unavailable.",
             survivors=list(survivors), eliminated=[], blocked=True,
-            detail="Every real backtest in this codebase tests one strategy on one symbol at a time; there is no capability yet to measure how multiple strategies' positions would interact in one shared portfolio. Every real survivor of round 6 passes this round automatically rather than a fabricated portfolio metric.",
+            detail=(
+                f"{len(pair_correlations)} real pairwise/per-symbol correlation read(s) computed from each candidate's own walk-forward windows — see pairCorrelations. "
+                "Still never eliminates: correlation alone is not a real portfolio-level risk verdict. Every real survivor of round 6 passes this round automatically."
+            ),
         )
     )
 
@@ -230,6 +289,7 @@ def run_strategy_tournament(
         id=f"tournament-{now_iso}",
         entries=entries,
         rounds=rounds,
+        pairCorrelations=pair_correlations,
         highestExpectancy=_superlative(entries, metric_label="Expectancy (R)", value_fn=lambda e: e.expectancy_r, higher_is_better=True),
         highestProfitFactor=_superlative(entries, metric_label="Profit Factor", value_fn=lambda e: e.profit_factor, higher_is_better=True),
         highestSharpeRatio=_superlative(entries, metric_label="Sharpe Ratio", value_fn=lambda e: e.sharpe_ratio, higher_is_better=True),
@@ -240,7 +300,9 @@ def run_strategy_tournament(
             "Every real number above comes from app/market_data.py's own real, procedurally-generated (seeded, reproducible) mock OHLCV "
             "series — never real historical market data. 'productionCandidates' is a real, cited LABEL only (every real round this module "
             "runs was survived) — it is never an autonomous production promotion and never bypasses this codebase's own separate risk/"
-            "governance approval flow (app/gatekeeper.py, StrategyReview, Model Validation)."
+            "governance approval flow (app/gatekeeper.py, StrategyReview, Model Validation). 'pairCorrelations' is a real Pearson "
+            "correlation of walk-forward window expectancy, not a full portfolio-level backtest — it never models shared capital, combined "
+            "position sizing, or simultaneous multi-strategy drawdown."
         ),
         generatedAt=now_iso,
     )
