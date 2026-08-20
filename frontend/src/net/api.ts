@@ -3,6 +3,7 @@ import type {
   AccountType,
   AgentEnergy,
   AgentId,
+  AgentTradingStatusRead,
   AlertSeverity,
   AnalystChoice,
   AuditEntry,
@@ -252,6 +253,10 @@ export const api = {
   // #0 — diagnostic-only trade-flow funnel telemetry. Read-only,
   // computed fresh per request; never gates or scores anything.
   getPipelineHealth: () => request<TradePipelineHealthSnapshot>("/trades/pipeline-health"),
+  // CEO directive "Command Center + Professional Quant Trading Firm
+  // Upgrade," Phase 2 — every real agent's current trading-relevant
+  // state. Read-only, computed fresh per request; not WS-broadcast.
+  getAgentTradingStatus: () => request<AgentTradingStatusRead[]>("/agents/trading-status"),
   getPerformanceByRegime: () => request<RegimePerformanceSummary>("/trades/performance-by-regime"),
   // CEO directive "Next Professional Trading Firm Phase," Priority 5 —
   // Research Data Integrity. Read-only; the candle row re-checks the

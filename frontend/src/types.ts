@@ -175,6 +175,27 @@ export interface AgentState {
   override: AgentOverride | null;
 }
 
+/** CEO directive "Command Center + Professional Quant Trading Firm
+ * Upgrade," Phase 2 — every value grounded in a real, already-existing
+ * signal (see backend/app/agent_trading_status.py's own module
+ * docstring). No fabricated "next condition" prediction — `detail`
+ * surfaces the real existing narrative text (a "wait" vote's own
+ * reasoning, or a research item's own summary) instead. */
+export type AgentTradingStatus = "waiting" | "scanning" | "idle" | "risk_blocked" | "not_trading_role";
+
+export interface AgentTradingStatusRead {
+  agentId: AgentId;
+  roleClass: AgentRoleClass;
+  status: AgentTradingStatus;
+  headline: string;
+  detail: string;
+  symbol: string | null;
+  researchCategory: ResearchCategory | null;
+  proposalId: string | null;
+  session: SessionRead;
+  updatedAt: string;
+}
+
 export interface Task {
   id: string;
   owner: AgentId;

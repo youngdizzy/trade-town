@@ -1,11 +1,34 @@
+import { useEffect, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { AGENT_IDS } from "@/types";
+import type { AgentTradingStatus, AgentTradingStatusRead } from "@/types";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
-import { EmptyState, Glass, Meter } from "../ui";
+import { api } from "@/net/api";
+import { EmptyState, Glass, Meter, StatusPill } from "../ui";
+
+const TRADING_STATUS_TONE: Record<AgentTradingStatus, "neutral" | "cyan" | "green" | "amber" | "red" | "purple"> = {
+  waiting: "amber",
+  scanning: "cyan",
+  idle: "neutral",
+  risk_blocked: "red",
+  not_trading_role: "purple",
+};
 
 /** The nine-agent roster as a real status board — only fields TradeTown's backend actually tracks per agent (see AgentState in types.ts); no fabricated activity feed. */
 export function AgentsPanel() {
   const { agents, tasks, research } = useGameStore();
+  const [tradingStatus, setTradingStatus] = useState<Record<string, AgentTradingStatusRead>>({});
+
+  // CEO directive "Command Center + Professional Quant Trading Firm
+  // Upgrade," Phase 2 — real per-agent trading-status explainability
+  // (backend/app/agent_trading_status.py). On-demand, not WS-broadcast,
+  // same pattern this Command Center already uses elsewhere.
+  useEffect(() => {
+    api
+      .getAgentTradingStatus()
+      .then((reads) => setTradingStatus(Object.fromEntries(reads.map((r) => [r.agentId, r]))))
+      .catch(() => undefined);
+  }, []);
 
   if (!agents) return <EmptyState>Agent state hasn&apos;t loaded yet.</EmptyState>;
 
@@ -17,6 +40,7 @@ export function AgentsPanel() {
         const latestTask = [...tasks].reverse().find((t) => t.owner === id) ?? null;
         const activeResearch = research.find((r) => r.assignedAgent === id && r.status === "in_progress") ?? null;
         const idle = state.location === "lobby" || state.location === "break-room";
+        const trading = tradingStatus[id];
 
         return (
           <Glass key={id} className="p-3">
@@ -27,6 +51,17 @@ export function AgentsPanel() {
               </div>
               <span className={`text-[9px] uppercase ${idle ? "text-cmd-textDim" : "text-cmd-green"}`}>{idle ? "IDLE" : "WORKING"}</span>
             </div>
+
+            {trading && (
+              <div className="mb-1.5 rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-1.5 text-[9px]">
+                <div className="mb-0.5 flex items-center justify-between gap-2">
+                  <StatusPill tone={TRADING_STATUS_TONE[trading.status]}>{trading.status.replace(/_/g, " ")}</StatusPill>
+                  {trading.symbol && <span className="font-cmdmono text-cmd-cyan">{trading.symbol}</span>}
+                </div>
+                <div className="text-cmd-text">{trading.headline}</div>
+                <div className="mt-0.5 text-cmd-textDim">{trading.detail}</div>
+              </div>
+            )}
 
             <div className="mb-1.5 text-[9px] text-cmd-textDim">{state.location.replace("-", " ")}</div>
 
