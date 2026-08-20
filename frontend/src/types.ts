@@ -941,6 +941,12 @@ export interface Strategy {
   stage: StrategyStage;
   stageHistory: StrategyStageEvent[];
   allocatedCapital: number;
+  /** CEO directive "Strategy Intelligence + Live Strategy Attribution"
+   * — the real Strategy Lab <-> CompiledStrategyDefinition identity
+   * bridge (backend/app/strategy_registry.py's
+   * register_researchable_strategy()). `null` means this Strategy has
+   * no represented executable trigger/entry/stop/target logic yet. */
+  compiledDefinitionId: string | null;
 }
 
 /** A strategy simulation in flight — queued or running in the Simulation Lab. */
