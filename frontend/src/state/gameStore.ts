@@ -427,6 +427,7 @@ class GameStore {
       educationProgress: 0,
       teamChemistry: 50,
       recommendations: [],
+      weakAreas: [],
       updatedAt: new Date().toISOString(),
       decisionQuality: 50,
       executiveAlignment: 50,

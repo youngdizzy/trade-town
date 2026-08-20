@@ -3336,6 +3336,21 @@ export interface SessionRegimeEvidenceSummary {
 // CompanyScore metric already reads.
 export type CompanyHealthTier = "excellent" | "good" | "stable" | "needs_attention" | "critical";
 
+/** CEO directive "Command Center + Professional Quant Trading Firm
+ * Upgrade" — the Executive View's Problem/Cause/Severity/Action
+ * breakdown for one real weak Company Health sub-score. `severity`
+ * reuses `CompanyHealthTier` rather than a second banding taxonomy. */
+export interface CompanyHealthWeakArea {
+  metric: string;
+  label: string;
+  group: "operational" | "executive";
+  score: number;
+  severity: CompanyHealthTier;
+  problem: string;
+  cause: string;
+  action: string;
+}
+
 export interface CompanyHealth {
   overall: number;
   tier: CompanyHealthTier;
@@ -3356,6 +3371,14 @@ export interface CompanyHealth {
    * Debates (see backend/app/company_health.py's _team_chemistry). */
   teamChemistry: number;
   recommendations: string[];
+  /** CEO directive "Command Center + Professional Quant Trading Firm
+   * Upgrade" — the same weak areas `recommendations` above already
+   * names, each now also carrying a real Problem/Cause/Severity/Action
+   * breakdown (backend/app/company_health.py's `_diagnose()`). No
+   * `status` field — no real remediation-tracking mechanism exists to
+   * report one honestly (see `CompanyHealthWeakArea`'s own backend
+   * docstring). */
+  weakAreas: CompanyHealthWeakArea[];
   updatedAt: string;
 
   // v0.7 Feature 50 (Part 2/3) — the Company Health redesign. Ten more

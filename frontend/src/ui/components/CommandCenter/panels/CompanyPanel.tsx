@@ -492,14 +492,25 @@ export function CompanyPanel() {
       </Glass>
 
       <Glass className="p-3">
-        <TerminalLabel>Recommendations</TerminalLabel>
-        {companyHealth.recommendations.length === 0 ? (
+        <TerminalLabel>Weak Areas</TerminalLabel>
+        {companyHealth.weakAreas.length === 0 ? (
           <EmptyState>Every metric is holding strong.</EmptyState>
         ) : (
-          <div className="space-y-1.5">
-            {companyHealth.recommendations.map((r) => (
-              <div key={r} className="rounded-sm border border-cmd-amber/30 bg-cmd-bg/40 p-2 text-[9px] text-cmd-amber">
-                {r}
+          <div className="space-y-2">
+            {companyHealth.weakAreas.map((area) => (
+              <div key={area.metric} className="rounded-sm border border-cmd-amber/30 bg-cmd-bg/40 p-2">
+                <div className="mb-1 flex items-center justify-between">
+                  <span className="text-[9px] font-semibold text-cmd-amber">{area.problem}</span>
+                  <StatusPill tone={TIER_TONE[area.severity]}>{TIER_LABEL[area.severity]}</StatusPill>
+                </div>
+                <div className="text-[8px] text-cmd-textDim">
+                  <span className="uppercase tracking-wide text-cmd-textDim/80">Cause: </span>
+                  {area.cause}
+                </div>
+                <div className="mt-0.5 text-[8px] text-cmd-textDim">
+                  <span className="uppercase tracking-wide text-cmd-textDim/80">Action: </span>
+                  {area.action}
+                </div>
               </div>
             ))}
           </div>
