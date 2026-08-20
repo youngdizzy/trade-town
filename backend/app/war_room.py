@@ -127,13 +127,17 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.decision_vault import compute_evidence_score, find_similar_vault_entries, summarize_similarity
+from app.evidence_confluence import assess_evidence_confluence
 from app.executive_intelligence import compute_executive_recommendation, generate_department_opinions
 from app.schemas import (
+    AnalystChoice,
     ChallengeReport,
     CoachReport,
     ContingencyStep,
     DecisionScoreBreakdown,
     DecisionVaultEntry,
+    EvidenceConfluenceRead,
+    EvidenceDirection,
     ExpectedValueAnalysis,
     LiquidityRead,
     MarketIntelligenceState,
@@ -214,6 +218,37 @@ def _portfolio_compatibility_score(proposal: TradeProposal, correlated_open_posi
     return max(0.0, 100.0 - correlated_open_positions * 25.0)
 
 
+# CEO directive "Professional Quant Firm Phase 41-45" — "CONFLUENCE
+# QUALITY... prevent double-counting." The real count of DIRECTIONAL
+# evidence families app/evidence_confluence.py's own module docstring
+# establishes — `levels` (Fibonacci) is deliberately excluded there as
+# informational-only, never a directional claim, so it is excluded from
+# this real denominator too.
+TOTAL_DIRECTIONAL_EVIDENCE_FAMILIES = 6
+
+
+def _evidence_confluence_score(confluence: EvidenceConfluenceRead | None, overall: AnalystChoice) -> float | None:
+    """A real 0-100 read of how much INDEPENDENT evidence (distinct
+    families, never raw signal count — see TOTAL_DIRECTIONAL_EVIDENCE_
+    FAMILIES above) actually supports THIS proposal's own chosen
+    direction — never app/evidence_confluence.py's own internal
+    majority direction taken at face value, since a proposal can
+    legitimately go against the raw indicators' own majority (e.g. a
+    contrarian/mean-reversion thesis). `None` only when this symbol's
+    own real candle history was unavailable this tick — never a
+    fabricated neutral default standing in for missing data."""
+    if confluence is None:
+        return None
+    proposal_direction: EvidenceDirection = "bullish" if overall == "buy" else "bearish" if overall == "sell" else "neutral"
+    if confluence.majority_direction == "neutral" or proposal_direction == "neutral":
+        return 50.0
+    if confluence.majority_direction != proposal_direction:
+        # The real, independent evidence actively disagrees with this proposal's own
+        # direction — a genuine red flag, never softened into a middling score.
+        return 0.0
+    return round(min(100.0, confluence.independent_family_count / TOTAL_DIRECTIONAL_EVIDENCE_FAMILIES * 100), 1)
+
+
 def build_decision_score(
     proposal: TradeProposal,
     *,
@@ -222,6 +257,7 @@ def build_decision_score(
     expected_value: ExpectedValueAnalysis,
     market_intelligence: MarketIntelligenceState,
     liquidity: LiquidityRead | None,
+    evidence_confluence: EvidenceConfluenceRead | None = None,
 ) -> DecisionScoreBreakdown:
     evidence_score = compute_evidence_score(proposal.confidence_engine.factors)
     confidence_score = proposal.confidence_engine.score
@@ -233,12 +269,16 @@ def build_decision_score(
     market_quality_score = market_intelligence.quality.score
     liquidity_quality_score = liquidity.liquidity_score if liquidity is not None else 50.0
     portfolio_compatibility_score = _portfolio_compatibility_score(proposal, correlated_open_positions)
+    evidence_confluence_score = _evidence_confluence_score(evidence_confluence, proposal.overall_recommendation)
 
     # strategy_health_score is always None here — no ordinary Trading
     # Floor TradeProposal links back to a tested Strategy (see this
     # module's own docstring) — so the composite renormalizes over only
-    # the 7 real sub-scores that exist for every proposal.
+    # the real sub-scores that exist for every proposal (7, or 8 when
+    # evidence_confluence_score is real).
     sub_scores = [evidence_score, confidence_score, risk_score, expected_value_score, market_quality_score, liquidity_quality_score, portfolio_compatibility_score]
+    if evidence_confluence_score is not None:
+        sub_scores.append(evidence_confluence_score)
     overall = round(sum(sub_scores) / len(sub_scores), 1)
 
     return DecisionScoreBreakdown(
@@ -250,6 +290,7 @@ def build_decision_score(
         marketQualityScore=market_quality_score,
         liquidityQualityScore=liquidity_quality_score,
         portfolioCompatibilityScore=portfolio_compatibility_score,
+        evidenceConfluenceScore=evidence_confluence_score,
         overall=overall,
         threshold=DECISION_SCORE_THRESHOLD,
         passed=overall >= DECISION_SCORE_THRESHOLD,
@@ -312,6 +353,14 @@ def build_war_room_session(
     expected_value = build_expected_value_analysis(simulation)
 
     liquidity = next((liq for liq in market_intelligence.liquidity if liq.symbol == proposal.symbol), None)
+    # CEO directive "Professional Quant Firm Phase 41-45" — "CONFLUENCE
+    # QUALITY." Real, already-tested app/evidence_confluence.py, wired
+    # into a live decision for the first time (see that module's own
+    # docstring — it was previously "never wired into a live decision").
+    # `None` (never a fabricated zero-signal read) when this tick's own
+    # candles fetch came back empty (see the caller's `except ValueError`
+    # fallback).
+    evidence_confluence = assess_evidence_confluence(proposal.symbol, candles) if candles else None
     decision_score = build_decision_score(
         proposal,
         risk_warnings=risk_warnings,
@@ -319,6 +368,7 @@ def build_war_room_session(
         expected_value=expected_value,
         market_intelligence=market_intelligence,
         liquidity=liquidity,
+        evidence_confluence=evidence_confluence,
     )
     contingency_plan = build_contingency_plan(market_intelligence, liquidity)
 
@@ -343,6 +393,7 @@ def build_war_room_session(
         decisionScore=decision_score,
         contingencyPlan=contingency_plan,
         confidenceValidated=evidence_never_exceeds_confidence(proposal),
+        evidenceConfluence=evidence_confluence,
         outcomeComparison=None,
         createdAt=_now_iso(),
     )

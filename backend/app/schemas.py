@@ -6145,6 +6145,17 @@ class DecisionScoreBreakdown(CamelModel):
     market_quality_score: float = Field(alias="marketQualityScore")
     liquidity_quality_score: float = Field(alias="liquidityQualityScore")
     portfolio_compatibility_score: float = Field(alias="portfolioCompatibilityScore")
+    # CEO directive "Professional Quant Firm Phase 41-45" — "CONFLUENCE
+    # QUALITY... prevent double-counting." A real, disclosed 0-100 read
+    # of how many of app/evidence_confluence.py's 6 real DIRECTIONAL
+    # evidence families (trend/momentum/volume/price_structure/
+    # liquidity/pattern — `levels`/Fibonacci is informational-only,
+    # never counted, matching that module's own established convention)
+    # independently agree with this proposal's own direction — never a
+    # naive raw-signal count (see EvidenceConfluenceRead.independent_
+    # family_count vs. raw_signal_count). `None` only when this symbol's
+    # own real candle history was unavailable for this tick.
+    evidence_confluence_score: float | None = Field(default=None, alias="evidenceConfluenceScore")
     overall: float
     threshold: float
     passed: bool
@@ -6228,6 +6239,16 @@ class WarRoomSession(CamelModel):
     outcome_comparison: ScenarioOutcomeComparison | None = Field(
         default=None, alias="outcomeComparison"
     )
+    # CEO directive "Professional Quant Firm Phase 41-45" — "CONFLUENCE
+    # QUALITY... prevent double-counting." app/evidence_confluence.py's
+    # real evidence-family read (real, existing, already-tested — see
+    # that module's own docstring) was computed but never wired into any
+    # live decision until now; connected here (not duplicated) so a CEO
+    # can see the real family-level breakdown behind `decision_score.
+    # evidence_confluence_score`, not just the summary number. `None`
+    # only when this symbol's own real candle history was unavailable
+    # for this tick (see app/war_room.py's build_war_room_session()).
+    evidence_confluence: EvidenceConfluenceRead | None = Field(default=None, alias="evidenceConfluence")
     created_at: str = Field(alias="createdAt")
 
 

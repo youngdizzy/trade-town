@@ -76,10 +76,20 @@ for — `net_direction` on each `EvidenceFamilyRead` and the overall
 framing, expressed as real structural groupings rather than an invented
 statistical independence claim.
 
-NEVER WIRED INTO A LIVE DECISION. Same boundary every other real
-indicator/pattern read in this codebase keeps — `assess_evidence_
-confluence()` is a new, additional, informational read, computed fresh,
-never persisted, never read by app/confidence.py or app/research.py.
+CEO directive "Professional Quant Firm Phase 41-45" — "CONFLUENCE
+QUALITY... prevent double-counting" — wired into a live decision for the
+first time: `app/war_room.py`'s `build_decision_score()` now reads a
+real `evidenceConfluenceScore` sub-component from this module's own
+`independent_family_count` (never the naive `raw_signal_count`),
+compared against the specific proposal's OWN chosen direction (not this
+module's own internal `majority_direction` taken at face value — a
+proposal can legitimately go against the raw indicators' majority, e.g.
+a contrarian thesis; see `war_room.py`'s `_evidence_confluence_score()`
+for the exact real scoring rule). Still never read by app/confidence.py
+or app/research.py — this module's own real family-level breakdown is
+also carried through onto `WarRoomSession.evidence_confluence` so a CEO
+can see WHICH families actually supported the trade, not just a single
+number.
 """
 from __future__ import annotations
 

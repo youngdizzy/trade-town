@@ -17,6 +17,7 @@ from app.schemas import (
     AnalystVote,
     ConfidenceFactor,
     DecisionConfidence,
+    EvidenceConfluenceRead,
     LiquidityRead,
     NewsRiskRead,
     PaperTrade,
@@ -29,6 +30,8 @@ from app.schemas import (
 from app.war_room import (
     DECISION_SCORE_THRESHOLD,
     MAX_WAR_ROOM_SESSIONS,
+    TOTAL_DIRECTIONAL_EVIDENCE_FAMILIES,
+    _evidence_confluence_score,
     build_contingency_plan,
     build_decision_score,
     build_expected_value_analysis,
@@ -336,6 +339,87 @@ class TestBuildDecisionScore:
         )
         assert score.liquidity_quality_score == 90.0
 
+    def test_evidence_confluence_score_is_none_when_no_confluence_read_supplied(self) -> None:
+        proposal = _proposal()
+        score = build_decision_score(
+            proposal,
+            risk_warnings=[],
+            correlated_open_positions=0,
+            expected_value=build_expected_value_analysis(_simulation()),
+            market_intelligence=default_market_intelligence_state(),
+            liquidity=None,
+        )
+        assert score.evidence_confluence_score is None
+
+    def test_the_composite_renormalizes_over_8_sub_scores_when_confluence_is_real(self) -> None:
+        proposal = _proposal()
+        expected_value = build_expected_value_analysis(_simulation())
+        without_confluence = build_decision_score(
+            proposal, risk_warnings=[], correlated_open_positions=0, expected_value=expected_value, market_intelligence=default_market_intelligence_state(), liquidity=None
+        )
+        with_confluence = build_decision_score(
+            proposal,
+            risk_warnings=[],
+            correlated_open_positions=0,
+            expected_value=expected_value,
+            market_intelligence=default_market_intelligence_state(),
+            liquidity=None,
+            evidence_confluence=_confluence(independent_family_count=6, majority="bullish"),
+        )
+        assert with_confluence.evidence_confluence_score == 100.0
+        # Adding a real, high (100.0) 8th sub-score to an otherwise-identical composite
+        # can only ever raise or hold the overall average — never lower it.
+        assert with_confluence.overall >= without_confluence.overall
+
+
+def _confluence(*, independent_family_count: int, majority: str, raw_signal_count: int | None = None) -> EvidenceConfluenceRead:
+    return EvidenceConfluenceRead(
+        symbol="NEXA",
+        families=[],
+        rawSignalCount=raw_signal_count if raw_signal_count is not None else independent_family_count,
+        independentFamilyCount=independent_family_count,
+        majorityDirection=majority,  # type: ignore[arg-type]
+        agreeingFamilies=[],
+        detail="test",
+    )
+
+
+class TestEvidenceConfluenceScore:
+    """_evidence_confluence_score() — CEO directive "Professional Quant
+    Firm Phase 41-45," Confluence Quality. Every case checks the real
+    rule: score reflects independent-family support for THIS proposal's
+    own chosen direction, never app/evidence_confluence.py's own
+    internal majority taken at face value."""
+
+    def test_none_confluence_reads_none_never_a_fabricated_default(self) -> None:
+        assert _evidence_confluence_score(None, "buy") is None
+
+    def test_full_independent_family_agreement_scores_100(self) -> None:
+        confluence = _confluence(independent_family_count=TOTAL_DIRECTIONAL_EVIDENCE_FAMILIES, majority="bullish")
+        assert _evidence_confluence_score(confluence, "buy") == 100.0
+
+    def test_partial_independent_family_agreement_scores_proportionally(self) -> None:
+        confluence = _confluence(independent_family_count=3, majority="bullish")
+        assert _evidence_confluence_score(confluence, "buy") == round(3 / TOTAL_DIRECTIONAL_EVIDENCE_FAMILIES * 100, 1)
+
+    def test_evidence_majority_opposing_the_proposals_own_direction_scores_zero(self) -> None:
+        # A real, disclosed red flag: the independent evidence's own majority actively
+        # disagrees with this proposal's chosen direction — never softened.
+        confluence = _confluence(independent_family_count=5, majority="bearish")
+        assert _evidence_confluence_score(confluence, "buy") == 0.0
+
+    def test_neutral_market_evidence_scores_a_real_midpoint_not_zero_or_a_fabricated_high(self) -> None:
+        confluence = _confluence(independent_family_count=0, majority="neutral")
+        assert _evidence_confluence_score(confluence, "buy") == 50.0
+
+    def test_a_wait_recommendation_has_no_real_direction_to_check_against_and_scores_the_midpoint(self) -> None:
+        confluence = _confluence(independent_family_count=5, majority="bullish")
+        assert _evidence_confluence_score(confluence, "wait") == 50.0
+
+    def test_never_exceeds_100_even_if_independent_family_count_is_somehow_higher_than_the_total(self) -> None:
+        confluence = _confluence(independent_family_count=99, majority="bullish")
+        assert _evidence_confluence_score(confluence, "buy") == 100.0
+
 
 class TestBuildContingencyPlan:
     def test_five_real_steps_always_present(self) -> None:
@@ -501,6 +585,41 @@ class TestBuildWarRoomSession:
             risk_limits=RiskLimits(),
         )
         assert session.similar_trades.match_count == 0
+
+    def test_evidence_confluence_is_computed_when_real_candles_are_supplied(self) -> None:
+        proposal = _proposal()
+        session = build_war_room_session(
+            "warroom-proposal-1",
+            proposal,
+            challenge_report=None,
+            coach_reports=[],
+            market_intelligence=default_market_intelligence_state(),
+            decision_vault=[],
+            risk_warnings=[],
+            correlated_open_positions=0,
+            candles=_candles([100.0 + i * 0.5 for i in range(30)]),
+            risk_limits=RiskLimits(),
+        )
+        assert session.evidence_confluence is not None
+        assert session.evidence_confluence.symbol == "NEXA"
+        assert session.decision_score.evidence_confluence_score is not None
+
+    def test_evidence_confluence_is_none_when_no_real_candles_are_available(self) -> None:
+        proposal = _proposal()
+        session = build_war_room_session(
+            "warroom-proposal-1",
+            proposal,
+            challenge_report=None,
+            coach_reports=[],
+            market_intelligence=default_market_intelligence_state(),
+            decision_vault=[],
+            risk_warnings=[],
+            correlated_open_positions=0,
+            candles=[],
+            risk_limits=RiskLimits(),
+        )
+        assert session.evidence_confluence is None
+        assert session.decision_score.evidence_confluence_score is None
 
 
 class TestRecordWarRoomSession:
