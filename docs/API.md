@@ -1883,6 +1883,32 @@ give a future evidence-based promotion system a real way to require
 evidence to have aged past `live_paper` before citing it, closing the
 leakage risk before it can be introduced.
 
+### `GET /api/agents/trading-status`
+
+CEO directive "Command Center + Professional Quant Trading Firm
+Upgrade," Phase 2 (AI Desk / Agent Decision Explainability) —
+read-only, no body. Returns an `AgentTradingStatusRead[]`, one per real
+agent (`AGENT_IDS`, all 15), computed fresh every call by `app/
+agent_trading_status.py`'s `compute_agent_trading_status()`. Every
+field is grounded in a real, already-existing signal, checked in this
+priority order: Emergency Stop active → `status: "risk_blocked"`
+(company-wide, every agent); a real `AnalystVote` this agent cast
+sitting on a currently pending `TradeProposal` → `"waiting"`, `detail`
+is that vote's own real `reasoning` text verbatim; a real
+`ResearchItem` assigned to this agent (`app/research.py`'s
+`RESEARCHER_IDS`) queued or in progress → `"scanning"`, `detail` is
+that item's own real `summary`; one of the six agents `app/
+executive.py`'s vote generation can ever attribute a vote to
+(scout/atlas/echo/nova/sentinel/pulse) with nothing real active →
+`"idle"`; every other agent → `"not_trading_role"`, `detail` cites
+their own real `AGENT_PROFILES` `occupation` string. No "next
+condition required" field exists — this codebase has no live
+per-symbol forecasting mechanism to back one honestly; the real
+existing "wait" vote reasoning already tends to name what's currently
+missing, surfaced as `detail` instead. Not persisted, not
+WS-broadcast — an on-demand read, same convention `GET /api/
+performance-reviews/{agent_id}/history` above uses.
+
 ### `GET /api/skill-profiles/{agent_id}/latest`
 
 CEO directive "Features 26-30: Agent Intelligence, Learning &

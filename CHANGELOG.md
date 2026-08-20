@@ -7,6 +7,36 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Command Center + Professional Quant Trading Firm Upgrade," Phase 2: real
+  per-agent trading status + explainability (AI Desk)** (backend: new `backend/app/agent_trading_status.py`,
+  `backend/app/routers/agent_trading_status.py`; modified `backend/app/main.py`, `backend/app/schemas.py`;
+  frontend: `frontend/src/net/api.ts`, `frontend/src/types.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/AgentsPanel.tsx`): closes the gap Phase 0 research
+  already confirmed — `AgentState` had no trading-readiness field at all, and the only per-agent narrative
+  that existed (`AnalystVote.reasoning`/`ResearchItem.summary`) was only ever surfaced for whichever
+  proposal happened to be open in a popup, never as a standing per-agent read. New
+  `compute_agent_trading_status()` derives every agent's real, current state from signals that already
+  exist, in a disclosed priority order: Emergency Stop active → `risk_blocked` (company-wide, every agent);
+  a real `AnalystVote` this agent cast sitting on a currently pending `TradeProposal` → `waiting`, citing
+  that vote's own real reasoning text verbatim; a real `ResearchItem` assigned to this agent (`app/
+  research.py`'s `RESEARCHER_IDS`) queued or in progress → `scanning`; the six vote-capable agents
+  (scout/atlas/echo/nova/sentinel/pulse — the only ones `app/executive.py`'s `generate_analyst_votes()` can
+  ever attribute a vote to) with nothing real active → `idle`; every other agent (guardian/keystone/cio/
+  coach/sage/compass/scribe/quant/forge) → `not_trading_role`, citing their own real `AGENT_PROFILES`
+  occupation string — the honest truth about the role, not a gap. Deliberately does NOT build a "next
+  condition required" predictor (the directive's own worked example asks for one) — this codebase has no
+  live per-symbol BOS/CHoCH/liquidity-sweep forecasting mechanism outside historical backtesting, and
+  fabricating one would violate the directive's own explicit anti-fabrication rule; the real existing "wait"
+  vote reasoning already tends to name what's missing, so that real text is surfaced as-is instead. New
+  read-only `GET /api/agents/trading-status`, computed fresh every call, not WS-broadcast. AI Desk's Roster
+  tab (`AgentsPanel.tsx`) now shows a real status pill plus the real headline/detail narrative per agent
+  card, fetched on demand (the same pattern `DisciplinePanel`'s Exit Efficiency card and `RiskPanel`'s Trade
+  Pipeline Health card already use). 12 new backend unit tests; full backend suite (2,401 of 2,402 passed —
+  the one failure is a pre-existing, unrelated, confirmed-flaky probabilistic test in
+  `test_foundational_mentors.py`), `mypy app/` (176 files), `ruff check app/ tests/` all clean. Frontend
+  `tsc -b --noEmit`, `eslint`, `vite build` clean; `commandCenter.spec.ts` (33 tests) against the live stack:
+  31 passed, 1 skipped, 1 failed (the same already-known pre-existing, unrelated movement test).
+
 - **CEO directive "Command Center + Professional Quant Trading Firm Upgrade," Phase 2: Command
   Center IA consolidation** (frontend: `frontend/src/ui/components/CommandCenter/FullCommandCenter.tsx`,
   `frontend/src/ui/components/CommandCenter/lib/navigation.ts`, `frontend/tests/helpers.ts`,

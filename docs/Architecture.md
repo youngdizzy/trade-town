@@ -11073,11 +11073,67 @@ and chart overlays (regime shading, liquidity zones, support/
 resistance, order blocks, FVG, structure markers) — all explicitly
 named in the same directive's Phase 2 section but requiring real new
 UI components, not a navigation regrouping. Also out of scope this
-pass: everything from Phase 0's own gap list above (session-as-a-live-
-gating-reason, agent trading-status vocabulary/narrative explainability,
-the Strategy Library/Signal Confluence Engine's live wiring, curriculum
-expansion, joined post-trade view, live regime/session-based strategy
-selection).
+pass: everything from Phase 0's own gap list above except agent
+trading-status/narrative explainability, which was picked up next (see
+below) — session-as-a-live-gating-reason, the Strategy Library/Signal
+Confluence Engine's live wiring, curriculum expansion, joined
+post-trade view, live regime/session-based strategy selection all
+remain deferred.
+
+### CEO directive "Command Center + Professional Quant Trading Firm Upgrade" — real per-agent trading status + explainability (AI Desk)
+
+Phase 0's own research had already confirmed the exact gap: `AgentState`
+carries no trading-readiness field at all, and the only per-agent
+narrative text that exists (`AnalystVote.reasoning`, `ResearchItem.
+summary`) was only ever surfaced for whichever proposal happened to be
+open in a popup — never as a standing per-agent read the AI Desk could
+show.
+
+New `app/agent_trading_status.py`'s `compute_agent_trading_status()`
+derives every agent's real, current state purely from signals that
+already exist, in a disclosed priority order (checked top to bottom,
+first real match wins): Emergency Stop active → `risk_blocked`
+(company-wide, applies to every agent identically). A real
+`AnalystVote` this agent cast sitting on a currently pending
+`TradeProposal` → `waiting`, citing that vote's own real `reasoning`
+text verbatim — never a fabricated narrative. A real `ResearchItem`
+assigned to this agent (`app/research.py`'s `RESEARCHER_IDS` — scout/
+atlas/echo/nova) queued or in progress → `scanning`, citing the real
+item's own `summary`. The six agents `app/executive.py`'s
+`generate_analyst_votes()` can ever attribute a real vote to (scout/
+atlas/echo/nova/sentinel/pulse — this module never re-derives or
+hardcodes that mapping; it just scans every pending proposal's own
+real `analyst_votes` for a match) with nothing real active right now →
+`idle`. Every other agent (guardian/keystone/cio/coach/sage/compass/
+scribe/quant/forge) → `not_trading_role`, citing their own real
+`AGENT_PROFILES` `occupation` string — stated as the honest truth
+about the role (the same convention `app/performance_review.py`'s
+`AGENT_ROLE_CLASS` already established: "Sentinel structurally never
+gets research assignments... that's not a gap, it's the truth about
+the role"), never forced into a fabricated "waiting for a setup"
+narrative it has no real basis for.
+
+Deliberately does NOT build a "next condition required" predictor —
+the directive's own worked example explicitly asks for one (e.g.
+"Next condition required: Sweep previous NY high + bearish CHoCH"),
+but this codebase has no live per-symbol BOS/CHoCH/liquidity-sweep
+forecasting mechanism running continuously per agent outside historical
+backtesting (`app/market_intelligence.py`/`app/technical_patterns.py`'s
+real detectors only ever run against already-closed history). Building
+one would mean fabricating a prediction this codebase has no real
+mechanism to make — a direct violation of the same directive's own
+explicit anti-fabrication rule. Instead, the real existing "wait" vote
+reasoning already tends to name what's currently missing (see `app/
+executive.py`'s own `_technical_vote()`: "ranging ... no clear
+technical edge yet") — that real text is surfaced as `detail` instead
+of an invented forecast.
+
+New read-only `GET /api/agents/trading-status`, computed fresh every
+call (not persisted, not WS-broadcast — an on-demand AI Desk read, the
+same convention `app/routers/performance_review.py`'s/`trades.py`'s
+own diagnostic endpoints already use). The AI Desk's Roster tab
+(`AgentsPanel.tsx`) shows a real status pill plus the real headline/
+detail per agent card.
 
 ## Save format compatibility
 
