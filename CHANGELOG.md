@@ -7,6 +7,31 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Professional Quant Firm Phase 41-45" — frontend: taxonomy, pipeline health,
+  confluence, and regime stability surfaced** (frontend: `frontend/src/net/api.ts`, `frontend/src/types.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/ExecutivePanel.tsx`,
+  `frontend/src/ui/components/CommandCenter/panels/RiskPanel.tsx`,
+  `frontend/src/ui/components/CommandCenter/panels/WarRoomPanel.tsx`,
+  `frontend/src/ui/components/CommandCenter/panels/sandbox/QuantResearchLabView.tsx`): the four backend
+  slices below get their frontend surface. `RiskWarning`/`GatekeeperCheck` now carry an optional `code`,
+  `GatekeeperRejection`/`OpportunityRejection` carry `reasonCodes` — shown as small tags under each
+  rejection/warning in `ExecutivePanel` and `RiskPanel`'s Active Warnings list. A new `RiskPanel` card
+  (`TradePipelineHealthCard`) fetches `GET /api/trades/pipeline-health` on demand (the same on-demand
+  pattern `DisciplinePanel`'s Exit Efficiency card already uses) and renders the real funnel as bar rows
+  plus a most-common-no-trade-reasons tag list, with the backend's own `dataHonestyNote` displayed
+  verbatim — diagnostic only, matching the backend's own framing. `WarRoomPanel` gets a new Evidence
+  Confluence score cell and a family-breakdown card, reusing the exact rendering pattern `MarketIntelPanel`
+  already established for the same `EvidenceConfluenceRead` shape rather than a new component.
+  `QuantResearchLabView`'s Tournament comparison table gets a new Regime Stability column (`VerdictPill`,
+  a new tones map, detail on hover) — Round 9 itself needed no frontend change since the rounds list
+  already renders generically. `AgentReviewDataSplit` (Feature 44) intentionally has no frontend surface
+  yet, matching its own backend disclosure — it's preventive infrastructure with no live consumer to
+  visualize. `tsc --noEmit`, `eslint`, `vite build` all clean. Playwright regression (`sandbox.spec.ts` +
+  `commandCenter.spec.ts`, 37 tests) against the live dev stack: 34 passed, 1 skipped, 2 failed — both
+  failures traced to files this change never touched (`POST /api/sandbox/backtest` test-state pollution,
+  and a Command Palette focus-behavior test), confirmed via `git diff --stat` against those files; every
+  RISK/EXECUTIVE/WARROOM panel test and the 2-strategy tournament integration test passed cleanly.
+
 - **CEO directive "Professional Quant Firm Phase 41-45," Feature 44: real train/validation/test/
   live-paper split for agent review evidence** (backend: `backend/app/executive_intelligence.py`,
   `backend/app/performance_review.py`, `backend/app/routers/performance_review.py`,
@@ -53,8 +78,8 @@ development milestones, not semver releases.
   not the Strategy Lab), so a live regime-alignment check on actual trade decisions remains a real,
   disclosed architectural gap. 4 new hand-traced unit tests plus an updated round-count integration
   assertion; full backend suite (2,384 tests), `mypy app/` (174 files), `ruff check app/ tests/` all clean.
-  No frontend surface yet — `StrategyTournamentEntry`'s new fields are not read anywhere in
-  `frontend/src/types.ts`/the Tournament view.
+  (Frontend surfaced in a later entry below — see "frontend: taxonomy, pipeline health, confluence, and
+  regime stability surfaced.")
 
 - **CEO directive "Professional Quant Firm Phase 41-45," Confluence Quality: wire Evidence Confluence into
   live War Room decision scoring** (backend: `backend/app/evidence_confluence.py`, `backend/app/schemas.py`,
@@ -71,8 +96,9 @@ development milestones, not semver releases.
   `DecisionScoreBreakdown`'s existing renormalize-over-real-sub-scores convention (already used for
   `strategyHealthScore`) is reused unchanged: the composite renormalizes over 8 sub-scores only when a real
   confluence read exists (real candles were available for that symbol), otherwise falls back to the
-  original 7. Full backend suite (2,369 tests), `mypy app/`, `ruff check app/ tests/` all clean. No frontend
-  surface yet.
+  original 7. Full backend suite (2,369 tests), `mypy app/`, `ruff check app/ tests/` all clean. (Frontend
+  surfaced in a later entry below — see "frontend: taxonomy, pipeline health, confluence, and regime
+  stability surfaced.")
 
 - **CEO directive "Professional Quant Firm Phase 41-45," Critical Task #0 + No-Trade Reason Taxonomy +
   Trade-Pipeline Health Check** (backend: new `backend/app/trade_pipeline_health.py`; modified
@@ -99,7 +125,9 @@ development milestones, not semver releases.
   (signals → proposals → rejections → risk-approved → orders → fills) distinguishing "no valid trade
   existed" from "the system failed to execute a valid trade" — never feeds scoring, and its own
   `dataHonestyNote` discloses which source lists are capped windows rather than full-lifetime totals. Full
-  backend suite (2,369 tests), `mypy app/`, `ruff check app/ tests/` all clean. No frontend surface yet.
+  backend suite (2,369 tests), `mypy app/`, `ruff check app/ tests/` all clean. (Frontend surfaced in a
+  later entry below — see "frontend: taxonomy, pipeline health, confluence, and regime stability
+  surfaced.")
 
 - **Quant Strategy Tournament, Round 7: real pairwise strategy-return correlation** (backend:
   `backend/app/portfolio_intelligence.py`, `backend/app/schemas.py`, `backend/app/strategy_tournament.py`;

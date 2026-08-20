@@ -10920,10 +10920,20 @@ architectural gap this round does not close.
 
 Full backend suite (2,384 tests as of the Regime Stability commit),
 `mypy app/` (174 files), `ruff check app/ tests/` all clean throughout.
-No frontend surface has been built yet for any of this Phase 41-45
-work — the taxonomy, the pipeline health snapshot, the confluence score/
-breakdown, and the regime stability verdict are all backend-only so
-far.
+
+**Frontend surface.** The taxonomy (`code`/`reasonCodes` tags on
+warnings and rejections in `RiskPanel`/`ExecutivePanel`), the pipeline
+health snapshot (a new on-demand `TradePipelineHealthCard` in
+`RiskPanel`, reusing `DisciplinePanel`'s Exit Efficiency on-demand-fetch
+pattern), the confluence score/breakdown (`WarRoomPanel`, reusing
+`MarketIntelPanel`'s existing family-breakdown JSX for the same
+`EvidenceConfluenceRead` shape), and the regime stability verdict
+(`QuantResearchLabView`'s Tournament table, a new column using the
+existing `VerdictPill` component) are all now surfaced — see
+`frontend/src/net/api.ts`, `frontend/src/types.ts`, and the four panel
+files above. `AgentReviewDataSplit` (Feature 44) intentionally still has
+no frontend surface: it is preventive infrastructure with no live
+consumer to visualize yet.
 
 **Feature 44 — Agent Learning must not cause data leakage.** A
 research pass across every existing per-agent tracking system (`app/
