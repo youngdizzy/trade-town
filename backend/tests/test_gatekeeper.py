@@ -346,6 +346,11 @@ class TestEvaluateGatekeeper:
         assert len(verdict.checks) == 11
         assert all(c.passed for c in verdict.checks)
         assert "APPROVED" in verdict.summary
+        # CEO directive "Professional Quant Firm Phase 41-45," Critical Task #0's No-Trade
+        # Reason Taxonomy — every real check carries its own real "gatekeeper_{id}" code,
+        # regardless of pass/fail, so a rejection is always taxonomy-classifiable.
+        assert {c.code for c in verdict.checks} == {f"gatekeeper_{c.id}" for c in verdict.checks}
+        assert None not in {c.code for c in verdict.checks}
 
     def test_rejects_and_names_the_failed_check_when_confidence_is_too_low(self) -> None:
         proposal = _proposal(confidence_score=10.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}))

@@ -19,9 +19,11 @@ from app.schemas import (
     SessionPerformanceSummary,
     SymbolPerformanceSummary,
     TradeAttributionSummary,
+    TradePipelineHealthSnapshot,
 )
 from app.state import game_state
 from app.trade_attribution import compute_trade_attribution_history
+from app.trade_pipeline_health import compute_trade_pipeline_health
 
 router = APIRouter(prefix="/api/trades", tags=["trades"])
 
@@ -96,3 +98,17 @@ async def get_performance_by_regime() -> RegimePerformanceSummary:
     instead. Computed fresh per request; no new GameSaveState field."""
     state = await game_state.snapshot()
     return compute_regime_performance(state.paper_portfolio.trade_history, state.decision_vault)
+
+
+@router.get("/pipeline-health", response_model=TradePipelineHealthSnapshot)
+async def get_trade_pipeline_health() -> TradePipelineHealthSnapshot:
+    """CEO directive "Professional Quant Firm Phase 41-45," Critical Task
+    #0 — real funnel diagnostics distinguishing "no valid trade existed"
+    from "a valid trade existed but the system failed to execute it."
+    Diagnostic only — see app/trade_pipeline_health.py's own module
+    docstring for the full forensic audit this was built from and the
+    exact caps/honesty boundary on each count. Computed fresh per
+    request; no new GameSaveState field, nothing here gates or scores
+    anything."""
+    state = await game_state.snapshot()
+    return compute_trade_pipeline_health(state)

@@ -82,6 +82,7 @@ def _confidence_check(proposal: TradeProposal, min_confidence: float = MIN_CONFI
         label="Decision Confidence",
         passed=passed,
         detail=f"{score:.0f}/100 — {'meets' if passed else 'below'} the required {min_confidence:.0f} minimum.",
+        code="gatekeeper_confidence",
     )
 
 
@@ -89,7 +90,7 @@ def _risk_manager_check(proposal: TradeProposal, ceo_choice: AnalystChoice) -> G
     risk_vote = next((v for v in proposal.analyst_votes if v.role == "risk"), None)
     passed = risk_vote is None or risk_vote.choice == ceo_choice
     detail = risk_vote.reasoning if risk_vote else "No risk analyst read available for this proposal."
-    return GatekeeperCheck(id="risk_manager", label="Risk Manager Alignment", passed=passed, detail=detail)
+    return GatekeeperCheck(id="risk_manager", label="Risk Manager Alignment", passed=passed, detail=detail, code="gatekeeper_risk_manager")
 
 
 def _agreement_check(proposal: TradeProposal, ceo_choice: AnalystChoice) -> GatekeeperCheck:
@@ -101,6 +102,7 @@ def _agreement_check(proposal: TradeProposal, ceo_choice: AnalystChoice) -> Gate
         label="Multi-Agent Agreement",
         passed=passed,
         detail=f"{agreeing}/{total} analysts agree with {ceo_choice.upper()}.",
+        code="gatekeeper_agreement",
     )
 
 
@@ -111,7 +113,7 @@ def _debate_check(debate: Debate | None, ceo_choice: AnalystChoice) -> Gatekeepe
         if debate is None
         else f"The committee's final recommendation was {debate.final_recommendation.upper()}."
     )
-    return GatekeeperCheck(id="debate", label="AI Debate Outcome", passed=passed, detail=detail)
+    return GatekeeperCheck(id="debate", label="AI Debate Outcome", passed=passed, detail=detail, code="gatekeeper_debate")
 
 
 def _exposure_check(portfolio: PaperPortfolio, risk_limits: RiskLimits) -> GatekeeperCheck:
@@ -122,6 +124,7 @@ def _exposure_check(portfolio: PaperPortfolio, risk_limits: RiskLimits) -> Gatek
         label="Portfolio Exposure",
         passed=passed,
         detail=f"{open_count}/{risk_limits.max_open_positions} positions already open.",
+        code="gatekeeper_exposure",
     )
 
 
@@ -134,6 +137,7 @@ def _correlation_check(proposal: TradeProposal, portfolio: PaperPortfolio) -> Ga
         label="Correlated Positions",
         passed=passed,
         detail=f"{correlated} existing open position(s) already share {proposal.symbol}'s {category or 'unknown'} category.",
+        code="gatekeeper_correlation",
     )
 
 
@@ -141,7 +145,7 @@ def _risk_warning_check(proposal: TradeProposal, risk_warnings: list[RiskWarning
     warning = next((w for w in risk_warnings if w.symbol == proposal.symbol and w.severity == "critical"), None)
     passed = warning is None
     detail = warning.message if warning else f"No active critical risk warning for {proposal.symbol}."
-    return GatekeeperCheck(id="risk_warning", label="Active Risk Warnings", passed=passed, detail=detail)
+    return GatekeeperCheck(id="risk_warning", label="Active Risk Warnings", passed=passed, detail=detail, code="gatekeeper_risk_warning")
 
 
 # v0.7 Feature 51 — the Market Intelligence Department's real mechanical
@@ -156,7 +160,7 @@ def _risk_warning_check(proposal: TradeProposal, risk_warnings: list[RiskWarning
 def _market_intelligence_check(market_intelligence: MarketIntelligenceState) -> GatekeeperCheck:
     passed = market_intelligence.quality.tier != "avoid_trading"
     detail = f"Market Quality reads {market_intelligence.quality.tier.replace('_', ' ')} ({market_intelligence.quality.score:.0f}/100) — {market_intelligence.quality.reasoning}"
-    return GatekeeperCheck(id="market_intelligence", label="Market Intelligence Quality", passed=passed, detail=detail)
+    return GatekeeperCheck(id="market_intelligence", label="Market Intelligence Quality", passed=passed, detail=detail, code="gatekeeper_market_intelligence")
 
 
 # Design Bible Chapter 70 Part 3 addendum — "The Weighted Executive
@@ -179,6 +183,7 @@ def _weighted_executive_check(weighted_recommendation: WeightedExecutiveRecommen
             label="Weighted Executive Recommendation",
             passed=True,
             detail="Weighted Executive Decision Engine not evaluated for this decision.",
+            code="gatekeeper_weighted_executive",
         )
     passed = weighted_recommendation.weighted_action in _WEDE_TRADING_ACTIONS
     detail = (
@@ -187,7 +192,7 @@ def _weighted_executive_check(weighted_recommendation: WeightedExecutiveRecommen
         f"{weighted_recommendation.weighted_action.replace('_', ' ')} — "
         f"{'consistent with' if passed else 'advises against'} proceeding."
     )
-    return GatekeeperCheck(id="weighted_executive", label="Weighted Executive Recommendation", passed=passed, detail=detail)
+    return GatekeeperCheck(id="weighted_executive", label="Weighted Executive Recommendation", passed=passed, detail=detail, code="gatekeeper_weighted_executive")
 
 
 # Behavioral Circuit Breaker — real revenge-trading detection, the tenth
@@ -208,7 +213,7 @@ def _behavioral_check(
     read = compute_behavioral_check(proposal, trade_history, now_sim_minutes, cooldown_minutes, size_increase_threshold_pct)
     passed = read.status != "triggered"
     detail = " ".join(read.reasons) if read.reasons else "No recent-loss behavioral pattern detected for this proposal."
-    return GatekeeperCheck(id="behavioral", label="Behavioral Circuit Breaker", passed=passed, detail=detail)
+    return GatekeeperCheck(id="behavioral", label="Behavioral Circuit Breaker", passed=passed, detail=detail, code="gatekeeper_behavioral")
 
 
 # CEO Company Health + Live Market Realism directive, Feature 23 — the
@@ -236,7 +241,7 @@ def _failure_boundary_check(portfolio: PaperPortfolio, risk_limits: RiskLimits) 
         f"this trade's own risk-per-trade is {risk_limits.risk_per_trade_pct:.2f}% — "
         f"{'within' if passed else 'would exceed'} the remaining budget."
     )
-    return GatekeeperCheck(id="failure_boundary", label="Failure Boundary Distance", passed=passed, detail=detail)
+    return GatekeeperCheck(id="failure_boundary", label="Failure Boundary Distance", passed=passed, detail=detail, code="gatekeeper_failure_boundary")
 
 
 def evaluate_gatekeeper(

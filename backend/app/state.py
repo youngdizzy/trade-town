@@ -2040,6 +2040,7 @@ class GameState:
                         symbol=proposal.symbol,
                         ceoChoice=choice,
                         reasons=[f"{c.label}: {c.detail}" for c in verdict.checks if not c.passed],
+                        reasonCodes=[c.code for c in verdict.checks if not c.passed and c.code is not None],
                         priceAtRejection=current_price,
                         rejectedSimMinutes=now_sim_minutes,
                         createdAt=_now_iso(),

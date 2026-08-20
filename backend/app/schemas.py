@@ -1755,12 +1755,83 @@ class RiskLimits(CamelModel):
     company_health_needs_attention_threshold: float = Field(default=30.0, alias="companyHealthNeedsAttentionThreshold")
 
 
+# CEO directive "Professional Quant Firm Phase 41-45" — Critical Task #0's
+# No-Trade Reason Taxonomy. Every value below is grounded in one real,
+# already-existing rejection point this codebase's own real trade-flow
+# pipeline actually reaches (see app/no_trade_taxonomy.py's own module
+# docstring for the full stage-by-stage citation) — never an invented
+# category. Several of the directive's own example categories
+# (SESSION_FILTER, MARKET_CLOSED, STALE_DATA, EXECUTION_REJECTION,
+# ORDER_REJECTED, STRATEGY_DISABLED, AGENT_DISABLED, MODEL_UNCERTAINTY,
+# INVALIDATED_SETUP, COOLDOWN as distinct from duplicate_signal) have NO
+# real mechanism in this codebase (a 24/7 mock market has no real
+# "closed" state; the live execution path fills instantly with no
+# order-book rejection step — see app/broker.py's own disclosed
+# "confirmed unused" status) and are deliberately NOT included here —
+# see app/no_trade_taxonomy.py's module docstring for the full disclosed
+# gap list rather than fabricating a code for something that can't
+# actually happen yet.
+NoTradeReasonCode = Literal[
+    # Pre-proposal: app/nexus.py's _generate_trade_proposals()
+    "no_signal",
+    "duplicate_signal",
+    "proposal_capacity",
+    "data_unavailable",
+    "position_sized_to_zero",
+    # Opportunity Gatekeeper: app/opportunity_gatekeeper.py's evaluate_opportunity()
+    "trade_quality_below_threshold",
+    "expected_value_below_threshold",
+    "market_quality_avoid_trading",
+    "liquidity_confirmation_weak",
+    # Gatekeeper: app/gatekeeper.py's 11 real checks
+    "gatekeeper_confidence",
+    "gatekeeper_risk_manager",
+    "gatekeeper_agreement",
+    "gatekeeper_debate",
+    "gatekeeper_exposure",
+    "gatekeeper_correlation",
+    "gatekeeper_risk_warning",
+    "gatekeeper_market_intelligence",
+    "gatekeeper_weighted_executive",
+    "gatekeeper_behavioral",
+    "gatekeeper_failure_boundary",
+    # Risk engine: app/risk_engine.py's evaluate_sentinel_risk()/evaluate_guardian_exposure()
+    "risk_equity_exhausted",
+    "risk_daily_loss_limit",
+    "risk_daily_profit_target",
+    "risk_weekly_loss_limit",
+    "risk_monthly_loss_limit",
+    "risk_max_trades_per_day",
+    "risk_lifetime_drawdown",
+    "risk_max_open_positions",
+    "risk_position_size_limit",
+    "risk_concentration_limit",
+    # Pipeline-level halts: app/nexus.py's block_new_proposals/force_manual_review
+    "emergency_stop",
+    "circuit_breaker",
+    "losing_streak_pause",
+    "defensive_mode",
+    "force_manual_review",
+    # Human/expiry
+    "ceo_wait_decision",
+    "proposal_expired",
+    "ceo_approval_pending",
+]
+
+
 class RiskWarning(CamelModel):
     id: str
     symbol: str
     severity: AlertSeverity
     message: str
     created_at: str = Field(alias="createdAt")
+    # CEO directive "Professional Quant Firm Phase 41-45," Critical Task
+    # #0 — the real, structured reason code for this exact warning,
+    # assigned at the same real branch that built `message` (see
+    # app/risk_engine.py). `None` only for the rare pre-existing
+    # RiskWarning construction sites this pass did not touch (e.g. a
+    # future new check) — never a guessed/parsed-from-text code.
+    code: NoTradeReasonCode | None = None
 
 
 # Design Bible Chapter 67 (TTOS) Part 3 — a real, CEO-triggered halt,
@@ -4597,6 +4668,17 @@ class GatekeeperCheck(CamelModel):
     label: str
     passed: bool
     detail: str
+    # CEO directive "Professional Quant Firm Phase 41-45," Critical Task
+    # #0 — real taxonomy code for this check (see NoTradeReasonCode's
+    # own docstring), always the "gatekeeper_{id}" code at every real
+    # app/gatekeeper.py construction site, even when passed=True (a
+    # passed check has no bearing on the taxonomy; only a FAILED check's
+    # code is ever actually read/aggregated). `None` only for the
+    # synthetic/generic GatekeeperCheck fixtures a few other modules'
+    # own tests build to exercise unrelated downstream logic (control
+    # effectiveness, process adherence) against arbitrary check ids that
+    # were never real Gatekeeper checks to begin with.
+    code: NoTradeReasonCode | None = None
 
 
 class GatekeeperVerdict(CamelModel):
@@ -4621,6 +4703,10 @@ class GatekeeperRejection(CamelModel):
     symbol: str
     ceo_choice: AnalystChoice = Field(alias="ceoChoice")
     reasons: list[str] = Field(default_factory=list)
+    # CEO directive "Professional Quant Firm Phase 41-45," Critical Task
+    # #0 — same real reasons above, tagged with real taxonomy codes
+    # (see NoTradeReasonCode's own docstring), one per `reasons` entry.
+    reason_codes: list[NoTradeReasonCode] = Field(default_factory=list, alias="reasonCodes")
     price_at_rejection: float = Field(alias="priceAtRejection")
     rejected_sim_minutes: int = Field(alias="rejectedSimMinutes")
     outcome: GatekeeperOutcome = "pending"
@@ -4645,6 +4731,11 @@ class OpportunityRejection(CamelModel):
     symbol: str
     would_have_recommended: AnalystChoice = Field(alias="wouldHaveRecommended")
     reasons: list[str] = Field(default_factory=list)
+    # CEO directive "Professional Quant Firm Phase 41-45," Critical Task
+    # #0 — the same real reasons above, tagged with real taxonomy codes
+    # (see NoTradeReasonCode's own docstring), one per `reasons` entry,
+    # same order.
+    reason_codes: list[NoTradeReasonCode] = Field(default_factory=list, alias="reasonCodes")
     # The real Decision Score / Expected Value that failed the gate —
     # kept on the record itself so the rejection is self-explanatory
     # without needing to cross-reference a WarRoomSession that (by
@@ -4659,6 +4750,44 @@ class OpportunityRejection(CamelModel):
     )
     created_at: str = Field(alias="createdAt")
     resolved_at: str | None = Field(default=None, alias="resolvedAt")
+
+
+class NoTradeReasonCodeTally(CamelModel):
+    """One real, counted taxonomy code — CEO directive "Professional
+    Quant Firm Phase 41-45," Critical Task #0. `count` is a direct tally
+    over the same real, already-persisted rejection records the rest of
+    `TradePipelineHealthSnapshot` reads — never a fabricated estimate."""
+
+    code: NoTradeReasonCode
+    count: int
+
+
+class TradePipelineHealthSnapshot(CamelModel):
+    """CEO directive "Professional Quant Firm Phase 41-45," Critical
+    Task #0's own explicitly-requested trade-flow diagnostic — real
+    funnel counts computed fresh from `GameSaveState` (never persisted
+    itself, the same CAGS convention this codebase's other on-demand
+    reads use). This is DIAGNOSTIC TELEMETRY ONLY: nothing here gates,
+    scores, or influences any real trading decision, and nothing in
+    `app/trade_pipeline_health.py` was tuned to make these numbers look
+    any particular way — see that module's own module docstring.
+
+    HONESTY BOUNDARY: several of the underlying lists this reads are
+    real, capped, ROTATING windows, not full-lifetime counters — see
+    `data_honesty_note` for the exact caps in effect. This snapshot
+    reports "what's currently retained," never a fabricated full-history
+    total for a game session older than those caps."""
+
+    completed_research_signals: int = Field(alias="completedResearchSignals")
+    pending_proposals: int = Field(alias="pendingProposals")
+    resolved_decisions: int = Field(alias="resolvedDecisions")
+    trades_executed: int = Field(alias="tradesExecuted")
+    no_trade_decisions: int = Field(alias="noTradeDecisions")
+    opportunity_rejections: int = Field(alias="opportunityRejections")
+    gatekeeper_rejections: int = Field(alias="gatekeeperRejections")
+    reason_code_breakdown: list[NoTradeReasonCodeTally] = Field(default_factory=list, alias="reasonCodeBreakdown")
+    data_honesty_note: str = Field(alias="dataHonestyNote")
+    generated_at: str = Field(alias="generatedAt")
 
 
 # v0.7 Feature 16 — What-If Simulation Lab. Computed on demand (never

@@ -172,6 +172,7 @@ def evaluate_sentinel_risk(
             severity="critical",
             message="Portfolio equity is at or below zero — no new positions until it recovers.",
             createdAt=_now_iso(),
+            code="risk_equity_exhausted",
         )
 
     daily_pnl_pct = daily_realized_pnl_pct(portfolio, sim_day)
@@ -182,6 +183,7 @@ def evaluate_sentinel_risk(
             severity="critical",
             message=f"Today's realized loss ({daily_pnl_pct:.1f}%) has hit the {limits.max_daily_loss_pct:.0f}% daily maximum loss — no new trades until tomorrow.",
             createdAt=_now_iso(),
+            code="risk_daily_loss_limit",
         )
 
     if daily_pnl_pct >= limits.daily_profit_target_pct:
@@ -191,6 +193,7 @@ def evaluate_sentinel_risk(
             severity="critical",
             message=f"Today's realized profit ({daily_pnl_pct:.1f}%) has reached the {limits.daily_profit_target_pct:.0f}% daily target — protecting today's gain, no new trades until tomorrow.",
             createdAt=_now_iso(),
+            code="risk_daily_profit_target",
         )
 
     # Design Bible Chapter 67 (TTOS) Safety Settings — the second and
@@ -205,6 +208,7 @@ def evaluate_sentinel_risk(
             severity="critical",
             message=f"This week's realized loss ({weekly_pnl_pct:.1f}%) has hit the {limits.max_weekly_loss_pct:.0f}% weekly maximum loss — no new trades until next week.",
             createdAt=_now_iso(),
+            code="risk_weekly_loss_limit",
         )
 
     monthly_pnl_pct = monthly_realized_pnl_pct(portfolio, sim_day)
@@ -215,6 +219,7 @@ def evaluate_sentinel_risk(
             severity="critical",
             message=f"This month's realized loss ({monthly_pnl_pct:.1f}%) has hit the {limits.max_monthly_loss_pct:.0f}% monthly maximum loss — no new trades until next month.",
             createdAt=_now_iso(),
+            code="risk_monthly_loss_limit",
         )
 
     trades_today_count = len(trades_opened_today(portfolio.trade_history, sim_day))
@@ -225,6 +230,7 @@ def evaluate_sentinel_risk(
             severity="critical",
             message=f"{trades_today_count} trade(s) already opened today, at the {limits.max_trades_per_day}-trade daily maximum — no new trades until tomorrow.",
             createdAt=_now_iso(),
+            code="risk_max_trades_per_day",
         )
 
     if portfolio.total_pnl_pct <= -limits.max_drawdown_pct:
@@ -234,6 +240,7 @@ def evaluate_sentinel_risk(
             severity="critical",
             message=f"Portfolio drawdown ({portfolio.total_pnl_pct:.1f}%) has hit the {limits.max_drawdown_pct:.0f}% limit — new trades paused.",
             createdAt=_now_iso(),
+            code="risk_lifetime_drawdown",
         )
 
     if len(portfolio.positions) >= limits.max_open_positions:
@@ -243,6 +250,7 @@ def evaluate_sentinel_risk(
             severity="warning",
             message=f"Already at the {limits.max_open_positions}-open-position limit.",
             createdAt=_now_iso(),
+            code="risk_max_open_positions",
         )
 
     position_pct = proposed_value / equity * 100
@@ -253,6 +261,7 @@ def evaluate_sentinel_risk(
             severity="critical",
             message=f"{symbol} position would be {position_pct:.1f}% of equity, exceeding the {limits.max_position_pct:.0f}% max position limit.",
             createdAt=_now_iso(),
+            code="risk_position_size_limit",
         )
 
     return None
@@ -284,6 +293,7 @@ def evaluate_guardian_exposure(
             severity="warning",
             message=f"{symbol} already makes up {concentration_pct:.1f}% of the portfolio, above the {limits.max_sector_concentration_pct:.0f}% concentration limit — recommend reducing exposure before adding more.",
             createdAt=_now_iso(),
+            code="risk_concentration_limit",
         )
 
     return None
@@ -308,6 +318,7 @@ def monitor_portfolio(limits: RiskLimits, portfolio: PaperPortfolio) -> list[Ris
                 severity="critical",
                 message=f"Portfolio drawdown ({portfolio.total_pnl_pct:.1f}%) has breached the {limits.max_drawdown_pct:.0f}% limit — Guardian recommends reducing risk across the board.",
                 createdAt=_now_iso(),
+                code="risk_lifetime_drawdown",
             )
         )
 
@@ -324,6 +335,7 @@ def monitor_portfolio(limits: RiskLimits, portfolio: PaperPortfolio) -> list[Ris
                     severity="warning",
                     message=f"{symbol} is {concentration_pct:.1f}% of the portfolio — above the {limits.max_sector_concentration_pct:.0f}% concentration limit.",
                     createdAt=_now_iso(),
+                    code="risk_concentration_limit",
                 )
             )
 

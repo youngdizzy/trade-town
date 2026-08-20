@@ -1063,6 +1063,7 @@ def _apply_operating_mode(
                     symbol=proposal.symbol,
                     ceoChoice=proposal.overall_recommendation,
                     reasons=[f"{c.label}: {c.detail}" for c in verdict.checks if not c.passed],
+                    reasonCodes=[c.code for c in verdict.checks if not c.passed and c.code is not None],
                     priceAtRejection=current_price,
                     rejectedSimMinutes=now_sim_minutes,
                     createdAt=_now_iso(),
@@ -1646,7 +1647,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             risk_limits=effective_risk_limits,
         )
 
-        approved, reject_reasons = evaluate_opportunity(
+        approved, reject_reasons, reject_reason_codes = evaluate_opportunity(
             decision_score=war_room_session.decision_score,
             expected_value=war_room_session.expected_value,
             market_intelligence=market_intelligence,
@@ -1659,6 +1660,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
                     decision_score=war_room_session.decision_score,
                     expected_value=war_room_session.expected_value,
                     reasons=reject_reasons,
+                    reason_codes=reject_reason_codes,
                     price_at_rejection=prices.get(proposal.symbol) or proposal.price,
                     now_sim_minutes=now_sim_minutes,
                 )

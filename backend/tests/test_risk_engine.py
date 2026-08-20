@@ -91,6 +91,7 @@ class TestEvaluateSentinelRiskDailyObjectives:
         assert warning is not None
         assert warning.severity == "critical"
         assert "daily maximum loss" in warning.message.lower()
+        assert warning.code == "risk_daily_loss_limit"
 
     def test_daily_profit_target_reached_blocks_new_trades(self) -> None:
         limits = RiskLimits(dailyProfitTargetPct=3.0)
@@ -100,6 +101,7 @@ class TestEvaluateSentinelRiskDailyObjectives:
         assert warning is not None
         assert warning.severity == "critical"
         assert "daily target" in warning.message.lower()
+        assert warning.code == "risk_daily_profit_target"
 
     def test_max_trades_per_day_reached_blocks_new_trades(self) -> None:
         limits = RiskLimits(maxTradesPerDay=2)
@@ -109,6 +111,7 @@ class TestEvaluateSentinelRiskDailyObjectives:
         assert warning is not None
         assert warning.severity == "critical"
         assert "daily maximum" in warning.message.lower() or "trade" in warning.message.lower()
+        assert warning.code == "risk_max_trades_per_day"
 
     def test_yesterdays_trades_do_not_count_against_todays_objectives(self) -> None:
         limits = RiskLimits(maxTradesPerDay=1, maxDailyLossPct=1.0, dailyProfitTargetPct=1.0)
@@ -128,6 +131,7 @@ class TestEvaluateSentinelRiskDailyObjectives:
         warning = evaluate_sentinel_risk(limits, portfolio, symbol="AAPL", proposed_value=1000.0, sim_day=1)
         assert warning is not None
         assert "equity" in warning.message.lower()
+        assert warning.code == "risk_equity_exhausted"
 
 
 class TestWeeklyAndMonthlyLossLimits:
@@ -157,6 +161,7 @@ class TestWeeklyAndMonthlyLossLimits:
         assert warning is not None
         assert warning.severity == "critical"
         assert "weekly maximum loss" in warning.message.lower()
+        assert warning.code == "risk_weekly_loss_limit"
 
     def test_monthly_realized_pnl_pct_sums_the_whole_sim_month(self) -> None:
         week0_loss = _trade(pnl=-1000.0, opened_sim_minutes=1 * 1440, closed_sim_minutes=1 * 1440 + 30)
@@ -179,6 +184,7 @@ class TestWeeklyAndMonthlyLossLimits:
         assert warning is not None
         assert warning.severity == "critical"
         assert "monthly maximum loss" in warning.message.lower()
+        assert warning.code == "risk_monthly_loss_limit"
 
     def test_within_all_limits_yields_no_warning(self) -> None:
         limits = RiskLimits(maxWeeklyLossPct=10.0, maxMonthlyLossPct=15.0)
@@ -345,6 +351,7 @@ class TestEvaluateSentinelRiskExisting:
         warning = evaluate_sentinel_risk(limits, portfolio, symbol="AAPL", proposed_value=100.0, sim_day=0)
         assert warning is not None
         assert "drawdown" in warning.message.lower()
+        assert warning.code == "risk_lifetime_drawdown"
 
     def test_position_too_large_is_rejected(self) -> None:
         limits = RiskLimits(maxPositionPct=10.0)
@@ -352,6 +359,7 @@ class TestEvaluateSentinelRiskExisting:
         warning = evaluate_sentinel_risk(limits, portfolio, symbol="AAPL", proposed_value=5000.0, sim_day=0)
         assert warning is not None
         assert "max position" in warning.message.lower()
+        assert warning.code == "risk_position_size_limit"
 
 
 class TestGuardianAndSizing:
@@ -382,6 +390,7 @@ class TestGuardianAndSizing:
         warning = evaluate_guardian_exposure(limits, portfolio, symbol="AAPL")
         assert warning is not None
         assert "concentration" in warning.message.lower()
+        assert warning.code == "risk_concentration_limit"
 
     def test_portfolio_equity_sums_cash_and_positions(self) -> None:
         from app.schemas import PaperPosition

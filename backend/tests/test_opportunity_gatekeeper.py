@@ -113,6 +113,7 @@ def _rejection(
         symbol=symbol,
         wouldHaveRecommended=would_have_recommended,  # type: ignore[arg-type]
         reasons=["test reason"],
+        reasonCodes=["trade_quality_below_threshold"],
         decisionScoreAtRejection=60.0,
         expectedValueAtRejectionPct=-1.0,
         priceAtRejection=price_at_rejection,
@@ -124,7 +125,7 @@ def _rejection(
 
 class TestEvaluateOpportunity:
     def test_approves_when_every_real_check_clears(self) -> None:
-        approved, reasons = evaluate_opportunity(
+        approved, reasons, codes = evaluate_opportunity(
             decision_score=_decision_score(85.0),
             expected_value=_expected_value(1.0),
             market_intelligence=_market_intelligence(tier="good", score=80.0),
@@ -132,9 +133,10 @@ class TestEvaluateOpportunity:
         )
         assert approved is True
         assert reasons == []
+        assert codes == []
 
     def test_rejects_on_avoid_trading_market_quality(self) -> None:
-        approved, reasons = evaluate_opportunity(
+        approved, reasons, codes = evaluate_opportunity(
             decision_score=_decision_score(85.0),
             expected_value=_expected_value(1.0),
             market_intelligence=_market_intelligence(tier="avoid_trading", score=10.0),
@@ -142,9 +144,10 @@ class TestEvaluateOpportunity:
         )
         assert approved is False
         assert any("avoid trading" in r for r in reasons)
+        assert codes == ["market_quality_avoid_trading"]
 
     def test_rejects_below_minimum_expected_value(self) -> None:
-        approved, reasons = evaluate_opportunity(
+        approved, reasons, codes = evaluate_opportunity(
             decision_score=_decision_score(85.0),
             expected_value=_expected_value(-0.5),
             market_intelligence=_market_intelligence(),
@@ -152,9 +155,10 @@ class TestEvaluateOpportunity:
         )
         assert approved is False
         assert any("Expected Value" in r for r in reasons)
+        assert codes == ["expected_value_below_threshold"]
 
     def test_rejects_below_minimum_trade_quality_score(self) -> None:
-        approved, reasons = evaluate_opportunity(
+        approved, reasons, codes = evaluate_opportunity(
             decision_score=_decision_score(50.0),
             expected_value=_expected_value(1.0),
             market_intelligence=_market_intelligence(),
@@ -162,9 +166,10 @@ class TestEvaluateOpportunity:
         )
         assert approved is False
         assert any("Trade Quality Score" in r for r in reasons)
+        assert codes == ["trade_quality_below_threshold"]
 
     def test_multiple_failures_are_all_named(self) -> None:
-        approved, reasons = evaluate_opportunity(
+        approved, reasons, codes = evaluate_opportunity(
             decision_score=_decision_score(40.0),
             expected_value=_expected_value(-2.0),
             market_intelligence=_market_intelligence(tier="avoid_trading", score=5.0),
@@ -172,12 +177,13 @@ class TestEvaluateOpportunity:
         )
         assert approved is False
         assert len(reasons) == 3
+        assert len(codes) == 3
 
     def test_ceo_configured_threshold_is_real_and_respected(self) -> None:
         # A score that would pass the default 70-point bar is rejected
         # once the CEO raises the bar — proves the threshold is a real,
         # consulted CEO control, not a hardcoded stand-in.
-        approved, _ = evaluate_opportunity(
+        approved, _, _ = evaluate_opportunity(
             decision_score=_decision_score(75.0),
             expected_value=_expected_value(1.0),
             market_intelligence=_market_intelligence(),
@@ -186,13 +192,42 @@ class TestEvaluateOpportunity:
         assert approved is False
 
     def test_ceo_can_relax_the_expected_value_floor_to_admit_a_marginal_candidate(self) -> None:
-        approved, _ = evaluate_opportunity(
+        approved, _, _ = evaluate_opportunity(
             decision_score=_decision_score(85.0),
             expected_value=_expected_value(-0.5),
             market_intelligence=_market_intelligence(),
             risk_limits=RiskLimits(minExpectedValuePct=-1.0),
         )
         assert approved is True
+
+    def test_dominant_liquidity_drag_is_named_with_its_own_real_code(self) -> None:
+        # Every sub-score is 60 except liquidity, which is 10 — the real minimum, below
+        # LIQUIDITY_DOMINANT_DRAG_THRESHOLD — so the rejection must name it specifically.
+        decision_score = _decision_score(60.0).model_copy(update={"liquidity_quality_score": 10.0, "overall": 55.0})
+        approved, reasons, codes = evaluate_opportunity(
+            decision_score=decision_score,
+            expected_value=_expected_value(1.0),
+            market_intelligence=_market_intelligence(),
+            risk_limits=RiskLimits(),
+        )
+        assert approved is False
+        assert "trade_quality_below_threshold" in codes
+        assert "liquidity_confirmation_weak" in codes
+        assert any("Liquidity confirmation reads 10" in r for r in reasons)
+
+    def test_a_non_liquidity_dominant_drag_never_gets_the_liquidity_code(self) -> None:
+        # Liquidity is fine (80); risk is the real minimum (10) — must never mislabel this
+        # as a liquidity finding just because it's the only one this module explicitly names.
+        decision_score = _decision_score(60.0).model_copy(update={"liquidity_quality_score": 80.0, "risk_score": 10.0, "overall": 55.0})
+        approved, reasons, codes = evaluate_opportunity(
+            decision_score=decision_score,
+            expected_value=_expected_value(1.0),
+            market_intelligence=_market_intelligence(),
+            risk_limits=RiskLimits(),
+        )
+        assert approved is False
+        assert "liquidity_confirmation_weak" not in codes
+        assert not any("Liquidity confirmation" in r for r in reasons)
 
 
 class TestBuildOpportunityRejection:
@@ -203,6 +238,7 @@ class TestBuildOpportunityRejection:
             decision_score=_decision_score(55.0),
             expected_value=_expected_value(-1.0),
             reasons=["Trade Quality Score 55/100 is below the required 70 minimum."],
+            reason_codes=["trade_quality_below_threshold"],
             price_at_rejection=123.45,
             now_sim_minutes=500,
         )
@@ -214,6 +250,7 @@ class TestBuildOpportunityRejection:
         assert rejection.rejected_sim_minutes == 500
         assert rejection.outcome == "pending"
         assert rejection.resolved_at is None
+        assert rejection.reason_codes == ["trade_quality_below_threshold"]
 
 
 class TestGradeOpportunityRejections:
