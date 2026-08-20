@@ -11461,6 +11461,80 @@ its real Cause, and its real Action. The old plain-string
 `recommendations` field is untouched (still populated identically) for
 any other consumer and for save-format backward compatibility.
 
+### CEO directive "Strategy Intelligence + Live Strategy Attribution" — Phase 1: the real Strategy Lab ↔ CompiledStrategyDefinition identity bridge
+
+This directive's own mandatory Phase 1 asks: does a canonical strategy
+identity already exist, and can it survive from research through a live
+trade's close? A dedicated research-agent audit (not guessed — every
+claim below has a direct file:line citation in the audit itself) traced
+the real live trade-generation path end to end: `app/nexus.py`'s
+`_generate_trade_proposals()` reads only `completed_research: list[
+ResearchItem]`, itself produced by `app/research.py`'s rotating
+category/symbol/agent queue with zero `Strategy` reference anywhere;
+`app/executive.py`'s `generate_proposal()` imports nothing from Strategy
+Lab either. `app/sandbox.py`'s own module docstring already states this
+outright, in its own words: *"this codebase's live/paper trading engine
+is symbol- and AI-Debate-driven, not Strategy-driven... building [a live
+attribution mechanism] would be a structural rewrite of the whole
+decision loop."* Entering the `limited_live_capital` stage
+(`POST /api/sandbox/begin-limited-live`) was also confirmed, by reading
+`begin_limited_live()` directly, to do nothing beyond setting
+`Strategy.allocatedCapital` as a tracked authorization ceiling — no
+order, portfolio, or execution path is touched.
+
+Given that real architectural boundary, the CEO was asked how to
+proceed and explicitly chose the safe subset: build real, additive
+Strategy Lab intelligence, never rewire the live decision loop.
+
+**A second, previously-undocumented gap the same audit surfaced**: even
+*within* Strategy Lab, "the strategy that has a stage/dossier/
+certification" (`Strategy`, `app/schemas.py`) and "the strategy whose
+rules were actually compiled and are backtestable"
+(`CompiledStrategyDefinition`, `app/strategy_compiler.py`) were two
+disconnected identity spaces. `Strategy`'s own schema carries no
+trigger/entry/stop/target field at all — it's a pure tracking wrapper
+(name, description, stage, allocated capital). Meanwhile
+`CompiledStrategyDefinition` already has a full, real, already-tested
+execution pipeline behind it: `POST /backtest-compiled-strategy`,
+`/walk-forward-validation`, `/parameter-sensitivity`, `/cost-sensitivity`,
+and `/look-ahead-audit` all already exist and are real — but a
+`CompiledStrategyDefinition` had no way to say which Strategy Lab
+`Strategy`, if any, it belongs to.
+
+New `Strategy.compiledDefinitionId: str | None` (defaults to `None` —
+every existing Strategy, including the four hardcoded seeds, still
+validates unchanged) closes this. New
+`app/strategy_registry.py::register_researchable_strategy()` is the one
+real bridge, reusing the existing `register_strategy_version()`
+unchanged (never a second compile/persist path): it compiles+persists
+the real rules, then — ONLY when the compiler's own real vocabulary
+match actually reached `status == "compiled"` (an "ambiguous"/"invalid"
+result still returns its own real definition, with real `ambiguities`/
+`detail`, but creates no `Strategy` — never a fabricated link) —
+constructs a genuinely new `Strategy` whose `compiledDefinitionId`
+names that exact compiled definition. Raises `ValueError` (a 400 via
+the new `POST /api/sandbox/register-researchable-strategy` endpoint) if
+a Strategy with the same real name/slug already exists, so this stays
+"new strategies only" — registering a second version of an existing
+strategy's rules goes through the pre-existing `register-strategy-version`
+endpoint, staying linked to the SAME `Strategy.compiledDefinitionId`.
+
+12 new backend unit tests verify the bridge, including two built against
+a real, fully-specified 50 EMA breakout/pullback long and short setup —
+composed to match `app/strategy_compiler.py`'s own disclosed vocabulary
+exactly (an EMA-50 close trigger, an at-least-two-candle pullback
+requirement, a prior-swing-level breakout entry, a real chandelier stop,
+a real 2R target) and verified against the actual compiler (not a mock)
+to reach `status == "compiled"`. This is deliberately the FIRST
+increment, not the whole of Phase 13: the next increment promotes this
+50 EMA strategy from `app/ema_pullback_research.py`'s existing ad hoc,
+hand-built engine (confirmed by the same audit to have zero transaction
+costs/slippage and no out-of-sample split anywhere in that module) to a
+real, persisted Strategy Lab strategy backed by the fully-featured,
+already-real compiled-strategy pipeline this bridge now connects to
+(which already has real cost/slippage sensitivity and real walk-forward
+validation) — laid out here but not yet built.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

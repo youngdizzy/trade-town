@@ -1634,6 +1634,24 @@ for one strategy name (oldest first). Returns
 registered via the endpoint above (a stateless `/compile-strategy`
 preview alone never appears here).
 
+### `POST /api/sandbox/register-researchable-strategy`
+
+CEO directive "Strategy Intelligence + Live Strategy Attribution,"
+Phase 1 — the real Strategy Lab ↔ `CompiledStrategyDefinition` identity
+bridge. Body: `{ "name": "...", "description": "...", "sourceText": "...",
+"timeframe": "1h", "createdBy": "quant", "focusCategory": "stock" }`.
+Unlike `POST /register-strategy-version` (persists compiled rules
+only), this also creates a real, new Strategy Lab `Strategy` — but only
+when `sourceText` actually compiled (`status == "compiled"`); an
+ambiguous/invalid text still returns its own real `definition` (with
+real `ambiguities`/`detail` explaining why) and a `null` `strategy`,
+never a fabricated link. Returns
+`{ "definition": CompiledStrategyDefinition, "strategy": Strategy | null }`.
+400 if a Strategy with this exact real name/slug already exists — this
+endpoint is for genuinely new strategies; register a new version of an
+existing strategy's rules via `POST /register-strategy-version` instead,
+which stays linked to the same `Strategy.compiledDefinitionId`.
+
 ### `POST /api/sandbox/quant-research-lab/experiments`
 
 CEO directive "Professional Quant Firm Phase," Feature 36 — files a

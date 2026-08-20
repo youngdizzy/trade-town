@@ -7,6 +7,49 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Strategy Intelligence + Live Strategy Attribution," Phase 1: the real Strategy
+  Lab \<-> CompiledStrategyDefinition identity bridge** (backend: `backend/app/schemas.py`,
+  `backend/app/strategy_registry.py`, `backend/app/state.py`, `backend/app/routers/sandbox.py`,
+  `backend/tests/test_strategy_registry.py`; frontend: `frontend/src/types.ts`): mandatory research-first
+  audit (a dedicated agent traced every code path from live trade generation back through Strategy Lab)
+  found the directive's central premise was already answered by this codebase's own architecture:
+  `app/sandbox.py`'s own module docstring states outright that live/paper trading is "symbol- and
+  AI-Debate-driven, not Strategy-driven... building [a live attribution mechanism] would be a structural
+  rewrite of the whole decision loop" — confirmed by a full trace of `app/nexus.py`'s
+  `_generate_trade_proposals()`, `app/research.py`, and `app/executive.py`'s `generate_proposal()`, none of
+  which reference a `Strategy` object anywhere. Given that architectural boundary, the CEO chose the safe
+  subset: real, additive Strategy Lab intelligence that never touches the live decision loop.
+
+  The audit surfaced a SECOND, previously-undocumented identity gap worth closing first, since later work
+  depends on it: Strategy Lab's own stage-gated `Strategy` (dossier/certification/health-tracked, but with
+  zero represented trading logic — its schema is name/description/stage/allocatedCapital, nothing
+  resembling a trigger or entry rule) and `app/strategy_compiler.py`'s `CompiledStrategyDefinition` (the
+  real, deterministic trigger/requirement/entry/stop/target rule sequence, already backed by real, working
+  backtest/walk-forward/parameter-sensitivity/cost-sensitivity/look-ahead-audit endpoints) were two
+  disconnected identity spaces — a `Strategy` had no field naming which compiled rules, if any, it actually
+  represents.
+
+  New `Strategy.compiledDefinitionId: string | null` closes that gap. New
+  `register_researchable_strategy()` (`app/strategy_registry.py`) is the one real bridge: it reuses the
+  existing `register_strategy_version()` unchanged to compile+persist the rules, then — only when
+  compilation genuinely reached `status == "compiled"` (never for "ambiguous"/"invalid" text) — creates a
+  real, new `Strategy` whose `compiledDefinitionId` names that exact definition. An incomplete/ambiguous
+  text still returns its own real, persisted definition (with real `ambiguities`/`detail` explaining what's
+  missing) but creates no `Strategy` — never a fabricated link. Raises (400 via the new
+  `POST /api/sandbox/register-researchable-strategy` endpoint) if a Strategy with the exact same real
+  name/slug already exists, so this stays "genuinely new strategies only" — a second version of an
+  existing strategy's rules goes through the existing `register-strategy-version` endpoint, staying linked
+  to the same `Strategy.compiledDefinitionId`. 12 new backend unit tests, including two composed against a
+  real, fully-specified 50 EMA breakout/pullback long/short setup — verified (against the actual compiler,
+  not a mock) to reach `status == "compiled"` with a real chandelier stop and 2R target, laying the
+  groundwork for the next increment (Phase 13: promoting the 50 EMA strategy from `app/
+  ema_pullback_research.py`'s ad hoc, zero-cost, non-out-of-sample hand-built engine to a real, persisted
+  Strategy Lab strategy backed by the fully-featured, already-real compiled-strategy pipeline). Full backend
+  suite, `mypy app/` (176 files), `ruff check app/ tests/` all clean. Frontend `tsc -b --noEmit`, `eslint`,
+  `vite build` all clean (the `Strategy` interface's new field required no other frontend change — no
+  default `Strategy` object literal exists anywhere in the frontend; every real `Strategy` always comes
+  from the backend).
+
 - **CEO directive "Command Center + Professional Quant Trading Firm Upgrade": Executive View —
   real Problem/Cause/Severity/Action breakdown for weak Company Health areas** (backend:
   `backend/app/company_health.py`, `backend/app/schemas.py`, `backend/tests/test_company_health.py`;
