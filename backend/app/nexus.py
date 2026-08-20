@@ -1652,6 +1652,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             expected_value=war_room_session.expected_value,
             market_intelligence=market_intelligence,
             risk_limits=effective_risk_limits,
+            decision_vault=decision_vault,
         )
         if not approved:
             opportunity_rejections.append(

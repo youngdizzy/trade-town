@@ -11349,6 +11349,57 @@ more real citations are appended and cycle them out of the capped
 window — an honest, disclosed, environment-specific residual, not a
 remaining code defect.
 
+### CEO directive "Command Center + Professional Quant Trading Firm Upgrade" — session as a real, live trade-gating reason
+
+Phase 0's own research had already named this an explicit, disclosed
+gap: the No-Trade Reason Taxonomy's own `SESSION_FILTER` example "has
+no real mechanism" in this codebase. Closing it did not require any new
+data collection — `app/session_evidence.py`'s
+`compute_session_regime_evidence()` already existed (built for the
+Academy's Session Trading curriculum) and already answers the only
+honest version of "does session matter" this codebase's data supports:
+does this company's own trading actually perform differently by
+(session, regime) pairing, over its own real closed `DecisionVaultEntry`
+history, at a disclosed win-rate floor and a disclosed minimum real
+sample size (`MIN_SESSION_REGIME_SAMPLE`).
+
+`app/opportunity_gatekeeper.py`'s `evaluate_opportunity()` — the
+Opportunity Gatekeeper, Design Bible Chapter 58's pre-proposal filter,
+which already reads `MarketIntelligenceState` (carrying both the live
+current `session` and `regime`, recomputed fresh every tick — see that
+schema's own docstring: "this is what a TradeProposal and the Trade
+Gatekeeper actually read") — now also looks up
+`compute_session_regime_evidence()`'s bucket for the CURRENT live
+(session, regime) pairing via the existing
+`lookup_session_regime_evidence()` helper, and rejects only when that
+exact pairing's own real evidence state is `"unfavorable"`. Below the
+sample floor, `evidence_state` reads `"not_enough_evidence"` and the
+check stays silent — never forcing a read on thin data, the same
+"no-trade must mean no-edge, not no-data" distinction the directive
+itself asks for. This is never a forecast and never a fabricated rule
+about which sessions are inherently good or bad; it is this company's
+own real, empirical track record, consulted live at the one pipeline
+stage that already exists for exactly this kind of evidence-based
+filter.
+
+New `NoTradeReasonCode` value: `session_regime_unfavorable_evidence`
+(the taxonomy's 38th, still every one grounded in a real, cited
+rejection point). `evaluate_opportunity()`'s new `decision_vault`
+parameter defaults to `None` (coalesced to an empty list) specifically
+so every pre-existing call site and test keeps its exact prior behavior
+— an empty vault produces zero evidence buckets, so the new check can
+never fire unless real vault data is actually passed in.
+`app/nexus.py`'s real call site already had `decision_vault` in scope
+from building the same candidate's War Room session, so wiring it in
+required no new data plumbing.
+
+No frontend UI change was needed: `RiskPanel.tsx`'s "Most common
+no-trade reasons" tally and every other `reasonCodes` consumer already
+render the raw code generically (there is no per-code label-mapping
+table anywhere that would need a new entry) — only the mirrored
+`NoTradeReasonCode` type union in `frontend/src/types.ts` gained the
+new value, for type-safety parity with the backend.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

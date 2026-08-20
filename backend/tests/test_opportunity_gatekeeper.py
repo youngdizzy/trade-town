@@ -21,11 +21,14 @@ from app.opportunity_gatekeeper import (
 from app.portfolio import default_portfolio
 from app.schemas import (
     DecisionScoreBreakdown,
+    DecisionVaultEntry,
     ExpectedValueAnalysis,
+    LiquidityRead,
     MarketQualityScore,
     OpportunityRejection,
     ResearchItem,
     RiskLimits,
+    SessionRead,
     WatchlistEntry,
 )
 
@@ -95,9 +98,48 @@ def _expected_value(pct: float) -> ExpectedValueAnalysis:
     )
 
 
-def _market_intelligence(*, tier: str = "average", score: float = 50.0):  # type: ignore[no-untyped-def]
+def _market_intelligence(*, tier: str = "average", score: float = 50.0, session: str = "new_york", regime: str = "sideways_range"):  # type: ignore[no-untyped-def]
     quality = MarketQualityScore(tier=tier, score=score, confidencePct=50.0, reasoning="Test market quality.", evidence=[], historicalSimilarity="n/a")  # type: ignore[arg-type]
-    return default_market_intelligence_state().model_copy(update={"quality": quality})
+    session_read = SessionRead(current=session, label="Test Session", overlapsActive=[], detail="test")  # type: ignore[arg-type]
+    return default_market_intelligence_state().model_copy(update={"quality": quality, "session": session_read, "regime": regime})
+
+
+def _vault_entry(*, entry_id: str, session: str = "new_york", market_regime: str = "sideways_range", pnl_pct: float = 1.0) -> DecisionVaultEntry:
+    return DecisionVaultEntry(
+        id=entry_id,
+        tradeId=f"trade-{entry_id}",
+        decisionId=f"decision-{entry_id}",
+        symbol="NEXA",
+        simDay=1,
+        session=session,  # type: ignore[arg-type]
+        strategyId=None,
+        marketRegime=market_regime,  # type: ignore[arg-type]
+        marketRegimeLabel="test regime",
+        liquidityContext=LiquidityRead(symbol="NEXA", zones=[], sweepDetected=False, sweepDirection="none", liquidityScore=50.0, detail="test"),
+        evidenceScore=70.0,
+        confidenceScore=70.0,
+        confidenceTier="strong",  # type: ignore[arg-type]
+        capitalAllocationGrade="B",  # type: ignore[arg-type]
+        decisionGrade="B",  # type: ignore[arg-type]
+        decisionGradeScore=80.0,
+        disciplineTier="sound",  # type: ignore[arg-type]
+        disciplineScore=75.0,
+        patienceGrade="B",  # type: ignore[arg-type]
+        positionSize=10.0,
+        entryPrice=100.0,
+        exitPrice=100.0 + pnl_pct,
+        pnl=pnl_pct * 10.0,
+        pnlPct=pnl_pct,
+        holdDurationMinutes=60,
+        rMultiple=None,
+        caseStudyId=None,
+        caseStudyCategory=None,
+        executiveNotes=None,
+        lessonsLearned="test lesson",
+        companyDnaChange=None,
+        ceoOverride=False,
+        createdAt=_now_iso(),
+    )
 
 
 def _rejection(
@@ -228,6 +270,75 @@ class TestEvaluateOpportunity:
         assert approved is False
         assert "liquidity_confirmation_weak" not in codes
         assert not any("Liquidity confirmation" in r for r in reasons)
+
+    def test_no_decision_vault_passed_never_triggers_the_session_regime_check(self) -> None:
+        # Backward-compatible default: omitting decision_vault entirely
+        # (every call site above this class does) must behave exactly as
+        # before this check existed.
+        approved, reasons, codes = evaluate_opportunity(
+            decision_score=_decision_score(85.0),
+            expected_value=_expected_value(1.0),
+            market_intelligence=_market_intelligence(tier="good", score=80.0),
+            risk_limits=RiskLimits(),
+        )
+        assert approved is True
+        assert "session_regime_unfavorable_evidence" not in codes
+
+    def test_rejects_on_real_unfavorable_session_regime_evidence(self) -> None:
+        # Five real closed trades, all losses, under the exact live
+        # (session, regime) pairing — a real 0% win rate at the evidence
+        # floor, not a fabricated forecast.
+        vault = [_vault_entry(entry_id=f"e{i}", session="new_york", market_regime="sideways_range", pnl_pct=-1.0) for i in range(5)]
+        approved, reasons, codes = evaluate_opportunity(
+            decision_score=_decision_score(85.0),
+            expected_value=_expected_value(1.0),
+            market_intelligence=_market_intelligence(tier="good", score=80.0, session="new_york", regime="sideways_range"),
+            risk_limits=RiskLimits(),
+            decision_vault=vault,
+        )
+        assert approved is False
+        assert codes == ["session_regime_unfavorable_evidence"]
+        assert any("real 0% win rate" in r for r in reasons)
+
+    def test_below_evidence_floor_stays_silent_even_with_all_losses(self) -> None:
+        # Only 4 real closed trades — below MIN_SESSION_REGIME_SAMPLE (5)
+        # — must never force a read on a thin sample.
+        vault = [_vault_entry(entry_id=f"e{i}", session="new_york", market_regime="sideways_range", pnl_pct=-1.0) for i in range(4)]
+        approved, reasons, codes = evaluate_opportunity(
+            decision_score=_decision_score(85.0),
+            expected_value=_expected_value(1.0),
+            market_intelligence=_market_intelligence(tier="good", score=80.0, session="new_york", regime="sideways_range"),
+            risk_limits=RiskLimits(),
+            decision_vault=vault,
+        )
+        assert approved is True
+        assert codes == []
+
+    def test_favorable_evidence_is_never_rejected(self) -> None:
+        vault = [_vault_entry(entry_id=f"e{i}", session="new_york", market_regime="sideways_range", pnl_pct=1.0) for i in range(5)]
+        approved, reasons, codes = evaluate_opportunity(
+            decision_score=_decision_score(85.0),
+            expected_value=_expected_value(1.0),
+            market_intelligence=_market_intelligence(tier="good", score=80.0, session="new_york", regime="sideways_range"),
+            risk_limits=RiskLimits(),
+            decision_vault=vault,
+        )
+        assert approved is True
+        assert codes == []
+
+    def test_unfavorable_evidence_under_a_different_session_regime_pairing_never_applies(self) -> None:
+        # Real unfavorable evidence exists — but for "asian" + "sideways_range",
+        # not the live "new_york" + "sideways_range" pairing being evaluated.
+        vault = [_vault_entry(entry_id=f"e{i}", session="asian", market_regime="sideways_range", pnl_pct=-1.0) for i in range(5)]
+        approved, reasons, codes = evaluate_opportunity(
+            decision_score=_decision_score(85.0),
+            expected_value=_expected_value(1.0),
+            market_intelligence=_market_intelligence(tier="good", score=80.0, session="new_york", regime="sideways_range"),
+            risk_limits=RiskLimits(),
+            decision_vault=vault,
+        )
+        assert approved is True
+        assert codes == []
 
 
 class TestBuildOpportunityRejection:

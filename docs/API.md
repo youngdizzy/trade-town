@@ -1996,10 +1996,15 @@ codebase only keeps a recent slice of.
 Every `RiskWarning`, `GatekeeperCheck`, `GatekeeperRejection`, and
 `OpportunityRejection` this endpoint's underlying data draws on also
 now carries a real `code`/`reasonCodes` field from the same
-directive's `NoTradeReasonCode` taxonomy (37 values, `app/schemas.py`)
-— each grounded in an exact, cited line of the real rejection logic
-that produced it (`app/risk_engine.py`, `app/gatekeeper.py`, `app/
-opportunity_gatekeeper.py`), never invented. `GatekeeperCheck.code` is
+directive's `NoTradeReasonCode` taxonomy (38 values, `app/schemas.py` —
+the 38th, `session_regime_unfavorable_evidence`, was added later by CEO
+directive "Command Center + Professional Quant Trading Firm Upgrade" to
+close the taxonomy's own previously-disclosed SESSION_FILTER gap with a
+real evidence-based check; see `app/opportunity_gatekeeper.py`'s module
+docstring) — each grounded in an exact, cited line of the real
+rejection logic that produced it (`app/risk_engine.py`, `app/
+gatekeeper.py`, `app/opportunity_gatekeeper.py`), never invented.
+`GatekeeperCheck.code` is
 optional because a handful of existing tests construct synthetic
 `GatekeeperCheck` fixtures (arbitrary IDs, for unrelated
 control-effectiveness/process-adherence scoring tests) that have no

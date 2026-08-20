@@ -97,6 +97,27 @@ version):
   computation that gets thrown away) is the honest trade-off, the same
   "cheap, close enough" precedent Chapter 57's own Portfolio Heat
   staleness note already establishes for this codebase.
+
+CEO directive "Command Center + Professional Quant Trading Firm
+Upgrade" — session as a real, live trade-gating reason. Phase 0's own
+research had named this an explicit, disclosed gap: the No-Trade Reason
+Taxonomy's own SESSION_FILTER example "has no real mechanism." It does
+now, built on real evidence that already existed for a different
+purpose: `app/session_evidence.py`'s `compute_session_regime_evidence()`
+(built for the Academy's Session Trading curriculum) already answers
+"does this company's own trading actually perform differently by
+session" from real closed `DecisionVaultEntry` history, bucketed by
+(session, regime). `evaluate_opportunity()` now also looks up the bucket
+matching the CURRENT live (session, regime) pairing — both already real
+fields on the same `MarketIntelligenceState` this module already reads
+— and rejects only when that exact pairing's own real evidence state is
+"unfavorable" (a disclosed win-rate floor, at a disclosed minimum real
+sample size; below that sample, the check stays silent rather than
+forcing a read on thin data). This is never a forecast and never a
+fabricated rule about which sessions are "good" — it is this company's
+own real, empirical track record, consulted live at the one stage
+(Opportunity Gatekeeper, pre-proposal) that already exists for exactly
+this kind of evidence-based filter.
 """
 from __future__ import annotations
 
@@ -105,6 +126,7 @@ from datetime import datetime, timezone
 from app.gatekeeper import GATEKEEPER_EVAL_WINDOW_MINUTES
 from app.schemas import (
     DecisionScoreBreakdown,
+    DecisionVaultEntry,
     ExpectedValueAnalysis,
     MarketIntelligenceState,
     NoTradeReasonCode,
@@ -113,6 +135,7 @@ from app.schemas import (
     TradeProposal,
     WatchlistEntry,
 )
+from app.session_evidence import compute_session_regime_evidence, lookup_session_regime_evidence
 
 # CEO directive "Professional Quant Firm Phase 41-45," Critical Task #0
 # forensic audit — a live, empirical run of this codebase's own real
@@ -171,6 +194,7 @@ def evaluate_opportunity(
     expected_value: ExpectedValueAnalysis,
     market_intelligence: MarketIntelligenceState,
     risk_limits: RiskLimits,
+    decision_vault: list[DecisionVaultEntry] | None = None,
 ) -> tuple[bool, list[str], list[NoTradeReasonCode]]:
     """The engine's one real decision: does this candidate earn the
     right to become a CEO-facing TradeProposal? Every reason for a
@@ -179,7 +203,12 @@ def evaluate_opportunity(
     establishes for its later-stage checks). Returns (approved, reasons,
     reason_codes) — CEO directive "Professional Quant Firm Phase 41-45,"
     Critical Task #0's No-Trade Reason Taxonomy, one code per reason,
-    same order."""
+    same order.
+
+    `decision_vault` (optional, defaults to no evidence) feeds CEO
+    directive "Command Center + Professional Quant Trading Firm
+    Upgrade"'s session-as-a-live-gating-reason check below — see that
+    check's own comment for the full real-evidence reasoning."""
     reasons: list[str] = []
     codes: list[NoTradeReasonCode] = []
     if market_intelligence.quality.tier == "avoid_trading":
@@ -198,6 +227,26 @@ def evaluate_opportunity(
                 "(real equal-high/equal-low clustering is genuinely rare in this candidate's own recent price action)."
             )
             codes.append("liquidity_confirmation_weak")
+    # CEO directive "Command Center + Professional Quant Trading Firm
+    # Upgrade" — session as a real, evidence-based live gating reason.
+    # Consults this company's own real closed-trade history for the
+    # EXACT (session, regime) pairing happening right now — never a
+    # forecast, never a fabricated "this session is bad" rule; a real
+    # win rate over real past trades, at a real, disclosed evidence
+    # floor (compute_session_regime_evidence()'s own
+    # MIN_SESSION_REGIME_SAMPLE — below it, evidence_state is
+    # "not_enough_evidence" and this check stays silent, exactly the
+    # honest "no-trade must mean no-edge, not no-data" distinction the
+    # directive itself asks for).
+    session_regime_summary = compute_session_regime_evidence(decision_vault or [])
+    current_bucket = lookup_session_regime_evidence(session_regime_summary, market_intelligence.session.current, market_intelligence.regime)
+    if current_bucket is not None and current_bucket.evidence_state == "unfavorable":
+        reasons.append(
+            f"This company's own trading history reads unfavorable here: {market_intelligence.session.label} sessions "
+            f"during a {market_intelligence.regime_label} regime have a real {current_bucket.win_rate_pct:.0f}% win rate "
+            f"over {current_bucket.sample_size} closed trades."
+        )
+        codes.append("session_regime_unfavorable_evidence")
     return not reasons, reasons, codes
 
 

@@ -7,6 +7,37 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Command Center + Professional Quant Trading Firm Upgrade": session as a real,
+  live trade-gating reason** (backend: `backend/app/opportunity_gatekeeper.py`, `backend/app/nexus.py`,
+  `backend/app/schemas.py`, `backend/tests/test_opportunity_gatekeeper.py`; frontend:
+  `frontend/src/types.ts`; docs: `docs/API.md`): closes a gap Phase 0 research had already named
+  explicitly — the No-Trade Reason Taxonomy's own `SESSION_FILTER` example was disclosed as having "no
+  real mechanism" in this codebase. It does now, built entirely on evidence that already existed for a
+  different purpose: `app/session_evidence.py`'s `compute_session_regime_evidence()` (built for the
+  Academy's Session Trading curriculum) already answers "does this company's own trading actually
+  perform differently by session" from real closed `DecisionVaultEntry` history, bucketed by (session,
+  regime), at a disclosed win-rate floor and a disclosed minimum real sample size
+  (`MIN_SESSION_REGIME_SAMPLE`). `evaluate_opportunity()` (the Opportunity Gatekeeper, Design Bible
+  Chapter 58's pre-proposal filter) now also looks up the bucket matching the CURRENT live (session,
+  regime) pairing — both already real fields on the same `MarketIntelligenceState` this module already
+  reads at proposal time — and rejects only when that exact live pairing's own real evidence state is
+  `"unfavorable"`. Below the sample floor, the check stays silent rather than forcing a read on thin
+  data — the same "no-trade must mean no-edge, not no-data" honesty this directive itself asks for.
+  Never a forecast, never a fabricated "this session is bad" rule — only this company's own real,
+  empirical track record. New `NoTradeReasonCode` value `session_regime_unfavorable_evidence` (the
+  taxonomy's 38th, still every one grounded in a real, cited rejection point — see
+  `app/opportunity_gatekeeper.py`'s module docstring for the full reasoning). `decision_vault` is a new
+  optional `evaluate_opportunity()` parameter (defaults to no evidence — an empty vault produces no
+  buckets, so every existing call site and test keeps its prior behavior unchanged); wired at
+  `app/nexus.py`'s real call site, which already had `decision_vault` in scope. 6 new backend unit
+  tests (backward-compatible default, real rejection on unfavorable evidence, silence below the sample
+  floor, favorable evidence never rejected, a different session/regime pairing's unfavorable evidence
+  never misapplied). Full backend suite (2,411 passed), `mypy app/` (176 files), `ruff check app/
+  tests/` all clean. Frontend: `NoTradeReasonCode`'s mirrored type union gained the new value —
+  already renders correctly with zero other frontend changes, since `RiskPanel.tsx`'s "Most common
+  no-trade reasons" tally and every other consumer already render `reasonCodes` generically (no
+  per-code label-mapping table anywhere to update).
+
 - **CEO directive "Command Center + Professional Quant Trading Firm Upgrade," Phase 2: chart
   overlays (S/R, Fibonacci, FVG, Order Block, chart patterns) + a real MARKETCHART tab** (frontend:
   `frontend/src/ui/components/CommandCenter/CandlestickChart.tsx`,

@@ -1783,6 +1783,17 @@ NoTradeReasonCode = Literal[
     "expected_value_below_threshold",
     "market_quality_avoid_trading",
     "liquidity_confirmation_weak",
+    # CEO directive "Command Center + Professional Quant Trading Firm
+    # Upgrade" — session as a real, evidence-based live gating reason
+    # (Phase 0 had named this an explicit, disclosed gap: "SESSION_FILTER
+    # has no real mechanism"). This company's own real Session × Regime
+    # win-rate evidence (app/session_evidence.py's
+    # compute_session_regime_evidence(), already built for the Academy
+    # curriculum) is now also consulted live, at the exact live
+    # session+regime pairing app/market_intelligence.py's
+    # MarketIntelligenceState already carries at proposal time — never a
+    # forecast, only this company's own real closed-trade history.
+    "session_regime_unfavorable_evidence",
     # Gatekeeper: app/gatekeeper.py's 11 real checks
     "gatekeeper_confidence",
     "gatekeeper_risk_manager",
