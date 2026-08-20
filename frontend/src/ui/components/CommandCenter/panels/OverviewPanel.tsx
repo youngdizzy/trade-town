@@ -1,6 +1,8 @@
+import { useEffect, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
-import type { CompanyHealthTier, MarketEnvironmentRegime, TradeDecision } from "@/types";
+import type { AgentTradingStatusRead, CompanyHealthTier, MarketEnvironmentRegime, TradeDecision } from "@/types";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
+import { api } from "@/net/api";
 import { formatPct, voteDirection } from "../lib/derive";
 import { useDashboardData } from "../lib/useDashboardData";
 import { DataRow, EmptyState, Glass, Meter, RiskDot, StatusPill, TerminalLabel } from "../ui";
@@ -27,6 +29,17 @@ const REGIME_TONE: Record<MarketEnvironmentRegime, "green" | "red" | "amber" | "
 export function OverviewPanel({ onInspect, onNavigate }: { onInspect: (d: TradeDecision) => void; onNavigate: (t: Tab) => void }) {
   const { companyScore, companyHealth, marketEnvironment, academyState, paperPortfolio, riskWarnings } = useGameStore();
   const { level, recentDecisions: recent, noTrade, latest, workingCount } = useDashboardData();
+  const [tradingStatus, setTradingStatus] = useState<AgentTradingStatusRead[]>([]);
+
+  // CEO directive "Command Center + Professional Quant Trading Firm
+  // Upgrade," Phase 2 — real agent-thesis roll-up, reusing the same
+  // GET /api/agents/trading-status the AI Desk's Roster tab already
+  // fetches (see AgentsPanel.tsx).
+  useEffect(() => {
+    api.getAgentTradingStatus().then(setTradingStatus).catch(() => undefined);
+  }, []);
+  const waitingAgents = tradingStatus.filter((a) => a.status === "waiting");
+  const scanningCount = tradingStatus.filter((a) => a.status === "scanning").length;
 
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
@@ -107,6 +120,21 @@ export function OverviewPanel({ onInspect, onNavigate }: { onInspect: (d: TradeD
         <TerminalLabel>Team Status</TerminalLabel>
         <DataRow label="Agents active" value={`${workingCount} / 10`} />
         <DataRow label="No-trade rate" value={noTrade.total ? `${Math.round((noTrade.noTradeCount / noTrade.total) * 100)}%` : "N/A"} />
+        {tradingStatus.length > 0 && (
+          <>
+            <DataRow label="Currently researching" value={scanningCount} />
+            <DataRow label="Awaiting your decision" value={waitingAgents.length} valueClassName={waitingAgents.length > 0 ? "text-cmd-amber" : "text-cmd-text"} />
+            {waitingAgents.length > 0 && (
+              <div className="mt-1.5 space-y-1 border-t border-cmd-border/60 pt-1.5">
+                {waitingAgents.map((a) => (
+                  <div key={a.agentId} className="truncate text-[9px] text-cmd-textDim">
+                    <span className="text-cmd-cyan">{AGENT_PROFILES[a.agentId].name}</span> — {a.headline}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
         <button type="button" onClick={() => onNavigate("AGENTS")} className="mt-2 w-full rounded-sm border border-cmd-border py-1 text-cmd-textDim hover:text-cmd-cyan">
           View Agents →
         </button>
