@@ -58,6 +58,7 @@ export const TAB_SECTION: Record<Tab, Section> = {
   COMPLIANCE: "HEADQUARTERS",
   SITUATIONROOM: "HEADQUARTERS",
 
+  MARKETCHART: "MARKETS",
   MARKETINTEL: "MARKETS",
   ECONINTEL: "MARKETS",
 
@@ -148,11 +149,14 @@ export function groupTabsBySection(tabs: readonly Tab[]): { section: Section; ta
  *   "who's doing what right now and how they're rated," not the whole
  *   Academy/Mentor learning-content cluster, which stays in MORE
  *   alongside the rest of the company's slower-moving systems.
- * - MARKETS is deliberately narrow too (MARKETINTEL/ECONINTEL) since
- *   the actual live chart (MarketChartPanel) isn't a `Tab` at all today
- *   — it's embedded inside OVERVIEW — see FullCommandCenter.tsx for
- *   how this area's own first sub-view surfaces it without duplicating
- *   the chart component.
+ * - MARKETS is deliberately narrow (MARKETCHART/MARKETINTEL/
+ *   ECONINTEL). MARKETCHART is a new real `Tab` added alongside this
+ *   redesign (chart overlays — support/resistance, Fibonacci, Fair
+ *   Value Gaps, Order Block, confirmed chart patterns — all reusing
+ *   `MarketChartPanel.tsx`, the same component OVERVIEW already
+ *   embeds, never a second chart implementation) so the "central
+ *   market intelligence workspace" the directive asks for has a real,
+ *   first-class home rather than staying buried only inside OVERVIEW.
  * - Every tab NOT listed under one of the first five areas falls into
  *   MORE by construction (`tabsForArea` below), and MORE's own picker
  *   still uses `groupTabsBySection` on just its own 17 tabs — so the
@@ -165,7 +169,7 @@ export type Area = (typeof AREA_ORDER)[number];
 
 const PRIMARY_AREA_TABS: Record<Exclude<Area, "MORE">, Tab[]> = {
   OVERVIEW: ["OVERVIEW"],
-  MARKETS: ["MARKETINTEL", "ECONINTEL"],
+  MARKETS: ["MARKETCHART", "MARKETINTEL", "ECONINTEL"],
   "AI DESK": ["AGENTS", "FOUNDERS", "TALENT"],
   "PORTFOLIO & RISK": ["RISK", "PORTFOLIO", "PERFORMANCE", "EXECUTIVE", "TRADINGMODES", "COMPLIANCE", "DISCIPLINE", "BLACKSWAN"],
   "RESEARCH & INTELLIGENCE": ["SANDBOX", "RESEARCH", "DECISIONS", "VAULT", "WARROOM", "REASONING", "REFLECTION", "BLACKBOX", "OPPORTUNITIES", "EXECINTEL", "REPLAY"],

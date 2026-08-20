@@ -166,7 +166,7 @@ test.describe("Global Command Center", () => {
     // ticking throughout, a genuine trade or trade proposal can appear
     // (and pop up) mid-test. clickTab() dismisses and retries rather
     // than losing the race to a popup that appears in that instant.
-    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "REPLAY", "RISK", "BLACKSWAN", "AGENTS", "RESEARCH", "COMPANY", "EXECINTEL", "MARKETINTEL", "ECONINTEL", "KNOWLEDGE", "DISCIPLINE", "VAULT", "WARROOM", "PORTFOLIO", "REASONING", "REFLECTION", "MENTOR", "MENTORLIB", "MENTORLAB", "TALENT", "SANDBOX", "CONSTITUTION", "OPS", "FOUNDERS", "TREASURY", "CALENDAR", "BLACKBOX", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS", "COMPLIANCE", "TRADINGMODES", "SITUATIONROOM", "TRAVELMODE"];
+    const tabs = ["OVERVIEW", "OPPORTUNITIES", "EXECUTIVE", "DECISIONS", "REPLAY", "RISK", "BLACKSWAN", "AGENTS", "RESEARCH", "COMPANY", "EXECINTEL", "MARKETCHART", "MARKETINTEL", "ECONINTEL", "KNOWLEDGE", "DISCIPLINE", "VAULT", "WARROOM", "PORTFOLIO", "REASONING", "REFLECTION", "MENTOR", "MENTORLIB", "MENTORLAB", "TALENT", "SANDBOX", "CONSTITUTION", "OPS", "FOUNDERS", "TREASURY", "CALENDAR", "BLACKBOX", "TRAINING", "PVAI", "ACADEMY", "PERFORMANCE", "LOGS", "COMPLIANCE", "TRADINGMODES", "SITUATIONROOM", "TRAVELMODE"];
     for (const tab of tabs) {
       await clickTab(page, tab);
       await expect(page.getByRole("button", { name: tab, exact: true })).toHaveClass(/text-cmd-cyan/);

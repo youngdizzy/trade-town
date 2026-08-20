@@ -6,6 +6,7 @@ import type { EducationTopic, TradeDecision } from "@/types";
 import { aiStatus, riskLevel } from "./lib/derive";
 import { AREA_ORDER, areaForTab, groupTabsBySection, tabsForArea, type Area } from "./lib/navigation";
 import { RiskDot, StatusPill } from "./ui";
+import { MarketChartPanel } from "./MarketChartPanel";
 import { OverviewPanel } from "./panels/OverviewPanel";
 import { OpportunitiesPanel } from "./panels/OpportunitiesPanel";
 import { DecisionsPanel } from "./panels/DecisionsPanel";
@@ -97,6 +98,7 @@ const TABS = [
   "RESEARCH",
   "COMPANY",
   "EXECINTEL",
+  "MARKETCHART",
   "MARKETINTEL",
   "ECONINTEL",
   "KNOWLEDGE",
@@ -255,6 +257,7 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
         {tab === "RESEARCH" && <ResearchPanel />}
         {tab === "COMPANY" && <CompanyPanel />}
         {tab === "EXECINTEL" && <ExecutiveIntelPanel />}
+        {tab === "MARKETCHART" && <MarketChartPanel />}
         {tab === "MARKETINTEL" && <MarketIntelPanel />}
         {tab === "ECONINTEL" && <EconomicIntelPanel />}
         {tab === "KNOWLEDGE" && <AcademyPanel />}

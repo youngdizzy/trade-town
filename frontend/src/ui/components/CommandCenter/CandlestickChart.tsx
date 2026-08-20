@@ -12,11 +12,37 @@ const COLORS = {
   current: "#ffb443",
 };
 
+/** CEO directive "Command Center + Professional Quant Trading Firm
+ * Upgrade," Phase 2 (Markets area — chart overlays). A horizontal
+ * price level (support/resistance, a Fibonacci ratio) — real prices
+ * from backend/app/technical_patterns.py, never invented. */
+export interface ChartOverlayLine {
+  price: number;
+  label: string;
+  color: string;
+}
+
+/** A real price×time region — a Fair Value Gap, an Order Block, or a
+ * confirmed chart pattern (double top/bottom, trendline break). `to`
+ * null means the zone is still open (e.g. an unfilled FVG) and is
+ * drawn out to the right edge of the visible candles rather than a
+ * fabricated end point. */
+export interface ChartOverlayZone {
+  from: string;
+  to: string | null;
+  priceLow: number;
+  priceHigh: number;
+  label: string;
+  color: string;
+}
+
 export interface ChartOverlays {
   /** The order's fill price, if a real order was placed for this symbol — never a fabricated stop/target. */
   entry?: number;
   /** The open position's live mark price, if one exists for this symbol. */
   currentPrice?: number;
+  lines?: ChartOverlayLine[];
+  zones?: ChartOverlayZone[];
 }
 
 /**
@@ -77,6 +103,8 @@ export function CandlestickChart({
       const values = candles.flatMap((c) => [c.high, c.low]);
       if (overlays?.entry !== undefined) values.push(overlays.entry);
       if (overlays?.currentPrice !== undefined) values.push(overlays.currentPrice);
+      overlays?.lines?.forEach((l) => values.push(l.price));
+      overlays?.zones?.forEach((z) => values.push(z.priceLow, z.priceHigh));
       const min = Math.min(...values);
       const max = Math.max(...values);
       const span = max - min || 1;
@@ -84,6 +112,46 @@ export function CandlestickChart({
       const yMin = min - pad;
       const yMax = max + pad;
       const yFor = (price: number) => plotBottom - ((price - yMin) / (yMax - yMin)) * plotHeight;
+      const slotWidth = plotWidth / candles.length;
+      // Maps a real overlay timestamp to the x-position of its nearest
+      // real candle (index-based slotting, the same spacing every candle
+      // already uses) — never a true time-scale axis, but honest: it
+      // never invents a position for a moment outside the visible range.
+      const xFor = (timestamp: string) => {
+        const t = new Date(timestamp).getTime();
+        let nearest = 0;
+        let nearestDiff = Infinity;
+        candles.forEach((c, i) => {
+          const diff = Math.abs(new Date(c.timestamp).getTime() - t);
+          if (diff < nearestDiff) {
+            nearestDiff = diff;
+            nearest = i;
+          }
+        });
+        return plotLeft + slotWidth * nearest + slotWidth / 2;
+      };
+
+      // Zones (Fair Value Gaps / Order Blocks / confirmed chart
+      // patterns) — drawn first, as a background wash, so real candle
+      // bodies/wicks stay fully visible on top of them.
+      overlays?.zones?.forEach((z) => {
+        const xStart = xFor(z.from);
+        const xEnd = z.to !== null ? xFor(z.to) : plotRight;
+        const yTop = yFor(z.priceHigh);
+        const yBottom = yFor(z.priceLow);
+        ctx.fillStyle = z.color;
+        ctx.globalAlpha = 0.18;
+        ctx.fillRect(Math.min(xStart, xEnd), yTop, Math.max(2, Math.abs(xEnd - xStart)), Math.max(1, yBottom - yTop));
+        ctx.globalAlpha = 1;
+        ctx.strokeStyle = z.color;
+        ctx.globalAlpha = 0.5;
+        ctx.strokeRect(Math.min(xStart, xEnd), yTop, Math.max(2, Math.abs(xEnd - xStart)), Math.max(1, yBottom - yTop));
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = z.color;
+        ctx.font = "8px monospace";
+        ctx.fillText(z.label, Math.min(xStart, xEnd) + 2, yTop - 2);
+        ctx.font = "9px monospace";
+      });
 
       // Grid + price axis labels
       ctx.strokeStyle = COLORS.grid;
@@ -104,10 +172,9 @@ export function CandlestickChart({
       }
 
       // Candles
-      const slot = plotWidth / candles.length;
-      const bodyWidth = Math.max(1, slot * 0.6);
+      const bodyWidth = Math.max(1, slotWidth * 0.6);
       candles.forEach((c, i) => {
-        const cx = plotLeft + slot * i + slot / 2;
+        const cx = plotLeft + slotWidth * i + slotWidth / 2;
         const bull = c.close >= c.open;
         ctx.strokeStyle = bull ? COLORS.bull : COLORS.bear;
         ctx.fillStyle = bull ? COLORS.bull : COLORS.bear;
@@ -138,6 +205,27 @@ export function CandlestickChart({
       if (overlays?.entry !== undefined) drawLevel(overlays.entry, COLORS.entry, `ENTRY ${overlays.entry.toFixed(2)}`);
       if (overlays?.currentPrice !== undefined) drawLevel(overlays.currentPrice, COLORS.current, `MARK ${overlays.currentPrice.toFixed(2)}`);
 
+      // Analysis overlay lines (support/resistance, Fibonacci) — a
+      // finer dash than the real order-price lines above, so a genuine
+      // fill/mark price never gets visually confused with an analysis
+      // read that has no claim of being acted on.
+      overlays?.lines?.forEach((l) => {
+        const y = yFor(l.price);
+        ctx.strokeStyle = l.color;
+        ctx.setLineDash([2, 4]);
+        ctx.globalAlpha = 0.7;
+        ctx.beginPath();
+        ctx.moveTo(plotLeft, y);
+        ctx.lineTo(plotRight, y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.globalAlpha = 1;
+        ctx.fillStyle = l.color;
+        ctx.font = "8px monospace";
+        ctx.fillText(l.label, plotLeft + 2, y + 8);
+        ctx.font = "9px monospace";
+      });
+
       // Time axis — first/mid/last timestamps only, to stay readable at any width
       ctx.fillStyle = COLORS.text;
       ctx.textBaseline = "top";
@@ -145,7 +233,7 @@ export function CandlestickChart({
       labelIndices.forEach((i) => {
         const c = candles[i];
         if (!c) return;
-        const x = plotLeft + slot * i + slot / 2;
+        const x = plotLeft + slotWidth * i + slotWidth / 2;
         const label = new Date(c.timestamp).toLocaleString(undefined, { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" });
         ctx.textAlign = i === 0 ? "left" : i === candles.length - 1 ? "right" : "center";
         ctx.fillText(label, x, plotBottom + 3);
