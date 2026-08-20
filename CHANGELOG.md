@@ -127,6 +127,43 @@ development milestones, not semver releases.
   VAULT-tab test was run live against a freshly, singly-started dev stack to confirm the change is
   non-breaking: 1/1 passed.
 
+### Fixed
+
+- **Two real, pre-existing bugs found via a full live Playwright regression run** (not fabricated —
+  both reproduced consistently on a freshly restarted, single-instance dev stack, isolated from the
+  environmental flakiness a 95-test/29-minute unscoped full-suite run itself also produced):
+  - **`frontend/src/types.ts`'s `AGENT_IDS` was missing Forge, the fifteenth agent.** `AgentId` (the
+    type) already included `"forge"`, and `game/systems/AgentProfiles.ts` already had their full,
+    complete profile (name, occupation, personality, sprite, badge) — but the actual `AGENT_IDS` runtime
+    array (the one every `.map()`/`.filter()` call site across 15 files actually iterates — the AI
+    Desk roster, Campus Map, NPCManager, RoomScene's own NPC spawner, Talent/Evolution/Calendar/
+    Compliance panels, Command Palette, and more) had simply never been updated when Forge was added.
+    Forge silently never spawned as an NPC anywhere in the game world and never appeared on any panel
+    that lists agents. Found via `campusMap.spec.ts`'s own real, dynamic Employee Count assertion
+    (fetches the real live agent count from `/api/load` rather than a hardcoded number) — the backend
+    genuinely has 15 agents; the frontend was silently only ever iterating 14. Fixed by adding `"forge"`
+    to `AGENT_IDS`; verified visually (a manual Playwright script showed their 🔧 badge now among the
+    Campus Map's 15 employee icons) and via `campusMap.spec.ts` (6/6 passed on a freshly restarted,
+    single-instance dev stack).
+  - **`backend/app/constitution.py`'s `cite_article()` generated a real, observed duplicate citation
+    id.** Its id was `f"cite-{source}-{article_id}-{len(citations)}"` — safe only as long as the list
+    never shrinks, but `MAX_CONSTITUTION_CITATIONS` (120) trims the list's front once it's full, which
+    pins `len(citations)` at exactly 120 forever afterward. Any two citations sharing the same
+    source+article after that point collide on id. This had already happened twice in the live dev
+    save (`cite-coach-VII-120` and `cite-academy-VIII-120`, confirmed via a direct `/api/load` check),
+    surfacing as a real React "duplicate key" warning on the OPS tab's Knowledge Base timeline
+    (`knowledgeBase.spec.ts`'s own no-console-errors assertion caught it). Fixed by adding a real
+    microsecond-precision timestamp component to the id, which stays unique regardless of how long the
+    list has been capped. New `test_ids_stay_unique_past_the_cap_for_the_same_source_and_article` proves
+    it generating 130 same-source/same-article citations past the cap. **Disclosed limitation**: the fix
+    prevents every future collision but does not retroactively repair the two citations already
+    persisted with duplicate ids in this environment's live save (deliberately not hand-patched — this
+    codebase's own `persistence.py` treats save-data integrity as a documented, hard-won lesson from a
+    real historical data-loss bug, and a manual SQLite edit for a cosmetic React key warning was judged
+    not worth that risk); they will resolve naturally once ~120 more citations cycle them out of the
+    capped window. Full backend suite (2,406/2,406 passed), `mypy app/` (176 files), `ruff check app/
+    tests/` all clean.
+
 - **CEO directive "Command Center + Professional Quant Trading Firm Upgrade," Phase 2: Command
   Center IA consolidation** (frontend: `frontend/src/ui/components/CommandCenter/FullCommandCenter.tsx`,
   `frontend/src/ui/components/CommandCenter/lib/navigation.ts`, `frontend/tests/helpers.ts`,

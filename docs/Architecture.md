@@ -11283,6 +11283,72 @@ honest limitation already disclosed for the backend commit; `tsc -b
 freshly, singly-started dev stack to confirm the change is
 non-breaking.
 
+### Two real bugs found via a full live Playwright regression run
+
+A full, unscoped `npx playwright test` (95 tests, no file filter — a
+much broader run than this session's usual scoped 3-4 file regression)
+came back 13 failed. Running the entire suite serially for 29 minutes
+in one browser session itself produced real, load-induced flakiness
+(Vite's dev-server WS proxy logged repeated `EPIPE`/`ECONNRESET`
+errors under the sustained load, and several failures didn't reproduce
+on a freshly restarted, single-instance stack) — but two specific
+failures reproduced consistently even on a clean restart, proving they
+were real, not noise:
+
+**`frontend/src/types.ts`'s `AGENT_IDS` was missing Forge, the
+fifteenth agent.** The `AgentId` type already listed `"forge"`, and
+`game/systems/AgentProfiles.ts` already carried their complete profile
+(name, occupation, personality, home location, sprite, badge) — but the
+actual runtime `AGENT_IDS` array, the one every real `.map()`/
+`.filter()` call site across the frontend actually iterates (15 files:
+the AI Desk roster, Campus Map, `NPCManager.ts`, `RoomScene.ts`'s own
+NPC presence spawner, Talent/Evolution/Calendar/Compliance panels, the
+Command Palette, and more), had simply never been updated when Forge
+was added — a plain oversight, not a deliberate exclusion. Forge
+therefore silently never spawned as an NPC anywhere in the game world
+and never appeared on any panel that lists agents. `campusMap.spec.ts`'s
+own Employee Count assertion caught it precisely because it's a real,
+dynamic check (`Object.keys(state.agents).length` against the live
+`/api/load` response, not a hardcoded number) — the backend genuinely
+has 15 agents; the frontend was silently only ever iterating 14. Fixed
+by adding `"forge"` to `AGENT_IDS`. Verified two ways: a manual
+Playwright script confirmed the Campus Map now shows "Employee Count:
+15" with Forge's own 🔧 badge among the 15 employee icons; and
+`campusMap.spec.ts` (all 6 tests) passed cleanly on a freshly restarted,
+single-instance dev stack.
+
+**`backend/app/constitution.py`'s `cite_article()` generated a real,
+already-live duplicate citation id.** Its id was `f"cite-{source}-
+{article_id}-{len(citations)}"` — a scheme that only stays unique while
+the list keeps growing. `MAX_CONSTITUTION_CITATIONS` (120) trims the
+list's front once it reaches that cap, which pins `len(citations)` at
+exactly 120 forever after — so any two citations sharing the same
+source and article after that point silently collide on id. Confirmed
+this had already happened twice in the live dev save (a direct
+`/api/load` check found `cite-coach-VII-120` and
+`cite-academy-VIII-120` each appearing twice among the 120 real,
+persisted citations), which is exactly what `knowledgeBase.spec.ts`'s
+own no-console-errors assertion caught as a React "duplicate key"
+warning on the OPS tab's Knowledge Base timeline. Fixed by adding a
+real microsecond-precision timestamp component to the id, which stays
+unique no matter how long the list has been capped; a new
+`test_ids_stay_unique_past_the_cap_for_the_same_source_and_article`
+proves 130 same-source/same-article citations past the cap all get
+distinct ids. Full backend suite (2,406/2,406), `mypy app/` (176
+files), `ruff check app/ tests/` all clean.
+
+**Deliberately not repaired**: the fix stops every *future* collision
+but does not retroactively fix the two citations already persisted with
+duplicate ids in this environment's live save. Hand-patching the
+running SQLite save was considered and rejected — `app/persistence.py`'s
+own docstring documents a real historical data-loss incident from a
+past careless save-handling bug, and risking that class of mistake to
+fix a cosmetic React key warning wasn't judged worth it. Those two
+specific duplicate pairs will resolve on their own once roughly 120
+more real citations are appended and cycle them out of the capped
+window — an honest, disclosed, environment-specific residual, not a
+remaining code defect.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

@@ -210,7 +210,22 @@ def article_lookup(articles: list[ConstitutionArticle]) -> dict[str, Constitutio
 
 
 def cite_article(citations: list[ConstitutionCitation], article_id: str, source: ConstitutionCitationSource, detail: str, sim_day: int) -> list[ConstitutionCitation]:
-    citation = ConstitutionCitation(id=f"cite-{source}-{article_id}-{len(citations)}", articleId=article_id, source=source, detail=detail, simDay=sim_day, createdAt=_now_iso())
+    # `len(citations)` alone collides once the list below is capped at
+    # MAX_CONSTITUTION_CITATIONS and old entries start getting trimmed off
+    # the front: the length then stays pinned at the cap, so any two
+    # citations of the same source+article after that point get the exact
+    # same id (a real, observed React duplicate-key warning on the OPS
+    # tab's citation feed — `constitution-citation-cite-academy-VIII-120`
+    # twice). A real microsecond-precision timestamp component keeps every
+    # id unique regardless of how long the list has been capped.
+    citation = ConstitutionCitation(
+        id=f"cite-{source}-{article_id}-{len(citations)}-{int(datetime.now(timezone.utc).timestamp() * 1_000_000)}",
+        articleId=article_id,
+        source=source,
+        detail=detail,
+        simDay=sim_day,
+        createdAt=_now_iso(),
+    )
     updated = [*citations, citation]
     if len(updated) > MAX_CONSTITUTION_CITATIONS:
         del updated[: len(updated) - MAX_CONSTITUTION_CITATIONS]

@@ -26,8 +26,15 @@ export type SceneId =
 // Points — see backend/app/founders.py's module docstring.
 // v0.7 — Vector, the Chief Quantitative Strategist, is the fourteenth.
 // Leads every Black Box Research Project (see backend/app/black_box.py).
+// Forge, the Quantitative Systems Engineer, is the fifteenth (see
+// game/systems/AgentProfiles.ts's own "the fifteenth agent" comment) —
+// AGENT_IDS below had never actually included them, a real bug found
+// via Playwright's Campus Map employee-count assertion (backend's real
+// agent roster already had 15; every frontend AGENT_IDS.map/.filter call
+// site silently only ever iterated 14, so Forge never spawned as an NPC,
+// never appeared on the AI Desk roster, etc.).
 export type AgentId = "scout" | "atlas" | "echo" | "nova" | "scribe" | "coach" | "sentinel" | "pulse" | "guardian" | "cio" | "sage" | "keystone" | "compass" | "quant" | "forge";
-export const AGENT_IDS: readonly AgentId[] = ["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio", "sage", "keystone", "compass", "quant"];
+export const AGENT_IDS: readonly AgentId[] = ["scout", "atlas", "echo", "nova", "scribe", "coach", "sentinel", "pulse", "guardian", "cio", "sage", "keystone", "compass", "quant", "forge"];
 
 /** Every room an agent's schedule (or a meeting/break override) can place them in. */
 export type AgentLocation =

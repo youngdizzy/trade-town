@@ -99,6 +99,17 @@ class TestCiteArticle:
             citations = cite_article(citations, "I", "risk_department", f"warning {i}", sim_day=1)
         assert len(citations) == MAX_CONSTITUTION_CITATIONS
 
+    def test_ids_stay_unique_past_the_cap_for_the_same_source_and_article(self) -> None:
+        # Once the list is capped, len(citations) stays pinned at the cap
+        # forever — a real, previously-observed id collision (a React
+        # duplicate-key warning on the OPS tab) whenever two citations of
+        # the same source+article land after that point.
+        citations: list = []
+        for i in range(MAX_CONSTITUTION_CITATIONS + 10):
+            citations = cite_article(citations, "VIII", "academy", f"lesson {i}", sim_day=1)
+        ids = [c.id for c in citations]
+        assert len(ids) == len(set(ids))
+
 
 # v0.7 Feature 47 — Company Operating System's "Real-Time Guidance."
 class TestArticlesForChallenge:
