@@ -7,6 +7,15 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Command Center + Professional Quant Trading Firm Upgrade," Phase 2: Overview
+  agent-thesis roll-up** (frontend: `frontend/src/ui/components/CommandCenter/panels/OverviewPanel.tsx`):
+  the last piece of this phase's named Overview enhancements. Enhances the existing Team Status card
+  (never a duplicate) with real counts (currently researching / awaiting your decision) and, when any
+  agent is in a real `"waiting"` state, a highlighted list of exactly which agents and why — reusing the
+  same `GET /api/agents/trading-status` the AI Desk's Roster tab already fetches, no new backend work.
+  `tsc -b --noEmit`, `eslint`, `vite build` clean. Playwright (`commandCenter.spec.ts`'s "renders all 40
+  tabs" + "candlestick chart on Overview") against the live stack: 2/2 passed.
+
 - **CEO directive "Command Center + Professional Quant Trading Firm Upgrade," Phase 2: Top Bar
   P&L/Emergency Stop + Overview Failure Boundary gauge** (frontend:
   `frontend/src/ui/components/CommandCenter/panels/OverviewPanel.tsx`,

@@ -11067,12 +11067,12 @@ existing spec file across the whole Playwright suite keep working
 without individually touching each one.
 
 **Explicitly scoped out of this pass** (real, separate, additive work,
-not started): the Overview screen's agent-thesis roll-up and chart
-overlays (regime shading, liquidity zones, support/resistance, order
-blocks, FVG, structure markers) — both explicitly named in the same
-directive's Phase 2 section but requiring real new UI components (the
-top bar and failure-boundary gauge were picked up next — see below).
-Also out of scope this pass: everything from Phase 0's own gap list
+not started): chart overlays (regime shading, liquidity zones, support/
+resistance, order blocks, FVG, structure markers) — explicitly named
+in the same directive's Phase 2 section but requiring real new UI
+components (the top bar, failure-boundary gauge, and Overview
+agent-thesis roll-up were all picked up next — see below). Also out of
+scope this pass: everything from Phase 0's own gap list
 above except agent trading-status/narrative explainability, which was
 picked up next (see below) — session-as-a-live-gating-reason, the
 Strategy Library/Signal Confluence Engine's live wiring, curriculum
@@ -11173,6 +11173,14 @@ floored at 0") — the only new arithmetic anywhere in this change is the
 client-side used-percent ratio (`lifetimeDrawdownPct / maxDrawdownPct`)
 that drives the gauge's own fill, computed from two numbers the backend
 already sends.
+
+Separately, `OverviewPanel.tsx`'s existing Team Status card gained the
+last remaining Overview enhancement this phase named: a real
+agent-thesis roll-up, reusing the same `GET /api/agents/trading-status`
+the AI Desk's Roster tab already fetches (no new backend work) —
+counts of agents currently researching or awaiting a real CEO decision,
+and, when any exist, a highlighted list naming exactly which agents and
+their own real headline.
 
 ## Save format compatibility
 
