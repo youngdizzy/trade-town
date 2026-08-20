@@ -7829,6 +7829,46 @@ class ThinkingProfile(CamelModel):
 # number regardless of role.
 AgentRoleClass = Literal["researcher", "risk", "quant", "leadership", "mentor_support"]
 
+# CEO directive "Command Center + Professional Quant Trading Firm
+# Upgrade" — Phase 2, AI Desk / Agent Decision Explainability. Every
+# value here is grounded in a real, already-existing signal (see
+# app/agent_trading_status.py's own module docstring for exactly which
+# one, and the honest priority order used when more than one could
+# apply): `waiting` — a real AnalystVote this agent cast is sitting on
+# a currently pending TradeProposal. `scanning` — a real ResearchItem
+# assigned to this agent (app/research.py's RESEARCHER_IDS) is queued
+# or in progress. `idle` — this agent's real role IS trading-relevant
+# (a researcher, or one of the six agents app/executive.py's vote
+# generation can ever attribute a vote to) but nothing real is active
+# right now. `risk_blocked` — Emergency Stop is currently active,
+# company-wide, for every agent. `not_trading_role` — this agent's
+# real function (see AGENT_PROFILES' own occupation string) never
+# generates a live vote or research assignment in this codebase —
+# stated as the honest truth about the role, never as a fabricated
+# "waiting for a setup" narrative it has no real basis for.
+AgentTradingStatus = Literal["waiting", "scanning", "idle", "risk_blocked", "not_trading_role"]
+
+
+class AgentTradingStatusRead(CamelModel):
+    """One agent's real, current trading-relevant state, computed fresh
+    every call — never persisted, never a predicted "next condition"
+    this codebase has no real mechanism to compute (see this
+    directive's own worked example asking for one — `detail` below
+    surfaces the real existing narrative text a "wait" vote or research
+    summary already carries instead, which is the honest substitute)."""
+
+    agent_id: AgentId = Field(alias="agentId")
+    role_class: AgentRoleClass = Field(alias="roleClass")
+    status: AgentTradingStatus
+    headline: str
+    detail: str
+    symbol: str | None = None
+    research_category: ResearchCategory | None = Field(default=None, alias="researchCategory")
+    proposal_id: str | None = Field(default=None, alias="proposalId")
+    session: SessionRead
+    updated_at: str = Field(alias="updatedAt")
+
+
 # Every dimension this codebase can honestly back today with real,
 # already-computed or trivially-derived evidence. Deliberately excludes
 # the CEO's "prediction accuracy"/"contribution to success or failure via
