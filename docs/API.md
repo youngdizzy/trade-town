@@ -1957,15 +1957,15 @@ No new `GameSaveState` field, and it feeds no scoring formula anywhere
 — it exists purely to make the real trade-flow funnel visible, and to
 distinguish "no valid trade existed" from "the system failed to
 execute a valid trade." Returns a `TradePipelineHealthSnapshot`:
-counts of real research items reaching each pipeline stage, real
-`GatekeeperRejection`/`OpportunityRejection` totals, a real tally of
+`completedResearchSignals`/`pendingProposals`/`resolvedDecisions`/
+`tradesExecuted`/`noTradeDecisions` funnel counts, real
+`opportunityRejections`/`gatekeeperRejections` totals, a real tally of
 `NoTradeReasonCode` occurrences across both rejection lists
-(`reasonCodeTally`), the current `operatingMode`, and a
-`dataHonestyNote` disclosing which counts (research history, decision
-history, opportunity/gatekeeper rejection logs) are capped rolling
-windows rather than full-lifetime totals — never a fabricated
-whole-game total from a source list this codebase only keeps a
-recent slice of.
+(`reasonCodeBreakdown`), and a `dataHonestyNote` disclosing which
+counts (research history, decision history, opportunity/gatekeeper
+rejection logs) are capped rolling windows rather than full-lifetime
+totals — never a fabricated whole-game total from a source list this
+codebase only keeps a recent slice of.
 
 Every `RiskWarning`, `GatekeeperCheck`, `GatekeeperRejection`, and
 `OpportunityRejection` this endpoint's underlying data draws on also
