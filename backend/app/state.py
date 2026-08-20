@@ -130,6 +130,7 @@ from app.schemas import (
     PlayerEventCategory,
     PlayerVsAiPrompt,
     PlayerVsAiState,
+    ResearchCategory,
     SavingsRuleType,
     SettingsState,
     SignalCalibrationState,
@@ -146,7 +147,7 @@ from app.schemas import (
 from app.quant_research_lab import cap_quant_research_experiments, file_quant_research_experiment, find_similar_experiments
 from app.research_experiment import run_research_experiment
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME
-from app.strategy_registry import register_strategy_version
+from app.strategy_registry import register_researchable_strategy, register_strategy_version
 from app.foundational_mentors import (
     add_custom_lesson as add_custom_academy_lesson_entry,
     add_custom_mentor as add_custom_academy_mentor_entry,
@@ -2334,6 +2335,41 @@ class GameState:
             )
             self.data = self.data.model_copy(update={"compiled_strategy_versions": updated_registry})
             return self.data, new_definition
+
+    async def register_researchable_strategy(
+        self,
+        *,
+        name: str,
+        description: str,
+        source_text: str,
+        timeframe: str = "1h",
+        created_by: AgentId = "quant",
+        focus_category: ResearchCategory = "stock",
+    ) -> tuple[GameSaveState, CompiledStrategyDefinition, Strategy | None]:
+        """CEO directive "Strategy Intelligence + Live Strategy
+        Attribution" — the real Strategy Lab <-> CompiledStrategyDefinition
+        identity bridge (see app/strategy_registry.py's
+        register_researchable_strategy() for the full real logic). Under
+        the same lock every other state mutation uses; raises
+        ValueError (the router translates this to a 400) if a Strategy
+        with this exact real name/slug already exists — this is only
+        for genuinely NEW Strategy Lab strategies."""
+        async with self.lock:
+            new_definition, new_strategy, updated_registry = register_researchable_strategy(
+                self.data.compiled_strategy_versions,
+                self.data.strategies,
+                name=name,
+                description=description,
+                source_text=source_text,
+                timeframe=timeframe,
+                created_by=created_by,
+                focus_category=focus_category,
+            )
+            updates: dict[str, object] = {"compiled_strategy_versions": updated_registry}
+            if new_strategy is not None:
+                updates["strategies"] = [*self.data.strategies, new_strategy]
+            self.data = self.data.model_copy(update=updates)
+            return self.data, new_definition, new_strategy
 
     async def submit_quant_research_experiment(
         self,

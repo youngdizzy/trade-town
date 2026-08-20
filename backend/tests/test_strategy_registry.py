@@ -1,16 +1,42 @@
 """Covers app/strategy_registry.py — CEO directive "Professional Quant
 Firm Phase," Feature 37: real, persisted CompiledStrategyDefinition
-version history.
+version history. Also covers this module's later
+register_researchable_strategy() — CEO directive "Strategy Intelligence
++ Live Strategy Attribution": the real Strategy Lab <->
+CompiledStrategyDefinition identity bridge.
 """
 from __future__ import annotations
 
 import asyncio
 
 from app.state import GameState
-from app.strategy_registry import register_strategy_version
+from app.strategy_registry import register_researchable_strategy, register_strategy_version
 
 _TEXT_V1 = "Buy when price closes above the 50 EMA, then enter when price closes above the previous swing high."
 _TEXT_V2 = "Buy when price closes above the 20 EMA, then enter when price closes above the previous swing high."
+
+# A real, fully-specified 50 EMA breakout/pullback long setup — every
+# clause chosen to match app/strategy_compiler.py's own disclosed
+# vocabulary exactly (verified to reach status == "compiled", not just
+# "invalid"/"ambiguous" — see TestRegisterResearchableStrategy below).
+EMA_50_PULLBACK_LONG_TEXT = (
+    "This strategy waits for price to stay below the 50 EMA, then closes above the 50 EMA on a confirmed candle. "
+    "It then requires at least two bearish candles as the pullback. "
+    "Entry triggers when price closes above the previous swing high established before the pullback. "
+    "Use a chandelier stop with a 22-period ATR and a 3.0x multiplier. "
+    "Target 2R."
+)
+# The symmetric short inverse.
+EMA_50_PULLBACK_SHORT_TEXT = (
+    "This strategy waits for price to stay above the 50 EMA, then closes below the 50 EMA on a confirmed candle. "
+    "It then requires at least two bullish candles as the pullback. "
+    "Entry triggers when price closes below the previous swing low established before the pullback. "
+    "Use a chandelier stop with a 22-period ATR and a 3.0x multiplier. "
+    "Target 2R."
+)
+# Deliberately missing a target — real, incomplete text, same class this
+# compiler already refuses to silently guess at (see compile_strategy_text()).
+_INCOMPLETE_TEXT = "Buy when price closes above the 50 EMA, then enter when price closes above the previous swing high."
 
 
 class TestRegisterStrategyVersion:
@@ -54,3 +80,88 @@ class TestRegisterCompiledStrategyVersionState:
         saved, v2 = asyncio.run(state.register_compiled_strategy_version(name="EMA Breakout", source_text=_TEXT_V2))
         assert v2.version == 2
         assert saved.compiled_strategy_versions[v1.id] == [v1, v2]
+
+
+class TestRegisterResearchableStrategy:
+    """The real Strategy Lab <-> CompiledStrategyDefinition identity
+    bridge — a Strategy is only ever created when the real compiler
+    actually reached status == "compiled"."""
+
+    def test_a_fully_specified_text_creates_both_a_real_definition_and_a_linked_strategy(self) -> None:
+        definition, strategy, registry = register_researchable_strategy(
+            {}, [], name="50 EMA Breakout Pullback Long", description="A real, testable long setup.", source_text=EMA_50_PULLBACK_LONG_TEXT
+        )
+        assert definition.status == "compiled"
+        assert strategy is not None
+        assert strategy.id == definition.id == "50-ema-breakout-pullback-long"
+        assert strategy.compiled_definition_id == definition.id
+        assert strategy.stage == "idea"
+        assert registry[definition.id] == [definition]
+
+    def test_the_symmetric_short_inverse_also_compiles_and_links(self) -> None:
+        definition, strategy, _ = register_researchable_strategy(
+            {}, [], name="50 EMA Breakout Pullback Short", description="A real, testable short setup.", source_text=EMA_50_PULLBACK_SHORT_TEXT
+        )
+        assert definition.status == "compiled"
+        assert strategy is not None
+        assert strategy.compiled_definition_id == definition.id
+
+    def test_an_incomplete_text_returns_the_real_definition_but_no_strategy(self) -> None:
+        definition, strategy, registry = register_researchable_strategy({}, [], name="Incomplete Strategy", description="x", source_text=_INCOMPLETE_TEXT)
+        assert definition.status == "invalid"
+        assert strategy is None
+        # The real, honestly-incomplete definition is still persisted —
+        # a CEO/agent can see exactly why no Strategy was created.
+        assert registry[definition.id] == [definition]
+
+    def test_raises_when_a_strategy_with_the_same_real_slug_already_exists(self) -> None:
+        definition, strategy, registry = register_researchable_strategy(
+            {}, [], name="50 EMA Breakout Pullback Long", description="x", source_text=EMA_50_PULLBACK_LONG_TEXT
+        )
+        assert strategy is not None
+        try:
+            register_researchable_strategy(registry, [strategy], name="50 EMA Breakout Pullback Long", description="x", source_text=EMA_50_PULLBACK_LONG_TEXT)
+            raise AssertionError("expected ValueError")
+        except ValueError as exc:
+            assert "already exists" in str(exc)
+
+    def test_other_existing_strategies_do_not_block_a_genuinely_new_one(self) -> None:
+        from app.schemas import Strategy
+
+        other = Strategy(id="strategy-momentum", name="Momentum Breakout", description="x", createdBy="echo", focusCategory="stock", createdAt="2026-01-01T00:00:00+00:00")
+        definition, strategy, _ = register_researchable_strategy(
+            {}, [other], name="50 EMA Breakout Pullback Long", description="x", source_text=EMA_50_PULLBACK_LONG_TEXT
+        )
+        assert strategy is not None
+
+
+class TestRegisterResearchableStrategyState:
+    def test_state_appends_the_new_strategy_and_persists_the_definition(self) -> None:
+        state = GameState()
+        before = asyncio.run(state.snapshot())
+        before_count = len(before.strategies)
+        saved, definition, strategy = asyncio.run(
+            state.register_researchable_strategy(name="50 EMA Breakout Pullback Long", description="A real, testable long setup.", source_text=EMA_50_PULLBACK_LONG_TEXT)
+        )
+        assert strategy is not None
+        assert len(saved.strategies) == before_count + 1
+        assert saved.strategies[-1].id == strategy.id
+        assert saved.compiled_strategy_versions[definition.id] == [definition]
+
+    def test_an_incomplete_text_persists_the_definition_but_adds_no_strategy(self) -> None:
+        state = GameState()
+        before = asyncio.run(state.snapshot())
+        before_count = len(before.strategies)
+        saved, definition, strategy = asyncio.run(state.register_researchable_strategy(name="Incomplete Strategy", description="x", source_text=_INCOMPLETE_TEXT))
+        assert strategy is None
+        assert len(saved.strategies) == before_count
+        assert saved.compiled_strategy_versions[definition.id] == [definition]
+
+    def test_raises_when_registering_the_same_strategy_name_twice(self) -> None:
+        state = GameState()
+        asyncio.run(state.register_researchable_strategy(name="50 EMA Breakout Pullback Long", description="x", source_text=EMA_50_PULLBACK_LONG_TEXT))
+        try:
+            asyncio.run(state.register_researchable_strategy(name="50 EMA Breakout Pullback Long", description="x", source_text=EMA_50_PULLBACK_LONG_TEXT))
+            raise AssertionError("expected ValueError")
+        except ValueError:
+            pass

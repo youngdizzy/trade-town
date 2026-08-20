@@ -29,6 +29,7 @@ from app.schemas import (
     ParameterSensitivityResult,
     QuantResearchExperiment,
     QuantResearchExperimentSimilarity,
+    ResearchCategory,
     ResearchExperimentRecord,
     Strategy,
     StrategyCertification,
@@ -105,6 +106,24 @@ class RegisterStrategyVersionRequest(BaseModel):
     source_text: str = Field(alias="sourceText")
     timeframe: str = "1h"
     created_by: AgentId = Field(default="quant", alias="createdBy")
+
+
+class RegisterResearchableStrategyRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str
+    description: str
+    source_text: str = Field(alias="sourceText")
+    timeframe: str = "1h"
+    created_by: AgentId = Field(default="quant", alias="createdBy")
+    focus_category: ResearchCategory = Field(default="stock", alias="focusCategory")
+
+
+class RegisterResearchableStrategyResponse(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    definition: CompiledStrategyDefinition
+    strategy: Strategy | None
 
 
 class SubmitQuantResearchExperimentRequest(BaseModel):
@@ -398,6 +417,34 @@ async def strategy_versions(name: str = Query(..., min_length=1)) -> list[Compil
     preview alone never appears here)."""
     state = await game_state.snapshot()
     return state.compiled_strategy_versions.get(strategy_definition_slug(name), [])
+
+
+@router.post("/register-researchable-strategy", response_model=RegisterResearchableStrategyResponse)
+async def register_researchable_strategy_endpoint(payload: RegisterResearchableStrategyRequest) -> RegisterResearchableStrategyResponse:
+    """CEO directive "Strategy Intelligence + Live Strategy Attribution"
+    — the real Strategy Lab <-> CompiledStrategyDefinition identity
+    bridge (see app/strategy_registry.py's own module docstring and
+    register_researchable_strategy() for the full real logic). Unlike
+    `POST /register-strategy-version` (persists rules only), this also
+    creates a real, new Strategy Lab `Strategy` — but only when
+    `source_text` actually compiled (`status == "compiled"`); an
+    ambiguous/invalid text still returns its own real `definition` (with
+    real `ambiguities`/`detail` explaining why) and a `null` `strategy`,
+    never a fabricated link. 400 if a Strategy with this exact real name
+    already exists — this endpoint is for genuinely new strategies."""
+    try:
+        state, new_definition, new_strategy = await game_state.register_researchable_strategy(
+            name=payload.name,
+            description=payload.description,
+            source_text=payload.source_text,
+            timeframe=payload.timeframe,
+            created_by=payload.created_by,
+            focus_category=payload.focus_category,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    persist_modules(state)
+    return RegisterResearchableStrategyResponse(definition=new_definition, strategy=new_strategy)
 
 
 @router.post("/quant-research-lab/experiments", response_model=SubmitQuantResearchExperimentResult)

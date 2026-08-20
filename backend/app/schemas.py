@@ -1345,6 +1345,22 @@ class Strategy(CamelModel):
     # app/sandbox.py's module docstring for why this is a tracked
     # commitment number, not fabricated live P&L attribution.
     allocated_capital: float = Field(default=0.0, alias="allocatedCapital")
+    # CEO directive "Strategy Intelligence + Live Strategy Attribution" —
+    # closes a real identity split this repo's own architecture audit
+    # surfaced: the stage-gated `Strategy` (this class — dossier/
+    # certification/health-tracked) and the rule-bearing
+    # `CompiledStrategyDefinition` (app/strategy_compiler.py's real,
+    # deterministic trigger/requirement/entry/stop/target sequence) were
+    # two disconnected identity spaces — a `Strategy` had no way to say
+    # which compiled rules, if any, it actually represents. `None` means
+    # exactly what it always meant before this field existed: this
+    # Strategy has no represented executable logic yet (true for the
+    # four original seed strategies, which are real tracked ideas with a
+    # focus category but no compiled trigger/entry/stop/target sequence
+    # backing them). See app/strategy_registry.py's
+    # register_researchable_strategy() for the one real way this field
+    # gets set — never a caller-supplied arbitrary string.
+    compiled_definition_id: str | None = Field(default=None, alias="compiledDefinitionId")
 
 
 class BacktestSession(CamelModel):
