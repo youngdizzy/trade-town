@@ -26,9 +26,13 @@ strategy and metric_label that earned it the slot" pattern), one real
 dimension per slot, and (2) staged elimination rounds, each gated on one
 real, existing verdict.
 
-THE EIGHT ROUNDS, DISCLOSED. The directive lists 8 rounds; this module
-implements 7 as real, evidence-based gates and discloses the 8th as
-architecturally blocked rather than fabricating it:
+THE NINE ROUNDS, DISCLOSED. The original directive listed 8 rounds; this
+module implements 7 of those as real, evidence-based gates and discloses
+the 8th as architecturally blocked rather than fabricating it. CEO
+directive "Professional Quant Firm Phase 41-45," Feature 43
+(Regime-Adaptive Strategy Selection) adds a real 9th round below,
+reusing regime evidence app/strategy_engine.py's backtest already
+computes rather than inventing a parallel regime classifier:
 
 1. Basic validity — the definition compiled AND produced at least one
    real closed trade. (Real: `backtest.overall.trade_count`.)
@@ -55,18 +59,34 @@ architecturally blocked rather than fabricating it:
    expectancy sequences, per shared symbol (see `_assess_pair_
    correlations()` below) — a real, disclosed diversification signal,
    never a fabricated portfolio metric, and still never eliminates.
-8. Final research review — the closing gate: survivors must read
-   "robust" on `overfitting_diagnosis` (Feature 39). Survivors of every
-   real round become `production_candidates` — a real, cited LABEL for
-   CEO visibility only. It is NEVER an autonomous production promotion:
-   this codebase's own separate risk/governance approval flow
-   (app/gatekeeper.py's TradeGatekeeper, StrategyReview, Model
-   Validation) is the only real path to live capital, and nothing here
-   bypasses it.
+8. Final research review — must read "robust" on `overfitting_diagnosis`
+   (Feature 39).
+9. Regime stability — eliminates only a confirmed `no_validated_regime`
+   (every real regime bucket, trend or volatility, that reached the
+   same `enough_evidence` sample-size bar the rest of this module
+   already uses showed zero or negative expectancy — see `_regime_
+   stability()`). `insufficient_data` (no bucket ever reached that bar)
+   survives: a strategy that has never been tested enough within any
+   one regime has not been proven NOT to work in it either. This is a
+   real evidence-based selection filter, not a live "what regime is it
+   right now" matcher — this codebase has no link from a live trade
+   proposal back to the specific `CompiledStrategyDefinition` that
+   generated it (proposals are Analyst-Desk-generated candidates, not
+   Strategy-Lab-compiled ones), so a live regime-alignment gate on the
+   trading pipeline itself is a real architectural gap this round does
+   NOT close — see this directive's own final report.
+
+   Survivors of every real round become `production_candidates` — a
+   real, cited LABEL for CEO visibility only. It is NEVER an autonomous
+   production promotion: this codebase's own separate risk/governance
+   approval flow (app/gatekeeper.py's TradeGatekeeper, StrategyReview,
+   Model Validation) is the only real path to live capital, and nothing
+   here bypasses it.
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Literal
 
 from app.portfolio_intelligence import pearson_correlation
 from app.research_experiment import run_research_experiment
@@ -92,9 +112,35 @@ def _walk_forward_positive_window_pct(record: ResearchExperimentRecord) -> float
     return round(total_positive / total_evaluated * 100, 1)
 
 
+_RegimeStabilityVerdict = Literal["regime_validated", "no_validated_regime", "insufficient_data"]
+
+
+def _regime_stability(record: ResearchExperimentRecord) -> tuple[_RegimeStabilityVerdict, str]:
+    """Feature 43 — Regime-Adaptive Strategy Selection. Reuses the
+    regime evidence app/strategy_engine.py already computes on every
+    compiled backtest (regimeTrendBreakdown/regimeVolatilityBreakdown,
+    the same real EMA-slope/ATR-vs-median proxy buckets Feature 38
+    added) rather than deriving a second regime read. A bucket only
+    counts as real evidence once it clears that bucket's own
+    `enough_evidence` sample-size bar (see EmaPullbackStatsBucket's own
+    docstring) — a handful of trades landing in one regime by chance is
+    not treated as proof either way."""
+    buckets = list(record.backtest.regime_trend_breakdown) + list(record.backtest.regime_volatility_breakdown)
+    evidenced = [b for b in buckets if b.verdict == "enough_evidence"]
+    if not evidenced:
+        return "insufficient_data", "No regime bucket (trend or volatility) reached enough real closed trades for a sample-size verdict — missing evidence, never treated as a negative finding."
+    positive = [b for b in evidenced if b.expectancy_r is not None and b.expectancy_r > 0]
+    if positive:
+        labels = ", ".join(f"{b.label} ({b.expectancy_r:+.2f}R)" for b in positive)
+        return "regime_validated", f"Real positive expectancy with enough evidence in: {labels}."
+    labels = ", ".join(f"{b.label} ({b.expectancy_r:+.2f}R)" if b.expectancy_r is not None else b.label for b in evidenced)
+    return "no_validated_regime", f"Every regime bucket that reached enough evidence showed zero or negative expectancy: {labels}."
+
+
 def _build_entry(record: ResearchExperimentRecord) -> StrategyTournamentEntry:
     overall = record.backtest.overall
     model_validation_verdict = record.backtest.model_validation.verdict if record.backtest.model_validation is not None else None
+    regime_stability_verdict, regime_stability_detail = _regime_stability(record)
     return StrategyTournamentEntry(
         definitionId=record.definition_id,
         definitionName=record.definition_name,
@@ -114,6 +160,8 @@ def _build_entry(record: ResearchExperimentRecord) -> StrategyTournamentEntry:
         lookAheadVerdict=record.look_ahead_audit.verdict,
         modelValidationVerdict=model_validation_verdict,
         overfittingVerdict=record.overfitting_diagnosis.verdict,
+        regimeStabilityVerdict=regime_stability_verdict,
+        regimeStabilityDetail=regime_stability_detail,
     )
 
 
@@ -281,6 +329,13 @@ def run_strategy_tournament(
         entries_by_id, survivors, 8, "Final research review",
         "Eliminates unless the overfitting diagnosis (Feature 39) reads 'robust'.",
         lambda e: f"Overfitting diagnosis read '{e.overfitting_verdict}', not 'robust'." if e.overfitting_verdict != "robust" else None,
+    )
+    rounds.append(round_result)
+
+    round_result, survivors = _eliminate(
+        entries_by_id, survivors, 9, "Regime stability",
+        "Eliminates only a confirmed 'no_validated_regime' — every real regime bucket (trend or volatility) that reached enough evidence showed zero or negative expectancy. 'insufficient_data' survives (missing regime evidence is not negative evidence).",
+        lambda e: e.regime_stability_detail if e.regime_stability_verdict == "no_validated_regime" else None,
     )
     rounds.append(round_result)
 

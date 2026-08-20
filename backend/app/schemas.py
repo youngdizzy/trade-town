@@ -4135,6 +4135,22 @@ class StrategyTournamentEntry(CamelModel):
     look_ahead_verdict: Literal["clean", "violations_found", "insufficient_data"] = Field(alias="lookAheadVerdict")
     model_validation_verdict: ModelValidationVerdict | None = Field(default=None, alias="modelValidationVerdict")
     overfitting_verdict: OverfittingVerdict = Field(alias="overfittingVerdict")
+    # CEO directive "Professional Quant Firm Phase 41-45," Feature 43 —
+    # Regime-Adaptive Strategy Selection. Real evidence already computed
+    # by app/strategy_engine.py's regimeTrendBreakdown/
+    # regimeVolatilityBreakdown (never re-derived): "regime_validated"
+    # means at least one real regime bucket (trend or volatility) hit
+    # the same enough_evidence sample-size bar every other verdict on
+    # this entry uses AND showed a real positive expectancy in that
+    # bucket. "no_validated_regime" means every regime bucket that
+    # cleared the sample-size bar showed zero or negative expectancy —
+    # a real, confirmed finding this module's Round 9 uses to eliminate
+    # (see run_strategy_tournament's own docstring). "insufficient_data"
+    # means no regime bucket ever cleared the sample-size bar — missing
+    # evidence, never treated as negative evidence, and never
+    # eliminated.
+    regime_stability_verdict: Literal["regime_validated", "no_validated_regime", "insufficient_data"] = Field(alias="regimeStabilityVerdict")
+    regime_stability_detail: str = Field(alias="regimeStabilityDetail")
     eliminated_at_round: int | None = Field(default=None, alias="eliminatedAtRound")
     elimination_reason: str | None = Field(default=None, alias="eliminationReason")
 

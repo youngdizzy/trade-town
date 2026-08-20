@@ -7,9 +7,9 @@ TestRunEmaPullbackResearchIntegration docstring).
 """
 from __future__ import annotations
 
-from app.schemas import EmaPullbackStatsBucket, ResearchExperimentRecord, WalkForwardSymbolResult, WalkForwardValidationResult, WalkForwardWindowResult
+from app.schemas import CompiledStrategyBacktestResult, EmaPullbackStatsBucket, ResearchExperimentRecord, WalkForwardSymbolResult, WalkForwardValidationResult, WalkForwardWindowResult
 from app.strategy_compiler import compile_strategy_text
-from app.strategy_tournament import _assess_pair_correlations, run_strategy_tournament
+from app.strategy_tournament import _assess_pair_correlations, _regime_stability, run_strategy_tournament
 
 _VALID_TEXT_A = "Buy when price closes above the 50 EMA, then enter when price closes above the previous swing high. Place the stop at the Chandelier Stop and target 2R."
 _VALID_TEXT_B = "Buy when price closes above the 20 EMA, then enter when price closes above the previous swing high. Place the stop at the Chandelier Stop and target 3R."
@@ -18,6 +18,15 @@ _INVALID_TEXT = "Buy when the moon is full."
 
 def _bucket(expectancy: float | None) -> EmaPullbackStatsBucket:
     return EmaPullbackStatsBucket.model_construct(label="w", trade_count=0, win_count=0, loss_count=0, open_count=0, detail="x", expectancy_r=expectancy)  # type: ignore[call-arg]
+
+
+def _regime_bucket(label: str, expectancy: float | None, *, verdict: str | None) -> EmaPullbackStatsBucket:
+    return EmaPullbackStatsBucket.model_construct(label=label, trade_count=0, win_count=0, loss_count=0, open_count=0, detail="x", expectancy_r=expectancy, verdict=verdict)  # type: ignore[call-arg]
+
+
+def _record_with_regime_buckets(trend: list[EmaPullbackStatsBucket], volatility: list[EmaPullbackStatsBucket]) -> ResearchExperimentRecord:
+    backtest = CompiledStrategyBacktestResult.model_construct(regime_trend_breakdown=trend, regime_volatility_breakdown=volatility)  # type: ignore[call-arg]
+    return ResearchExperimentRecord.model_construct(backtest=backtest)  # type: ignore[call-arg]
 
 
 def _window(index: int, expectancy: float | None) -> WalkForwardWindowResult:
@@ -48,7 +57,7 @@ class TestRunStrategyTournament:
         a = compile_strategy_text(name="Strategy A2", source_text=_VALID_TEXT_A)
         b = compile_strategy_text(name="Strategy B2", source_text=_VALID_TEXT_B)
         result = run_strategy_tournament([a, b], symbols=["AAPL"], candles_per_symbol=6000)
-        assert [r.round_number for r in result.rounds] == [1, 2, 3, 4, 5, 6, 7, 8]
+        assert [r.round_number for r in result.rounds] == [1, 2, 3, 4, 5, 6, 7, 8, 9]
 
     def test_round_7_portfolio_interaction_is_disclosed_as_partially_blocked(self) -> None:
         a = compile_strategy_text(name="Strategy A3", source_text=_VALID_TEXT_A)
@@ -127,6 +136,48 @@ class TestRunStrategyTournament:
         result = run_strategy_tournament([a, b], symbols=["AAPL"], candles_per_symbol=6000)
         assert result.data_honesty_note
         assert "never an autonomous production promotion" in result.data_honesty_note
+
+
+class TestRegimeStability:
+    """Feature 43 — Regime-Adaptive Strategy Selection. Hand-traced
+    fixtures over `EmaPullbackStatsBucket`'s own real `verdict`/
+    `expectancy_r` fields, never a live backtest run (the round-level
+    integration is covered by TestRunStrategyTournament above)."""
+
+    def test_no_bucket_reaching_enough_evidence_reads_insufficient_data(self) -> None:
+        record = _record_with_regime_buckets(
+            trend=[_regime_bucket("trending_up", 0.4, verdict="not_enough_evidence")],
+            volatility=[_regime_bucket("high", -0.1, verdict="not_enough_evidence")],
+        )
+        verdict, detail = _regime_stability(record)
+        assert verdict == "insufficient_data"
+        assert "missing evidence" in detail.lower()
+
+    def test_one_real_positive_evidenced_bucket_reads_regime_validated(self) -> None:
+        record = _record_with_regime_buckets(
+            trend=[_regime_bucket("trending_up", 0.6, verdict="enough_evidence"), _regime_bucket("ranging", -0.2, verdict="not_enough_evidence")],
+            volatility=[],
+        )
+        verdict, detail = _regime_stability(record)
+        assert verdict == "regime_validated"
+        assert "trending_up" in detail
+
+    def test_every_evidenced_bucket_non_positive_reads_no_validated_regime(self) -> None:
+        record = _record_with_regime_buckets(
+            trend=[_regime_bucket("trending_up", -0.3, verdict="enough_evidence")],
+            volatility=[_regime_bucket("normal", 0.0, verdict="enough_evidence")],
+        )
+        verdict, detail = _regime_stability(record)
+        assert verdict == "no_validated_regime"
+        assert "trending_up" in detail and "normal" in detail
+
+    def test_a_negative_evidenced_bucket_never_masks_a_separate_positive_evidenced_bucket(self) -> None:
+        record = _record_with_regime_buckets(
+            trend=[_regime_bucket("trending_down", -0.5, verdict="enough_evidence")],
+            volatility=[_regime_bucket("low", 0.3, verdict="enough_evidence")],
+        )
+        verdict, _ = _regime_stability(record)
+        assert verdict == "regime_validated"
 
 
 class TestAssessPairCorrelations:
