@@ -1507,8 +1507,9 @@ definition's own trigger/requirement/entry sequence and stop/target
 specs — against real (mock) candle history, through the same Monte Carlo
 bootstrap and Model Validator pipeline `ema-pullback-research` uses.
 Returns a `CompiledStrategyBacktestResult` (`overall`/`sessionBreakdown`/
-`instrumentBreakdown` buckets, `modelValidation`, `monteCarlo`,
-`dataHonestyNote`) shaped like the EMA pullback result above. `400` if
+`instrumentBreakdown`/`regimeTrendBreakdown`/`regimeVolatilityBreakdown`
+buckets, `modelValidation`, `monteCarlo`, `dataHonestyNote`) shaped like
+the EMA pullback result above. `400` if
 `definition.status !== "compiled"` or the definition references an
 indicator outside the engine's current `price_close/open/high/low`,
 `ema`, `sma`, `rsi`, `macd_line`/`macd_signal`/`macd_histogram`,

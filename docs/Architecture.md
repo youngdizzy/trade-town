@@ -10706,16 +10706,62 @@ instruction:** Round 7 (portfolio interaction) above is the primary one.
 Session robustness (Round 5) is real data but a SOFT round — no
 non-fabricated diversity threshold exists yet, so it never eliminates,
 only annotates. Regime-breakdown comparison (as opposed to session
-breakdown, which IS real and used) is not available for compiled
-strategies — `CompiledStrategyBacktestResult` has `sessionBreakdown`/
-`instrumentBreakdown` but no `regimeBreakdown` field; adding one was out
-of scope for this pass. The Quant Research Lab's duplicate-detection
-heuristic is real but simple (word-overlap, never semantic/NLP) — the
-Research Lab and version registry endpoints have no dedicated router
-HTTP integration tests, matching this codebase's existing convention for
+breakdown, which IS real and used) was not available for compiled
+strategies at the time of this pass — `CompiledStrategyBacktestResult`
+had `sessionBreakdown`/`instrumentBreakdown` but no `regimeBreakdown`
+field, out of scope for this pass; closed in the very next addendum
+below. The Quant Research Lab's duplicate-detection heuristic is real
+but simple (word-overlap, never semantic/NLP) — the Research Lab and
+version registry endpoints have no dedicated router HTTP integration
+tests, matching this codebase's existing convention for
 `app/routers/sandbox.py` (business logic is unit-tested directly;
 Playwright covers the real end-to-end HTTP path instead — see the
 Testing section above).
+
+### Addendum: real regime breakdowns for the compiled-strategy engine, and Feature 38 metrics finally surfaced in the UI
+
+Two follow-through items from this same directive's own disclosed gap
+list, addressed immediately after the main pass landed.
+
+**Regime breakdowns.** Every `EmaPullbackTradeRecord` already carried a
+real, per-trade `regimeTrend`/`regimeVolatility` read (a self-contained
+proxy computed only from data available up to the trade's own entry bar
+— never a look-ahead label), and the reference 50 EMA strategy
+(`EmaPullbackResearchResult`) already aggregated those into
+`regimeTrendBreakdown`/`regimeVolatilityBreakdown` — but the newer,
+general `CompiledStrategyBacktestResult` never did, even though
+`run_compiled_strategy_backtest()` already had every real trade record
+in hand. Closed with the same `aggregate_bucket()` every other
+breakdown already uses, grouped by `regimeTrend`/`regimeVolatility`
+exactly as `sessionBreakdown` already groups by session — no new
+regime-detection logic, no new field on the trade record, no second
+aggregation implementation. This also gives Feature 40's Tournament
+Round 5 real regime data to potentially draw on in a future pass,
+should a non-fabricated diversity/robustness threshold be designed for
+it — Round 5 itself was left unchanged (session-based, soft) in this
+addendum, since inventing that threshold was exactly the kind of
+fabrication risk the directive warned against.
+
+**Feature 38 metrics had no frontend surface at all.** The main
+Features 36-40 pass added real Sharpe/Sortino/Calmar/longest winning
+streak/largest win-loss/avg holding bars to `EmaPullbackStatsBucket` —
+but a `frontend/src/types.ts` audit found the TS interface had been
+updated (so the fields typechecked) while the one shared rendering
+component, `BucketRow` (in `EmaPullbackResearchView.tsx`, reused by
+`StrategyCompilerView.tsx`), was never touched — a real display gap, not
+a data gap. Added a second metrics row (Sharpe/Sortino/Calmar/Max
+Drawdown) to that one shared component, which immediately surfaces the
+real numbers across all 11 breakdown sections between the two views
+(the 50 EMA Research tab's 7 and the Strategy Compiler's 4) — the same
+"one shared component, no per-view duplication" pattern this codebase
+already uses for bucket display.
+
+2 new backend tests (`test_strategy_engine.py`), full backend suite
+(2,352 tests), `mypy app/` (174 files), `ruff check app/ tests/` all
+clean. Frontend `tsc --noEmit`, `eslint`, `vite build` clean;
+`sandbox.spec.ts` (4 tests, extended with assertions that the regime
+breakdowns and the Sharpe row actually render after a real backtest)
+passes against the live dev stack.
 
 ## Save format compatibility
 

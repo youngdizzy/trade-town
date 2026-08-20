@@ -7,6 +7,25 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Compiled-strategy backtest: real regime breakdowns + Feature 38 metrics surfaced everywhere** (backend:
+  `backend/app/schemas.py`, `backend/app/strategy_engine.py`; frontend: `frontend/src/types.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/sandbox/EmaPullbackResearchView.tsx`,
+  `StrategyCompilerView.tsx`): follow-through on the Features 36-40 final report's own disclosed gap list.
+  `CompiledStrategyBacktestResult` already had `sessionBreakdown`/`instrumentBreakdown`; every
+  `EmaPullbackTradeRecord` already carries a real per-trade `regimeTrend`/`regimeVolatility` read (a
+  self-contained proxy computed only from data available up to the trade's own entry bar — never a look-ahead
+  label), and the reference 50 EMA strategy already aggregated those into `regimeTrendBreakdown`/
+  `regimeVolatilityBreakdown` — the newer, general compiled-strategy engine never did. Closed via the same
+  `aggregate_bucket()` every other breakdown already uses, grouped by `regimeTrend`/`regimeVolatility` exactly
+  as `sessionBreakdown` groups by session; no new regime-detection logic, no new trade-record field. Separately,
+  the shared `BucketRow` component (used by every bucket display in both the 50 EMA Research tab and the
+  Strategy Compiler) gained a Sharpe/Sortino/Calmar/Max Drawdown row — the earlier Features 36-40 pass added
+  these real metrics to the backend `EmaPullbackStatsBucket` but never gave them a frontend surface anywhere;
+  one shared-component change now surfaces them across all 11 breakdown sections between the two views. 2 new
+  backend tests; full backend suite (2,352 tests), `mypy app/` (174 files), `ruff check app/ tests/` clean.
+  Frontend `tsc --noEmit`, `eslint`, `vite build` clean; `sandbox.spec.ts` (4 tests, with new assertions for the
+  regime breakdowns and the Sharpe row) passes against the live dev stack.
+
 - **CEO directive "Professional Quant Firm Phase" — Features 36-40: Quant Research → Strategy → Backtest →
   Validation → Tournament** (new: `backend/app/overfitting_diagnostics.py`, `backend/app/quant_research_lab.py`,
   `backend/app/strategy_registry.py`, `backend/app/strategy_tournament.py`; modified:
