@@ -10925,6 +10925,53 @@ work — the taxonomy, the pipeline health snapshot, the confluence score/
 breakdown, and the regime stability verdict are all backend-only so
 far.
 
+**Feature 44 — Agent Learning must not cause data leakage.** A
+research pass across every existing per-agent tracking system (`app/
+performance_review.py`, `app/executive_intelligence.py`, `app/
+weighted_decisions.py`, `app/foundational_mentors.py`) found no
+train/validation/test separation exists at the agent level anywhere —
+only at the strategy-backtest level (`app/walk_forward.py`/`app/
+leakage_audit.py`). It also found `AgentPerformanceReview` currently
+feeds no live weighting or promotion decision at all: a real, disclosed
+gap, but not an active leak, since nothing downstream reads it yet.
+
+New `AgentReviewDataSplit` (`app/schemas.py`) is a real, deterministic,
+chronological classification — never randomly shuffled, mirroring `app/
+walk_forward.py`'s own window discipline — applied to one agent's own
+stored review history via `app/performance_review.py`'s new
+`classify_review_data_splits()`: the single most recent review is
+`live_paper` (a fresh, unconfirmed observation), the review it
+superseded is `test` (the first genuinely held-out period), the next
+two are `validation`, everything older is `training`. Computed fresh
+every call from the full history rather than stored on the review
+itself, so a review's label correctly ages as later reviews accumulate
+(this week's `live_paper` review becomes `test` the moment next week's
+review is generated). New `GET /api/performance-reviews/{agentId}/
+history` surfaces it, pairing each stored review with its current split
+in a new `AgentPerformanceReviewHistoryEntry`.
+
+This is deliberately preventive infrastructure, not a retrofit: it
+exists so that when a future evidence-based agent promotion/demotion
+system is built (this same directive's own explicit "evidence-based,
+not XP-based" ask), it has a real, non-fabricated way to require review
+evidence to have aged past the freshest `live_paper` window before
+being cited as proof of durable improvement — closing the leakage risk
+before it can be introduced, rather than after a promotion system
+already exists and already leaks.
+
+Separately, the one live, already-existing agent-level weighting loop
+this directive explicitly worried about was audited (not modified):
+`app/weighted_decisions.py`'s `compute_accuracy_multiplier()` reads
+`app/executive_intelligence.py`'s `compute_executive_accuracy_scores()`,
+which only ever draws from `ceo_decisions` whose `outcome` has already
+resolved to `"correct"`/`"incorrect"` — a proposal only gets an
+`outcome` once its underlying trade has actually closed, so the
+department stance being weighted right now (belonging to an unresolved
+proposal) can never appear in its own weight. This is documented as
+causally sound directly in that function's own docstring, rather than
+building an unneeded train/test split where none would be
+architecturally meaningful.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

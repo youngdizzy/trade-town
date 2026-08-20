@@ -1861,6 +1861,28 @@ weekly — see `app/nexus.py`'s tick). The full list is also broadcast on
 every WS tick (`agentPerformanceReviews`) — this endpoint is a
 convenience for fetching one agent's latest review directly.
 
+### `GET /api/performance-reviews/{agent_id}/history`
+
+CEO directive "Professional Quant Firm Phase 41-45," Feature 44 —
+read-only, no body. Returns every stored `AgentPerformanceReview` for
+`agent_id` (oldest first), each paired with a real, freshly computed
+`AgentReviewDataSplit` (`training`/`validation`/`test`/`live_paper`) as
+an `AgentPerformanceReviewHistoryEntry`. The split is a real,
+deterministic, chronological classification (`app/performance_
+review.py`'s `classify_review_data_splits()`) — never randomly
+shuffled, mirroring `app/walk_forward.py`'s own window discipline
+applied to agent-level evidence: the single most recent review reads
+`live_paper` (a fresh, unconfirmed observation), the review it
+superseded reads `test`, the next two read `validation`, everything
+older reads `training`. Recomputed fresh from the full history on every
+call — never stored on the review itself — so a review's label
+correctly ages as later reviews accumulate. A deliberately preventive
+read: nothing in this codebase today feeds `AgentPerformanceReview`
+back into any live weighting or promotion decision, so this exists to
+give a future evidence-based promotion system a real way to require
+evidence to have aged past `live_paper` before citing it, closing the
+leakage risk before it can be introduced.
+
 ### `GET /api/skill-profiles/{agent_id}/latest`
 
 CEO directive "Features 26-30: Agent Intelligence, Learning &
