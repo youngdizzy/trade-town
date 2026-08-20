@@ -11074,8 +11074,9 @@ scope this pass: everything from Phase 0's own gap list above except
 agent trading-status/narrative explainability, which was picked up
 next (see below) — session-as-a-live-gating-reason, the Strategy
 Library/Signal Confluence Engine's live wiring, curriculum expansion,
-joined post-trade view, live regime/session-based strategy selection
-all remain deferred.
+live regime/session-based strategy selection all remain deferred. The
+joined post-trade view was picked up later in this same phase (see
+below) and is no longer deferred.
 
 ### CEO directive "Command Center + Professional Quant Trading Firm Upgrade" — real per-agent trading status + explainability (AI Desk)
 
@@ -11238,6 +11239,49 @@ clean and readable; all five categories together on a symbol with
 dense real data (MSFT — 1 S/R level, 7 Fibonacci levels, 10 FVGs, a
 real bearish Order Block, 6 confirmed chart patterns) all render
 correctly with real prices and labels.
+
+### CEO directive "Command Center + Professional Quant Trading Firm Upgrade" — post-trade intelligence: join Exit Efficiency and Attribution evidence into the Trade Report Card
+
+Phase 0's own research had already named this exact gap: "post-trade
+intelligence is real but split three ways (Decision Vault / Exit
+Efficiency / Trade Attribution) with no single joined read." All three
+systems were already real and already computed against the same trade —
+`DecisionVaultEntry`, `TradeExitEfficiency` (`app/exit_efficiency.py`:
+MAE%, MFE%, capture%, entry/exit slippage in bps, transaction cost), and
+`TradeAttributionRecord` (`app/trade_attribution.py`: which real agents'
+votes supported vs. opposed a trade, and whether the Gatekeeper approved
+it) — they simply had never been joined into one read, and each already
+carries the same real `trade_id`.
+
+Rather than build a fourth, parallel "joined post-trade view,"
+`app/decision_vault.py`'s existing `compute_trade_report_card()` (the
+Decision Memory System's own per-trade card) was extended to look up
+that trade's matching real `TradeExitEfficiency` and
+`TradeAttributionRecord` by that shared `trade_id` and fold their fields
+directly onto the existing `TradeReportCard` schema — never a second
+schema, never a second endpoint. All 11 new fields
+(`maePct`/`mfePct`/`capturePct`/`exitEfficiencyState`/
+`entrySlippageBps`/`exitSlippageBps`/`transactionCostUsd`/
+`supportingAgents`/`opposingAgents`/`gatekeeperApproved`) are nullable
+and stay `null` — never a fabricated zero or placeholder — when no
+matching real `PaperTrade` (and, for attribution, no matching real
+`TradeDecision`) exists yet for that vault entry; a new
+`dataHonestyNote` field states this plainly on every card so the
+Command Center UI never has to guess why a section is missing.
+
+`DecisionVaultPanel.tsx`'s existing Trade Report Card block gained a
+new "Post-Trade Evidence" section, conditionally rendered only once real
+join data exists (checked via `maePct`/`entrySlippageBps` being
+non-null) — MAE/MFE/capture percentages, entry/exit slippage, real
+transaction cost, and the real supporting/opposing agent lists, with the
+card's own `dataHonestyNote` shown beneath. The current live dev save
+has zero real Decision Vault entries, so this specific new branch could
+not be exercised end-to-end against real data in this pass — the same
+honest limitation already disclosed for the backend commit; `tsc -b
+--noEmit`, `eslint`, and `vite build` all stayed clean, and
+`commandCenter.spec.ts`'s VAULT-tab test was run live against a
+freshly, singly-started dev stack to confirm the change is
+non-breaking.
 
 ## Save format compatibility
 

@@ -152,6 +152,32 @@ function VaultEntryDetail({ entry }: { entry: DecisionVaultEntry }) {
             <GradeCell label="Patience" value={reportCard.patienceGrade} tone={decisionGradeTone(reportCard.patienceGrade)} />
           </div>
           <p className="mt-2 text-[9px] text-cmd-text">{reportCard.recommendation}</p>
+
+          {(reportCard.maePct !== null || reportCard.entrySlippageBps !== null) && (
+            <div className="mt-3 border-t border-cmd-border/60 pt-2">
+              <div className="mb-1.5 text-[9px] uppercase tracking-wide text-cmd-textDim">Post-Trade Evidence — joined by this trade&apos;s own real ID</div>
+              <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
+                {reportCard.maePct !== null && <DataRow label="MAE" value={`${reportCard.maePct.toFixed(2)}%`} />}
+                {reportCard.mfePct !== null && <DataRow label="MFE" value={`${reportCard.mfePct.toFixed(2)}%`} />}
+                {reportCard.capturePct !== null && <DataRow label="Capture" value={`${reportCard.capturePct.toFixed(0)}%`} />}
+                {reportCard.entrySlippageBps !== null && <DataRow label="Entry Slippage" value={`${reportCard.entrySlippageBps.toFixed(1)} bps`} />}
+                {reportCard.exitSlippageBps !== null && <DataRow label="Exit Slippage" value={`${reportCard.exitSlippageBps.toFixed(1)} bps`} />}
+                {reportCard.transactionCostUsd !== null && <DataRow label="Transaction Cost" value={`$${reportCard.transactionCostUsd.toFixed(2)}`} />}
+              </div>
+              {reportCard.supportingAgents.length > 0 && (
+                <div className="mt-1.5 text-[9px] text-cmd-textDim">
+                  Supporting: <span className="text-cmd-text">{reportCard.supportingAgents.join(", ")}</span>
+                  {reportCard.opposingAgents.length > 0 && (
+                    <>
+                      {" "}
+                      · Opposing: <span className="text-cmd-text">{reportCard.opposingAgents.join(", ")}</span>
+                    </>
+                  )}
+                </div>
+              )}
+              <p className="mt-1.5 text-[8px] italic text-cmd-textDim">{reportCard.dataHonestyNote}</p>
+            </div>
+          )}
         </Glass>
       )}
 

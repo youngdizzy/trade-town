@@ -102,6 +102,31 @@ development milestones, not semver releases.
   `tsc -b --noEmit`, `eslint`, `vite build` clean; `commandCenter.spec.ts` (33 tests) against the live stack:
   31 passed, 1 skipped, 1 failed (the same already-known pre-existing, unrelated movement test).
 
+- **CEO directive "Command Center + Professional Quant Trading Firm Upgrade," Phase 2: post-trade
+  intelligence — join Exit Efficiency and Attribution evidence into the Trade Report Card** (backend:
+  `backend/app/decision_vault.py`, `backend/app/routers/decision_vault.py`, `backend/app/schemas.py`,
+  `backend/tests/test_decision_vault.py`; frontend: `frontend/src/types.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/DecisionVaultPanel.tsx`): the brief's "why entered/exited,
+  R:R, MAE/MFE, slippage, expected-vs-actual, agent, decision quality" post-trade fields were already real
+  and computed — just scattered across three separate systems that had never been joined by their shared real
+  `trade_id`. Rather than build a fourth "joined view," `compute_trade_report_card()` (the existing Decision
+  Memory System card) now also looks up that trade's real `TradeExitEfficiency` read (`app/exit_efficiency.py`
+  — MAE%, MFE%, capture%, entry/exit slippage in bps, transaction cost) and real `TradeAttributionRecord`
+  (`app/trade_attribution.py` — which real agents' votes supported vs. opposed the trade, and whether the
+  Gatekeeper approved it), both keyed by the same `trade_id` every `DecisionVaultEntry`/`PaperTrade` already
+  carries. All 11 new `TradeReportCard` fields are nullable and stay `null` (never fabricated) when no
+  matching real `PaperTrade`/decision exists yet — the card's own new `dataHonestyNote` states this plainly.
+  `DecisionVaultPanel.tsx`'s existing Trade Report Card block gains a conditionally-rendered "Post-Trade
+  Evidence" section (MAE/MFE/Capture/slippage/cost + supporting/opposing agents) that only appears once real
+  join data exists. 3 new backend unit tests (no-match stays null, full real join populates every field,
+  partial join — exit efficiency present, no matching decision — still resolves honestly) plus 5 existing
+  tests updated for the new required kwargs; full backend suite, `mypy app/`, `ruff check app/ tests/` all
+  clean. Frontend `tsc -b --noEmit`, `eslint`, `vite build` clean. The live dev save currently has zero real
+  Decision Vault entries, so the new join branch itself couldn't be exercised end-to-end against real data in
+  this pass (the same honest limitation the backend commit already disclosed) — `commandCenter.spec.ts`'s
+  VAULT-tab test was run live against a freshly, singly-started dev stack to confirm the change is
+  non-breaking: 1/1 passed.
+
 - **CEO directive "Command Center + Professional Quant Trading Firm Upgrade," Phase 2: Command
   Center IA consolidation** (frontend: `frontend/src/ui/components/CommandCenter/FullCommandCenter.tsx`,
   `frontend/src/ui/components/CommandCenter/lib/navigation.ts`, `frontend/tests/helpers.ts`,

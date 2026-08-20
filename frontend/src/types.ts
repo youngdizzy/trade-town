@@ -3947,6 +3947,23 @@ export interface TradeReportCard {
   overallTradeQuality: DecisionGrade;
   wouldTakeAgain: boolean;
   recommendation: string;
+  /** CEO directive "Command Center + Professional Quant Trading Firm
+   * Upgrade" — Post-Trade Intelligence. Real evidence joined in from
+   * TradeExitEfficiency/TradeAttributionRecord by this trade's own
+   * real tradeId — null means the join genuinely found no matching
+   * record, never a fabricated value. See dataHonestyNote for what
+   * remains a real, disclosed gap. */
+  maePct: number | null;
+  mfePct: number | null;
+  capturePct: number | null;
+  exitEfficiencyState: ExitEfficiencyState | null;
+  entrySlippageBps: number | null;
+  exitSlippageBps: number | null;
+  transactionCostUsd: number | null;
+  supportingAgents: AgentId[];
+  opposingAgents: AgentId[];
+  gatekeeperApproved: boolean | null;
+  dataHonestyNote: string;
 }
 
 export interface SimilarTradeMatch {
