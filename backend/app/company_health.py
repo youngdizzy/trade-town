@@ -41,6 +41,7 @@ headline number.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Literal
 
 from app.academy import is_mentor_level
 from app.continuous_improvement import compute_remediation_effectiveness, compute_root_cause_recurrence
@@ -60,6 +61,7 @@ from app.schemas import (
     CompanyHealthComponentDelta,
     CompanyHealthDelta,
     CompanyHealthTier,
+    CompanyHealthWeakArea,
     Debate,
     DepartmentSelfEvaluation,
     DisciplineReview,
@@ -786,6 +788,193 @@ def _compliance_health(
     return round(max(0.0, blended - recurrence_penalty), 1)
 
 
+# CEO directive "Command Center + Professional Quant Trading Firm
+# Upgrade" — the Executive View's Problem/Cause/Severity/Action
+# breakdown. Every branch below restates the SAME real inputs
+# compute_company_health() already reads for that metric's own score
+# (calling the same standalone _debate_collaboration_quality()/
+# _cross_agent_research_handoffs()/_knowledge_retention()/
+# _validation_rigor()/_pipeline_progress()/_measured_improvement()
+# helpers directly where one already exists, so the cited evidence can
+# never drift from the real formula) — never a second, independently
+# invented reading. Where a metric is a blend with no standalone
+# sub-function to call without duplicating fragile inline logic (decision
+# quality's calibration check, self-evaluation's trend), the cause names
+# the real blend honestly rather than fabricating false precision about
+# which half is weaker. `action` says "No direct lever" wherever true —
+# several of these metrics are genuinely observational (agent mood,
+# presence, real trading P&L), not something a CEO click can move, and
+# pretending otherwise would be exactly the invented-actionability this
+# codebase's conventions bar.
+def _diagnose(
+    key: str,
+    *,
+    risk_warnings: list[RiskWarning],
+    agents: dict[AgentId, AgentState],
+    research: list[ResearchItem],
+    portfolio: PaperPortfolio,
+    agent_energy: AgentEnergy,
+    hall_of_fame: list[HallOfFameEntry],
+    signal_calibration: SignalCalibrationState,
+    watchlist: list[WatchlistEntry],
+    education: EducationProgress,
+    debates: list[Debate],
+    decisions: list[TradeDecision],
+    meeting_log: list[ExecutiveMeetingLogEntry],
+    wisdom_state: WisdomState,
+    innovation_state: dict[AgentId, InnovationState],
+    founder_council_sessions: list[FounderCouncilSession],
+    gatekeeper_rejections: list[GatekeeperRejection],
+    agent_knowledge: dict[AgentId, AgentKnowledgeState],
+    strategies: list[Strategy],
+    strategy_health_assessments: list[StrategyHealthAssessment],
+    compliance_incidents: list[ComplianceIncident],
+) -> tuple[str, str]:
+    if key == "operational_stability":
+        if not risk_warnings:
+            return "No active real risk warnings — this reflects the full 100-point baseline.", "No action needed."
+        penalty = sum(_SEVERITY_PENALTY.get(w.severity, 2.0) for w in risk_warnings)
+        critical = sum(1 for w in risk_warnings if w.severity == "critical")
+        return (
+            f"{len(risk_warnings)} real risk warning(s) on record ({critical} critical), a combined {penalty:.0f}-point penalty.",
+            "Resolve the real risk warnings driving the penalty — critical ones cost the most (15 pts each).",
+        )
+    if key == "department_efficiency":
+        working = sum(1 for a in agents.values() if a.location not in RESTFUL_LOCATIONS)
+        return (
+            f"Only {working} of {len(agents)} agents are at a real work location (not lobby/break-room) this tick.",
+            "No direct lever — reflects agents' real current schedule locations and recovers as their day progresses.",
+        )
+    if key == "employee_morale":
+        avg_mood = sum(a.mood for a in agents.values()) / len(agents) if agents else 0.0
+        return (
+            f"Average real agent mood is {avg_mood:.0f}/100 across {len(agents)} agents.",
+            "No direct lever — mood already responds to real rest, breaks, and meetings agents take autonomously.",
+        )
+    if key == "research_progress":
+        completed = sum(1 for r in research if r.status == "completed")
+        return (
+            f"{completed} of {len(research)} real research items on record are completed.",
+            "Assign or prioritize research for idle agents — completion pace is otherwise agent-driven.",
+        )
+    if key == "capital_health":
+        return (
+            f"Real portfolio P&L is {portfolio.total_pnl_pct:+.1f}% right now.",
+            "No company-management lever — tracks the trading desk's own real performance directly.",
+        )
+    if key == "resource_usage":
+        return (
+            f"Agent energy is at {agent_energy.current:.0f} of a real {agent_energy.cap:.0f} cap.",
+            "No direct lever — energy recovers as agents rest at real lobby/break-room locations.",
+        )
+    if key == "reputation":
+        return (
+            f"{len(hall_of_fame)} real Hall of Fame entries on record.",
+            "No shortcut — earned only by real Hall-of-Fame-worthy trades or achievements.",
+        )
+    if key == "technology_level":
+        return (
+            f"Signal Calibration is at real level {signal_calibration.unlocked_level} of {SIGNAL_MAX_LEVEL}.",
+            "Progress by unlocking further real Signal Calibration levels through continued use.",
+        )
+    if key == "market_coverage":
+        added = max(0, len(watchlist) - len(SEED_SYMBOLS))
+        return (
+            f"{added} of {len(EXTRA_SYMBOL_POOL)} real extra symbols added to the watchlist beyond the 8 seed symbols.",
+            "Add more real symbols to the watchlist to raise this score.",
+        )
+    if key == "education_progress":
+        total = len(all_lessons())
+        return (
+            f"{len(education.completed_lesson_ids)} of {total} real Academy lessons completed; {education.correct_quiz_attempts} of {education.quiz_attempts} real quiz attempts correct.",
+            "Complete more real Academy lessons and answer their quizzes correctly.",
+        )
+    if key == "team_chemistry":
+        collab = _debate_collaboration_quality(debates)
+        handoffs = _cross_agent_research_handoffs(research)
+        if collab <= handoffs:
+            return (
+                f"Debate collaboration quality is {collab:.0f}/100 — recent real AI Debates skew toward challenge over support.",
+                "No direct lever — reflects real debate tone as agents actually argue recent trade ideas.",
+            )
+        return (
+            f"Cross-agent research handoffs are {handoffs:.0f}/100 — completed research isn't crossing between different agents.",
+            "No direct lever — reflects whether agents are actually building on each other's real completed research.",
+        )
+    if key == "decision_quality":
+        return (
+            "Recent real Decision Grades are low, and/or diverge from the independent real Discipline Review filed for the same decision.",
+            "No direct lever — reflects the real Decision Confidence Engine, analyst agreement, and Gatekeeper approval at each decision's own moment.",
+        )
+    if key == "executive_alignment":
+        recent = meeting_log[-EXECUTIVE_METRIC_WINDOW:]
+        agreed = sum(1 for e in recent if e.network_agreed)
+        return (
+            f"The Executive Intelligence Network agreed on {agreed} of {len(recent)} recent real meetings.",
+            "No direct lever — reflects real, substantive disagreement across recent Executive Meetings.",
+        )
+    if key == "risk_governance":
+        return (
+            f"{len(gatekeeper_rejections)} real proposals were rejected by the Gatekeeper against {len(portfolio.trade_history)} that actually closed.",
+            "Review why proposals are failing real Gatekeeper checks — a high rejection share usually means weak setups are reaching the desk.",
+        )
+    if key == "simulation_coverage":
+        return (
+            "The Simulation Lab department hasn't offered a confident real opinion (vs. requesting more research) in recent Executive Meetings.",
+            "Run more real Simulation Lab sessions so it has fresh evidence to weigh in with.",
+        )
+    if key == "department_consensus":
+        return (
+            "Recent real opposing votes in Executive Meetings lack a substantiating `concerns` entry.",
+            "Ensure dissenting departments back their opposition with real, specific concerns rather than a bare no.",
+        )
+    if key == "self_evaluation_health":
+        return (
+            "Real weekly self-evaluation engagement is low, and/or the gap between initial Decision Grade and eventual trade outcome isn't narrowing over time.",
+            "No direct lever — reflects real weekly self-evaluation participation and the organization's own prediction-calibration trend.",
+        )
+    if key == "institutional_memory":
+        retention = _knowledge_retention(agent_knowledge)
+        if wisdom_state.score <= retention:
+            return (
+                f"Real Wisdom score is {wisdom_state.score:.0f}/100 — the company's own weekly/monthly reflection factors are weak.",
+                "No direct lever — reflects real reflection factors (learning from experience, documenting lessons, avoiding repeats).",
+            )
+        return (
+            f"Only {retention:.0f}% of agents have reached the real top Mentor knowledge level.",
+            "No direct lever — grows as agents accumulate real research/Academy/meeting points toward Mentor level.",
+        )
+    if key == "innovation_velocity":
+        if not innovation_state and not strategies:
+            return "No real Devil's Advocate challenges or Strategy Lab strategies exist yet.", "No action needed yet — becomes measurable once strategy work begins."
+        parts = {
+            "Devil's Advocate validation rigor": _validation_rigor(innovation_state),
+            "Strategy Lab pipeline progress": _pipeline_progress(strategies),
+            "deployed-strategy health trend": _measured_improvement(strategies, strategy_health_assessments),
+        }
+        weakest_label, weakest_value = min(parts.items(), key=lambda kv: kv[1])
+        return (
+            f"The weakest of three real pipeline signals is {weakest_label} at {weakest_value:.0f}/100.",
+            "No direct lever — reflects real Devil's Advocate critique quality, how far strategies have advanced down the Strategy Lab pipeline, and deployed strategies' own health trend.",
+        )
+    if key == "talent_development":
+        return (
+            "Few agents have graduated real mentorship, and/or graduates' real post-graduation Discipline Scores are weak.",
+            "Approve real mentorship graduations once earned, and review post-graduation Discipline Reviews trending weak.",
+        )
+    if key == "founder_oversight":
+        return (
+            f"{len(founder_council_sessions)} real Founder Council sessions on record, and/or recent ones fell back to \"nothing to review\" more often than not.",
+            "Hold real Founder Council sessions regularly so they have current company activity to surface.",
+        )
+    if key == "compliance_health":
+        return (
+            f"{len(compliance_incidents)} real compliance incidents on record; resolution, remediation, and control-effectiveness evidence are currently weak.",
+            "Resolve open real compliance incidents and address any confirmed recurring root causes.",
+        )
+    return "No specific real cause available for this metric.", "No specific action available."
+
+
 def compute_company_health(
     *,
     agents: dict[AgentId, AgentState],
@@ -878,6 +1067,45 @@ def compute_company_health(
     recommendations = [f"{_METRIC_LABELS[name]} is low ({score:.0f}/100) — worth attention." for name, score in weakest_operational if score < 70.0]
     recommendations += [f"{_EXECUTIVE_METRIC_LABELS[name]} is low ({score:.0f}/100) — worth attention." for name, score in weakest_executive if score < 70.0]
 
+    def _diagnose_one(name: str, score: float, label: str, group: Literal["operational", "executive"]) -> CompanyHealthWeakArea:
+        cause, action = _diagnose(
+            name,
+            risk_warnings=risk_warnings,
+            agents=agents,
+            research=research,
+            portfolio=portfolio,
+            agent_energy=agent_energy,
+            hall_of_fame=hall_of_fame,
+            signal_calibration=signal_calibration,
+            watchlist=watchlist,
+            education=education,
+            debates=debates,
+            decisions=decisions,
+            meeting_log=meeting_log,
+            wisdom_state=wisdom_state,
+            innovation_state=innovation_state,
+            founder_council_sessions=founder_council_sessions,
+            gatekeeper_rejections=gatekeeper_rejections,
+            agent_knowledge=agent_knowledge,
+            strategies=strategies,
+            strategy_health_assessments=strategy_health_assessments,
+            compliance_incidents=compliance_incidents,
+        )
+        return CompanyHealthWeakArea(
+            metric=name,
+            label=label,
+            group=group,
+            score=round(score, 1),
+            severity=_tier(score, tier_thresholds),
+            problem=f"{label} is low ({score:.0f}/100).",
+            cause=cause,
+            action=action,
+        )
+
+    weak_areas: list[CompanyHealthWeakArea] = [
+        _diagnose_one(name, score, _METRIC_LABELS[name], "operational") for name, score in weakest_operational if score < 70.0
+    ] + [_diagnose_one(name, score, _EXECUTIVE_METRIC_LABELS[name], "executive") for name, score in weakest_executive if score < 70.0]
+
     return CompanyHealth(
         overall=round(overall, 1),
         tier=_tier(overall, tier_thresholds),
@@ -893,6 +1121,7 @@ def compute_company_health(
         educationProgress=round(metrics["education_progress"], 1),
         teamChemistry=round(metrics["team_chemistry"], 1),
         recommendations=recommendations,
+        weakAreas=weak_areas,
         updatedAt=_now_iso(),
         decisionQuality=round(executive_metrics["decision_quality"], 1),
         executiveAlignment=round(executive_metrics["executive_alignment"], 1),

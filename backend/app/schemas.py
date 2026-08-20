@@ -5118,6 +5118,36 @@ CompanyHealthTier = Literal[
 ]
 
 
+# CEO directive "Command Center + Professional Quant Trading Firm
+# Upgrade" — the Executive View's Problem/Cause/Severity/Action
+# breakdown for a real weak Company Health sub-score. Extends (never
+# replaces) the existing plain-string `recommendations` list below with
+# real, evidence-grounded detail per weak area — see
+# app/company_health.py's `_diagnose()` for exactly which real inputs
+# each metric's `cause`/`action` text is grounded in (the same raw data
+# `compute_company_health()` already reads to compute the score itself,
+# never a second, independently-invented reading). `severity` reuses
+# `CompanyHealthTier` rather than inventing a second banding taxonomy —
+# a weak area's score is, by construction, already below "good," so only
+# "stable"/"needs_attention"/"critical" ever actually appear here.
+#
+# Deliberately has NO `status` field, though the brief's own structure
+# asks for one: no real remediation-tracking mechanism (has this been
+# acknowledged, assigned, resolved?) exists anywhere in this codebase to
+# report honestly — see app/company_health.py's own module docstring.
+# Fabricating an always-"open" placeholder would be exactly the kind of
+# invented precision this codebase's conventions bar.
+class CompanyHealthWeakArea(CamelModel):
+    metric: str
+    label: str
+    group: Literal["operational", "executive"]
+    score: float
+    severity: CompanyHealthTier
+    problem: str
+    cause: str
+    action: str
+
+
 class CompanyHealth(CamelModel):
     overall: float
     tier: CompanyHealthTier
@@ -5146,6 +5176,14 @@ class CompanyHealth(CamelModel):
     # language — never generic filler, always tied to the actual weakest
     # real sub-score this tick (see app/company_health.py).
     recommendations: list[str] = Field(default_factory=list)
+    # CEO directive "Command Center + Professional Quant Trading Firm
+    # Upgrade" — the same weak areas `recommendations` above already
+    # identifies (unchanged, kept for backward compatibility), each now
+    # also carrying a real Problem/Cause/Severity/Action breakdown — see
+    # `CompanyHealthWeakArea`'s own docstring for why there is no
+    # `status` field. Defaults to an empty list so a save from before
+    # this field existed still validates.
+    weak_areas: list[CompanyHealthWeakArea] = Field(default_factory=list, alias="weakAreas")
     updated_at: str = Field(alias="updatedAt")
 
     # v0.7 Feature 50 (Part 2/3) — the Company Health redesign. Ten new

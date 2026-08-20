@@ -606,6 +606,115 @@ class TestOverallAndTier:
         assert health.recommendations == []
 
 
+class TestWeakAreas:
+    """CEO directive "Command Center + Professional Quant Trading Firm
+    Upgrade" — the Executive View's Problem/Cause/Severity/Action
+    breakdown (app/company_health.py's `_diagnose()`), additive
+    alongside the existing plain-string `recommendations` above."""
+
+    def test_weak_areas_are_populated_for_the_same_real_weakest_metrics_as_recommendations(self) -> None:
+        health = _health(
+            agents={"nova": _agent("lobby", mood=0.0)},
+            agent_energy=AgentEnergy(current=0.0, cap=100.0, updatedAt="2026-01-01T00:00:00+00:00"),
+        )
+        assert len(health.weak_areas) == len(health.recommendations)
+        labels = {area.label for area in health.weak_areas}
+        assert labels == {r.split(" is low")[0] for r in health.recommendations}
+
+    def test_no_weak_areas_when_every_metric_is_already_strong(self) -> None:
+        from app.schemas import HallOfFameEntry
+
+        health = _health(
+            hall_of_fame=[HallOfFameEntry(id=f"h{i}", category="best_research", title="x", description="x", value=1.0, achievedAt="2026-01-01T00:00:00+00:00") for i in range(30)],
+            signal_calibration=SignalCalibrationState(unlockedLevel=SIGNAL_MAX_LEVEL),
+            education=EducationProgress(completedLessonIds=[lesson.id for lesson in all_lessons()]),
+            watchlist=[*default_watchlist(), *(WatchlistEntry(symbol=s, name=s, lastPrice=1.0, dailyChangePct=0.0, status="queued", researchProgress=0.0, assignedAgent=None) for s in ["AMZN", "GOOGL", "TSLA", "NVDA", "SLV", "USO"])],
+            portfolio=default_portfolio().model_copy(update={"total_pnl_pct": 40.0, "trade_history": _strong_trade_history()}),
+            debates=[_all_supportive_debate()],
+            **_strong_executive_overrides(),
+        )
+        assert health.weak_areas == []
+
+    def test_operational_stability_cause_cites_the_real_risk_warning_count_and_penalty(self) -> None:
+        """Strengthens every other metric so operational_stability is
+        guaranteed to land among the real weakest two — isolates exactly
+        the one signal this test cares about, same convention
+        `test_no_weak_areas_when_every_metric_is_already_strong` above
+        already established for a "strong everywhere" baseline."""
+        from app.schemas import HallOfFameEntry
+
+        health = _health(
+            risk_warnings=[
+                RiskWarning(id="w1", symbol="AAPL", severity="critical", message="x", createdAt="2026-01-01T00:00:00+00:00"),
+                RiskWarning(id="w2", symbol="MSFT", severity="critical", message="x", createdAt="2026-01-01T00:00:00+00:00"),
+                RiskWarning(id="w3", symbol="TSLA", severity="warning", message="x", createdAt="2026-01-01T00:00:00+00:00"),
+            ],
+            hall_of_fame=[HallOfFameEntry(id=f"h{i}", category="best_research", title="x", description="x", value=1.0, achievedAt="2026-01-01T00:00:00+00:00") for i in range(30)],
+            signal_calibration=SignalCalibrationState(unlockedLevel=SIGNAL_MAX_LEVEL),
+            education=EducationProgress(completedLessonIds=[lesson.id for lesson in all_lessons()]),
+            watchlist=[*default_watchlist(), *(WatchlistEntry(symbol=s, name=s, lastPrice=1.0, dailyChangePct=0.0, status="queued", researchProgress=0.0, assignedAgent=None) for s in ["AMZN", "GOOGL", "TSLA", "NVDA", "SLV", "USO"])],
+            portfolio=default_portfolio().model_copy(update={"total_pnl_pct": 40.0, "trade_history": _strong_trade_history()}),
+            debates=[_all_supportive_debate()],
+            **_strong_executive_overrides(),
+        )
+        area = next(a for a in health.weak_areas if a.metric == "operational_stability")
+        assert "3 real risk warning(s)" in area.cause
+        assert "2 critical" in area.cause
+        assert "36" in area.cause  # 15 + 15 (critical) + 6 (warning)
+        assert area.score == health.operational_stability
+
+    def test_severity_reuses_the_same_tier_bands_overall_uses(self) -> None:
+        from app.company_health import _diagnose, _tier
+
+        cause, action = _diagnose(
+            "operational_stability",
+            risk_warnings=[RiskWarning(id=f"w{i}", symbol="AAPL", severity="critical", message="x", createdAt="2026-01-01T00:00:00+00:00") for i in range(7)],
+            agents={},
+            research=[],
+            portfolio=default_portfolio(),
+            agent_energy=AgentEnergy(current=100.0, cap=100.0, updatedAt="2026-01-01T00:00:00+00:00"),
+            hall_of_fame=[],
+            signal_calibration=SignalCalibrationState(),
+            watchlist=default_watchlist(),
+            education=EducationProgress(),
+            debates=[],
+            decisions=[],
+            meeting_log=[],
+            wisdom_state=WisdomState(score=50.0, tier="young_company", tierLabel="Young Company", factors=[], updatedAt="2026-01-01T00:00:00+00:00"),
+            innovation_state={},
+            founder_council_sessions=[],
+            gatekeeper_rejections=[],
+            agent_knowledge={},
+            strategies=[],
+            strategy_health_assessments=[],
+            compliance_incidents=[],
+        )
+        assert "7 real risk warning(s)" in cause
+        # 7 critical warnings = 105-point penalty, floored at a 0.0 score by _operational_stability()
+        assert _tier(0.0) == "critical"
+
+    def test_weak_area_deliberately_carries_no_status_field(self) -> None:
+        """Documents the honesty boundary from CompanyHealthWeakArea's own
+        docstring: no real remediation-tracking mechanism exists in this
+        codebase, so `status` is never fabricated."""
+        health = _health(agents={"nova": _agent("lobby", mood=0.0)})
+        assert health.weak_areas
+        assert not hasattr(health.weak_areas[0], "status")
+
+    def test_every_weak_area_has_non_empty_problem_cause_and_action(self) -> None:
+        health = _health(
+            agents={"nova": _agent("lobby", mood=0.0)},
+            agent_energy=AgentEnergy(current=0.0, cap=100.0, updatedAt="2026-01-01T00:00:00+00:00"),
+            risk_warnings=[RiskWarning(id="w1", symbol="AAPL", severity="critical", message="x", createdAt="2026-01-01T00:00:00+00:00")],
+        )
+        assert health.weak_areas
+        for area in health.weak_areas:
+            assert area.problem
+            assert area.cause
+            assert area.action
+            assert area.group in ("operational", "executive")
+
+
 def _research_at(agent: str, category: str, updated_at: str, item_id: str) -> ResearchItem:
     return ResearchItem(
         id=item_id,
