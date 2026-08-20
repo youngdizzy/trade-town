@@ -648,7 +648,23 @@ def compute_executive_accuracy_scores(
     the CEO directive's own named bug fix. `evaluationState` exposes
     PASS/FAIL/INCONCLUSIVE/NOT_ENOUGH_EVIDENCE explicitly rather than
     leaving every caller to reinvent its own good/bad interpretation of
-    a raw percentage."""
+    a raw percentage.
+
+    CEO directive "Professional Quant Firm Phase 41-45," Feature 44 —
+    audited for data leakage since this score feeds live vote weighting
+    (see app/weighted_decisions.py's compute_accuracy_multiplier()):
+    `resolved_by_proposal` is built only from `ceo_decisions` whose
+    `outcome` already reads `"correct"`/`"incorrect"` — a proposal only
+    gets an outcome once its underlying trade has actually closed. The
+    department stance being weighted RIGHT NOW belongs to a proposal
+    that is, by definition, not yet resolved (an unresolved proposal has
+    no `outcome` yet, so it can never appear in `resolved_by_proposal`)
+    — so a decision's own outcome can never leak into its own weight.
+    This is causally sound as a live trailing-accuracy signal, not a
+    train/validation/test split — see AgentReviewDataSplit's own
+    schema docstring for where this directive's real train/validation/
+    test/live-paper separation was actually needed and built (Agent
+    Performance Reviews, which this signal is NOT)."""
     resolved_by_proposal: dict[str, bool] = {
         r.proposal_id: r.outcome == "correct" for r in ceo_decisions if r.outcome in ("correct", "incorrect")
     }

@@ -10,6 +10,7 @@ from __future__ import annotations
 from app.performance_review import (
     AGENT_ROLE_CLASS,
     MIN_EVIDENCE_COUNT_FOR_EVALUATED,
+    classify_review_data_splits,
     compute_agent_performance_review,
     latest_review_for_agent,
     record_agent_performance_review,
@@ -384,3 +385,56 @@ class TestRecordAndLatest:
 
     def test_latest_review_returns_none_when_agent_has_no_reviews(self) -> None:
         assert latest_review_for_agent([], "scout") is None
+
+
+class TestClassifyReviewDataSplits:
+    """CEO directive "Professional Quant Firm Phase 41-45," Feature 44
+    — real, chronological, non-shuffled data-split labeling over one
+    agent's own review history."""
+
+    def _reviews(self, period_ends: list[int]) -> list:
+        reviews = []
+        for end in period_ends:
+            kwargs = _empty_review_kwargs()
+            kwargs["period_end_sim_day"] = end
+            reviews.append(compute_agent_performance_review("scout", **kwargs))
+        return reviews
+
+    def test_empty_history_returns_empty(self) -> None:
+        assert classify_review_data_splits([]) == []
+
+    def test_single_review_is_live_paper(self) -> None:
+        entries = classify_review_data_splits(self._reviews([7]))
+        assert len(entries) == 1
+        assert entries[0].data_split == "live_paper"
+
+    def test_two_reviews_the_newer_is_live_paper_the_older_is_test(self) -> None:
+        entries = classify_review_data_splits(self._reviews([7, 14]))
+        by_period = {e.review.period_end_sim_day: e.data_split for e in entries}
+        assert by_period[7] == "test"
+        assert by_period[14] == "live_paper"
+
+    def test_six_reviews_split_into_all_four_real_tiers(self) -> None:
+        entries = classify_review_data_splits(self._reviews([7, 14, 21, 28, 35, 42]))
+        by_period = {e.review.period_end_sim_day: e.data_split for e in entries}
+        assert by_period[42] == "live_paper"
+        assert by_period[35] == "test"
+        assert by_period[28] == "validation"
+        assert by_period[21] == "validation"
+        assert by_period[14] == "training"
+        assert by_period[7] == "training"
+
+    def test_unsorted_input_is_still_classified_by_real_chronological_order(self) -> None:
+        unordered = self._reviews([21, 7, 14])
+        entries = classify_review_data_splits(unordered)
+        by_period = {e.review.period_end_sim_day: e.data_split for e in entries}
+        assert by_period[21] == "live_paper"
+        assert by_period[14] == "test"
+        assert by_period[7] == "validation"
+
+    def test_label_ages_as_a_newer_review_is_added(self) -> None:
+        before = classify_review_data_splits(self._reviews([7]))
+        assert before[0].data_split == "live_paper"
+        after = classify_review_data_splits(self._reviews([7, 14]))
+        by_period = {e.review.period_end_sim_day: e.data_split for e in after}
+        assert by_period[7] == "test"

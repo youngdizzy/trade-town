@@ -69,6 +69,8 @@ from app.schemas import (
     AgentId,
     AgentKnowledgeState,
     AgentPerformanceReview,
+    AgentPerformanceReviewHistoryEntry,
+    AgentReviewDataSplit,
     AgentRoleClass,
     CaseStudy,
     DisciplineReview,
@@ -386,3 +388,44 @@ def record_agent_performance_review(
 
 def latest_review_for_agent(reviews: list[AgentPerformanceReview], agent_id: AgentId) -> AgentPerformanceReview | None:
     return next((r for r in reversed(reviews) if r.agent_id == agent_id), None)
+
+
+# CEO directive "Professional Quant Firm Phase 41-45," Feature 44 — the
+# real, non-shuffled, chronological rule behind AgentReviewDataSplit
+# (see that type's own docstring in app/schemas.py for the full
+# preventive-labeling reasoning). Named windows mirror app/walk_
+# forward.py's own window discipline, applied to agent-level review
+# evidence instead of strategy-level backtest windows.
+_LIVE_PAPER_WINDOW = 1
+_TEST_WINDOW = 1
+_VALIDATION_WINDOW = 2
+
+
+def classify_review_data_splits(reviews_for_agent: list[AgentPerformanceReview]) -> list[AgentPerformanceReviewHistoryEntry]:
+    """Real, deterministic, chronological data-split labeling over one
+    agent's own review history — never randomly shuffled. Recomputed
+    fresh from the full list every call rather than stored on the
+    review itself, so a review's label correctly ages as later reviews
+    accumulate (e.g. today's `live_paper` review becomes `test` the
+    moment a newer review is generated next week). `reviews_for_agent`
+    need not be pre-sorted; sorted here by `period_end_sim_day`
+    ascending so "most recent" is unambiguous regardless of storage
+    order. The single most recent review is `live_paper`; the review it
+    superseded is `test` (the first genuinely held-out period); the
+    next two are `validation`; everything older is `training`."""
+    ordered = sorted(reviews_for_agent, key=lambda r: r.period_end_sim_day)
+    total = len(ordered)
+    entries: list[AgentPerformanceReviewHistoryEntry] = []
+    for position, review in enumerate(ordered):
+        age = total - 1 - position  # 0 = most recent
+        split: AgentReviewDataSplit
+        if age < _LIVE_PAPER_WINDOW:
+            split = "live_paper"
+        elif age < _LIVE_PAPER_WINDOW + _TEST_WINDOW:
+            split = "test"
+        elif age < _LIVE_PAPER_WINDOW + _TEST_WINDOW + _VALIDATION_WINDOW:
+            split = "validation"
+        else:
+            split = "training"
+        entries.append(AgentPerformanceReviewHistoryEntry(review=review, dataSplit=split))
+    return entries

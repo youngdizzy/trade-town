@@ -7904,6 +7904,39 @@ class AgentPerformanceReview(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
+# CEO directive "Professional Quant Firm Phase 41-45," Feature 44 —
+# Agent Learning must not cause data leakage. See
+# app/performance_review.py's classify_review_data_splits() for the
+# real, chronological, non-shuffled rule that assigns this — an
+# evidence-MATURITY label (how many later, non-overlapping periods have
+# since elapsed without this review being re-used), never a quality
+# judgment. `live_paper` is this agent's single freshest review — an
+# unconfirmed, still-fresh observation. `test` is the review
+# immediately superseded by it — the first genuinely held-out period.
+# `validation`/`training` are progressively older, more-corroborated
+# evidence. This labeling is deliberately preventive, not a retrofit:
+# nothing in this codebase today feeds AgentPerformanceReview back into
+# any live weighting or promotion decision (verified — see that
+# module's own docstring), so there is no existing leak to fix. It
+# exists so a future evidence-based agent promotion/demotion system
+# (this same directive family's own explicit ask) has a real,
+# non-fabricated way to require review evidence to have aged past the
+# freshest live_paper window before citing it as proof of durable
+# improvement.
+AgentReviewDataSplit = Literal["training", "validation", "test", "live_paper"]
+
+
+class AgentPerformanceReviewHistoryEntry(CamelModel):
+    """One stored `AgentPerformanceReview` paired with its current, freshly
+    computed `AgentReviewDataSplit` — never stored on the review itself,
+    since the classification is relative to how many later reviews now
+    exist and must re-derive as new reviews accumulate (see
+    classify_review_data_splits())."""
+
+    review: AgentPerformanceReview
+    data_split: AgentReviewDataSplit = Field(alias="dataSplit")
+
+
 class MentorState(CamelModel):
     tier: int
     tier_label: str = Field(alias="tierLabel")
