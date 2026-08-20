@@ -138,6 +138,11 @@ test("Feature 52 (Part 1/2) — every Strategy Validation Laboratory sub-tab ope
   await expect(page.getByText("compiled", { exact: true })).toBeVisible();
   await clickRobust(page, () => page.getByRole("button", { name: "Backtest This Definition" }), { label: "Backtest This Definition" });
   await expect(page.getByText(/Overall — \d+ symbols/)).toBeVisible({ timeout: 20_000 });
+  // CEO directive "Professional Quant Firm Phase" follow-up — real regime breakdowns and the
+  // Feature 38 Sharpe/Sortino/Calmar/Max DD row, both now shared by every bucket display.
+  await expect(page.getByText("Regime Trend Breakdown")).toBeVisible();
+  await expect(page.getByText("Regime Volatility Breakdown")).toBeVisible();
+  await expect(page.getByText("Sharpe", { exact: true }).first()).toBeVisible();
 
   // "Next Research + Validation Pass" — one bundled real experiment
   // record (walk-forward stability, one-parameter-at-a-time stop/target

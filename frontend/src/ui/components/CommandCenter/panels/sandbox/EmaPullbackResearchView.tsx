@@ -21,6 +21,14 @@ function BucketRow({ bucket }: { bucket: EmaPullbackStatsBucket }) {
         <DataRow label="Expectancy" value={bucket.expectancyR !== null ? `${bucket.expectancyR >= 0 ? "+" : ""}${bucket.expectancyR}R` : "—"} valueClassName={bucket.expectancyR !== null ? (bucket.expectancyR >= 0 ? "text-cmd-green" : "text-cmd-red") : undefined} />
         <DataRow label="Profit Factor" value={bucket.profitFactor ?? "—"} />
       </div>
+      {/* CEO directive "Professional Quant Firm Phase," Feature 38 — real Sharpe/Sortino/Calmar/max
+          drawdown, the same one authoritative bucket shape every backtest view shares. */}
+      <div className="mt-0.5 grid grid-cols-2 gap-x-3 gap-y-0.5 sm:grid-cols-4">
+        <DataRow label="Sharpe" value={bucket.sharpeRatio ?? "—"} />
+        <DataRow label="Sortino" value={bucket.sortinoRatio ?? "—"} />
+        <DataRow label="Calmar" value={bucket.calmarRatio ?? "—"} />
+        <DataRow label="Max DD" value={bucket.maxDrawdownR !== null ? `${bucket.maxDrawdownR}R` : "—"} />
+      </div>
       <div className="mt-1 text-cmd-textDim">{bucket.detail}</div>
     </div>
   );

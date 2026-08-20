@@ -1294,6 +1294,11 @@ export interface CompiledStrategyBacktestResult {
   overall: EmaPullbackStatsBucket;
   sessionBreakdown: EmaPullbackStatsBucket[];
   instrumentBreakdown: EmaPullbackStatsBucket[];
+  // CEO directive "Professional Quant Firm Phase" follow-up — same real
+  // per-trade regimeTrend/regimeVolatility every EmaPullbackTradeRecord
+  // already carries, aggregated the same way as sessionBreakdown above.
+  regimeTrendBreakdown: EmaPullbackStatsBucket[];
+  regimeVolatilityBreakdown: EmaPullbackStatsBucket[];
   modelValidation: ModelValidationReport | null;
   monteCarlo: StrategyMonteCarloResult | null;
   dataHonestyNote: string;

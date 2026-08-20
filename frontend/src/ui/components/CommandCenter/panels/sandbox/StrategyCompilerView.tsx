@@ -215,6 +215,8 @@ export function StrategyCompilerView() {
           <BucketGroup title={`Overall — ${backtest.symbolsTested.length} symbols, ${backtest.candlesPerSymbol.toLocaleString()} candles each`} buckets={[backtest.overall]} />
           <BucketGroup title="Session Breakdown" buckets={backtest.sessionBreakdown} />
           <BucketGroup title="Instrument Breakdown" buckets={backtest.instrumentBreakdown} />
+          <BucketGroup title="Regime Trend Breakdown" buckets={backtest.regimeTrendBreakdown} />
+          <BucketGroup title="Regime Volatility Breakdown" buckets={backtest.regimeVolatilityBreakdown} />
           {backtest.modelValidation && (
             <Glass className="p-3">
               <div className="mb-1.5 flex items-center justify-between">
