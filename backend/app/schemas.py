@@ -5958,13 +5958,29 @@ class TradeReportCard(CamelModel):
     relabeling of a DecisionVaultEntry's own real fields into the
     brief's named grades, never a second measurement. See
     app/decision_vault.py's compute_trade_report_card(). Deliberately
-    does NOT include an Execution Grade or Psychology Grade the brief
-    also named: no real signal anywhere in this codebase measures order-
-    execution quality separately from the decision itself, and no
+    does NOT include a Psychology Grade the brief also named: no
     emotion/psychology signal exists anywhere (confirmed repeatedly
     elsewhere in this codebase, e.g. the Probability First Trading
     Philosophy's own "TradeTown honestly can't read literal emotion").
-    """
+
+    CEO directive "Command Center + Professional Quant Trading Firm
+    Upgrade" — Post-Trade Intelligence. Research first found this exact
+    trade's post-trade evidence was real but split three ways
+    (DecisionVaultEntry / TradeExitEfficiency / TradeAttributionRecord),
+    with no single joined read — this closes that gap by extending the
+    EXISTING Trade Report Card (never a new, competing "joined view"
+    system) with the other two real sources, keyed by the same real
+    `tradeId` every one of the three already carries. This also
+    supplies a real Execution Grade proxy the original card explicitly
+    said didn't exist yet: `entrySlippageBps`/`exitSlippageBps`/
+    `transactionCostUsd` ARE a real order-execution-quality signal
+    (app/trade_attribution.py), just not one this card had joined in
+    before. `None` fields below mean the join genuinely found no
+    matching real record — see `dataHonestyNote` for what remains a
+    real, disclosed gap rather than a fabricated field (WHY this trade
+    was exited, its SETUP taxonomy, its originating STRATEGY, and an
+    EXPECTED-vs-ACTUAL comparison — none of these has a real mechanism
+    anywhere in this codebase yet)."""
 
     vault_entry_id: str = Field(alias="vaultEntryId")
     symbol: str
@@ -5981,6 +5997,20 @@ class TradeReportCard(CamelModel):
     overall_trade_quality: DecisionGrade = Field(alias="overallTradeQuality")
     would_take_again: bool = Field(alias="wouldTakeAgain")
     recommendation: str
+    # Real MAE/MFE/capture — joined from TradeExitEfficiency by tradeId.
+    mae_pct: float | None = Field(default=None, alias="maePct")
+    mfe_pct: float | None = Field(default=None, alias="mfePct")
+    capture_pct: float | None = Field(default=None, alias="capturePct")
+    exit_efficiency_state: ExitEfficiencyState | None = Field(default=None, alias="exitEfficiencyState")
+    # Real execution-quality signal — joined from TradeAttributionRecord
+    # by tradeId.
+    entry_slippage_bps: float | None = Field(default=None, alias="entrySlippageBps")
+    exit_slippage_bps: float | None = Field(default=None, alias="exitSlippageBps")
+    transaction_cost_usd: float | None = Field(default=None, alias="transactionCostUsd")
+    supporting_agents: list[AgentId] = Field(default_factory=list, alias="supportingAgents")
+    opposing_agents: list[AgentId] = Field(default_factory=list, alias="opposingAgents")
+    gatekeeper_approved: bool | None = Field(default=None, alias="gatekeeperApproved")
+    data_honesty_note: str = Field(alias="dataHonestyNote")
 
 
 # v0.7 Design Bible Chapter 61's Knowledge Quality Score. Computed fresh

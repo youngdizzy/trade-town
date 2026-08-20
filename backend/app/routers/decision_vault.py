@@ -28,7 +28,12 @@ async def trade_report_card(vault_entry_id: str = Query(..., alias="vaultEntryId
     entry = next((e for e in state.decision_vault if e.id == vault_entry_id), None)
     if entry is None:
         raise HTTPException(status_code=404, detail="No Decision Vault entry found with that id.")
-    return compute_trade_report_card(entry)
+    return compute_trade_report_card(
+        entry,
+        trade_history=state.paper_portfolio.trade_history,
+        decisions=state.decisions,
+        ceo_decisions=state.ceo_decisions,
+    )
 
 
 @router.get("/similar", response_model=SimilarTradesSummary)

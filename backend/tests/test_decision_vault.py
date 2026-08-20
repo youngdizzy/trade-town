@@ -535,7 +535,7 @@ class TestComputeTradeReportCard:
         entry = _vault_entry(
             entry_id="v1", decision_grade="A", case_study_category=None
         )
-        card = compute_trade_report_card(entry)
+        card = compute_trade_report_card(entry, trade_history=[], decisions=[], ceo_decisions=[])
         assert card.would_take_again is True
         assert "Yes" in card.recommendation
 
@@ -545,7 +545,7 @@ class TestComputeTradeReportCard:
         entry = _vault_entry(
             entry_id="v1", decision_grade="A", case_study_category="acted_too_quickly"
         )
-        card = compute_trade_report_card(entry)
+        card = compute_trade_report_card(entry, trade_history=[], decisions=[], ceo_decisions=[])
         assert card.would_take_again is False
         assert "acted_too_quickly" in card.recommendation
 
@@ -555,7 +555,7 @@ class TestComputeTradeReportCard:
         entry = _vault_entry(
             entry_id="v1", decision_grade="D", case_study_category=None
         )
-        card = compute_trade_report_card(entry)
+        card = compute_trade_report_card(entry, trade_history=[], decisions=[], ceo_decisions=[])
         assert card.would_take_again is False
         assert "B-" in card.recommendation
 
@@ -563,15 +563,53 @@ class TestComputeTradeReportCard:
         entry = _vault_entry(
             entry_id="v1", decision_grade="A", case_study_category="disciplined_process"
         )
-        card = compute_trade_report_card(entry)
+        card = compute_trade_report_card(entry, trade_history=[], decisions=[], ceo_decisions=[])
         assert card.would_take_again is True
 
     def test_overall_trade_quality_mirrors_decision_grade_not_a_separately_invented_composite(
         self,
     ) -> None:
         entry = _vault_entry(entry_id="v1", decision_grade="C+")
-        card = compute_trade_report_card(entry)
+        card = compute_trade_report_card(entry, trade_history=[], decisions=[], ceo_decisions=[])
         assert card.overall_trade_quality == "C+"
+
+    def test_join_fields_are_none_when_no_matching_real_trade_exists(self) -> None:
+        entry = _vault_entry(entry_id="v1")
+        card = compute_trade_report_card(entry, trade_history=[], decisions=[], ceo_decisions=[])
+        assert card.mae_pct is None
+        assert card.mfe_pct is None
+        assert card.capture_pct is None
+        assert card.exit_efficiency_state is None
+        assert card.entry_slippage_bps is None
+        assert card.exit_slippage_bps is None
+        assert card.transaction_cost_usd is None
+        assert card.gatekeeper_approved is None
+        assert card.supporting_agents == []
+        assert card.data_honesty_note
+
+    def test_join_fields_are_real_and_populated_when_a_matching_trade_and_decision_exist(self) -> None:
+        entry = _vault_entry(entry_id="v1")
+        trade = _trade(trade_id="trade-v1", decision_id="decision-v1")
+        decision = _decision(decision_id="decision-v1")
+        card = compute_trade_report_card(entry, trade_history=[trade], decisions=[decision], ceo_decisions=[])
+        # Exit efficiency is real for every closed trade in trade_history.
+        assert card.mae_pct is not None
+        assert card.mfe_pct is not None
+        assert card.exit_efficiency_state is not None
+        # Attribution found the real matching decision.
+        assert card.entry_slippage_bps is not None
+        assert card.exit_slippage_bps is not None
+        assert card.transaction_cost_usd is not None
+        assert card.supporting_agents == ["echo"]
+        assert card.gatekeeper_approved is None  # the fixture decision carries no real GatekeeperVerdict
+
+    def test_a_trade_with_no_matching_decision_still_gets_real_exit_efficiency_and_attribution_evidence_state(self) -> None:
+        entry = _vault_entry(entry_id="v1")
+        trade = _trade(trade_id="trade-v1", decision_id="decision-nonexistent")
+        card = compute_trade_report_card(entry, trade_history=[trade], decisions=[], ceo_decisions=[])
+        assert card.mae_pct is not None  # exit efficiency only needs the real trade, not a decision
+        assert card.supporting_agents == []
+        assert card.gatekeeper_approved is None
 
 
 class TestFindSimilarVaultEntries:

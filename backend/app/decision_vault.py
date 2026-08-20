@@ -108,6 +108,7 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from app.exit_efficiency import compute_exit_efficiency
 from app.executive import GRADE_THRESHOLDS, grade_for_score
 from app.market_data import MarketDataProvider
 from app.market_intelligence import compute_liquidity
@@ -128,6 +129,7 @@ from app.schemas import (
     TradeDecision,
     TradeReportCard,
 )
+from app.trade_attribution import compute_trade_attribution
 
 MAX_DECISION_VAULT_ENTRIES = 200
 
@@ -282,17 +284,42 @@ def record_vault_entry(
     return updated
 
 
-def compute_trade_report_card(entry: DecisionVaultEntry) -> TradeReportCard:
+TRADE_REPORT_CARD_DATA_HONESTY_NOTE = (
+    "Real evidence joined from three sources by this trade's own real tradeId — DecisionVaultEntry, "
+    "TradeExitEfficiency, and TradeAttributionRecord. Still genuinely missing, disclosed rather than "
+    "fabricated: WHY this trade was exited (no exit-reason taxonomy exists anywhere), its SETUP "
+    "(no setup taxonomy exists), its originating STRATEGY (strategyId is None — live proposals come "
+    "from the Analyst Desk, not a compiled Strategy Lab definition), and an EXPECTED-vs-ACTUAL "
+    "comparison (no per-trade expected-outcome record is persisted)."
+)
+
+
+def compute_trade_report_card(
+    entry: DecisionVaultEntry,
+    *,
+    trade_history: list[PaperTrade],
+    decisions: list[TradeDecision],
+    ceo_decisions: list[CeoDecisionRecord],
+) -> TradeReportCard:
     """Pure relabeling of a DecisionVaultEntry's own real fields — see
-    TradeReportCard's own doc comment in schemas.py for why Execution/
-    Psychology grades aren't here, and why overallTradeQuality is
+    TradeReportCard's own doc comment in schemas.py for why a
+    Psychology grade isn't here, and why overallTradeQuality is
     deliberately the same value as decisionGrade rather than a third,
     separately-invented composite.
 
     wouldTakeAgain is a real, checkable rule, never a vibe: True only
     when the Decision Grade cleared B- (the same threshold band
     GRADE_THRESHOLDS already uses) AND no real mistake CaseStudy was
-    filed against this exact trade."""
+    filed against this exact trade.
+
+    CEO directive "Command Center + Professional Quant Trading Firm
+    Upgrade" — Post-Trade Intelligence: joins in TradeExitEfficiency
+    (MAE/MFE/capture) and TradeAttributionRecord (slippage/transaction
+    cost/agent contributions/Gatekeeper approval) for this SAME real
+    trade, by its own real tradeId — reusing compute_exit_efficiency()/
+    compute_trade_attribution() directly rather than re-deriving either.
+    `None` on any of the new fields means the real PaperTrade this
+    vault entry cites is no longer in trade_history (never fabricated)."""
     grade_rank = {grade: i for i, (_, grade) in enumerate(GRADE_THRESHOLDS)}
     decision_rank = grade_rank.get(entry.decision_grade, len(GRADE_THRESHOLDS))
     b_minus_rank = next(i for i, (_, grade) in enumerate(GRADE_THRESHOLDS) if grade == "B-")
@@ -307,6 +334,10 @@ def compute_trade_report_card(entry: DecisionVaultEntry) -> TradeReportCard:
     else:
         recommendation = f"No — Decision Grade {entry.decision_grade} falls below the company's B- bar for process quality, regardless of this trade's own P&L."
 
+    exit_efficiency = next((r for r in compute_exit_efficiency(trade_history).reads if r.trade_id == entry.trade_id), None)
+    trade = next((t for t in trade_history if t.id == entry.trade_id), None)
+    attribution = compute_trade_attribution(trade, decisions, ceo_decisions) if trade is not None else None
+
     return TradeReportCard(
         vaultEntryId=entry.id,
         symbol=entry.symbol,
@@ -319,6 +350,17 @@ def compute_trade_report_card(entry: DecisionVaultEntry) -> TradeReportCard:
         overallTradeQuality=entry.decision_grade,
         wouldTakeAgain=would_take_again,
         recommendation=recommendation,
+        maePct=exit_efficiency.mae_pct if exit_efficiency is not None else None,
+        mfePct=exit_efficiency.mfe_pct if exit_efficiency is not None else None,
+        capturePct=exit_efficiency.capture_pct if exit_efficiency is not None else None,
+        exitEfficiencyState=exit_efficiency.state if exit_efficiency is not None else None,
+        entrySlippageBps=attribution.entry_slippage_bps if attribution is not None else None,
+        exitSlippageBps=attribution.exit_slippage_bps if attribution is not None else None,
+        transactionCostUsd=attribution.transaction_cost_usd if attribution is not None else None,
+        supportingAgents=attribution.supporting_agents if attribution is not None else [],
+        opposingAgents=attribution.opposing_agents if attribution is not None else [],
+        gatekeeperApproved=attribution.gatekeeper_approved if attribution is not None else None,
+        dataHonestyNote=TRADE_REPORT_CARD_DATA_HONESTY_NOTE,
     )
 
 
