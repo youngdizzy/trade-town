@@ -7,6 +7,41 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Command Center + Professional Quant Trading Firm Upgrade," Phase 2: Command
+  Center IA consolidation** (frontend: `frontend/src/ui/components/CommandCenter/FullCommandCenter.tsx`,
+  `frontend/src/ui/components/CommandCenter/lib/navigation.ts`, `frontend/tests/helpers.ts`,
+  `frontend/tests/commandCenter.spec.ts`): Phase 0 research first confirmed the real scope — 42 tabs (not
+  ~40), already grouped cosmetically into 7 TTOS sections (`lib/navigation.ts`'s pre-existing
+  `TAB_SECTION`/`groupTabsBySection`), whose own comment explicitly deferred "a true identifier restructure"
+  to a later phase. This closes that deferral: a new, coarser navigation layer groups the same 42 real tabs
+  (zero renamed, zero deleted, zero content changed) under six real destinations — `AREA_ORDER` = OVERVIEW /
+  MARKETS / AI DESK / PORTFOLIO & RISK / RESEARCH & INTELLIGENCE / MORE — reusing `TAB_SECTION`'s own careful
+  reasoning as the starting point for placement rather than re-deriving it from scratch (every judgment call
+  documented in `lib/navigation.ts`'s own comment: EXECUTIVE/BLACKSWAN/TRADINGMODES/COMPLIANCE/DISCIPLINE
+  under PORTFOLIO & RISK because they're real risk controls/audits, not research; DECISIONS/VAULT/WARROOM/
+  REPLAY/REASONING/REFLECTION/OPPORTUNITIES/EXECINTEL/BLACKBOX/SANDBOX/RESEARCH under RESEARCH &
+  INTELLIGENCE because they're evidence of how a decision was reached, not its real-money consequence; AI
+  DESK deliberately narrow to AGENTS/FOUNDERS/TALENT; MORE holds everything else, still organized by the
+  original 7 TTOS section labels). `tabsForArea()`/`areaForTab()` derive placement without any new stored
+  state — `FullCommandCenter.tsx`'s existing `tab` state remains the single source of truth, with the active
+  area and its own secondary tab bar (or, for MORE, a section-grouped picker) derived fresh on every render.
+  The number-key shortcut (previously 1-9 indexing the flat 42-tab list positionally) is now 1-6, one per
+  real area, landing on that area's own default tab. `tests/helpers.ts`'s `clickTab()` was made area-aware
+  (clicks the tab's parent area first, a harmless no-op if already active) so every existing spec's
+  `clickTab(page, "X")` call site across the whole suite keeps working completely unchanged — a deliberate,
+  documented, by-hand duplicate of the same placements (tests/ has no existing precedent for importing
+  app `src/` code, and Playwright's TS loader isn't configured with the app's `@/` alias). `tsc --noEmit`,
+  `eslint`, `vite build` all clean. Playwright regression against the live stack: `commandCenter.spec.ts`
+  (33 tests) — 30 passed, 1 skipped, 2 failed; one failure is the same pre-existing, unrelated "blocks
+  interaction" movement test that was already failing before this change (confirmed via an isolated run
+  before any Phase 2 edits), the other is a timeout in the "renders all 40 tabs" test caused by the real,
+  expected extra click per tab (fixed by raising its budget from 120s to 210s — every individual nested-tab
+  test in the same file, including several newly two-level-deep ones like KNOWLEDGE/DISCIPLINE/VAULT/WARROOM/
+  CALENDAR, passed cleanly). This pass is scoped to the navigation/IA shell only — the accompanying Overview
+  enhancements, enhanced top bar (P&L/Emergency Stop), failure-boundary gauge, and chart overlays the same
+  directive's Phase 2 section also describes are real, separate, additive work not yet started; see
+  docs/Architecture.md for the full disclosure.
+
 - **CEO directive "Professional Quant Firm Phase 41-45" — frontend: taxonomy, pipeline health,
   confluence, and regime stability surfaced** (frontend: `frontend/src/net/api.ts`, `frontend/src/types.ts`,
   `frontend/src/ui/components/CommandCenter/panels/ExecutivePanel.tsx`,

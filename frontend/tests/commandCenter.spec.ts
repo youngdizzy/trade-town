@@ -142,7 +142,13 @@ test.describe("Global Command Center", () => {
   });
 
   test("expands to the Full Command Center and renders all 40 tabs with graceful empty states", async ({ page }) => {
-    test.setTimeout(120000); // the longest-running test in the file — 40 real tab clicks, each dismissing real popups along the way
+    // The longest-running test in the file — 39 real tab clicks, each
+    // dismissing real popups along the way. CEO directive "Command
+    // Center + Professional Quant Trading Firm Upgrade," Phase 2 —
+    // clickTab() now clicks a tab's parent area first (see helpers.ts),
+    // roughly doubling the real click/popup-dismissal work per tab, so
+    // the budget grows with it.
+    test.setTimeout(210000);
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);
     await continueGame(page);
@@ -166,12 +172,21 @@ test.describe("Global Command Center", () => {
       await expect(page.getByRole("button", { name: tab, exact: true })).toHaveClass(/text-cmd-cyan/);
     }
 
-    // Design Bible Chapter 67 (TTOS) Phase 1 — the 34 tabs above now
-    // render grouped under 7 real section labels rather than one flat
-    // row; `.first()` since a couple of these strings also match a tab
-    // button's own name (e.g. the RESEARCH section label vs. the
-    // RESEARCH tab button) — any match confirms the real label rendered.
-    for (const section of ["HEADQUARTERS", "MARKETS", "AI WORKFORCE", "RESEARCH", "PORTFOLIO", "OPERATIONS", "ARCHIVE"]) {
+    // CEO directive "Command Center + Professional Quant Trading Firm
+    // Upgrade," Phase 2 — the 42 tabs above now render under a two-tier
+    // IA: six primary area buttons (OVERVIEW/MARKETS/AI DESK/PORTFOLIO
+    // & RISK/RESEARCH & INTELLIGENCE/MORE), each showing its own real
+    // member tabs below it. `.first()` since some of these strings also
+    // match a tab button's own name (e.g. the MARKETS area vs. no real
+    // MARKETS tab, but RESEARCH the area label overlaps RESEARCH the
+    // tab) — any match confirms the real area button rendered.
+    for (const area of ["OVERVIEW", "MARKETS", "AI DESK", "PORTFOLIO & RISK", "RESEARCH & INTELLIGENCE", "MORE"]) {
+      await expect(page.getByText(area, { exact: true }).first()).toBeVisible();
+    }
+    // MORE's own picker still groups its remaining tabs under the
+    // original 7 TTOS section labels (reused, not thrown away).
+    await clickTab(page, "COMPANY");
+    for (const section of ["HEADQUARTERS", "AI WORKFORCE", "RESEARCH", "OPERATIONS", "PORTFOLIO"]) {
       await expect(page.getByText(section, { exact: true }).first()).toBeVisible();
     }
 
@@ -990,7 +1005,7 @@ test.describe("Global Command Center", () => {
     }).toPass({ timeout: 15000 });
   });
 
-  test("number keys 1-9 jump straight to the matching Command Center tab, ignored while typing in a form field", async ({ page }) => {
+  test("number keys 1-6 jump straight to the matching Command Center area's default tab, ignored while typing in a form field", async ({ page }) => {
     await page.goto("/");
     await setPlayerScene(page, "LobbyScene", 160, 220);
     await continueGame(page);
@@ -999,20 +1014,23 @@ test.describe("Global Command Center", () => {
     await clickExpand(page);
     await dismissBlockingPopups(page);
 
-    // Tab 9 is "RESEARCH" per FullCommandCenter.tsx's own TABS order
-    // (Design Bible Chapter 72 inserted BLACKSWAN right after RISK,
-    // shifting every tab from AGENTS onward down one position).
-    await page.keyboard.press("9");
-    await expect(page.getByRole("button", { name: "RESEARCH", exact: true })).toHaveClass(/text-cmd-cyan/);
+    // CEO directive "Command Center + Professional Quant Trading Firm
+    // Upgrade," Phase 2 — six real areas now, not 42 flat tabs, so the
+    // shortcut is 1-6 (AREA_ORDER's own order), each landing on that
+    // area's own default tab (whichever of its real member tabs appears
+    // first in FullCommandCenter.tsx's TABS declaration order — see
+    // lib/navigation.ts's tabsForArea()).
+    await page.keyboard.press("5"); // RESEARCH & INTELLIGENCE -> OPPORTUNITIES
+    await expect(page.getByRole("button", { name: "RESEARCH & INTELLIGENCE", exact: true })).toHaveClass(/text-cmd-cyan/);
+    await expect(page.getByRole("button", { name: "OPPORTUNITIES", exact: true })).toHaveClass(/text-cmd-cyan/);
 
-    // Tab 1 is "OVERVIEW".
-    await page.keyboard.press("1");
+    await page.keyboard.press("1"); // OVERVIEW
     await expect(page.getByRole("button", { name: "OVERVIEW", exact: true })).toHaveClass(/text-cmd-cyan/);
 
-    // Now jump into TREASURY (via a mouse click — its own tab index is
-    // past 9, so it's not reachable by a number-key shortcut) and confirm
-    // typing a digit into its real amount field does NOT trigger a tab
-    // switch away from it.
+    // Now jump into TREASURY (via a mouse click, under MORE — not
+    // reachable by a number-key shortcut) and confirm typing a digit
+    // into its real amount field does NOT trigger an area/tab switch
+    // away from it.
     await clickTab(page, "TREASURY");
     // See the deposit/withdraw test above for why this must be scoped to
     // the real field's own testid rather than `.first()`.

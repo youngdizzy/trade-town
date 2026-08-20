@@ -107,3 +107,95 @@ export function groupTabsBySection(tabs: readonly Tab[]): { section: Section; ta
     tabs: tabs.filter((t) => TAB_SECTION[t] === section),
   })).filter((group) => group.tabs.length > 0);
 }
+
+/**
+ * CEO directive "TradeTown — Command Center + Professional Quant
+ * Trading Firm Upgrade," Phase 2 — the real IA consolidation this
+ * chapter's own comment above deferred ("a true identifier restructure
+ * ... is deferred to a later phase"). Five primary destinations plus a
+ * MORE drawer, replacing the old flat 42-button/7-section bar as the
+ * PRIMARY navigation layer.
+ *
+ * Deliberately NOT a rename: every `Tab` string identifier above is
+ * completely untouched (still exactly what `FullCommandCenter.tsx`'s
+ * big tab === "X" render block switches on, and still exactly what
+ * every existing Playwright spec's `clickTab()` call looks up by exact
+ * accessible name) — this is a second, coarser grouping layered on top
+ * of the same 42 tabs, not a replacement for them. `clickTab()` itself
+ * (see tests/helpers.ts) was made area-aware so every existing spec
+ * call site keeps working unchanged: it looks up a tab's area, clicks
+ * into that area first if it isn't already active, then clicks the
+ * tab's own button exactly as before.
+ *
+ * The five areas roughly consolidate the existing seven TTOS sections
+ * (not a coincidence — TAB_SECTION's own careful reasoning above was
+ * the starting point for these placements, not re-derived from
+ * scratch). Real judgment calls, documented rather than silently
+ * baked in:
+ * - EXECUTIVE (Trade Gatekeeper stats/rejections/CEO decisions) sits
+ *   under PORTFOLIO & RISK, not RESEARCH & INTELLIGENCE — it's the
+ *   final approval gate on real capital, not a research artifact.
+ * - BLACKSWAN, TRADINGMODES, COMPLIANCE, DISCIPLINE join PORTFOLIO &
+ *   RISK for the same reason: all four are real controls/audits over
+ *   the company's actual risk posture, not market analysis or
+ *   research evidence.
+ * - DECISIONS, VAULT, WARROOM, REPLAY, REASONING, REFLECTION,
+ *   OPPORTUNITIES, EXECINTEL, BLACKBOX, SANDBOX, RESEARCH all sit
+ *   under RESEARCH & INTELLIGENCE — every one of them is either a
+ *   research/backtesting workspace or a record of HOW a decision was
+ *   reached, not the decision's real-money consequence.
+ * - AI DESK is deliberately narrow (AGENTS/FOUNDERS/TALENT only) —
+ *   "who's doing what right now and how they're rated," not the whole
+ *   Academy/Mentor learning-content cluster, which stays in MORE
+ *   alongside the rest of the company's slower-moving systems.
+ * - MARKETS is deliberately narrow too (MARKETINTEL/ECONINTEL) since
+ *   the actual live chart (MarketChartPanel) isn't a `Tab` at all today
+ *   — it's embedded inside OVERVIEW — see FullCommandCenter.tsx for
+ *   how this area's own first sub-view surfaces it without duplicating
+ *   the chart component.
+ * - Every tab NOT listed under one of the first five areas falls into
+ *   MORE by construction (`tabsForArea` below), and MORE's own picker
+ *   still uses `groupTabsBySection` on just its own 17 tabs — so the
+ *   TTOS section labels this codebase already carefully reasoned about
+ *   keep doing real organizational work there instead of being thrown
+ *   away.
+ */
+export const AREA_ORDER = ["OVERVIEW", "MARKETS", "AI DESK", "PORTFOLIO & RISK", "RESEARCH & INTELLIGENCE", "MORE"] as const;
+export type Area = (typeof AREA_ORDER)[number];
+
+const PRIMARY_AREA_TABS: Record<Exclude<Area, "MORE">, Tab[]> = {
+  OVERVIEW: ["OVERVIEW"],
+  MARKETS: ["MARKETINTEL", "ECONINTEL"],
+  "AI DESK": ["AGENTS", "FOUNDERS", "TALENT"],
+  "PORTFOLIO & RISK": ["RISK", "PORTFOLIO", "PERFORMANCE", "EXECUTIVE", "TRADINGMODES", "COMPLIANCE", "DISCIPLINE", "BLACKSWAN"],
+  "RESEARCH & INTELLIGENCE": ["SANDBOX", "RESEARCH", "DECISIONS", "VAULT", "WARROOM", "REASONING", "REFLECTION", "BLACKBOX", "OPPORTUNITIES", "EXECINTEL", "REPLAY"],
+};
+
+const PRIMARY_TAB_SET = new Set<Tab>(Object.values(PRIMARY_AREA_TABS).flat());
+
+/** Every real `Tab` this area contains, in `TABS`' own declared order
+ * (so a primary area's default/first tab is always the same one
+ * `groupTabsBySection` would have shown first, and MORE's own default
+ * lands on whichever of its tabs appears earliest in TABS — COMPANY
+ * today). `MORE` is derived (every tab none of the five primary areas
+ * claims) rather than hand-listed, so a newly added `Tab` can never
+ * silently vanish from the navigation entirely — it always lands in
+ * MORE by default until a primary-area placement is deliberately
+ * chosen for it. */
+export function tabsForArea(area: Area, tabs: readonly Tab[]): Tab[] {
+  if (area === "MORE") return tabs.filter((t) => !PRIMARY_TAB_SET.has(t));
+  return tabs.filter((t) => PRIMARY_AREA_TABS[area].includes(t));
+}
+
+const AREA_BY_TAB: Partial<Record<Tab, Area>> = {};
+for (const area of AREA_ORDER) {
+  if (area === "MORE") continue;
+  for (const t of PRIMARY_AREA_TABS[area]) AREA_BY_TAB[t] = area;
+}
+
+/** Which of the six top-level areas a given real `Tab` lives under —
+ * `MORE` for anything not explicitly placed in one of the five primary
+ * areas above. */
+export function areaForTab(tab: Tab): Area {
+  return AREA_BY_TAB[tab] ?? "MORE";
+}

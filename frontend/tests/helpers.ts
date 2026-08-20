@@ -242,9 +242,67 @@ export async function clickRobust(page: Page, locator: () => Locator, opts?: { a
   throw new Error(`clickRobust: could not complete the click${opts?.label ? ` (${opts.label})` : ""} after ${attempts} attempts`);
 }
 
+/**
+ * CEO directive "TradeTown — Command Center + Professional Quant
+ * Trading Firm Upgrade," Phase 2 — the Command Center's primary
+ * navigation is now two-tier (six areas, each with its own real member
+ * tabs below it; see src/ui/components/CommandCenter/lib/navigation.ts's
+ * AREA_ORDER/tabsForArea/areaForTab for the real, documented mapping).
+ * A tab that isn't in the currently active area isn't in the DOM at
+ * all until its parent area is selected, so this map — a deliberate,
+ * minimal DUPLICATE of that same source file's placements (tests/
+ * can't safely import from src/ here — no existing precedent for it in
+ * this suite, and Playwright's own TS loader isn't configured with the
+ * app's `@/` path alias) — lets every existing `clickTab(page, "X")`
+ * call site across the whole suite keep working completely unchanged:
+ * it clicks the parent area first (only if not already active), then
+ * the tab itself, exactly as a real player would. Keep this in sync
+ * with lib/navigation.ts's own placements by hand; if a real, new tab
+ * is ever added on the frontend side without a matching entry here,
+ * clickTab() falls back to clicking the button directly (correct for
+ * the OVERVIEW area, which has no secondary tab bar at all).
+ */
+const TAB_AREA: Record<string, string> = {
+  MARKETINTEL: "MARKETS",
+  ECONINTEL: "MARKETS",
+  AGENTS: "AI DESK",
+  FOUNDERS: "AI DESK",
+  TALENT: "AI DESK",
+  RISK: "PORTFOLIO & RISK",
+  PORTFOLIO: "PORTFOLIO & RISK",
+  PERFORMANCE: "PORTFOLIO & RISK",
+  EXECUTIVE: "PORTFOLIO & RISK",
+  TRADINGMODES: "PORTFOLIO & RISK",
+  COMPLIANCE: "PORTFOLIO & RISK",
+  DISCIPLINE: "PORTFOLIO & RISK",
+  BLACKSWAN: "PORTFOLIO & RISK",
+  SANDBOX: "RESEARCH & INTELLIGENCE",
+  RESEARCH: "RESEARCH & INTELLIGENCE",
+  DECISIONS: "RESEARCH & INTELLIGENCE",
+  VAULT: "RESEARCH & INTELLIGENCE",
+  WARROOM: "RESEARCH & INTELLIGENCE",
+  REASONING: "RESEARCH & INTELLIGENCE",
+  REFLECTION: "RESEARCH & INTELLIGENCE",
+  BLACKBOX: "RESEARCH & INTELLIGENCE",
+  OPPORTUNITIES: "RESEARCH & INTELLIGENCE",
+  EXECINTEL: "RESEARCH & INTELLIGENCE",
+  REPLAY: "RESEARCH & INTELLIGENCE",
+  // Everything else (COMPANY, KNOWLEDGE, MENTOR, MENTORLIB, MENTORLAB,
+  // TRAINING, PVAI, ACADEMY, CONSTITUTION, OPS, TREASURY, CALENDAR,
+  // LOGS, SITUATIONROOM, TRAVELMODE, EVOLUTION, PSYCHOLOGY) lives under
+  // MORE.
+};
+
 /** Clicks a Command Center tab, retrying through any popup that
- * intercepts the click. */
+ * intercepts the click. Always clicks the tab's parent area first (see
+ * TAB_AREA above) — a no-op re-selection of that area's own default
+ * tab if it's already active, harmless since the real requested tab is
+ * clicked immediately after, and it's what makes every existing
+ * `clickTab(page, "X")` call site keep working regardless of which
+ * area happened to be showing beforehand. */
 export async function clickTab(page: Page, tab: string): Promise<void> {
+  const area = tab === "OVERVIEW" ? "OVERVIEW" : (TAB_AREA[tab] ?? "MORE");
+  await clickRobust(page, () => page.getByRole("button", { name: area, exact: true }), { label: `area "${area}"` });
   await clickRobust(page, () => page.getByRole("button", { name: tab, exact: true }), { label: `tab "${tab}"` });
 }
 

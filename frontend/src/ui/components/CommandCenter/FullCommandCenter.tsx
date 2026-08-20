@@ -4,7 +4,7 @@ import { useGameStore } from "@/ui/hooks/useGameStore";
 import { EventBus } from "@/game/systems/EventBus";
 import type { EducationTopic, TradeDecision } from "@/types";
 import { aiStatus, riskLevel } from "./lib/derive";
-import { groupTabsBySection } from "./lib/navigation";
+import { AREA_ORDER, areaForTab, groupTabsBySection, tabsForArea, type Area } from "./lib/navigation";
 import { RiskDot, StatusPill } from "./ui";
 import { OverviewPanel } from "./panels/OverviewPanel";
 import { OpportunitiesPanel } from "./panels/OpportunitiesPanel";
@@ -162,19 +162,26 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
     gameStore.clearPendingCommandCenterTab();
   }, [pendingCommandCenterTab]);
 
-  // v0.7 Feature 34 — number keys 1-9 jump straight to the first nine
-  // tabs, the same real switch-tab action clicking one already performs.
-  // Ignored while typing in a form control so it never fights a text/
-  // number input's own digits (Treasury's amount field, Company
+  // v0.7 Feature 34, updated for the Phase 2 IA consolidation — number
+  // keys 1-6 now jump straight to one of the six top-level areas'
+  // default tab (AREA_ORDER's own order: 1=OVERVIEW, 2=MARKETS,
+  // 3=AI DESK, 4=PORTFOLIO & RISK, 5=RESEARCH & INTELLIGENCE, 6=MORE),
+  // the same real area-jump clicking one of the six primary buttons
+  // already performs. Was 1-9 indexing the old flat 42-tab list
+  // positionally; six real destinations is what the new IA actually
+  // has. Ignored while typing in a form control so it never fights a
+  // text/number input's own digits (Treasury's amount field, Company
   // Priority's fast-forward hours, ...).
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement | null;
       if (target && ["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName)) return;
       const digit = Number(e.key);
-      if (!Number.isInteger(digit) || digit < 1 || digit > 9) return;
-      const nextTab = TABS[digit - 1];
-      if (nextTab) setTab(nextTab);
+      if (!Number.isInteger(digit) || digit < 1 || digit > AREA_ORDER.length) return;
+      const area = AREA_ORDER[digit - 1];
+      if (!area) return;
+      const firstTab = tabsForArea(area, TABS)[0];
+      if (firstTab) setTab(firstTab);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
@@ -233,25 +240,7 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
         </div>
       </header>
 
-      <nav className="flex max-h-[45vh] flex-col gap-1 overflow-y-auto border-b border-cmd-border bg-cmd-panel/60 px-3 py-1.5">
-        {groupTabsBySection(TABS).map(({ section, tabs }) => (
-          <div key={section} className="flex flex-wrap items-center gap-1">
-            <span className="mr-1 w-[104px] shrink-0 text-[10px] tracking-[0.15em] text-cmd-textDim/70">{section}</span>
-            {tabs.map((t) => (
-              <button
-                key={t}
-                type="button"
-                onClick={() => setTab(t)}
-                className={`min-h-[40px] whitespace-nowrap rounded-sm px-3 py-1.5 tracking-wide transition-colors sm:min-h-0 ${
-                  tab === t ? "border border-cmd-cyan/40 bg-cmd-cyan/10 text-cmd-cyan shadow-cmd-cyan" : "border border-transparent text-cmd-textDim hover:text-cmd-text"
-                }`}
-              >
-                {t}
-              </button>
-            ))}
-          </div>
-        ))}
-      </nav>
+      <CommandCenterNav tab={tab} setTab={setTab} />
 
       <div className="flex-1 overflow-y-auto p-4">
         <PanelErrorBoundary key={tab} panelName={tab}>
@@ -305,4 +294,77 @@ export function FullCommandCenter({ onCollapse, onClose }: { onCollapse: () => v
   );
 }
 
+/**
+ * CEO directive "TradeTown — Command Center + Professional Quant
+ * Trading Firm Upgrade," Phase 2 — the two-tier navigation this
+ * chapter's IA consolidation calls for: six primary destinations
+ * (OVERVIEW / MARKETS / AI DESK / PORTFOLIO & RISK / RESEARCH &
+ * INTELLIGENCE / MORE), each showing its own real member tabs below it
+ * — see lib/navigation.ts's AREA_ORDER/tabsForArea/areaForTab for the
+ * real, documented placement of every one of the 42 real tabs. No tab
+ * was deleted or renamed; this is purely a new outer grouping layer.
+ */
+function CommandCenterNav({ tab, setTab }: { tab: Tab; setTab: (tab: Tab) => void }) {
+  const activeArea = areaForTab(tab);
+  const secondaryTabs = tabsForArea(activeArea, TABS);
+
+  return (
+    <nav className="flex max-h-[45vh] flex-col border-b border-cmd-border bg-cmd-panel/60">
+      <div className="flex flex-wrap items-center gap-1 border-b border-cmd-border/60 px-3 py-1.5">
+        {AREA_ORDER.map((area) => (
+          <button
+            key={area}
+            type="button"
+            onClick={() => {
+              const firstTab = tabsForArea(area, TABS)[0];
+              if (firstTab) setTab(firstTab);
+            }}
+            className={`min-h-[40px] whitespace-nowrap rounded-sm px-3 py-1.5 tracking-wide transition-colors sm:min-h-0 ${
+              activeArea === area ? "border border-cmd-cyan/40 bg-cmd-cyan/10 text-cmd-cyan shadow-cmd-cyan" : "border border-transparent text-cmd-textDim hover:text-cmd-text"
+            }`}
+          >
+            {area}
+          </button>
+        ))}
+      </div>
+
+      {activeArea === "MORE" ? (
+        <div className="flex flex-col gap-1 overflow-y-auto px-3 py-1.5">
+          {groupTabsBySection(secondaryTabs).map(({ section, tabs: sectionTabs }) => (
+            <div key={section} className="flex flex-wrap items-center gap-1">
+              <span className="mr-1 w-[104px] shrink-0 text-[10px] tracking-[0.15em] text-cmd-textDim/70">{section}</span>
+              {sectionTabs.map((t) => (
+                <TabButton key={t} label={t} active={tab === t} onClick={() => setTab(t)} />
+              ))}
+            </div>
+          ))}
+        </div>
+      ) : (
+        secondaryTabs.length > 1 && (
+          <div className="flex flex-wrap items-center gap-1 overflow-y-auto px-3 py-1.5">
+            {secondaryTabs.map((t) => (
+              <TabButton key={t} label={t} active={tab === t} onClick={() => setTab(t)} />
+            ))}
+          </div>
+        )
+      )}
+    </nav>
+  );
+}
+
+function TabButton({ label, active, onClick }: { label: string; active: boolean; onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className={`min-h-[40px] whitespace-nowrap rounded-sm px-3 py-1.5 tracking-wide transition-colors sm:min-h-0 ${
+        active ? "border border-cmd-cyan/40 bg-cmd-cyan/10 text-cmd-cyan shadow-cmd-cyan" : "border border-transparent text-cmd-textDim hover:text-cmd-text"
+      }`}
+    >
+      {label}
+    </button>
+  );
+}
+
 export type { Tab };
+export type { Area };

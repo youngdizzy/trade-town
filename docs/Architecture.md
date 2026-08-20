@@ -10982,6 +10982,103 @@ causally sound directly in that function's own docstring, rather than
 building an unneeded train/test split where none would be
 architecturally meaningful.
 
+### CEO directive "Command Center + Professional Quant Trading Firm Upgrade" — Phase 0 research + Phase 2 IA consolidation
+
+**Phase 0 (mandatory research before any change).** A four-way parallel
+research pass inventoried the full breadth this directive asked about
+before any code was touched. Headline findings, condensed (see the
+session's own delivered implementation matrix for the full table):
+
+- **Command Center**: 42 real tabs today (the in-file "34" comment was
+  stale), already grouped cosmetically into 7 TTOS sections. A
+  persistent top bar (`GlobalStatusBar.tsx`) and an Overview screen
+  already exist; neither has P&L/Emergency Stop (top bar) or a
+  failure-boundary gauge (Overview) yet. No chart overlay support
+  exists at all (`ChartOverlays` only draws entry/current-price lines)
+  even though the backend computes most of what the directive asks the
+  chart to show.
+- **Strategy/signal coverage**: far more already exists than assumed —
+  real BOS/swing-structure detection, liquidity sweeps, order blocks
+  (disclosed proxy), Fair Value Gaps, Fibonacci retracements/
+  extensions, double-top/bottom + trendline-break chart patterns, and
+  candlestick patterns are all real (`app/market_intelligence.py`,
+  `app/technical_patterns.py`). Two real, non-duplicative confluence
+  engines already exist (`app/signal_correlation.py` at the vote layer,
+  `app/evidence_confluence.py` at the indicator layer, the latter now
+  wired into live War Room scoring). Genuinely absent, and explicitly
+  disclosed as out of scope already in this codebase's own Academy
+  content: head-and-shoulders/wedges/triangles/harmonic patterns,
+  Elliott Wave, Gann, moon phases, Heikin Ashi, volume profile.
+- **Session-awareness**: real UTC session detection (Asia/London/NY/
+  overlap) and real per-session backtest evidence both exist. Missing:
+  session as a live trade-gating reason (the `NoTradeReasonCode`
+  taxonomy's own comment already discloses `SESSION_FILTER` has no real
+  mechanism), and any agent-level trading-status vocabulary or
+  per-agent "why not trading right now" narrative (today's `AgentState`
+  has no trading-readiness field at all).
+- **Company health / curriculum / attribution**: Company Health's 22
+  sub-scores (11 operational + 11 executive) are all real, including
+  real team chemistry. The Academy curriculum covers Concept/Example/
+  Quiz but not the other 6 directive-requested stages (Market
+  Conditions, Invalid Conditions, Historical Test, Failure Cases,
+  Comparison, Paper Trading, Performance Review). Post-trade
+  intelligence is real but split three ways (Decision Vault / Exit
+  Efficiency / Trade Attribution) with no single joined read, and no
+  `strategyId`/R-multiple anywhere on a live trade. No live regime/
+  session-based strategy selection exists — Tournament Round 9's
+  `regimeStabilityVerdict` is never read by anything that picks a
+  strategy.
+
+Given the scope (each of the above is realistically its own multi-day
+project), the CEO was asked how to pace this; the direction given was
+to tackle the Command Center IA redesign (Phase 2) first, in full, now.
+
+**Phase 2 — the IA consolidation itself.** `frontend/src/ui/components/
+CommandCenter/lib/navigation.ts` gained a second, coarser grouping
+layer on top of the existing 42 real tabs (all left completely
+unrenamed and unchanged — every existing Playwright `clickTab(page,
+"X")` call site keeps working) — six real destinations: OVERVIEW,
+MARKETS, AI DESK, PORTFOLIO & RISK, RESEARCH & INTELLIGENCE, MORE.
+`AREA_ORDER`/`tabsForArea()`/`areaForTab()` derive every placement from
+a single `PRIMARY_AREA_TABS` map, reusing the existing `TAB_SECTION`
+map's own careful reasoning as the starting point (see that file's own
+extensive comment for every individual placement judgment call, e.g.
+why EXECUTIVE/BLACKSWAN/TRADINGMODES/COMPLIANCE/DISCIPLINE sit under
+PORTFOLIO & RISK rather than RESEARCH & INTELLIGENCE). `FullCommand
+Center.tsx` gained a new `CommandCenterNav` component: a primary
+six-button area bar, plus each area's own secondary tab bar rendered
+below it (for MORE, a section-grouped picker reusing `groupTabsBySection`
+rather than a flat 17-item row) — `tab` state remains the single source
+of truth throughout; the active area and its own tab list are derived
+fresh every render, never tracked as separate state that could drift
+out of sync. The number-key shortcut moved from 1-9 (indexing the old
+flat tab list positionally) to 1-6 (one per real area, landing on that
+area's own default tab).
+
+`tests/helpers.ts`'s `clickTab()` was made area-aware — it clicks a
+tab's parent area first (a harmless no-op re-click if that area is
+already active), then the tab itself — via a small, explicit, by-hand
+`TAB_AREA` lookup duplicated from `lib/navigation.ts`'s own placements
+(tests/ has no existing precedent in this codebase for importing app
+`src/` code, and Playwright's TS loader isn't configured with the app's
+`@/` path alias, so duplication was the lower-risk choice over adding
+new build-tooling wiring for one lookup table). This is what let every
+existing spec file across the whole Playwright suite keep working
+without individually touching each one.
+
+**Explicitly scoped out of this pass** (real, separate, additive work,
+not started): the enhanced top bar (P&L, Emergency Stop indicator), the
+Overview screen's new failure-boundary gauge and agent-thesis roll-up,
+and chart overlays (regime shading, liquidity zones, support/
+resistance, order blocks, FVG, structure markers) — all explicitly
+named in the same directive's Phase 2 section but requiring real new
+UI components, not a navigation regrouping. Also out of scope this
+pass: everything from Phase 0's own gap list above (session-as-a-live-
+gating-reason, agent trading-status vocabulary/narrative explainability,
+the Strategy Library/Signal Confluence Engine's live wiring, curriculum
+expansion, joined post-trade view, live regime/session-based strategy
+selection).
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing
