@@ -3702,7 +3702,21 @@ class CompiledStrategyBacktestResult(CamelModel):
     app/ema_pullback_research.py already established, reused directly
     rather than re-invented, so every compiled strategy's results are
     directly comparable to that same reference strategy's own real
-    numbers."""
+    numbers.
+
+    CEO directive "Professional Quant Firm Phase" follow-up — every
+    `EmaPullbackTradeRecord` already carries its own real, per-trade
+    `regimeTrend`/`regimeVolatility` read (see that field's own
+    docstring: a self-contained proxy computed only from data available
+    up to the trade's own entry bar, never a look-ahead label), and
+    `EmaPullbackResearchResult` (the reference 50 EMA strategy) already
+    aggregates those into `regimeTrendBreakdown`/
+    `regimeVolatilityBreakdown` — but this newer, general compiled-
+    strategy engine never did, a real, disclosed gap. `regimeTrendBreakdown`/
+    `regimeVolatilityBreakdown` below close it, aggregated identically to
+    `sessionBreakdown`/`instrumentBreakdown` via the same
+    `aggregate_bucket()`, from data this engine already computes — no new
+    regime-detection logic, no new field on the trade record."""
 
     id: str
     definition_id: str = Field(alias="definitionId")
@@ -3713,6 +3727,8 @@ class CompiledStrategyBacktestResult(CamelModel):
     overall: EmaPullbackStatsBucket
     session_breakdown: list[EmaPullbackStatsBucket] = Field(default_factory=list, alias="sessionBreakdown")
     instrument_breakdown: list[EmaPullbackStatsBucket] = Field(default_factory=list, alias="instrumentBreakdown")
+    regime_trend_breakdown: list[EmaPullbackStatsBucket] = Field(default_factory=list, alias="regimeTrendBreakdown")
+    regime_volatility_breakdown: list[EmaPullbackStatsBucket] = Field(default_factory=list, alias="regimeVolatilityBreakdown")
     model_validation: ModelValidationReport | None = Field(default=None, alias="modelValidation")
     monte_carlo: StrategyMonteCarloResult | None = Field(default=None, alias="monteCarlo")
     data_honesty_note: str = Field(alias="dataHonestyNote")

@@ -533,6 +533,8 @@ def run_compiled_strategy_backtest(
     all_trades: list[EmaPullbackTradeRecord] = []
     instrument_buckets: dict[str, list[EmaPullbackTradeRecord]] = {}
     session_buckets: dict[str, list[EmaPullbackTradeRecord]] = {}
+    regime_trend_buckets: dict[str, list[EmaPullbackTradeRecord]] = {}
+    regime_volatility_buckets: dict[str, list[EmaPullbackTradeRecord]] = {}
 
     for symbol in test_symbols:
         candles = market_data_provider.get_candles(symbol, timeframe, candles_per_symbol)
@@ -541,10 +543,14 @@ def run_compiled_strategy_backtest(
             all_trades.append(record)
             instrument_buckets.setdefault(symbol, []).append(record)
             session_buckets.setdefault(record.entry_session, []).append(record)
+            regime_trend_buckets.setdefault(record.regime_trend, []).append(record)
+            regime_volatility_buckets.setdefault(record.regime_volatility, []).append(record)
 
     overall = aggregate_bucket("overall", all_trades)
     instrument_breakdown = [aggregate_bucket(sym, trades) for sym, trades in sorted(instrument_buckets.items())]
     session_breakdown = [aggregate_bucket(session, trades) for session, trades in sorted(session_buckets.items())]
+    regime_trend_breakdown = [aggregate_bucket(regime, trades) for regime, trades in sorted(regime_trend_buckets.items())]
+    regime_volatility_breakdown = [aggregate_bucket(regime, trades) for regime, trades in sorted(regime_volatility_buckets.items())]
 
     strategy = Strategy(
         id=f"compiled-{definition.id}",
@@ -621,6 +627,8 @@ def run_compiled_strategy_backtest(
         overall=overall,
         sessionBreakdown=session_breakdown,
         instrumentBreakdown=instrument_breakdown,
+        regimeTrendBreakdown=regime_trend_breakdown,
+        regimeVolatilityBreakdown=regime_volatility_breakdown,
         modelValidation=model_validation,
         monteCarlo=monte_carlo,
         dataHonestyNote=(

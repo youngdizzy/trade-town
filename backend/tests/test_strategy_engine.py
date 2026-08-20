@@ -239,6 +239,24 @@ class TestRunCompiledStrategyBacktestIntegration:
         assert result.definition_version == definition.version
         assert "never real historical market data" in result.data_honesty_note
 
+    def test_regime_breakdowns_sum_to_the_same_real_overall_trade_count(self) -> None:
+        # CEO directive "Professional Quant Firm Phase" follow-up — regimeTrendBreakdown/
+        # regimeVolatilityBreakdown are new aggregations of the SAME real trades `overall`
+        # already covers, grouped by each trade's own real regimeTrend/regimeVolatility —
+        # every real closed+open trade must appear in exactly one bucket per breakdown.
+        definition = compile_strategy_text(name="Long", source_text=_LONG_TEXT)
+        result = run_compiled_strategy_backtest(definition, symbols=["AAPL", "MSFT", "SPY", "QQQ", "GLD", "BTC-USD"], candles_per_symbol=6000)
+        assert sum(b.trade_count for b in result.regime_trend_breakdown) == result.overall.trade_count
+        assert sum(b.trade_count for b in result.regime_volatility_breakdown) == result.overall.trade_count
+        assert {b.label for b in result.regime_trend_breakdown} <= {"trending_up", "trending_down", "ranging"}
+        assert {b.label for b in result.regime_volatility_breakdown} <= {"high", "normal", "low"}
+
+    def test_a_refused_backtest_reads_honestly_empty_regime_breakdowns_never_fabricated(self) -> None:
+        definition = compile_strategy_text(name="Invalid", source_text="Buy when the moon is full.")
+        result = run_compiled_strategy_backtest(definition, symbols=["AAPL"])
+        assert result.regime_trend_breakdown == []
+        assert result.regime_volatility_breakdown == []
+
 
 class TestRegimeAndBreakoutTagsAreReallyComputedNotHardcoded:
     """Regression coverage for a real bug found during Phase G's own
