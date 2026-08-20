@@ -7,6 +7,25 @@ development milestones, not semver releases.
 
 ### Added
 
+- **Quant Strategy Tournament, Round 7: real pairwise strategy-return correlation** (backend:
+  `backend/app/portfolio_intelligence.py`, `backend/app/schemas.py`, `backend/app/strategy_tournament.py`;
+  frontend: `frontend/src/types.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/sandbox/QuantResearchLabView.tsx`): closes the last
+  remaining disclosed blocker from the Features 36-40 pass with a real, honest, PARTIAL signal — a full
+  portfolio-level backtest (shared capital, combined position sizing, simultaneous multi-strategy drawdown)
+  remains architecturally unavailable and Round 7 stays `blocked: true`, but it now computes a real Pearson
+  correlation between each pair of candidates' own already-computed walk-forward window expectancy sequences
+  (identical window boundaries for both, since both were tested against the same symbols/timeframe/
+  candlesPerSymbol/windowBars — no extra backtest run needed). Reuses `app/portfolio_intelligence.py`'s
+  existing Pearson implementation (renamed from private `_pearson()` to public `pearson_correlation()`,
+  behavior unchanged) rather than a second statistics implementation. `correlation` reads `null` — never a
+  fabricated `0.0` — below 3 real paired windows with evidence on both sides. Round 7 still never eliminates a
+  candidate; this is a real diversification signal for CEO/agent judgment, not a portfolio-level risk verdict.
+  6 new hand-traced backend tests (exact ±1.0 correlation fixtures, below-evidence-bar, null-window exclusion,
+  no-shared-symbol, single-candidate); full backend suite (2,360 tests), `mypy app/`, `ruff check app/ tests/`
+  all clean. Frontend `tsc --noEmit`, `eslint`, `vite build` clean; `sandbox.spec.ts` (4 tests, extended) passes
+  against the live dev stack.
+
 - **Compiled-strategy backtest: real regime breakdowns + Feature 38 metrics surfaced everywhere** (backend:
   `backend/app/schemas.py`, `backend/app/strategy_engine.py`; frontend: `frontend/src/types.ts`,
   `frontend/src/ui/components/CommandCenter/panels/sandbox/EmaPullbackResearchView.tsx`,

@@ -1682,8 +1682,14 @@ then compares real results via named-slot superlatives
 composite score) and 8 staged elimination rounds (see
 `app/strategy_tournament.py`'s own module docstring for the exact,
 disclosed round-by-round rule — Round 7 "Portfolio interaction" is
-explicitly disclosed as architecturally blocked, since this codebase has
-no cross-strategy portfolio-level backtest). Returns a
+still explicitly disclosed as partially blocked, since this codebase has
+no cross-strategy portfolio-level backtest (shared capital, combined
+position sizing, simultaneous drawdown), but now also returns
+`pairCorrelations` — a real Pearson correlation between each candidate
+pair's own walk-forward window expectancy sequences, per shared symbol
+(reusing `app/portfolio_intelligence.py`'s `pearson_correlation()`);
+`correlation` is `null` below 3 real paired windows, never a fabricated
+`0.0`). Returns a
 `StrategyTournamentResult`; `productionCandidates` is a real, cited
 LABEL for CEO visibility only — never an autonomous production
 promotion, never a bypass of this codebase's separate risk/governance

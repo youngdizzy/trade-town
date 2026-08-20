@@ -10763,6 +10763,52 @@ clean. Frontend `tsc --noEmit`, `eslint`, `vite build` clean;
 breakdowns and the Sharpe row actually render after a real backtest)
 passes against the live dev stack.
 
+### Addendum: Tournament Round 7 — a real (partial) portfolio-interaction signal
+
+The last remaining disclosed blocker from the main Features 36-40 pass:
+Round 7 ("Portfolio interaction") had no real signal at all — every
+entrant trivially passed with `blocked: true` and a note that this
+codebase has no cross-strategy portfolio-level backtest. A full
+portfolio-level backtest (shared capital, combined position sizing,
+simultaneous multi-strategy drawdown) genuinely still does not exist and
+remains out of scope — but a real, honest, partial signal turned out to
+be buildable from data this codebase already computes: `app/walk_
+forward.py` already produces, per candidate, a chronologically-ordered
+sequence of real per-window `expectancy_r` values for each tested
+symbol. Two candidates tested against the same symbols/timeframe/
+candlesPerSymbol/windowBars get IDENTICAL window boundaries — so their
+expectancy sequences are directly, honestly comparable window-by-window,
+with no extra backtest run needed.
+
+`app/strategy_tournament.py`'s `_assess_pair_correlations()` aligns each
+pair of candidates' walk-forward windows by `window_index` (per shared
+symbol) and computes a real Pearson correlation over the paired
+`expectancy_r` values — reusing `app/portfolio_intelligence.py`'s
+existing Pearson implementation (renamed from a previously-private
+`_pearson()` to public `pearson_correlation()`, behavior unchanged, real
+audit found it was already exactly the right, already-tested math for
+symbol-to-symbol price-return correlation) rather than writing a second
+statistics implementation. `correlation` reads `null` — never a
+fabricated `0.0` — below 3 real paired windows with evidence on both
+sides, matching this whole directive family's own repeated "missing
+evidence is not zero evidence" rule.
+
+Round 7 remains `blocked: true` (the FULL capability the directive
+originally asked for is still unavailable) and still never eliminates a
+candidate on its own — correlation alone is not a real portfolio-level
+risk verdict, only a real, disclosed diversification signal for CEO/
+agent judgment, surfaced in `StrategyTournamentResult.pairCorrelations`
+and the new "Round 7 — Real Pairwise Return Correlation" frontend
+section.
+
+6 new hand-traced backend tests (perfectly correlated/anti-correlated
+fixed sequences verified against exact ±1.0, below-evidence-bar,
+null-window exclusion, no-shared-symbol, single-candidate), full backend
+suite (2,360 tests), `mypy app/`, `ruff check app/ tests/` all clean.
+Frontend `tsc --noEmit`, `eslint`, `vite build` clean; `sandbox.spec.ts`
+(4 tests, extended with an assertion the new correlation section
+renders) passes against the live dev stack.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing
