@@ -22,6 +22,14 @@ const OVERFITTING_TONE: Record<string, "green" | "amber" | "red" | "purple"> = {
   pending_validation: "purple",
 };
 
+// CEO directive "Professional Quant Firm Phase 41-45," Feature 43 —
+// Round 9 (Regime Stability).
+const REGIME_STABILITY_TONE: Record<string, "green" | "amber" | "red" | "purple"> = {
+  regime_validated: "green",
+  no_validated_regime: "red",
+  insufficient_data: "purple",
+};
+
 function VerdictPill({ verdict, tones }: { verdict: string; tones: Record<string, "green" | "amber" | "red" | "purple"> }) {
   return <StatusPill tone={tones[verdict] ?? "neutral"}>{verdict.replace(/_/g, " ")}</StatusPill>;
 }
@@ -305,6 +313,7 @@ export function QuantResearchLabView() {
                   <th className="py-1 pr-2">Max DD R</th>
                   <th className="py-1 pr-2">Walk-Fwd</th>
                   <th className="py-1 pr-2">Overfitting</th>
+                  <th className="py-1 pr-2">Regime Stability</th>
                   <th className="py-1 pr-2">Status</th>
                 </tr>
               </thead>
@@ -322,6 +331,9 @@ export function QuantResearchLabView() {
                     <td className="py-1 pr-2 text-cmd-textDim">{e.walkForwardVerdict.replace(/_/g, " ")}</td>
                     <td className="py-1 pr-2">
                       <VerdictPill verdict={e.overfittingVerdict} tones={OVERFITTING_TONE} />
+                    </td>
+                    <td className="py-1 pr-2" title={e.regimeStabilityDetail}>
+                      <VerdictPill verdict={e.regimeStabilityVerdict} tones={REGIME_STABILITY_TONE} />
                     </td>
                     <td className="py-1 pr-2">
                       {e.eliminatedAtRound !== null ? (

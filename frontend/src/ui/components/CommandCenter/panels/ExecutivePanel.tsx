@@ -107,6 +107,15 @@ export function ExecutivePanel() {
                       <StatusPill tone={GK_OUTCOME_TONE[r.outcome]}>{GK_OUTCOME_LABEL[r.outcome]}</StatusPill>
                     </div>
                     {r.reasons[0] && <div className="text-cmd-textDim">{r.reasons[0]}</div>}
+                    {r.reasonCodes.length > 0 && (
+                      <div className="mt-0.5 flex flex-wrap gap-1">
+                        {r.reasonCodes.map((code) => (
+                          <span key={code} className="rounded-sm border border-cmd-border/50 bg-cmd-bg/60 px-1 py-0.5 text-[8px] text-cmd-textDim">
+                            {code}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -144,6 +153,15 @@ export function ExecutivePanel() {
                       {r.expectedValueAtRejectionPct.toFixed(1)}%
                     </div>
                     {r.reasons[0] && <div className="text-cmd-textDim">{r.reasons[0]}</div>}
+                    {r.reasonCodes.length > 0 && (
+                      <div className="mt-0.5 flex flex-wrap gap-1">
+                        {r.reasonCodes.map((code) => (
+                          <span key={code} className="rounded-sm border border-cmd-border/50 bg-cmd-bg/60 px-1 py-0.5 text-[8px] text-cmd-textDim">
+                            {code}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>

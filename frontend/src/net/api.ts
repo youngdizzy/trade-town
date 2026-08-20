@@ -104,6 +104,7 @@ import type {
   TechnicalAnalysisRead,
   ConfluenceRead,
   TradeAttributionSummary,
+  TradePipelineHealthSnapshot,
   TradingSession,
   Strategy,
   StrategyCertification,
@@ -247,6 +248,10 @@ export const api = {
   // Phase 3 — real session/regime P&L via the real Decision Vault join.
   // Read-only, computed fresh per request.
   getPerformanceBySession: () => request<SessionPerformanceSummary>("/trades/performance-by-session"),
+  // CEO directive "Professional Quant Firm Phase 41-45," Critical Task
+  // #0 — diagnostic-only trade-flow funnel telemetry. Read-only,
+  // computed fresh per request; never gates or scores anything.
+  getPipelineHealth: () => request<TradePipelineHealthSnapshot>("/trades/pipeline-health"),
   getPerformanceByRegime: () => request<RegimePerformanceSummary>("/trades/performance-by-regime"),
   // CEO directive "Next Professional Trading Firm Phase," Priority 5 —
   // Research Data Integrity. Read-only; the candle row re-checks the

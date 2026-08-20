@@ -1498,6 +1498,8 @@ export interface StrategyTournamentEntry {
   lookAheadVerdict: "clean" | "violations_found" | "insufficient_data";
   modelValidationVerdict: "approved" | "rejected" | "needs_more_evidence" | "not_validatable" | null;
   overfittingVerdict: OverfittingVerdict;
+  regimeStabilityVerdict: "regime_validated" | "no_validated_regime" | "insufficient_data";
+  regimeStabilityDetail: string;
   eliminatedAtRound: number | null;
   eliminationReason: string | null;
 }
@@ -2034,11 +2036,74 @@ export interface ProjectedLossPath {
   computedAt: string;
 }
 
+/** CEO directive "Professional Quant Firm Phase 41-45," Critical Task
+ * #0 — a real, 37-code taxonomy grounded in exact cited lines of
+ * existing pipeline code, never invented. See backend/app/schemas.py's
+ * NoTradeReasonCode for the full provenance of every value. */
+export type NoTradeReasonCode =
+  | "no_signal"
+  | "duplicate_signal"
+  | "proposal_capacity"
+  | "data_unavailable"
+  | "position_sized_to_zero"
+  | "trade_quality_below_threshold"
+  | "expected_value_below_threshold"
+  | "market_quality_avoid_trading"
+  | "liquidity_confirmation_weak"
+  | "gatekeeper_confidence"
+  | "gatekeeper_risk_manager"
+  | "gatekeeper_agreement"
+  | "gatekeeper_debate"
+  | "gatekeeper_exposure"
+  | "gatekeeper_correlation"
+  | "gatekeeper_risk_warning"
+  | "gatekeeper_market_intelligence"
+  | "gatekeeper_weighted_executive"
+  | "gatekeeper_behavioral"
+  | "gatekeeper_failure_boundary"
+  | "risk_equity_exhausted"
+  | "risk_daily_loss_limit"
+  | "risk_daily_profit_target"
+  | "risk_weekly_loss_limit"
+  | "risk_monthly_loss_limit"
+  | "risk_max_trades_per_day"
+  | "risk_lifetime_drawdown"
+  | "risk_max_open_positions"
+  | "risk_position_size_limit"
+  | "risk_concentration_limit"
+  | "emergency_stop"
+  | "circuit_breaker"
+  | "losing_streak_pause"
+  | "defensive_mode"
+  | "force_manual_review"
+  | "ceo_wait_decision"
+  | "proposal_expired"
+  | "ceo_approval_pending";
+
+export interface NoTradeReasonCodeTally {
+  code: NoTradeReasonCode;
+  count: number;
+}
+
+export interface TradePipelineHealthSnapshot {
+  completedResearchSignals: number;
+  pendingProposals: number;
+  resolvedDecisions: number;
+  tradesExecuted: number;
+  noTradeDecisions: number;
+  opportunityRejections: number;
+  gatekeeperRejections: number;
+  reasonCodeBreakdown: NoTradeReasonCodeTally[];
+  dataHonestyNote: string;
+  generatedAt: string;
+}
+
 export interface RiskWarning {
   id: string;
   symbol: string;
   severity: AlertSeverity;
   message: string;
+  code?: NoTradeReasonCode | null;
   createdAt: string;
 }
 
@@ -2920,6 +2985,7 @@ export interface GatekeeperCheck {
   label: string;
   passed: boolean;
   detail: string;
+  code?: NoTradeReasonCode | null;
 }
 
 export interface GatekeeperVerdict {
@@ -2941,6 +3007,7 @@ export interface GatekeeperRejection {
   symbol: string;
   ceoChoice: AnalystChoice;
   reasons: string[];
+  reasonCodes: NoTradeReasonCode[];
   priceAtRejection: number;
   rejectedSimMinutes: number;
   outcome: GatekeeperOutcome;
@@ -2961,6 +3028,7 @@ export interface OpportunityRejection {
   symbol: string;
   wouldHaveRecommended: AnalystChoice;
   reasons: string[];
+  reasonCodes: NoTradeReasonCode[];
   decisionScoreAtRejection: number;
   expectedValueAtRejectionPct: number;
   priceAtRejection: number;
@@ -3941,6 +4009,12 @@ export interface DecisionScoreBreakdown {
   marketQualityScore: number;
   liquidityQualityScore: number;
   portfolioCompatibilityScore: number;
+  /** CEO directive "Professional Quant Firm Phase 41-45," Confluence
+   * Quality — null when no real candle history was available for this
+   * symbol at decision time (see backend/app/war_room.py's
+   * build_war_room_session()). When real, the composite renormalizes
+   * over 8 sub-scores instead of 7, exactly like strategyHealthScore. */
+  evidenceConfluenceScore: number | null;
   overall: number;
   threshold: number;
   passed: boolean;
@@ -3988,6 +4062,11 @@ export interface WarRoomSession {
   /** v0.7 Chapter 57 — null only for sessions saved before this field
    * existed (pre-Chapter 57), never for a real session created after. */
   positionSizing: PositionSizingResult | null;
+  /** CEO directive "Professional Quant Firm Phase 41-45," Confluence
+   * Quality — the full family-level breakdown behind decisionScore.
+   * evidenceConfluenceScore. Null only when this symbol's own real
+   * candle history was unavailable for this tick. */
+  evidenceConfluence: EvidenceConfluenceRead | null;
 }
 
 /** v0.7 Chapter 57 — Institutional Position Sizing & Capital Deployment
