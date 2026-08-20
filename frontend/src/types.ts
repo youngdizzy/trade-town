@@ -1512,10 +1512,24 @@ export interface StrategyTournamentRoundResult {
   detail: string;
 }
 
+// Feature 40, Round 7 follow-up — a real Pearson correlation between two
+// candidates' own walk-forward window expectancy sequences. NOT a full
+// portfolio-level backtest (no shared capital/position sizing/drawdown
+// modeling) — see StrategyTournamentResult.dataHonestyNote.
+export interface StrategyPairCorrelation {
+  definitionIdA: string;
+  definitionIdB: string;
+  symbol: string;
+  correlation: number | null;
+  windowsCompared: number;
+  detail: string;
+}
+
 export interface StrategyTournamentResult {
   id: string;
   entries: StrategyTournamentEntry[];
   rounds: StrategyTournamentRoundResult[];
+  pairCorrelations: StrategyPairCorrelation[];
   highestExpectancy: StrategyExecutiveDashboardEntry | null;
   highestProfitFactor: StrategyExecutiveDashboardEntry | null;
   highestSharpeRatio: StrategyExecutiveDashboardEntry | null;

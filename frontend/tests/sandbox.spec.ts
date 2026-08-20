@@ -230,6 +230,9 @@ test("CEO directive 'Professional Quant Firm Phase' — the QUANT RESEARCH LAB s
   await expect(page.getByText(/Round 7 — Portfolio interaction/)).toBeVisible();
   await expect(page.getByText("architecturally blocked").first()).toBeVisible();
   await expect(page.getByText(/never an autonomous production promotion/)).toBeVisible();
+  // Round 7 follow-up — a real per-symbol pairwise return correlation, computed from each
+  // candidate's own walk-forward windows (never a full portfolio-level backtest).
+  await expect(page.getByText(/Real Pairwise Return Correlation/)).toBeVisible();
 
   // The permanent search view — the experiment filed above must be
   // findable, since nothing in the Quant Research Lab is ever deleted.

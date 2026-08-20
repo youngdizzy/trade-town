@@ -381,6 +381,28 @@ export function QuantResearchLabView() {
             </div>
           </Glass>
 
+          {tournament.pairCorrelations.length > 0 && (
+            <Glass className="p-3">
+              <TerminalLabel>Round 7 — Real Pairwise Return Correlation (not a full portfolio backtest)</TerminalLabel>
+              <div className="mt-1.5 space-y-1">
+                {tournament.pairCorrelations.map((p, i) => {
+                  const nameA = tournament.entries.find((e) => e.definitionId === p.definitionIdA)?.definitionName ?? p.definitionIdA;
+                  const nameB = tournament.entries.find((e) => e.definitionId === p.definitionIdB)?.definitionName ?? p.definitionIdB;
+                  return (
+                    <div key={i} className="flex items-center justify-between rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-1.5 text-[9px]">
+                      <span className="text-cmd-textDim">
+                        {nameA} vs. {nameB} ({p.symbol})
+                      </span>
+                      <span className={`tabular-nums ${p.correlation === null ? "text-cmd-textDim" : Math.abs(p.correlation) >= 0.6 ? "text-cmd-amber" : "text-cmd-text"}`}>
+                        {p.correlation !== null ? p.correlation.toFixed(2) : `— (${p.windowsCompared} window${p.windowsCompared === 1 ? "" : "s"})`}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </Glass>
+          )}
+
           <Glass className="p-3">
             <p className="text-[8px] italic text-cmd-textDim">{tournament.dataHonestyNote}</p>
           </Glass>
