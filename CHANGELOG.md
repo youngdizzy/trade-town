@@ -7,6 +7,71 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Professional Quant Firm Phase 41-45," Feature 43: Regime Stability as a real 9th
+  Strategy Tournament round** (backend: `backend/app/schemas.py`, `backend/app/strategy_tournament.py`,
+  `backend/tests/test_strategy_tournament.py`): closes the "regime-adaptive strategy selection" gap by
+  reusing evidence the Tournament already had rather than building a second regime classifier —
+  `app/strategy_engine.py`'s existing `regimeTrendBreakdown`/`regimeVolatilityBreakdown` per compiled
+  backtest were real but report-only. New `StrategyTournamentEntry.regimeStabilityVerdict` classifies
+  each candidate `regime_validated` (at least one real regime bucket cleared its own `enough_evidence`
+  sample-size bar with positive expectancy), `no_validated_regime` (every evidenced bucket read zero or
+  negative), or `insufficient_data` (no bucket ever cleared the bar — missing evidence, never treated as
+  negative). Round 9 eliminates only a confirmed `no_validated_regime`, following the Tournament's existing
+  house rule (eliminate on confirmed negative evidence, never on missing evidence). Explicitly disclosed as
+  out of scope: this is evidence-based selection within the Strategy Lab/Tournament, not a live
+  "what regime is the market in right now" gate on the trading pipeline — `TradeProposal` has no link back
+  to the `CompiledStrategyDefinition` that might have generated it (proposals come from the Analyst Desk,
+  not the Strategy Lab), so a live regime-alignment check on actual trade decisions remains a real,
+  disclosed architectural gap. 4 new hand-traced unit tests plus an updated round-count integration
+  assertion; full backend suite (2,384 tests), `mypy app/` (174 files), `ruff check app/ tests/` all clean.
+  No frontend surface yet — `StrategyTournamentEntry`'s new fields are not read anywhere in
+  `frontend/src/types.ts`/the Tournament view.
+
+- **CEO directive "Professional Quant Firm Phase 41-45," Confluence Quality: wire Evidence Confluence into
+  live War Room decision scoring** (backend: `backend/app/evidence_confluence.py`, `backend/app/schemas.py`,
+  `backend/app/war_room.py`, `backend/tests/test_war_room.py`): `app/evidence_confluence.py` (an earlier
+  directive pass) was a fully real, tested evidence independence/redundancy classifier explicitly
+  self-documented as "never wired into a live decision." Rather than a second implementation, connects it
+  into `build_decision_score()` as a new, direction-aware 8th sub-score (`evidenceConfluenceScore`), with
+  the full family-level breakdown surfaced on `WarRoomSession.evidenceConfluence` for CEO transparency. The
+  scoring rule compares evidence's own internal majority direction against the specific proposal's chosen
+  direction rather than assuming they must always agree, so a legitimate contrarian thesis is never
+  penalized for disagreeing with the raw indicator majority — confidence reflects independent-family
+  coverage and direction agreement, not raw signal count, preventing correlated-indicator double-counting
+  (e.g. EMA/SMA/MACD all restating "trend") from inflating a proposal's apparent evidence quality.
+  `DecisionScoreBreakdown`'s existing renormalize-over-real-sub-scores convention (already used for
+  `strategyHealthScore`) is reused unchanged: the composite renormalizes over 8 sub-scores only when a real
+  confluence read exists (real candles were available for that symbol), otherwise falls back to the
+  original 7. Full backend suite (2,369 tests), `mypy app/`, `ruff check app/ tests/` all clean. No frontend
+  surface yet.
+
+- **CEO directive "Professional Quant Firm Phase 41-45," Critical Task #0 + No-Trade Reason Taxonomy +
+  Trade-Pipeline Health Check** (backend: new `backend/app/trade_pipeline_health.py`; modified
+  `backend/app/gatekeeper.py`, `backend/app/nexus.py`, `backend/app/opportunity_gatekeeper.py`,
+  `backend/app/risk_engine.py`, `backend/app/routers/trades.py`, `backend/app/schemas.py`,
+  `backend/app/state.py`): before building any new intelligence, the directive required tracing WHY agents
+  were placing almost no real trades — an empirical forensic audit of a live save (31 sim-days, 47 resolved
+  decisions, only 2 real trades) traced this to two real, INTENTIONAL design decisions working together, not
+  a bug: (1) `app/opportunity_gatekeeper.py`'s own `min_trade_quality_score` gate — verified via the save's
+  own real, persisted `opportunityRejections`, 100/100 sampled were rejected here, before ever reaching a
+  `TradeProposal` — and (2) `GameSaveState.settings.operating_mode` defaulting to `"learning"`, requiring an
+  explicit CEO/player decision on every proposal that does clear that gate. Per the directive's own
+  repeated "do not weaken risk controls simply because trading activity is low" instruction, neither was
+  changed. A deeper, disclosed-not-fixed finding: running `app/market_intelligence.py`'s real
+  `compute_liquidity()`/`build_decision_score()` live against this codebase's own mock watchlist found
+  `liquidityQualityScore` organically landing at 0-30/100 for most real candidates (genuine equal-high/
+  equal-low price clustering is rare in the mock stochastic-walk price generator), structurally dragging
+  every candidate's composite average down ~5-7 points before the 70-point threshold is even checked —
+  flagged for CEO/design review via a new `liquidity_confirmation_weak` taxonomy code rather than
+  unilaterally changed. Built a real, 37-code `NoTradeReasonCode` taxonomy grounded in exact cited lines of
+  existing pipeline code (never invented), threaded through `RiskWarning.code`, `GatekeeperCheck.code`, and
+  new `reasonCodes` lists on `GatekeeperRejection`/`OpportunityRejection`. New diagnostic-only
+  `GET /trades/pipeline-health` (`TradePipelineHealthSnapshot`) computes real funnel telemetry
+  (signals → proposals → rejections → risk-approved → orders → fills) distinguishing "no valid trade
+  existed" from "the system failed to execute a valid trade" — never feeds scoring, and its own
+  `dataHonestyNote` discloses which source lists are capped windows rather than full-lifetime totals. Full
+  backend suite (2,369 tests), `mypy app/`, `ruff check app/ tests/` all clean. No frontend surface yet.
+
 - **Quant Strategy Tournament, Round 7: real pairwise strategy-return correlation** (backend:
   `backend/app/portfolio_intelligence.py`, `backend/app/schemas.py`, `backend/app/strategy_tournament.py`;
   frontend: `frontend/src/types.ts`,

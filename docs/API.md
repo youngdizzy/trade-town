@@ -1679,7 +1679,7 @@ through the same real `run_research_experiment()` pipeline once each,
 then compares real results via named-slot superlatives
 (`highestExpectancy`/`highestProfitFactor`/`highestSharpeRatio`/
 `lowestMaxDrawdown`/`mostWalkForwardStable` — never a fabricated
-composite score) and 8 staged elimination rounds (see
+composite score) and 9 staged elimination rounds (see
 `app/strategy_tournament.py`'s own module docstring for the exact,
 disclosed round-by-round rule — Round 7 "Portfolio interaction" is
 still explicitly disclosed as partially blocked, since this codebase has
@@ -1689,7 +1689,20 @@ position sizing, simultaneous drawdown), but now also returns
 pair's own walk-forward window expectancy sequences, per shared symbol
 (reusing `app/portfolio_intelligence.py`'s `pearson_correlation()`);
 `correlation` is `null` below 3 real paired windows, never a fabricated
-`0.0`). Returns a
+`0.0`. CEO directive "Professional Quant Firm Phase 41-45," Feature 43
+added Round 9 "Regime stability," reusing each candidate's own real
+`regimeTrendBreakdown`/`regimeVolatilityBreakdown` (already computed by
+the backtest, not re-derived) to eliminate only a confirmed
+`no_validated_regime` `StrategyTournamentEntry.regimeStabilityVerdict`
+— every real regime bucket that reached its own `enough_evidence`
+sample-size bar showed zero or negative expectancy. `insufficient_data`
+(no bucket ever reached that bar) survives — missing regime evidence is
+never treated as a negative finding. This is evidence-based selection
+within the Tournament itself, not a live "what regime is the market in
+right now" gate on the trading pipeline — `TradeProposal` has no field
+linking it back to a `CompiledStrategyDefinition`, so a live regime-
+alignment check on actual trade decisions remains a disclosed
+architectural gap this round does not close). Returns a
 `StrategyTournamentResult`; `productionCandidates` is a real, cited
 LABEL for CEO visibility only — never an autonomous production
 promotion, never a bypass of this codebase's separate risk/governance
@@ -1912,6 +1925,37 @@ post-trade review axis — distinct from and never touching Discipline's
 outcome-blind process score (`GET` via the WS `discipline_reviews`
 broadcast) or `GET /api/failures/{agent_id}`'s WHY-the-thesis-failed
 classification above.
+
+### `GET /api/trades/pipeline-health`
+
+CEO directive "Professional Quant Firm Phase 41-45," Critical Task
+#0 — real, diagnostic-only funnel telemetry (`app/trade_pipeline_
+health.py`), computed fresh per request from already-persisted state.
+No new `GameSaveState` field, and it feeds no scoring formula anywhere
+— it exists purely to make the real trade-flow funnel visible, and to
+distinguish "no valid trade existed" from "the system failed to
+execute a valid trade." Returns a `TradePipelineHealthSnapshot`:
+counts of real research items reaching each pipeline stage, real
+`GatekeeperRejection`/`OpportunityRejection` totals, a real tally of
+`NoTradeReasonCode` occurrences across both rejection lists
+(`reasonCodeTally`), the current `operatingMode`, and a
+`dataHonestyNote` disclosing which counts (research history, decision
+history, opportunity/gatekeeper rejection logs) are capped rolling
+windows rather than full-lifetime totals — never a fabricated
+whole-game total from a source list this codebase only keeps a
+recent slice of.
+
+Every `RiskWarning`, `GatekeeperCheck`, `GatekeeperRejection`, and
+`OpportunityRejection` this endpoint's underlying data draws on also
+now carries a real `code`/`reasonCodes` field from the same
+directive's `NoTradeReasonCode` taxonomy (37 values, `app/schemas.py`)
+— each grounded in an exact, cited line of the real rejection logic
+that produced it (`app/risk_engine.py`, `app/gatekeeper.py`, `app/
+opportunity_gatekeeper.py`), never invented. `GatekeeperCheck.code` is
+optional because a handful of existing tests construct synthetic
+`GatekeeperCheck` fixtures (arbitrary IDs, for unrelated
+control-effectiveness/process-adherence scoring tests) that have no
+real taxonomy code to cite.
 
 ### `GET /api/market/technical-analysis?symbol=...&timeframe=1h&limit=100`
 

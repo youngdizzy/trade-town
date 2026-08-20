@@ -10809,6 +10809,122 @@ Frontend `tsc --noEmit`, `eslint`, `vite build` clean; `sandbox.spec.ts`
 (4 tests, extended with an assertion the new correlation section
 renders) passes against the live dev stack.
 
+### CEO directive "Professional Quant Firm Phase 41-45": trade-flow audit, No-Trade Reason Taxonomy, Confluence Quality, Regime Stability
+
+This directive's Absolute Rule #1 required researching the entire
+repository and classifying every requested capability before writing
+any code, and its Critical Task #0 required tracing — never guessing —
+exactly why real trades were so rare before building any new
+intelligence on top of the pipeline.
+
+**Critical Task #0, the forensic trace.** A live save (31 sim-days, 47
+resolved decisions, only 2 real trades) was queried directly via SQLite
+— real, persisted state, not a synthetic fixture — to get ground truth
+rather than a code-reading guess. The near-total absence of trades
+traced to two real, INTENTIONAL design decisions working together, not
+a bug: (1) `app/opportunity_gatekeeper.py`'s own `min_trade_quality_
+score` gate (default 70.0) rejecting the vast majority of candidates
+before they ever become a CEO-facing `TradeProposal` — 100/100 sampled
+real `opportunityRejections` in the live save were rejected here, with
+`decisionScoreAtRejection` clustering 57.9-69.7, never once reaching
+70; and (2) `GameSaveState.settings.operating_mode` defaulting to
+`"learning"`, requiring an explicit CEO/player decision on every
+proposal that DOES clear gate #1. Per the directive's own repeated "do
+not weaken risk controls simply because trading activity is low"
+instruction, neither threshold was touched.
+
+A deeper, disclosed-but-not-fixed finding came from running `app/
+market_intelligence.py`'s real `compute_liquidity()`/`build_decision_
+score()` live against this codebase's own mock watchlist: `liquidity
+QualityScore` (one of the decision composite's originally seven
+equal-weighted sub-scores) organically lands at 0-30/100 for most real
+candidates, because genuine equal-high/equal-low price clustering
+(`compute_liquidity()`'s own formula) is genuinely rare in the mock
+stochastic-walk price generator — structurally dragging every
+candidate's composite average down ~5-7 points before the 70-point
+threshold is even checked. This was deliberately left unchanged and
+instead made visible: a new `liquidity_confirmation_weak` taxonomy code
+fires specifically when live verification confirms liquidity is the
+dominant drag on a rejection, flagged for CEO/design review rather than
+silently "fixed."
+
+**No-Trade Reason Taxonomy.** A real, 37-code `NoTradeReasonCode`
+Literal type (`app/schemas.py`), every value grounded in an exact,
+cited line of existing pipeline code — never invented. Threaded through
+`RiskWarning.code` (all 12 real construction sites in `app/risk_
+engine.py`), `GatekeeperCheck.code` (all 11 real checks in `app/
+gatekeeper.py`), and new `reasonCodes` lists on `GatekeeperRejection`
+and `OpportunityRejection`. `GatekeeperCheck.code` is optional (`|
+None`) rather than required, because several existing tests construct
+synthetic `GatekeeperCheck` fixtures with arbitrary IDs for unrelated
+downstream systems (control-effectiveness and process-adherence
+scoring) that have no real code to cite.
+
+**Trade-Pipeline Health Check.** New `app/trade_pipeline_health.py` and
+`GET /trades/pipeline-health` (`TradePipelineHealthSnapshot`) — real
+funnel telemetry (signals → proposals → rejections → risk-approved →
+orders created → orders rejected → submitted → filled) computed fresh
+from already-persisted state, distinguishing "no valid trade existed"
+from "the system failed to execute a valid trade." Diagnostic only: it
+feeds no scoring formula anywhere, and its own `dataHonestyNote`
+discloses which source lists (research history, decisions, rejection
+logs) are capped rolling windows rather than full-lifetime totals.
+
+**Confluence Quality.** `app/evidence_confluence.py` — a fully real,
+tested evidence independence/redundancy classifier built in an earlier
+directive pass — was explicitly self-documented as "never wired into a
+live decision." Rather than a second implementation, it is now called
+from `app/war_room.py`'s `build_war_room_session()` and connected into
+`build_decision_score()` as a new, direction-aware 8th sub-score
+(`evidenceConfluenceScore`), with the full family-level breakdown
+surfaced on `WarRoomSession.evidenceConfluence` for CEO transparency.
+The scoring rule (`_evidence_confluence_score()`) compares evidence's
+own internal majority direction against the *specific proposal's*
+chosen direction rather than assuming they must always agree, so a
+legitimate contrarian thesis is never penalized for disagreeing with
+the raw indicator majority — confidence reflects independent-family
+coverage and direction agreement, not raw signal count, which is what
+stops correlated indicators (e.g. EMA/SMA/MACD all restating "trend")
+from inflating a proposal's apparent evidence quality by being counted
+separately. `DecisionScoreBreakdown`'s existing renormalize-over-
+real-sub-scores convention (already used for `strategyHealthScore`) is
+reused unchanged: the composite renormalizes over 8 sub-scores only
+when a real confluence read exists (real candles were available for
+that symbol at that tick), otherwise falls back to the original 7.
+
+**Regime Stability — Feature 43, Regime-Adaptive Strategy Selection.**
+`app/strategy_engine.py` already computed real `regimeTrendBreakdown`/
+`regimeVolatilityBreakdown` per compiled backtest (an earlier
+directive's Feature 38 addition) but nothing used that evidence to
+influence selection — it was report-only. Rather than a second regime
+classifier, `app/strategy_tournament.py` gained a real 9th round
+reusing that same evidence: `StrategyTournamentEntry.regimeStability
+Verdict` reads `regime_validated` (at least one real regime bucket
+cleared its own `enough_evidence` sample-size bar with positive
+expectancy), `no_validated_regime` (every evidenced bucket read zero or
+negative), or `insufficient_data` (no bucket ever cleared the bar —
+missing evidence, never treated as negative). Round 9 eliminates only a
+confirmed `no_validated_regime`, following the Tournament's existing
+house rule of eliminating on confirmed negative evidence and never on
+missing evidence.
+
+Explicitly disclosed as out of scope in `app/strategy_tournament.py`'s
+own module docstring: this is evidence-based selection within the
+Strategy Lab/Tournament, not a live "what regime is the market in right
+now" gate on the trading pipeline. `TradeProposal` has no field linking
+it back to the `CompiledStrategyDefinition` that might have generated
+it — live proposals come from the Analyst Desk's own candidate-
+generation path, not from a compiled, tournament-tested strategy — so a
+live regime-alignment check on actual trade decisions remains a real,
+architectural gap this round does not close.
+
+Full backend suite (2,384 tests as of the Regime Stability commit),
+`mypy app/` (174 files), `ruff check app/ tests/` all clean throughout.
+No frontend surface has been built yet for any of this Phase 41-45
+work — the taxonomy, the pipeline health snapshot, the confluence score/
+breakdown, and the regime stability verdict are all backend-only so
+far.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing
