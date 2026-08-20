@@ -2065,9 +2065,13 @@ export interface ProjectedLossPath {
 }
 
 /** CEO directive "Professional Quant Firm Phase 41-45," Critical Task
- * #0 — a real, 37-code taxonomy grounded in exact cited lines of
+ * #0 — a real, 38-code taxonomy grounded in exact cited lines of
  * existing pipeline code, never invented. See backend/app/schemas.py's
- * NoTradeReasonCode for the full provenance of every value. */
+ * NoTradeReasonCode for the full provenance of every value.
+ * "session_regime_unfavorable_evidence" was added later, by CEO
+ * directive "Command Center + Professional Quant Trading Firm Upgrade"
+ * — closes SESSION_FILTER's own previously-disclosed "no real
+ * mechanism" gap with a real evidence-based check. */
 export type NoTradeReasonCode =
   | "no_signal"
   | "duplicate_signal"
@@ -2078,6 +2082,7 @@ export type NoTradeReasonCode =
   | "expected_value_below_threshold"
   | "market_quality_avoid_trading"
   | "liquidity_confirmation_weak"
+  | "session_regime_unfavorable_evidence"
   | "gatekeeper_confidence"
   | "gatekeeper_risk_manager"
   | "gatekeeper_agreement"
