@@ -147,7 +147,7 @@ from app.schemas import (
 from app.quant_research_lab import cap_quant_research_experiments, file_quant_research_experiment, find_similar_experiments
 from app.research_experiment import run_research_experiment
 from app.strategy_engine import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME
-from app.strategy_registry import register_researchable_strategy, register_strategy_version
+from app.strategy_registry import default_researchable_strategies, register_researchable_strategy, register_strategy_version
 from app.foundational_mentors import (
     add_custom_lesson as add_custom_academy_lesson_entry,
     add_custom_mentor as add_custom_academy_mentor_entry,
@@ -236,6 +236,17 @@ def default_state() -> GameSaveState:
         memory=[],
     )
     default_foundational_mentors = default_foundational_mentor_state()
+    # CEO directive "Strategy Intelligence + Live Strategy Attribution,"
+    # Phase 13 — the 50 EMA breakout/pullback strategy's real Strategy
+    # Lab citizenship, on by default for every new game alongside the
+    # four original seed strategies (see app/strategy_registry.py's
+    # default_researchable_strategies()). Computed once here so the
+    # `strategies=`/`compiledStrategyVersions=` fields below and this
+    # same function's later compute_company_health() call all reuse the
+    # identical real list/registry rather than independently-generated
+    # copies.
+    researchable_strategies, researchable_strategy_versions = default_researchable_strategies()
+    seed_strategies = [*default_strategies(), *researchable_strategies]
     return GameSaveState(
         player=EntityTransform(scene="LobbyScene", x=160, y=220, facing="down"),
         agents=agents,
@@ -251,7 +262,8 @@ def default_state() -> GameSaveState:
         settings=SettingsState(musicVolume=0.5, sfxVolume=0.7, autosaveIntervalSec=60, showFps=False, operatingMode="learning"),
         dialogueHistory=[],
         paperPortfolio=default_portfolio(),
-        strategies=default_strategies(),
+        strategies=seed_strategies,
+        compiledStrategyVersions=researchable_strategy_versions,
         backtestSessions=[],
         simulationResults=[],
         strategyReports=[],
@@ -303,7 +315,7 @@ def default_state() -> GameSaveState:
             gatekeeper_rejections=[],
             discipline_reviews=[],
             agent_knowledge=agent_knowledge,
-            strategies=default_strategies(),
+            strategies=seed_strategies,
             strategy_health_assessments=[],
             compliance_incidents=[],
             current_sim_day=1,

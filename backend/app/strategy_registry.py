@@ -46,6 +46,14 @@ returns its own real definition (with its own real `ambiguities`/
 """
 from __future__ import annotations
 
+from app.ema_pullback_research import (
+    CHANDELIER_ATR_MULTIPLIER,
+    CHANDELIER_ATR_PERIOD,
+    DEFAULT_TIMEFRAME,
+    EMA_PERIOD,
+    MIN_PULLBACK_CANDLES,
+    REFERENCE_R_MULTIPLE,
+)
 from app.schemas import AgentId, CompiledStrategyDefinition, ResearchCategory, Strategy
 from app.strategy_compiler import compile_strategy_text, strategy_definition_slug
 
@@ -151,3 +159,80 @@ def register_researchable_strategy(
             compiledDefinitionId=new_definition.id,
         )
     return new_definition, new_strategy, updated_registry
+
+
+# CEO directive "Strategy Intelligence + Live Strategy Attribution,"
+# Phase 13 — "encode the previously supplied [50 EMA] strategy as an
+# explicit research strategy rather than hard-coding it into the
+# trading brain." `app/ema_pullback_research.py`'s hand-built engine
+# already validates the shape (real, disclosed gaps: no transaction
+# costs/slippage, no out-of-sample split — see that module's own
+# docstring); this is the real Strategy Lab CITIZENSHIP half — every
+# real parameter below (`EMA_PERIOD`, `MIN_PULLBACK_CANDLES`,
+# `CHANDELIER_ATR_PERIOD`/`_MULTIPLIER`, `REFERENCE_R_MULTIPLE`)
+# is imported from that exact module, never a second, independently-typed
+# copy of the same numbers that could silently drift out of sync.
+def _ema_pullback_source_text(*, direction: str) -> str:
+    if direction == "long":
+        return (
+            f"This strategy waits for price to stay below the {EMA_PERIOD} EMA, then closes above the {EMA_PERIOD} EMA on a confirmed candle. "
+            f"It then requires at least {MIN_PULLBACK_CANDLES} bearish candles as the pullback. "
+            "Entry triggers when price closes above the previous swing high established before the pullback. "
+            f"Use a chandelier stop with a {CHANDELIER_ATR_PERIOD}-period ATR and a {CHANDELIER_ATR_MULTIPLIER:g}x multiplier. "
+            f"Target {REFERENCE_R_MULTIPLE:g}R."
+        )
+    return (
+        f"This strategy waits for price to stay above the {EMA_PERIOD} EMA, then closes below the {EMA_PERIOD} EMA on a confirmed candle. "
+        f"It then requires at least {MIN_PULLBACK_CANDLES} bullish candles as the pullback. "
+        "Entry triggers when price closes below the previous swing low established before the pullback. "
+        f"Use a chandelier stop with a {CHANDELIER_ATR_PERIOD}-period ATR and a {CHANDELIER_ATR_MULTIPLIER:g}x multiplier. "
+        f"Target {REFERENCE_R_MULTIPLE:g}R."
+    )
+
+
+def default_researchable_strategies() -> tuple[list[Strategy], dict[str, list[CompiledStrategyDefinition]]]:
+    """The real, on-by-default Strategy Lab citizenship for the 50 EMA
+    breakout/pullback pattern — long and short, the symmetric inverse
+    the CEO directive itself asked for. Each source text is composed
+    from `app/ema_pullback_research.py`'s own real constants (see
+    `_ema_pullback_source_text()` above) and run through the SAME real
+    `register_researchable_strategy()` every CEO/agent-triggered
+    `POST /api/sandbox/register-researchable-strategy` call uses — never
+    a hand-authored `CompiledStrategyDefinition` that could drift from
+    what the compiler would actually produce. Both texts are verified
+    (see tests/test_strategy_registry.py) to reach `status == "compiled"`
+    — if `app/strategy_compiler.py`'s vocabulary ever regresses, this
+    seed step raises, loudly, rather than silently shipping a broken
+    or absent strategy."""
+    strategies: list[Strategy] = []
+    registry: dict[str, list[CompiledStrategyDefinition]] = {}
+    for name, description, direction in (
+        (
+            "50 EMA Breakout Pullback (Long)",
+            f"A real, disclosed-vocabulary long setup: closes above the {EMA_PERIOD} EMA, a real pullback, a swing-high breakout entry, a chandelier stop, an R-multiple target. See app/ema_pullback_research.py for this codebase's own independent, hand-built backtest of the same shape.",
+            "long",
+        ),
+        (
+            "50 EMA Breakout Pullback (Short)",
+            f"The symmetric short inverse: closes below the {EMA_PERIOD} EMA, a real pullback, a swing-low breakdown entry, a chandelier stop, an R-multiple target.",
+            "short",
+        ),
+    ):
+        definition, new_strategy, registry = register_researchable_strategy(
+            registry,
+            strategies,
+            name=name,
+            description=description,
+            source_text=_ema_pullback_source_text(direction=direction),
+            timeframe=DEFAULT_TIMEFRAME,
+            created_by="quant",
+            focus_category="stock",
+        )
+        if new_strategy is None:
+            raise AssertionError(
+                f"default_researchable_strategies(): the real 50 EMA {direction} source text failed to compile "
+                f"(status={definition.status!r}, detail={definition.detail!r}) — this seed step never ships a "
+                "silently-broken or silently-absent strategy."
+            )
+        strategies.append(new_strategy)
+    return strategies, registry

@@ -10,7 +10,7 @@ from __future__ import annotations
 import asyncio
 
 from app.state import GameState
-from app.strategy_registry import register_researchable_strategy, register_strategy_version
+from app.strategy_registry import default_researchable_strategies, register_researchable_strategy, register_strategy_version
 
 _TEXT_V1 = "Buy when price closes above the 50 EMA, then enter when price closes above the previous swing high."
 _TEXT_V2 = "Buy when price closes above the 20 EMA, then enter when price closes above the previous swing high."
@@ -135,13 +135,70 @@ class TestRegisterResearchableStrategy:
         assert strategy is not None
 
 
+class TestDefaultResearchableStrategies:
+    """CEO directive "Strategy Intelligence + Live Strategy Attribution,"
+    Phase 13 — app/ema_pullback_research.py's own real parameters,
+    composed into English text and run through the real compiler, must
+    actually reach status == "compiled". This is a real regression test:
+    if app/strategy_compiler.py's vocabulary ever narrows, this test
+    fails loudly rather than silently seeding a broken strategy."""
+
+    def test_returns_two_real_compiled_strategies_long_and_short(self) -> None:
+        strategies, registry = default_researchable_strategies()
+        assert [s.id for s in strategies] == ["50-ema-breakout-pullback-long", "50-ema-breakout-pullback-short"]
+        for strategy in strategies:
+            assert strategy.compiled_definition_id == strategy.id
+            assert strategy.stage == "idea"
+            assert registry[strategy.id][-1].status == "compiled"
+
+    def test_reuses_ema_pullback_research_own_real_parameters(self) -> None:
+        from app.ema_pullback_research import CHANDELIER_ATR_MULTIPLIER, CHANDELIER_ATR_PERIOD, EMA_PERIOD, REFERENCE_R_MULTIPLE
+
+        _, registry = default_researchable_strategies()
+        long_definition = registry["50-ema-breakout-pullback-long"][-1]
+        assert long_definition.stop is not None
+        assert long_definition.stop.method == "chandelier"
+        assert long_definition.stop.atr_period == CHANDELIER_ATR_PERIOD
+        assert long_definition.stop.atr_multiplier == CHANDELIER_ATR_MULTIPLIER
+        assert long_definition.target is not None
+        assert long_definition.target.value == REFERENCE_R_MULTIPLE
+        assert str(EMA_PERIOD) in long_definition.source_text
+
+    def test_long_and_short_are_real_directional_mirrors(self) -> None:
+        strategies, registry = default_researchable_strategies()
+        long_definition = registry[strategies[0].id][-1]
+        short_definition = registry[strategies[1].id][-1]
+        long_trigger = next(s.condition for s in long_definition.sequence if s.step_type == "trigger")
+        short_trigger = next(s.condition for s in short_definition.sequence if s.step_type == "trigger")
+        assert long_trigger is not None and short_trigger is not None
+        assert long_trigger.operator == "crosses_above"
+        assert short_trigger.operator == "crosses_below"
+
+
 class TestRegisterResearchableStrategyState:
-    def test_state_appends_the_new_strategy_and_persists_the_definition(self) -> None:
+    def test_a_fresh_game_already_has_the_real_50_ema_long_and_short_strategies(self) -> None:
+        """CEO directive "Strategy Intelligence + Live Strategy
+        Attribution," Phase 13 — the 50 EMA strategy's real Strategy Lab
+        citizenship is on by default for every new game (see
+        app/strategy_registry.py's default_researchable_strategies(),
+        wired into app/state.py's default_state())."""
+        state = GameState()
+        saved = asyncio.run(state.snapshot())
+        by_id = {s.id: s for s in saved.strategies}
+        assert "50-ema-breakout-pullback-long" in by_id
+        assert "50-ema-breakout-pullback-short" in by_id
+        long_strategy = by_id["50-ema-breakout-pullback-long"]
+        assert long_strategy.compiled_definition_id == "50-ema-breakout-pullback-long"
+        assert saved.compiled_strategy_versions["50-ema-breakout-pullback-long"][-1].status == "compiled"
+        # The four original seed strategies are still present, unchanged.
+        assert "strategy-momentum" in by_id
+
+    def test_state_appends_a_genuinely_new_strategy_and_persists_the_definition(self) -> None:
         state = GameState()
         before = asyncio.run(state.snapshot())
         before_count = len(before.strategies)
         saved, definition, strategy = asyncio.run(
-            state.register_researchable_strategy(name="50 EMA Breakout Pullback Long", description="A real, testable long setup.", source_text=EMA_50_PULLBACK_LONG_TEXT)
+            state.register_researchable_strategy(name="Custom Test Breakout Strategy", description="A real, testable long setup.", source_text=EMA_50_PULLBACK_LONG_TEXT)
         )
         assert strategy is not None
         assert len(saved.strategies) == before_count + 1
@@ -157,11 +214,23 @@ class TestRegisterResearchableStrategyState:
         assert len(saved.strategies) == before_count
         assert saved.compiled_strategy_versions[definition.id] == [definition]
 
-    def test_raises_when_registering_the_same_strategy_name_twice(self) -> None:
+    def test_raises_when_registering_a_strategy_name_that_already_exists(self) -> None:
+        # A fresh game already seeds "50 EMA Breakout Pullback (Long)"
+        # (see TestRegisterResearchableStrategyState's first test above)
+        # — a colliding real slug, even under a slightly different name
+        # (parentheses/casing are stripped the same way), must raise.
         state = GameState()
-        asyncio.run(state.register_researchable_strategy(name="50 EMA Breakout Pullback Long", description="x", source_text=EMA_50_PULLBACK_LONG_TEXT))
         try:
             asyncio.run(state.register_researchable_strategy(name="50 EMA Breakout Pullback Long", description="x", source_text=EMA_50_PULLBACK_LONG_TEXT))
+            raise AssertionError("expected ValueError")
+        except ValueError:
+            pass
+
+    def test_raises_when_registering_the_same_new_strategy_name_twice(self) -> None:
+        state = GameState()
+        asyncio.run(state.register_researchable_strategy(name="Custom Test Breakout Strategy", description="x", source_text=EMA_50_PULLBACK_LONG_TEXT))
+        try:
+            asyncio.run(state.register_researchable_strategy(name="Custom Test Breakout Strategy", description="x", source_text=EMA_50_PULLBACK_LONG_TEXT))
             raise AssertionError("expected ValueError")
         except ValueError:
             pass
