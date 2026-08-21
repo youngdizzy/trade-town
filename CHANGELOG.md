@@ -7,6 +7,41 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Live Trade → Strategy Provenance": the real, non-fabricated way a live trade can
+  now link back to a Strategy Lab strategy** (backend: `backend/app/schemas.py`,
+  `backend/app/routers/executive.py`, `backend/app/state.py`, `backend/app/decision_vault.py`,
+  `backend/app/trade_attribution.py`, `backend/tests/test_state.py`,
+  `backend/tests/test_trade_attribution.py`, `backend/tests/test_decision_vault.py`): a follow-up
+  directive to the prior "Strategy Intelligence" work, explicitly asking whether genuine live
+  trade→strategy provenance could be added without rewriting the trading engine. A written
+  architecture-first finding (produced before any code, per the directive's own Phase 1 mandate)
+  confirmed the earliest — and only — point in the entire live pipeline where a human genuinely,
+  provably chooses a strategy is the CEO's own `POST /api/executive/decide` click; nothing upstream
+  (research, votes, proposal generation) ever touches a `Strategy` object. This closes that exact gap,
+  using an existing precedent as the template: `SubmitCeoDecisionRequest.overrideReason` was already
+  an optional, CEO-typed field stored on `CeoDecisionRecord` via `.model_copy()` *after*
+  `resolve_proposal()` returns, never altering trade execution — the new `strategyId` field follows
+  the identical pattern.
+
+  New `CeoDecisionRecord.strategyId` — an optional, CEO-explicit strategy selection at the moment of
+  deciding, validated against the real strategy roster (`state.strategies`) and rejected with a real
+  400 if it doesn't match a real strategy; silently ignored (never stored) on a "wait," since no trade
+  exists to attribute. `DecisionVaultEntry.strategyId` — a field that has existed since Feature 61 with
+  a docstring explicitly reading "always None today... a genuine future addition if that ever changes,
+  not fabricated here" — is now that genuine addition: `build_vault_entry()` threads it straight
+  through from the matching `CeoDecisionRecord` with a one-line change. `TradeAttributionRecord` and
+  `TradeReportCard` both gain `strategyId`/`strategyProvenanceState` (`"known"` | `"unknown"` |
+  `"unavailable"` — never a fabricated middle state), joined the same way every other field on those
+  two records already is, by the trade's own real `decisionId`.
+
+  **The honesty boundary, explicit**: this labels only the strongest claim the architecture can prove
+  — `known` means the CEO explicitly selected that strategy at decision time, never that the strategy
+  "caused" or "generated" the trade (no code path exists for that, and none was fabricated here).
+  Historical trades and any trade where the CEO doesn't bother picking a strategy correctly read
+  `unknown`/`unavailable` forever — never backfilled. 12 new backend tests (real-strategy validation,
+  rejection of an unknown strategy id, the "wait" no-op case, and all three provenance states across
+  the join). Full backend suite, `mypy app/` (176 files), `ruff check app/ tests/` all clean.
+
 - **CEO directive "Strategy Intelligence + Live Strategy Attribution," Phase 11: "TODAY — Strategy
   Eligibility, Right Now"** (backend: `backend/app/routers/sandbox.py`; frontend:
   `frontend/src/net/api.ts`, `frontend/src/ui/components/CommandCenter/panels/SandboxPanel.tsx`,

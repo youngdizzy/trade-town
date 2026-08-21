@@ -778,7 +778,18 @@ decision's `gatekeeperVerdict` and a new entry appears in
 `gatekeeperRejections`, while `orderId` stays null and no position
 opens. Returns the updated `tradeProposals`, `ceoDecisions`,
 `decisions`, `paperPortfolio`, and `gatekeeperRejections`. `400` if the
-proposal id isn't found (already resolved or expired).
+proposal id isn't found (already resolved or expired), or if
+`strategyId` (below) doesn't match a real strategy.
+
+CEO directive "Live Trade → Strategy Provenance" — the body may also
+carry an optional real `strategyId`: `{ "proposalId": "...", "choice":
+"buy", "strategyId": "50-ema-breakout-pullback-long" }`. The one real,
+non-fabricated way a live trade can be linked back to a Strategy Lab
+strategy — validated against the real strategy roster and stored on the
+resulting `CeoDecisionRecord.strategyId` only for `buy`/`sell` (ignored
+on `wait`, since no trade exists to attribute). See
+`TradeAttributionRecord.strategyProvenanceState`/`TradeReportCard.
+strategyProvenanceState` for how this reads back downstream.
 
 ### `POST /api/executive/debate/regenerate`
 
