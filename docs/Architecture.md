@@ -12505,13 +12505,77 @@ consolidated view joining `DecisionVaultEntry` + `TradeDecision.
 gatekeeperVerdict` + `CeoDecisionRecord` for an already-closed trade,
 extending `DecisionDetail.tsx` — the closest existing "why did the AI
 want this" drill-down the research audit found) — not started this
-pass, a natural next increment, not blocked. Phase 10 (extending the
-no-trade diagnostic with the new correlation/risk-budget dimensions
-now that the gate above exists); Phases 11-12
-(`PortfolioIntelPanel.tsx`/`RiskPanel.tsx` already substantially satisfy
-the Command Center ask; market visualization already satisfies its own
-ask per the Phase 1 audit — likely little/no work needed there). None
-are blocked — see the Phase 1 audit findings above.
+pass, a natural next increment, not blocked.
+
+**Increment 8 — Phase 10 audit: no-trade diagnostics (this pass, no
+code needed).** Phase 10's own ask — "distinguish 'we chose not to
+trade' from 'we were unable to trade' across ~15 named reasons" —
+turns out to already be comprehensively built by a prior directive
+("Professional Quant Firm Phase 41-45"): `app/trade_pipeline_health.py`'s
+own module docstring literally quotes the same distinction
+("'no valid trade existed' from 'a valid trade existed but the system
+failed to execute it'"), and `compute_trade_pipeline_health()`
+(`app/trade_pipeline_health.py:69`) already separates `no_trade_
+decisions` (the CEO explicitly chose WAIT — chose not to) from
+`opportunity_rejections` + `gatekeeper_rejections` (the system blocked
+it — unable to). `reason_code_breakdown` (line 84) is a real,
+generic `Counter` over whatever `NoTradeReasonCode` values actually
+appear in the data — not a hardcoded list — so Phase 4's new
+`correlated_exposure_too_high` code (and any future code added to the
+41-value taxonomy) flows through automatically with zero further code,
+the moment the gate rejects something with it, confirmed by an existing
+test (`test_reason_code_breakdown_tallies_across_both_rejection_sources_
+real_and_sorted_by_count`) that already proves arbitrary codes flow
+through generically. Already rendered in `RiskPanel.tsx` (`No-Trade
+Decisions` / `Opportunity Rejections` / `Gatekeeper Rejections` shown as
+three distinct counters, plus the top-8 reason codes by frequency).
+Genuinely nothing left to build here — confirmed by reading the module,
+its test, and its frontend consumer directly, not assumed from the
+Phase 1 audit's earlier guess.
+
+**Increment 9 — Phase 11, Portfolio Command Center consolidation (this
+pass).** The directive's own "don't create another giant tab
+collection" rule means the right move is enhancing the existing
+PORTFOLIO tab (`PortfolioIntelPanel.tsx` — already the closest real
+match per the Phase 1 audit), not adding a new one. New
+`PortfolioCommandCenterStrip` renders at the top of that tab: real
+equity, daily/total P&L (reusing the identical `computePeriodFinancials()`
+the Performance tab already uses — never a second P&L calculation),
+gross/net exposure (`PortfolioIntelligence.exposure`, Directive C's own
+Increment 1), open position count, active strategy count, and risk
+utilization (Portfolio Heat's already-real `totalCapitalAtRiskPct`),
+plus a risk-level badge reusing the identical `riskLevel()` the Risk tab
+already uses. Three cross-link buttons (reusing the established
+`EventBus.emit("ui:commandCenterJump", ...)` pattern already used
+elsewhere in this Command Center) point at the real detail sections this
+directive's own earlier phases already built — Top Strategies (Phase
+5's Capital Allocation card) and Strategy Health (Phase 6's Degradation
+Watch) on PERFORMANCE, Risk Alerts & No-Trade Reasons on RISK — rather
+than duplicating their content in a new location. `tsc -b --noEmit`,
+`eslint`, `vite build` clean. Live-verified: a Command Center screenshot
+of the real running save's Portfolio tab confirms the new strip renders
+correctly with real numbers (Equity $99,931.78, Total P&L -$68.22, 4
+active strategies, 0% risk utilization, NORMAL badge) above the
+existing, unchanged detail cards.
+
+**Increment 10 — Phase 12 audit: market visualization (this pass, no
+code needed).** Confirmed directly (not just cited from the Phase 1
+audit) by reading `CandlestickChart.tsx`/`MarketChartPanel.tsx`: real
+per-candle `dataStatus` (live/delayed/historical/simulated/stale/error/
+no_data — `app/schemas.py`'s `DataStatus`) is already read from
+`candles[0].dataStatus` and rendered as an explicit label on the chart,
+satisfying "label SIMULATED vs LIVE explicitly." Chart overlays
+(`buildOverlays()`) are built directly from `technicalAnalysis` filtered
+to the currently-displayed symbol — real indicator reads over real
+chart data, never a second, independently-computed set. Genuinely
+nothing left to build here either.
+
+**Deliberately not yet done**: none of the remaining directive text —
+Phases 10 and 12 are audit-complete, Phase 11's core ask is built.
+Phase 9's closed-trade side (above) remains the one real open increment
+from this whole 4-12 range. Phase 13 (comprehensive testing) and Phase
+14 (the final 18-question honest audit) are the directive's own closing
+steps, not yet started.
 
 ## Save format compatibility
 

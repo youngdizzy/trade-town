@@ -219,6 +219,36 @@ development milestones, not semver releases.
   done: the closed-trade side (extending `DecisionDetail.tsx` with the same consolidated join for an
   already-closed trade) — a natural next increment, not started this pass.
 
+- **CEO directive "Portfolio Construction, Capital Allocation & Execution Realism," Phases 10 &amp; 12
+  audits: no-trade diagnostics and market visualization already satisfy the ask (no code needed)**:
+  Phase 10's "distinguish 'we chose not to trade' from 'we were unable to trade'" is already built by a
+  prior directive — `app/trade_pipeline_health.py`'s `compute_trade_pipeline_health()` already separates
+  `noTradeDecisions` (CEO chose WAIT) from `opportunityRejections`/`gatekeeperRejections` (system blocked
+  it), and its `reasonCodeBreakdown` is a real, generic `Counter` over whatever `NoTradeReasonCode` values
+  appear in the data — Phase 4's new `correlated_exposure_too_high` code flows through automatically, with
+  zero further code, already proven by an existing test. Already rendered in `RiskPanel.tsx`. Phase 12's
+  "candles must behave realistically; label SIMULATED vs LIVE; indicators must derive from real chart
+  data" is likewise already real: `CandlestickChart.tsx` already reads and renders each candle's real
+  `dataStatus`, and chart overlays are built directly from real `technicalAnalysis` for the displayed
+  symbol. Both confirmed by reading the actual code and its tests/consumers this pass, not just cited from
+  the earlier Phase 1 audit.
+
+- **CEO directive "Portfolio Construction, Capital Allocation & Execution Realism," Phase 11:
+  Portfolio Command Center consolidation** (frontend:
+  `frontend/src/ui/components/CommandCenter/panels/PortfolioIntelPanel.tsx`): per the directive's own
+  "don't create another giant tab collection" rule, this enhances the existing PORTFOLIO tab rather than
+  adding a new one. New `PortfolioCommandCenterStrip` at the top: real equity, daily/total P&L (reusing
+  the identical `computePeriodFinancials()` the Performance tab already uses), gross/net exposure, open
+  position count, active strategy count, and risk utilization (Portfolio Heat), plus a risk-level badge
+  reusing the identical `riskLevel()` the Risk tab already uses — nothing recalculated. Three cross-link
+  buttons (the established `EventBus.emit("ui:commandCenterJump", ...)` pattern) point at the real detail
+  sections earlier phases already built (Capital Allocation/Degradation Watch on PERFORMANCE, Risk
+  Alerts & No-Trade Reasons on RISK) instead of duplicating them.
+
+  `tsc -b --noEmit`, `eslint`, `vite build` clean. Live-verified via Command Center screenshot: the real
+  running save's Portfolio tab renders the new strip with real numbers (Equity $99,931.78, Total P&L
+  -$68.22, 4 active strategies, 0% risk utilization) above the existing, unchanged detail cards.
+
 - **CEO directive "Live Trade → Strategy Provenance": the real, non-fabricated way a live trade can
   now link back to a Strategy Lab strategy** (backend: `backend/app/schemas.py`,
   `backend/app/routers/executive.py`, `backend/app/state.py`, `backend/app/decision_vault.py`,

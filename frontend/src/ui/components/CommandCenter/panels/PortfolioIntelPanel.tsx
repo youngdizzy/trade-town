@@ -1,4 +1,7 @@
 import { useGameStore } from "@/ui/hooks/useGameStore";
+import { EventBus } from "@/game/systems/EventBus";
+import { computePeriodFinancials } from "../lib/financials";
+import { formatMoney, riskLevel } from "../lib/derive";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
 
 /**
@@ -22,11 +25,68 @@ function strategyLabel(id: string | null, strategies: { id: string; name: string
   return strategies.find((s) => s.id === id)?.name ?? id;
 }
 
+const RISK_TONE: Record<"green" | "yellow" | "red", "green" | "amber" | "red"> = { green: "green", yellow: "amber", red: "red" };
+
+/**
+ * CEO directive "Portfolio Construction, Capital Allocation & Execution
+ * Realism," Phase 11 — the directive's own "don't create another giant
+ * tab collection" rule means this is an ADDITION to the existing
+ * PORTFOLIO tab (already the closest real match per the Phase 1 audit),
+ * not a new one. Every number here reuses an already-computed source
+ * (PortfolioIntelligence, the same computePeriodFinancials() the
+ * Performance tab already uses, the same riskLevel() the Risk tab
+ * already uses) — nothing new is calculated. The cross-link buttons
+ * point at the real detail sections this directive's own earlier phases
+ * already built (Strategy Capital Allocation/Degradation Watch on
+ * PERFORMANCE, Active Warnings/No-Trade Reasons on RISK) rather than
+ * duplicating their content here.
+ */
+function PortfolioCommandCenterStrip() {
+  const { portfolioIntelligence: pi, paperPortfolio, time, strategies, riskWarnings } = useGameStore();
+  const openUnrealized = paperPortfolio.positions.reduce((s, p) => s + p.unrealizedPnl, 0);
+  const today = computePeriodFinancials("today", paperPortfolio.tradeHistory, paperPortfolio.startingBalance, time, openUnrealized);
+  const allTime = computePeriodFinancials("allTime", paperPortfolio.tradeHistory, paperPortfolio.startingBalance, time, openUnrealized);
+  const level = riskLevel(riskWarnings);
+  const activeStrategies = strategies.filter((s) => s.stage !== "retired").length;
+
+  return (
+    <Glass className="border border-cmd-cyan/30 p-3 lg:col-span-2">
+      <div className="mb-1.5 flex items-center justify-between">
+        <TerminalLabel>Portfolio Command Center</TerminalLabel>
+        <StatusPill tone={RISK_TONE[level]}>{level === "green" ? "NORMAL" : level === "yellow" ? "ELEVATED" : "RESTRICTED"}</StatusPill>
+      </div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
+        <DataRow label="Equity" value={formatMoney(pi.equity)} />
+        <DataRow label="Daily P&amp;L" value={formatMoney(today.netPnl)} valueClassName={today.netPnl >= 0 ? "text-cmd-green" : "text-cmd-red"} />
+        <DataRow label="Total P&amp;L" value={formatMoney(allTime.netPnl)} valueClassName={allTime.netPnl >= 0 ? "text-cmd-green" : "text-cmd-red"} />
+        <DataRow label="Open Positions" value={paperPortfolio.positions.length} />
+        <DataRow label="Gross Exposure" value={`${formatMoney(pi.exposure.grossExposure)} (${pi.exposure.grossExposurePct.toFixed(0)}%)`} />
+        <DataRow label="Net Exposure" value={`${formatMoney(pi.exposure.netExposure)} (${pi.exposure.netExposurePct.toFixed(0)}%)`} />
+        <DataRow label="Active Strategies" value={activeStrategies} />
+        <DataRow label="Risk Utilization (Heat)" value={`${pi.heat.totalCapitalAtRiskPct.toFixed(0)}%`} valueClassName={HEAT_TONE[pi.heat.tier] === "red" ? "text-cmd-red" : undefined} />
+      </div>
+      <div className="mt-2 flex flex-wrap gap-3 text-[9px]">
+        <button type="button" onClick={() => EventBus.emit("ui:commandCenterJump", { tab: "PERFORMANCE" })} className="text-cmd-cyan underline decoration-dotted hover:text-cmd-text">
+          → Top Strategies (Capital Allocation)
+        </button>
+        <button type="button" onClick={() => EventBus.emit("ui:commandCenterJump", { tab: "PERFORMANCE" })} className="text-cmd-cyan underline decoration-dotted hover:text-cmd-text">
+          → Strategy Health (Degradation Watch)
+        </button>
+        <button type="button" onClick={() => EventBus.emit("ui:commandCenterJump", { tab: "RISK" })} className="text-cmd-cyan underline decoration-dotted hover:text-cmd-text">
+          → Risk Alerts &amp; No-Trade Reasons
+        </button>
+      </div>
+    </Glass>
+  );
+}
+
 export function PortfolioIntelPanel() {
   const { portfolioIntelligence: pi, strategies } = useGameStore();
 
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+      <PortfolioCommandCenterStrip />
+
       <Glass className="p-3">
         <TerminalLabel>Capital Allocation</TerminalLabel>
         <div className="grid grid-cols-2 gap-x-4 sm:grid-cols-3">
