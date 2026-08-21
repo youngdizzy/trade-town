@@ -7,6 +7,31 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Strategy Intelligence + Live Strategy Attribution," Phase 11: "TODAY — Strategy
+  Eligibility, Right Now"** (backend: `backend/app/routers/sandbox.py`; frontend:
+  `frontend/src/net/api.ts`, `frontend/src/ui/components/CommandCenter/panels/SandboxPanel.tsx`,
+  `frontend/src/ui/components/CommandCenter/panels/sandbox/LiveStrategyEligibilityCard.tsx`): the
+  directive's own Phase 11 "TODAY" section asks for "strategies currently eligible / strategies
+  currently blocked." `app/market_intelligence.py`'s `compute_strategy_match()` already computes
+  exactly this — which real strategies have real backtest evidence of working, or losing, under
+  today's specific regime — but it was only ever computed once per sim-day, buried inside
+  `MarketIntelligenceReport`, whose own schema docstring already discloses it "can be up to a day
+  stale by the time a proposal fires." New `GET /api/sandbox/live-strategy-eligibility` runs the exact
+  same real function fresh, against `state.market_intelligence.regime` — the always-current live
+  regime a real `TradeProposal`/the Gatekeeper themselves actually read, never a second,
+  independently-computed regime reading. New `LiveStrategyEligibilityCard.tsx` renders it as a
+  persistent card at the top of the Strategy Lab (visible across every sub-tab, not buried in one),
+  reusing the exact same recommended/avoided/risk-level rendering convention `MarketIntelPanel.tsx`'s
+  Evidence Confluence card already established for the stale daily version. `mypy app/`, `ruff check
+  app/ tests/`, `tsc -b --noEmit`, `eslint`, `vite build` all clean. No new backend test file — this
+  codebase has no FastAPI `TestClient`-based router-test convention anywhere (confirmed by repo-wide
+  search); the underlying `compute_strategy_match()` is already covered by
+  `tests/test_market_intelligence.py`, and the two-line endpoint itself was verified live against a
+  freshly restarted dev stack (`curl` confirmed a real, honest response: no matches yet for the two
+  brand-new 50 EMA strategies, since neither has been through the Simulation Lab's own separate
+  `StrategyReport`-generating pipeline) plus a screenshot confirming the card renders correctly and
+  persists across every Strategy Lab sub-tab. `sandbox.spec.ts` (4/4) passed on the same stack.
+
 - **CEO directive "Strategy Intelligence + Live Strategy Attribution," Phase 11: real compiled
   strategy rules surfaced in the Strategy Library** (frontend:
   `frontend/src/net/api.ts`, `frontend/src/types.ts`,

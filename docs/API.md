@@ -1401,6 +1401,19 @@ has never been through Company Review yet. Read-only, computed from
 already-persisted state (no recomputation), same pattern as
 `GET /api/sandbox/certification`.
 
+### `GET /api/sandbox/live-strategy-eligibility`
+
+CEO directive "Strategy Intelligence + Live Strategy Attribution,"
+Phase 11 — "TODAY: strategies currently eligible / strategies currently
+blocked." Runs the same real `compute_strategy_match()` behind
+`MarketIntelligenceReport.strategyMatch` fresh, against the
+always-current live regime (`state.marketIntelligence.regime`) rather
+than that report's own once-per-sim-day, up-to-a-day-stale copy.
+Returns a `StrategyMatch`: `{ recommendedStrategyIds: string[],
+avoidedStrategyIds: string[], recommendedRiskLevel: "minimal" |
+"reduced" | "normal" | "elevated", detail: string }`. Read-only,
+computed fresh every call, nothing persisted.
+
 ### `GET /api/sandbox/ema-pullback-research?timeframe=1h&candlesPerSymbol=6000`
 
 CEO directive "Professional Trading Firm — Market-Analysis Knowledge +

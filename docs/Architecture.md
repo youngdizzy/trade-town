@@ -11632,6 +11632,50 @@ affects brand-new games, so this is the correct, honest render for this
 save, not a bug), the Strategy Compiler's default unseeded path is
 byte-for-byte unchanged, and `sandbox.spec.ts` (4/4) passed.
 
+### CEO directive "Strategy Intelligence + Live Strategy Attribution" — Phase 11: "TODAY — Strategy Eligibility, Right Now"
+
+The directive's own Phase 11 "TODAY" section names, explicitly, exactly
+this real read: "strategies currently eligible / strategies currently
+blocked." Research first found this codebase already computes it —
+`app/market_intelligence.py`'s `compute_strategy_match()` (real
+evidence: which strategies' own `StrategyReport.bestMarketEnvironment`
+is consistent with today's regime) — but only ever once per sim-day,
+embedded inside `MarketIntelligenceReport`. That schema's own docstring
+already discloses the staleness this creates: "up to a day stale by the
+time a proposal fires."
+
+New `GET /api/sandbox/live-strategy-eligibility` closes exactly that gap
+— never a second, competing computation of strategy eligibility, just
+the SAME real function called at the right cadence: fresh, on request,
+against `state.market_intelligence.regime` — the always-current live
+regime field `MarketIntelligenceState`'s own docstring confirms is what
+a real `TradeProposal`/the Trade Gatekeeper actually read (as opposed to
+`MarketIntelligenceReport`, which that same docstring calls out as "up
+to a day stale by the time a proposal fires").
+
+New `LiveStrategyEligibilityCard.tsx` renders this as a persistent card
+at the very top of the Strategy Lab panel, above the sub-tab
+navigation — visible no matter which of the eleven sub-tabs is active,
+matching the directive's own framing of "TODAY" as a standing overview
+rather than something buried in one view. Rendering reuses the exact
+recommended (green) / avoided (red) / risk-level pill convention
+`MarketIntelPanel.tsx`'s Evidence Confluence card already established
+for the stale daily version — no new visual language invented for what
+is, at its core, the same real signal read at a different cadence.
+
+No new backend test file: a repo-wide search confirmed this codebase
+has no FastAPI `TestClient`-based router-test convention anywhere — the
+established pattern throughout is thorough pure-function unit tests
+(`compute_strategy_match()` already has real coverage in
+`tests/test_market_intelligence.py`) plus live/Playwright verification
+for the thin router layer itself. Verified live against a freshly
+restarted dev stack: `curl` confirmed a real, honest response (no
+matches yet for the two new 50 EMA strategies specifically, since
+neither has been through the older Simulation Lab's own separate
+`StrategyReport`-generating pipeline — an accurate, disclosed absence,
+not a bug), a screenshot confirmed the card renders correctly and
+persists across every sub-tab, and `sandbox.spec.ts` (4/4) passed.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing
