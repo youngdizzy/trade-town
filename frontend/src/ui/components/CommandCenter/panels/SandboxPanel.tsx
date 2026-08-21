@@ -1,5 +1,7 @@
 import { useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
+import { api } from "@/net/api";
+import type { CompiledStrategyDefinition, Strategy } from "@/types";
 import { EmptyState, Glass } from "../ui";
 import { StrategySidebarPanel } from "./sandbox/StrategySidebar";
 import { StrategyPipelineView } from "./sandbox/StrategyPipelineView";
@@ -74,11 +76,33 @@ export function SandboxPanel() {
   } = useGameStore();
   const [subTab, setSubTab] = useState<SubTab>("PIPELINE");
   const [selectedId, setSelectedId] = useState<string | null>(strategies[0]?.id ?? null);
+  const [compilerSeed, setCompilerSeed] = useState<CompiledStrategyDefinition | null>(null);
+  const [compilerSeedError, setCompilerSeedError] = useState<string | null>(null);
 
   const selected = strategies.find((s) => s.id === selectedId) ?? null;
   const openStrategy = (id: string) => {
     setSelectedId(id);
     setSubTab("CERTIFICATION");
+  };
+  // CEO directive "Strategy Intelligence + Live Strategy Attribution,"
+  // Phase 1 — a real Strategy's own already-registered compiled rules
+  // (see app/strategy_registry.py's register_researchable_strategy()),
+  // opened directly in the Strategy Compiler rather than making the CEO
+  // retype the English text from scratch.
+  const openCompiledRules = (strategy: Strategy) => {
+    setCompilerSeedError(null);
+    api
+      .getStrategyVersions(strategy.name)
+      .then((versions) => {
+        const latest = versions[versions.length - 1];
+        if (!latest) {
+          setCompilerSeedError(`No registered compiled definition found for "${strategy.name}" — it may have been registered under a different name.`);
+          return;
+        }
+        setCompilerSeed(latest);
+        setSubTab("STRATEGY COMPILER");
+      })
+      .catch((err) => setCompilerSeedError(err instanceof Error ? err.message : String(err)));
   };
 
   return (
@@ -99,13 +123,26 @@ export function SandboxPanel() {
       </nav>
 
       {subTab === "LIBRARY" && (
-        <StrategyLibraryView strategies={strategies} simulationResults={simulationResults} healthAssessments={strategyHealthAssessments} onOpen={openStrategy} />
+        <>
+          {compilerSeedError && (
+            <Glass className="p-3">
+              <div className="text-[9px] text-cmd-red">{compilerSeedError}</div>
+            </Glass>
+          )}
+          <StrategyLibraryView
+            strategies={strategies}
+            simulationResults={simulationResults}
+            healthAssessments={strategyHealthAssessments}
+            onOpen={openStrategy}
+            onOpenCompiledRules={openCompiledRules}
+          />
+        </>
       )}
       {subTab === "HALL OF FAME" && <StrategyHallOfFameView entries={strategyHallOfFame} />}
       {subTab === "FAILED ARCHIVE" && <StrategyFailedArchiveView entries={strategyFailedArchive} />}
       {subTab === "DASHBOARD" && <StrategyExecutiveDashboardView />}
       {subTab === "50 EMA RESEARCH" && <EmaPullbackResearchView />}
-      {subTab === "STRATEGY COMPILER" && <StrategyCompilerView />}
+      {subTab === "STRATEGY COMPILER" && <StrategyCompilerView seed={compilerSeed} />}
       {subTab === "QUANT RESEARCH LAB" && <QuantResearchLabView />}
 
       {STRATEGY_SCOPED.has(subTab) && (

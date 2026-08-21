@@ -1318,6 +1318,15 @@ export interface CompiledStrategyDefinition {
   detail: string;
 }
 
+/** CEO directive "Strategy Intelligence + Live Strategy Attribution,"
+ * Phase 1 — the response of `POST /sandbox/register-researchable-strategy`.
+ * `strategy` is `null` when `definition.status !== "compiled"` — never a
+ * fabricated link for ambiguous/invalid source text. */
+export interface RegisterResearchableStrategyResult {
+  definition: CompiledStrategyDefinition;
+  strategy: Strategy | null;
+}
+
 export interface CompiledStrategyBacktestResult {
   id: string;
   definitionId: string;

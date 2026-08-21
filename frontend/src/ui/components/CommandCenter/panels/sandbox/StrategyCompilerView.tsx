@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { api } from "@/net/api";
 import type { CompiledStrategyBacktestResult, CompiledStrategyDefinition, ResearchExperimentRecord } from "@/types";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../../ui";
@@ -54,10 +54,10 @@ const STATUS_TONE: Record<string, "green" | "amber" | "red"> = {
  * backend/app/research_experiment.py). Never a recommendation to trade
  * — see each section's own real verdict and detail.
  */
-export function StrategyCompilerView() {
-  const [name, setName] = useState("50 EMA Pullback");
-  const [sourceText, setSourceText] = useState(CEO_EXAMPLE_TEXT);
-  const [definition, setDefinition] = useState<CompiledStrategyDefinition | null>(null);
+export function StrategyCompilerView({ seed }: { seed?: CompiledStrategyDefinition | null } = {}) {
+  const [name, setName] = useState(seed?.name ?? "50 EMA Pullback");
+  const [sourceText, setSourceText] = useState(seed?.sourceText ?? CEO_EXAMPLE_TEXT);
+  const [definition, setDefinition] = useState<CompiledStrategyDefinition | null>(seed ?? null);
   const [compiling, setCompiling] = useState(false);
   const [compileError, setCompileError] = useState<string | null>(null);
   const [backtest, setBacktest] = useState<CompiledStrategyBacktestResult | null>(null);
@@ -66,6 +66,22 @@ export function StrategyCompilerView() {
   const [experiment, setExperiment] = useState<ResearchExperimentRecord | null>(null);
   const [experimentRunning, setExperimentRunning] = useState(false);
   const [experimentError, setExperimentError] = useState<string | null>(null);
+
+  // A newly-opened real, persisted strategy's own registered definition
+  // (see StrategyLibraryView's "View Real Rules") replaces whatever was
+  // being edited — never silently merged with unrelated prior state.
+  useEffect(() => {
+    if (!seed) return;
+    setName(seed.name);
+    setSourceText(seed.sourceText);
+    setDefinition(seed);
+    setBacktest(null);
+    setExperiment(null);
+    setCompileError(null);
+    setBacktestError(null);
+    setExperimentError(null);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [seed?.id, seed?.version]);
 
   const compile = () => {
     setCompiling(true);

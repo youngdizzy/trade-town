@@ -28,11 +28,13 @@ export function StrategyLibraryView({
   simulationResults,
   healthAssessments,
   onOpen,
+  onOpenCompiledRules,
 }: {
   strategies: Strategy[];
   simulationResults: SimulationResult[];
   healthAssessments: StrategyHealthAssessment[];
   onOpen: (id: string) => void;
+  onOpenCompiledRules: (strategy: Strategy) => void;
 }) {
   return (
     <Glass className="p-3">
@@ -48,6 +50,7 @@ export function StrategyLibraryView({
                 <th className="px-1.5 py-1.5 text-left">Creator</th>
                 <th className="px-1.5 py-1.5 text-left">Focus</th>
                 <th className="px-1.5 py-1.5 text-left">Stage</th>
+                <th className="px-1.5 py-1.5 text-left">Rules</th>
                 <th className="px-1.5 py-1.5 text-left">Health</th>
                 <th className="px-1.5 py-1.5 text-left">Runs</th>
                 <th className="px-1.5 py-1.5 text-left">Avg Return</th>
@@ -70,6 +73,22 @@ export function StrategyLibraryView({
                     <td className="px-1.5 py-1.5 text-cmd-textDim">{s.focusCategory}</td>
                     <td className="px-1.5 py-1.5">
                       <StatusPill tone={s.stage === "retired" ? "neutral" : s.stage === "approved" ? "green" : "cyan"}>{STAGE_LABELS[s.stage]}</StatusPill>
+                    </td>
+                    <td className="px-1.5 py-1.5">
+                      {s.compiledDefinitionId ? (
+                        <button
+                          type="button"
+                          onClick={() => onOpenCompiledRules(s)}
+                          className="rounded-sm border border-cmd-purple/50 px-2 py-0.5 text-[9px] uppercase text-cmd-purple hover:bg-cmd-purple/10"
+                          title="Real, compiled trigger/entry/stop/target rules exist for this strategy — open in the Strategy Compiler."
+                        >
+                          View Rules
+                        </button>
+                      ) : (
+                        <span className="text-cmd-textDim" title="No represented trading logic yet — a tracked idea only.">
+                          —
+                        </span>
+                      )}
                     </td>
                     <td className="px-1.5 py-1.5">{health ? <StatusPill tone={strategyHealthTone(health.status)}>{health.status.replace(/_/g, " ")}</StatusPill> : <span className="text-cmd-textDim">—</span>}</td>
                     <td className="px-1.5 py-1.5 tabular-nums text-cmd-textDim">{stats.runs}</td>

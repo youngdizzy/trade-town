@@ -29,6 +29,8 @@ import type {
   ParameterSensitivityResult,
   QuantResearchExperiment,
   QuantResearchExperimentSimilarity,
+  RegisterResearchableStrategyResult,
+  ResearchCategory,
   ResearchExperimentRecord,
   StrategyTournamentResult,
   SubmitQuantResearchExperimentResult,
@@ -776,6 +778,15 @@ export const api = {
       body: JSON.stringify({ name, sourceText, timeframe }),
     }),
   getStrategyVersions: (name: string) => request<CompiledStrategyDefinition[]>(`/sandbox/strategy-versions?name=${encodeURIComponent(name)}`),
+  // CEO directive "Strategy Intelligence + Live Strategy Attribution,"
+  // Phase 1 — the real Strategy Lab <-> CompiledStrategyDefinition
+  // identity bridge. See backend/app/strategy_registry.py's
+  // register_researchable_strategy().
+  registerResearchableStrategy: (name: string, description: string, sourceText: string, timeframe = "1h", focusCategory: ResearchCategory = "stock") =>
+    request<RegisterResearchableStrategyResult>("/sandbox/register-researchable-strategy", {
+      method: "POST",
+      body: JSON.stringify({ name, description, sourceText, timeframe, focusCategory }),
+    }),
   // CEO directive "Professional Quant Firm Phase," Feature 36 — the
   // Quant Research Lab's real, persisted, searchable experiment record.
   // See backend/app/quant_research_lab.py.
