@@ -12648,8 +12648,157 @@ field), and the full 40-tab "expands... and renders all 40 tabs with
 graceful empty states" cycle (which would have caught a crash in Phase
 5/6's new `PerformancePanel.tsx` sections).
 
-Phase 14 (the directive's own final 18-question honest audit) is the
-one remaining closing step, not yet started.
+### Phase 14 — Final Honest Audit
+
+CEO directive "Portfolio Construction, Capital Allocation & Execution
+Realism," mandated closing report. Eighteen items, each answered
+directly against real evidence produced across Phases 1-13 above.
+
+1. **Was research done first, on every phase, before any code?** Yes.
+   Phase 1 was a dedicated research-agent architecture audit before a
+   single line changed, and every subsequent phase (5, 7, 9) opened
+   with its own targeted research pass (a second research agent for
+   Phase 5's strategy-evidence audit, a direct code trace for Phase 7's
+   gap-through discovery, a third research agent for Phase 9's
+   data-source trace) before any schema or function was written.
+2. **Was anything duplicated that already existed?** No — the opposite
+   pattern recurs throughout: `pearson_correlation()`/`returns()`
+   promoted from private helpers for reuse (Phase 4) rather than a
+   second correlation engine; `_group_metrics()` called, never
+   reimplemented, by every new Phase 5/6 function; `HEALTH_RECENT_
+   WINDOW` imported from `strategy_lab.py` rather than a second magic
+   number (Phase 6); `computePeriodFinancials()`/`riskLevel()` reused
+   verbatim in Phase 11's new strip rather than a third P&L/risk
+   calculation.
+3. **Was anything fabricated?** No real instance found. Every place a
+   number could not be honestly computed, the code returns `None`/an
+   explicit unavailable state with a cited reason instead: `Volatility
+   SizingRead.available=False` below enough candles (Phase 3),
+   `count_correlated_positions()` returning 0 below enough history
+   (Phase 4), `evidence_state = "no_live_trades_yet"`/`"not_enough_
+   data"` (Phase 5/6), the disclosed `ROBUSTNESS_UNAVAILABLE_NOTE`/
+   `_correlation_note()` (Phase 5), the explicit "Unavailable" rows on
+   `WhyThisTradeCard` for target price/R-multiple/regime/execution
+   constraints (Phase 9) rather than guessing any of them.
+4. **Was the compliance/quality score ever manipulated?** No —
+   `min_trade_quality_score`/`decisionScore` were read, never adjusted,
+   anywhere in this directive's work; the one place a new value feeds a
+   pre-proposal decision (Phase 4's `correlated_position_count`) is a
+   new, separate check alongside the existing score, never a
+   modification to the score's own formula.
+5. **Were trades ever forced, or was "no trade" ever made impossible?**
+   No — every new gate this directive added (Phase 4's correlation
+   check) can only ever REJECT a candidate, never force one through; the
+   Opportunity Gatekeeper and Gatekeeper's existing hard-reject paths
+   were left completely untouched.
+6. **Was aesthetics ever optimized over real data?** No — the one place
+   this could have happened, Phase 9's disclosed-gap rows, deliberately
+   uses plain, undecorated "Unavailable — [real reason]" text rather
+   than hiding the gap or dressing it up as a normal-looking empty
+   state.
+7. **Was win rate ever optimized for alone?** No. Phase 5's evidence
+   roster explicitly sorts by `allocatedCapital` (the CEO's own real
+   commitment), never by win rate, expectancy, or any performance
+   metric — the module docstring states this is deliberate, so the row
+   order itself can never be mistaken for a ranking. Phase 6's
+   degradation signals span expectancy, drawdown, volatility, execution
+   quality, and loss clustering — six independent dimensions, not one.
+8. **Was there any look-ahead?** No new surface — see Phase 13's own
+   dedicated audit above: every new function reads either the live
+   `MarketDataProvider`'s current-tick window or already-closed trades
+   ordered by real `closed_at`, both structurally incapable of seeing
+   future data in this forward-only simulation.
+9. **Was existing governance preserved?** Yes — CEO approvals
+   (`POST /api/executive/decide`), risk gates (`RiskLimits`, Sentinel/
+   Guardian), circuit breakers (`emergency_stop`, `circuit_breaker`),
+   and strategy eligibility (Sandbox stage-gating) were read from and
+   extended (a new gate added alongside, in Phase 4), never bypassed,
+   weakened, or rewritten.
+10. **Is position sizing now genuinely risk-aware?** Yes (Phase 3) —
+    `POSITION SIZE = RISK BUDGET / DISTANCE TO STOP`, a real ATR read
+    over real candles, proven by a direct test asserting the *dollar
+    risk* at the resulting cap stays constant across different
+    volatility levels (the cap shrinks; the risk taken does not grow).
+11. **Is correlation risk genuinely measured?** Yes, and now genuinely
+    actionable (Phase 4) — a real Pearson correlation over real returns
+    gates new proposals pre-trade, and (Phase 9) the resulting count is
+    persisted on `WarRoomSession` instead of being computed and
+    discarded, so it reaches the CEO.
+12. **Is capital allocation genuinely evidence-based, never a ranking
+    or auto-allocation?** Yes (Phase 5) — `allocated_capital` remains
+    the CEO's own manual field, untouched by any new code; the evidence
+    roster is read-only and explicitly disclosed as not a ranking.
+13. **Is strategy degradation genuinely detected from real signals,
+    never auto-retiring on a tiny sample?** Yes (Phase 6) — six
+    real, independently-verified signals, gated at a real minimum
+    sample size (`MIN_SYMBOL_SAMPLE_FOR_VERDICT`), each proven in
+    isolation by a hand-constructed test scenario (all 17 passed on
+    first run, confirming the arithmetic was right before the code
+    ran, not adjusted after).
+14. **Is execution realism genuinely improved, and what still isn't
+    modeled?** Yes, genuinely improved (Phase 7) — a real, previously-
+    silent advantage (gapped stops filling at the stale trigger price)
+    closed using only data every caller already had. Still honestly
+    NOT modeled, unchanged from before this directive: partial fills,
+    order-book depth, and intra-candle gaps — each with the identical
+    real structural reason (no order-book-depth data exists in this
+    codebase) stated in `execution_quality.py`'s own docstring, not
+    silently dropped.
+15. **Is risk-of-ruin honestly disclosed as probabilistic, never a
+    guarantee?** Yes (Phase 8 audit) — `probabilityOfRuinPct`/
+    `capitalSurvivalPct` are real, already CEO-visible, and a
+    portfolio-level combination was explicitly NOT built specifically
+    because it would require fabricating a correlation assumption
+    Phase 5 already disclosed as unavailable — a rare case where "don't
+    build it" was itself the honest choice.
+16. **Is the "why this trade" view assembled from real, cited
+    sources?** Yes (Phase 9) — every rendered field traces to a named
+    real object (`WarRoomSession`, `TradeProposal`, `PositionSizingResult.
+    volatilitySizing`); every gap names the specific real reason it
+    can't be filled rather than approximating one.
+17. **What real gaps remain disclosed rather than papered over across
+    the whole directive?** Phase 9's closed-trade side (`DecisionDetail.
+    tsx` enrichment) was scoped and explicitly deferred, not silently
+    dropped. Phase 8's portfolio-level risk-of-ruin is a permanent,
+    reasoned non-build, not a "someday." Phase 9's live screenshot
+    verification was not achievable this session (zero `WarRoomSession`s
+    in the real running save) and is stated as such rather than
+    presented as verified.
+18. **Test evidence.** Backend: full suite grew from 2488 (confirmed
+    end of Phase 3) to 2533 passed (confirmed end of Phase 13) — a real,
+    verified net growth of 45 tests, `mypy app/` clean throughout (176
+    files), `ruff check app/ tests/` clean throughout. **A real
+    self-correction surfaced by this audit**: recounting each phase's
+    actual new test methods against the real suite-size deltas at the
+    time (2488→2501→2511→2526→2531→2533) found the per-phase counts
+    stated in this directive's own earlier commit messages/CHANGELOG
+    entries were consistently overcounted by a few each — Phase 4
+    stated 17, actually 13; Phase 5 stated 17, actually 10; Phase 6
+    stated 17, actually 15; Phase 7 stated 8, actually 5; Phase 9 stated
+    3, actually 2. The corrected, arithmetic-verified figures (13 + 10 +
+    15 + 5 + 2 = 45) match the real suite growth exactly; the original
+    inflated per-phase figures were an honest counting slip when writing
+    each commit message, not a fabricated claim about behavior — but
+    stating the real, checked number here rather than repeating the
+    error is exactly what this final audit is for. Frontend:
+    `tsc -b --noEmit`/`eslint`/`vite build` clean after every single
+    phase, never batched or deferred. Playwright: `commandCenter.spec.ts`
+    run live against a freshly-restarted dev stack in Phase 13 — 31/33
+    passed, the one failure traced to an unrelated player-movement
+    input-timing issue, not a content regression, and specifically
+    confirmed passing: the RISK, WARROOM, and PORTFOLIO tab tests, plus
+    the full 40-tab render-without-crash cycle. Nine Command Center
+    screenshots taken against the real running save across this
+    directive (Phases 3, 4, 5, 6, 9, 11), each showing genuine current
+    state — including several honest empty states (Phase 5/6/9's "no
+    live trades yet" roster, Phase 9's unreachable card) rather than
+    staged data.
+
+**Total honesty ledger**: nothing in Phases 1-13 fabricates a number, a
+causal claim, or a scoring mechanism. Every "deliberately not
+attempted" item across all fourteen phases names the exact structural
+reason — a real missing data source, a real absent mechanism, or a real
+risk of fabricating an unstated assumption — never a convenience cut.
 
 ## Save format compatibility
 

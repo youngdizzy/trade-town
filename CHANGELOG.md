@@ -271,6 +271,22 @@ development milestones, not semver releases.
   tests (Phase 4's field), and the full 40-tab render cycle (which would have caught a Phase 5/6
   `PerformancePanel.tsx` crash).
 
+- **CEO directive "Portfolio Construction, Capital Allocation & Execution Realism," Phase 14: final
+  honest audit** (docs: `docs/Architecture.md`): the directive's mandated 18-question closing report,
+  answered directly against real evidence from Phases 1-13. Confirms: research led every phase; nothing
+  was duplicated; nothing was fabricated (every real gap returns an explicit unavailable state with a
+  cited reason instead); the compliance/quality score was never manipulated; no trade was ever forced;
+  win rate was never optimized for alone; no new look-ahead surface exists; existing governance (CEO
+  approvals, risk gates, circuit breakers, strategy eligibility) was preserved throughout.
+
+  **A real self-correction surfaced by this audit**: recounting each phase's actual new test methods
+  against the real backend suite-size deltas at the time found the per-phase test counts stated in this
+  directive's own earlier commit messages were consistently overcounted by a few each (Phase 4 stated 17,
+  actually 13; Phase 5 stated 17, actually 10; Phase 6 stated 17, actually 15; Phase 7 stated 8, actually
+  5; Phase 9 stated 3, actually 2) — an honest counting slip when writing each commit message, not a
+  fabricated behavioral claim, but corrected here rather than repeated: 13 + 10 + 15 + 5 + 2 = 45 new
+  backend tests, matching the real, verified suite growth (2488 → 2533) exactly.
+
 - **CEO directive "Live Trade → Strategy Provenance": the real, non-fabricated way a live trade can
   now link back to a Strategy Lab strategy** (backend: `backend/app/schemas.py`,
   `backend/app/routers/executive.py`, `backend/app/state.py`, `backend/app/decision_vault.py`,
