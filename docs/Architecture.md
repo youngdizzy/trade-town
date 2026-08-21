@@ -12202,10 +12202,59 @@ directive blocks any new proposal from being generated in this specific
 environment's mock candle data right now; the backward-compat path this
 increment actually needed to prove was exercised instead, on real data.
 
+**Increment 3 — Phase 4, correlation-aware portfolio risk (this pass).**
+Closes the exact gap `opportunity_gatekeeper.py`'s own module docstring
+already named: the real Pearson correlation `app/portfolio_intelligence.
+py` already computed was informational-only, never wired into a
+pre-trade gate. Two deliberately separate, complementary changes rather
+than one replacing the other:
+
+- **New, genuinely statistical pre-proposal gate.** `count_correlated_
+  positions(symbol, portfolio, provider)` (`app/portfolio_intelligence.
+  py`) fetches real candles for the candidate symbol and every other
+  currently-held symbol, computes real returns (`returns()`, promoted
+  from the previously-private `_returns()` — same promotion pattern
+  already used for `pearson_correlation()`'s own earlier reuse by
+  `strategy_tournament.py`) and counts how many held symbols clear
+  `abs(pearson_correlation(...)) >= CORRELATION_CLUSTER_THRESHOLD`
+  (0.6, the same constant `_correlation_pairs()` already used — no new,
+  independently-tuned threshold). Returns 0 honestly whenever there
+  isn't yet enough real candle history for the candidate or a held
+  symbol, never a fabricated count. Wired into `nexus.py` right
+  alongside the existing category-based `correlated_open_positions`
+  read, and passed into `evaluate_opportunity()`'s new
+  `correlated_position_count` parameter — `None` (the caller didn't
+  compute one) is silently skipped, never treated as zero, so no
+  existing caller's behavior changes by omission. When it exceeds the
+  new `RiskLimits.max_correlated_positions` CEO limit, the candidate is
+  rejected pre-proposal with the new `"correlated_exposure_too_high"`
+  `NoTradeReasonCode`.
+- **`MAX_CORRELATED_POSITIONS` promoted to a real CEO control.** The
+  hardcoded constant in `app/gatekeeper.py` (the later-stage,
+  post-CEO-decision category-co-occurrence check — kept deliberately
+  separate from the new statistical pre-proposal check above, not
+  merged into it) is now `RiskLimits.max_correlated_positions` (default
+  `2`, preserving existing behavior exactly), editable via the real
+  `POST /api/risk-limits` round trip and rendered as a new "Max
+  Correlated Positions (statistical, pre-proposal)" field in
+  `RiskPanel.tsx`'s existing Opportunity Gatekeeper card.
+
+`docs/API.md`'s `NoTradeReasonCode` count updated from 38 to 41 values,
+naming `correlated_exposure_too_high` as the newest addition alongside
+the prior directive's `session_regime_unfavorable_evidence`.
+
+17 new backend tests (`TestCountCorrelatedPositions` in
+`test_portfolio_intelligence.py`; `TestCorrelatedExposureCheck` in
+`test_opportunity_gatekeeper.py`; a CEO-configured-limit test added to
+`test_gatekeeper.py`'s existing `TestCorrelationCheck`). Full backend
+suite (2501), `mypy app/`, `ruff check app/ tests/` clean. `tsc -b
+--noEmit`, `eslint`, `vite build` clean. Live-verified: a Command Center
+screenshot of the real running save's Risk panel confirms the new
+control renders with the correct real default value (`2`) and its
+descriptive text (`|Pearson r| ≥ 0.6`).
+
 **Deliberately not yet done** (natural next increments, not started
-here): Phase 4 (promoting the real Pearson correlation to an actual
-pre-trade gate, closing the gap `opportunity_gatekeeper.py` already
-names); Phase 5 (an evidence-based strategy ranking view —
+here): Phase 5 (an evidence-based strategy ranking view —
 informational only, per the directive's own explicit rule against
 auto-allocating capital to whichever strategy most recently profited);
 Phase 6 (a clearer NORMAL/POSSIBLE/CRITICAL strategy-degradation
@@ -12214,11 +12263,12 @@ classification, building on the already-real
 (execution realism / risk of ruin — largely already honestly disclosed
 as out of scope given no order-book data); Phase 9 (a consolidated "why
 this trade" view); Phase 10 (extending the no-trade diagnostic with the
-new correlation/risk-budget dimensions once those gates exist); Phases
-11-12 (`PortfolioIntelPanel.tsx`/`RiskPanel.tsx` already substantially
-satisfy the Command Center ask; market visualization already satisfies
-its own ask per the Phase 1 audit — likely little/no work needed
-there). None are blocked — see the Phase 1 audit findings above.
+new correlation/risk-budget dimensions now that the gate above exists);
+Phases 11-12 (`PortfolioIntelPanel.tsx`/`RiskPanel.tsx` already
+substantially satisfy the Command Center ask; market visualization
+already satisfies its own ask per the Phase 1 audit — likely little/no
+work needed there). None are blocked — see the Phase 1 audit findings
+above.
 
 ## Save format compatibility
 

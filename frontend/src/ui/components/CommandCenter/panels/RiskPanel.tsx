@@ -92,6 +92,13 @@ export function RiskPanel({ onNeedHelp }: { onNeedHelp?: (lessonId: EducationTop
   // v0.7 Chapter 58 — the Opportunity Gatekeeper's two CEO controls.
   const [minTradeQualityScore, setMinTradeQualityScore] = useState(String(riskLimits.minTradeQualityScore));
   const [minExpectedValuePct, setMinExpectedValuePct] = useState(String(riskLimits.minExpectedValuePct));
+  // CEO directive "Portfolio Construction, Capital Allocation &
+  // Execution Realism," Phase 4 — a third real control the Opportunity
+  // Gatekeeper reads (see app/opportunity_gatekeeper.py's new
+  // correlated_position_count check) alongside app/gatekeeper.py's
+  // later-stage category-co-occurrence check. Default 2 preserves the
+  // limit that was previously a hardcoded constant.
+  const [maxCorrelatedPositions, setMaxCorrelatedPositions] = useState(String(riskLimits.maxCorrelatedPositions));
   const [gateBusy, setGateBusy] = useState(false);
   const [gateError, setGateError] = useState<string | null>(null);
 
@@ -103,6 +110,7 @@ export function RiskPanel({ onNeedHelp }: { onNeedHelp?: (lessonId: EducationTop
       const res = await api.updateRiskLimits({
         minTradeQualityScore: Number(minTradeQualityScore),
         minExpectedValuePct: Number(minExpectedValuePct),
+        maxCorrelatedPositions: Number(maxCorrelatedPositions),
       });
       NexusManager.setRiskLimits(res.riskLimits);
     } catch (err) {
@@ -401,9 +409,20 @@ export function RiskPanel({ onNeedHelp }: { onNeedHelp?: (lessonId: EducationTop
               className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-cmd-text outline-none focus:border-cmd-cyan/50"
             />
           </label>
+          <label className="flex flex-col gap-1 text-[9px] text-cmd-textDim">
+            Max Correlated Positions (statistical, pre-proposal)
+            <input
+              type="number"
+              min="0"
+              step="1"
+              value={maxCorrelatedPositions}
+              onChange={(e) => setMaxCorrelatedPositions(e.target.value)}
+              className="rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1 text-cmd-text outline-none focus:border-cmd-cyan/50"
+            />
+          </label>
         </div>
         <div className="mt-2 text-[9px] text-cmd-textDim">
-          A negative Expected Value minimum relaxes the gate below &quot;merely positive&quot; — real, but rarely what a disciplined desk wants.
+          A negative Expected Value minimum relaxes the gate below &quot;merely positive&quot; — real, but rarely what a disciplined desk wants. Correlated Positions counts real |Pearson r| ≥ 0.6 clusters against currently-held symbols, not category labels.
         </div>
         <button
           type="button"
@@ -574,6 +593,7 @@ export function RiskPanel({ onNeedHelp }: { onNeedHelp?: (lessonId: EducationTop
         <DataRow label="Max drawdown" value={`${riskLimits.maxDrawdownPct}%`} />
         <DataRow label="Max open positions" value={riskLimits.maxOpenPositions} />
         <DataRow label="Max per-symbol concentration" value={`${riskLimits.maxSectorConcentrationPct}%`} />
+        <DataRow label="Max correlated positions" value={riskLimits.maxCorrelatedPositions} />
         <div className="mt-1.5 text-[9px] text-cmd-textDim">
           Concentration is measured per-symbol, not per real market sector — TradeTown doesn&apos;t track a sector taxonomy (see risk_engine.py).
         </div>

@@ -341,6 +341,71 @@ class TestEvaluateOpportunity:
         assert codes == []
 
 
+class TestCorrelatedExposureCheck:
+    """CEO directive "Portfolio Construction, Capital Allocation &
+    Execution Realism," Phase 4 — real, pre-proposal Pearson correlation
+    gate. `correlated_position_count` is the caller's own already-
+    computed real read (app/portfolio_intelligence.py's
+    count_correlated_positions()) — this function only ever compares it
+    against risk_limits.max_correlated_positions."""
+
+    def test_none_means_the_caller_didnt_compute_one_never_treated_as_zero(self) -> None:
+        approved, reasons, codes = evaluate_opportunity(
+            decision_score=_decision_score(85.0),
+            expected_value=_expected_value(1.0),
+            market_intelligence=_market_intelligence(tier="good", score=80.0),
+            risk_limits=RiskLimits(maxCorrelatedPositions=0),
+            correlated_position_count=None,
+        )
+        assert approved is True
+        assert "correlated_exposure_too_high" not in codes
+
+    def test_within_the_real_configured_limit_passes(self) -> None:
+        approved, reasons, codes = evaluate_opportunity(
+            decision_score=_decision_score(85.0),
+            expected_value=_expected_value(1.0),
+            market_intelligence=_market_intelligence(tier="good", score=80.0),
+            risk_limits=RiskLimits(maxCorrelatedPositions=2),
+            correlated_position_count=2,
+        )
+        assert approved is True
+        assert codes == []
+
+    def test_beyond_the_real_configured_limit_rejects_and_names_it(self) -> None:
+        approved, reasons, codes = evaluate_opportunity(
+            decision_score=_decision_score(85.0),
+            expected_value=_expected_value(1.0),
+            market_intelligence=_market_intelligence(tier="good", score=80.0),
+            risk_limits=RiskLimits(maxCorrelatedPositions=2),
+            correlated_position_count=3,
+        )
+        assert approved is False
+        assert codes == ["correlated_exposure_too_high"]
+        assert any("3 currently-held position" in r for r in reasons)
+
+    def test_a_ceo_configured_higher_limit_widens_what_passes(self) -> None:
+        approved, reasons, codes = evaluate_opportunity(
+            decision_score=_decision_score(85.0),
+            expected_value=_expected_value(1.0),
+            market_intelligence=_market_intelligence(tier="good", score=80.0),
+            risk_limits=RiskLimits(maxCorrelatedPositions=10),
+            correlated_position_count=3,
+        )
+        assert approved is True
+        assert codes == []
+
+    def test_zero_correlated_positions_never_falsely_rejects(self) -> None:
+        approved, reasons, codes = evaluate_opportunity(
+            decision_score=_decision_score(85.0),
+            expected_value=_expected_value(1.0),
+            market_intelligence=_market_intelligence(tier="good", score=80.0),
+            risk_limits=RiskLimits(),
+            correlated_position_count=0,
+        )
+        assert approved is True
+        assert codes == []
+
+
 class TestBuildOpportunityRejection:
     def test_maps_real_fields_from_the_candidate(self) -> None:
         proposal = _proposal()

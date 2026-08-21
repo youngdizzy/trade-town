@@ -12,7 +12,6 @@ from datetime import datetime, timezone
 
 from app.gatekeeper import (
     GATEKEEPER_EVAL_WINDOW_MINUTES,
-    MAX_CORRELATED_POSITIONS,
     MIN_CONFIDENCE,
     _agreement_check,
     _behavioral_check,
@@ -190,27 +189,40 @@ class TestExposureCheck:
 class TestCorrelationCheck:
     # SEED_SYMBOLS (SYMBOL_CATEGORY's real source — see app/watchlist.py)
     # assigns exactly one symbol per category, so the only way to exercise
-    # "more than MAX_CORRELATED_POSITIONS already share this category"
+    # "more than max_correlated_positions already share this category"
     # with real category data is multiple positions on the same symbol.
     def test_passes_within_the_correlated_limit(self) -> None:
         proposal = _proposal(symbol="AAPL")
         portfolio = default_portfolio().model_copy(update={"positions": [_position("AAPL", "pos-1"), _position("AAPL", "pos-2")]})
-        assert MAX_CORRELATED_POSITIONS == 2
-        assert _correlation_check(proposal, portfolio).passed is True
+        risk_limits = RiskLimits()
+        assert risk_limits.max_correlated_positions == 2
+        assert _correlation_check(proposal, portfolio, risk_limits).passed is True
 
     def test_fails_beyond_the_correlated_limit(self) -> None:
         proposal = _proposal(symbol="AAPL")
         portfolio = default_portfolio().model_copy(
             update={"positions": [_position("AAPL", "pos-1"), _position("AAPL", "pos-2"), _position("AAPL", "pos-3")]}
         )
-        assert _correlation_check(proposal, portfolio).passed is False
+        assert _correlation_check(proposal, portfolio, RiskLimits()).passed is False
 
     def test_passes_when_proposal_symbol_has_no_known_category(self) -> None:
         proposal = _proposal(symbol="UNKNOWNSYM")
         portfolio = default_portfolio().model_copy(
             update={"positions": [_position("AAPL", "pos-1"), _position("AAPL", "pos-2"), _position("AAPL", "pos-3")]}
         )
-        assert _correlation_check(proposal, portfolio).passed is True
+        assert _correlation_check(proposal, portfolio, RiskLimits()).passed is True
+
+    def test_a_ceo_configured_higher_limit_widens_what_passes(self) -> None:
+        # CEO directive "Portfolio Construction, Capital Allocation &
+        # Execution Realism," Phase 4 — the promoted, real
+        # risk_limits.max_correlated_positions actually changes this
+        # check's real behavior, proving it's no longer a hardcoded
+        # constant.
+        proposal = _proposal(symbol="AAPL")
+        portfolio = default_portfolio().model_copy(
+            update={"positions": [_position("AAPL", "pos-1"), _position("AAPL", "pos-2"), _position("AAPL", "pos-3")]}
+        )
+        assert _correlation_check(proposal, portfolio, RiskLimits(maxCorrelatedPositions=5)).passed is True
 
 
 class TestRiskWarningCheck:

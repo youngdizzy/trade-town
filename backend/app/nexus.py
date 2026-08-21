@@ -136,7 +136,7 @@ from app.vision_board import compute_self_improvement_proposal_alignment
 from app.talent import generate_talent_reports, record_talent_reports
 from app.paper_trading import tick_paper_trading
 from app.portfolio import sim_minutes
-from app.portfolio_intelligence import compute_portfolio_intelligence
+from app.portfolio_intelligence import compute_portfolio_intelligence, count_correlated_positions
 from app.position_sizing import build_position_sizing
 from app.reasoning_lab import compute_reasoning_lab_state, generate_challenge, record_challenge
 from app.research import RESEARCHER_IDS, default_research, tick_research
@@ -1630,6 +1630,14 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         # the Chapter 58 gate below decides on.
         category = SYMBOL_CATEGORY.get(proposal.symbol)
         correlated_open_positions = sum(1 for p in paper_portfolio.positions if SYMBOL_CATEGORY.get(p.symbol) == category) if category else 0
+        # CEO directive "Portfolio Construction, Capital Allocation &
+        # Execution Realism," Phase 4 — the real, statistical Pearson-
+        # correlation read (distinct from the category-co-occurrence
+        # count directly above), computed here since this is where
+        # paper_portfolio/market_data_provider are both already in
+        # scope, same convention correlated_open_positions itself
+        # already uses.
+        real_correlated_positions = count_correlated_positions(proposal.symbol, paper_portfolio, market_data_provider)
         try:
             war_room_candles = market_data_provider.get_candles(proposal.symbol, WAR_ROOM_TIMEFRAME, WAR_ROOM_CANDLE_COUNT)
         except ValueError:
@@ -1653,6 +1661,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             market_intelligence=market_intelligence,
             risk_limits=effective_risk_limits,
             decision_vault=decision_vault,
+            correlated_position_count=real_correlated_positions,
         )
         if not approved:
             opportunity_rejections.append(

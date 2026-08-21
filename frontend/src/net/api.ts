@@ -910,6 +910,11 @@ export const api = {
       // v0.7 Chapter 58 — the Opportunity Gatekeeper's two new CEO controls.
       minTradeQualityScore: number;
       minExpectedValuePct: number;
+      // CEO directive "Portfolio Construction, Capital Allocation &
+      // Execution Realism," Phase 4 — a real CEO-configurable cap on
+      // statistically correlated open positions (see
+      // backend/app/schemas.py's RiskLimits.max_correlated_positions).
+      maxCorrelatedPositions: number;
       // v0.7 Chapter 59 — the Capital Priority & Opportunity Cost Engine's
       // two new CEO controls.
       minPriorityScore: number;

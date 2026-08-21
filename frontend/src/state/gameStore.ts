@@ -347,6 +347,7 @@ class GameStore {
       maxDrawdownPct: 20,
       maxOpenPositions: 8,
       maxSectorConcentrationPct: 30,
+      maxCorrelatedPositions: 2,
       riskPerTradePct: 2,
       dailyProfitTargetPct: 3,
       maxTradesPerDay: 6,

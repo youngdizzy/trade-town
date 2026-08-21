@@ -66,6 +66,31 @@ development milestones, not semver releases.
   blocks new proposal generation in this environment's mock data right now, so the backward-compat path
   (the thing this increment actually needed proven) was exercised on real persisted data instead.
 
+- **CEO directive "Portfolio Construction, Capital Allocation & Execution Realism," Phase 4:
+  correlation-aware portfolio risk** (backend: `backend/app/schemas.py`,
+  `backend/app/portfolio_intelligence.py`, `backend/app/opportunity_gatekeeper.py`,
+  `backend/app/gatekeeper.py`, `backend/app/nexus.py`, `backend/tests/test_portfolio_intelligence.py`,
+  `backend/tests/test_opportunity_gatekeeper.py`, `backend/tests/test_gatekeeper.py`; frontend:
+  `frontend/src/types.ts`, `frontend/src/net/api.ts`, `frontend/src/state/gameStore.ts`,
+  `frontend/src/game/systems/NexusManager.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/RiskPanel.tsx`; docs: `docs/API.md`): closes the exact
+  gap `opportunity_gatekeeper.py`'s own docstring already named — the real Pearson correlation
+  `portfolio_intelligence.py` already computed was informational-only, never a pre-trade gate. New
+  `count_correlated_positions()` fetches real candles/returns for the candidate symbol and every held
+  symbol and counts real `|Pearson r| >= 0.6` clusters (the same threshold `_correlation_pairs()` already
+  used); wired into `evaluate_opportunity()` as a new, optional `correlated_position_count` parameter
+  (`None` is silently skipped, never treated as zero, so no existing caller changes by omission) that
+  rejects pre-proposal with the new `"correlated_exposure_too_high"` reason code once it exceeds the new
+  CEO-configurable `RiskLimits.max_correlated_positions` (default `2`). Kept deliberately separate from,
+  not merged into, `gatekeeper.py`'s existing later-stage category-co-occurrence check — its previously
+  hardcoded `MAX_CORRELATED_POSITIONS` constant now reads the same new `RiskLimits` field instead, with
+  the default preserving existing behavior exactly. New CEO control rendered in `RiskPanel.tsx`'s existing
+  Opportunity Gatekeeper card.
+
+  17 new backend tests. Full backend suite (2501), `mypy app/`, `ruff check app/ tests/` clean.
+  `tsc -b --noEmit`, `eslint`, `vite build` clean. Live-verified: a Command Center screenshot of the real
+  running save's Risk panel confirms the new control renders with the correct real default (`2`).
+
 - **CEO directive "Live Trade → Strategy Provenance": the real, non-fabricated way a live trade can
   now link back to a Strategy Lab strategy** (backend: `backend/app/schemas.py`,
   `backend/app/routers/executive.py`, `backend/app/state.py`, `backend/app/decision_vault.py`,

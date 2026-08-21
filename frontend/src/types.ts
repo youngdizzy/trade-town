@@ -2046,6 +2046,15 @@ export interface RiskLimits {
   maxDrawdownPct: number;
   maxOpenPositions: number;
   maxSectorConcentrationPct: number;
+  // CEO directive "Portfolio Construction, Capital Allocation &
+  // Execution Realism," Phase 4 — promotes app/gatekeeper.py's
+  // previously-hardcoded MAX_CORRELATED_POSITIONS (default 2, so this
+  // preserves existing behavior exactly) into a real CEO-configurable
+  // limit. Two complementary checks read it: the crude
+  // category-co-occurrence proxy in app/gatekeeper.py, and the new
+  // statistical pre-proposal Pearson correlation check in
+  // app/opportunity_gatekeeper.py.
+  maxCorrelatedPositions: number;
   riskPerTradePct: number;
   // v0.7 Feature 49 — Daily Trading Objectives. maxDailyLossPct above
   // already existed; these two are new.
@@ -2195,7 +2204,13 @@ export interface ProjectedLossPath {
  * "session_regime_unfavorable_evidence" was added later, by CEO
  * directive "Command Center + Professional Quant Trading Firm Upgrade"
  * — closes SESSION_FILTER's own previously-disclosed "no real
- * mechanism" gap with a real evidence-based check. */
+ * mechanism" gap with a real evidence-based check.
+ * "correlated_exposure_too_high" was added later still, by CEO
+ * directive "Portfolio Construction, Capital Allocation & Execution
+ * Realism," Phase 4 — a real, pre-proposal Pearson correlation read
+ * (app/portfolio_intelligence.py's count_correlated_positions())
+ * against currently-held positions, distinct from the crude
+ * category-co-occurrence proxy "gatekeeper_correlation" still uses. */
 export type NoTradeReasonCode =
   | "no_signal"
   | "duplicate_signal"
@@ -2207,6 +2222,7 @@ export type NoTradeReasonCode =
   | "market_quality_avoid_trading"
   | "liquidity_confirmation_weak"
   | "session_regime_unfavorable_evidence"
+  | "correlated_exposure_too_high"
   | "gatekeeper_confidence"
   | "gatekeeper_risk_manager"
   | "gatekeeper_agreement"

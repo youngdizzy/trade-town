@@ -1833,6 +1833,19 @@ class RiskLimits(CamelModel):
     max_sector_concentration_pct: float = Field(
         default=30.0, alias="maxSectorConcentrationPct"
     )
+    # CEO directive "Portfolio Construction, Capital Allocation &
+    # Execution Realism," Phase 4 — promotes app/gatekeeper.py's
+    # previously-hardcoded MAX_CORRELATED_POSITIONS (always 2) to a real
+    # CEO-configurable limit, a gap that codebase's own opportunity_
+    # gatekeeper.py module docstring already named. Default of 2
+    # preserves today's real behavior exactly — this is a promotion, not
+    # a silent behavior change. Consumed by TWO real, complementary
+    # checks: app/gatekeeper.py's existing category-co-occurrence read
+    # (post-CEO-decision) and app/opportunity_gatekeeper.py's new real
+    # Pearson-correlation-based read (pre-proposal) — the same one real
+    # threshold, two already-real detection methods at the two stages
+    # this pipeline already has, never a second competing limit.
+    max_correlated_positions: int = Field(default=2, alias="maxCorrelatedPositions")
     risk_per_trade_pct: float = Field(default=2.0, alias="riskPerTradePct")
     # v0.7 Feature 49 — Professional Day Trading Program's Daily Trading
     # Objectives. `max_daily_loss_pct` above already existed; these two
@@ -1970,6 +1983,13 @@ NoTradeReasonCode = Literal[
     # MarketIntelligenceState already carries at proposal time — never a
     # forecast, only this company's own real closed-trade history.
     "session_regime_unfavorable_evidence",
+    # CEO directive "Portfolio Construction, Capital Allocation &
+    # Execution Realism," Phase 4 — a real, pre-proposal Pearson
+    # correlation read (app/portfolio_intelligence.py's
+    # count_correlated_positions()) against currently-held positions,
+    # never the crude category-co-occurrence proxy app/gatekeeper.py's
+    # own later-stage "gatekeeper_correlation" check still uses.
+    "correlated_exposure_too_high",
     # Gatekeeper: app/gatekeeper.py's 11 real checks
     "gatekeeper_confidence",
     "gatekeeper_risk_manager",

@@ -47,7 +47,6 @@ from app.schemas import (
 from app.watchlist import SYMBOL_CATEGORY
 
 MIN_CONFIDENCE = 55.0
-MAX_CORRELATED_POSITIONS = 2
 GATEKEEPER_EVAL_WINDOW_MINUTES = 240  # 4 simulated hours — same order of magnitude as this sim's typical real hold durations.
 
 # Behavioral Circuit Breaker defaults (app/behavioral_risk.py) — mirror
@@ -128,10 +127,23 @@ def _exposure_check(portfolio: PaperPortfolio, risk_limits: RiskLimits) -> Gatek
     )
 
 
-def _correlation_check(proposal: TradeProposal, portfolio: PaperPortfolio) -> GatekeeperCheck:
+def _correlation_check(proposal: TradeProposal, portfolio: PaperPortfolio, risk_limits: RiskLimits) -> GatekeeperCheck:
+    """Category co-occurrence — a real but crude proxy (this codebase
+    has no real sector taxonomy, only each symbol's own ResearchCategory
+    — see app/portfolio_intelligence.py's identical, already-established
+    note). CEO directive "Portfolio Construction, Capital Allocation &
+    Execution Realism," Phase 4 promoted the threshold itself
+    (previously hardcoded MAX_CORRELATED_POSITIONS=2) to a real
+    CEO-configurable `risk_limits.max_correlated_positions` — default
+    still 2, so today's real behavior is unchanged unless the CEO
+    actually adjusts it. The genuinely statistical version of this same
+    question (real Pearson correlation against currently-held positions)
+    now runs EARLIER, pre-proposal, in app/opportunity_gatekeeper.py's
+    own `correlated_position_count` check — this later-stage check stays
+    real and complementary, not replaced."""
     category = SYMBOL_CATEGORY.get(proposal.symbol)
     correlated = sum(1 for p in portfolio.positions if SYMBOL_CATEGORY.get(p.symbol) == category) if category else 0
-    passed = correlated <= MAX_CORRELATED_POSITIONS
+    passed = correlated <= risk_limits.max_correlated_positions
     return GatekeeperCheck(
         id="correlation",
         label="Correlated Positions",
@@ -288,7 +300,7 @@ def evaluate_gatekeeper(
         _agreement_check(proposal, ceo_choice),
         _debate_check(debate, ceo_choice),
         _exposure_check(portfolio, risk_limits),
-        _correlation_check(proposal, portfolio),
+        _correlation_check(proposal, portfolio, risk_limits),
         _risk_warning_check(proposal, risk_warnings),
         _market_intelligence_check(market_intelligence),
         _weighted_executive_check(weighted_recommendation),

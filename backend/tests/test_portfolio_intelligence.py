@@ -16,8 +16,9 @@ from app.portfolio_intelligence import (
     _heat,
     _opportunity_cost,
     _strategy_exposure,
+    count_correlated_positions,
     pearson_correlation,
-    _returns,
+    returns,
     compute_portfolio_intelligence,
 )
 from app.schemas import PaperPortfolio, PaperPosition, PaperTrade
@@ -125,11 +126,11 @@ class TestPearson:
 
 class TestReturns:
     def test_computes_bar_to_bar_pct_change(self) -> None:
-        assert _returns([100.0, 110.0, 99.0]) == [0.1, -0.1]
+        assert returns([100.0, 110.0, 99.0]) == [0.1, -0.1]
 
     def test_empty_and_single_price_series_return_empty(self) -> None:
-        assert _returns([]) == []
-        assert _returns([100.0]) == []
+        assert returns([]) == []
+        assert returns([100.0]) == []
 
 
 class TestCategoryExposure:
@@ -211,6 +212,58 @@ class TestCorrelationPairs:
         portfolio = _portfolio(positions=[_position(position_id="p1", symbol="AAPL"), _position(position_id="p2", symbol="MSFT")])
         provider = _FakeProvider({"AAPL": [100.0 + i for i in range(10)]})
         assert _correlation_pairs(portfolio, provider) == []
+
+
+class TestCountCorrelatedPositions:
+    """CEO directive "Portfolio Construction, Capital Allocation &
+    Execution Realism," Phase 4 — the real, pre-proposal-stage
+    correlation read app/opportunity_gatekeeper.py's new gate consumes."""
+
+    def test_a_real_correlated_held_position_is_counted(self) -> None:
+        closes = [100.0 + i for i in range(10)]
+        portfolio = _portfolio(positions=[_position(position_id="p1", symbol="MSFT")])
+        provider = _FakeProvider({"AAPL": closes, "MSFT": [c * 2 for c in closes]})
+        assert count_correlated_positions("AAPL", portfolio, provider) == 1
+
+    def test_an_uncorrelated_held_position_is_not_counted(self) -> None:
+        aapl = [100.0, 100.84, 97.96, 96.64, 95.04, 96.38, 97.41, 99.7, 97.23, 96.77]
+        msft = [50.0, 49.71, 48.82, 47.88, 47.15, 47.89, 47.17, 46.84, 47.36, 47.47]
+        portfolio = _portfolio(positions=[_position(position_id="p1", symbol="MSFT")])
+        provider = _FakeProvider({"AAPL": aapl, "MSFT": msft})
+        assert count_correlated_positions("AAPL", portfolio, provider) == 0
+
+    def test_counts_multiple_real_correlated_positions(self) -> None:
+        closes = [100.0 + i for i in range(10)]
+        portfolio = _portfolio(
+            positions=[
+                _position(position_id="p1", symbol="MSFT"),
+                _position(position_id="p2", symbol="QQQ"),
+            ]
+        )
+        provider = _FakeProvider({"AAPL": closes, "MSFT": [c * 2 for c in closes], "QQQ": [c * 3 for c in closes]})
+        assert count_correlated_positions("AAPL", portfolio, provider) == 2
+
+    def test_the_candidate_symbol_itself_is_never_counted_against_itself(self) -> None:
+        closes = [100.0 + i for i in range(10)]
+        portfolio = _portfolio(positions=[_position(position_id="p1", symbol="AAPL")])
+        provider = _FakeProvider({"AAPL": closes})
+        assert count_correlated_positions("AAPL", portfolio, provider) == 0
+
+    def test_no_real_candle_history_for_the_candidate_returns_zero_not_a_crash(self) -> None:
+        portfolio = _portfolio(positions=[_position(position_id="p1", symbol="MSFT")])
+        provider = _FakeProvider({"MSFT": [100.0 + i for i in range(10)]})
+        assert count_correlated_positions("AAPL", portfolio, provider) == 0
+
+    def test_no_real_candle_history_for_a_held_symbol_is_skipped_not_crashed(self) -> None:
+        closes = [100.0 + i for i in range(10)]
+        portfolio = _portfolio(positions=[_position(position_id="p1", symbol="MSFT")])
+        provider = _FakeProvider({"AAPL": closes})
+        assert count_correlated_positions("AAPL", portfolio, provider) == 0
+
+    def test_empty_portfolio_returns_zero(self) -> None:
+        closes = [100.0 + i for i in range(10)]
+        provider = _FakeProvider({"AAPL": closes})
+        assert count_correlated_positions("AAPL", _portfolio(positions=[]), provider) == 0
 
 
 class TestHeat:

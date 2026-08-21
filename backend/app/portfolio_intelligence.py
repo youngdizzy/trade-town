@@ -58,6 +58,14 @@ correlation between candidate strategies' own walk-forward window
 expectancy sequences using the exact same, already-tested Pearson
 implementation this module uses for symbol-to-symbol price-return
 correlation — never a second, duplicate statistics implementation.
+
+CEO directive "Portfolio Construction, Capital Allocation & Execution
+Realism," Phase 4 — `returns()` (renamed from a previously-private
+`_returns()`, behavior unchanged) and `count_correlated_positions()`
+below are exported so `app/opportunity_gatekeeper.py` can ask a real
+pre-trade question ("how many currently-held positions genuinely
+correlate with this candidate?") using this exact same, already-tested
+Pearson correlation machinery — never a second correlation engine.
 """
 from __future__ import annotations
 
@@ -115,7 +123,7 @@ def pearson_correlation(a: list[float], b: list[float]) -> float:
         return 0.0
 
 
-def _returns(prices: list[float]) -> list[float]:
+def returns(prices: list[float]) -> list[float]:
     return [(cur - prev) / prev for prev, cur in zip(prices, prices[1:]) if prev]
 
 
@@ -147,7 +155,7 @@ def _correlation_pairs(portfolio: PaperPortfolio, provider: MarketDataProvider) 
             candles = provider.get_candles(symbol, PROPOSAL_TIMEFRAME, PROPOSAL_CANDLE_COUNT)
         except ValueError:
             continue
-        returns_by_symbol[symbol] = _returns([c.close for c in candles])
+        returns_by_symbol[symbol] = returns([c.close for c in candles])
 
     pairs: list[CorrelationPair] = []
     for i, symbol_a in enumerate(symbols):
@@ -159,6 +167,43 @@ def _correlation_pairs(portfolio: PaperPortfolio, provider: MarketDataProvider) 
             if abs(correlation) >= CORRELATION_CLUSTER_THRESHOLD:
                 pairs.append(CorrelationPair(symbolA=symbol_a, symbolB=symbol_b, correlation=round(correlation, 2), direction="positive" if correlation > 0 else "negative"))
     return pairs
+
+
+def count_correlated_positions(symbol: str, portfolio: PaperPortfolio, provider: MarketDataProvider) -> int:
+    """CEO directive "Portfolio Construction, Capital Allocation &
+    Execution Realism," Phase 4 — real count of currently-held symbols
+    whose own recent price returns clear CORRELATION_CLUSTER_THRESHOLD
+    against `symbol`'s own real recent returns. The same real Pearson
+    correlation this module's own Correlation Intelligence read already
+    computes for display, reused here to answer a real pre-trade
+    question instead — never a second, independently-tuned correlation
+    engine, and never the crude ResearchCategory co-occurrence proxy
+    app/gatekeeper.py's own later-stage `_correlation_check` still uses
+    (that check answers a different, complementary question — see this
+    function's own callers for how the two combine). Returns 0 (never a
+    fabricated count) when `symbol` doesn't yet have enough real candle
+    history to compute a real return series from."""
+    try:
+        candidate_candles = provider.get_candles(symbol, PROPOSAL_TIMEFRAME, PROPOSAL_CANDLE_COUNT)
+    except ValueError:
+        return 0
+    candidate_returns = returns([c.close for c in candidate_candles])
+    if len(candidate_returns) < 3:
+        return 0
+
+    held_symbols = sorted({pos.symbol for pos in portfolio.positions if pos.symbol != symbol})
+    count = 0
+    for held_symbol in held_symbols:
+        try:
+            held_candles = provider.get_candles(held_symbol, PROPOSAL_TIMEFRAME, PROPOSAL_CANDLE_COUNT)
+        except ValueError:
+            continue
+        held_returns = returns([c.close for c in held_candles])
+        if len(held_returns) < 3:
+            continue
+        if abs(pearson_correlation(candidate_returns, held_returns)) >= CORRELATION_CLUSTER_THRESHOLD:
+            count += 1
+    return count
 
 
 def _heat(portfolio: PaperPortfolio, equity: float, category_exposure: list[CategoryExposure]) -> PortfolioHeat:

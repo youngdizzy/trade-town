@@ -71,13 +71,15 @@ HONESTY BOUNDARY — what this module deliberately does NOT build, and why
 (see the Design Bible chapter's own Implementation Notes for the fuller
 version):
 
-  Promoting app/gatekeeper.py's hardcoded MAX_CORRELATED_POSITIONS to a
-  real CEO-configurable RiskLimits field, and a matching pre-proposal
-  correlation check here — a real, named gap the chapter's own CEO
-  Controls table flags, but a genuinely separate small change to
-  Feature 20's own module, not required to close the specific gap this
-  pass targets (Evidence/Expected Value/Market Quality never gating
-  proposal creation at all). Not built in this pass.
+  CLOSED by CEO directive "Portfolio Construction, Capital Allocation &
+  Execution Realism," Phase 4: `RiskLimits.max_correlated_positions` is
+  now real and CEO-configurable (default 2, preserving the old hardcoded
+  behavior exactly), and `evaluate_opportunity()`'s own
+  `correlated_position_count` parameter is a real, pre-proposal Pearson
+  correlation read (app/portfolio_intelligence.py's
+  `count_correlated_positions()`) — a genuinely different, complementary
+  detection method from app/gatekeeper.py's later-stage category-
+  co-occurrence check, not a duplicate of it.
 
   A true two-phase "cheap pre-check first, expensive enrichment only if
   it might pass" pipeline — the real Decision Score/Expected Value this
@@ -124,6 +126,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.gatekeeper import GATEKEEPER_EVAL_WINDOW_MINUTES
+from app.portfolio_intelligence import CORRELATION_CLUSTER_THRESHOLD
 from app.schemas import (
     DecisionScoreBreakdown,
     DecisionVaultEntry,
@@ -195,6 +198,7 @@ def evaluate_opportunity(
     market_intelligence: MarketIntelligenceState,
     risk_limits: RiskLimits,
     decision_vault: list[DecisionVaultEntry] | None = None,
+    correlated_position_count: int | None = None,
 ) -> tuple[bool, list[str], list[NoTradeReasonCode]]:
     """The engine's one real decision: does this candidate earn the
     right to become a CEO-facing TradeProposal? Every reason for a
@@ -208,7 +212,17 @@ def evaluate_opportunity(
     `decision_vault` (optional, defaults to no evidence) feeds CEO
     directive "Command Center + Professional Quant Trading Firm
     Upgrade"'s session-as-a-live-gating-reason check below — see that
-    check's own comment for the full real-evidence reasoning."""
+    check's own comment for the full real-evidence reasoning.
+
+    `correlated_position_count` (CEO directive "Portfolio Construction,
+    Capital Allocation & Execution Realism," Phase 4; optional, defaults
+    to no check) — the caller's own already-computed real read from
+    app/portfolio_intelligence.py's count_correlated_positions() (real
+    Pearson correlation against currently-held positions, never the
+    crude category-co-occurrence proxy app/gatekeeper.py's own
+    later-stage check still uses). None means the caller didn't compute
+    one (e.g. a test exercising this function in isolation) — silently
+    skipped, never treated as "zero correlated positions"."""
     reasons: list[str] = []
     codes: list[NoTradeReasonCode] = []
     if market_intelligence.quality.tier == "avoid_trading":
@@ -247,6 +261,18 @@ def evaluate_opportunity(
             f"over {current_bucket.sample_size} closed trades."
         )
         codes.append("session_regime_unfavorable_evidence")
+    # CEO directive "Portfolio Construction, Capital Allocation &
+    # Execution Realism," Phase 4 — a real, pre-proposal Pearson
+    # correlation gate, promoting app/gatekeeper.py's previously-
+    # hardcoded MAX_CORRELATED_POSITIONS to the same real CEO-
+    # configurable risk_limits.max_correlated_positions this later-stage
+    # check now also reads (see that module's own _correlation_check).
+    if correlated_position_count is not None and correlated_position_count > risk_limits.max_correlated_positions:
+        reasons.append(
+            f"{correlated_position_count} currently-held position(s) show real |correlation| >= {CORRELATION_CLUSTER_THRESHOLD:.1f} "
+            f"with this candidate — exceeds the {risk_limits.max_correlated_positions} real limit."
+        )
+        codes.append("correlated_exposure_too_high")
     return not reasons, reasons, codes
 
 
