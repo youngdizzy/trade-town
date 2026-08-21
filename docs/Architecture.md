@@ -12238,6 +12238,78 @@ backend suite: 2596 passed (+5), `mypy app/` (178 files) clean,
 dev stack — the real save's own decision pipeline continued ticking
 correctly throughout (Day 105 → 108 across this phase's work).
 
+### Parts 4 + 5 — Real DST-Aware Session Classification, Session Context
+
+Part 4 asked for real ASIA/LONDON/NEW YORK/OVERLAP/CLOSED session
+detection that "correctly account[s] for timezone, daylight saving
+time" — the research phase already found the existing `compute_session()`
+was a disclosed fixed-UTC-hour approximation with zero DST handling.
+Naively rewriting it raised a real Absolute Rule #4 conflict before any
+code was written: the *same* hour classifier
+(`_session_for_hour()`) also buckets historical candles for
+backtesting/certification (`app/strategy_engine.py`,
+`app/ema_pullback_research.py`, plus this module's own `_SESSION_QUALITY`
+table), so changing its boundaries would retroactively shift
+already-certified strategies' historical session breakdowns — exactly
+what the directive forbids.
+
+**Resolution, a deliberate split, not an oversight.** `_session_for_hour()`
+stays completely unchanged — every backtest/certification path keeps
+its exact prior boundaries, byte-for-byte. `compute_session()` — the
+LIVE-only path (the Gatekeeper, every fresh `TradeProposal`, and Part
+8's decision-time snapshot) — is rebuilt on real, publicly-documented
+NYSE (9:30-16:00 America/New_York), LSE (8:00-16:30 Europe/London), and
+TSE (9:00-15:00 Asia/Tokyo) exchange hours, classified via Python's
+stdlib `zoneinfo` (the real IANA timezone database — no new dependency,
+no network call), which automatically and correctly shifts the
+NYSE/LSE UTC boundaries across real US/UK daylight-saving transitions
+(Tokyo observes none, so its offset stays fixed year-round) and
+correctly reports `closed` on a real weekend. The core proof of genuine
+DST-awareness, verified by test: the identical UTC wall-clock time
+(13:45 UTC) classifies as `market_open` in July and `london` in
+January — a fixed-UTC classifier could never produce two different
+answers for the same UTC time. Deliberately does not model exchange
+holidays (Christmas, Thanksgiving, etc.) — no real holiday-calendar
+data source exists anywhere in this codebase, and fabricating one would
+violate this directive's own no-fabrication rule; a holiday is honestly
+misclassified as a normal trading day, a disclosed limitation, not
+hidden.
+
+**Part 5 — Session Context.** `SessionRead` gains real
+`sessionStartedAt`/`sessionClosesAt`/`minutesSinceSessionOpen`/
+`minutesUntilSessionClose`, computed from the same real exchange
+boundaries `compute_session()` already derived — `None` only for
+`current == "closed"` (no governing exchange session to report a
+window for). Captured at decision time — alongside session-scoped
+volatility (`VolatilityRead.sessionPct`, an already-real, already-
+computed field this directive simply started reading rather than
+inventing) — into a new nested `CeoDecisionRecord.decisionSessionContext`.
+Grouped as one object, unlike Part 8's four flat fields, because the
+directive's own Part 5 heading names these eight related items as a
+single "Session Context" concept. Threaded through to
+`DecisionVaultEntry`/`TradeReportCard`, mirroring the exact join
+pattern every other Part 1/2/8 field already established.
+
+**Deliberately cut, disclosed:** SESSION RANGE / SESSION HIGH-LOW —
+Part 5's other two line items. Both need a real per-symbol candle fetch
+within the session window, which would meaningfully expand
+`resolve_proposal()`'s already-large parameter surface; cut explicitly
+rather than attempted as a rushed addition.
+
+**Tests.** 12 new: 8 in `test_market_intelligence.py` (including the
+core July/January DST-transition proof, a real-Saturday-reports-closed
+test, and a confirmation that `_session_for_hour()` itself is
+byte-for-byte unchanged), 4 across `test_executive.py`/
+`test_decision_vault.py` for Session Context threading. Full backend
+suite: 2608 passed (+12), `mypy app/` (178 files) clean,
+`ruff check app/ tests/` clean. Live-verified against a freshly
+restarted real dev stack (the classic stale-dev-server pattern this
+session has hit before — confirmed the running process predated these
+changes, restarted, re-verified) — the live session read now shows the
+real DST-aware detail string and real boundary fields; the real save's
+own decision pipeline continued ticking correctly throughout (Day
+108 → 110).
+
 ## CEO directive "Portfolio Construction, Capital Allocation & Execution Realism"
 
 **Phase 1 — architecture audit (research agent, before any code).**

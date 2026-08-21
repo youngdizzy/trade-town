@@ -8,6 +8,49 @@ development milestones, not semver releases.
 ### Added
 
 - **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
+  Attribution," Parts 4 + 5 (backend): real DST-aware session classification + Session Context**
+  (`backend/app/market_intelligence.py`, `backend/app/schemas.py`, `backend/app/executive.py`,
+  `backend/app/decision_vault.py`, `backend/tests/test_market_intelligence.py`,
+  `backend/tests/test_executive.py`, `backend/tests/test_decision_vault.py`): Part 4 asked for real
+  ASIA/LONDON/NEW YORK/OVERLAP/CLOSED session detection "correctly account[ing] for timezone,
+  daylight saving time" — research found the existing `compute_session()` was a disclosed
+  fixed-UTC-hour approximation with zero DST handling. Rewriting it naively risked a real Absolute
+  Rule #4 conflict: the *same* hour classifier (`_session_for_hour()`) also buckets historical
+  candles for backtesting/certification (`app/strategy_engine.py`, `app/ema_pullback_research.py`),
+  and changing its boundaries would retroactively shift already-certified strategies' historical
+  session breakdowns — exactly what the directive forbids.
+
+  Resolution, disclosed as a deliberate (not accidental) split: `_session_for_hour()` stays
+  completely unchanged — every backtest/certification path keeps its exact prior boundaries.
+  `compute_session()` (the **live-only** path — the Gatekeeper, every fresh `TradeProposal`, and
+  Part 8's decision-time snapshot) is rebuilt on real, publicly-documented NYSE/LSE/TSE exchange
+  hours, classified via Python's stdlib `zoneinfo` (the real IANA timezone database — no new
+  dependency, no network call), which correctly and automatically shifts NYSE/LSE boundaries across
+  real US/UK DST transitions (Tokyo observes none, so its offset stays fixed) and correctly reports
+  `closed` on real weekends. Verified with the core proof of DST-awareness a fixed classifier could
+  never pass: the identical UTC wall-clock time (13:45 UTC) classifies as `market_open` in July and
+  `london` in January. Deliberately does not model exchange holidays — no real holiday-calendar
+  data source exists in this codebase, so a holiday is honestly misclassified as a normal trading
+  day rather than fabricating a calendar.
+
+  Part 5 (Session Context) extends `SessionRead` with real `sessionStartedAt`/`sessionClosesAt`/
+  `minutesSinceSessionOpen`/`minutesUntilSessionClose` (computed from the same real exchange
+  boundaries, `None` only when `current == "closed"`), then captures this — plus session-scoped
+  volatility (`VolatilityRead.sessionPct`, an already-real, already-computed field this directive
+  simply started reading) — into a new nested `CeoDecisionRecord.decisionSessionContext`, grouped
+  as one object (unlike Part 8's flat fields) because the directive's own Part 5 heading names these
+  as one cohesive concept. Threaded through to `DecisionVaultEntry`/`TradeReportCard`. Deliberately
+  cut, disclosed: SESSION RANGE / SESSION HIGH-LOW (Part 5's other two line items) — both need a
+  real per-symbol candle fetch within the session window that would meaningfully expand
+  `resolve_proposal()`'s already-large parameter surface.
+
+  12 new backend tests (8 DST-aware session tests including the core July/January proof, 4 Session
+  Context threading tests). Full backend suite: 2608 passed (+12), `mypy app/` (178 files) clean,
+  `ruff check app/ tests/` clean. Live-verified against a freshly restarted real dev stack — the
+  live session read now shows the real DST-aware detail string and real boundary fields; the real
+  save's own decision pipeline continued ticking correctly throughout (Day 108 → 110).
+
+- **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
   Attribution," Part 8 (backend): Decision-Time Snapshot** (`backend/app/schemas.py`,
   `backend/app/executive.py`, `backend/app/decision_vault.py`, `backend/tests/test_executive.py`,
   `backend/tests/test_decision_vault.py`): research for the Part 1/2 work above (previous entry)

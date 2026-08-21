@@ -58,6 +58,7 @@ from app.schemas import (
     CeoDecisionRecord,
     Debate,
     DecisionGrade,
+    DecisionSessionContext,
     GatekeeperVerdict,
     MarketIntelligenceState,
     NewsItem,
@@ -529,6 +530,18 @@ def resolve_proposal(
         decisionMarketRegime=market_intelligence.regime,
         decisionPrice=current_price,
         decisionVolatilityPct=market_intelligence.volatility.current_pct,
+        # CEO directive "Complete Trade Provenance," Part 5 — Session
+        # Context, mirroring the same real SessionRead/VolatilityRead
+        # fields market_intelligence.session/volatility already carry —
+        # never a second, independently-computed reading.
+        decisionSessionContext=DecisionSessionContext(
+            startedAt=market_intelligence.session.session_started_at,
+            closesAt=market_intelligence.session.session_closes_at,
+            minutesSinceOpen=market_intelligence.session.minutes_since_session_open,
+            minutesUntilClose=market_intelligence.session.minutes_until_session_close,
+            overlapsActive=market_intelligence.session.overlaps_active,
+            sessionVolatilityPct=market_intelligence.volatility.session_pct,
+        ),
     )
     return portfolio, decision, record
 

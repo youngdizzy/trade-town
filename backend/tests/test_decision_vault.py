@@ -28,6 +28,7 @@ from app.schemas import (
     CeoDecisionRecord,
     ConfidenceFactor,
     DecisionConfidence,
+    DecisionSessionContext,
     DecisionVaultEntry,
     DisciplineFactor,
     DisciplineReview,
@@ -368,6 +369,46 @@ class TestBuildVaultEntry:
         assert entry.decision_market_regime == "strong_bull_trend"
         assert entry.decision_price == 123.45
         assert entry.decision_volatility_pct == 5.5
+
+    def test_decision_session_context_is_threaded_through_from_a_real_ceo_decision_record(self) -> None:
+        """CEO directive "Complete Trade Provenance," Part 5."""
+        ceo_decision = CeoDecisionRecord(
+            id="ceo-1",
+            proposalId="proposal-1",
+            symbol="NEXA",
+            category="stock",
+            aiRecommendation="buy",
+            ceoDecision="buy",
+            agreedWithAi=True,
+            decisionId="decision-proposal-1",
+            decisionSession="new_york",
+            decisionSessionContext=DecisionSessionContext(
+                startedAt="2026-07-15T13:30:00+00:00",
+                closesAt="2026-07-15T20:00:00+00:00",
+                minutesSinceOpen=15,
+                minutesUntilClose=375,
+                overlapsActive=["london", "new_york"],
+                sessionVolatilityPct=3.3,
+            ),
+            createdAt=_now_iso(),
+        )
+        entry = build_vault_entry(
+            entry_id="vault-trade-1",
+            trade=_trade(),
+            decision=_decision(),
+            discipline_review=_discipline_review(),
+            market_regime="strong_bull_trend",
+            market_regime_label="Strong Bull Trend",
+            provider=MockMarketDataProvider(),
+            case_study=None,
+            meeting_log_entry=None,
+            ceo_decision=ceo_decision,
+            company_dna_change=None,
+            sim_day=5,
+        )
+        assert entry.decision_session_context is not None
+        assert entry.decision_session_context.minutes_since_open == 15
+        assert entry.decision_session_context.session_volatility_pct == 3.3
 
     def test_decision_time_snapshot_is_none_without_a_real_ceo_decision_record(self) -> None:
         entry = build_vault_entry(
@@ -805,6 +846,27 @@ class TestComputeTradeReportCard:
         assert card.decision_market_regime == "strong_bull_trend"
         assert card.decision_price == 123.45
         assert card.decision_volatility_pct == 5.5
+
+    def test_a_real_decision_session_context_is_carried_through_to_the_report_card(self) -> None:
+        """CEO directive "Complete Trade Provenance," Part 5."""
+        entry = _vault_entry(entry_id="v1").model_copy(
+            update={
+                "decision_session_context": DecisionSessionContext(
+                    startedAt="2026-07-15T13:30:00+00:00",
+                    closesAt="2026-07-15T20:00:00+00:00",
+                    minutesSinceOpen=15,
+                    minutesUntilClose=375,
+                    overlapsActive=["london", "new_york"],
+                    sessionVolatilityPct=3.3,
+                )
+            }
+        )
+        trade = _trade(trade_id="trade-v1", decision_id="decision-v1")
+        decision = _decision(decision_id="decision-v1")
+        card = compute_trade_report_card(entry, trade_history=[trade], decisions=[decision], ceo_decisions=[])
+        assert card.decision_session_context is not None
+        assert card.decision_session_context.minutes_since_open == 15
+        assert card.decision_session_context.session_volatility_pct == 3.3
 
     def test_a_real_ceo_decision_record_with_no_strategy_selected_reads_unknown(self) -> None:
         entry = _vault_entry(entry_id="v1")

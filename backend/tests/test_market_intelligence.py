@@ -164,6 +164,62 @@ class TestComputeSession:
         assert "02:00" in session.detail
 
 
+class TestComputeSessionDstAware:
+    """CEO directive "Complete Trade Provenance," Part 4 — compute_session()
+    is real, DST-aware exchange-hours classification via zoneinfo, deliberately
+    separate from the still-fixed-UTC _session_for_hour() backtesting uses."""
+
+    def test_the_same_utc_hour_classifies_differently_across_a_dst_transition(self) -> None:
+        # The core proof of real DST-awareness: 13:45 UTC is NYSE market_open
+        # (9:45 EDT) in July, but only the London session (8:45 EST, before
+        # the 9:30 NYSE open) in January — a fixed-UTC classifier could
+        # never produce two different answers for the identical UTC time.
+        summer = compute_session(datetime(2026, 7, 15, 13, 45, tzinfo=timezone.utc))
+        winter = compute_session(datetime(2026, 1, 15, 13, 45, tzinfo=timezone.utc))
+        assert summer.current == "market_open"
+        assert winter.current == "london"
+
+    def test_a_real_saturday_reports_closed_even_during_what_would_be_market_open_hours(self) -> None:
+        # 2026-01-17 is a real Saturday; 14:45 UTC is exactly NYSE
+        # market_open on the equivalent weekday (see the winter
+        # market_open test below) -- markets are honestly closed on
+        # weekends, never misreported as open.
+        saturday = compute_session(datetime(2026, 1, 17, 14, 45, tzinfo=timezone.utc))
+        assert saturday.current == "closed"
+
+    def test_winter_market_open_shifts_a_full_hour_later_in_utc_than_summer(self) -> None:
+        winter_open = compute_session(datetime(2026, 1, 15, 14, 45, tzinfo=timezone.utc))
+        assert winter_open.current == "market_open"
+
+    def test_ny_lunch_hour_is_real(self) -> None:
+        session = compute_session(datetime(2026, 7, 15, 16, 15, tzinfo=timezone.utc))
+        assert session.current == "ny_lunch_hour"
+
+    def test_london_ny_overlap_reports_both_names_in_overlaps_active(self) -> None:
+        session = compute_session(datetime(2026, 7, 15, 14, 30, tzinfo=timezone.utc))
+        assert session.current == "london_ny_overlap"
+        assert set(session.overlaps_active) == {"london", "new_york"}
+
+    def test_asian_session_has_no_dst_since_tokyo_observes_none(self) -> None:
+        # Japan does not observe daylight saving -- the same real UTC
+        # hour should classify identically regardless of time of year.
+        summer = compute_session(datetime(2026, 7, 1, 2, 0, tzinfo=timezone.utc))
+        winter = compute_session(datetime(2026, 1, 1, 2, 0, tzinfo=timezone.utc))
+        assert summer.current == winter.current == "asian"
+
+    def test_a_naive_datetime_is_treated_as_real_utc(self) -> None:
+        naive = compute_session(datetime(2026, 1, 1, 2, 0))
+        aware = compute_session(datetime(2026, 1, 1, 2, 0, tzinfo=timezone.utc))
+        assert naive.current == aware.current == "asian"
+
+    def test_backtesting_classifier_is_completely_unchanged_by_this_directive(self) -> None:
+        # _session_for_hour() must still be the exact fixed-UTC function
+        # every backtest/certification already depends on -- confirmed by
+        # the pre-existing hour-based tests above still passing unmodified.
+        assert _session_for_hour(2.0) == "asian"
+        assert _session_for_hour(13.6) == "market_open"
+
+
 class TestComputeNewsRisk:
     def _news(self, n: int) -> list[NewsItem]:
         return [NewsItem(id=f"n{i}", headline="Broad rally extends.", category="market", timestamp=_now_iso()) for i in range(n)]

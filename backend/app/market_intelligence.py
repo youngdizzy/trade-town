@@ -34,9 +34,14 @@ formulas — genuine data, genuine math, just not a live paid feed:
     volatility_pct() readings over different real candle sub-windows.
   - Session Intelligence — computed from real wall-clock UTC time (the
     same convention Candle.timestamp already uses, not TradeTown's
-    simulated clock — see market_data.py's own docstring for why), using
-    fixed, documented UTC windows (no DST handling — an explicit,
-    documented simplification).
+    simulated clock — see market_data.py's own docstring for why),
+    classified against real, DST-aware NYSE/LSE/TSE exchange hours via
+    Python's stdlib `zoneinfo` (CEO directive "Complete Trade
+    Provenance," Part 4 — see compute_session()'s own docstring for why
+    this now deliberately differs from the still-fixed-UTC
+    `_session_for_hour()` backtesting uses). No exchange holiday
+    calendar exists — a holiday is honestly misclassified as a normal
+    trading day, an explicit, documented simplification.
   - Momentum — real rate-of-change comparison across two real candle
     sub-windows.
   - Strategy Matching — real cross-reference against app/sandbox.py's own
@@ -76,9 +81,12 @@ factors it deliberately does not compute.
 """
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import datetime
+from datetime import time as dtime
+from datetime import timezone
 from statistics import mean
 from typing import Literal
+from zoneinfo import ZoneInfo
 
 from app.market_data import Candle, MarketDataProvider, trend_pct, volatility_pct
 from app.schemas import (
@@ -248,7 +256,28 @@ def _quality_tier(score: float) -> MarketQualityTier:
 
 
 # ---------------------------------------------------------------------
-# Session Intelligence — real wall-clock UTC time, fixed windows.
+# Session Intelligence.
+#
+# Two DELIBERATELY SEPARATE classifiers, not a duplication —
+# CEO directive "Complete Trade Provenance," Part 4 research found no
+# existing timezone/DST architecture anywhere in this codebase, and
+# building one raised a real Absolute-Rule-#4 conflict ("do not change
+# existing quality metrics/certification thresholds"): `_session_for_hour()`
+# below also backs backtesting (app/strategy_engine.py, app/ema_pullback_
+# research.py) and this module's own `_SESSION_QUALITY` session-quality
+# table over BACKTEST candle history — changing its boundaries would
+# retroactively shift already-certified strategies' historical session
+# breakdowns and win rates, which the directive explicitly forbids.
+#
+# So `_session_for_hour()` stays completely UNCHANGED — every backtest/
+# certification path keeps its exact prior boundaries — and
+# `compute_session()` below is instead rebuilt on real, DST-aware
+# exchange-hours classification for the LIVE-only path (the Gatekeeper,
+# every fresh TradeProposal, and this directive's own Part 8
+# decision-time snapshot). A live signal legitimately benefits from
+# being more accurate; nothing here inflates any score, it only makes
+# the live session read genuinely correct across DST transitions and
+# weekends, where the fixed-UTC approximation was wrong.
 # ---------------------------------------------------------------------
 
 
@@ -270,12 +299,107 @@ def _session_for_hour(hour: float) -> TradingSession:
     return "closed"
 
 
+# Real, publicly documented exchange trading hours — not fabricated.
+# Tokyo observes no DST (fixed UTC+9 year-round); New York/London shift
+# with real US/UK daylight-saving transitions, which `zoneinfo` (the
+# real IANA timezone database, stdlib since Python 3.9, no new
+# dependency and no network call) applies correctly and automatically.
+_NYSE_TZ = ZoneInfo("America/New_York")
+_LSE_TZ = ZoneInfo("Europe/London")
+_TSE_TZ = ZoneInfo("Asia/Tokyo")
+_NYSE_OPEN = dtime(9, 30)
+_NYSE_CLOSE = dtime(16, 0)
+_NYSE_MARKET_OPEN_END = dtime(10, 0)
+_NYSE_MARKET_CLOSE_START = dtime(15, 30)
+_NYSE_LUNCH_START = dtime(12, 0)
+_NYSE_LUNCH_END = dtime(13, 0)
+_LSE_OPEN = dtime(8, 0)
+_LSE_CLOSE = dtime(16, 30)
+_TSE_OPEN = dtime(9, 0)
+_TSE_CLOSE = dtime(15, 0)
+
+
 def compute_session(now: datetime) -> SessionRead:
-    hour = now.hour + now.minute / 60.0
-    current = _session_for_hour(hour)
-    overlaps = ["london", "new_york"] if current in ("london_ny_overlap", "market_open") else []
-    detail = f"Real UTC time {now.strftime('%H:%M')} — {_SESSION_LABEL[current]} (fixed-UTC approximation, no DST handling)."
-    return SessionRead(current=current, label=_SESSION_LABEL[current], overlapsActive=overlaps, detail=detail)
+    """Real, DST-aware live session classification — see the module
+    section header above for why this now deliberately differs from
+    `_session_for_hour()`. Deliberately does NOT model exchange
+    holidays (Christmas, Thanksgiving, etc.): this codebase has no real
+    holiday-calendar data source, and fabricating one would violate
+    this directive's own no-fabrication rule — a holiday is honestly
+    misclassified as a normal trading day, a real, disclosed
+    limitation, not silently hidden."""
+    if now.tzinfo is None:
+        now = now.replace(tzinfo=timezone.utc)
+    ny = now.astimezone(_NYSE_TZ)
+    london = now.astimezone(_LSE_TZ)
+    tokyo = now.astimezone(_TSE_TZ)
+
+    ny_open = ny.weekday() < 5 and _NYSE_OPEN <= ny.time() < _NYSE_CLOSE
+    ny_market_open_window = ny.weekday() < 5 and _NYSE_OPEN <= ny.time() < _NYSE_MARKET_OPEN_END
+    ny_market_close_window = ny.weekday() < 5 and _NYSE_MARKET_CLOSE_START <= ny.time() < _NYSE_CLOSE
+    ny_lunch_window = ny.weekday() < 5 and _NYSE_LUNCH_START <= ny.time() < _NYSE_LUNCH_END
+    london_open = london.weekday() < 5 and _LSE_OPEN <= london.time() < _LSE_CLOSE
+    tokyo_open = tokyo.weekday() < 5 and _TSE_OPEN <= tokyo.time() < _TSE_CLOSE
+
+    current: TradingSession
+    if ny_market_open_window:
+        current = "market_open"
+    elif ny_market_close_window:
+        current = "market_close"
+    elif ny_open and london_open:
+        current = "london_ny_overlap"
+    elif ny_open and ny_lunch_window:
+        current = "ny_lunch_hour"
+    elif ny_open:
+        current = "new_york"
+    elif london_open:
+        current = "london"
+    elif tokyo_open:
+        current = "asian"
+    else:
+        current = "closed"
+
+    overlaps = ["london", "new_york"] if (london_open and ny_open) else []
+    detail = (
+        f"Real UTC time {now.strftime('%H:%M')} ({ny.strftime('%H:%M %Z')} New York / {london.strftime('%H:%M %Z')} London) "
+        f"— {_SESSION_LABEL[current]} (real DST-aware exchange hours; no holiday calendar)."
+    )
+
+    # CEO directive "Complete Trade Provenance," Part 5 — Session
+    # Context. Whichever real exchange governs `current` (NYSE for
+    # every NYSE-family state, LSE for london, TSE for asian) has a
+    # single, well-defined today's open/close in its own local time —
+    # None only for "closed" (no governing exchange session active).
+    started_at: str | None = None
+    closes_at: str | None = None
+    minutes_since_open: int | None = None
+    minutes_until_close: int | None = None
+    if current in ("market_open", "market_close", "london_ny_overlap", "ny_lunch_hour", "new_york"):
+        local_now, open_time, close_time = ny, _NYSE_OPEN, _NYSE_CLOSE
+    elif current == "london":
+        local_now, open_time, close_time = london, _LSE_OPEN, _LSE_CLOSE
+    elif current == "asian":
+        local_now, open_time, close_time = tokyo, _TSE_OPEN, _TSE_CLOSE
+    else:
+        local_now = None
+    if local_now is not None:
+        session_open = local_now.replace(hour=open_time.hour, minute=open_time.minute, second=0, microsecond=0)
+        session_close = local_now.replace(hour=close_time.hour, minute=close_time.minute, second=0, microsecond=0)
+        started_at = session_open.astimezone(timezone.utc).isoformat()
+        closes_at = session_close.astimezone(timezone.utc).isoformat()
+        minutes_since_open = int((local_now - session_open).total_seconds() // 60)
+        minutes_until_close = int((session_close - local_now).total_seconds() // 60)
+
+    return SessionRead(
+        current=current,
+        label=_SESSION_LABEL[current],
+        overlapsActive=overlaps,
+        detail=detail,
+        sessionStartedAt=started_at,
+        sessionClosesAt=closes_at,
+        minutesSinceSessionOpen=minutes_since_open,
+        minutesUntilSessionClose=minutes_until_close,
+    )
 
 
 def _session_volatility(per_symbol_candles: dict[str, list[Candle]], session: TradingSession) -> float:

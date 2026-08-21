@@ -3100,11 +3100,16 @@ MarketIntelligenceRegime = Literal[
 
 MarketQualityTier = Literal["excellent", "good", "average", "poor", "avoid_trading"]
 
-# Fixed UTC windows — a documented simplification (no DST handling, no
-# live timezone feed), computed from real wall-clock time the same way
-# Candle.timestamp already is (app/market_data.py), not TradeTown's
-# simulated clock: a "session" is about when real markets are open, not
-# an in-game concept.
+# Computed from real wall-clock time the same way Candle.timestamp
+# already is (app/market_data.py), not TradeTown's simulated clock: a
+# "session" is about when real markets are open, not an in-game
+# concept. CEO directive "Complete Trade Provenance," Part 4 —
+# app/market_intelligence.py's compute_session() (the LIVE
+# classifier) is real, DST-aware exchange-hours classification via
+# zoneinfo; _session_for_hour() (backtesting only) stays a fixed-UTC
+# approximation, deliberately unchanged — see that module's own
+# section header for why the two now differ on purpose. Neither
+# models real exchange holidays (no data source for one exists).
 TradingSession = Literal[
     "asian",
     "london",
@@ -3539,6 +3544,23 @@ class SessionRead(CamelModel):
     label: str
     overlaps_active: list[str] = Field(default_factory=list, alias="overlapsActive")
     detail: str
+    # CEO directive "Complete Trade Provenance," Part 5 — Session
+    # Context. The real open/close boundary of whichever governing
+    # exchange session is currently active (NYSE for market_open/
+    # market_close/london_ny_overlap/ny_lunch_hour/new_york, LSE for
+    # london, TSE for asian), computed from the same real, DST-aware
+    # zoneinfo boundaries compute_session() itself uses — never a
+    # second, independently-derived reading. All four `None` only for
+    # `current == "closed"` (no governing session to report a window
+    # for). Deliberately NOT built here: SESSION RANGE / SESSION HIGH-LOW
+    # (Part 5's other two line items) — both need a real per-symbol
+    # candle fetch within the session window, which would meaningfully
+    # expand resolve_proposal()'s already-large parameter surface; cut
+    # explicitly rather than attempted as a rushed addition.
+    session_started_at: str | None = Field(default=None, alias="sessionStartedAt")
+    session_closes_at: str | None = Field(default=None, alias="sessionClosesAt")
+    minutes_since_session_open: int | None = Field(default=None, alias="minutesSinceSessionOpen")
+    minutes_until_session_close: int | None = Field(default=None, alias="minutesUntilSessionClose")
 
 
 class MomentumRead(CamelModel):
@@ -5318,6 +5340,28 @@ class WhatIfSimulation(CamelModel):
     worst_case_scenario: ScenarioType = Field(alias="worstCaseScenario")
 
 
+# CEO directive "Complete Trade Provenance," Part 5 — Session Context.
+# Grouped as one nested object (unlike Part 8's four flat
+# decisionSession*/decisionPrice/decisionVolatilityPct fields above it)
+# because the directive's own Part 5 heading names these eight related
+# items together as a single "Session Context" concept — every field
+# here mirrors a real SessionRead/VolatilityRead field 1:1, computed
+# once at decision time from the same market_intelligence a real
+# TradeProposal/the Gatekeeper already read, never a second,
+# independently-computed reading. Deliberately excludes SESSION RANGE /
+# SESSION HIGH-LOW (Part 5's other two line items) — both need a real
+# per-symbol candle fetch within the session window, which would
+# meaningfully expand resolve_proposal()'s already-large parameter
+# surface; cut explicitly, not silently omitted.
+class DecisionSessionContext(CamelModel):
+    started_at: str | None = Field(default=None, alias="startedAt")
+    closes_at: str | None = Field(default=None, alias="closesAt")
+    minutes_since_open: int | None = Field(default=None, alias="minutesSinceOpen")
+    minutes_until_close: int | None = Field(default=None, alias="minutesUntilClose")
+    overlaps_active: list[str] = Field(default_factory=list, alias="overlapsActive")
+    session_volatility_pct: float = Field(alias="sessionVolatilityPct")
+
+
 class CeoDecisionRecord(CamelModel):
     """One resolved executive decision — the permanent record behind
     CEO Accuracy / AI Accuracy / Agreement Rate / Successful & Failed
@@ -5420,6 +5464,11 @@ class CeoDecisionRecord(CamelModel):
     decision_market_regime: MarketIntelligenceRegime | None = Field(default=None, alias="decisionMarketRegime")
     decision_price: float | None = Field(default=None, alias="decisionPrice")
     decision_volatility_pct: float | None = Field(default=None, alias="decisionVolatilityPct")
+    # CEO directive "Complete Trade Provenance," Part 5 — see
+    # DecisionSessionContext's own docstring above. `None` only for
+    # decisions recorded before this field existed, or (defensively)
+    # whenever decisionSession itself is None.
+    decision_session_context: DecisionSessionContext | None = Field(default=None, alias="decisionSessionContext")
 
 
 # CEO directive "Features 26-30," Feature 29 — Prediction -> Outcome
@@ -6450,6 +6499,9 @@ class DecisionVaultEntry(CamelModel):
     decision_market_regime: MarketIntelligenceRegime | None = Field(default=None, alias="decisionMarketRegime")
     decision_price: float | None = Field(default=None, alias="decisionPrice")
     decision_volatility_pct: float | None = Field(default=None, alias="decisionVolatilityPct")
+    # CEO directive "Complete Trade Provenance," Part 5 — carried
+    # through from CeoDecisionRecord.decisionSessionContext.
+    decision_session_context: DecisionSessionContext | None = Field(default=None, alias="decisionSessionContext")
     market_regime: MarketIntelligenceRegime = Field(alias="marketRegime")
     market_regime_label: str = Field(alias="marketRegimeLabel")
     liquidity_context: LiquidityRead = Field(alias="liquidityContext")
@@ -6628,6 +6680,7 @@ class TradeReportCard(CamelModel):
     decision_market_regime: MarketIntelligenceRegime | None = Field(default=None, alias="decisionMarketRegime")
     decision_price: float | None = Field(default=None, alias="decisionPrice")
     decision_volatility_pct: float | None = Field(default=None, alias="decisionVolatilityPct")
+    decision_session_context: DecisionSessionContext | None = Field(default=None, alias="decisionSessionContext")
     data_honesty_note: str = Field(alias="dataHonestyNote")
 
 

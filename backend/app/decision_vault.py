@@ -252,6 +252,7 @@ def build_vault_entry(
         decisionMarketRegime=ceo_decision.decision_market_regime if ceo_decision else None,
         decisionPrice=ceo_decision.decision_price if ceo_decision else None,
         decisionVolatilityPct=ceo_decision.decision_volatility_pct if ceo_decision else None,
+        decisionSessionContext=ceo_decision.decision_session_context if ceo_decision else None,
         marketRegime=market_regime,
         marketRegimeLabel=market_regime_label,
         liquidityContext=liquidity,
@@ -383,6 +384,7 @@ def compute_trade_report_card(
         decisionMarketRegime=entry.decision_market_regime,
         decisionPrice=entry.decision_price,
         decisionVolatilityPct=entry.decision_volatility_pct,
+        decisionSessionContext=entry.decision_session_context,
         dataHonestyNote=TRADE_REPORT_CARD_DATA_HONESTY_NOTE,
     )
 
