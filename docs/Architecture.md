@@ -12253,11 +12253,86 @@ screenshot of the real running save's Risk panel confirms the new
 control renders with the correct real default value (`2`) and its
 descriptive text (`|Pearson r| ≥ 0.6`).
 
+**Increment 4 — Phase 5, strategy capital allocation evidence (this
+pass).** A dedicated research-agent audit (before any code) mapped every
+directive-named evaluation dimension (out-of-sample expectancy,
+drawdown, volatility, robustness, execution quality, regime/session
+compatibility, portfolio correlation) against what this codebase
+actually computes today, for LIVE-traded strategies specifically (not
+Sandbox research candidates) — see that audit's own findings for the
+full per-dimension citation table. Confirmed ALREADY REAL and reused,
+never recomputed: expectancy/profit-factor/win-rate/avg-win-loss
+(`performance_attribution.py`'s own `_group_metrics()`, called via
+`compute_strategy_performance()`), session/regime compatibility
+(`compute_strategy_session_performance()`), and real position-value
+exposure (`StrategyExposureRead`, already on `PortfolioIntelligence`).
+Confirmed a real, pre-existing honesty gap worth naming as a precedent
+NOT to repeat: `StrategyExecutiveDashboard.bestStrategy`/`weakestStrategy`
+(`strategy_lab.py`) crowns a strategy off a raw average return with zero
+minimum sample size — exactly the un-gated "winning strategy" label the
+directive's own Rule explicitly forbids creating. Not fixed this pass
+(out of Phase 5's own scope — a different feature's existing debt), but
+deliberately not repeated in the new work below.
+
+Two genuinely new real reads, both gated at the module's own existing
+`MIN_SYMBOL_SAMPLE_FOR_VERDICT` (3) sample-size convention:
+- `_live_drawdown_usd()` — real peak-to-trough drawdown of a strategy's
+  own cumulative realized P&L, ordered by real `closed_at`. In dollars,
+  never a percentage — strategies share one account's capital, with no
+  isolated sub-account equity base a percentage could honestly be
+  measured against.
+- `_live_return_volatility_pct()` — real population stdev of a
+  strategy's own per-trade `pnl_pct`, a return-volatility read distinct
+  from (never confused with) the ATR/price-volatility concept Phase 3's
+  `VolatilitySizingRead` already covers.
+- `_avg_slippage_bps()` — real per-strategy average entry/exit slippage,
+  aggregating fields that already existed per-trade but were never
+  rolled up by strategy anywhere.
+
+Two directive-named dimensions are explicit, disclosed gaps rather than
+fabricated numbers, each with a fixed, cited reason (`ROBUSTNESS_
+UNAVAILABLE_NOTE`, `_correlation_note()`): **robustness** — the
+walk-forward/regime-stability machinery in `strategy_tournament.py`'s
+own Rounds 4/6/9 only operates on Sandbox synthetic backtests; no
+walk-forward windowing convention exists for a live-traded strategy's
+real, irregularly-timed trades, and inventing one would fabricate a
+structure this sim's actual trade cadence doesn't have. **Portfolio
+correlation** — a true return-correlation between two strategies' own
+live P&L streams would need synchronized time-bucketing across
+independently-scheduled strategies that no convention in this codebase
+establishes (the same real gap this module's own docstring already
+names for the AGENT/TIMEFRAME axes); the real alternative shown instead
+is each strategy's own live position-value exposure, named as a
+distinct concept (capital concentration, not return correlation), never
+allowed to imply more than it is.
+
+New `compute_strategy_capital_allocation_evidence()` (`performance_
+attribution.py`) assembles one row per real `Strategy` in the full
+roster — including a strategy with zero live trades
+(`evidence_state = "no_live_trades_yet"`, every derived metric `None`,
+its real `allocated_capital` still shown) — new `GET /api/trades/
+strategy-capital-allocation` endpoint, computed fresh per request like
+every sibling `performance-by-*` endpoint. Rows sort by `allocated_
+capital` descending — the CEO's own existing real capital commitment —
+**never** by any performance metric, so the row order itself can't be
+mistaken for a system-generated ranking or auto-allocation signal (the
+directive's own explicit rule). Rendered as a new "Strategy Capital
+Allocation — Evidence, Not a Ranking" card in `PerformancePanel.tsx`,
+same fetch-on-mount pattern every sibling section already uses.
+
+17 new backend tests (`TestComputeStrategyCapitalAllocationEvidence`).
+Full backend suite, `mypy app/`, `ruff check app/ tests/` clean.
+`tsc -b --noEmit`, `eslint`, `vite build` clean. Live-verified: a
+Command Center screenshot of the real running save's Performance panel
+confirms the new card renders correctly — the save's four real Sandbox-
+originated strategies all show the honest "NO LIVE TRADES YET" state
+with their real `$0.00` allocated capital and both disclosed notes,
+since no live trade has a CEO-selected strategy in this save yet (the
+same real, pre-existing environment condition already documented for
+Phases 3-4).
+
 **Deliberately not yet done** (natural next increments, not started
-here): Phase 5 (an evidence-based strategy ranking view —
-informational only, per the directive's own explicit rule against
-auto-allocating capital to whichever strategy most recently profited);
-Phase 6 (a clearer NORMAL/POSSIBLE/CRITICAL strategy-degradation
+here): Phase 6 (a clearer NORMAL/POSSIBLE/CRITICAL strategy-degradation
 classification, building on the already-real
 `StrategyHealthAssessment`/live-vs-backtest verdict); Phases 7-8
 (execution realism / risk of ruin — largely already honestly disclosed

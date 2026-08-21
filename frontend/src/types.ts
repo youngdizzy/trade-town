@@ -757,6 +757,53 @@ export interface StrategyLiveVsBacktestSummary {
   updatedAt: string;
 }
 
+// CEO directive "Portfolio Construction, Capital Allocation & Execution
+// Realism," Phase 5 — strategies compete for capital based on evidence,
+// never win rate alone, never auto-allocated to whichever most recently
+// profited. "no_live_trades_yet" is a third evidence state alongside the
+// existing sufficient/not-enough pair: a Strategy the CEO has never
+// actually traded still gets a row (its real allocatedCapital still
+// shows), but every derived metric stays null.
+export type StrategyAllocationEvidenceState = "sufficient_evidence" | "not_enough_data" | "no_live_trades_yet";
+
+export interface StrategyCapitalAllocationRead {
+  strategyId: string;
+  strategyName: string;
+  stage: StrategyStage;
+  /** The CEO's own existing manual capital ceiling (Strategy.allocatedCapital) — never system-computed. */
+  allocatedCapital: number;
+  evidenceState: StrategyAllocationEvidenceState;
+  tradeCount: number;
+  winRatePct: number | null;
+  expectancyPct: number | null;
+  profitFactor: number | null;
+  /** Real peak-to-trough drawdown of this strategy's own cumulative realized P&L, in dollars (never a
+   * percentage — strategies share one account's capital, with no isolated sub-account equity base). */
+  liveDrawdownUsd: number | null;
+  /** Real population stdev of this strategy's own per-trade pnlPct — return volatility, distinct from
+   * ATR/price volatility (VolatilitySizingRead). */
+  liveReturnVolatilityPct: number | null;
+  avgEntrySlippageBps: number | null;
+  avgExitSlippageBps: number | null;
+  sessionReads: StrategySessionPerformanceRead[];
+  currentExposureValue: number;
+  currentExposurePctOfEquity: number;
+  /** A fixed, disclosed sentence — no walk-forward/regime-stability robustness mechanism exists for a
+   * live-traded strategy (see backend/app/strategy_tournament.py, which only covers Sandbox research). */
+  robustnessNote: string;
+  /** A fixed, disclosed sentence — no return-correlation-between-strategies metric exists; shows this
+   * strategy's real position-value exposure instead, named as a distinct concept. */
+  correlationNote: string;
+}
+
+export interface StrategyCapitalAllocationSummary {
+  /** Sorted by allocatedCapital descending — the CEO's own real capital commitment, never a
+   * system-generated performance ranking. */
+  reads: StrategyCapitalAllocationRead[];
+  minSampleForEvidence: number;
+  updatedAt: string;
+}
+
 // CEO directive "Live Trade → Strategy Provenance," Phase 9 — "why
 // isn't this strategy trading live?" per strategy. Diagnostic only.
 export type StrategyNoTradeReason = "trading_live" | "blocked_by_regime_today" | "eligible_but_never_selected" | "no_backtest_evidence_yet";

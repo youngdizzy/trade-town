@@ -1090,6 +1090,74 @@ class StrategyLiveVsBacktestSummary(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# CEO directive "Portfolio Construction, Capital Allocation & Execution
+# Realism," Phase 5 — strategies compete for capital based on evidence,
+# never on win rate alone and never auto-allocated to whichever most
+# recently profited (see app/performance_attribution.py's
+# compute_strategy_capital_allocation_evidence() for the full real-vs-
+# disclosed-gap accounting). "no_live_trades_yet" is a third, distinct
+# evidence state alongside the module's existing sufficient/not-enough
+# pair — a Strategy the CEO has never actually traded still belongs on
+# this roster (its real allocatedCapital is still a real number), but
+# every derived metric below must stay None rather than pretend zero
+# trades produced a real read.
+StrategyAllocationEvidenceState = Literal["sufficient_evidence", "not_enough_data", "no_live_trades_yet"]
+
+
+class StrategyCapitalAllocationRead(CamelModel):
+    """One row per real Strategy in the roster (`state.strategies`),
+    joining only already-computed, already-real sources — never a new
+    statistical calculation duplicating `_group_metrics()`. `allocated_
+    capital` is the CEO's own existing manual ceiling (Strategy.
+    allocatedCapital); everything else here is informational evidence
+    to help that manual decision, never a system-computed replacement
+    for it. `live_drawdown_usd` and `live_return_volatility_pct` are the
+    two genuinely new real reads this phase adds — see this row's
+    sibling module for exactly how each is computed and why the
+    remaining two directive-named dimensions (robustness, portfolio
+    correlation) are disclosed gaps instead of fabricated numbers."""
+
+    strategy_id: str = Field(alias="strategyId")
+    strategy_name: str = Field(alias="strategyName")
+    stage: StrategyStage
+    allocated_capital: float = Field(alias="allocatedCapital")
+    evidence_state: StrategyAllocationEvidenceState = Field(alias="evidenceState")
+    trade_count: int = Field(alias="tradeCount")
+    win_rate_pct: float | None = Field(default=None, alias="winRatePct")
+    expectancy_pct: float | None = Field(default=None, alias="expectancyPct")
+    profit_factor: float | None = Field(default=None, alias="profitFactor")
+    # Real peak-to-trough drawdown of this strategy's own cumulative
+    # realized P&L, ordered by real closed_at — in dollars, never a
+    # percentage, because strategies share one account's capital and
+    # have no isolated sub-account equity base a percentage could
+    # honestly be measured against.
+    live_drawdown_usd: float | None = Field(default=None, alias="liveDrawdownUsd")
+    # Real sample standard deviation of this strategy's own per-trade
+    # pnl_pct — a return-volatility read, distinct from (and never
+    # confused with) the ATR/price-volatility concept
+    # position_sizing.py's VolatilitySizingRead already covers.
+    live_return_volatility_pct: float | None = Field(default=None, alias="liveReturnVolatilityPct")
+    avg_entry_slippage_bps: float | None = Field(default=None, alias="avgEntrySlippageBps")
+    avg_exit_slippage_bps: float | None = Field(default=None, alias="avgExitSlippageBps")
+    session_reads: list[StrategySessionPerformanceRead] = Field(default_factory=list, alias="sessionReads")
+    current_exposure_value: float = Field(default=0.0, alias="currentExposureValue")
+    current_exposure_pct_of_equity: float = Field(default=0.0, alias="currentExposurePctOfEquity")
+    robustness_note: str = Field(alias="robustnessNote")
+    correlation_note: str = Field(alias="correlationNote")
+
+
+class StrategyCapitalAllocationSummary(CamelModel):
+    """`reads` sorted by `allocated_capital` descending — the CEO's own
+    existing real capital commitment, never a system-generated
+    performance ranking. This view is deliberately never sorted by
+    expectancy, win rate, or recent P&L, so its own row order can't be
+    mistaken for an auto-allocation recommendation."""
+
+    reads: list[StrategyCapitalAllocationRead]
+    min_sample_for_evidence: int = Field(alias="minSampleForEvidence")
+    updated_at: str = Field(alias="updatedAt")
+
+
 # CEO directive "Next Professional Trading Firm Phase," Priority 5 —
 # Research Data Integrity (app/data_provenance.py). Distinct from, and
 # reusing rather than duplicating, `DataStatus` above (which already

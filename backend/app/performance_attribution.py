@@ -73,6 +73,7 @@ show regardless, since those are real at any sample size.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from statistics import pstdev
 from typing import Any
 
 from app.schemas import (
@@ -83,6 +84,10 @@ from app.schemas import (
     RegimePerformanceSummary,
     SessionPerformanceRead,
     SessionPerformanceSummary,
+    Strategy,
+    StrategyCapitalAllocationRead,
+    StrategyCapitalAllocationSummary,
+    StrategyExposureRead,
     StrategyHealthAssessment,
     StrategyLiveVsBacktestRead,
     StrategyLiveVsBacktestSummary,
@@ -359,3 +364,174 @@ def compute_strategy_live_vs_backtest(strategy_performance: StrategyPerformanceS
         )
 
     return StrategyLiveVsBacktestSummary(reads=reads, updatedAt=_now_iso())
+
+
+# CEO directive "Portfolio Construction, Capital Allocation & Execution
+# Realism," Phase 5 — a fixed, disclosed sentence for each directive-
+# named evidence dimension this codebase genuinely cannot compute for a
+# live-traded strategy today, said once here rather than reworded ad hoc
+# per row. ROBUSTNESS: strategy_tournament.py's walk-forward/regime-
+# stability rounds (its own Rounds 4/6/9) operate only on Sandbox
+# CompiledStrategyDefinition backtests against synthetic OHLCV — there is
+# no walk-forward window structure for a live-traded Strategy's real,
+# irregularly-timed paper trades, and inventing one now would fabricate
+# a windowing convention this sim's actual trade cadence doesn't have.
+# CORRELATION: a true return-correlation between two strategies' own
+# live P&L streams would need synchronized time-bucketing across
+# strategies that trade on their own independent schedules — no such
+# convention exists anywhere in this codebase (the same real gap
+# performance_attribution.py's own module docstring already names for
+# the AGENT/TIMEFRAME axes). The real, already-computed alternative
+# shown instead is this strategy's own live position-value exposure
+# (StrategyExposureRead, app/portfolio_intelligence.py) — a genuinely
+# different concept (capital concentration, not return correlation),
+# named as such rather than allowed to imply more than it is.
+ROBUSTNESS_UNAVAILABLE_NOTE = (
+    "Unavailable — walk-forward/regime-stability robustness (see strategy_tournament.py's Rounds 4/6/9) "
+    "only exists for Sandbox research candidates on synthetic backtest data; no equivalent windowing "
+    "convention exists for a live-traded strategy's own real, irregularly-timed trades."
+)
+
+
+def _correlation_note(exposure: StrategyExposureRead | None) -> str:
+    if exposure is None or exposure.position_count == 0:
+        return (
+            "No real return-correlation-between-strategies metric exists in this codebase (would need "
+            "synchronized time-bucketing across independently-scheduled strategies — see this module's "
+            "own ROBUSTNESS_UNAVAILABLE_NOTE for the same real gap). No open positions to report exposure for either."
+        )
+    return (
+        f"No real return-correlation-between-strategies metric exists in this codebase (see "
+        f"ROBUSTNESS_UNAVAILABLE_NOTE for why). Real position-value exposure instead: "
+        f"${exposure.value:,.0f} across {exposure.position_count} open position(s), "
+        f"{exposure.pct_of_equity:.1f}% of equity — capital concentration, not a return correlation."
+    )
+
+
+def _live_drawdown_usd(trades: list[PaperTrade]) -> float | None:
+    """Real peak-to-trough drawdown of cumulative realized P&L, ordered
+    by real closed_at (ISO 8601 strings sort chronologically as-is).
+    Dollars, never a percentage — see StrategyCapitalAllocationRead's own
+    docstring for why a percentage would need a fabricated sub-account
+    equity base this codebase doesn't have."""
+    if len(trades) < MIN_SYMBOL_SAMPLE_FOR_VERDICT:
+        return None
+    ordered = sorted(trades, key=lambda t: t.closed_at)
+    cumulative = 0.0
+    peak = 0.0
+    max_drawdown = 0.0
+    for trade in ordered:
+        cumulative += trade.pnl
+        peak = max(peak, cumulative)
+        max_drawdown = max(max_drawdown, peak - cumulative)
+    return round(max_drawdown, 2)
+
+
+def _live_return_volatility_pct(trades: list[PaperTrade]) -> float | None:
+    """Real population standard deviation of this strategy's own
+    per-trade pnl_pct — a return-volatility read, distinct from the
+    ATR/price-volatility concept position_sizing.py's VolatilitySizingRead
+    already covers."""
+    if len(trades) < MIN_SYMBOL_SAMPLE_FOR_VERDICT:
+        return None
+    return round(pstdev(t.pnl_pct for t in trades), 2)
+
+
+def _avg_slippage_bps(trades: list[PaperTrade]) -> tuple[float | None, float | None]:
+    if len(trades) < MIN_SYMBOL_SAMPLE_FOR_VERDICT:
+        return None, None
+    return (
+        round(_mean([t.entry_slippage_bps for t in trades]), 2),
+        round(_mean([t.exit_slippage_bps for t in trades]), 2),
+    )
+
+
+def compute_strategy_capital_allocation_evidence(
+    strategies: list[Strategy],
+    trade_history: list[PaperTrade],
+    decision_vault: list[DecisionVaultEntry],
+    strategy_session_performance: StrategySessionPerformanceSummary,
+    strategy_exposure: list[StrategyExposureRead],
+) -> StrategyCapitalAllocationSummary:
+    """CEO directive "Portfolio Construction, Capital Allocation &
+    Execution Realism," Phase 5 — an informational evidence roster for
+    the CEO's own manual `allocated_capital` decision, never a system-
+    generated ranking or auto-allocation. Joins only already-real,
+    already-computed sources (`compute_strategy_performance()`'s own
+    `_group_metrics()`, the already-real `StrategySessionPerformanceSummary`,
+    the already-real `StrategyExposureRead` from PortfolioIntelligence) plus
+    two genuinely new real reads this phase adds (`_live_drawdown_usd()`,
+    `_live_return_volatility_pct()`) — never a second, competing
+    expectancy/profit-factor/win-rate calculation.
+
+    Every real `Strategy` in the roster gets a row, including one with
+    zero live trades (`evidence_state = "no_live_trades_yet"`, every
+    derived metric `None` — its real `allocated_capital` still shows,
+    since that field exists independently of live trade history)."""
+    live = compute_strategy_performance(trade_history, decision_vault)
+    live_by_strategy_id = {read.strategy_id: read for read in live.reads}
+    sessions_by_strategy_id: dict[str, list[StrategySessionPerformanceRead]] = {}
+    for session_read in strategy_session_performance.reads:
+        sessions_by_strategy_id.setdefault(session_read.strategy_id, []).append(session_read)
+    exposure_by_strategy_id = {exposure.strategy_id: exposure for exposure in strategy_exposure if exposure.strategy_id is not None}
+    # Trades themselves (not just the already-aggregated StrategyPerformanceRead)
+    # are needed for the two new real reads below, grouped the identical
+    # way compute_strategy_performance() itself groups them.
+    vault_by_trade_id = _vault_entries_by_trade_id(decision_vault)
+    trades_by_strategy_id: dict[str, list[PaperTrade]] = {}
+    for trade in trade_history:
+        entry = vault_by_trade_id.get(trade.id)
+        if entry is None or entry.strategy_id is None:
+            continue
+        trades_by_strategy_id.setdefault(entry.strategy_id, []).append(trade)
+
+    reads: list[StrategyCapitalAllocationRead] = []
+    for strategy in strategies:
+        strategy_trades = trades_by_strategy_id.get(strategy.id, [])
+        live_read = live_by_strategy_id.get(strategy.id)
+        exposure = exposure_by_strategy_id.get(strategy.id)
+
+        if live_read is None:
+            reads.append(
+                StrategyCapitalAllocationRead(
+                    strategyId=strategy.id,
+                    strategyName=strategy.name,
+                    stage=strategy.stage,
+                    allocatedCapital=strategy.allocated_capital,
+                    evidenceState="no_live_trades_yet",
+                    tradeCount=0,
+                    sessionReads=sessions_by_strategy_id.get(strategy.id, []),
+                    currentExposureValue=exposure.value if exposure else 0.0,
+                    currentExposurePctOfEquity=exposure.pct_of_equity if exposure else 0.0,
+                    robustnessNote=ROBUSTNESS_UNAVAILABLE_NOTE,
+                    correlationNote=_correlation_note(exposure),
+                )
+            )
+            continue
+
+        entry_slippage, exit_slippage = _avg_slippage_bps(strategy_trades)
+        reads.append(
+            StrategyCapitalAllocationRead(
+                strategyId=strategy.id,
+                strategyName=strategy.name,
+                stage=strategy.stage,
+                allocatedCapital=strategy.allocated_capital,
+                evidenceState=live_read.evidence_state,
+                tradeCount=live_read.trade_count,
+                winRatePct=live_read.win_rate_pct,
+                expectancyPct=live_read.expectancy_pct,
+                profitFactor=live_read.profit_factor,
+                liveDrawdownUsd=_live_drawdown_usd(strategy_trades),
+                liveReturnVolatilityPct=_live_return_volatility_pct(strategy_trades),
+                avgEntrySlippageBps=entry_slippage,
+                avgExitSlippageBps=exit_slippage,
+                sessionReads=sessions_by_strategy_id.get(strategy.id, []),
+                currentExposureValue=exposure.value if exposure else 0.0,
+                currentExposurePctOfEquity=exposure.pct_of_equity if exposure else 0.0,
+                robustnessNote=ROBUSTNESS_UNAVAILABLE_NOTE,
+                correlationNote=_correlation_note(exposure),
+            )
+        )
+
+    reads.sort(key=lambda r: r.allocated_capital, reverse=True)
+    return StrategyCapitalAllocationSummary(reads=reads, minSampleForEvidence=MIN_SYMBOL_SAMPLE_FOR_VERDICT, updatedAt=_now_iso())

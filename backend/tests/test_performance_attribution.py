@@ -10,18 +10,31 @@ from __future__ import annotations
 
 from app.performance_attribution import (
     MIN_SYMBOL_SAMPLE_FOR_VERDICT,
+    ROBUSTNESS_UNAVAILABLE_NOTE,
     WIN_RATE_DIVERGENCE_THRESHOLD_PCT,
     compute_regime_performance,
     compute_session_performance,
+    compute_strategy_capital_allocation_evidence,
     compute_strategy_live_vs_backtest,
     compute_strategy_performance,
     compute_strategy_session_performance,
     compute_symbol_performance,
 )
-from app.schemas import DecisionVaultEntry, LiquidityRead, PaperTrade, StrategyHealthAssessment
+from app.schemas import DecisionVaultEntry, LiquidityRead, PaperTrade, Strategy, StrategyExposureRead, StrategyHealthAssessment, StrategySessionPerformanceSummary
 
 
-def _trade(*, trade_id: str, symbol: str = "AAPL", pnl: float, pnl_pct: float, mae_pct: float = 0.0, mfe_pct: float = 0.0) -> PaperTrade:
+def _trade(
+    *,
+    trade_id: str,
+    symbol: str = "AAPL",
+    pnl: float,
+    pnl_pct: float,
+    mae_pct: float = 0.0,
+    mfe_pct: float = 0.0,
+    closed_at: str = "2024-01-01T00:00:00+00:00",
+    entry_slippage_bps: float = 0.0,
+    exit_slippage_bps: float = 0.0,
+) -> PaperTrade:
     return PaperTrade(
         id=trade_id,
         symbol=symbol,
@@ -38,11 +51,26 @@ def _trade(*, trade_id: str, symbol: str = "AAPL", pnl: float, pnl_pct: float, m
         supportingAgents=["scout"],
         opposingAgents=[],
         openedAt="2024-01-01T00:00:00+00:00",
-        closedAt="2024-01-01T00:00:00+00:00",
+        closedAt=closed_at,
         openedSimMinutes=0,
         closedSimMinutes=30,
         maePct=mae_pct,
         mfePct=mfe_pct,
+        entrySlippageBps=entry_slippage_bps,
+        exitSlippageBps=exit_slippage_bps,
+    )
+
+
+def _strategy(*, strategy_id: str = "strategy-1", name: str = "Momentum Breakout", stage: str = "idea", allocated_capital: float = 0.0) -> Strategy:
+    return Strategy(
+        id=strategy_id,
+        name=name,
+        description="test strategy",
+        createdBy="echo",  # type: ignore[arg-type]
+        focusCategory="stock",  # type: ignore[arg-type]
+        createdAt="2024-01-01T00:00:00+00:00",
+        stage=stage,  # type: ignore[arg-type]
+        allocatedCapital=allocated_capital,
     )
 
 
@@ -491,3 +519,145 @@ class TestComputeStrategyLiveVsBacktest:
 
         summary = compute_strategy_live_vs_backtest(StrategyPerformanceSummary(reads=[], tradesExcludedNoStrategySelected=0, tradesExcludedNoVaultEntry=0, updatedAt="2024-01-01T00:00:00+00:00"), [])
         assert summary.reads == []
+
+
+_EMPTY_SESSIONS = StrategySessionPerformanceSummary(reads=[], tradesExcludedNoStrategySelected=0, tradesExcludedNoVaultEntry=0, updatedAt="2024-01-01T00:00:00+00:00")
+
+
+class TestComputeStrategyCapitalAllocationEvidence:
+    """CEO directive "Portfolio Construction, Capital Allocation &
+    Execution Realism," Phase 5 — an informational evidence roster,
+    never a system-generated ranking. Joins only already-real,
+    already-computed sources plus the two genuinely new real reads
+    (live drawdown, live return volatility) this phase adds."""
+
+    def test_empty_roster_produces_no_reads(self) -> None:
+        summary = compute_strategy_capital_allocation_evidence([], [], [], _EMPTY_SESSIONS, [])
+        assert summary.reads == []
+        assert summary.min_sample_for_evidence == MIN_SYMBOL_SAMPLE_FOR_VERDICT
+
+    def test_a_strategy_with_zero_live_trades_gets_a_row_with_every_derived_metric_none(self) -> None:
+        strategy = _strategy(strategy_id="strategy-1", allocated_capital=5000.0)
+        summary = compute_strategy_capital_allocation_evidence([strategy], [], [], _EMPTY_SESSIONS, [])
+        read = summary.reads[0]
+        assert read.evidence_state == "no_live_trades_yet"
+        assert read.trade_count == 0
+        assert read.allocated_capital == 5000.0
+        assert read.win_rate_pct is None
+        assert read.expectancy_pct is None
+        assert read.profit_factor is None
+        assert read.live_drawdown_usd is None
+        assert read.live_return_volatility_pct is None
+        assert read.avg_entry_slippage_bps is None
+        assert read.robustness_note == ROBUSTNESS_UNAVAILABLE_NOTE
+
+    def test_below_min_sample_withholds_drawdown_and_volatility_but_keeps_win_rate(self) -> None:
+        strategy = _strategy(strategy_id="strategy-1")
+        trades = [_trade(trade_id="a", pnl=10.0, pnl_pct=1.0)]
+        vault = [_vault_entry(trade_id="a", strategy_id="strategy-1")]
+        summary = compute_strategy_capital_allocation_evidence([strategy], trades, vault, _EMPTY_SESSIONS, [])
+        read = summary.reads[0]
+        assert read.evidence_state == "not_enough_data"
+        assert read.trade_count == 1
+        assert read.win_rate_pct == 100.0
+        assert read.expectancy_pct is None  # same MIN_SYMBOL_SAMPLE_FOR_VERDICT gate as _group_metrics()
+        assert read.live_drawdown_usd is None
+        assert read.live_return_volatility_pct is None
+
+    def test_real_peak_to_trough_drawdown_computed_in_chronological_order_not_insertion_order(self) -> None:
+        strategy = _strategy(strategy_id="strategy-1")
+        # Deliberately inserted out of chronological order — closed_at
+        # ordering must still win: +100 (day1) -> -40 (day2, peak 100 ->
+        # trough 60, drawdown 40) -> +10 (day3, still below the day1 peak).
+        trades = [
+            _trade(trade_id="c", pnl=10.0, pnl_pct=1.0, closed_at="2024-01-03T00:00:00+00:00"),
+            _trade(trade_id="a", pnl=100.0, pnl_pct=10.0, closed_at="2024-01-01T00:00:00+00:00"),
+            _trade(trade_id="b", pnl=-40.0, pnl_pct=-4.0, closed_at="2024-01-02T00:00:00+00:00"),
+        ]
+        vault = [_vault_entry(trade_id=t.id, strategy_id="strategy-1") for t in trades]
+        summary = compute_strategy_capital_allocation_evidence([strategy], trades, vault, _EMPTY_SESSIONS, [])
+        read = summary.reads[0]
+        assert read.live_drawdown_usd == 40.0
+
+    def test_real_return_volatility_matches_population_stdev_of_pnl_pct(self) -> None:
+        strategy = _strategy(strategy_id="strategy-1")
+        trades = [
+            _trade(trade_id="a", pnl=40.0, pnl_pct=4.0, closed_at="2024-01-01T00:00:00+00:00"),
+            _trade(trade_id="b", pnl=-20.0, pnl_pct=-2.0, closed_at="2024-01-02T00:00:00+00:00"),
+            _trade(trade_id="c", pnl=10.0, pnl_pct=1.0, closed_at="2024-01-03T00:00:00+00:00"),
+        ]
+        vault = [_vault_entry(trade_id=t.id, strategy_id="strategy-1") for t in trades]
+        summary = compute_strategy_capital_allocation_evidence([strategy], trades, vault, _EMPTY_SESSIONS, [])
+        read = summary.reads[0]
+        # mean=1.0, population variance=((4-1)^2+(-2-1)^2+(1-1)^2)/3=6.0, stdev=sqrt(6)~=2.449...
+        assert read.live_return_volatility_pct == 2.45
+
+    def test_avg_entry_and_exit_slippage_bps_aggregated_per_strategy(self) -> None:
+        strategy = _strategy(strategy_id="strategy-1")
+        trades = [
+            _trade(trade_id="a", pnl=1.0, pnl_pct=0.1, entry_slippage_bps=10.0, exit_slippage_bps=5.0),
+            _trade(trade_id="b", pnl=1.0, pnl_pct=0.1, entry_slippage_bps=20.0, exit_slippage_bps=15.0),
+            _trade(trade_id="c", pnl=1.0, pnl_pct=0.1, entry_slippage_bps=30.0, exit_slippage_bps=25.0),
+        ]
+        vault = [_vault_entry(trade_id=t.id, strategy_id="strategy-1") for t in trades]
+        summary = compute_strategy_capital_allocation_evidence([strategy], trades, vault, _EMPTY_SESSIONS, [])
+        read = summary.reads[0]
+        assert read.avg_entry_slippage_bps == 20.0
+        assert read.avg_exit_slippage_bps == 15.0
+
+    def test_a_strategy_never_traded_by_another_strategys_trades_stays_at_zero_exposure(self) -> None:
+        strategy_a = _strategy(strategy_id="strategy-a")
+        strategy_b = _strategy(strategy_id="strategy-b", name="Other")
+        trades = [_trade(trade_id="x", pnl=10.0, pnl_pct=1.0)]
+        vault = [_vault_entry(trade_id="x", strategy_id="strategy-a")]
+        summary = compute_strategy_capital_allocation_evidence([strategy_a, strategy_b], trades, vault, _EMPTY_SESSIONS, [])
+        b_read = next(r for r in summary.reads if r.strategy_id == "strategy-b")
+        assert b_read.evidence_state == "no_live_trades_yet"
+        assert b_read.current_exposure_value == 0.0
+
+    def test_current_exposure_joined_from_strategy_exposure_reads(self) -> None:
+        strategy = _strategy(strategy_id="strategy-1")
+        exposure = [StrategyExposureRead(strategyId="strategy-1", positionCount=2, value=1500.0, pctOfEquity=15.0, longValue=1500.0, shortValue=0.0)]
+        summary = compute_strategy_capital_allocation_evidence([strategy], [], [], _EMPTY_SESSIONS, exposure)
+        read = summary.reads[0]
+        assert read.current_exposure_value == 1500.0
+        assert read.current_exposure_pct_of_equity == 15.0
+        assert "1,500" in read.correlation_note
+        assert "return-correlation-between-strategies" in read.correlation_note
+
+    def test_reads_sorted_by_allocated_capital_descending_never_by_a_performance_metric(self) -> None:
+        strategies = [
+            _strategy(strategy_id="low-capital-high-winrate", allocated_capital=100.0),
+            _strategy(strategy_id="high-capital-no-trades", allocated_capital=9000.0),
+        ]
+        trades = [_trade(trade_id="a", pnl=10.0, pnl_pct=1.0)] * 5
+        # give the low-capital strategy a perfect win rate — sort order must still be by capital, not this.
+        vault = [_vault_entry(trade_id=t.id, strategy_id="low-capital-high-winrate") for t in trades]
+        summary = compute_strategy_capital_allocation_evidence(strategies, trades, vault, _EMPTY_SESSIONS, [])
+        assert [r.strategy_id for r in summary.reads] == ["high-capital-no-trades", "low-capital-high-winrate"]
+
+    def test_session_reads_filtered_to_only_this_strategys_own_rows(self) -> None:
+        from app.schemas import StrategySessionPerformanceRead
+
+        strategy = _strategy(strategy_id="strategy-1")
+        sessions = StrategySessionPerformanceSummary(
+            reads=[
+                StrategySessionPerformanceRead(
+                    strategyId="strategy-1", session="new_york", tradeCount=3, winCount=2, lossCount=1, winRatePct=66.7,
+                    totalPnl=10.0, avgPnlPct=1.0, avgWinnerPct=5.0, avgLoserPct=-2.0, expectancyPct=1.0, profitFactor=2.0,
+                    avgMaePct=0.0, avgMfePct=0.0, bestTradePnlPct=5.0, worstTradePnlPct=-2.0, evidenceState="sufficient_evidence",
+                ),
+                StrategySessionPerformanceRead(
+                    strategyId="strategy-other", session="london", tradeCount=3, winCount=2, lossCount=1, winRatePct=66.7,
+                    totalPnl=10.0, avgPnlPct=1.0, avgWinnerPct=5.0, avgLoserPct=-2.0, expectancyPct=1.0, profitFactor=2.0,
+                    avgMaePct=0.0, avgMfePct=0.0, bestTradePnlPct=5.0, worstTradePnlPct=-2.0, evidenceState="sufficient_evidence",
+                ),
+            ],
+            tradesExcludedNoStrategySelected=0,
+            tradesExcludedNoVaultEntry=0,
+            updatedAt="2024-01-01T00:00:00+00:00",
+        )
+        summary = compute_strategy_capital_allocation_evidence([strategy], [], [], sessions, [])
+        read = summary.reads[0]
+        assert len(read.session_reads) == 1
+        assert read.session_reads[0].session == "new_york"

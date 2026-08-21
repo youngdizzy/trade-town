@@ -8,6 +8,8 @@ import type {
   SessionPerformanceRead,
   SessionPerformanceSummary,
   Strategy,
+  StrategyCapitalAllocationRead,
+  StrategyCapitalAllocationSummary,
   StrategyPerformanceRead,
   StrategyPerformanceSummary,
   StrategySessionPerformanceSummary,
@@ -82,6 +84,15 @@ export function PerformancePanel() {
   const [strategySessionPerformance, setStrategySessionPerformance] = useState<StrategySessionPerformanceSummary | null>(null);
   useEffect(() => {
     api.getPerformanceByStrategySession().then(setStrategySessionPerformance).catch(() => undefined);
+  }, []);
+
+  // CEO directive "Portfolio Construction, Capital Allocation & Execution
+  // Realism," Phase 5 — an informational evidence roster for the CEO's
+  // own manual allocatedCapital decision, never a system-generated
+  // ranking or auto-allocation.
+  const [capitalAllocation, setCapitalAllocation] = useState<StrategyCapitalAllocationSummary | null>(null);
+  useEffect(() => {
+    api.getStrategyCapitalAllocation().then(setCapitalAllocation).catch(() => undefined);
   }, []);
 
   const netPositive = financials.netPnl >= 0;
@@ -202,6 +213,8 @@ export function PerformancePanel() {
       <StrategyPerformanceSection summary={strategyPerformance} strategies={strategies} />
 
       <StrategySessionPerformanceSection summary={strategySessionPerformance} strategies={strategies} />
+
+      <StrategyCapitalAllocationSection summary={capitalAllocation} />
 
       <TradeAttributionSection summary={tradeAttribution} />
 
@@ -480,6 +493,75 @@ function StrategySessionPerformanceSection({ summary, strategies }: { summary: S
         ))}
       </div>
     </Glass>
+  );
+}
+
+/** CEO directive "Portfolio Construction, Capital Allocation & Execution
+ * Realism," Phase 5 — an informational evidence roster for the CEO's
+ * own manual allocatedCapital decision. Rows are sorted by allocated
+ * capital (the CEO's own existing real commitment), never re-sorted
+ * here by any performance metric — that would silently turn a neutral
+ * evidence view into an implied ranking. */
+function StrategyCapitalAllocationSection({ summary }: { summary: StrategyCapitalAllocationSummary | null }) {
+  return (
+    <Glass className="p-3">
+      <div className="mb-1.5 flex items-center justify-between">
+        <TerminalLabel>Strategy Capital Allocation — Evidence, Not a Ranking</TerminalLabel>
+        <span className="text-[9px] text-cmd-textDim">Sorted by allocated capital — never by performance</span>
+      </div>
+      <div className="mb-1.5 text-[9px] text-cmd-textDim">
+        Informational only. Real, evidence-gated reads for the CEO&apos;s own manual allocation decisions — never a system ranking, never auto-allocated capital.
+      </div>
+      {summary === null ? (
+        <EmptyState>Loading…</EmptyState>
+      ) : summary.reads.length === 0 ? (
+        <EmptyState>No strategies on file yet.</EmptyState>
+      ) : (
+        <div className="space-y-1.5">
+          {summary.reads.map((r) => (
+            <StrategyCapitalAllocationRow key={r.strategyId} read={r} />
+          ))}
+        </div>
+      )}
+    </Glass>
+  );
+}
+
+function StrategyCapitalAllocationRow({ read }: { read: StrategyCapitalAllocationRead }) {
+  return (
+    <div className="rounded-sm border border-cmd-border/40 bg-cmd-bg/30 px-2 py-1.5 text-[9px]">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-cmdmono text-cmd-cyan">{read.strategyName}</span>
+        <span className="text-cmd-textDim">{read.stage.replace(/_/g, " ")}</span>
+        <span className="text-cmd-text">Allocated: {formatMoney(read.allocatedCapital)}</span>
+        {read.evidenceState === "no_live_trades_yet" ? (
+          <StatusPill tone="neutral">NO LIVE TRADES YET</StatusPill>
+        ) : read.evidenceState === "not_enough_data" ? (
+          <StatusPill tone="amber">NOT ENOUGH DATA ({read.tradeCount} trade{read.tradeCount === 1 ? "" : "s"})</StatusPill>
+        ) : (
+          <StatusPill tone="cyan">{read.tradeCount} TRADES</StatusPill>
+        )}
+      </div>
+      {read.evidenceState === "sufficient_evidence" && (
+        <div className="mt-1 flex flex-wrap items-center gap-2 text-cmd-textDim">
+          <span>Win rate: <span className="text-cmd-text">{read.winRatePct?.toFixed(0)}%</span></span>
+          <span>
+            Expectancy: <span className={(read.expectancyPct ?? 0) >= 0 ? "text-cmd-green" : "text-cmd-red"}>{formatPct(read.expectancyPct ?? 0)}</span>
+          </span>
+          <span>Profit factor: {read.profitFactor === null ? "N/A (no losses yet)" : read.profitFactor.toFixed(2)}</span>
+          <span>Live drawdown: {read.liveDrawdownUsd === null ? "—" : formatMoney(-read.liveDrawdownUsd)}</span>
+          <span>Return volatility: {read.liveReturnVolatilityPct === null ? "—" : `${read.liveReturnVolatilityPct.toFixed(2)}%`}</span>
+          <span>
+            Avg slippage: {read.avgEntrySlippageBps === null ? "—" : `${read.avgEntrySlippageBps.toFixed(1)} bps in / ${read.avgExitSlippageBps?.toFixed(1)} bps out`}
+          </span>
+        </div>
+      )}
+      <div className="mt-1 text-cmd-textDim">
+        Exposure: {formatMoney(read.currentExposureValue)} ({read.currentExposurePctOfEquity.toFixed(1)}% of equity)
+      </div>
+      <div className="mt-1 italic text-cmd-textDim/80">{read.robustnessNote}</div>
+      <div className="mt-0.5 italic text-cmd-textDim/80">{read.correlationNote}</div>
+    </div>
   );
 }
 

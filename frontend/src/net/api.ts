@@ -104,6 +104,7 @@ import type {
   SessionRegimeEvidenceSummary,
   RiskLimits,
   SimilarTradesSummary,
+  StrategyCapitalAllocationSummary,
   StrategyLiveVsBacktestSummary,
   StrategyPerformanceSummary,
   StrategySessionPerformanceSummary,
@@ -276,6 +277,11 @@ export const api = {
   // strategy's real live performance match its own real backtest
   // evidence? Read-only, computed fresh per request.
   getStrategyLiveVsBacktest: () => request<StrategyLiveVsBacktestSummary>("/trades/strategy-live-vs-backtest"),
+  // CEO directive "Portfolio Construction, Capital Allocation & Execution
+  // Realism," Phase 5 — an informational evidence roster for the CEO's
+  // own manual allocatedCapital decision, never a system-generated
+  // ranking. Read-only, computed fresh per request.
+  getStrategyCapitalAllocation: () => request<StrategyCapitalAllocationSummary>("/trades/strategy-capital-allocation"),
   // CEO directive "Live Trade → Strategy Provenance," Phase 9 — "why
   // isn't this strategy trading live?" per strategy, diagnostic only.
   // Read-only, computed fresh per request.

@@ -14,6 +14,7 @@ from app.exit_efficiency import compute_exit_efficiency
 from app.performance_attribution import (
     compute_regime_performance,
     compute_session_performance,
+    compute_strategy_capital_allocation_evidence,
     compute_strategy_live_vs_backtest,
     compute_strategy_performance,
     compute_strategy_session_performance,
@@ -24,6 +25,7 @@ from app.schemas import (
     ExitEfficiencySummary,
     RegimePerformanceSummary,
     SessionPerformanceSummary,
+    StrategyCapitalAllocationSummary,
     StrategyLiveVsBacktestSummary,
     StrategyPerformanceSummary,
     StrategySessionPerformanceSummary,
@@ -148,6 +150,26 @@ async def get_strategy_live_vs_backtest() -> StrategyLiveVsBacktestSummary:
     state = await game_state.snapshot()
     live = compute_strategy_performance(state.paper_portfolio.trade_history, state.decision_vault)
     return compute_strategy_live_vs_backtest(live, state.strategy_health_assessments)
+
+
+@router.get("/strategy-capital-allocation", response_model=StrategyCapitalAllocationSummary)
+async def get_strategy_capital_allocation() -> StrategyCapitalAllocationSummary:
+    """CEO directive "Portfolio Construction, Capital Allocation &
+    Execution Realism," Phase 5 — an informational evidence roster for
+    the CEO's own manual per-strategy `allocatedCapital` decision (see
+    app/performance_attribution.py's compute_strategy_capital_allocation_
+    evidence()). Never sorts by or surfaces a system-generated ranking;
+    joins only already-real, already-computed sources. Computed fresh
+    per request; no new GameSaveState field."""
+    state = await game_state.snapshot()
+    sessions = compute_strategy_session_performance(state.paper_portfolio.trade_history, state.decision_vault)
+    return compute_strategy_capital_allocation_evidence(
+        state.strategies,
+        state.paper_portfolio.trade_history,
+        state.decision_vault,
+        sessions,
+        state.portfolio_intelligence.strategy_exposure,
+    )
 
 
 @router.get("/strategy-trading-diagnostics", response_model=StrategyTradingDiagnosticSummary)

@@ -91,6 +91,46 @@ development milestones, not semver releases.
   `tsc -b --noEmit`, `eslint`, `vite build` clean. Live-verified: a Command Center screenshot of the real
   running save's Risk panel confirms the new control renders with the correct real default (`2`).
 
+- **CEO directive "Portfolio Construction, Capital Allocation & Execution Realism," Phase 5:
+  strategy capital allocation evidence** (backend: `backend/app/schemas.py`,
+  `backend/app/performance_attribution.py`, `backend/app/routers/trades.py`,
+  `backend/tests/test_performance_attribution.py`; frontend: `frontend/src/types.ts`,
+  `frontend/src/net/api.ts`, `frontend/src/ui/components/CommandCenter/panels/PerformancePanel.tsx`):
+  a dedicated research-agent audit mapped every directive-named evaluation dimension (expectancy, drawdown,
+  volatility, robustness, execution quality, regime/session compatibility, portfolio correlation) against
+  what this codebase already computes for LIVE-traded strategies — most of it already real and reused
+  (`_group_metrics()`'s expectancy/profit-factor/win-rate, `compute_strategy_session_performance()`, real
+  position-value exposure), never recomputed. The audit also flagged a real, pre-existing honesty gap
+  worth naming as a precedent NOT to repeat: `StrategyExecutiveDashboard.bestStrategy` crowns a strategy off
+  a raw average return with zero minimum sample size — exactly the un-gated "winning strategy" label this
+  directive explicitly forbids creating (not fixed this pass — a different feature's existing debt — but
+  deliberately not repeated in the new work).
+
+  Two genuinely new real reads, both gated at the existing `MIN_SYMBOL_SAMPLE_FOR_VERDICT` (3) convention:
+  `_live_drawdown_usd()` (real peak-to-trough drawdown of a strategy's own cumulative realized P&L, in
+  dollars — never a percentage, since strategies share one account's capital with no isolated sub-account
+  equity base) and `_live_return_volatility_pct()` (real population stdev of a strategy's own per-trade
+  `pnl_pct`, distinct from Phase 3's ATR/price-volatility concept). Two directive-named dimensions are
+  explicit, disclosed gaps rather than fabricated numbers: **robustness** (no walk-forward windowing
+  convention exists for a live-traded strategy's real, irregularly-timed trades — `strategy_tournament.py`'s
+  Rounds 4/6/9 only cover Sandbox synthetic backtests) and **portfolio correlation** (a true
+  return-correlation between two strategies' own live P&L streams would need synchronized time-bucketing
+  this codebase has no convention for — the real alternative shown instead is each strategy's own live
+  position-value exposure, named as a distinct concept).
+
+  New `compute_strategy_capital_allocation_evidence()` gives every real `Strategy` a row — including one
+  with zero live trades (`evidence_state = "no_live_trades_yet"`, every derived metric `None`, its real
+  `allocatedCapital` still shown) — via a new `GET /api/trades/strategy-capital-allocation` endpoint. Rows
+  sort by `allocatedCapital` descending — the CEO's own existing real capital commitment — **never** by any
+  performance metric, so row order can't be mistaken for a system-generated ranking or auto-allocation
+  signal. Rendered as a new "Strategy Capital Allocation — Evidence, Not a Ranking" card in
+  `PerformancePanel.tsx`.
+
+  17 new backend tests. Full backend suite, `mypy app/`, `ruff check app/ tests/` clean. `tsc -b --noEmit`,
+  `eslint`, `vite build` clean. Live-verified via Command Center screenshot: the real save's four
+  strategies all show the honest "NO LIVE TRADES YET" state with real `$0.00` allocated capital and both
+  disclosed notes.
+
 - **CEO directive "Live Trade → Strategy Provenance": the real, non-fabricated way a live trade can
   now link back to a Strategy Lab strategy** (backend: `backend/app/schemas.py`,
   `backend/app/routers/executive.py`, `backend/app/state.py`, `backend/app/decision_vault.py`,
