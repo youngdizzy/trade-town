@@ -274,3 +274,73 @@ class TestSlippage:
         # A sell's real fill must be at-or-below the trigger price.
         assert trades[0].exit_price <= 95.0
         assert trades[0].exit_slippage_bps > 0.0
+
+
+class TestGapThroughFill:
+    """CEO directive "Portfolio Construction, Capital Allocation &
+    Execution Realism," Phase 7 — a triggered stop/stop_loss fills at
+    the worse of its trigger price and the real current tick price, not
+    always exactly at the trigger. No `market_intelligence` is supplied
+    in these tests (None) so slippage stays exactly zero and every
+    assertion isolates the gap-through effect alone."""
+
+    def test_a_sell_stop_loss_that_gapped_past_its_trigger_fills_at_the_worse_real_price(self) -> None:
+        portfolio = open_position(
+            default_portfolio(), position_id="pos-1", symbol="AAPL", price=100.0, opened_by="scout", confidence=90.0, opened_sim_minutes=0,
+        )
+        portfolio = place_order(
+            portfolio, order_id="order-sl", symbol="AAPL", side="sell", order_type="stop_loss",
+            quantity=portfolio.positions[0].quantity, price=95.0, placed_by="scout", reason="test", confidence=90.0, linked_position_id="pos-1",
+        )
+        # The market already gapped well below the 95.0 stop by this tick.
+        updated, trades = tick_broker(portfolio, {"AAPL": 80.0}, _time())
+        assert len(trades) == 1
+        assert trades[0].exit_price == 80.0
+        assert trades[0].exit_slippage_bps == 0.0
+
+    def test_a_buy_stop_that_gapped_past_its_trigger_fills_at_the_worse_real_price(self) -> None:
+        portfolio = place_order(
+            default_portfolio(), order_id="order-stop", symbol="AAPL", side="buy", order_type="stop",
+            quantity=10, price=100.0, placed_by="quant", reason="test", confidence=80.0,
+        )
+        # The market already gapped well above the 100.0 breakout trigger.
+        updated, _ = tick_broker(portfolio, {"AAPL": 120.0}, _time())
+        assert len(updated.positions) == 1
+        assert updated.positions[0].entry_price == 120.0
+        assert updated.positions[0].entry_slippage_bps == 0.0
+
+    def test_a_stop_loss_triggering_exactly_at_its_price_still_fills_at_the_trigger_price(self) -> None:
+        # No gap at all -- unchanged, established behavior.
+        portfolio = open_position(
+            default_portfolio(), position_id="pos-1", symbol="AAPL", price=100.0, opened_by="scout", confidence=90.0, opened_sim_minutes=0,
+        )
+        portfolio = place_order(
+            portfolio, order_id="order-sl", symbol="AAPL", side="sell", order_type="stop_loss",
+            quantity=portfolio.positions[0].quantity, price=95.0, placed_by="scout", reason="test", confidence=90.0, linked_position_id="pos-1",
+        )
+        updated, trades = tick_broker(portfolio, {"AAPL": 95.0}, _time())
+        assert len(trades) == 1
+        assert trades[0].exit_price == 95.0
+
+    def test_a_stop_loss_that_has_not_yet_triggered_is_unaffected_by_the_gap_fix(self) -> None:
+        portfolio = open_position(
+            default_portfolio(), position_id="pos-1", symbol="AAPL", price=100.0, opened_by="scout", confidence=90.0, opened_sim_minutes=0,
+        )
+        portfolio = place_order(
+            portfolio, order_id="order-sl", symbol="AAPL", side="sell", order_type="stop_loss",
+            quantity=portfolio.positions[0].quantity, price=95.0, placed_by="scout", reason="test", confidence=90.0, linked_position_id="pos-1",
+        )
+        updated, trades = tick_broker(portfolio, {"AAPL": 96.0}, _time())
+        assert trades == []
+        assert len(updated.positions) == 1
+
+    def test_a_limit_order_is_never_affected_by_the_gap_fix_even_when_price_gapped_far_through_it(self) -> None:
+        portfolio = place_order(
+            default_portfolio(), order_id="order-limit", symbol="AAPL", side="buy", order_type="limit",
+            quantity=10, price=100.0, placed_by="quant", reason="test", confidence=80.0,
+        )
+        # Price gapped well below the limit -- a limit buy still fills at
+        # exactly its own price, never chasing the more favorable real price.
+        updated, _ = tick_broker(portfolio, {"AAPL": 80.0}, _time())
+        assert len(updated.positions) == 1
+        assert updated.positions[0].entry_price == 100.0

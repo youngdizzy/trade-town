@@ -166,6 +166,35 @@ development milestones, not semver releases.
   `eslint`, `vite build` clean. Live-verified via Command Center screenshot: the real save's Performance
   panel renders the new card correctly in its honest empty state.
 
+- **CEO directive "Portfolio Construction, Capital Allocation & Execution Realism," Phases 7-8:
+  execution realism fix + risk-of-ruin audit** (backend: `backend/app/broker.py`,
+  `backend/app/execution_quality.py`, `backend/tests/test_broker.py`): an audit-first pass (per Phase 7's
+  own directive text) confirmed spread/commissions/slippage/latency were already real
+  (`execution_quality.py`'s formula-based slippage, `portfolio.py`'s `TRANSACTION_COST_BPS`, `broker.py`'s
+  real 1-tick latency), then surfaced one real, previously-silent gap while specifically auditing stop/
+  take-profit execution: a triggered stop/stop_loss filled at exactly its own trigger price even when the
+  tick's own real `current_price` — already available, never fabricated — showed the market had already
+  moved past that level, silently giving every gapped stop a small, unearned advantage. **Fixed**:
+  `_fill_price()` now returns the worse of the trigger price and `current_price` for triggered stops
+  (`max()` for a buy-stop, `min()` for a sell-stop); slippage still applies on top, unchanged. Intra-candle
+  gap-through (no tick data between two points) correctly stays out of scope — no order-book depth exists
+  to derive it from — while inter-tick gap-through (the market having already moved by the next real tick)
+  is now modeled, using data every caller already had. `limit`/`take_profit` orders are correctly
+  unaffected. 8 new tests (`TestGapThroughFill`), isolating the effect from slippage; all existing
+  `test_broker.py` tests pass unchanged (every existing stop-fill test already used a non-gapped price).
+
+  Phase 8 audit: `strategy_lab.py`'s `run_strategy_monte_carlo()` is a real, already-built bootstrap Monte
+  Carlo producing real `probabilityOfRuinPct`/`capitalSurvivalPct`/VaR/CVaR reads, already CEO-visible in
+  `StrategyCertificationView.tsx` and `EmaPullbackResearchView.tsx`, always framed as a probability, never a
+  guarantee the strategy "cannot fail." A PORTFOLIO-level combined risk-of-ruin is a deliberate, disclosed
+  non-build: combining strategies' independent bootstrap paths into one number would require assuming a
+  correlation between their return streams that Phase 5 already established has no real metric in this
+  codebase — building one now would fabricate an implicit independence assumption to produce a single
+  number, exactly what the directive's Absolute Rules forbid.
+
+  Full backend suite, `mypy app/`, `ruff check app/ tests/` clean; targeted re-run of every broker/nexus/
+  paper_trading/portfolio/execution_quality test (146 tests) confirms no downstream regression.
+
 - **CEO directive "Live Trade → Strategy Provenance": the real, non-fabricated way a live trade can
   now link back to a Strategy Lab strategy** (backend: `backend/app/schemas.py`,
   `backend/app/routers/executive.py`, `backend/app/state.py`, `backend/app/decision_vault.py`,

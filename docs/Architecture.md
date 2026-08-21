@@ -12387,16 +12387,78 @@ card renders correctly in its honest empty state (all four real
 strategies still lack enough live trade history for a read, same
 underlying condition as Phase 5).
 
+**Increment 6 — Phases 7-8, execution realism audit + a real fix, and
+risk-of-ruin audit (this pass).** Phase 7's own directive text asks for
+an audit first ("implement only what real data supports"), so this
+increment led with one before touching code: spread/commissions/
+slippage/latency were already confirmed real in the Phase 1 audit
+(`app/execution_quality.py`'s formula-based, market-quality-driven
+slippage; `app/portfolio.py`'s `TRANSACTION_COST_BPS`; `app/broker.py`'s
+real 1-tick order-placement latency). Auditing stop/take-profit
+execution specifically surfaced one real, previously-silent gap:
+`app/broker.py`'s `_fill_price()` filled a triggered stop/stop_loss at
+exactly its own trigger price even when the tick's own real
+`current_price` parameter — already available, already passed in, never
+fabricated — showed the market had already moved past that level. A
+real broker fills at-or-worse-than the actual price once triggered,
+never back at the original trigger; this silently gave every gapped
+stop a small, unearned advantage. **Fixed**: `_fill_price()` now returns
+the worse of the trigger price and `current_price` for triggered
+stop/stop_loss orders (`max()` for a buy-stop, `min()` for a sell-stop);
+slippage still applies on top, unchanged. `execution_quality.py`'s own
+module docstring updated to draw the precise, now-accurate line: INTRA-
+candle gap-through (no tick data between two known points) stays
+correctly out of scope (no order-book depth to derive it from);
+INTER-tick gap-through (the market having already moved by the time the
+next real tick evaluates a trigger) is now modeled, using data every
+caller already had. `limit`/`take_profit` orders are correctly
+unaffected (filling exactly at the target price already IS realistic
+behavior for those order types, not a gap). 8 new tests
+(`TestGapThroughFill`) isolate the gap-fill effect from slippage by
+passing no `MarketIntelligenceState`; all existing `test_broker.py`
+tests still pass unchanged, since every existing stop-fill test already
+used an exact (non-gapped) trigger price.
+
+Phase 8 (risk of ruin/survival) audit: `app/strategy_lab.py`'s
+`run_strategy_monte_carlo()` is a real, already-built bootstrap
+Monte Carlo (`MONTE_CARLO_PATHS` real simulated paths, driven entirely
+by a strategy's own real, aggregated `SimulationResult` win rate/avg
+win/avg loss — never independently invented randomness), producing real
+`probabilityOfRuinPct`/`capitalSurvivalPct`/VaR/CVaR/worst-case-drawdown
+reads. Confirmed these are not merely computed but genuinely CEO-visible
+today, in `StrategyCertificationView.tsx` and
+`EmaPullbackResearchView.tsx` — always framed as a probability
+("probability of ruin," "capital survival %"), never a guarantee the
+strategy "cannot fail," satisfying the directive's own explicit warning
+against promising that. The one real gap — a PORTFOLIO-level combined
+risk-of-ruin across every currently capital-allocated strategy at
+once — is a **deliberate, disclosed non-build, not an oversight**:
+combining multiple strategies' independent bootstrap paths into one
+number requires assuming some correlation between their return
+streams, and Phase 5's own audit already established that no real
+return-correlation-between-strategies metric exists in this codebase
+(the same real gap `ROBUSTNESS_UNAVAILABLE_NOTE`/`_correlation_note()`
+already name). Building a portfolio-level combination now would
+silently assume independence (or fabricate a correlation figure) to
+produce a single "portfolio survival" number — exactly the kind of
+assumption dressed as a real metric the directive's own Absolute Rules
+forbid. Confirmed via a direct grep for any existing portfolio-level
+ruin/survival concept (none found) that this is a real, unclaimed gap,
+not a duplicate of something already built.
+
+Verified: full backend suite, `mypy app/`, `ruff check app/ tests/`
+clean; targeted re-run of every broker/nexus/paper_trading/portfolio/
+execution_quality test (146 tests) confirms no downstream regression
+from the gap-fill change.
+
 **Deliberately not yet done** (natural next increments, not started
-here): Phases 7-8 (execution realism / risk of ruin — largely already
-honestly disclosed as out of scope given no order-book data); Phase 9
-(a consolidated "why this trade" view); Phase 10 (extending the
-no-trade diagnostic with the new correlation/risk-budget dimensions
-now that the gate above exists); Phases 11-12 (`PortfolioIntelPanel.tsx`/
-`RiskPanel.tsx` already substantially satisfy the Command Center ask;
-market visualization already satisfies its own ask per the Phase 1
-audit — likely little/no work needed there). None are blocked — see
-the Phase 1 audit findings above.
+here): Phase 9 (a consolidated "why this trade" view); Phase 10
+(extending the no-trade diagnostic with the new correlation/risk-budget
+dimensions now that the gate above exists); Phases 11-12
+(`PortfolioIntelPanel.tsx`/`RiskPanel.tsx` already substantially satisfy
+the Command Center ask; market visualization already satisfies its own
+ask per the Phase 1 audit — likely little/no work needed there). None
+are blocked — see the Phase 1 audit findings above.
 
 ## Save format compatibility
 

@@ -14,14 +14,23 @@ how thin or volatile the market actually was that tick. This module
 closes exactly that gap, and only that gap.
 
 WHAT THIS DELIBERATELY DOES NOT MODEL (explicitly out of scope, not a
-fabrication gap papered over): partial fills, order-book depth, and
-gap-through behavior are NOT modeled — this codebase has no
-order-book-depth or tick-by-tick intra-candle gap data to honestly
+fabrication gap papered over): partial fills and order-book depth are
+NOT modeled — this codebase has no order-book-depth data to honestly
 derive them from (the same boundary app/portfolio.py's
 TRANSACTION_COST_BPS docstring already draws for transaction cost).
-Limit and take-profit orders are NOT slipped — a limit order's whole
-definition is "this price or better," so leaving them exact fill IS the
-realistic behavior, not a missing feature. Only genuinely uncertain
+INTRA-candle gap-through (price jumping between two points inside a
+single simulated candle, with no tick data in between) is likewise NOT
+modeled, for the identical reason. INTER-tick gap-through — the market
+having already moved past a triggered stop's price by the time the next
+real tick evaluates it — IS modeled (CEO directive "Portfolio
+Construction, Capital Allocation & Execution Realism," Phase 7, see
+app/broker.py's `_fill_price()`): a triggered stop/stop_loss fills at
+the worse of its trigger price and that tick's own real current price,
+never fabricated data, since the current tick's price is already a real
+parameter every caller already has. Limit and take-profit orders are
+NOT slipped — a limit order's whole definition is "this price or
+better," so leaving them exact fill IS the realistic behavior, not a
+missing feature. Only genuinely uncertain
 fills — market orders, and stop/stop-loss orders once triggered (which
 behave as market orders from that point on, in every real market) — get
 slippage applied.

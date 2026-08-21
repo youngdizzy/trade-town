@@ -120,7 +120,23 @@ def _fill_price(order: PaperOrder, current_price: float) -> float | None:
     trigger price, unslipped — a limit order's whole definition is
     "this price or better," so leaving it exact IS the realistic
     behavior, not a gap. See app/execution_quality.py's module
-    docstring for the full reasoning."""
+    docstring for the full reasoning.
+
+    CEO directive "Portfolio Construction, Capital Allocation &
+    Execution Realism," Phase 7 — a real gap-through fill for a
+    triggered "stop"/"stop_loss": once its trigger condition is met, the
+    real fill is the WORSE of the trigger price and this tick's own
+    real `current_price` (already a real, available parameter here, not
+    fabricated order-book-depth data — that boundary, from
+    app/execution_quality.py's own docstring, is about intra-candle
+    depth this codebase genuinely lacks, not about the current tick's
+    own already-known price). If the market has already moved past the
+    stop level by the time this tick evaluates it, a real broker fills
+    at-or-worse-than that moved price, never back at the original
+    trigger — this closes that real, previously silent advantage.
+    "limit"/"take_profit" orders are unaffected (see above — filling
+    exactly at the target price is their correct, realistic behavior,
+    not a gap)."""
     if order.order_type == "market":
         return current_price
     if order.order_type in ("limit", "take_profit"):
@@ -131,9 +147,9 @@ def _fill_price(order: PaperOrder, current_price: float) -> float | None:
         return None
     if order.order_type in ("stop", "stop_loss"):
         if order.side == "buy" and current_price >= order.price:
-            return order.price
+            return max(current_price, order.price)
         if order.side == "sell" and current_price <= order.price:
-            return order.price
+            return min(current_price, order.price)
         return None
     return None
 
