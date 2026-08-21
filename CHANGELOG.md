@@ -7,6 +7,36 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Portfolio Construction, Capital Allocation & Execution Realism," Phase 1 (audit) +
+  Increment 1 (live strategy-position attribution + real exposure reads)** (backend:
+  `backend/app/schemas.py`, `backend/app/state.py`, `backend/app/portfolio_intelligence.py`,
+  `backend/tests/test_portfolio_intelligence.py`, `backend/tests/test_state.py`; frontend:
+  `frontend/src/types.ts`, `frontend/src/state/gameStore.ts`, `frontend/src/game/systems/NexusManager.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/PortfolioIntelPanel.tsx`): a dedicated research-agent
+  audit (before any code) found this codebase far more built out here than expected —
+  `app/position_sizing.py` (a real, layered, evidence-weighted sizing engine that only ever narrows the
+  flat equity-percentage ceiling) and `app/portfolio_intelligence.py` (real Pearson correlation, category
+  exposure, Portfolio Heat, capital efficiency) already exist. Confirmed real gaps: no volatility/ATR-based
+  position sizing (ATR machinery exists but only prices backtest stops, never live sizing); no
+  LONG/SHORT/NET/GROSS exposure concept anywhere; no live strategy-level exposure (an open `PaperPosition`
+  had no `strategy_id` — only closed trades got strategy attribution).
+
+  This pass closes the last one, the prerequisite for everything strategy-scoped that follows: new
+  `PaperPosition.strategyId`, applied in `submit_ceo_decision()` via the identical `.model_copy()` pattern
+  already used for `CeoDecisionRecord.strategyId` — patches the freshly-opened position strictly after the
+  trade resolves, never altering what it does. Two new real reads in `compute_portfolio_intelligence()`
+  (already WS-broadcast every tick — no new endpoint needed): `ExposureSummary` (real long/short values from
+  `PaperPosition.side`, net = directional bias, gross = total capital at work, both as real numbers, not one
+  side-blind sum) and `StrategyExposureRead[]` (open positions grouped by the new live `strategy_id`,
+  `null` as its own honest, never-folded-in bucket). Rendered in `PortfolioIntelPanel.tsx` as two new cards.
+
+  12 new backend tests. Full backend suite (2478), `mypy app/`, `ruff check app/ tests/` clean.
+  `tsc -b --noEmit`, `eslint`, `vite build` clean. Live-verified: an old save auto-migrated cleanly via the
+  existing `_deep_merge_defaults` mechanism, and a Command Center screenshot confirmed both new cards
+  render correctly. See docs/Architecture.md's own section for the full Phase 1 audit findings and the
+  remaining phases' scoping (volatility sizing, correlation gate, strategy ranking, degradation
+  monitoring, trade-decision explanation, no-trade diagnostics) — none blocked, not yet started.
+
 - **CEO directive "Live Trade → Strategy Provenance": the real, non-fabricated way a live trade can
   now link back to a Strategy Lab strategy** (backend: `backend/app/schemas.py`,
   `backend/app/routers/executive.py`, `backend/app/state.py`, `backend/app/decision_vault.py`,

@@ -12073,6 +12073,93 @@ a causal claim, or a scoring mechanism. Every "deliberately not
 attempted" item above names the exact structural reason, not a
 convenience cut.
 
+## CEO directive "Portfolio Construction, Capital Allocation & Execution Realism"
+
+**Phase 1 — architecture audit (research agent, before any code).**
+Found this codebase is far more built out here than assumed going in.
+Two whole modules directly answer most of the directive's own lettered
+questions: `app/position_sizing.py` (a real, layered evidence-weighted
+sizing engine that only ever NARROWS `risk_engine.py`'s flat
+equity-percentage ceiling — tier fraction, weekly deployment budget,
+Portfolio Heat cap, cash reserve, never widens it) and `app/
+portfolio_intelligence.py` (real Pearson correlation over held symbols'
+own candle returns, category exposure, Portfolio Heat, capital
+efficiency). Confirmed ALREADY REAL: transaction cost + slippage
+(`app/execution_quality.py`, real formulas, explicitly disclosed
+boundary on what's NOT modeled — spread/market-impact/partial-fills/gap
+risk, none fabricated); `MAX_CORRELATED_POSITIONS` (hardcoded category
+co-occurrence gate, `app/gatekeeper.py:50`); the SIMULATED-labeled
+candlestick chart with real indicator derivation. Confirmed REAL GAPS:
+no volatility/ATR-based position sizing anywhere (ATR machinery exists
+in `app/technical_indicators.py`/`app/backtest_primitives.py` but only
+ever prices a backtest STOP, never a live sizing quantity); no
+LONG/SHORT/NET/GROSS exposure concept anywhere (grep-zero); no live
+strategy-level exposure (an OPEN `PaperPosition` had no `strategy_id`
+field — only closed trades get strategy attribution, via the Decision
+Vault join); the real Pearson correlation is informational-only, never
+wired into a pre-trade gate (a gap `opportunity_gatekeeper.py`'s own
+docstring already names); `Strategy.allocatedCapital` is a CEO-typed
+manual dollar ceiling, never computed from any ranking or evidence.
+
+**Increment 1 — live strategy-position attribution + real exposure
+reads (this pass).** The prerequisite for any strategy-scoped risk
+budget: `PaperPosition.strategy_id` (new field, `schemas.py`), applied
+in `state.py`'s `submit_ceo_decision()` via the identical `.model_copy()`
+pattern already used for `CeoDecisionRecord.strategy_id` — patches the
+freshly-opened position (real, deterministic id `"pos-{proposal.id}"`)
+strictly after `resolve_proposal()` returns, never altering what the
+trade itself does. None whenever the CEO didn't select one, honestly.
+
+Two new real, computed-fresh reads in `app/portfolio_intelligence.py`,
+both wired into the existing `compute_portfolio_intelligence()` /
+`PortfolioIntelligence` (already WS-broadcast every tick — no new
+endpoint needed):
+- `_exposure_summary()` → `ExposureSummary` — real
+  `longValue`/`shortValue` (from `PaperPosition.side`, the same real
+  `"buy"`→long/`"sell"`→short distinction `mark_to_market()` already
+  uses), `netExposure` (directional bias) and `grossExposure` (total
+  capital at work) as two genuinely distinct numbers, plus both as a
+  real pct-of-equity.
+- `_strategy_exposure()` → `StrategyExposureRead[]` — OPEN positions
+  grouped by the new live `strategy_id`, `strategyId: null` as its own
+  honest bucket for every position the CEO never attributed, never
+  folded into a real strategy's numbers.
+
+Rendered in `PortfolioIntelPanel.tsx` — two new cards ("Exposure — real
+long / short / net / gross", "Strategy Exposure — live, open positions
+only"), same layout convention as the existing Category
+Exposure/Correlation cards. 12 new backend tests
+(`TestExposureSummary`, `TestStrategyExposure`, plus 2 in
+`TestSubmitCeoDecisionStrategyProvenance` confirming the position patch
+actually happens). Full backend suite (2478), `mypy app/` (176 files),
+`ruff check app/ tests/` clean. `tsc -b --noEmit`/`eslint`/`vite build`
+clean. Live-verified: an old save auto-migrated cleanly (`_deep_merge_
+defaults` backfilled the two new required `PortfolioIntelligence`
+fields from a fresh default, the same established mechanism every
+prior required-field addition this session used), and a Command Center
+screenshot confirmed both new cards render their correct honest empty
+state against the real running save.
+
+**Deliberately not yet done** (natural next increments, not started
+here): Phase 3 (volatility/ATR-based position sizing — the ATR
+machinery is real and reusable, nothing sizes off it yet); Phase 4
+(promoting the real Pearson correlation to an actual pre-trade gate,
+closing the gap `opportunity_gatekeeper.py` already names); Phase 5
+(an evidence-based strategy ranking view — informational only, per the
+directive's own explicit rule against auto-allocating capital to
+whichever strategy most recently profited); Phase 6 (a clearer
+NORMAL/POSSIBLE/CRITICAL strategy-degradation classification, building
+on the already-real `StrategyHealthAssessment`/live-vs-backtest
+verdict); Phases 7-8 (execution realism / risk of ruin — largely
+already honestly disclosed as out of scope given no order-book data);
+Phase 9 (a consolidated "why this trade" view); Phase 10 (extending the
+no-trade diagnostic with the new correlation/risk-budget dimensions
+once those gates exist); Phases 11-12 (`PortfolioIntelPanel.tsx`/
+`RiskPanel.tsx` already substantially satisfy the Command Center ask;
+market visualization already satisfies its own ask per the Phase 1
+audit — likely little/no work needed there). None are blocked — see
+the Phase 1 audit findings above.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

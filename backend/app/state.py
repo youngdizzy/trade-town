@@ -2022,6 +2022,18 @@ class GameState:
                 ceo_record = ceo_record.model_copy(update={"override_reason": override_reason})
             if strategy_id is not None and choice in ("buy", "sell"):
                 ceo_record = ceo_record.model_copy(update={"strategy_id": strategy_id})
+                # CEO directive "Portfolio Construction, Capital Allocation
+                # & Execution Realism" — the live analogue of the line
+                # above: patches the freshly-opened PaperPosition (real
+                # position id "pos-{proposal.id}", the exact same
+                # deterministic id resolve_proposal() itself constructs)
+                # with the same real strategy_id, strictly after the fact,
+                # never altering what the trade itself did. No-ops
+                # honestly if the position doesn't exist (Gatekeeper veto,
+                # or sized to zero) — nothing to attribute.
+                position_id = f"pos-{proposal.id}"
+                positions = [p.model_copy(update={"strategy_id": strategy_id}) if p.id == position_id else p for p in portfolio.positions]
+                portfolio = portfolio.model_copy(update={"positions": positions})
 
             memory = list(self.data.memory)
             record_ceo_decision(memory, decision)

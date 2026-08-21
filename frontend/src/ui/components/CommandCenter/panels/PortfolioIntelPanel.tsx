@@ -17,8 +17,13 @@ const HEAT_TONE: Record<"cool" | "warm" | "hot" | "overheated", "green" | "cyan"
   overheated: "red",
 };
 
+function strategyLabel(id: string | null, strategies: { id: string; name: string }[]): string {
+  if (id === null) return "No strategy attributed";
+  return strategies.find((s) => s.id === id)?.name ?? id;
+}
+
 export function PortfolioIntelPanel() {
-  const { portfolioIntelligence: pi } = useGameStore();
+  const { portfolioIntelligence: pi, strategies } = useGameStore();
 
   return (
     <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
@@ -52,6 +57,38 @@ export function PortfolioIntelPanel() {
             {pi.heat.hottestCategory && <DataRow label="Hottest Category" value={`${pi.heat.hottestCategory} (${pi.heat.hottestCategoryPct.toFixed(0)}%)`} />}
           </div>
         </div>
+      </Glass>
+
+      <Glass className="p-3">
+        <TerminalLabel>Exposure — real long / short / net / gross</TerminalLabel>
+        <div className="grid grid-cols-2 gap-x-4 sm:grid-cols-4">
+          <DataRow label={`Long (${pi.exposure.longPositionCount})`} value={`$${pi.exposure.longValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} valueClassName="text-cmd-green" />
+          <DataRow label={`Short (${pi.exposure.shortPositionCount})`} value={`$${pi.exposure.shortValue.toLocaleString(undefined, { maximumFractionDigits: 0 })}`} valueClassName="text-cmd-red" />
+          <DataRow label="Net Exposure" value={`$${pi.exposure.netExposure.toLocaleString(undefined, { maximumFractionDigits: 0 })} (${pi.exposure.netExposurePct.toFixed(0)}%)`} />
+          <DataRow label="Gross Exposure" value={`$${pi.exposure.grossExposure.toLocaleString(undefined, { maximumFractionDigits: 0 })} (${pi.exposure.grossExposurePct.toFixed(0)}%)`} />
+        </div>
+        <p className="mt-1.5 text-[9px] text-cmd-textDim">Net = directional bias (long − short). Gross = total capital genuinely at work, regardless of direction.</p>
+      </Glass>
+
+      <Glass className="p-3">
+        <TerminalLabel>Strategy Exposure — live, open positions only</TerminalLabel>
+        {pi.strategyExposure.length === 0 ? (
+          <EmptyState>No open positions — nothing to break down by strategy yet.</EmptyState>
+        ) : (
+          <div className="space-y-1.5">
+            {pi.strategyExposure.map((exposure) => (
+              <div key={exposure.strategyId ?? "unattributed"} className="text-[9px]">
+                <div className="mb-0.5 flex items-center justify-between text-cmd-textDim">
+                  <span className={exposure.strategyId === null ? "italic text-cmd-textDim" : "text-cmd-cyan"}>{strategyLabel(exposure.strategyId, strategies)}</span>
+                  <span className="tabular-nums">
+                    {exposure.positionCount} position{exposure.positionCount === 1 ? "" : "s"} · {exposure.pctOfEquity.toFixed(0)}%
+                  </span>
+                </div>
+                <Meter value={exposure.pctOfEquity} tone={exposure.strategyId === null ? "amber" : "cyan"} />
+              </div>
+            ))}
+          </div>
+        )}
       </Glass>
 
       <Glass className="p-3">

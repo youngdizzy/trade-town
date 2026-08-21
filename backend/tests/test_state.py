@@ -729,3 +729,23 @@ class TestSubmitCeoDecisionStrategyProvenance:
         saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy", strategy_id="50-ema-breakout-pullback-long"))
         assert error is None
         assert saved.ceo_decisions[-1].strategy_id == "50-ema-breakout-pullback-long"
+
+    def test_a_real_strategy_id_is_also_attached_to_the_freshly_opened_live_position(self) -> None:
+        # CEO directive "Portfolio Construction, Capital Allocation &
+        # Execution Realism" — the live analogue of the CeoDecisionRecord
+        # assertion above: PaperPosition.strategy_id makes real,
+        # strategy-scoped OPEN exposure possible, not just post-close
+        # attribution.
+        state = self._state_with_pending_proposal()
+        real_strategy_id = state.data.strategies[0].id
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy", strategy_id=real_strategy_id))
+        assert error is None
+        assert len(saved.paper_portfolio.positions) == 1
+        assert saved.paper_portfolio.positions[0].strategy_id == real_strategy_id
+
+    def test_no_strategy_id_leaves_the_opened_positions_strategy_id_none(self) -> None:
+        state = self._state_with_pending_proposal()
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy"))
+        assert error is None
+        assert len(saved.paper_portfolio.positions) == 1
+        assert saved.paper_portfolio.positions[0].strategy_id is None

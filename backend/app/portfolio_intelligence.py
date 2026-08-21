@@ -70,10 +70,12 @@ from app.schemas import (
     CapitalEfficiency,
     CategoryExposure,
     CorrelationPair,
+    ExposureSummary,
     PaperPortfolio,
     PortfolioHeat,
     PortfolioIntelligence,
     ResearchCategory,
+    StrategyExposureRead,
 )
 from app.watchlist import SYMBOL_CATEGORY
 
@@ -184,6 +186,69 @@ def _heat(portfolio: PaperPortfolio, equity: float, category_exposure: list[Cate
     )
 
 
+def _exposure_summary(portfolio: PaperPortfolio, equity: float) -> ExposureSummary:
+    """CEO directive "Portfolio Construction, Capital Allocation &
+    Execution Realism" — real long/short/net/gross exposure, computed
+    from PaperPosition.side alone (a real "buy" opens a real long, a
+    real "sell" opens a real short — see app/portfolio.py's
+    mark_to_market()). `net_exposure = long - short` (directional bias);
+    `gross_exposure = long + short` (total capital at work regardless of
+    direction) — the two real, distinct professional readings a
+    side-blind sum can't distinguish."""
+    long_positions = [p for p in portfolio.positions if p.side == "buy"]
+    short_positions = [p for p in portfolio.positions if p.side == "sell"]
+    long_value = sum(p.quantity * p.current_price for p in long_positions)
+    short_value = sum(p.quantity * p.current_price for p in short_positions)
+    net_exposure = long_value - short_value
+    gross_exposure = long_value + short_value
+    return ExposureSummary(
+        longValue=round(long_value, 2),
+        shortValue=round(short_value, 2),
+        netExposure=round(net_exposure, 2),
+        grossExposure=round(gross_exposure, 2),
+        netExposurePct=round(net_exposure / equity * 100, 1) if equity > 0 else 0.0,
+        grossExposurePct=round(gross_exposure / equity * 100, 1) if equity > 0 else 0.0,
+        longPositionCount=len(long_positions),
+        shortPositionCount=len(short_positions),
+    )
+
+
+def _strategy_exposure(portfolio: PaperPortfolio, equity: float) -> list[StrategyExposureRead]:
+    """CEO directive "Portfolio Construction, Capital Allocation &
+    Execution Realism" — the live analogue of app/performance_
+    attribution.py's compute_strategy_performance() (closed trades
+    only). Groups currently-OPEN positions by PaperPosition.strategy_id
+    — real only when the CEO explicitly selected a strategy at decision
+    time (see that field's own schema docstring). `strategyId: null` is
+    its own honest bucket for every open position with no real strategy
+    attribution — never folded into an attributed strategy's numbers,
+    and never omitted."""
+    groups: dict[str | None, list[float]] = {}
+    long_by_group: dict[str | None, float] = {}
+    short_by_group: dict[str | None, float] = {}
+    for pos in portfolio.positions:
+        value = pos.quantity * pos.current_price
+        groups.setdefault(pos.strategy_id, []).append(value)
+        if pos.side == "buy":
+            long_by_group[pos.strategy_id] = long_by_group.get(pos.strategy_id, 0.0) + value
+        else:
+            short_by_group[pos.strategy_id] = short_by_group.get(pos.strategy_id, 0.0) + value
+
+    reads = [
+        StrategyExposureRead(
+            strategyId=strategy_id,
+            positionCount=len(values),
+            value=round(sum(values), 2),
+            pctOfEquity=round(sum(values) / equity * 100, 1) if equity > 0 else 0.0,
+            longValue=round(long_by_group.get(strategy_id, 0.0), 2),
+            shortValue=round(short_by_group.get(strategy_id, 0.0), 2),
+        )
+        for strategy_id, values in groups.items()
+    ]
+    reads.sort(key=lambda r: r.value, reverse=True)
+    return reads
+
+
 def _capital_efficiency(portfolio: PaperPortfolio) -> CapitalEfficiency:
     trades = portfolio.trade_history
     if not trades:
@@ -226,6 +291,8 @@ def compute_portfolio_intelligence(portfolio: PaperPortfolio, provider: MarketDa
     category_exposure = _category_exposure(portfolio, equity)
     correlation_pairs = _correlation_pairs(portfolio, provider)
     heat = _heat(portfolio, equity, category_exposure)
+    exposure = _exposure_summary(portfolio, equity)
+    strategy_exposure = _strategy_exposure(portfolio, equity)
     capital_efficiency = _capital_efficiency(portfolio)
     cash_pct = round(portfolio.cash_balance / equity * 100, 1) if equity > 0 else 0.0
     deployed_pct = round(100.0 - cash_pct, 1) if equity > 0 else 0.0
@@ -238,6 +305,8 @@ def compute_portfolio_intelligence(portfolio: PaperPortfolio, provider: MarketDa
         categoryExposure=category_exposure,
         correlationPairs=correlation_pairs,
         heat=heat,
+        exposure=exposure,
+        strategyExposure=strategy_exposure,
         capitalEfficiency=capital_efficiency,
         opportunityCost=_opportunity_cost(cash_pct, pending_proposal_count),
         updatedAt=_now_iso(),

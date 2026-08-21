@@ -670,6 +670,21 @@ class PaperPosition(CamelModel):
     # position opened before this piece still validates during load.
     mae_pct: float = Field(default=0.0, alias="maePct")
     mfe_pct: float = Field(default=0.0, alias="mfePct")
+    # CEO directive "Portfolio Construction, Capital Allocation & Execution
+    # Realism" — the live analogue of DecisionVaultEntry.strategy_id /
+    # CeoDecisionRecord.strategy_id (which only ever populate at trade
+    # CLOSE, via the Decision Vault join). This is the same real,
+    # CEO-explicit selection, applied the instant this position actually
+    # opens — set in app/state.py's submit_ceo_decision() by patching the
+    # freshly-opened position with .model_copy() strictly AFTER
+    # resolve_proposal() returns, the identical "never alter what the
+    # trade itself does" pattern already used for CeoDecisionRecord.
+    # None whenever the CEO didn't select one (the honest majority) — this
+    # is what makes real, live, strategy-scoped exposure/risk-budget reads
+    # possible for OPEN positions, closing a gap the prior directive's own
+    # audit confirmed: "an open PaperPosition cannot be attributed to a
+    # strategy at all today."
+    strategy_id: str | None = Field(default=None, alias="strategyId")
 
 
 class PaperTrade(CamelModel):
@@ -6626,6 +6641,41 @@ class CapitalEfficiency(CamelModel):
     trades_measured: int = Field(alias="tradesMeasured")
 
 
+# CEO directive "Portfolio Construction, Capital Allocation & Execution
+# Realism" — the audit for this directive grep-confirmed zero matches
+# for gross/net exposure anywhere in this codebase; every existing
+# exposure read (category exposure, Guardian's per-symbol concentration)
+# sums quantity*price regardless of side, so a $10k long and a $10k short
+# in the same portfolio were indistinguishable from $20k of one-directional
+# risk. Real, computed fresh from PaperPosition.side — no fabrication.
+class ExposureSummary(CamelModel):
+    long_value: float = Field(alias="longValue")
+    short_value: float = Field(alias="shortValue")
+    net_exposure: float = Field(alias="netExposure")
+    gross_exposure: float = Field(alias="grossExposure")
+    net_exposure_pct: float = Field(alias="netExposurePct")
+    gross_exposure_pct: float = Field(alias="grossExposurePct")
+    long_position_count: int = Field(alias="longPositionCount")
+    short_position_count: int = Field(alias="shortPositionCount")
+
+
+# CEO directive "Portfolio Construction, Capital Allocation & Execution
+# Realism" — the live analogue of app/performance_attribution.py's
+# compute_strategy_performance() (which only ever sees CLOSED trades).
+# Groups currently-OPEN positions by their real, CEO-explicit
+# PaperPosition.strategy_id (see that field's own schema docstring for
+# how it gets set). `strategy_id: null` is its own real, honest bucket —
+# every open position the CEO never attributed to a strategy — never
+# folded into an attributed strategy's numbers.
+class StrategyExposureRead(CamelModel):
+    strategy_id: str | None = Field(alias="strategyId")
+    position_count: int = Field(alias="positionCount")
+    value: float
+    pct_of_equity: float = Field(alias="pctOfEquity")
+    long_value: float = Field(alias="longValue")
+    short_value: float = Field(alias="shortValue")
+
+
 class PortfolioIntelligence(CamelModel):
     equity: float
     cash_balance: float = Field(alias="cashBalance")
@@ -6638,6 +6688,10 @@ class PortfolioIntelligence(CamelModel):
         default_factory=list, alias="correlationPairs"
     )
     heat: PortfolioHeat
+    exposure: ExposureSummary
+    strategy_exposure: list[StrategyExposureRead] = Field(
+        default_factory=list, alias="strategyExposure"
+    )
     capital_efficiency: CapitalEfficiency = Field(alias="capitalEfficiency")
     # A real, specific "what's the alternative" read — never generic
     # filler. See app/portfolio_intelligence.py's _opportunity_cost().

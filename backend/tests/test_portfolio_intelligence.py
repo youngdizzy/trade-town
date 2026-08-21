@@ -12,8 +12,10 @@ from app.portfolio_intelligence import (
     _capital_efficiency,
     _category_exposure,
     _correlation_pairs,
+    _exposure_summary,
     _heat,
     _opportunity_cost,
+    _strategy_exposure,
     pearson_correlation,
     _returns,
     compute_portfolio_intelligence,
@@ -48,11 +50,13 @@ def _position(
     symbol: str = "AAPL",
     quantity: float = 10.0,
     current_price: float = 100.0,
+    side: str = "buy",
+    strategy_id: str | None = None,
 ) -> PaperPosition:
     return PaperPosition(
         id=position_id,
         symbol=symbol,
-        side="buy",  # type: ignore[arg-type]
+        side=side,  # type: ignore[arg-type]
         quantity=quantity,
         entryPrice=100.0,
         currentPrice=current_price,
@@ -62,6 +66,7 @@ def _position(
         confidence=80.0,
         openedAt="2026-01-01T00:00:00Z",
         openedSimMinutes=0,
+        strategyId=strategy_id,
     )
 
 
@@ -282,6 +287,115 @@ class TestOpportunityCost:
     def test_low_cash_warns_about_little_room_to_act(self) -> None:
         text = _opportunity_cost(cash_pct_of_equity=5.0, pending_proposal_count=0)
         assert "little room" in text
+
+
+class TestExposureSummary:
+    """CEO directive "Portfolio Construction, Capital Allocation &
+    Execution Realism" — real long/short/net/gross exposure, the one
+    concept the directive's own audit confirmed grep-zero anywhere in
+    this codebase before this pass."""
+
+    def test_all_long_reads_gross_equals_net_equals_long_value(self) -> None:
+        positions = [_position(position_id="p1", symbol="AAPL", quantity=10.0, current_price=100.0, side="buy")]
+        portfolio = _portfolio(cash_balance=99000.0, positions=positions)
+        exposure = _exposure_summary(portfolio, equity=100000.0)
+        assert exposure.long_value == 1000.0
+        assert exposure.short_value == 0.0
+        assert exposure.net_exposure == 1000.0
+        assert exposure.gross_exposure == 1000.0
+        assert exposure.long_position_count == 1
+        assert exposure.short_position_count == 0
+
+    def test_offsetting_long_and_short_reduces_net_but_not_gross(self) -> None:
+        positions = [
+            _position(position_id="p1", symbol="AAPL", quantity=10.0, current_price=100.0, side="buy"),
+            _position(position_id="p2", symbol="MSFT", quantity=10.0, current_price=100.0, side="sell"),
+        ]
+        portfolio = _portfolio(cash_balance=98000.0, positions=positions)
+        exposure = _exposure_summary(portfolio, equity=100000.0)
+        assert exposure.long_value == 1000.0
+        assert exposure.short_value == 1000.0
+        # Net exposure — a real directional bias reading — cancels out...
+        assert exposure.net_exposure == 0.0
+        # ...but gross exposure — total capital genuinely at work — does not.
+        assert exposure.gross_exposure == 2000.0
+
+    def test_pct_fields_are_real_percentages_of_equity(self) -> None:
+        positions = [_position(position_id="p1", quantity=10.0, current_price=100.0, side="buy")]
+        portfolio = _portfolio(cash_balance=99000.0, positions=positions)
+        exposure = _exposure_summary(portfolio, equity=100000.0)
+        assert exposure.gross_exposure_pct == 1.0
+        assert exposure.net_exposure_pct == 1.0
+
+    def test_zero_equity_never_divides_by_zero(self) -> None:
+        exposure = _exposure_summary(_portfolio(positions=[]), equity=0.0)
+        assert exposure.gross_exposure_pct == 0.0
+        assert exposure.net_exposure_pct == 0.0
+
+    def test_empty_portfolio_reads_all_real_zeros(self) -> None:
+        exposure = _exposure_summary(_portfolio(positions=[]), equity=100000.0)
+        assert exposure.long_value == 0.0
+        assert exposure.short_value == 0.0
+        assert exposure.net_exposure == 0.0
+        assert exposure.gross_exposure == 0.0
+
+
+class TestStrategyExposure:
+    """CEO directive "Portfolio Construction, Capital Allocation &
+    Execution Realism" — the live analogue of compute_strategy_
+    performance() (closed trades only). Groups OPEN positions by
+    PaperPosition.strategy_id."""
+
+    def test_groups_open_positions_by_real_strategy_id(self) -> None:
+        positions = [
+            _position(position_id="p1", symbol="AAPL", quantity=10.0, current_price=100.0, strategy_id="strategy-momentum"),
+            _position(position_id="p2", symbol="MSFT", quantity=5.0, current_price=100.0, strategy_id="strategy-momentum"),
+            _position(position_id="p3", symbol="GLD", quantity=1.0, current_price=100.0, strategy_id="strategy-value"),
+        ]
+        portfolio = _portfolio(positions=positions)
+        reads = _strategy_exposure(portfolio, equity=100000.0)
+        by_id = {r.strategy_id: r for r in reads}
+        assert by_id["strategy-momentum"].position_count == 2
+        assert by_id["strategy-momentum"].value == 1500.0
+        assert by_id["strategy-value"].position_count == 1
+
+    def test_a_position_with_no_strategy_selected_is_its_own_honest_bucket(self) -> None:
+        positions = [
+            _position(position_id="p1", symbol="AAPL", quantity=10.0, current_price=100.0, strategy_id="strategy-momentum"),
+            _position(position_id="p2", symbol="MSFT", quantity=10.0, current_price=100.0, strategy_id=None),
+        ]
+        portfolio = _portfolio(positions=positions)
+        reads = _strategy_exposure(portfolio, equity=100000.0)
+        by_id = {r.strategy_id: r for r in reads}
+        assert None in by_id
+        assert by_id[None].position_count == 1
+        assert by_id[None].value == 1000.0
+        # The unattributed bucket is never folded into the real strategy's numbers.
+        assert by_id["strategy-momentum"].value == 1000.0
+
+    def test_long_and_short_value_are_tracked_separately_within_a_strategy(self) -> None:
+        positions = [
+            _position(position_id="p1", symbol="AAPL", quantity=10.0, current_price=100.0, side="buy", strategy_id="strategy-momentum"),
+            _position(position_id="p2", symbol="MSFT", quantity=5.0, current_price=100.0, side="sell", strategy_id="strategy-momentum"),
+        ]
+        portfolio = _portfolio(positions=positions)
+        reads = _strategy_exposure(portfolio, equity=100000.0)
+        read = next(r for r in reads if r.strategy_id == "strategy-momentum")
+        assert read.long_value == 1000.0
+        assert read.short_value == 500.0
+        assert read.value == 1500.0
+
+    def test_empty_portfolio_produces_no_reads(self) -> None:
+        assert _strategy_exposure(_portfolio(positions=[]), equity=100000.0) == []
+
+    def test_reads_sorted_by_value_descending(self) -> None:
+        positions = [
+            _position(position_id="p1", symbol="AAPL", quantity=1.0, current_price=100.0, strategy_id="strategy-small"),
+            _position(position_id="p2", symbol="MSFT", quantity=10.0, current_price=100.0, strategy_id="strategy-big"),
+        ]
+        portfolio = _portfolio(positions=positions)
+        reads = _strategy_exposure(portfolio, equity=100000.0)
+        assert [r.strategy_id for r in reads] == ["strategy-big", "strategy-small"]
 
     def test_balanced_cash_has_no_immediate_concern(self) -> None:
         text = _opportunity_cost(cash_pct_of_equity=40.0, pending_proposal_count=0)

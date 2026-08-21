@@ -4349,6 +4349,38 @@ export interface CapitalEfficiency {
  * use. See backend/app/portfolio_intelligence.py's module docstring for
  * the full honesty boundary, including why Max Drawdown is deliberately
  * not duplicated here (see PerformanceSnapshot.maxDrawdownPct instead). */
+// CEO directive "Portfolio Construction, Capital Allocation & Execution
+// Realism" — real long/short/net/gross exposure, computed from
+// PaperPosition.side alone. netExposure = long - short (directional
+// bias); grossExposure = long + short (total capital at work regardless
+// of direction).
+export interface ExposureSummary {
+  longValue: number;
+  shortValue: number;
+  netExposure: number;
+  grossExposure: number;
+  netExposurePct: number;
+  grossExposurePct: number;
+  longPositionCount: number;
+  shortPositionCount: number;
+}
+
+// CEO directive "Portfolio Construction, Capital Allocation & Execution
+// Realism" — the live analogue of StrategyPerformanceRead (closed
+// trades only). Groups currently-OPEN positions by their real,
+// CEO-explicit strategy attribution. strategyId: null is its own
+// honest bucket for every open position the CEO never attributed to a
+// strategy — resolve a display name against state.strategies, same
+// convention every other strategy view already uses.
+export interface StrategyExposureRead {
+  strategyId: string | null;
+  positionCount: number;
+  value: number;
+  pctOfEquity: number;
+  longValue: number;
+  shortValue: number;
+}
+
 export interface PortfolioIntelligence {
   equity: number;
   cashBalance: number;
@@ -4357,6 +4389,8 @@ export interface PortfolioIntelligence {
   categoryExposure: CategoryExposure[];
   correlationPairs: CorrelationPair[];
   heat: PortfolioHeat;
+  exposure: ExposureSummary;
+  strategyExposure: StrategyExposureRead[];
   capitalEfficiency: CapitalEfficiency;
   opportunityCost: string;
   updatedAt: string;
