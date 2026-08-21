@@ -3,15 +3,26 @@ import { CameraManager } from "@/game/systems/CameraManager";
 import { EventBus } from "@/game/systems/EventBus";
 import { SaveManager } from "@/game/systems/SaveManager";
 import { api } from "@/net/api";
+import type { GameSaveState, RunSummary } from "@/types";
 
-/** Title screen: New Game, Continue, Settings. */
+/** Title screen: New Game, Continue, Settings.
+ *
+ * CEO directive "Proper Multi-Run / Save Isolation System" — New Game
+ * now genuinely creates a separate, independently-persisted run
+ * (POST /api/runs) rather than the earlier purely-cosmetic scene
+ * transition, and Continue picks from every real, persisted run when
+ * more than one exists (see RunPicker.tsx) rather than always loading
+ * the single global save. */
 export class MainMenuScene extends Phaser.Scene {
-  // Guards the ENTIRE New Game round trip (save check -> optional
-  // confirmation dialog -> player's choice), not just the initial async
-  // check, so rapid/repeat clicks on "New Game" while a check or dialog
-  // is already in flight are a genuine no-op rather than stacking a
-  // second check or a second dialog.
+  // Guards the ENTIRE New Game round trip (run listing -> optional
+  // confirmation dialog -> player's choice -> run creation), not just
+  // the initial async check, so rapid/repeat clicks on "New Game" while
+  // a check or dialog is already in flight are a genuine no-op rather
+  // than stacking a second check, dialog, or run.
   private newGameFlowActive = false;
+  // Same guard for Continue, covering run listing -> optional picker ->
+  // activation.
+  private continueFlowActive = false;
 
   constructor() {
     super("MainMenuScene");
@@ -42,7 +53,7 @@ export class MainMenuScene extends Phaser.Scene {
       .setOrigin(0.5);
 
     this.makeButton(width / 2, height * 0.5, "New Game", () => this.startNewGame());
-    this.makeButton(width / 2, height * 0.5 + 44, "Continue", () => void this.continueGame());
+    this.makeButton(width / 2, height * 0.5 + 44, "Continue", () => this.startContinue());
     this.makeButton(width / 2, height * 0.5 + 88, "Settings", () => EventBus.emit("ui:settings", { open: true }));
 
     EventBus.emit("scene:ready", { scene: "MainMenuScene" });
@@ -66,10 +77,9 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   /** Safe "New Game" entry point (see NewGameConfirm.tsx's own docstring
-   * for exactly what this can and can't honestly claim about resetting
-   * the backend save). Checks for real existing progress first; only
-   * shows the confirmation dialog when there's genuinely something to
-   * protect. */
+   * for exactly what this creates and why the current run is never at
+   * risk). Checks the currently active run's real day first; only shows
+   * the confirmation dialog when there's genuinely a run worth naming. */
   private startNewGame(): void {
     if (this.newGameFlowActive) return;
     this.newGameFlowActive = true;
@@ -79,41 +89,90 @@ export class MainMenuScene extends Phaser.Scene {
   }
 
   private async runNewGameFlow(): Promise<void> {
-    const existingDay = await this.existingProgressDay();
-    if (existingDay === null) {
-      this.beginNewGame();
+    const activeDay = await this.activeRunDayWorthProtecting();
+    if (activeDay === null) {
+      await this.createAndEnterNewRun();
       return;
     }
     const confirmed = await new Promise<boolean>((resolve) => {
       EventBus.once("ui:newGameConfirmResult", ({ confirmed }) => resolve(confirmed));
-      EventBus.emit("ui:newGameConfirm", { day: existingDay });
+      EventBus.emit("ui:newGameConfirm", { day: activeDay });
     });
-    if (confirmed) this.beginNewGame();
+    if (confirmed) await this.createAndEnterNewRun();
     // Cancelled: do nothing at all — no scene change, no API call, no
-    // save mutation of any kind.
+    // run created, no mutation of any kind.
   }
 
-  /** Real day of any existing save, or null when there's no save (fresh
-   * deployment / backend unreachable) or the save is still genuinely
-   * Day 1 (nothing to protect yet) — either way the normal New Game flow
-   * should proceed without a confirmation. Reuses the exact same
-   * GET /api/load call continueGame() below already makes. */
-  private async existingProgressDay(): Promise<number | null> {
+  /** The currently active run's real day, or null when there's no real
+   * run to protect yet (a fresh deployment with nothing registered, the
+   * backend unreachable, or the active run is still genuinely Day 1) —
+   * any of those should proceed straight through without a confirmation. */
+  private async activeRunDayWorthProtecting(): Promise<number | null> {
     try {
-      const state = await api.loadGame();
-      return state.time.day > 1 ? state.time.day : null;
+      const active = await api.getActiveRun();
+      return active && active.currentDay !== null && active.currentDay > 1 ? active.currentDay : null;
     } catch {
       return null;
     }
   }
 
-  private beginNewGame(): void {
-    CameraManager.fadeOutThen(this, 250, () => {
-      this.scene.start("LobbyScene", { spawnX: 160, spawnY: 200 });
+  private async createAndEnterNewRun(): Promise<void> {
+    const state = await api.createRun();
+    this.applyStateAndTransition(state);
+  }
+
+  /** Safe "Continue" entry point. Lists every real, persisted run:
+   * none -> falls through to New Game's own creation flow (the honest
+   * "no save exists" case); exactly one -> loads it directly, the same
+   * minimal-friction behavior Continue always had; more than one ->
+   * shows RunPicker and waits for the player's real choice. A listing
+   * failure (backend genuinely unreachable) falls back to the pre-
+   * existing SaveManager offline-localStorage-backed path rather than
+   * losing that resilience. */
+  private startContinue(): void {
+    if (this.continueFlowActive) return;
+    this.continueFlowActive = true;
+    void this.runContinueFlow().finally(() => {
+      this.continueFlowActive = false;
     });
   }
 
-  private async continueGame(): Promise<void> {
+  private async runContinueFlow(): Promise<void> {
+    let runs: RunSummary[];
+    try {
+      runs = await api.listRuns();
+    } catch {
+      await this.continueViaLegacySaveManager();
+      return;
+    }
+
+    if (runs.length === 0) {
+      await this.createAndEnterNewRun();
+      return;
+    }
+
+    const [onlyRun] = runs;
+    if (runs.length === 1 && onlyRun) {
+      const state = await api.activateRun(onlyRun.runId);
+      this.applyStateAndTransition(state);
+      return;
+    }
+
+    const runId = await new Promise<string | null>((resolve) => {
+      EventBus.once("ui:runPickerResult", ({ runId }) => resolve(runId));
+      EventBus.emit("ui:runPicker", { runs });
+    });
+    if (runId === null) return; // player closed the picker without choosing -- stay on the title screen
+    const state = await api.activateRun(runId);
+    this.applyStateAndTransition(state);
+  }
+
+  /** Pre-existing Continue behavior, kept as the fallback for a genuinely
+   * unreachable backend (SaveManager.load() has its own offline
+   * localStorage-backed recovery this new flow can't replicate without
+   * first knowing which/how-many runs exist, which requires the network
+   * round trip that just failed). */
+  private async continueViaLegacySaveManager(): Promise<void> {
     try {
       const state = await SaveManager.load();
       CameraManager.fadeOutThen(this, 250, () => {
@@ -123,5 +182,12 @@ export class MainMenuScene extends Phaser.Scene {
       // No save yet (fresh deployment) — fall back to a new game instead of stalling on the menu.
       this.startNewGame();
     }
+  }
+
+  private applyStateAndTransition(state: GameSaveState): void {
+    SaveManager.applyState(state);
+    CameraManager.fadeOutThen(this, 250, () => {
+      this.scene.start(state.player.scene, { spawnX: state.player.x, spawnY: state.player.y });
+    });
   }
 }

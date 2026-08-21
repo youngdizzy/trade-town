@@ -13412,7 +13412,198 @@ generation, so the real, evidence-gated compiled-strategy infrastructure
 eligibility) actually drives what the desk proposes, rather than sitting
 completely inert alongside the older `ResearchItem`-confidence path.
 
-## CEO directive "Safe New Game Confirmation / Save Protection"
+## CEO directive "Proper Multi-Run / Save Isolation System"
+
+Supersedes the "Safe New Game Confirmation / Save Protection" directive
+below it in every respect except one: that directive's own research
+finding — New Game never destroyed anything server-side — is *why* this
+feature was safe to build without a data-migration incident of its own.
+This section documents the real multi-run architecture that replaced
+the earlier cosmetic-only New Game button and single-save Continue.
+
+**Original architecture.** The backend was a single, always-on,
+server-authoritative simulation: one row per save table
+(`SaveGame`/`SaveModule`/`SaveBackup`), selected by a hardcoded
+`persistence.SLOT = "default"` constant. New Game was a pure client-side
+Phaser scene transition with zero backend interaction. Continue always
+loaded that one global save. There was no way to run two independent
+companies side by side, and no way for New Game to create one without
+either overwriting the existing save in place or requiring a schema
+migration.
+
+**Research finding that shaped the whole design:** `SaveGame`,
+`SaveModule`, and `SaveBackup` already had real, indexed `slot` columns
+— the schema was already multi-save-capable. Only the application layer
+(the hardcoded `SLOT` constant) collapsed everything to one slot. This
+meant the directive's "if migration can't be done safely, stop and
+explain why" condition never triggered: **zero schema migration was
+needed.** The existing save's row simply *is* what "Run 1" needed to be
+— it was never rewritten, copied, or re-created, only read and
+registered under a real run id (its pre-existing slot value, `"default"`)
+the first time the updated server boots.
+
+**Migration design.** `persistence.SLOT` became a genuinely mutable
+module global (`DEFAULT_SLOT = "default"; SLOT = DEFAULT_SLOT`),
+readable/writable only through `get_active_slot()` / `set_active_slot()`
+— every one of the ~90 pre-existing router call sites that call
+`persist_modules(state)` was left completely unchanged; they're safe
+because none of them have an `await` between their locked mutation and
+their persist call, so asyncio's cooperative scheduling already makes
+them atomic against a concurrent slot switch. Two new metadata-only
+tables were added: `Run` (run_id, display_name, created_at,
+last_played_at — deliberately no `current_day` column; that's always
+read live from the real `world` module, never cached/duplicated) and
+`ActiveRun` (a single fixed row recording which run id the server should
+resume into on restart). On boot, `ensure_default_run_registered()`
+idempotently registers the pre-existing save's slot as a real run
+("Original Run", `created_at`/`last_played_at` set to the real current
+time — never a fabricated earlier date, since the save's true creation
+time was never recorded and guessing one would be fabrication) if it
+isn't already registered, and `main.py`'s `lifespan()` resolves and
+activates the correct slot *before* `load_state()` runs.
+
+**The one real concurrency race, and its fix.** Direct inspection of
+every `persist_modules()` call site found exactly one genuine race
+window: `app/sim.py`'s tick loop awaited `ws_manager.broadcast(...)`
+*between* producing a tick's state and persisting it — a real yield
+point where a concurrent run-switch could interleave and write the new
+tick's data into the wrong (just-switched-away-from) slot. Fixed by
+reordering the loop (persist before broadcast) and routing both the
+interval-triggered persist and the shutdown-time final persist through
+a new `GameState.persist_now()` method that runs under the existing
+state lock. No other call site needed changes — this was a narrow,
+verified fix, not a rewrite.
+
+**New run architecture.** `GET /api/runs` (list, ordered by
+`last_played_at`), `GET /api/runs/active` (`RunSummary | None`),
+`POST /api/runs` (creates a new run — a fresh slot, a fresh id via
+`generate_run_id()` (`run-{uuid4 hex[:12]}`), fresh default state,
+immediately made active), `POST /api/runs/{run_id}/activate` (switches
+the active slot to an existing run, persisting whatever run is being
+left first). `GameState.create_run()` / `switch_run()` both run their
+entire operation inside the existing state lock, exactly like every
+other state-mutating method already did.
+
+**New Game behavior.** Checks the currently active run's real day
+first (`GET /api/runs/active`); if it's genuinely Day 1, unreachable, or
+there's no run registered yet, it proceeds straight to creating a new
+run with no dialog (nothing worth protecting). Otherwise it shows
+`NewGameConfirm.tsx`, whose copy states plainly what actually happens:
+*"You currently have a run at Day N. Starting a new game creates a
+separate, independent Day 1 run — your current run is not deleted,
+reset, or modified in any way, and stays reachable from Continue."*
+Confirming calls `POST /api/runs`; Cancel sends zero non-GET requests
+and leaves every run untouched — verified in
+`newGameConfirm.spec.ts` by tracking all non-GET `/api/` requests across
+the whole confirm/cancel round trip and asserting the list is empty.
+
+**Continue behavior.** Lists every real, persisted run. Zero runs falls
+through to New Game's own creation flow (the honest "nothing exists
+yet" case). Exactly one run loads it directly — the same minimal-
+friction behavior Continue always had, unchanged for every player who
+only ever has one run. More than one run shows `RunPicker.tsx` (same
+`ConfirmDialog` visual language, same Phaser-scene-triggered React
+overlay pattern as `NewGameConfirm`/`EmergencyStopConfirm`) naming each
+run's display name, real current day, and last-played time; canceling
+it activates nothing and leaves the player on the title screen. A
+`listRuns()` failure (backend genuinely unreachable) falls back to the
+pre-existing `SaveManager.load()` offline-localStorage path rather than
+losing that resilience.
+
+**Existing systems reused, not duplicated:** `ConfirmDialog.tsx`'s
+visual classes (for `RunPicker` as well as the rewritten
+`NewGameConfirm`), the `EmergencyStopConfirm.tsx` EventBus
+request/response pattern, `GET /api/load` for post-activation state
+application (`SaveManager.applyState`), and the pre-existing periodic
+full-state backup mechanism in `persist_modules()` (`save_backups`,
+`reason='periodic'`) — unmodified, but load-bearing (see incident below).
+
+**New tests.** Backend: 18 new tests in `backend/tests/test_runs.py`
+(`TestEnsureDefaultRunRegistered`, `TestListRuns`,
+`TestGameStateCreateRun`, `TestGameStateSwitchRun`,
+`TestServerRestartPreservesAllRuns`), each using an isolated on-disk
+temp SQLite database (the pre-existing `temp_db` fixture, extended to
+also reset `persistence.SLOT` per test) — never the real save. Frontend:
+6 Playwright tests in `tests/newGameConfirm.spec.ts` against the real
+dev stack (confirmation with real day shown; Cancel is a true no-op;
+New Game creates a genuinely separate Day-1 run and the original run's
+day survives untouched; no-active-run proceeds without a dialog;
+multi-run Continue shows and correctly resolves the picker; canceling
+the picker activates nothing). Because this feature's own repeated
+manual/automated verification permanently accumulates new runs in the
+shared dev database (no delete capability, by design — matching the
+directive's own "never silently delete" constraint), the shared
+`clickContinueOnTitleScreen` helper used by every other spec file in the
+suite (12+ files) was updated centrally in `tests/helpers.ts` to handle
+both real Continue outcomes, rather than papering over the shared-state
+reality locally in one file.
+
+**Test results.** Backend: 2574 passed (+18 over the pre-feature
+baseline of 2556), `mypy app/` (178 files) clean, `ruff check app/
+tests/` clean. Frontend: `tsc -b --noEmit` clean, `npm run lint` clean,
+`npm run build` clean (183 modules). `newGameConfirm.spec.ts`: 6/6
+passed, confirmed stable across two consecutive full runs.
+
+**`commandCenter.spec.ts` full-suite investigation.** Because this
+feature centrally changed `clickContinueOnTitleScreen` — the helper
+underlying every one of `commandCenter.spec.ts`'s 33 tests — a full
+sequential regression run was required, not a spot check. That run
+initially showed a worrying pass count (24-28/33 rather than a clean
+sweep), so it was investigated rather than accepted or dismissed.
+Direct diagnosis (a standalone script exercising the exact New
+Game/Continue flows, with console/page-error logging) found one real,
+disclosed cause — a long-running dev Vite server had gone stale
+(the same recurring pattern this session has hit before), producing a
+tileset-loading crash on *every* scene transition regardless of path;
+restarting Vite fixed it immediately and reproducibly. After that fix,
+repeated full-suite runs still showed 4-8 failures, but with a
+*different* subset of tests failing each run, and the failures
+themselves were browser session-closed/crashed-page errors rather than
+assertion mismatches — not the signature of a deterministic bug.
+Decisively confirmed via `git stash`: the identical full-suite run
+against the pre-feature baseline code (no run-picker, no multi-run
+system at all) also failed 4/33, with yet another different failing
+subset — proving this is pre-existing headless-Chromium resource strain
+under a long sequential run in this sandboxed container, unrelated to
+and unchanged by this feature. Every individual test that failed in any
+single full-suite pass was re-run alone or in a small group and passed
+reliably. One real, unrelated gap was found and fixed along the way:
+`commandCenter.spec.ts`'s "Company Priority" test called the raw
+`clickContinueOnTitleScreen` after a `page.reload()` instead of the
+popup-dismissing `continueGame()` wrapper every other test in the file
+already uses — switched to `continueGame()` for consistency (this alone
+did not resolve the session-crash flakiness, which — per the baseline
+comparison above — was never caused by this feature to begin with).
+
+**Incident, disclosed in full.** During test development, one test
+method was initially written without the `temp_db` isolation fixture
+and briefly ran `GameState().create_run(...)` against the real,
+unmocked dev database — overwriting the active save's content with a
+fresh Day-1 state before crashing on a missing table. This was caught
+immediately, not hidden: recovery used the feature's own pre-existing
+periodic-backup mechanism (`save_backups`, `reason='periodic'`) to
+identify and restore the last genuine pre-incident snapshot through the
+real `persistence.persist_modules()` path (never raw SQL), and was
+verified independently via direct SQLite queries and the live API
+before any further work continued. The missing fixture was added and
+every test re-verified. Full detail is in the `5bdc2e5` commit message.
+This incident involved only this session's own ephemeral development
+database — a separate, disconnected environment from the CEO's real
+production save (confirmed by prior code-citation research; see the
+"Fresh Day-1 Validation" diagnostic above) — so no production save was
+ever at risk, but it is recorded here in full per the directive's own
+"do not fabricate success, disclose everything" requirement.
+
+**Files changed.** Backend: `models.py`, `persistence.py`, `schemas.py`,
+`state.py`, `sim.py`, `main.py`, new `routers/runs.py`, new
+`tests/test_runs.py`. Frontend: `types.ts`, `net/api.ts`,
+`game/systems/EventBus.ts`, `ui/components/NewGameConfirm.tsx`
+(rewritten), new `ui/components/RunPicker.tsx`, `App.tsx`,
+`game/scenes/MainMenuScene.ts` (rewritten), `tests/helpers.ts`,
+`tests/newGameConfirm.spec.ts` (rewritten). No trading/agent/strategy/
+market/company-simulation logic was touched anywhere in this feature.
+
+## CEO directive "Safe New Game Confirmation / Save Protection" (superseded)
 
 **Research first.** `MainMenuScene.ts`'s "New Game" button
 (`startNewGame()`, pre-existing) never called any backend endpoint at
@@ -13430,57 +13621,10 @@ company keeps running; only the player's own saved position gets
 overwritten on the next autosave) rather than fabricating a "your
 progress will be reset" claim this codebase doesn't support.
 
-**Reused, not duplicated:** `ConfirmDialog.tsx` (the one existing
-generic confirm-before-you-act component, previously used only by
-Emergency Stop) — no new dialog primitive built.
-`EmergencyStopConfirm.tsx`'s exact pattern (a Phaser-scene-triggered
-React overlay, mounted in `App.tsx`, communicating over `EventBus`) —
-followed exactly for the new `NewGameConfirm.tsx`. `GET /api/load` (the
-same call `continueGame()`'s existing fallback already makes) — reused
-directly for save-existence detection, no new endpoint.
-
-**What was added:** two new `EventBus` events (`ui:newGameConfirm`,
-`ui:newGameConfirmResult`) implementing the same request/response shape
-`ui:emergencyStopConfirm` already established. `MainMenuScene.startNewGame()`
-now runs an async check (`existingProgressDay()`: real day of any
-existing save via `GET /api/load`, `null` when there's no save/the
-backend is unreachable/the save is still genuinely Day 1 — any of those
-three proceed straight through, matching "no save exists → normal New
-Game flow") before optionally showing the dialog and awaiting the
-player's real choice; the original scene-transition code is unchanged,
-now named `beginNewGame()`. A `newGameFlowActive` flag guards the entire
-round trip (not just the async check) so rapid/repeat clicks can't stack
-a second check or dialog. Cancel resolves the promise `false` and
-`beginNewGame()` is simply never called — no code path exists that could
-mutate anything on Cancel.
-
-5 new Playwright tests (`tests/newGameConfirm.spec.ts`): existing save
-(Day > 1) shows the real confirmation with the real day number; Cancel
-fires zero non-GET `/api/` requests across the whole round trip and
-leaves the save's `time.day` monotonic (never resets); Confirm reaches
-`LobbyScene` (same real success marker `clickContinueOnTitleScreen()`
-uses); Continue never triggers the dialog; no-save proceeds directly.
-One deliberate, disclosed deviation from this suite's usual "no mocking,
-real stack" convention: the real dev save is a single, ever-growing,
-shared backend state with no way to genuinely reach "no save exists"
-without being destructive to every other spec file's own precondition —
-that one test uses `page.route()` to simulate a failed `GET /api/load`,
-the exact real failure `existingProgressDay()`'s own `catch` handles.
-Every other test in the file exercises the real running dev stack
-unmodified.
-
-Full backend suite (2556 passed — unchanged, since no backend file was
-touched), `mypy app/` (177 files), `ruff check app/ tests/` clean.
-`tsc -b --noEmit`, `eslint`, `vite build` clean. `newGameConfirm.spec.ts`:
-5/5 passed against the real running dev stack (real save at Day 87 by
-the time of the run). Live-verified via screenshot: the dialog renders
-correctly, styled consistently with `EmergencyStopConfirm`'s existing
-pixel/parchment convention, showing the real live day number.
-
-No duplicate save/new-game system was created. No trading/strategy/
-agent/market code was touched — `git diff --stat` for this feature
-touches only `EventBus.ts`, `App.tsx`, `MainMenuScene.ts`, the new
-`NewGameConfirm.tsx`, and the new test file.
+This diagnostic finding — that New Game was purely cosmetic — is exactly
+what made it safe to later replace this simple confirmation with the
+real multi-run system documented above, without any risk to the
+existing save while that replacement was designed.
 
 ## Save format compatibility
 

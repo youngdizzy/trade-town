@@ -959,7 +959,7 @@ test.describe("Global Command Center", () => {
     await expect(researchPriority).toHaveClass(/border-cmd-purple/);
 
     await page.reload();
-    await clickContinueOnTitleScreen(page);
+    await continueGame(page);
     await page.keyboard.press("Tab");
     await clickExpand(page);
     await clickTab(page, "COMPANY");

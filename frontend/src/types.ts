@@ -6156,6 +6156,18 @@ export interface SaveResponse {
   modules: ModuleWriteResult[];
 }
 
+/** CEO directive "Proper Multi-Run / Save Isolation System" — one real,
+ * persisted, independently-loadable run/save. `currentDay` is read live
+ * from that run's own real save data on the backend, `null` only when
+ * that run genuinely has no readable state yet. */
+export interface RunSummary {
+  runId: string;
+  displayName: string;
+  createdAt: string;
+  lastPlayedAt: string;
+  currentDay: number | null;
+}
+
 export function isDaytime(time: TimeState): boolean {
   return time.hour >= 6 && time.hour < 20;
 }

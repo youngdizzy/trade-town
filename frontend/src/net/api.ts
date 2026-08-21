@@ -82,6 +82,7 @@ import type {
   QuestionOfTheDay,
   RuleEvaluationResult,
   RuleType,
+  RunSummary,
   SaveResponse,
   SavingsRuleType,
   SignalCalibrationState,
@@ -188,6 +189,15 @@ export const api = {
       body: JSON.stringify(snapshot),
     }),
   health: () => request<{ status: string }>("/health"),
+  // CEO directive "Proper Multi-Run / Save Isolation System".
+  listRuns: () => request<RunSummary[]>("/runs"),
+  getActiveRun: () => request<RunSummary | null>("/runs/active"),
+  createRun: (displayName?: string) =>
+    request<GameSaveState>("/runs", {
+      method: "POST",
+      body: JSON.stringify({ displayName: displayName ?? null }),
+    }),
+  activateRun: (runId: string) => request<GameSaveState>(`/runs/${encodeURIComponent(runId)}/activate`, { method: "POST" }),
   getCandles: (symbol: string, timeframe: string, limit = 150) =>
     request<Candle[]>(`/market/candles?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&limit=${limit}`),
   getTimeframes: () => request<string[]>("/market/timeframes"),

@@ -7,7 +7,69 @@ development milestones, not semver releases.
 
 ### Added
 
-- **CEO directive "Safe New Game Confirmation / Save Protection"** (frontend:
+- **CEO directive "Proper Multi-Run / Save Isolation System"** (backend:
+  `backend/app/models.py`, `backend/app/persistence.py`, `backend/app/schemas.py`, `backend/app/state.py`,
+  `backend/app/sim.py`, `backend/app/main.py`, `backend/app/routers/runs.py` (new),
+  `backend/tests/test_runs.py` (new); frontend: `frontend/src/types.ts`, `frontend/src/net/api.ts`,
+  `frontend/src/game/systems/EventBus.ts`, `frontend/src/ui/components/NewGameConfirm.tsx` (rewritten),
+  `frontend/src/ui/components/RunPicker.tsx` (new), `frontend/src/App.tsx`,
+  `frontend/src/game/scenes/MainMenuScene.ts` (rewritten), `frontend/tests/helpers.ts`,
+  `frontend/tests/newGameConfirm.spec.ts` (rewritten)): supersedes the "Safe New Game Confirmation" entry
+  below with a real multi-run system — New Game now creates a genuinely separate, independently-persisted
+  run instead of a cosmetic scene transition, and Continue picks from every real run when more than one
+  exists.
+
+  Research first found `SaveGame`/`SaveModule`/`SaveBackup` already had real, indexed `slot` columns — the
+  schema was already multi-save-capable, only the application-layer `SLOT = "default"` constant collapsed
+  everything to one slot. Zero schema migration was needed: the existing save's row simply became "Original
+  Run" the first time the updated server boots (`ensure_default_run_registered()`, idempotent, real
+  timestamps only). `persistence.SLOT` became a genuinely mutable pointer (`get_active_slot()`/
+  `set_active_slot()`); all ~90 pre-existing `persist_modules(state)` router call sites were left untouched
+  (verified safe — no `await` between their locked mutation and their persist call). The one real
+  concurrency race — `sim.py`'s tick loop had an `await ws_manager.broadcast(...)` between producing a
+  tick's state and persisting it, a genuine window for a concurrent run-switch to write into the wrong slot
+  — was fixed narrowly by reordering (persist before broadcast) through a new locked
+  `GameState.persist_now()`; no other call site was touched.
+
+  New: `Run`/`ActiveRun` metadata tables (deliberately no cached `current_day` column — always read live
+  from `world`), `GET/POST /api/runs`, `GET /api/runs/active`, `POST /api/runs/{id}/activate`,
+  `GameState.create_run()`/`switch_run()`. New Game checks the active run's real day and only asks for
+  confirmation when there's a real day worth protecting; the dialog states plainly that the current run is
+  never deleted, reset, or modified. Continue: 0 runs falls through to New Game's creation flow, 1 run loads
+  directly (unchanged for single-run players), >1 shows `RunPicker.tsx` (reusing `ConfirmDialog.tsx`'s
+  visual language and the `EmergencyStopConfirm.tsx` EventBus pattern).
+
+  18 new backend tests (isolated temp-SQLite fixture, never the real save) + 6 rewritten Playwright tests;
+  the shared `clickContinueOnTitleScreen` test helper (used by 12+ spec files) was updated centrally since
+  this feature's own repeated verification permanently accumulates real runs in the shared dev database (no
+  delete capability, by design). One drive-by fix in `commandCenter.spec.ts`'s "Company Priority" test:
+  it called the raw `clickContinueOnTitleScreen` after a `page.reload()` instead of the popup-dismissing
+  `continueGame()` wrapper every other test uses — switched to `continueGame()` for consistency. Backend:
+  2574 passed (+18), `mypy app/` (178 files) clean, `ruff check app/ tests/` clean. Frontend: `tsc -b
+  --noEmit`, `npm run lint`, `npm run build` (183 modules) clean; `newGameConfirm.spec.ts` 6/6 passed twice
+  in a row.
+
+  **`commandCenter.spec.ts` full-suite regression, investigated honestly:** running all 33 tests
+  sequentially against this sandboxed container produced 24-28 passed / 4-8 failed across repeated runs,
+  with a *different* subset of tests failing each time (session-closed/crashed-page errors, not assertion
+  mismatches) — the signature of headless-Chromium resource strain under a long sequential run, not a
+  deterministic bug. Confirmed by direct comparison: the exact same full-suite run against the pre-feature
+  baseline code (via `git stash`) also failed 4/33, with yet another different failing subset. Individual
+  and small-group re-runs of every test that failed in any single full-suite pass were also re-run in
+  isolation and passed reliably. This pre-existing environment flakiness is unrelated to and unchanged by
+  this feature — not fixed here, since it's out of this directive's scope and predates it.
+
+  **Disclosed incident:** during test development, one test method briefly ran against the real,
+  unmocked dev database before the `temp_db` fixture was added to it, overwriting the active save with a
+  fresh Day-1 state. Caught immediately; recovered through the feature's own pre-existing periodic-backup
+  mechanism (`save_backups`, `reason='periodic'`) via the real `persistence.persist_modules()` path, then
+  independently verified via direct SQL and the live API. This session's dev database is a separate,
+  disconnected environment from the CEO's real production save (per the prior "Fresh Day-1 Validation"
+  research), so no production save was ever at risk — recorded here in full regardless, per this
+  directive's own "disclose everything, never fabricate success" requirement. Full detail in the `5bdc2e5`
+  commit message. No trading/agent/strategy/market/company-simulation logic was touched.
+
+- **CEO directive "Safe New Game Confirmation / Save Protection"** (superseded by the multi-run system above) (frontend:
   `frontend/src/game/systems/EventBus.ts`, `frontend/src/App.tsx`, `frontend/src/game/scenes/MainMenuScene.ts`,
   `frontend/src/ui/components/NewGameConfirm.tsx` (new), `frontend/tests/newGameConfirm.spec.ts` (new)):
   research first found "New Game" never called any backend endpoint at all — it only starts `LobbyScene`

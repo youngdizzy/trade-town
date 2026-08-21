@@ -25,7 +25,17 @@ import { expect, type Locator, type Page } from "@playwright/test";
 
 /** The raw title-screen "Continue" click sequence, with no popup
  * handling — used by continueGame() and by any test that specifically
- * needs to inspect a popup right as it appears. */
+ * needs to inspect a popup right as it appears.
+ *
+ * CEO directive "Proper Multi-Run / Save Isolation System" — Continue now
+ * shows a real run picker (RunPicker.tsx) whenever more than one run is
+ * registered, rather than always loading directly. This suite's shared
+ * dev database accumulates real, permanent runs over time (that
+ * feature's own tests, and any manual live-verification against it, each
+ * add one — there is no delete capability, by design), so "exactly one
+ * run" can no longer be assumed here. This handles both real outcomes:
+ * direct entry, or picking "Original Run" (the one real run every other
+ * test in this whole suite actually wants) from the picker. */
 export async function clickContinueOnTitleScreen(page: Page): Promise<void> {
   const canvas = page.locator("canvas");
   await expect(canvas).toBeVisible();
@@ -42,12 +52,20 @@ export async function clickContinueOnTitleScreen(page: Page): Promise<void> {
     const box = await canvas.boundingBox();
     if (!box) throw new Error("clickContinueOnTitleScreen: canvas has no bounding box");
     await page.mouse.click(box.x + box.width / 2, box.y + box.height * 0.5 + 44);
+
+    const commandButton = page.getByRole("button", { name: "Command ⌁" });
+    const originalRunEntry = page.getByText("Original Run", { exact: true });
     try {
-      await page.getByRole("button", { name: "Command ⌁" }).waitFor({ state: "attached", timeout: 3000 });
-      return;
+      await Promise.race([commandButton.waitFor({ state: "attached", timeout: 3000 }), originalRunEntry.waitFor({ state: "visible", timeout: 3000 })]);
     } catch {
-      // not in-game yet — try again
+      continue; // neither appeared yet — retry the click
     }
+
+    if (await originalRunEntry.isVisible().catch(() => false)) {
+      await originalRunEntry.click();
+      await commandButton.waitFor({ state: "attached", timeout: 10_000 });
+    }
+    return;
   }
   throw new Error("clickContinueOnTitleScreen: never reached an in-game scene after 5 click attempts");
 }

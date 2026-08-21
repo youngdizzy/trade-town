@@ -75,6 +75,7 @@ import type {
   ReasoningLabState,
   ReflectionSession,
   RiskWarning,
+  RunSummary,
   ScannerAlert,
   SceneId,
   SettingsState,
@@ -198,14 +199,23 @@ export interface GameEvents {
   "ui:commandPalette": { open: boolean };
   "ui:breakthrough": { open: boolean };
   "ui:emergencyStopConfirm": { pending: "activate" | "resume" | null };
-  // Safe "New Game" confirmation — MainMenuScene emits this (with the
-  // existing save's real current day) before it would otherwise overwrite
-  // the title-screen "New Game" flow; null closes the dialog without a
-  // result (e.g. component unmount). NewGameConfirm.tsx owns rendering;
-  // MainMenuScene listens once for "ui:newGameConfirmResult" to learn
-  // what the player chose.
+  // CEO directive "Proper Multi-Run / Save Isolation System" — "New Game"
+  // now really does create a separate, independently-persisted run (see
+  // POST /api/runs), so this confirms the player actually wants to leave
+  // whichever run is currently active rather than warning about a reset
+  // that no longer (and never actually did) happen. MainMenuScene emits
+  // this with the currently-active run's real day before creating a new
+  // one; null closes the dialog without a result (e.g. component
+  // unmount). NewGameConfirm.tsx owns rendering; MainMenuScene listens
+  // once for "ui:newGameConfirmResult" to learn what the player chose.
   "ui:newGameConfirm": { day: number } | null;
   "ui:newGameConfirmResult": { confirmed: boolean };
+  // "Continue" with more than one real, persisted run shows a picker
+  // instead of silently loading one — RunPicker.tsx owns rendering;
+  // MainMenuScene listens once for "ui:runPickerResult" ({ runId: null }
+  // means the player closed the picker without choosing).
+  "ui:runPicker": { runs: RunSummary[] } | null;
+  "ui:runPickerResult": { runId: string | null };
   // Design Bible Chapter 67 (TTOS) Part 3 — the Quick Action Dock's
   // quick-jump buttons. `tab` is a bare string (not FullCommandCenter's
   // own `Tab` union) to avoid a circular import — FullCommandCenter
