@@ -7,6 +7,48 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Safe New Game Confirmation / Save Protection"** (frontend:
+  `frontend/src/game/systems/EventBus.ts`, `frontend/src/App.tsx`, `frontend/src/game/scenes/MainMenuScene.ts`,
+  `frontend/src/ui/components/NewGameConfirm.tsx` (new), `frontend/tests/newGameConfirm.spec.ts` (new)):
+  research first found "New Game" never called any backend endpoint at all — it only starts `LobbyScene`
+  client-side; the backend save is a single, always-on, server-authoritative simulation, so the premise "New
+  Game may reset your progress" didn't match this codebase's real behavior. The dialog's copy says so
+  honestly (a fresh Lobby view; the company keeps running; only the player's own saved position gets
+  overwritten on the next autosave) rather than fabricating a "your progress will be reset" claim.
+
+  Reused, not duplicated: `ConfirmDialog.tsx` (the one existing generic confirm-before-you-act component,
+  previously only used by Emergency Stop) and `EmergencyStopConfirm.tsx`'s exact pattern (a Phaser-scene-
+  triggered React overlay communicating over `EventBus`) for the new `NewGameConfirm.tsx`; `GET /api/load`
+  (the same call `continueGame()`'s existing fallback already makes) for save-existence detection — no new
+  endpoint.
+
+  `MainMenuScene.startNewGame()` now checks the real existing day first (`null` — proceed straight through —
+  when there's no save, the backend is unreachable, or the save is still genuinely Day 1); only shows the
+  dialog when there's real progress to protect. A `newGameFlowActive` flag guards the *entire* round trip
+  (not just the async check) against rapid/repeat clicks stacking a second check or dialog. Cancel resolves
+  the confirmation promise `false` and the original scene-transition code (`beginNewGame()`, unchanged) is
+  simply never called — no code path exists that could mutate anything on Cancel.
+
+  5 new Playwright tests. One deliberate, disclosed deviation from this suite's "no mocking" convention: the
+  real dev save is a single, ever-growing, shared backend state with no way to reach "no save exists" without
+  being destructive to every other spec file's own precondition, so that one test uses `page.route()` to
+  simulate a failed `GET /api/load` — the exact real failure `existingProgressDay()`'s own `catch` already
+  handles. Full backend suite (2556 passed, unchanged — no backend file touched), `mypy app/`, `ruff check
+  app/ tests/` clean. `tsc -b --noEmit`, `eslint`, `vite build` clean. `newGameConfirm.spec.ts`: 5/5 passed
+  against the real running dev stack. Live-verified via screenshot. No duplicate save/new-game system was
+  created; no trading/strategy/agent/market code was touched.
+
+- **CEO directive "Fresh Day-1 Validation / Trading Pipeline Audit"** — a pure diagnostic, no code changed.
+  Root cause of "no trades" on the existing save: none — the pipeline works correctly, verified end-to-end
+  on a fully isolated fresh Day-1 backend instance (real proposal generation, real Opportunity Gatekeeper
+  rejections, a real CEO decision opening a real position, a real take-profit exit with reconciled P&L). Two
+  separate, real findings, neither a bug: the existing save's Strategy Lab roster predates the 50 EMA
+  seeding/identity-bridge work (stale by design — seeding only runs at fresh-save creation); and Strategy Lab
+  is structurally disconnected from live trade-proposal generation regardless (`_generate_trade_proposals()`
+  never reads `state.strategies`), so that staleness isn't the cause. The real reason: Operating Mode
+  defaults to `"learning"`, where nothing auto-resolves a pending proposal — it waits for an explicit CEO
+  decision or expires as an honest "wait." Full findings in `docs/Architecture.md`.
+
 - **CEO directive "Quant Research Factory / Strategy Discovery Engine," Phase 1 (audit) + Phase 17
   (Research Factory Overview)** (frontend:
   `frontend/src/ui/components/CommandCenter/panels/sandbox/QuantResearchLabView.tsx`): a research-agent

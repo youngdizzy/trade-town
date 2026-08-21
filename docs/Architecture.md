@@ -13365,6 +13365,123 @@ real evidence produced across Phases 1-19 above.
     hypothesis generation) stated plainly as structurally blocked
     rather than papered over.
 
+## CEO directive "Fresh Day-1 Validation / Trading Pipeline Audit"
+
+A pure diagnostic — no code was changed. Full findings are in the
+session record; summarized here for future reference since they inform
+real architecture decisions:
+
+**Root cause of "no trades" on the existing save: none — the pipeline
+works correctly.** Verified end-to-end on a fully isolated fresh Day-1
+backend instance (a separate SQLite file via `DATABASE_URL`, the real
+save on port 8000 never touched): a fresh save seeds correctly
+(including the new 50 EMA long/short strategies with real
+`compiledDefinitionId`s), real research generates real `TradeProposal`s,
+the Opportunity Gatekeeper correctly rejects low-quality/illiquid
+candidates for genuine reasons, a real CEO "buy" decision opens a real
+`Position` with real slippage/cost, mark-to-market and a real take-profit
+exit produce real, reconciled P&L, and `DecisionVaultEntry` records it
+all truthfully.
+
+**Two genuinely separate findings, neither a bug:**
+1. The real save's `strategies` list is stale (predates the 50 EMA
+   seeding/identity-bridge work — `_deep_merge_defaults()` takes an old
+   save's lists wholesale, by design; seeding only runs at fresh-save
+   creation, never at load time).
+2. **This stale roster is irrelevant to live trading** — `_generate
+   TradeProposals()` never reads `state.strategies`/Strategy Lab
+   eligibility at all. Strategy Lab and the live research→proposal→
+   gatekeeper→execution pipeline are two structurally disconnected
+   subsystems today; a `Strategy` only attaches to a live trade as
+   optional CEO-supplied provenance at decision time.
+
+**The real reason the existing save shows no recent trades**: Operating
+Mode defaults to `"learning"` (`app/executive.py`'s own docstring: every
+proposal crossing the confidence threshold *used to* auto-execute; now
+it waits for an explicit CEO decision). In Learning Mode,
+`_apply_operating_mode()` is never even called — nothing auto-resolves a
+pending proposal, ever; it either gets a real CEO click or eventually
+expires as an honest "wait." The real save's own history confirms the
+pipeline genuinely worked (2 real historical trades, both losses, early
+in its life) — there's simply been no human in the loop since.
+
+**Highest-value next phase identified** (not built — this was a
+diagnostic only): wire Strategy Lab eligibility into live proposal
+generation, so the real, evidence-gated compiled-strategy infrastructure
+(50 EMA rules, backtests, walk-forward validation, regime-matched
+eligibility) actually drives what the desk proposes, rather than sitting
+completely inert alongside the older `ResearchItem`-confidence path.
+
+## CEO directive "Safe New Game Confirmation / Save Protection"
+
+**Research first.** `MainMenuScene.ts`'s "New Game" button
+(`startNewGame()`, pre-existing) never called any backend endpoint at
+all — it only starts `LobbyScene` client-side. The backend's company
+save is a single, always-on, server-authoritative simulation (SQLite,
+one row, ticking in real time regardless of any client) — there is no
+per-player save-slot concept, and `SaveManager`'s own client-owned
+payload (`POST /api/save`) only ever writes `player`/`settings`/
+`dialogueHistory`, never agents/strategies/trades. So the literal premise
+"New Game may reset your progress" doesn't match this codebase's real
+behavior — **New Game has never destroyed anything server-side.** This
+finding shaped the whole implementation: the confirmation dialog's copy
+states plainly what New Game actually does (a fresh Lobby view; the
+company keeps running; only the player's own saved position gets
+overwritten on the next autosave) rather than fabricating a "your
+progress will be reset" claim this codebase doesn't support.
+
+**Reused, not duplicated:** `ConfirmDialog.tsx` (the one existing
+generic confirm-before-you-act component, previously used only by
+Emergency Stop) — no new dialog primitive built.
+`EmergencyStopConfirm.tsx`'s exact pattern (a Phaser-scene-triggered
+React overlay, mounted in `App.tsx`, communicating over `EventBus`) —
+followed exactly for the new `NewGameConfirm.tsx`. `GET /api/load` (the
+same call `continueGame()`'s existing fallback already makes) — reused
+directly for save-existence detection, no new endpoint.
+
+**What was added:** two new `EventBus` events (`ui:newGameConfirm`,
+`ui:newGameConfirmResult`) implementing the same request/response shape
+`ui:emergencyStopConfirm` already established. `MainMenuScene.startNewGame()`
+now runs an async check (`existingProgressDay()`: real day of any
+existing save via `GET /api/load`, `null` when there's no save/the
+backend is unreachable/the save is still genuinely Day 1 — any of those
+three proceed straight through, matching "no save exists → normal New
+Game flow") before optionally showing the dialog and awaiting the
+player's real choice; the original scene-transition code is unchanged,
+now named `beginNewGame()`. A `newGameFlowActive` flag guards the entire
+round trip (not just the async check) so rapid/repeat clicks can't stack
+a second check or dialog. Cancel resolves the promise `false` and
+`beginNewGame()` is simply never called — no code path exists that could
+mutate anything on Cancel.
+
+5 new Playwright tests (`tests/newGameConfirm.spec.ts`): existing save
+(Day > 1) shows the real confirmation with the real day number; Cancel
+fires zero non-GET `/api/` requests across the whole round trip and
+leaves the save's `time.day` monotonic (never resets); Confirm reaches
+`LobbyScene` (same real success marker `clickContinueOnTitleScreen()`
+uses); Continue never triggers the dialog; no-save proceeds directly.
+One deliberate, disclosed deviation from this suite's usual "no mocking,
+real stack" convention: the real dev save is a single, ever-growing,
+shared backend state with no way to genuinely reach "no save exists"
+without being destructive to every other spec file's own precondition —
+that one test uses `page.route()` to simulate a failed `GET /api/load`,
+the exact real failure `existingProgressDay()`'s own `catch` handles.
+Every other test in the file exercises the real running dev stack
+unmodified.
+
+Full backend suite (2556 passed — unchanged, since no backend file was
+touched), `mypy app/` (177 files), `ruff check app/ tests/` clean.
+`tsc -b --noEmit`, `eslint`, `vite build` clean. `newGameConfirm.spec.ts`:
+5/5 passed against the real running dev stack (real save at Day 87 by
+the time of the run). Live-verified via screenshot: the dialog renders
+correctly, styled consistently with `EmergencyStopConfirm`'s existing
+pixel/parchment convention, showing the real live day number.
+
+No duplicate save/new-game system was created. No trading/strategy/
+agent/market code was touched — `git diff --stat` for this feature
+touches only `EventBus.ts`, `App.tsx`, `MainMenuScene.ts`, the new
+`NewGameConfirm.tsx`, and the new test file.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

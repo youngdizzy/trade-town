@@ -198,6 +198,14 @@ export interface GameEvents {
   "ui:commandPalette": { open: boolean };
   "ui:breakthrough": { open: boolean };
   "ui:emergencyStopConfirm": { pending: "activate" | "resume" | null };
+  // Safe "New Game" confirmation — MainMenuScene emits this (with the
+  // existing save's real current day) before it would otherwise overwrite
+  // the title-screen "New Game" flow; null closes the dialog without a
+  // result (e.g. component unmount). NewGameConfirm.tsx owns rendering;
+  // MainMenuScene listens once for "ui:newGameConfirmResult" to learn
+  // what the player chose.
+  "ui:newGameConfirm": { day: number } | null;
+  "ui:newGameConfirmResult": { confirmed: boolean };
   // Design Bible Chapter 67 (TTOS) Part 3 — the Quick Action Dock's
   // quick-jump buttons. `tab` is a bare string (not FullCommandCenter's
   // own `Tab` union) to avoid a circular import — FullCommandCenter

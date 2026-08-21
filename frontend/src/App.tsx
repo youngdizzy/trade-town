@@ -21,6 +21,7 @@ import { ExecutiveVoting } from "@/ui/components/CommandCenter/ExecutiveVoting";
 import { CyberNotifications } from "@/ui/components/CommandCenter/CyberNotifications";
 import { BreakthroughMoment } from "@/ui/components/BreakthroughMoment";
 import { EmergencyStopConfirm } from "@/ui/components/EmergencyStopConfirm";
+import { NewGameConfirm } from "@/ui/components/NewGameConfirm";
 import { MobileTouchControls } from "@/ui/components/MobileTouchControls";
 
 export default function App() {
@@ -48,6 +49,7 @@ export default function App() {
       <CyberNotifications />
       <BreakthroughMoment />
       <EmergencyStopConfirm />
+      <NewGameConfirm />
       <CommandPalette />
       <MobileTouchControls />
     </div>
