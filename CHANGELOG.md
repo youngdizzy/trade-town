@@ -73,7 +73,7 @@ development milestones, not semver releases.
   both on every new filing — real discipline at the one real point of human action. The filing form gained
   two new required textareas; "File Experiment" stays disabled until both are filled in.
 
-  4 new backend tests. Full backend suite (2538 passed), `mypy app/`, `ruff check app/ tests/` clean.
+  3 new backend tests. Full backend suite (2538 passed), `mypy app/`, `ruff check app/ tests/` clean.
   `tsc -b --noEmit`, `eslint`, `vite build` clean. Live-verified: a Command Center screenshot of the real
   filing form, followed by a direct API check confirming the just-filed experiment persisted both real
   values exactly as typed.
@@ -191,6 +191,22 @@ development milestones, not semver releases.
 
   This closes every remaining phase of the directive except the structurally-blocked fuller Phase 16 ask (see
   Increment 2 above). Phases 19/20 (comprehensive testing, final audit) tracked separately.
+
+- **CEO directive "Quant Research Factory / Strategy Discovery Engine," Phases 19-20: comprehensive testing +
+  final honest audit** (documentation only — `docs/Architecture.md`): a dedicated regression pass across the
+  whole directive's surface area. Full backend suite (2556 passed), `mypy app/` (177 files), `ruff check app/
+  tests/` clean. Full frontend `tsc -b --noEmit`, `eslint`, `vite build` clean. Full live Playwright re-runs
+  against a freshly-restarted, single-instance dev stack: `sandbox.spec.ts` 4/4 passed; `commandCenter.spec.ts`
+  31/33 passed, 1 skipped, 1 failed — the single failure is the exact same test with the exact same failure
+  signature already documented as a known pre-existing environmental issue (headless-browser input timing) in
+  Directive A's own Phase 13 comprehensive-testing pass, unrelated to any code this directive touched.
+
+  The final 18-question audit (see `docs/Architecture.md`) surfaced one more real self-correction: recounting
+  Phase 1's actual commit diff found it added exactly 3 new tests, not the 4 originally stated — corrected in
+  both this file and `docs/Architecture.md` (the corrected total, 2+3+7+6+5=23, matches the real suite growth
+  from 2533 to 2556 exactly). Every phase of the directive is now closed except the one genuine, permanently
+  structural gap already disclosed in Increment 2: the fuller Phase 16 ask (an automated hypothesis-generation
+  loop that learns from outcomes), blocked by the real absence of any generation mechanism in this codebase.
 
 - **CEO directive "Portfolio Construction, Capital Allocation & Execution Realism," Phase 1 (audit) +
   Increment 1 (live strategy-position attribution + real exposure reads)** (backend:

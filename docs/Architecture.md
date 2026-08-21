@@ -12965,7 +12965,7 @@ gained two new required textareas; "File Experiment" stays disabled
 until both are non-empty, matching the existing hypothesis-required
 pattern.
 
-4 new backend tests (end-to-end threading, an honest-None omission
+3 new backend tests (end-to-end threading, an honest-None omission
 case, and a backward-compat `model_validate()` check on a pre-existing
 experiment's dumped shape with both keys stripped). Full backend suite
 (2538 passed, up from 2535), `mypy app/`, `ruff check app/ tests/`
@@ -13184,6 +13184,186 @@ with a blank canvas — not a code regression. Fixed by killing every
 leftover process by exact PID (a plain `pkill -f vite` had silently
 failed to reach all of them) before starting one single fresh instance
 and confirming it actually bound to port 5173.
+
+### Phase 19 — Comprehensive Testing
+
+A dedicated regression pass across the whole directive's surface area,
+not just the per-increment unit tests each phase above already ran.
+Full backend suite: **2556 passed**, `mypy app/` (177 files) clean,
+`ruff check app/ tests/` clean. Full frontend: `tsc -b --noEmit`,
+`eslint`, `vite build` all clean.
+
+Full live Playwright re-runs against a freshly-restarted dev stack
+(single confirmed instance on the correct ports, per Phase 15's own
+process-hygiene finding above): `sandbox.spec.ts` — **4/4 passed**
+(every Quant Research Lab/Strategy Validation Laboratory test, covering
+every phase built in this directive that touches that surface).
+`commandCenter.spec.ts` — **31/33 passed, 1 skipped, 1 failed**. The
+single failure (`blocks interaction but allows movement while open` —
+a player-movement/WASD-input timing assertion in the game world scene)
+is the exact same test, with the exact same failure signature, already
+documented as a known pre-existing environmental issue in Directive A's
+own Phase 13 comprehensive-testing pass above — headless-browser input
+timing, structurally unrelated to any Command Center panel or any code
+this directive touched. The skip is the same known real-time-popup-
+timing case noted there too. Every test exercising this directive's own
+UI changes — the Quant Research Lab filing form, the Research Factory
+Overview, and the Knowledge Graph (including its new filter chip) —
+passed.
+
+### Phase 20 — Final Honest Audit
+
+CEO directive "Quant Research Factory / Strategy Discovery Engine,"
+mandated closing report. Eighteen items, each answered directly against
+real evidence produced across Phases 1-19 above.
+
+1. **Was research done first, on every phase, before any code?** Yes.
+   Phase 1's own architecture audit (a dedicated research agent
+   answering 18 specific questions against real code citations) came
+   before a single line changed, and reframed the whole directive's
+   scope toward the genuinely narrow real gaps it found. Every
+   subsequent increment opened with its own targeted research pass —
+   a second research-agent audit specifically for Phases 5 and 15
+   before those two increments began — rather than assuming a gap
+   existed.
+2. **Was anything duplicated that already existed?** No — the audits
+   exist specifically to prevent this. `count_experiments_for_family()`
+   reuses the existing `MAX_QUANT_RESEARCH_EXPERIMENTS` bounded-archive
+   convention rather than inventing a new cap;
+   `compute_buy_and_hold_baseline()` reuses
+   `market_data_provider.get_candles()` rather than building a second
+   data source; Phase 15 reuses the `research` node type's own
+   `"researched"` edge relation for the researcher-agent link rather
+   than inventing a redundant one; the EMA-pullback-specific
+   `_detect_naive_crosses()`/`confirmed_vs_naive_baseline` was
+   deliberately left untouched and NOT reused for Phase 5's general
+   baseline, since research confirmed it is a different real concept
+   (entry-rule variant comparison, not a market benchmark).
+3. **Was anything fabricated?** No real instance found.
+   `family_experiment_count` is `None` whenever the persisted list
+   isn't threaded through, never guessed as 1; `buyAndHoldBaseline` is
+   never blended with a strategy's own R-multiple stats into a single
+   "beat the market" figure — explicitly disclosed as different units
+   in three separate places (module docstring, schema docstring, UI
+   label); a `"tested"` Knowledge Graph edge only appears on a real
+   compiled-definition-id match — live-verified reading honestly 0 in
+   the real dev save, not padded to look more connected; a candle
+   window too small to measure a real return is skipped, never
+   reported as a fabricated 0%.
+4. **Was any score manipulated?** No — `family_experiment_count`,
+   `buyAndHoldBaseline`, and the Knowledge Graph's new node/edges are
+   all read-only, informational additions; `_classify_outcome()` (the
+   one real promising/rejected/inconclusive judgment) was not touched
+   by any of this directive's six increments.
+5. **Was statistical significance ever overclaimed?** No — Phase 10's
+   own module docstring states explicitly why no p-value/false-
+   discovery-rate/corrected-significance-level is computed (this
+   codebase's real backtest outputs don't support deriving one
+   honestly); only a real, disclosed count is shown, with the
+   threshold styling adding context, never a fabricated severity
+   label.
+6. **Was any promotion/research step bypassed or made automatic?** No
+   — filing an experiment is still explicit CEO/agent action; the
+   fuller Phase 16 ask (an automated hypothesis-generation loop that
+   learns from outcomes) was explicitly NOT built, because Phase 1's
+   own research confirmed no real generation mechanism exists anywhere
+   in this codebase to attach it to (no LLM call exists anywhere,
+   confirmed by direct citation of `strategy_compiler.py`'s own
+   docstring) — a structural block stated plainly rather than worked
+   around with a fabricated generator.
+7. **Was any look-ahead introduced?** No new backtest math anywhere in
+   this directive's six increments. The buy-and-hold baseline reads
+   the identical, already-fetched, oldest-first historical window a
+   backtest already replayed — first/last close of real past bars,
+   structurally incapable of seeing future data.
+8. **Was the adversarial posture preserved or weakened?** Preserved —
+   the existing walk-forward/parameter-sensitivity/cost-sensitivity/
+   overfitting-diagnosis/look-ahead-audit pipeline was read from, never
+   modified. Phase 10's family-test-count caution and Phase 5's regime
+   context both push toward MORE scrutiny of a passing backtest, never
+   less.
+9. **Was live/paper governance preserved?** Yes — none of this
+   directive's work touches `Strategy` stage-gating, executive
+   approval, or paper/live promotion; research remains strictly
+   read-only/proposal-only throughout.
+10. **Is the buy-and-hold baseline genuinely real?** Yes (Phase 5) —
+    live-verified via a direct API call returning real, distinct
+    per-symbol returns for all 8 seed symbols computed from real seeded
+    first/last closes (e.g. AAPL -7.77%, QQQ +19.83%), and a repeated-
+    call test confirming the identical series is read every time.
+11. **Is the multiple-testing count genuinely real?** Yes (Phase 10) —
+    live-verified growing 1 → 2 across two real, sequential filings of
+    the same compiled strategy against the real running dev server.
+12. **Is the Knowledge Graph integration genuinely real, never a
+    fabricated connection?** Yes (Phase 15) — live-verified against the
+    real dev save: 27 real `research_experiment` nodes, 27 real
+    `researched` edges (each citing the real researcher agent), and 0
+    `tested` edges — honestly 0, because none of that save's persisted
+    strategies happen to share a real compiled definition id with any
+    filed experiment, not padded to look more connected than the real
+    data supports.
+13. **Was anything duplicated in the frontend?** No — Phase 15 reused
+    the existing `DataRow`/`VerdictPill` component patterns and the
+    existing filter-chip loop (`ALL_TYPES.map(...)`); the stale
+    `KnowledgeNodeType`/`KnowledgeEdgeRelation` gap Phase 15's own audit
+    found (missing `black_swan_event`/`economic_event`/`same_day` from
+    earlier, unrelated Design Bible chapters) was fixed in place, not
+    duplicated around.
+14. **What genuine gaps remain, disclosed rather than hidden?** One:
+    the fuller Phase 16 ask (an automated hypothesis-generation loop
+    that itself learns from research outcomes) remains permanently,
+    structurally blocked by the real absence of any generation
+    mechanism in this codebase — stated explicitly in Phase 1/14-16's
+    own writeups above, not silently dropped. Every other phase of the
+    directive is closed.
+15. **Test evidence.** Backend: full suite grew from 2533 (confirmed
+    end of Directive A, "Portfolio Construction, Capital Allocation &
+    Execution Realism," Phase 14) to 2556 passed (confirmed end of
+    Phase 19 above) — a real, verified net growth of 23 tests across
+    this directive's six increments: Phase 17 (+0, frontend-only),
+    Phase 14/16 (+2), Phase 1 (+3), Phase 10 (+7), Phase 5 (+6), Phase
+    15 (+5). `mypy app/` clean throughout (177 files by the end), `ruff
+    check app/ tests/` clean throughout.
+16. **A real self-correction surfaced by this very audit.** Recounting
+    each increment's actual new test methods directly against its own
+    real commit diff (not against the prose written at the time) found
+    Phase 1's CHANGELOG/Architecture.md entries had overcounted its new
+    tests as 4 when the commit itself added exactly 3 (`git show
+    08db554 -- backend/tests/` lists three `def test_` additions, and
+    the real suite delta 2538-2535=3 confirms it). Corrected in both
+    documents rather than left standing — the same class of counting
+    slip, and the same discipline in catching it, as Directive A's own
+    Phase 14 audit. The corrected total (2+3+7+6+5=23) matches the real
+    suite growth exactly.
+17. **Live verification across the whole directive.** Every increment
+    was verified against a freshly-restarted, single-instance dev stack
+    (never just unit tests): Phase 17/14-16/1 via Command Center
+    screenshots (Phase 1 also via a direct API round-trip); Phase 10 via
+    a real two-filing API sequence plus a targeted `sandbox.spec.ts`
+    re-run; Phase 5 via a direct `research-experiment` API call plus a
+    `sandbox.spec.ts` re-run; Phase 15 via a direct `knowledge-graph`
+    API call, a screenshot, and a `commandCenter.spec.ts` re-run; Phase
+    19 above re-ran both spec files in full as a final regression check.
+    A real, disclosed process-hygiene issue (three stale `vite`
+    instances bound to adjacent ports from earlier phases in this
+    marathon session) was caught and fixed mid-verification rather than
+    misread as a code regression — the exact diagnostic pattern already
+    established earlier in this same session.
+18. **Does the directive's own closing principle hold?** Yes — and it
+    already largely held before this directive began. Phase 1's own
+    audit found the adversarial pipeline the directive asked for
+    (compiler, backtester, walk-forward, parameter/cost sensitivity,
+    regime robustness, Devil's Advocate, multi-dimension scorecards, an
+    evidence-gated promotion pipeline) already real under different
+    names. This directive's six increments closed the narrow real gaps
+    that audit actually found — a required falsification criterion at
+    the point of filing, prior-outcome-aware duplicate warnings, a CEO
+    overview dashboard, a real (not fabricated) multiple-testing count,
+    a real (not blended) regime-context baseline, and Knowledge Graph
+    discoverability — without weakening a single existing rejection
+    criterion, and with the one genuine remaining gap (automated
+    hypothesis generation) stated plainly as structurally blocked
+    rather than papered over.
 
 ## Save format compatibility
 
