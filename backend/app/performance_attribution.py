@@ -78,6 +78,7 @@ from typing import Any
 
 from app.schemas import (
     DecisionVaultEntry,
+    FailureClassification,
     MarketIntelligenceRegime,
     PaperTrade,
     RegimePerformanceRead,
@@ -87,6 +88,9 @@ from app.schemas import (
     Strategy,
     StrategyCapitalAllocationRead,
     StrategyCapitalAllocationSummary,
+    StrategyDegradationLevel,
+    StrategyDegradationRead,
+    StrategyDegradationSummary,
     StrategyExposureRead,
     StrategyHealthAssessment,
     StrategyLiveVsBacktestRead,
@@ -100,6 +104,7 @@ from app.schemas import (
     SymbolPerformanceSummary,
     TradingSession,
 )
+from app.strategy_lab import HEALTH_RECENT_WINDOW
 
 # CEO directive "Live Trade → Strategy Provenance," Phase 5 — a disclosed,
 # arbitrary judgment threshold (same convention as MIN_SYMBOL_SAMPLE_FOR_
@@ -446,6 +451,21 @@ def _avg_slippage_bps(trades: list[PaperTrade]) -> tuple[float | None, float | N
     )
 
 
+def _trades_by_strategy_id(trade_history: list[PaperTrade], decision_vault: list[DecisionVaultEntry]) -> dict[str, list[PaperTrade]]:
+    """The real trades themselves (not just an already-aggregated *Read),
+    grouped the identical way compute_strategy_performance() itself
+    groups them — shared by every function below that needs the raw
+    trade objects for a strategy rather than pre-aggregated metrics."""
+    vault_by_trade_id = _vault_entries_by_trade_id(decision_vault)
+    by_strategy: dict[str, list[PaperTrade]] = {}
+    for trade in trade_history:
+        entry = vault_by_trade_id.get(trade.id)
+        if entry is None or entry.strategy_id is None:
+            continue
+        by_strategy.setdefault(entry.strategy_id, []).append(trade)
+    return by_strategy
+
+
 def compute_strategy_capital_allocation_evidence(
     strategies: list[Strategy],
     trade_history: list[PaperTrade],
@@ -474,16 +494,7 @@ def compute_strategy_capital_allocation_evidence(
     for session_read in strategy_session_performance.reads:
         sessions_by_strategy_id.setdefault(session_read.strategy_id, []).append(session_read)
     exposure_by_strategy_id = {exposure.strategy_id: exposure for exposure in strategy_exposure if exposure.strategy_id is not None}
-    # Trades themselves (not just the already-aggregated StrategyPerformanceRead)
-    # are needed for the two new real reads below, grouped the identical
-    # way compute_strategy_performance() itself groups them.
-    vault_by_trade_id = _vault_entries_by_trade_id(decision_vault)
-    trades_by_strategy_id: dict[str, list[PaperTrade]] = {}
-    for trade in trade_history:
-        entry = vault_by_trade_id.get(trade.id)
-        if entry is None or entry.strategy_id is None:
-            continue
-        trades_by_strategy_id.setdefault(entry.strategy_id, []).append(trade)
+    trades_by_strategy_id = _trades_by_strategy_id(trade_history, decision_vault)
 
     reads: list[StrategyCapitalAllocationRead] = []
     for strategy in strategies:
@@ -535,3 +546,158 @@ def compute_strategy_capital_allocation_evidence(
 
     reads.sort(key=lambda r: r.allocated_capital, reverse=True)
     return StrategyCapitalAllocationSummary(reads=reads, minSampleForEvidence=MIN_SYMBOL_SAMPLE_FOR_VERDICT, updatedAt=_now_iso())
+
+
+# CEO directive "Portfolio Construction, Capital Allocation & Execution
+# Realism," Phase 6 — every threshold below is a disclosed, arbitrary
+# judgment call (the same convention as WIN_RATE_DIVERGENCE_THRESHOLD_PCT
+# above), never derived from a statistical test this sample size could
+# actually support. Chosen conservatively: a level only escalates past
+# NORMAL_VARIATION when a real signal is unambiguous, per the directive's
+# own "don't auto-retire on tiny samples" rule.
+CRITICAL_LOSS_STREAK = 4
+POSSIBLE_LOSS_STREAK = 3
+EXPECTANCY_DETERIORATION_PCT = 3.0
+VOLATILITY_REGIME_CHANGE_MULTIPLE = 1.5
+EXECUTION_DEGRADATION_BPS = 10.0
+ABNORMAL_DRAWDOWN_LOSS_MULTIPLE = 3.0
+CRITICAL_DRAWDOWN_LOSS_MULTIPLE = 5.0
+REPEATED_INVALIDATION_THRESHOLD = 2
+
+
+def _consecutive_losses(ordered_trades: list[PaperTrade]) -> int:
+    """Real trailing loss streak — how many of this strategy's most
+    recent trades, counting back from the end of its own real
+    chronological order, were losses (pnl <= 0, the same convention
+    close_position() uses) with no win breaking the streak."""
+    count = 0
+    for trade in reversed(ordered_trades):
+        if trade.pnl > 0:
+            break
+        count += 1
+    return count
+
+
+def _avg_loss_usd(trades: list[PaperTrade]) -> float | None:
+    losers = [t.pnl for t in trades if t.pnl <= 0]
+    return round(sum(losers) / len(losers), 2) if losers else None
+
+
+def compute_strategy_degradation(
+    strategies: list[Strategy],
+    trade_history: list[PaperTrade],
+    decision_vault: list[DecisionVaultEntry],
+    failure_classifications: list[FailureClassification],
+) -> StrategyDegradationSummary:
+    """CEO directive "Portfolio Construction, Capital Allocation &
+    Execution Realism," Phase 6 — distinguishes normal live-trading
+    variation from a real, evidence-backed warning sign, never auto-
+    retiring anything on a tiny sample. Every recent-vs-lifetime metric
+    pair reuses an already-computed source (`_group_metrics()`,
+    `_live_return_volatility_pct()`, `_avg_slippage_bps()`,
+    `_live_drawdown_usd()`) computed twice — once over the strategy's own
+    most recent `HEALTH_RECENT_WINDOW` trades (the identical recent-
+    window convention `app/strategy_lab.py`'s `compute_strategy_health()`
+    already established for backtest runs, reused here for live trades),
+    once over its full lifetime. `recent_invalidation_count` is the one
+    genuinely new join: how many of those recent trades the real,
+    already-existing Discipline Chamber (`app/failure_review.py`)
+    classified `reason == "bad_thesis"` — a real "this strategy's own
+    thesis was wrong again" signal, not a fabricated one."""
+    trades_by_strategy_id = _trades_by_strategy_id(trade_history, decision_vault)
+    failure_reason_by_trade_id = {fc.trade_id: fc.reason for fc in failure_classifications}
+
+    reads: list[StrategyDegradationRead] = []
+    for strategy in strategies:
+        strategy_trades = trades_by_strategy_id.get(strategy.id, [])
+        if len(strategy_trades) < MIN_SYMBOL_SAMPLE_FOR_VERDICT:
+            reads.append(
+                StrategyDegradationRead(
+                    strategyId=strategy.id,
+                    strategyName=strategy.name,
+                    level="not_enough_data",
+                    signals=[],
+                    recentTradeCount=len(strategy_trades),
+                    lifetimeTradeCount=len(strategy_trades),
+                    consecutiveLosses=_consecutive_losses(strategy_trades),
+                    recentInvalidationCount=sum(1 for t in strategy_trades if failure_reason_by_trade_id.get(t.id) == "bad_thesis"),
+                )
+            )
+            continue
+
+        ordered = sorted(strategy_trades, key=lambda t: t.closed_at)
+        recent = ordered[-HEALTH_RECENT_WINDOW:]
+
+        lifetime_metrics = _group_metrics(ordered)
+        recent_metrics = _group_metrics(recent)
+        recent_volatility = _live_return_volatility_pct(recent)
+        lifetime_volatility = _live_return_volatility_pct(ordered)
+        recent_entry_slip, _recent_exit_slip = _avg_slippage_bps(recent)
+        lifetime_entry_slip, _lifetime_exit_slip = _avg_slippage_bps(ordered)
+        recent_drawdown = _live_drawdown_usd(recent)
+        avg_loss = _avg_loss_usd(ordered)
+        consecutive_losses = _consecutive_losses(ordered)
+        recent_invalidation_count = sum(1 for t in recent if failure_reason_by_trade_id.get(t.id) == "bad_thesis")
+
+        critical_signals: list[str] = []
+        possible_signals: list[str] = []
+
+        if consecutive_losses >= CRITICAL_LOSS_STREAK:
+            critical_signals.append(f"Loss clustering — {consecutive_losses} consecutive losing trades.")
+        elif consecutive_losses >= POSSIBLE_LOSS_STREAK:
+            possible_signals.append(f"Loss clustering — {consecutive_losses} consecutive losing trades.")
+
+        recent_expectancy = recent_metrics["expectancyPct"]
+        lifetime_expectancy = lifetime_metrics["expectancyPct"]
+        if recent_expectancy is not None and lifetime_expectancy is not None:
+            if recent_expectancy < 0 <= lifetime_expectancy:
+                critical_signals.append(f"Expectancy deterioration — recent {recent_expectancy:+.2f}% has flipped negative from a lifetime {lifetime_expectancy:+.2f}%.")
+            elif recent_expectancy < lifetime_expectancy - EXPECTANCY_DETERIORATION_PCT:
+                possible_signals.append(f"Expectancy deterioration — recent {recent_expectancy:+.2f}% vs. lifetime {lifetime_expectancy:+.2f}%.")
+
+        if recent_volatility is not None and lifetime_volatility is not None and lifetime_volatility > 0 and recent_volatility > lifetime_volatility * VOLATILITY_REGIME_CHANGE_MULTIPLE:
+            possible_signals.append(f"Volatility regime change — recent return volatility {recent_volatility:.2f}% vs. lifetime {lifetime_volatility:.2f}%.")
+
+        if recent_entry_slip is not None and lifetime_entry_slip is not None and recent_entry_slip > lifetime_entry_slip + EXECUTION_DEGRADATION_BPS:
+            possible_signals.append(f"Execution degradation — recent avg entry slippage {recent_entry_slip:.1f} bps vs. lifetime {lifetime_entry_slip:.1f} bps.")
+
+        if recent_drawdown is not None and avg_loss is not None and avg_loss < 0:
+            if recent_drawdown > abs(avg_loss) * CRITICAL_DRAWDOWN_LOSS_MULTIPLE:
+                critical_signals.append(f"Abnormal drawdown — recent ${recent_drawdown:,.0f} pullback vs. a typical single-trade loss of ${abs(avg_loss):,.0f}.")
+            elif recent_drawdown > abs(avg_loss) * ABNORMAL_DRAWDOWN_LOSS_MULTIPLE:
+                possible_signals.append(f"Abnormal drawdown — recent ${recent_drawdown:,.0f} pullback vs. a typical single-trade loss of ${abs(avg_loss):,.0f}.")
+
+        if recent_invalidation_count >= REPEATED_INVALIDATION_THRESHOLD:
+            critical_signals.append(f"Repeated invalidations — {recent_invalidation_count} of the last {len(recent)} trades were classified 'bad thesis' by the Discipline Chamber.")
+
+        if critical_signals:
+            level: StrategyDegradationLevel = "critical_degradation"
+            signals = critical_signals + possible_signals
+        elif possible_signals:
+            level = "possible_degradation"
+            signals = possible_signals
+        else:
+            level = "normal_variation"
+            signals = []
+
+        reads.append(
+            StrategyDegradationRead(
+                strategyId=strategy.id,
+                strategyName=strategy.name,
+                level=level,
+                signals=signals,
+                recentTradeCount=len(recent),
+                lifetimeTradeCount=len(ordered),
+                recentExpectancyPct=recent_expectancy,
+                lifetimeExpectancyPct=lifetime_expectancy,
+                recentReturnVolatilityPct=recent_volatility,
+                lifetimeReturnVolatilityPct=lifetime_volatility,
+                recentAvgSlippageBps=recent_entry_slip,
+                lifetimeAvgSlippageBps=lifetime_entry_slip,
+                recentDrawdownUsd=recent_drawdown,
+                consecutiveLosses=consecutive_losses,
+                recentInvalidationCount=recent_invalidation_count,
+            )
+        )
+
+    return StrategyDegradationSummary(reads=reads, recentWindowSize=HEALTH_RECENT_WINDOW, minSampleForVerdict=MIN_SYMBOL_SAMPLE_FOR_VERDICT, updatedAt=_now_iso())

@@ -1158,6 +1158,59 @@ class StrategyCapitalAllocationSummary(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# CEO directive "Portfolio Construction, Capital Allocation & Execution
+# Realism," Phase 6 — strategy degradation, distinguishing normal
+# variation from a real, evidence-backed warning sign. Never auto-
+# retires anything on a tiny sample (see app/performance_attribution.py's
+# compute_strategy_degradation() for exactly which real signal each
+# level requires and every disclosed, arbitrary threshold chosen).
+StrategyDegradationLevel = Literal["normal_variation", "possible_degradation", "critical_degradation", "not_enough_data"]
+
+
+class StrategyDegradationRead(CamelModel):
+    """One row per real Strategy with enough live trade history to say
+    anything. `signals` names exactly which real, cited condition(s)
+    fired — never a black-box score. Every recent/lifetime metric pair
+    reuses an already-computed source (`_group_metrics()`,
+    `_live_return_volatility_pct()`, `_avg_slippage_bps()`,
+    `_live_drawdown_usd()` — see compute_strategy_capital_allocation_
+    evidence() for the first four) computed twice, once over the
+    strategy's own most recent trades and once over its full lifetime —
+    never a new statistic. `recent_invalidation_count` is the one
+    genuinely new real read this phase adds: how many of the strategy's
+    own recent trades were classified `reason == "bad_thesis"` by the
+    real, already-existing Discipline Chamber failure review
+    (app/failure_review.py's classify_failure(), filed for every real
+    closed losing trade) — a real "this strategy's thesis was wrong
+    again" signal, not a fabricated one."""
+
+    strategy_id: str = Field(alias="strategyId")
+    strategy_name: str = Field(alias="strategyName")
+    level: StrategyDegradationLevel
+    signals: list[str]
+    recent_trade_count: int = Field(alias="recentTradeCount")
+    lifetime_trade_count: int = Field(alias="lifetimeTradeCount")
+    recent_expectancy_pct: float | None = Field(default=None, alias="recentExpectancyPct")
+    lifetime_expectancy_pct: float | None = Field(default=None, alias="lifetimeExpectancyPct")
+    recent_return_volatility_pct: float | None = Field(default=None, alias="recentReturnVolatilityPct")
+    lifetime_return_volatility_pct: float | None = Field(default=None, alias="lifetimeReturnVolatilityPct")
+    # Entry-side slippage only (the same side the degradation signal
+    # compares) — exit-side is computed for symmetry with Phase 5's
+    # avgExitSlippageBps but not separately tracked here.
+    recent_avg_slippage_bps: float | None = Field(default=None, alias="recentAvgSlippageBps")
+    lifetime_avg_slippage_bps: float | None = Field(default=None, alias="lifetimeAvgSlippageBps")
+    recent_drawdown_usd: float | None = Field(default=None, alias="recentDrawdownUsd")
+    consecutive_losses: int = Field(alias="consecutiveLosses")
+    recent_invalidation_count: int = Field(alias="recentInvalidationCount")
+
+
+class StrategyDegradationSummary(CamelModel):
+    reads: list[StrategyDegradationRead]
+    recent_window_size: int = Field(alias="recentWindowSize")
+    min_sample_for_verdict: int = Field(alias="minSampleForVerdict")
+    updated_at: str = Field(alias="updatedAt")
+
+
 # CEO directive "Next Professional Trading Firm Phase," Priority 5 —
 # Research Data Integrity (app/data_provenance.py). Distinct from, and
 # reusing rather than duplicating, `DataStatus` above (which already

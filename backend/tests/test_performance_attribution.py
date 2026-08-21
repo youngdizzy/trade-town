@@ -9,18 +9,23 @@ trades.
 from __future__ import annotations
 
 from app.performance_attribution import (
+    CRITICAL_LOSS_STREAK,
     MIN_SYMBOL_SAMPLE_FOR_VERDICT,
+    POSSIBLE_LOSS_STREAK,
+    REPEATED_INVALIDATION_THRESHOLD,
     ROBUSTNESS_UNAVAILABLE_NOTE,
     WIN_RATE_DIVERGENCE_THRESHOLD_PCT,
     compute_regime_performance,
     compute_session_performance,
     compute_strategy_capital_allocation_evidence,
+    compute_strategy_degradation,
     compute_strategy_live_vs_backtest,
     compute_strategy_performance,
     compute_strategy_session_performance,
     compute_symbol_performance,
 )
-from app.schemas import DecisionVaultEntry, LiquidityRead, PaperTrade, Strategy, StrategyExposureRead, StrategyHealthAssessment, StrategySessionPerformanceSummary
+from app.schemas import DecisionVaultEntry, FailureClassification, LiquidityRead, PaperTrade, Strategy, StrategyExposureRead, StrategyHealthAssessment, StrategySessionPerformanceSummary
+from app.strategy_lab import HEALTH_RECENT_WINDOW
 
 
 def _trade(
@@ -661,3 +666,196 @@ class TestComputeStrategyCapitalAllocationEvidence:
         read = summary.reads[0]
         assert len(read.session_reads) == 1
         assert read.session_reads[0].session == "new_york"
+
+
+def _failure_classification(*, trade_id: str, reason: str = "bad_thesis") -> FailureClassification:
+    return FailureClassification(
+        id=f"fc-{trade_id}",
+        tradeId=trade_id,
+        decisionId=f"decision-{trade_id}",
+        symbol="AAPL",
+        reason=reason,  # type: ignore[arg-type]
+        evidence="test",
+        attributedAgents=["scout"],  # type: ignore[list-item]
+        tradePnlPct=-1.0,
+        simDay=1,
+        createdAt="2024-01-01T00:00:00+00:00",
+    )
+
+
+class TestComputeStrategyDegradation:
+    """CEO directive "Portfolio Construction, Capital Allocation &
+    Execution Realism," Phase 6 — normal variation vs. a real,
+    evidence-backed degradation warning. Every scenario below is
+    constructed so exactly one real trigger condition fires (except
+    where noted), proving each signal independently."""
+
+    def test_empty_roster_produces_no_reads(self) -> None:
+        summary = compute_strategy_degradation([], [], [], [])
+        assert summary.reads == []
+        assert summary.recent_window_size == HEALTH_RECENT_WINDOW
+        assert summary.min_sample_for_verdict == MIN_SYMBOL_SAMPLE_FOR_VERDICT
+
+    def test_below_min_sample_reads_not_enough_data(self) -> None:
+        strategy = _strategy(strategy_id="s1")
+        trades = [_trade(trade_id="a", pnl=10.0, pnl_pct=1.0)]
+        vault = [_vault_entry(trade_id="a", strategy_id="s1")]
+        summary = compute_strategy_degradation([strategy], trades, vault, [])
+        read = summary.reads[0]
+        assert read.level == "not_enough_data"
+        assert read.signals == []
+
+    def test_consistent_wins_read_normal_variation(self) -> None:
+        strategy = _strategy(strategy_id="s1")
+        trades = [_trade(trade_id=f"t{i}", pnl=10.0, pnl_pct=1.0, closed_at=f"2024-01-0{i+1}T00:00:00+00:00") for i in range(3)]
+        vault = [_vault_entry(trade_id=t.id, strategy_id="s1") for t in trades]
+        summary = compute_strategy_degradation([strategy], trades, vault, [])
+        read = summary.reads[0]
+        assert read.level == "normal_variation"
+        assert read.signals == []
+
+    def test_four_consecutive_losses_reads_critical_loss_clustering(self) -> None:
+        strategy = _strategy(strategy_id="s1")
+        trades = [_trade(trade_id=f"t{i}", pnl=-1.0, pnl_pct=-1.0, closed_at=f"2024-01-0{i+1}T00:00:00+00:00") for i in range(CRITICAL_LOSS_STREAK)]
+        vault = [_vault_entry(trade_id=t.id, strategy_id="s1") for t in trades]
+        summary = compute_strategy_degradation([strategy], trades, vault, [])
+        read = summary.reads[0]
+        assert read.level == "critical_degradation"
+        assert read.consecutive_losses == CRITICAL_LOSS_STREAK
+        assert any(s.startswith("Loss clustering") for s in read.signals)
+
+    def test_three_consecutive_losses_reads_possible_loss_clustering(self) -> None:
+        strategy = _strategy(strategy_id="s1")
+        trades = [_trade(trade_id=f"t{i}", pnl=-1.0, pnl_pct=-1.0, closed_at=f"2024-01-0{i+1}T00:00:00+00:00") for i in range(POSSIBLE_LOSS_STREAK)]
+        vault = [_vault_entry(trade_id=t.id, strategy_id="s1") for t in trades]
+        summary = compute_strategy_degradation([strategy], trades, vault, [])
+        read = summary.reads[0]
+        assert read.level == "possible_degradation"
+        assert read.consecutive_losses == POSSIBLE_LOSS_STREAK
+        assert any(s.startswith("Loss clustering") for s in read.signals)
+
+    def test_a_win_breaking_the_streak_resets_the_consecutive_loss_count(self) -> None:
+        strategy = _strategy(strategy_id="s1")
+        trades = [
+            _trade(trade_id="loss1", pnl=-1.0, pnl_pct=-1.0, closed_at="2024-01-01T00:00:00+00:00"),
+            _trade(trade_id="win", pnl=10.0, pnl_pct=1.0, closed_at="2024-01-02T00:00:00+00:00"),
+            _trade(trade_id="loss2", pnl=-1.0, pnl_pct=-1.0, closed_at="2024-01-03T00:00:00+00:00"),
+        ]
+        vault = [_vault_entry(trade_id=t.id, strategy_id="s1") for t in trades]
+        summary = compute_strategy_degradation([strategy], trades, vault, [])
+        read = summary.reads[0]
+        # Only the trailing loss counts — the win in the middle breaks the streak.
+        assert read.consecutive_losses == 1
+
+    def test_expectancy_sign_flip_reads_critical(self) -> None:
+        strategy = _strategy(strategy_id="s1")
+        old_wins = [_trade(trade_id=f"old{i}", pnl=20.0, pnl_pct=20.0, closed_at=f"2024-01-0{i+1}T00:00:00+00:00") for i in range(3)]
+        recent_losses = [_trade(trade_id=f"recent{i}", pnl=-1.0, pnl_pct=-1.0, closed_at=f"2024-01-0{i+4}T00:00:00+00:00") for i in range(3)]
+        trades = old_wins + recent_losses
+        vault = [_vault_entry(trade_id=t.id, strategy_id="s1") for t in trades]
+        summary = compute_strategy_degradation([strategy], trades, vault, [])
+        read = summary.reads[0]
+        assert read.level == "critical_degradation"
+        assert read.recent_expectancy_pct is not None and read.recent_expectancy_pct < 0
+        assert read.lifetime_expectancy_pct is not None and read.lifetime_expectancy_pct >= 0
+        assert any(s.startswith("Expectancy deterioration") and "flipped negative" in s for s in read.signals)
+
+    def test_expectancy_drop_without_sign_flip_reads_possible(self) -> None:
+        strategy = _strategy(strategy_id="s1")
+        old_wins = [_trade(trade_id=f"old{i}", pnl=20.0, pnl_pct=20.0, closed_at=f"2024-01-0{i+1}T00:00:00+00:00") for i in range(3)]
+        recent_small_wins = [_trade(trade_id=f"recent{i}", pnl=10.0, pnl_pct=1.0, closed_at=f"2024-01-0{i+4}T00:00:00+00:00") for i in range(3)]
+        trades = old_wins + recent_small_wins
+        vault = [_vault_entry(trade_id=t.id, strategy_id="s1") for t in trades]
+        summary = compute_strategy_degradation([strategy], trades, vault, [])
+        read = summary.reads[0]
+        assert read.level == "possible_degradation"
+        assert read.recent_expectancy_pct is not None and read.recent_expectancy_pct >= 0
+        assert any(s.startswith("Expectancy deterioration") and "flipped negative" not in s for s in read.signals)
+
+    def test_a_sudden_volatility_spike_reads_possible(self) -> None:
+        strategy = _strategy(strategy_id="s1")
+        calm = [_trade(trade_id=f"calm{i}", pnl=10.0, pnl_pct=1.0, closed_at=f"2024-01-{i+1:02d}T00:00:00+00:00") for i in range(10)]
+        wild = [
+            _trade(trade_id="wild0", pnl=10.0, pnl_pct=1.0, closed_at="2024-01-11T00:00:00+00:00"),
+            _trade(trade_id="wild1", pnl=100.0, pnl_pct=10.0, closed_at="2024-01-12T00:00:00+00:00"),
+            _trade(trade_id="wild2", pnl=-80.0, pnl_pct=-8.0, closed_at="2024-01-13T00:00:00+00:00"),
+        ]
+        trades = calm + wild
+        vault = [_vault_entry(trade_id=t.id, strategy_id="s1") for t in trades]
+        summary = compute_strategy_degradation([strategy], trades, vault, [])
+        read = summary.reads[0]
+        assert read.recent_return_volatility_pct is not None and read.lifetime_return_volatility_pct is not None
+        assert read.recent_return_volatility_pct > read.lifetime_return_volatility_pct
+        assert any(s.startswith("Volatility regime change") for s in read.signals)
+
+    def test_execution_degradation_reads_possible(self) -> None:
+        strategy = _strategy(strategy_id="s1")
+        old = [_trade(trade_id=f"old{i}", pnl=10.0, pnl_pct=1.0, entry_slippage_bps=1.0, closed_at=f"2024-01-0{i+1}T00:00:00+00:00") for i in range(2)]
+        recent = [_trade(trade_id=f"recent{i}", pnl=10.0, pnl_pct=1.0, entry_slippage_bps=40.0, closed_at=f"2024-01-0{i+3}T00:00:00+00:00") for i in range(3)]
+        trades = old + recent
+        vault = [_vault_entry(trade_id=t.id, strategy_id="s1") for t in trades]
+        summary = compute_strategy_degradation([strategy], trades, vault, [])
+        read = summary.reads[0]
+        assert read.level == "possible_degradation"
+        assert read.recent_avg_slippage_bps == 40.0
+        assert any(s.startswith("Execution degradation") for s in read.signals)
+
+    def test_a_moderate_recent_drawdown_reads_possible(self) -> None:
+        strategy = _strategy(strategy_id="s1")
+        trades = [
+            _trade(trade_id="small_loss", pnl=-2.0, pnl_pct=-0.2, closed_at="2024-01-01T00:00:00+00:00"),
+            _trade(trade_id="win", pnl=50.0, pnl_pct=5.0, closed_at="2024-01-02T00:00:00+00:00"),
+            _trade(trade_id="big_loss1", pnl=-20.0, pnl_pct=-2.0, closed_at="2024-01-03T00:00:00+00:00"),
+            _trade(trade_id="big_loss2", pnl=-20.0, pnl_pct=-2.0, closed_at="2024-01-04T00:00:00+00:00"),
+            _trade(trade_id="big_loss3", pnl=-20.0, pnl_pct=-2.0, closed_at="2024-01-05T00:00:00+00:00"),
+        ]
+        vault = [_vault_entry(trade_id=t.id, strategy_id="s1") for t in trades]
+        summary = compute_strategy_degradation([strategy], trades, vault, [])
+        read = summary.reads[0]
+        assert read.level in ("possible_degradation", "critical_degradation")
+        assert any(s.startswith("Abnormal drawdown") for s in read.signals)
+
+    def test_a_severe_recent_drawdown_reads_critical(self) -> None:
+        strategy = _strategy(strategy_id="s1")
+        tiny_losses = [_trade(trade_id=f"tiny{i}", pnl=-1.0, pnl_pct=-0.1, closed_at=f"2024-01-{i+1:02d}T00:00:00+00:00") for i in range(10)]
+        big_losses = [
+            _trade(trade_id="big0", pnl=-50.0, pnl_pct=-5.0, closed_at="2024-01-11T00:00:00+00:00"),
+            _trade(trade_id="big1", pnl=-50.0, pnl_pct=-5.0, closed_at="2024-01-12T00:00:00+00:00"),
+            _trade(trade_id="big2", pnl=-50.0, pnl_pct=-5.0, closed_at="2024-01-13T00:00:00+00:00"),
+        ]
+        trades = tiny_losses + big_losses
+        vault = [_vault_entry(trade_id=t.id, strategy_id="s1") for t in trades]
+        summary = compute_strategy_degradation([strategy], trades, vault, [])
+        read = summary.reads[0]
+        assert read.level == "critical_degradation"
+        assert any(s.startswith("Abnormal drawdown") for s in read.signals)
+
+    def test_repeated_invalidations_reads_critical(self) -> None:
+        strategy = _strategy(strategy_id="s1")
+        trades = [_trade(trade_id=f"t{i}", pnl=-1.0, pnl_pct=-1.0, closed_at=f"2024-01-0{i+1}T00:00:00+00:00") for i in range(3)]
+        vault = [_vault_entry(trade_id=t.id, strategy_id="s1") for t in trades]
+        failures = [_failure_classification(trade_id="t0"), _failure_classification(trade_id="t1")]
+        summary = compute_strategy_degradation([strategy], trades, vault, failures)
+        read = summary.reads[0]
+        assert read.recent_invalidation_count == REPEATED_INVALIDATION_THRESHOLD
+        assert read.level == "critical_degradation"
+        assert any(s.startswith("Repeated invalidations") for s in read.signals)
+
+    def test_a_single_invalidation_below_threshold_does_not_trigger(self) -> None:
+        strategy = _strategy(strategy_id="s1")
+        trades = [_trade(trade_id=f"t{i}", pnl=10.0, pnl_pct=1.0, closed_at=f"2024-01-0{i+1}T00:00:00+00:00") for i in range(3)]
+        vault = [_vault_entry(trade_id=t.id, strategy_id="s1") for t in trades]
+        failures = [_failure_classification(trade_id="t0")]
+        summary = compute_strategy_degradation([strategy], trades, vault, failures)
+        read = summary.reads[0]
+        assert read.recent_invalidation_count == 1
+        assert not any(s.startswith("Repeated invalidations") for s in read.signals)
+
+    def test_a_failure_classification_with_a_different_reason_is_not_counted_as_an_invalidation(self) -> None:
+        strategy = _strategy(strategy_id="s1")
+        trades = [_trade(trade_id=f"t{i}", pnl=-1.0, pnl_pct=-1.0, closed_at=f"2024-01-0{i+1}T00:00:00+00:00") for i in range(3)]
+        vault = [_vault_entry(trade_id=t.id, strategy_id="s1") for t in trades]
+        failures = [_failure_classification(trade_id="t0", reason="poor_execution"), _failure_classification(trade_id="t1", reason="process_violation")]
+        summary = compute_strategy_degradation([strategy], trades, vault, failures)
+        read = summary.reads[0]
+        assert read.recent_invalidation_count == 0

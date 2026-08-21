@@ -804,6 +804,38 @@ export interface StrategyCapitalAllocationSummary {
   updatedAt: string;
 }
 
+// CEO directive "Portfolio Construction, Capital Allocation & Execution
+// Realism," Phase 6 — normal variation vs. a real, evidence-backed
+// degradation warning. Never auto-retires anything on a tiny sample.
+export type StrategyDegradationLevel = "normal_variation" | "possible_degradation" | "critical_degradation" | "not_enough_data";
+
+export interface StrategyDegradationRead {
+  strategyId: string;
+  strategyName: string;
+  level: StrategyDegradationLevel;
+  /** Real, cited condition(s) that fired — never a black-box score. */
+  signals: string[];
+  recentTradeCount: number;
+  lifetimeTradeCount: number;
+  recentExpectancyPct: number | null;
+  lifetimeExpectancyPct: number | null;
+  recentReturnVolatilityPct: number | null;
+  lifetimeReturnVolatilityPct: number | null;
+  recentAvgSlippageBps: number | null;
+  lifetimeAvgSlippageBps: number | null;
+  recentDrawdownUsd: number | null;
+  consecutiveLosses: number;
+  /** How many of the strategy's own recent trades the Discipline Chamber classified "bad thesis". */
+  recentInvalidationCount: number;
+}
+
+export interface StrategyDegradationSummary {
+  reads: StrategyDegradationRead[];
+  recentWindowSize: number;
+  minSampleForVerdict: number;
+  updatedAt: string;
+}
+
 // CEO directive "Live Trade → Strategy Provenance," Phase 9 — "why
 // isn't this strategy trading live?" per strategy. Diagnostic only.
 export type StrategyNoTradeReason = "trading_live" | "blocked_by_regime_today" | "eligible_but_never_selected" | "no_backtest_evidence_yet";

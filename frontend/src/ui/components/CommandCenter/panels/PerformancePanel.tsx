@@ -10,6 +10,8 @@ import type {
   Strategy,
   StrategyCapitalAllocationRead,
   StrategyCapitalAllocationSummary,
+  StrategyDegradationRead,
+  StrategyDegradationSummary,
   StrategyPerformanceRead,
   StrategyPerformanceSummary,
   StrategySessionPerformanceSummary,
@@ -93,6 +95,14 @@ export function PerformancePanel() {
   const [capitalAllocation, setCapitalAllocation] = useState<StrategyCapitalAllocationSummary | null>(null);
   useEffect(() => {
     api.getStrategyCapitalAllocation().then(setCapitalAllocation).catch(() => undefined);
+  }, []);
+
+  // CEO directive "Portfolio Construction, Capital Allocation & Execution
+  // Realism," Phase 6 — normal variation vs. a real, evidence-backed
+  // degradation warning, never auto-retiring on a tiny sample.
+  const [degradation, setDegradation] = useState<StrategyDegradationSummary | null>(null);
+  useEffect(() => {
+    api.getStrategyDegradation().then(setDegradation).catch(() => undefined);
   }, []);
 
   const netPositive = financials.netPnl >= 0;
@@ -215,6 +225,8 @@ export function PerformancePanel() {
       <StrategySessionPerformanceSection summary={strategySessionPerformance} strategies={strategies} />
 
       <StrategyCapitalAllocationSection summary={capitalAllocation} />
+
+      <StrategyDegradationSection summary={degradation} />
 
       <TradeAttributionSection summary={tradeAttribution} />
 
@@ -561,6 +573,69 @@ function StrategyCapitalAllocationRow({ read }: { read: StrategyCapitalAllocatio
       </div>
       <div className="mt-1 italic text-cmd-textDim/80">{read.robustnessNote}</div>
       <div className="mt-0.5 italic text-cmd-textDim/80">{read.correlationNote}</div>
+    </div>
+  );
+}
+
+const DEGRADATION_TONE = {
+  critical_degradation: "red",
+  possible_degradation: "amber",
+  normal_variation: "green",
+} as const;
+
+/** CEO directive "Portfolio Construction, Capital Allocation & Execution
+ * Realism," Phase 6 — normal variation vs. a real, evidence-backed
+ * degradation warning, never auto-retiring anything on a tiny sample.
+ * Rows with "not_enough_data" are excluded from the list (the CEO
+ * already sees every strategy's raw trade count in the Capital
+ * Allocation card above) and only counted, to keep this specifically a
+ * warning list, not a duplicate roster. */
+function StrategyDegradationSection({ summary }: { summary: StrategyDegradationSummary | null }) {
+  const rows = summary?.reads.filter((r) => r.level !== "not_enough_data") ?? [];
+  const excludedCount = (summary?.reads.length ?? 0) - rows.length;
+  return (
+    <Glass className="p-3">
+      <div className="mb-1.5 flex items-center justify-between">
+        <TerminalLabel>Strategy Degradation Watch</TerminalLabel>
+        <span className="text-[9px] text-cmd-textDim">Recent {summary?.recentWindowSize ?? "—"}-trade window vs. lifetime</span>
+      </div>
+      {summary === null ? (
+        <EmptyState>Loading…</EmptyState>
+      ) : rows.length === 0 ? (
+        <EmptyState>No strategy has enough live trade history for a degradation read yet.</EmptyState>
+      ) : (
+        <div className="space-y-1.5">
+          {rows.map((r) => (
+            <StrategyDegradationRow key={r.strategyId} read={r} />
+          ))}
+        </div>
+      )}
+      {excludedCount > 0 && (
+        <div className="mt-1.5 text-[9px] text-cmd-textDim">
+          {excludedCount} strateg{excludedCount === 1 ? "y" : "ies"} excluded — not enough live trade data yet (see Strategy Capital Allocation above).
+        </div>
+      )}
+    </Glass>
+  );
+}
+
+function StrategyDegradationRow({ read }: { read: StrategyDegradationRead }) {
+  return (
+    <div className="rounded-sm border border-cmd-border/40 bg-cmd-bg/30 px-2 py-1.5 text-[9px]">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-cmdmono text-cmd-cyan">{read.strategyName}</span>
+        <StatusPill tone={DEGRADATION_TONE[read.level as keyof typeof DEGRADATION_TONE] ?? "neutral"}>{read.level.replace(/_/g, " ").toUpperCase()}</StatusPill>
+        <span className="text-cmd-textDim">
+          {read.recentTradeCount} recent / {read.lifetimeTradeCount} lifetime trade{read.lifetimeTradeCount === 1 ? "" : "s"}
+        </span>
+      </div>
+      {read.signals.length > 0 && (
+        <ul className="mt-1 list-inside list-disc space-y-0.5 text-cmd-textDim">
+          {read.signals.map((s) => (
+            <li key={s}>{s}</li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

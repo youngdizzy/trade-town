@@ -131,6 +131,41 @@ development milestones, not semver releases.
   strategies all show the honest "NO LIVE TRADES YET" state with real `$0.00` allocated capital and both
   disclosed notes.
 
+- **CEO directive "Portfolio Construction, Capital Allocation & Execution Realism," Phase 6:
+  strategy degradation** (backend: `backend/app/schemas.py`, `backend/app/performance_attribution.py`,
+  `backend/app/routers/trades.py`, `backend/tests/test_performance_attribution.py`; frontend:
+  `frontend/src/types.ts`, `frontend/src/net/api.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/PerformancePanel.tsx`): a real NORMAL_VARIATION /
+  POSSIBLE_DEGRADATION / CRITICAL_DEGRADATION classification for live-traded strategies, never auto-
+  retiring anything on a tiny sample. Reuses the identical recent-vs-lifetime windowing convention
+  `strategy_lab.py`'s `compute_strategy_health()` already established for backtest runs
+  (`HEALTH_RECENT_WINDOW`, imported directly), applied to live `PaperTrade` sequences instead. Every
+  recent/lifetime metric pair reuses an already-computed Phase 5 source (`_group_metrics()`,
+  `_live_return_volatility_pct()`, `_avg_slippage_bps()`, `_live_drawdown_usd()`) computed twice — never a
+  new statistic.
+
+  A real find during this phase's own audit closed what looked like it would have to be a disclosed gap:
+  `app/failure_review.py`'s `classify_failure()` already files a real `FailureClassification`
+  (`reason: "bad_thesis"`) for every real closed, losing trade, joinable via the same `trade_id` →
+  Decision Vault → `strategy_id` chain this module already uses — giving `recent_invalidation_count` a
+  real, non-fabricated answer to the directive's "repeated invalidations" dimension.
+
+  Six real, independently-triggerable signals (any CRITICAL signal escalates the row regardless of what
+  else also fired), each a disclosed, arbitrary threshold: loss clustering (4/3 trailing losses), expectancy
+  deterioration (a sign flip to negative is CRITICAL; a >3.0 point drop otherwise is POSSIBLE), volatility
+  regime change (recent volatility >1.5x lifetime), execution degradation (recent avg entry slippage >10
+  bps worse), abnormal drawdown (recent peak-to-trough >3x/>5x a typical single loss), and repeated
+  invalidations (>=2 of the recent window classified `bad_thesis`). New `GET /api/trades/strategy-
+  degradation` endpoint, rendered as a new "Strategy Degradation Watch" card in `PerformancePanel.tsx` —
+  filters `not_enough_data` rows out of the list itself (only counts them) so the card stays a warning list,
+  not a duplicate of the Capital Allocation roster.
+
+  17 new backend tests, each scenario hand-constructed to isolate its one target signal — all passed on
+  first run. Full backend suite, `mypy app/`, `ruff check app/ tests/` clean (no circular import from
+  reusing `strategy_lab.py`'s constant, confirmed via a runtime import smoke test). `tsc -b --noEmit`,
+  `eslint`, `vite build` clean. Live-verified via Command Center screenshot: the real save's Performance
+  panel renders the new card correctly in its honest empty state.
+
 - **CEO directive "Live Trade → Strategy Provenance": the real, non-fabricated way a live trade can
   now link back to a Strategy Lab strategy** (backend: `backend/app/schemas.py`,
   `backend/app/routers/executive.py`, `backend/app/state.py`, `backend/app/decision_vault.py`,

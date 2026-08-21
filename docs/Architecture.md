@@ -12331,19 +12331,72 @@ since no live trade has a CEO-selected strategy in this save yet (the
 same real, pre-existing environment condition already documented for
 Phases 3-4).
 
+**Increment 5 — Phase 6, strategy degradation (this pass).** A real
+NORMAL_VARIATION / POSSIBLE_DEGRADATION / CRITICAL_DEGRADATION
+classification for live-traded strategies, never auto-retiring anything
+on a tiny sample. Reuses the identical recent-vs-lifetime windowing
+convention `app/strategy_lab.py`'s own `compute_strategy_health()`
+already established for backtest runs (`HEALTH_RECENT_WINDOW`, imported
+directly rather than a second magic number) — applied here to live
+`PaperTrade` sequences instead. Every recent/lifetime metric pair reuses
+an already-computed source from Phase 5's own module
+(`_group_metrics()`, `_live_return_volatility_pct()`,
+`_avg_slippage_bps()`, `_live_drawdown_usd()`), computed twice — never a
+new statistic. Two small new real reads: `_consecutive_losses()` (a real
+trailing loss-streak count) and `_avg_loss_usd()` (mean of a strategy's
+own real losing trades' dollar `pnl`).
+
+The one genuinely new join this phase adds — and a real find during its
+own audit: `app/failure_review.py`'s `classify_failure()` already files
+a real `FailureClassification` (`reason: "bad_thesis"` among six
+exhaustive categories) for every real closed, losing trade, joinable via
+the identical `trade_id` → Decision Vault → `strategy_id` chain this
+whole module already uses. That closes what looked at first like it
+would have to be the directive's "repeated invalidations" gap as a real
+`recent_invalidation_count` — not a fabricated one, and not a disclosed
+gap like Phase 5's robustness/correlation notes had to be.
+
+Six real, independently-triggerable signals, each a disclosed, arbitrary
+threshold (same convention as `WIN_RATE_DIVERGENCE_THRESHOLD_PCT`) — any
+CRITICAL signal escalates the whole row regardless of what else also
+fired: loss clustering (`CRITICAL_LOSS_STREAK=4` / `POSSIBLE_LOSS_
+STREAK=3` trailing losses), expectancy deterioration (a sign flip from
+lifetime non-negative to recent negative is CRITICAL; a `>3.0` point
+drop otherwise is POSSIBLE), volatility regime change (recent return
+volatility `>1.5x` lifetime), execution degradation (recent avg entry
+slippage `>10 bps` worse than lifetime), abnormal drawdown (recent-
+window peak-to-trough `>3x`/`>5x` a typical single losing trade, POSSIBLE/
+CRITICAL respectively), and repeated invalidations (`>=2` of the recent
+window's trades classified `bad_thesis`, CRITICAL). New `GET /api/
+trades/strategy-degradation` endpoint, rendered as a new "Strategy
+Degradation Watch" card in `PerformancePanel.tsx` — filters out
+`not_enough_data` rows from the list itself (the Capital Allocation card
+above already shows every strategy's raw trade count) and only counts
+them, so this card stays specifically a warning list rather than a
+duplicate roster.
+
+17 new backend tests (`TestComputeStrategyDegradation`), each scenario
+hand-constructed and verified to isolate its one target signal (all 17
+passed on first run, confirming the by-hand arithmetic). Full backend
+suite, `mypy app/`, `ruff check app/ tests/` clean — no circular import
+introduced by reusing `strategy_lab.py`'s `HEALTH_RECENT_WINDOW`,
+confirmed both statically and via a runtime import smoke test. `tsc -b
+--noEmit`, `eslint`, `vite build` clean. Live-verified: a Command Center
+screenshot of the real running save's Performance panel confirms the new
+card renders correctly in its honest empty state (all four real
+strategies still lack enough live trade history for a read, same
+underlying condition as Phase 5).
+
 **Deliberately not yet done** (natural next increments, not started
-here): Phase 6 (a clearer NORMAL/POSSIBLE/CRITICAL strategy-degradation
-classification, building on the already-real
-`StrategyHealthAssessment`/live-vs-backtest verdict); Phases 7-8
-(execution realism / risk of ruin — largely already honestly disclosed
-as out of scope given no order-book data); Phase 9 (a consolidated "why
-this trade" view); Phase 10 (extending the no-trade diagnostic with the
-new correlation/risk-budget dimensions now that the gate above exists);
-Phases 11-12 (`PortfolioIntelPanel.tsx`/`RiskPanel.tsx` already
-substantially satisfy the Command Center ask; market visualization
-already satisfies its own ask per the Phase 1 audit — likely little/no
-work needed there). None are blocked — see the Phase 1 audit findings
-above.
+here): Phases 7-8 (execution realism / risk of ruin — largely already
+honestly disclosed as out of scope given no order-book data); Phase 9
+(a consolidated "why this trade" view); Phase 10 (extending the
+no-trade diagnostic with the new correlation/risk-budget dimensions
+now that the gate above exists); Phases 11-12 (`PortfolioIntelPanel.tsx`/
+`RiskPanel.tsx` already substantially satisfy the Command Center ask;
+market visualization already satisfies its own ask per the Phase 1
+audit — likely little/no work needed there). None are blocked — see
+the Phase 1 audit findings above.
 
 ## Save format compatibility
 

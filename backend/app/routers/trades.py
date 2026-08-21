@@ -15,6 +15,7 @@ from app.performance_attribution import (
     compute_regime_performance,
     compute_session_performance,
     compute_strategy_capital_allocation_evidence,
+    compute_strategy_degradation,
     compute_strategy_live_vs_backtest,
     compute_strategy_performance,
     compute_strategy_session_performance,
@@ -26,6 +27,7 @@ from app.schemas import (
     RegimePerformanceSummary,
     SessionPerformanceSummary,
     StrategyCapitalAllocationSummary,
+    StrategyDegradationSummary,
     StrategyLiveVsBacktestSummary,
     StrategyPerformanceSummary,
     StrategySessionPerformanceSummary,
@@ -169,6 +171,23 @@ async def get_strategy_capital_allocation() -> StrategyCapitalAllocationSummary:
         state.decision_vault,
         sessions,
         state.portfolio_intelligence.strategy_exposure,
+    )
+
+
+@router.get("/strategy-degradation", response_model=StrategyDegradationSummary)
+async def get_strategy_degradation() -> StrategyDegradationSummary:
+    """CEO directive "Portfolio Construction, Capital Allocation &
+    Execution Realism," Phase 6 — normal variation vs. a real,
+    evidence-backed degradation warning (see app/performance_attribution.
+    py's compute_strategy_degradation()). Never auto-retires anything on
+    a tiny sample. Computed fresh per request; no new GameSaveState
+    field."""
+    state = await game_state.snapshot()
+    return compute_strategy_degradation(
+        state.strategies,
+        state.paper_portfolio.trade_history,
+        state.decision_vault,
+        state.failure_classifications,
     )
 
 

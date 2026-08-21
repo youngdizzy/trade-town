@@ -105,6 +105,7 @@ import type {
   RiskLimits,
   SimilarTradesSummary,
   StrategyCapitalAllocationSummary,
+  StrategyDegradationSummary,
   StrategyLiveVsBacktestSummary,
   StrategyPerformanceSummary,
   StrategySessionPerformanceSummary,
@@ -282,6 +283,10 @@ export const api = {
   // own manual allocatedCapital decision, never a system-generated
   // ranking. Read-only, computed fresh per request.
   getStrategyCapitalAllocation: () => request<StrategyCapitalAllocationSummary>("/trades/strategy-capital-allocation"),
+  // CEO directive "Portfolio Construction, Capital Allocation & Execution
+  // Realism," Phase 6 — normal variation vs. a real, evidence-backed
+  // degradation warning. Read-only, computed fresh per request.
+  getStrategyDegradation: () => request<StrategyDegradationSummary>("/trades/strategy-degradation"),
   // CEO directive "Live Trade → Strategy Provenance," Phase 9 — "why
   // isn't this strategy trading live?" per strategy, diagnostic only.
   // Read-only, computed fresh per request.
