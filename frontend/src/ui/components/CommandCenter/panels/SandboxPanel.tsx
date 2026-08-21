@@ -15,6 +15,7 @@ import { StrategyExecutiveDashboardView } from "./sandbox/StrategyExecutiveDashb
 import { EmaPullbackResearchView } from "./sandbox/EmaPullbackResearchView";
 import { StrategyCompilerView } from "./sandbox/StrategyCompilerView";
 import { QuantResearchLabView } from "./sandbox/QuantResearchLabView";
+import { LiveStrategyEligibilityCard } from "./sandbox/LiveStrategyEligibilityCard";
 
 const SUB_TABS = ["PIPELINE", "LIBRARY", "CERTIFICATION", "HEALTH", "EVOLUTION", "HALL OF FAME", "FAILED ARCHIVE", "DASHBOARD", "50 EMA RESEARCH", "STRATEGY COMPILER", "QUANT RESEARCH LAB"] as const;
 type SubTab = (typeof SUB_TABS)[number];
@@ -107,6 +108,7 @@ export function SandboxPanel() {
 
   return (
     <div className="space-y-3">
+      <LiveStrategyEligibilityCard strategies={strategies} />
       <nav className="flex flex-wrap gap-1 rounded-sm border border-cmd-border bg-cmd-panel/60 p-1.5">
         {SUB_TABS.map((t) => (
           <button

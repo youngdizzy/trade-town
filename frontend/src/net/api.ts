@@ -32,6 +32,7 @@ import type {
   RegisterResearchableStrategyResult,
   ResearchCategory,
   ResearchExperimentRecord,
+  StrategyMatch,
   StrategyTournamentResult,
   SubmitQuantResearchExperimentResult,
   SurvivorshipBiasRead,
@@ -787,6 +788,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ name, description, sourceText, timeframe, focusCategory }),
     }),
+  // CEO directive "Strategy Intelligence + Live Strategy Attribution,"
+  // Phase 11 — "TODAY: strategies currently eligible/blocked," computed
+  // fresh against the always-current live regime, never the once-daily
+  // MarketIntelligenceReport's own stale copy.
+  getLiveStrategyEligibility: () => request<StrategyMatch>("/sandbox/live-strategy-eligibility"),
   // CEO directive "Professional Quant Firm Phase," Feature 36 — the
   // Quant Research Lab's real, persisted, searchable experiment record.
   // See backend/app/quant_research_lab.py.
