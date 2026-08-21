@@ -8,7 +8,6 @@ import asyncio
 import logging
 
 from app.config import settings
-from app.persistence import persist_modules
 from app.state import game_state
 from app.ws_manager import build_state_message, ws_manager
 
@@ -23,7 +22,6 @@ async def run_sim_loop() -> None:
         while True:
             await asyncio.sleep(settings.tick_interval_seconds)
             state = await game_state.tick(settings.game_minutes_per_tick)
-            await ws_manager.broadcast(build_state_message(state))
 
             tick_count += 1
             trade_count = len(state.paper_portfolio.trade_history)
@@ -36,13 +34,27 @@ async def run_sim_loop() -> None:
             # is cheap (an int compare and a list length compare) so this
             # never turns into a save-every-tick storm the way eagerly
             # persisting on every mood/energy tick would.
+            #
+            # CEO directive "Proper Multi-Run / Save Isolation System" —
+            # this now runs BEFORE the WS broadcast below (previously
+            # after) and through game_state.persist_now() (previously a
+            # bare persist_modules(state) call) specifically because a
+            # concurrent run switch could otherwise land in the gap an
+            # `await` on the broadcast leaves open, and a bare
+            # persist_modules(state) call after that gap would persist
+            # this (now-stale) run's data into whatever run just became
+            # active — persist_now() re-reads self.data fresh under the
+            # same lock switch_run()/create_run() use, so it's always
+            # provably writing the run that's actually active right now.
             day_advanced = state.time.day != last_day
             trade_closed = trade_count != last_trade_count
             if day_advanced or trade_closed or tick_count % settings.persist_interval_ticks == 0:
-                persist_modules(state)
+                await game_state.persist_now()
             last_day = state.time.day
             last_trade_count = trade_count
+
+            await ws_manager.broadcast(build_state_message(state))
     except asyncio.CancelledError:
         logger.info("Simulation loop cancelled; persisting final state.")
-        persist_modules(await game_state.snapshot())
+        await game_state.persist_now()
         raise

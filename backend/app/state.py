@@ -1,10 +1,21 @@
 """In-memory authoritative game state, shared across all connected clients.
 
-TradeTown is single-tenant (one company, one save slot) — this is
-intentionally a process-wide singleton rather than per-session state.
+TradeTown is single-tenant (one company actively ticking at a time) — this
+is intentionally a process-wide singleton rather than per-session state.
 Agent/task/whiteboard/meeting orchestration itself lives in nexus.py; this
 module just owns the lock-guarded snapshot and the game clock.
-"""
+
+CEO directive "Proper Multi-Run / Save Isolation System" — the backend can
+now persist multiple independent runs (see app/persistence.py's real,
+indexed `slot` column on every save table), but only ONE run is ever
+actively ticking in this singleton at a time, exactly like before; a
+run that isn't the active one is simply dormant (not ticking) until
+switched back to, the same real-world behavior any single-save-slot idle
+game already has. `switch_run()`/`create_run()` below are the only two
+places that change WHICH run this singleton holds — both run their
+entire persist-old/load-new sequence inside `self.lock`, the same lock
+`tick()` already uses, so a concurrent tick can never interleave mid-switch
+and write one run's data into another's slot."""
 from __future__ import annotations
 
 import asyncio
@@ -444,6 +455,69 @@ class GameState:
     async def snapshot(self) -> GameSaveState:
         async with self.lock:
             return self.data
+
+    async def persist_now(self) -> None:
+        """Persists `self.data` to whichever slot is currently active,
+        atomically with respect to `tick()`/`switch_run()`/`create_run()`
+        (same lock). Exists specifically so app/sim.py's tick loop can
+        persist without the gap a bare `persist_modules(state)` call
+        after an `await` (the WS broadcast) would otherwise leave open —
+        see app/persistence.py's own module docstring for why every OTHER
+        existing `persist_modules(state)` call site elsewhere in this
+        codebase doesn't need this (no `await` sits between their own
+        locked mutation and their own persist call, so they're already
+        atomic without it)."""
+        from app import persistence
+
+        async with self.lock:
+            persistence.persist_modules(self.data)
+
+    async def switch_run(self, run_id: str) -> GameSaveState:
+        """CEO directive "Proper Multi-Run / Save Isolation System" —
+        switches this singleton to an already-registered run. Persists
+        whatever run is currently active FIRST (so nothing generated
+        since its last periodic persist is lost), then loads the target
+        run — all inside one lock acquisition, so a concurrent tick can
+        never see the active-slot pointer change mid-operation. Fails
+        safely (raises, active slot reverted) rather than leaving the
+        pointer aimed at a run that doesn't actually have data."""
+        from app import persistence
+
+        async with self.lock:
+            previous_slot = persistence.get_active_slot()
+            persistence.persist_modules(self.data)
+            persistence.set_active_slot(run_id)
+            target = persistence.load_state()
+            if target is None:
+                persistence.set_active_slot(previous_slot)
+                raise ValueError(f"No run found with id {run_id!r}")
+            persistence.set_active_run_pointer(run_id)
+            persistence.touch_run_last_played(run_id)
+            self.data = nexus.register_agents(target)
+            return self.data
+
+    async def create_run(self, display_name: str) -> tuple[GameSaveState, str]:
+        """CEO directive "Proper Multi-Run / Save Isolation System" — the
+        one real way a brand-new run comes into existence. Persists
+        whatever run is currently active first (same reasoning as
+        switch_run()), then generates a real unique run id, initializes
+        it via the exact same default_state() every fresh deployment
+        already uses (never a second, parallel "new game" initialization
+        path), persists it, registers it, and makes it the active run —
+        all inside one lock acquisition. The run being left behind is
+        never reset, overwritten, or touched beyond that one persist."""
+        from app import persistence
+
+        async with self.lock:
+            persistence.persist_modules(self.data)
+            new_run_id = persistence.generate_run_id()
+            persistence.set_active_slot(new_run_id)
+            fresh = default_state()
+            persistence.persist_modules(fresh)
+            persistence.register_run(new_run_id, display_name)
+            persistence.set_active_run_pointer(new_run_id)
+            self.data = fresh
+            return self.data, new_run_id
 
     async def spend_agent_energy(self, action: str, research_id: str | None) -> tuple[GameSaveState, str | None]:
         """One Agent Energy spend, applied atomically under the same lock

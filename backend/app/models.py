@@ -54,6 +54,43 @@ class SaveModule(Base):
     __table_args__ = (UniqueConstraint("slot", "module", name="uq_save_modules_slot_module"),)
 
 
+class Run(Base):
+    """CEO directive "Proper Multi-Run / Save Isolation System" — one real,
+    persisted, independently-loadable run/save. `run_id` is the exact
+    `slot` value every SaveGame/SaveModule/SaveBackup row for this run
+    already lives under (see app/persistence.py) — this table adds real
+    metadata (a display name, when it was registered, when it was last
+    played) on top of an existing, already-real per-slot identity; it
+    never becomes a second copy of the save data itself. `current_day` is
+    deliberately NOT a column here — see app/persistence.py's
+    `list_runs()` for why it's always read live from that run's own real
+    `world` save module instead of cached here as a second, potentially
+    stale source of truth."""
+
+    __tablename__ = "runs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    display_name: Mapped[str] = mapped_column(String(200))
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+    last_played_at: Mapped[datetime] = mapped_column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+
+class ActiveRun(Base):
+    """Single-row pointer (always id=1) to which real, registered `Run`
+    is currently loaded into the live, ticking `GameState` singleton.
+    Persisted (not just held in an in-process variable) so a backend
+    restart resumes the same run the player was last on, per the
+    directive's own "the backend/database must be authoritative" rule —
+    the frontend may cache this value for its own convenience, but this
+    row is the one real source of truth."""
+
+    __tablename__ = "active_run"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    run_id: Mapped[str] = mapped_column(String(64))
+
+
 class SaveBackup(Base):
     """Rolling history of persisted saves, plus a permanent record of any
     raw payload that failed to load — see persistence.py's `load_save()`.

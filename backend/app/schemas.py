@@ -10093,5 +10093,30 @@ class SaveResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
 
+class RunSummary(CamelModel):
+    """CEO directive "Proper Multi-Run / Save Isolation System" — one real,
+    persisted, independently-loadable run/save. `run_id` is the real DB
+    `slot` value every SaveGame/SaveModule/SaveBackup row for this run is
+    stored under (see app/persistence.py) — never a second, disconnected
+    identifier. `current_day` is read live from that run's own real
+    persisted `world` module at the moment this summary was built, never
+    cached/duplicated on the run's own metadata row (a second, potentially
+    stale copy of the same fact); `None` only when that run's `world`
+    module genuinely can't be read (a real, honest "unavailable," never a
+    fabricated 0/1)."""
+
+    run_id: str = Field(alias="runId")
+    display_name: str = Field(alias="displayName")
+    created_at: str = Field(alias="createdAt")
+    last_played_at: str = Field(alias="lastPlayedAt")
+    current_day: int | None = Field(alias="currentDay")
+
+
+class CreateRunRequest(CamelModel):
+    # Optional — omitted or blank falls back to a real, honest default
+    # name (see app/routers/runs.py), never a fabricated "clever" name.
+    display_name: str | None = Field(default=None, alias="displayName")
+
+
 class HealthResponse(BaseModel):
     status: Literal["ok"] = "ok"

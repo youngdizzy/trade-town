@@ -27,26 +27,70 @@ module in `save_modules` (`load_modules()` / `persist_modules()`, see
 app/save_modules.py for the module map). `load_state()` is the real
 startup entry point — it prefers modules, falling back to the legacy blob
 only if no module rows exist yet.
+
+CEO directive "Proper Multi-Run / Save Isolation System": every table
+above already stores a real, indexed `slot` column — this file was
+already structurally multi-slot-capable; only this module's own
+`SLOT = "default"` constant collapsed it to exactly one. No schema
+migration, and no change to any of the ~90 existing
+`persist_modules(state)` call sites elsewhere in the codebase, was
+needed to add real multi-run support — see below.
+
+`SLOT` is now a genuinely mutable module-level pointer (still named
+`SLOT`, still read by every function below exactly as before) rather
+than a constant, changed only via `set_active_slot()`. Every one of the
+~90 existing call sites across the routers calls `persist_modules(state)`
+with no `await` between the locked mutation that produced `state` and
+that call — confirmed by direct inspection before this change — so
+asyncio's cooperative, single-threaded scheduling already makes each of
+them atomic with respect to a concurrent run switch (no other coroutine
+can run in the gap, because there isn't one). The one real exception was
+`app/sim.py`'s tick loop, which awaits a WS broadcast between producing
+`state` and persisting it — fixed there by reordering, not by touching
+this file's own call-site contract (see sim.py's own comment).
+
+`list_runs()`/`read_module_for_slot()` are the one deliberate exception
+to "everything reads the mutable `SLOT` pointer" — they take an explicit
+`slot` argument and never touch or depend on the mutable pointer, so
+listing every run's real current day is safe to call at any time,
+including while a different run is the one actually active and ticking,
+without disturbing it.
 """
 from __future__ import annotations
 
 import hashlib
 import json
 import logging
+import uuid
 from datetime import datetime, timezone
 from typing import Any
 
 from pydantic import ValidationError
 
 from app.db import get_session
-from app.models import SaveBackup, SaveGame, SaveModule
+from app.models import ActiveRun, Run, SaveBackup, SaveGame, SaveModule
 from app.save_modules import ALL_MODULES, assemble_state, merge_module_dicts, split_state
-from app.schemas import GameSaveState, ModuleWriteResult
+from app.schemas import GameSaveState, ModuleWriteResult, RunSummary
 from app.state import default_state
 
 logger = logging.getLogger("tradetown.persistence")
 
-SLOT = "default"
+DEFAULT_SLOT = "default"
+SLOT = DEFAULT_SLOT
+
+
+def get_active_slot() -> str:
+    return SLOT
+
+
+def set_active_slot(slot: str) -> None:
+    """The one real point of control over which run every persist/load
+    call below operates on. Callers that switch this must do so while
+    holding GameState's own lock for the entire switch (see
+    app/state.py's switch_run()/create_run()) so no concurrent tick or
+    request can persist mid-switch using the wrong slot."""
+    global SLOT
+    SLOT = slot
 
 # Bump this whenever a change to GameSaveState (or anything nested inside
 # it) could make an older save fail validation. It's purely a diagnostic
@@ -327,3 +371,153 @@ def load_state() -> GameSaveState | None:
         return legacy
 
     return None
+
+
+def read_module_for_slot(slot: str, module: str) -> dict[str, Any] | None:
+    """Read-only, single-module fetch for an ARBITRARY slot — deliberately
+    independent of the mutable `SLOT` pointer above (never reads or writes
+    it), so this is always safe to call from `list_runs()` even while a
+    different run is the one actually active and ticking. Returns None if
+    that slot has no row for this module, or the stored JSON is corrupt
+    (an honest "unavailable," never a fabricated empty dict)."""
+    session = get_session()
+    try:
+        row = session.query(SaveModule).filter_by(slot=slot, module=module).one_or_none()
+        if row is None:
+            return None
+        try:
+            result: dict[str, Any] = json.loads(row.data)
+            return result
+        except json.JSONDecodeError:
+            return None
+    finally:
+        session.close()
+
+
+def register_run(run_id: str, display_name: str) -> None:
+    """Registers a new real, persisted run identity. Idempotent — calling
+    this again for a `run_id` that's already registered updates nothing
+    (the row already exists); it never creates a duplicate row, since
+    `run_id` is a real, unique, indexed column."""
+    session = get_session()
+    try:
+        existing = session.query(Run).filter_by(run_id=run_id).one_or_none()
+        if existing is not None:
+            return
+        now = datetime.now(timezone.utc)
+        session.add(Run(run_id=run_id, display_name=display_name, created_at=now, last_played_at=now))
+        session.commit()
+    finally:
+        session.close()
+
+
+def touch_run_last_played(run_id: str) -> None:
+    session = get_session()
+    try:
+        row = session.query(Run).filter_by(run_id=run_id).one_or_none()
+        if row is not None:
+            row.last_played_at = datetime.now(timezone.utc)
+            session.commit()
+    finally:
+        session.close()
+
+
+def list_runs() -> list[RunSummary]:
+    """Every real, registered run, most-recently-played first. Each
+    entry's `current_day` is read live from that run's own real `world`
+    module (via `read_module_for_slot()`, never the mutable `SLOT`
+    pointer) — never cached on the `Run` row itself, so it can never go
+    stale relative to that run's own real save data."""
+    session = get_session()
+    try:
+        rows = session.query(Run).order_by(Run.last_played_at.desc()).all()
+        summaries: list[RunSummary] = []
+        for row in rows:
+            world = read_module_for_slot(row.run_id, "world")
+            current_day: int | None = None
+            if world is not None:
+                time_field = world.get("time")
+                if isinstance(time_field, dict) and isinstance(time_field.get("day"), int):
+                    current_day = time_field["day"]
+            summaries.append(
+                RunSummary(
+                    runId=row.run_id,
+                    displayName=row.display_name,
+                    createdAt=row.created_at.isoformat(),
+                    lastPlayedAt=row.last_played_at.isoformat(),
+                    currentDay=current_day,
+                )
+            )
+        return summaries
+    finally:
+        session.close()
+
+
+def run_exists(run_id: str) -> bool:
+    session = get_session()
+    try:
+        return session.query(Run).filter_by(run_id=run_id).one_or_none() is not None
+    finally:
+        session.close()
+
+
+def generate_run_id() -> str:
+    return f"run-{uuid.uuid4().hex[:12]}"
+
+
+def get_active_run_id() -> str:
+    """The real, persisted pointer to which registered run should load on
+    startup — read once at boot (see main.py's lifespan()) so a backend
+    restart resumes the same run the player was last on, rather than
+    silently reverting to DEFAULT_SLOT. Falls back to DEFAULT_SLOT only
+    when no row has ever been written yet (a genuinely fresh deployment,
+    or one from before this feature existed)."""
+    session = get_session()
+    try:
+        row = session.query(ActiveRun).filter_by(id=1).one_or_none()
+        return row.run_id if row is not None else DEFAULT_SLOT
+    finally:
+        session.close()
+
+
+def set_active_run_pointer(run_id: str) -> None:
+    session = get_session()
+    try:
+        row = session.query(ActiveRun).filter_by(id=1).one_or_none()
+        if row is None:
+            session.add(ActiveRun(id=1, run_id=run_id))
+        else:
+            row.run_id = run_id
+        session.commit()
+    finally:
+        session.close()
+
+
+def ensure_default_run_registered() -> None:
+    """Called once at startup (main.py's lifespan(), before the active
+    slot is resolved). If the `runs` registry is empty AND real save data
+    already exists at DEFAULT_SLOT (a deployment from before this feature
+    existed — exactly the case that must preserve an existing long-running
+    save, never reset or fabricate it), registers that existing save as a
+    real run named "Original Run" — using the real current time as its
+    `created_at`/`last_played_at`, since this codebase has no record of
+    when that save actually began (never fabricated as an earlier date).
+    Idempotent: a no-op once any run is registered. A genuinely fresh
+    deployment with no existing save registers nothing here — its first
+    real run gets created the normal way, the first time one is."""
+    session = get_session()
+    try:
+        any_run = session.query(Run.id).first()
+    finally:
+        session.close()
+    if any_run is not None:
+        return
+
+    previous_slot = SLOT
+    set_active_slot(DEFAULT_SLOT)
+    try:
+        existing = load_state()
+    finally:
+        set_active_slot(previous_slot)
+    if existing is not None:
+        register_run(DEFAULT_SLOT, "Original Run")
