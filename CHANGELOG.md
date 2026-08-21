@@ -42,6 +42,26 @@ development milestones, not semver releases.
   rejection of an unknown strategy id, the "wait" no-op case, and all three provenance states across
   the join). Full backend suite, `mypy app/` (176 files), `ruff check app/ tests/` all clean.
 
+- **CEO directive "Live Trade → Strategy Provenance": the frontend hook that actually exercises the
+  above** (`frontend/src/net/api.ts`, `frontend/src/ui/components/CommandCenter/ExecutiveVoting.tsx`,
+  `frontend/tests/executiveVoting.spec.ts`): the backend chain above had no live way to be exercised
+  without a CEO-facing control, so `ExecutiveVoting.tsx` gains an optional "Strategy" selector next to
+  the existing MODIFY control, listing every real `state.strategies` entry and defaulting to "No
+  strategy attributed." Deliberately never pre-selected from live eligibility data — Directive C's own
+  Phase 3 rule that "eligible today" is not "the CEO says this strategy drove this trade." The pick
+  threads through `api.submitCeoDecision()`'s new `strategyId` parameter on both the BUY/SELL/WAIT
+  `decide()` path and the "Delegate to Executive Board" `delegate()` path, and resets after every
+  decision. `tsc -b --noEmit`, `eslint`, `vite build` all clean; the running app was verified to boot
+  and load a real save with zero console/page errors. A new Playwright test asserting the selector
+  lists real strategies and that `POST /executive/decide`'s body carries a non-null `strategyId` was
+  written in this suite's own real-app (no-mocking) style, but could not be run to a passing result in
+  this session — the dev backend's organic trade-proposal generation never produced a pending proposal
+  within several minutes of real+boosted ticks, and the pre-existing baseline test in the same file
+  (unmodified here) reproduces the identical timeout on the same backend instance, confirming this is
+  an environment/session condition in live proposal generation, not a regression from this change. This
+  is disclosed, not swept under a claimed pass: the new test is correctly typed and lint-clean, but not
+  yet proven green end-to-end.
+
 - **CEO directive "Strategy Intelligence + Live Strategy Attribution," Phase 11: "TODAY — Strategy
   Eligibility, Right Now"** (backend: `backend/app/routers/sandbox.py`; frontend:
   `frontend/src/net/api.ts`, `frontend/src/ui/components/CommandCenter/panels/SandboxPanel.tsx`,

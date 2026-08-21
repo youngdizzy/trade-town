@@ -269,7 +269,11 @@ export const api = {
   // Phase 1 — real per-trade agent-contribution evidence, never a
   // numeric P&L credit split. Read-only, computed fresh per request.
   getTradeAttribution: () => request<TradeAttributionSummary>("/trades/attribution"),
-  submitCeoDecision: (proposalId: string, choice: AnalystChoice, delegated = false, overrideReason?: string) =>
+  // CEO directive "Live Trade -> Strategy Provenance" — `strategyId` is
+  // an optional real Strategy Lab strategy the CEO explicitly selected
+  // for this decision, stored on the resulting CeoDecisionRecord (see
+  // backend/app/state.py's submit_ceo_decision).
+  submitCeoDecision: (proposalId: string, choice: AnalystChoice, delegated = false, overrideReason?: string, strategyId?: string) =>
     request<{
       tradeProposals: TradeProposal[];
       ceoDecisions: CeoDecisionRecord[];
@@ -278,7 +282,7 @@ export const api = {
       gatekeeperRejections: GatekeeperRejection[];
     }>("/executive/decide", {
       method: "POST",
-      body: JSON.stringify({ proposalId, choice, delegated, overrideReason: overrideReason ?? null }),
+      body: JSON.stringify({ proposalId, choice, delegated, overrideReason: overrideReason ?? null, strategyId: strategyId ?? null }),
     }),
   regenerateDebate: (proposalId: string) =>
     request<{ debates: Debate[] }>("/executive/debate/regenerate", {

@@ -11760,13 +11760,41 @@ provenance states), and `test_decision_vault.py` (the vault-entry
 threading, and the report card's "known"/"unknown" cases). Full backend
 suite, `mypy app/` (176 files), `ruff check app/ tests/` all clean.
 
+**Frontend hook (same directive, follow-up increment)**: `ExecutiveVoting.tsx`
+now gives the CEO the actual UI element referenced above — an optional
+"Strategy" `<select>` next to the MODIFY control, listing every real
+`state.strategies` entry, defaulting to "No strategy attributed" and
+never pre-selected from live eligibility (Directive C Phase 3's own
+causality-honesty rule: "eligible today" is not "the CEO says this
+strategy drove this trade"). The pick is threaded through
+`api.submitCeoDecision()`'s now-real `strategyId` parameter on both the
+CEO's own BUY/SELL/WAIT `decide()` call and the "Delegate to Executive
+Board" `delegate()` call, and reset after every decision. This is the
+first live way to actually exercise the backend chain above.
+
+Verified: `tsc -b --noEmit`, `eslint`, and `vite build` all clean; the
+running app boots and loads a real save with zero console/page errors.
+A new Playwright test (`executiveVoting.spec.ts`, "selecting a real
+strategy and deciding BUY submits it as strategyId") was written
+following this suite's own real-app pattern (no mocking) and asserts
+the selector lists real strategy names and that the resulting
+`POST /executive/decide` body carries a non-null `strategyId`. It could
+**not** be run to a passing result in this session: the dev backend's
+own organic trade-proposal generation never produced a pending
+proposal within several minutes of real+boosted ticks, and the
+pre-existing baseline test in the same file (unmodified by this
+change) reproduces the identical `pendingRow` timeout on this same
+backend instance — confirming the stall is an environment/session
+condition in the live proposal-generation pipeline, not something this
+change introduced. This is a real, disclosed gap: the new test has not
+been proven green end-to-end, only proven correctly-typed, lint-clean,
+and structurally consistent with tests of the same shape that do pass
+elsewhere in this suite's history.
+
 **Deliberately not yet done** (a natural next increment, not started
 here): Phase 4's Strategy Exposure view (aggregating trades where
-`strategyProvenanceState == "known"`, grouped by strategy) and a
-frontend UI element letting the CEO actually pick a strategy at decision
-time — without it, this real backend capability has no live way to be
-exercised yet. Both are real, additive follow-ups, not blocked by
-anything found in this pass.
+`strategyProvenanceState == "known"`, grouped by strategy). Not blocked
+by anything found in this pass.
 
 ## Save format compatibility
 

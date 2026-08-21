@@ -100,6 +100,43 @@ test("Executive Voting popup shows real analyst votes and a BUY submits a real C
   await expect(popup.getByText("EXECUTIVE VOTING")).not.toContainText(symbol, { timeout: 10000 });
 });
 
+test("CEO directive 'Live Trade → Strategy Provenance' — selecting a real strategy and deciding BUY submits it as strategyId", async ({ page }) => {
+  await page.goto("/");
+  await continueGame(page);
+  await boostResearchToThreshold(page);
+  await page.keyboard.press("Tab");
+  await clickExpand(page);
+  await clickTab(page, "EXECUTIVE");
+
+  const pendingRow = page.locator("button").filter({ hasText: /% confidence/ }).first();
+  await expect(pendingRow).toBeVisible({ timeout: 20000 });
+  await pendingRow.click();
+
+  const popup = page.getByTestId("executive-voting");
+  await expect(popup).toBeVisible();
+
+  // The strategy picker defaults to "No strategy attributed" — never
+  // pre-selected from live eligibility (see ExecutiveVoting.tsx's own
+  // comment on why: "eligible today" is not "the CEO says this drove
+  // this trade").
+  const strategySelect = popup.getByRole("combobox").last();
+  await expect(strategySelect).toBeVisible();
+  await expect(strategySelect).toHaveValue("");
+  const optionLabels = await strategySelect.locator("option").allTextContents();
+  expect(optionLabels).toContain("No strategy attributed");
+  expect(optionLabels.length).toBeGreaterThan(1);
+
+  const chosenLabel = optionLabels[1]!;
+  await strategySelect.selectOption({ label: chosenLabel });
+
+  const decisionResponse = page.waitForResponse((res) => res.url().includes("/executive/decide") && res.ok());
+  await popup.getByRole("button", { name: "BUY", exact: true }).click();
+  const response = await decisionResponse;
+  const body = (await response.request().postDataJSON()) as { strategyId: string | null };
+  expect(body.strategyId).not.toBeNull();
+  expect(typeof body.strategyId).toBe("string");
+});
+
 test("Request More Research holds a proposal without resolving it, and caps out at the real limit", async ({ page }) => {
   await page.goto("/");
   await continueGame(page);

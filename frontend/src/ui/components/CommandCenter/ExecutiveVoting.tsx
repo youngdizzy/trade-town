@@ -84,6 +84,7 @@ export function ExecutiveVoting() {
     challengeReports,
     constitution,
     settings,
+    strategies,
   } = useGameStore();
   const [expandedAgent, setExpandedAgent] = useState<string | null>(null);
   const [showAnalysis, setShowAnalysis] = useState(false);
@@ -122,6 +123,15 @@ export function ExecutiveVoting() {
   // submitted through the same /executive/decide endpoint, tagged
   // resolved_by="delegated".
   const [delegating, setDelegating] = useState(false);
+  // CEO directive "Live Trade → Strategy Provenance" — the CEO's own
+  // optional, explicit pick of a real Strategy Lab strategy at decision
+  // time (backend/app/schemas.py's CeoDecisionRecord.strategy_id). "" ==
+  // no strategy selected, submitted as strategyId=undefined; never
+  // auto-selected or defaulted from eligibility, since "eligible today"
+  // is not the same claim as "the CEO says this strategy drove this
+  // trade" (see TradeStrategyProvenanceState's known/unknown/unavailable
+  // split).
+  const [selectedStrategyId, setSelectedStrategyId] = useState("");
   // Design Bible Chapter 70 Part 2 — Executive Accuracy Score, real and
   // company-wide (not proposal-scoped), fetched fresh on open.
   const [showAccuracy, setShowAccuracy] = useState(false);
@@ -319,7 +329,7 @@ export function ExecutiveVoting() {
     setSubmitting(choice);
     setError(null);
     try {
-      const res = await api.submitCeoDecision(proposal.id, choice, delegated);
+      const res = await api.submitCeoDecision(proposal.id, choice, delegated, undefined, selectedStrategyId || undefined);
       NexusManager.setExecutiveDecisionResult(res.tradeProposals, res.ceoDecisions, res.decisions, res.paperPortfolio, res.gatekeeperRejections);
       setExpandedAgent(null);
       setShowAnalysis(false);
@@ -328,6 +338,7 @@ export function ExecutiveVoting() {
       setShowWeighted(false);
       setPreviewProfile(null);
       setExpandedScenario(null);
+      setSelectedStrategyId("");
       // v0.7 Feature 20 — the CEO's own buy/sell can still be vetoed by
       // the Trade Gatekeeper; surface that instead of silently advancing
       // to the next proposal (per the brief's transparency requirement).
@@ -356,7 +367,7 @@ export function ExecutiveVoting() {
     try {
       const recommendation = execIntel && execIntel.proposalId === proposal.id ? execIntel : await api.getExecutiveIntelligence(proposal.id);
       const choice = delegatedChoice(recommendation.action, proposal.overallRecommendation);
-      const res = await api.submitCeoDecision(proposal.id, choice, true);
+      const res = await api.submitCeoDecision(proposal.id, choice, true, undefined, selectedStrategyId || undefined);
       NexusManager.setExecutiveDecisionResult(res.tradeProposals, res.ceoDecisions, res.decisions, res.paperPortfolio, res.gatekeeperRejections);
       setExpandedAgent(null);
       setShowAnalysis(false);
@@ -365,6 +376,7 @@ export function ExecutiveVoting() {
       setShowWeighted(false);
       setPreviewProfile(null);
       setExpandedScenario(null);
+      setSelectedStrategyId("");
       const resolvedDecision = res.decisions.find((d) => d.id === `decision-${proposal.id}`);
       if (resolvedDecision?.gatekeeperVerdict && !resolvedDecision.gatekeeperVerdict.approved) {
         setGatekeeperRejection({ symbol: proposal.symbol, choice, verdict: resolvedDecision.gatekeeperVerdict, nextProposals: res.tradeProposals });
@@ -956,6 +968,33 @@ export function ExecutiveVoting() {
           )}
 
           {error && <div className="text-[9px] text-cmd-red">{error}</div>}
+
+          {/* CEO directive "Live Trade → Strategy Provenance" — optional,
+              explicit strategy attribution. Selecting a strategy here and
+              then deciding BUY/SELL is what makes strategyProvenanceState
+              "known" on the resulting trade (backend/app/state.py's
+              submit_ceo_decision); leaving it unset keeps that trade
+              honestly "unknown", same as every trade before this field
+              existed. Never pre-selected from live eligibility — eligible
+              today is not the same claim as "this strategy drove this
+              trade." */}
+          {strategies.length > 0 && (
+            <div className="flex items-center gap-2 text-[9px]">
+              <TerminalLabel>Strategy</TerminalLabel>
+              <select
+                value={selectedStrategyId}
+                onChange={(e) => setSelectedStrategyId(e.target.value)}
+                className="flex-1 rounded-sm border border-cmd-border bg-cmd-bg/40 px-2 py-1.5 text-cmd-text focus:border-cmd-cyan/50 focus:outline-none"
+              >
+                <option value="">No strategy attributed</option>
+                {strategies.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* Design Bible Chapter 70 Part 2 — "Modify": resize the pending
               proposal downward before deciding. Never sizes up (see
