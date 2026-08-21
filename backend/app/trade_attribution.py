@@ -54,6 +54,7 @@ from app.schemas import (
     TradeAttributionRecord,
     TradeAttributionSummary,
     TradeDecision,
+    TradeStrategyProvenanceState,
 )
 
 CREDIT_SPLIT_NOTE = (
@@ -120,9 +121,17 @@ def compute_trade_attribution(
             pnlPct=trade.pnl_pct,
             evidenceState="no_decision_on_record",
             creditSplitNote=CREDIT_SPLIT_NOTE,
+            strategyId=None,
+            strategyProvenanceState="unavailable",
         )
 
     ceo_decision = next((c for c in ceo_decisions if c.decision_id == decision.id), None)
+    if ceo_decision is None:
+        strategy_provenance_state: TradeStrategyProvenanceState = "unavailable"
+    elif ceo_decision.strategy_id is not None:
+        strategy_provenance_state = "known"
+    else:
+        strategy_provenance_state = "unknown"
     return TradeAttributionRecord(
         tradeId=trade.id,
         decisionId=decision.id,
@@ -133,6 +142,8 @@ def compute_trade_attribution(
         ceoChoice=ceo_decision.ceo_decision if ceo_decision else None,
         ceoOverrodeTheDesk=(not ceo_decision.agreed_with_ai) if ceo_decision else None,
         gatekeeperApproved=decision.gatekeeper_verdict.approved if decision.gatekeeper_verdict else None,
+        strategyId=ceo_decision.strategy_id if ceo_decision else None,
+        strategyProvenanceState=strategy_provenance_state,
         entrySlippageBps=trade.entry_slippage_bps,
         exitSlippageBps=trade.exit_slippage_bps,
         transactionCostUsd=trade.transaction_cost_usd,

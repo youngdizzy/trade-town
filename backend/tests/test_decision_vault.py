@@ -268,6 +268,38 @@ class TestBuildVaultEntry:
         assert entry.strategy_id is None
         assert entry.r_multiple is None
 
+    def test_strategy_id_is_threaded_through_from_a_real_ceo_decision_record(self) -> None:
+        """CEO directive "Live Trade -> Strategy Provenance" -- the CEO's
+        own real, explicit strategy selection at decision time carries
+        through to the permanent DecisionVaultEntry, never fabricated."""
+        ceo_decision = CeoDecisionRecord(
+            id="ceo-1",
+            proposalId="proposal-1",
+            symbol="NEXA",
+            category="stock",
+            aiRecommendation="buy",
+            ceoDecision="buy",
+            agreedWithAi=True,
+            decisionId="decision-proposal-1",
+            strategyId="strategy-momentum",
+            createdAt=_now_iso(),
+        )
+        entry = build_vault_entry(
+            entry_id="vault-trade-1",
+            trade=_trade(),
+            decision=_decision(),
+            discipline_review=_discipline_review(),
+            market_regime="strong_bull_trend",
+            market_regime_label="Strong Bull Trend",
+            provider=MockMarketDataProvider(),
+            case_study=None,
+            meeting_log_entry=None,
+            ceo_decision=ceo_decision,
+            company_dna_change=None,
+            sim_day=5,
+        )
+        assert entry.strategy_id == "strategy-momentum"
+
     def test_evidence_and_confidence_scores_are_genuinely_different_numbers(
         self,
     ) -> None:
@@ -585,6 +617,8 @@ class TestComputeTradeReportCard:
         assert card.transaction_cost_usd is None
         assert card.gatekeeper_approved is None
         assert card.supporting_agents == []
+        assert card.strategy_id is None
+        assert card.strategy_provenance_state == "unavailable"
         assert card.data_honesty_note
 
     def test_join_fields_are_real_and_populated_when_a_matching_trade_and_decision_exist(self) -> None:
@@ -602,6 +636,14 @@ class TestComputeTradeReportCard:
         assert card.transaction_cost_usd is not None
         assert card.supporting_agents == ["echo"]
         assert card.gatekeeper_approved is None  # the fixture decision carries no real GatekeeperVerdict
+        # A real decision exists but no CeoDecisionRecord was passed at
+        # all -- there is no record to even check for a strategy
+        # selection, so this is honestly "unavailable", not "unknown"
+        # (which requires a real CeoDecisionRecord with no strategy set
+        # -- see test_a_real_ceo_selected_strategy_reads_known_on_the_report_card
+        # below for the "known" case using the same fixture shape).
+        assert card.strategy_provenance_state == "unavailable"
+        assert card.strategy_id is None
 
     def test_a_trade_with_no_matching_decision_still_gets_real_exit_efficiency_and_attribution_evidence_state(self) -> None:
         entry = _vault_entry(entry_id="v1")
@@ -610,6 +652,46 @@ class TestComputeTradeReportCard:
         assert card.mae_pct is not None  # exit efficiency only needs the real trade, not a decision
         assert card.supporting_agents == []
         assert card.gatekeeper_approved is None
+        assert card.strategy_provenance_state == "unavailable"
+
+    def test_a_real_ceo_selected_strategy_reads_known_on_the_report_card(self) -> None:
+        entry = _vault_entry(entry_id="v1")
+        trade = _trade(trade_id="trade-v1", decision_id="decision-v1")
+        decision = _decision(decision_id="decision-v1")
+        ceo_decision = CeoDecisionRecord(
+            id="ceo-1",
+            proposalId="proposal-1",
+            symbol="NEXA",
+            category="stock",
+            aiRecommendation="buy",
+            ceoDecision="buy",
+            agreedWithAi=True,
+            decisionId="decision-v1",
+            strategyId="strategy-momentum",
+            createdAt=_now_iso(),
+        )
+        card = compute_trade_report_card(entry, trade_history=[trade], decisions=[decision], ceo_decisions=[ceo_decision])
+        assert card.strategy_provenance_state == "known"
+        assert card.strategy_id == "strategy-momentum"
+
+    def test_a_real_ceo_decision_record_with_no_strategy_selected_reads_unknown(self) -> None:
+        entry = _vault_entry(entry_id="v1")
+        trade = _trade(trade_id="trade-v1", decision_id="decision-v1")
+        decision = _decision(decision_id="decision-v1")
+        ceo_decision = CeoDecisionRecord(
+            id="ceo-1",
+            proposalId="proposal-1",
+            symbol="NEXA",
+            category="stock",
+            aiRecommendation="buy",
+            ceoDecision="buy",
+            agreedWithAi=True,
+            decisionId="decision-v1",
+            createdAt=_now_iso(),
+        )
+        card = compute_trade_report_card(entry, trade_history=[trade], decisions=[decision], ceo_decisions=[ceo_decision])
+        assert card.strategy_provenance_state == "unknown"
+        assert card.strategy_id is None
 
 
 class TestFindSimilarVaultEntries:

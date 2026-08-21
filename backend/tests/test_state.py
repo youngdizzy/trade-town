@@ -683,3 +683,49 @@ class TestSubmitCeoDecisionEmergencyStopGuard:
         saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy"))
         assert error is None
         assert saved.trade_proposals == []
+
+
+class TestSubmitCeoDecisionStrategyProvenance:
+    """CEO directive "Live Trade -> Strategy Provenance" — the one real,
+    non-fabricated way this codebase can link a live trade back to a
+    Strategy Lab strategy: the CEO's own explicit selection at decision
+    time, validated against the real strategy roster."""
+
+    def _state_with_pending_proposal(self) -> GameState:
+        state = GameState()
+        state.data = state.data.model_copy(update={"trade_proposals": [_pending_proposal()]})
+        return state
+
+    def test_a_real_strategy_id_is_stored_on_the_ceo_decision_record(self) -> None:
+        state = self._state_with_pending_proposal()
+        real_strategy_id = state.data.strategies[0].id
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy", strategy_id=real_strategy_id))
+        assert error is None
+        assert saved.ceo_decisions[-1].strategy_id == real_strategy_id
+
+    def test_an_unknown_strategy_id_is_rejected_with_a_real_error(self) -> None:
+        state = self._state_with_pending_proposal()
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy", strategy_id="not-a-real-strategy"))
+        assert error is not None
+        assert "no real strategy lab strategy" in error.lower()
+        # Rejected before any mutation — the proposal is still pending.
+        assert [p.id for p in saved.trade_proposals] == ["proposal-1"]
+
+    def test_no_strategy_id_leaves_the_field_none(self) -> None:
+        state = self._state_with_pending_proposal()
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy"))
+        assert error is None
+        assert saved.ceo_decisions[-1].strategy_id is None
+
+    def test_a_real_strategy_id_is_ignored_on_wait_since_no_trade_exists_to_attribute(self) -> None:
+        state = self._state_with_pending_proposal()
+        real_strategy_id = state.data.strategies[0].id
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "wait", strategy_id=real_strategy_id))
+        assert error is None
+        assert saved.ceo_decisions[-1].strategy_id is None
+
+    def test_a_seeded_50_ema_strategy_id_is_a_real_valid_choice(self) -> None:
+        state = self._state_with_pending_proposal()
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy", strategy_id="50-ema-breakout-pullback-long"))
+        assert error is None
+        assert saved.ceo_decisions[-1].strategy_id == "50-ema-breakout-pullback-long"

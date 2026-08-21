@@ -1030,6 +1030,23 @@ class AgentContributionRead(CamelModel):
 
 TradeAttributionEvidenceState = Literal["full_evidence", "no_decision_on_record"]
 
+# CEO directive "Live Trade -> Strategy Provenance" — the real,
+# three-way status this codebase can honestly distinguish for a closed
+# trade's strategy attribution (see app/trade_attribution.py's own
+# compute_trade_attribution() for exactly how each is derived):
+#   - "known": a real matching CeoDecisionRecord exists AND the CEO
+#     explicitly selected a real strategy at the moment of deciding.
+#   - "unknown": a real matching CeoDecisionRecord exists, but no
+#     strategy was ever selected for it — true for every trade before
+#     this feature existed, and for every trade where the CEO simply
+#     didn't pick one. NOT a fabricated middle state — it means exactly
+#     what the CEO's own real record says (nothing).
+#   - "unavailable": no matching CeoDecisionRecord/TradeDecision can be
+#     found at all (evicted from the capped decisions/ceoDecisions
+#     lists — the same disclosed edge case `evidence_state`'s own
+#     "no_decision_on_record" already covers).
+TradeStrategyProvenanceState = Literal["known", "unknown", "unavailable"]
+
 
 class TradeAttributionRecord(CamelModel):
     """One closed trade's real, auditable evidence trail. `evidenceState`
@@ -1037,7 +1054,11 @@ class TradeAttributionRecord(CamelModel):
     only when `PaperTrade.decisionId` never resolved to a real
     `TradeDecision` — never fabricated to fill the gap. `credit_split_
     note` is a fixed, honest disclosure — see this module's own
-    docstring for why no numeric split exists."""
+    docstring for why no numeric split exists. `strategyProvenanceState`
+    is the strongest honest claim this codebase's architecture can
+    support for strategy attribution — see `TradeStrategyProvenanceState`
+    above for exactly what each value means and why there is no
+    fabricated "the strategy caused this trade" state."""
 
     trade_id: str = Field(alias="tradeId")
     decision_id: str | None = Field(default=None, alias="decisionId")
@@ -1055,6 +1076,8 @@ class TradeAttributionRecord(CamelModel):
     pnl_pct: float = Field(alias="pnlPct")
     evidence_state: TradeAttributionEvidenceState = Field(alias="evidenceState")
     credit_split_note: str = Field(alias="creditSplitNote")
+    strategy_id: str | None = Field(default=None, alias="strategyId")
+    strategy_provenance_state: TradeStrategyProvenanceState = Field(alias="strategyProvenanceState")
 
 
 class TradeAttributionSummary(CamelModel):
@@ -4926,6 +4949,21 @@ class CeoDecisionRecord(CamelModel):
     # coerced to an empty string. Only meaningful when `agreed_with_ai`
     # is `False` — nothing reads it otherwise.
     override_reason: str | None = Field(default=None, alias="overrideReason")
+    # CEO directive "Live Trade -> Strategy Provenance" -- the one real,
+    # non-fabricated way this codebase can honestly link a live trade to
+    # a Strategy Lab strategy: the CEO's own explicit selection at the
+    # exact moment of deciding (POST /api/executive/decide gained an
+    # optional `strategyId`), never inferred from eligibility or
+    # backfilled onto past decisions. `None` for every decision recorded
+    # before this field existed, and for every decision where the CEO
+    # simply didn't pick one -- the overwhelming majority, honestly. Only
+    # meaningful when `ceo_decision` is "buy"/"sell" (a "wait" never
+    # executes a trade for any strategy to be attributed to). See
+    # app/state.py's submit_ceo_decision() for the real-strategy-exists
+    # validation before this is ever set, and app/decision_vault.py's
+    # build_vault_entry() / app/trade_attribution.py's
+    # compute_trade_attribution() for where it flows downstream.
+    strategy_id: str | None = Field(default=None, alias="strategyId")
 
 
 # CEO directive "Features 26-30," Feature 29 — Prediction -> Outcome
@@ -5917,10 +5955,14 @@ class DecisionVaultEntry(CamelModel):
     symbol: str
     sim_day: int = Field(alias="simDay")
     session: TradingSession
-    # Always None today — no ordinary Trading Floor trade links back to a
-    # specific Strategy object (only Research Sandbox-tested strategies
-    # do — see app/sandbox.py). A genuine future addition if that ever
-    # changes, not fabricated here.
+    # CEO directive "Live Trade -> Strategy Provenance" -- real, but
+    # only ever non-None when the CEO explicitly selected a real
+    # Strategy Lab strategy at the moment of deciding this trade (see
+    # CeoDecisionRecord.strategy_id, the one real source for this field
+    # -- app/decision_vault.py's build_vault_entry() just carries it
+    # through). None for every trade closed before this field existed,
+    # and for every trade where the CEO didn't pick a strategy -- the
+    # overwhelming majority, honestly disclosed, never backfilled.
     strategy_id: str | None = Field(default=None, alias="strategyId")
     market_regime: MarketIntelligenceRegime = Field(alias="marketRegime")
     market_regime_label: str = Field(alias="marketRegimeLabel")
@@ -6043,9 +6085,16 @@ class TradeReportCard(CamelModel):
     before. `None` fields below mean the join genuinely found no
     matching real record — see `dataHonestyNote` for what remains a
     real, disclosed gap rather than a fabricated field (WHY this trade
-    was exited, its SETUP taxonomy, its originating STRATEGY, and an
-    EXPECTED-vs-ACTUAL comparison — none of these has a real mechanism
-    anywhere in this codebase yet)."""
+    was exited, its SETUP taxonomy, and an EXPECTED-vs-ACTUAL comparison
+    — none of these has a real mechanism anywhere in this codebase yet).
+
+    CEO directive "Live Trade -> Strategy Provenance" adds
+    `strategyId`/`strategyProvenanceState`, joined the same way from
+    `TradeAttributionRecord` — real only when the CEO explicitly
+    selected a strategy at decision time (see `CeoDecisionRecord.
+    strategyId`), "unknown" otherwise (the honest majority), never
+    inferred from eligibility or backfilled onto trades that predate
+    this feature."""
 
     vault_entry_id: str = Field(alias="vaultEntryId")
     symbol: str
@@ -6075,6 +6124,12 @@ class TradeReportCard(CamelModel):
     supporting_agents: list[AgentId] = Field(default_factory=list, alias="supportingAgents")
     opposing_agents: list[AgentId] = Field(default_factory=list, alias="opposingAgents")
     gatekeeper_approved: bool | None = Field(default=None, alias="gatekeeperApproved")
+    # CEO directive "Live Trade -> Strategy Provenance" — joined from
+    # TradeAttributionRecord by tradeId. "unavailable" (never a
+    # fabricated "known") whenever the real matching PaperTrade this
+    # vault entry cites is no longer in trade_history.
+    strategy_id: str | None = Field(default=None, alias="strategyId")
+    strategy_provenance_state: TradeStrategyProvenanceState = Field(alias="strategyProvenanceState")
     data_honesty_note: str = Field(alias="dataHonestyNote")
 
 

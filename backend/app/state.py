@@ -1896,7 +1896,13 @@ class GameState:
             return self.data.viewed_trade_notification_ids
 
     async def submit_ceo_decision(
-        self, proposal_id: str, choice: AnalystChoice, *, delegated: bool = False, override_reason: str | None = None
+        self,
+        proposal_id: str,
+        choice: AnalystChoice,
+        *,
+        delegated: bool = False,
+        override_reason: str | None = None,
+        strategy_id: str | None = None,
     ) -> tuple[GameSaveState, str | None]:
         """Feature 12 — the CEO's (the player's) real buy/sell/wait call on
         a pending TradeProposal, applied under the same lock every other
@@ -1920,11 +1926,24 @@ class GameState:
         ever stored on the resulting CeoDecisionRecord when this decision
         actually is an override (`choice != proposal.overall_recommendation`)
         — silently ignored otherwise rather than stored where it means
-        nothing."""
+        nothing.
+
+        `strategy_id` (CEO directive "Live Trade -> Strategy Provenance")
+        — an optional real Strategy Lab strategy id the CEO explicitly
+        selected for this decision, the one genuine, non-fabricated way
+        this codebase can link a live trade back to a Strategy (see
+        app/schemas.py's CeoDecisionRecord.strategy_id for the full
+        honesty boundary). Validated against `self.data.strategies` —
+        an id that doesn't match any real strategy is a real caller
+        error (400), never silently dropped or silently accepted.
+        Ignored (never stored) for a "wait" — there is no trade for any
+        strategy to be attributed to."""
         async with self.lock:
             proposal = next((p for p in self.data.trade_proposals if p.id == proposal_id), None)
             if proposal is None:
                 return self.data, f"No pending trade proposal with id {proposal_id!r}."
+            if strategy_id is not None and not any(s.id == strategy_id for s in self.data.strategies):
+                return self.data, f"No real Strategy Lab strategy with id {strategy_id!r}."
             # Design Bible Chapter 67 (TTOS) Part 3 — Emergency Stop blocks
             # every trade execution, including the CEO's own manual call;
             # "wait" (declining the trade) is still allowed since it never
@@ -2001,6 +2020,8 @@ class GameState:
 
             if override_reason and not ceo_record.agreed_with_ai:
                 ceo_record = ceo_record.model_copy(update={"override_reason": override_reason})
+            if strategy_id is not None and choice in ("buy", "sell"):
+                ceo_record = ceo_record.model_copy(update={"strategy_id": strategy_id})
 
             memory = list(self.data.memory)
             record_ceo_decision(memory, decision)

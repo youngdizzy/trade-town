@@ -43,10 +43,16 @@ WHAT'S DELIBERATELY NOT HERE, and why:
                                  to divide anything by. DecisionVaultEntry.
                                  rMultiple is always None, never
                                  backfilled with a fabricated value.
-  strategyId                  - no ordinary Trading Floor trade links
-                                 back to a specific Strategy object (only
-                                 Research Sandbox-tested strategies do —
-                                 see app/sandbox.py). Always None.
+  strategyId                  - CEO directive "Live Trade -> Strategy
+                                 Provenance": real, but only ever set
+                                 when the CEO explicitly selected a real
+                                 Strategy Lab strategy at the moment of
+                                 deciding this trade (see
+                                 CeoDecisionRecord.strategyId). None for
+                                 every trade closed before this field
+                                 existed, and for every trade where no
+                                 strategy was selected — the honest
+                                 majority, never backfilled.
   Execution Grade,
   Psychology Grade            - no real signal anywhere in this codebase
                                  measures order-execution quality
@@ -239,7 +245,7 @@ def build_vault_entry(
         symbol=trade.symbol,
         simDay=sim_day,
         session=session.current,
-        strategyId=None,
+        strategyId=ceo_decision.strategy_id if ceo_decision else None,
         marketRegime=market_regime,
         marketRegimeLabel=market_regime_label,
         liquidityContext=liquidity,
@@ -286,11 +292,14 @@ def record_vault_entry(
 
 TRADE_REPORT_CARD_DATA_HONESTY_NOTE = (
     "Real evidence joined from three sources by this trade's own real tradeId — DecisionVaultEntry, "
-    "TradeExitEfficiency, and TradeAttributionRecord. Still genuinely missing, disclosed rather than "
-    "fabricated: WHY this trade was exited (no exit-reason taxonomy exists anywhere), its SETUP "
-    "(no setup taxonomy exists), its originating STRATEGY (strategyId is None — live proposals come "
-    "from the Analyst Desk, not a compiled Strategy Lab definition), and an EXPECTED-vs-ACTUAL "
-    "comparison (no per-trade expected-outcome record is persisted)."
+    "TradeExitEfficiency, and TradeAttributionRecord. strategyId/strategyProvenanceState reflect the "
+    "CEO's own real, explicit strategy selection at decision time (POST /api/executive/decide) — "
+    "'known' only when the CEO actually picked one, 'unknown' otherwise (the honest majority; live "
+    "proposals still come from the Analyst Desk, not a compiled Strategy Lab definition, so no "
+    "strategy is ever assumed). Still genuinely missing, disclosed rather than fabricated: WHY this "
+    "trade was exited (no exit-reason taxonomy exists anywhere), its SETUP (no setup taxonomy "
+    "exists), and an EXPECTED-vs-ACTUAL comparison (no per-trade expected-outcome record is "
+    "persisted)."
 )
 
 
@@ -360,6 +369,8 @@ def compute_trade_report_card(
         supportingAgents=attribution.supporting_agents if attribution is not None else [],
         opposingAgents=attribution.opposing_agents if attribution is not None else [],
         gatekeeperApproved=attribution.gatekeeper_approved if attribution is not None else None,
+        strategyId=attribution.strategy_id if attribution is not None else None,
+        strategyProvenanceState=attribution.strategy_provenance_state if attribution is not None else "unavailable",
         dataHonestyNote=TRADE_REPORT_CARD_DATA_HONESTY_NOTE,
     )
 

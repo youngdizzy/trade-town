@@ -161,6 +161,62 @@ class TestComputeTradeAttribution:
         assert not any("pnl" in f.lower() or "credit" in f.lower() for f in contribution_fields)
 
 
+class TestStrategyProvenance:
+    """CEO directive "Live Trade -> Strategy Provenance" — the real
+    three-way state (known/unknown/unavailable), never a fabricated
+    "the strategy caused this trade" claim."""
+
+    def test_no_matching_decision_reads_unavailable(self) -> None:
+        trade = _trade(decision_id="decision-does-not-exist")
+        record = compute_trade_attribution(trade, [], [])
+        assert record.strategy_provenance_state == "unavailable"
+        assert record.strategy_id is None
+
+    def test_matched_decision_but_no_ceo_decision_record_reads_unavailable(self) -> None:
+        decision = _decision()
+        trade = _trade()
+        record = compute_trade_attribution(trade, [decision], [])
+        assert record.strategy_provenance_state == "unavailable"
+        assert record.strategy_id is None
+
+    def test_matched_ceo_decision_with_no_strategy_selected_reads_unknown(self) -> None:
+        decision = _decision()
+        ceo_decision = CeoDecisionRecord(
+            id="ceo-1",
+            proposalId="proposal-1",
+            symbol="AAPL",
+            category="stock",
+            aiRecommendation="buy",
+            ceoDecision="buy",
+            agreedWithAi=True,
+            decisionId="decision-1",
+            createdAt="2024-01-01T00:00:00+00:00",
+        )
+        trade = _trade()
+        record = compute_trade_attribution(trade, [decision], [ceo_decision])
+        assert record.strategy_provenance_state == "unknown"
+        assert record.strategy_id is None
+
+    def test_matched_ceo_decision_with_a_real_strategy_selected_reads_known(self) -> None:
+        decision = _decision()
+        ceo_decision = CeoDecisionRecord(
+            id="ceo-1",
+            proposalId="proposal-1",
+            symbol="AAPL",
+            category="stock",
+            aiRecommendation="buy",
+            ceoDecision="buy",
+            agreedWithAi=True,
+            decisionId="decision-1",
+            strategyId="strategy-momentum",
+            createdAt="2024-01-01T00:00:00+00:00",
+        )
+        trade = _trade()
+        record = compute_trade_attribution(trade, [decision], [ceo_decision])
+        assert record.strategy_provenance_state == "known"
+        assert record.strategy_id == "strategy-momentum"
+
+
 class TestComputeTradeAttributionHistory:
     def test_produces_one_record_per_trade_in_order(self) -> None:
         trades = [_trade(trade_id="a", decision_id=None), _trade(trade_id="b", decision_id=None)]

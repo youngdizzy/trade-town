@@ -60,6 +60,11 @@ class SubmitCeoDecisionRequest(BaseModel):
     # CeoDecisionRecord only when this decision is actually an override
     # (see app/state.py's submit_ceo_decision).
     override_reason: str | None = Field(default=None, alias="overrideReason")
+    # CEO directive "Live Trade -> Strategy Provenance" — an optional
+    # real Strategy Lab strategy the CEO explicitly selected for this
+    # decision (see app/state.py's submit_ceo_decision for the
+    # real-strategy-exists validation before this is ever stored).
+    strategy_id: str | None = Field(default=None, alias="strategyId")
 
 
 class SubmitCeoDecisionResponse(BaseModel):
@@ -78,7 +83,11 @@ class SubmitCeoDecisionResponse(BaseModel):
 @router.post("/decide", response_model=SubmitCeoDecisionResponse)
 async def decide(payload: SubmitCeoDecisionRequest) -> SubmitCeoDecisionResponse:
     state, error = await game_state.submit_ceo_decision(
-        payload.proposal_id, payload.choice, delegated=payload.delegated, override_reason=payload.override_reason
+        payload.proposal_id,
+        payload.choice,
+        delegated=payload.delegated,
+        override_reason=payload.override_reason,
+        strategy_id=payload.strategy_id,
     )
     if error is not None:
         raise HTTPException(status_code=400, detail=error)
