@@ -2458,6 +2458,7 @@ class GameState:
                 created_at=_now_iso(),
                 expected_mechanism=expected_mechanism,
                 falsification_criteria=falsification_criteria,
+                existing=self.data.quant_research_experiments,
             )
             updated = cap_quant_research_experiments([*self.data.quant_research_experiments, experiment])
             self.data = self.data.model_copy(update={"quant_research_experiments": updated})

@@ -201,9 +201,17 @@ test("CEO directive 'Professional Quant Firm Phase' — the QUANT RESEARCH LAB s
 
   const hypothesis = `The 50 EMA breakout works better during the London session (${Date.now()}).`;
   await page.getByPlaceholder(/50 EMA breakout \+ pullback setup performs better/).fill(hypothesis);
+  await page.getByPlaceholder(/Momentum continuation after a confirmed trend-following breakout/).fill("Trend-following continuation after a confirmed breakout should outperform during higher-liquidity sessions.");
+  await page.getByPlaceholder(/Flat or negative expectancy across a real out-of-sample walk-forward window/).fill("Flat or negative expectancy across a real out-of-sample walk-forward window would disprove this.");
   await clickRobust(page, () => page.getByRole("button", { name: "File Experiment", exact: true }), { label: "File Experiment" });
-  await expect(page.getByText(/^Filed as experiment-/)).toBeVisible({ timeout: 30_000 });
-  await expect(page.getByText(/^(promising|inconclusive|rejected)$/)).toBeVisible();
+  const filedLine = page.getByText(/^Filed as experiment-/);
+  await expect(filedLine).toBeVisible({ timeout: 30_000 });
+  // Scoped to the filed-result row, not a bare page-wide search — this dev
+  // save file is long-lived and never deletes prior experiments, so a
+  // page-wide outcome-pill search can match many unrelated rows already on
+  // screen (e.g. the duplicate-warning block's own matched-experiment pills).
+  const filedRow = filedLine.locator("xpath=..");
+  await expect(filedRow.getByText(/^(promising|inconclusive|rejected)$/)).toBeVisible();
 
   await expect(page.getByText("Never registered")).toBeVisible();
   await clickRobust(page, () => page.getByRole("button", { name: "Register This Text as a New Version", exact: true }), { label: "Register This Text as a New Version" });
@@ -240,6 +248,8 @@ test("CEO directive 'Professional Quant Firm Phase' — the QUANT RESEARCH LAB s
   // .last(): the textarea above still literally contains this same text too — the search-results
   // card renders after it in the DOM.
   await expect(page.getByText(hypothesis).last()).toBeVisible({ timeout: 15_000 });
+  // Phase 10 — a real per-strategy-family test count renders alongside the filed experiment.
+  await expect(page.getByText("Family test #").first()).toBeVisible();
 
   const relevantErrors = consoleErrors.filter((e) => !e.includes("favicon") && !e.includes("Failed to process file"));
   expect(relevantErrors).toEqual([]);

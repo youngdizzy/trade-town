@@ -1698,6 +1698,11 @@ export interface QuantResearchExperiment {
   outcome: QuantResearchOutcome;
   outcomeReason: string;
   record: ResearchExperimentRecord;
+  /** CEO directive "Quant Research Factory / Strategy Discovery Engine," Phase 10 — a real count of how
+   * many experiments (including this one) share this strategy's real name, at the moment this one was
+   * filed. A real multiple-testing/research-selection-bias signal, never a p-value or corrected
+   * significance level. `null` only for an experiment filed before this field existed. */
+  familyExperimentCount: number | null;
   createdAt: string;
 }
 

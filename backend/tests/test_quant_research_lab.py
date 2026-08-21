@@ -6,7 +6,7 @@ from __future__ import annotations
 
 import asyncio
 
-from app.quant_research_lab import file_quant_research_experiment, find_similar_experiments
+from app.quant_research_lab import count_experiments_for_family, file_quant_research_experiment, find_similar_experiments
 from app.research_experiment import run_research_experiment
 from app.state import GameState
 from app.strategy_compiler import compile_strategy_text
@@ -160,3 +160,65 @@ class TestQuantResearchExperimentBackwardCompat:
         restored = QuantResearchExperiment.model_validate(old_save_shape)
         assert restored.expected_mechanism is None
         assert restored.falsification_criteria is None
+
+    def test_an_experiment_persisted_before_family_experiment_count_existed_still_validates(self) -> None:
+        from app.schemas import QuantResearchExperiment
+
+        definition = compile_strategy_text(name="Old Save Strategy 2", source_text=_TEXT)
+        record = run_research_experiment(definition, symbols=["AAPL"])
+        old_save_shape = file_quant_research_experiment(
+            record, experiment_id="exp-old-2", hypothesis="Old-format hypothesis.", researcher_agent_id="quant", created_at="2024-01-01T00:00:00+00:00"
+        ).model_dump(by_alias=True)
+        del old_save_shape["familyExperimentCount"]
+        restored = QuantResearchExperiment.model_validate(old_save_shape)
+        assert restored.family_experiment_count is None
+
+
+class TestCountExperimentsForFamily:
+    """CEO directive "Quant Research Factory / Strategy Discovery
+    Engine," Phase 10 — a real multiple-testing/research-selection-bias
+    signal, never a fabricated statistical correction."""
+
+    def test_no_prior_experiments_reads_zero(self) -> None:
+        assert count_experiments_for_family([], definition_name="Any Strategy") == 0
+
+    def test_counts_only_experiments_sharing_the_real_definition_name(self) -> None:
+        definition_a = compile_strategy_text(name="Family A", source_text=_TEXT)
+        record_a = run_research_experiment(definition_a, symbols=["AAPL"])
+        definition_b = compile_strategy_text(name="Family B", source_text=_TEXT)
+        record_b = run_research_experiment(definition_b, symbols=["AAPL"])
+        experiments = [
+            file_quant_research_experiment(record_a, experiment_id="exp-1", hypothesis="h1", researcher_agent_id="quant", created_at="2024-01-01T00:00:00+00:00"),
+            file_quant_research_experiment(record_a, experiment_id="exp-2", hypothesis="h2", researcher_agent_id="quant", created_at="2024-01-01T00:00:00+00:00"),
+            file_quant_research_experiment(record_b, experiment_id="exp-3", hypothesis="h3", researcher_agent_id="quant", created_at="2024-01-01T00:00:00+00:00"),
+        ]
+        assert count_experiments_for_family(experiments, definition_name="Family A") == 2
+        assert count_experiments_for_family(experiments, definition_name="Family B") == 1
+
+    def test_a_never_tested_family_reads_zero_not_fabricated(self) -> None:
+        definition_a = compile_strategy_text(name="Family A", source_text=_TEXT)
+        record_a = run_research_experiment(definition_a, symbols=["AAPL"])
+        experiments = [file_quant_research_experiment(record_a, experiment_id="exp-1", hypothesis="h1", researcher_agent_id="quant", created_at="2024-01-01T00:00:00+00:00")]
+        assert count_experiments_for_family(experiments, definition_name="Never Tested Family") == 0
+
+
+class TestFileQuantResearchExperimentFamilyCount:
+    def test_no_existing_list_supplied_leaves_the_count_honestly_none(self) -> None:
+        definition = compile_strategy_text(name="No Count Family", source_text=_TEXT)
+        record = run_research_experiment(definition, symbols=["AAPL"])
+        experiment = file_quant_research_experiment(record, experiment_id="exp-1", hypothesis="h1", researcher_agent_id="quant", created_at="2024-01-01T00:00:00+00:00")
+        assert experiment.family_experiment_count is None
+
+    def test_the_count_includes_the_experiment_being_filed_right_now(self) -> None:
+        definition = compile_strategy_text(name="Counted Family", source_text=_TEXT)
+        record = run_research_experiment(definition, symbols=["AAPL"])
+        experiment = file_quant_research_experiment(record, experiment_id="exp-1", hypothesis="h1", researcher_agent_id="quant", created_at="2024-01-01T00:00:00+00:00", existing=[])
+        assert experiment.family_experiment_count == 1
+
+    def test_the_count_grows_across_real_repeated_filings_of_the_same_family(self) -> None:
+        state = GameState()
+        definition = compile_strategy_text(name="Repeated Family", source_text=_TEXT)
+        _, first = asyncio.run(state.submit_quant_research_experiment(definition, hypothesis="first pass", researcher_agent_id="quant", symbols=["AAPL"]))
+        _, second = asyncio.run(state.submit_quant_research_experiment(definition, hypothesis="second pass, differently worded", researcher_agent_id="nova", symbols=["AAPL"]))
+        assert first.experiment.family_experiment_count == 1
+        assert second.experiment.family_experiment_count == 2

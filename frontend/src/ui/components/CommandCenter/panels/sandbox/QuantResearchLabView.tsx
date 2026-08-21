@@ -326,6 +326,15 @@ export function QuantResearchLabView() {
                     <VerdictPill verdict={fileResult.experiment.outcome} tones={OUTCOME_TONE} />
                   </div>
                   <div className="mt-1 text-[9px] text-cmd-text">{fileResult.experiment.outcomeReason}</div>
+                  {fileResult.experiment.familyExperimentCount !== null && (
+                    <div
+                      className={`mt-1 text-[9px] ${fileResult.experiment.familyExperimentCount >= 5 ? "text-cmd-amber" : "text-cmd-textDim"}`}
+                    >
+                      Test #{fileResult.experiment.familyExperimentCount} on this strategy name.
+                      {fileResult.experiment.familyExperimentCount >= 5 &&
+                        " Repeated retesting of the same idea raises the risk that any pass is a lucky search result, not a real edge — weigh that before promoting."}
+                    </div>
+                  )}
                 </div>
                 {fileResult.similarExperiments.length > 0 && (
                   <div className="rounded-sm border border-cmd-amber/40 bg-cmd-amber/5 p-1.5">
@@ -567,6 +576,7 @@ export function QuantResearchLabView() {
                 <div className="mt-0.5 grid grid-cols-2 gap-x-3 sm:grid-cols-4">
                   <DataRow label="Researcher" value={exp.researcherAgentId} />
                   <DataRow label="Trades" value={exp.record.backtest.overall.tradeCount} />
+                  {exp.familyExperimentCount !== null && <DataRow label="Family test #" value={exp.familyExperimentCount} />}
                 </div>
               </div>
             ))}

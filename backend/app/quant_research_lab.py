@@ -30,6 +30,15 @@ real `outcome`/`outcomeReason`, so a CEO/agent filing new research sees
 not just "this looks similar" but "and it was already REJECTED, here's
 why" before spending real compute re-testing a known-failed idea. Real
 data already computed for the matched experiment, never recomputed.
+
+Same directive, Phase 10 — `count_experiments_for_family()` gives a
+real multiple-testing/research-selection-bias signal: how many times
+has this exact strategy name already been tested. Deliberately never a
+p-value, false-discovery-rate, or corrected significance level — this
+codebase's real backtest outputs (expectancy/profit-factor/Sharpe over
+real trades) don't support deriving one honestly, and the directive's
+own rule is explicit: never claim statistical significance an
+implemented method doesn't actually support.
 """
 from __future__ import annotations
 
@@ -54,6 +63,19 @@ def cap_quant_research_experiments(items: list[QuantResearchExperiment]) -> list
     return items
 
 
+def count_experiments_for_family(existing: list[QuantResearchExperiment], *, definition_name: str) -> int:
+    """CEO directive "Quant Research Factory / Strategy Discovery
+    Engine," Phase 10 — a real count of every already-persisted
+    experiment sharing this strategy's real `record.definitionName`,
+    across every real compiled version/re-test — the real proxy for
+    "how many times has this basic idea already been tried." Counts
+    only what's currently retained in `existing` (bounded by
+    `MAX_QUANT_RESEARCH_EXPERIMENTS`, oldest evicted first, same as
+    every other capped archive in this codebase) — a real, honestly
+    partial window, never a fabricated lifetime total."""
+    return sum(1 for e in existing if e.record.definition_name == definition_name)
+
+
 def _classify_outcome(record: ResearchExperimentRecord) -> tuple[QuantResearchOutcome, str]:
     """A real, deterministic three-way read of the same evidence
     `_synthesize_conclusion()` already produced — never a second,
@@ -76,6 +98,7 @@ def file_quant_research_experiment(
     created_at: str,
     expected_mechanism: str | None = None,
     falsification_criteria: str | None = None,
+    existing: list[QuantResearchExperiment] | None = None,
 ) -> QuantResearchExperiment:
     """The one real entry point for turning an already-real, already-
     computed `ResearchExperimentRecord` into a persistable
@@ -83,13 +106,23 @@ def file_quant_research_experiment(
     (app/state.py) never need this module's private classification
     function directly. `expected_mechanism`/`falsification_criteria`
     default to `None` for any caller that hasn't been threaded through
-    yet — never fabricated placeholder text."""
+    yet — never fabricated placeholder text.
+
+    CEO directive "Quant Research Factory / Strategy Discovery Engine,"
+    Phase 10 — `existing` (the already-persisted list, before this new
+    experiment is added) is used to compute a real
+    `family_experiment_count` via `count_experiments_for_family()`, +1
+    for the experiment being filed right now. `None` (the default, for
+    any caller that hasn't threaded the real list through) leaves the
+    count honestly `None` rather than fabricating a 1."""
     outcome, outcome_reason = _classify_outcome(record)
+    family_experiment_count = count_experiments_for_family(existing, definition_name=record.definition_name) + 1 if existing is not None else None
     return QuantResearchExperiment(
         id=experiment_id,
         hypothesis=hypothesis,
         expectedMechanism=expected_mechanism,
         falsificationCriteria=falsification_criteria,
+        familyExperimentCount=family_experiment_count,
         researcherAgentId=researcher_agent_id,
         outcome=outcome,
         outcomeReason=outcome_reason,

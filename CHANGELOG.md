@@ -78,6 +78,49 @@ development milestones, not semver releases.
   filing form, followed by a direct API check confirming the just-filed experiment persisted both real
   values exactly as typed.
 
+- **CEO directive "Quant Research Factory / Strategy Discovery Engine," Phase 10: real multiple-testing /
+  research-selection-bias tracking** (backend: `backend/app/schemas.py`, `backend/app/quant_research_lab.py`,
+  `backend/app/state.py`, `backend/tests/test_quant_research_lab.py`; frontend: `frontend/src/types.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/sandbox/QuantResearchLabView.tsx`;
+  `frontend/tests/sandbox.spec.ts`): the directive's own rule is explicit — never claim statistical
+  significance a method doesn't actually support. No p-value, false-discovery-rate correction, or
+  "corrected significance level" is honestly derivable from this codebase's real backtest outputs
+  (expectancy/profit-factor/Sharpe over real simulated trades, not hypothesis-test statistics), so none is
+  fabricated. What *is* honestly derivable: a real count of how many times the same strategy idea has
+  already been tested.
+
+  New `count_experiments_for_family()` sums already-persisted `QuantResearchExperiment`s sharing the real
+  `record.definitionName`, over whatever window survives the existing `MAX_QUANT_RESEARCH_EXPERIMENTS = 100`
+  cap — a real, honestly partial count, never a fabricated lifetime total. `file_quant_research_experiment()`
+  now accepts the already-persisted list and computes `family_experiment_count` as that count + 1; any
+  caller that doesn't thread the list through leaves it honestly `None`, never guessed as 1. New
+  `QuantResearchExperiment.family_experiment_count: int | None` field, optional with a `None` default so
+  pre-existing saves still validate.
+
+  `QuantResearchLabView.tsx` shows "Test #N on this strategy name" on the just-filed result, with a plain-
+  language caution appended once the count reaches 5 — the real number is always shown plainly, the
+  threshold only changes styling and adds context, never a fabricated severity label — plus a "Family test
+  #" column in the permanent search-results list.
+
+  7 new backend tests (`family_experiment_count` backward-compat; `count_experiments_for_family()` zero/
+  matching-only/never-tested cases; `file_quant_research_experiment()`'s honest-`None`-without-a-list case,
+  count-includes-itself case, and a real two-call growth-1-to-2 case against a real `GameState`). Full
+  backend suite (2545 passed, up from 2538), `mypy app/`, `ruff check app/ tests/` clean. `tsc -b --noEmit`,
+  `eslint`, `vite build` clean.
+
+  Live-verified twice: a direct API sequence against the running dev server (compile → file twice →
+  `familyExperimentCount` read 1 then 2), and a fresh `sandbox.spec.ts` Playwright run. That run surfaced
+  two real pre-existing issues in the test itself, both fixed rather than skipped: Phase 1's new required
+  `expectedMechanism`/`falsificationCriteria` fields had left "File Experiment" permanently disabled in this
+  test (never filled in), an unverified regression from that increment; and the post-filing outcome-pill
+  assertion used a bare page-wide `getByText`, which now hits strict-mode ambiguity because this long-lived
+  dev save never deletes prior experiments and has accumulated many matching pills across this session's
+  history — fixed by scoping the locator to the filed-result row's own DOM parent. No application behavior
+  changed by either fix. `sandbox.spec.ts`: 4/4 passed.
+
+  Deliberately not attempted here: Phase 5 (general-pipeline baseline comparison) and Phase 15 (knowledge
+  graph nodes/edges) remain open, tracked in `docs/Architecture.md`.
+
 - **CEO directive "Portfolio Construction, Capital Allocation & Execution Realism," Phase 1 (audit) +
   Increment 1 (live strategy-position attribution + real exposure reads)** (backend:
   `backend/app/schemas.py`, `backend/app/state.py`, `backend/app/portfolio_intelligence.py`,

@@ -4454,6 +4454,24 @@ class QuantResearchExperiment(CamelModel):
     outcome: QuantResearchOutcome
     outcome_reason: str = Field(alias="outcomeReason")
     record: ResearchExperimentRecord
+    # CEO directive "Quant Research Factory / Strategy Discovery Engine,"
+    # Phase 10 — real multiple-testing/research-selection-bias
+    # visibility, never a fabricated statistical correction. This is a
+    # real, counted total of how many experiments (including this one)
+    # share this strategy's real `record.definitionName` at the moment
+    # this one was filed — a real proxy for "how many times has this
+    # basic idea been tried," the same real signal the directive's own
+    # "track number of experiments/parameter search size" ask ultimately
+    # wants. Deliberately NOT a p-value, false-discovery-rate, or
+    # corrected significance level — no such statistic can be honestly
+    # derived from this codebase's real backtest outputs (expectancy/
+    # profit-factor/Sharpe over real trades, not hypothesis-test
+    # p-values), and the directive's own rule is explicit: "do not claim
+    # statistical significance unless the implemented method actually
+    # supports it." `None` only for an experiment filed before this
+    # field existed — the true historical count for those is genuinely
+    # unknown, never guessed as 1.
+    family_experiment_count: int | None = Field(default=None, alias="familyExperimentCount")
     created_at: str = Field(alias="createdAt")
 
 

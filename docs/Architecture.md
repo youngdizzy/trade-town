@@ -12977,15 +12977,89 @@ the form submitted without error).
 
 **Deliberately not yet done** (natural next increments, not started
 here): Phase 5 (extending baseline comparison from the EMA-pullback-
-only scope to the general compiled-strategy pipeline); Phase 10
-(system-level multiple-testing/research-bias tracking — a self-
-disclosed real gap); the fuller Phase 16 ask (an automated hypothesis-
-generation loop that itself learns from outcomes) remains genuinely
-blocked by the real absence of any automated generation mechanism to
-attach it to — not a convenience cut, a structural one, per Increment
-2's own research-first finding; Phase 15 (adding `QuantResearchExperiment`
-nodes/edges to the existing knowledge graph). None of the others are
-blocked — see this section's own audit findings above.
+only scope to the general compiled-strategy pipeline); the fuller
+Phase 16 ask (an automated hypothesis-generation loop that itself
+learns from outcomes) remains genuinely blocked by the real absence of
+any automated generation mechanism to attach it to — not a convenience
+cut, a structural one, per Increment 2's own research-first finding;
+Phase 15 (adding `QuantResearchExperiment` nodes/edges to the existing
+knowledge graph). None of the others are blocked — see this section's
+own audit findings above.
+
+**Increment 4 — Phase 10, multiple-testing / research-selection-bias
+tracking.** The directive is explicit that this must never manufacture
+statistical rigor the codebase doesn't actually have: no p-value, no
+false-discovery-rate correction, no "corrected significance level" —
+this codebase's real backtest outputs (expectancy/profit-factor/Sharpe
+computed over real simulated trades) don't support deriving one
+honestly. What *is* honestly derivable: a real count of how many times
+the same basic strategy idea has already been tested. `app/
+quant_research_lab.py` gained `count_experiments_for_family()` — sums
+how many already-persisted `QuantResearchExperiment`s share the
+experiment's real `record.definitionName`, over whatever window is
+still retained under the existing `MAX_QUANT_RESEARCH_EXPERIMENTS = 100`
+cap (oldest evicted first, same convention as every other bounded
+archive in this codebase) — a real, honestly partial count, never a
+fabricated lifetime total. `file_quant_research_experiment()` now
+accepts the already-persisted list and computes
+`family_experiment_count` as that count + 1 (the experiment being
+filed right now); any caller that doesn't thread the list through
+(none currently) leaves it honestly `None` rather than guessing 1.
+`app/state.py`'s `submit_quant_research_experiment()` threads
+`self.data.quant_research_experiments` through. The new
+`QuantResearchExperiment.family_experiment_count: int | None` field is
+optional with a `None` default, so save files persisted before this
+field existed still validate — the true historical count for those is
+genuinely unknown, never guessed.
+
+`QuantResearchLabView.tsx` renders the count in two places: the
+just-filed result box shows "Test #N on this strategy name," with an
+amber caution line appended once the count reaches 5 ("Repeated
+retesting of the same idea raises the risk that any pass is a lucky
+search result, not a real edge — weigh that before promoting") — the
+real number is always shown plainly, the threshold only changes the
+color and adds a plain-language caution, never a fabricated severity
+label; the permanent search-results list shows a "Family test #"
+column per filed experiment.
+
+7 new backend tests: `TestQuantResearchExperimentBackwardCompat`
+gained a `family_experiment_count`-specific case; new
+`TestCountExperimentsForFamily` (zero-prior-experiments, counts-only-
+matching-family, never-tested-family reads zero); new
+`TestFileQuantResearchExperimentFamilyCount` (no-existing-list leaves
+it honestly `None`; the count includes the experiment being filed
+right now; the count grows 1→2 across two real, sequential
+`GameState.submit_quant_research_experiment()` calls against the same
+compiled strategy). Full backend suite (2545 passed, up from 2538),
+`mypy app/`, `ruff check app/ tests/` clean. `tsc -b --noEmit`,
+`eslint`, `vite build` clean.
+
+Live-verified twice: (1) a direct API sequence — compiled a real
+strategy definition, filed two experiments against it via `POST /api/
+sandbox/quant-research-lab/experiments`, and confirmed
+`familyExperimentCount` read `1` then `2`, exactly matching the backend
+test's own assertion, against the actual running dev-server state, not
+a mock; (2) the existing `sandbox.spec.ts` Quant Research Lab
+Playwright test, re-run against a freshly restarted `uvicorn`/`vite`
+pair (this session's established stale-dev-server discipline).
+
+That re-run surfaced two real, pre-existing issues, both fixed in
+`frontend/tests/sandbox.spec.ts` rather than papered over: (1) Increment
+3's new required `expectedMechanism`/`falsificationCriteria` fields
+made "File Experiment" permanently disabled in this test, since the
+test never filled them — a real regression from that increment that
+had gone unverified against this specific spec file until now; fixed
+by filling both new textareas before the click, same as a real CEO
+would. (2) The outcome-pill assertion right after filing used a bare
+page-wide `getByText`, which now hits strict-mode ambiguity because
+this dev save file is long-lived and never deletes prior experiments
+(by design) — many prior Playwright/live-verification runs across this
+session's history left dozens of matching outcome pills already on
+screen. Fixed by scoping the locator to the specific filed-result row
+via its DOM parent, rather than searching the whole page — a test-
+correctness fix only, no application behavior changed. Also added a
+`familyExperimentCount` assertion to the same test's search-results
+check. Full `sandbox.spec.ts` re-run: 4/4 passed.
 
 ## Save format compatibility
 
