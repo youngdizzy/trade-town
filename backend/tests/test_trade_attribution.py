@@ -9,12 +9,18 @@ from __future__ import annotations
 from app.schemas import (
     AgentVote,
     CeoDecisionRecord,
+    CompiledStrategyDefinition,
     GatekeeperCheck,
     GatekeeperVerdict,
     PaperTrade,
     TradeDecision,
 )
-from app.trade_attribution import CREDIT_SPLIT_NOTE, compute_trade_attribution, compute_trade_attribution_history
+from app.trade_attribution import (
+    CREDIT_SPLIT_NOTE,
+    compute_trade_attribution,
+    compute_trade_attribution_history,
+    resolve_trade_strategy_rule_snapshot,
+)
 
 
 def _trade(*, trade_id: str = "trade-1", decision_id: str | None = "decision-1", side: str = "buy", pnl: float = 10.0, pnl_pct: float = 1.0) -> PaperTrade:
@@ -215,6 +221,133 @@ class TestStrategyProvenance:
         record = compute_trade_attribution(trade, [decision], [ceo_decision])
         assert record.strategy_provenance_state == "known"
         assert record.strategy_id == "strategy-momentum"
+
+    def test_strategy_rule_snapshot_is_carried_through_from_the_ceo_decision(self) -> None:
+        # CEO directive "Complete Trade Provenance," Part 2.
+        decision = _decision()
+        ceo_decision = CeoDecisionRecord(
+            id="ceo-1",
+            proposalId="proposal-1",
+            symbol="AAPL",
+            category="stock",
+            aiRecommendation="buy",
+            ceoDecision="buy",
+            agreedWithAi=True,
+            decisionId="decision-1",
+            strategyId="50-ema-breakout-pullback-long",
+            strategyCompiledDefinitionId="50-ema-breakout-pullback-long",
+            strategyCompiledDefinitionVersion=2,
+            createdAt="2024-01-01T00:00:00+00:00",
+        )
+        trade = _trade()
+        record = compute_trade_attribution(trade, [decision], [ceo_decision])
+        assert record.strategy_compiled_definition_id == "50-ema-breakout-pullback-long"
+        assert record.strategy_compiled_definition_version == 2
+
+    def test_strategy_rule_snapshot_is_none_when_no_strategy_was_selected(self) -> None:
+        decision = _decision()
+        ceo_decision = CeoDecisionRecord(
+            id="ceo-1",
+            proposalId="proposal-1",
+            symbol="AAPL",
+            category="stock",
+            aiRecommendation="buy",
+            ceoDecision="buy",
+            agreedWithAi=True,
+            decisionId="decision-1",
+            createdAt="2024-01-01T00:00:00+00:00",
+        )
+        trade = _trade()
+        record = compute_trade_attribution(trade, [decision], [ceo_decision])
+        assert record.strategy_compiled_definition_id is None
+        assert record.strategy_compiled_definition_version is None
+
+
+def _compiled_definition(*, definition_id: str = "50-ema-breakout-pullback-long", version: int = 1) -> CompiledStrategyDefinition:
+    return CompiledStrategyDefinition(
+        id=definition_id,
+        name="50 EMA Breakout Pullback (Long)",
+        sourceText="test source",
+        version=version,
+        createdBy="quant",
+        createdAt="2024-01-01T00:00:00+00:00",
+        timeframe="1h",
+        sequence=[],
+        stop=None,
+        target=None,
+        ambiguities=[],
+        status="compiled",
+        detail="test",
+    )
+
+
+class TestResolveTradeStrategyRuleSnapshot:
+    """CEO directive "Complete Trade Provenance," Part 2 —
+    resolve_trade_strategy_rule_snapshot() resolves a trade's real
+    snapshot reference back into the actual immutable
+    CompiledStrategyDefinition, never fabricating one."""
+
+    def test_unknown_trade_id_returns_none(self) -> None:
+        snapshot = resolve_trade_strategy_rule_snapshot("no-such-trade", [_trade()], [], [], {})
+        assert snapshot is None
+
+    def test_known_trade_with_no_strategy_selected_resolves_with_no_compiled_definition(self) -> None:
+        trade = _trade()
+        snapshot = resolve_trade_strategy_rule_snapshot(trade.id, [trade], [], [], {})
+        assert snapshot is not None
+        assert snapshot.strategy_id is None
+        assert snapshot.strategy_provenance_state == "unavailable"
+        assert snapshot.compiled_definition is None
+
+    def test_known_trade_with_a_strategy_but_no_matching_registry_entry_resolves_with_no_compiled_definition(self) -> None:
+        decision = _decision()
+        ceo_decision = CeoDecisionRecord(
+            id="ceo-1",
+            proposalId="proposal-1",
+            symbol="AAPL",
+            category="stock",
+            aiRecommendation="buy",
+            ceoDecision="buy",
+            agreedWithAi=True,
+            decisionId="decision-1",
+            strategyId="strategy-momentum",
+            createdAt="2024-01-01T00:00:00+00:00",
+        )
+        trade = _trade()
+        snapshot = resolve_trade_strategy_rule_snapshot(trade.id, [trade], [decision], [ceo_decision], {})
+        assert snapshot is not None
+        assert snapshot.strategy_id == "strategy-momentum"
+        assert snapshot.strategy_provenance_state == "known"
+        assert snapshot.compiled_definition is None  # real: an "idea"-stage strategy has no compiled rules to resolve
+
+    def test_known_trade_with_a_real_compiled_definition_resolves_the_exact_version(self) -> None:
+        decision = _decision()
+        ceo_decision = CeoDecisionRecord(
+            id="ceo-1",
+            proposalId="proposal-1",
+            symbol="AAPL",
+            category="stock",
+            aiRecommendation="buy",
+            ceoDecision="buy",
+            agreedWithAi=True,
+            decisionId="decision-1",
+            strategyId="50-ema-breakout-pullback-long",
+            strategyCompiledDefinitionId="50-ema-breakout-pullback-long",
+            strategyCompiledDefinitionVersion=2,
+            createdAt="2024-01-01T00:00:00+00:00",
+        )
+        trade = _trade()
+        registry = {
+            "50-ema-breakout-pullback-long": [
+                _compiled_definition(version=1),
+                _compiled_definition(version=2),
+            ]
+        }
+        snapshot = resolve_trade_strategy_rule_snapshot(trade.id, [trade], [decision], [ceo_decision], registry)
+        assert snapshot is not None
+        assert snapshot.compiled_definition is not None
+        assert snapshot.compiled_definition.version == 2
+        assert snapshot.compiled_definition.id == "50-ema-breakout-pullback-long"
 
 
 class TestComputeTradeAttributionHistory:

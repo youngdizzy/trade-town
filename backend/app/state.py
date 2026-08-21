@@ -2096,6 +2096,34 @@ class GameState:
                 ceo_record = ceo_record.model_copy(update={"override_reason": override_reason})
             if strategy_id is not None and choice in ("buy", "sell"):
                 ceo_record = ceo_record.model_copy(update={"strategy_id": strategy_id})
+                # CEO directive "Complete Trade Provenance," Part 2 —
+                # Strategy Rule Snapshot. Real, already-immutable history
+                # already exists for CompiledStrategyDefinition
+                # (app/strategy_registry.py's Feature 37, append-only,
+                # never overwritten) — this just reads the CURRENT
+                # (latest-appended = highest .version) entry for the
+                # selected Strategy's own compiled_definition_id, at the
+                # exact instant of this decision, and snapshots that
+                # (id, version) pair. A later edit to the strategy
+                # appends a NEW entry to the same list — this trade's
+                # snapshot keeps pointing at the version that was real
+                # when the trade was actually decided. Both stay None
+                # when the Strategy has no compiled_definition_id yet
+                # (a real "idea"-stage strategy with no represented
+                # rules) — never fabricated.
+                selected_strategy = next((s for s in self.data.strategies if s.id == strategy_id), None)
+                compiled_definition_id = selected_strategy.compiled_definition_id if selected_strategy else None
+                compiled_definition_version = None
+                if compiled_definition_id is not None:
+                    versions = self.data.compiled_strategy_versions.get(compiled_definition_id)
+                    if versions:
+                        compiled_definition_version = versions[-1].version
+                ceo_record = ceo_record.model_copy(
+                    update={
+                        "strategy_compiled_definition_id": compiled_definition_id,
+                        "strategy_compiled_definition_version": compiled_definition_version,
+                    }
+                )
                 # CEO directive "Portfolio Construction, Capital Allocation
                 # & Execution Realism" — the live analogue of the line
                 # above: patches the freshly-opened PaperPosition (real

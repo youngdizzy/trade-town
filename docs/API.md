@@ -2061,6 +2061,26 @@ closed before this feature existed) and `tradesExcludedNoVaultEntry`
 (no matching vault entry at all — the same disclosed eviction edge
 case every other `performance-by-*` endpoint already reports).
 
+### `GET /api/trades/{trade_id}/strategy-rule-snapshot`
+
+CEO directive "Complete Trade Provenance," Part 1 + Part 2 — resolves
+one real closed trade's strategy-rule snapshot back into the exact
+immutable `CompiledStrategyDefinition` (rules, stop, target, timeframe)
+that was active the instant the CEO picked that strategy at decision
+time (`app/trade_attribution.py`'s `resolve_trade_strategy_rule_
+snapshot()`). Returns a `TradeStrategyRuleSnapshot`: `tradeId`,
+`strategyId`, `strategyProvenanceState` (`known`/`unknown`/
+`unavailable`, same three-state meaning as every other strategy-
+provenance field in this API), `compiledDefinition` — `null` whenever
+`strategyProvenanceState != "known"`, or the picked Strategy had no
+compiled rules yet, never fabricated. 404 only when `trade_id` doesn't
+match any real trade in `trade_history` — a real trade with no strategy
+attribution still returns 200 with an honest null `compiledDefinition`.
+Because `compiled_strategy_versions` is real and append-only, a later
+edit to the same strategy never changes what an already-decided trade's
+snapshot resolves to. Computed fresh per request; no new `GameSaveState`
+field.
+
 ### `GET /api/trades/performance-by-strategy-session`
 
 CEO directive "Live Trade → Strategy Provenance," Phase 6 — the one

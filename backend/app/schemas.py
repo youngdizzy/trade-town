@@ -1336,6 +1336,13 @@ class TradeAttributionRecord(CamelModel):
     credit_split_note: str = Field(alias="creditSplitNote")
     strategy_id: str | None = Field(default=None, alias="strategyId")
     strategy_provenance_state: TradeStrategyProvenanceState = Field(alias="strategyProvenanceState")
+    # CEO directive "Complete Trade Provenance," Part 2 — joined straight
+    # from CeoDecisionRecord.strategyCompiledDefinitionId/Version (see
+    # that field's own docstring for the full snapshot mechanism). None
+    # whenever strategyId itself is None, or the picked Strategy had no
+    # compiled rules yet.
+    strategy_compiled_definition_id: str | None = Field(default=None, alias="strategyCompiledDefinitionId")
+    strategy_compiled_definition_version: int | None = Field(default=None, alias="strategyCompiledDefinitionVersion")
 
 
 class TradeAttributionSummary(CamelModel):
@@ -4111,6 +4118,24 @@ class CompiledStrategyDefinition(CamelModel):
     detail: str
 
 
+# CEO directive "Complete Trade Provenance," Part 2 — resolves a real
+# closed trade's strategy-rule snapshot (CeoDecisionRecord.
+# strategyCompiledDefinitionId/Version) back into the exact immutable
+# CompiledStrategyDefinition that was active at decision time. See
+# app/trade_attribution.py's resolve_trade_strategy_rule_snapshot().
+class TradeStrategyRuleSnapshot(CamelModel):
+    """`compiledDefinition` is `None` whenever `strategyProvenanceState
+    != "known"`, the picked Strategy had no compiled rules yet at
+    decision time, or (a defensive, should-not-happen case) the
+    snapshot doesn't resolve against the real, append-only
+    compiled_strategy_versions history — never a fabricated rule set."""
+
+    trade_id: str = Field(alias="tradeId")
+    strategy_id: str | None = Field(default=None, alias="strategyId")
+    strategy_provenance_state: TradeStrategyProvenanceState = Field(alias="strategyProvenanceState")
+    compiled_definition: CompiledStrategyDefinition | None = Field(default=None, alias="compiledDefinition")
+
+
 class CompileStrategyRequest(CamelModel):
     name: str
     source_text: str = Field(alias="sourceText")
@@ -5350,6 +5375,23 @@ class CeoDecisionRecord(CamelModel):
     # build_vault_entry() / app/trade_attribution.py's
     # compute_trade_attribution() for where it flows downstream.
     strategy_id: str | None = Field(default=None, alias="strategyId")
+    # CEO directive "Complete Trade Provenance," Part 2 — Strategy Rule
+    # Snapshot. `strategy_id` above names WHICH Strategy the CEO picked,
+    # but a `Strategy.compiled_definition_id` is a single mutable
+    # pointer that can move to a newer rule version later; without this,
+    # a historical trade would silently start pointing at rules that
+    # didn't exist yet when the trade was decided. These two fields
+    # snapshot the exact real `CompiledStrategyDefinition.id` +
+    # `.version` that was CURRENT the instant this decision was made —
+    # read once from the real, already-immutable, append-only
+    # `compiled_strategy_versions` history (app/strategy_registry.py's
+    # Feature 37), never a new versioning mechanism. Both `None` when
+    # the selected Strategy has no `compiled_definition_id` yet (a real,
+    # honest "idea"-stage strategy with no represented rules — see
+    # Strategy.compiled_definition_id's own docstring), same as when no
+    # strategy was picked at all.
+    strategy_compiled_definition_id: str | None = Field(default=None, alias="strategyCompiledDefinitionId")
+    strategy_compiled_definition_version: int | None = Field(default=None, alias="strategyCompiledDefinitionVersion")
 
 
 # CEO directive "Features 26-30," Feature 29 — Prediction -> Outcome
@@ -6362,6 +6404,13 @@ class DecisionVaultEntry(CamelModel):
     # and for every trade where the CEO didn't pick a strategy -- the
     # overwhelming majority, honestly disclosed, never backfilled.
     strategy_id: str | None = Field(default=None, alias="strategyId")
+    # CEO directive "Complete Trade Provenance," Part 2 — carried through
+    # from CeoDecisionRecord.strategyCompiledDefinitionId/Version the
+    # same way strategyId itself is (see that field's own docstring for
+    # the full snapshot mechanism). None whenever strategyId is None, or
+    # the picked Strategy had no compiled rules yet.
+    strategy_compiled_definition_id: str | None = Field(default=None, alias="strategyCompiledDefinitionId")
+    strategy_compiled_definition_version: int | None = Field(default=None, alias="strategyCompiledDefinitionVersion")
     market_regime: MarketIntelligenceRegime = Field(alias="marketRegime")
     market_regime_label: str = Field(alias="marketRegimeLabel")
     liquidity_context: LiquidityRead = Field(alias="liquidityContext")
@@ -6528,6 +6577,11 @@ class TradeReportCard(CamelModel):
     # vault entry cites is no longer in trade_history.
     strategy_id: str | None = Field(default=None, alias="strategyId")
     strategy_provenance_state: TradeStrategyProvenanceState = Field(alias="strategyProvenanceState")
+    # CEO directive "Complete Trade Provenance," Part 2 — joined the same
+    # way strategyId/strategyProvenanceState above are (from
+    # TradeAttributionRecord by tradeId).
+    strategy_compiled_definition_id: str | None = Field(default=None, alias="strategyCompiledDefinitionId")
+    strategy_compiled_definition_version: int | None = Field(default=None, alias="strategyCompiledDefinitionVersion")
     data_honesty_note: str = Field(alias="dataHonestyNote")
 
 

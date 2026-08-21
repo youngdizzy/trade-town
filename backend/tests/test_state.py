@@ -12,6 +12,7 @@ import asyncio
 
 from app.schemas import AnalystVote, ClientSaveRequest, DecisionConfidence, DialogueHistoryEntry, EntityTransform, SettingsState, SimulationResult, Strategy, TierAllocationLimits, TradeProposal
 from app.strategy_lab import MIN_RETIREMENT_TRADE_COUNT
+from app.strategy_registry import _ema_pullback_source_text
 from app.state import MAX_DIALOGUE_HISTORY, GameState
 
 
@@ -749,3 +750,73 @@ class TestSubmitCeoDecisionStrategyProvenance:
         assert error is None
         assert len(saved.paper_portfolio.positions) == 1
         assert saved.paper_portfolio.positions[0].strategy_id is None
+
+
+class TestSubmitCeoDecisionStrategyRuleSnapshot:
+    """CEO directive "Complete Trade Provenance," Part 2 — Strategy Rule
+    Snapshot. Extends the CeoDecisionRecord.strategy_id mechanism above
+    with the exact real, immutable CompiledStrategyDefinition (id +
+    version) that was active the instant the CEO picked that strategy —
+    read from the real, append-only compiled_strategy_versions history,
+    never a new versioning mechanism."""
+
+    def _state_with_pending_proposal(self) -> GameState:
+        state = GameState()
+        state.data = state.data.model_copy(update={"trade_proposals": [_pending_proposal()]})
+        return state
+
+    def test_a_strategy_with_compiled_rules_snapshots_the_current_definition_and_version(self) -> None:
+        state = self._state_with_pending_proposal()
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy", strategy_id="50-ema-breakout-pullback-long"))
+        assert error is None
+        record = saved.ceo_decisions[-1]
+        assert record.strategy_compiled_definition_id == "50-ema-breakout-pullback-long"
+        assert record.strategy_compiled_definition_version == 1
+
+    def test_an_idea_stage_strategy_with_no_compiled_rules_leaves_the_snapshot_none(self) -> None:
+        state = self._state_with_pending_proposal()
+        idea_stage_strategy_id = state.data.strategies[0].id
+        assert state.data.strategies[0].compiled_definition_id is None  # real precondition, not assumed
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy", strategy_id=idea_stage_strategy_id))
+        assert error is None
+        record = saved.ceo_decisions[-1]
+        assert record.strategy_compiled_definition_id is None
+        assert record.strategy_compiled_definition_version is None
+
+    def test_no_strategy_id_leaves_the_snapshot_none(self) -> None:
+        state = self._state_with_pending_proposal()
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy"))
+        assert error is None
+        record = saved.ceo_decisions[-1]
+        assert record.strategy_compiled_definition_id is None
+        assert record.strategy_compiled_definition_version is None
+
+    def test_wait_ignores_the_snapshot_since_no_trade_exists_to_attribute(self) -> None:
+        state = self._state_with_pending_proposal()
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "wait", strategy_id="50-ema-breakout-pullback-long"))
+        assert error is None
+        record = saved.ceo_decisions[-1]
+        assert record.strategy_compiled_definition_id is None
+        assert record.strategy_compiled_definition_version is None
+
+    def test_snapshot_captures_the_version_current_at_decision_time_not_a_later_edit(self) -> None:
+        # The core Part 2 requirement: "If the strategy later becomes EMA
+        # 55, the old trade must still reference the rules that actually
+        # generated it." Bump the real strategy to version 2 BEFORE
+        # deciding, then bump it again AFTER — the already-recorded
+        # decision must keep pointing at version 2, never silently
+        # follow the pointer to version 3.
+        state = self._state_with_pending_proposal()
+        text = _ema_pullback_source_text(direction="long")
+        asyncio.run(state.register_compiled_strategy_version(name="50 EMA Breakout Pullback (Long)", source_text=text))
+        saved, error = asyncio.run(state.submit_ceo_decision("proposal-1", "buy", strategy_id="50-ema-breakout-pullback-long"))
+        assert error is None
+        record = saved.ceo_decisions[-1]
+        assert record.strategy_compiled_definition_id == "50-ema-breakout-pullback-long"
+        assert record.strategy_compiled_definition_version == 2
+
+        # A further edit after the decision must not retroactively move
+        # this already-recorded snapshot.
+        asyncio.run(state.register_compiled_strategy_version(name="50 EMA Breakout Pullback (Long)", source_text=text))
+        assert state.data.ceo_decisions[-1].strategy_compiled_definition_version == 2
+        assert len(state.data.compiled_strategy_versions["50-ema-breakout-pullback-long"]) == 3

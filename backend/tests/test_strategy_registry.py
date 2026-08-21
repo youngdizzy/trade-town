@@ -10,7 +10,12 @@ from __future__ import annotations
 import asyncio
 
 from app.state import GameState
-from app.strategy_registry import default_researchable_strategies, register_researchable_strategy, register_strategy_version
+from app.strategy_registry import (
+    default_researchable_strategies,
+    get_compiled_definition_version,
+    register_researchable_strategy,
+    register_strategy_version,
+)
 
 _TEXT_V1 = "Buy when price closes above the 50 EMA, then enter when price closes above the previous swing high."
 _TEXT_V2 = "Buy when price closes above the 20 EMA, then enter when price closes above the previous swing high."
@@ -234,3 +239,31 @@ class TestRegisterResearchableStrategyState:
             raise AssertionError("expected ValueError")
         except ValueError:
             pass
+
+
+class TestGetCompiledDefinitionVersion:
+    """CEO directive "Complete Trade Provenance," Part 2 — resolves a
+    real strategy-rule snapshot back into the exact immutable
+    CompiledStrategyDefinition, using the same real, append-only
+    version history register_strategy_version() itself writes."""
+
+    def test_resolves_the_exact_matching_version(self) -> None:
+        v1, registry = register_strategy_version({}, name="EMA Breakout", source_text=_TEXT_V1)
+        v2, registry = register_strategy_version(registry, name="EMA Breakout", source_text=_TEXT_V2)
+        assert get_compiled_definition_version(registry, v1.id, 1) == v1
+        assert get_compiled_definition_version(registry, v2.id, 2) == v2
+
+    def test_an_older_version_is_still_resolvable_after_a_newer_one_is_registered(self) -> None:
+        v1, registry = register_strategy_version({}, name="EMA Breakout", source_text=_TEXT_V1)
+        _, registry = register_strategy_version(registry, name="EMA Breakout", source_text=_TEXT_V2)
+        # The whole point of Part 2 — an old snapshot must still resolve
+        # to the real rules that were active when it was taken, even
+        # after the strategy has moved on to a newer version.
+        assert get_compiled_definition_version(registry, v1.id, 1) == v1
+
+    def test_unknown_definition_id_returns_none(self) -> None:
+        assert get_compiled_definition_version({}, "no-such-strategy", 1) is None
+
+    def test_unknown_version_for_a_real_definition_id_returns_none(self) -> None:
+        v1, registry = register_strategy_version({}, name="EMA Breakout", source_text=_TEXT_V1)
+        assert get_compiled_definition_version(registry, v1.id, 99) is None

@@ -246,6 +246,8 @@ def build_vault_entry(
         simDay=sim_day,
         session=session.current,
         strategyId=ceo_decision.strategy_id if ceo_decision else None,
+        strategyCompiledDefinitionId=ceo_decision.strategy_compiled_definition_id if ceo_decision else None,
+        strategyCompiledDefinitionVersion=ceo_decision.strategy_compiled_definition_version if ceo_decision else None,
         marketRegime=market_regime,
         marketRegimeLabel=market_regime_label,
         liquidityContext=liquidity,
@@ -371,6 +373,8 @@ def compute_trade_report_card(
         gatekeeperApproved=attribution.gatekeeper_approved if attribution is not None else None,
         strategyId=attribution.strategy_id if attribution is not None else None,
         strategyProvenanceState=attribution.strategy_provenance_state if attribution is not None else "unavailable",
+        strategyCompiledDefinitionId=attribution.strategy_compiled_definition_id if attribution is not None else None,
+        strategyCompiledDefinitionVersion=attribution.strategy_compiled_definition_version if attribution is not None else None,
         dataHonestyNote=TRADE_REPORT_CARD_DATA_HONESTY_NOTE,
     )
 

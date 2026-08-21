@@ -12073,6 +12073,130 @@ a causal claim, or a scoring mechanism. Every "deliberately not
 attempted" item above names the exact structural reason, not a
 convenience cut.
 
+## CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based Attribution"
+
+A 23-part directive whose stated mission is a real, end-to-end chain —
+market conditions → session/regime → strategy → compiled rules → agent
+reasoning → trade proposal → risk decision → execution → position →
+exit → P&L → performance → strategy attribution — with explicit rules
+against duplication, fabrication, score manipulation, and giant
+rewrites. Given the size, this is being built in phases, exactly like
+the "Live Trade → Strategy Provenance" directive above; this section is
+updated as each phase lands, not written once at the end.
+
+### Research phase (before any code)
+
+Two dedicated read-only architecture audits (matching the directive's
+own Absolute Rule #1) traced every system the directive names. Full
+findings, condensed here (file:line citations retained in this
+session's own record, not reproduced in full below to keep this
+section a living document rather than a growing transcript dump):
+
+**Strategy identity & lineage.** Three separate id spaces exist:
+`CompiledStrategyDefinition.id` (a name-derived slug), `Strategy.id`
+(a separate slug), bridged one-directionally by
+`Strategy.compiled_definition_id` — never the reverse. Real, immutable,
+append-only version history already exists for
+`CompiledStrategyDefinition` (`compiled_strategy_versions`, Feature
+37) — the directive's Part 2 requirement ("preserve which rules
+actually existed when the trade happened") was already structurally
+possible, just never wired to a trade. `TradeProposal` has zero
+strategy reference of any kind, and `generate_proposal()`
+(`app/executive.py`) never imports or touches `Strategy`/
+`CompiledStrategyDefinition` — live proposals are 100%
+`ResearchItem`+six-analyst-vote driven. Strategy Lab's
+`compute_strategy_match()` (regime-based eligibility) is real but
+display-only, feeding one informational report field once per sim-day,
+never consulted by proposal generation. The prior "Live Trade →
+Strategy Provenance" directive (previous section) already built the
+one real live-trade↔strategy link that exists: the CEO's own optional,
+explicit `strategyId` pick at decision time — a bare label, not a
+generation mechanism, and (before this directive's Part 1/2 work below)
+carrying no record of which compiled rules were active when picked.
+
+**Session/regime/execution.** Session detection is real
+(`compute_session()`, `app/market_intelligence.py`) but a disclosed
+fixed-UTC-hour approximation with no DST/timezone handling. TWO
+independent, real regime classifiers exist — `app/market_environment.py`
+(5-way, tick-driven, persisted timeline) and `app/market_intelligence.py`
+(13-way, richer, computed fresh) — reconciled only informationally by
+`app/regime_reconciliation.py`, which never writes back to either and
+states its own non-authority explicitly. No decision-time context
+snapshot exists anywhere: `DecisionVaultEntry.session`/`marketRegime`
+are stamped at trade CLOSE, never at the moment a trade was decided —
+confirmed by that module's own docstring. Execution slippage/cost
+(`app/execution_quality.py`) are real and tracked but never decomposed
+against strategy edge — no file computes "gross price-movement P&L
+minus execution cost." Strategy-pair correlation already exists
+(`app/strategy_tournament.py`, reusing `portfolio_intelligence.py`'s
+Pearson correlation) but only over backtest walk-forward data, not live
+returns. No generic data-quality/audit-event sink exists —
+`app/audit_log.py` merges a fixed list of eight source types, computed
+fresh, never an event stream a new tracker could subscribe to.
+
+### Part 1 + Part 2 — Trade → Strategy Lineage, Strategy Rule Snapshot
+
+The directive's own highest-priority component. Scoped narrowly to
+what the research above proved was a safe, existing-infrastructure
+extension — not the full "market conditions → proposal" chain (see
+"Deliberately not built" below).
+
+`submit_ceo_decision()` (`app/state.py`) now reads, at the exact
+instant of the CEO's strategy pick, the CURRENT (latest-appended)
+`CompiledStrategyDefinition` for that `Strategy` and snapshots its real
+`(id, version)` pair onto two new `CeoDecisionRecord` fields —
+`strategyCompiledDefinitionId`/`strategyCompiledDefinitionVersion`.
+Both `None` whenever `strategyId` itself is `None`, or the picked
+Strategy has no compiled rules yet — never fabricated. Because
+`compiled_strategy_versions` is already real and append-only, a later
+edit to the strategy appends a NEW version rather than mutating the
+old one — the recorded snapshot keeps pointing at the exact rules that
+were active when the trade was actually decided, satisfying Part 2's
+own worked example ("if the strategy later becomes EMA 55, the old
+trade must still reference the rules that actually generated it")
+verified directly by a test that edits the strategy both before and
+after the decision and asserts the snapshot never moves.
+
+Threaded through the same three existing join points `strategyId`
+already flows through — `TradeAttributionRecord`
+(`app/trade_attribution.py`), `DecisionVaultEntry`/`TradeReportCard`
+(`app/decision_vault.py`) — no new join mechanism invented. A new
+`get_compiled_definition_version()` resolver
+(`app/strategy_registry.py`) and `resolve_trade_strategy_rule_snapshot()`
+(`app/trade_attribution.py`) turn the snapshot back into the real
+`CompiledStrategyDefinition`, exposed as
+`GET /api/trades/{trade_id}/strategy-rule-snapshot` — 404 only for an
+unknown trade id; a real trade with no strategy attribution still
+returns 200 with an honest `compiledDefinition: null`.
+
+**Deliberately not built in this phase, and why:** Strategy Lab's
+compiled/certified strategies still do not generate any live
+`TradeProposal` — that's the directive's actual headline chain, and
+both research audits confirmed it requires a genuinely new
+proposal-generation path (or a new eligibility gate feeding the
+existing one), not a small extension. Building it now would risk
+exactly the "giant rewrite" the directive explicitly forbids without
+its own dedicated research/design pass. Strategy compliance checking
+(Part 3 — did the executed trade actually match the strategy's rules)
+depends on that same missing generation path and is deferred with it.
+Session/regime intelligence (Parts 4-8), agent attribution (Part 9),
+capital allocation prep (Part 13), execution attribution (Part 15),
+Command Center UX (Part 16), and the data-quality/testing/live-test/
+final-audit parts (17-23) are all deferred to later phases of this
+same directive.
+
+**Tests.** 17 new: 5 in `test_state.py` (including the exact
+immutability case above), 6 in `test_trade_attribution.py`, 2 in
+`test_decision_vault.py`, 4 in `test_strategy_registry.py`. Full
+backend suite: 2591 passed (+17 over the pre-phase baseline of 2574),
+`mypy app/` (178 files) clean, `ruff check app/ tests/` clean. Live
+endpoint verification against the real running dev stack (no mocking):
+a real closed trade with no strategy selected returns an honest
+`strategyId: null, compiledDefinition: null` (200); an unknown trade id
+returns a real 404. No trading/agent/market-simulation logic was
+touched — only the CEO-decision and post-trade attribution paths the
+prior provenance directive already established were extended.
+
 ## CEO directive "Portfolio Construction, Capital Allocation & Execution Realism"
 
 **Phase 1 — architecture audit (research agent, before any code).**

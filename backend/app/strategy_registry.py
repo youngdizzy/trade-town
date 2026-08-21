@@ -161,6 +161,22 @@ def register_researchable_strategy(
     return new_definition, new_strategy, updated_registry
 
 
+def get_compiled_definition_version(
+    registry: dict[str, list[CompiledStrategyDefinition]], definition_id: str, version: int
+) -> CompiledStrategyDefinition | None:
+    """CEO directive "Complete Trade Provenance," Part 2 — resolves a
+    trade's real, immutable strategy-rule snapshot
+    (`CeoDecisionRecord.strategyCompiledDefinitionId`/`.Version`) back
+    into the exact `CompiledStrategyDefinition` that was active at
+    decision time, by reading the same real, append-only history
+    `register_strategy_version()` already writes — never a second
+    lookup mechanism. `None` when the id has no history at all (should
+    not happen for any id this codebase itself ever wrote, but a save
+    file is untrusted input) or when no entry in that real history
+    matches this exact version (same defensive posture)."""
+    return next((d for d in registry.get(definition_id, []) if d.version == version), None)
+
+
 # CEO directive "Strategy Intelligence + Live Strategy Attribution,"
 # Phase 13 — "encode the previously supplied [50 EMA] strategy as an
 # explicit research strategy rather than hard-coding it into the

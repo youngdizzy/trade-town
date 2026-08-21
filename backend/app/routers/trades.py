@@ -7,7 +7,7 @@ player has seen it.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter
+from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.exit_efficiency import compute_exit_efficiency
@@ -35,9 +35,10 @@ from app.schemas import (
     SymbolPerformanceSummary,
     TradeAttributionSummary,
     TradePipelineHealthSnapshot,
+    TradeStrategyRuleSnapshot,
 )
 from app.state import game_state
-from app.trade_attribution import compute_trade_attribution_history
+from app.trade_attribution import compute_trade_attribution_history, resolve_trade_strategy_rule_snapshot
 from app.trade_pipeline_health import compute_strategy_trading_diagnostics, compute_trade_pipeline_health
 
 router = APIRouter(prefix="/api/trades", tags=["trades"])
@@ -92,6 +93,30 @@ async def get_trade_attribution() -> TradeAttributionSummary:
     request; no new GameSaveState field."""
     state = await game_state.snapshot()
     return compute_trade_attribution_history(state.paper_portfolio.trade_history, state.decisions, state.ceo_decisions)
+
+
+@router.get("/{trade_id}/strategy-rule-snapshot", response_model=TradeStrategyRuleSnapshot)
+async def get_trade_strategy_rule_snapshot(trade_id: str) -> TradeStrategyRuleSnapshot:
+    """CEO directive "Complete Trade Provenance," Part 2 — resolves one
+    real closed trade's strategy-rule snapshot back into the exact
+    immutable CompiledStrategyDefinition that was active the instant the
+    CEO decided it (see app/trade_attribution.py's
+    resolve_trade_strategy_rule_snapshot()). `compiledDefinition` is
+    honestly `None` whenever this trade has no CEO-selected strategy, or
+    the strategy had no compiled rules at decision time — never
+    fabricated. 404 only when `trade_id` doesn't match any real trade.
+    Computed fresh per request; no new GameSaveState field."""
+    state = await game_state.snapshot()
+    snapshot = resolve_trade_strategy_rule_snapshot(
+        trade_id,
+        state.paper_portfolio.trade_history,
+        state.decisions,
+        state.ceo_decisions,
+        state.compiled_strategy_versions,
+    )
+    if snapshot is None:
+        raise HTTPException(status_code=404, detail=f"No real closed trade with id {trade_id!r}.")
+    return snapshot
 
 
 @router.get("/performance-by-session", response_model=SessionPerformanceSummary)

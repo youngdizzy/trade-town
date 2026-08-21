@@ -50,12 +50,15 @@ from app.schemas import (
     AgentContributionRead,
     AnalystRole,
     CeoDecisionRecord,
+    CompiledStrategyDefinition,
     PaperTrade,
     TradeAttributionRecord,
     TradeAttributionSummary,
     TradeDecision,
     TradeStrategyProvenanceState,
+    TradeStrategyRuleSnapshot,
 )
+from app.strategy_registry import get_compiled_definition_version
 
 CREDIT_SPLIT_NOTE = (
     "TradeTown records real per-agent contribution evidence (who advised what, and whether the final trade "
@@ -123,6 +126,8 @@ def compute_trade_attribution(
             creditSplitNote=CREDIT_SPLIT_NOTE,
             strategyId=None,
             strategyProvenanceState="unavailable",
+            strategyCompiledDefinitionId=None,
+            strategyCompiledDefinitionVersion=None,
         )
 
     ceo_decision = next((c for c in ceo_decisions if c.decision_id == decision.id), None)
@@ -144,6 +149,8 @@ def compute_trade_attribution(
         gatekeeperApproved=decision.gatekeeper_verdict.approved if decision.gatekeeper_verdict else None,
         strategyId=ceo_decision.strategy_id if ceo_decision else None,
         strategyProvenanceState=strategy_provenance_state,
+        strategyCompiledDefinitionId=ceo_decision.strategy_compiled_definition_id if ceo_decision else None,
+        strategyCompiledDefinitionVersion=ceo_decision.strategy_compiled_definition_version if ceo_decision else None,
         entrySlippageBps=trade.entry_slippage_bps,
         exitSlippageBps=trade.exit_slippage_bps,
         transactionCostUsd=trade.transaction_cost_usd,
@@ -161,3 +168,35 @@ def compute_trade_attribution_history(
 ) -> TradeAttributionSummary:
     records = [compute_trade_attribution(trade, decisions, ceo_decisions) for trade in trade_history]
     return TradeAttributionSummary(records=records, updatedAt=_now_iso())
+
+
+def resolve_trade_strategy_rule_snapshot(
+    trade_id: str,
+    trade_history: list[PaperTrade],
+    decisions: list[TradeDecision],
+    ceo_decisions: list[CeoDecisionRecord],
+    compiled_strategy_versions: dict[str, list[CompiledStrategyDefinition]],
+) -> TradeStrategyRuleSnapshot | None:
+    """CEO directive "Complete Trade Provenance," Part 2. `None` only
+    when `trade_id` doesn't match any real trade in `trade_history` (the
+    one genuinely absent case — every other outcome, including "this
+    trade has no strategy attribution at all," is a real
+    `TradeStrategyRuleSnapshot` with `compiledDefinition=None`, never a
+    bare `None` that could be mistaken for "trade not found")."""
+    trade = next((t for t in trade_history if t.id == trade_id), None)
+    if trade is None:
+        return None
+    attribution = compute_trade_attribution(trade, decisions, ceo_decisions)
+    compiled_definition = None
+    if attribution.strategy_compiled_definition_id is not None and attribution.strategy_compiled_definition_version is not None:
+        compiled_definition = get_compiled_definition_version(
+            compiled_strategy_versions,
+            attribution.strategy_compiled_definition_id,
+            attribution.strategy_compiled_definition_version,
+        )
+    return TradeStrategyRuleSnapshot(
+        tradeId=trade_id,
+        strategyId=attribution.strategy_id,
+        strategyProvenanceState=attribution.strategy_provenance_state,
+        compiledDefinition=compiled_definition,
+    )

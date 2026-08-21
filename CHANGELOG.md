@@ -7,6 +7,75 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
+  Attribution," Part 1 + Part 2 (backend): Strategy Rule Snapshot** (`backend/app/schemas.py`,
+  `backend/app/state.py`, `backend/app/trade_attribution.py`, `backend/app/decision_vault.py`,
+  `backend/app/strategy_registry.py`, `backend/app/routers/trades.py`,
+  `backend/tests/test_state.py`, `backend/tests/test_trade_attribution.py`,
+  `backend/tests/test_decision_vault.py`, `backend/tests/test_strategy_registry.py`): the
+  directive's own mandatory research-first phase (two dedicated read-only architecture audits,
+  full findings below) found the prior "Live Trade → Strategy Provenance" directive already built
+  real CEO-explicit strategy labeling end to end (`CeoDecisionRecord.strategyId` →
+  `DecisionVaultEntry`/`TradeAttributionRecord`/`TradeReportCard`, performance-by-strategy,
+  live-vs-backtest, strategy×session breakdowns) — but that labeling was a bare, unverified
+  strategy *id* with no record of which compiled rules the strategy actually represented at the
+  moment of the decision. Part 2's own example makes the gap concrete: "If the strategy later
+  becomes EMA 55, the old trade must still reference the rules that actually generated it" — which
+  the existing `strategy_id`-only mechanism could not do, since `Strategy.compiled_definition_id`
+  is a single mutable pointer.
+
+  Research also found the fix needed zero new versioning mechanism: `CompiledStrategyDefinition`
+  history (`compiled_strategy_versions`, Feature 37) was already real, immutable, and append-only
+  — just never read by anything in the trade/decision pipeline. `submit_ceo_decision()` now reads
+  the CURRENT (latest-appended) `CompiledStrategyDefinition` for the selected Strategy at the exact
+  instant of the decision and snapshots its `(id, version)` pair onto two new
+  `CeoDecisionRecord` fields, `strategyCompiledDefinitionId`/`strategyCompiledDefinitionVersion` —
+  both `None` whenever `strategyId` itself is `None`, or the picked Strategy has no compiled rules
+  yet (a real "idea"-stage strategy), never fabricated. Threaded through the exact same three
+  existing join points `strategyId` already flows through (`TradeAttributionRecord`,
+  `DecisionVaultEntry`, `TradeReportCard`) — no new join mechanism. A new
+  `get_compiled_definition_version()` resolver (`app/strategy_registry.py`) and
+  `resolve_trade_strategy_rule_snapshot()` (`app/trade_attribution.py`) turn the snapshot back into
+  the actual `CompiledStrategyDefinition` for a given trade, exposed as
+  `GET /api/trades/{trade_id}/strategy-rule-snapshot` (404 only for an unknown trade id — a real
+  trade with no strategy attribution still returns 200 with an honest `compiledDefinition: null`).
+
+  **Deliberately not built in this pass** (disclosed, not silently deferred): Strategy Lab's
+  compiled/certified strategies still never generate a live `TradeProposal` — both research audits
+  confirmed `generate_proposal()` (`app/executive.py`) never imports or references `Strategy`/
+  `CompiledStrategyDefinition` in any form, so every live trade's *only* strategy link remains the
+  CEO's own manual, optional pick at decision time. Wiring compiled strategies into live proposal
+  generation (the directive's actual headline "market conditions → session/regime → strategy →
+  compiled rules → agent reasoning → trade proposal" chain) is a substantially larger, separate
+  piece of work, scoped for a later phase of this same directive rather than attempted here as a
+  "giant rewrite" the directive explicitly forbids. Session/regime intelligence (Parts 4-8),
+  strategy compliance checking (Part 3), agent attribution (Part 9), and the remaining parts are
+  similarly deferred to later phases — see the research findings below for exactly what already
+  exists for each.
+
+  **Research findings, condensed** (two dedicated audit passes, full file:line citations retained
+  in this session's own record): session detection is real but a disclosed fixed-UTC
+  approximation with no DST handling (`app/market_intelligence.py`'s `compute_session()`); TWO
+  independent, unreconciled regime engines exist (`app/market_environment.py`'s 5-way,
+  `app/market_intelligence.py`'s 13-way — `app/regime_reconciliation.py` only reports agreement,
+  writes back to neither); no decision-time context snapshot exists anywhere —
+  `DecisionVaultEntry.session`/`marketRegime` are stamped at trade CLOSE, never at decision time,
+  a gap this phase's own snapshot mechanism does not yet close for session/regime (only for
+  strategy rules); execution slippage/cost are tracked but never decomposed against strategy edge;
+  strategy-pair correlation already exists (`app/strategy_tournament.py`) but only over backtest
+  data, not live returns; no generic data-quality/audit-event sink exists to plug a new
+  "missing strategy id" tracker into.
+
+  17 new backend tests (5 in `test_state.py` covering capture including the exact "old trade keeps
+  its old version after a later edit" immutability case; 6 in `test_trade_attribution.py`; 2 in
+  `test_decision_vault.py`; 4 in `test_strategy_registry.py` covering the resolver). Full backend
+  suite: 2591 passed (+17), `mypy app/` (178 files) clean, `ruff check app/ tests/` clean. Live
+  endpoint verification against the real running dev stack: a real closed trade with no strategy
+  selected returns an honest `strategyId: null, compiledDefinition: null` (200), an unknown trade
+  id returns a real 404 — never a fabricated response either way. No trading/agent/market-
+  simulation logic was touched; only the CEO-decision and post-trade attribution paths already
+  established by the prior provenance directive were extended.
+
 - **CEO directive "Proper Multi-Run / Save Isolation System"** (backend:
   `backend/app/models.py`, `backend/app/persistence.py`, `backend/app/schemas.py`, `backend/app/state.py`,
   `backend/app/sim.py`, `backend/app/main.py`, `backend/app/routers/runs.py` (new),
