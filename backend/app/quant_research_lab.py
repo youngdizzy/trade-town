@@ -74,16 +74,22 @@ def file_quant_research_experiment(
     hypothesis: str,
     researcher_agent_id: AgentId,
     created_at: str,
+    expected_mechanism: str | None = None,
+    falsification_criteria: str | None = None,
 ) -> QuantResearchExperiment:
     """The one real entry point for turning an already-real, already-
     computed `ResearchExperimentRecord` into a persistable
     `QuantResearchExperiment` — wraps `_classify_outcome()` so callers
     (app/state.py) never need this module's private classification
-    function directly."""
+    function directly. `expected_mechanism`/`falsification_criteria`
+    default to `None` for any caller that hasn't been threaded through
+    yet — never fabricated placeholder text."""
     outcome, outcome_reason = _classify_outcome(record)
     return QuantResearchExperiment(
         id=experiment_id,
         hypothesis=hypothesis,
+        expectedMechanism=expected_mechanism,
+        falsificationCriteria=falsification_criteria,
         researcherAgentId=researcher_agent_id,
         outcome=outcome,
         outcomeReason=outcome_reason,

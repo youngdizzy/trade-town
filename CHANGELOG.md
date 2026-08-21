@@ -56,6 +56,28 @@ development milestones, not semver releases.
   learns from outcomes) remains blocked by the real absence of any generation mechanism to attach it to —
   a structural blocker, not a convenience cut.
 
+- **CEO directive "Quant Research Factory / Strategy Discovery Engine," Phase 1: a real structured
+  hypothesis abstraction** (backend: `backend/app/schemas.py`, `backend/app/quant_research_lab.py`,
+  `backend/app/state.py`, `backend/app/routers/sandbox.py`, `backend/tests/test_quant_research_lab.py`;
+  frontend: `frontend/src/types.ts`, `frontend/src/net/api.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/sandbox/QuantResearchLabView.tsx`): per the directive's
+  own "create the smallest appropriate abstraction" instruction, this deliberately does not duplicate
+  `market_scope`/`timeframe` (already real on `record.symbols_tested`/`record.timeframe`) or echo
+  entry/exit/risk "concepts" that become real and deterministic the moment a hypothesis compiles. The two
+  fields the directive names repeatedly — why the researcher expects this to work, and what would prove
+  them wrong — are the ones actually missing.
+
+  New `QuantResearchExperiment.expectedMechanism`/`falsificationCriteria` (`str | None`, real Pydantic
+  defaults per the list-nested backward-compat rule — `None` only for experiments filed before this
+  existed). The persisted schema stays optional, but `SubmitQuantResearchExperimentRequest` now REQUIRES
+  both on every new filing — real discipline at the one real point of human action. The filing form gained
+  two new required textareas; "File Experiment" stays disabled until both are filled in.
+
+  4 new backend tests. Full backend suite (2538 passed), `mypy app/`, `ruff check app/ tests/` clean.
+  `tsc -b --noEmit`, `eslint`, `vite build` clean. Live-verified: a Command Center screenshot of the real
+  filing form, followed by a direct API check confirming the just-filed experiment persisted both real
+  values exactly as typed.
+
 - **CEO directive "Portfolio Construction, Capital Allocation & Execution Realism," Phase 1 (audit) +
   Increment 1 (live strategy-position attribution + real exposure reads)** (backend:
   `backend/app/schemas.py`, `backend/app/state.py`, `backend/app/portfolio_intelligence.py`,

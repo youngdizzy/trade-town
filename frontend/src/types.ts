@@ -1689,6 +1689,11 @@ export type QuantResearchOutcome = "promising" | "rejected" | "inconclusive";
 export interface QuantResearchExperiment {
   id: string;
   hypothesis: string;
+  /** CEO directive "Quant Research Factory / Strategy Discovery Engine," Phase 1 — WHY the researcher
+   * expects this to work, and WHAT would prove them wrong. `null` only for an experiment filed before
+   * these fields existed. */
+  expectedMechanism: string | null;
+  falsificationCriteria: string | null;
   researcherAgentId: AgentId;
   outcome: QuantResearchOutcome;
   outcomeReason: string;

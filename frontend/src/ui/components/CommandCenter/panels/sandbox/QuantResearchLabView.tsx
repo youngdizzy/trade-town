@@ -139,6 +139,8 @@ export function QuantResearchLabView() {
   const [compileError, setCompileError] = useState<string | null>(null);
 
   const [hypothesis, setHypothesis] = useState("");
+  const [expectedMechanism, setExpectedMechanism] = useState("");
+  const [falsificationCriteria, setFalsificationCriteria] = useState("");
   const [researcher, setResearcher] = useState<AgentId>("quant");
   const [filing, setFiling] = useState(false);
   const [fileResult, setFileResult] = useState<Awaited<ReturnType<typeof api.submitQuantResearchExperiment>> | null>(null);
@@ -171,11 +173,11 @@ export function QuantResearchLabView() {
   };
 
   const fileExperiment = () => {
-    if (!definition || !hypothesis.trim()) return;
+    if (!definition || !hypothesis.trim() || !expectedMechanism.trim() || !falsificationCriteria.trim()) return;
     setFiling(true);
     setFileError(null);
     api
-      .submitQuantResearchExperiment(definition, hypothesis.trim(), researcher)
+      .submitQuantResearchExperiment(definition, hypothesis.trim(), researcher, expectedMechanism.trim(), falsificationCriteria.trim())
       .then(setFileResult)
       .catch((err) => setFileError(err instanceof Error ? err.message : String(err)))
       .finally(() => setFiling(false));
@@ -273,6 +275,26 @@ export function QuantResearchLabView() {
                 placeholder='e.g. "The 50 EMA breakout + pullback setup performs better during the London session than at other times."'
                 className="w-full rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1.5 text-[9px] text-cmd-text outline-none focus:border-cmd-cyan/50"
               />
+              <label className="block text-[8px] uppercase tracking-wide text-cmd-textDim">
+                Expected mechanism — why would this work?
+                <textarea
+                  value={expectedMechanism}
+                  onChange={(e) => setExpectedMechanism(e.target.value)}
+                  rows={2}
+                  placeholder='e.g. "Momentum continuation after a confirmed trend-following breakout."'
+                  className="mt-0.5 w-full rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1.5 text-[9px] normal-case text-cmd-text outline-none focus:border-cmd-cyan/50"
+                />
+              </label>
+              <label className="block text-[8px] uppercase tracking-wide text-cmd-textDim">
+                Falsification criteria — what would prove this wrong?
+                <textarea
+                  value={falsificationCriteria}
+                  onChange={(e) => setFalsificationCriteria(e.target.value)}
+                  rows={2}
+                  placeholder='e.g. "Flat or negative expectancy across a real out-of-sample walk-forward window."'
+                  className="mt-0.5 w-full rounded-sm border border-cmd-border bg-cmd-bg/60 px-2 py-1.5 text-[9px] normal-case text-cmd-text outline-none focus:border-cmd-cyan/50"
+                />
+              </label>
               <div className="flex flex-wrap items-center gap-2">
                 <select
                   value={researcher}
@@ -287,7 +309,7 @@ export function QuantResearchLabView() {
                 </select>
                 <button
                   type="button"
-                  disabled={filing || !hypothesis.trim()}
+                  disabled={filing || !hypothesis.trim() || !expectedMechanism.trim() || !falsificationCriteria.trim()}
                   onClick={fileExperiment}
                   className="rounded-sm border border-cmd-border px-3 py-1.5 text-[9px] uppercase text-cmd-textDim transition-colors hover:enabled:border-cmd-purple/50 hover:enabled:text-cmd-purple disabled:opacity-40"
                 >
@@ -541,6 +563,7 @@ export function QuantResearchLabView() {
                   <VerdictPill verdict={exp.outcome} tones={OUTCOME_TONE} />
                 </div>
                 <div className="mt-0.5 text-cmd-text">{exp.hypothesis}</div>
+                {exp.falsificationCriteria && <div className="mt-0.5 text-cmd-textDim">Falsification: {exp.falsificationCriteria}</div>}
                 <div className="mt-0.5 grid grid-cols-2 gap-x-3 sm:grid-cols-4">
                   <DataRow label="Researcher" value={exp.researcherAgentId} />
                   <DataRow label="Trades" value={exp.record.backtest.overall.tradeCount} />

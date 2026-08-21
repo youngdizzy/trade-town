@@ -111,3 +111,52 @@ class TestSubmitQuantResearchExperimentState:
         saved, result = asyncio.run(state.submit_quant_research_experiment(definition, hypothesis="Moon phases predict returns.", researcher_agent_id="quant", symbols=["AAPL"]))
         assert result.experiment.outcome == "inconclusive"
         assert len(saved.quant_research_experiments) == 1  # an inconclusive experiment is still archived, never deleted
+
+    def test_expected_mechanism_and_falsification_criteria_thread_through_end_to_end(self) -> None:
+        # CEO directive "Quant Research Factory / Strategy Discovery
+        # Engine," Phase 1.
+        state = GameState()
+        definition = compile_strategy_text(name="Disciplined Strategy", source_text=_TEXT)
+        saved, result = asyncio.run(
+            state.submit_quant_research_experiment(
+                definition,
+                hypothesis="The 50 EMA breakout works better during trending regimes.",
+                researcher_agent_id="quant",
+                symbols=["AAPL"],
+                expected_mechanism="Momentum continuation after a confirmed trend-following breakout.",
+                falsification_criteria="If expectancy is flat or negative across a real out-of-sample walk-forward window, this hypothesis is wrong.",
+            )
+        )
+        assert result.experiment.expected_mechanism == "Momentum continuation after a confirmed trend-following breakout."
+        assert result.experiment.falsification_criteria == "If expectancy is flat or negative across a real out-of-sample walk-forward window, this hypothesis is wrong."
+        assert saved.quant_research_experiments[0].falsification_criteria == result.experiment.falsification_criteria
+
+    def test_omitting_expected_mechanism_and_falsification_criteria_leaves_them_honestly_none(self) -> None:
+        state = GameState()
+        definition = compile_strategy_text(name="Undisciplined Strategy", source_text=_TEXT)
+        _, result = asyncio.run(state.submit_quant_research_experiment(definition, hypothesis="No stated mechanism.", researcher_agent_id="quant", symbols=["AAPL"]))
+        assert result.experiment.expected_mechanism is None
+        assert result.experiment.falsification_criteria is None
+
+
+class TestQuantResearchExperimentBackwardCompat:
+    """CEO directive "Quant Research Factory / Strategy Discovery
+    Engine," Phase 1 — `QuantResearchExperiment` lives inside the
+    persisted `quant_research_experiments` LIST, so per app/
+    persistence.py's own `_deep_merge_defaults` rule, a new field needs
+    a real Pydantic default or an old save's existing experiments fail
+    to validate on load."""
+
+    def test_an_experiment_persisted_before_these_fields_existed_still_validates(self) -> None:
+        from app.schemas import QuantResearchExperiment
+
+        definition = compile_strategy_text(name="Old Save Strategy", source_text=_TEXT)
+        record = run_research_experiment(definition, symbols=["AAPL"])
+        old_save_shape = file_quant_research_experiment(
+            record, experiment_id="exp-old", hypothesis="Old-format hypothesis.", researcher_agent_id="quant", created_at="2024-01-01T00:00:00+00:00"
+        ).model_dump(by_alias=True)
+        del old_save_shape["expectedMechanism"]
+        del old_save_shape["falsificationCriteria"]
+        restored = QuantResearchExperiment.model_validate(old_save_shape)
+        assert restored.expected_mechanism is None
+        assert restored.falsification_criteria is None

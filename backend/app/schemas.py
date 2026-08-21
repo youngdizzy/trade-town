@@ -4435,6 +4435,21 @@ class QuantResearchExperiment(CamelModel):
 
     id: str
     hypothesis: str
+    # CEO directive "Quant Research Factory / Strategy Discovery Engine,"
+    # Phase 1 — the smallest real abstraction between a raw idea and a
+    # compiled, testable strategy: WHY the researcher expects this to
+    # work, and WHAT would prove them wrong. `market_scope`/`timeframe`
+    # deliberately aren't duplicated here — `record.symbols_tested`/
+    # `record.timeframe` already carry those, and re-stating them here
+    # would be a second, driftable copy of the same real fields.
+    # Entry/exit/risk "concepts" are likewise not separate free-text
+    # fields — the moment a hypothesis compiles, `CompiledStrategyDefinition`
+    # already makes those deterministic and real; echoing an informal
+    # pre-compilation guess of the same thing would add no real signal.
+    # `None` only for an experiment filed before this field existed —
+    # never backfilled, never guessed.
+    expected_mechanism: str | None = Field(default=None, alias="expectedMechanism")
+    falsification_criteria: str | None = Field(default=None, alias="falsificationCriteria")
     researcher_agent_id: AgentId = Field(alias="researcherAgentId")
     outcome: QuantResearchOutcome
     outcome_reason: str = Field(alias="outcomeReason")

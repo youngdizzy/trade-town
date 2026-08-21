@@ -133,6 +133,15 @@ class SubmitQuantResearchExperimentRequest(BaseModel):
 
     definition: CompiledStrategyDefinition
     hypothesis: str
+    # CEO directive "Quant Research Factory / Strategy Discovery
+    # Engine," Phase 1 — required (not Optional) on every NEW filing
+    # through the real API, enforcing the directive's own "the agent
+    # must explain what would prove the hypothesis wrong" discipline.
+    # The underlying persisted QuantResearchExperiment field stays
+    # optional only for the experiments filed before this requirement
+    # existed — never backfilled, never guessed.
+    expected_mechanism: str = Field(alias="expectedMechanism")
+    falsification_criteria: str = Field(alias="falsificationCriteria")
     researcher_agent_id: AgentId = Field(alias="researcherAgentId")
     symbols: list[str] | None = None
     timeframe: str | None = None
@@ -480,7 +489,12 @@ async def submit_quant_research_experiment(payload: SubmitQuantResearchExperimen
     `QuantResearchExperiment`'s own docstring). `similarExperiments` on
     the response surfaces any real near-duplicate already on file (the
     directive's own "check before creating a new experiment whether an
-    equivalent one exists") without blocking the new filing."""
+    equivalent one exists") without blocking the new filing.
+
+    CEO directive "Quant Research Factory / Strategy Discovery Engine,"
+    Phase 1 — `expectedMechanism`/`falsificationCriteria` are now
+    required on the request: real discipline, not free-text padding —
+    a filing must state what would prove it wrong before it's accepted."""
     state, result = await game_state.submit_quant_research_experiment(
         payload.definition,
         hypothesis=payload.hypothesis,
@@ -488,6 +502,8 @@ async def submit_quant_research_experiment(payload: SubmitQuantResearchExperimen
         symbols=payload.symbols,
         timeframe=payload.timeframe,
         candles_per_symbol=payload.candles_per_symbol,
+        expected_mechanism=payload.expected_mechanism,
+        falsification_criteria=payload.falsification_criteria,
     )
     persist_modules(state)
     return result

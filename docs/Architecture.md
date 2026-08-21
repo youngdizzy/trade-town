@@ -12937,19 +12937,55 @@ matches, each with its own real "Prior outcome" pill (all
 show the red-warning path, an honest current-state limitation, not a
 staged demo).
 
+**Increment 3 — Phase 1, a real structured hypothesis abstraction (this
+pass).** The directive's own instruction was to "create the SMALLEST
+appropriate abstraction," so this deliberately did not duplicate what
+already exists real and structured elsewhere: `market_scope`/
+`timeframe` already live on `record.symbols_tested`/`record.timeframe`
+(re-stating them would be a second, driftable copy); entry/exit/risk
+"concepts" become real and deterministic the moment a hypothesis
+compiles into a `CompiledStrategyDefinition`, so an informal
+pre-compilation echo of the same thing would add no real signal. The
+two fields the directive names repeatedly and the "adversarial factory"
+theme depends on most — `expectedMechanism` (why the researcher expects
+this to work) and `falsificationCriteria` ("what would prove the
+hypothesis wrong") — are the ones actually missing, so those are the
+two added.
+
+New `QuantResearchExperiment.expectedMechanism`/`falsificationCriteria`
+(`str | None`, list-nested inside `GameSaveState.quant_research_
+experiments`, so both carry a real Pydantic default per the established
+backward-compat rule — `None` only for the 19 experiments already filed
+before this feature existed, never backfilled). The persisted schema
+stays optional, but the real API route
+(`SubmitQuantResearchExperimentRequest`) now REQUIRES both on every new
+filing — real discipline enforced at the one real point of human
+action, not a soft suggestion. `QuantResearchLabView.tsx`'s filing form
+gained two new required textareas; "File Experiment" stays disabled
+until both are non-empty, matching the existing hypothesis-required
+pattern.
+
+4 new backend tests (end-to-end threading, an honest-None omission
+case, and a backward-compat `model_validate()` check on a pre-existing
+experiment's dumped shape with both keys stripped). Full backend suite
+(2538 passed, up from 2535), `mypy app/`, `ruff check app/ tests/`
+clean. `tsc -b --noEmit`, `eslint`, `vite build` clean. Live-verified:
+a Command Center screenshot of the real filing form with both fields
+filled in, followed by a direct API check confirming the just-filed
+experiment persisted both real values exactly as typed (not just that
+the form submitted without error).
+
 **Deliberately not yet done** (natural next increments, not started
-here): Phase 1 (a real, structured hypothesis object with falsification
-criteria, distinct from free text); Phase 5 (extending baseline
-comparison from the EMA-pullback-only scope to the general compiled-
-strategy pipeline); Phase 10 (system-level multiple-testing/research-
-bias tracking — a self-disclosed real gap); the fuller Phase 16 ask (an
-automated hypothesis-generation loop that itself learns from outcomes)
-remains genuinely blocked by the real absence of any automated
-generation mechanism to attach it to — not a convenience cut, a
-structural one, per this increment's own research-first finding; Phase
-15 (adding `QuantResearchExperiment` nodes/edges to the existing
-knowledge graph). None of the others are blocked — see this section's
-own audit findings above.
+here): Phase 5 (extending baseline comparison from the EMA-pullback-
+only scope to the general compiled-strategy pipeline); Phase 10
+(system-level multiple-testing/research-bias tracking — a self-
+disclosed real gap); the fuller Phase 16 ask (an automated hypothesis-
+generation loop that itself learns from outcomes) remains genuinely
+blocked by the real absence of any automated generation mechanism to
+attach it to — not a convenience cut, a structural one, per Increment
+2's own research-first finding; Phase 15 (adding `QuantResearchExperiment`
+nodes/edges to the existing knowledge graph). None of the others are
+blocked — see this section's own audit findings above.
 
 ## Save format compatibility
 

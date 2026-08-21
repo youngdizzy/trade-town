@@ -2425,6 +2425,8 @@ class GameState:
         symbols: list[str] | None = None,
         timeframe: str | None = None,
         candles_per_symbol: int | None = None,
+        expected_mechanism: str | None = None,
+        falsification_criteria: str | None = None,
     ) -> tuple[GameSaveState, SubmitQuantResearchExperimentResult]:
         """CEO directive "Professional Quant Firm Phase," Feature 36 —
         the Quant Research Lab's real, persisted experiment filing.
@@ -2434,7 +2436,13 @@ class GameState:
         quant_research_lab.py's find_similar_experiments()), then
         permanently appends the new record — matching this codebase's
         own ever-growing, never-deleted archive convention. Under the
-        same lock every other state mutation uses."""
+        same lock every other state mutation uses.
+
+        CEO directive "Quant Research Factory / Strategy Discovery
+        Engine," Phase 1 — `expected_mechanism`/`falsification_criteria`
+        default to `None` here too (any caller that hasn't been
+        threaded through this new field yet); the real API route
+        (`app/routers/sandbox.py`) requires both on every new filing."""
         resolved_timeframe = timeframe if timeframe is not None else DEFAULT_TIMEFRAME
         resolved_candles = candles_per_symbol if candles_per_symbol is not None else DEFAULT_CANDLES_PER_SYMBOL
         record = run_research_experiment(definition, symbols=symbols, timeframe=resolved_timeframe, candles_per_symbol=resolved_candles)
@@ -2443,7 +2451,13 @@ class GameState:
             similar = find_similar_experiments(self.data.quant_research_experiments, hypothesis=hypothesis, definition_id=definition.id, timeframe=resolved_timeframe)
             experiment_id = f"experiment-{definition.id}-{definition.version}-{len(self.data.quant_research_experiments)}"
             experiment = file_quant_research_experiment(
-                record, experiment_id=experiment_id, hypothesis=hypothesis, researcher_agent_id=researcher_agent_id, created_at=_now_iso()
+                record,
+                experiment_id=experiment_id,
+                hypothesis=hypothesis,
+                researcher_agent_id=researcher_agent_id,
+                created_at=_now_iso(),
+                expected_mechanism=expected_mechanism,
+                falsification_criteria=falsification_criteria,
             )
             updated = cap_quant_research_experiments([*self.data.quant_research_experiments, experiment])
             self.data = self.data.model_copy(update={"quant_research_experiments": updated})

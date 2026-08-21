@@ -830,10 +830,13 @@ export const api = {
   // CEO directive "Professional Quant Firm Phase," Feature 36 — the
   // Quant Research Lab's real, persisted, searchable experiment record.
   // See backend/app/quant_research_lab.py.
-  submitQuantResearchExperiment: (definition: CompiledStrategyDefinition, hypothesis: string, researcherAgentId: AgentId) =>
+  // expectedMechanism/falsificationCriteria are required (CEO directive
+  // "Quant Research Factory / Strategy Discovery Engine," Phase 1) —
+  // real discipline on every new filing, not free-text padding.
+  submitQuantResearchExperiment: (definition: CompiledStrategyDefinition, hypothesis: string, researcherAgentId: AgentId, expectedMechanism: string, falsificationCriteria: string) =>
     request<SubmitQuantResearchExperimentResult>("/sandbox/quant-research-lab/experiments", {
       method: "POST",
-      body: JSON.stringify({ definition, hypothesis, researcherAgentId }),
+      body: JSON.stringify({ definition, hypothesis, researcherAgentId, expectedMechanism, falsificationCriteria }),
     }),
   searchQuantResearchExperiments: (filters: { symbol?: string; definitionId?: string; timeframe?: string; agentId?: string; outcome?: string } = {}) => {
     const query = new URLSearchParams();
