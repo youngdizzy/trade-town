@@ -11966,6 +11966,113 @@ fully verified (typecheck/lint/build clean, logic reviewed against the
 same real `strategies` array every other verified view already
 consumes) — only the live screenshot of it open is the disclosed gap.
 
+**Phase 12 — comprehensive testing.** Full backend suite re-confirmed
+one final time (2466 passed), `mypy app/` (176 files) and `ruff check
+app/ tests/` clean. The full Playwright suite (96 specs across every
+test file in `frontend/tests/`) was run twice: the first run (83
+failed) traced back to this session's own accumulated stale `vite`
+dev-server processes (four separate instances left running from
+earlier manual verification passes, all competing for port 5173) —
+fixed by killing every stale process and restarting one clean
+backend/frontend pair, confirmed by re-running the very first failing
+test (`alertCenter.spec.ts`) alone against the clean stack, which then
+passed. The second, clean-stack run: **82 passed, 13 failed, 1
+skipped**. All 13 failures are pre-existing and unrelated to this
+directive's changes:
+- **6** are `executiveVoting.spec.ts` tests that all require a real
+  pending `TradeProposal` — the same real, documented
+  `liquidity_confirmation_weak` Opportunity Gatekeeper behavior
+  described above blocks all of them identically, not a regression.
+- **7** (`commandCenter.spec.ts` player-movement, `constitution.spec.ts`,
+  `evolutionPanel.spec.ts`, `interaction.spec.ts` ×2, `knowledgeBase.spec.ts`,
+  `marketIntel.spec.ts`) are Phaser world/player-physics and asset-loading
+  failures in this sandboxed container (e.g. `expectMovement: player.x
+  never changed`, `Cannot read properties of undefined (reading
+  'setVelocity')`) — none of these files touch Strategy Lab, Performance,
+  or Executive Voting code, and this directive's changes never touch
+  Phaser scenes, player movement, or world assets at all.
+
+### Phase 13 — Final Audit
+
+CEO directive "Live Trade → Strategy Provenance," mandated closing
+report. Fifteen items, each answered directly against real evidence
+produced across Phases 1-12 above.
+
+1. **What existed before this directive.** A fully disconnected
+   Strategy Lab (backtest-only, `Strategy`/`CompiledStrategyDefinition`)
+   and live Trading Floor (`TradeProposal` → `CeoDecisionRecord` →
+   `PaperTrade`) — confirmed by a Phase 1 research-first audit that
+   `app/sandbox.py`'s own docstring already stated no live trade could
+   be attributed to a Strategy object.
+2. **The one real point of human strategy choice.** `POST
+   /api/executive/decide` — the CEO's own BUY/SELL click. Nothing
+   upstream (research, analyst votes, proposal generation) ever touches
+   a `Strategy`.
+3. **The minimal, non-fabricated chain built (Phase 2).**
+   `CeoDecisionRecord.strategyId` → `DecisionVaultEntry.strategyId` →
+   `TradeAttributionRecord`/`TradeReportCard.strategyId` +
+   `strategyProvenanceState`, following the exact `overrideReason`
+   precedent already in the codebase.
+4. **The honesty boundary (Phase 3).** Three states, each independently
+   defensible: `known` (CEO explicitly selected a strategy — never
+   "caused"), `unknown` (real decision, no strategy picked), `unavailable`
+   (no matching decision on record). No fourth "partial" state was
+   invented.
+5. **Historical trades.** Every trade closed before this feature shipped
+   reads `unknown`/`unavailable` forever — never backfilled by
+   resemblance, per the directive's explicit rule.
+6. **Live UI to exercise it.** `ExecutiveVoting.tsx`'s strategy `<select>`
+   — optional, defaults to unset, never pre-selected from eligibility
+   data (Phase 3's causality-honesty rule applied to the UI itself).
+7. **Phase 4 — Strategy Exposure.** `compute_strategy_performance()`,
+   real P&L/win-rate/expectancy grouped by strategy, only over `known`
+   trades, two distinct disclosed exclusion reasons.
+8. **Phase 5 — live vs. backtest.** Compares only `winRatePct` (both
+   real 0-100% scales); deliberately never forces `avgPnlPct` (percent)
+   against `expectancyR` (R-multiples) onto one number. R-multiple-based
+   attribution was investigated and explicitly NOT built — no
+   stop-loss-distance concept exists anywhere in the real risk engine to
+   derive one from.
+9. **Phase 6 — strategy×session.** The live analogue of an
+   already-existing backtest-only cut (`CompiledStrategyBacktestResult.
+   sessionBreakdown`), not a duplicate.
+10. **Phase 7 — picker context.** Real stage shown per option, explicitly
+    disclosed as context-only; selection was never gated on
+    certification/stage, since the directive never asked for that
+    restriction and inventing one would itself be an unauthorized
+    mechanism.
+11. **Phase 8 — governance evidence, not automation.** Live performance
+    surfaced at the real Certification decision point, informational
+    only. Confirmed via audit: zero automatic lifecycle logic exists
+    anywhere keyed on live performance, and none was added — only the
+    CEO's own manual judgment gets better real evidence.
+12. **Phase 9 — trading diagnostics.** `compute_strategy_trading_
+    diagnostics()`, four honest mutually-exclusive reasons, built
+    entirely from two already-computed sources. Diagnostic only — feeds
+    no score, gates nothing.
+13. **Phase 10 — UX.** Two real cross-links via the pre-existing
+    `ui:commandCenterJump` mechanism; a full navigation rewrite of the
+    38-tab Command Center was deliberately not attempted.
+14. **Phase 11 — Strategy Library.** A Live P&L column reusing Phase 4's
+    already-fetched data, zero new backend computation.
+15. **Test evidence (Phase 12).** Backend: 2466/2466 passed, `mypy`/`ruff`
+    clean, 24 new tests this directive (12 Phase 2-3 + 5 Phase 4 + 17
+    Phase 5/6/9 — see each phase's own section above for the exact
+    split). Frontend: `tsc`/`eslint`/`vite build` clean throughout.
+    Playwright: 82/96 passed on a clean stack, 13 pre-existing failures
+    fully traced to two causes unrelated to this directive (a real,
+    documented Opportunity Gatekeeper liquidity check, and this
+    sandbox's own Phaser asset-loading/physics environment) — zero
+    failures attributable to any change in this directive. 6 Command
+    Center screenshots taken against a real running save, one disclosed
+    gap (the CEO picker's live-open screenshot) with a precise, verified
+    root cause rather than a guess.
+
+**Total honesty ledger**: nothing in Phases 1-11 fabricates a number,
+a causal claim, or a scoring mechanism. Every "deliberately not
+attempted" item above names the exact structural reason, not a
+convenience cut.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

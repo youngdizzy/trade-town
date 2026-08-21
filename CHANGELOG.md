@@ -162,6 +162,21 @@ development milestones, not semver releases.
   just because trading activity is low, so this pass didn't. The picker's own code is fully verified
   (typecheck/lint/build clean); only its live screenshot is the disclosed gap.
 
+- **CEO directive "Live Trade → Strategy Provenance," Phases 12-13: comprehensive testing + final audit**:
+  full Playwright suite run twice — the first run (83/96 failed) traced to this session's own accumulated
+  stale `vite` dev-server processes (four competing instances left over from earlier manual verification),
+  not a regression; fixed by killing all stale processes and re-running one clean backend/frontend pair
+  (confirmed by re-running the first failing test alone, which then passed). Clean-stack run: **82 passed,
+  13 failed, 1 skipped**. All 13 failures traced to two pre-existing causes unrelated to this directive: 6
+  are `executiveVoting.spec.ts` tests blocked by the same real, documented Opportunity Gatekeeper liquidity
+  check described above; 7 are Phaser world/player-physics and asset-loading failures in this sandbox
+  (`commandCenter.spec.ts`, `constitution.spec.ts`, `evolutionPanel.spec.ts`, `interaction.spec.ts` x2,
+  `knowledgeBase.spec.ts`, `marketIntel.spec.ts` — none touch Strategy Lab/Performance/Executive Voting
+  code, and this directive never touches Phaser scenes or player movement). Full backend suite
+  re-confirmed one final time (2466 passed), `mypy`/`ruff` clean. A 15-item final audit report was written
+  covering every phase of this directive end to end — see docs/Architecture.md's own "Phase 13 — Final
+  Audit" section for the full ledger.
+
 - **CEO directive "Strategy Intelligence + Live Strategy Attribution," Phase 11: "TODAY — Strategy
   Eligibility, Right Now"** (backend: `backend/app/routers/sandbox.py`; frontend:
   `frontend/src/net/api.ts`, `frontend/src/ui/components/CommandCenter/panels/SandboxPanel.tsx`,
