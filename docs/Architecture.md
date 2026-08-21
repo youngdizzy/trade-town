@@ -11791,10 +11791,39 @@ been proven green end-to-end, only proven correctly-typed, lint-clean,
 and structurally consistent with tests of the same shape that do pass
 elsewhere in this suite's history.
 
+**Phase 4 — Strategy Exposure view (built).** New
+`compute_strategy_performance()` (`backend/app/performance_attribution.py`),
+exposed as `GET /api/trades/performance-by-strategy`. Same real
+Decision Vault join `compute_session_performance()`/`compute_regime_
+performance()` already established, grouped by `DecisionVaultEntry.
+strategyId` instead — the exact axis this module's own docstring named
+as blocked when it was first written ("STRATEGY: DecisionVaultEntry.
+strategy_id is always None on a live Trading Floor trade"), now honestly
+unblocked by Phase 2's work above, not a new mechanism grafted on. Only
+trades with a real `strategyId` are ever grouped (`strategyProvenance
+State == "known"`); every other trade is excluded under one of two
+distinct, disclosed reasons rather than one merged count —
+`tradesExcludedNoStrategySelected` (a real vault entry exists, CEO never
+picked a strategy — `"unknown"`) and `tradesExcludedNoVaultEntry` (no
+matching vault entry at all — `"unavailable"`), since collapsing those
+two real provenance states into one number would erase a distinction
+this codebase treats as meaningful everywhere else it appears. 7 new
+backend tests (`test_performance_attribution.py`'s
+`TestComputeStrategyPerformance`) covering grouping, both exclusion
+reasons independently, sort order, and the shared evidence-threshold
+behavior. Full backend suite (2449), `mypy app/` (176 files), `ruff
+check app/ tests/` all clean.
+
 **Deliberately not yet done** (a natural next increment, not started
-here): Phase 4's Strategy Exposure view (aggregating trades where
-`strategyProvenanceState == "known"`, grouped by strategy). Not blocked
-by anything found in this pass.
+here): a frontend view actually rendering this endpoint (the Command
+Center has no Strategy Exposure surface yet — Phase 10's UX
+consolidation is the natural place for it), and everything from Phase 5
+(strategy performance attribution beyond this raw P&L view) onward. Not
+blocked by anything found in this pass — this endpoint will report
+`reads: []` with both exclusion counts real-but-nonzero on most saves
+today, since almost no live trade has a CEO-selected strategy yet; that
+is the honest state of a feature that only just started being
+recordable, not a bug.
 
 ## Save format compatibility
 

@@ -31,10 +31,13 @@ skipped for convenience:
     rule for how to split credit across multiple agents on one trade
     (even, weighted by role, primary-opener-only?). Inventing one here
     would be a fabricated convention wearing a real metric's name.
-  - STRATEGY: `DecisionVaultEntry.strategy_id` is always `None` on a
-    live Trading Floor trade (only Research Sandbox-tested strategies
-    populate it — see `app/sandbox.py`) — already disclosed by the
-    Session Trading Education work.
+  - STRATEGY: at the time this module was first written,
+    `DecisionVaultEntry.strategy_id` was always `None` on a live Trading
+    Floor trade — closed since by CEO directive "Live Trade → Strategy
+    Provenance," whose Phase 2 gave the CEO a real, explicit way to
+    select a strategy at decision time. See `compute_strategy_
+    performance()` below — that directive's own Phase 4, built once the
+    blocker it names here was gone.
   - TIMEFRAME: no per-trade "chart timeframe analyzed" concept exists
     anywhere in this codebase to group by — `PerformancePeriod`
     (today/week/month) already covers time-BUCKETED reporting and isn't
@@ -80,6 +83,8 @@ from app.schemas import (
     RegimePerformanceSummary,
     SessionPerformanceRead,
     SessionPerformanceSummary,
+    StrategyPerformanceRead,
+    StrategyPerformanceSummary,
     SymbolPerformanceRead,
     SymbolPerformanceSummary,
     TradingSession,
@@ -197,3 +202,39 @@ def compute_regime_performance(trade_history: list[PaperTrade], decision_vault: 
     reads.sort(key=lambda r: r.total_pnl, reverse=True)
 
     return RegimePerformanceSummary(reads=reads, tradesExcludedNoVaultEntry=excluded, updatedAt=_now_iso())
+
+
+def compute_strategy_performance(trade_history: list[PaperTrade], decision_vault: list[DecisionVaultEntry]) -> StrategyPerformanceSummary:
+    """CEO directive "Live Trade → Strategy Provenance," Phase 4 — the
+    Strategy Exposure view. Same real Decision Vault join as session/
+    regime above, but split into two distinct exclusion counts instead
+    of one: a trade can be missing strategy context either because no
+    vault entry matches it at all (`unavailable`, same as session/regime's
+    single `excluded` count), or because a real vault entry exists but the
+    CEO simply never selected a strategy on it (`unknown` — see
+    app/trade_attribution.py's three-way provenance split). Collapsing
+    those into one number would erase a real, meaningful distinction the
+    rest of this codebase already treats as separate."""
+    vault_by_trade_id = _vault_entries_by_trade_id(decision_vault)
+    by_strategy: dict[str, list[PaperTrade]] = {}
+    excluded_no_vault_entry = 0
+    excluded_no_strategy_selected = 0
+    for trade in trade_history:
+        entry = vault_by_trade_id.get(trade.id)
+        if entry is None:
+            excluded_no_vault_entry += 1
+            continue
+        if entry.strategy_id is None:
+            excluded_no_strategy_selected += 1
+            continue
+        by_strategy.setdefault(entry.strategy_id, []).append(trade)
+
+    reads = [StrategyPerformanceRead(strategyId=strategy_id, **_group_metrics(trades)) for strategy_id, trades in by_strategy.items()]
+    reads.sort(key=lambda r: r.total_pnl, reverse=True)
+
+    return StrategyPerformanceSummary(
+        reads=reads,
+        tradesExcludedNoStrategySelected=excluded_no_strategy_selected,
+        tradesExcludedNoVaultEntry=excluded_no_vault_entry,
+        updatedAt=_now_iso(),
+    )

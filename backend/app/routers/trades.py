@@ -11,12 +11,13 @@ from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.exit_efficiency import compute_exit_efficiency
-from app.performance_attribution import compute_regime_performance, compute_session_performance, compute_symbol_performance
+from app.performance_attribution import compute_regime_performance, compute_session_performance, compute_strategy_performance, compute_symbol_performance
 from app.persistence import persist_modules
 from app.schemas import (
     ExitEfficiencySummary,
     RegimePerformanceSummary,
     SessionPerformanceSummary,
+    StrategyPerformanceSummary,
     SymbolPerformanceSummary,
     TradeAttributionSummary,
     TradePipelineHealthSnapshot,
@@ -98,6 +99,20 @@ async def get_performance_by_regime() -> RegimePerformanceSummary:
     instead. Computed fresh per request; no new GameSaveState field."""
     state = await game_state.snapshot()
     return compute_regime_performance(state.paper_portfolio.trade_history, state.decision_vault)
+
+
+@router.get("/performance-by-strategy", response_model=StrategyPerformanceSummary)
+async def get_performance_by_strategy() -> StrategyPerformanceSummary:
+    """CEO directive "Live Trade → Strategy Provenance," Phase 4 — the
+    Strategy Exposure view (see app/performance_attribution.py). Only
+    ever groups trades where the CEO explicitly selected a real strategy
+    at decision time (`strategyProvenanceState == "known"`); every other
+    trade is excluded and counted under one of two distinct, honest
+    reasons, never silently dropped or fabricated into a strategy it
+    wasn't actually attributed to. Computed fresh per request; no new
+    GameSaveState field."""
+    state = await game_state.snapshot()
+    return compute_strategy_performance(state.paper_portfolio.trade_history, state.decision_vault)
 
 
 @router.get("/pipeline-health", response_model=TradePipelineHealthSnapshot)

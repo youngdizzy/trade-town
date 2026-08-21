@@ -12,6 +12,7 @@ from app.performance_attribution import (
     MIN_SYMBOL_SAMPLE_FOR_VERDICT,
     compute_regime_performance,
     compute_session_performance,
+    compute_strategy_performance,
     compute_symbol_performance,
 )
 from app.schemas import DecisionVaultEntry, LiquidityRead, PaperTrade
@@ -155,7 +156,7 @@ class TestComputeSymbolPerformance:
         assert read.worst_trade_pnl_pct == -3.0
 
 
-def _vault_entry(*, trade_id: str, session: str = "new_york", market_regime: str = "sideways_range") -> DecisionVaultEntry:
+def _vault_entry(*, trade_id: str, session: str = "new_york", market_regime: str = "sideways_range", strategy_id: str | None = None) -> DecisionVaultEntry:
     return DecisionVaultEntry(
         id=f"vault-{trade_id}",
         tradeId=trade_id,
@@ -163,7 +164,7 @@ def _vault_entry(*, trade_id: str, session: str = "new_york", market_regime: str
         symbol="AAPL",
         simDay=1,
         session=session,  # type: ignore[arg-type]
-        strategyId=None,
+        strategyId=strategy_id,
         marketRegime=market_regime,  # type: ignore[arg-type]
         marketRegimeLabel="test regime",
         liquidityContext=LiquidityRead(symbol="AAPL", zones=[], sweepDetected=False, sweepDirection="none", liquidityScore=50.0, detail="test"),
@@ -259,6 +260,87 @@ class TestComputeRegimePerformance:
         assert len(trades) < MIN_SYMBOL_SAMPLE_FOR_VERDICT
         vault = [_vault_entry(trade_id="a", market_regime="strong_bull_trend")]
         summary = compute_regime_performance(trades, vault)
+        read = summary.reads[0]
+        assert read.evidence_state == "not_enough_data"
+        assert read.expectancy_pct is None
+        assert read.profit_factor is None
+
+
+class TestComputeStrategyPerformance:
+    """CEO directive "Live Trade → Strategy Provenance," Phase 4 — the
+    Strategy Exposure view. Only trades whose Decision Vault entry
+    carries a real, CEO-selected strategy_id are grouped; every other
+    trade is excluded under one of two distinct, honestly-separate
+    reasons (see app/performance_attribution.py's own docstring)."""
+
+    def test_groups_only_trades_with_a_real_ceo_selected_strategy_id(self) -> None:
+        trades = [
+            _trade(trade_id="a", pnl=10.0, pnl_pct=1.0),
+            _trade(trade_id="b", pnl=5.0, pnl_pct=0.5),
+        ]
+        vault = [
+            _vault_entry(trade_id="a", strategy_id="strategy-momentum"),
+            _vault_entry(trade_id="b", strategy_id="strategy-value"),
+        ]
+        summary = compute_strategy_performance(trades, vault)
+        strategy_ids = {r.strategy_id for r in summary.reads}
+        assert strategy_ids == {"strategy-momentum", "strategy-value"}
+        assert summary.trades_excluded_no_vault_entry == 0
+        assert summary.trades_excluded_no_strategy_selected == 0
+
+    def test_a_trade_with_a_vault_entry_but_no_strategy_selected_is_excluded_as_unknown(self) -> None:
+        trades = [_trade(trade_id="a", pnl=10.0, pnl_pct=1.0)]
+        vault = [_vault_entry(trade_id="a", strategy_id=None)]
+        summary = compute_strategy_performance(trades, vault)
+        assert summary.reads == []
+        assert summary.trades_excluded_no_strategy_selected == 1
+        assert summary.trades_excluded_no_vault_entry == 0
+
+    def test_a_trade_with_no_matching_vault_entry_is_excluded_as_unavailable_not_unknown(self) -> None:
+        trades = [_trade(trade_id="orphan", pnl=5.0, pnl_pct=0.5)]
+        summary = compute_strategy_performance(trades, [])
+        assert summary.reads == []
+        assert summary.trades_excluded_no_vault_entry == 1
+        assert summary.trades_excluded_no_strategy_selected == 0
+
+    def test_the_two_exclusion_reasons_are_never_folded_together(self) -> None:
+        trades = [
+            _trade(trade_id="known", pnl=10.0, pnl_pct=1.0),
+            _trade(trade_id="unknown", pnl=5.0, pnl_pct=0.5),
+            _trade(trade_id="unavailable", pnl=-3.0, pnl_pct=-0.3),
+        ]
+        vault = [
+            _vault_entry(trade_id="known", strategy_id="strategy-momentum"),
+            _vault_entry(trade_id="unknown", strategy_id=None),
+        ]
+        summary = compute_strategy_performance(trades, vault)
+        assert summary.trades_excluded_no_strategy_selected == 1
+        assert summary.trades_excluded_no_vault_entry == 1
+        assert sum(r.trade_count for r in summary.reads) == 1
+
+    def test_empty_trade_history_produces_no_reads_and_no_exclusions(self) -> None:
+        summary = compute_strategy_performance([], [])
+        assert summary.reads == []
+        assert summary.trades_excluded_no_strategy_selected == 0
+        assert summary.trades_excluded_no_vault_entry == 0
+
+    def test_reads_sorted_by_total_pnl_descending(self) -> None:
+        trades = [
+            _trade(trade_id="a", pnl=-50.0, pnl_pct=-5.0),
+            _trade(trade_id="b", pnl=100.0, pnl_pct=10.0),
+        ]
+        vault = [
+            _vault_entry(trade_id="a", strategy_id="strategy-loser"),
+            _vault_entry(trade_id="b", strategy_id="strategy-winner"),
+        ]
+        summary = compute_strategy_performance(trades, vault)
+        assert [r.strategy_id for r in summary.reads] == ["strategy-winner", "strategy-loser"]
+
+    def test_below_min_sample_withholds_expectancy_and_profit_factor(self) -> None:
+        trades = [_trade(trade_id="a", pnl=10.0, pnl_pct=1.0)]
+        assert len(trades) < MIN_SYMBOL_SAMPLE_FOR_VERDICT
+        vault = [_vault_entry(trade_id="a", strategy_id="strategy-momentum")]
+        summary = compute_strategy_performance(trades, vault)
         read = summary.reads[0]
         assert read.evidence_state == "not_enough_data"
         assert read.expectancy_pct is None

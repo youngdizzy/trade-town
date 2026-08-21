@@ -62,6 +62,31 @@ development milestones, not semver releases.
   is disclosed, not swept under a claimed pass: the new test is correctly typed and lint-clean, but not
   yet proven green end-to-end.
 
+- **CEO directive "Live Trade → Strategy Provenance," Phase 4: the Strategy Exposure view**
+  (`backend/app/performance_attribution.py`, `backend/app/routers/trades.py`,
+  `backend/app/schemas.py`, `backend/tests/test_performance_attribution.py`): new
+  `compute_strategy_performance()`, exposed as `GET /api/trades/performance-by-strategy`. Follows the
+  exact same real-Decision-Vault-join pattern `compute_session_performance()`/
+  `compute_regime_performance()` already established — grouped by `DecisionVaultEntry.strategyId`
+  instead, the one axis `performance_attribution.py`'s own module docstring had explicitly named as
+  blocked ("STRATEGY: DecisionVaultEntry.strategy_id is always None on a live Trading Floor trade") back
+  when it was first written, now honestly unblocked by the Phase 2 work above rather than a new
+  mechanism invented on top of it.
+
+  Only trades with a real, CEO-selected `strategyId` are ever grouped (`strategyProvenanceState ==
+  "known"`); every other trade is excluded under one of two distinct, disclosed reasons instead of one
+  merged count — `tradesExcludedNoStrategySelected` (a real vault entry exists, the CEO just never
+  picked a strategy — `"unknown"`) and `tradesExcludedNoVaultEntry` (no matching vault entry at all —
+  `"unavailable"`) — collapsing those two real, already-established provenance states into one number
+  would have erased a distinction this codebase treats as meaningful everywhere else it appears.
+
+  7 new backend tests covering grouping, both exclusion reasons independently, sort order, and the
+  shared evidence-threshold behavior. Full backend suite (2449), `mypy app/` (176 files), `ruff check
+  app/ tests/` all clean. **Disclosed, not hidden**: on almost every save today this endpoint honestly
+  returns `reads: []` with both exclusion counts real — almost no live trade has a CEO-selected strategy
+  yet, since the selector UI only just shipped. No frontend view renders this endpoint yet; that's the
+  next natural increment, not a gap in this one.
+
 - **CEO directive "Strategy Intelligence + Live Strategy Attribution," Phase 11: "TODAY — Strategy
   Eligibility, Right Now"** (backend: `backend/app/routers/sandbox.py`; frontend:
   `frontend/src/net/api.ts`, `frontend/src/ui/components/CommandCenter/panels/SandboxPanel.tsx`,

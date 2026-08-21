@@ -2016,6 +2016,33 @@ outcome-blind process score (`GET` via the WS `discipline_reviews`
 broadcast) or `GET /api/failures/{agent_id}`'s WHY-the-thesis-failed
 classification above.
 
+### `GET /api/trades/performance-by-strategy`
+
+CEO directive "Live Trade → Strategy Provenance," Phase 4 — the
+Strategy Exposure view (`app/performance_attribution.py`'s
+`compute_strategy_performance()`). Read-only, computed fresh per
+request over `state.paper_portfolio.trade_history` joined against
+`state.decision_vault` — no new `GameSaveState` field. Returns a
+`StrategyPerformanceSummary`: `reads: StrategyPerformanceRead[]`, one
+per real strategy id the CEO has actually selected via `POST
+/api/executive/decide`'s `strategyId` field at least once (12-metric
+shape shared with `SymbolPerformanceRead`/`SessionPerformanceRead`/
+`RegimePerformanceRead` — win rate, expectancy, profit factor, avg
+winner/loser, avg MAE/MFE, best/worst trade, `evidenceState`), sorted
+by `totalPnl` descending.
+
+Only trades whose Decision Vault entry carries a real, CEO-selected
+`strategyId` (`strategyProvenanceState == "known"`, see `app/
+trade_attribution.py`) are ever grouped. Every other trade is excluded
+and counted under one of two distinct, honestly-separate reasons —
+never silently dropped, never folded together, never fabricated into a
+strategy it wasn't actually attributed to: `tradesExcludedNoStrategy
+Selected` (a real Decision Vault entry exists, but the CEO never picked
+a strategy — the honest majority of trades, especially any trade
+closed before this feature existed) and `tradesExcludedNoVaultEntry`
+(no matching vault entry at all — the same disclosed eviction edge
+case every other `performance-by-*` endpoint already reports).
+
 ### `GET /api/trades/pipeline-health`
 
 CEO directive "Professional Quant Firm Phase 41-45," Critical Task
