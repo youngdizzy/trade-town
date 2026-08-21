@@ -11583,13 +11583,54 @@ behind them from the moment the game starts. Existing saves are
 completely unaffected — `default_state()` only runs for a genuinely new
 game; loading an existing save never re-seeds strategies.
 
-**Deliberately not yet done, disclosed rather than silently skipped**:
-real transaction-cost/slippage evidence and a real out-of-sample/
-walk-forward comparison for this exact strategy, using the now-connected
-`/cost-sensitivity` and `/walk-forward-validation` endpoints — these
-already exist and are real for any `CompiledStrategyDefinition`, so
-running them against the newly-seeded 50 EMA definitions is real,
-available, low-risk follow-up work, not a new engine to build.
+**Follow-up note (superseding the "not yet done" disclosure originally
+written here)**: running `/cost-sensitivity` and `/walk-forward-validation`
+against the newly-seeded 50 EMA definitions was verified directly —
+both already produce real evidence (a real `dataHonestyNote` citing
+`app/portfolio.py`'s `TRANSACTION_COST_BPS` and `app/execution_
+quality.py`'s `BASE_SLIPPAGE_BPS`/`MAX_SLIPPAGE_BPS`, the same numbers
+live paper trading already charges) with no further backend work
+needed — these endpoints are fully generic over any real
+`CompiledStrategyDefinition`, so the Phase 1 bridge connecting the 50
+EMA strategy to one was itself sufficient.
+
+### CEO directive "Strategy Intelligence + Live Strategy Attribution" — Phase 11: real compiled strategy rules surfaced in the Strategy Library
+
+The Phase 1 identity bridge and Phase 13 seeding above had zero UI
+visibility until this piece — a CEO opening the Command Center's
+Strategy Library couldn't tell any strategy had real, compiled
+trigger/entry/stop/target rules behind it at all, even though two now
+genuinely do from the moment a new game starts.
+
+`StrategyLibraryView.tsx` gains a real "Rules" column: a "View Rules"
+button renders only when `strategy.compiledDefinitionId` is set (an
+honest "—", with a real explanatory tooltip, otherwise — never a
+placeholder that implies every strategy has rules). Clicking it calls
+`GET /sandbox/strategy-versions?name=...` — an endpoint that already
+existed (Feature 37) — takes the latest real version, and opens it
+directly in `StrategyCompilerView.tsx`, which gained an optional `seed`
+prop specifically for this: when set, its `useEffect` initializes
+`name`/`sourceText`/`definition` directly from the real, already-
+compiled definition, skipping the "Compile Strategy" step entirely so
+the CEO lands straight on the real backtest/walk-forward/parameter-
+sensitivity/cost-sensitivity/look-ahead-audit buttons rather than
+having to retype English text that's already been compiled and
+persisted. The view's default (unseeded) behavior — the CEO's own
+worked example pre-filled, requiring a real "Compile Strategy" click —
+is completely unchanged.
+
+The frontend API client also gained `registerResearchableStrategy()`
+and the matching `RegisterResearchableStrategyResult` type, mirroring
+the Phase 1 backend endpoint that had gone unmirrored on the frontend
+since that commit (backend-only at the time, since Phase 1 was purely
+an identity-bridge increment with no UI need yet).
+
+Verified live against a freshly restarted dev stack: the new Rules
+column renders correctly (a dash for all four real strategies in the
+current save — this save predates Phase 13's seeding, which only
+affects brand-new games, so this is the correct, honest render for this
+save, not a bug), the Strategy Compiler's default unseeded path is
+byte-for-byte unchanged, and `sandbox.spec.ts` (4/4) passed.
 
 ## Save format compatibility
 

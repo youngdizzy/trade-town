@@ -7,6 +7,29 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Strategy Intelligence + Live Strategy Attribution," Phase 11: real compiled
+  strategy rules surfaced in the Strategy Library** (frontend:
+  `frontend/src/net/api.ts`, `frontend/src/types.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/SandboxPanel.tsx`,
+  `frontend/src/ui/components/CommandCenter/panels/sandbox/StrategyCompilerView.tsx`,
+  `frontend/src/ui/components/CommandCenter/panels/sandbox/StrategyLibraryView.tsx`): the Phase 1
+  identity bridge and Phase 13 seeding had zero UI visibility until now — a CEO opening the Strategy
+  Library couldn't tell a strategy had real, compiled trigger/entry/stop/target rules behind it at all.
+  `StrategyLibraryView` gains a real "Rules" column: a "View Rules" button when `compiledDefinitionId`
+  is set, an honest "—" (with a real explanatory tooltip: "a tracked idea only") when it isn't.
+  Clicking it fetches the strategy's own already-registered `CompiledStrategyDefinition` (`GET
+  /sandbox/strategy-versions`, an existing endpoint, no new backend call) and opens it directly in the
+  Strategy Compiler view — which now accepts an optional `seed` prop, skipping straight to the real
+  backtest/walk-forward/parameter-sensitivity/cost-sensitivity/look-ahead-audit buttons instead of
+  making the CEO retype English text that's already been compiled and persisted. Also adds the
+  frontend API client method + response type for the Phase 1 `POST
+  /sandbox/register-researchable-strategy` endpoint, closing a frontend/backend parity gap for that
+  endpoint (built backend-only in the Phase 1 commit). `tsc -b --noEmit`, `eslint`, `vite build` all
+  clean. Verified live against a freshly restarted dev stack: the new Rules column renders correctly
+  (a dash for all 4 real strategies in the current save, since Phase 13's seeding only affects
+  brand-new games — this save predates it), the Strategy Compiler's default unseeded path is
+  unchanged, and `sandbox.spec.ts` (4/4) passed.
+
 - **CEO directive "Strategy Intelligence + Live Strategy Attribution," Phase 13: the 50 EMA
   breakout/pullback strategy is now real Strategy Lab citizenship, on by default for every new
   game** (backend: `backend/app/strategy_registry.py`, `backend/app/state.py`,
