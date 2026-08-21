@@ -249,6 +249,28 @@ development milestones, not semver releases.
   running save's Portfolio tab renders the new strip with real numbers (Equity $99,931.78, Total P&L
   -$68.22, 4 active strategies, 0% risk utilization) above the existing, unchanged detail cards.
 
+- **CEO directive "Portfolio Construction, Capital Allocation & Execution Realism," Phase 13:
+  comprehensive testing pass**: every directive-named dimension already had real, dedicated tests from its
+  own phase (position sizing, risk budget, exposure, correlation, strategy allocation/degradation,
+  execution costs/slippage, portfolio P&L/drawdown, no-trade reasons, insufficient capital, strategy
+  eligibility) — this pass ran everything together once more and closed the two dimensions not yet
+  explicitly verified. **Historical-data boundaries**: confirmed every new function this directive added
+  gates on a real sample-size threshold and returns an honest unavailable/not-enough-data state below it,
+  never a fabricated number. **No-look-ahead**: audited directly — `app/leakage_audit.py`'s real,
+  proven-sound methodology is scoped to the backtest/pattern-detection pipeline, which nothing this
+  directive touched; every new function instead reads either `MarketDataProvider`'s real current-tick
+  candle window (structurally unable to see beyond "now" in a forward-only simulation) or already-closed
+  `PaperTrade`s ordered by real `closed_at` — no new look-ahead surface, confirmed by tracing each
+  function's data source.
+
+  Full backend suite (2533 passed), `mypy app/`, `ruff check app/ tests/` clean. `tsc -b --noEmit`,
+  `eslint`, `vite build` clean. `tests/commandCenter.spec.ts` run live against a freshly-restarted dev
+  stack — 31/33 passed, 1 skipped (pre-existing), 1 failed (a player-movement/WASD-input timing assertion
+  unrelated to any Command Center panel). The tests exercising this directive's own UI changes all passed:
+  the PORTFOLIO tab test (Phase 11's strip), the WARROOM tab test (Phase 9's card), two RISK-panel-control
+  tests (Phase 4's field), and the full 40-tab render cycle (which would have caught a Phase 5/6
+  `PerformancePanel.tsx` crash).
+
 - **CEO directive "Live Trade → Strategy Provenance": the real, non-fabricated way a live trade can
   now link back to a Strategy Lab strategy** (backend: `backend/app/schemas.py`,
   `backend/app/routers/executive.py`, `backend/app/state.py`, `backend/app/decision_vault.py`,

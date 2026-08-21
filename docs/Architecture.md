@@ -12573,9 +12573,83 @@ nothing left to build here either.
 **Deliberately not yet done**: none of the remaining directive text —
 Phases 10 and 12 are audit-complete, Phase 11's core ask is built.
 Phase 9's closed-trade side (above) remains the one real open increment
-from this whole 4-12 range. Phase 13 (comprehensive testing) and Phase
-14 (the final 18-question honest audit) are the directive's own closing
-steps, not yet started.
+from this whole 4-12 range.
+
+**Increment 11 — Phase 13, comprehensive testing (this pass).** Every
+directive-named dimension already got real, dedicated tests during its
+own phase above — this increment's job was to run every check together
+one final time, plus close the two dimensions that hadn't been
+explicitly verified yet (no-look-ahead, historical-data boundaries) and
+run the live-stack Playwright regression CLAUDE.md requires for any UI
+change:
+
+- Position sizing / risk budget / capital availability: Phase 3's
+  `TestVolatilitySizing`/`TestBuildPositionSizingVolatility`.
+- Max/gross/net exposure: Directive C's Increment 1
+  (`TestExposureSummary`), still passing.
+- Correlated exposure: Phase 4's `TestCountCorrelatedPositions`/
+  `TestCorrelatedExposureCheck`.
+- Strategy allocation: Phase 5's `TestComputeStrategyCapitalAllocationEvidence`.
+- Strategy degradation: Phase 6's `TestComputeStrategyDegradation`.
+- Execution costs/slippage: the pre-existing `execution_quality.py`
+  suite plus Phase 7's new `TestGapThroughFill`.
+- Portfolio P&L / drawdown: Phase 5's `_live_drawdown_usd()` tests, plus
+  the pre-existing `performance_attribution.py` P&L suite.
+- No-trade reasons / risk rejection: the pre-existing `trade_pipeline_
+  health.py` suite, confirmed in Phase 10's audit to already generically
+  cover every code including Phase 4's new one.
+- Insufficient capital / strategy eligibility: the pre-existing
+  `position_sizing.py` (cash reserve/tier cap) and
+  `opportunity_gatekeeper.py` suites, both still passing unmodified.
+- **Historical-data boundaries** — every new function this directive
+  added gates on real sample-size thresholds and returns an honest
+  unavailable/not-enough-data state below them, never a fabricated
+  number: `_volatility_sizing()` (`available: false` below enough real
+  candles), `count_correlated_positions()` (returns 0 below enough
+  candles for either symbol), `compute_strategy_capital_allocation_
+  evidence()`/`compute_strategy_degradation()` (`MIN_SYMBOL_SAMPLE_
+  FOR_VERDICT`, `not_enough_data`/`no_live_trades_yet`) — each proven by
+  its own phase's tests already cited above, confirmed together here.
+- **No-look-ahead** — audited directly rather than assumed satisfied:
+  `app/leakage_audit.py`'s real, proven-sound methodology (validated
+  against a deliberately-broken detector that peeks one bar into the
+  future) is scoped to the backtest/pattern-detection pipeline
+  (`app/strategy_engine.py`'s generic setup detector) — nothing this
+  directive added touches that pipeline. Every new function this
+  directive built instead reads either (a) `MarketDataProvider`'s real
+  current-tick candle window (Phases 3-4) — the identical live-fetch
+  mechanism every other real-time read in this codebase already uses,
+  structurally unable to see beyond "now" in a forward-only simulation
+  — or (b) already-CLOSED historical `PaperTrade`s ordered by their own
+  real `closed_at` (Phases 5-6) — never a future trade. No new
+  look-ahead surface was introduced; confirmed by tracing every new
+  function's data source, not by re-running the existing audit tool
+  (which doesn't apply to this code).
+
+**Full-suite results**: `python -m pytest -q` — 2533 passed. `mypy
+app/` — clean (176 files). `ruff check app/ tests/` — clean. `tsc -b
+--noEmit` — clean. `eslint` — clean. `vite build` — clean.
+**Playwright**: `tests/commandCenter.spec.ts` (the suite covering every
+Command Center tab, including RISK/WARROOM/PORTFOLIO/PERFORMANCE — the
+four tabs this directive's UI changes touched) run live against a
+freshly-restarted dev stack — 31 of 33 passed, 1 skipped (a known,
+pre-existing real-time-popup-timing case unrelated to this directive),
+1 failed (`blocks interaction but allows movement while open` — a
+player-movement/WASD-input timing assertion in the game world scene,
+unrelated to any Command Center panel; the same "player.x never
+changed" failure mode this session has seen before from headless-
+browser input timing, not a content regression). Critically, the exact
+tests exercising this directive's own UI changes all passed: "PORTFOLIO
+tab shows real Capital Allocation, Portfolio Heat, and Category
+Exposure" (Phase 11's new strip), "WARROOM tab shows the Digital War
+Room... real Decision Score, Expected Value" (Phase 9's new card), two
+RISK-panel-control tests (Phase 4's new `maxCorrelatedPositions`
+field), and the full 40-tab "expands... and renders all 40 tabs with
+graceful empty states" cycle (which would have caught a crash in Phase
+5/6's new `PerformancePanel.tsx` sections).
+
+Phase 14 (the directive's own final 18-question honest audit) is the
+one remaining closing step, not yet started.
 
 ## Save format compatibility
 
