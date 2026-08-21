@@ -4359,6 +4359,13 @@ export interface WarRoomSession {
    * evidenceConfluenceScore. Null only when this symbol's own real
    * candle history was unavailable for this tick. */
   evidenceConfluence: EvidenceConfluenceRead | null;
+  /** CEO directive "Portfolio Construction, Capital Allocation &
+   * Execution Realism," Phase 9 — the real, statistical Pearson-
+   * correlation count (distinct from decisionScore.portfolioCompatibilityScore's
+   * category-based read), persisted here so it survives past the
+   * Opportunity Gatekeeper's approve/reject decision instead of being
+   * discarded. Null only for a session saved before this field existed. */
+  statisticalCorrelatedPositions: number | null;
 }
 
 /** v0.7 Chapter 57 — Institutional Position Sizing & Capital Deployment

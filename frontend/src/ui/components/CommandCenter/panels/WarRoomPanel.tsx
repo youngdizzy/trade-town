@@ -2,8 +2,10 @@ import { useMemo, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { EXECUTIVE_ACTION_LABEL, EXECUTIVE_STANCE_LABEL, type PositionTier, type WarRoomSession } from "@/types";
-import { executiveActionTone, executiveStanceTone } from "../lib/derive";
+import { executiveActionTone, executiveStanceTone, formatMoney } from "../lib/derive";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "../ui";
+
+const UNAVAILABLE = "text-cmd-textDim italic";
 
 const TIER_TONE: Record<PositionTier, "neutral" | "cyan" | "purple" | "green"> = {
   exploratory: "neutral",
@@ -80,9 +82,63 @@ function SessionRow({ session, selected, onSelect }: { session: WarRoomSession; 
   );
 }
 
+/**
+ * CEO directive "Portfolio Construction, Capital Allocation & Execution
+ * Realism," Phase 9 — a consolidated "WHY THIS TRADE?" summary. Every
+ * value here is a real, already-computed read joined from state already
+ * on the store (WarRoomSession + the matching TradeProposal) — nothing
+ * new is computed. Genuine gaps this codebase cannot honestly fill for
+ * a still-pending proposal are named explicitly ("Unavailable — ...")
+ * rather than guessed or left silently blank; see docs/Architecture.md's
+ * Phase 9 section for the full research behind each one.
+ */
+function WhyThisTradeCard({ session }: { session: WarRoomSession }) {
+  const { tradeProposals } = useGameStore();
+  const proposal = tradeProposals.find((p) => p.id === session.proposalId) ?? null;
+  const vol = session.positionSizing?.volatilitySizing;
+
+  return (
+    <Glass className="border border-cmd-cyan/30 p-3">
+      <div className="mb-1.5 flex items-center justify-between">
+        <TerminalLabel>Why This Trade? — {session.symbol}</TerminalLabel>
+        <StatusPill tone={executiveActionTone(session.recommendation.action)}>{EXECUTIVE_ACTION_LABEL[session.recommendation.action]}</StatusPill>
+      </div>
+      <div className="grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-3">
+        <DataRow label="Strategy" value={<span className={UNAVAILABLE}>Unavailable — not selected until the CEO decides (see Strategy below War Room)</span>} />
+        <DataRow label="Entry (signal price)" value={proposal ? formatMoney(proposal.price) : <span className={UNAVAILABLE}>Unavailable — proposal no longer pending</span>} />
+        <DataRow
+          label="Stop distance (ATR-based)"
+          value={vol?.available ? `${vol.stopDistance?.toFixed(2) ?? "—"}` : <span className={UNAVAILABLE}>Unavailable — {vol?.detail ?? "not computed"}</span>}
+        />
+        <DataRow label="Target price" value={<span className={UNAVAILABLE}>Unavailable — no live target-price mechanism exists for a live trade</span>} />
+        <DataRow
+          label="Expected Value"
+          value={`${session.expectedValue.expectedValuePct >= 0 ? "+" : ""}${session.expectedValue.expectedValuePct.toFixed(2)}%`}
+          valueClassName={session.expectedValue.expectedValuePct >= 0 ? "text-cmd-green" : "text-cmd-red"}
+        />
+        <DataRow label="Expected R-multiple" value={<span className={UNAVAILABLE}>Unavailable — no live stop-loss order exists to compute a real R against</span>} />
+        <DataRow label="Risk budget" value={vol?.available ? formatMoney(vol.riskBudgetUsd ?? 0) : <span className={UNAVAILABLE}>Unavailable</span>} />
+        <DataRow label="Position size" value={session.positionSizing ? session.positionSizing.finalQuantity.toFixed(4) : <span className={UNAVAILABLE}>Not yet sized</span>} />
+        <DataRow label="Regime / Session" value={<span className={UNAVAILABLE}>Unavailable — only stamped once this trade closes (see Decision Vault)</span>} />
+        <DataRow label="Portfolio Fit (category)" value={`${session.decisionScore.portfolioCompatibilityScore.toFixed(0)}/100`} />
+        <DataRow
+          label="Statistical correlation (Pearson)"
+          value={session.statisticalCorrelatedPositions !== null ? `${session.statisticalCorrelatedPositions} correlated position(s)` : <span className={UNAVAILABLE}>Not computed for this session</span>}
+        />
+        <DataRow label="Agent evidence" value={`${session.recommendation.supporting.length} supporting / ${session.recommendation.opposing.length} opposing`} />
+        <DataRow label="Risk checks (Gatekeeper)" value={<span className={UNAVAILABLE}>Unavailable — only run at CEO-decision time, not yet for a pending proposal</span>} />
+        <DataRow label="Execution constraints" value={<span className={UNAVAILABLE}>Unavailable — slippage is only realized at fill time</span>} />
+        <DataRow label="Final decision" value={<span className="text-cmd-amber">Pending — CEO has not decided yet</span>} />
+      </div>
+    </Glass>
+  );
+}
+
 function SessionDetail({ session }: { session: WarRoomSession }) {
   return (
     <>
+      <WhyThisTradeCard session={session} />
+
       <Glass className="p-3">
         <div className="mb-1.5 flex items-center justify-between">
           <TerminalLabel>{session.symbol} — Decision Score</TerminalLabel>

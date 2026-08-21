@@ -12451,10 +12451,63 @@ clean; targeted re-run of every broker/nexus/paper_trading/portfolio/
 execution_quality test (146 tests) confirms no downstream regression
 from the gap-fill change.
 
-**Deliberately not yet done** (natural next increments, not started
-here): Phase 9 (a consolidated "why this trade" view); Phase 10
-(extending the no-trade diagnostic with the new correlation/risk-budget
-dimensions now that the gate above exists); Phases 11-12
+**Increment 7 — Phase 9, consolidated "WHY THIS TRADE?" view (this
+pass, pending-proposal side).** A dedicated research-agent audit traced
+one real `TradeProposal` end-to-end (proposal creation →
+`WarRoomSession` → CEO decision → `DecisionVaultEntry`) and found every
+directive-named field already real SOMEWHERE, but scattered across up
+to five different objects with no single consolidated view anywhere —
+plus one real, previously-silent loss: the Phase 4 statistical Pearson
+correlation count (`real_correlated_positions` in `nexus.py`) was
+computed to decide the Opportunity Gatekeeper's approve/reject call,
+then discarded for every APPROVED candidate, never reaching the CEO at
+all. Closed that first: new `WarRoomSession.statistical_correlated_
+positions: int | None` (list-nested, real Pydantic default per the
+established backward-compat rule), set via the same `.model_copy()`
+that already attaches `position_sizing`. 3 new backend tests
+(construction default, an explicit `.model_copy()` set, and a
+`model_validate()` backward-compat check on a pre-existing session's
+dumped shape with the key stripped).
+
+New `WhyThisTradeCard` (`WarRoomPanel.tsx`) — entirely a frontend join
+of already-store-resident data (`WarRoomSession` + the matching
+`TradeProposal`), no new backend endpoint needed since every real field
+was already broadcast to the client. Rendered at the top of the existing
+War Room session detail view. Every directive-named field gets a row:
+real ones (entry price, expected value, risk budget, position size,
+portfolio-fit score, the newly-persisted statistical correlation count,
+supporting/opposing agent counts) render their real value; genuine gaps
+the research audit confirmed cannot be honestly filled for a still-
+PENDING proposal are named explicitly rather than left blank or
+guessed — strategy (not selected until the CEO decides), target price
+(no live target-price mechanism exists for a live trade, only in
+backtest-only research schemas), expected R-multiple (no live stop-loss
+order exists to compute a real R against — confirmed still true even
+after Phase 3's ATR stop-DISTANCE, which is explicitly not a placed
+order), regime/session (only stamped once the trade closes, via
+`DecisionVaultEntry`), Gatekeeper risk checks (only run at CEO-decision
+time), and execution constraints (slippage only realized at fill time).
+
+`tsc -b --noEmit`, `eslint`, `vite build` clean. **Live verification not
+achievable this pass**: the real running save currently has zero
+`WarRoomSession`s (day 71, only 2 lifetime paper trades, 0 pending
+proposals) — the same disclosed liquidity-gate/mock-candle-data
+constraint from Phases 3-4 that blocks new proposal generation in this
+sandboxed environment, this time additionally meaning there was no
+*pre-existing* session left in this particular save to screenshot
+either (unlike Phase 3's War Room panel, which had 56 pre-existing
+sessions to fall back on). The card's logic was traced field-by-field
+against real schema names and verified via a clean `tsc`/`eslint`/
+`vite build`, but not visually confirmed against live data.
+
+**Deliberately not yet done**: Phase 9's closed-trade side (a matching
+consolidated view joining `DecisionVaultEntry` + `TradeDecision.
+gatekeeperVerdict` + `CeoDecisionRecord` for an already-closed trade,
+extending `DecisionDetail.tsx` — the closest existing "why did the AI
+want this" drill-down the research audit found) — not started this
+pass, a natural next increment, not blocked. Phase 10 (extending the
+no-trade diagnostic with the new correlation/risk-budget dimensions
+now that the gate above exists); Phases 11-12
 (`PortfolioIntelPanel.tsx`/`RiskPanel.tsx` already substantially satisfy
 the Command Center ask; market visualization already satisfies its own
 ask per the Phase 1 audit — likely little/no work needed there). None

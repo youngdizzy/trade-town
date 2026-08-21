@@ -195,6 +195,30 @@ development milestones, not semver releases.
   Full backend suite, `mypy app/`, `ruff check app/ tests/` clean; targeted re-run of every broker/nexus/
   paper_trading/portfolio/execution_quality test (146 tests) confirms no downstream regression.
 
+- **CEO directive "Portfolio Construction, Capital Allocation & Execution Realism," Phase 9:
+  consolidated "WHY THIS TRADE?" view (pending-proposal side)** (backend: `backend/app/schemas.py`,
+  `backend/app/nexus.py`, `backend/tests/test_war_room.py`; frontend: `frontend/src/types.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/WarRoomPanel.tsx`): a research-agent audit traced one
+  real `TradeProposal` end-to-end and found every directive-named field already real somewhere, but
+  scattered across up to five different objects with no single consolidated view — plus one real,
+  previously-silent loss: the Phase 4 statistical Pearson correlation count was computed to decide the
+  Opportunity Gatekeeper's approve/reject call, then discarded for every APPROVED candidate, never reaching
+  the CEO. Closed that: new `WarRoomSession.statisticalCorrelatedPositions`, set via the same
+  `.model_copy()` that already attaches `positionSizing`. 3 new backend tests.
+
+  New `WhyThisTradeCard` (`WarRoomPanel.tsx`) is entirely a frontend join of already-store-resident data —
+  no new backend endpoint needed. Real fields render their real value; genuine gaps the audit confirmed
+  (strategy not yet selected, no live target-price mechanism, no live stop-loss order to compute a real
+  R-multiple against, regime/session only stamped at close, Gatekeeper checks only run at decision time,
+  execution constraints only realized at fill time) are named explicitly rather than guessed or left blank.
+
+  `tsc -b --noEmit`, `eslint`, `vite build` clean. Live verification not achievable this pass: the real
+  running save currently has zero `WarRoomSession`s (day 71, 0 pending proposals) — the same disclosed
+  liquidity-gate constraint from Phases 3-4, this time with no pre-existing session to fall back on either.
+  The card's logic was traced field-by-field against real schema names instead. Deliberately not yet
+  done: the closed-trade side (extending `DecisionDetail.tsx` with the same consolidated join for an
+  already-closed trade) — a natural next increment, not started this pass.
+
 - **CEO directive "Live Trade → Strategy Provenance": the real, non-fabricated way a live trade can
   now link back to a Strategy Lab strategy** (backend: `backend/app/schemas.py`,
   `backend/app/routers/executive.py`, `backend/app/state.py`, `backend/app/decision_vault.py`,

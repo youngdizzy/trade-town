@@ -25,6 +25,7 @@ from app.schemas import (
     RiskWarning,
     ScenarioResult,
     TradeProposal,
+    WarRoomSession,
     WhatIfSimulation,
 )
 from app.war_room import (
@@ -620,6 +621,41 @@ class TestBuildWarRoomSession:
         )
         assert session.evidence_confluence is None
         assert session.decision_score.evidence_confluence_score is None
+
+    def test_statistical_correlated_positions_defaults_to_none_build_war_room_session_does_not_set_it(self) -> None:
+        # CEO directive "Portfolio Construction, Capital Allocation &
+        # Execution Realism," Phase 9 — the real Pearson-correlation
+        # count is computed in app/nexus.py (where paper_portfolio/
+        # market_data_provider are in scope) and attached via a
+        # follow-up .model_copy(), not by build_war_room_session()
+        # itself. This confirms that division of responsibility.
+        proposal = _proposal()
+        session = build_war_room_session(
+            "warroom-proposal-1", proposal, challenge_report=None, coach_reports=[], market_intelligence=default_market_intelligence_state(),
+            decision_vault=[], risk_warnings=[], correlated_open_positions=0, candles=_candles([100.0 for _ in range(30)]), risk_limits=RiskLimits(),
+        )
+        assert session.statistical_correlated_positions is None
+        updated = session.model_copy(update={"statistical_correlated_positions": 3})
+        assert updated.statistical_correlated_positions == 3
+
+
+class TestWarRoomSessionBackwardCompat:
+    """CEO directive "Portfolio Construction, Capital Allocation &
+    Execution Realism," Phase 9 — `WarRoomSession` lives inside the
+    persisted `war_room_sessions` LIST, so per app/persistence.py's own
+    `_deep_merge_defaults` rule, a new field needs a real Pydantic
+    default or an old save's existing sessions fail to validate on load."""
+
+    def test_a_session_persisted_before_this_field_existed_still_validates(self) -> None:
+        proposal = _proposal()
+        session = build_war_room_session(
+            "warroom-proposal-1", proposal, challenge_report=None, coach_reports=[], market_intelligence=default_market_intelligence_state(),
+            decision_vault=[], risk_warnings=[], correlated_open_positions=0, candles=_candles([100.0 for _ in range(30)]), risk_limits=RiskLimits(),
+        )
+        old_save_shape = session.model_dump(by_alias=True)
+        del old_save_shape["statisticalCorrelatedPositions"]
+        restored = WarRoomSession.model_validate(old_save_shape)
+        assert restored.statistical_correlated_positions is None
 
 
 class TestRecordWarRoomSession:

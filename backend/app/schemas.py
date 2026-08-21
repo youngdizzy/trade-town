@@ -6760,6 +6760,19 @@ class WarRoomSession(CamelModel):
     # only when this symbol's own real candle history was unavailable
     # for this tick (see app/war_room.py's build_war_room_session()).
     evidence_confluence: EvidenceConfluenceRead | None = Field(default=None, alias="evidenceConfluence")
+    # CEO directive "Portfolio Construction, Capital Allocation &
+    # Execution Realism," Phase 4 — the real, statistical Pearson-
+    # correlation count (app/portfolio_intelligence.py's
+    # count_correlated_positions(), distinct from the category-co-
+    # occurrence read that already feeds this session's own
+    # portfolio-compatibility score) was computed at proposal time to
+    # decide the Opportunity Gatekeeper's approve/reject call, then
+    # discarded for every APPROVED candidate — a real correlation-risk
+    # read the CEO never actually got to see. Phase 9 closes that: now
+    # persisted here too, so a "why this trade" view has the real number
+    # instead of losing it once the gate passes. `None` only for a
+    # session created before this field existed.
+    statistical_correlated_positions: int | None = Field(default=None, alias="statisticalCorrelatedPositions")
     created_at: str = Field(alias="createdAt")
 
 

@@ -1712,7 +1712,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             sim_day=now_sim_minutes // 1440,
             provider=market_data_provider,
         )
-        war_room_session = war_room_session.model_copy(update={"position_sizing": position_sizing})
+        war_room_session = war_room_session.model_copy(update={"position_sizing": position_sizing, "statistical_correlated_positions": real_correlated_positions})
         # Design Bible Chapter 75 — every proposal that survives the
         # Opportunity Gatekeeper gets a real "day"/"swing" tag the moment
         # it becomes CEO-visible.
