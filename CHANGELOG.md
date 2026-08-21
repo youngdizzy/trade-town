@@ -82,10 +82,19 @@ development milestones, not semver releases.
 
   7 new backend tests covering grouping, both exclusion reasons independently, sort order, and the
   shared evidence-threshold behavior. Full backend suite (2449), `mypy app/` (176 files), `ruff check
-  app/ tests/` all clean. **Disclosed, not hidden**: on almost every save today this endpoint honestly
-  returns `reads: []` with both exclusion counts real — almost no live trade has a CEO-selected strategy
-  yet, since the selector UI only just shipped. No frontend view renders this endpoint yet; that's the
-  next natural increment, not a gap in this one.
+  app/ tests/` all clean.
+
+  **Frontend** (`frontend/src/net/api.ts`, `frontend/src/types.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/PerformancePanel.tsx`): a new "Performance by
+  Strategy" section, same layout convention as the existing Symbol/Session/Market Regime sections —
+  strategy name resolved from the real `state.strategies` roster, sorted by `totalPnl`, both exclusion
+  counts shown as separate, honest disclosure lines. Retires a now-false pre-existing disclosure line
+  ("Performance-by-strategy also isn't built..."). `tsc -b --noEmit`, `eslint`, `vite build` all clean;
+  verified live against a real running save — the endpoint honestly returned `reads: []` with
+  `tradesExcludedNoStrategySelected: 2` and the panel rendered that exact disclosed state (confirmed via
+  screenshot). **Disclosed, not hidden**: on almost every save today this reports an empty state —
+  almost no live trade has a CEO-selected strategy yet, since the selector UI only just shipped; that's
+  the honest current state of a feature that just started being recordable, not a bug.
 
 - **CEO directive "Strategy Intelligence + Live Strategy Attribution," Phase 11: "TODAY — Strategy
   Eligibility, Right Now"** (backend: `backend/app/routers/sandbox.py`; frontend:

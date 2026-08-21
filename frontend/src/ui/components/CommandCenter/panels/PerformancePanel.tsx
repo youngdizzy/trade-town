@@ -6,6 +6,9 @@ import type {
   RegimePerformanceSummary,
   SessionPerformanceRead,
   SessionPerformanceSummary,
+  Strategy,
+  StrategyPerformanceRead,
+  StrategyPerformanceSummary,
   SymbolPerformanceRead,
   SymbolPerformanceSummary,
   TradeAttributionRecord,
@@ -27,7 +30,7 @@ const PERIODS: FinancialPeriod[] = ["today", "week", "month", "prevMonth", "allT
  * month — there is no real-world date anywhere in this game's state.
  */
 export function PerformancePanel() {
-  const { paperPortfolio, time } = useGameStore();
+  const { paperPortfolio, time, strategies } = useGameStore();
   const [period, setPeriod] = useState<FinancialPeriod>("month");
 
   const openUnrealized = paperPortfolio.positions.reduce((s, p) => s + p.unrealizedPnl, 0);
@@ -62,6 +65,14 @@ export function PerformancePanel() {
   const [regimePerformance, setRegimePerformance] = useState<RegimePerformanceSummary | null>(null);
   useEffect(() => {
     api.getPerformanceByRegime().then(setRegimePerformance).catch(() => undefined);
+  }, []);
+
+  // CEO directive "Live Trade → Strategy Provenance," Phase 4 — real
+  // strategy-grouped P&L, same real Decision Vault join, only ever
+  // grouping trades where the CEO explicitly selected a strategy.
+  const [strategyPerformance, setStrategyPerformance] = useState<StrategyPerformanceSummary | null>(null);
+  useEffect(() => {
+    api.getPerformanceByStrategy().then(setStrategyPerformance).catch(() => undefined);
   }, []);
 
   const netPositive = financials.netPnl >= 0;
@@ -171,14 +182,15 @@ export function PerformancePanel() {
         <div className="mt-2 text-[9px] text-cmd-textDim">
           A numeric performance-by-agent P&amp;L split isn&apos;t built — a trade&apos;s multiple supporting/opposing
           agents have no CEO-authorized credit-split rule (see Trade Attribution below for the real evidence
-          instead). Performance-by-strategy also isn&apos;t built — closed trades aren&apos;t currently linked to a
-          Strategy id. See CHANGELOG.md.
+          instead). See CHANGELOG.md.
         </div>
       </Glass>
 
       <SymbolPerformanceSection summary={symbolPerformance} />
 
       <SessionRegimePerformanceSection sessionSummary={sessionPerformance} regimeSummary={regimePerformance} />
+
+      <StrategyPerformanceSection summary={strategyPerformance} strategies={strategies} />
 
       <TradeAttributionSection summary={tradeAttribution} />
 
@@ -348,6 +360,74 @@ function GroupPerformanceRow({ label, read }: { label: string; read: SessionPerf
           <StatusPill tone="amber">THIN</StatusPill>
         ) : (
           <span className="text-cmd-textDim">Exp: {formatPct(read.expectancyPct ?? 0)}</span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/** CEO directive "Live Trade → Strategy Provenance," Phase 4 — the
+ * Strategy Exposure view. Only ever groups trades where the CEO
+ * explicitly selected a real strategy at decision time
+ * (strategyProvenanceState === "known"); the two exclusion counts below
+ * are the honest majority on almost every save today, since the
+ * strategy selector only just shipped (see ExecutiveVoting.tsx). */
+function StrategyPerformanceSection({ summary, strategies }: { summary: StrategyPerformanceSummary | null; strategies: Strategy[] }) {
+  const nameFor = (strategyId: string) => strategies.find((s) => s.id === strategyId)?.name ?? strategyId;
+  return (
+    <Glass className="p-3">
+      <div className="mb-1.5 flex items-center justify-between">
+        <TerminalLabel>Performance by Strategy</TerminalLabel>
+        <span className="text-[9px] text-cmd-textDim">Only trades with a CEO-selected strategy — real Decision Vault join</span>
+      </div>
+      {summary === null ? (
+        <EmptyState>Loading…</EmptyState>
+      ) : summary.reads.length === 0 ? (
+        <EmptyState>No closed trade has a CEO-selected strategy yet.</EmptyState>
+      ) : (
+        <div className="space-y-1">
+          {summary.reads.map((r) => (
+            <StrategyPerformanceRow key={r.strategyId} read={r} label={nameFor(r.strategyId)} />
+          ))}
+        </div>
+      )}
+      {summary !== null && (summary.tradesExcludedNoStrategySelected > 0 || summary.tradesExcludedNoVaultEntry > 0) && (
+        <div className="mt-1 space-y-0.5 text-[9px] text-cmd-textDim">
+          {summary.tradesExcludedNoStrategySelected > 0 && (
+            <div>
+              {summary.tradesExcludedNoStrategySelected} closed trade{summary.tradesExcludedNoStrategySelected === 1 ? "" : "s"} excluded — CEO didn&apos;t select a
+              strategy at decision time.
+            </div>
+          )}
+          {summary.tradesExcludedNoVaultEntry > 0 && (
+            <div>
+              {summary.tradesExcludedNoVaultEntry} closed trade{summary.tradesExcludedNoVaultEntry === 1 ? "" : "s"} excluded — no matching Decision Vault entry.
+            </div>
+          )}
+        </div>
+      )}
+    </Glass>
+  );
+}
+
+function StrategyPerformanceRow({ read, label }: { read: StrategyPerformanceRead; label: string }) {
+  return (
+    <div className="rounded-sm border border-cmd-border/40 bg-cmd-bg/30 px-2 py-1.5 text-[9px]">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className="font-cmdmono text-cmd-cyan">{label}</span>
+        <span className={read.totalPnl >= 0 ? "text-cmd-green" : "text-cmd-red"}>{formatMoney(read.totalPnl)}</span>
+        <span className="text-cmd-textDim">
+          {read.tradeCount} trade{read.tradeCount === 1 ? "" : "s"} · {read.winRatePct.toFixed(0)}% win rate
+        </span>
+        {read.evidenceState === "not_enough_data" ? (
+          <StatusPill tone="amber">NOT ENOUGH DATA</StatusPill>
+        ) : (
+          <>
+            <span className="text-cmd-textDim">
+              Expectancy: <span className={read.expectancyPct !== null && read.expectancyPct >= 0 ? "text-cmd-green" : "text-cmd-red"}>{formatPct(read.expectancyPct ?? 0)}</span>
+            </span>
+            <span className="text-cmd-textDim">Profit factor: {read.profitFactor === null ? "N/A (no losses yet)" : read.profitFactor.toFixed(2)}</span>
+          </>
         )}
       </div>
     </div>

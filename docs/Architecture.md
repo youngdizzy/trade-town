@@ -11814,16 +11814,28 @@ reasons independently, sort order, and the shared evidence-threshold
 behavior. Full backend suite (2449), `mypy app/` (176 files), `ruff
 check app/ tests/` all clean.
 
+**Frontend rendering (same increment, committed together)**: new
+"Performance by Strategy" section in `PerformancePanel.tsx`
+(`StrategyPerformanceSection`/`StrategyPerformanceRow`), following the
+exact same layout convention `SymbolPerformanceSection`/
+`SessionRegimePerformanceSection` already established — one row per
+real strategy, sorted by `totalPnl`, resolving `strategyId` to a real
+`state.strategies` name. Both exclusion counts render as honest,
+separate disclosure lines rather than one merged number, and the empty
+state ("No closed trade has a CEO-selected strategy yet") is the true
+current state of almost every save, not a placeholder. This also
+retired a now-false disclosure line the panel had carried since before
+this directive ("Performance-by-strategy also isn't built — closed
+trades aren't currently linked to a Strategy id"). `tsc -b --noEmit`,
+`eslint`, `vite build` all clean; verified live against a real running
+save via a Command Center screenshot — `GET /api/trades/performance-
+by-strategy` honestly returned `reads: [], tradesExcludedNoStrategy
+Selected: 2, tradesExcludedNoVaultEntry: 0` and the panel rendered that
+exact state, including both real exclusion-count disclosure lines.
+
 **Deliberately not yet done** (a natural next increment, not started
-here): a frontend view actually rendering this endpoint (the Command
-Center has no Strategy Exposure surface yet — Phase 10's UX
-consolidation is the natural place for it), and everything from Phase 5
-(strategy performance attribution beyond this raw P&L view) onward. Not
-blocked by anything found in this pass — this endpoint will report
-`reads: []` with both exclusion counts real-but-nonzero on most saves
-today, since almost no live trade has a CEO-selected strategy yet; that
-is the honest state of a feature that only just started being
-recordable, not a bug.
+here): everything from Phase 5 (strategy performance attribution beyond
+this raw P&L view) onward. Not blocked by anything found in this pass.
 
 ## Save format compatibility
 

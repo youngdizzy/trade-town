@@ -666,6 +666,43 @@ export interface RegimePerformanceSummary {
   updatedAt: string;
 }
 
+// CEO directive "Live Trade → Strategy Provenance," Phase 4 — the
+// Strategy Exposure view. Only trades with a real, CEO-selected
+// strategyId are grouped; strategyId here is the raw Strategy Lab id
+// (see Strategy.id in types.ts) — resolve a display name against
+// state.strategies, same convention SandboxPanel/LiveStrategyEligibilityCard
+// already use.
+export interface StrategyPerformanceRead {
+  strategyId: string;
+  tradeCount: number;
+  winCount: number;
+  lossCount: number;
+  winRatePct: number;
+  totalPnl: number;
+  avgPnlPct: number;
+  avgWinnerPct: number | null;
+  avgLoserPct: number | null;
+  expectancyPct: number | null;
+  profitFactor: number | null;
+  avgMaePct: number;
+  avgMfePct: number;
+  bestTradePnlPct: number;
+  worstTradePnlPct: number;
+  evidenceState: SymbolPerformanceEvidenceState;
+}
+
+export interface StrategyPerformanceSummary {
+  reads: StrategyPerformanceRead[];
+  /** A real Decision Vault entry exists, but the CEO never selected a
+   * strategy on it (strategyProvenanceState === "unknown"). */
+  tradesExcludedNoStrategySelected: number;
+  /** No matching Decision Vault entry at all (strategyProvenanceState
+   * === "unavailable") — the same disclosed eviction edge case every
+   * other performance-by-* summary already reports. */
+  tradesExcludedNoVaultEntry: number;
+  updatedAt: string;
+}
+
 // CEO directive "Next Professional Trading Firm Phase," Priority 5 —
 // Research Data Integrity. Distinct from DataStatus above (which tags
 // one Candle's own live/delayed/historical/simulated/stale/error/

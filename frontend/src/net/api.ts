@@ -104,6 +104,7 @@ import type {
   SessionRegimeEvidenceSummary,
   RiskLimits,
   SimilarTradesSummary,
+  StrategyPerformanceSummary,
   SymbolPerformanceSummary,
   TechnicalAnalysisRead,
   ConfluenceRead,
@@ -261,6 +262,10 @@ export const api = {
   // state. Read-only, computed fresh per request; not WS-broadcast.
   getAgentTradingStatus: () => request<AgentTradingStatusRead[]>("/agents/trading-status"),
   getPerformanceByRegime: () => request<RegimePerformanceSummary>("/trades/performance-by-regime"),
+  // CEO directive "Live Trade → Strategy Provenance," Phase 4 — real
+  // strategy-grouped P&L via the real Decision Vault join. Read-only,
+  // computed fresh per request.
+  getPerformanceByStrategy: () => request<StrategyPerformanceSummary>("/trades/performance-by-strategy"),
   // CEO directive "Next Professional Trading Firm Phase," Priority 5 —
   // Research Data Integrity. Read-only; the candle row re-checks the
   // real provider live on every request.
