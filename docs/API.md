@@ -1223,6 +1223,13 @@ for the exact rule behind each `relation` type, and its docstring's
 explicit scope note on why no Academy-project-to-Education-lesson edge
 is generated (the two topic sets have no real thematic overlap).
 
+CEO directive "Quant Research Factory / Strategy Discovery Engine,"
+Phase 15 adds a `"research_experiment"` node per persisted
+`QuantResearchExperiment` (real label = the strategy name tested; real
+subtitle = outcome + hypothesis), linked to its real researcher agent
+(`"researched"`) and, when a real match exists, to any `"strategy"`
+node sharing the same real compiled definition id (`"tested"`).
+
 ### `POST /api/mentor/qotd/respond`
 
 v0.7 Feature 32 — the player's answer to today's `QuestionOfTheDay`.

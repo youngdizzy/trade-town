@@ -26,6 +26,14 @@ from app.schemas import (
     ResearchItem,
     Strategy,
 )
+from app.quant_research_lab import file_quant_research_experiment
+from app.research_experiment import run_research_experiment
+from app.strategy_compiler import compile_strategy_text
+
+_STRATEGY_TEXT = (
+    "Buy when price closes above the 50 EMA, then enter when price closes above the previous swing high. "
+    "Place the stop at the Chandelier Stop and target 2R."
+)
 
 
 def _research(
@@ -190,6 +198,7 @@ def _strategy(
     category: str = "stock",
     stage: str = "research",
     created_at: str = "2026-01-01T00:00:00+00:00",
+    compiled_definition_id: str | None = None,
 ) -> Strategy:
     return Strategy(
         id=strategy_id,
@@ -199,6 +208,7 @@ def _strategy(
         focusCategory=category,  # type: ignore[arg-type]
         createdAt=created_at,
         stage=stage,  # type: ignore[arg-type]
+        compiledDefinitionId=compiled_definition_id,
     )
 
 
@@ -839,3 +849,125 @@ class TestEconomicEventNodes:
             economic_reports=[_economic_report("econ-2", sim_day=9)],
         )
         assert not any(e.relation == "same_day" for e in graph.edges)
+
+
+class TestResearchExperimentNodes:
+    """CEO directive "Quant Research Factory / Strategy Discovery
+    Engine," Phase 15 — one real research_experiment node per persisted
+    QuantResearchExperiment, linked to its real researcher agent and,
+    when a real match exists, to the strategy node testing the same
+    real compiled definition."""
+
+    def test_a_filed_experiment_becomes_a_research_experiment_node(self) -> None:
+        definition = compile_strategy_text(name="KG Test Strategy", source_text=_STRATEGY_TEXT)
+        record = run_research_experiment(definition, symbols=["AAPL"])
+        experiment = file_quant_research_experiment(
+            record, experiment_id="exp-kg-1", hypothesis="A real test hypothesis.", researcher_agent_id="quant", created_at="2026-01-01T00:00:00+00:00"
+        )
+        graph = build_knowledge_graph(
+            agent_ids=("quant",),
+            research=[],
+            academy_completed_projects=[],
+            agent_knowledge={},
+            executive_reviews=[],
+            coach_reports=[],
+            hall_of_fame=[],
+            decision_vault=[],
+            case_studies=[],
+            strategies=[],
+            black_swan_events=[],
+            economic_reports=[],
+            quant_research_experiments=[experiment],
+        )
+        node = next(n for n in graph.nodes if n.type == "research_experiment")
+        assert node.id == "researchexp-exp-kg-1"
+        assert node.label == definition.name
+
+    def test_the_researcher_agent_gets_a_real_researched_edge(self) -> None:
+        definition = compile_strategy_text(name="KG Test Strategy 2", source_text=_STRATEGY_TEXT)
+        record = run_research_experiment(definition, symbols=["AAPL"])
+        experiment = file_quant_research_experiment(
+            record, experiment_id="exp-kg-2", hypothesis="A real test hypothesis.", researcher_agent_id="nova", created_at="2026-01-01T00:00:00+00:00"
+        )
+        graph = build_knowledge_graph(
+            agent_ids=("nova",),
+            research=[],
+            academy_completed_projects=[],
+            agent_knowledge={},
+            executive_reviews=[],
+            coach_reports=[],
+            hall_of_fame=[],
+            decision_vault=[],
+            case_studies=[],
+            strategies=[],
+            black_swan_events=[],
+            economic_reports=[],
+            quant_research_experiments=[experiment],
+        )
+        edge = next(e for e in graph.edges if e.relation == "researched" and e.target == "researchexp-exp-kg-2")
+        assert edge.source == "agent-nova"
+
+    def test_an_experiment_links_to_the_strategy_sharing_its_real_compiled_definition_id(self) -> None:
+        definition = compile_strategy_text(name="KG Test Strategy 3", source_text=_STRATEGY_TEXT)
+        record = run_research_experiment(definition, symbols=["AAPL"])
+        experiment = file_quant_research_experiment(
+            record, experiment_id="exp-kg-3", hypothesis="A real test hypothesis.", researcher_agent_id="quant", created_at="2026-01-01T00:00:00+00:00"
+        )
+        graph = build_knowledge_graph(
+            agent_ids=("quant",),
+            research=[],
+            academy_completed_projects=[],
+            agent_knowledge={},
+            executive_reviews=[],
+            coach_reports=[],
+            hall_of_fame=[],
+            decision_vault=[],
+            case_studies=[],
+            strategies=[_strategy("s1", "quant", compiled_definition_id=definition.id)],
+            black_swan_events=[],
+            economic_reports=[],
+            quant_research_experiments=[experiment],
+        )
+        edge = next(e for e in graph.edges if e.relation == "tested")
+        assert edge.source == "researchexp-exp-kg-3"
+        assert edge.target == "strategy-s1"
+
+    def test_an_experiment_with_no_matching_strategy_gets_no_tested_edge(self) -> None:
+        definition = compile_strategy_text(name="KG Test Strategy 4", source_text=_STRATEGY_TEXT)
+        record = run_research_experiment(definition, symbols=["AAPL"])
+        experiment = file_quant_research_experiment(
+            record, experiment_id="exp-kg-4", hypothesis="A real test hypothesis.", researcher_agent_id="quant", created_at="2026-01-01T00:00:00+00:00"
+        )
+        graph = build_knowledge_graph(
+            agent_ids=("quant",),
+            research=[],
+            academy_completed_projects=[],
+            agent_knowledge={},
+            executive_reviews=[],
+            coach_reports=[],
+            hall_of_fame=[],
+            decision_vault=[],
+            case_studies=[],
+            strategies=[_strategy("s1", "quant", compiled_definition_id="some-other-definition")],
+            black_swan_events=[],
+            economic_reports=[],
+            quant_research_experiments=[experiment],
+        )
+        assert not any(e.relation == "tested" for e in graph.edges)
+
+    def test_omitting_quant_research_experiments_produces_no_research_experiment_nodes(self) -> None:
+        graph = build_knowledge_graph(
+            agent_ids=(),
+            research=[],
+            academy_completed_projects=[],
+            agent_knowledge={},
+            executive_reviews=[],
+            coach_reports=[],
+            hall_of_fame=[],
+            decision_vault=[],
+            case_studies=[],
+            strategies=[],
+            black_swan_events=[],
+            economic_reports=[],
+        )
+        assert not any(n.type == "research_experiment" for n in graph.nodes)

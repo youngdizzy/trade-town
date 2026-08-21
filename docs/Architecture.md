@@ -12975,14 +12975,14 @@ filled in, followed by a direct API check confirming the just-filed
 experiment persisted both real values exactly as typed (not just that
 the form submitted without error).
 
-**Deliberately not yet done** (natural next increments, not started
+**Deliberately not yet done** (a natural next increment, not started
 here): the fuller Phase 16 ask (an automated hypothesis-generation
 loop that itself learns from outcomes) remains genuinely blocked by
 the real absence of any automated generation mechanism to attach it
 to — not a convenience cut, a structural one, per Increment 2's own
-research-first finding; Phase 15 (adding `QuantResearchExperiment`
-nodes/edges to the existing knowledge graph). None of the others are
-blocked — see this section's own audit findings above.
+research-first finding. Every other phase is closed or, for Phase 16,
+explicitly and permanently scoped out for the structural reason above
+— see this section's own audit findings and Increments 4-6 below.
 
 **Increment 4 — Phase 10, multiple-testing / research-selection-bias
 tracking.** The directive is explicit that this must never manufacture
@@ -13111,6 +13111,79 @@ returns for all 8 seed symbols (e.g. AAPL -7.77%, QQQ +19.83%, computed
 from real seeded first/last closes, not fabricated); and a fresh
 `sandbox.spec.ts` re-run with a new assertion confirming the
 "Buy-and-hold context:" line renders in the live UI. 1/1 passed.
+
+**Increment 6 — Phase 15, Knowledge Graph integration.** The research
+audit found `build_knowledge_graph()` had no awareness of
+`QuantResearchExperiment`/`ResearchExperimentRecord` at all — the
+persisted `GameSaveState.quant_research_experiments` list was a ready-
+made real data source the graph builder simply ignored. It also
+surfaced an unrelated, pre-existing gap: `frontend/src/types.ts`'s
+`KnowledgeNodeType`/`KnowledgeEdgeRelation` were already stale relative
+to the backend — missing `black_swan_event`/`economic_event`/
+`same_day`, added by earlier Design Bible chapters — so
+`KnowledgeGraphView.tsx`'s `TYPE_COLORS`/`TYPE_LABELS`/`NODE_RADIUS`
+maps had no entries for those types and any such node would have hit
+`undefined` at render time. Fixed alongside this increment's own new
+type rather than left for a future one.
+
+New `"research_experiment"` node type: one real node per persisted
+`QuantResearchExperiment`, labeled with the real strategy name tested
+(`record.definitionName`), subtitled with the real outcome and
+hypothesis. New `"tested"` edge relation links a `research_experiment`
+node to a `strategy` node sharing the same real compiled definition id
+(`Strategy.compiledDefinitionId == record.definitionId`) — a direct ID
+match, never fuzzy or causal. The researcher agent gets the same
+`"researched"` relation the `research` node type's own agent link
+already uses, for a consistent vocabulary. `build_knowledge_graph()`
+gained an optional `quant_research_experiments` parameter (default
+`None`, matching the existing `model_validations` optional-parameter
+convention) so no other existing caller/test needed updating.
+`GET /api/knowledge-graph`'s router now passes
+`state.quant_research_experiments` through.
+
+Frontend: `KnowledgeGraphView.tsx`'s three per-type maps gained entries
+for `black_swan_event`/`economic_event` (the stale-map fix) and the new
+`research_experiment` (distinct purple `#c084fc`, label "Research
+Experiment") — TypeScript's `Record<KnowledgeNodeType, ...>` made the
+missing keys a real compile error the moment `types.ts` was corrected,
+so this couldn't have shipped incomplete.
+
+5 new backend tests in a new `TestResearchExperimentNodes` class
+(a filed experiment becomes a node; the researcher agent gets a real
+`researched` edge; an experiment links to the strategy sharing its real
+compiled definition id; an experiment with no matching strategy gets no
+`tested` edge; omitting the parameter produces no `research_experiment`
+nodes at all). Full backend suite (2556 passed, up from 2551 — a real
+run confirmed this exactly, not assumed from the new-test count alone;
+see Phase 14's own self-correction earlier in this section for why
+that check matters), `mypy app/`, `ruff check app/ tests/` clean. `tsc -b --noEmit`,
+`eslint`, `vite build` clean — the `Record<KnowledgeNodeType, ...>`
+exhaustiveness check alone would have caught an incomplete type map.
+
+Live-verified: a direct `GET /api/knowledge-graph` call against the
+real running dev server (with 27 real `QuantResearchExperiment`s
+already on file from this session's own prior live-verification
+filings) returned 27 real `research_experiment` nodes and 27 real
+`researched` edges, each with the real definition name/outcome/
+hypothesis; `tested` edges read 0, honestly, since none of this save's
+persisted strategies happen to share a compiled definition id with any
+filed experiment — not fabricated to look more connected than the real
+data supports. A fresh Knowledge Graph screenshot shows the new
+"RESEARCH EXPERIMENT" filter chip in its own distinct color alongside
+the now-fixed "DEFENSIVE MODE EPISODE"/"ECONOMIC EVENT" chips, and the
+header's real node/link count grew to 302 nodes / 447 links.
+`commandCenter.spec.ts`'s existing Knowledge Graph test (extended with
+a new assertion for the "Research Experiment" filter chip): 1/1 passed.
+
+That verification pass also caught a real session-hygiene issue,
+disclosed rather than silently worked around: three separate stale
+`vite` processes from earlier phases in this marathon session were
+still bound to ports 5173/5174/5175, so an initial re-run of this same
+Playwright test hit a genuinely stale (pre-Phase-15) build and failed
+with a blank canvas — not a code regression. Fixed by killing every
+leftover process by exact PID (a plain `pkill -f vite` had silently
+failed to reach all of them) before starting one single fresh instance
+and confirming it actually bound to port 5173.
 
 ## Save format compatibility
 

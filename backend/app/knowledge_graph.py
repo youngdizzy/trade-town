@@ -51,7 +51,17 @@ verdict (Piece 4) when one exists for that strategy, the same "real,
 checkable shared attribute" discipline as every edge in this module:
 `ModelValidationReport.strategy_id` is a real, direct field, and the
 verdict shown is that report's own real `verdict`, never inferred or
-paraphrased."""
+paraphrased.
+
+CEO directive "Quant Research Factory / Strategy Discovery Engine,"
+Phase 15 — one real `research_experiment` node per permanently
+persisted `QuantResearchExperiment` (app/quant_research_lab.py), linked
+to its real `researcher_agent_id` (relation `researched`, the same
+relation the `research` node type already uses for its own agent link)
+and, when a real match exists, to any `strategy` node sharing the same
+real compiled definition id (`Strategy.compiled_definition_id ==
+record.definition_id`, relation `tested`) — a direct ID match, never a
+fuzzy or causal claim."""
 
 from __future__ import annotations
 
@@ -75,6 +85,7 @@ from app.schemas import (
     KnowledgeGraph,
     KnowledgeNode,
     ModelValidationReport,
+    QuantResearchExperiment,
     ResearchItem,
     Strategy,
 )
@@ -124,6 +135,7 @@ def build_knowledge_graph(
     black_swan_events: list[BlackSwanEventRecord],
     economic_reports: list[EconomicIntelligenceReport],
     model_validations: list[ModelValidationReport] | None = None,
+    quant_research_experiments: list[QuantResearchExperiment] | None = None,
 ) -> KnowledgeGraph:
     nodes: list[KnowledgeNode] = []
     edges: list[KnowledgeEdge] = []
@@ -348,6 +360,11 @@ def build_knowledge_graph(
                 )
             )
 
+    # CEO directive "Quant Research Factory / Strategy Discovery Engine,"
+    # Phase 15 — tracked so the research_experiment loop below can link
+    # to a strategy node by its real compiledDefinitionId, without a
+    # second pass over `strategies`.
+    strategy_node_by_definition_id: dict[str, str] = {}
     for strategy in strategies:
         if strategy.stage == "idea":
             continue  # mirrors the research filter — no real work behind an unstarted idea yet
@@ -382,6 +399,43 @@ def build_knowledge_graph(
                     target=research_node_id,
                     relation="same_category",
                     label="same category",
+                )
+            )
+        if strategy.compiled_definition_id is not None:
+            strategy_node_by_definition_id[strategy.compiled_definition_id] = node_id
+
+    # CEO directive "Quant Research Factory / Strategy Discovery Engine,"
+    # Phase 15 — one real node per permanently persisted
+    # QuantResearchExperiment, linked to its real researcher agent and,
+    # when a real match exists, to the strategy node testing the same
+    # real compiled definition.
+    for experiment in quant_research_experiments or []:
+        node_id = f"researchexp-{experiment.id}"
+        nodes.append(
+            KnowledgeNode(
+                id=node_id,
+                type="research_experiment",
+                label=experiment.record.definition_name,
+                subtitle=f"{experiment.outcome.title()} · {experiment.hypothesis}",
+                timestamp=experiment.created_at,
+            )
+        )
+        edges.append(
+            KnowledgeEdge(
+                source=f"agent-{experiment.researcher_agent_id}",
+                target=node_id,
+                relation="researched",
+                label="researched",
+            )
+        )
+        strategy_node_id = strategy_node_by_definition_id.get(experiment.record.definition_id)
+        if strategy_node_id is not None:
+            edges.append(
+                KnowledgeEdge(
+                    source=node_id,
+                    target=strategy_node_id,
+                    relation="tested",
+                    label="tested",
                 )
             )
 

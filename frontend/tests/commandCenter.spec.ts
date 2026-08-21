@@ -673,6 +673,10 @@ test.describe("Global Command Center", () => {
     await expect(researchFilter).toBeVisible();
     await researchFilter.click();
 
+    // CEO directive "Quant Research Factory / Strategy Discovery Engine," Phase 15 — the new
+    // research_experiment node type gets its own real filter chip, same as every other type.
+    await expect(page.getByRole("button", { name: "Research Experiment", exact: true })).toBeVisible();
+
     // Search narrows the "Recent Discoveries" default panel down to
     // real matching titles (or shows nothing if no real node matches).
     await page.getByPlaceholder("Search the network…").fill("zzz-no-such-discovery-zzz");

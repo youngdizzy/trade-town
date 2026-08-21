@@ -150,6 +150,48 @@ development milestones, not semver releases.
   distinct per-symbol returns for all 8 seed symbols (e.g. AAPL -7.77%, QQQ +19.83%); a fresh `sandbox.spec.ts`
   re-run confirmed the "Buy-and-hold context:" line renders in the live UI.
 
+- **CEO directive "Quant Research Factory / Strategy Discovery Engine," Phase 15: research experiments join
+  the Knowledge Graph** (backend: `backend/app/schemas.py`, `backend/app/knowledge_graph.py`,
+  `backend/app/routers/knowledge_graph.py`, `backend/tests/test_knowledge_graph.py`; frontend:
+  `frontend/src/types.ts`, `frontend/src/ui/components/CommandCenter/KnowledgeGraphView.tsx`;
+  `frontend/tests/commandCenter.spec.ts`): `build_knowledge_graph()` had no awareness of
+  `QuantResearchExperiment` at all — the persisted `GameSaveState.quant_research_experiments` list was a
+  ready-made real data source it simply ignored. The audit also surfaced an unrelated, pre-existing gap:
+  `frontend/src/types.ts`'s `KnowledgeNodeType`/`KnowledgeEdgeRelation` were already stale relative to the
+  backend (missing `black_swan_event`/`economic_event`/`same_day` from earlier Design Bible chapters), so
+  `KnowledgeGraphView.tsx`'s per-type maps had no entries for those types. Fixed alongside this increment.
+
+  New `"research_experiment"` node type: one real node per persisted `QuantResearchExperiment`, labeled with
+  the real strategy name tested, subtitled with the real outcome and hypothesis. New `"tested"` edge relation
+  links it to any `"strategy"` node sharing the same real compiled definition id
+  (`Strategy.compiledDefinitionId == record.definitionId`) — a direct ID match, never fuzzy or causal. The
+  researcher agent gets the same `"researched"` relation the `research` node type's own agent link already
+  uses. `build_knowledge_graph()` gained an optional `quantResearchExperiments` parameter (default `None`,
+  matching the existing `modelValidations` convention).
+
+  Frontend: `KnowledgeGraphView.tsx`'s `TYPE_COLORS`/`TYPE_LABELS`/`NODE_RADIUS` maps gained entries for
+  `black_swan_event`/`economic_event` (the stale-map fix) and the new `research_experiment` (distinct purple,
+  "Research Experiment") — TypeScript's `Record<KnowledgeNodeType, ...>` made the missing keys a compile
+  error the moment `types.ts` was corrected.
+
+  5 new backend tests in a new `TestResearchExperimentNodes` class. Full backend suite (2556 passed, up from
+  2551), `mypy app/`, `ruff check app/ tests/` clean. `tsc -b --noEmit`, `eslint`, `vite build` clean. Live-verified: a direct
+  `GET /api/knowledge-graph` call against the real dev server (27 real experiments already on file from this
+  session's own prior live-verification) returned 27 real `research_experiment` nodes and 27 real
+  `researched` edges; `tested` edges read 0, honestly, since none of this save's strategies happen to share a
+  compiled definition id with any filed experiment. A fresh screenshot shows the new "RESEARCH EXPERIMENT"
+  filter chip alongside the now-fixed "DEFENSIVE MODE EPISODE"/"ECONOMIC EVENT" chips, with the header's real
+  count grown to 302 nodes / 447 links. `commandCenter.spec.ts`'s Knowledge Graph test (extended with a new
+  filter-chip assertion): 1/1 passed.
+
+  This pass also caught a real session-hygiene issue: three stale `vite` processes from earlier phases in
+  this session were still bound to ports 5173/5174/5175, causing an initial re-run to hit a genuinely stale
+  build (blank canvas, not a code regression). Fixed by killing every leftover process by exact PID before
+  confirming one fresh instance actually bound to port 5173.
+
+  This closes every remaining phase of the directive except the structurally-blocked fuller Phase 16 ask (see
+  Increment 2 above). Phases 19/20 (comprehensive testing, final audit) tracked separately.
+
 - **CEO directive "Portfolio Construction, Capital Allocation & Execution Realism," Phase 1 (audit) +
   Increment 1 (live strategy-position attribution + real exposure reads)** (backend:
   `backend/app/schemas.py`, `backend/app/state.py`, `backend/app/portfolio_intelligence.py`,

@@ -5946,6 +5946,12 @@ KnowledgeNodeType = Literal[
     # per-trade indicator linkage exists anywhere to build them from
     # real data rather than a guess.
     "economic_event",
+    # CEO directive "Quant Research Factory / Strategy Discovery Engine,"
+    # Phase 15 — one real node per persisted QuantResearchExperiment
+    # (app/quant_research_lab.py). Closes the directive's own ask that
+    # research-factory experiments be discoverable in the Knowledge
+    # Graph like every other institutional record.
+    "research_experiment",
 ]
 KnowledgeEdgeRelation = Literal[
     "researched",
@@ -5965,6 +5971,12 @@ KnowledgeEdgeRelation = Literal[
     # caused the trade, the same non-causal honesty rule "same_symbol"/
     # "same_category" already hold themselves to.
     "same_day",
+    # CEO directive "Quant Research Factory / Strategy Discovery Engine,"
+    # Phase 15 — links a research_experiment node to a strategy node
+    # sharing the same real compiled definition id
+    # (Strategy.compiledDefinitionId == record.definitionId). A real,
+    # direct ID match, never a fuzzy or causal claim.
+    "tested",
 ]
 
 

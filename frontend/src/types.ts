@@ -3945,6 +3945,10 @@ export interface LearningEvent {
 // strategy) and four new edge relations, each backed by an already-real
 // object (DecisionVaultEntry, CaseStudy, Strategy) — see
 // backend/app/knowledge_graph.py's module docstring.
+// Design Bible Chapter 72/74 Part 1 added black_swan_event/economic_event and the same_day
+// relation; CEO directive "Quant Research Factory / Strategy Discovery Engine," Phase 15 added
+// research_experiment and the tested relation. Kept in sync with backend/app/schemas.py's
+// KnowledgeNodeType/KnowledgeEdgeRelation literals.
 export type KnowledgeNodeType =
   | "agent"
   | "branch"
@@ -3955,7 +3959,10 @@ export type KnowledgeNodeType =
   | "hall_of_fame"
   | "trade"
   | "case_study"
-  | "strategy";
+  | "strategy"
+  | "black_swan_event"
+  | "economic_event"
+  | "research_experiment";
 export type KnowledgeEdgeRelation =
   | "researched"
   | "completed"
@@ -3967,7 +3974,9 @@ export type KnowledgeEdgeRelation =
   | "documented_by"
   | "same_symbol"
   | "same_category"
-  | "created";
+  | "created"
+  | "same_day"
+  | "tested";
 
 export interface KnowledgeNode {
   id: string;
