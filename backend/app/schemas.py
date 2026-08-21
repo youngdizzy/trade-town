@@ -1003,6 +1003,78 @@ class StrategyPerformanceSummary(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# CEO directive "Live Trade → Strategy Provenance," Phase 6 — the same
+# Strategy Exposure axis above, cross-cut by session. Two independent
+# real join keys on the SAME DecisionVaultEntry (strategy_id, session),
+# never a fabricated third dimension.
+class StrategySessionPerformanceRead(CamelModel):
+    strategy_id: str = Field(alias="strategyId")
+    session: TradingSession
+    trade_count: int = Field(alias="tradeCount")
+    win_count: int = Field(alias="winCount")
+    loss_count: int = Field(alias="lossCount")
+    win_rate_pct: float = Field(alias="winRatePct")
+    total_pnl: float = Field(alias="totalPnl")
+    avg_pnl_pct: float = Field(alias="avgPnlPct")
+    avg_winner_pct: float | None = Field(default=None, alias="avgWinnerPct")
+    avg_loser_pct: float | None = Field(default=None, alias="avgLoserPct")
+    expectancy_pct: float | None = Field(default=None, alias="expectancyPct")
+    profit_factor: float | None = Field(default=None, alias="profitFactor")
+    avg_mae_pct: float = Field(alias="avgMaePct")
+    avg_mfe_pct: float = Field(alias="avgMfePct")
+    best_trade_pnl_pct: float = Field(alias="bestTradePnlPct")
+    worst_trade_pnl_pct: float = Field(alias="worstTradePnlPct")
+    evidence_state: SymbolPerformanceEvidenceState = Field(alias="evidenceState")
+
+
+class StrategySessionPerformanceSummary(CamelModel):
+    """`reads` sorted by `total_pnl` descending. Same two exclusion
+    reasons as `StrategyPerformanceSummary` — never folded together."""
+
+    reads: list[StrategySessionPerformanceRead]
+    trades_excluded_no_strategy_selected: int = Field(alias="tradesExcludedNoStrategySelected")
+    trades_excluded_no_vault_entry: int = Field(alias="tradesExcludedNoVaultEntry")
+    updated_at: str = Field(alias="updatedAt")
+
+
+# CEO directive "Live Trade → Strategy Provenance," Phase 5 — does a
+# strategy's real LIVE (known-provenance) performance actually match
+# what its own real backtest evidence (StrategyHealthAssessment, Feature
+# 52 Part 2 — a recent-vs-lifetime SimulationResult trend read) claimed?
+# Compares win_rate_pct only — the one metric both sides express on the
+# identical 0-100 real percentage scale. Deliberately does NOT compare
+# expectancy: the live side is in real dollars-of-percent-return
+# (avg_pnl_pct) while the backtest side is in R-multiples
+# (EmaPullbackStatsBucket.expectancy_r) — different units entirely, and
+# forcing them onto one number would be a fabricated equivalence, not a
+# real comparison.
+StrategyLiveVsBacktestVerdict = Literal[
+    "consistent_with_backtest",
+    "diverging_from_backtest",
+    "not_enough_live_data",
+    "no_backtest_health_on_record",
+]
+
+
+class StrategyLiveVsBacktestRead(CamelModel):
+    strategy_id: str = Field(alias="strategyId")
+    live_win_rate_pct: float = Field(alias="liveWinRatePct")
+    live_trade_count: int = Field(alias="liveTradeCount")
+    # None only when no real StrategyHealthAssessment has ever been
+    # generated for this strategy (no completed Market Simulation run
+    # yet) — never a fabricated placeholder number.
+    backtest_recent_win_rate_pct: float | None = Field(default=None, alias="backtestRecentWinRatePct")
+    backtest_recent_sample_size: int | None = Field(default=None, alias="backtestRecentSampleSize")
+    win_rate_delta_pct: float | None = Field(default=None, alias="winRateDeltaPct")
+    verdict: StrategyLiveVsBacktestVerdict
+    detail: str
+
+
+class StrategyLiveVsBacktestSummary(CamelModel):
+    reads: list[StrategyLiveVsBacktestRead]
+    updated_at: str = Field(alias="updatedAt")
+
+
 # CEO directive "Next Professional Trading Firm Phase," Priority 5 —
 # Research Data Integrity (app/data_provenance.py). Distinct from, and
 # reusing rather than duplicating, `DataStatus` above (which already
@@ -3421,6 +3493,37 @@ class StrategyMatch(CamelModel):
         alias="recommendedRiskLevel"
     )
     detail: str
+
+
+# CEO directive "Live Trade → Strategy Provenance," Phase 9 — the one
+# real gap `app/trade_pipeline_health.py`'s existing no-trade diagnostics
+# never covers (confirmed by audit: zero references to "strategy"
+# anywhere in that module). Every real strategy gets exactly one of
+# these four honest, mutually-exclusive reasons, built entirely from two
+# already-real, already-computed sources — StrategyMatch's own
+# recommended/avoided regime-eligibility split (never re-derived) and
+# the real live trade count from `compute_strategy_performance()`
+# (Phase 4) — never a new "why" invented for this pass.
+StrategyNoTradeReason = Literal[
+    "trading_live",
+    "blocked_by_regime_today",
+    "eligible_but_never_selected",
+    "no_backtest_evidence_yet",
+]
+
+
+class StrategyTradingDiagnosticRead(CamelModel):
+    strategy_id: str = Field(alias="strategyId")
+    strategy_name: str = Field(alias="strategyName")
+    stage: StrategyStage
+    live_trade_count: int = Field(alias="liveTradeCount")
+    reason: StrategyNoTradeReason
+    detail: str
+
+
+class StrategyTradingDiagnosticSummary(CamelModel):
+    reads: list[StrategyTradingDiagnosticRead]
+    updated_at: str = Field(alias="updatedAt")
 
 
 # --- v0.7 Feature 52 (Part 1) — the Strategy Validation Laboratory's

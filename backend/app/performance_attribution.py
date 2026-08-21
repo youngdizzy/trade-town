@@ -83,12 +83,26 @@ from app.schemas import (
     RegimePerformanceSummary,
     SessionPerformanceRead,
     SessionPerformanceSummary,
+    StrategyHealthAssessment,
+    StrategyLiveVsBacktestRead,
+    StrategyLiveVsBacktestSummary,
+    StrategyLiveVsBacktestVerdict,
     StrategyPerformanceRead,
     StrategyPerformanceSummary,
+    StrategySessionPerformanceRead,
+    StrategySessionPerformanceSummary,
     SymbolPerformanceRead,
     SymbolPerformanceSummary,
     TradingSession,
 )
+
+# CEO directive "Live Trade → Strategy Provenance," Phase 5 — a disclosed,
+# arbitrary judgment threshold (same convention as MIN_SYMBOL_SAMPLE_FOR_
+# VERDICT above): a live-vs-backtest win-rate gap this wide or wider is
+# treated as a real divergence worth flagging, not silently absorbed into
+# "consistent." Chosen, not derived — small samples on both sides mean
+# a tighter bar would flag noise as signal constantly.
+WIN_RATE_DIVERGENCE_THRESHOLD_PCT = 15.0
 
 # Disclosed, arbitrary floor — matches this session's existing precedent
 # (MIN_ACCURACY_SAMPLE_FOR_VERDICT / MIN_CONTROL_SAMPLE_FOR_VERDICT /
@@ -238,3 +252,110 @@ def compute_strategy_performance(trade_history: list[PaperTrade], decision_vault
         tradesExcludedNoVaultEntry=excluded_no_vault_entry,
         updatedAt=_now_iso(),
     )
+
+
+def compute_strategy_session_performance(trade_history: list[PaperTrade], decision_vault: list[DecisionVaultEntry]) -> StrategySessionPerformanceSummary:
+    """CEO directive "Live Trade → Strategy Provenance," Phase 6 — the
+    one real gap left in the session/regime axis: a strategy's own live
+    performance, cut by session. Same real Decision Vault join and same
+    two distinct exclusion reasons as `compute_strategy_performance()`
+    above — grouped on the (strategy_id, session) pair instead of
+    strategy_id alone."""
+    vault_by_trade_id = _vault_entries_by_trade_id(decision_vault)
+    by_strategy_session: dict[tuple[str, TradingSession], list[PaperTrade]] = {}
+    excluded_no_vault_entry = 0
+    excluded_no_strategy_selected = 0
+    for trade in trade_history:
+        entry = vault_by_trade_id.get(trade.id)
+        if entry is None:
+            excluded_no_vault_entry += 1
+            continue
+        if entry.strategy_id is None:
+            excluded_no_strategy_selected += 1
+            continue
+        by_strategy_session.setdefault((entry.strategy_id, entry.session), []).append(trade)
+
+    reads = [
+        StrategySessionPerformanceRead(strategyId=strategy_id, session=session, **_group_metrics(trades))
+        for (strategy_id, session), trades in by_strategy_session.items()
+    ]
+    reads.sort(key=lambda r: r.total_pnl, reverse=True)
+
+    return StrategySessionPerformanceSummary(
+        reads=reads,
+        tradesExcludedNoStrategySelected=excluded_no_strategy_selected,
+        tradesExcludedNoVaultEntry=excluded_no_vault_entry,
+        updatedAt=_now_iso(),
+    )
+
+
+def compute_strategy_live_vs_backtest(strategy_performance: StrategyPerformanceSummary, health_assessments: list[StrategyHealthAssessment]) -> StrategyLiveVsBacktestSummary:
+    """CEO directive "Live Trade → Strategy Provenance," Phase 5 — does a
+    strategy's real live performance actually match what its own real
+    backtest evidence (StrategyHealthAssessment, Feature 52 Part 2)
+    claimed? Joins two already-real, already-computed sources — never
+    recomputes either. `health_assessments` is a chronologically-ordered
+    list (this codebase's own established convention — see
+    app/model_validation.py's own comment on that same ordering
+    guarantee); the LAST matching entry per strategy is its most recent
+    real assessment. Only compares win_rate_pct — see this module's own
+    schema docstring (app/schemas.py's StrategyLiveVsBacktestRead) for
+    why expectancy is deliberately never compared (different units,
+    R-multiple vs. percent)."""
+    latest_health_by_strategy: dict[str, StrategyHealthAssessment] = {}
+    for entry in health_assessments:
+        latest_health_by_strategy[entry.strategy_id] = entry
+
+    reads: list[StrategyLiveVsBacktestRead] = []
+    for live in strategy_performance.reads:
+        health: StrategyHealthAssessment | None = latest_health_by_strategy.get(live.strategy_id)
+        if health is None:
+            reads.append(
+                StrategyLiveVsBacktestRead(
+                    strategyId=live.strategy_id,
+                    liveWinRatePct=live.win_rate_pct,
+                    liveTradeCount=live.trade_count,
+                    backtestRecentWinRatePct=None,
+                    backtestRecentSampleSize=None,
+                    winRateDeltaPct=None,
+                    verdict="no_backtest_health_on_record",
+                    detail="No real StrategyHealthAssessment exists yet for this strategy — it hasn't completed a Market Simulation run.",
+                )
+            )
+            continue
+
+        if live.trade_count < MIN_SYMBOL_SAMPLE_FOR_VERDICT:
+            reads.append(
+                StrategyLiveVsBacktestRead(
+                    strategyId=live.strategy_id,
+                    liveWinRatePct=live.win_rate_pct,
+                    liveTradeCount=live.trade_count,
+                    backtestRecentWinRatePct=health.recent_win_rate,
+                    backtestRecentSampleSize=health.recent_sample_size,
+                    winRateDeltaPct=None,
+                    verdict="not_enough_live_data",
+                    detail=f"Only {live.trade_count} live trade(s) with a real, CEO-selected strategy — too few to compare against backtest evidence yet.",
+                )
+            )
+            continue
+
+        delta = round(live.win_rate_pct - health.recent_win_rate, 1)
+        verdict: StrategyLiveVsBacktestVerdict = "diverging_from_backtest" if abs(delta) > WIN_RATE_DIVERGENCE_THRESHOLD_PCT else "consistent_with_backtest"
+        detail = (
+            f"Live win rate {live.win_rate_pct:.0f}% vs. backtest's recent {health.recent_win_rate:.0f}% "
+            f"(over {health.recent_sample_size} real simulation run(s)) — a {abs(delta):.1f} point gap."
+        )
+        reads.append(
+            StrategyLiveVsBacktestRead(
+                strategyId=live.strategy_id,
+                liveWinRatePct=live.win_rate_pct,
+                liveTradeCount=live.trade_count,
+                backtestRecentWinRatePct=health.recent_win_rate,
+                backtestRecentSampleSize=health.recent_sample_size,
+                winRateDeltaPct=delta,
+                verdict=verdict,
+                detail=detail,
+            )
+        )
+
+    return StrategyLiveVsBacktestSummary(reads=reads, updatedAt=_now_iso())

@@ -10,12 +10,15 @@ from __future__ import annotations
 
 from app.performance_attribution import (
     MIN_SYMBOL_SAMPLE_FOR_VERDICT,
+    WIN_RATE_DIVERGENCE_THRESHOLD_PCT,
     compute_regime_performance,
     compute_session_performance,
+    compute_strategy_live_vs_backtest,
     compute_strategy_performance,
+    compute_strategy_session_performance,
     compute_symbol_performance,
 )
-from app.schemas import DecisionVaultEntry, LiquidityRead, PaperTrade
+from app.schemas import DecisionVaultEntry, LiquidityRead, PaperTrade, StrategyHealthAssessment
 
 
 def _trade(*, trade_id: str, symbol: str = "AAPL", pnl: float, pnl_pct: float, mae_pct: float = 0.0, mfe_pct: float = 0.0) -> PaperTrade:
@@ -345,3 +348,146 @@ class TestComputeStrategyPerformance:
         assert read.evidence_state == "not_enough_data"
         assert read.expectancy_pct is None
         assert read.profit_factor is None
+
+
+class TestComputeStrategySessionPerformance:
+    """CEO directive "Live Trade → Strategy Provenance," Phase 6 — the
+    real strategy×session axis. Same real Decision Vault join, grouped
+    on the (strategy_id, session) pair."""
+
+    def test_groups_by_the_strategy_session_pair(self) -> None:
+        trades = [
+            _trade(trade_id="a", pnl=10.0, pnl_pct=1.0),
+            _trade(trade_id="b", pnl=5.0, pnl_pct=0.5),
+            _trade(trade_id="c", pnl=-2.0, pnl_pct=-0.2),
+        ]
+        vault = [
+            _vault_entry(trade_id="a", strategy_id="strategy-momentum", session="asian"),
+            _vault_entry(trade_id="b", strategy_id="strategy-momentum", session="new_york"),
+            _vault_entry(trade_id="c", strategy_id="strategy-value", session="asian"),
+        ]
+        summary = compute_strategy_session_performance(trades, vault)
+        pairs = {(r.strategy_id, r.session) for r in summary.reads}
+        assert pairs == {("strategy-momentum", "asian"), ("strategy-momentum", "new_york"), ("strategy-value", "asian")}
+        momentum_asian = next(r for r in summary.reads if r.strategy_id == "strategy-momentum" and r.session == "asian")
+        assert momentum_asian.trade_count == 1
+
+    def test_a_trade_with_no_strategy_selected_is_excluded_as_unknown(self) -> None:
+        trades = [_trade(trade_id="a", pnl=10.0, pnl_pct=1.0)]
+        vault = [_vault_entry(trade_id="a", strategy_id=None, session="asian")]
+        summary = compute_strategy_session_performance(trades, vault)
+        assert summary.reads == []
+        assert summary.trades_excluded_no_strategy_selected == 1
+        assert summary.trades_excluded_no_vault_entry == 0
+
+    def test_a_trade_with_no_matching_vault_entry_is_excluded_as_unavailable(self) -> None:
+        trades = [_trade(trade_id="orphan", pnl=5.0, pnl_pct=0.5)]
+        summary = compute_strategy_session_performance(trades, [])
+        assert summary.reads == []
+        assert summary.trades_excluded_no_vault_entry == 1
+
+    def test_empty_trade_history_produces_no_reads_and_no_exclusions(self) -> None:
+        summary = compute_strategy_session_performance([], [])
+        assert summary.reads == []
+        assert summary.trades_excluded_no_strategy_selected == 0
+        assert summary.trades_excluded_no_vault_entry == 0
+
+    def test_reads_sorted_by_total_pnl_descending(self) -> None:
+        trades = [
+            _trade(trade_id="a", pnl=-50.0, pnl_pct=-5.0),
+            _trade(trade_id="b", pnl=100.0, pnl_pct=10.0),
+        ]
+        vault = [
+            _vault_entry(trade_id="a", strategy_id="strategy-loser", session="asian"),
+            _vault_entry(trade_id="b", strategy_id="strategy-winner", session="london"),
+        ]
+        summary = compute_strategy_session_performance(trades, vault)
+        assert [(r.strategy_id, r.session) for r in summary.reads] == [("strategy-winner", "london"), ("strategy-loser", "asian")]
+
+
+def _health(*, strategy_id: str, recent_win_rate: float, recent_sample_size: int = 5) -> StrategyHealthAssessment:
+    return StrategyHealthAssessment(
+        id=f"health-{strategy_id}",
+        strategyId=strategy_id,
+        strategyName="test strategy",
+        status="stable",  # type: ignore[arg-type]
+        trend="stable",  # type: ignore[arg-type]
+        recentWinRate=recent_win_rate,
+        lifetimeWinRate=recent_win_rate,
+        recentAvgReturnPct=1.0,
+        lifetimeAvgReturnPct=1.0,
+        recentAvgDrawdownPct=5.0,
+        lifetimeAvgDrawdownPct=5.0,
+        recentSampleSize=recent_sample_size,
+        lifetimeSampleSize=recent_sample_size,
+        simDay=1,
+        createdAt="2024-01-01T00:00:00+00:00",
+    )
+
+
+class TestComputeStrategyLiveVsBacktest:
+    """CEO directive "Live Trade → Strategy Provenance," Phase 5 — real
+    live-vs-backtest win-rate comparison, joining two already-real
+    sources (compute_strategy_performance()'s own output and a real
+    StrategyHealthAssessment list) — never recomputing either."""
+
+    def _live(self, *, strategy_id: str, trade_count: int, win_rate_pct: float) -> object:
+        # MIN_SYMBOL_SAMPLE_FOR_VERDICT-safe: build enough real trades,
+        # with exactly the requested win rate, to drive compute_strategy_performance().
+        wins = round(trade_count * win_rate_pct / 100)
+        losses = trade_count - wins
+        trades = [_trade(trade_id=f"{strategy_id}-w{i}", pnl=10.0, pnl_pct=1.0) for i in range(wins)]
+        trades += [_trade(trade_id=f"{strategy_id}-l{i}", pnl=-5.0, pnl_pct=-0.5) for i in range(losses)]
+        vault = [_vault_entry(trade_id=t.id, strategy_id=strategy_id) for t in trades]
+        return compute_strategy_performance(trades, vault)
+
+    def test_no_health_assessment_on_record_reads_that_verdict(self) -> None:
+        live = self._live(strategy_id="strategy-momentum", trade_count=5, win_rate_pct=60.0)
+        summary = compute_strategy_live_vs_backtest(live, [])
+        read = summary.reads[0]
+        assert read.verdict == "no_backtest_health_on_record"
+        assert read.backtest_recent_win_rate_pct is None
+        assert read.win_rate_delta_pct is None
+
+    def test_below_min_live_sample_reads_not_enough_live_data(self) -> None:
+        live = self._live(strategy_id="strategy-momentum", trade_count=1, win_rate_pct=100.0)
+        assert live.reads[0].trade_count < MIN_SYMBOL_SAMPLE_FOR_VERDICT
+        health = [_health(strategy_id="strategy-momentum", recent_win_rate=55.0)]
+        summary = compute_strategy_live_vs_backtest(live, health)
+        read = summary.reads[0]
+        assert read.verdict == "not_enough_live_data"
+        # Real backtest numbers still show even though no verdict is drawn.
+        assert read.backtest_recent_win_rate_pct == 55.0
+
+    def test_a_small_win_rate_gap_reads_consistent_with_backtest(self) -> None:
+        live = self._live(strategy_id="strategy-momentum", trade_count=5, win_rate_pct=60.0)
+        health = [_health(strategy_id="strategy-momentum", recent_win_rate=60.0 + WIN_RATE_DIVERGENCE_THRESHOLD_PCT - 1)]
+        summary = compute_strategy_live_vs_backtest(live, health)
+        read = summary.reads[0]
+        assert read.verdict == "consistent_with_backtest"
+
+    def test_a_wide_win_rate_gap_reads_diverging_from_backtest(self) -> None:
+        live = self._live(strategy_id="strategy-momentum", trade_count=5, win_rate_pct=60.0)
+        health = [_health(strategy_id="strategy-momentum", recent_win_rate=60.0 + WIN_RATE_DIVERGENCE_THRESHOLD_PCT + 1)]
+        summary = compute_strategy_live_vs_backtest(live, health)
+        read = summary.reads[0]
+        assert read.verdict == "diverging_from_backtest"
+        assert read.win_rate_delta_pct is not None
+        assert read.win_rate_delta_pct < 0
+
+    def test_the_latest_health_assessment_per_strategy_wins(self) -> None:
+        live = self._live(strategy_id="strategy-momentum", trade_count=5, win_rate_pct=60.0)
+        health = [
+            _health(strategy_id="strategy-momentum", recent_win_rate=10.0),  # stale, chronologically first
+            _health(strategy_id="strategy-momentum", recent_win_rate=60.0),  # latest — should win
+        ]
+        summary = compute_strategy_live_vs_backtest(live, health)
+        read = summary.reads[0]
+        assert read.backtest_recent_win_rate_pct == 60.0
+        assert read.verdict == "consistent_with_backtest"
+
+    def test_empty_live_performance_produces_no_reads(self) -> None:
+        from app.schemas import StrategyPerformanceSummary
+
+        summary = compute_strategy_live_vs_backtest(StrategyPerformanceSummary(reads=[], tradesExcludedNoStrategySelected=0, tradesExcludedNoVaultEntry=0, updatedAt="2024-01-01T00:00:00+00:00"), [])
+        assert summary.reads == []

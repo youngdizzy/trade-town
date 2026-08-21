@@ -57,7 +57,9 @@ from __future__ import annotations
 from collections import Counter
 from datetime import datetime, timezone
 
-from app.schemas import GameSaveState, NoTradeReasonCodeTally, TradePipelineHealthSnapshot
+from app.market_intelligence import compute_strategy_match
+from app.performance_attribution import compute_strategy_performance
+from app.schemas import GameSaveState, NoTradeReasonCodeTally, StrategyTradingDiagnosticRead, StrategyTradingDiagnosticSummary, TradePipelineHealthSnapshot
 
 
 def _now_iso() -> str:
@@ -100,3 +102,70 @@ def compute_trade_pipeline_health(state: GameSaveState) -> TradePipelineHealthSn
         ),
         generatedAt=_now_iso(),
     )
+
+
+def compute_strategy_trading_diagnostics(state: GameSaveState) -> StrategyTradingDiagnosticSummary:
+    """CEO directive "Live Trade → Strategy Provenance," Phase 9 — the
+    one real gap the funnel diagnostic above never covers (confirmed by
+    audit: zero references to "strategy" anywhere in this module before
+    this function). "Why isn't Strategy X trading live?" answered
+    honestly, per strategy, from two already-real, already-computed
+    sources — never a new eligibility or performance computation:
+    `compute_strategy_match()` (app/market_intelligence.py, today's real
+    regime-eligibility split) and `compute_strategy_performance()`
+    (app/performance_attribution.py, Phase 4's real live-trade count per
+    strategy). Diagnostic only, same as `compute_trade_pipeline_health()`
+    above — feeds no score, gates nothing."""
+    live_performance = compute_strategy_performance(state.paper_portfolio.trade_history, state.decision_vault)
+    live_trade_count_by_strategy = {r.strategy_id: r.trade_count for r in live_performance.reads}
+    match = compute_strategy_match(state.market_intelligence.regime, state.strategies, state.strategy_reports)
+
+    reads: list[StrategyTradingDiagnosticRead] = []
+    for strategy in state.strategies:
+        live_trade_count = live_trade_count_by_strategy.get(strategy.id, 0)
+        if live_trade_count > 0:
+            reads.append(
+                StrategyTradingDiagnosticRead(
+                    strategyId=strategy.id,
+                    strategyName=strategy.name,
+                    stage=strategy.stage,
+                    liveTradeCount=live_trade_count,
+                    reason="trading_live",
+                    detail=f"The CEO has selected this strategy on {live_trade_count} real closed live trade(s).",
+                )
+            )
+        elif strategy.id in match.avoided_strategy_ids:
+            reads.append(
+                StrategyTradingDiagnosticRead(
+                    strategyId=strategy.id,
+                    strategyName=strategy.name,
+                    stage=strategy.stage,
+                    liveTradeCount=0,
+                    reason="blocked_by_regime_today",
+                    detail=f"Today's real market regime is a poor match for this strategy's own backtested evidence — see {match.detail!r}.",
+                )
+            )
+        elif strategy.id in match.recommended_strategy_ids:
+            reads.append(
+                StrategyTradingDiagnosticRead(
+                    strategyId=strategy.id,
+                    strategyName=strategy.name,
+                    stage=strategy.stage,
+                    liveTradeCount=0,
+                    reason="eligible_but_never_selected",
+                    detail="Today's real market regime matches this strategy's own backtested evidence, but the CEO has never selected it at decision time.",
+                )
+            )
+        else:
+            reads.append(
+                StrategyTradingDiagnosticRead(
+                    strategyId=strategy.id,
+                    strategyName=strategy.name,
+                    stage=strategy.stage,
+                    liveTradeCount=0,
+                    reason="no_backtest_evidence_yet",
+                    detail="No real StrategyReport exists yet for this strategy — it has no backtested track record to judge regime fit against.",
+                )
+            )
+
+    return StrategyTradingDiagnosticSummary(reads=reads, updatedAt=_now_iso())

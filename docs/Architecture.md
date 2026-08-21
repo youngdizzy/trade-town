@@ -11833,9 +11833,73 @@ by-strategy` honestly returned `reads: [], tradesExcludedNoStrategy
 Selected: 2, tradesExcludedNoVaultEntry: 0` and the panel rendered that
 exact state, including both real exclusion-count disclosure lines.
 
-**Deliberately not yet done** (a natural next increment, not started
-here): everything from Phase 5 (strategy performance attribution beyond
-this raw P&L view) onward. Not blocked by anything found in this pass.
+**Phases 5, 6, 9 — built together (backend), after a dedicated research
+audit** (same research-first discipline as Phase 1: a read-only Explore
+agent audited what already existed for every remaining phase before any
+code, with file:line citations, before scoping this round).
+
+**Phase 5 — live-vs-backtest comparison.** `compute_strategy_live_vs_
+backtest()` (`performance_attribution.py`), `GET /api/trades/strategy-
+live-vs-backtest`. Joins the already-real `compute_strategy_
+performance()` output against a strategy's own latest, already-real
+`StrategyHealthAssessment` (Feature 52 Part 2) — zero new trade-level
+computation, purely a comparison. Compares `winRatePct` only:
+`avgPnlPct` (live) and `expectancyR` (backtest) are different units
+(percent vs. R-multiple) and forcing them onto one number would be a
+fabricated equivalence, not a real comparison — this boundary is
+explicit in the schema docstring. Verdict is `consistent_with_backtest`
+/ `diverging_from_backtest` (±15 percentage points, a disclosed
+arbitrary threshold) / `not_enough_live_data` (<3 live trades) /
+`no_backtest_health_on_record` (no completed Market Simulation run
+yet) — never a forced call below the sample floor.
+
+**Deliberately not attempted**: deepening R-multiple-based attribution.
+The audit confirmed `DecisionVaultEntry.rMultiple` is always `None` —
+this codebase's real risk engine (`recommended_quantity()`) sizes
+directly off equity%, never a stop distance, so there is no honest
+stop-loss basis anywhere to compute a real R-multiple from. Building
+this would mean inventing a stop-loss concept that doesn't exist in the
+live pipeline — exactly the kind of fabrication the directive forbids.
+
+**Phase 6 — strategy×session.** `compute_strategy_session_
+performance()`, `GET /api/trades/performance-by-strategy-session`. Same
+real Decision Vault join as session/regime, grouped on
+`(strategy_id, session)` instead of either alone. The audit found a
+strategy×session BACKTEST breakdown already existed and is already
+rendered (`CompiledStrategyBacktestResult.sessionBreakdown`,
+`StrategyCompilerView.tsx`) — this closes the analogous LIVE-trade gap
+only, not a duplicate of that.
+
+**Phase 9 — strategy trading diagnostics.** `compute_strategy_trading_
+diagnostics()` (`app/trade_pipeline_health.py`), `GET /api/trades/
+strategy-trading-diagnostics`. The audit confirmed the existing
+`compute_trade_pipeline_health()` funnel (Phase 41-45) is entirely
+strategy-blind — zero references to "strategy" anywhere in that module.
+This closes exactly that gap, per real strategy, from two already-real
+sources — `compute_strategy_match()`'s regime-eligibility split and
+Phase 4's own live trade counts — never a new eligibility rule. Four
+honest, mutually exclusive reasons: `trading_live`, `blocked_by_regime_
+today`, `eligible_but_never_selected`, `no_backtest_evidence_yet`.
+Diagnostic only — feeds no score, gates nothing, matching this same
+module's own pre-existing "diagnostic only, never a score" rule.
+
+17 new backend tests (`TestComputeStrategySessionPerformance`,
+`TestComputeStrategyLiveVsBacktest`, `TestComputeStrategyTradingDiagnostics`).
+Full backend suite (2466), `mypy app/` (176 files), `ruff check app/
+tests/` all clean.
+
+**Deliberately not yet done** (natural next increments): frontend
+rendering of all three endpoints above (next in this same pass); Phase
+7 (surfacing certification/stage context in the CEO's strategy picker —
+the audit found it currently has zero connection to certification,
+stage, or eligibility); Phase 8 (surfacing live evidence, informationally
+only, at governance decision points — the audit confirmed zero automatic
+lifecycle logic exists keyed on live performance, and building one would
+be inventing an unauthorized mechanism the directive doesn't ask for);
+Phase 10 (cross-linking the 3-4-way Strategy UI scatter the audit named
+concretely); Phase 11 (a live P&L column on the Strategy Library, reusing
+Phase 4's already-fetched data). None are blocked — see the audit
+findings this section is built from.
 
 ## Save format compatibility
 

@@ -2043,6 +2043,60 @@ closed before this feature existed) and `tradesExcludedNoVaultEntry`
 (no matching vault entry at all — the same disclosed eviction edge
 case every other `performance-by-*` endpoint already reports).
 
+### `GET /api/trades/performance-by-strategy-session`
+
+CEO directive "Live Trade → Strategy Provenance," Phase 6 — the one
+real strategy×session axis that didn't exist yet
+(`compute_strategy_session_performance()`). Same real Decision Vault
+join as `performance-by-strategy` above, grouped on the
+`(strategyId, session)` pair instead. Returns a
+`StrategySessionPerformanceSummary`: `reads:
+StrategySessionPerformanceRead[]` (same 12-metric shape, plus
+`strategyId`/`session`), sorted by `totalPnl` descending, with the same
+two distinct `tradesExcludedNoStrategySelected`/
+`tradesExcludedNoVaultEntry` counts. Computed fresh per request; no new
+`GameSaveState` field.
+
+### `GET /api/trades/strategy-live-vs-backtest`
+
+CEO directive "Live Trade → Strategy Provenance," Phase 5 — does a
+strategy's real live performance match what its own real backtest
+evidence claimed? `compute_strategy_live_vs_backtest()` joins the
+already-real `compute_strategy_performance()` output against the
+strategy's own latest `StrategyHealthAssessment` (Feature 52 Part 2) —
+computes no new trade-level statistics. Returns a
+`StrategyLiveVsBacktestSummary`: `reads:
+StrategyLiveVsBacktestRead[]`, one per strategy with at least one real
+live (known-provenance) trade. Compares `winRatePct` only — the one
+metric both sides express on the same real 0-100 scale (expectancy is
+deliberately never compared: live is in percent, backtest is in
+R-multiples — different units). `verdict` is one of
+`consistent_with_backtest` / `diverging_from_backtest` (gap ≥ 15
+percentage points, a disclosed, arbitrary threshold — see the module's
+own `WIN_RATE_DIVERGENCE_THRESHOLD_PCT`) / `not_enough_live_data` (fewer
+than 3 live trades) / `no_backtest_health_on_record` (the strategy has
+never completed a Market Simulation run). Computed fresh per request;
+no new `GameSaveState` field.
+
+### `GET /api/trades/strategy-trading-diagnostics`
+
+CEO directive "Live Trade → Strategy Provenance," Phase 9 — "why isn't
+this strategy trading live?" answered per strategy
+(`compute_strategy_trading_diagnostics()`), the one real gap
+`pipeline-health` below never covers (confirmed: zero references to
+"strategy" anywhere in that module before this endpoint). Returns a
+`StrategyTradingDiagnosticSummary`: `reads:
+StrategyTradingDiagnosticRead[]`, exactly one per real strategy, each
+with a `reason` — `trading_live` (has a real live trade already),
+`blocked_by_regime_today` (in `StrategyMatch`'s own
+`avoidedStrategyIds` for today's real regime), `eligible_but_never_
+selected` (in `recommendedStrategyIds`, zero live trades), or
+`no_backtest_evidence_yet` (no `StrategyReport` on file at all). Built
+entirely from two already-real, already-computed sources
+(`compute_strategy_match()` and `compute_strategy_performance()`) —
+diagnostic only, feeds no score, gates nothing. Computed fresh per
+request; no new `GameSaveState` field.
+
 ### `GET /api/trades/pipeline-health`
 
 CEO directive "Professional Quant Firm Phase 41-45," Critical Task

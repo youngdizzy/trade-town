@@ -96,6 +96,38 @@ development milestones, not semver releases.
   almost no live trade has a CEO-selected strategy yet, since the selector UI only just shipped; that's
   the honest current state of a feature that just started being recordable, not a bug.
 
+- **CEO directive "Live Trade → Strategy Provenance," Phases 5, 6, 9 (backend)** — a dedicated
+  read-only research audit (same discipline as Phase 1) preceded this round, citing exact file:line
+  evidence for what already existed across every remaining phase before any code was written.
+
+  **Phase 5** (`backend/app/performance_attribution.py`, `GET /api/trades/strategy-live-vs-backtest`):
+  `compute_strategy_live_vs_backtest()` compares a strategy's real live win rate against its own latest
+  real `StrategyHealthAssessment` — two already-computed sources joined, zero new trade-level math.
+  Deliberately compares `winRatePct` only (both real 0-100% scales); `expectancyR` (backtest, R-multiples)
+  vs. `avgPnlPct` (live, percent) are different units and were NOT force-compared. Verdict:
+  `consistent_with_backtest` / `diverging_from_backtest` (±15pp, disclosed arbitrary threshold) /
+  `not_enough_live_data` (<3 live trades) / `no_backtest_health_on_record`. **Deliberately not
+  attempted**: R-multiple-based attribution — the audit confirmed `DecisionVaultEntry.rMultiple` is
+  always `None` because the real risk engine has no stop-loss-distance concept anywhere to derive one
+  from; building it would mean fabricating a stop-loss basis that doesn't exist.
+
+  **Phase 6** (`GET /api/trades/performance-by-strategy-session`): `compute_strategy_session_
+  performance()` — the real strategy×session axis, same Decision Vault join, grouped on
+  `(strategy_id, session)`. The audit found the BACKTEST version of this cut already exists and is
+  already rendered (`CompiledStrategyBacktestResult.sessionBreakdown`, `StrategyCompilerView.tsx`) —
+  this closes only the analogous LIVE gap, not a duplicate.
+
+  **Phase 9** (`backend/app/trade_pipeline_health.py`, `GET /api/trades/strategy-trading-diagnostics`):
+  `compute_strategy_trading_diagnostics()` — "why isn't this strategy trading live?" per strategy, the
+  one gap the existing pipeline-health funnel diagnostic never covered (audit: zero "strategy"
+  references in that module before this). Built entirely from two already-real sources
+  (`compute_strategy_match()`'s regime eligibility, Phase 4's live trade counts): `trading_live` /
+  `blocked_by_regime_today` / `eligible_but_never_selected` / `no_backtest_evidence_yet`. Diagnostic
+  only — feeds no score, gates nothing.
+
+  17 new backend tests. Full backend suite (2466), `mypy app/` (176 files), `ruff check app/ tests/` all
+  clean. No frontend yet for any of the three — that's the next increment in this same pass.
+
 - **CEO directive "Strategy Intelligence + Live Strategy Attribution," Phase 11: "TODAY — Strategy
   Eligibility, Right Now"** (backend: `backend/app/routers/sandbox.py`; frontend:
   `frontend/src/net/api.ts`, `frontend/src/ui/components/CommandCenter/panels/SandboxPanel.tsx`,

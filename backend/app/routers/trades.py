@@ -11,20 +11,30 @@ from fastapi import APIRouter
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.exit_efficiency import compute_exit_efficiency
-from app.performance_attribution import compute_regime_performance, compute_session_performance, compute_strategy_performance, compute_symbol_performance
+from app.performance_attribution import (
+    compute_regime_performance,
+    compute_session_performance,
+    compute_strategy_live_vs_backtest,
+    compute_strategy_performance,
+    compute_strategy_session_performance,
+    compute_symbol_performance,
+)
 from app.persistence import persist_modules
 from app.schemas import (
     ExitEfficiencySummary,
     RegimePerformanceSummary,
     SessionPerformanceSummary,
+    StrategyLiveVsBacktestSummary,
     StrategyPerformanceSummary,
+    StrategySessionPerformanceSummary,
+    StrategyTradingDiagnosticSummary,
     SymbolPerformanceSummary,
     TradeAttributionSummary,
     TradePipelineHealthSnapshot,
 )
 from app.state import game_state
 from app.trade_attribution import compute_trade_attribution_history
-from app.trade_pipeline_health import compute_trade_pipeline_health
+from app.trade_pipeline_health import compute_strategy_trading_diagnostics, compute_trade_pipeline_health
 
 router = APIRouter(prefix="/api/trades", tags=["trades"])
 
@@ -113,6 +123,42 @@ async def get_performance_by_strategy() -> StrategyPerformanceSummary:
     GameSaveState field."""
     state = await game_state.snapshot()
     return compute_strategy_performance(state.paper_portfolio.trade_history, state.decision_vault)
+
+
+@router.get("/performance-by-strategy-session", response_model=StrategySessionPerformanceSummary)
+async def get_performance_by_strategy_session() -> StrategySessionPerformanceSummary:
+    """CEO directive "Live Trade → Strategy Provenance," Phase 6 — the
+    one real strategy×session axis that didn't exist yet (see
+    app/performance_attribution.py's own module docstring: session was
+    previously blocked from a strategy join for the same reason
+    performance-by-strategy itself was). Computed fresh per request; no
+    new GameSaveState field."""
+    state = await game_state.snapshot()
+    return compute_strategy_session_performance(state.paper_portfolio.trade_history, state.decision_vault)
+
+
+@router.get("/strategy-live-vs-backtest", response_model=StrategyLiveVsBacktestSummary)
+async def get_strategy_live_vs_backtest() -> StrategyLiveVsBacktestSummary:
+    """CEO directive "Live Trade → Strategy Provenance," Phase 5 — does a
+    strategy's real live performance match what its own real backtest
+    evidence (StrategyHealthAssessment) claimed? Joins two already-real,
+    already-computed sources (see app/performance_attribution.py's
+    compute_strategy_live_vs_backtest()) — computes no new trade-level
+    statistics. Computed fresh per request; no new GameSaveState field."""
+    state = await game_state.snapshot()
+    live = compute_strategy_performance(state.paper_portfolio.trade_history, state.decision_vault)
+    return compute_strategy_live_vs_backtest(live, state.strategy_health_assessments)
+
+
+@router.get("/strategy-trading-diagnostics", response_model=StrategyTradingDiagnosticSummary)
+async def get_strategy_trading_diagnostics() -> StrategyTradingDiagnosticSummary:
+    """CEO directive "Live Trade → Strategy Provenance," Phase 9 — "why
+    isn't this strategy trading live?" answered per strategy, real and
+    diagnostic-only (see app/trade_pipeline_health.py's
+    compute_strategy_trading_diagnostics()). Computed fresh per request;
+    no new GameSaveState field, nothing here gates or scores anything."""
+    state = await game_state.snapshot()
+    return compute_strategy_trading_diagnostics(state)
 
 
 @router.get("/pipeline-health", response_model=TradePipelineHealthSnapshot)

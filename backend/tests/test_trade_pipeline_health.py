@@ -5,9 +5,9 @@ already-persisted state — never a fabricated estimate.
 """
 from __future__ import annotations
 
-from app.schemas import GatekeeperRejection, OpportunityRejection, ResearchItem, TradeDecision
+from app.schemas import DecisionVaultEntry, GatekeeperRejection, LiquidityRead, OpportunityRejection, PaperTrade, ResearchItem, StrategyReport, TradeDecision
 from app.state import default_state
-from app.trade_pipeline_health import compute_trade_pipeline_health
+from app.trade_pipeline_health import compute_strategy_trading_diagnostics, compute_trade_pipeline_health
 
 
 def _now_iso() -> str:
@@ -161,3 +161,143 @@ class TestComputeTradePipelineHealth:
         snapshot = compute_trade_pipeline_health(default_state())
         assert "capped" in snapshot.data_honesty_note.lower()
         assert "200" in snapshot.data_honesty_note
+
+
+def _paper_trade(trade_id: str) -> PaperTrade:
+    return PaperTrade(
+        id=trade_id,
+        symbol="AAPL",
+        side="buy",
+        quantity=1.0,
+        entryPrice=100.0,
+        exitPrice=105.0,
+        pnl=5.0,
+        pnlPct=5.0,
+        durationMinutes=30,
+        confidence=80.0,
+        reason="test",
+        marketConditions="test",
+        supportingAgents=["scout"],
+        opposingAgents=[],
+        openedAt="2024-01-01T00:00:00+00:00",
+        closedAt="2024-01-01T00:00:00+00:00",
+        openedSimMinutes=0,
+        closedSimMinutes=30,
+        decisionId=f"decision-{trade_id}",
+    )
+
+
+def _vault_entry(*, trade_id: str, strategy_id: str | None) -> DecisionVaultEntry:
+    return DecisionVaultEntry(
+        id=f"vault-{trade_id}",
+        tradeId=trade_id,
+        decisionId=f"decision-{trade_id}",
+        symbol="AAPL",
+        simDay=1,
+        session="new_york",  # type: ignore[arg-type]
+        strategyId=strategy_id,
+        marketRegime="sideways_range",  # type: ignore[arg-type]
+        marketRegimeLabel="test regime",
+        liquidityContext=LiquidityRead(symbol="AAPL", zones=[], sweepDetected=False, sweepDirection="none", liquidityScore=50.0, detail="test"),
+        evidenceScore=70.0,
+        confidenceScore=70.0,
+        confidenceTier="strong",  # type: ignore[arg-type]
+        capitalAllocationGrade="B",  # type: ignore[arg-type]
+        decisionGrade="B",  # type: ignore[arg-type]
+        decisionGradeScore=80.0,
+        disciplineTier="sound",  # type: ignore[arg-type]
+        disciplineScore=75.0,
+        patienceGrade="B",  # type: ignore[arg-type]
+        positionSize=10.0,
+        entryPrice=100.0,
+        exitPrice=105.0,
+        pnl=5.0,
+        pnlPct=5.0,
+        holdDurationMinutes=30,
+        rMultiple=None,
+        caseStudyId=None,
+        caseStudyCategory=None,
+        executiveNotes=None,
+        lessonsLearned="test lesson",
+        companyDnaChange=None,
+        ceoOverride=False,
+        createdAt="2024-01-01T00:00:00+00:00",
+    )
+
+
+def _strategy_report(*, strategy_id: str, best_market_environment: str) -> StrategyReport:
+    return StrategyReport(
+        id=f"report-{strategy_id}",
+        strategyId=strategy_id,
+        strategyName="test strategy",
+        sourceResultId=f"result-{strategy_id}",
+        scenario="historical",  # type: ignore[arg-type]
+        executiveSummary="test",
+        bestMarketEnvironment=best_market_environment,
+        simDay=1,
+        createdAt="2024-01-01T00:00:00+00:00",
+    )
+
+
+class TestComputeStrategyTradingDiagnostics:
+    """CEO directive "Live Trade → Strategy Provenance," Phase 9 — the
+    real strategy-specific gap `TestComputeTradePipelineHealth` above
+    never covers. `default_state()` seeds 6 real strategies (4 default +
+    2 real 50 EMA researchable strategies — see app/strategy_registry.py)
+    with regime "weak_uptrend" (app/state.py's default_state(), keyword "bull" per
+    app/market_intelligence.py's _REGIME_TO_SCENARIO_KEYWORD)."""
+
+    def test_every_real_strategy_gets_exactly_one_diagnostic_read(self) -> None:
+        state = default_state()
+        summary = compute_strategy_trading_diagnostics(state)
+        assert len(summary.reads) == len(state.strategies)
+        assert {r.strategy_id for r in summary.reads} == {s.id for s in state.strategies}
+
+    def test_a_strategy_with_no_report_and_no_live_trades_reads_no_backtest_evidence_yet(self) -> None:
+        state = default_state()
+        summary = compute_strategy_trading_diagnostics(state)
+        momentum = next(r for r in summary.reads if r.strategy_id == "strategy-momentum")
+        assert momentum.reason == "no_backtest_evidence_yet"
+        assert momentum.live_trade_count == 0
+
+    def test_a_strategy_with_a_real_live_trade_reads_trading_live(self) -> None:
+        state = default_state().model_copy(
+            update={
+                "paper_portfolio": default_state().paper_portfolio.model_copy(update={"trade_history": [_paper_trade("t1")]}),
+                "decision_vault": [_vault_entry(trade_id="t1", strategy_id="strategy-momentum")],
+            }
+        )
+        summary = compute_strategy_trading_diagnostics(state)
+        momentum = next(r for r in summary.reads if r.strategy_id == "strategy-momentum")
+        assert momentum.reason == "trading_live"
+        assert momentum.live_trade_count == 1
+
+    def test_a_strategy_avoided_by_todays_regime_reads_blocked_by_regime_today(self) -> None:
+        state = default_state().model_copy(
+            update={"strategy_reports": [_strategy_report(strategy_id="strategy-value", best_market_environment="Not yet tested favorably in bull markets — lost money")]}
+        )
+        summary = compute_strategy_trading_diagnostics(state)
+        value = next(r for r in summary.reads if r.strategy_id == "strategy-value")
+        assert value.reason == "blocked_by_regime_today"
+        assert value.live_trade_count == 0
+
+    def test_a_strategy_recommended_by_todays_regime_with_no_live_trades_reads_eligible_but_never_selected(self) -> None:
+        state = default_state().model_copy(update={"strategy_reports": [_strategy_report(strategy_id="strategy-macro", best_market_environment="Works well in bull markets")]})
+        summary = compute_strategy_trading_diagnostics(state)
+        macro = next(r for r in summary.reads if r.strategy_id == "strategy-macro")
+        assert macro.reason == "eligible_but_never_selected"
+
+    def test_a_live_trade_takes_priority_over_regime_eligibility(self) -> None:
+        # A strategy that's both regime-recommended AND has a real live
+        # trade reads "trading_live" — the strongest, most concrete real
+        # fact always wins over an eligibility read.
+        state = default_state().model_copy(
+            update={
+                "paper_portfolio": default_state().paper_portfolio.model_copy(update={"trade_history": [_paper_trade("t1")]}),
+                "decision_vault": [_vault_entry(trade_id="t1", strategy_id="strategy-macro")],
+                "strategy_reports": [_strategy_report(strategy_id="strategy-macro", best_market_environment="Works well in bull markets")],
+            }
+        )
+        summary = compute_strategy_trading_diagnostics(state)
+        macro = next(r for r in summary.reads if r.strategy_id == "strategy-macro")
+        assert macro.reason == "trading_live"
