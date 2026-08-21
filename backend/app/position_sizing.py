@@ -62,6 +62,8 @@ version):
 """
 from __future__ import annotations
 
+from app.ema_pullback_research import CHANDELIER_ATR_MULTIPLIER, CHANDELIER_ATR_PERIOD
+from app.market_data import MarketDataProvider
 from app.risk_engine import SIM_MINUTES_PER_DAY, portfolio_equity
 from app.schemas import (
     DecisionScoreBreakdown,
@@ -73,9 +75,20 @@ from app.schemas import (
     RiskLimits,
     RiskWarning,
     TradeProposal,
+    VolatilitySizingRead,
 )
+from app.technical_indicators import atr
 
 WEEKLY_DEPLOYMENT_WINDOW_DAYS = 7
+
+# CEO directive "Portfolio Construction, Capital Allocation & Execution
+# Realism," Phase 3 — same real candle window this codebase's own
+# proposal-generation/correlation reads already use
+# (app/portfolio_intelligence.py's PROPOSAL_TIMEFRAME/PROPOSAL_CANDLE_
+# COUNT) — 30 hourly candles comfortably covers CHANDELIER_ATR_PERIOD's
+# (22) own real minimum window, reused rather than picking a new number.
+VOLATILITY_TIMEFRAME = "1h"
+VOLATILITY_CANDLE_COUNT = 30
 
 TIER_LABEL: dict[PositionTier, str] = {
     "exploratory": "Exploratory",
@@ -164,6 +177,52 @@ def _tier_allocation_pct(risk_limits: RiskLimits, tier: PositionTier) -> float:
     }[tier]
 
 
+def _volatility_sizing(proposal: TradeProposal, provider: MarketDataProvider, equity: float, risk_limits: RiskLimits) -> VolatilitySizingRead:
+    """CEO directive "Portfolio Construction, Capital Allocation &
+    Execution Realism," Phase 3 — POSITION SIZE ~ RISK BUDGET / DISTANCE
+    TO STOP. `stop_distance` is a real ATR-based read (the same
+    Chandelier Stop convention already established for this codebase's
+    backtest engines — CHANDELIER_ATR_PERIOD/CHANDELIER_ATR_MULTIPLIER,
+    never a second, independently-tuned constant), not an actual placed
+    stop order (this codebase's live positions have no real stop-loss
+    order mechanism — see app/schemas.py's DecisionVaultEntry.r_multiple
+    docstring for that already-disclosed, separate gap). `risk_budget_usd`
+    reuses risk_limits.risk_per_trade_pct — the identical dollar figure
+    app/risk_engine.py's recommended_quantity() ceiling already implies —
+    so a volatile symbol gets a SMALLER real quantity at the SAME real
+    dollar risk, never a larger one. `available=False` (never a
+    fabricated distance) when there isn't yet enough real candle history
+    for a real ATR read at this symbol."""
+    try:
+        candles = provider.get_candles(proposal.symbol, VOLATILITY_TIMEFRAME, VOLATILITY_CANDLE_COUNT)
+    except ValueError:
+        return VolatilitySizingRead(
+            available=False, atrPeriod=CHANDELIER_ATR_PERIOD, detail=f"No real candle history available for {proposal.symbol} — volatility-based sizing unavailable."
+        )
+    atr_value = atr(candles, period=CHANDELIER_ATR_PERIOD)
+    if atr_value is None or atr_value <= 0 or equity <= 0 or proposal.price <= 0:
+        return VolatilitySizingRead(
+            available=False, atrPeriod=CHANDELIER_ATR_PERIOD, detail=f"Not enough real candle history yet for a real {CHANDELIER_ATR_PERIOD}-period ATR on {proposal.symbol}."
+        )
+
+    stop_distance = round(CHANDELIER_ATR_MULTIPLIER * atr_value, 4)
+    risk_budget_usd = round(equity * risk_limits.risk_per_trade_pct / 100, 2)
+    volatility_cap_quantity = round(risk_budget_usd / stop_distance, 4) if stop_distance > 0 else 0.0
+    return VolatilitySizingRead(
+        available=True,
+        atrValue=atr_value,
+        atrPeriod=CHANDELIER_ATR_PERIOD,
+        stopDistance=stop_distance,
+        riskBudgetUsd=risk_budget_usd,
+        volatilityCapQuantity=volatility_cap_quantity,
+        detail=(
+            f"Real {CHANDELIER_ATR_PERIOD}-period ATR of {atr_value:.2f} implies a {stop_distance:.2f} stop distance "
+            f"({CHANDELIER_ATR_MULTIPLIER:.0f}x ATR) — ${risk_budget_usd:,.0f} risk budget / that distance caps this trade at "
+            f"{volatility_cap_quantity:.2f} units, regardless of what the evidence-based tiers above allow."
+        ),
+    )
+
+
 def build_position_sizing(
     proposal: TradeProposal,
     *,
@@ -175,6 +234,7 @@ def build_position_sizing(
     risk_limits: RiskLimits,
     risk_warnings: list[RiskWarning],
     sim_day: int,
+    provider: MarketDataProvider,
 ) -> PositionSizingResult:
     """The engine's one real entry point — evidence-and-confidence-
     weighted sizing that only ever narrows `ceiling_quantity`
@@ -185,9 +245,13 @@ def build_position_sizing(
     is sized), the same "cheap, close enough" tradeoff every other
     same-tick consumer of a recomputed-fresh-each-tick signal in this
     codebase already accepts, rather than restructuring nexus.py's tick
-    order to force a same-tick recompute."""
+    order to force a same-tick recompute. `provider` (CEO directive
+    "Portfolio Construction, Capital Allocation & Execution Realism,"
+    Phase 3) feeds the real ATR-based volatility cap — see
+    _volatility_sizing()'s own docstring."""
     equity = portfolio_equity(portfolio)
     price = proposal.price
+    volatility_sizing = _volatility_sizing(proposal, provider, equity, risk_limits)
     if equity <= 0 or price <= 0 or ceiling_quantity <= 0:
         return PositionSizingResult(
             tier="exploratory",
@@ -203,6 +267,7 @@ def build_position_sizing(
             portfolioHeatCapOk=True,
             institutionalGatesPassed=False,
             reducedFromCeiling=False,
+            volatilitySizing=volatility_sizing,
             detail="No real ceiling quantity available for this proposal — zero size, nothing to justify.",
         )
 
@@ -243,7 +308,14 @@ def build_position_sizing(
     cash_cap_quantity = available_cash / price
     cash_reserve_ok = candidate_quantity * price <= available_cash + 1e-6
 
-    final_quantity = max(0.0, min(candidate_quantity, weekly_cap_quantity, heat_cap_quantity, cash_cap_quantity))
+    # CEO directive "Portfolio Construction, Capital Allocation &
+    # Execution Realism," Phase 3 — the real ATR-based volatility cap,
+    # narrowing-only like every other cap here. Only ever binds when
+    # real ATR evidence exists (never a fabricated cap from a missing
+    # candle history — see _volatility_sizing()'s own docstring).
+    volatility_cap_quantity = volatility_sizing.volatility_cap_quantity if volatility_sizing.available and volatility_sizing.volatility_cap_quantity is not None else candidate_quantity
+
+    final_quantity = max(0.0, min(candidate_quantity, weekly_cap_quantity, heat_cap_quantity, cash_cap_quantity, volatility_cap_quantity))
     final_quantity = round(final_quantity, 4)
     capital_deployed_pct = round(final_quantity * price / equity * 100, 2) if equity > 0 else 0.0
     reduced_from_ceiling = final_quantity < round(ceiling_quantity, 4)
@@ -252,7 +324,9 @@ def build_position_sizing(
         "the tier's own evidence-based fraction of the risk ceiling" if scaled_quantity <= tier_cap_quantity + 1e-9 else "the tier's absolute allocation cap"
     )
     if final_quantity < candidate_quantity - 1e-9:
-        if not weekly_ok and weekly_cap_quantity <= heat_cap_quantity and weekly_cap_quantity <= cash_cap_quantity:
+        if volatility_cap_quantity <= weekly_cap_quantity and volatility_cap_quantity <= heat_cap_quantity and volatility_cap_quantity <= cash_cap_quantity and volatility_cap_quantity < candidate_quantity - 1e-9:
+            binding_constraint = "the real ATR-based volatility risk budget (a wider stop distance than this tier's own quantity implies)"
+        elif not weekly_ok and weekly_cap_quantity <= heat_cap_quantity and weekly_cap_quantity <= cash_cap_quantity:
             binding_constraint = "the weekly capital deployment budget"
         elif not portfolio_heat_cap_ok and heat_cap_quantity <= cash_cap_quantity:
             binding_constraint = "the CEO's Portfolio Heat cap"
@@ -272,6 +346,7 @@ def build_position_sizing(
         tierCapQuantity=round(tier_cap_quantity, 4),
         finalQuantity=final_quantity,
         capitalDeployedPct=capital_deployed_pct,
+        volatilitySizing=volatility_sizing,
         weeklyDeploymentPct=round(weekly_deployed_before_pct + capital_deployed_pct, 2),
         weeklyDeploymentCapPct=risk_limits.max_weekly_deployment_pct,
         cashReserveOk=cash_reserve_ok,

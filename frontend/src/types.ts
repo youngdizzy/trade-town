@@ -4281,6 +4281,20 @@ export type PositionTier = "exploratory" | "standard" | "high_conviction" | "ins
  * backend/app/risk_engine.py's recommended_quantity() already allows,
  * never widens it (see backend/app/position_sizing.py's module
  * docstring). */
+// CEO directive "Portfolio Construction, Capital Allocation & Execution
+// Realism," Phase 3 — POSITION SIZE ~ RISK BUDGET / DISTANCE TO STOP.
+// `available: false` (never a fabricated distance) when this symbol
+// doesn't yet have enough real candle history for a real ATR read.
+export interface VolatilitySizingRead {
+  available: boolean;
+  atrValue: number | null;
+  atrPeriod: number;
+  stopDistance: number | null;
+  riskBudgetUsd: number | null;
+  volatilityCapQuantity: number | null;
+  detail: string;
+}
+
 export interface PositionSizingResult {
   tier: PositionTier;
   tierLabel: string;
@@ -4295,6 +4309,7 @@ export interface PositionSizingResult {
   portfolioHeatCapOk: boolean;
   institutionalGatesPassed: boolean;
   reducedFromCeiling: boolean;
+  volatilitySizing: VolatilitySizingRead;
   detail: string;
 }
 

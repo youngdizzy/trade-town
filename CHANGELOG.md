@@ -37,6 +37,35 @@ development milestones, not semver releases.
   remaining phases' scoping (volatility sizing, correlation gate, strategy ranking, degradation
   monitoring, trade-decision explanation, no-trade diagnostics) — none blocked, not yet started.
 
+- **CEO directive "Portfolio Construction, Capital Allocation & Execution Realism," Phase 3:
+  volatility-aware position sizing** (backend: `backend/app/schemas.py`, `backend/app/position_sizing.py`,
+  `backend/app/nexus.py`, `backend/tests/test_position_sizing.py`; frontend: `frontend/src/types.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/WarRoomPanel.tsx`): POSITION SIZE ~ RISK BUDGET /
+  DISTANCE TO STOP, built as one more narrowing factor in `build_position_sizing()`'s existing cascade,
+  never a competing formula. New `_volatility_sizing()` computes a real ATR read (real candles, the same
+  `MarketDataProvider` every other tick-time read uses) and reuses this codebase's own already-established
+  Chandelier Stop constants (`CHANDELIER_ATR_PERIOD`/`CHANDELIER_ATR_MULTIPLIER`) rather than a second,
+  independently-tuned convention; `risk_budget_usd` reuses `risk_limits.risk_per_trade_pct` — the identical
+  dollar figure the existing ceiling already implies, not a new risk parameter. Proven directly: a more
+  volatile symbol gets a smaller real quantity cap, but the *dollar risk implied at that cap* is identical
+  regardless of volatility — the directive's own explicit "should not receive a larger dollar risk simply
+  because its market happens to be more volatile" rule, asserted, not just claimed. `available: false`
+  (never a fabricated stop distance) whenever there isn't yet enough real candle history for a symbol.
+
+  **A real bug found and fixed before committing**: `PositionSizingResult` lives inside the persisted
+  `war_room_sessions` LIST, and per this codebase's own `_deep_merge_defaults` convention, new fields
+  inside list-nested models need real Pydantic defaults (list items are taken wholesale on load, never
+  per-item merged) — the first draft didn't have them. Fixed, and proven two ways: a unit test validating
+  from a raw dict with the field entirely absent, and a live screenshot of this exact save's own
+  pre-existing 56 War Room sessions rendering the new card correctly in its honest "UNAVAILABLE" state.
+
+  10 new backend tests. Full backend suite (2488), `mypy app/`, `ruff check app/ tests/` clean.
+  `tsc -b --noEmit`, `eslint`, `vite build` clean. Live-verified against the real running save (no console
+  errors); a screenshot with a real, freshly-computed ATR value wasn't achievable this session — the same
+  real, documented Opportunity Gatekeeper liquidity constraint already disclosed in the prior directive
+  blocks new proposal generation in this environment's mock data right now, so the backward-compat path
+  (the thing this increment actually needed proven) was exercised on real persisted data instead.
+
 - **CEO directive "Live Trade → Strategy Provenance": the real, non-fabricated way a live trade can
   now link back to a Strategy Lab strategy** (backend: `backend/app/schemas.py`,
   `backend/app/routers/executive.py`, `backend/app/state.py`, `backend/app/decision_vault.py`,

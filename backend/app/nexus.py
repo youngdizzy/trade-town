@@ -1701,6 +1701,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
             risk_limits=effective_risk_limits,
             risk_warnings=risk_warnings,
             sim_day=now_sim_minutes // 1440,
+            provider=market_data_provider,
         )
         war_room_session = war_room_session.model_copy(update={"position_sizing": position_sizing})
         # Design Bible Chapter 75 — every proposal that survives the

@@ -12140,25 +12140,85 @@ prior required-field addition this session used), and a Command Center
 screenshot confirmed both new cards render their correct honest empty
 state against the real running save.
 
+**Increment 2 — Phase 3, volatility-aware position sizing (this pass).**
+POSITION SIZE ~ RISK BUDGET / DISTANCE TO STOP, built into the existing
+narrowing cascade rather than a new formula competing with it. New
+`_volatility_sizing()` (`app/position_sizing.py`) computes a real ATR
+read (`app/technical_indicators.py`'s `atr()`, fed real candles from the
+same `MarketDataProvider` every other tick-time read already uses) over
+`VOLATILITY_CANDLE_COUNT` (30, reused from `portfolio_intelligence.py`'s
+own `PROPOSAL_CANDLE_COUNT` convention) bars, then `stop_distance =
+CHANDELIER_ATR_MULTIPLIER * atr` — the exact same, already-established
+Chandelier Stop constants (`CHANDELIER_ATR_PERIOD=22`,
+`CHANDELIER_ATR_MULTIPLIER=3.0`) this codebase's own backtest engines
+already use, never a second, independently-tuned convention.
+`risk_budget_usd = equity * risk_limits.risk_per_trade_pct / 100` — the
+identical dollar figure `recommended_quantity()`'s own ceiling already
+implies, reused rather than a new risk parameter.
+`volatility_cap_quantity = risk_budget_usd / stop_distance` becomes one
+more narrowing factor in `build_position_sizing()`'s existing
+`min(...)` cascade (tier fraction, weekly deployment, portfolio heat,
+cash reserve, now + volatility) — never widens anything.
+
+`available: false` (never a fabricated stop distance) whenever there
+isn't yet enough real candle history — its own honest, disclosed state,
+surfaced on the new `VolatilitySizingRead`. Tested directly against the
+directive's own explicit scenario list: insufficient history, low vs.
+high volatility, and the core claim — "a strategy should not receive a
+larger dollar risk simply because its market happens to be more
+volatile" — proven by asserting `cap_quantity * stop_distance ==
+risk_budget_usd` holds identically at both a calm and an extreme ATR
+reading (the cap shrinks, the dollar risk at that cap does not grow).
+
+**A real bug found and fixed during this increment**: `PositionSizingResult`
+lives inside `WarRoomSession`, which lives inside the persisted
+`war_room_sessions` LIST — and `app/persistence.py`'s own
+`_deep_merge_defaults` docstring is explicit that list items are taken
+wholesale on load, never per-item merged, so any new field added to a
+model living inside a list needs a real Pydantic default or an old
+save's existing sessions fail to validate. The first draft of
+`volatility_sizing`/`VolatilitySizingRead` had no defaults; caught before
+committing, fixed with real fallback values (`available=False`, a
+literal `22` rather than importing the business-logic constant into
+schemas.py — a real circular-import risk), and proven two ways: a unit
+test validating `PositionSizingResult` from a raw dict with no
+`volatilitySizing` key at all, and a live screenshot of this exact
+save's own pre-existing War Room sessions rendering the new card in its
+correct, honest "UNAVAILABLE — Not computed, this position sizing
+result predates real ATR-based volatility sizing" state.
+
+Rendered in `WarRoomPanel.tsx` as a new "Volatility-Based Risk Sizing"
+sub-section inside the existing Position Sizing card. 10 new backend
+tests (`TestVolatilitySizing`, `TestBuildPositionSizingVolatility`,
+`TestVolatilitySizingBackwardCompat`). Full backend suite (2488),
+`mypy app/`, `ruff check app/ tests/` clean. `tsc -b --noEmit`,
+`eslint`, `vite build` clean. Live-verified: the real running save's 56
+pre-existing War Room sessions loaded and rendered correctly with no
+console errors. A screenshot of a NEWLY-generated session with a real,
+non-fallback ATR value was not achievable this session — the same real,
+documented Opportunity Gatekeeper liquidity constraint (`liquidity_
+confirmation_weak`) already diagnosed and disclosed in the prior
+directive blocks any new proposal from being generated in this specific
+environment's mock candle data right now; the backward-compat path this
+increment actually needed to prove was exercised instead, on real data.
+
 **Deliberately not yet done** (natural next increments, not started
-here): Phase 3 (volatility/ATR-based position sizing — the ATR
-machinery is real and reusable, nothing sizes off it yet); Phase 4
-(promoting the real Pearson correlation to an actual pre-trade gate,
-closing the gap `opportunity_gatekeeper.py` already names); Phase 5
-(an evidence-based strategy ranking view — informational only, per the
-directive's own explicit rule against auto-allocating capital to
-whichever strategy most recently profited); Phase 6 (a clearer
-NORMAL/POSSIBLE/CRITICAL strategy-degradation classification, building
-on the already-real `StrategyHealthAssessment`/live-vs-backtest
-verdict); Phases 7-8 (execution realism / risk of ruin — largely
-already honestly disclosed as out of scope given no order-book data);
-Phase 9 (a consolidated "why this trade" view); Phase 10 (extending the
-no-trade diagnostic with the new correlation/risk-budget dimensions
-once those gates exist); Phases 11-12 (`PortfolioIntelPanel.tsx`/
-`RiskPanel.tsx` already substantially satisfy the Command Center ask;
-market visualization already satisfies its own ask per the Phase 1
-audit — likely little/no work needed there). None are blocked — see
-the Phase 1 audit findings above.
+here): Phase 4 (promoting the real Pearson correlation to an actual
+pre-trade gate, closing the gap `opportunity_gatekeeper.py` already
+names); Phase 5 (an evidence-based strategy ranking view —
+informational only, per the directive's own explicit rule against
+auto-allocating capital to whichever strategy most recently profited);
+Phase 6 (a clearer NORMAL/POSSIBLE/CRITICAL strategy-degradation
+classification, building on the already-real
+`StrategyHealthAssessment`/live-vs-backtest verdict); Phases 7-8
+(execution realism / risk of ruin — largely already honestly disclosed
+as out of scope given no order-book data); Phase 9 (a consolidated "why
+this trade" view); Phase 10 (extending the no-trade diagnostic with the
+new correlation/risk-budget dimensions once those gates exist); Phases
+11-12 (`PortfolioIntelPanel.tsx`/`RiskPanel.tsx` already substantially
+satisfy the Command Center ask; market visualization already satisfies
+its own ask per the Phase 1 audit — likely little/no work needed
+there). None are blocked — see the Phase 1 audit findings above.
 
 ## Save format compatibility
 

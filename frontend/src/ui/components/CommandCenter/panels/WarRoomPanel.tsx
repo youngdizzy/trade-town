@@ -185,6 +185,29 @@ function SessionDetail({ session }: { session: WarRoomSession }) {
             {session.positionSizing.institutionalGatesPassed && <StatusPill tone="green">All 3 Institutional gates passed</StatusPill>}
           </div>
           <p className="mt-1.5 text-[9px] text-cmd-textDim">{session.positionSizing.detail}</p>
+
+          {/* CEO directive "Portfolio Construction, Capital Allocation &
+              Execution Realism," Phase 3 — real ATR-based risk-per-unit
+              sizing. available: false is its own honest state (never a
+              fabricated stop distance) — no candle history yet. */}
+          <div className="mt-2 border-t border-cmd-border/50 pt-2">
+            <div className="mb-1 flex items-center justify-between">
+              <TerminalLabel>Volatility-Based Risk Sizing — real ATR, risk budget ÷ stop distance</TerminalLabel>
+              <StatusPill tone={session.positionSizing.volatilitySizing.available ? "cyan" : "neutral"}>
+                {session.positionSizing.volatilitySizing.available ? "AVAILABLE" : "UNAVAILABLE"}
+              </StatusPill>
+            </div>
+            {session.positionSizing.volatilitySizing.available ? (
+              <div className="grid grid-cols-2 gap-x-4 sm:grid-cols-4">
+                <DataRow label={`ATR (${session.positionSizing.volatilitySizing.atrPeriod}-period)`} value={session.positionSizing.volatilitySizing.atrValue?.toFixed(2) ?? "—"} />
+                <DataRow label="Stop Distance" value={session.positionSizing.volatilitySizing.stopDistance?.toFixed(2) ?? "—"} />
+                <DataRow label="Risk Budget" value={`$${session.positionSizing.volatilitySizing.riskBudgetUsd?.toFixed(0) ?? "—"}`} />
+                <DataRow label="Volatility Cap" value={session.positionSizing.volatilitySizing.volatilityCapQuantity?.toFixed(4) ?? "—"} />
+              </div>
+            ) : (
+              <p className="text-[9px] text-cmd-textDim">{session.positionSizing.volatilitySizing.detail}</p>
+            )}
+          </div>
         </Glass>
       )}
 

@@ -6518,6 +6518,41 @@ class ScenarioOutcomeComparison(CamelModel):
 PositionTier = Literal["exploratory", "standard", "high_conviction", "institutional"]
 
 
+# CEO directive "Portfolio Construction, Capital Allocation & Execution
+# Realism," Phase 3 — "POSITION SIZE ~ RISK BUDGET / DISTANCE TO STOP."
+# `available=False` (never a fabricated stop distance) when this symbol
+# doesn't yet have enough real candle history for a real ATR read — see
+# app/position_sizing.py's own module docstring for the exact ATR
+# period/multiplier reused (the same real, already-established Chandelier
+# Stop convention app/ema_pullback_research.py/app/strategy_engine.py's
+# backtest engines already use, never a second, independently-tuned
+# constant). `risk_budget_usd` is the same real dollar amount
+# recommended_quantity()'s own risk_per_trade_pct ceiling already
+# implies — reused, not a new risk parameter — so a strategy trading a
+# volatile symbol gets a SMALLER quantity at the SAME dollar risk, never
+# a larger one, per the directive's own explicit rule.
+class VolatilitySizingRead(CamelModel):
+    # `war_room_sessions` (a list — see app/persistence.py's own
+    # _deep_merge_defaults docstring: "lists are taken wholesale... every
+    # field added to a model that lives inside one of those lists must
+    # have a default value") holds PositionSizingResult, so every field
+    # here needs a real default for a save from before this feature
+    # existed to still validate on load. `available=False` is the
+    # honest one — a pre-existing WarRoomSession never had a real ATR
+    # read computed for it, never fabricated retroactively.
+    available: bool = False
+    atr_value: float | None = Field(default=None, alias="atrValue")
+    # 22 (not imported from app.ema_pullback_research.CHANDELIER_ATR_PERIOD
+    # — schemas.py must not import that business-logic module, a real
+    # circular-import risk) is only ever this migration-fallback
+    # default; every real read uses the actual constant.
+    atr_period: int = Field(default=22, alias="atrPeriod")
+    stop_distance: float | None = Field(default=None, alias="stopDistance")
+    risk_budget_usd: float | None = Field(default=None, alias="riskBudgetUsd")
+    volatility_cap_quantity: float | None = Field(default=None, alias="volatilityCapQuantity")
+    detail: str = "Not computed — this position sizing result predates real ATR-based volatility sizing."
+
+
 class PositionSizingResult(CamelModel):
     """The Position Sizing Engine's real, logged justification for one
     proposal's final quantity — never a bare number with no trail (see
@@ -6539,6 +6574,7 @@ class PositionSizingResult(CamelModel):
     portfolio_heat_cap_ok: bool = Field(alias="portfolioHeatCapOk")
     institutional_gates_passed: bool = Field(alias="institutionalGatesPassed")
     reduced_from_ceiling: bool = Field(alias="reducedFromCeiling")
+    volatility_sizing: VolatilitySizingRead = Field(default_factory=VolatilitySizingRead, alias="volatilitySizing")
     detail: str
 
 

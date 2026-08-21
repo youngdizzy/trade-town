@@ -7,11 +7,17 @@ back to a real, named constraint — never a silent or fabricated cut.
 """
 from __future__ import annotations
 
+import pytest
+
+from app.ema_pullback_research import CHANDELIER_ATR_MULTIPLIER, CHANDELIER_ATR_PERIOD
+from app.market_data import Candle, MarketDataProvider, Quote
 from app.position_sizing import (
     TIER_FRACTION,
+    VOLATILITY_CANDLE_COUNT,
     WEEKLY_DEPLOYMENT_WINDOW_DAYS,
     _capital_deployed_pct_in_window,
     _tier_for_sizing_score,
+    _volatility_sizing,
     build_position_sizing,
 )
 from app.risk_engine import SIM_MINUTES_PER_DAY
@@ -26,6 +32,31 @@ from app.schemas import (
     RiskWarning,
     TierAllocationLimits,
 )
+
+
+class _FakeProvider(MarketDataProvider):
+    """A test double with a fully controlled candle series — unlike
+    MockMarketDataProvider's real-but-random walk, needed to construct
+    known low/high-ATR scenarios. Defaults to a real but LOW-volatility
+    series (each bar moves ~$1 on a $100 base) so existing tests that
+    aren't specifically about volatility sizing get a real, available,
+    but comfortably non-binding volatility cap — never silently
+    unavailable by default, which would hide real wiring bugs."""
+
+    def __init__(self, closes: list[float] | None = None, *, raise_for_missing: bool = True) -> None:
+        self._closes = closes if closes is not None else [100.0 + (i % 2) for i in range(VOLATILITY_CANDLE_COUNT)]
+        self._raise_for_missing = raise_for_missing
+
+    def get_quote(self, symbol: str) -> Quote:
+        raise NotImplementedError
+
+    def get_candles(self, symbol: str, timeframe: str, limit: int) -> list[Candle]:
+        if not self._closes and self._raise_for_missing:
+            raise ValueError(f"no fixture data for {symbol!r}")
+        return [
+            Candle(symbol=symbol, timeframe=timeframe, timestamp=f"2026-01-01T{i % 24:02d}:00:00Z", open=c, high=c + 0.5, low=c - 0.5, close=c, volume=1000.0, data_status="simulated")
+            for i, c in enumerate(self._closes)
+        ]
 
 
 def _portfolio(*, cash_balance: float = 100_000.0, positions: list[PaperPosition] | None = None, trade_history: list[PaperTrade] | None = None) -> PaperPortfolio:
@@ -202,6 +233,43 @@ class TestTierForSizingScore:
         assert tier == "exploratory"
 
 
+class TestVolatilitySizingBackwardCompat:
+    """CEO directive "Portfolio Construction, Capital Allocation &
+    Execution Realism," Phase 3 — PositionSizingResult lives inside
+    WarRoomSession, which lives inside the persisted `war_room_sessions`
+    LIST — app/persistence.py's own _deep_merge_defaults docstring
+    requires every field added to a model living inside a list to carry
+    a real Pydantic default, since list items are taken wholesale on
+    load, never per-item merged. Confirms that requirement is actually
+    met: an old save's PositionSizingResult dict with no `volatilitySizing`
+    key at all must still validate."""
+
+    def test_position_sizing_result_validates_with_no_volatility_sizing_key_at_all(self) -> None:
+        from app.schemas import PositionSizingResult
+
+        old_save_shape = dict(
+            tier="standard",
+            tierLabel="Standard",
+            sizingScore=70.0,
+            ceilingQuantity=10.0,
+            tierCapQuantity=10.0,
+            finalQuantity=10.0,
+            capitalDeployedPct=1.0,
+            weeklyDeploymentPct=1.0,
+            weeklyDeploymentCapPct=20.0,
+            cashReserveOk=True,
+            portfolioHeatCapOk=True,
+            institutionalGatesPassed=False,
+            reducedFromCeiling=False,
+            detail="test",
+            # No "volatilitySizing" key at all — the real shape of every
+            # PositionSizingResult persisted before this feature existed.
+        )
+        result = PositionSizingResult.model_validate(old_save_shape)
+        assert result.volatility_sizing.available is False
+        assert result.volatility_sizing.volatility_cap_quantity is None
+
+
 class TestBuildPositionSizing:
     def _build(self, **overrides):
         defaults = dict(
@@ -214,6 +282,7 @@ class TestBuildPositionSizing:
             risk_limits=RiskLimits(),
             risk_warnings=[],
             sim_day=1,
+            provider=_FakeProvider(),
         )
         defaults.update(overrides)
         return build_position_sizing(**defaults)
@@ -328,3 +397,119 @@ class TestBuildPositionSizing:
         assert result.tier == "institutional"
         assert result.reduced_from_ceiling is False
         assert "within the real risk limit" in result.detail
+
+
+class TestVolatilitySizing:
+    """CEO directive "Portfolio Construction, Capital Allocation &
+    Execution Realism," Phase 3 — POSITION SIZE ~ RISK BUDGET / DISTANCE
+    TO STOP. Tests _volatility_sizing() directly against the directive's
+    own explicit scenario list (low/high volatility, insufficient
+    history) before testing the end-to-end narrowing effect below."""
+
+    def test_insufficient_candle_history_reports_unavailable_not_fabricated(self) -> None:
+        read = _volatility_sizing(_Proposal(), _FakeProvider([], raise_for_missing=True), equity=100_000.0, risk_limits=RiskLimits())
+        assert read.available is False
+        assert read.stop_distance is None
+        assert read.volatility_cap_quantity is None
+        assert "no real candle history" in read.detail.lower()
+
+    def test_a_short_candle_history_below_the_atr_period_reports_unavailable(self) -> None:
+        # Real candles exist, but too few for a real CHANDELIER_ATR_PERIOD-bar ATR window.
+        short_history = [100.0 + (i % 2) for i in range(CHANDELIER_ATR_PERIOD - 1)]
+        read = _volatility_sizing(_Proposal(), _FakeProvider(short_history), equity=100_000.0, risk_limits=RiskLimits())
+        assert read.available is False
+        assert read.volatility_cap_quantity is None
+
+    def test_low_volatility_symbol_gets_a_real_available_read(self) -> None:
+        calm = [100.0 + (i % 2) * 0.1 for i in range(VOLATILITY_CANDLE_COUNT)]
+        read = _volatility_sizing(_Proposal(price=100.0), _FakeProvider(calm), equity=100_000.0, risk_limits=RiskLimits())
+        assert read.available is True
+        assert read.atr_value is not None and read.atr_value > 0
+        assert read.stop_distance == round(CHANDELIER_ATR_MULTIPLIER * read.atr_value, 4)
+
+    def test_higher_volatility_produces_a_smaller_cap_at_the_same_dollar_risk(self) -> None:
+        calm = [100.0 + (i % 2) * 0.5 for i in range(VOLATILITY_CANDLE_COUNT)]
+        wild = [100.0 + (i % 2) * 5.0 for i in range(VOLATILITY_CANDLE_COUNT)]
+        calm_read = _volatility_sizing(_Proposal(price=100.0), _FakeProvider(calm), equity=100_000.0, risk_limits=RiskLimits())
+        wild_read = _volatility_sizing(_Proposal(price=100.0), _FakeProvider(wild), equity=100_000.0, risk_limits=RiskLimits())
+        assert wild_read.atr_value is not None and calm_read.atr_value is not None
+        assert wild_read.atr_value > calm_read.atr_value
+        # The directive's own explicit rule: a more volatile symbol must
+        # get a SMALLER real quantity cap, never a larger one.
+        assert wild_read.volatility_cap_quantity is not None and calm_read.volatility_cap_quantity is not None
+        assert wild_read.volatility_cap_quantity < calm_read.volatility_cap_quantity
+        # And the real dollar risk implied at the stop — cap * distance
+        # — must be the SAME regardless of volatility: the risk budget
+        # itself never grows just because the market is choppier.
+        calm_implied_risk = calm_read.volatility_cap_quantity * calm_read.stop_distance
+        wild_implied_risk = wild_read.volatility_cap_quantity * wild_read.stop_distance
+        assert calm_implied_risk == pytest.approx(calm_read.risk_budget_usd, abs=0.01)
+        assert wild_implied_risk == pytest.approx(wild_read.risk_budget_usd, abs=0.01)
+
+    def test_risk_budget_reuses_risk_per_trade_pct_not_a_new_parameter(self) -> None:
+        limits = RiskLimits(riskPerTradePct=3.5)
+        read = _volatility_sizing(_Proposal(), _FakeProvider(), equity=100_000.0, risk_limits=limits)
+        assert read.risk_budget_usd == 100_000.0 * 3.5 / 100
+
+    def test_a_tighter_atr_multiplier_stop_widens_the_cap_a_wider_stop_narrows_it(self) -> None:
+        # Same real ATR, compared against what a tighter vs. wider real
+        # stop distance would imply — confirms the division direction is
+        # correct (cap = budget / distance, not the reverse).
+        moderate = [100.0 + (i % 2) * 2.0 for i in range(VOLATILITY_CANDLE_COUNT)]
+        read = _volatility_sizing(_Proposal(price=100.0), _FakeProvider(moderate), equity=100_000.0, risk_limits=RiskLimits())
+        assert read.stop_distance is not None and read.risk_budget_usd is not None
+        assert read.volatility_cap_quantity == round(read.risk_budget_usd / read.stop_distance, 4)
+
+
+class TestBuildPositionSizingVolatility:
+    """End-to-end: does the real ATR-based cap actually narrow
+    build_position_sizing()'s final_quantity when it's the tightest real
+    constraint, and never widen it otherwise?"""
+
+    def _build(self, **overrides):
+        wide_open = RiskLimits(
+            tierAllocation=TierAllocationLimits(tier1Pct=100.0, tier2Pct=100.0, tier3Pct=100.0, tier4Pct=100.0),
+            maxWeeklyDeploymentPct=100.0,
+            cashReservePct=0.0,
+        )
+        defaults = dict(
+            proposal=_Proposal(),
+            ceiling_quantity=1000.0,
+            expected_value=_expected_value(),
+            decision_score=_decision_score(95.0, passed=True),
+            portfolio=_portfolio(),
+            portfolio_heat=_heat(),
+            risk_limits=wide_open,
+            risk_warnings=[],
+            sim_day=1,
+            provider=_FakeProvider(),
+        )
+        defaults.update(overrides)
+        return build_position_sizing(**defaults)
+
+    def test_a_wide_real_atr_stop_becomes_the_binding_constraint(self) -> None:
+        # A large, real ATR (extreme volatility) implies a wide stop
+        # distance, which — at the standard 2% risk budget — caps
+        # quantity far below the wide-open tier/weekly/heat/cash limits.
+        extreme = [100.0 + (i % 2) * 50.0 for i in range(VOLATILITY_CANDLE_COUNT)]
+        result = self._build(provider=_FakeProvider(extreme))
+        assert result.volatility_sizing.available is True
+        assert result.reduced_from_ceiling is True
+        assert result.final_quantity == result.volatility_sizing.volatility_cap_quantity
+        assert "volatility risk budget" in result.detail
+
+    def test_a_calm_real_atr_stop_never_widens_beyond_other_real_caps(self) -> None:
+        calm = [100.0 + (i % 2) * 0.01 for i in range(VOLATILITY_CANDLE_COUNT)]
+        result = self._build(ceiling_quantity=10.0, provider=_FakeProvider(calm))
+        # ceiling_quantity itself (10.0) still bounds everything -- a
+        # generous volatility cap must never push final_quantity ABOVE
+        # what the rest of the engine already allowed.
+        assert result.final_quantity <= 10.0
+
+    def test_no_real_candle_history_leaves_the_other_caps_fully_in_control(self) -> None:
+        result = self._build(ceiling_quantity=10.0, provider=_FakeProvider([], raise_for_missing=True))
+        assert result.volatility_sizing.available is False
+        # Nothing fabricated -- the engine falls back to its other real,
+        # already-established caps exactly as it did before this feature.
+        assert result.final_quantity == 10.0
+        assert result.reduced_from_ceiling is False
