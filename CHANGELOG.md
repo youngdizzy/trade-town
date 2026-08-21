@@ -32,6 +32,30 @@ development milestones, not semver releases.
   running save's Quant Research Lab tab shows 13 real experiments on file, all `inconclusive`, 0
   rejected/promoted.
 
+- **CEO directive "Quant Research Factory / Strategy Discovery Engine," Phase 14/16: prior-outcome-aware
+  duplicate detection** (backend: `backend/app/schemas.py`, `backend/app/quant_research_lab.py`,
+  `backend/tests/test_quant_research_lab.py`; frontend: `frontend/src/types.ts`,
+  `frontend/src/ui/components/CommandCenter/panels/sandbox/QuantResearchLabView.tsx`): a research-first
+  finding reshaped this increment before any code was written — there is no automated hypothesis-
+  generation loop anywhere in this codebase to attach memory-consultation to (every experiment is filed
+  by explicit CEO/agent action, never auto-proposed), so building one to satisfy Phase 16's literal
+  framing would have meant inventing a fabricated idea generator. The honest, real point where prior-
+  research feedback can reach a researcher without fabricating anything is `find_similar_experiments()`,
+  already called automatically on every filing — it already found real near-duplicates but never surfaced
+  what happened to them. New: `QuantResearchExperimentSimilarity` gained `outcome`/`outcomeReason`, copied
+  through from the matched experiment's own already-real fields, never recomputed. A near-duplicate filing
+  now shows inline whether the prior attempt was `rejected` (and why) rather than requiring a separate
+  click-through — directly closing "do not repeatedly rediscover the same failed idea."
+
+  Rendered as an explicit red "⚠ REJECTED — this idea already failed" line for rejected matches, a neutral
+  outcome pill otherwise. 2 new backend tests. Full backend suite (2535 passed), `mypy app/`,
+  `ruff check app/ tests/` clean — no backward-compat concern (response-only type, never persisted).
+  `tsc -b --noEmit`, `eslint`, `vite build` clean. Live-verified via Command Center screenshot: a real
+  freshly-filed near-duplicate experiment renders six real prior matches, each with a real "Prior outcome"
+  pill. Deliberately not attempted: the fuller Phase 16 ask (an automated hypothesis-generation loop that
+  learns from outcomes) remains blocked by the real absence of any generation mechanism to attach it to —
+  a structural blocker, not a convenience cut.
+
 - **CEO directive "Portfolio Construction, Capital Allocation & Execution Realism," Phase 1 (audit) +
   Increment 1 (live strategy-position attribution + real exposure reads)** (backend:
   `backend/app/schemas.py`, `backend/app/state.py`, `backend/app/portfolio_intelligence.py`,

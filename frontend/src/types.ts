@@ -1701,6 +1701,11 @@ export interface QuantResearchExperimentSimilarity {
   hypothesis: string;
   overlapScore: number;
   reason: string;
+  /** CEO directive "Quant Research Factory / Strategy Discovery Engine," Phase 14/16 — the matched
+   * experiment's own real outcome, copied through so a near-duplicate filing surfaces "this was already
+   * REJECTED, here's why" rather than just "a duplicate exists." */
+  outcome: QuantResearchOutcome;
+  outcomeReason: string;
 }
 
 export interface SubmitQuantResearchExperimentResult {

@@ -4447,12 +4447,27 @@ class QuantResearchExperimentSimilarity(CamelModel):
     persisted experiment — see app/quant_research_lab.py's
     `find_similar_experiments()` for the exact (simple, disclosed
     word-overlap) heuristic. Never a claim of semantic/NLP
-    understanding of the hypothesis text."""
+    understanding of the hypothesis text.
+
+    CEO directive "Quant Research Factory / Strategy Discovery Engine,"
+    Phase 14/16 — `outcome`/`outcome_reason` are the matched
+    experiment's own already-real, already-computed fields, copied
+    here (never recomputed) so a CEO/agent sees not just "this looks
+    similar" but "and it was already REJECTED, here's why" before
+    spending real compute re-testing a known-failed idea — the
+    directive's own "do not repeatedly rediscover the same failed
+    idea." No automated hypothesis-generation loop exists in this
+    codebase to attach memory-consultation to (every experiment is
+    filed by explicit CEO/agent action, never auto-proposed) — this is
+    the one honest, real point where prior research outcome feedback
+    can reach whoever is about to file a new one."""
 
     experiment_id: str = Field(alias="experimentId")
     hypothesis: str
     overlap_score: float = Field(alias="overlapScore")
     reason: str
+    outcome: QuantResearchOutcome
+    outcome_reason: str = Field(alias="outcomeReason")
 
 
 class SubmitQuantResearchExperimentResult(CamelModel):

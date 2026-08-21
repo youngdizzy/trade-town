@@ -23,6 +23,13 @@ with an exact match on `definition_id` + `timeframe` (the same compiled
 strategy re-tested is always flagged, regardless of hypothesis wording).
 This is NOT a semantic/NLP similarity claim; `reason` always discloses
 exactly which signal fired.
+
+CEO directive "Quant Research Factory / Strategy Discovery Engine,"
+Phase 14/16 — each match now also carries the matched experiment's own
+real `outcome`/`outcomeReason`, so a CEO/agent filing new research sees
+not just "this looks similar" but "and it was already REJECTED, here's
+why" before spending real compute re-testing a known-failed idea. Real
+data already computed for the matched experiment, never recomputed.
 """
 from __future__ import annotations
 
@@ -115,6 +122,8 @@ def find_similar_experiments(existing: list[QuantResearchExperiment], *, hypothe
                     hypothesis=experiment.hypothesis,
                     overlapScore=overlap,
                     reason=f"Same compiled strategy ({definition_id}) and timeframe ({timeframe}) already tested in experiment {experiment.id}.",
+                    outcome=experiment.outcome,
+                    outcomeReason=experiment.outcome_reason,
                 )
             )
         elif overlap >= HYPOTHESIS_OVERLAP_THRESHOLD:
@@ -124,6 +133,8 @@ def find_similar_experiments(existing: list[QuantResearchExperiment], *, hypothe
                     hypothesis=experiment.hypothesis,
                     overlapScore=overlap,
                     reason=f"Hypothesis wording overlaps {overlap * 100:.0f}% (word-level, not semantic) with already-filed experiment {experiment.id}.",
+                    outcome=experiment.outcome,
+                    outcomeReason=experiment.outcome_reason,
                 )
             )
     return matches

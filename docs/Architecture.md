@@ -12888,18 +12888,68 @@ tab confirms the new overview renders correctly against real data (13
 real experiments on file, all currently `inconclusive`, 0
 rejected/promoted — an honest current snapshot, not staged data).
 
+**Increment 2 — Phase 14/16, prior-outcome-aware duplicate detection
+(this pass).** A research-first finding reshaped this increment's scope
+before any code was written: there is no automated hypothesis-
+generation loop anywhere in this codebase to attach memory-consultation
+to — every `QuantResearchExperiment` is filed by explicit CEO/agent
+action via `QuantResearchLabView.tsx`, never auto-proposed (confirmed
+by direct search: no LLM call, and `research.py`'s own symbol-scan
+rotation is a structurally different, shallower concept than strategy-
+hypothesis research). Building an automated "agent proposes a
+hypothesis" loop to satisfy Phase 16's literal framing would have meant
+inventing an LLM-free, templated/random idea generator — exactly the
+kind of fabricated-mechanism risk Absolute Rule 3 warns against
+("an agent discovered an edge merely because [something] generated a
+plausible explanation"). The honest, real point where prior-research
+feedback CAN reach a researcher without fabricating anything is the
+one that already existed: `app/quant_research_lab.py`'s
+`find_similar_experiments()`, called automatically every time a new
+experiment is filed.
+
+That function already searched every real, permanently-persisted prior
+experiment for near-duplicates (same compiled definition, or ≥60%
+hypothesis word-overlap) — but only ever surfaced "a duplicate exists,"
+never *what happened* to it. New: `QuantResearchExperimentSimilarity`
+gained `outcome`/`outcomeReason` — the matched experiment's own already-
+real, already-computed fields, copied through, never recomputed. A CEO/
+agent about to re-test a near-duplicate idea now sees, inline, whether
+it was already `rejected` (and exactly why), rather than discovering
+that only by clicking into the older experiment separately — directly
+closing the directive's own "do not repeatedly rediscover the same
+failed idea" ask, using zero new backend computation.
+
+Rendered in `QuantResearchLabView.tsx`'s existing "Possible duplicate
+research on file" block: a rejected match now gets its own explicit
+red "⚠ REJECTED — this idea already failed: [reason]" line; a
+promising/inconclusive match shows its outcome as a neutral pill. 2 new
+backend tests (`test_a_matched_similarity_carries_the_matched_
+experiments_own_real_outcome`, plus the hypothesis-overlap-match
+variant), both asserting the copied fields match the source experiment
+exactly. Full backend suite (2535 passed, up from 2533), `mypy app/`,
+`ruff check app/ tests/` clean — no backward-compat concern, since
+`QuantResearchExperimentSimilarity` is a response-only type, never
+persisted inside `GameSaveState`. `tsc -b --noEmit`, `eslint`,
+`vite build` clean. Live-verified: a Command Center screenshot shows a
+real, freshly-filed near-duplicate experiment rendering six real prior
+matches, each with its own real "Prior outcome" pill (all
+`INCONCLUSIVE` in this save — no real rejection has occurred yet to
+show the red-warning path, an honest current-state limitation, not a
+staged demo).
+
 **Deliberately not yet done** (natural next increments, not started
 here): Phase 1 (a real, structured hypothesis object with falsification
 criteria, distinct from free text); Phase 5 (extending baseline
 comparison from the EMA-pullback-only scope to the general compiled-
 strategy pipeline); Phase 10 (system-level multiple-testing/research-
-bias tracking — a self-disclosed real gap); Phase 14 extension +
-Phase 16 (wiring `FailedStrategyArchiveEntry`/institutional memory into
-`research.py`'s own idea-rotation logic, so agents stop re-suggesting
-already-failed research — the most philosophically important gap this
-audit found, tightly coupling two named phases); Phase 15 (adding
-`QuantResearchExperiment` nodes/edges to the existing knowledge graph).
-None are blocked — see this section's own audit findings above.
+bias tracking — a self-disclosed real gap); the fuller Phase 16 ask (an
+automated hypothesis-generation loop that itself learns from outcomes)
+remains genuinely blocked by the real absence of any automated
+generation mechanism to attach it to — not a convenience cut, a
+structural one, per this increment's own research-first finding; Phase
+15 (adding `QuantResearchExperiment` nodes/edges to the existing
+knowledge graph). None of the others are blocked — see this section's
+own audit findings above.
 
 ## Save format compatibility
 

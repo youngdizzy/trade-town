@@ -63,6 +63,29 @@ class TestFindSimilarExperiments:
         matches = find_similar_experiments([prior], hypothesis="Fibonacci confirmation increases expectancy rather than just trade frequency.", definition_id="unrelated-definition", timeframe="15m")
         assert matches == []
 
+    def test_a_matched_similarity_carries_the_matched_experiments_own_real_outcome(self) -> None:
+        # CEO directive "Quant Research Factory / Strategy Discovery
+        # Engine," Phase 14/16 — a CEO/agent about to file near-duplicate
+        # research must see the prior experiment's own real outcome, not
+        # just that a duplicate exists, so a known-rejected idea isn't
+        # silently re-tested.
+        definition = compile_strategy_text(name="Moon Strategy 3", source_text=_INVALID_TEXT)
+        record = run_research_experiment(definition, symbols=["AAPL"])
+        prior = file_quant_research_experiment(record, experiment_id="exp-1", hypothesis="The moon phase predicts price.", researcher_agent_id="quant", created_at="2024-01-01T00:00:00+00:00")
+        matches = find_similar_experiments([prior], hypothesis="Completely unrelated wording.", definition_id=definition.id, timeframe="1h")
+        assert len(matches) == 1
+        assert matches[0].outcome == prior.outcome
+        assert matches[0].outcome_reason == prior.outcome_reason
+
+    def test_a_hypothesis_overlap_match_also_carries_the_matched_experiments_real_outcome(self) -> None:
+        definition_a = compile_strategy_text(name="Def A", source_text=_TEXT)
+        record_a = run_research_experiment(definition_a, symbols=["AAPL"])
+        prior = file_quant_research_experiment(record_a, experiment_id="exp-1", hypothesis="The 50 EMA breakout works better during the London session", researcher_agent_id="quant", created_at="2024-01-01T00:00:00+00:00")
+        matches = find_similar_experiments([prior], hypothesis="The 50 EMA breakout works better during the London session open", definition_id="a-totally-different-definition", timeframe="4h")
+        assert len(matches) == 1
+        assert matches[0].outcome == prior.outcome
+        assert matches[0].outcome_reason == prior.outcome_reason
+
 
 class TestSubmitQuantResearchExperimentState:
     def test_a_filed_experiment_is_really_persisted_and_searchable(self) -> None:

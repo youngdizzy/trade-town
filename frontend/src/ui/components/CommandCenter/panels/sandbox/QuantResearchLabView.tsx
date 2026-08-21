@@ -309,8 +309,17 @@ export function QuantResearchLabView() {
                   <div className="rounded-sm border border-cmd-amber/40 bg-cmd-amber/5 p-1.5">
                     <div className="text-[9px] uppercase text-cmd-amber">Possible duplicate research on file</div>
                     {fileResult.similarExperiments.map((s) => (
-                      <div key={s.experimentId} className="mt-0.5 text-[9px] text-cmd-textDim">
-                        {s.experimentId}: {s.reason}
+                      <div key={s.experimentId} className="mt-1 border-t border-cmd-border/40 pt-1 text-[9px] first:mt-0 first:border-0 first:pt-0">
+                        <div className="text-cmd-textDim">
+                          {s.experimentId}: {s.reason}
+                        </div>
+                        {s.outcome === "rejected" ? (
+                          <div className="mt-0.5 text-cmd-red">⚠ REJECTED — this idea already failed: {s.outcomeReason}</div>
+                        ) : (
+                          <div className="mt-0.5 text-cmd-textDim">
+                            Prior outcome: <VerdictPill verdict={s.outcome} tones={OUTCOME_TONE} />
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
