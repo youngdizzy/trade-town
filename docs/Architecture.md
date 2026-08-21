@@ -11535,6 +11535,62 @@ already-real compiled-strategy pipeline this bridge now connects to
 (which already has real cost/slippage sensitivity and real walk-forward
 validation) — laid out here but not yet built.
 
+### CEO directive "Strategy Intelligence + Live Strategy Attribution" — Phase 13: the 50 EMA strategy's real Strategy Lab citizenship
+
+The Phase 1 identity bridge above exists to make exactly this real: the
+50 EMA breakout/pullback strategy's second half. `app/
+ema_pullback_research.py`'s existing hand-built engine already validates
+the pattern's shape works on real candle data — the same audit that
+found the identity gap also confirmed, by direct trace, that module has
+zero transaction-cost/slippage modeling anywhere in it and no
+out-of-sample split (its evidence is one full-history bar-by-bar
+replay). What it never had is real Strategy Lab MEMBERSHIP — a stage,
+a dossier, a certification path, or access to the fully-featured
+compiled-strategy validation pipeline (`/backtest-compiled-strategy`,
+`/walk-forward-validation`, `/parameter-sensitivity`, `/cost-sensitivity`,
+`/look-ahead-audit`) that already exists for any `CompiledStrategyDefinition`.
+
+New `app/strategy_registry.py::default_researchable_strategies()`
+closes that second half by composing two English-text strategy
+descriptions — the long setup and its real symmetric short inverse —
+built directly from `app/ema_pullback_research.py`'s own real constants
+(`EMA_PERIOD=50`, `MIN_PULLBACK_CANDLES=2`, `CHANDELIER_ATR_PERIOD=22`,
+`CHANDELIER_ATR_MULTIPLIER=3.0`, `REFERENCE_R_MULTIPLE=2.0`,
+`DEFAULT_TIMEFRAME="1h"`) rather than a second, hand-typed copy of the
+same numbers that could silently drift out of sync if that module's own
+parameters ever change. Each text is run through the real
+`register_researchable_strategy()` bridge — the SAME function any
+CEO/agent-triggered `POST /register-researchable-strategy` call uses —
+never a hand-authored `CompiledStrategyDefinition` bypassing the real
+compiler. If the real compiler ever fails to reach `status ==
+"compiled"` for either direction (e.g. a future change to `app/
+strategy_compiler.py`'s vocabulary), this seed step raises loudly at
+startup rather than silently shipping a broken or entirely absent
+strategy — a real regression guard, verified by
+`tests/test_strategy_registry.py`'s own `TestDefaultResearchableStrategies`.
+
+Wired into `app/state.py`'s `default_state()` (the one real fresh-game
+factory — confirmed via a repo-wide grep, the only `GameSaveState(...)`
+constructor call in that file) alongside the four original hardcoded
+seed strategies, computed once and reused for both the `strategies=`
+field and the same function's `compute_company_health()` call so
+neither independently re-generates a second, potentially-inconsistent
+list. A brand-new game now starts with six real Strategy Lab strategies
+— the original four (still real tracking-only ideas with no represented
+trading logic, unchanged) plus `50-ema-breakout-pullback-long`/`-short`,
+both of which have real, compiled, immediately-backtestable rules
+behind them from the moment the game starts. Existing saves are
+completely unaffected — `default_state()` only runs for a genuinely new
+game; loading an existing save never re-seeds strategies.
+
+**Deliberately not yet done, disclosed rather than silently skipped**:
+real transaction-cost/slippage evidence and a real out-of-sample/
+walk-forward comparison for this exact strategy, using the now-connected
+`/cost-sensitivity` and `/walk-forward-validation` endpoints — these
+already exist and are real for any `CompiledStrategyDefinition`, so
+running them against the newly-seeded 50 EMA definitions is real,
+available, low-risk follow-up work, not a new engine to build.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

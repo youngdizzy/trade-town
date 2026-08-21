@@ -7,6 +7,32 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Strategy Intelligence + Live Strategy Attribution," Phase 13: the 50 EMA
+  breakout/pullback strategy is now real Strategy Lab citizenship, on by default for every new
+  game** (backend: `backend/app/strategy_registry.py`, `backend/app/state.py`,
+  `backend/tests/test_strategy_registry.py`): the directive's own Phase 13 asked to "encode the
+  previously supplied strategy as an explicit research strategy rather than hard-coding it into the
+  trading brain." `app/ema_pullback_research.py`'s existing hand-built engine already validates the
+  shape works (real, disclosed gaps: no transaction costs/slippage, no out-of-sample split anywhere in
+  that module — confirmed by the same Phase 1 audit) — this closes the OTHER half: real Strategy Lab
+  membership. New `default_researchable_strategies()` composes the long AND the symmetric short setup
+  as English text, using `app/ema_pullback_research.py`'s own real constants directly
+  (`EMA_PERIOD`, `MIN_PULLBACK_CANDLES`, `CHANDELIER_ATR_PERIOD`/`_MULTIPLIER`,
+  `REFERENCE_R_MULTIPLE`, `DEFAULT_TIMEFRAME` — never a second, independently-typed copy of the same
+  numbers that could silently drift out of sync), then runs it through the exact same
+  `register_researchable_strategy()` (Phase 1) any CEO/agent-triggered call would use — never a
+  hand-authored `CompiledStrategyDefinition`. Raises loudly at seed time if the real compiler ever
+  fails to reach `status == "compiled"` for either direction, rather than silently shipping a broken or
+  absent strategy. Wired into `app/state.py`'s `default_state()` alongside the four original seed
+  strategies — a brand-new game now starts with 6 real Strategy Lab strategies, two of which
+  (`50-ema-breakout-pullback-long`/`-short`) already have real, compiled, immediately-backtestable
+  rules behind them via the existing `/backtest-compiled-strategy`, `/walk-forward-validation`,
+  `/cost-sensitivity`, and `/look-ahead-audit` endpoints — none of which needed a single new line of
+  computation. Existing saves are unaffected (this only changes what a NEW game starts with). 3 new
+  tests verify both directions actually compile with the real chandelier stop/2R target and are real
+  directional mirrors of each other; 2 existing tests updated for the new default roster. Full backend
+  suite, `mypy app/` (176 files), `ruff check app/ tests/` all clean.
+
 - **CEO directive "Strategy Intelligence + Live Strategy Attribution," Phase 1: the real Strategy
   Lab \<-> CompiledStrategyDefinition identity bridge** (backend: `backend/app/schemas.py`,
   `backend/app/strategy_registry.py`, `backend/app/state.py`, `backend/app/routers/sandbox.py`,
