@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useGameStore } from "@/ui/hooks/useGameStore";
 import { api } from "@/net/api";
 import { AGENT_IDS } from "@/types";
 import type { AgentId, CompiledStrategyDefinition, QuantResearchExperiment, StrategyTournamentResult } from "@/types";
@@ -32,6 +33,89 @@ const REGIME_STABILITY_TONE: Record<string, "green" | "amber" | "red" | "purple"
 
 function VerdictPill({ verdict, tones }: { verdict: string; tones: Record<string, "green" | "amber" | "red" | "purple"> }) {
   return <StatusPill tone={tones[verdict] ?? "neutral"}>{verdict.replace(/_/g, " ")}</StatusPill>;
+}
+
+// CEO directive "Quant Research Factory / Strategy Discovery Engine,"
+// Phase 17 — a strategy whose compiledDefinitionId matches a filed
+// experiment's real definitionId and has since reached at least this
+// stage is a real, verifiable "promoted from research" case — not a
+// fabricated status, since Strategy.stage is itself already the real,
+// evidence-gated pipeline (app/sandbox.py's STAGE_ORDER).
+const PROMOTED_STAGES = new Set(["paper_trading", "limited_live_capital", "company_review", "approved"]);
+
+/**
+ * CEO directive "Quant Research Factory / Strategy Discovery Engine,"
+ * Phase 17 — a real CEO-facing overview, not another giant tab. Per
+ * the directive's own research-first audit: this codebase has no
+ * PROPOSED/QUEUED/RUNNING concept (every experiment resolves
+ * synchronously the moment it's filed — app/quant_research_lab.py's
+ * `_classify_outcome()` runs inline), so this never fabricates a queue
+ * or an in-progress state — it reads the real, already-persisted
+ * `outcome` on every filed `QuantResearchExperiment` instead, plus a
+ * real cross-reference against `Strategy.compiledDefinitionId` for
+ * which research has genuinely been promoted onward.
+ */
+function ResearchFactoryOverview() {
+  const { strategies } = useGameStore();
+  const [experiments, setExperiments] = useState<QuantResearchExperiment[] | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    api
+      .searchQuantResearchExperiments()
+      .then(setExperiments)
+      .finally(() => setLoading(false));
+  }, []);
+
+  if (loading) return <Glass className="p-3"><EmptyState>Loading…</EmptyState></Glass>;
+  if (experiments === null) return null;
+
+  const promising = experiments.filter((e) => e.outcome === "promising");
+  const rejected = experiments.filter((e) => e.outcome === "rejected");
+  const inconclusive = experiments.filter((e) => e.outcome === "inconclusive");
+  const promotedDefinitionIds = new Set(strategies.filter((s) => s.compiledDefinitionId !== null && PROMOTED_STAGES.has(s.stage)).map((s) => s.compiledDefinitionId));
+  const promoted = experiments.filter((e) => promotedDefinitionIds.has(e.record.definitionId));
+  const recentRejections = [...rejected].slice(0, 5);
+
+  return (
+    <Glass className="border border-cmd-purple/30 p-3">
+      <div className="mb-1.5 flex items-center justify-between">
+        <TerminalLabel>Research Factory Overview</TerminalLabel>
+        <span className="text-[9px] text-cmd-textDim">{experiments.length} experiment{experiments.length === 1 ? "" : "s"} on file</span>
+      </div>
+      <div className="text-[9px] text-cmd-textDim">
+        Research runs synchronously — every filed experiment resolves the instant it's submitted. There is no queue or in-progress state to report honestly.
+      </div>
+      <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 sm:grid-cols-4">
+        <DataRow label="Promising" value={promising.length} valueClassName="text-cmd-green" />
+        <DataRow label="Rejected" value={rejected.length} valueClassName="text-cmd-red" />
+        <DataRow label="Inconclusive" value={inconclusive.length} valueClassName="text-cmd-amber" />
+        <DataRow label="Promoted Onward" value={promoted.length} valueClassName="text-cmd-cyan" />
+      </div>
+      {experiments.length === 0 ? (
+        <EmptyState>No research filed yet — compile a definition below and file it as an experiment to start the record.</EmptyState>
+      ) : (
+        <>
+          <div className="mt-2 border-t border-cmd-border/50 pt-2 text-[9px] uppercase text-cmd-textDim">Recent Rejections</div>
+          {recentRejections.length === 0 ? (
+            <p className="mt-1 text-[9px] text-cmd-textDim">Nothing rejected yet.</p>
+          ) : (
+            <div className="mt-1 space-y-1">
+              {recentRejections.map((e) => (
+                <div key={e.id} className="rounded-sm border border-cmd-red/30 bg-cmd-red/5 p-1.5 text-[9px]">
+                  <div className="flex items-center justify-between">
+                    <span className="text-cmd-text">{e.record.definitionName}</span>
+                    <span className="text-cmd-textDim">{e.researcherAgentId}</span>
+                  </div>
+                  <div className="mt-0.5 text-cmd-textDim">{e.outcomeReason}</div>
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+    </Glass>
+  );
 }
 
 /**
@@ -135,6 +219,8 @@ export function QuantResearchLabView() {
 
   return (
     <div className="space-y-3">
+      <ResearchFactoryOverview />
+
       <Glass className="p-3">
         <TerminalLabel>Compile a Definition</TerminalLabel>
         <p className="mt-1 text-[9px] text-cmd-textDim">

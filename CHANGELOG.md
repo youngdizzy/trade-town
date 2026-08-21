@@ -7,6 +7,31 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Quant Research Factory / Strategy Discovery Engine," Phase 1 (audit) + Phase 17
+  (Research Factory Overview)** (frontend:
+  `frontend/src/ui/components/CommandCenter/panels/sandbox/QuantResearchLabView.tsx`): a research-agent
+  audit of this 20-phase directive found most of the "build a disciplined, adversarial research
+  pipeline" ask already real: `strategy_compiler.py` (deterministic compiler), `strategy_engine.py`/
+  `cost_sensitivity.py` (real backtesting), `walk_forward.py` (real, structurally no-look-ahead rolling
+  windows), `parameter_sensitivity.py` (real one-at-a-time robustness sweep), `strategy_tournament.py`/
+  `strategy_lab.py` (real regime robustness + Devil's Advocate, differently named), `StrategyDossier`/
+  `StrategyTournamentEntry` (real multi-dimension scorecards, never one fabricated number), `sandbox.py`'s
+  `STAGE_ORDER` (a real, strictly evidence-gated promotion pipeline). Genuine gaps confirmed: no structured
+  hypothesis object (only free text), `research.py`'s confidence gauge is explicitly random (disclosed,
+  not derived from real analysis), no system-level multiple-testing/research-bias tracking (self-disclosed
+  in `model_validation.py` as `not_trackable_yet`), and `FailedStrategyArchiveEntry`/institutional memory
+  is never consulted by `research.py`'s own idea-rotation logic.
+
+  This pass closes the Command Center research-view gap (Phase 17) — no new backend endpoint needed, since
+  `GET /quant-research-lab/experiments` already existed. New `ResearchFactoryOverview` auto-fetches it on
+  mount and renders real aggregate counts (promising/rejected/inconclusive), a real "Promoted Onward"
+  cross-reference against `Strategy.compiledDefinitionId`/`stage`, and a Recent Rejections list — plus an
+  explicit disclosure that research runs synchronously (no fabricated queue/in-progress state).
+
+  `tsc -b --noEmit`, `eslint`, `vite build` clean. Live-verified via Command Center screenshot: the real
+  running save's Quant Research Lab tab shows 13 real experiments on file, all `inconclusive`, 0
+  rejected/promoted.
+
 - **CEO directive "Portfolio Construction, Capital Allocation & Execution Realism," Phase 1 (audit) +
   Increment 1 (live strategy-position attribution + real exposure reads)** (backend:
   `backend/app/schemas.py`, `backend/app/state.py`, `backend/app/portfolio_intelligence.py`,

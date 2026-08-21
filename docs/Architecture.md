@@ -12800,6 +12800,107 @@ attempted" item across all fourteen phases names the exact structural
 reason — a real missing data source, a real absent mechanism, or a real
 risk of fabricating an unstated assumption — never a convenience cut.
 
+## CEO directive "Quant Research Factory / Strategy Discovery Engine"
+
+**Phase 1 — architecture audit (research agent, before any code).** A
+20-phase directive asking TradeTown to build a disciplined, adversarial
+research pipeline (idea → hypothesis → formal rules → backtest →
+adversarial review → out-of-sample → walk-forward → paper → promotion),
+never fabricating research results and never auto-promoting on a
+promising backtest alone. The audit found this codebase already
+substantially further along than the directive's own framing assumed —
+most of the "build this" asks are already real, evidence-gated
+infrastructure from prior directives, just not always under the name
+the new directive uses:
+
+**Already fully built** (confirmed by direct citation, not assumed):
+strategy research language (`app/strategy_compiler.py` — a real
+deterministic regex compiler, never an LLM, with disclosed vocabulary
+gaps); backtesting (`app/strategy_engine.py`/`app/cost_sensitivity.py` —
+real P&L/win-rate/expectancy/profit-factor/drawdown/Sharpe/Sortino/
+Calmar, real transaction-cost/slippage friction); out-of-sample/
+walk-forward (`app/walk_forward.py` — genuine disjoint, non-overlapping,
+chronological rolling windows, structurally no-look-ahead); parameter
+robustness (`app/parameter_sensitivity.py` — a real one-at-a-time sweep
+checking expectancy sign-agreement across a neighborhood, never
+recommending a "best" point); regime robustness
+(`strategy_tournament.py`'s `_regime_stability()` +
+`strategy_lab.py::compute_strategy_regime_test()` — both real,
+evidence-gated); Devil's Advocate (`sandbox.py`'s
+`_devils_advocate_verdict()` + `strategy_lab.py`'s department opinion —
+functionally equivalent, differently named); strategy scorecard
+(`StrategyDossier`/`StrategyTournamentEntry` — explicit multi-dimension
+views with a documented "NEVER A FABRICATED COMPOSITE SCORE" rule);
+promotion pipeline (`sandbox.py`'s `STAGE_ORDER`/`_advance()` — strictly
+evidence-gated, no skip, no auto-promotion); live/paper safety
+(confirmed: research code has no path to live/paper state at all).
+
+**Already partially built** (real, scoped gaps, not full absences):
+hypothesis abstraction (`QuantResearchExperiment.hypothesis` is real
+free text, never a structured falsification-criteria/mechanism object);
+idea generation (`app/research.py`'s confidence gauge is explicitly
+`random.uniform(...)`, disclosed as not derived from real analysis —
+the shallowest real gap in the whole audit); experiment tracking
+(`ResearchExperimentRecord`/`QuantResearchExperiment` already real and
+persisted, missing only a random-seed field and a fuller lifecycle
+enum — everything actually runs synchronously, so PROPOSED/QUEUED/
+RUNNING would be fabricated states); baseline comparison (a real
+confirmed-vs-naive baseline exists, but scoped only to the one
+hand-built EMA-pullback reference strategy, not the general pipeline);
+rejection memory (`FailedStrategyArchiveEntry` is real and permanent,
+but strategy-level only, and — confirmed by direct grep — never
+consulted by `research.py`'s own idea-rotation logic); knowledge graph
+(`app/knowledge_graph.py` is real with real node/edge types, but
+`QuantResearchExperiment`/`ResearchExperimentRecord` have zero presence
+in it); Command Center research view (`QuantResearchLabView.tsx`
+already fetches the full experiment list via a real, already-existing
+`GET /quant-research-lab/experiments` endpoint through a manual "Load
+All" button, but rendered only as a flat searchable list, never an
+aggregate CEO overview).
+
+**Genuine gaps** (nothing exists, confirmed by direct search):
+multiple-testing/research-bias tracking at the system level
+(`model_validation.py` itself already discloses this exact gap as
+`not_trackable_yet`); agent learning from research outcomes (zero
+mechanism feeds `institutional_memory.py`/`FailedStrategyArchiveEntry`
+back into `research.py`'s hypothesis/topic selection).
+
+**Increment 1 — Phase 17, Research Factory Overview (this pass).**
+Closes the Command Center research-view gap without a new tab or a new
+backend endpoint — `ResearchFactoryOverview` (`QuantResearchLabView.tsx`)
+auto-fetches the same already-existing `searchQuantResearchExperiments()`
+call on mount (previously only reachable via a manual "Load All"
+button at the bottom of the tab) and renders real, computed-fresh
+aggregate counts (promising/rejected/inconclusive), a real "Promoted
+Onward" cross-reference (a `Strategy` whose `compiledDefinitionId`
+matches a filed experiment's `record.definitionId` and has since
+reached `paper_trading` or later — real evidence, not a fabricated
+status), and a Recent Rejections list surfacing each real
+`outcomeReason`. Explicitly discloses, rather than fabricates, the
+real absence of a queue: "Research runs synchronously — every filed
+experiment resolves the instant it's submitted. There is no queue or
+in-progress state to report honestly" — matching the Phase 1 audit's
+own finding that PROPOSED/QUEUED/RUNNING don't exist in this codebase.
+
+`tsc -b --noEmit`, `eslint`, `vite build` clean. Live-verified: a
+Command Center screenshot of the real running save's Quant Research Lab
+tab confirms the new overview renders correctly against real data (13
+real experiments on file, all currently `inconclusive`, 0
+rejected/promoted — an honest current snapshot, not staged data).
+
+**Deliberately not yet done** (natural next increments, not started
+here): Phase 1 (a real, structured hypothesis object with falsification
+criteria, distinct from free text); Phase 5 (extending baseline
+comparison from the EMA-pullback-only scope to the general compiled-
+strategy pipeline); Phase 10 (system-level multiple-testing/research-
+bias tracking — a self-disclosed real gap); Phase 14 extension +
+Phase 16 (wiring `FailedStrategyArchiveEntry`/institutional memory into
+`research.py`'s own idea-rotation logic, so agents stop re-suggesting
+already-failed research — the most philosophically important gap this
+audit found, tightly coupling two named phases); Phase 15 (adding
+`QuantResearchExperiment` nodes/edges to the existing knowledge graph).
+None are blocked — see this section's own audit findings above.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing
