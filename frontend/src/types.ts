@@ -1663,8 +1663,21 @@ export interface ResearchExperimentRecord {
   lookAheadAudit: LookAheadAuditResult;
   overfittingDiagnosis: OverfittingDiagnosis;
   conclusion: string;
+  /** CEO directive "Quant Research Factory / Strategy Discovery Engine," Phase 5 — a real, per-symbol
+   * buy-and-hold price-return baseline over the same real candle window `backtest` already tested.
+   * Deliberately NOT blended with `backtest`'s own R-multiple-based stats into one "beat the market"
+   * number (different units) — real regime context only, never a performance comparison. */
+  buyAndHoldBaseline: BuyAndHoldBaseline[];
   dataHonestyNote: string;
   generatedAt: string;
+}
+
+export interface BuyAndHoldBaseline {
+  symbol: string;
+  startPrice: number;
+  endPrice: number;
+  returnPct: number;
+  candleCount: number;
 }
 
 // CEO directive "Professional Quant Firm Phase," Feature 39 — a real

@@ -77,6 +77,11 @@ class TestRunResearchExperimentIntegration:
         assert record.overfitting_diagnosis.walk_forward_verdict == record.walk_forward.verdict
         assert record.overfitting_diagnosis.parameter_sensitivity_verdict == record.parameter_sensitivity.verdict
         assert record.overfitting_diagnosis.cost_sensitivity_verdict == record.cost_sensitivity.verdict
+        # Phase 5 — a real buy-and-hold baseline, one entry per symbol tested,
+        # computed independently of whether the strategy itself found any trades.
+        assert [b.symbol for b in record.buy_and_hold_baseline] == ["AAPL", "MSFT"]
+        for baseline in record.buy_and_hold_baseline:
+            assert baseline.candle_count == 6000
 
     def test_an_invalid_definition_still_produces_a_full_record_with_every_axis_honestly_refusing(self) -> None:
         definition = compile_strategy_text(name="x", source_text="Buy when the moon is full.")

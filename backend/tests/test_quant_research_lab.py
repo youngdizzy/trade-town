@@ -173,6 +173,18 @@ class TestQuantResearchExperimentBackwardCompat:
         restored = QuantResearchExperiment.model_validate(old_save_shape)
         assert restored.family_experiment_count is None
 
+    def test_an_experiment_persisted_before_buy_and_hold_baseline_existed_still_validates(self) -> None:
+        from app.schemas import QuantResearchExperiment
+
+        definition = compile_strategy_text(name="Old Save Strategy 3", source_text=_TEXT)
+        record = run_research_experiment(definition, symbols=["AAPL"])
+        old_save_shape = file_quant_research_experiment(
+            record, experiment_id="exp-old-3", hypothesis="Old-format hypothesis.", researcher_agent_id="quant", created_at="2024-01-01T00:00:00+00:00"
+        ).model_dump(by_alias=True)
+        del old_save_shape["record"]["buyAndHoldBaseline"]
+        restored = QuantResearchExperiment.model_validate(old_save_shape)
+        assert restored.record.buy_and_hold_baseline == []
+
 
 class TestCountExperimentsForFamily:
     """CEO directive "Quant Research Factory / Strategy Discovery

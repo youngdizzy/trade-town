@@ -4360,6 +4360,24 @@ class OverfittingDiagnosis(CamelModel):
     cost_sensitivity_verdict: Literal["cost_resilient", "cost_sensitive", "insufficient_data"] = Field(alias="costSensitivityVerdict")
 
 
+class BuyAndHoldBaseline(CamelModel):
+    """CEO directive "Quant Research Factory / Strategy Discovery
+    Engine," Phase 5 — one real symbol's buy-and-hold percent price
+    return over a real (mock) candle window, computed purely from
+    `app.market_data.market_data_provider.get_candles()`'s own real
+    first-close/last-close prices. No strategy logic, no position
+    sizing, no trades — the simplest possible honest baseline. See
+    app/baseline_comparison.py for the real, disclosed reason this is
+    never blended with a strategy's own R-multiple-based stats into one
+    number."""
+
+    symbol: str
+    start_price: float = Field(alias="startPrice")
+    end_price: float = Field(alias="endPrice")
+    return_pct: float = Field(alias="returnPct")
+    candle_count: int = Field(alias="candleCount")
+
+
 class ResearchExperimentRecord(CamelModel):
     """CEO directive "...Quant Intelligence + Market Analysis Completion
     Phase (Next Research + Validation Pass)," item 11 — the Research
@@ -4400,6 +4418,17 @@ class ResearchExperimentRecord(CamelModel):
     # cost sensitivity only).
     overfitting_diagnosis: OverfittingDiagnosis = Field(alias="overfittingDiagnosis")
     conclusion: str
+    # CEO directive "Quant Research Factory / Strategy Discovery Engine,"
+    # Phase 5 — a real, per-symbol buy-and-hold price-return baseline
+    # over the exact same real (mock) candle window `backtest` above
+    # already tested. See app/baseline_comparison.py's own module
+    # docstring for why this is deliberately NOT blended into a single
+    # "beat the market by X%" number with the strategy's own R-multiple
+    # stats (different units) — its purpose is real regime context, not
+    # a performance comparison. `default_factory=list` — an experiment
+    # filed before this field existed reads an honestly empty list, not
+    # a fabricated baseline.
+    buy_and_hold_baseline: list[BuyAndHoldBaseline] = Field(default_factory=list, alias="buyAndHoldBaseline")
     data_honesty_note: str = Field(alias="dataHonestyNote")
     generated_at: str = Field(alias="generatedAt")
 

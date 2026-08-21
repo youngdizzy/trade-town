@@ -250,6 +250,8 @@ test("CEO directive 'Professional Quant Firm Phase' — the QUANT RESEARCH LAB s
   await expect(page.getByText(hypothesis).last()).toBeVisible({ timeout: 15_000 });
   // Phase 10 — a real per-strategy-family test count renders alongside the filed experiment.
   await expect(page.getByText("Family test #").first()).toBeVisible();
+  // Phase 5 — a real buy-and-hold baseline (context only) renders alongside the filed experiment.
+  await expect(page.getByText(/Buy-and-hold context:/).first()).toBeVisible();
 
   const relevantErrors = consoleErrors.filter((e) => !e.includes("favicon") && !e.includes("Failed to process file"));
   expect(relevantErrors).toEqual([]);

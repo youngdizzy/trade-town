@@ -1637,6 +1637,17 @@ five verdicts above relabeled into a real, deterministic
 `app/overfitting_diagnostics.py`'s own module docstring for the exact
 priority rule). Alongside `conclusion`, not a replacement for it.
 
+`ResearchExperimentRecord.buyAndHoldBaseline` (CEO directive "Quant
+Research Factory / Strategy Discovery Engine," Phase 5) — one
+`BuyAndHoldBaseline` per symbol tested (`symbol`, `startPrice`,
+`endPrice`, `returnPct`, `candleCount`), the real percent price return
+from the same candle window's first close to its last close, computed
+by `app/baseline_comparison.py`. Deliberately never blended with the
+backtest's own R-multiple-based stats into a single "beat the market"
+figure — different units — and exists purely as real regime context
+(was the underlying market itself strongly trending during the tested
+window).
+
 ### `POST /api/sandbox/register-strategy-version`
 
 CEO directive "Professional Quant Firm Phase," Feature 37 — real,

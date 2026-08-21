@@ -121,6 +121,35 @@ development milestones, not semver releases.
   Deliberately not attempted here: Phase 5 (general-pipeline baseline comparison) and Phase 15 (knowledge
   graph nodes/edges) remain open, tracked in `docs/Architecture.md`.
 
+- **CEO directive "Quant Research Factory / Strategy Discovery Engine," Phase 5: a real buy-and-hold
+  baseline for the general compiled-strategy pipeline** (backend: `backend/app/baseline_comparison.py` (new),
+  `backend/app/schemas.py`, `backend/app/research_experiment.py`, `backend/tests/test_baseline_comparison.py`
+  (new), `backend/tests/test_research_experiment.py`, `backend/tests/test_quant_research_lab.py`; frontend:
+  `frontend/src/types.ts`, `frontend/src/ui/components/CommandCenter/panels/sandbox/QuantResearchLabView.tsx`;
+  `frontend/tests/sandbox.spec.ts`): no buy-and-hold/market-benchmark computation existed anywhere in this
+  codebase. The only existing "baseline" concept — `app/ema_pullback_research.py`'s
+  `confirmed_vs_naive_baseline` — compares two entry-rule variants of the SAME strategy family (both use a
+  Chandelier Stop and R-multiple targets), never a market benchmark, and is hard-coded to that one reference
+  strategy.
+
+  New `compute_buy_and_hold_baseline()` re-fetches the exact same real (mock) candle window a backtest
+  already tested and reports each symbol's real first-close/last-close percent return. Deliberately never
+  blended with the strategy's own R-multiple-based expectancy into a single "beat the market by X%" figure —
+  honestly different units, since this codebase's compiled-strategy engine never simulates real position
+  sizing against a starting account balance. The real value: regime context — was the underlying market
+  itself strongly trending during the tested window, so a modest positive expectancy isn't mistaken for a
+  real edge when "anything would have worked."
+
+  New `ResearchExperimentRecord.buyAndHoldBaseline: BuyAndHoldBaseline[]` (real default `[]`, since this
+  record is nested inside the permanently persisted `QuantResearchExperiment.record`), populated by
+  `run_research_experiment()`. Rendered in `QuantResearchLabView.tsx`'s filed-result box and search-results
+  list, both explicitly labeled "context only, not a performance comparison."
+
+  6 new backend tests. Full backend suite (2551 passed, up from 2545), `mypy app/`, `ruff check app/ tests/`
+  clean. `tsc -b --noEmit`, `eslint`, `vite build` clean. Live-verified: a direct API call returned real,
+  distinct per-symbol returns for all 8 seed symbols (e.g. AAPL -7.77%, QQQ +19.83%); a fresh `sandbox.spec.ts`
+  re-run confirmed the "Buy-and-hold context:" line renders in the live UI.
+
 - **CEO directive "Portfolio Construction, Capital Allocation & Execution Realism," Phase 1 (audit) +
   Increment 1 (live strategy-position attribution + real exposure reads)** (backend:
   `backend/app/schemas.py`, `backend/app/state.py`, `backend/app/portfolio_intelligence.py`,

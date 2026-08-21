@@ -47,11 +47,21 @@ overfitting_diagnostics.py purely by relabeling the same walk-forward/
 parameter-sensitivity/cost-sensitivity verdicts `_synthesize_conclusion`
 already reads — a second, narrower lens on the same real evidence, never
 a second set of statistics.
+
+CEO directive "Quant Research Factory / Strategy Discovery Engine,"
+Phase 5 adds `buy_and_hold_baseline` — a real, per-symbol buy-and-hold
+price-return baseline over the same real candle window `backtest`
+already tested, computed by app/baseline_comparison.py. Deliberately
+never blended with `backtest`'s own R-multiple-based stats into a single
+"beat the market by X%" figure (different units — see that module's own
+docstring); it exists purely as real regime context, not a performance
+comparison.
 """
 from __future__ import annotations
 
 from datetime import datetime, timezone
 
+from app.baseline_comparison import compute_buy_and_hold_baseline
 from app.cost_sensitivity import run_cost_sensitivity
 from app.leakage_audit import audit_definition_for_look_ahead
 from app.overfitting_diagnostics import classify_overfitting_risk
@@ -124,6 +134,7 @@ def run_research_experiment(
     parameter_sensitivity = run_parameter_sensitivity(definition, symbols=resolved_symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol)
     cost_sensitivity = run_cost_sensitivity(definition, symbols=resolved_symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol)
     look_ahead_audit = audit_definition_for_look_ahead(definition, symbols=resolved_symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol)
+    buy_and_hold_baseline = compute_buy_and_hold_baseline(symbols=resolved_symbols, timeframe=timeframe, candles_per_symbol=candles_per_symbol)
 
     model_validation_verdict = backtest.model_validation.verdict if backtest.model_validation is not None else None
     conclusion = _synthesize_conclusion((model_validation_verdict, walk_forward.verdict, parameter_sensitivity.verdict, cost_sensitivity.verdict, look_ahead_audit.verdict))
@@ -145,6 +156,7 @@ def run_research_experiment(
         lookAheadAudit=look_ahead_audit,
         overfittingDiagnosis=overfitting_diagnosis,
         conclusion=conclusion,
+        buyAndHoldBaseline=buy_and_hold_baseline,
         dataHonestyNote=(
             "Every real number in this record comes from app/market_data.py's own real, procedurally-generated (seeded, reproducible) "
             "mock OHLCV series — never real historical market data, and 'candlesPerSymbol' above is this record's own honest substitute "

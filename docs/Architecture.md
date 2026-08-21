@@ -12976,15 +12976,13 @@ experiment persisted both real values exactly as typed (not just that
 the form submitted without error).
 
 **Deliberately not yet done** (natural next increments, not started
-here): Phase 5 (extending baseline comparison from the EMA-pullback-
-only scope to the general compiled-strategy pipeline); the fuller
-Phase 16 ask (an automated hypothesis-generation loop that itself
-learns from outcomes) remains genuinely blocked by the real absence of
-any automated generation mechanism to attach it to — not a convenience
-cut, a structural one, per Increment 2's own research-first finding;
-Phase 15 (adding `QuantResearchExperiment` nodes/edges to the existing
-knowledge graph). None of the others are blocked — see this section's
-own audit findings above.
+here): the fuller Phase 16 ask (an automated hypothesis-generation
+loop that itself learns from outcomes) remains genuinely blocked by
+the real absence of any automated generation mechanism to attach it
+to — not a convenience cut, a structural one, per Increment 2's own
+research-first finding; Phase 15 (adding `QuantResearchExperiment`
+nodes/edges to the existing knowledge graph). None of the others are
+blocked — see this section's own audit findings above.
 
 **Increment 4 — Phase 10, multiple-testing / research-selection-bias
 tracking.** The directive is explicit that this must never manufacture
@@ -13060,6 +13058,59 @@ via its DOM parent, rather than searching the whole page — a test-
 correctness fix only, no application behavior changed. Also added a
 `familyExperimentCount` assertion to the same test's search-results
 check. Full `sandbox.spec.ts` re-run: 4/4 passed.
+
+**Increment 5 — Phase 5, buy-and-hold baseline comparison.** The
+research audit found no buy-and-hold or market-benchmark computation
+anywhere in the codebase — the only existing "baseline" concept
+(`app/ema_pullback_research.py`'s `confirmed_vs_naive_baseline`) is a
+comparison between two entry-rule variants of the SAME strategy family
+(both use a Chandelier Stop and R-multiple targets), never a
+market benchmark, and is hard-coded to that one reference strategy
+(confirmed: `app/strategy_engine.py`, the general compiled-strategy
+backtest runner, has zero references to it).
+
+New `app/baseline_comparison.py` — `compute_buy_and_hold_baseline()`
+re-fetches the exact same real (mock) candle window a backtest already
+tested, via `market_data_provider.get_candles(symbol, timeframe,
+candles_per_symbol)` (deterministic and stable across repeated calls
+per that provider's own existing test), and reports each symbol's real
+first-close/last-close percent return. Deliberately never blended with
+the strategy's own R-multiple-based expectancy into a single "beat the
+market by X%" figure — those are honestly different units (a compiled
+strategy's backtest never simulates real position sizing against a
+starting account balance, so its stats are all per-trade R-multiples,
+never a % of account value). The real value this gives a researcher is
+regime context: was the underlying market itself strongly trending
+during the tested window, so a modest positive expectancy isn't
+mistaken for a real edge when "anything would have worked."
+
+New `ResearchExperimentRecord.buy_and_hold_baseline: list[BuyAndHoldBaseline]`
+(default `[]`, since this record is nested inside the permanently
+persisted `QuantResearchExperiment.record`), populated by
+`run_research_experiment()` alongside the other four validation axes.
+Rendered in `QuantResearchLabView.tsx` on the just-filed result box and
+in the permanent search-results list, both labeled "context only, not
+a performance comparison" so it's never mistaken for a score.
+
+6 new backend tests: `test_baseline_comparison.py` (per-symbol ordering,
+the return matches the real first/last close of the identical window,
+repeated calls read the identical series, a too-small window is
+honestly skipped rather than fabricated as 0%, an empty symbol list
+reads honestly empty); a backward-compat case in
+`TestQuantResearchExperimentBackwardCompat` (an experiment persisted
+before this field existed still validates, reading an empty list);
+plus new assertions on the existing `test_research_experiment.py`
+integration test (baseline computed independently of whether the
+strategy itself found any trades). Full backend suite (2551 passed, up
+from 2545), `mypy app/`, `ruff check app/ tests/` clean. `tsc -b
+--noEmit`, `eslint`, `vite build` clean.
+
+Live-verified: a direct `POST /api/sandbox/research-experiment` call
+against the real running dev server returned real, distinct per-symbol
+returns for all 8 seed symbols (e.g. AAPL -7.77%, QQQ +19.83%, computed
+from real seeded first/last closes, not fabricated); and a fresh
+`sandbox.spec.ts` re-run with a new assertion confirming the
+"Buy-and-hold context:" line renders in the live UI. 1/1 passed.
 
 ## Save format compatibility
 

@@ -335,6 +335,14 @@ export function QuantResearchLabView() {
                         " Repeated retesting of the same idea raises the risk that any pass is a lucky search result, not a real edge — weigh that before promoting."}
                     </div>
                   )}
+                  {fileResult.experiment.record.buyAndHoldBaseline.length > 0 && (
+                    <div className="mt-1 text-[9px] text-cmd-textDim">
+                      Buy-and-hold over the same window (context only, not a performance comparison):{" "}
+                      {fileResult.experiment.record.buyAndHoldBaseline
+                        .map((b) => `${b.symbol} ${b.returnPct >= 0 ? "+" : ""}${b.returnPct.toFixed(1)}%`)
+                        .join(", ")}
+                    </div>
+                  )}
                 </div>
                 {fileResult.similarExperiments.length > 0 && (
                   <div className="rounded-sm border border-cmd-amber/40 bg-cmd-amber/5 p-1.5">
@@ -578,6 +586,12 @@ export function QuantResearchLabView() {
                   <DataRow label="Trades" value={exp.record.backtest.overall.tradeCount} />
                   {exp.familyExperimentCount !== null && <DataRow label="Family test #" value={exp.familyExperimentCount} />}
                 </div>
+                {exp.record.buyAndHoldBaseline.length > 0 && (
+                  <div className="mt-0.5 text-cmd-textDim">
+                    Buy-and-hold context:{" "}
+                    {exp.record.buyAndHoldBaseline.map((b) => `${b.symbol} ${b.returnPct >= 0 ? "+" : ""}${b.returnPct.toFixed(1)}%`).join(", ")}
+                  </div>
+                )}
               </div>
             ))}
           </div>
