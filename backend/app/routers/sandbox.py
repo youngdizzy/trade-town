@@ -10,6 +10,7 @@ from app.cost_sensitivity import run_cost_sensitivity
 from app.ema_pullback_research import DEFAULT_CANDLES_PER_SYMBOL, DEFAULT_TIMEFRAME, run_ema_pullback_research
 from app.evaluation_simulator import compare_evaluation_policies
 from app.leakage_audit import audit_definition_for_look_ahead
+from app.market_intelligence import compute_strategy_match
 from app.parameter_sensitivity import run_parameter_sensitivity
 from app.persistence import persist_modules
 from app.research_experiment import run_research_experiment
@@ -38,6 +39,7 @@ from app.schemas import (
     StrategyExecutiveReview,
     StrategyFounderApproval,
     StrategyHallOfFameEntry,
+    StrategyMatch,
     StrategyReview,
     StrategyTournamentResult,
     SubmitQuantResearchExperimentResult,
@@ -260,6 +262,26 @@ async def strategy_executive_dashboard() -> StrategyExecutiveDashboard:
         state.strategy_failed_archive,
         sim_day=state.time.day,
     )
+
+
+@router.get("/live-strategy-eligibility", response_model=StrategyMatch)
+async def live_strategy_eligibility() -> StrategyMatch:
+    """CEO directive "Strategy Intelligence + Live Strategy Attribution,"
+    Phase 11 — "TODAY: strategies currently eligible / strategies
+    currently blocked." `app/market_intelligence.py`'s
+    `compute_strategy_match()` already computes exactly this real read
+    (which real strategies have real evidence of working, or losing,
+    under today's specific regime), but was previously only ever
+    computed once per sim-day inside `MarketIntelligenceReport` — which
+    that schema's own docstring already discloses "can be up to a day
+    stale by the time a proposal fires." This endpoint runs the exact
+    same real function fresh, against `state.market_intelligence.regime`
+    (the always-current live regime `TradeProposal`/the Gatekeeper
+    themselves actually read — see `MarketIntelligenceState`'s own
+    docstring), never a second, independently-computed regime read.
+    Read-only, computed fresh every call, nothing persisted."""
+    state = await game_state.snapshot()
+    return compute_strategy_match(state.market_intelligence.regime, state.strategies, state.strategy_reports)
 
 
 @router.get("/ema-pullback-research", response_model=EmaPullbackResearchResult)
