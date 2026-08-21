@@ -104,7 +104,10 @@ import type {
   SessionRegimeEvidenceSummary,
   RiskLimits,
   SimilarTradesSummary,
+  StrategyLiveVsBacktestSummary,
   StrategyPerformanceSummary,
+  StrategySessionPerformanceSummary,
+  StrategyTradingDiagnosticSummary,
   SymbolPerformanceSummary,
   TechnicalAnalysisRead,
   ConfluenceRead,
@@ -266,6 +269,17 @@ export const api = {
   // strategy-grouped P&L via the real Decision Vault join. Read-only,
   // computed fresh per request.
   getPerformanceByStrategy: () => request<StrategyPerformanceSummary>("/trades/performance-by-strategy"),
+  // CEO directive "Live Trade → Strategy Provenance," Phase 6 — the
+  // real strategy×session axis. Read-only, computed fresh per request.
+  getPerformanceByStrategySession: () => request<StrategySessionPerformanceSummary>("/trades/performance-by-strategy-session"),
+  // CEO directive "Live Trade → Strategy Provenance," Phase 5 — does a
+  // strategy's real live performance match its own real backtest
+  // evidence? Read-only, computed fresh per request.
+  getStrategyLiveVsBacktest: () => request<StrategyLiveVsBacktestSummary>("/trades/strategy-live-vs-backtest"),
+  // CEO directive "Live Trade → Strategy Provenance," Phase 9 — "why
+  // isn't this strategy trading live?" per strategy, diagnostic only.
+  // Read-only, computed fresh per request.
+  getStrategyTradingDiagnostics: () => request<StrategyTradingDiagnosticSummary>("/trades/strategy-trading-diagnostics"),
   // CEO directive "Next Professional Trading Firm Phase," Priority 5 —
   // Research Data Integrity. Read-only; the candle row re-checks the
   // real provider live on every request.

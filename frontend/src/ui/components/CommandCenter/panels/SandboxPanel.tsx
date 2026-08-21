@@ -1,7 +1,7 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { api } from "@/net/api";
-import type { CompiledStrategyDefinition, Strategy } from "@/types";
+import type { CompiledStrategyDefinition, Strategy, StrategyPerformanceSummary } from "@/types";
 import { EmptyState, Glass } from "../ui";
 import { StrategySidebarPanel } from "./sandbox/StrategySidebar";
 import { StrategyPipelineView } from "./sandbox/StrategyPipelineView";
@@ -16,6 +16,7 @@ import { EmaPullbackResearchView } from "./sandbox/EmaPullbackResearchView";
 import { StrategyCompilerView } from "./sandbox/StrategyCompilerView";
 import { QuantResearchLabView } from "./sandbox/QuantResearchLabView";
 import { LiveStrategyEligibilityCard } from "./sandbox/LiveStrategyEligibilityCard";
+import { StrategyTradingDiagnosticsView } from "./sandbox/StrategyTradingDiagnosticsView";
 
 const SUB_TABS = ["PIPELINE", "LIBRARY", "CERTIFICATION", "HEALTH", "EVOLUTION", "HALL OF FAME", "FAILED ARCHIVE", "DASHBOARD", "50 EMA RESEARCH", "STRATEGY COMPILER", "QUANT RESEARCH LAB"] as const;
 type SubTab = (typeof SUB_TABS)[number];
@@ -79,6 +80,15 @@ export function SandboxPanel() {
   const [selectedId, setSelectedId] = useState<string | null>(strategies[0]?.id ?? null);
   const [compilerSeed, setCompilerSeed] = useState<CompiledStrategyDefinition | null>(null);
   const [compilerSeedError, setCompilerSeedError] = useState<string | null>(null);
+  // CEO directive "Live Trade → Strategy Provenance," Phase 11 — the
+  // Strategy Library's real live-P&L column (backend/app/
+  // performance_attribution.py's compute_strategy_performance(), the
+  // same Phase 4 data already rendered in the Performance panel — never
+  // a second, independently-computed reading).
+  const [strategyPerformance, setStrategyPerformance] = useState<StrategyPerformanceSummary | null>(null);
+  useEffect(() => {
+    api.getPerformanceByStrategy().then(setStrategyPerformance).catch(() => undefined);
+  }, []);
 
   const selected = strategies.find((s) => s.id === selectedId) ?? null;
   const openStrategy = (id: string) => {
@@ -109,6 +119,8 @@ export function SandboxPanel() {
   return (
     <div className="space-y-3">
       <LiveStrategyEligibilityCard strategies={strategies} />
+
+      <StrategyTradingDiagnosticsView />
       <nav className="flex flex-wrap gap-1 rounded-sm border border-cmd-border bg-cmd-panel/60 p-1.5">
         {SUB_TABS.map((t) => (
           <button
@@ -135,6 +147,7 @@ export function SandboxPanel() {
             strategies={strategies}
             simulationResults={simulationResults}
             healthAssessments={strategyHealthAssessments}
+            livePerformance={strategyPerformance}
             onOpen={openStrategy}
             onOpenCompiledRules={openCompiledRules}
           />

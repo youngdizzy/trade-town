@@ -1,33 +1,80 @@
-import type { Strategy, StrategyHealthAssessment } from "@/types";
+import { useEffect, useState } from "react";
+import { api } from "@/net/api";
+import type { Strategy, StrategyHealthAssessment, StrategyLiveVsBacktestRead } from "@/types";
 import { strategyHealthTone } from "../../lib/derive";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../../ui";
 
+const LIVE_VS_BACKTEST_TONE: Record<StrategyLiveVsBacktestRead["verdict"], "green" | "amber" | "cyan"> = {
+  consistent_with_backtest: "green",
+  diverging_from_backtest: "amber",
+  not_enough_live_data: "cyan",
+  no_backtest_health_on_record: "cyan",
+};
+
 /**
  * v0.7 Feature 52 (Part 2) — "Live Performance Monitor," honestly
- * reframed. This codebase has no mechanism to attribute a live/paper
- * trade back to a specific Strategy object (see
- * backend/app/sandbox.py's module docstring) — there is no real live
- * P&L stream to monitor. What IS real: a recent-vs-lifetime trend read
- * over this strategy's own Market Simulation run history, re-computed
- * every time a new run completes (see
- * backend/app/strategy_lab.py's compute_strategy_health()). Shown here
- * as Strategy Health rather than under a name that implies live-trade
- * data this codebase doesn't have.
+ * reframed. What IS real: a recent-vs-lifetime trend read over this
+ * strategy's own Market Simulation run history, re-computed every time
+ * a new run completes (see backend/app/strategy_lab.py's
+ * compute_strategy_health()). Shown here as Strategy Health rather than
+ * under a name that implies a live-trade-only stream.
+ *
+ * CEO directive "Live Trade → Strategy Provenance," Phase 5 — a real
+ * live-vs-backtest comparison now sits alongside it: this docstring
+ * used to say the codebase "has no mechanism to attribute an executed
+ * trade back to a specific Strategy object" — true when Feature 52
+ * shipped, false since that directive's Phase 2. The comparison below
+ * is fetched fresh (never persisted, same CAGS convention as
+ * everything else in this panel) and only ever compares winRatePct —
+ * both real 0-100% scales; live avgPnlPct and backtest expectancyR are
+ * deliberately never forced onto one number (different units).
  */
 export function StrategyHealthView({ selected, healthAssessments }: { selected: Strategy; healthAssessments: StrategyHealthAssessment[] }) {
   const own = healthAssessments.filter((h) => h.strategyId === selected.id);
   const latest = own[own.length - 1] ?? null;
+
+  const [liveVsBacktest, setLiveVsBacktest] = useState<StrategyLiveVsBacktestRead | null | undefined>(undefined);
+  useEffect(() => {
+    let cancelled = false;
+    setLiveVsBacktest(undefined);
+    api
+      .getStrategyLiveVsBacktest()
+      .then((summary) => {
+        if (!cancelled) setLiveVsBacktest(summary.reads.find((r) => r.strategyId === selected.id) ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setLiveVsBacktest(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected.id]);
 
   return (
     <div className="space-y-3">
       <Glass className="p-3">
         <TerminalLabel>Strategy Health — real simulation performance, not live P&L</TerminalLabel>
         <p className="text-[9px] text-cmd-textDim">
-          This codebase's live/paper trading loop has no mechanism to attribute an executed trade back to a specific Strategy object — see the Pipeline tab's own note on Allocated
-          Capital. What's shown here is real: this strategy's own recent Market Simulation runs compared against its full real lifetime history, re-read every time a new run
-          completes.
+          This strategy&apos;s own recent Market Simulation runs compared against its full real lifetime history, re-read every time a new run completes.
         </p>
       </Glass>
+
+      {liveVsBacktest && (
+        <Glass className="p-3">
+          <div className="mb-1 flex items-center justify-between">
+            <TerminalLabel>Live vs. Backtest — does this strategy trade the way it tested?</TerminalLabel>
+            <StatusPill tone={LIVE_VS_BACKTEST_TONE[liveVsBacktest.verdict]}>{liveVsBacktest.verdict.replace(/_/g, " ")}</StatusPill>
+          </div>
+          <div className="grid grid-cols-2 gap-x-4">
+            <DataRow label={`Live Win Rate (${liveVsBacktest.liveTradeCount} real trade${liveVsBacktest.liveTradeCount === 1 ? "" : "s"})`} value={`${liveVsBacktest.liveWinRatePct.toFixed(0)}%`} />
+            <DataRow
+              label={liveVsBacktest.backtestRecentWinRatePct === null ? "Backtest Recent Win Rate" : `Backtest Recent Win Rate (${liveVsBacktest.backtestRecentSampleSize} runs)`}
+              value={liveVsBacktest.backtestRecentWinRatePct === null ? "—" : `${liveVsBacktest.backtestRecentWinRatePct.toFixed(0)}%`}
+            />
+          </div>
+          <p className="mt-1.5 text-[9px] text-cmd-textDim">{liveVsBacktest.detail}</p>
+        </Glass>
+      )}
 
       {!latest ? (
         <Glass className="p-3">

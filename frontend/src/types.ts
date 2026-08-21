@@ -703,6 +703,78 @@ export interface StrategyPerformanceSummary {
   updatedAt: string;
 }
 
+// CEO directive "Live Trade → Strategy Provenance," Phase 6 — the real
+// strategy×session axis. Same real Decision Vault join as
+// StrategyPerformanceRead, grouped on (strategyId, session) instead.
+export interface StrategySessionPerformanceRead {
+  strategyId: string;
+  session: TradingSession;
+  tradeCount: number;
+  winCount: number;
+  lossCount: number;
+  winRatePct: number;
+  totalPnl: number;
+  avgPnlPct: number;
+  avgWinnerPct: number | null;
+  avgLoserPct: number | null;
+  expectancyPct: number | null;
+  profitFactor: number | null;
+  avgMaePct: number;
+  avgMfePct: number;
+  bestTradePnlPct: number;
+  worstTradePnlPct: number;
+  evidenceState: SymbolPerformanceEvidenceState;
+}
+
+export interface StrategySessionPerformanceSummary {
+  reads: StrategySessionPerformanceRead[];
+  tradesExcludedNoStrategySelected: number;
+  tradesExcludedNoVaultEntry: number;
+  updatedAt: string;
+}
+
+// CEO directive "Live Trade → Strategy Provenance," Phase 5 — does a
+// strategy's real live performance match what its own real backtest
+// evidence (StrategyHealthAssessment) claimed? Compares winRatePct
+// only — both real 0-100% scales; expectancy is deliberately never
+// compared (live is percent, backtest is R-multiples — different
+// units).
+export type StrategyLiveVsBacktestVerdict = "consistent_with_backtest" | "diverging_from_backtest" | "not_enough_live_data" | "no_backtest_health_on_record";
+
+export interface StrategyLiveVsBacktestRead {
+  strategyId: string;
+  liveWinRatePct: number;
+  liveTradeCount: number;
+  backtestRecentWinRatePct: number | null;
+  backtestRecentSampleSize: number | null;
+  winRateDeltaPct: number | null;
+  verdict: StrategyLiveVsBacktestVerdict;
+  detail: string;
+}
+
+export interface StrategyLiveVsBacktestSummary {
+  reads: StrategyLiveVsBacktestRead[];
+  updatedAt: string;
+}
+
+// CEO directive "Live Trade → Strategy Provenance," Phase 9 — "why
+// isn't this strategy trading live?" per strategy. Diagnostic only.
+export type StrategyNoTradeReason = "trading_live" | "blocked_by_regime_today" | "eligible_but_never_selected" | "no_backtest_evidence_yet";
+
+export interface StrategyTradingDiagnosticRead {
+  strategyId: string;
+  strategyName: string;
+  stage: StrategyStage;
+  liveTradeCount: number;
+  reason: StrategyNoTradeReason;
+  detail: string;
+}
+
+export interface StrategyTradingDiagnosticSummary {
+  reads: StrategyTradingDiagnosticRead[];
+  updatedAt: string;
+}
+
 // CEO directive "Next Professional Trading Firm Phase," Priority 5 —
 // Research Data Integrity. Distinct from DataStatus above (which tags
 // one Candle's own live/delayed/historical/simulated/stale/error/

@@ -1,5 +1,6 @@
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
-import type { SimulationResult, Strategy, StrategyHealthAssessment } from "@/types";
+import { EventBus } from "@/game/systems/EventBus";
+import type { SimulationResult, Strategy, StrategyHealthAssessment, StrategyPerformanceSummary } from "@/types";
 import { STAGE_LABELS, strategyHealthTone } from "../../lib/derive";
 import { EmptyState, Glass, StatusPill, TerminalLabel } from "../../ui";
 
@@ -27,18 +28,33 @@ export function StrategyLibraryView({
   strategies,
   simulationResults,
   healthAssessments,
+  livePerformance,
   onOpen,
   onOpenCompiledRules,
 }: {
   strategies: Strategy[];
   simulationResults: SimulationResult[];
   healthAssessments: StrategyHealthAssessment[];
+  /** CEO directive "Live Trade → Strategy Provenance," Phase 11 — real
+   * live-trade P&L per strategy (backend/app/performance_attribution.py's
+   * compute_strategy_performance()), the same Phase 4 data already
+   * rendered in the Performance panel. `null` while loading. */
+  livePerformance: StrategyPerformanceSummary | null;
   onOpen: (id: string) => void;
   onOpenCompiledRules: (strategy: Strategy) => void;
 }) {
   return (
     <Glass className="p-3">
-      <TerminalLabel>Strategy Library — every strategy this company has ever created, nothing ever deleted</TerminalLabel>
+      <div className="mb-1 flex items-center justify-between">
+        <TerminalLabel>Strategy Library — every strategy this company has ever created, nothing ever deleted</TerminalLabel>
+        <button
+          type="button"
+          onClick={() => EventBus.emit("ui:commandCenterJump", { tab: "PERFORMANCE" })}
+          className="text-[9px] text-cmd-cyan underline decoration-dotted hover:text-cmd-text"
+        >
+          → Full Live P&amp;L Breakdown
+        </button>
+      </div>
       {strategies.length === 0 ? (
         <EmptyState>No strategies on file yet.</EmptyState>
       ) : (
@@ -52,9 +68,10 @@ export function StrategyLibraryView({
                 <th className="px-1.5 py-1.5 text-left">Stage</th>
                 <th className="px-1.5 py-1.5 text-left">Rules</th>
                 <th className="px-1.5 py-1.5 text-left">Health</th>
-                <th className="px-1.5 py-1.5 text-left">Runs</th>
-                <th className="px-1.5 py-1.5 text-left">Avg Return</th>
-                <th className="px-1.5 py-1.5 text-left">Avg Win Rate</th>
+                <th className="px-1.5 py-1.5 text-left">Backtest Runs</th>
+                <th className="px-1.5 py-1.5 text-left">Backtest Avg Return</th>
+                <th className="px-1.5 py-1.5 text-left">Backtest Avg Win Rate</th>
+                <th className="px-1.5 py-1.5 text-left">Live P&amp;L</th>
                 <th className="px-1.5 py-1.5" />
               </tr>
             </thead>
@@ -63,6 +80,7 @@ export function StrategyLibraryView({
                 const stats = aggregate(s.id, simulationResults);
                 const own = healthAssessments.filter((h) => h.strategyId === s.id);
                 const health = own[own.length - 1] ?? null;
+                const live = livePerformance?.reads.find((r) => r.strategyId === s.id) ?? null;
                 return (
                   <tr key={s.id} className={`border-b border-cmd-border/40 ${s.stage === "retired" ? "opacity-70" : ""}`}>
                     <td className="px-1.5 py-1.5">
@@ -96,6 +114,21 @@ export function StrategyLibraryView({
                       {stats.runs > 0 ? `${stats.avgReturnPct >= 0 ? "+" : ""}${stats.avgReturnPct.toFixed(1)}%` : "—"}
                     </td>
                     <td className="px-1.5 py-1.5 tabular-nums text-cmd-text">{stats.runs > 0 ? `${stats.avgWinRate.toFixed(0)}%` : "—"}</td>
+                    <td className="px-1.5 py-1.5">
+                      {live ? (
+                        <div className="tabular-nums">
+                          <span className={live.totalPnl >= 0 ? "text-cmd-green" : "text-cmd-red"}>
+                            {live.totalPnl >= 0 ? "+" : ""}
+                            {live.totalPnl.toFixed(0)}
+                          </span>
+                          <span className="text-cmd-textDim"> ({live.tradeCount} trade{live.tradeCount === 1 ? "" : "s"})</span>
+                        </div>
+                      ) : (
+                        <span className="text-cmd-textDim" title="No real live trade has been attributed to this strategy yet — the CEO must select it at decision time.">
+                          —
+                        </span>
+                      )}
+                    </td>
                     <td className="px-1.5 py-1.5">
                       <button type="button" onClick={() => onOpen(s.id)} className="rounded-sm border border-cmd-cyan/50 px-2 py-0.5 text-[9px] uppercase text-cmd-cyan hover:bg-cmd-cyan/10">
                         Open

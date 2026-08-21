@@ -1,9 +1,16 @@
 import { useEffect, useState } from "react";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { api } from "@/net/api";
-import type { EvaluationPolicyComparisonReport, Strategy, StrategyCertification, StrategyDossier } from "@/types";
+import type { EvaluationPolicyComparisonReport, Strategy, StrategyCertification, StrategyDossier, StrategyLiveVsBacktestRead } from "@/types";
 import { executiveStanceTone, experimentTierTone, strategyExecutiveActionTone, strategyLiquidityVerdictTone, strategyRegimeVerdictTone, strategyRiskRatingTone } from "../../lib/derive";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../../ui";
+
+const LIVE_VS_BACKTEST_TONE: Record<StrategyLiveVsBacktestRead["verdict"], "green" | "amber" | "cyan"> = {
+  consistent_with_backtest: "green",
+  diverging_from_backtest: "amber",
+  not_enough_live_data: "cyan",
+  no_backtest_health_on_record: "cyan",
+};
 
 /**
  * v0.7 Feature 52 (Part 1) — "Certification": the brief's Monte Carlo
@@ -29,6 +36,30 @@ export function StrategyCertificationView({ selected }: { selected: Strategy }) 
   // — null both while loading and when the strategy has no completed
   // simulation runs to bootstrap from.
   const [evaluationPolicies, setEvaluationPolicies] = useState<EvaluationPolicyComparisonReport | null>(null);
+  // CEO directive "Live Trade → Strategy Provenance," Phase 8 — real
+  // live evidence surfaced at the exact point of a CEO's manual
+  // governance decision, informational only. The audit for this phase
+  // confirmed zero automatic lifecycle logic exists anywhere keyed on
+  // live performance, and building one here would mean inventing an
+  // unauthorized mechanism this directive never asked for — this card
+  // only ever informs the CEO's own judgment call, never gates
+  // Certification or any stage transition itself.
+  const [liveVsBacktest, setLiveVsBacktest] = useState<StrategyLiveVsBacktestRead | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getStrategyLiveVsBacktest()
+      .then((summary) => {
+        if (!cancelled) setLiveVsBacktest(summary.reads.find((r) => r.strategyId === selected.id) ?? null);
+      })
+      .catch(() => {
+        if (!cancelled) setLiveVsBacktest(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selected.id]);
 
   useEffect(() => {
     let cancelled = false;
@@ -110,6 +141,20 @@ export function StrategyCertificationView({ selected }: { selected: Strategy }) 
               </div>
             ))}
           </div>
+        </Glass>
+      )}
+
+      {liveVsBacktest && (
+        <Glass className="p-3">
+          <div className="mb-1.5 flex items-center justify-between">
+            <TerminalLabel>Live Performance — informational only, never a certification requirement</TerminalLabel>
+            <StatusPill tone={LIVE_VS_BACKTEST_TONE[liveVsBacktest.verdict]}>{liveVsBacktest.verdict.replace(/_/g, " ")}</StatusPill>
+          </div>
+          <div className="grid grid-cols-2 gap-x-4">
+            <DataRow label={`Live Win Rate (${liveVsBacktest.liveTradeCount} real trade${liveVsBacktest.liveTradeCount === 1 ? "" : "s"})`} value={`${liveVsBacktest.liveWinRatePct.toFixed(0)}%`} />
+            <DataRow label="Backtest Recent Win Rate" value={liveVsBacktest.backtestRecentWinRatePct === null ? "—" : `${liveVsBacktest.backtestRecentWinRatePct.toFixed(0)}%`} />
+          </div>
+          <p className="mt-1.5 text-[9px] text-cmd-textDim">{liveVsBacktest.detail}</p>
         </Glass>
       )}
 

@@ -25,7 +25,7 @@ import { NexusManager } from "@/game/systems/NexusManager";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { EventBus } from "@/game/systems/EventBus";
 import { SettingsManager } from "@/game/systems/SettingsManager";
-import { confidenceTierTone, executiveActionTone, executiveStanceTone, formatMoney, formatPct, preTradeChecklist } from "./lib/derive";
+import { confidenceTierTone, executiveActionTone, executiveStanceTone, formatMoney, formatPct, preTradeChecklist, STAGE_LABELS } from "./lib/derive";
 import { AnimatedGrid, DataRow, Glass, Meter, StatusPill, TerminalLabel } from "./ui";
 
 const CHOICE_TONE: Record<AnalystChoice, "green" | "red" | "amber"> = { buy: "green", sell: "red", wait: "amber" };
@@ -989,11 +989,24 @@ export function ExecutiveVoting() {
                 <option value="">No strategy attributed</option>
                 {strategies.map((s) => (
                   <option key={s.id} value={s.id}>
-                    {s.name}
+                    {s.name} — {STAGE_LABELS[s.stage]}
                   </option>
                 ))}
               </select>
             </div>
+          )}
+          {/* CEO directive "Live Trade → Strategy Provenance," Phase 7 —
+              the audit for this phase found this picker had zero
+              connection to certification, stage, or live eligibility of
+              any kind. This discloses stage honestly (right in the
+              option label above) without gating selection on it: a CEO
+              can attribute any real strategy regardless of readiness —
+              "known" provenance only ever records that a real selection
+              was made, never an endorsement that the strategy was ready.
+              Full certification/health detail lives in the Strategy Lab
+              (Sandbox → Certification/Health), not duplicated here. */}
+          {strategies.length > 0 && (
+            <div className="text-[9px] text-cmd-textDim">Stage is shown for real context only — any strategy may be selected regardless of certification.</div>
           )}
 
           {/* Design Bible Chapter 70 Part 2 — "Modify": resize the pending

@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { api } from "@/net/api";
+import { EventBus } from "@/game/systems/EventBus";
 import type {
   RegimePerformanceRead,
   RegimePerformanceSummary,
@@ -9,6 +10,7 @@ import type {
   Strategy,
   StrategyPerformanceRead,
   StrategyPerformanceSummary,
+  StrategySessionPerformanceSummary,
   SymbolPerformanceRead,
   SymbolPerformanceSummary,
   TradeAttributionRecord,
@@ -73,6 +75,13 @@ export function PerformancePanel() {
   const [strategyPerformance, setStrategyPerformance] = useState<StrategyPerformanceSummary | null>(null);
   useEffect(() => {
     api.getPerformanceByStrategy().then(setStrategyPerformance).catch(() => undefined);
+  }, []);
+
+  // CEO directive "Live Trade → Strategy Provenance," Phase 6 — the
+  // real strategy×session axis, same real Decision Vault join.
+  const [strategySessionPerformance, setStrategySessionPerformance] = useState<StrategySessionPerformanceSummary | null>(null);
+  useEffect(() => {
+    api.getPerformanceByStrategySession().then(setStrategySessionPerformance).catch(() => undefined);
   }, []);
 
   const netPositive = financials.netPnl >= 0;
@@ -191,6 +200,8 @@ export function PerformancePanel() {
       <SessionRegimePerformanceSection sessionSummary={sessionPerformance} regimeSummary={regimePerformance} />
 
       <StrategyPerformanceSection summary={strategyPerformance} strategies={strategies} />
+
+      <StrategySessionPerformanceSection summary={strategySessionPerformance} strategies={strategies} />
 
       <TradeAttributionSection summary={tradeAttribution} />
 
@@ -378,8 +389,15 @@ function StrategyPerformanceSection({ summary, strategies }: { summary: Strategy
     <Glass className="p-3">
       <div className="mb-1.5 flex items-center justify-between">
         <TerminalLabel>Performance by Strategy</TerminalLabel>
-        <span className="text-[9px] text-cmd-textDim">Only trades with a CEO-selected strategy — real Decision Vault join</span>
+        <button
+          type="button"
+          onClick={() => EventBus.emit("ui:commandCenterJump", { tab: "SANDBOX" })}
+          className="text-[9px] text-cmd-cyan underline decoration-dotted hover:text-cmd-text"
+        >
+          → Strategy Library (backtest evidence, certification, health)
+        </button>
       </div>
+      <div className="mb-1.5 text-[9px] text-cmd-textDim">Only trades with a CEO-selected strategy — real Decision Vault join</div>
       {summary === null ? (
         <EmptyState>Loading…</EmptyState>
       ) : summary.reads.length === 0 ? (
@@ -431,6 +449,37 @@ function StrategyPerformanceRow({ read, label }: { read: StrategyPerformanceRead
         )}
       </div>
     </div>
+  );
+}
+
+/** CEO directive "Live Trade → Strategy Provenance," Phase 6 — the real
+ * strategy×session axis. Compact by design: only strategy/session pairs
+ * that actually have a real closed trade appear at all — no cross-
+ * product of every strategy against every session. */
+function StrategySessionPerformanceSection({ summary, strategies }: { summary: StrategySessionPerformanceSummary | null; strategies: Strategy[] }) {
+  const nameFor = (strategyId: string) => strategies.find((s) => s.id === strategyId)?.name ?? strategyId;
+  if (summary === null || summary.reads.length === 0) return null;
+  return (
+    <Glass className="p-3">
+      <div className="mb-1.5 flex items-center justify-between">
+        <TerminalLabel>Strategy Performance by Session</TerminalLabel>
+        <span className="text-[9px] text-cmd-textDim">Real Decision Vault join, cross-cut by session</span>
+      </div>
+      <div className="space-y-1">
+        {summary.reads.map((r) => (
+          <div key={`${r.strategyId}-${r.session}`} className="rounded-sm border border-cmd-border/40 bg-cmd-bg/30 px-2 py-1 text-[9px]">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="font-cmdmono text-cmd-cyan">{nameFor(r.strategyId)}</span>
+              <span className="text-cmd-purple">{r.session.replace(/_/g, " ")}</span>
+              <span className={r.totalPnl >= 0 ? "text-cmd-green" : "text-cmd-red"}>{formatMoney(r.totalPnl)}</span>
+              <span className="text-cmd-textDim">
+                {r.tradeCount} · {r.winRatePct.toFixed(0)}% win
+              </span>
+            </div>
+          </div>
+        ))}
+      </div>
+    </Glass>
   );
 }
 

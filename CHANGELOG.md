@@ -126,7 +126,41 @@ development milestones, not semver releases.
   only — feeds no score, gates nothing.
 
   17 new backend tests. Full backend suite (2466), `mypy app/` (176 files), `ruff check app/ tests/` all
-  clean. No frontend yet for any of the three — that's the next increment in this same pass.
+  clean.
+
+- **CEO directive "Live Trade → Strategy Provenance," Phases 5-11 (frontend)**:
+
+  **Phase 5** rendered in `StrategyHealthView.tsx` (Sandbox → Health) — a "Live vs. Backtest" card,
+  fixing that view's own stale claim that live-trade-to-strategy attribution didn't exist (true when
+  Feature 52 shipped, false since Phase 2). **Phase 6** rendered in `PerformancePanel.tsx` — "Strategy
+  Performance by Session," compact, `null` (not empty-state) when nothing real exists yet. **Phase 7** —
+  `ExecutiveVoting.tsx`'s strategy picker now shows each option's real stage plus a one-line "context
+  only, never gates selection" disclosure, closing the audit's "zero connection to certification/stage"
+  finding without inventing a restriction the directive never asked for. **Phase 8** —
+  `StrategyCertificationView.tsx` (the real governance decision point) gains a "Live Performance —
+  informational only, never a certification requirement" card; deliberately no automatic lifecycle logic
+  was added (the audit confirmed none exists, and building one would be an unauthorized invention).
+  **Phase 9** — new `StrategyTradingDiagnosticsView.tsx`, a persistent per-strategy diagnostic table next
+  to `LiveStrategyEligibilityCard`. **Phase 10** — two real cross-links (Performance ↔ Sandbox) via the
+  already-established `EventBus.emit("ui:commandCenterJump", ...)` mechanism (previously only used by
+  the Quick Action Dock) — zero new plumbing, a full nav restructuring of the 3-4-way scatter was
+  deliberately not attempted. **Phase 11** — `StrategyLibraryView.tsx` gains a "Live P&L" column sourced
+  from the same Phase 4 data, threaded down from `SandboxPanel.tsx` as a new prop.
+
+  `tsc -b --noEmit`, `eslint`, `vite build` all clean. Full backend suite re-confirmed (2466, unchanged —
+  no backend touched this pass). Live-verified via 6 Command Center screenshots against a real running
+  save — every new card/column/link renders its correct honest state (populated where real data exists,
+  cleanly absent where it doesn't), no console errors.
+
+  **One piece not captured live, and precisely why**: the CEO strategy picker itself needs an open,
+  pending `TradeProposal` to screenshot. `GET /api/trades/pipeline-health` showed 100 real
+  `opportunityRejections` on this save, split `liquidity_confirmation_weak`/`trade_quality_below_threshold`.
+  Temporarily zeroing `minTradeQualityScore`/`minPriorityScore` via the real `POST /api/risk-limits`
+  endpoint (then restoring them) isolated the binding constraint to `liquidity_confirmation_weak` —
+  `app/opportunity_gatekeeper.py`'s own docstring already discloses this is real and deliberate (the mock
+  candle provider rarely produces genuine liquidity-sweep patterns) and explicitly says not to weaken it
+  just because trading activity is low, so this pass didn't. The picker's own code is fully verified
+  (typecheck/lint/build clean); only its live screenshot is the disclosed gap.
 
 - **CEO directive "Strategy Intelligence + Live Strategy Attribution," Phase 11: "TODAY — Strategy
   Eligibility, Right Now"** (backend: `backend/app/routers/sandbox.py`; frontend:
