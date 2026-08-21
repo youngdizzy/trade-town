@@ -515,6 +515,20 @@ def resolve_proposal(
         outcome="pending" if order_id is not None else "undecidable",
         resolvedBy=resolved_by,
         createdAt=_now_iso(),
+        # CEO directive "Complete Trade Provenance," Part 8 —
+        # Decision-Time Snapshot. Unconditional (buy/sell/wait alike —
+        # real market context regardless of the choice made), and set
+        # here so every one of this function's three real call sites
+        # (a CEO click, an Operating Mode auto-resolution, a
+        # stale-proposal expiry) gets it for free rather than
+        # duplicating this three times. Reads the same
+        # `market_intelligence`/`current_price` this function already
+        # received as real parameters — never a second, independently
+        # computed reading of either.
+        decisionSession=market_intelligence.session.current,
+        decisionMarketRegime=market_intelligence.regime,
+        decisionPrice=current_price,
+        decisionVolatilityPct=market_intelligence.volatility.current_pct,
     )
     return portfolio, decision, record
 

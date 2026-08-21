@@ -333,6 +333,62 @@ class TestBuildVaultEntry:
         assert entry.strategy_compiled_definition_id == "50-ema-breakout-pullback-long"
         assert entry.strategy_compiled_definition_version == 2
 
+    def test_decision_time_snapshot_is_threaded_through_from_a_real_ceo_decision_record(self) -> None:
+        """CEO directive "Complete Trade Provenance," Part 8."""
+        ceo_decision = CeoDecisionRecord(
+            id="ceo-1",
+            proposalId="proposal-1",
+            symbol="NEXA",
+            category="stock",
+            aiRecommendation="buy",
+            ceoDecision="buy",
+            agreedWithAi=True,
+            decisionId="decision-proposal-1",
+            decisionSession="new_york",
+            decisionMarketRegime="strong_bull_trend",
+            decisionPrice=123.45,
+            decisionVolatilityPct=5.5,
+            createdAt=_now_iso(),
+        )
+        entry = build_vault_entry(
+            entry_id="vault-trade-1",
+            trade=_trade(),
+            decision=_decision(),
+            discipline_review=_discipline_review(),
+            market_regime="strong_bull_trend",
+            market_regime_label="Strong Bull Trend",
+            provider=MockMarketDataProvider(),
+            case_study=None,
+            meeting_log_entry=None,
+            ceo_decision=ceo_decision,
+            company_dna_change=None,
+            sim_day=5,
+        )
+        assert entry.decision_session == "new_york"
+        assert entry.decision_market_regime == "strong_bull_trend"
+        assert entry.decision_price == 123.45
+        assert entry.decision_volatility_pct == 5.5
+
+    def test_decision_time_snapshot_is_none_without_a_real_ceo_decision_record(self) -> None:
+        entry = build_vault_entry(
+            entry_id="vault-trade-1",
+            trade=_trade(),
+            decision=_decision(),
+            discipline_review=_discipline_review(),
+            market_regime="strong_bull_trend",
+            market_regime_label="Strong Bull Trend",
+            provider=MockMarketDataProvider(),
+            case_study=None,
+            meeting_log_entry=None,
+            ceo_decision=None,
+            company_dna_change=None,
+            sim_day=5,
+        )
+        assert entry.decision_session is None
+        assert entry.decision_market_regime is None
+        assert entry.decision_price is None
+        assert entry.decision_volatility_pct is None
+
     def test_evidence_and_confidence_scores_are_genuinely_different_numbers(
         self,
     ) -> None:
@@ -729,6 +785,26 @@ class TestComputeTradeReportCard:
         card = compute_trade_report_card(entry, trade_history=[trade], decisions=[decision], ceo_decisions=[ceo_decision])
         assert card.strategy_compiled_definition_id == "50-ema-breakout-pullback-long"
         assert card.strategy_compiled_definition_version == 3
+
+    def test_a_real_decision_time_snapshot_is_carried_through_to_the_report_card(self) -> None:
+        """CEO directive "Complete Trade Provenance," Part 8 — joined
+        directly from the underlying DecisionVaultEntry, not from
+        TradeAttributionRecord (which carries no market context)."""
+        entry = _vault_entry(entry_id="v1").model_copy(
+            update={
+                "decision_session": "new_york",
+                "decision_market_regime": "strong_bull_trend",
+                "decision_price": 123.45,
+                "decision_volatility_pct": 5.5,
+            }
+        )
+        trade = _trade(trade_id="trade-v1", decision_id="decision-v1")
+        decision = _decision(decision_id="decision-v1")
+        card = compute_trade_report_card(entry, trade_history=[trade], decisions=[decision], ceo_decisions=[])
+        assert card.decision_session == "new_york"
+        assert card.decision_market_regime == "strong_bull_trend"
+        assert card.decision_price == 123.45
+        assert card.decision_volatility_pct == 5.5
 
     def test_a_real_ceo_decision_record_with_no_strategy_selected_reads_unknown(self) -> None:
         entry = _vault_entry(entry_id="v1")

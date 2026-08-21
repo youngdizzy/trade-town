@@ -8,6 +8,36 @@ development milestones, not semver releases.
 ### Added
 
 - **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
+  Attribution," Part 8 (backend): Decision-Time Snapshot** (`backend/app/schemas.py`,
+  `backend/app/executive.py`, `backend/app/decision_vault.py`, `backend/tests/test_executive.py`,
+  `backend/tests/test_decision_vault.py`): research for the Part 1/2 work above (previous entry)
+  flagged this as the single most load-bearing gap in the whole directive —
+  `DecisionVaultEntry.session`/`marketRegime` are real, but computed fresh at trade **close**,
+  never at the moment a decision was actually made, so no historical trade could honestly answer
+  "what did the market look like when we decided this?"
+
+  `resolve_proposal()` (`app/executive.py`) now stamps four new `CeoDecisionRecord` fields —
+  `decisionSession`, `decisionMarketRegime`, `decisionPrice`, `decisionVolatilityPct` —
+  unconditionally (buy/sell/**wait** alike; real market context doesn't depend on what the CEO
+  chose), read once from the same `market_intelligence`/`current_price` parameters this function
+  already receives — the identical always-current state a real `TradeProposal`/the Gatekeeper
+  themselves read, never a second, independently-computed reading. Because `resolve_proposal()` is
+  the one real chokepoint all three decision paths already share (a CEO click via
+  `submit_ceo_decision()`, an Operating Mode auto-resolution, and the stale-proposal-expiry
+  auto-wait in `app/nexus.py`), this closes the gap for every decision path at once rather than
+  patching each call site separately. Threaded through to `DecisionVaultEntry`/`TradeReportCard` as
+  new fields deliberately kept **separate** from the existing close-time `session`/`marketRegime` —
+  "what it looked like when we decided" and "what it looked like when we closed" are both real and
+  both worth keeping, not a replacement of one by the other. `None` only for decisions recorded
+  before this field existed (neither `TradingSession` nor `MarketIntelligenceRegime` has an honest
+  "unknown" literal to fabricate a default from instead).
+
+  5 new backend tests (2 in `test_executive.py` — including the exact unconditional-on-wait case —
+  and 3 in `test_decision_vault.py`). Full backend suite: 2596 passed (+5), `mypy app/` (178 files)
+  clean, `ruff check app/ tests/` clean. Live-verified against the real running dev stack — the
+  real save's own decision pipeline continued ticking correctly throughout (Day 105 → 108).
+
+- **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
   Attribution," Part 1 + Part 2 (backend): Strategy Rule Snapshot** (`backend/app/schemas.py`,
   `backend/app/state.py`, `backend/app/trade_attribution.py`, `backend/app/decision_vault.py`,
   `backend/app/strategy_registry.py`, `backend/app/routers/trades.py`,

@@ -12179,11 +12179,13 @@ exactly the "giant rewrite" the directive explicitly forbids without
 its own dedicated research/design pass. Strategy compliance checking
 (Part 3 — did the executed trade actually match the strategy's rules)
 depends on that same missing generation path and is deferred with it.
-Session/regime intelligence (Parts 4-8), agent attribution (Part 9),
-capital allocation prep (Part 13), execution attribution (Part 15),
-Command Center UX (Part 16), and the data-quality/testing/live-test/
-final-audit parts (17-23) are all deferred to later phases of this
-same directive.
+Session/regime formalization (Parts 4-7 — DST-aware session
+classification, reconciling the two regime engines), agent attribution
+(Part 9), capital allocation prep (Part 13), execution attribution
+(Part 15), Command Center UX (Part 16), and the data-quality/testing/
+live-test/final-audit parts (17-23) are all deferred to later phases of
+this same directive. Part 8 (Decision-Time Snapshot) landed in the very
+next phase — see below.
 
 **Tests.** 17 new: 5 in `test_state.py` (including the exact
 immutability case above), 6 in `test_trade_attribution.py`, 2 in
@@ -12196,6 +12198,45 @@ a real closed trade with no strategy selected returns an honest
 returns a real 404. No trading/agent/market-simulation logic was
 touched — only the CEO-decision and post-trade attribution paths the
 prior provenance directive already established were extended.
+
+### Part 8 — Decision-Time Snapshot
+
+The research phase above flagged this as the single most load-bearing
+gap in the entire directive: `DecisionVaultEntry.session`/`marketRegime`
+are real, but stamped at trade **close**, never at the moment a
+decision was actually made — confirmed by that module's own docstring
+disclosing it directly. No historical trade could honestly answer "what
+did the market look like when we decided this?"
+
+`resolve_proposal()` (`app/executive.py`) is the one real chokepoint
+every decision path already shares — a CEO click
+(`submit_ceo_decision()`), an Operating Mode auto-resolution, and the
+stale-proposal-expiry auto-wait (both in `app/nexus.py`) all call it.
+Stamping the snapshot there, once, closes the gap for all three paths
+at once rather than triplicating the same four lines. Four new
+`CeoDecisionRecord` fields — `decisionSession`, `decisionMarketRegime`,
+`decisionPrice`, `decisionVolatilityPct` — are set unconditionally
+(buy/sell/**wait** alike, since real market context doesn't depend on
+what the CEO chose), read once from the same `market_intelligence`/
+`current_price` parameters `resolve_proposal()` already receives — the
+identical always-current state a real `TradeProposal`/the Gatekeeper
+themselves read, never a second, independently-computed reading.
+
+Threaded through to `DecisionVaultEntry`/`TradeReportCard` as genuinely
+**new** fields, deliberately kept separate from the existing close-time
+`session`/`marketRegime` — both are real, both answer a different
+question, neither replaces the other. `None` only for decisions
+recorded before this field existed (neither `TradingSession` nor
+`MarketIntelligenceRegime` has an honest "unknown" literal to fabricate
+a default from instead — the same convention `strategy_id` above
+already established).
+
+**Tests.** 5 new: 2 in `test_executive.py` (including the exact
+unconditional-on-"wait" case), 3 in `test_decision_vault.py`. Full
+backend suite: 2596 passed (+5), `mypy app/` (178 files) clean,
+`ruff check app/ tests/` clean. Live-verified against the real running
+dev stack — the real save's own decision pipeline continued ticking
+correctly throughout (Day 105 → 108 across this phase's work).
 
 ## CEO directive "Portfolio Construction, Capital Allocation & Execution Realism"
 

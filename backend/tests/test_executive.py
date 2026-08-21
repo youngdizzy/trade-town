@@ -236,6 +236,42 @@ class TestResolveProposal:
         assert decision.outcome == "trade"
         assert record.ceo_decision == "sell"
 
+    def test_decision_time_snapshot_is_captured_from_the_real_passed_in_market_intelligence(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """CEO directive "Complete Trade Provenance," Part 8 — real
+        session/regime/volatility context is snapshotted at the exact
+        instant of this decision, read from the same market_intelligence
+        parameter a real TradeProposal/the Gatekeeper already read, never
+        a second, independently-computed reading."""
+        monkeypatch.setattr("app.executive.evaluate_gatekeeper", self._stub_approved_verdict)
+        proposal = self._proposal()
+        portfolio = default_portfolio()
+        market_intelligence = default_market_intelligence_state().model_copy(
+            update={
+                "regime": "strong_bull_trend",
+                "session": default_market_intelligence_state().session.model_copy(update={"current": "new_york"}),
+                "volatility": default_market_intelligence_state().volatility.model_copy(update={"current_pct": 5.5}),
+            }
+        )
+        _, _, record = resolve_proposal(
+            proposal, "buy", portfolio=portfolio, risk_limits=RiskLimits(), current_price=123.45, now_sim_minutes=100, market_intelligence=market_intelligence
+        )
+        assert record.decision_session == "new_york"
+        assert record.decision_market_regime == "strong_bull_trend"
+        assert record.decision_price == 123.45
+        assert record.decision_volatility_pct == 5.5
+
+    def test_decision_time_snapshot_is_captured_unconditionally_even_on_wait(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        # Unlike strategy_id (only meaningful for buy/sell), real market
+        # context is honestly real regardless of the CEO's choice.
+        monkeypatch.setattr("app.executive.evaluate_gatekeeper", self._stub_approved_verdict)
+        proposal = self._proposal()
+        portfolio = default_portfolio()
+        _, _, record = resolve_proposal(
+            proposal, "wait", portfolio=portfolio, risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=100, market_intelligence=default_market_intelligence_state()
+        )
+        assert record.decision_session == "closed"
+        assert record.decision_market_regime == "sideways_range"
+
     def test_a_buy_fills_with_real_slippage_worse_than_the_real_signal_price(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """CEO directive "Next Professional Trading Firm Phase," Priority
         1 (Execution Realism) — the CEO's own direct buy is a

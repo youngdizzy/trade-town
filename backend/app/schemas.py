@@ -5392,6 +5392,34 @@ class CeoDecisionRecord(CamelModel):
     # strategy was picked at all.
     strategy_compiled_definition_id: str | None = Field(default=None, alias="strategyCompiledDefinitionId")
     strategy_compiled_definition_version: int | None = Field(default=None, alias="strategyCompiledDefinitionVersion")
+    # CEO directive "Complete Trade Provenance," Part 8 — Decision-Time
+    # Snapshot. Research confirmed no field anywhere in this codebase
+    # captured market/session/regime context AT THE MOMENT a decision
+    # was made — DecisionVaultEntry.session/marketRegime are real, but
+    # computed fresh at trade CLOSE, not decision time (see that
+    # module's own docstring). These four fields close that exact gap,
+    # for every decision (buy/sell/wait alike — market context is real
+    # regardless of the choice made), read once, unconditionally, from
+    # `self.data.market_intelligence` — the same always-current state a
+    # real TradeProposal/the Gatekeeper themselves already read (see
+    # MarketIntelligenceState's own docstring), never a second,
+    # independently-computed reading. `decisionPrice` reuses the exact
+    # same `current_price` submit_ceo_decision() already computes for
+    # resolve_proposal() itself; `None` only when no real WatchlistEntry
+    # exists for this symbol (the same honest gap `current_price`
+    # already has). `decisionSession`/`decisionMarketRegime` are `None`
+    # only for decisions recorded before this field existed (neither
+    # TradingSession nor MarketIntelligenceRegime has an honest
+    # "unknown" literal to default to instead — never coerced to an
+    # arbitrary member of either enum). This is deliberately a NEW,
+    # separate concept from the existing close-time session/marketRegime
+    # above — "what the market looked like when we decided" and "what
+    # it looked like when we closed" are both real and both worth
+    # keeping, not a replacement of one by the other.
+    decision_session: TradingSession | None = Field(default=None, alias="decisionSession")
+    decision_market_regime: MarketIntelligenceRegime | None = Field(default=None, alias="decisionMarketRegime")
+    decision_price: float | None = Field(default=None, alias="decisionPrice")
+    decision_volatility_pct: float | None = Field(default=None, alias="decisionVolatilityPct")
 
 
 # CEO directive "Features 26-30," Feature 29 — Prediction -> Outcome
@@ -6411,6 +6439,17 @@ class DecisionVaultEntry(CamelModel):
     # the picked Strategy had no compiled rules yet.
     strategy_compiled_definition_id: str | None = Field(default=None, alias="strategyCompiledDefinitionId")
     strategy_compiled_definition_version: int | None = Field(default=None, alias="strategyCompiledDefinitionVersion")
+    # CEO directive "Complete Trade Provenance," Part 8 — carried through
+    # from CeoDecisionRecord.decisionSession/decisionMarketRegime/
+    # decisionPrice/decisionVolatilityPct (see that field's own
+    # docstring). Deliberately distinct from `session`/`marketRegime`
+    # below, which remain what they always were — real context computed
+    # fresh at trade CLOSE, not decision time. `None` only for a trade
+    # closed before this field existed.
+    decision_session: TradingSession | None = Field(default=None, alias="decisionSession")
+    decision_market_regime: MarketIntelligenceRegime | None = Field(default=None, alias="decisionMarketRegime")
+    decision_price: float | None = Field(default=None, alias="decisionPrice")
+    decision_volatility_pct: float | None = Field(default=None, alias="decisionVolatilityPct")
     market_regime: MarketIntelligenceRegime = Field(alias="marketRegime")
     market_regime_label: str = Field(alias="marketRegimeLabel")
     liquidity_context: LiquidityRead = Field(alias="liquidityContext")
@@ -6582,6 +6621,13 @@ class TradeReportCard(CamelModel):
     # TradeAttributionRecord by tradeId).
     strategy_compiled_definition_id: str | None = Field(default=None, alias="strategyCompiledDefinitionId")
     strategy_compiled_definition_version: int | None = Field(default=None, alias="strategyCompiledDefinitionVersion")
+    # CEO directive "Complete Trade Provenance," Part 8 — joined directly
+    # from the underlying DecisionVaultEntry (never from
+    # TradeAttributionRecord, which carries no market context).
+    decision_session: TradingSession | None = Field(default=None, alias="decisionSession")
+    decision_market_regime: MarketIntelligenceRegime | None = Field(default=None, alias="decisionMarketRegime")
+    decision_price: float | None = Field(default=None, alias="decisionPrice")
+    decision_volatility_pct: float | None = Field(default=None, alias="decisionVolatilityPct")
     data_honesty_note: str = Field(alias="dataHonestyNote")
 
 
