@@ -316,6 +316,72 @@ class TestResolveProposal:
         assert context.started_at is None
         assert context.closes_at is None
 
+    def test_an_earlier_decisions_snapshot_never_reflects_a_later_calls_market_state(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """CEO directive "Complete Trade Provenance," Part 20 —
+        explicitly required: FUTURE INFORMATION CANNOT APPEAR IN A
+        DECISION SNAPSHOT. `market_intelligence` is always an explicit
+        parameter, never read from a live/global/mutable source, so this
+        proves it structurally: two resolve_proposal() calls, an
+        "earlier" one and a "later" one with materially different real
+        market state, must each carry only their own real snapshot —
+        the earlier record must never pick up the later call's regime/
+        session/price/volatility, proving no retroactive leakage."""
+        monkeypatch.setattr("app.executive.evaluate_gatekeeper", self._stub_approved_verdict)
+        portfolio = default_portfolio()
+
+        earlier_intelligence = default_market_intelligence_state().model_copy(
+            update={
+                "regime": "sideways_range",
+                "session": default_market_intelligence_state().session.model_copy(update={"current": "asian"}),
+                "volatility": default_market_intelligence_state().volatility.model_copy(update={"current_pct": 1.1}),
+            }
+        )
+        _, _, earlier_record = resolve_proposal(
+            self._proposal(),
+            "buy",
+            portfolio=portfolio,
+            risk_limits=RiskLimits(),
+            current_price=100.0,
+            now_sim_minutes=100,
+            market_intelligence=earlier_intelligence,
+        )
+
+        # A materially different, later real market state -- a second,
+        # independent decision made after the first.
+        later_intelligence = default_market_intelligence_state().model_copy(
+            update={
+                "regime": "strong_bull_trend",
+                "session": default_market_intelligence_state().session.model_copy(update={"current": "new_york"}),
+                "volatility": default_market_intelligence_state().volatility.model_copy(update={"current_pct": 9.9}),
+            }
+        )
+        _, _, later_record = resolve_proposal(
+            self._proposal(),
+            "buy",
+            portfolio=portfolio,
+            risk_limits=RiskLimits(),
+            current_price=200.0,
+            now_sim_minutes=500,
+            market_intelligence=later_intelligence,
+        )
+
+        # The earlier record's own real snapshot, taken BEFORE this
+        # second call ever happened, must be exactly what it was --
+        # never overwritten, never pulled forward to the later state.
+        assert earlier_record.decision_session == "asian"
+        assert earlier_record.decision_market_regime == "sideways_range"
+        assert earlier_record.decision_price == 100.0
+        assert earlier_record.decision_volatility_pct == 1.1
+
+        # The later record correctly carries its own, different, real
+        # snapshot -- the two are genuinely distinct, not the same
+        # object silently mutated in place.
+        assert later_record.decision_session == "new_york"
+        assert later_record.decision_market_regime == "strong_bull_trend"
+        assert later_record.decision_price == 200.0
+        assert later_record.decision_volatility_pct == 9.9
+        assert earlier_record is not later_record
+
     def test_a_buy_fills_with_real_slippage_worse_than_the_real_signal_price(self, monkeypatch: pytest.MonkeyPatch) -> None:
         """CEO directive "Next Professional Trading Firm Phase," Priority
         1 (Execution Realism) — the CEO's own direct buy is a

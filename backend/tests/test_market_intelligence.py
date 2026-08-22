@@ -220,6 +220,79 @@ class TestComputeSessionDstAware:
         assert _session_for_hour(13.6) == "market_open"
 
 
+class TestComputeSessionExactBoundaryInstants:
+    """CEO directive "Complete Trade Provenance," Part 20 — explicitly
+    required: test boundary timestamps around session open, session
+    close, DST transitions, midnight, and weekend/market closure. Every
+    test below hits the exact instant, one second either side of a real
+    classification change -- not a comfortably-inside-the-window time
+    like the tests above, which only prove the season/hour differs, not
+    that the edge itself is drawn correctly."""
+
+    def test_one_second_before_nyse_open_is_london_one_second_after_is_market_open(self) -> None:
+        # 2026-01-07 (Wednesday, EST/UTC-5, no DST in effect). NYSE
+        # opens 9:30 ET == 14:30 UTC in winter. London (GMT, UTC+0) is
+        # still open at 14:29 GMT (LSE: 08:00-16:30).
+        just_before = compute_session(datetime(2026, 1, 7, 14, 29, 59, tzinfo=timezone.utc))
+        at_open = compute_session(datetime(2026, 1, 7, 14, 30, 0, tzinfo=timezone.utc))
+        assert just_before.current == "london"
+        assert at_open.current == "market_open"
+
+    def test_one_second_before_nyse_close_is_market_close_one_second_after_is_closed(self) -> None:
+        # Same real Wednesday. NYSE closes 16:00 ET == 21:00 UTC in
+        # winter; at that exact instant London (closed since 16:30 GMT
+        # the day's local clock has already... no, London closes 16:30
+        # GMT == 16:30 UTC in winter, well before 21:00) and Tokyo (past
+        # its own 9:00-15:00 JST window by then) are both honestly
+        # closed too -- a real, all-exchanges-closed instant.
+        just_before = compute_session(datetime(2026, 1, 7, 20, 59, 59, tzinfo=timezone.utc))
+        at_close = compute_session(datetime(2026, 1, 7, 21, 0, 0, tzinfo=timezone.utc))
+        assert just_before.current == "market_close"
+        assert at_close.current == "closed"
+
+    def test_midnight_utc_is_not_itself_meaningful_only_each_exchanges_own_local_clock_is(self) -> None:
+        # 2026-01-04 is a real Sunday; 2026-01-05 the following real
+        # Monday. One second before UTC midnight, Tokyo's own local
+        # clock already reads Monday 08:59:59 JST (UTC+9) -- still
+        # before TSE's 9:00 open, so honestly closed. Exactly at UTC
+        # midnight, Tokyo's local clock reads Monday 09:00:00 JST --
+        # exactly TSE's real open. A naive "is it past UTC midnight"
+        # check would get this wrong in both directions; this proves
+        # the real per-exchange local-time boundary is what's used.
+        just_before_midnight = compute_session(datetime(2026, 1, 4, 23, 59, 59, tzinfo=timezone.utc))
+        at_midnight = compute_session(datetime(2026, 1, 5, 0, 0, 0, tzinfo=timezone.utc))
+        assert just_before_midnight.current == "closed"
+        assert at_midnight.current == "asian"
+
+    def test_saturday_close_to_market_open_hours_is_still_honestly_closed(self) -> None:
+        # 2026-01-10 is a real Saturday. Even at the exact UTC instant
+        # that would be NYSE's real market-open window on a weekday,
+        # weekend/market-closure must still win.
+        saturday_at_would_be_open = compute_session(datetime(2026, 1, 10, 14, 30, 0, tzinfo=timezone.utc))
+        assert saturday_at_would_be_open.current == "closed"
+
+    def test_dst_transition_weekend_shifts_the_real_utc_open_instant_by_exactly_one_hour(self) -> None:
+        # 2026-03-08 is the real US spring-forward Sunday (clocks jump
+        # 2:00 AM -> 3:00 AM local). Friday 2026-03-06 (before the
+        # transition) is still EST (UTC-5); Monday 2026-03-09 (after
+        # it) is EDT (UTC-4). NYSE's real 9:30 ET open therefore falls
+        # at a different real UTC instant on each side of the same
+        # weekend -- not a same-UTC-hour-different-season comparison
+        # like the test above, but the literal transition boundary
+        # itself, straddled by the two nearest real trading days.
+        friday_before_transition = compute_session(datetime(2026, 3, 6, 14, 30, 0, tzinfo=timezone.utc))
+        monday_after_transition = compute_session(datetime(2026, 3, 9, 13, 30, 0, tzinfo=timezone.utc))
+        assert friday_before_transition.current == "market_open"
+        assert friday_before_transition.session_started_at == "2026-03-06T14:30:00+00:00"
+        assert monday_after_transition.current == "market_open"
+        assert monday_after_transition.session_started_at == "2026-03-09T13:30:00+00:00"
+        # The same real UTC clock time (14:30 UTC) that was exactly
+        # NYSE's open on Friday is now an hour past open on Monday --
+        # proving the transition itself is honestly reflected.
+        monday_at_fridays_utc_open_time = compute_session(datetime(2026, 3, 9, 14, 30, 0, tzinfo=timezone.utc))
+        assert monday_at_fridays_utc_open_time.minutes_since_session_open == 60
+
+
 class TestComputeNewsRisk:
     def _news(self, n: int) -> list[NewsItem]:
         return [NewsItem(id=f"n{i}", headline="Broad rally extends.", category="market", timestamp=_now_iso()) for i in range(n)]

@@ -12713,6 +12713,65 @@ was deliberately researched and confirmed already satisfied, per
 Absolute Rule #1, rather than silently treated as done with nothing to
 show for it.
 
+### Part 20 — Testing (coverage audit, then closed two real gaps)
+
+Part 20 names a 21-item test-coverage checklist plus one explicitly
+required test: "Explicitly test that FUTURE INFORMATION CANNOT APPEAR
+IN A DECISION SNAPSHOT. Test boundary timestamps around: session open,
+session close, DST transitions, midnight, weekend/market closure." A
+dedicated Explore-agent research pass matched every backend test file
+against the full checklist item by item (full audit results kept in
+this session's own record, not duplicated here) and found 19 of 21
+items already genuinely covered by tests this directive's earlier
+phases had written — and exactly two real, addressable gaps, both
+closed this phase:
+
+1. **No future-leakage test.** Existing decision-time-snapshot tests
+   (Part 8) only proved a snapshot equals its one input parameter —
+   never that a *second, later* real market state couldn't retroactively
+   affect an *earlier*, already-created record. New
+   `test_an_earlier_decisions_snapshot_never_reflects_a_later_calls_
+   market_state` calls `resolve_proposal()` twice with materially
+   different real regime/session/price/volatility, and asserts the
+   earlier record's snapshot is exactly what it was before the later
+   call ever ran.
+2. **No exact-boundary-instant test.** Existing DST/session tests
+   compared comfortably-inside-the-window times across seasons, never
+   the literal edge. New `TestComputeSessionExactBoundaryInstants` (5
+   tests) hits NYSE open/close to the second, a UTC-midnight boundary
+   proving each real exchange's own local clock — not UTC midnight
+   itself — governs classification, a Saturday-at-would-be-open
+   weekend-closure case, and the real 2026 US spring-forward weekend
+   itself (Friday before vs. Monday after), asserting
+   `sessionStartedAt` shifts by exactly one UTC hour across the
+   transition.
+
+Two secondary items the audit surfaced — an HTTP-level test for `GET
+/trades/{id}/strategy-rule-snapshot` (the underlying function is fully
+unit-tested; only the router wiring is untested) and independent
+at-threshold re-tests of `MIN_SYMBOL_SAMPLE_FOR_VERDICT` at its two
+secondary call sites (which share the exact helper already proven at
+threshold once) — were deliberately left as disclosed, minor gaps
+rather than built; neither is required by the checklist's own wording
+and closing them would be gold-plating, not real coverage.
+
+The audit also confirmed, and this section records explicitly per the
+checklist's own "strategy compliance" and "strategy/session
+eligibility" line items: no test exists (and none is expected to)
+proving Parts 3 and 6's deferrals hold, since there is genuinely no
+code path for either to test — the checklist names features, not
+architecture decisions, and a deferred feature has nothing to assert
+against. The audit separately corrected an assumption going into this
+phase: "strategy/regime eligibility" (`compute_strategy_match()`) is
+NOT deferred like session eligibility — it is real, built,
+display-only logic, and is fully tested (`TestComputeStrategyMatch`,
+pre-existing).
+
+**Tests.** 6 new. Full backend suite: 2650 passed (+6), `mypy app/`
+(179 files) clean, `ruff check app/ tests/` clean. No production code
+changed — a test-only phase. Real save verified stable throughout (Day
+121, run identity unchanged).
+
 ## CEO directive "Portfolio Construction, Capital Allocation & Execution Realism"
 
 **Phase 1 — architecture audit (research agent, before any code).**

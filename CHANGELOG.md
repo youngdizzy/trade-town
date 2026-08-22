@@ -8,6 +8,51 @@ development milestones, not semver releases.
 ### Added
 
 - **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
+  Attribution," Part 20: Testing — a dedicated coverage audit, then closed the two real gaps it
+  found.** Part 20 names a 21-item checklist plus one explicitly required test ("FUTURE INFORMATION
+  CANNOT APPEAR IN A DECISION SNAPSHOT... test boundary timestamps around session open, session
+  close, DST transitions, midnight, weekend/market closure"). A dedicated Explore-agent research pass
+  across every backend test file, matched line-by-line against the full checklist, found 19 of 21
+  items already genuinely covered by tests written during this directive's earlier phases — full
+  audit results kept in this session, not duplicated here — and exactly two real, addressable gaps:
+
+  1. No test proved an already-created `CeoDecisionRecord`'s decision-time snapshot (Part 8) can
+     never be retroactively affected by a *later* real market state — existing tests only proved "the
+     snapshot equals its one input parameter," not that a second, later call couldn't leak forward.
+  2. No test hit an *exact* session-boundary instant (one second before/after a real classification
+     change) — existing DST/session tests compared comfortably-inside-the-window times across
+     seasons, never the literal edge.
+
+  New `test_executive.py::TestResolveProposal::test_an_earlier_decisions_snapshot_never_reflects_a_
+  later_calls_market_state`: two `resolve_proposal()` calls with materially different real market
+  states (regime/session/price/volatility), asserting the earlier record's snapshot is exactly what
+  it was before the later call ever happened — never overwritten, never pulled forward.
+
+  New `test_market_intelligence.py::TestComputeSessionExactBoundaryInstants` (5 tests): NYSE open
+  (14:29:59 UTC → `london`, 14:30:00 UTC → `market_open`), NYSE close (20:59:59 UTC →
+  `market_close`, 21:00:00 UTC → `closed`), a UTC-midnight boundary proving each exchange's own
+  local clock — not UTC midnight itself — governs classification (Sunday 23:59:59 UTC → `closed`
+  since Tokyo's own Monday 08:59:59 JST is still before its 9:00 open; Monday 00:00:00 UTC →
+  `asian` since Tokyo's own Monday 09:00:00 JST is exactly its open), a Saturday-at-would-be-open
+  weekend-closure test, and a real DST-transition-weekend test straddling the actual 2026 US
+  spring-forward Sunday with the two nearest real trading days, asserting `sessionStartedAt`
+  shifts by exactly one UTC hour across the transition (`2026-03-06T14:30:00+00:00` before →
+  `2026-03-09T13:30:00+00:00` after) and `minutesSinceSessionOpen` correctly reads `60` at the
+  UTC clock time that was exactly the pre-transition open.
+
+  Two secondary items surfaced by the audit were deliberately left as disclosed, minor gaps rather
+  than built: an HTTP-level (`TestClient`) test for `GET /trades/{id}/strategy-rule-snapshot`
+  (the underlying function is fully unit-tested; only the router wiring itself is untested) and
+  independent at-threshold re-tests of `MIN_SYMBOL_SAMPLE_FOR_VERDICT` at its two secondary call
+  sites (regime/strategy performance, which share the exact same helper already proven at threshold
+  once, in symbol performance). Neither is required by the checklist's own wording, and adding them
+  would be gold-plating rather than closing a real gap.
+
+  6 new tests. Full backend suite: 2650 passed (+6), `mypy app/` (179 files) clean,
+  `ruff check app/ tests/` clean. No production code changed — test-only phase. Real save verified
+  stable throughout (Day 121, run identity unchanged).
+
+- **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
   Attribution," Part 16 (frontend): Command Center UX — Trading Intelligence strip + progressive
   disclosure.** The directive's own rule: "DO NOT create another maze of tabs. Integrate this into
   the existing Command Center." Research (a dedicated Explore-agent architecture audit) confirmed
