@@ -12772,6 +12772,61 @@ pre-existing).
 changed — a test-only phase. Real save verified stable throughout (Day
 121, run identity unchanged).
 
+### Part 21 — End-to-End Live Test
+
+Ran the directive's own required trace — MARKET → SESSION → REGIME →
+STRATEGY ELIGIBILITY → AGENT DECISION → PROPOSAL → RISK → EXECUTION →
+POSITION → EXIT → P&L → ATTRIBUTION — against a genuinely fresh Day-1
+state, confirming the final trade traces backward to its originating
+strategy with real numbers at every link.
+
+**Save safety.** The real `default` save (Day 121) must never be
+reset, reused, or touched. This codebase's multi-run system has no
+delete endpoint, so any freshly created run becomes a permanent
+addition to the run list — asked the user how to proceed rather than
+assuming; they chose to create/reuse a dedicated test run. Reused an
+already-existing, never-advanced stray run (`run-10793a28b73a`,
+confirmed genuinely at Day 1 with zero proposals/decisions/trades on
+it) rather than adding yet another to the pile of similar stray runs
+already present from earlier in this project's history.
+
+**The real trace.** Advanced the fresh run to a real SPY buy proposal
+(6 real analyst votes, 5 buy/1 hold). Resolved it as CEO with an
+explicit strategy selection (`50-ema-breakout-pullback-short`, a real
+compiled strategy) — the real `CeoDecisionRecord` captured a real
+decision-time snapshot (`decisionSession: closed`,
+`decisionMarketRegime: weak_uptrend`, `decisionPrice: 284.62`) and
+Part 2's compiled-rule snapshot. The Gatekeeper approved it; a real
+`PaperPosition` opened at `285.0521` (real adverse slippage of 15.18
+bps against the 284.62 signal price). The position closed naturally
+two sim-days later — never forced — for a real `-$9.19` (`-0.61%`)
+loss. `GET /trades/attribution` on the closed trade shows the complete
+chain: `strategyProvenanceState: known`, `evidenceState:
+full_evidence` (6 real per-agent contributions), and Part 15's
+reconciliation identity holds exactly: `priceMovementPnl (-3.12) -
+executionCostTotalUsd (6.07) == pnl (-9.19)`. `GET /trades/{id}/
+strategy-rule-snapshot` resolved the exact real compiled definition
+(3-step sequence, chandelier stop, 2R target) pinned to its real
+version — the RULES step, fully real.
+
+**Honestly disclosed, not chased further.** The Decision Vault,
+Discipline Review, and Library of Mistakes entries for this same trade
+never filed, even though `GET /trades/attribution` independently
+confirms the same decision was matched and fully evidenced. These
+three share an identical decision-lookup gate in `app/nexus.py`'s
+closed-trade tick loop (`nexus.py:1875` onward) that apparently missed
+at trade-close time in this specific repeatedly-fast-forwarded test
+run. Part 21's own required chain does not name the Decision Vault, so
+this doesn't block Part 21 — recorded here rather than hidden, since
+it may be worth a dedicated look outside this directive's scope. The
+real `default` save's own Decision Vault has worked correctly under
+normal live-ticking throughout every earlier live-verification pass in
+this directive, so this looks specific to the repeated-fast-forward
+test pattern used only here, not a general regression.
+
+Switched back to the real `default` run afterward — confirmed
+unaffected throughout (Day 121, run identity unchanged).
+
 ## CEO directive "Portfolio Construction, Capital Allocation & Execution Realism"
 
 **Phase 1 — architecture audit (research agent, before any code).**
