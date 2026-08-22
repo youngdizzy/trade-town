@@ -2095,6 +2095,19 @@ two distinct `tradesExcludedNoStrategySelected`/
 `tradesExcludedNoVaultEntry` counts. Computed fresh per request; no new
 `GameSaveState` field.
 
+### `GET /api/trades/performance-by-strategy-regime`
+
+CEO directive "Complete Trade Provenance," Part 12 — the regime
+counterpart to `performance-by-strategy-session` above
+(`compute_strategy_regime_performance()`). Same real Decision Vault
+join, grouped on the `(strategyId, regime)` pair instead. Returns a
+`StrategyRegimePerformanceSummary`: `reads:
+StrategyRegimePerformanceRead[]` (same 12-metric shape, plus
+`strategyId`/`regime`), sorted by `totalPnl` descending, with the same
+two distinct `tradesExcludedNoStrategySelected`/
+`tradesExcludedNoVaultEntry` counts. Computed fresh per request; no new
+`GameSaveState` field.
+
 ### `GET /api/trades/strategy-live-vs-backtest`
 
 CEO directive "Live Trade → Strategy Provenance," Phase 5 — does a

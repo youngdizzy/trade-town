@@ -18,6 +18,7 @@ from app.performance_attribution import (
     compute_strategy_degradation,
     compute_strategy_live_vs_backtest,
     compute_strategy_performance,
+    compute_strategy_regime_performance,
     compute_strategy_session_performance,
     compute_symbol_performance,
 )
@@ -30,6 +31,7 @@ from app.schemas import (
     StrategyDegradationSummary,
     StrategyLiveVsBacktestSummary,
     StrategyPerformanceSummary,
+    StrategyRegimePerformanceSummary,
     StrategySessionPerformanceSummary,
     StrategyTradingDiagnosticSummary,
     SymbolPerformanceSummary,
@@ -164,6 +166,17 @@ async def get_performance_by_strategy_session() -> StrategySessionPerformanceSum
     new GameSaveState field."""
     state = await game_state.snapshot()
     return compute_strategy_session_performance(state.paper_portfolio.trade_history, state.decision_vault)
+
+
+@router.get("/performance-by-strategy-regime", response_model=StrategyRegimePerformanceSummary)
+async def get_performance_by_strategy_regime() -> StrategyRegimePerformanceSummary:
+    """CEO directive "Complete Trade Provenance," Part 12 — the
+    strategy×regime counterpart to performance-by-strategy-session above
+    (see app/performance_attribution.py's compute_strategy_regime_
+    performance()). Computed fresh per request; no new GameSaveState
+    field."""
+    state = await game_state.snapshot()
+    return compute_strategy_regime_performance(state.paper_portfolio.trade_history, state.decision_vault)
 
 
 @router.get("/strategy-live-vs-backtest", response_model=StrategyLiveVsBacktestSummary)

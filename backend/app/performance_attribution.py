@@ -98,6 +98,8 @@ from app.schemas import (
     StrategyLiveVsBacktestVerdict,
     StrategyPerformanceRead,
     StrategyPerformanceSummary,
+    StrategyRegimePerformanceRead,
+    StrategyRegimePerformanceSummary,
     StrategySessionPerformanceRead,
     StrategySessionPerformanceSummary,
     SymbolPerformanceRead,
@@ -292,6 +294,40 @@ def compute_strategy_session_performance(trade_history: list[PaperTrade], decisi
     reads.sort(key=lambda r: r.total_pnl, reverse=True)
 
     return StrategySessionPerformanceSummary(
+        reads=reads,
+        tradesExcludedNoStrategySelected=excluded_no_strategy_selected,
+        tradesExcludedNoVaultEntry=excluded_no_vault_entry,
+        updatedAt=_now_iso(),
+    )
+
+
+def compute_strategy_regime_performance(trade_history: list[PaperTrade], decision_vault: list[DecisionVaultEntry]) -> StrategyRegimePerformanceSummary:
+    """CEO directive "Complete Trade Provenance," Part 12 — the
+    strategy×regime counterpart to compute_strategy_session_performance()
+    above, grouped on the (strategy_id, market_regime) pair instead of
+    (strategy_id, session). Same real Decision Vault join, same two
+    distinct exclusion reasons — mirrors the session version exactly."""
+    vault_by_trade_id = _vault_entries_by_trade_id(decision_vault)
+    by_strategy_regime: dict[tuple[str, MarketIntelligenceRegime], list[PaperTrade]] = {}
+    excluded_no_vault_entry = 0
+    excluded_no_strategy_selected = 0
+    for trade in trade_history:
+        entry = vault_by_trade_id.get(trade.id)
+        if entry is None:
+            excluded_no_vault_entry += 1
+            continue
+        if entry.strategy_id is None:
+            excluded_no_strategy_selected += 1
+            continue
+        by_strategy_regime.setdefault((entry.strategy_id, entry.market_regime), []).append(trade)
+
+    reads = [
+        StrategyRegimePerformanceRead(strategyId=strategy_id, regime=regime, **_group_metrics(trades))
+        for (strategy_id, regime), trades in by_strategy_regime.items()
+    ]
+    reads.sort(key=lambda r: r.total_pnl, reverse=True)
+
+    return StrategyRegimePerformanceSummary(
         reads=reads,
         tradesExcludedNoStrategySelected=excluded_no_strategy_selected,
         tradesExcludedNoVaultEntry=excluded_no_vault_entry,

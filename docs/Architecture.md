@@ -12310,6 +12310,65 @@ real DST-aware detail string and real boundary fields; the real save's
 own decision pipeline continued ticking correctly throughout (Day
 108 → 110).
 
+### Part 12 — Strategy Performance by Regime (plus two parts resolved without new code)
+
+Direct research finding: the prior "Live Trade → Strategy Provenance"
+directive already built the strategy×session performance axis
+(`compute_strategy_session_performance()`, its own Phase 6) but never
+built the regime counterpart. New
+`compute_strategy_regime_performance()`/
+`GET /api/trades/performance-by-strategy-regime` mirrors it
+field-for-field — same real Decision Vault join, grouped on
+`(strategy_id, market_regime)` instead of `(strategy_id, session)`,
+same two distinct, honest exclusion reasons.
+
+**Two other directive line items resolved by research alone, no new
+code needed — disclosed here rather than silently marked done:**
+
+- **Part 7 (regime snapshot at decision time)** is already fully
+  satisfied by this directive's own Part 8 work —
+  `CeoDecisionRecord.decisionMarketRegime`, captured from
+  `MarketIntelligenceState.regime`, which research confirmed is the
+  operationally load-bearing source of truth between this codebase's
+  two independent regime engines (`market_environment.py`'s 5-way,
+  `market_intelligence.py`'s 13-way — see the Research Phase section
+  above).
+- **Part 9 (agent attribution)** is already substantially satisfied by
+  the pre-existing `TradeAttributionRecord.contributions`
+  (`AgentContributionRead`: real per-agent `agentId`/`role`/`choice`/
+  `reason`/`agreedWithSideTraded`, reconstructed from
+  `TradeDecision.votes`) and its `TradeAttributionEvidenceState`
+  (`full_evidence`/`no_decision_on_record`). That module's own
+  docstring already states no numeric P&L split is computed, implied,
+  or stored anywhere — matching Part 9's explicit "do not claim Agent X
+  contributed 27%" rule exactly. Adding Part 9's third "UNAVAILABLE"
+  state would mean inventing a distinction for an edge case
+  (`TradeDecision` with zero recorded votes) that's theoretical, not
+  observed, in this codebase's real data — left as a genuinely open
+  question rather than built speculatively.
+
+**Deliberately researched and deferred, disclosed rather than
+attempted:** Part 6 (session-specific strategy eligibility). The only
+real per-session backtest evidence
+(`CompiledStrategyBacktestResult.sessionBreakdown`) is computed
+fresh/on-demand, never persisted per-strategy in `GameSaveState`.
+Wiring it into the live, every-tick `compute_strategy_match()` would
+require either an expensive inline backtest run on the hot tick path,
+or a new persistence layer for compiled-strategy backtest results —
+neither of which clears the directive's own "extend only if the
+architecture supports it safely" bar without a dedicated design pass
+this phase didn't have scope for.
+
+**Tests.** 5 new in `test_performance_attribution.py`, mirroring
+`TestComputeStrategySessionPerformance`'s exact test shape. Full
+backend suite: 2613 passed (+5), `mypy app/` (178 files) clean,
+`ruff check app/ tests/` clean. Live-verified against a freshly
+restarted real dev stack — the new endpoint honestly returns
+`reads: []` with `tradesExcludedNoStrategySelected: 2` (the same real,
+disclosed state `performance-by-strategy` itself already reports on
+this save); the real save's own decision pipeline continued ticking
+correctly throughout (Day 110 → 111).
+
 ## CEO directive "Portfolio Construction, Capital Allocation & Execution Realism"
 
 **Phase 1 — architecture audit (research agent, before any code).**

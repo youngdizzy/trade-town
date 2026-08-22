@@ -21,6 +21,7 @@ from app.performance_attribution import (
     compute_strategy_degradation,
     compute_strategy_live_vs_backtest,
     compute_strategy_performance,
+    compute_strategy_regime_performance,
     compute_strategy_session_performance,
     compute_symbol_performance,
 )
@@ -436,6 +437,62 @@ class TestComputeStrategySessionPerformance:
         ]
         summary = compute_strategy_session_performance(trades, vault)
         assert [(r.strategy_id, r.session) for r in summary.reads] == [("strategy-winner", "london"), ("strategy-loser", "asian")]
+
+
+class TestComputeStrategyRegimePerformance:
+    """CEO directive "Complete Trade Provenance," Part 12 — the real
+    strategy×regime axis. Same real Decision Vault join as
+    compute_strategy_session_performance(), grouped on the
+    (strategy_id, market_regime) pair instead."""
+
+    def test_groups_by_the_strategy_regime_pair(self) -> None:
+        trades = [
+            _trade(trade_id="a", pnl=10.0, pnl_pct=1.0),
+            _trade(trade_id="b", pnl=5.0, pnl_pct=0.5),
+            _trade(trade_id="c", pnl=-2.0, pnl_pct=-0.2),
+        ]
+        vault = [
+            _vault_entry(trade_id="a", strategy_id="strategy-momentum", market_regime="strong_bull_trend"),
+            _vault_entry(trade_id="b", strategy_id="strategy-momentum", market_regime="sideways_range"),
+            _vault_entry(trade_id="c", strategy_id="strategy-value", market_regime="strong_bull_trend"),
+        ]
+        summary = compute_strategy_regime_performance(trades, vault)
+        pairs = {(r.strategy_id, r.regime) for r in summary.reads}
+        assert pairs == {("strategy-momentum", "strong_bull_trend"), ("strategy-momentum", "sideways_range"), ("strategy-value", "strong_bull_trend")}
+        momentum_bull = next(r for r in summary.reads if r.strategy_id == "strategy-momentum" and r.regime == "strong_bull_trend")
+        assert momentum_bull.trade_count == 1
+
+    def test_a_trade_with_no_strategy_selected_is_excluded_as_unknown(self) -> None:
+        trades = [_trade(trade_id="a", pnl=10.0, pnl_pct=1.0)]
+        vault = [_vault_entry(trade_id="a", strategy_id=None, market_regime="strong_bull_trend")]
+        summary = compute_strategy_regime_performance(trades, vault)
+        assert summary.reads == []
+        assert summary.trades_excluded_no_strategy_selected == 1
+        assert summary.trades_excluded_no_vault_entry == 0
+
+    def test_a_trade_with_no_matching_vault_entry_is_excluded_as_unavailable(self) -> None:
+        trades = [_trade(trade_id="orphan", pnl=5.0, pnl_pct=0.5)]
+        summary = compute_strategy_regime_performance(trades, [])
+        assert summary.reads == []
+        assert summary.trades_excluded_no_vault_entry == 1
+
+    def test_empty_trade_history_produces_no_reads_and_no_exclusions(self) -> None:
+        summary = compute_strategy_regime_performance([], [])
+        assert summary.reads == []
+        assert summary.trades_excluded_no_strategy_selected == 0
+        assert summary.trades_excluded_no_vault_entry == 0
+
+    def test_reads_sorted_by_total_pnl_descending(self) -> None:
+        trades = [
+            _trade(trade_id="a", pnl=-50.0, pnl_pct=-5.0),
+            _trade(trade_id="b", pnl=100.0, pnl_pct=10.0),
+        ]
+        vault = [
+            _vault_entry(trade_id="a", strategy_id="strategy-loser", market_regime="high_volatility"),
+            _vault_entry(trade_id="b", strategy_id="strategy-winner", market_regime="strong_bull_trend"),
+        ]
+        summary = compute_strategy_regime_performance(trades, vault)
+        assert [(r.strategy_id, r.regime) for r in summary.reads] == [("strategy-winner", "strong_bull_trend"), ("strategy-loser", "high_volatility")]
 
 
 def _health(*, strategy_id: str, recent_win_rate: float, recent_sample_size: int = 5) -> StrategyHealthAssessment:

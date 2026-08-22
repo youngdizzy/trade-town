@@ -1052,6 +1052,42 @@ class StrategySessionPerformanceSummary(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# CEO directive "Complete Trade Provenance," Part 12 — the one real
+# strategy×regime axis that didn't exist yet, cross-cutting the same
+# Strategy Exposure axis by market regime (the exact same real join key
+# `compute_regime_performance()` already established) instead of
+# session. Mirrors StrategySessionPerformanceRead/Summary above
+# field-for-field — never a fabricated third dimension.
+class StrategyRegimePerformanceRead(CamelModel):
+    strategy_id: str = Field(alias="strategyId")
+    regime: MarketIntelligenceRegime
+    trade_count: int = Field(alias="tradeCount")
+    win_count: int = Field(alias="winCount")
+    loss_count: int = Field(alias="lossCount")
+    win_rate_pct: float = Field(alias="winRatePct")
+    total_pnl: float = Field(alias="totalPnl")
+    avg_pnl_pct: float = Field(alias="avgPnlPct")
+    avg_winner_pct: float | None = Field(default=None, alias="avgWinnerPct")
+    avg_loser_pct: float | None = Field(default=None, alias="avgLoserPct")
+    expectancy_pct: float | None = Field(default=None, alias="expectancyPct")
+    profit_factor: float | None = Field(default=None, alias="profitFactor")
+    avg_mae_pct: float = Field(alias="avgMaePct")
+    avg_mfe_pct: float = Field(alias="avgMfePct")
+    best_trade_pnl_pct: float = Field(alias="bestTradePnlPct")
+    worst_trade_pnl_pct: float = Field(alias="worstTradePnlPct")
+    evidence_state: SymbolPerformanceEvidenceState = Field(alias="evidenceState")
+
+
+class StrategyRegimePerformanceSummary(CamelModel):
+    """`reads` sorted by `total_pnl` descending. Same two exclusion
+    reasons as `StrategyPerformanceSummary` — never folded together."""
+
+    reads: list[StrategyRegimePerformanceRead]
+    trades_excluded_no_strategy_selected: int = Field(alias="tradesExcludedNoStrategySelected")
+    trades_excluded_no_vault_entry: int = Field(alias="tradesExcludedNoVaultEntry")
+    updated_at: str = Field(alias="updatedAt")
+
+
 # CEO directive "Live Trade → Strategy Provenance," Phase 5 — does a
 # strategy's real LIVE (known-provenance) performance actually match
 # what its own real backtest evidence (StrategyHealthAssessment, Feature
