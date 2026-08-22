@@ -19,6 +19,7 @@ from app.performance_attribution import (
     compute_session_performance,
     compute_strategy_capital_allocation_evidence,
     compute_strategy_degradation,
+    compute_strategy_live_correlation,
     compute_strategy_live_vs_backtest,
     compute_strategy_performance,
     compute_strategy_regime_performance,
@@ -38,6 +39,7 @@ def _trade(
     mae_pct: float = 0.0,
     mfe_pct: float = 0.0,
     closed_at: str = "2024-01-01T00:00:00+00:00",
+    closed_sim_minutes: int = 30,
     entry_slippage_bps: float = 0.0,
     exit_slippage_bps: float = 0.0,
 ) -> PaperTrade:
@@ -59,7 +61,7 @@ def _trade(
         openedAt="2024-01-01T00:00:00+00:00",
         closedAt=closed_at,
         openedSimMinutes=0,
-        closedSimMinutes=30,
+        closedSimMinutes=closed_sim_minutes,
         maePct=mae_pct,
         mfePct=mfe_pct,
         entrySlippageBps=entry_slippage_bps,
@@ -493,6 +495,66 @@ class TestComputeStrategyRegimePerformance:
         ]
         summary = compute_strategy_regime_performance(trades, vault)
         assert [(r.strategy_id, r.regime) for r in summary.reads] == [("strategy-winner", "strong_bull_trend"), ("strategy-loser", "high_volatility")]
+
+
+class TestComputeStrategyLiveCorrelation:
+    """CEO directive "Complete Trade Provenance," Part 14 — real
+    strategy-pair correlation over LIVE trade returns, paired by shared
+    real sim day, reusing the same pearson_correlation() the
+    backtest-only StrategyPairCorrelation already uses."""
+
+    def test_below_threshold_paired_days_returns_none_correlation(self) -> None:
+        trades = [
+            _trade(trade_id="a1", pnl=1.0, pnl_pct=1.0, closed_sim_minutes=100),
+            _trade(trade_id="b1", pnl=1.0, pnl_pct=1.0, closed_sim_minutes=100),
+        ]
+        vault = [
+            _vault_entry(trade_id="a1", strategy_id="strategy-a"),
+            _vault_entry(trade_id="b1", strategy_id="strategy-b"),
+        ]
+        summary = compute_strategy_live_correlation(trades, vault)
+        assert len(summary.reads) == 1
+        read = summary.reads[0]
+        assert read.correlation is None
+        assert read.paired_days == 1
+
+    def test_correlation_is_a_real_pearson_coefficient_over_shared_real_sim_days(self) -> None:
+        trades = [
+            _trade(trade_id="a1", pnl=1.0, pnl_pct=1.0, closed_sim_minutes=0),
+            _trade(trade_id="a2", pnl=2.0, pnl_pct=2.0, closed_sim_minutes=1440),
+            _trade(trade_id="a3", pnl=3.0, pnl_pct=3.0, closed_sim_minutes=2880),
+            _trade(trade_id="b1", pnl=1.0, pnl_pct=2.0, closed_sim_minutes=100),
+            _trade(trade_id="b2", pnl=2.0, pnl_pct=4.0, closed_sim_minutes=1500),
+            _trade(trade_id="b3", pnl=3.0, pnl_pct=6.0, closed_sim_minutes=2999),
+        ]
+        vault = [
+            _vault_entry(trade_id="a1", strategy_id="strategy-a"),
+            _vault_entry(trade_id="a2", strategy_id="strategy-a"),
+            _vault_entry(trade_id="a3", strategy_id="strategy-a"),
+            _vault_entry(trade_id="b1", strategy_id="strategy-b"),
+            _vault_entry(trade_id="b2", strategy_id="strategy-b"),
+            _vault_entry(trade_id="b3", strategy_id="strategy-b"),
+        ]
+        summary = compute_strategy_live_correlation(trades, vault)
+        read = next(r for r in summary.reads if {r.strategy_id_a, r.strategy_id_b} == {"strategy-a", "strategy-b"})
+        assert read.paired_days == 3
+        assert read.correlation == 1.0  # b's pnl_pct is exactly 2x a's on every shared day
+
+    def test_a_trade_with_no_strategy_selected_is_not_correlated(self) -> None:
+        trades = [_trade(trade_id="a", pnl=1.0, pnl_pct=1.0)]
+        vault = [_vault_entry(trade_id="a", strategy_id=None)]
+        summary = compute_strategy_live_correlation(trades, vault)
+        assert summary.reads == []
+
+    def test_empty_trade_history_produces_no_reads(self) -> None:
+        summary = compute_strategy_live_correlation([], [])
+        assert summary.reads == []
+
+    def test_a_single_strategy_produces_no_pairs(self) -> None:
+        trades = [_trade(trade_id="a", pnl=1.0, pnl_pct=1.0)]
+        vault = [_vault_entry(trade_id="a", strategy_id="strategy-solo")]
+        summary = compute_strategy_live_correlation(trades, vault)
+        assert summary.reads == []
 
 
 def _health(*, strategy_id: str, recent_win_rate: float, recent_sample_size: int = 5) -> StrategyHealthAssessment:

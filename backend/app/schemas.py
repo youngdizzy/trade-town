@@ -1088,6 +1088,33 @@ class StrategyRegimePerformanceSummary(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# CEO directive "Complete Trade Provenance," Part 14 — the LIVE
+# counterpart to StrategyPairCorrelation (below, backtest-only,
+# walk-forward-window based). Real trades from two different strategies
+# happen at asynchronous times, not aligned backtest windows, so this
+# instead aggregates each strategy's own real, CEO-selected trades to
+# one average pnl_pct per real in-game sim day it had at least one
+# closed trade, then correlates the two strategies' daily-return series
+# over shared days only — reusing app/portfolio_intelligence.py's
+# pearson_correlation() directly, never a second implementation.
+# `correlation` is `None` (never a fabricated `0.0`) below
+# MIN_PAIRED_DAYS_FOR_LIVE_CORRELATION real paired days — the objective
+# named in the directive's own Part 14: "avoid thinking ten strategies
+# are diversified when they all effectively trade the same market
+# behavior," measured on real returns, not backtest proxies.
+class StrategyLiveCorrelationRead(CamelModel):
+    strategy_id_a: str = Field(alias="strategyIdA")
+    strategy_id_b: str = Field(alias="strategyIdB")
+    correlation: float | None = None
+    paired_days: int = Field(alias="pairedDays")
+    detail: str
+
+
+class StrategyLiveCorrelationSummary(CamelModel):
+    reads: list[StrategyLiveCorrelationRead]
+    updated_at: str = Field(alias="updatedAt")
+
+
 # CEO directive "Live Trade → Strategy Provenance," Phase 5 — does a
 # strategy's real LIVE (known-provenance) performance actually match
 # what its own real backtest evidence (StrategyHealthAssessment, Feature

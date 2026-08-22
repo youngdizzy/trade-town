@@ -76,6 +76,7 @@ from datetime import datetime, timezone
 from statistics import pstdev
 from typing import Any
 
+from app.portfolio_intelligence import pearson_correlation
 from app.schemas import (
     DecisionVaultEntry,
     FailureClassification,
@@ -96,6 +97,8 @@ from app.schemas import (
     StrategyLiveVsBacktestRead,
     StrategyLiveVsBacktestSummary,
     StrategyLiveVsBacktestVerdict,
+    StrategyLiveCorrelationRead,
+    StrategyLiveCorrelationSummary,
     StrategyPerformanceRead,
     StrategyPerformanceSummary,
     StrategyRegimePerformanceRead,
@@ -333,6 +336,63 @@ def compute_strategy_regime_performance(trade_history: list[PaperTrade], decisio
         tradesExcludedNoVaultEntry=excluded_no_vault_entry,
         updatedAt=_now_iso(),
     )
+
+
+# Same real bar app/strategy_tournament.py's backtest-only
+# MIN_PAIRED_WINDOWS_FOR_CORRELATION already uses — not a separately
+# invented threshold.
+MIN_PAIRED_DAYS_FOR_LIVE_CORRELATION = 3
+
+
+def compute_strategy_live_correlation(trade_history: list[PaperTrade], decision_vault: list[DecisionVaultEntry]) -> StrategyLiveCorrelationSummary:
+    """CEO directive "Complete Trade Provenance," Part 14 — see
+    StrategyLiveCorrelationRead's own docstring in schemas.py for the
+    full method. Reuses `_trades_by_strategy_id()` (the identical real
+    strategy-attribution grouping every other function in this module
+    uses) and `pearson_correlation()` directly — never a second
+    implementation of either."""
+    by_strategy = _trades_by_strategy_id(trade_history, decision_vault)
+    daily_returns_by_strategy: dict[str, dict[int, list[float]]] = {}
+    for strategy_id, trades in by_strategy.items():
+        by_day: dict[int, list[float]] = {}
+        for trade in trades:
+            sim_day = trade.closed_sim_minutes // 1440
+            by_day.setdefault(sim_day, []).append(trade.pnl_pct)
+        daily_returns_by_strategy[strategy_id] = {day: [round(_mean(values), 4)] for day, values in by_day.items()}
+
+    strategy_ids = sorted(daily_returns_by_strategy)
+    reads: list[StrategyLiveCorrelationRead] = []
+    for i, strategy_id_a in enumerate(strategy_ids):
+        for strategy_id_b in strategy_ids[i + 1 :]:
+            days_a = daily_returns_by_strategy[strategy_id_a]
+            days_b = daily_returns_by_strategy[strategy_id_b]
+            shared_days = sorted(set(days_a) & set(days_b))
+            paired = [(days_a[day][0], days_b[day][0]) for day in shared_days]
+            if len(paired) < MIN_PAIRED_DAYS_FOR_LIVE_CORRELATION:
+                reads.append(
+                    StrategyLiveCorrelationRead(
+                        strategyIdA=strategy_id_a,
+                        strategyIdB=strategy_id_b,
+                        correlation=None,
+                        pairedDays=len(paired),
+                        detail=f"Only {len(paired)} real paired day(s) where both strategies had a closed trade — below the {MIN_PAIRED_DAYS_FOR_LIVE_CORRELATION}-day bar this module uses for a real correlation read.",
+                    )
+                )
+                continue
+            a_values = [p[0] for p in paired]
+            b_values = [p[1] for p in paired]
+            correlation = round(pearson_correlation(a_values, b_values), 3)
+            reads.append(
+                StrategyLiveCorrelationRead(
+                    strategyIdA=strategy_id_a,
+                    strategyIdB=strategy_id_b,
+                    correlation=correlation,
+                    pairedDays=len(paired),
+                    detail=f"Real Pearson correlation over {len(paired)} shared real sim day(s) of average daily pnl% — live trade returns, not a backtest proxy.",
+                )
+            )
+
+    return StrategyLiveCorrelationSummary(reads=reads, updatedAt=_now_iso())
 
 
 def compute_strategy_live_vs_backtest(strategy_performance: StrategyPerformanceSummary, health_assessments: list[StrategyHealthAssessment]) -> StrategyLiveVsBacktestSummary:

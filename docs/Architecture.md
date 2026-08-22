@@ -12396,6 +12396,42 @@ disclosed, on this save) alongside the pre-existing `sessionReads`; the
 real save's own decision pipeline continued ticking correctly
 throughout (Day 111 → 112).
 
+### Part 14 — Strategy Correlation over Live Returns
+
+Part 14's stated objective — "avoid thinking ten strategies are
+diversified when they all effectively trade the same market behavior"
+— already had a real answer for backtest candidates
+(`app/strategy_tournament.py`'s `StrategyPairCorrelation`, correlating
+walk-forward-window expectancy via `app/portfolio_intelligence.py`'s
+`pearson_correlation()`), but nothing correlated two strategies' actual
+LIVE realized returns.
+
+Real trades from two different strategies happen at asynchronous
+times, not aligned backtest windows, so the live version instead
+aggregates each strategy's own real, CEO-selected trades to one average
+`pnlPct` per real in-game sim day it had at least one closed trade,
+then correlates the two strategies' daily-return series over shared
+days only. Reuses `pearson_correlation()` directly (never a second
+implementation), the identical `_trades_by_strategy_id()` grouping
+every other function in `performance_attribution.py` already uses, and
+the same `3`-paired-observations bar `MIN_PAIRED_WINDOWS_FOR_CORRELATION`
+already established for the backtest version — renamed
+`MIN_PAIRED_DAYS_FOR_LIVE_CORRELATION` for this axis, same value, not a
+separately-invented threshold. `correlation` is honestly `null` below
+that bar, never a fabricated `0.0`.
+
+**Tests.** 5 new, including a constructed perfect-correlation case (one
+strategy's daily `pnlPct` exactly 2× the other's on every shared day →
+a real Pearson coefficient of exactly `1.0`) as a correctness proof,
+not just a shape check. Full backend suite: 2619 passed (+5),
+`mypy app/` (178 files) clean, `ruff check app/ tests/` clean.
+Live-verified against a freshly restarted real dev stack — the new
+`GET /api/trades/strategy-live-correlation` endpoint honestly returns
+`reads: []` (no live trade on this save has a CEO-selected strategy
+pair yet — the same disclosed state every other strategy-attribution
+endpoint already reports here); the real save's own decision pipeline
+continued ticking correctly throughout (Day 112 → 113).
+
 ## CEO directive "Portfolio Construction, Capital Allocation & Execution Realism"
 
 **Phase 1 — architecture audit (research agent, before any code).**

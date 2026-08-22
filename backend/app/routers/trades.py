@@ -16,6 +16,7 @@ from app.performance_attribution import (
     compute_session_performance,
     compute_strategy_capital_allocation_evidence,
     compute_strategy_degradation,
+    compute_strategy_live_correlation,
     compute_strategy_live_vs_backtest,
     compute_strategy_performance,
     compute_strategy_regime_performance,
@@ -29,6 +30,7 @@ from app.schemas import (
     SessionPerformanceSummary,
     StrategyCapitalAllocationSummary,
     StrategyDegradationSummary,
+    StrategyLiveCorrelationSummary,
     StrategyLiveVsBacktestSummary,
     StrategyPerformanceSummary,
     StrategyRegimePerformanceSummary,
@@ -177,6 +179,21 @@ async def get_performance_by_strategy_regime() -> StrategyRegimePerformanceSumma
     field."""
     state = await game_state.snapshot()
     return compute_strategy_regime_performance(state.paper_portfolio.trade_history, state.decision_vault)
+
+
+@router.get("/strategy-live-correlation", response_model=StrategyLiveCorrelationSummary)
+async def get_strategy_live_correlation() -> StrategyLiveCorrelationSummary:
+    """CEO directive "Complete Trade Provenance," Part 14 — real
+    strategy-pair correlation over LIVE trade returns (see
+    app/performance_attribution.py's compute_strategy_live_correlation()
+    for the exact method — real trades aggregated to one average pnl%
+    per shared real sim day, correlated via the same
+    pearson_correlation() app/strategy_tournament.py's backtest-only
+    version already reuses). `correlation` is honestly `null` below 3
+    real paired days, never a fabricated `0.0`. Computed fresh per
+    request; no new GameSaveState field."""
+    state = await game_state.snapshot()
+    return compute_strategy_live_correlation(state.paper_portfolio.trade_history, state.decision_vault)
 
 
 @router.get("/strategy-live-vs-backtest", response_model=StrategyLiveVsBacktestSummary)

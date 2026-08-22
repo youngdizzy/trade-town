@@ -8,6 +8,34 @@ development milestones, not semver releases.
 ### Added
 
 - **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
+  Attribution," Part 14 (backend): Strategy Correlation over Live Returns**
+  (`backend/app/schemas.py`, `backend/app/performance_attribution.py`, `backend/app/routers/trades.py`,
+  `backend/tests/test_performance_attribution.py`): Part 14's objective — "avoid thinking ten
+  strategies are diversified when they all effectively trade the same market behavior" — already had
+  a real answer for backtest candidates (`app/strategy_tournament.py`'s `StrategyPairCorrelation`,
+  correlating walk-forward-window expectancy via `app/portfolio_intelligence.py`'s
+  `pearson_correlation()`), but nothing correlated two strategies' actual **live** realized returns.
+
+  New `compute_strategy_live_correlation()`/`GET /api/trades/strategy-live-correlation`. Real trades
+  from two different strategies happen at asynchronous times, not aligned backtest windows, so this
+  aggregates each strategy's own real, CEO-selected trades to one average `pnlPct` per real in-game
+  sim day it had at least one closed trade, then correlates the two strategies' daily-return series
+  over shared days only — reusing `pearson_correlation()` directly, the identical `_trades_by_
+  strategy_id()` grouping every other function in this module already uses, and the same `3`-paired-
+  observations bar `MIN_PAIRED_WINDOWS_FOR_CORRELATION` already established for the backtest version
+  (renamed `MIN_PAIRED_DAYS_FOR_LIVE_CORRELATION` for this axis). `correlation` is honestly `null`
+  below that bar — never a fabricated `0.0`.
+
+  5 new backend tests, including a constructed perfect-correlation case (one strategy's daily
+  `pnlPct` exactly 2× the other's on every shared day → real Pearson coefficient of `1.0`) as a
+  correctness proof, not just a shape check. Full backend suite: 2619 passed (+5), `mypy app/`
+  (178 files) clean, `ruff check app/ tests/` clean. Live-verified against a freshly restarted real
+  dev stack — the endpoint honestly returns `reads: []` (no live trade on this save has a
+  CEO-selected strategy pair yet, the same disclosed state every other strategy-attribution endpoint
+  already reports here); the real save's own decision pipeline continued ticking correctly
+  throughout (Day 112 → 113).
+
+- **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
   Attribution," Part 13 (backend): Regime Behavior in Capital Allocation Evidence**
   (`backend/app/schemas.py`, `backend/app/performance_attribution.py`, `backend/app/routers/trades.py`,
   `backend/tests/test_performance_attribution.py`): Part 13 asks the capital-allocation evidence

@@ -2108,6 +2108,22 @@ two distinct `tradesExcludedNoStrategySelected`/
 `tradesExcludedNoVaultEntry` counts. Computed fresh per request; no new
 `GameSaveState` field.
 
+### `GET /api/trades/strategy-live-correlation`
+
+CEO directive "Complete Trade Provenance," Part 14 — real strategy-pair
+correlation over LIVE trade returns (`compute_strategy_live_
+correlation()`), the live counterpart to `app/strategy_tournament.py`'s
+backtest-only `StrategyPairCorrelation`. Aggregates each strategy's own
+real, CEO-selected trades to one average `pnlPct` per real in-game sim
+day it had a closed trade, then correlates two strategies' daily-return
+series over shared days only via the same `pearson_correlation()` the
+backtest version reuses. Returns a `StrategyLiveCorrelationSummary`:
+`reads: StrategyLiveCorrelationRead[]` (`strategyIdA`/`strategyIdB`/
+`correlation`/`pairedDays`/`detail`) for every pair of strategies with
+at least one live trade each — `correlation` is `null` (never a
+fabricated `0.0`) below 3 real paired days. Computed fresh per request;
+no new `GameSaveState` field.
+
 ### `GET /api/trades/strategy-live-vs-backtest`
 
 CEO directive "Live Trade → Strategy Provenance," Phase 5 — does a
