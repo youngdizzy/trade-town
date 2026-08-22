@@ -12310,6 +12310,27 @@ real DST-aware detail string and real boundary fields; the real save's
 own decision pipeline continued ticking correctly throughout (Day
 108 → 110).
 
+### Part 10 — Trade Attribution (resolved via research, no new code)
+
+Part 10 asks the system to eventually answer seven questions from real
+realized trade data: which strategy made/lost money, which session
+generated the best results, which regime generated the worst, which
+strategy has the best expectancy, which strategy has the largest
+drawdown, which strategies are correlated, and which strategies are
+degrading. An audit across every endpoint this directive's other parts
+built confirmed all seven already have a real, already-exposed answer —
+`GET /performance-by-strategy` (`totalPnl`, `expectancyPct`),
+`GET /performance-by-strategy-session` (Part 11, built in the prior
+"Live Trade → Strategy Provenance" directive), `GET
+/performance-by-strategy-regime` (Part 12, below), `GET
+/strategy-capital-allocation` (`liveDrawdownUsd`, Part 13), `GET
+/strategy-live-correlation` (Part 14), and the pre-existing `GET
+/strategy-degradation`. A new endpoint here would only re-package these
+same real reads under a new name — duplicated architecture, not new
+coverage — so Part 10 is recorded here as researched and confirmed
+already satisfied, per Absolute Rule #1, rather than silently marked
+done with nothing to show for it.
+
 ### Part 12 — Strategy Performance by Regime (plus two parts resolved without new code)
 
 Direct research finding: the prior "Live Trade → Strategy Provenance"
@@ -12565,6 +12586,39 @@ save honestly reports 2 real `missing_decision_time_context` issues
 (the two legacy decisions made before Part 8 existed) and zero in the
 other three categories; the real save's own decision pipeline
 continued ticking correctly throughout (Day 116 → 118).
+
+### Part 19 — Historical Integrity (verified via research, no new code)
+
+Part 19 requires that trades whose lineage the old architecture never
+stored are marked LEGACY/UNATTRIBUTED and explained, never
+retroactively fabricated. A dedicated audit across every module this
+directive touched — rather than assuming the principle held — found it
+already, consistently enforced everywhere:
+
+- `app/trade_attribution.py` marks `strategyProvenanceState:
+  "unavailable"` for any real trade with no matching decision record on
+  file, and `"unknown"` (a real decision exists, no strategy was
+  picked) separately — never a guessed or inferred `strategyId`.
+- `CeoDecisionRecord.decisionSession`/`decisionMarketRegime`/
+  `decisionSessionContext` are `None` for every real decision recorded
+  before Parts 5 and 8 of this directive existed, by explicit design —
+  documented in the fields' own docstrings in `app/schemas.py` and
+  threaded as `None` (never backfilled) through
+  `app/decision_vault.py`.
+- Part 18's own Data Quality Monitor names these exact historical gaps
+  (`missing_decision_time_context`, `missing_strategy_rule_snapshot`)
+  with a `detail` string explaining the historical cause, rather than
+  silently repairing or hiding them.
+- A repo-wide `grep` for `backfill`/`retroactiv` across `backend/app/`
+  turned up dozens of matching "never backfilled, never guessed"
+  comments and docstrings across `schemas.py`, `decision_vault.py`,
+  `exit_efficiency.py`, `session_evidence.py`,
+  `data_quality_monitor.py`, and more — and zero counter-examples.
+
+No code changes were needed here. This section records that Part 19
+was deliberately researched and confirmed already satisfied, per
+Absolute Rule #1, rather than silently treated as done with nothing to
+show for it.
 
 ## CEO directive "Portfolio Construction, Capital Allocation & Execution Realism"
 

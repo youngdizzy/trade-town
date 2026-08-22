@@ -8,6 +8,37 @@ development milestones, not semver releases.
 ### Added
 
 - **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
+  Attribution," Part 19: Historical Integrity — verified via research, no new code.** Part 19
+  requires that trades whose lineage the old architecture never stored are marked
+  LEGACY/UNATTRIBUTED and explained, never retroactively fabricated. An audit across every module
+  this directive touched confirmed the codebase already, consistently enforces exactly this: real
+  trades with no matching decision record `strategyProvenanceState: "unavailable"`
+  (`app/trade_attribution.py`), never a guessed strategy id; `decisionSession`/`decisionMarketRegime`/
+  `decisionSessionContext` are `None` for every decision recorded before Parts 5/8 existed, by
+  explicit design (`app/schemas.py`'s own field docstrings, `app/decision_vault.py`); and Part 18's
+  own Data Quality Monitor reports these exact gaps (`missing_decision_time_context`,
+  `missing_strategy_rule_snapshot`) with a `detail` string naming the historical cause rather than
+  silently repairing them. A repo-wide grep for `backfill`/`retroactiv` across `backend/app/` turned
+  up dozens of matching "never backfilled, never guessed" docstrings and zero counter-examples. No
+  code changes were needed; this entry records that Part 19 was deliberately checked and confirmed
+  already satisfied, per Absolute Rule #1, rather than silently marked done.
+
+- **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
+  Attribution," Part 10: Trade Attribution — resolved via research, no new code.** Part 10 asks the
+  system to eventually answer seven questions from real realized trade data: which strategy made/lost
+  money, which session generated the best results, which regime generated the worst, which strategy
+  has the best expectancy, which strategy has the largest drawdown, which strategies are correlated,
+  and which strategies are degrading. An audit of every endpoint built across this directive's earlier
+  parts confirmed all seven are already real and already exposed, with no gap left to fill:
+  `GET /performance-by-strategy` (`totalPnl` per strategy, plus `expectancyPct`), `GET
+  /performance-by-strategy-session` (Part 11), `GET /performance-by-strategy-regime` (Part 12),
+  `GET /strategy-capital-allocation` (`liveDrawdownUsd`, Part 13), `GET /strategy-live-correlation`
+  (Part 14), and the pre-existing `GET /strategy-degradation`. Writing a new endpoint that only
+  re-packaged these real reads would be duplicated architecture, not new coverage — this entry
+  exists to record that Part 10 was deliberately checked and found already satisfied, per Absolute
+  Rule #1's research-first discipline, not silently skipped.
+
+- **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
   Attribution," Part 18 (backend): Data Quality Monitor** (new `backend/app/data_quality_monitor.py`,
   `backend/app/schemas.py`, `backend/app/routers/trades.py`, new
   `backend/tests/test_data_quality_monitor.py`): research confirmed no generic "data quality issue"
