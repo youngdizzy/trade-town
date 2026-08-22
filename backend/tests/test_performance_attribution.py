@@ -25,7 +25,7 @@ from app.performance_attribution import (
     compute_strategy_session_performance,
     compute_symbol_performance,
 )
-from app.schemas import DecisionVaultEntry, FailureClassification, LiquidityRead, PaperTrade, Strategy, StrategyExposureRead, StrategyHealthAssessment, StrategySessionPerformanceSummary
+from app.schemas import DecisionVaultEntry, FailureClassification, LiquidityRead, PaperTrade, Strategy, StrategyExposureRead, StrategyHealthAssessment, StrategyRegimePerformanceSummary, StrategySessionPerformanceSummary
 from app.strategy_lab import HEALTH_RECENT_WINDOW
 
 
@@ -584,6 +584,7 @@ class TestComputeStrategyLiveVsBacktest:
 
 
 _EMPTY_SESSIONS = StrategySessionPerformanceSummary(reads=[], tradesExcludedNoStrategySelected=0, tradesExcludedNoVaultEntry=0, updatedAt="2024-01-01T00:00:00+00:00")
+_EMPTY_REGIMES = StrategyRegimePerformanceSummary(reads=[], tradesExcludedNoStrategySelected=0, tradesExcludedNoVaultEntry=0, updatedAt="2024-01-01T00:00:00+00:00")
 
 
 class TestComputeStrategyCapitalAllocationEvidence:
@@ -594,13 +595,13 @@ class TestComputeStrategyCapitalAllocationEvidence:
     (live drawdown, live return volatility) this phase adds."""
 
     def test_empty_roster_produces_no_reads(self) -> None:
-        summary = compute_strategy_capital_allocation_evidence([], [], [], _EMPTY_SESSIONS, [])
+        summary = compute_strategy_capital_allocation_evidence([], [], [], _EMPTY_SESSIONS, _EMPTY_REGIMES, [])
         assert summary.reads == []
         assert summary.min_sample_for_evidence == MIN_SYMBOL_SAMPLE_FOR_VERDICT
 
     def test_a_strategy_with_zero_live_trades_gets_a_row_with_every_derived_metric_none(self) -> None:
         strategy = _strategy(strategy_id="strategy-1", allocated_capital=5000.0)
-        summary = compute_strategy_capital_allocation_evidence([strategy], [], [], _EMPTY_SESSIONS, [])
+        summary = compute_strategy_capital_allocation_evidence([strategy], [], [], _EMPTY_SESSIONS, _EMPTY_REGIMES, [])
         read = summary.reads[0]
         assert read.evidence_state == "no_live_trades_yet"
         assert read.trade_count == 0
@@ -617,7 +618,7 @@ class TestComputeStrategyCapitalAllocationEvidence:
         strategy = _strategy(strategy_id="strategy-1")
         trades = [_trade(trade_id="a", pnl=10.0, pnl_pct=1.0)]
         vault = [_vault_entry(trade_id="a", strategy_id="strategy-1")]
-        summary = compute_strategy_capital_allocation_evidence([strategy], trades, vault, _EMPTY_SESSIONS, [])
+        summary = compute_strategy_capital_allocation_evidence([strategy], trades, vault, _EMPTY_SESSIONS, _EMPTY_REGIMES, [])
         read = summary.reads[0]
         assert read.evidence_state == "not_enough_data"
         assert read.trade_count == 1
@@ -637,7 +638,7 @@ class TestComputeStrategyCapitalAllocationEvidence:
             _trade(trade_id="b", pnl=-40.0, pnl_pct=-4.0, closed_at="2024-01-02T00:00:00+00:00"),
         ]
         vault = [_vault_entry(trade_id=t.id, strategy_id="strategy-1") for t in trades]
-        summary = compute_strategy_capital_allocation_evidence([strategy], trades, vault, _EMPTY_SESSIONS, [])
+        summary = compute_strategy_capital_allocation_evidence([strategy], trades, vault, _EMPTY_SESSIONS, _EMPTY_REGIMES, [])
         read = summary.reads[0]
         assert read.live_drawdown_usd == 40.0
 
@@ -649,7 +650,7 @@ class TestComputeStrategyCapitalAllocationEvidence:
             _trade(trade_id="c", pnl=10.0, pnl_pct=1.0, closed_at="2024-01-03T00:00:00+00:00"),
         ]
         vault = [_vault_entry(trade_id=t.id, strategy_id="strategy-1") for t in trades]
-        summary = compute_strategy_capital_allocation_evidence([strategy], trades, vault, _EMPTY_SESSIONS, [])
+        summary = compute_strategy_capital_allocation_evidence([strategy], trades, vault, _EMPTY_SESSIONS, _EMPTY_REGIMES, [])
         read = summary.reads[0]
         # mean=1.0, population variance=((4-1)^2+(-2-1)^2+(1-1)^2)/3=6.0, stdev=sqrt(6)~=2.449...
         assert read.live_return_volatility_pct == 2.45
@@ -662,7 +663,7 @@ class TestComputeStrategyCapitalAllocationEvidence:
             _trade(trade_id="c", pnl=1.0, pnl_pct=0.1, entry_slippage_bps=30.0, exit_slippage_bps=25.0),
         ]
         vault = [_vault_entry(trade_id=t.id, strategy_id="strategy-1") for t in trades]
-        summary = compute_strategy_capital_allocation_evidence([strategy], trades, vault, _EMPTY_SESSIONS, [])
+        summary = compute_strategy_capital_allocation_evidence([strategy], trades, vault, _EMPTY_SESSIONS, _EMPTY_REGIMES, [])
         read = summary.reads[0]
         assert read.avg_entry_slippage_bps == 20.0
         assert read.avg_exit_slippage_bps == 15.0
@@ -672,7 +673,7 @@ class TestComputeStrategyCapitalAllocationEvidence:
         strategy_b = _strategy(strategy_id="strategy-b", name="Other")
         trades = [_trade(trade_id="x", pnl=10.0, pnl_pct=1.0)]
         vault = [_vault_entry(trade_id="x", strategy_id="strategy-a")]
-        summary = compute_strategy_capital_allocation_evidence([strategy_a, strategy_b], trades, vault, _EMPTY_SESSIONS, [])
+        summary = compute_strategy_capital_allocation_evidence([strategy_a, strategy_b], trades, vault, _EMPTY_SESSIONS, _EMPTY_REGIMES, [])
         b_read = next(r for r in summary.reads if r.strategy_id == "strategy-b")
         assert b_read.evidence_state == "no_live_trades_yet"
         assert b_read.current_exposure_value == 0.0
@@ -680,7 +681,7 @@ class TestComputeStrategyCapitalAllocationEvidence:
     def test_current_exposure_joined_from_strategy_exposure_reads(self) -> None:
         strategy = _strategy(strategy_id="strategy-1")
         exposure = [StrategyExposureRead(strategyId="strategy-1", positionCount=2, value=1500.0, pctOfEquity=15.0, longValue=1500.0, shortValue=0.0)]
-        summary = compute_strategy_capital_allocation_evidence([strategy], [], [], _EMPTY_SESSIONS, exposure)
+        summary = compute_strategy_capital_allocation_evidence([strategy], [], [], _EMPTY_SESSIONS, _EMPTY_REGIMES, exposure)
         read = summary.reads[0]
         assert read.current_exposure_value == 1500.0
         assert read.current_exposure_pct_of_equity == 15.0
@@ -695,7 +696,7 @@ class TestComputeStrategyCapitalAllocationEvidence:
         trades = [_trade(trade_id="a", pnl=10.0, pnl_pct=1.0)] * 5
         # give the low-capital strategy a perfect win rate — sort order must still be by capital, not this.
         vault = [_vault_entry(trade_id=t.id, strategy_id="low-capital-high-winrate") for t in trades]
-        summary = compute_strategy_capital_allocation_evidence(strategies, trades, vault, _EMPTY_SESSIONS, [])
+        summary = compute_strategy_capital_allocation_evidence(strategies, trades, vault, _EMPTY_SESSIONS, _EMPTY_REGIMES, [])
         assert [r.strategy_id for r in summary.reads] == ["high-capital-no-trades", "low-capital-high-winrate"]
 
     def test_session_reads_filtered_to_only_this_strategys_own_rows(self) -> None:
@@ -719,10 +720,39 @@ class TestComputeStrategyCapitalAllocationEvidence:
             tradesExcludedNoVaultEntry=0,
             updatedAt="2024-01-01T00:00:00+00:00",
         )
-        summary = compute_strategy_capital_allocation_evidence([strategy], [], [], sessions, [])
+        summary = compute_strategy_capital_allocation_evidence([strategy], [], [], sessions, _EMPTY_REGIMES, [])
         read = summary.reads[0]
         assert len(read.session_reads) == 1
         assert read.session_reads[0].session == "new_york"
+
+    def test_regime_reads_filtered_to_only_this_strategys_own_rows(self) -> None:
+        """CEO directive "Complete Trade Provenance," Part 13 — the
+        regime-behavior evidence input Part 12 added, joined the exact
+        same way session_reads already is."""
+        from app.schemas import StrategyRegimePerformanceRead
+
+        strategy = _strategy(strategy_id="strategy-1")
+        regimes = StrategyRegimePerformanceSummary(
+            reads=[
+                StrategyRegimePerformanceRead(
+                    strategyId="strategy-1", regime="strong_bull_trend", tradeCount=3, winCount=2, lossCount=1, winRatePct=66.7,
+                    totalPnl=10.0, avgPnlPct=1.0, avgWinnerPct=5.0, avgLoserPct=-2.0, expectancyPct=1.0, profitFactor=2.0,
+                    avgMaePct=0.0, avgMfePct=0.0, bestTradePnlPct=5.0, worstTradePnlPct=-2.0, evidenceState="sufficient_evidence",
+                ),
+                StrategyRegimePerformanceRead(
+                    strategyId="strategy-other", regime="high_volatility", tradeCount=3, winCount=2, lossCount=1, winRatePct=66.7,
+                    totalPnl=10.0, avgPnlPct=1.0, avgWinnerPct=5.0, avgLoserPct=-2.0, expectancyPct=1.0, profitFactor=2.0,
+                    avgMaePct=0.0, avgMfePct=0.0, bestTradePnlPct=5.0, worstTradePnlPct=-2.0, evidenceState="sufficient_evidence",
+                ),
+            ],
+            tradesExcludedNoStrategySelected=0,
+            tradesExcludedNoVaultEntry=0,
+            updatedAt="2024-01-01T00:00:00+00:00",
+        )
+        summary = compute_strategy_capital_allocation_evidence([strategy], [], [], _EMPTY_SESSIONS, regimes, [])
+        read = summary.reads[0]
+        assert len(read.regime_reads) == 1
+        assert read.regime_reads[0].regime == "strong_bull_trend"
 
 
 def _failure_classification(*, trade_id: str, reason: str = "bad_thesis") -> FailureClassification:

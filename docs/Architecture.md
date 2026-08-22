@@ -12369,6 +12369,33 @@ disclosed state `performance-by-strategy` itself already reports on
 this save); the real save's own decision pipeline continued ticking
 correctly throughout (Day 110 → 111).
 
+### Part 13 — Regime Behavior in Capital Allocation Evidence
+
+Part 13 asks the capital-allocation evidence roster to expose "session
+behavior" and "regime behavior" as real inputs to the CEO's own manual
+allocation decision. `StrategyCapitalAllocationRead` (built by the
+prior "Portfolio Construction, Capital Allocation & Execution Realism"
+directive, below) already had `sessionReads` — regime was the one
+directive-named input still missing, and Part 12's own
+`compute_strategy_regime_performance()` from earlier in this same
+directive closed it immediately. New `regimeReads:
+StrategyRegimePerformanceRead[]`, threaded through
+`compute_strategy_capital_allocation_evidence()` exactly the way
+`sessionReads` already is — same grouping-by-strategy-id pattern, same
+empty-list fallback for a strategy with no live trades yet. No new
+statistical computation: purely a join of two already-real,
+already-tested sources.
+
+**Tests.** 1 new (`regime_reads` filtered to only the strategy's own
+rows, mirroring the existing `session_reads` test exactly). Full
+backend suite: 2614 passed (+1), `mypy app/` (178 files) clean,
+`ruff check app/ tests/` clean. Live-verified against a freshly
+restarted real dev stack — `GET /api/trades/strategy-capital-allocation`
+now returns a real `regimeReads` array (currently empty, honestly
+disclosed, on this save) alongside the pre-existing `sessionReads`; the
+real save's own decision pipeline continued ticking correctly
+throughout (Day 111 → 112).
+
 ## CEO directive "Portfolio Construction, Capital Allocation & Execution Realism"
 
 **Phase 1 — architecture audit (research agent, before any code).**

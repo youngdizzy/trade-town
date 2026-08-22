@@ -1176,6 +1176,13 @@ class StrategyCapitalAllocationRead(CamelModel):
     avg_entry_slippage_bps: float | None = Field(default=None, alias="avgEntrySlippageBps")
     avg_exit_slippage_bps: float | None = Field(default=None, alias="avgExitSlippageBps")
     session_reads: list[StrategySessionPerformanceRead] = Field(default_factory=list, alias="sessionReads")
+    # CEO directive "Complete Trade Provenance," Part 13 — the same real
+    # regime-behavior evidence Part 12's compute_strategy_regime_
+    # performance() now provides, joined in exactly the way sessionReads
+    # already is. Closes the one directive-named capital-allocation
+    # input this row was missing (session was already here; regime
+    # wasn't).
+    regime_reads: list[StrategyRegimePerformanceRead] = Field(default_factory=list, alias="regimeReads")
     current_exposure_value: float = Field(default=0.0, alias="currentExposureValue")
     current_exposure_pct_of_equity: float = Field(default=0.0, alias="currentExposurePctOfEquity")
     robustness_note: str = Field(alias="robustnessNote")

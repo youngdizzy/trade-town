@@ -507,6 +507,7 @@ def compute_strategy_capital_allocation_evidence(
     trade_history: list[PaperTrade],
     decision_vault: list[DecisionVaultEntry],
     strategy_session_performance: StrategySessionPerformanceSummary,
+    strategy_regime_performance: StrategyRegimePerformanceSummary,
     strategy_exposure: list[StrategyExposureRead],
 ) -> StrategyCapitalAllocationSummary:
     """CEO directive "Portfolio Construction, Capital Allocation &
@@ -529,6 +530,9 @@ def compute_strategy_capital_allocation_evidence(
     sessions_by_strategy_id: dict[str, list[StrategySessionPerformanceRead]] = {}
     for session_read in strategy_session_performance.reads:
         sessions_by_strategy_id.setdefault(session_read.strategy_id, []).append(session_read)
+    regimes_by_strategy_id: dict[str, list[StrategyRegimePerformanceRead]] = {}
+    for regime_read in strategy_regime_performance.reads:
+        regimes_by_strategy_id.setdefault(regime_read.strategy_id, []).append(regime_read)
     exposure_by_strategy_id = {exposure.strategy_id: exposure for exposure in strategy_exposure if exposure.strategy_id is not None}
     trades_by_strategy_id = _trades_by_strategy_id(trade_history, decision_vault)
 
@@ -548,6 +552,7 @@ def compute_strategy_capital_allocation_evidence(
                     evidenceState="no_live_trades_yet",
                     tradeCount=0,
                     sessionReads=sessions_by_strategy_id.get(strategy.id, []),
+                    regimeReads=regimes_by_strategy_id.get(strategy.id, []),
                     currentExposureValue=exposure.value if exposure else 0.0,
                     currentExposurePctOfEquity=exposure.pct_of_equity if exposure else 0.0,
                     robustnessNote=ROBUSTNESS_UNAVAILABLE_NOTE,
@@ -573,6 +578,7 @@ def compute_strategy_capital_allocation_evidence(
                 avgEntrySlippageBps=entry_slippage,
                 avgExitSlippageBps=exit_slippage,
                 sessionReads=sessions_by_strategy_id.get(strategy.id, []),
+                regimeReads=regimes_by_strategy_id.get(strategy.id, []),
                 currentExposureValue=exposure.value if exposure else 0.0,
                 currentExposurePctOfEquity=exposure.pct_of_equity if exposure else 0.0,
                 robustnessNote=ROBUSTNESS_UNAVAILABLE_NOTE,

@@ -8,6 +8,26 @@ development milestones, not semver releases.
 ### Added
 
 - **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
+  Attribution," Part 13 (backend): Regime Behavior in Capital Allocation Evidence**
+  (`backend/app/schemas.py`, `backend/app/performance_attribution.py`, `backend/app/routers/trades.py`,
+  `backend/tests/test_performance_attribution.py`): Part 13 asks the capital-allocation evidence
+  roster to expose "session behavior" and "regime behavior" as inputs to the CEO's own manual
+  allocation decision. `StrategyCapitalAllocationRead` already had `sessionReads` (from the prior
+  directive); regime was the one missing input, closeable immediately using Part 12's own
+  `compute_strategy_regime_performance()` from this same phase. New `regimeReads:
+  StrategyRegimePerformanceRead[]`, threaded through `compute_strategy_capital_allocation_evidence()`
+  exactly the way `sessionReads` already is (same grouping-by-strategy-id pattern, same "no live
+  trades" fallback to an empty list) — no new statistical computation, purely a join of two
+  already-real sources.
+
+  1 new test (`regime_reads` filtered correctly to only the strategy's own rows, mirroring the
+  existing `session_reads` test). Full backend suite: 2614 passed (+1), `mypy app/` (178 files)
+  clean, `ruff check app/ tests/` clean. Live-verified against a freshly restarted real dev stack —
+  `GET /api/trades/strategy-capital-allocation` now returns a real (currently empty, honestly
+  disclosed) `regimeReads` array alongside the pre-existing `sessionReads`; the real save's own
+  decision pipeline continued ticking correctly throughout (Day 111 → 112).
+
+- **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
   Attribution," Part 12 (backend): Strategy Performance by Regime** (`backend/app/schemas.py`,
   `backend/app/performance_attribution.py`, `backend/app/routers/trades.py`,
   `backend/tests/test_performance_attribution.py`): a direct research finding — the prior "Live

@@ -203,11 +203,13 @@ async def get_strategy_capital_allocation() -> StrategyCapitalAllocationSummary:
     per request; no new GameSaveState field."""
     state = await game_state.snapshot()
     sessions = compute_strategy_session_performance(state.paper_portfolio.trade_history, state.decision_vault)
+    regimes = compute_strategy_regime_performance(state.paper_portfolio.trade_history, state.decision_vault)
     return compute_strategy_capital_allocation_evidence(
         state.strategies,
         state.paper_portfolio.trade_history,
         state.decision_vault,
         sessions,
+        regimes,
         state.portfolio_intelligence.strategy_exposure,
     )
 
