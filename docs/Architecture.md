@@ -12827,6 +12827,215 @@ test pattern used only here, not a general regression.
 Switched back to the real `default` run afterward — confirmed
 unaffected throughout (Day 121, run identity unchanged).
 
+### Part 22 — Verification
+
+A final, consolidated, fresh-stack verification pass, exact numbers,
+nothing hidden:
+
+- **Backend suite:** `python -m pytest -q` → **2650 passed**, 0
+  failed, 0 skipped (`0:06:42`/`0:06:43` across two independent runs
+  this phase — no flakiness).
+- **Backend types:** `python -m mypy app/` → clean, 179 source files.
+- **Backend lint:** `python -m ruff check app/ tests/` → all checks
+  passed.
+- **Frontend types:** `npx tsc --noEmit` → clean.
+- **Frontend lint:** `npm run lint` → clean, `--max-warnings 0`.
+- **Frontend build:** `npm run build` → succeeds (183 modules; the
+  pre-existing &gt;500kB single-chunk warning is unrelated to this
+  directive).
+- **Playwright:** `commandCenter.spec.ts` against a freshly restarted
+  backend (`pkill`/relaunch `uvicorn`, `GET /api/health` → 200) plus
+  the running Vite dev server → **30 passed, 2 failed, 1 skipped**,
+  identical across two independent runs this phase. Both failures
+  (`commandCenter.spec.ts:82`, `:1097`) are named, not hidden: Part 16
+  verified via `git stash`/re-run that both reproduce byte-for-byte
+  identically against this directive's pre-change code — pre-existing,
+  caused by the real save's own in-game clock having drifted past what
+  those two specific tests assumed after many real-time hours of
+  continuous background ticking, not a regression from this directive.
+- **Fresh-stack runtime verification:** backend restarted cold, health
+  check 200, `GET /api/runs/active` confirmed the real `default` save
+  loaded correctly and unaffected (Day 121 before this phase's
+  Playwright run, Day 122 afterward from its own natural background
+  ticking — run identity unchanged throughout).
+
+No production code changed this phase — a verification-only pass.
+
+### Part 23 — Final Architecture Audit
+
+The directive's own closing report, all nineteen items it names.
+
+**1. What already existed.** The prior "Live Trade → Strategy
+Provenance" directive had already built real, bare `strategyId`
+labeling end to end (`CeoDecisionRecord.strategyId` →
+`DecisionVaultEntry`/`TradeAttributionRecord`/`TradeReportCard`,
+performance-by-strategy, live-vs-backtest comparison,
+strategy×session breakdowns), a real (if fixed-UTC, non-DST-aware)
+session classifier, two independent regime engines, real execution
+slippage/cost tracking, and real strategy-pair correlation over
+backtest data. None of it connected market conditions → session/regime
+→ compiled rules → agent reasoning → execution → attribution into one
+provable chain — that gap is what this entire directive closed.
+
+**2. What was genuinely missing.** A rule-version snapshot proving
+*which exact compiled rules* produced a trade (only a mutable pointer
+existed); any decision-time session/regime/price/volatility capture
+(existing fields were stamped at trade close, not decision time); a
+real DST-aware live session classifier; regime as a capital-allocation
+input; live (not backtest-only) strategy correlation; a
+price-movement-vs-execution-cost decomposition; a dedicated
+unattributed-trade/data-quality diagnostic; and a Command Center
+summary view unifying all of it — ten distinct, real gaps, not one.
+
+**3. What was reused.** Extensively, and disclosed at every site: the
+append-only `compiled_strategy_versions` history (Feature 37, never
+previously read by the trade pipeline); `pearson_correlation()`
+(`portfolio_intelligence.py`) for live correlation instead of a new
+statistics routine; `compute_strategy_session_performance()` mirrored
+field-for-field for the regime axis instead of a parallel
+implementation; `apply_slippage()`'s own exact formula algebraically
+reversed for execution attribution instead of a second, independent
+model; `OverviewPanel.tsx`'s existing landing-tab pattern and
+`PortfolioCommandCenterStrip`'s exact strip shape for the new Command
+Center tiles instead of a new tab; `DecisionVaultPanel.tsx`'s existing
+master/detail view for progressive disclosure instead of a new
+component; `StrategyCompilerView.tsx`'s rule-rendering JSX reused for
+the trade-detail RULES card.
+
+**4. What was implemented.** Parts 1/2 (Strategy Rule Snapshot), 4/5
+(real DST-aware `compute_session()` + Session Context), 8
+(Decision-Time Snapshot), 12 (Strategy Performance by Regime), 13
+(regime reads in Capital Allocation Evidence), 14 (live Strategy
+Correlation), 15 (Execution Attribution), 16 (Command Center UX —
+Trading Intelligence strip + progressive disclosure, this directive's
+only frontend phase), 17 (Unattributed Trade Monitor), 18 (Data
+Quality Monitor, 4 of 9 named categories), 20 (two real, named test
+gaps closed), 21 (a full real end-to-end live trace).
+
+**5. What was intentionally NOT implemented.** Part 3 (Strategy
+Compliance at Execution) and Part 6 (Session/Regime-Specific Strategy
+Eligibility) — both fully researched and explicitly deferred, never
+attempted half-built. Five of Part 18's nine named data-quality
+categories (missing decision/execution/exit evidence are already
+covered by pre-existing `evidenceState` fields; re-detecting them would
+be duplicated architecture). The Command Center's Non-Compliant Trades
+tile deliberately never shows a real number. Two minor, disclosed test
+gaps from Part 20 (an HTTP-level router test, a secondary at-threshold
+sample-size re-test) were left as gold-plating, not real gaps.
+
+**6. Why anything was deferred.** Part 3: a live `TradeProposal` never
+carries a link to the compiled Strategy rules that produced it —
+confirmed by two independent research passes finding zero references
+to `Strategy`/`CompiledStrategyDefinition` in `generate_proposal()`.
+Wiring that in is a substantially larger, separate architectural change
+(compiled strategies driving live proposal generation), not a "extend
+what's already safely there" fit this directive's own rules call for.
+Part 6: the only real per-session backtest evidence
+(`CompiledStrategyBacktestResult.sessionBreakdown`) is computed
+fresh/on-demand, never persisted per-strategy — wiring it into the
+live, every-tick `compute_strategy_match()` would need either an
+expensive inline backtest on the hot tick path or a new persistence
+layer, neither safely scoped for this phase.
+
+**7. Exact files changed.** 22 files across the directive's full
+commit range (`git diff --stat`, backend `app/`+`tests/` and frontend
+`src/`): **10 backend production files** —
+`data_quality_monitor.py` (new), `decision_vault.py`, `executive.py`,
+`market_intelligence.py`, `performance_attribution.py`,
+`routers/trades.py`, `schemas.py`, `state.py`, `strategy_registry.py`,
+`trade_attribution.py`; **8 backend test files** —
+`test_data_quality_monitor.py` (new), `test_decision_vault.py`,
+`test_executive.py`, `test_market_intelligence.py`,
+`test_performance_attribution.py`, `test_state.py`,
+`test_strategy_registry.py`, `test_trade_attribution.py`; **4 frontend
+files** — `net/api.ts`, `types.ts`, `DecisionVaultPanel.tsx`,
+`OverviewPanel.tsx`. 2,489 insertions, 44 deletions.
+
+**8. Exact tests added.** Backend suite grew from **2,574** (before
+Part 1) to **2,650** (after Part 22) — **76 new backend tests**, zero
+removed, zero weakened. No new frontend test file (Part 16 verified
+via the existing `commandCenter.spec.ts` plus a disposable,
+never-committed Playwright script rather than adding permanent test
+surface for a UI addition that Playwright's own existing coverage
+already exercises through its parent panels).
+
+**9. Full test results.** See Part 22 immediately above — the
+authoritative, freshest numbers: backend 2650 passed/0 failed, mypy
+clean, ruff clean, frontend tsc/lint/build clean, Playwright 30
+passed/2 failed (both pre-existing, named, verified unrelated)/1
+skipped.
+
+**10. Fresh Day-1 runtime result.** See Part 21 — a genuinely fresh
+run reached a real SPY proposal, a real CEO decision with an attached
+strategy, real Gatekeeper approval, a real position, and a real
+natural close two sim-days later, all without any forced or fabricated
+step.
+
+**11. Trade lineage demonstration.** Part 21's SPY trade:
+`strategyProvenanceState: known`, `strategyId:
+50-ema-breakout-pullback-short`, `strategyCompiledDefinitionVersion:
+1`, resolved by `GET /trades/{id}/strategy-rule-snapshot` back to the
+exact real 3-step compiled definition (chandelier stop, 2R target)
+that was active at decision time.
+
+**12. Strategy compliance demonstration.** None exists to demonstrate,
+honestly — Part 3 is deferred, by design (see items 5/6 above). The
+honest demonstration is the disclosed absence itself: the Command
+Center's Non-Compliant Trades tile reads "Not tracked" rather than a
+fabricated "0", and a repo-wide grep confirms zero code paths that
+could produce a real per-trade compliance verdict today.
+
+**13. Session classification demonstration.** Part 20's own boundary
+tests: one real UTC second before NYSE's 9:30 ET open classifies as
+`london`; the next second, `market_open`. The same UTC clock time
+classifies differently across the real 2026 DST transition weekend
+(`market_open` at 14:30 UTC on the Friday before, an hour later at
+13:30 UTC on the Monday after).
+
+**14. Regime classification demonstration.** Part 21's SPY decision
+snapshot: `decisionMarketRegime: weak_uptrend`, captured from the real,
+live `MarketIntelligenceState.regime` at the exact instant of the
+decision — proven immutable against a later, different regime by
+Part 20's own leakage test.
+
+**15. Agent evidence demonstration.** Part 21's SPY trade: `GET
+/trades/attribution` shows real per-agent contributions for all 6
+desk roles (echo/scout/nova/sentinel/pulse/atlas), 5 agreeing with the
+side traded and 1 (`pulse`) honestly dissenting — never a fabricated
+numeric P&L credit split, per Part 9's own rule.
+
+**16. Data-quality status.** Part 18's monitor covers 4 of 9 named
+categories with a genuine, non-fabricated signal for each; the other
+5 are already covered elsewhere (disclosed) or have no real signal to
+build on. Live-verified against the real save: 2 real
+`missing_decision_time_context` issues (both legacy, pre-dating this
+directive's own Part 8), zero in the other three categories.
+
+**17. Remaining architectural blockers.** Part 3 (no compiled-strategy
+link on live proposals) and Part 6 (no persisted per-strategy
+per-session backtest evidence) — both fully disclosed above, both
+would need dedicated design passes of their own, not attempted as a
+rushed addition to this directive.
+
+**18. Any synthetic/fabricated data used — NONE.** Every live
+verification throughout this directive's 20+ phases ran against the
+real `default` save's own genuine data, or (Part 21) a genuinely fresh
+run driven only through real API calls (a real CEO decision, real time
+advancement) — never a manually-inserted trade, price, or outcome. A
+repo-wide grep for `backfill`/`retroactiv` across every module this
+directive touched found only "never backfilled, never guessed"
+disclosures, zero counter-examples (Part 19).
+
+**19. Any duplicated architecture — NONE.** Every phase's own
+"Research First" pass is recorded above specifically to make this
+claim checkable: Part 12 mirrors Part 11's existing session-performance
+function rather than reinventing it; Part 14 reuses the existing
+Pearson-correlation helper; Part 15 reverses the existing slippage
+formula rather than building a second execution model; Part 16 extends
+two existing panels rather than adding a new tab; Part 18 explicitly
+excludes the 5 categories already covered by pre-existing
+`evidenceState` fields.
+
 ## CEO directive "Portfolio Construction, Capital Allocation & Execution Realism"
 
 **Phase 1 — architecture audit (research agent, before any code).**

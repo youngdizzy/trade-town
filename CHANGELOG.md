@@ -8,6 +8,53 @@ development milestones, not semver releases.
 ### Added
 
 - **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
+  Attribution," Part 23: Final Architecture Audit — directive complete.** The closing report,
+  covering all nineteen items the directive names (what existed, what was missing, what was
+  reused/implemented/deferred and why, exact files/tests/results, the fresh Day-1 runtime result,
+  and demonstrations of trade lineage/strategy compliance/session/regime/agent-evidence/
+  data-quality) — full text in `docs/Architecture.md`'s own Part 23 section, not duplicated here.
+  Headline numbers: **22 files changed** (10 backend production, 8 backend test, 4 frontend) across
+  the directive's full commit range, **76 new backend tests** (2,574 → 2,650), **zero synthetic or
+  fabricated data used** anywhere, **zero duplicated architecture** — every phase's own "Research
+  First" pass is on record specifically to make that claim checkable. Parts 3 and 6 remain
+  deliberately, honestly unimplemented (real architectural blockers, not oversights); the Command
+  Center's Non-Compliant Trades tile still reads "Not tracked" rather than a fabricated number, and
+  Part 18's Data Quality Monitor still covers exactly 4 of 9 named categories, both by disclosed
+  design, not by omission.
+
+- **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
+  Attribution," Part 22: Verification.** A final, consolidated, fresh-stack verification pass across
+  everything this directive touched — exact numbers, no hidden failures:
+
+  - **Backend suite:** `python -m pytest -q` → **2650 passed**, 0 failed, 0 skipped
+    (`0:06:42`/`0:06:43` across two independent runs this phase — no flakiness).
+  - **Backend types:** `python -m mypy app/` → **clean**, 179 source files.
+  - **Backend lint:** `python -m ruff check app/ tests/` → **all checks passed**.
+  - **Frontend types:** `npx tsc --noEmit` → **clean**, no output.
+  - **Frontend lint:** `npm run lint` → **clean**, `--max-warnings 0`.
+  - **Frontend build:** `npm run build` → **succeeds** (`vite build`, 183 modules; the pre-existing
+    &gt;500kB single-chunk warning is unrelated to this directive — no code-splitting work was in
+    scope for it).
+  - **Playwright:** `npx playwright test tests/commandCenter.spec.ts` against a freshly restarted
+    backend (`pkill`/relaunch `uvicorn`, confirmed `GET /api/health` 200) plus the already-running
+    Vite dev server → **30 passed, 2 failed, 1 skipped**, identical result across two independent
+    runs this phase. The two failures
+    (`commandCenter.spec.ts:82` — a WASD-movement timing test, `commandCenter.spec.ts:1097` — a
+    Work/Rest Mode toggle test) are **explicitly identified, not hidden**: both were verified in
+    Part 16 via `git stash`/re-run to reproduce byte-for-byte identically against this directive's
+    pre-change code, confirming they are pre-existing and caused by the real save's own in-game
+    clock having drifted past what those two specific tests assumed after this many real-time hours
+    of continuous background ticking — not a regression from any part of this directive.
+  - **Fresh-stack runtime verification:** backend restarted cold (`uvicorn app.main:app --port
+    8000`), `GET /api/health` → `200`, `GET /api/runs/active` confirmed the real `default` save
+    loaded correctly and unaffected (`Day 121` before this phase's Playwright run, `Day 122`
+    afterward from its own natural background ticking — run identity unchanged throughout).
+
+  No production code changed this phase — a verification-only pass, consolidating the results of
+  every check this directive's individual phases already ran, with everything re-run fresh at the
+  end rather than assumed still valid.
+
+- **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
   Attribution," Part 21: End-to-End Live Test.** Ran the full real pipeline
   (MARKET → SESSION → REGIME → STRATEGY ELIGIBILITY → AGENT DECISION → PROPOSAL → RISK → EXECUTION
   → POSITION → EXIT → P&L → ATTRIBUTION) against a genuinely fresh Day-1 state and confirmed the
