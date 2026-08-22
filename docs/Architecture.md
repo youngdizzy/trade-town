@@ -12484,6 +12484,35 @@ correct, reconciling `priceMovementPnl`/`slippageCostUsd` values (the
 the real save's own decision pipeline continued ticking correctly
 throughout (Day 113 → 115).
 
+### Part 17 — Unattributed Trade Monitor
+
+Part 17 asks for a dedicated, visible data-quality diagnostic — how
+many trades lack strategy lineage, why, and whether the number is
+increasing — never folded silently into another endpoint's exclusion
+counts. The two real reasons a trade lacks attribution already existed
+as `TradeAttributionRecord.strategyProvenanceState` values
+(`unknown`: a real decision on record, the CEO just never picked a
+strategy; `unavailable`: no matching decision at all) — this reuses
+`compute_trade_attribution()` directly to count them across trade
+history, never a second attribution computation.
+
+New `GET /api/trades/unattributed-monitor`. `trend`
+(`improving`/`worsening`/`stable`/`not_enough_data`) is a real
+comparison of the strategy-attribution rate between the first and
+second half of trade history, ordered by each trade's own real
+`closedSimMinutes` — never a fabricated trajectory, and honestly
+`not_enough_data` below 3 real trades in either half.
+
+**Tests.** 7 new, including a real ordering test that passes trades in
+reverse-chronological list order and confirms the trend split still
+uses each trade's own real timestamp, not list position. Full backend
+suite: 2631 passed (+7), `mypy app/` (178 files) clean,
+`ruff check app/ tests/` clean. Live-verified against a freshly
+restarted real dev stack — the real save honestly reports 2/2 trades
+unattributed (100%, both `unknown`) with `not_enough_data` for trend
+(fewer than 3 trades on record); the real save's own decision pipeline
+continued ticking correctly throughout (Day 115 → 116).
+
 ## CEO directive "Portfolio Construction, Capital Allocation & Execution Realism"
 
 **Phase 1 — architecture audit (research agent, before any code).**

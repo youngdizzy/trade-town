@@ -57,6 +57,8 @@ from app.schemas import (
     TradeDecision,
     TradeStrategyProvenanceState,
     TradeStrategyRuleSnapshot,
+    UnattributedTradeMonitor,
+    UnattributedTradeTrend,
 )
 from app.strategy_registry import get_compiled_definition_version
 
@@ -225,6 +227,71 @@ def compute_trade_attribution_history(
 ) -> TradeAttributionSummary:
     records = [compute_trade_attribution(trade, decisions, ceo_decisions) for trade in trade_history]
     return TradeAttributionSummary(records=records, updatedAt=_now_iso())
+
+
+# Same real bar app/performance_attribution.py's MIN_SYMBOL_SAMPLE_FOR_
+# VERDICT already uses for "enough real observations to say something,"
+# applied per half of trade history here.
+MIN_SAMPLE_PER_HALF_FOR_TREND = 3
+
+
+def compute_unattributed_trade_monitor(
+    trade_history: list[PaperTrade],
+    decisions: list[TradeDecision],
+    ceo_decisions: list[CeoDecisionRecord],
+) -> UnattributedTradeMonitor:
+    """CEO directive "Complete Trade Provenance," Part 17. Reuses
+    compute_trade_attribution() directly for every trade's real
+    strategyProvenanceState — never a second attribution computation.
+    `trend` compares the real attribution rate between the first and
+    second half of trade history, ordered by each trade's own real
+    closedSimMinutes — never a fabricated trajectory, and
+    "not_enough_data" below MIN_SAMPLE_PER_HALF_FOR_TREND real trades in
+    either half."""
+    ordered = sorted(trade_history, key=lambda t: t.closed_sim_minutes)
+    records = [compute_trade_attribution(trade, decisions, ceo_decisions) for trade in ordered]
+
+    total = len(records)
+    unknown_count = sum(1 for r in records if r.strategy_provenance_state == "unknown")
+    unavailable_count = sum(1 for r in records if r.strategy_provenance_state == "unavailable")
+    unattributed_count = unknown_count + unavailable_count
+    unattributed_pct = round(unattributed_count / total * 100, 1) if total else 0.0
+
+    def _attribution_rate(subset: list[TradeAttributionRecord]) -> float:
+        return sum(1 for r in subset if r.strategy_provenance_state == "known") / len(subset)
+
+    midpoint = total // 2
+    first_half, second_half = records[:midpoint], records[midpoint:]
+    trend: UnattributedTradeTrend
+    if len(first_half) < MIN_SAMPLE_PER_HALF_FOR_TREND or len(second_half) < MIN_SAMPLE_PER_HALF_FOR_TREND:
+        trend = "not_enough_data"
+        trend_detail = f"Fewer than {MIN_SAMPLE_PER_HALF_FOR_TREND} real trades in one or both halves of history — no real trend read yet."
+    else:
+        first_rate, second_rate = _attribution_rate(first_half), _attribution_rate(second_half)
+        if second_rate > first_rate:
+            trend = "improving"
+            trend_detail = f"Real strategy-attribution rate rose from {round(first_rate * 100, 1)}% (earlier half) to {round(second_rate * 100, 1)}% (recent half)."
+        elif second_rate < first_rate:
+            trend = "worsening"
+            trend_detail = f"Real strategy-attribution rate fell from {round(first_rate * 100, 1)}% (earlier half) to {round(second_rate * 100, 1)}% (recent half)."
+        else:
+            trend = "stable"
+            trend_detail = f"Real strategy-attribution rate held at {round(second_rate * 100, 1)}% across both halves of history."
+
+    return UnattributedTradeMonitor(
+        totalTrades=total,
+        unattributedCount=unattributed_count,
+        unattributedPct=unattributed_pct,
+        unknownCount=unknown_count,
+        unavailableCount=unavailable_count,
+        trend=trend,
+        detail=(
+            f"{unattributed_count}/{total} real closed trades ({unattributed_pct}%) lack a CEO-selected strategy — "
+            f"{unknown_count} had a real decision on record but no strategy picked, {unavailable_count} had no "
+            f"matching decision at all. {trend_detail}"
+        ),
+        updatedAt=_now_iso(),
+    )
 
 
 def resolve_trade_strategy_rule_snapshot(

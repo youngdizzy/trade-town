@@ -19,6 +19,7 @@ from app.trade_attribution import (
     CREDIT_SPLIT_NOTE,
     compute_trade_attribution,
     compute_trade_attribution_history,
+    compute_unattributed_trade_monitor,
     resolve_trade_strategy_rule_snapshot,
 )
 
@@ -36,6 +37,7 @@ def _trade(
     entry_slippage_bps: float = 4.2,
     exit_slippage_bps: float = 3.1,
     transaction_cost_usd: float = 1.5,
+    closed_sim_minutes: int = 30,
 ) -> PaperTrade:
     return PaperTrade(
         id=trade_id,
@@ -55,7 +57,7 @@ def _trade(
         openedAt="2024-01-01T00:00:00+00:00",
         closedAt="2024-01-01T00:00:00+00:00",
         openedSimMinutes=0,
-        closedSimMinutes=30,
+        closedSimMinutes=closed_sim_minutes,
         decisionId=decision_id,
         entrySlippageBps=entry_slippage_bps,
         exitSlippageBps=exit_slippage_bps,
@@ -443,3 +445,132 @@ class TestComputeTradeAttributionHistory:
     def test_empty_history_produces_no_records(self) -> None:
         summary = compute_trade_attribution_history([], [], [])
         assert summary.records == []
+
+
+def _known_trade(*, trade_id: str, closed_sim_minutes: int) -> tuple[PaperTrade, TradeDecision, CeoDecisionRecord]:
+    trade = _trade(trade_id=trade_id, decision_id=f"decision-{trade_id}", closed_sim_minutes=closed_sim_minutes)
+    decision = _decision(decision_id=f"decision-{trade_id}")
+    ceo_decision = CeoDecisionRecord(
+        id=f"ceo-{trade_id}",
+        proposalId=f"proposal-{trade_id}",
+        symbol="AAPL",
+        category="stock",
+        aiRecommendation="buy",
+        ceoDecision="buy",
+        agreedWithAi=True,
+        decisionId=f"decision-{trade_id}",
+        strategyId="strategy-momentum",
+        createdAt="2024-01-01T00:00:00+00:00",
+    )
+    return trade, decision, ceo_decision
+
+
+def _unknown_trade(*, trade_id: str, closed_sim_minutes: int) -> tuple[PaperTrade, TradeDecision, CeoDecisionRecord]:
+    trade = _trade(trade_id=trade_id, decision_id=f"decision-{trade_id}", closed_sim_minutes=closed_sim_minutes)
+    decision = _decision(decision_id=f"decision-{trade_id}")
+    ceo_decision = CeoDecisionRecord(
+        id=f"ceo-{trade_id}",
+        proposalId=f"proposal-{trade_id}",
+        symbol="AAPL",
+        category="stock",
+        aiRecommendation="buy",
+        ceoDecision="buy",
+        agreedWithAi=True,
+        decisionId=f"decision-{trade_id}",
+        createdAt="2024-01-01T00:00:00+00:00",
+    )
+    return trade, decision, ceo_decision
+
+
+class TestComputeUnattributedTradeMonitor:
+    """CEO directive "Complete Trade Provenance," Part 17."""
+
+    def test_counts_unknown_and_unavailable_separately(self) -> None:
+        known_trade, known_decision, known_ceo = _known_trade(trade_id="known", closed_sim_minutes=100)
+        unknown_trade, unknown_decision, unknown_ceo = _unknown_trade(trade_id="unknown", closed_sim_minutes=200)
+        unavailable_trade = _trade(trade_id="unavailable", decision_id="decision-does-not-exist", closed_sim_minutes=300)
+        monitor = compute_unattributed_trade_monitor(
+            [known_trade, unknown_trade, unavailable_trade],
+            [known_decision, unknown_decision],
+            [known_ceo, unknown_ceo],
+        )
+        assert monitor.total_trades == 3
+        assert monitor.unknown_count == 1
+        assert monitor.unavailable_count == 1
+        assert monitor.unattributed_count == 2
+        assert monitor.unattributed_pct == round(2 / 3 * 100, 1)
+
+    def test_not_enough_data_below_the_sample_threshold(self) -> None:
+        trade, decision, ceo = _known_trade(trade_id="a", closed_sim_minutes=100)
+        monitor = compute_unattributed_trade_monitor([trade], [decision], [ceo])
+        assert monitor.trend == "not_enough_data"
+
+    def test_empty_trade_history_reports_zero_with_not_enough_data(self) -> None:
+        monitor = compute_unattributed_trade_monitor([], [], [])
+        assert monitor.total_trades == 0
+        assert monitor.unattributed_count == 0
+        assert monitor.trend == "not_enough_data"
+
+    def test_improving_trend_when_the_recent_half_has_a_higher_attribution_rate(self) -> None:
+        trades, decisions, ceo_decisions = [], [], []
+        for i in range(3):
+            t, d, c = _unknown_trade(trade_id=f"early-{i}", closed_sim_minutes=i)
+            trades.append(t)
+            decisions.append(d)
+            ceo_decisions.append(c)
+        for i in range(3):
+            t, d, c = _known_trade(trade_id=f"recent-{i}", closed_sim_minutes=1000 + i)
+            trades.append(t)
+            decisions.append(d)
+            ceo_decisions.append(c)
+        monitor = compute_unattributed_trade_monitor(trades, decisions, ceo_decisions)
+        assert monitor.trend == "improving"
+
+    def test_worsening_trend_when_the_recent_half_has_a_lower_attribution_rate(self) -> None:
+        trades, decisions, ceo_decisions = [], [], []
+        for i in range(3):
+            t, d, c = _known_trade(trade_id=f"early-{i}", closed_sim_minutes=i)
+            trades.append(t)
+            decisions.append(d)
+            ceo_decisions.append(c)
+        for i in range(3):
+            t, d, c = _unknown_trade(trade_id=f"recent-{i}", closed_sim_minutes=1000 + i)
+            trades.append(t)
+            decisions.append(d)
+            ceo_decisions.append(c)
+        monitor = compute_unattributed_trade_monitor(trades, decisions, ceo_decisions)
+        assert monitor.trend == "worsening"
+
+    def test_stable_trend_when_the_rate_is_unchanged_across_both_halves(self) -> None:
+        trades, decisions, ceo_decisions = [], [], []
+        for i in range(3):
+            t, d, c = _unknown_trade(trade_id=f"early-{i}", closed_sim_minutes=i)
+            trades.append(t)
+            decisions.append(d)
+            ceo_decisions.append(c)
+        for i in range(3):
+            t, d, c = _unknown_trade(trade_id=f"recent-{i}", closed_sim_minutes=1000 + i)
+            trades.append(t)
+            decisions.append(d)
+            ceo_decisions.append(c)
+        monitor = compute_unattributed_trade_monitor(trades, decisions, ceo_decisions)
+        assert monitor.trend == "stable"
+
+    def test_ordering_by_closed_sim_minutes_not_list_order(self) -> None:
+        # Trades passed in reverse chronological order must still be
+        # split into real earlier/later halves by their own real
+        # closedSimMinutes, not by list position.
+        trades, decisions, ceo_decisions = [], [], []
+        for i in range(3):
+            t, d, c = _known_trade(trade_id=f"recent-{i}", closed_sim_minutes=1000 + i)
+            trades.append(t)
+            decisions.append(d)
+            ceo_decisions.append(c)
+        for i in range(3):
+            t, d, c = _unknown_trade(trade_id=f"early-{i}", closed_sim_minutes=i)
+            trades.append(t)
+            decisions.append(d)
+            ceo_decisions.append(c)
+        # trades list is [recent..., early...] -- deliberately reversed
+        monitor = compute_unattributed_trade_monitor(trades, decisions, ceo_decisions)
+        assert monitor.trend == "improving"

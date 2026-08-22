@@ -2124,6 +2124,20 @@ at least one live trade each — `correlation` is `null` (never a
 fabricated `0.0`) below 3 real paired days. Computed fresh per request;
 no new `GameSaveState` field.
 
+### `GET /api/trades/unattributed-monitor`
+
+CEO directive "Complete Trade Provenance," Part 17 — a dedicated,
+visible data-quality diagnostic (`compute_unattributed_trade_
+monitor()`). Returns an `UnattributedTradeMonitor`: `totalTrades`,
+`unattributedCount`/`unattributedPct`, `unknownCount` (a real decision
+on record, no strategy picked) and `unavailableCount` (no matching
+decision at all) counted separately — never folded together —
+`trend` (`improving`/`worsening`/`stable`/`not_enough_data`, a real
+comparison of the attribution rate between the first and second half
+of trade history by real `closedSimMinutes` order), and a `detail`
+string summarizing all of the above in one sentence. Computed fresh
+per request; no new `GameSaveState` field.
+
 ### `GET /api/trades/strategy-live-vs-backtest`
 
 CEO directive "Live Trade → Strategy Provenance," Phase 5 — does a

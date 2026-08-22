@@ -1442,6 +1442,32 @@ class TradeAttributionSummary(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# CEO directive "Complete Trade Provenance," Part 17 — Unattributed
+# Trade Monitor. A dedicated, visible data-quality diagnostic (never
+# folded into another endpoint's exclusion counts) for the one real gap
+# most trades still have: no CEO-selected strategy. `unknownCount` (a
+# real decision on record, the CEO just never picked a strategy — the
+# honest majority) and `unavailableCount` (no matching decision at all)
+# are the exact same two states TradeAttributionRecord.strategyProvenanceState
+# already distinguishes, counted here rather than computed twice.
+# `trend` compares the attribution RATE between the first and second
+# half of trade history by real closed_sim_minutes order — a real,
+# checkable comparison, never a fabricated trajectory, and
+# "not_enough_data" below a real minimum sample in either half.
+UnattributedTradeTrend = Literal["improving", "worsening", "stable", "not_enough_data"]
+
+
+class UnattributedTradeMonitor(CamelModel):
+    total_trades: int = Field(alias="totalTrades")
+    unattributed_count: int = Field(alias="unattributedCount")
+    unattributed_pct: float = Field(alias="unattributedPct")
+    unknown_count: int = Field(alias="unknownCount")
+    unavailable_count: int = Field(alias="unavailableCount")
+    trend: UnattributedTradeTrend
+    detail: str
+    updated_at: str = Field(alias="updatedAt")
+
+
 class PaperPortfolio(CamelModel):
     """The company's one simulated trading account. Starting balance and
     every position/order/trade in it are fictional — see

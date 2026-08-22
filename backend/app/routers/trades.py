@@ -40,9 +40,10 @@ from app.schemas import (
     TradeAttributionSummary,
     TradePipelineHealthSnapshot,
     TradeStrategyRuleSnapshot,
+    UnattributedTradeMonitor,
 )
 from app.state import game_state
-from app.trade_attribution import compute_trade_attribution_history, resolve_trade_strategy_rule_snapshot
+from app.trade_attribution import compute_trade_attribution_history, compute_unattributed_trade_monitor, resolve_trade_strategy_rule_snapshot
 from app.trade_pipeline_health import compute_strategy_trading_diagnostics, compute_trade_pipeline_health
 
 router = APIRouter(prefix="/api/trades", tags=["trades"])
@@ -97,6 +98,19 @@ async def get_trade_attribution() -> TradeAttributionSummary:
     request; no new GameSaveState field."""
     state = await game_state.snapshot()
     return compute_trade_attribution_history(state.paper_portfolio.trade_history, state.decisions, state.ceo_decisions)
+
+
+@router.get("/unattributed-monitor", response_model=UnattributedTradeMonitor)
+async def get_unattributed_trade_monitor() -> UnattributedTradeMonitor:
+    """CEO directive "Complete Trade Provenance," Part 17 — a dedicated,
+    visible data-quality diagnostic: how many real trades lack strategy
+    lineage, why (two distinct real reasons, never folded together),
+    and whether the real attribution rate is trending better or worse
+    over trade history (see app/trade_attribution.py's
+    compute_unattributed_trade_monitor()). Computed fresh per request;
+    no new GameSaveState field."""
+    state = await game_state.snapshot()
+    return compute_unattributed_trade_monitor(state.paper_portfolio.trade_history, state.decisions, state.ceo_decisions)
 
 
 @router.get("/{trade_id}/strategy-rule-snapshot", response_model=TradeStrategyRuleSnapshot)

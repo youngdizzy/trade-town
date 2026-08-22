@@ -8,6 +8,29 @@ development milestones, not semver releases.
 ### Added
 
 - **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
+  Attribution," Part 17 (backend): Unattributed Trade Monitor** (`backend/app/schemas.py`,
+  `backend/app/trade_attribution.py`, `backend/app/routers/trades.py`,
+  `backend/tests/test_trade_attribution.py`): Part 17 asks for a dedicated, visible data-quality
+  diagnostic — how many trades lack strategy lineage, why, and whether the number is increasing —
+  never folded silently into another endpoint's exclusion counts. The two real reasons a trade lacks
+  attribution (`unknownCount`: a real decision on record, the CEO just never picked a strategy;
+  `unavailableCount`: no matching decision at all) already existed as `TradeAttributionRecord.
+  strategyProvenanceState` values — this reuses `compute_trade_attribution()` directly to count them,
+  never a second attribution computation.
+
+  New `GET /api/trades/unattributed-monitor`. `trend` (`improving`/`worsening`/`stable`/
+  `not_enough_data`) is a real comparison of the strategy-attribution rate between the first and
+  second half of trade history, ordered by each trade's own real `closedSimMinutes` — never a
+  fabricated trajectory, and honestly `not_enough_data` below 3 real trades in either half.
+
+  7 new backend tests, including a real ordering test proving the split uses each trade's own real
+  timestamp rather than list order. Full backend suite: 2631 passed (+7), `mypy app/` (178 files)
+  clean, `ruff check app/ tests/` clean. Live-verified against a freshly restarted real dev stack —
+  the real save honestly reports 2/2 trades unattributed (100%, both `unknown`) with
+  `not_enough_data` for trend (fewer than 3 trades on record); the real save's own decision pipeline
+  continued ticking correctly throughout (Day 115 → 116).
+
+- **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
   Attribution," Part 15 (backend): Execution Attribution** (`backend/app/schemas.py`,
   `backend/app/trade_attribution.py`, `backend/tests/test_trade_attribution.py`): research for the
   Part 1/2 work explicitly flagged this as a real gap — `entrySlippageBps`/`exitSlippageBps`/
