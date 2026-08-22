@@ -12432,6 +12432,58 @@ pair yet — the same disclosed state every other strategy-attribution
 endpoint already reports here); the real save's own decision pipeline
 continued ticking correctly throughout (Day 112 → 113).
 
+### Part 15 — Execution Attribution
+
+Research for the Part 1/2 work explicitly flagged this as a real gap:
+`entrySlippageBps`/`exitSlippageBps`/`transactionCostUsd` were already
+tracked on every trade, but never decomposed from realized P&L — the
+system could not say how much of a strategy's return came from real
+price movement versus how much was eaten by execution cost. Part 15
+asks directly: separate STRATEGY EDGE from EXECUTION QUALITY.
+
+New `TradeAttributionRecord.priceMovementPnl`/`slippageCostUsd`/
+`executionCostTotalUsd`, computed by algebraically reversing
+`app/execution_quality.py`'s own real, already-applied
+`apply_slippage()` formula — using the trade's own real `side` to
+determine which real action (buy-to-open/sell-to-close for a long,
+sell-to-open/buy-to-close for a short) each fill actually was — to
+reconstruct the real pre-slippage "signal" entry/exit prices, then
+applies `app/portfolio.py`'s own `close_position()` P&L formula to
+those signal prices instead of the real fill prices. Never a modeled,
+estimated, or fabricated number — a deterministic algebraic reversal of
+a real, already-executed calculation, not a second, diverging P&L
+formula.
+
+**The correctness guarantee, verified not assumed.** The three numbers
+always reconcile exactly: `priceMovementPnl - executionCostTotalUsd ==
+pnl` (within floating-point rounding) — proven by test for both a long
+and a short trade with hand-computed expected values, not just a shape
+check. `slippageCostUsd` is always `>= 0` (real slippage is always
+adverse to the trader, by that module's own design); computed from
+unrounded intermediates and floored at exactly `0.0` to avoid a
+spurious `-0.0` surfacing from floating-point noise on real trades —
+caught during live verification against the real save, fixed before
+commit, never clamping away real information (the true value is
+mathematically guaranteed non-negative; only the floating-point
+representation needed cleanup). Computed unconditionally from the
+trade's own real execution fields — unlike agent/CEO attribution, this
+never depends on a matched `TradeDecision`.
+
+**Tests.** 5 new, including the two reconciliation-identity proofs
+(long and short) and a zero-slippage sanity case. Full backend suite:
+2624 passed (+5) — one unrelated, pre-existing flaky test
+(`test_foundational_mentors.py`'s 400-iteration probabilistic quiz-
+failure test, nothing to do with trading/execution logic) failed once
+in the full-suite run and passed twice in a row in isolation
+immediately after, confirming environment/random-seed flakiness, not a
+regression from this change. `mypy app/` (178 files) clean,
+`ruff check app/ tests/` clean. Live-verified against a freshly
+restarted real dev stack — real closed trades on the real save show
+correct, reconciling `priceMovementPnl`/`slippageCostUsd` values (the
+`-0.0` display bug caught and fixed during this same verification pass);
+the real save's own decision pipeline continued ticking correctly
+throughout (Day 113 → 115).
+
 ## CEO directive "Portfolio Construction, Capital Allocation & Execution Realism"
 
 **Phase 1 — architecture audit (research agent, before any code).**

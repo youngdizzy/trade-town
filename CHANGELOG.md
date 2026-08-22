@@ -8,6 +8,41 @@ development milestones, not semver releases.
 ### Added
 
 - **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
+  Attribution," Part 15 (backend): Execution Attribution** (`backend/app/schemas.py`,
+  `backend/app/trade_attribution.py`, `backend/tests/test_trade_attribution.py`): research for the
+  Part 1/2 work explicitly flagged this as a real gap — `entrySlippageBps`/`exitSlippageBps`/
+  `transactionCostUsd` were already tracked on every trade, but never decomposed from realized P&L;
+  the system could not say how much of a strategy's return came from real price movement versus how
+  much was eaten by execution cost. Part 15 asks directly: separate STRATEGY EDGE from EXECUTION
+  QUALITY.
+
+  New `TradeAttributionRecord.priceMovementPnl`/`slippageCostUsd`/`executionCostTotalUsd`. Computed
+  by algebraically reversing `app/execution_quality.py`'s own real, already-applied
+  `apply_slippage()` formula — using the trade's own real `side` to determine which real action
+  (buy-to-open/sell-to-close for a long, sell-to-open/buy-to-close for a short) each fill actually
+  was — to reconstruct the real pre-slippage "signal" entry/exit prices, then applies
+  `app/portfolio.py`'s own `close_position()` P&L formula to those signal prices instead of the real
+  fill prices. Never a modeled, estimated, or fabricated number: a deterministic algebraic reversal
+  of a real, already-executed calculation. The three numbers always reconcile exactly:
+  `priceMovementPnl - executionCostTotalUsd == pnl` (within floating-point rounding) — verified
+  directly by test for both a long and a short trade, not just asserted. `slippageCostUsd` is always
+  `>= 0` (real slippage is always adverse to the trader, by that module's own design) — computed
+  from unrounded intermediates and floored at exactly `0.0` to avoid a spurious `-0.0` from floating-
+  point noise, never clamping away real information. Computed unconditionally from the trade's own
+  real execution fields — unlike agent/CEO attribution, never depends on a matched `TradeDecision`.
+
+  5 new backend tests, including the two reconciliation-identity proofs (long and short) and a
+  zero-slippage sanity case. Full backend suite: 2624 passed (+5) — one unrelated, pre-existing
+  flaky test (`test_foundational_mentors.py::test_low_aptitude_agent_racks_up_consecutive_failures_
+  eventually`, a 400-iteration probabilistic test unrelated to trading/execution logic) failed once
+  in the full-suite run and passed twice in a row in isolation immediately after, confirming it's
+  environment/random-seed flakiness, not a regression from this change. `mypy app/` (178 files)
+  clean, `ruff check app/ tests/` clean. Live-verified against a freshly restarted real dev stack —
+  real closed trades on the real save show correct, reconciling `priceMovementPnl`/`slippageCostUsd`
+  values; the real save's own decision pipeline continued ticking correctly throughout (Day 113 →
+  115).
+
+- **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
   Attribution," Part 14 (backend): Strategy Correlation over Live Returns**
   (`backend/app/schemas.py`, `backend/app/performance_attribution.py`, `backend/app/routers/trades.py`,
   `backend/tests/test_performance_attribution.py`): Part 14's objective — "avoid thinking ten

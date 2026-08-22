@@ -23,14 +23,27 @@ from app.trade_attribution import (
 )
 
 
-def _trade(*, trade_id: str = "trade-1", decision_id: str | None = "decision-1", side: str = "buy", pnl: float = 10.0, pnl_pct: float = 1.0) -> PaperTrade:
+def _trade(
+    *,
+    trade_id: str = "trade-1",
+    decision_id: str | None = "decision-1",
+    side: str = "buy",
+    pnl: float = 10.0,
+    pnl_pct: float = 1.0,
+    quantity: float = 1.0,
+    entry_price: float = 100.0,
+    exit_price: float | None = None,
+    entry_slippage_bps: float = 4.2,
+    exit_slippage_bps: float = 3.1,
+    transaction_cost_usd: float = 1.5,
+) -> PaperTrade:
     return PaperTrade(
         id=trade_id,
         symbol="AAPL",
         side=side,  # type: ignore[arg-type]
-        quantity=1.0,
-        entryPrice=100.0,
-        exitPrice=100.0 + pnl,
+        quantity=quantity,
+        entryPrice=entry_price,
+        exitPrice=exit_price if exit_price is not None else entry_price + pnl,
         pnl=pnl,
         pnlPct=pnl_pct,
         durationMinutes=30,
@@ -44,9 +57,9 @@ def _trade(*, trade_id: str = "trade-1", decision_id: str | None = "decision-1",
         openedSimMinutes=0,
         closedSimMinutes=30,
         decisionId=decision_id,
-        entrySlippageBps=4.2,
-        exitSlippageBps=3.1,
-        transactionCostUsd=1.5,
+        entrySlippageBps=entry_slippage_bps,
+        exitSlippageBps=exit_slippage_bps,
+        transactionCostUsd=transaction_cost_usd,
     )
 
 
@@ -165,6 +178,77 @@ class TestComputeTradeAttribution:
         record = compute_trade_attribution(_trade(), [decision], [])
         contribution_fields = set(record.contributions[0].model_dump().keys())
         assert not any("pnl" in f.lower() or "credit" in f.lower() for f in contribution_fields)
+
+
+class TestExecutionAttribution:
+    """CEO directive "Complete Trade Provenance," Part 15 — real
+    decomposition of realized P&L into price-movement edge vs.
+    execution cost (slippage + transaction cost), reconstructed by
+    reversing app/execution_quality.py's own real, already-applied
+    slippage formula — never a modeled or guessed number."""
+
+    def test_long_trade_reconciles_exactly_price_movement_minus_execution_cost_equals_pnl(self) -> None:
+        # entry fill 101.0 with 1% slippage -> real signal price 100.0;
+        # exit fill 110.0 with 2% slippage -> real signal price ~112.24.
+        trade = _trade(
+            side="buy",
+            quantity=10.0,
+            entry_price=101.0,
+            exit_price=110.0,
+            entry_slippage_bps=100.0,
+            exit_slippage_bps=200.0,
+            transaction_cost_usd=5.0,
+            pnl=85.0,  # the real close_position() formula for these exact fills
+        )
+        record = compute_trade_attribution(trade, [], [])
+        assert record.price_movement_pnl == 122.45
+        assert record.slippage_cost_usd == 32.45
+        assert record.execution_cost_total_usd == 37.45
+        # The core correctness proof: these three real numbers always
+        # reconcile back to the trade's own real, already-realized pnl.
+        assert round(record.price_movement_pnl - record.execution_cost_total_usd, 2) == record.pnl == 85.0
+
+    def test_short_trade_reconciles_exactly_with_the_correct_signed_direction(self) -> None:
+        # entry fill 99.0 with 1% slippage (short opens via a sell,
+        # receiving less) -> real signal price 100.0; exit fill 90.0
+        # with 2% slippage (covering a short via a buy, paying more) ->
+        # real signal price ~88.24.
+        trade = _trade(
+            side="sell",
+            quantity=10.0,
+            entry_price=99.0,
+            exit_price=90.0,
+            entry_slippage_bps=100.0,
+            exit_slippage_bps=200.0,
+            transaction_cost_usd=5.0,
+            pnl=85.0,
+        )
+        record = compute_trade_attribution(trade, [], [])
+        assert record.price_movement_pnl == 117.65
+        assert record.slippage_cost_usd == 27.65
+        assert record.execution_cost_total_usd == 32.65
+        assert round(record.price_movement_pnl - record.execution_cost_total_usd, 2) == record.pnl == 85.0
+
+    def test_slippage_cost_is_never_negative_since_slippage_is_always_adverse(self) -> None:
+        trade = _trade(entry_slippage_bps=50.0, exit_slippage_bps=75.0)
+        record = compute_trade_attribution(trade, [], [])
+        assert record.slippage_cost_usd >= 0
+
+    def test_zero_slippage_makes_price_movement_pnl_equal_the_pre_transaction_cost_fill_pnl(self) -> None:
+        trade = _trade(side="buy", quantity=1.0, entry_price=100.0, exit_price=110.0, entry_slippage_bps=0.0, exit_slippage_bps=0.0, transaction_cost_usd=2.0, pnl=8.0)
+        record = compute_trade_attribution(trade, [], [])
+        assert record.price_movement_pnl == 10.0  # (110-100)*1, no slippage to reconstruct
+        assert record.slippage_cost_usd == 0.0
+        assert record.execution_cost_total_usd == 2.0  # transaction cost only
+
+    def test_execution_attribution_is_computed_regardless_of_decision_match(self) -> None:
+        # Unlike agent/CEO attribution, this never depends on a matched
+        # TradeDecision -- it's derived purely from the trade's own real
+        # execution fields.
+        trade = _trade(decision_id="decision-does-not-exist", entry_slippage_bps=100.0, exit_slippage_bps=100.0)
+        record = compute_trade_attribution(trade, [], [])
+        assert record.evidence_state == "no_decision_on_record"
+        assert record.price_movement_pnl != 0.0 or record.slippage_cost_usd != 0.0
 
 
 class TestStrategyProvenance:

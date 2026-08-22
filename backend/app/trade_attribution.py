@@ -100,11 +100,62 @@ def _contributions(decision: TradeDecision, trade: PaperTrade) -> list[AgentCont
     return reads
 
 
+def _signal_price(fill_price: float, slippage_bps: float, *, action_side: str) -> float:
+    """CEO directive "Complete Trade Provenance," Part 15 — the exact
+    algebraic inverse of app/execution_quality.py's apply_slippage():
+    the real pre-slippage price that, once that function's own real,
+    always-adverse formula was applied, produced this real fill. Never
+    a modeled/guessed price — a deterministic reversal of a real,
+    already-applied calculation."""
+    if slippage_bps == 0 or fill_price <= 0:
+        return fill_price
+    slippage_factor = slippage_bps / 10_000.0
+    return fill_price / (1 + slippage_factor) if action_side == "buy" else fill_price / (1 - slippage_factor)
+
+
+def _execution_attribution(trade: PaperTrade) -> tuple[float, float, float]:
+    """Returns (price_movement_pnl, slippage_cost_usd,
+    execution_cost_total_usd). Reconstructs the real pre-slippage
+    "signal" entry/exit prices via `_signal_price()` above, using this
+    trade's own real `side` to determine which real action
+    (buy-to-open/sell-to-close for a long, sell-to-open/buy-to-close for
+    a short) each fill actually was — then applies app/portfolio.py's
+    own `close_position()` P&L formula
+    `(exit - entry) * quantity * direction` to those signal prices
+    instead of the real (post-slippage) fill prices, never a second,
+    diverging P&L formula. `slippage_cost_usd` is always >= 0 (real
+    slippage is always adverse to the trader, by
+    execution_quality.py's own design) — a real, checkable property,
+    not assumed. The three real numbers this function returns always
+    reconcile exactly: price_movement_pnl - execution_cost_total_usd ==
+    trade.pnl (within floating-point rounding)."""
+    direction = 1 if trade.side == "buy" else -1
+    entry_action = "buy" if trade.side == "buy" else "sell"
+    exit_action = "sell" if trade.side == "buy" else "buy"
+    signal_entry = _signal_price(trade.entry_price, trade.entry_slippage_bps, action_side=entry_action)
+    signal_exit = _signal_price(trade.exit_price, trade.exit_slippage_bps, action_side=exit_action)
+    # Unrounded intermediates throughout, rounded only once each at the
+    # very end — avoids compounding rounding error into a spurious
+    # negative (or "-0.0") slippage_cost_usd, which the max(0.0, ...)
+    # below then also guards against as a final, disclosed floor: the
+    # true mathematical value is always >= 0 (slippage is always
+    # adverse to the trader, by execution_quality.py's own design), so
+    # a negative result here could only ever be floating-point noise,
+    # never real information worth preserving.
+    price_movement_pnl_raw = (signal_exit - signal_entry) * trade.quantity * direction
+    fill_pnl = (trade.exit_price - trade.entry_price) * trade.quantity * direction
+    price_movement_pnl = round(price_movement_pnl_raw, 2)
+    slippage_cost_usd = round(max(0.0, price_movement_pnl_raw - fill_pnl), 2)
+    execution_cost_total_usd = round(slippage_cost_usd + trade.transaction_cost_usd, 2)
+    return price_movement_pnl, slippage_cost_usd, execution_cost_total_usd
+
+
 def compute_trade_attribution(
     trade: PaperTrade,
     decisions: list[TradeDecision],
     ceo_decisions: list[CeoDecisionRecord],
 ) -> TradeAttributionRecord:
+    price_movement_pnl, slippage_cost_usd, execution_cost_total_usd = _execution_attribution(trade)
     decision = next((d for d in decisions if d.id == trade.decision_id), None) if trade.decision_id else None
     if decision is None:
         return TradeAttributionRecord(
@@ -128,6 +179,9 @@ def compute_trade_attribution(
             strategyProvenanceState="unavailable",
             strategyCompiledDefinitionId=None,
             strategyCompiledDefinitionVersion=None,
+            priceMovementPnl=price_movement_pnl,
+            slippageCostUsd=slippage_cost_usd,
+            executionCostTotalUsd=execution_cost_total_usd,
         )
 
     ceo_decision = next((c for c in ceo_decisions if c.decision_id == decision.id), None)
@@ -158,6 +212,9 @@ def compute_trade_attribution(
         pnlPct=trade.pnl_pct,
         evidenceState="full_evidence",
         creditSplitNote=CREDIT_SPLIT_NOTE,
+        priceMovementPnl=price_movement_pnl,
+        slippageCostUsd=slippage_cost_usd,
+        executionCostTotalUsd=execution_cost_total_usd,
     )
 
 

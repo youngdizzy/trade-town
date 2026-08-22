@@ -1413,6 +1413,28 @@ class TradeAttributionRecord(CamelModel):
     # compiled rules yet.
     strategy_compiled_definition_id: str | None = Field(default=None, alias="strategyCompiledDefinitionId")
     strategy_compiled_definition_version: int | None = Field(default=None, alias="strategyCompiledDefinitionVersion")
+    # CEO directive "Complete Trade Provenance," Part 15 — Execution
+    # Attribution. Research found entrySlippageBps/exitSlippageBps/
+    # transactionCostUsd above were already tracked but never
+    # decomposed from realized pnl — the system could not say how much
+    # of a trade's return came from real price movement versus how much
+    # was eaten by execution cost. `priceMovementPnl` is the real,
+    # reconstructed P&L this trade would have realized at its own real
+    # PRE-slippage signal prices (reversing app/execution_quality.py's
+    # apply_slippage() exactly, using this trade's own real side/
+    # slippage-bps/prices — never a guessed or modeled number).
+    # `slippageCostUsd` is the real difference that reconstruction
+    # reveals (always >= 0 — slippage is always adverse to the trader,
+    # by that module's own design); `executionCostTotalUsd` adds the
+    # already-real transactionCostUsd. These three numbers always
+    # reconcile exactly: priceMovementPnl - executionCostTotalUsd ==
+    # pnl (within floating-point rounding) — a real, checkable identity,
+    # not an approximation. Computed unconditionally from the trade's
+    # own real fields (never depends on decision match, unlike the
+    # agent/CEO fields above).
+    price_movement_pnl: float = Field(alias="priceMovementPnl")
+    slippage_cost_usd: float = Field(alias="slippageCostUsd")
+    execution_cost_total_usd: float = Field(alias="executionCostTotalUsd")
 
 
 class TradeAttributionSummary(CamelModel):
