@@ -10,6 +10,7 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.data_quality_monitor import compute_data_quality_monitor
 from app.exit_efficiency import compute_exit_efficiency
 from app.performance_attribution import (
     compute_regime_performance,
@@ -25,6 +26,7 @@ from app.performance_attribution import (
 )
 from app.persistence import persist_modules
 from app.schemas import (
+    DataQualityMonitor,
     ExitEfficiencySummary,
     RegimePerformanceSummary,
     SessionPerformanceSummary,
@@ -111,6 +113,19 @@ async def get_unattributed_trade_monitor() -> UnattributedTradeMonitor:
     no new GameSaveState field."""
     state = await game_state.snapshot()
     return compute_unattributed_trade_monitor(state.paper_portfolio.trade_history, state.decisions, state.ceo_decisions)
+
+
+@router.get("/data-quality-monitor", response_model=DataQualityMonitor)
+async def get_data_quality_monitor() -> DataQualityMonitor:
+    """CEO directive "Complete Trade Provenance," Part 18 — a real,
+    narrowly-scoped data-quality diagnostic (see
+    app/data_quality_monitor.py's own module docstring for exactly
+    which four categories this checks, and why the other three Part 18
+    names are already surfaced elsewhere rather than duplicated here).
+    Reports only — never repairs or backfills anything it finds.
+    Computed fresh per request; no new GameSaveState field."""
+    state = await game_state.snapshot()
+    return compute_data_quality_monitor(state.paper_portfolio.trade_history, state.ceo_decisions, state.strategies)
 
 
 @router.get("/{trade_id}/strategy-rule-snapshot", response_model=TradeStrategyRuleSnapshot)

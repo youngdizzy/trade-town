@@ -1468,6 +1468,39 @@ class UnattributedTradeMonitor(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# CEO directive "Complete Trade Provenance," Part 18 — Data Quality
+# Monitor. Four real, checkable categories, chosen because each has a
+# genuine, non-fabricated signal already available in this codebase —
+# NOT the full list Part 18 names (missing session/regime/strategy
+# version are covered; missing decision/execution/exit EVIDENCE are
+# already separately surfaced by TradeAttributionRecord.evidenceState
+# and TradeExitEfficiency.evidenceState — reused there, not duplicated
+# a second time here). Treated as DATA QUALITY, never silently repaired
+# — this module only ever reports, it changes nothing.
+DataQualityIssueCategory = Literal[
+    "impossible_timestamps",
+    "dangling_strategy_reference",
+    "missing_decision_time_context",
+    "missing_strategy_rule_snapshot",
+]
+
+
+class DataQualityIssue(CamelModel):
+    category: DataQualityIssueCategory
+    count: int
+    detail: str
+    # Capped at a small number of real record ids per category — enough
+    # to investigate, not an unbounded dump.
+    example_ids: list[str] = Field(default_factory=list, alias="exampleIds")
+
+
+class DataQualityMonitor(CamelModel):
+    issues: list[DataQualityIssue]
+    total_issue_count: int = Field(alias="totalIssueCount")
+    detail: str
+    updated_at: str = Field(alias="updatedAt")
+
+
 class PaperPortfolio(CamelModel):
     """The company's one simulated trading account. Starting balance and
     every position/order/trade in it are fictional — see

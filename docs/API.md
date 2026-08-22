@@ -2138,6 +2138,29 @@ of trade history by real `closedSimMinutes` order), and a `detail`
 string summarizing all of the above in one sentence. Computed fresh
 per request; no new `GameSaveState` field.
 
+### `GET /api/trades/data-quality-monitor`
+
+CEO directive "Complete Trade Provenance," Part 18 —
+(`compute_data_quality_monitor()`) covers 4 of the directive's 9 named
+categories; the other 5 are already surfaced elsewhere (3 by
+`TradeAttributionRecord.evidenceState`/`TradeExitEfficiency.
+evidenceState`) or don't apply to this codebase's actual data shape —
+see `app/data_quality_monitor.py`'s own module docstring for the full
+reasoning. Reports only, never repairs or backfills. Returns a
+`DataQualityMonitor`: `issues: DataQualityIssue[]` (one per
+non-empty category — `category`/`count`/`detail`/`exampleIds`, capped
+at 5 real record ids per category), `totalIssueCount` (the true sum
+across categories, never capped), and a `detail` summary string. The
+four categories checked: `impossible_timestamps` (a closed trade whose
+`closedSimMinutes` precedes its own `openedSimMinutes`),
+`dangling_strategy_reference` (a `CeoDecisionRecord.strategyId` with no
+matching real `Strategy`), `missing_decision_time_context` (a real
+buy/sell decision with no `decisionSession`, expected only pre-Part-8),
+`missing_strategy_rule_snapshot` (a decision with a `strategyId` but no
+`strategyCompiledDefinitionId`). One real record can honestly trip more
+than one category at once — both are counted, never collapsed.
+Computed fresh per request; no new `GameSaveState` field.
+
 ### `GET /api/trades/strategy-live-vs-backtest`
 
 CEO directive "Live Trade → Strategy Provenance," Phase 5 — does a

@@ -12513,6 +12513,59 @@ unattributed (100%, both `unknown`) with `not_enough_data` for trend
 (fewer than 3 trades on record); the real save's own decision pipeline
 continued ticking correctly throughout (Day 115 → 116).
 
+### Part 18 — Data Quality Monitor
+
+Part 18 names nine possible data-quality categories. A full audit found
+no generic "data quality issue" or "audit trail" primitive anywhere in
+this codebase — `app/audit_log.py` merges a fixed list of eight source
+types and `app/data_provenance.py` is a one-shot, whole-codebase report,
+neither a pluggable per-record diagnostic — so this phase adds new,
+narrowly scoped plumbing rather than reusing (or duplicating) either.
+
+Of the nine named categories, three — missing decision evidence,
+missing execution evidence, missing exit evidence — are already
+separately surfaced by `TradeAttributionRecord.evidenceState` and
+`TradeExitEfficiency.evidenceState`; re-detecting the identical real
+condition a second time here would be duplicated architecture, not new
+coverage, so this phase deliberately covers only the remaining four,
+each backed by a genuine, already-real, non-fabricated signal:
+
+- `impossible_timestamps` — a real closed trade whose `closedSimMinutes`
+  is earlier than its own `openedSimMinutes`.
+- `dangling_strategy_reference` — a real `CeoDecisionRecord` names a
+  `strategyId` that no longer matches any real `Strategy` in the
+  current roster.
+- `missing_decision_time_context` — a real buy/sell
+  `CeoDecisionRecord` with no `decisionSession` recorded (expected only
+  for decisions made before Part 8's Decision-Time Snapshot existed).
+- `missing_strategy_rule_snapshot` — a real `CeoDecisionRecord` names a
+  `strategyId` but has no `strategyCompiledDefinitionId`; this module
+  cannot distinguish "an honest idea-stage pick with no compiled rules
+  yet" from "predates Part 2's Strategy Rule Snapshot," so both are
+  reported together, honestly, rather than guessing which applies.
+
+New `backend/app/data_quality_monitor.py` and
+`GET /api/trades/data-quality-monitor`. Per the directive's own rule
+that data-quality issues are "treated as DATA QUALITY, not silently
+repaired," this module only ever reports — it never backfills or
+corrects anything it finds. Each category caps its `exampleIds` at 5
+real record ids (`MAX_EXAMPLE_IDS`) while still reporting the true
+total `count`, so a save with many affected records stays
+investigable without an unbounded response. One real decision record
+can honestly trip more than one category at once (e.g. a dangling
+`strategyId` on a decision that also, correctly, has no compiled-rule
+snapshot for a strategy that doesn't even exist) — both are counted,
+never collapsed into one.
+
+**Tests.** 13 new, including a same-record double-count-is-correct
+test and a no-mutation-of-inputs test. Full backend suite: 2644 passed
+(+13), `mypy app/` (179 files) clean, `ruff check app/ tests/` clean.
+Live-verified against a freshly restarted real dev stack — the real
+save honestly reports 2 real `missing_decision_time_context` issues
+(the two legacy decisions made before Part 8 existed) and zero in the
+other three categories; the real save's own decision pipeline
+continued ticking correctly throughout (Day 116 → 118).
+
 ## CEO directive "Portfolio Construction, Capital Allocation & Execution Realism"
 
 **Phase 1 — architecture audit (research agent, before any code).**

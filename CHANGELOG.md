@@ -8,6 +8,34 @@ development milestones, not semver releases.
 ### Added
 
 - **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
+  Attribution," Part 18 (backend): Data Quality Monitor** (new `backend/app/data_quality_monitor.py`,
+  `backend/app/schemas.py`, `backend/app/routers/trades.py`, new
+  `backend/tests/test_data_quality_monitor.py`): research confirmed no generic "data quality issue"
+  or "audit trail" primitive exists anywhere in this codebase — `app/audit_log.py` merges a fixed
+  list of eight source types and `app/data_provenance.py` is a one-shot whole-codebase report,
+  neither a pluggable per-record diagnostic — so this is new, narrowly scoped plumbing rather than
+  an extension of either.
+
+  Deliberately covers only 4 of Part 18's 9 named categories, disclosed as such: `impossible_
+  timestamps` (a trade whose `closedSimMinutes` is earlier than its own `openedSimMinutes`),
+  `dangling_strategy_reference` (a `CeoDecisionRecord.strategyId` that no longer matches any real
+  `Strategy` in the current roster), `missing_decision_time_context` (a real buy/sell decision with
+  no `decisionSession` — Part 8's own snapshot), and `missing_strategy_rule_snapshot` (a picked
+  strategy with no `strategyCompiledDefinitionId` — Part 2's own snapshot). The other three named
+  categories (missing decision/execution/exit evidence) are already separately surfaced by
+  `TradeAttributionRecord.evidenceState`/`TradeExitEfficiency.evidenceState` — re-detecting the
+  identical real condition a second time here would be duplicated architecture, not new coverage.
+  This module only ever reports; it never repairs, backfills, or silently corrects anything it
+  finds.
+
+  New `GET /api/trades/data-quality-monitor`. 13 new backend tests. Full backend suite: 2644 passed
+  (+13), `mypy app/` (179 files) clean, `ruff check app/ tests/` clean. Live-verified against a
+  freshly restarted real dev stack — the real save honestly reports 2 real
+  `missing_decision_time_context` issues, both the exact two legacy decisions that predate this
+  directive's own Part 8 work, confirming the check fires correctly on real data; the real save's
+  own decision pipeline continued ticking correctly throughout (Day 116 → 118).
+
+- **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
   Attribution," Part 17 (backend): Unattributed Trade Monitor** (`backend/app/schemas.py`,
   `backend/app/trade_attribution.py`, `backend/app/routers/trades.py`,
   `backend/tests/test_trade_attribution.py`): Part 17 asks for a dedicated, visible data-quality
