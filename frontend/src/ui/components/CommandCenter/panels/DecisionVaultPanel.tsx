@@ -1,9 +1,14 @@
 import { useEffect, useMemo, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { api } from "@/net/api";
-import type { DecisionVaultEntry, KnowledgeQualityScore, SimilarTradesSummary, TradeReportCard } from "@/types";
+import type { DecisionVaultEntry, KnowledgeQualityScore, SimilarTradesSummary, Strategy, TradeReportCard, TradeStrategyRuleSnapshot } from "@/types";
 import { decisionGradeTone } from "../lib/derive";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../ui";
+
+function strategyLabel(id: string | null, strategies: Strategy[]): string {
+  if (id === null) return "No strategy attributed";
+  return strategies.find((s) => s.id === id)?.name ?? id;
+}
 
 /**
  * v0.7 Feature 54 (the brief self-numbered it "Feature 53," already used
@@ -74,9 +79,11 @@ function VaultEntryRow({ entry, selected, onSelect }: { entry: DecisionVaultEntr
 }
 
 function VaultEntryDetail({ entry }: { entry: DecisionVaultEntry }) {
+  const { strategies } = useGameStore();
   const [reportCard, setReportCard] = useState<TradeReportCard | null>(null);
   const [similar, setSimilar] = useState<SimilarTradesSummary | null>(null);
   const [qualityScore, setQualityScore] = useState<KnowledgeQualityScore | null>(null);
+  const [ruleSnapshot, setRuleSnapshot] = useState<TradeStrategyRuleSnapshot | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -88,12 +95,14 @@ function VaultEntryDetail({ entry }: { entry: DecisionVaultEntry }) {
       api.getDecisionVaultReportCard(entry.id),
       api.getDecisionVaultSimilar({ symbol: entry.symbol, marketRegime: entry.marketRegime, confidenceTier: entry.confidenceTier, excludeId: entry.id }),
       api.getDecisionVaultQualityScore(entry.id),
+      api.getTradeStrategyRuleSnapshot(entry.tradeId),
     ])
-      .then(([reportCardRes, similarRes, qualityScoreRes]) => {
+      .then(([reportCardRes, similarRes, qualityScoreRes, ruleSnapshotRes]) => {
         if (!cancelled) {
           setReportCard(reportCardRes);
           setSimilar(similarRes);
           setQualityScore(qualityScoreRes);
+          setRuleSnapshot(ruleSnapshotRes);
         }
       })
       .catch((err) => {
@@ -105,7 +114,7 @@ function VaultEntryDetail({ entry }: { entry: DecisionVaultEntry }) {
     return () => {
       cancelled = true;
     };
-  }, [entry.id, entry.symbol, entry.marketRegime, entry.confidenceTier]);
+  }, [entry.id, entry.tradeId, entry.symbol, entry.marketRegime, entry.confidenceTier]);
 
   return (
     <>
@@ -121,10 +130,61 @@ function VaultEntryDetail({ entry }: { entry: DecisionVaultEntry }) {
           <DataRow label="Hold Duration" value={`${entry.holdDurationMinutes} min`} />
           <DataRow label="Market Regime" value={entry.marketRegimeLabel} />
         </div>
+        <div className="mt-1.5 flex items-center gap-1.5 text-[9px]">
+          <span className="text-cmd-textDim">Strategy:</span>
+          <span className={entry.strategyId === null ? "italic text-cmd-textDim" : "text-cmd-cyan"}>{strategyLabel(entry.strategyId, strategies)}</span>
+        </div>
         {entry.executiveNotes && <p className="mt-1.5 text-[9px] text-cmd-textDim">{entry.executiveNotes}</p>}
         <p className="mt-1.5 text-[9px] text-cmd-textDim">{entry.lessonsLearned}</p>
         {entry.companyDnaChange && <p className="mt-1.5 text-[8px] italic text-cmd-purple">Company DNA: {entry.companyDnaChange}</p>}
       </Glass>
+
+      {/* CEO directive "Complete Trade Provenance..." Part 16 — RULES,
+          the disclosure level between STRATEGY and SESSION in the
+          directive's own chain. Reuses TradeStrategyRuleSnapshot (Part
+          2) rather than re-deriving compiled rules here. */}
+      {entry.strategyId !== null && (
+        <Glass className="p-3">
+          <TerminalLabel>Compiled Rules at Decision Time</TerminalLabel>
+          {ruleSnapshot === null ? (
+            loading && <EmptyState>Loading this trade&apos;s real rule snapshot…</EmptyState>
+          ) : ruleSnapshot.compiledDefinition === null ? (
+            <EmptyState>
+              No compiled rule snapshot on record for this trade — either the picked strategy had no compiled rules yet at decision time, or this trade predates this directive&apos;s Part 2 snapshot mechanism. Never fabricated.
+            </EmptyState>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-x-3 sm:grid-cols-4">
+                <DataRow label="Version" value={ruleSnapshot.compiledDefinition.version} />
+                <DataRow label="Timeframe" value={ruleSnapshot.compiledDefinition.timeframe} />
+                <DataRow label="Steps" value={ruleSnapshot.compiledDefinition.sequence.length} />
+              </div>
+              {ruleSnapshot.compiledDefinition.sequence.length > 0 && (
+                <div className="mt-1.5 space-y-1">
+                  {ruleSnapshot.compiledDefinition.sequence.map((step) => (
+                    <div key={step.id} className="rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-1.5 text-[9px]">
+                      <span className="uppercase text-cmd-cyan">{step.stepType}</span> — <span className="text-cmd-textDim">{step.detail}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {ruleSnapshot.compiledDefinition.stop && (
+                <div className="mt-1.5 rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-1.5 text-[9px]">
+                  <span className="text-cmd-textDim">Stop:</span> {ruleSnapshot.compiledDefinition.stop.method}
+                  {ruleSnapshot.compiledDefinition.stop.atrPeriod !== null && ` (ATR${ruleSnapshot.compiledDefinition.stop.atrPeriod} × ${ruleSnapshot.compiledDefinition.stop.atrMultiplier})`}
+                  {ruleSnapshot.compiledDefinition.stop.percent !== null && ` (${ruleSnapshot.compiledDefinition.stop.percent}%)`}
+                </div>
+              )}
+              {ruleSnapshot.compiledDefinition.target && (
+                <div className="mt-1 rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-1.5 text-[9px]">
+                  <span className="text-cmd-textDim">Target:</span>{" "}
+                  {ruleSnapshot.compiledDefinition.target.method === "r_multiple" ? `${ruleSnapshot.compiledDefinition.target.value}R` : `${ruleSnapshot.compiledDefinition.target.value}%`}
+                </div>
+              )}
+            </>
+          )}
+        </Glass>
+      )}
 
       {loading && !reportCard && (
         <Glass className="p-3">

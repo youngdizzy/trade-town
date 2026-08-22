@@ -115,6 +115,8 @@ import type {
   TechnicalAnalysisRead,
   ConfluenceRead,
   TradeAttributionSummary,
+  UnattributedTradeMonitor,
+  TradeStrategyRuleSnapshot,
   TradePipelineHealthSnapshot,
   TradingSession,
   Strategy,
@@ -309,6 +311,14 @@ export const api = {
   // Phase 1 — real per-trade agent-contribution evidence, never a
   // numeric P&L credit split. Read-only, computed fresh per request.
   getTradeAttribution: () => request<TradeAttributionSummary>("/trades/attribution"),
+  // CEO directive "Complete Trade Provenance," Part 17 — a dedicated,
+  // visible data-quality diagnostic for strategy attribution coverage.
+  // Read-only, computed fresh per request.
+  getUnattributedTradeMonitor: () => request<UnattributedTradeMonitor>("/trades/unattributed-monitor"),
+  // CEO directive "Complete Trade Provenance," Part 2 — one real trade's
+  // exact compiled rule snapshot, joined from the CeoDecisionRecord it
+  // resolved to at decision time. Read-only, computed fresh per request.
+  getTradeStrategyRuleSnapshot: (tradeId: string) => request<TradeStrategyRuleSnapshot>(`/trades/${tradeId}/strategy-rule-snapshot`),
   // CEO directive "Live Trade -> Strategy Provenance" — `strategyId` is
   // an optional real Strategy Lab strategy the CEO explicitly selected
   // for this decision, stored on the resulting CeoDecisionRecord (see

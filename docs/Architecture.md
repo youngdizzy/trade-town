@@ -12505,6 +12505,99 @@ correct, reconciling `priceMovementPnl`/`slippageCostUsd` values (the
 the real save's own decision pipeline continued ticking correctly
 throughout (Day 113 → 115).
 
+### Part 16 — Command Center UX (first frontend work in this directive)
+
+Every backend-only part of this directive was complete before this
+phase began, per the project's own backend-before-frontend discipline.
+Part 16's own rule: "DO NOT create another maze of tabs. Integrate this
+into the existing Command Center." A dedicated Explore-agent research
+pass across the Command Center's panel/tab architecture, data-fetching
+pattern, and every existing trade-detail component (full findings kept
+in this session, not duplicated here) found:
+
+- `OverviewPanel.tsx` is already this codebase's "small set of numbers
+  most likely to change what the operator does next" landing pattern.
+- `PortfolioIntelPanel.tsx`'s `PortfolioCommandCenterStrip` already
+  established the exact shape this part calls for — a compact,
+  cross-cutting strip of tiles plus cross-link buttons, reusing
+  already-computed sources rather than adding new ones.
+- No single existing panel showed all ten of the directive's named
+  tiles, but every one of the ten already had a real, computed source
+  somewhere in the codebase — none needed inventing.
+- `DecisionVaultEntry` + `TradeReportCard` already unify TRADE,
+  SESSION, REGIME, AGENT EVIDENCE, RISK (gatekeeper approval),
+  EXECUTION (slippage/transaction cost), and RESULT in one place
+  (`DecisionVaultPanel.tsx`'s master/detail view) — only STRATEGY and
+  RULES, two disclosure levels named in the directive's own chain, were
+  missing from that view.
+
+**Trading Intelligence strip.** New `TradingIntelligenceStrip`,
+following `PortfolioCommandCenterStrip`'s own template, added to the
+existing OVERVIEW tab — not a new tab. All ten named tiles: Active
+Strategies and Open Exposure reuse the same WS-broadcast
+`strategies`/`portfolioIntelligence` that strip already reads; Trades
+Today reuses the same `computePeriodFinancials("today", ...)` every
+other panel's own "today" figure already comes from; Session/Regime
+read the real backend-computed `MarketIntelligenceState` fields (not
+OverviewPanel's own older client-side regime heuristic); Eligible Now,
+Strategy P&L, and Strategy Warnings call the real, already-built `GET
+/sandbox/live-strategy-eligibility`, `GET /trades/performance-by-
+strategy`, and `GET /trades/strategy-degradation` endpoints — built by
+earlier directives but never wired into a summary view; Unattributed
+Trades calls this same directive's own Part 17 endpoint, likewise never
+wired to the frontend before now.
+
+**Non-Compliant Trades is deliberately never a real number.** Part 3 of
+this same directive (Strategy Compliance at Execution) was researched
+and explicitly deferred earlier in this directive because a live
+`TradeProposal` never carries a link to the compiled Strategy rules
+that produced it — there is no real signal anywhere in this codebase
+that could back a per-trade compliance verdict. Showing "0" would be a
+fabricated claim of verified compliance, so this tile renders "Not
+tracked" instead, with an inline note citing the disclosed
+architectural gap, per this directive's own Absolute Rule #3.
+
+**Progressive disclosure.** Added directly to
+`DecisionVaultPanel.tsx`'s existing `VaultEntryDetail`, not built as a
+new component. A STRATEGY line resolves the entry's own real
+`strategyId` (already delivered over WS, previously never rendered) to
+a strategy name. A new RULES card, shown only when a strategy is
+attributed, calls Part 2's `GET /trades/{tradeId}/strategy-rule-
+snapshot` (built with that earlier phase, never called from the
+frontend until now) and renders the same sequence/stop/target shape
+`StrategyCompilerView.tsx` already established for compiled
+definitions — reused, not reinvented. When no compiled rule snapshot
+exists, the card says so honestly (predates Part 2, or the strategy
+never had compiled rules) rather than showing an empty or fabricated
+state.
+
+**Frontend/backend drift fixed.** `TradeAttributionRecord` in
+`frontend/src/types.ts` was stale — missing seven fields this same
+directive's own Parts 2 and 15 had already added to the real backend
+schema (`strategyId`, `strategyProvenanceState`,
+`strategyCompiledDefinitionId`, `strategyCompiledDefinitionVersion`,
+`priceMovementPnl`, `slippageCostUsd`, `executionCostTotalUsd`).
+Updated to match, since the new work needed to consume these fields
+honestly rather than work around a stale type.
+
+**Tests.** `npx tsc --noEmit`, `npm run lint`, `npm run build` all
+clean. Playwright: ran `commandCenter.spec.ts` against the live dev
+stack — 30 passed, 2 failed, 1 skipped. Both failures (a WASD-movement
+timing test, a Work/Rest Mode toggle test) were verified via `git
+stash`/re-run to reproduce byte-for-byte identically against the
+pre-change code — confirmed pre-existing and environment-state
+dependent (the long-running real save's in-game clock has drifted past
+what those two specific tests assumed), not caused by this change. A
+disposable, never-committed Playwright script additionally
+screenshot-verified the new strip against the real save's actual live
+data (Day 121: 4 active strategies, 2/2 trades unattributed at 100%,
+"Not tracked" honestly shown for Non-Compliant Trades) and confirmed
+the Decision Vault's new Strategy line correctly renders "No strategy
+attributed" — and correctly suppresses the RULES card entirely, rather
+than showing a broken or empty one — for the real save's two existing
+vault entries, neither of which has a strategy on record. Real save
+verified stable throughout (Day 120 → 121, run identity unchanged).
+
 ### Part 17 — Unattributed Trade Monitor
 
 Part 17 asks for a dedicated, visible data-quality diagnostic — how

@@ -8,6 +8,63 @@ development milestones, not semver releases.
 ### Added
 
 - **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
+  Attribution," Part 16 (frontend): Command Center UX — Trading Intelligence strip + progressive
+  disclosure.** The directive's own rule: "DO NOT create another maze of tabs. Integrate this into
+  the existing Command Center." Research (a dedicated Explore-agent architecture audit) confirmed
+  `OverviewPanel.tsx` is already this codebase's "small set of numbers most likely to change what
+  the operator does next" landing pattern, and `PortfolioIntelPanel.tsx`'s
+  `PortfolioCommandCenterStrip` already established the "compact cross-cutting strip + cross-link
+  buttons, reusing already-computed sources" shape this part calls for — so this is an addition to
+  the existing OVERVIEW tab, not a new one, following that exact template.
+
+  New `TradingIntelligenceStrip` on OVERVIEW shows all ten of the directive's named tiles — Active
+  Strategies, Eligible Now, Trades Today, Open Exposure, Strategy P&L, Session, Regime, Unattributed
+  Trades, Non-Compliant Trades, Strategy Warnings — every one reusing an already-real,
+  already-computed source (`GET /sandbox/live-strategy-eligibility`, `GET
+  /trades/performance-by-strategy`, `GET /trades/strategy-degradation`, `GET
+  /trades/unattributed-monitor`, the same `computePeriodFinancials`/WS-broadcast
+  `portfolioIntelligence`/`marketIntelligence` every other panel already reads). **Non-Compliant
+  Trades is deliberately never rendered as a real number** — Part 3 of this same directive (Strategy
+  Compliance at Execution) was researched and explicitly deferred because a live `TradeProposal`
+  never carries a link to the compiled Strategy rules that produced it; showing "0" would be a
+  fabricated claim of verified compliance, so this tile honestly discloses the gap instead, per
+  Absolute Rule #3, with an inline note pointing at the disclosed architectural reason.
+
+  Progressive disclosure (`TRADE → STRATEGY → RULES → SESSION → REGIME → AGENT EVIDENCE → RISK →
+  EXECUTION → RESULT`) is added to `DecisionVaultPanel.tsx`'s existing master/detail view rather than
+  built as a new component — research found `DecisionVaultEntry` + `TradeReportCard` already unify
+  TRADE/SESSION/REGIME/AGENT EVIDENCE/RISK(gatekeeper)/EXECUTION/RESULT in one place; only STRATEGY
+  (the entry's own real `strategyId`, already delivered over WS but never rendered) and RULES (the
+  Part 2 compiled-rule snapshot, `GET /trades/{tradeId}/strategy-rule-snapshot`, built but never
+  wired to any frontend caller) were missing. Both are now real reads, not new computation.
+
+  Also fixed a frontend/backend drift caught during this research: `TradeAttributionRecord` in
+  `frontend/src/types.ts` was stale, missing seven fields this same directive's earlier backend
+  parts (2 and 15) had already added to the real schema (`strategyId`, `strategyProvenanceState`,
+  `strategyCompiledDefinitionId`, `strategyCompiledDefinitionVersion`, `priceMovementPnl`,
+  `slippageCostUsd`, `executionCostTotalUsd`) — updated to match.
+
+  `frontend/src/net/api.ts`/`types.ts`: added `getUnattributedTradeMonitor()`,
+  `getTradeStrategyRuleSnapshot()`, and the `UnattributedTradeMonitor`/`TradeStrategyRuleSnapshot`/
+  `TradeStrategyProvenanceState` types mirroring the real backend schemas (Parts 2/17), both already
+  built but never called from the frontend before now.
+
+  `npx tsc --noEmit` clean, `npm run lint` clean, `npm run build` clean. Playwright: ran the full
+  `commandCenter.spec.ts` suite against the live dev stack (30 passed, 2 failed, 1 skipped) — both
+  failures (a WASD-movement timing test and a Work/Rest Mode toggle test, at
+  `commandCenter.spec.ts:82` and `:1097`) were verified via `git stash`/re-run to reproduce
+  byte-for-byte identically against the pre-change code, confirming they're pre-existing,
+  environment-state-dependent failures (the long-running real save's in-game clock has drifted into
+  a state these two specific tests didn't anticipate) and not caused by this change. A dedicated,
+  disposable Playwright script (deleted after use, never committed) additionally confirmed via
+  screenshot that the new strip renders correctly against the real save's live data (Day 121: 4
+  active strategies, 0 eligible now, 2/2 trades unattributed at 100%, "Not tracked" honestly shown
+  for Non-Compliant Trades) and that the Decision Vault's new Strategy line correctly renders "No
+  strategy attributed" (and correctly suppresses the RULES card entirely) for the real save's two
+  existing vault entries, neither of which has a strategy on record. Real save verified stable
+  throughout (Day 120 → 121, run identity unchanged).
+
+- **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
   Attribution," Part 19: Historical Integrity — verified via research, no new code.** Part 19
   requires that trades whose lineage the old architecture never stored are marked
   LEGACY/UNATTRIBUTED and explained, never retroactively fabricated. An audit across every module

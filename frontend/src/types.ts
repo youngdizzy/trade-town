@@ -836,6 +836,35 @@ export interface StrategyDegradationSummary {
   updatedAt: string;
 }
 
+// CEO directive "Complete Trade Provenance," Part 17 — a dedicated,
+// visible data-quality diagnostic. `unknownCount` (a real decision on
+// record, no strategy picked) and `unavailableCount` (no matching
+// decision at all) are counted separately, never folded together.
+export type UnattributedTradeTrend = "improving" | "worsening" | "stable" | "not_enough_data";
+
+export interface UnattributedTradeMonitor {
+  totalTrades: number;
+  unattributedCount: number;
+  unattributedPct: number;
+  unknownCount: number;
+  unavailableCount: number;
+  trend: UnattributedTradeTrend;
+  detail: string;
+  updatedAt: string;
+}
+
+/** CEO directive "Complete Trade Provenance," Part 2 — `compiledDefinition`
+ * is `null` whenever `strategyProvenanceState !== "known"`, the picked
+ * Strategy had no compiled rules yet at decision time, or (defensive)
+ * the snapshot doesn't resolve against real history — never a
+ * fabricated rule set. */
+export interface TradeStrategyRuleSnapshot {
+  tradeId: string;
+  strategyId: string | null;
+  strategyProvenanceState: TradeStrategyProvenanceState;
+  compiledDefinition: CompiledStrategyDefinition | null;
+}
+
 // CEO directive "Live Trade → Strategy Provenance," Phase 9 — "why
 // isn't this strategy trading live?" per strategy. Diagnostic only.
 export type StrategyNoTradeReason = "trading_live" | "blocked_by_regime_today" | "eligible_but_never_selected" | "no_backtest_evidence_yet";
@@ -893,6 +922,13 @@ export interface AgentContributionRead {
 
 export type TradeAttributionEvidenceState = "full_evidence" | "no_decision_on_record";
 
+/** "known": the CEO explicitly selected a Strategy Lab strategy at
+ * decision time. "unknown": a real decision exists, but the CEO never
+ * picked one. "unavailable": no matching decision at all (legacy trade,
+ * or one that predates this attribution architecture). Never a
+ * fabricated "the strategy caused this trade" state. */
+export type TradeStrategyProvenanceState = "known" | "unknown" | "unavailable";
+
 export interface TradeAttributionRecord {
   tradeId: string;
   decisionId: string | null;
@@ -910,6 +946,19 @@ export interface TradeAttributionRecord {
   pnlPct: number;
   evidenceState: TradeAttributionEvidenceState;
   creditSplitNote: string;
+  strategyId: string | null;
+  strategyProvenanceState: TradeStrategyProvenanceState;
+  strategyCompiledDefinitionId: string | null;
+  strategyCompiledDefinitionVersion: number | null;
+  /** CEO directive "Complete Trade Provenance," Part 15 — Execution
+   * Attribution. `priceMovementPnl` is this trade's real P&L
+   * reconstructed at its own pre-slippage signal prices;
+   * `slippageCostUsd` (always >= 0) and `executionCostTotalUsd` are the
+   * real difference that reveals. These reconcile exactly:
+   * priceMovementPnl - executionCostTotalUsd === pnl. */
+  priceMovementPnl: number;
+  slippageCostUsd: number;
+  executionCostTotalUsd: number;
 }
 
 export interface TradeAttributionSummary {
