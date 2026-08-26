@@ -14589,6 +14589,154 @@ what made it safe to later replace this simple confirmation with the
 real multi-run system documented above, without any risk to the
 existing save while that replacement was designed.
 
+## CEO directive "Professional Quant Trading Core" — Phase A audit + first implementation pass
+
+**Mandatory process, followed as specified: Phase A (audit, no code) →
+Phase B (prioritize) → Phase C (implement) → Phase D (live trading-
+behavior verification) → Phase E (tests) → Phase F (live simulation).**
+
+**Phase A — audit.** Six parallel research agents each audited one slice
+of the directive's 26 rules against this codebase (no code written
+during this phase, per the directive's own explicit rule): strategy
+lifecycle/backtesting; market regime/session/multi-timeframe; trade
+quality/expectancy/risk; multi-asset universe/market data; trade
+attribution/agent learning/research experiments; CEO progressive-
+disclosure/opportunity-scanning precedent. Headline findings (each with
+file:line evidence in the agents' own reports):
+
+- **Two disconnected Strategy Lab sub-systems**: a stage-gated
+  `Strategy` pipeline (`sandbox.py`/`strategy_lab.py`) fed by
+  `simulation.py`'s self-disclosed placeholder-RNG engine, separate from
+  a genuinely rigorous real bar-by-bar "Research Desk"
+  (`strategy_engine.py`, `walk_forward.py`, `parameter_sensitivity.py`,
+  `cost_sensitivity.py`, `leakage_audit.py`, `overfitting_diagnostics.py`,
+  `research_experiment.py`, `strategy_tournament.py`) whose results never
+  feed the first system's stage advancement.
+- **All market data is synthetic, system-wide, no exceptions**
+  (`MockMarketDataProvider`'s GARCH(1,1)+AR(1)+regime-switching walk,
+  every candle stamped `data_status="simulated"`) — confirmed via a
+  Playwright assertion and the module's own docstring.
+- **Trade Quality Score already real and load-bearing**
+  (`war_room.py::build_decision_score()`, 7-8 factors, gates every
+  proposal via `opportunity_gatekeeper.py`) — correctly distinguished
+  from the narrower `DecisionConfidence`/`confidence.py` engine, which is
+  only one of its inputs.
+- **Position sizing already NOT confidence-blind**
+  (`position_sizing.py::build_position_sizing()` scales a purely
+  risk-derived ceiling by the full Decision Score, 4 conviction tiers,
+  hard-capped by weekly budget/portfolio heat/cash reserve/real ATR
+  volatility) — this already satisfied Rule 17's concern.
+- **Multi-timeframe analysis confirmed genuinely absent** (3 independent
+  module docstrings disclose only one fixed `"1h"` timeframe is ever
+  used).
+- **Symbol universe two-tier gap**: `SEED_SYMBOLS` (8, full pipeline) vs
+  `EXTRA_SYMBOL_POOL` (6, price-ticking only — `watchlist.py`'s own
+  docstring already disclosed these could never produce a
+  `TradeProposal`).
+- **No whole-universe opportunity scanner exists** — the system is
+  purely reactive (`nexus.py::_generate_trade_proposals()` only fires
+  from `completed_research`), confirming a real gap against Rule 26's
+  "Asset Discovery Engine" ask.
+- **The CEO Opportunity Feed's own scoring/evidence primitives already
+  existed with zero UI surface**: `opportunity_gatekeeper.py` computes a
+  real Decision Score/EV on every candidate and a fully-real
+  `OpportunityRejection` on every rejected one (reasons, score, EV, later
+  graded would-have-won/lost outcome) — the only existing consumer
+  (`RiskPanel.tsx`) showed just a bare count. `OpportunitiesPanel.tsx`,
+  despite its name, was confirmed to be a filtered slice of already-
+  resolved `TradeDecision`s, not a ranked candidate feed.
+- **Portfolio-level analytics gap**: `analytics.py::compute_performance_
+  snapshot()` had no minimum-sample guard (unlike `performance_
+  attribution.py`'s real `MIN_SYMBOL_SAMPLE_FOR_VERDICT=3`), and its
+  `max_drawdown_pct` was actually just the worst single losing trade's
+  own `pnl_pct` — not a true peak-to-trough running drawdown, and
+  inconsistent with every other real drawdown calculation already in
+  this codebase.
+- **Department-level (not per-agent) accuracy-weighted learning is real**
+  (`weighted_decisions.py`/`executive_intelligence.py`'s accuracy
+  multiplier, anti-leakage proven, wired unconditionally into the
+  Gatekeeper) — a genuine feedback loop, just department-scoped.
+- **Historical immutability verified append-only** (no PUT/DELETE/PATCH
+  route anywhere touches trades/decisions; a repo-wide grep for
+  "backfill"/"retroactiv" found only "never backfilled" disclosures, zero
+  counter-examples).
+- **Kill-switch status already fully surfaced** on the always-visible
+  top bars, two layers above the Command Center.
+
+**Phase B — prioritization.** P0: a genuine CEO Opportunity Feed, built
+almost entirely by surfacing already-computed evidence (Rules 10, 11,
+25, 26). P1 (small, contained): the `max_drawdown_pct` fix, and closing
+the `EXTRA_SYMBOL_POOL` research-rotation gap `watchlist.py` already
+disclosed. P2 (documented, not built this pass — genuine architectural
+lifts): multi-timeframe analysis, a formal watchlist eligibility-tier
+system beyond the feed, a true Asset Discovery Engine/asset-class
+taxonomy, per-agent learning, Brier-score calibration, live recovery
+factor, strategy-compliance-at-execution wiring.
+
+**Phase C — implementation.**
+
+1. `app/analytics.py`: real peak-to-trough `max_drawdown_pct()`, reusing
+   the same convention `performance_attribution.py`/`strategy_lab.py`/
+   `backtest_primitives.py`/`whatif.py` already use, against the
+   account's real starting/period-baseline equity.
+2. `app/research.py`/`app/watchlist.py`: `_next_symbol()` now draws from
+   the real current watchlist (threaded through `default_research()`/
+   `tick_research()`, backward-compatible default `None` for every
+   existing caller); `SYMBOL_CATEGORY` now covers `EXTRA_SYMBOL_POOL`
+   too, so the Gatekeeper's real correlation check doesn't silently
+   undercount a newly-reachable symbol.
+3. New `app/opportunity_feed.py` (`compute_opportunity_feed()`) + new
+   `OpportunityFeed`/`OpportunityFeedEntry` schemas + new
+   `GET /api/trades/opportunity-feed` — CAGS convention (computed fresh,
+   no new `GameSaveState` field, no new scoring, no new gate). Frontend:
+   `OpportunitiesPanel.tsx` gained the real feed above its original
+   recent-decisions view (kept, retitled); a new cross-link from
+   `OverviewPanel`'s Trading Intelligence strip, following the existing
+   `GlobalStatusBar`/`QuickView`/Command Center progressive-disclosure
+   convention.
+
+**Phase D — live trading-behavior verification.** Restarted the real dev
+backend against its own real save file (Day 156, preserved across
+restart) and drove the real running app through Playwright. Confirmed
+live, on real data: AMZN and TSLA (both `EXTRA_SYMBOL_POOL`-only, never
+reachable before this fix) appeared as real in-progress `ResearchItem`s
+on the WATCHLIST; AMZN and GOOGL appeared as real AVOID entries with
+real Decision Scores/reasons — both are direct, observable evidence the
+rotation fix is live, not just unit-tested. BEST CURRENT OPPORTUNITIES
+correctly read empty (0 candidates currently past the gate) rather than
+fabricating one. A live "Research Complete" toast during the run
+confirms the sim kept ticking normally throughout.
+
+**Phase E — tests.** Backend: 3 new tests for `max_drawdown_pct` (in
+`test_analytics.py`), 4 new tests for the rotation fix (new
+`test_research.py`), 12 new tests for the feed (new
+`test_opportunity_feed.py`) — full suite green, mypy clean, ruff clean.
+Frontend: `tsc --noEmit` clean, `eslint --max-warnings 0` clean, `vite
+build` clean, zero browser console errors during the live Playwright
+run above.
+
+**Phase F — live simulation.** Covered by Phase D's live run against the
+real dev backend and real save.
+
+**Honest scope boundary, stated plainly**: this pass does NOT build a
+whole-universe proactive scanner — `app/research.py`'s rotation stays
+reactive (fires from whatever the current agent roster happens to
+research next), not "scan every watchlist symbol every tick." The
+Opportunity Feed's `dataHonestyNote` discloses this: a symbol with no
+real candidate, rejection, or in-progress research record simply isn't
+listed, never fabricated as if it had been evaluated. Nothing in this
+pass touched any risk threshold, scoring weight, or eligibility gate —
+the `max_drawdown_pct` fix strictly reports a real number *larger or
+equal* to what shipped before, never smaller.
+
+**Files changed.** Backend: `app/analytics.py`, `app/research.py`,
+`app/watchlist.py`, `app/schemas.py`, new `app/opportunity_feed.py`,
+`app/routers/trades.py`, new `tests/test_research.py`, new
+`tests/test_opportunity_feed.py`, `tests/test_analytics.py`. Frontend:
+`types.ts`, `net/api.ts`, `ui/components/CommandCenter/panels/
+OpportunitiesPanel.tsx` (rewritten), `ui/components/CommandCenter/
+panels/OverviewPanel.tsx`. Docs: `docs/API.md`, `CHANGELOG.md`.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

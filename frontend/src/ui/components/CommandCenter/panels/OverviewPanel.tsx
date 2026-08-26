@@ -296,6 +296,9 @@ function TradingIntelligenceStrip({ onNavigate }: { onNavigate: (t: Tab) => void
         <button type="button" onClick={() => onNavigate("VAULT")} className="text-cmd-cyan underline decoration-dotted hover:text-cmd-text">
           → Trade-by-Trade Provenance
         </button>
+        <button type="button" onClick={() => onNavigate("OPPORTUNITIES")} className="text-cmd-cyan underline decoration-dotted hover:text-cmd-text">
+          → Opportunity Feed
+        </button>
       </div>
     </Glass>
   );

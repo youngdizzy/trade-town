@@ -12,6 +12,7 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from app.data_quality_monitor import compute_data_quality_monitor
 from app.exit_efficiency import compute_exit_efficiency
+from app.opportunity_feed import compute_opportunity_feed
 from app.performance_attribution import (
     compute_regime_performance,
     compute_session_performance,
@@ -28,6 +29,7 @@ from app.persistence import persist_modules
 from app.schemas import (
     DataQualityMonitor,
     ExitEfficiencySummary,
+    OpportunityFeed,
     RegimePerformanceSummary,
     SessionPerformanceSummary,
     StrategyCapitalAllocationSummary,
@@ -300,3 +302,16 @@ async def get_trade_pipeline_health() -> TradePipelineHealthSnapshot:
     anything."""
     state = await game_state.snapshot()
     return compute_trade_pipeline_health(state)
+
+
+@router.get("/opportunity-feed", response_model=OpportunityFeed)
+async def get_opportunity_feed() -> OpportunityFeed:
+    """CEO directive "Professional Quant Trading Core," Rule 25/26 — the
+    CEO Opportunity Feed (BEST CURRENT OPPORTUNITIES / WATCHLIST /
+    AVOID). See app/opportunity_feed.py's own module docstring for
+    exactly which already-real system backs each bucket and the honest
+    scope boundary (not a whole-universe proactive scanner). Computed
+    fresh per request; no new GameSaveState field, nothing here gates
+    or scores anything."""
+    state = await game_state.snapshot()
+    return compute_opportunity_feed(state)

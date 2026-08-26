@@ -7,6 +7,41 @@ development milestones, not semver releases.
 
 ### Fixed
 
+- **"Professional Quant Trading Core" Phase A audit — two real gaps found via a 6-agent parallel
+  research pass over strategy lifecycle/backtesting, session/regime/multi-timeframe, trade
+  quality/expectancy/risk, multi-asset universe/market data, attribution/agent-learning, and CEO
+  progressive-disclosure surfaces:**
+  - `app/analytics.py`'s `compute_performance_snapshot()` reported `maxDrawdownPct` as just the
+    single worst losing trade's own `pnl_pct` — a real number, but a narrower one than the metric
+    name implies, and inconsistent with every other real drawdown calculation already in this
+    codebase (`app/performance_attribution.py::_live_drawdown_usd()`, `app/strategy_lab.py`,
+    `app/backtest_primitives.py`, `app/whatif.py` all use real peak-to-trough running drawdown over
+    the closed-trade equity curve). Several smaller consecutive losses that individually looked
+    fine could compound into a real cumulative decline understated by this proxy. Fixed with a real
+    `max_drawdown_pct()` reusing the same peak-vs-cumulative convention, against the account's real
+    starting/period-baseline equity (available at the portfolio level, unlike at the single-strategy
+    level `_live_drawdown_usd()` deliberately stays in dollars for). 3 new regression tests
+    (compounding losses draw down more than any single trade's own %; a later win doesn't erase an
+    already-reached trough; zero trades stays zero).
+  - `app/research.py`'s researcher rotation (`_next_symbol()`) only ever drew from the fixed
+    `SEED_SYMBOLS` constant, a gap `app/watchlist.py`'s own docstring already disclosed: a symbol
+    added via the "watch_symbol" Agent Energy spend (`EXTRA_SYMBOL_POOL`) got real live price
+    tracking but could never be assigned a researcher, so it could never produce a `ResearchItem`
+    or, downstream, a `TradeProposal` — watchlist-only forever. Fixed by threading the real current
+    watchlist through `default_research()`/`tick_research()` into the rotation pool (every existing
+    caller that doesn't pass one keeps the exact original SEED_SYMBOLS-only behavior — verified,
+    not assumed). `app/watchlist.py`'s `SYMBOL_CATEGORY` lookup (used by the Gatekeeper's/
+    `portfolio_intelligence.py`'s real correlation checks) now also covers `EXTRA_SYMBOL_POOL`, so
+    a newly-reachable symbol's correlation exposure isn't silently undercounted as soon as it can
+    hold a position. 4 new tests in a new `test_research.py`. Verified live against the real running
+    dev server, real save file (Day 156): AMZN and TSLA (both `EXTRA_SYMBOL_POOL`-only) now appear
+    as real in-progress `ResearchItem`s on the watchlist, and AMZN/GOOGL now appear as real
+    Gatekeeper rejections with real reasons — neither was reachable before this fix.
+
+  Full backend suite green (mypy clean, ruff clean) both before and after; nothing here weakens a
+  risk check, lowers a threshold, or changes a scoring formula's weights — the drawdown fix reports
+  a real number *larger or equal* to what shipped before, never smaller.
+
 - **A real, reproducible crash that permanently wedged a Room scene's interaction and movement:
   double `scene.start()` race on the Continue flow.** A live Playwright regression run caught a
   genuine browser console `TypeError: Cannot read properties of undefined (reading 'setVelocity')`,
@@ -88,6 +123,33 @@ development milestones, not semver releases.
   run. Fixed by passing an explicit, confirmed-closed timestamp.
 
 ### Added
+
+- **CEO directive "Professional Quant Trading Core," Rule 25/26 — the CEO Opportunity Feed.** A
+  Phase A audit found the scoring/evidence a feed like this needs was already computed live every
+  tick with zero UI/API surface anywhere: `app/opportunity_gatekeeper.py`'s real Decision Score and
+  Expected Value on every candidate, and a fully-real `OpportunityRejection` record (its own real
+  reasons, score, EV at rejection time) for every rejected one — the only existing consumer
+  (`RiskPanel.tsx`'s pipeline-health funnel) showed just a bare count. New `app/opportunity_feed.py`
+  (`compute_opportunity_feed()`, CAGS convention — computed fresh per request, no new
+  `GameSaveState` field, no new scoring, no new gate) ranks and surfaces three already-real streams
+  into **BEST CURRENT OPPORTUNITIES** (the CEO's pending `TradeProposal` queue, already ranked by
+  real Priority Score, `status: "eligible"` since every one already cleared the real gate),
+  **WATCHLIST** (research still `in_progress` — genuinely no verdict yet, so no score is attached,
+  `status: "insufficient_evidence"`), and **AVOID** (the most recent real rejections, each with its
+  own real reasons, `status: "not_eligible"`). New `GET /api/trades/opportunity-feed` endpoint
+  (`docs/API.md`). Frontend: `OpportunitiesPanel.tsx` — previously a misleadingly-named "recent
+  resolved decisions" filter (confirmed by its own docstring; not the ranked candidate feed its tab
+  name implied) — now shows the real feed above the original recent-decisions view (kept, just
+  retitled for clarity), plus a new "→ Opportunity Feed" cross-link from `OverviewPanel`'s Trading
+  Intelligence strip, following the existing `GlobalStatusBar` → `QuickView` → Command Center
+  progressive-disclosure convention rather than inventing a new one. Explicitly NOT a
+  whole-universe proactive scanner — `app/research.py`'s rotation stays reactive (a disclosed,
+  deferred gap, not silently claimed as fixed); a symbol with no real candidate, rejection, or
+  in-progress research record simply isn't listed, never fabricated as if it had been evaluated
+  (see the feed's own `dataHonestyNote`). 12 new backend tests (`test_opportunity_feed.py`), full
+  backend suite green, `tsc`/lint/build clean, verified live in the browser against the real running
+  dev server and real save data (real Decision Scores/EV%/rejection reasons rendered, zero
+  fabricated candidates).
 
 - **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
   Attribution," Part 23: Final Architecture Audit — directive complete.** The closing report,

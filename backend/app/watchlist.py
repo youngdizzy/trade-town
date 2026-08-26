@@ -22,29 +22,18 @@ SEED_SYMBOLS: list[tuple[str, str, str]] = [
     ("DXY", "US Dollar Index", "economy"),
 ]
 
-# v0.7 Feature 20 — the Trade Gatekeeper's "correlated positions" check
-# needs a symbol -> category lookup; this is that same real mapping
-# SEED_SYMBOLS already defines, not a second invented taxonomy.
-SYMBOL_CATEGORY: dict[str, ResearchCategory] = {symbol: category for symbol, _name, category in SEED_SYMBOLS}  # type: ignore[misc]
-
-
-def default_watchlist() -> list[WatchlistEntry]:
-    return [
-        WatchlistEntry(symbol=symbol, name=name, lastPrice=0.0, dailyChangePct=0.0, status="queued", researchProgress=0.0, assignedAgent=None)
-        for symbol, name, _category in SEED_SYMBOLS
-    ]
-
-
 # A separate pool from SEED_SYMBOLS, only ever added to the watchlist via
 # the Agent Energy "watch_symbol" spend (see app/agent_energy.py and
 # app/nexus.py's apply_energy_action) — "monitoring additional assets"
 # beyond the default eight. Genuinely monitored: tick_watchlist() below
 # refreshes price/change for every symbol on the list, seed or added,
-# every tick, the same way. Known, honestly-labeled gap: research.py's
-# researcher rotation (_next_symbol) only ever picks from SEED_SYMBOLS, so
-# an added symbol gets real live price tracking but never an assigned
-# researcher — extending that rotation pool is a v0.7 item, not something
-# this action pretends to already do.
+# every tick, the same way. Professional Quant Trading Core Phase A/C —
+# these symbols now also reach research.py's rotation (see that
+# module's own _next_symbol(), which draws from whatever's actually on
+# the current watchlist rather than the fixed SEED_SYMBOLS constant),
+# closing what used to be an honestly-disclosed gap: an added symbol
+# got real live price tracking but never an assigned researcher, so it
+# could never produce a ResearchItem or, downstream, a TradeProposal.
 EXTRA_SYMBOL_POOL: list[tuple[str, str, str]] = [
     ("AMZN", "Amazon.com Inc.", "company"),
     ("GOOGL", "Alphabet Inc.", "company"),
@@ -53,6 +42,26 @@ EXTRA_SYMBOL_POOL: list[tuple[str, str, str]] = [
     ("SLV", "iShares Silver Trust", "gold"),
     ("USO", "United States Oil Fund", "sector"),
 ]
+
+# Every symbol this codebase knows a category for, seed tier plus extra
+# tier — the real pool research.py's rotation now draws from (filtered,
+# per tick, down to whatever's actually on the current watchlist).
+ALL_SYMBOL_POOL: list[tuple[str, str, str]] = [*SEED_SYMBOLS, *EXTRA_SYMBOL_POOL]
+
+# v0.7 Feature 20 — the Trade Gatekeeper's "correlated positions" check
+# needs a symbol -> category lookup; this is that same real mapping
+# SEED_SYMBOLS/EXTRA_SYMBOL_POOL already define, not a second invented
+# taxonomy. Covers EXTRA_SYMBOL_POOL too (not just SEED_SYMBOLS) so a
+# correlation check against one of those symbols, once it can actually
+# hold a position, isn't silently treated as "no category."
+SYMBOL_CATEGORY: dict[str, ResearchCategory] = {symbol: category for symbol, _name, category in ALL_SYMBOL_POOL}  # type: ignore[misc]
+
+
+def default_watchlist() -> list[WatchlistEntry]:
+    return [
+        WatchlistEntry(symbol=symbol, name=name, lastPrice=0.0, dailyChangePct=0.0, status="queued", researchProgress=0.0, assignedAgent=None)
+        for symbol, name, _category in SEED_SYMBOLS
+    ]
 
 
 def add_symbol_to_watchlist(watchlist: list[WatchlistEntry], provider: MarketDataProvider) -> tuple[list[WatchlistEntry], str] | None:

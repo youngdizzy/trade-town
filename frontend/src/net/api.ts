@@ -118,6 +118,7 @@ import type {
   UnattributedTradeMonitor,
   TradeStrategyRuleSnapshot,
   TradePipelineHealthSnapshot,
+  OpportunityFeed,
   TradingSession,
   Strategy,
   StrategyCertification,
@@ -274,6 +275,10 @@ export const api = {
   // #0 — diagnostic-only trade-flow funnel telemetry. Read-only,
   // computed fresh per request; never gates or scores anything.
   getPipelineHealth: () => request<TradePipelineHealthSnapshot>("/trades/pipeline-health"),
+  // CEO directive "Professional Quant Trading Core," Rule 25/26 — the
+  // CEO Opportunity Feed. Read-only, computed fresh per request; never
+  // gates or scores anything.
+  getOpportunityFeed: () => request<OpportunityFeed>("/trades/opportunity-feed"),
   // CEO directive "Command Center + Professional Quant Trading Firm
   // Upgrade," Phase 2 — every real agent's current trading-relevant
   // state. Read-only, computed fresh per request; not WS-broadcast.

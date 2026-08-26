@@ -5445,6 +5445,56 @@ class TradePipelineHealthSnapshot(CamelModel):
     generated_at: str = Field(alias="generatedAt")
 
 
+# CEO directive "Professional Quant Trading Core," Rule 25/26 — the CEO
+# Opportunity Feed. Every entry's eligibility status is one of these
+# four real states, never a fabricated "guaranteed winner" — see
+# app/opportunity_feed.py's own module docstring for exactly which
+# already-real system backs each bucket.
+OpportunityFeedStatus = Literal["eligible", "conditionally_eligible", "not_eligible", "insufficient_evidence"]
+
+
+class OpportunityFeedEntry(CamelModel):
+    """One row in the CEO Opportunity Feed — every numeric field here is
+    read from an already-computed real record (a TradeProposal's own
+    linked WarRoomSession, a ResearchItem's own confidence, or an
+    OpportunityRejection's own decisionScoreAtRejection/
+    expectedValueAtRejectionPct), never invented for this view.
+    `decisionScore`/`expectedValuePct` are None when no such record
+    exists yet (e.g. research still in progress) — never defaulted to a
+    number that would misrepresent "no verdict yet" as a real score."""
+
+    id: str
+    symbol: str
+    category: ResearchCategory
+    status: OpportunityFeedStatus
+    headline: str
+    decision_score: float | None = Field(default=None, alias="decisionScore")
+    expected_value_pct: float | None = Field(default=None, alias="expectedValuePct")
+    confidence: float | None = None
+    reasons: list[str] = Field(default_factory=list)
+    # None for a WATCHLIST entry — ResearchItem tracks real wall-clock
+    # timestamps, not TradeTown's simulated clock, so there is no real
+    # sim-minute to report for it rather than fabricating one.
+    as_of_sim_minutes: int | None = Field(default=None, alias="asOfSimMinutes")
+
+
+class OpportunityFeed(CamelModel):
+    """CEO directive "Professional Quant Trading Core," Rule 25/26's own
+    ask — a ranked BEST CURRENT OPPORTUNITIES / WATCHLIST / AVOID feed.
+    Computed fresh from GameSaveState (CAGS convention, same as
+    TradePipelineHealthSnapshot above) — not a new persisted list, and
+    not a whole-universe proactive scanner (that would require
+    re-architecting app/research.py's reactive rotation — see this
+    schema's own `data_honesty_note` and app/opportunity_feed.py's
+    module docstring for the honest scope boundary)."""
+
+    best_opportunities: list[OpportunityFeedEntry] = Field(default_factory=list, alias="bestOpportunities")
+    watchlist: list[OpportunityFeedEntry] = Field(default_factory=list)
+    avoid: list[OpportunityFeedEntry] = Field(default_factory=list)
+    data_honesty_note: str = Field(alias="dataHonestyNote")
+    computed_at: str = Field(alias="computedAt")
+
+
 # v0.7 Feature 16 — What-If Simulation Lab. Computed on demand (never
 # persisted — see app/whatif.py's module docstring for why) from the
 # symbol's own real recent candles, so this is intentionally NOT part of

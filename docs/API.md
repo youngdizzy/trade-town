@@ -2240,6 +2240,29 @@ optional because a handful of existing tests construct synthetic
 control-effectiveness/process-adherence scoring tests) that have no
 real taxonomy code to cite.
 
+### `GET /api/trades/opportunity-feed`
+
+CEO directive "Professional Quant Trading Core," Rule 25/26 — the CEO
+Opportunity Feed (`app/opportunity_feed.py`), computed fresh per
+request. A Phase A audit found the scoring/evidence a feed like this
+needs already computed live every tick with zero UI/API surface
+anywhere (`OpportunityRejection`'s own real fields, `TradeProposal`'s
+already-ranked Priority Score) — this endpoint adds no new scoring, no
+new gate, and no new `GameSaveState` field, it only ranks and surfaces
+what already exists. Returns an `OpportunityFeed`: `bestOpportunities`
+(the CEO's pending `TradeProposal` queue, already ranked by real
+Priority Score, each carrying its real `decisionScore`/
+`expectedValuePct` when a linked `WarRoomSession` exists, `status:
+"eligible"` since every one already cleared `evaluate_opportunity()`'s
+real gate), `watchlist` (research still `in_progress`, `status:
+"insufficient_evidence"`, no score attached since none exists yet),
+`avoid` (the most recent real `OpportunityRejection`s, `status:
+"not_eligible"`, each with its own real reasons/decision score/EV at
+rejection time), and a `dataHonestyNote` disclosing the honest scope
+boundary: this is NOT a whole-universe proactive scanner — a symbol
+with no real candidate, rejection, or in-progress research record
+simply isn't listed, never fabricated as if it had been evaluated.
+
 ### `GET /api/market/technical-analysis?symbol=...&timeframe=1h&limit=100`
 
 CEO directive "Professional Trading Firm — Market-Analysis Knowledge +

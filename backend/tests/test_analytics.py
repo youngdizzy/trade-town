@@ -118,6 +118,53 @@ class TestRealSharpeSortino:
         assert snapshot.sortino_ratio == 0.45
         assert snapshot.sortino_ratio != round(snapshot.sharpe_ratio * 1.1, 2)
 
+class TestRealMaxDrawdown:
+    """Professional Quant Trading Core Phase A/C — replaced the old
+    single-worst-losing-trade proxy with a real peak-to-trough running
+    drawdown over the closed-trade equity curve (same convention as
+    app/performance_attribution.py::_live_drawdown_usd(),
+    app/strategy_lab.py, app/backtest_primitives.py, app/whatif.py)."""
+
+    def test_compounding_losses_draw_down_more_than_any_single_trade(self) -> None:
+        # Three consecutive -2% losses compound to a real cumulative
+        # decline larger than any one trade's own pnl_pct — the old
+        # proxy (worst single trade) would have reported ~2%, understating
+        # the true peak-to-trough decline.
+        trades = [
+            _trade(pnl=-2_000.0, closed_sim_minutes=1 * 1440, pnl_pct=-2.0),
+            _trade(pnl=-2_000.0, closed_sim_minutes=2 * 1440, pnl_pct=-2.0),
+            _trade(pnl=-2_000.0, closed_sim_minutes=3 * 1440, pnl_pct=-2.0),
+        ]
+        portfolio = _portfolio(trades)
+        now = TimeState(day=40, hour=20, minute=0)
+        snapshot = compute_performance_snapshot("all_time", portfolio, [], now)
+        # Flat $2,000 losses on a $100k base: 100k -> 98k -> 96k -> 94k,
+        # peak-to-trough off the starting 100k peak = 6.0% — exactly the
+        # sum of the three trades' own pnl_pct, since none of them
+        # individually exceeds it (the old single-worst-trade proxy
+        # would have reported only 2.0%, a 3x understatement here).
+        assert snapshot.max_drawdown_pct == 6.0
+
+    def test_a_win_after_losses_does_not_erase_the_recorded_drawdown(self) -> None:
+        # Recovering after a loss must not retroactively shrink the max
+        # drawdown already reached at the trough.
+        trades = [
+            _trade(pnl=-5_000.0, closed_sim_minutes=1 * 1440, pnl_pct=-5.0),
+            _trade(pnl=4_000.0, closed_sim_minutes=2 * 1440, pnl_pct=4.0),
+        ]
+        portfolio = _portfolio(trades)
+        now = TimeState(day=40, hour=20, minute=0)
+        snapshot = compute_performance_snapshot("all_time", portfolio, [], now)
+        assert snapshot.max_drawdown_pct == 5.0
+
+    def test_zero_trades_is_zero_not_a_crash(self) -> None:
+        portfolio = _portfolio([])
+        now = TimeState(day=40, hour=20, minute=0)
+        snapshot = compute_performance_snapshot("all_time", portfolio, [], now)
+        assert snapshot.max_drawdown_pct == 0.0
+
+
+class TestRealSharpeSortinoNoLosses:
     def test_no_losing_trades_gives_zero_sortino_not_infinite(self) -> None:
         trades = [
             _trade(pnl=100.0, closed_sim_minutes=1 * 1440, pnl_pct=1.0),

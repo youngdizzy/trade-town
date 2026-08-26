@@ -2427,6 +2427,35 @@ export interface TradePipelineHealthSnapshot {
   generatedAt: string;
 }
 
+/** CEO directive "Professional Quant Trading Core," Rule 25/26 — see
+ * backend/app/opportunity_feed.py's own module docstring for exactly
+ * which already-real system backs each field. "eligible" already
+ * cleared the real opportunity gate; "insufficient_evidence" means
+ * genuinely no verdict exists yet (never a fabricated score);
+ * "not_eligible" is a real rejection with its own real reasons. */
+export type OpportunityFeedStatus = "eligible" | "conditionally_eligible" | "not_eligible" | "insufficient_evidence";
+
+export interface OpportunityFeedEntry {
+  id: string;
+  symbol: string;
+  category: ResearchCategory;
+  status: OpportunityFeedStatus;
+  headline: string;
+  decisionScore: number | null;
+  expectedValuePct: number | null;
+  confidence: number | null;
+  reasons: string[];
+  asOfSimMinutes: number | null;
+}
+
+export interface OpportunityFeed {
+  bestOpportunities: OpportunityFeedEntry[];
+  watchlist: OpportunityFeedEntry[];
+  avoid: OpportunityFeedEntry[];
+  dataHonestyNote: string;
+  computedAt: string;
+}
+
 export interface RiskWarning {
   id: string;
   symbol: string;

@@ -17,8 +17,8 @@ import random
 from datetime import datetime, timezone
 
 from app.agents import AGENT_PROFILES
-from app.schemas import AgentId, ResearchCategory, ResearchItem
-from app.watchlist import SEED_SYMBOLS
+from app.schemas import AgentId, ResearchCategory, ResearchItem, WatchlistEntry
+from app.watchlist import SEED_SYMBOLS, SYMBOL_CATEGORY
 
 MAX_RESEARCH_HISTORY_PER_AGENT = 24
 
@@ -40,12 +40,30 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _next_symbol(in_use: set[str]) -> tuple[str, str, ResearchCategory]:
+def _rotation_pool(watchlist: list[WatchlistEntry] | None) -> list[tuple[str, str, ResearchCategory]]:
+    """The symbols research.py's rotation may pick from this tick.
+    Professional Quant Trading Core Phase A/C: this now reflects the
+    CEO's actual current watchlist (SEED_SYMBOLS plus anything added via
+    the "watch_symbol" Agent Energy spend — app/watchlist.py's
+    EXTRA_SYMBOL_POOL), not just the fixed SEED_SYMBOLS constant — an
+    added symbol used to get real live price tracking (tick_watchlist())
+    but could never be assigned a researcher, so it could never produce
+    a ResearchItem or, downstream, a TradeProposal. `watchlist=None`
+    (every existing caller/test that doesn't pass one) keeps the
+    original SEED_SYMBOLS-only behavior exactly as before."""
+    if watchlist is None:
+        return SEED_SYMBOLS  # type: ignore[return-value]
+    pool = [(entry.symbol, entry.name, SYMBOL_CATEGORY[entry.symbol]) for entry in watchlist if entry.symbol in SYMBOL_CATEGORY]
+    return pool or SEED_SYMBOLS  # type: ignore[return-value]
+
+
+def _next_symbol(in_use: set[str], watchlist: list[WatchlistEntry] | None = None) -> tuple[str, str, ResearchCategory]:
     """Prefers a symbol nobody else is currently researching, so the team
     naturally spreads across the watchlist instead of piling onto one
     name — falls back to the full pool once everything is taken."""
-    free = [s for s in SEED_SYMBOLS if s[0] not in in_use]
-    symbol, name, category = random.choice(free or SEED_SYMBOLS)
+    pool = _rotation_pool(watchlist)
+    free = [s for s in pool if s[0] not in in_use]
+    symbol, name, category = random.choice(free or pool)
     return symbol, name, category  # type: ignore[return-value]
 
 
@@ -66,19 +84,21 @@ def _new_item(agent_id: AgentId, symbol: str, name: str, category: ResearchCateg
     )
 
 
-def default_research() -> list[ResearchItem]:
+def default_research(watchlist: list[WatchlistEntry] | None = None) -> list[ResearchItem]:
     """Gives every research-capable agent an initial in-progress topic so
     the Brain Room's Research Queue is never empty on a fresh game."""
     in_use: set[str] = set()
     items: list[ResearchItem] = []
     for agent_id in RESEARCHER_IDS:
-        symbol, name, category = _next_symbol(in_use)
+        symbol, name, category = _next_symbol(in_use, watchlist)
         in_use.add(symbol)
         items.append(_new_item(agent_id, symbol, name, category))
     return items
 
 
-def tick_research(research: list[ResearchItem], *, speed_multiplier: float = 1.0) -> tuple[list[ResearchItem], list[ResearchItem]]:
+def tick_research(
+    research: list[ResearchItem], *, speed_multiplier: float = 1.0, watchlist: list[WatchlistEntry] | None = None
+) -> tuple[list[ResearchItem], list[ResearchItem]]:
     """Advances each researcher's active item and rotates a finished one
     out for a new topic. Returns `(full_list, just_completed)` — the
     caller (nexus.py, via scribe.py) turns completions into news/memory
@@ -102,7 +122,7 @@ def tick_research(research: list[ResearchItem], *, speed_multiplier: float = 1.0
         agent_history = [item for item in agent_items if item.status != "in_progress"]
 
         if current is None:
-            symbol, name, category = _next_symbol(in_use)
+            symbol, name, category = _next_symbol(in_use, watchlist)
             in_use.add(symbol)
             current = _new_item(agent_id, symbol, name, category)
         else:
@@ -116,7 +136,7 @@ def tick_research(research: list[ResearchItem], *, speed_multiplier: float = 1.0
                 completed.append(current)
                 agent_history = ([current] + agent_history)[:MAX_RESEARCH_HISTORY_PER_AGENT]
                 in_use.discard(current.symbol or "")
-                symbol, name, category = _next_symbol(in_use)
+                symbol, name, category = _next_symbol(in_use, watchlist)
                 in_use.add(symbol)
                 current = _new_item(agent_id, symbol, name, category)
 

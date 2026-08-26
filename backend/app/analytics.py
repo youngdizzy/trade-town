@@ -97,6 +97,37 @@ def research_accuracy(research: list[ResearchItem]) -> float:
     return accurate / len(completed) * 100
 
 
+def max_drawdown_pct(trades: list[PaperTrade], starting_equity: float) -> float:
+    """Real peak-to-trough drawdown (%) over the closed-trade equity
+    curve, in the same chronological order PaperPortfolio.trade_history
+    is built in (append-only — see app/portfolio.py::close_position()).
+    This is the same peak-vs-cumulative convention already used by
+    app/performance_attribution.py::_live_drawdown_usd(),
+    app/strategy_lab.py, app/backtest_primitives.py, and app/whatif.py —
+    reused here, not reimplemented differently. Unlike
+    _live_drawdown_usd() (which stays in dollars because a single
+    strategy has no real sub-account equity base to express a percentage
+    against), this operates on the whole portfolio, which does have a
+    real equity base (`starting_equity`), so a real percentage is
+    computable without fabricating one.
+
+    Replaces an earlier proxy that returned only the single worst
+    losing trade's own pnl_pct — a real number, but one that understates
+    true risk whenever several smaller consecutive losses compound into
+    a larger cumulative decline than any one trade shows alone."""
+    if not trades or starting_equity <= 0:
+        return 0.0
+    equity = starting_equity
+    peak = starting_equity
+    worst_pct = 0.0
+    for trade in trades:
+        equity += trade.pnl
+        peak = max(peak, equity)
+        if peak > 0:
+            worst_pct = max(worst_pct, (peak - equity) / peak * 100)
+    return worst_pct
+
+
 def win_rate(win_count: int, loss_count: int) -> float:
     total = win_count + loss_count
     if total == 0:
@@ -172,6 +203,7 @@ def compute_performance_snapshot(period: PerformancePeriod, portfolio: PaperPort
     if start_minutes is None:
         win_count, loss_count = portfolio.win_count, portfolio.loss_count
         return_pct = portfolio.total_pnl_pct
+        baseline = portfolio.starting_balance
     else:
         win_count = sum(1 for t in trades if t.pnl > 0)
         loss_count = sum(1 for t in trades if t.pnl <= 0)
@@ -180,8 +212,7 @@ def compute_performance_snapshot(period: PerformancePeriod, portfolio: PaperPort
         period_pnl = sum(t.pnl for t in trades)
         return_pct = (period_pnl / baseline * 100) if baseline else 0.0
 
-    losing_pcts = [t.pnl_pct for t in trades if t.pnl_pct < 0]
-    max_drawdown_pct = abs(min([0.0, *losing_pcts]))
+    drawdown_pct = max_drawdown_pct(trades, baseline)
 
     returns = [t.pnl_pct for t in trades]
     mean_return = mean(returns)
@@ -195,7 +226,7 @@ def compute_performance_snapshot(period: PerformancePeriod, portfolio: PaperPort
         period=period,
         returnPct=return_pct,
         winRate=win_rate(win_count, loss_count),
-        maxDrawdownPct=max_drawdown_pct,
+        maxDrawdownPct=drawdown_pct,
         sharpeRatio=sharpe_ratio,
         sortinoRatio=sortino_ratio,
         avgHoldingMinutes=round(avg_holding_minutes, 1),

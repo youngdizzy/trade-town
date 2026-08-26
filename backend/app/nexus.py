@@ -1272,7 +1272,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # stop starting new work"); already-completed items stay completed,
     # and whatever confidence an in-progress item had simply holds until
     # Work Mode resumes.
-    research, completed = (research, []) if resting else tick_research(research, speed_multiplier=research_speed_multiplier)
+    research, completed = (research, []) if resting else tick_research(research, speed_multiplier=research_speed_multiplier, watchlist=watchlist)
     record_research_completions(memory, completed, max_records=effective_risk_limits.max_memory_records)
     for item in completed:
         news.append(
