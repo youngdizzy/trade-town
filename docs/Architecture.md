@@ -15027,6 +15027,122 @@ sandbox.py`, `app/state.py`, `app/evaluation_simulator.py`,
 `tests/test_evaluation_simulator.py`, `tests/test_whatif.py`. Docs:
 `CHANGELOG.md`.
 
+## CEO directive "Live Desk + Trade Observability System" (Phase A: observability wiring)
+
+A 35-phase directive whose stated vision is a professional quant trading
+desk: watch the market move, see every active agent trade with its
+strategy and annotations, inspect the full research → risk → CEO →
+execution chain, and immediately understand why a trade did or didn't
+happen. Given the scope, the user was asked how to sequence it and chose
+**"observability first"** over chart overlays or the deeper live stop/
+target architecture — this section covers only that first slice.
+
+**Phase 0 — audit.** Five parallel research agents each audited one
+slice: market data/chart infrastructure, trading/execution/P&L, the
+strategy system and technical annotations, agent debate/risk/CEO
+decision-chain recording, and Command Center UI/persistence. The
+headline finding, driving everything below: **most of this directive's
+ask was already built** by the two prior Live Desk/Certification
+directives above, just disconnected — either from the Live Desk itself,
+or from each other. Per-capability classification highlights:
+
+- **Already working, already surfaced on the Live Desk**: candlestick
+  chart with support/resistance/Fibonacci/FVG/order-block/liquidity/
+  session overlays, real DST-aware session and 5-way (+13-way
+  reconciled) regime classification, `LiveDeskPanel.tsx`'s existing
+  chart+trades+detail composition, `ActiveTradesPanel.tsx`'s full
+  per-position field list, `DecisionDetail.tsx`'s thesis/bull-bear-case/
+  market-context/confidence/trade-plan/invalidation sections.
+- **Already real, but disconnected from the Live Desk**: the Trade
+  Pipeline Health funnel diagnostic and formal `NoTradeReasonCode`
+  taxonomy (`app/trade_pipeline_health.py`, `GET /api/trades/
+  pipeline-health`) — Phase 11/12's "why aren't we trading" ask, already
+  built, only reachable from the RISK tab; the Portfolio Command Center
+  summary strip — Phase 14's ask, already built, only reachable from the
+  PORTFOLIO tab; the strategy certification evidence checklist
+  (`compute_strategy_certification()`, now genuinely backed by real
+  look-ahead/cost-sensitivity/walk-forward evidence per the directive
+  above) — Phase 8's "STRATEGY EVIDENCE" ask, already real, never shown
+  at the point of inspecting a specific trade; an 11-stage decision
+  timeline (`buildReplayTimeline()` in `derive.ts`) — Phase 9's ask,
+  already built for the separate Replay tab, missing real per-stage
+  timestamps and never surfaced on a trade's own inspector panel.
+- **Genuinely missing** (not fixed this pass — see below): EMA/VWAP as
+  chart overlay categories (the raw indicator series already exist,
+  just never turned into overlays); strategy-aware annotation
+  auto-filtering keyed to a trade's actual compiled strategy rules.
+- **Architecturally blocked** (re-confirmed, not fixed this pass): no
+  live stop-loss/take-profit price is ever resolved or stored for a
+  proposal or open position — it only exists inside backtest replay
+  (`app/strategy_engine.py`'s `_detect_generic_setups()`, never invoked
+  by the live opportunity pipeline). This is the one real blocker behind
+  R-multiple, chart stop/target lines, trade management, and live
+  thesis-invalidation tracking for open positions — all deferred to a
+  future pass by the user's own explicit choice.
+
+**Implementation — reuse over rebuild, zero backend/schema changes.**
+All four wired pieces read data these two prior directives already
+computed correctly; nothing new was calculated:
+
+1. **Trade Pipeline Health on the Live Desk.** `TradePipelineHealthCard`
+   extracted out of `RiskPanel.tsx` into its own file and reused
+   verbatim (not reimplemented) on `LiveDeskPanel.tsx`, shown always
+   (not only when flat) so both "why zero trades" and "why not more
+   trades" are answerable from the desk itself.
+2. **Portfolio summary on the Live Desk.** `PortfolioCommandCenterStrip`
+   exported from `PortfolioIntelPanel.tsx` and reused directly below the
+   chart on `LiveDeskPanel.tsx`.
+3. **Strategy Evidence on a trade's inspector.** New
+   `StrategyCertificationChecklist.tsx` reads the same real `GET
+   /api/sandbox/certification` endpoint the Sandbox tab already reads
+   (no second computation), rendered inside `DecisionDetail.tsx`
+   whenever the inspected position carries a real `strategyId` — the
+   honest majority of positions don't (the CEO must have explicitly
+   selected a strategy at open time), and this section honestly doesn't
+   render rather than guessing one.
+4. **Decision Timeline on a trade's inspector.** Reused the Replay tab's
+   existing `buildDecisionReplay()`/`buildReplayTimeline()` inside
+   `DecisionDetail.tsx` via a new, compact `DecisionTimelineList.tsx`,
+   rather than a second timeline implementation. `ReplayStage` gained
+   one new field, `at: string | null` — a real timestamp lifted off each
+   stage's own backing record (`TradeDecision.createdAt`,
+   `Debate.createdAt`, `ChallengeReport.createdAt`,
+   `CeoDecisionRecord.resolvedAt`/`createdAt`, `PaperOrder.filledAt`/
+   `createdAt`, `PaperTrade.closedAt`, `DisciplineReview.createdAt`) —
+   never a fabricated per-micro-stage time. The four research/technical/
+   fundamental/risk-review stages intentionally share one timestamp
+   because they really do all derive from one `TradeDecision` object
+   created at once, not four independently-timed events. Also
+   deduplicated `ReplayPanel.tsx`'s own local status-tone/label maps
+   into exported `derive.ts` constants both consumers now share.
+
+**Verification.** `tsc`/lint/build clean. Live Playwright:
+`replay.spec.ts` + `commandCenter.spec.ts` against the real running dev
+stack — 29 passed, 7 failed. Each of the 7 failures was re-run in
+isolation, then re-run again against the unmodified pre-change commit
+via `git stash` specifically to separate a real regression from
+pre-existing flake — **all 7 reproduced identically on unmodified
+code** (a "target page/browser has been closed" pattern consistent with
+this long a run's browser instability in this environment, unrelated to
+anything touched this pass) — confirmed pre-existing, not a regression.
+A temporary smoke spec (written, run, then deleted — not part of the
+committed suite) confirmed LIVEDESK/RISK/PORTFOLIO all render the newly
+wired panels live with zero console/page errors.
+
+**Not built this pass, documented rather than silently skipped** (per
+the user's own explicit "observability first" sequencing choice, not an
+oversight): EMA/VWAP chart overlays and strategy-aware annotation
+auto-filtering; the deeper live stop-loss/take-profit resolution and
+storage architecture needed for R-multiple, chart stop/target lines, and
+trade management on live positions.
+
+**Files changed.** Frontend only, no backend/schema changes:
+`lib/derive.ts`, `DecisionDetail.tsx`, `panels/LiveDeskPanel.tsx`,
+`panels/PortfolioIntelPanel.tsx`, `panels/ReplayPanel.tsx`,
+`panels/RiskPanel.tsx`, new `DecisionTimelineList.tsx`, new
+`panels/TradePipelineHealthCard.tsx`, new `panels/sandbox/
+StrategyCertificationChecklist.tsx`. Docs: `CHANGELOG.md`.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

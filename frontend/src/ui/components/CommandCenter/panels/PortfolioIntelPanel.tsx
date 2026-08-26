@@ -41,7 +41,7 @@ const RISK_TONE: Record<"green" | "yellow" | "red", "green" | "amber" | "red"> =
  * PERFORMANCE, Active Warnings/No-Trade Reasons on RISK) rather than
  * duplicating their content here.
  */
-function PortfolioCommandCenterStrip() {
+export function PortfolioCommandCenterStrip() {
   const { portfolioIntelligence: pi, paperPortfolio, time, strategies, riskWarnings } = useGameStore();
   const openUnrealized = paperPortfolio.positions.reduce((s, p) => s + p.unrealizedPnl, 0);
   const today = computePeriodFinancials("today", paperPortfolio.tradeHistory, paperPortfolio.startingBalance, time, openUnrealized);

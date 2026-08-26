@@ -1,12 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { api } from "@/net/api";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import type { ProcessAdherenceRead, TradeDecision } from "@/types";
 import { CONFIDENCE_TIER_LABEL } from "@/types";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { CandlestickChart } from "./CandlestickChart";
-import { bearCaseVotes, bullCaseVotes, confidenceTierTone, exitOrdersForPosition, formatMoney, linkedOrderFor, marketRegimeHeuristic, voteDirection } from "./lib/derive";
+import { DecisionTimelineList } from "./DecisionTimelineList";
+import { bearCaseVotes, buildDecisionReplay, buildReplayTimeline, bullCaseVotes, confidenceTierTone, exitOrdersForPosition, formatMoney, linkedOrderFor, marketRegimeHeuristic, voteDirection } from "./lib/derive";
 import { useCandles } from "./lib/useCandles";
+import { StrategyCertificationChecklist } from "./panels/sandbox/StrategyCertificationChecklist";
 import { DataRow, EmptyState, Glass, Meter, StatusPill, TerminalLabel } from "./ui";
 
 const TIMEFRAMES = ["15m", "1h", "4h", "1d"];
@@ -25,8 +27,18 @@ const TIMEFRAMES = ["15m", "1h", "4h", "1d"];
  * distinguishes a reduced-size trade from a normal one.
  */
 export function DecisionDetail({ decision, onClose }: { decision: TradeDecision; onClose: () => void }) {
-  const { watchlist, paperPortfolio } = useGameStore();
+  const { watchlist, paperPortfolio, ceoDecisions, debates, challengeReports, disciplineReviews, caseStudies } = useGameStore();
   const regime = marketRegimeHeuristic(watchlist);
+  // CEO directive "Live Desk + Trade Observability," Phase 9 — the same
+  // real research -> signal -> debate -> risk -> CEO -> execution ->
+  // management -> exit chain the Replay tab already builds (see
+  // ReplayPanel.tsx), reused here rather than reimplemented so a trade's
+  // inspector panel can show its own full decision timeline.
+  const replayLinks = useMemo(
+    () => buildDecisionReplay(decision, { ceoDecisions, debates, challengeReports, disciplineReviews, caseStudies, portfolio: paperPortfolio }),
+    [decision, ceoDecisions, debates, challengeReports, disciplineReviews, caseStudies, paperPortfolio]
+  );
+  const timeline = useMemo(() => buildReplayTimeline(replayLinks), [replayLinks]);
   const bulls = bullCaseVotes(decision);
   const bears = bearCaseVotes(decision);
   const order = linkedOrderFor(decision, paperPortfolio.orders);
@@ -90,6 +102,13 @@ export function DecisionDetail({ decision, onClose }: { decision: TradeDecision;
             <TerminalLabel>Trade Thesis</TerminalLabel>
             <p className="text-cmd-text">{decision.finalReasoning}</p>
           </Glass>
+
+          <Glass className="p-3">
+            <TerminalLabel>Decision Timeline — research through exit, real records only</TerminalLabel>
+            <DecisionTimelineList stages={timeline} />
+          </Glass>
+
+          {position?.strategyId && <StrategyCertificationChecklist strategyId={position.strategyId} />}
 
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <Glass className="border-cmd-green/30 p-3">

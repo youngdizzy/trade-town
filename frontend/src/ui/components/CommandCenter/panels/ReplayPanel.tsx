@@ -5,13 +5,14 @@ import { AGENT_IDS, SUCCESS_CASE_STUDY_CATEGORIES } from "@/types";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import {
   DEFAULT_REPLAY_FILTERS,
+  REPLAY_STAGE_STATUS_LABEL,
+  REPLAY_STAGE_STATUS_TONE,
   buildDecisionReplay,
   buildReplayTimeline,
   formatMoney,
   matchesReplayFilters,
   voteDirection,
   type ReplayFilters,
-  type ReplayStage,
 } from "../lib/derive";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../ui";
 
@@ -32,18 +33,6 @@ const ROLE_OPTIONS: { value: AnalystRole | "all"; label: string }[] = [
   { value: "sentiment", label: "Sentiment" },
   { value: "execution", label: "Execution" },
 ];
-
-const STAGE_STATUS_TONE: Record<ReplayStage["status"], "green" | "amber" | "neutral"> = {
-  recorded: "green",
-  not_generated: "amber",
-  not_applicable: "neutral",
-};
-
-const STAGE_STATUS_LABEL: Record<ReplayStage["status"], string> = {
-  recorded: "RECORDED",
-  not_generated: "NOT GENERATED",
-  not_applicable: "N/A",
-};
 
 /**
  * v0.7 Feature 42 — the Decision Replay Center. A dedicated, deeply-joined
@@ -265,14 +254,14 @@ function ReplayDetail({
                   }`}
                 >
                   <div className="uppercase tracking-wide">{stage.label}</div>
-                  <StatusPill tone={STAGE_STATUS_TONE[stage.status]}>{STAGE_STATUS_LABEL[stage.status]}</StatusPill>
+                  <StatusPill tone={REPLAY_STAGE_STATUS_TONE[stage.status]}>{REPLAY_STAGE_STATUS_LABEL[stage.status]}</StatusPill>
                 </button>
               ))}
             </div>
             <div className="mt-2 rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-2">
               <div className="mb-1 flex items-center gap-2">
                 <span className="text-cmd-cyan">{activeStage.label}</span>
-                <StatusPill tone={STAGE_STATUS_TONE[activeStage.status]}>{STAGE_STATUS_LABEL[activeStage.status]}</StatusPill>
+                <StatusPill tone={REPLAY_STAGE_STATUS_TONE[activeStage.status]}>{REPLAY_STAGE_STATUS_LABEL[activeStage.status]}</StatusPill>
               </div>
               <p className="text-cmd-text">{activeStage.detail}</p>
             </div>

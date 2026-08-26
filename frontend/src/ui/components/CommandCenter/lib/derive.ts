@@ -110,6 +110,15 @@ export function formatMoney(value: number): string {
   return `${value < 0 ? "-" : ""}$${Math.abs(value).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+/** Real wall-clock time of a real record's own timestamp field — never a
+ * fabricated or interpolated time. Returns null unchanged so callers can
+ * render an honest "—" instead of a fake "00:00:00". */
+export function formatStageTime(at: string | null): string | null {
+  if (!at) return null;
+  const d = new Date(at);
+  return Number.isNaN(d.getTime()) ? null : d.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+}
+
 export type AiStatus = "RISK LOCK" | "ANALYZING" | "ACTIVE" | "WAITING";
 
 /**
@@ -685,11 +694,33 @@ export function buildDecisionReplay(
 
 export type ReplayStageStatus = "recorded" | "not_generated" | "not_applicable";
 
+export const REPLAY_STAGE_STATUS_TONE: Record<ReplayStageStatus, "green" | "amber" | "neutral"> = {
+  recorded: "green",
+  not_generated: "amber",
+  not_applicable: "neutral",
+};
+
+export const REPLAY_STAGE_STATUS_LABEL: Record<ReplayStageStatus, string> = {
+  recorded: "RECORDED",
+  not_generated: "NOT GENERATED",
+  not_applicable: "N/A",
+};
+
 export interface ReplayStage {
   key: string;
   label: string;
   status: ReplayStageStatus;
   detail: string;
+  /** The real timestamp of the underlying record this stage reads from
+   * (TradeDecision.createdAt, Debate.createdAt, CeoDecisionRecord.
+   * resolvedAt, PaperOrder.filledAt/createdAt, PaperTrade.closedAt, ...) — never
+   * a fabricated or interpolated per-micro-stage time. null whenever
+   * the stage has no real timestamped record behind it (not_generated/
+   * not_applicable, or a record type that doesn't carry one). Research/
+   * Technical/Fundamental/Risk Review intentionally share the same
+   * single decision.createdAt — they're folded from one TradeDecision
+   * object created at once, not four independently-timed events. */
+  at: string | null;
 }
 
 /**
@@ -712,48 +743,56 @@ export interface ReplayStage {
  * backend/app/discipline.py) — the "Reflection Chamber" name belongs to
  * a different, company-wide weekly/monthly system (backend/app/wisdom.py)
  * that has no per-decision link to key off.
+ *
+ * CEO directive "Live Desk + Trade Observability" — each stage now also
+ * carries a real `at` timestamp lifted straight off its own backing
+ * record (see ReplayStage's own docstring); four stages intentionally
+ * share one timestamp because they really do come from one TradeDecision
+ * object, not four separately-timed events.
  */
 export function buildReplayTimeline(links: DecisionReplayLinks): ReplayStage[] {
   const { decision, ceoDecision, debate, challengeReport, order, exitOrders, trade, disciplineReview } = links;
   const approved = decision.outcome === "trade" && decision.orderId !== null;
 
   return [
-    { key: "research_started", label: "Research Started", status: "recorded", detail: decision.researchSummary },
-    { key: "technical_analysis", label: "Technical Analysis", status: "recorded", detail: decision.technicalSummary },
-    { key: "fundamental_analysis", label: "Fundamental Analysis", status: "recorded", detail: decision.fundamentalSummary },
-    { key: "risk_review", label: "Risk Review", status: "recorded", detail: decision.riskSummary },
+    { key: "research_started", label: "Research Started", status: "recorded", detail: decision.researchSummary, at: decision.createdAt },
+    { key: "technical_analysis", label: "Technical Analysis", status: "recorded", detail: decision.technicalSummary, at: decision.createdAt },
+    { key: "fundamental_analysis", label: "Fundamental Analysis", status: "recorded", detail: decision.fundamentalSummary, at: decision.createdAt },
+    { key: "risk_review", label: "Risk Review", status: "recorded", detail: decision.riskSummary, at: decision.createdAt },
     {
       key: "quant_review",
       label: "Quant Review",
       status: "not_applicable",
       detail: "Quant/Vector reviews long-horizon Black Box research projects, never an individual trade decision — there is no per-trade Quant review in this company.",
+      at: null,
     },
     challengeReport
-      ? { key: "devils_advocate", label: "Devil's Advocate Review", status: "recorded", detail: challengeReport.finalRecommendation }
-      : { key: "devils_advocate", label: "Devil's Advocate Review", status: "not_generated", detail: "Not every proposal is escalated to a Devil's Advocate — none was assigned to this one." },
+      ? { key: "devils_advocate", label: "Devil's Advocate Review", status: "recorded", detail: challengeReport.finalRecommendation, at: challengeReport.createdAt }
+      : { key: "devils_advocate", label: "Devil's Advocate Review", status: "not_generated", detail: "Not every proposal is escalated to a Devil's Advocate — none was assigned to this one.", at: null },
     debate
-      ? { key: "team_discussion", label: "Team Discussion", status: "recorded", detail: debate.finalSummary }
-      : { key: "team_discussion", label: "Team Discussion", status: "not_generated", detail: "No AI Debate was generated for this proposal, or it has aged out of the capped debate log." },
+      ? { key: "team_discussion", label: "Team Discussion", status: "recorded", detail: debate.finalSummary, at: debate.createdAt }
+      : { key: "team_discussion", label: "Team Discussion", status: "not_generated", detail: "No AI Debate was generated for this proposal, or it has aged out of the capped debate log.", at: null },
     ceoDecision
-      ? { key: "ceo_approval", label: "CEO Approval", status: "recorded", detail: `The CEO chose ${ceoDecision.ceoDecision.toUpperCase()} (${ceoDecision.resolvedBy === "ceo" ? "a real player decision" : "auto-resolved under the active Operating Mode"}).` }
-      : { key: "ceo_approval", label: "CEO Approval", status: "not_generated", detail: "No CeoDecisionRecord found — this decision predates that record, or it has aged out of the capped log." },
+      ? { key: "ceo_approval", label: "CEO Approval", status: "recorded", detail: `The CEO chose ${ceoDecision.ceoDecision.toUpperCase()} (${ceoDecision.resolvedBy === "ceo" ? "a real player decision" : "auto-resolved under the active Operating Mode"}).`, at: ceoDecision.resolvedAt ?? ceoDecision.createdAt }
+      : { key: "ceo_approval", label: "CEO Approval", status: "not_generated", detail: "No CeoDecisionRecord found — this decision predates that record, or it has aged out of the capped log.", at: null },
     order
-      ? { key: "trade_execution", label: "Trade Execution", status: "recorded", detail: `${order.side.toUpperCase()} ${order.quantity} @ ${formatMoney(order.price)}, placed by ${order.placedBy}.` }
+      ? { key: "trade_execution", label: "Trade Execution", status: "recorded", detail: `${order.side.toUpperCase()} ${order.quantity} @ ${formatMoney(order.price)}, placed by ${order.placedBy}.`, at: order.filledAt ?? order.createdAt }
       : {
           key: "trade_execution",
           label: "Trade Execution",
           status: approved ? "not_generated" : "not_applicable",
           detail: approved ? "The order has aged out of the capped 40-order log." : "This decision was not approved — no order was ever placed.",
+          at: null,
         },
     exitOrders.length > 0
-      ? { key: "trade_management", label: "Trade Management", status: "recorded", detail: `${exitOrders.length} exit order(s) attached.` }
-      : { key: "trade_management", label: "Trade Management", status: "not_applicable", detail: "TradeTown's auto-trader doesn't place stop-loss/take-profit exit orders yet — see DecisionDetail's Trade Plan section for the same documented boundary." },
+      ? { key: "trade_management", label: "Trade Management", status: "recorded", detail: `${exitOrders.length} exit order(s) attached.`, at: exitOrders[0]!.filledAt ?? exitOrders[0]!.createdAt }
+      : { key: "trade_management", label: "Trade Management", status: "not_applicable", detail: "TradeTown's auto-trader doesn't place stop-loss/take-profit exit orders yet — see DecisionDetail's Trade Plan section for the same documented boundary.", at: null },
     trade
-      ? { key: "trade_exit", label: "Trade Exit", status: "recorded", detail: `Closed ${trade.pnl >= 0 ? "+" : ""}${trade.pnl.toFixed(2)} (${trade.pnlPct.toFixed(1)}%) after ${trade.durationMinutes} simulated minutes.` }
-      : { key: "trade_exit", label: "Trade Exit", status: "not_applicable", detail: approved ? "This position is still open." : "This decision was not approved — no trade to exit." },
+      ? { key: "trade_exit", label: "Trade Exit", status: "recorded", detail: `Closed ${trade.pnl >= 0 ? "+" : ""}${trade.pnl.toFixed(2)} (${trade.pnlPct.toFixed(1)}%) after ${trade.durationMinutes} simulated minutes.`, at: trade.closedAt }
+      : { key: "trade_exit", label: "Trade Exit", status: "not_applicable", detail: approved ? "This position is still open." : "This decision was not approved — no trade to exit.", at: null },
     disciplineReview
-      ? { key: "post_decision_review", label: "Post-Decision Review", status: "recorded", detail: disciplineReview.summary }
-      : { key: "post_decision_review", label: "Post-Decision Review", status: "not_applicable", detail: "A Discipline Review is only filed once the resulting position closes." },
+      ? { key: "post_decision_review", label: "Post-Decision Review", status: "recorded", detail: disciplineReview.summary, at: disciplineReview.createdAt }
+      : { key: "post_decision_review", label: "Post-Decision Review", status: "not_applicable", detail: "A Discipline Review is only filed once the resulting position closes.", at: null },
   ];
 }
 

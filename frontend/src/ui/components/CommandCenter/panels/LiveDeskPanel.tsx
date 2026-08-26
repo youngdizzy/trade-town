@@ -5,12 +5,14 @@ import { MarketChartPanel } from "../MarketChartPanel";
 import { DecisionDetail } from "../DecisionDetail";
 import { EmptyState, Glass, TerminalLabel } from "../ui";
 import { ActiveTradesPanel } from "./ActiveTradesPanel";
+import { PortfolioCommandCenterStrip } from "./PortfolioIntelPanel";
+import { TradePipelineHealthCard } from "./TradePipelineHealthCard";
 
 /**
  * CEO directive "Professional Quant Live Trading Desk" — the primary
  * desk view (Phase 26): main chart + every active trade + trade detail,
- * without navigating through a dozen tabs. Composes three already-real
- * pieces rather than building a second implementation of any of them:
+ * without navigating through a dozen tabs. Composes already-real pieces
+ * rather than building a second implementation of any of them:
  * MarketChartPanel (now controllable, see its own docstring), the new
  * ActiveTradesPanel (Phase 4-7's real gap — see its own docstring), and
  * DecisionDetail (the existing "why does the AI want this trade"
@@ -23,6 +25,14 @@ import { ActiveTradesPanel } from "./ActiveTradesPanel";
  * still on record — honestly unavailable (never guessed) if it isn't
  * (the decisions list is a capped, rotating window — see
  * app/nexus.py's MAX_DECISIONS).
+ *
+ * CEO directive "Live Desk + Trade Observability" (a follow-on Phase 0
+ * audit of this exact panel found most of that directive's ask already
+ * built, just disconnected) adds two more already-real, reused pieces
+ * rather than new ones: PortfolioCommandCenterStrip (previously only on
+ * the PORTFOLIO tab — Phase 14's summary strip) and TradePipelineHealthCard
+ * (previously only on the RISK tab — Phase 11/12's "why aren't we
+ * trading" diagnostic, DIAGNOSTIC ONLY, never gates a real decision).
  */
 export function LiveDeskPanel() {
   const { paperPortfolio, decisions } = useGameStore();
@@ -42,6 +52,8 @@ export function LiveDeskPanel() {
   return (
     <div className="relative space-y-3">
       <MarketChartPanel symbol={focusedSymbol ?? undefined} onSymbolChange={setFocusedSymbol} timeframe={focusedTimeframe} onTimeframeChange={setFocusedTimeframe} />
+
+      <PortfolioCommandCenterStrip />
 
       {selectedPosition && (
         <Glass className="p-3">
@@ -77,6 +89,11 @@ export function LiveDeskPanel() {
       {paperPortfolio.positions.length === 0 && (
         <EmptyState>No open positions right now — the chart above is browsing the watchlist. Select a symbol to look at any tracked market.</EmptyState>
       )}
+
+      {/* CEO directive "Live Desk + Trade Observability," Phase 11/12 —
+          always visible, not just when flat, so "why aren't we trading
+          MORE" is answerable too, not only "why are we trading zero." */}
+      <TradePipelineHealthCard />
 
       {inspecting && <DecisionDetail decision={inspecting} onClose={() => setInspecting(null)} />}
     </div>
