@@ -263,11 +263,15 @@ class TestResolveProposal:
     def test_decision_time_snapshot_is_captured_unconditionally_even_on_wait(self, monkeypatch: pytest.MonkeyPatch) -> None:
         # Unlike strategy_id (only meaningful for buy/sell), real market
         # context is honestly real regardless of the CEO's choice.
+        # A real, fixed Saturday (never the real wall-clock default --
+        # see the sibling test below's own comment on why a bare
+        # default_market_intelligence_state() call is never safe here).
         monkeypatch.setattr("app.executive.evaluate_gatekeeper", self._stub_approved_verdict)
         proposal = self._proposal()
         portfolio = default_portfolio()
+        closed_now = datetime(2026, 1, 10, 14, 30, 0, tzinfo=timezone.utc)
         _, _, record = resolve_proposal(
-            proposal, "wait", portfolio=portfolio, risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=100, market_intelligence=default_market_intelligence_state()
+            proposal, "wait", portfolio=portfolio, risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=100, market_intelligence=default_market_intelligence_state(now=closed_now)
         )
         assert record.decision_session == "closed"
         assert record.decision_market_regime == "sideways_range"
@@ -305,11 +309,24 @@ class TestResolveProposal:
         # (the object itself is always built) -- only its inner
         # started_at/closes_at/minutes fields go None, matching
         # SessionRead's own honest "no governing exchange" convention.
+        #
+        # A real, fixed Saturday -- confirmed "closed" via
+        # test_market_intelligence.py's own
+        # test_saturday_close_to_market_open_hours_is_still_honestly_closed.
+        # Live full-suite QA pass (2026-08-26) caught this test failing
+        # for real: it previously called bare default_market_intelligence_
+        # state(), which defaults `now` to the real wall-clock time
+        # (app/market_intelligence.py's own `now = now or datetime.now(...)`)
+        # -- the test only ever passed by coincidence of which real hour it
+        # ran in, and broke the moment real time moved into a non-closed
+        # window. Never rely on wall-clock-dependent defaults in a test
+        # asserting a specific session outcome.
         monkeypatch.setattr("app.executive.evaluate_gatekeeper", self._stub_approved_verdict)
         proposal = self._proposal()
         portfolio = default_portfolio()
+        closed_now = datetime(2026, 1, 10, 14, 30, 0, tzinfo=timezone.utc)
         _, _, record = resolve_proposal(
-            proposal, "buy", portfolio=portfolio, risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=100, market_intelligence=default_market_intelligence_state()
+            proposal, "buy", portfolio=portfolio, risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=100, market_intelligence=default_market_intelligence_state(now=closed_now)
         )
         context = record.decision_session_context
         assert context is not None
