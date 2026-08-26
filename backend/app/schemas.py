@@ -2269,7 +2269,7 @@ NoTradeReasonCode = Literal[
     # never the crude category-co-occurrence proxy app/gatekeeper.py's
     # own later-stage "gatekeeper_correlation" check still uses.
     "correlated_exposure_too_high",
-    # Gatekeeper: app/gatekeeper.py's 11 real checks
+    # Gatekeeper: app/gatekeeper.py's 12 real checks
     "gatekeeper_confidence",
     "gatekeeper_risk_manager",
     "gatekeeper_agreement",
@@ -2281,6 +2281,11 @@ NoTradeReasonCode = Literal[
     "gatekeeper_weighted_executive",
     "gatekeeper_behavioral",
     "gatekeeper_failure_boundary",
+    # Live end-to-end QA pass (2026-08-26) — a proposal's risk analyst
+    # vote is frozen at creation time and can go stale while the
+    # proposal sits pending; this check re-runs evaluate_sentinel_risk()
+    # fresh at resolution time instead of trusting that frozen read.
+    "gatekeeper_account_halt",
     # Risk engine: app/risk_engine.py's evaluate_sentinel_risk()/evaluate_guardian_exposure()
     "risk_equity_exhausted",
     "risk_daily_loss_limit",

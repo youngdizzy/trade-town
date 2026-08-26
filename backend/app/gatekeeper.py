@@ -29,6 +29,7 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.behavioral_risk import compute_behavioral_check
+from app.risk_engine import evaluate_sentinel_risk
 from app.schemas import (
     AnalystChoice,
     Debate,
@@ -154,9 +155,19 @@ def _correlation_check(proposal: TradeProposal, portfolio: PaperPortfolio, risk_
 
 
 def _risk_warning_check(proposal: TradeProposal, risk_warnings: list[RiskWarning]) -> GatekeeperCheck:
-    warning = next((w for w in risk_warnings if w.symbol == proposal.symbol and w.severity == "critical"), None)
+    """Live end-to-end QA pass (2026-08-26) found this check was
+    structurally unsatisfiable: the only producer of `risk_warnings`
+    (app/risk_engine.py's monitor_portfolio, Guardian's standing watch)
+    tags its one critical warning `symbol="PORTFOLIO"` (a portfolio-wide
+    drawdown breach) and every per-symbol concentration warning
+    `severity="warning"` — so a match on `proposal.symbol` specifically
+    with `severity == "critical"` could never fire. Fixed to also match
+    the portfolio-wide marker, since a critical drawdown breach is a
+    real reason to block any new trade, not just one on a specific
+    symbol — the same real signal this check always intended to enforce."""
+    warning = next((w for w in risk_warnings if w.symbol in (proposal.symbol, "PORTFOLIO") and w.severity == "critical"), None)
     passed = warning is None
-    detail = warning.message if warning else f"No active critical risk warning for {proposal.symbol}."
+    detail = warning.message if warning else f"No active critical risk warning for {proposal.symbol} or the portfolio as a whole."
     return GatekeeperCheck(id="risk_warning", label="Active Risk Warnings", passed=passed, detail=detail, code="gatekeeper_risk_warning")
 
 
@@ -256,6 +267,46 @@ def _failure_boundary_check(portfolio: PaperPortfolio, risk_limits: RiskLimits) 
     return GatekeeperCheck(id="failure_boundary", label="Failure Boundary Distance", passed=passed, detail=detail, code="gatekeeper_failure_boundary")
 
 
+# Live end-to-end QA pass (2026-08-26) found a real, evidence-based gap:
+# every other check here reads a signal frozen at proposal-creation time
+# (app/nexus.py's _generate_trade_proposals), including the risk
+# analyst's own vote baked from a ONE-TIME evaluate_sentinel_risk() call.
+# A proposal can sit pending up to PROPOSAL_EXPIRY_SIM_MINUTES (Learning
+# Mode, or a slow CEO click) — long enough for an unrelated trade
+# closing in the meantime to cross the account's daily/weekly/monthly
+# loss halt or max-trades-per-day cap, with nothing here noticing before
+# this trade executes. This check re-runs Sentinel's own real gate
+# (app/risk_engine.py's evaluate_sentinel_risk — no new risk math, same
+# function, read fresh) at the moment of resolution instead of trusting
+# the frozen read. `quantity`/`price`/`sim_day` are None only for a
+# caller with nothing to evaluate yet (mirrors `_debate_check`'s /
+# `_weighted_executive_check`'s existing vacuous-pass convention for a
+# proposal that hasn't reached execution, e.g. a direct unit test) —
+# every real production call site (app/executive.py's resolve_proposal)
+# always has all three in scope. Constitution Article I: "Protect
+# capital first."
+def _account_halt_check(
+    proposal: TradeProposal,
+    portfolio: PaperPortfolio,
+    risk_limits: RiskLimits,
+    quantity: float | None,
+    price: float | None,
+    sim_day: int | None,
+) -> GatekeeperCheck:
+    if quantity is None or price is None or sim_day is None:
+        return GatekeeperCheck(
+            id="account_halt",
+            label="Account Risk Halt (live)",
+            passed=True,
+            detail="Not evaluated for this call — no quantity/price/sim_day in scope.",
+            code="gatekeeper_account_halt",
+        )
+    warning = evaluate_sentinel_risk(risk_limits, portfolio, symbol=proposal.symbol, proposed_value=quantity * price, sim_day=sim_day)
+    passed = warning is None or warning.severity != "critical"
+    detail = warning.message if (warning is not None and not passed) else "No active account-level risk halt right now."
+    return GatekeeperCheck(id="account_halt", label="Account Risk Halt (live)", passed=passed, detail=detail, code="gatekeeper_account_halt")
+
+
 def evaluate_gatekeeper(
     proposal: TradeProposal,
     ceo_choice: AnalystChoice,
@@ -269,6 +320,9 @@ def evaluate_gatekeeper(
     min_confidence_override: float | None = None,
     behavioral_cooldown_minutes: int | None = None,
     behavioral_size_increase_threshold_pct: float | None = None,
+    quantity: float | None = None,
+    price: float | None = None,
+    sim_day: int | None = None,
 ) -> "GatekeeperVerdict":
     """`min_confidence_override` (Design Bible Chapter 75) — the real,
     disclosed points app/trading_modes.py's Daily Circuit Breaker adds to
@@ -291,7 +345,14 @@ def evaluate_gatekeeper(
     real production call sites (app/executive.py's resolve_proposal, fed
     from app/nexus.py's auto-resolution loop and app/state.py's CEO-click
     path) already have this value in scope, so this adds no new plumbing
-    burden anywhere real."""
+    burden anywhere real.
+
+    `quantity`/`price`/`sim_day` feed the Account Risk Halt check above —
+    the real, final position size and fill-signal price already resolved
+    by the caller, plus the sim day derived the same way every other
+    real call site already does (`now_sim_minutes // 1440`). None
+    vacuously passes that one check, matching this function's existing
+    convention for an unready caller."""
     from app.schemas import GatekeeperVerdict  # local import avoids a schemas.py forward-reference cycle at module load
 
     checks = [
@@ -312,6 +373,7 @@ def evaluate_gatekeeper(
             behavioral_size_increase_threshold_pct if behavioral_size_increase_threshold_pct is not None else BEHAVIORAL_SIZE_INCREASE_THRESHOLD_PCT,
         ),
         _failure_boundary_check(portfolio, risk_limits),
+        _account_halt_check(proposal, portfolio, risk_limits, quantity, price, sim_day),
     ]
     approved = all(c.passed for c in checks)
     if approved:

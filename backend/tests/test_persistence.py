@@ -235,3 +235,94 @@ def test_add_missing_columns_alters_a_table_created_by_an_older_version(tmp_path
         assert "schema_version" in columns
     finally:
         db.engine = original_engine
+
+
+def test_add_missing_columns_backfills_a_not_null_scalar_default_column(tmp_path: Path):
+    """Live end-to-end QA pass (2026-08-26) — a NOT NULL column with a
+    real scalar default (SaveModule.module_version) added to a table
+    that already has rows must not leave those old rows with a NULL
+    the model's own non-Optional type hint promises never happens."""
+    db_path = tmp_path / "old.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute(
+        "CREATE TABLE save_modules (id INTEGER PRIMARY KEY, slot VARCHAR(64), module VARCHAR(64), data TEXT, data_hash VARCHAR(64), updated_at DATETIME)"
+    )
+    conn.execute("INSERT INTO save_modules (slot, module, data, data_hash) VALUES ('default', 'world', '{}', 'hash')")
+    conn.commit()
+    conn.close()
+
+    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+    original_engine = db.engine
+    db.engine = engine
+    try:
+        Base.metadata.create_all(bind=engine)
+        db._add_missing_columns()
+
+        conn = sqlite3.connect(str(db_path))
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT module_version FROM save_modules WHERE module = 'world'").fetchone()
+        info = {r[1]: r for r in conn.execute("PRAGMA table_info(save_modules)")}
+        conn.close()
+        assert row["module_version"] == 1  # the real default, not NULL
+        assert info["module_version"][3] == 1  # PRAGMA table_info's notnull column
+    finally:
+        db.engine = original_engine
+
+
+def test_add_missing_columns_backfills_a_not_null_callable_default_column(tmp_path: Path):
+    """Same real gap, for a NOT NULL column whose default is a Python
+    callable (SaveGame.updated_at, `default=lambda: datetime.now(...)`)
+    rather than a literal SQLite can embed in the ALTER TABLE DDL
+    itself — must still backfill existing rows, not leave them NULL."""
+    db_path = tmp_path / "old.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("CREATE TABLE saves (id INTEGER PRIMARY KEY, slot VARCHAR(64) UNIQUE, data TEXT)")
+    conn.execute("INSERT INTO saves (slot, data) VALUES ('default', '{}')")
+    conn.commit()
+    conn.close()
+
+    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+    original_engine = db.engine
+    db.engine = engine
+    try:
+        Base.metadata.create_all(bind=engine)
+        db._add_missing_columns()
+
+        conn = sqlite3.connect(str(db_path))
+        row = conn.execute("SELECT updated_at FROM saves WHERE slot = 'default'").fetchone()
+        conn.close()
+        assert row[0] is not None
+    finally:
+        db.engine = original_engine
+
+
+def test_add_missing_columns_raises_for_a_not_null_column_with_no_default(tmp_path: Path):
+    """A non-nullable column with no default at all has no safe value to
+    backfill existing rows with — this must fail loudly at startup
+    rather than silently leave old rows with a NULL nothing expects."""
+    from sqlalchemy import Column, Integer, MetaData, Table
+
+    scratch_metadata = MetaData()
+    table = Table(
+        "no_default_table",
+        scratch_metadata,
+        Column("id", Integer, primary_key=True),
+        Column("required_value", Integer, nullable=False),
+    )
+    column = table.columns["required_value"]
+
+    db_path = tmp_path / "old.db"
+    conn = sqlite3.connect(str(db_path))
+    conn.execute("CREATE TABLE no_default_table (id INTEGER PRIMARY KEY)")
+    conn.execute("INSERT INTO no_default_table DEFAULT VALUES")
+    conn.commit()
+    conn.close()
+
+    engine = create_engine(f"sqlite:///{db_path}", connect_args={"check_same_thread": False})
+    original_engine = db.engine
+    db.engine = engine
+    try:
+        with pytest.raises(RuntimeError, match="Cannot safely add non-nullable column"):
+            db._add_column(table, column)
+    finally:
+        db.engine = original_engine

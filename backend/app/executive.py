@@ -434,6 +434,9 @@ def resolve_proposal(
                 min_confidence_override,
                 behavioral_cooldown_minutes,
                 behavioral_size_increase_threshold_pct,
+                quantity=quantity,
+                price=price,
+                sim_day=now_sim_minutes // 1440,
             )
             if gatekeeper_verdict.approved:
                 position_id = f"pos-{proposal.id}"

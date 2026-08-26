@@ -13,6 +13,7 @@ from datetime import datetime, timezone
 from app.gatekeeper import (
     GATEKEEPER_EVAL_WINDOW_MINUTES,
     MIN_CONFIDENCE,
+    _account_halt_check,
     _agreement_check,
     _behavioral_check,
     _confidence_check,
@@ -245,6 +246,17 @@ class TestRiskWarningCheck:
         warning = RiskWarning(id="w1", symbol="NEXA", severity="warning", message="Elevated exposure.", createdAt=_now_iso())
         assert _risk_warning_check(proposal, [warning]).passed is True
 
+    def test_fails_on_a_portfolio_wide_critical_warning_regardless_of_symbol(self) -> None:
+        """Live end-to-end QA pass (2026-08-26) — before this fix, this
+        check could never fail against real production data: Guardian's
+        standing monitor (app/risk_engine.py's monitor_portfolio) tags
+        its one critical warning symbol="PORTFOLIO", which never equals
+        a real proposal.symbol. A real critical drawdown breach must
+        still block a trade on any symbol."""
+        proposal = _proposal(symbol="NEXA")
+        warning = RiskWarning(id="w1", symbol="PORTFOLIO", severity="critical", message="Portfolio drawdown breach.", createdAt=_now_iso())
+        assert _risk_warning_check(proposal, [warning]).passed is False
+
 
 class TestBehavioralCheck:
     """app/behavioral_risk.py's real revenge-trading signals, wired as the
@@ -340,6 +352,47 @@ class TestFailureBoundaryCheck:
         assert all(c.passed for c in verdict.checks if c.id != "failure_boundary")
 
 
+class TestAccountHaltCheck:
+    """Live end-to-end QA pass (2026-08-26), 12th check — re-runs
+    app/risk_engine.py's evaluate_sentinel_risk() fresh at resolution
+    time, since every other check here trusts a signal frozen at
+    proposal-creation time (the risk analyst's own vote), and a
+    proposal can sit pending long enough for the account's real
+    daily/weekly/monthly loss halt or lifetime drawdown ceiling to be
+    crossed by an unrelated trade in the meantime."""
+
+    def test_vacuously_passes_when_quantity_price_or_sim_day_is_missing(self) -> None:
+        proposal = _proposal(symbol="NEXA")
+        check = _account_halt_check(proposal, default_portfolio(), RiskLimits(), None, None, None)
+        assert check.passed is True
+
+    def test_passes_when_no_halt_condition_is_active(self) -> None:
+        proposal = _proposal(symbol="NEXA")
+        check = _account_halt_check(proposal, default_portfolio(), RiskLimits(), 10.0, 100.0, 0)
+        assert check.passed is True
+
+    def test_fails_when_the_lifetime_drawdown_ceiling_is_already_breached(self) -> None:
+        proposal = _proposal(symbol="NEXA")
+        portfolio = default_portfolio().model_copy(update={"total_pnl_pct": -25.0})
+        check = _account_halt_check(proposal, portfolio, RiskLimits(), 10.0, 100.0, 0)
+        assert check.passed is False
+        assert "drawdown" in check.detail.lower()
+
+    def test_a_triggered_read_fails_only_its_own_check_in_the_full_verdict(self) -> None:
+        proposal = _proposal(symbol="NEXA", confidence_score=90.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}))
+        portfolio = default_portfolio().model_copy(update={"total_pnl_pct": -25.0})
+        verdict = evaluate_gatekeeper(
+            proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], default_market_intelligence_state(), now_sim_minutes=0, quantity=10.0, price=100.0, sim_day=0
+        )
+        assert verdict.approved is False
+        assert any(c.id == "account_halt" and not c.passed for c in verdict.checks)
+        # failure_boundary independently catches the same real breach —
+        # both checks reading the same real total_pnl_pct is expected,
+        # not a duplicate bug (one is Sentinel's live gate re-run, the
+        # other is the CEO Company Health directive's own formula).
+        assert all(c.passed for c in verdict.checks if c.id not in ("account_halt", "failure_boundary"))
+
+
 class TestEvaluateGatekeeper:
     def test_approves_when_every_check_passes(self) -> None:
         proposal = _proposal(confidence_score=90.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}))
@@ -355,7 +408,10 @@ class TestEvaluateGatekeeper:
         # 11th check: Failure Boundary Distance — a fresh portfolio has
         # 0% lifetime drawdown, so the full 20% default ceiling is
         # remaining room, well above the 2% default risk-per-trade.
-        assert len(verdict.checks) == 11
+        # 12th check: Account Risk Halt (live) — vacuously passing here
+        # since no quantity/price/sim_day was supplied (see
+        # TestAccountHaltCheck below for the real behavior).
+        assert len(verdict.checks) == 12
         assert all(c.passed for c in verdict.checks)
         assert "APPROVED" in verdict.summary
         # CEO directive "Professional Quant Firm Phase 41-45," Critical Task #0's No-Trade
