@@ -8026,7 +8026,7 @@ class CeoOverrideGovernanceSummary(CamelModel):
 
 # CEO directive "Features 31-35," Feature 34 — Compliance Control
 # Effectiveness (app/control_effectiveness.py). RESEARCH FINDING: every
-# one of app/gatekeeper.py's 11 real checks already runs, unconditionally,
+# one of app/gatekeeper.py's 12 real checks already runs, unconditionally,
 # on every real trade decision and is stored, per-decision, on
 # `TradeDecision.gatekeeper_verdict.checks` — so `triggeredCount` here is
 # never a fabricated "how often could this fire" estimate, it is a real

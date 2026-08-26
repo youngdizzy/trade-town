@@ -2694,7 +2694,7 @@ no new `GameSaveState` field, the same original CAGS convention as the
 five original `/api/audit/*` endpoints (untouched).
 
 **`GET /api/audit/controls/effectiveness`** — the real
-`ControlEffectivenessSummary` over all 11 real Gatekeeper checks.
+`ControlEffectivenessSummary` over all 12 real Gatekeeper checks.
 `controls: ControlEffectivenessRecord[]`, one per check, each with:
 `controlId`/`controlLabel`/`purpose`/`owner` (the check's own real,
 disclosed behavior and owning module — never invented); `triggeredCount`

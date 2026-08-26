@@ -2,7 +2,7 @@
 Effectiveness.
 
 RESEARCH FIRST (per the directive's own mandatory rule): app/gatekeeper.py
-already runs 11 real checks, unconditionally, on every real trade decision
+already runs 12 real checks, unconditionally, on every real trade decision
 that reaches a buy/sell choice — full results stored on
 `TradeDecision.gatekeeper_verdict.checks`, never a second, independently
 computed read. When a decision is rejected (`approved=False`), the

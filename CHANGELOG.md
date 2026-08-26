@@ -5,6 +5,65 @@ development milestones, not semver releases.
 
 ## Unreleased
 
+### Fixed
+
+- **"Full Feature Integrity, Bug Hunt & End-to-End Verification Pass" — two real risk-control gaps
+  and one dormant persistence bug, found by a live trace of the real trade-execution and
+  save/migration pipelines against the running app (not test-only issues):
+  - `app/gatekeeper.py`'s eleven checks all trusted a risk analyst vote frozen at
+    proposal-creation time. A proposal can sit pending long enough (Learning Mode, or a slow CEO
+    click) for an unrelated trade closing in the meantime to cross the account's real
+    daily/weekly/monthly loss halt or max-trades-per-day cap, with nothing re-verifying before
+    this proposal executes. Added a 12th check, Account Risk Halt, that re-runs
+    `risk_engine.evaluate_sentinel_risk()` fresh at the moment of resolution — no new risk math,
+    the same real function, just read again instead of trusted stale.
+  - `_risk_warning_check` was structurally unsatisfiable against real data: the only critical
+    warning Guardian's standing monitor (`risk_engine.monitor_portfolio`) ever produces is tagged
+    `symbol="PORTFOLIO"` (a portfolio-wide drawdown breach), which could never equal a real
+    proposal's own symbol. Fixed to also match that portfolio-wide marker.
+  - `app/db.py`'s `_add_missing_columns()` only ever emitted a column's SQL *type* in its
+    `ALTER TABLE` DDL, silently dropping NOT NULL/default/unique/index — a non-nullable column
+    added to a table with existing rows would leave every old row with a real NULL despite the
+    model's own Python type hint promising it's never `None`. Currently dormant (the one column
+    ever added this way was deliberately made nullable as a workaround), but a real, evidence-based
+    gap. Fixed within SQLite's actual `ALTER TABLE` limits: a literal default is now embedded
+    directly in the DDL, a Python-side callable default (e.g. `datetime.now`) backfills existing
+    rows in a follow-up `UPDATE` after the `ALTER`, and a non-nullable column with no default at
+    all now fails loudly at startup instead of silently shipping NULLs into a column nothing
+    expects them in.
+
+  All three were found and fixed via direct code trace (two dedicated research passes plus manual
+  verification), not by weakening any existing test or risk limit — the opposite: the fix makes
+  the Gatekeeper strictly *more* conservative (a real halt condition can now block a trade it
+  previously couldn't catch), never less. New coverage: `TestAccountHaltCheck` (4 tests),
+  `test_fails_on_a_portfolio_wide_critical_warning_regardless_of_symbol`, and three new
+  `_add_missing_columns`/`_add_column` regression tests covering the scalar-default,
+  callable-default, and no-default-at-all cases. Full backend suite: 2650 → **2658 passed**, mypy
+  clean, ruff clean.
+
+- **`frontend/tests/evolutionPanel.spec.ts` and `frontend/tests/constitution.spec.ts` — two
+  unscoped Playwright locators that trip strict-mode violations once real data accumulates.** Both
+  are real-backend Playwright specs (no mocking) that assert on plain substrings
+  ("Company Evolution Score", `/ 100`, "Employee vote (advisory)") without scoping to the specific
+  card under test — harmless against a fresh save, but this dev backend has real Institutional
+  Evolution Reports and Constitution amendments accumulated across today's many QA runs, each
+  legitimately reusing the same substrings in their own real summary text. Fixed by scoping each
+  locator to the specific live card (the current period's own em-dash-qualified section label, or
+  the specific `amendment-card`), matching the pattern already used elsewhere in these same files —
+  not a weakened assertion, a correctly narrowed one.
+
+- **`frontend/src/ui/components/CommandCenter/CommandPalette.tsx` — Enter could execute the wrong
+  result.** `onMouseEnter={() => setSelected(i)}` let a stationary mouse cursor left over from an
+  earlier click silently override keyboard-driven selection, so pressing Enter after arrowing to a
+  different result could fire whatever command happened to be sitting under the parked cursor
+  instead. Fixed with a `mouseHasMovedRef` gate requiring genuine mouse movement before hover can
+  change the selected index.
+
+- **`backend/tests/test_executive.py` — two wall-clock-dependent flaky tests.** Both called
+  `default_market_intelligence_state()` with no explicit `now`, defaulting to real wall-clock time
+  and making a session-boundary assertion non-deterministic depending on when the suite happened to
+  run. Fixed by passing an explicit, confirmed-closed timestamp.
+
 ### Added
 
 - **CEO directive "Complete Trade Provenance + Session/Regime Intelligence + Evidence-Based
