@@ -50,7 +50,7 @@ test("the Constitution tab opens from the Command Center, shows the Articles and
 
   const amendmentCard = page.getByTestId("amendment-card").filter({ hasText: amendmentTitle });
   await amendmentCard.getByRole("button", { name: "Send to Founders, Coach & Employees" }).click();
-  await expect(page.getByText(/Employee vote \(advisory\)/)).toBeVisible();
+  await expect(amendmentCard.getByText(/Employee vote \(advisory\)/)).toBeVisible();
   await expect(amendmentCard.getByRole("button", { name: "Ratify" })).toBeVisible();
 
   const relevantErrors = consoleErrors.filter((e) => !e.includes("favicon"));
