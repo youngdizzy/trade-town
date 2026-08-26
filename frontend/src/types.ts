@@ -2956,6 +2956,93 @@ export interface SessionRangeRead {
   detail: string;
 }
 
+// CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+// Engine" — backend/app/trend_engine.py's real, versioned multi-horizon
+// trend research schemas. "AHL-inspired public-research hypothesis,"
+// never a claim of reproducing Man AHL's actual proprietary methodology
+// or of live profitability — see that module's own docstring.
+export type TrendDefinitionMethod = "endpoint_slope" | "regression_slope" | "normalized_slope" | "price_vs_ma" | "volatility_normalized" | "breakout_channel";
+export type TrendWeightingMethod = "equal" | "horizon_weighted" | "volatility_weighted";
+
+export interface HorizonTrendReading {
+  horizonLabel: string;
+  lookbackBars: number;
+  method: TrendDefinitionMethod;
+  rawValue: number;
+  direction: 1 | 0 | -1;
+  detail: string;
+}
+
+export interface MultiHorizonTrendScore {
+  symbol: string;
+  timeframe: string;
+  evaluatedAtIndex: number;
+  evaluatedAtTimestamp: string;
+  method: TrendDefinitionMethod;
+  methodologyVersion: string;
+  horizons: HorizonTrendReading[];
+  compositeScore: number;
+  compositeScoreNormalized: number;
+  aggregationDetail: string;
+}
+
+/** Fast/Medium/Slow shown DECOMPOSED — never collapse these into
+ * `combinedScore` alone in any UI; the whole point of this shape is
+ * that the CEO can see all three real, independent composites. */
+export interface TrendEnsembleReading {
+  symbol: string;
+  timeframe: string;
+  evaluatedAtIndex: number;
+  evaluatedAtTimestamp: string;
+  fast: MultiHorizonTrendScore;
+  medium: MultiHorizonTrendScore;
+  slow: MultiHorizonTrendScore;
+  weightingMethod: TrendWeightingMethod;
+  combinedScore: number;
+  combinedScoreDetail: string;
+}
+
+/** A RESEARCH candidate exposure only — never a live position size. See
+ * backend/app/trend_engine.py's own docstring: this is never wired into
+ * the real, authoritative position-sizing pipeline. */
+export interface VolatilityScaledExposureResearch {
+  symbol: string;
+  signalStrength: number;
+  volatilityEstimatePct: number;
+  volatilityLookbackBars: number;
+  targetRiskPct: number;
+  annualizationFactor: number;
+  rawExposurePct: number;
+  cappedExposurePct: number;
+  wasCapped: boolean;
+  detail: string;
+}
+
+export interface SymbolTrendRanking {
+  symbol: string;
+  category: ResearchCategory;
+  compositeScore: number;
+  trendPersistenceBars: number;
+  volatilityPct: number;
+  riskAdjustedScore: number;
+}
+
+export interface TrendRegimeBucket {
+  regime: string;
+  barsObserved: number;
+  meanForwardReturnPct: number;
+  hitRatePct: number;
+  detail: string;
+}
+
+export interface TrendRegimeBreakdown {
+  symbol: string;
+  timeframe: string;
+  forwardBars: number;
+  buckets: TrendRegimeBucket[];
+  detail: string;
+}
+
 // Design Bible Chapter 70 Part 2 — Executive Accuracy Score. Scored only
 // over trades actually taken and since closed with a real outcome; see
 // backend/app/executive_intelligence.py's compute_executive_accuracy_scores.

@@ -112,11 +112,16 @@ import type {
   StrategySessionPerformanceSummary,
   StrategyTradingDiagnosticSummary,
   SymbolPerformanceSummary,
+  SymbolTrendRanking,
   TechnicalAnalysisRead,
   ConfluenceRead,
   TradeAttributionSummary,
   UnattributedTradeMonitor,
   TradeStrategyRuleSnapshot,
+  TrendDefinitionMethod,
+  TrendEnsembleReading,
+  TrendRegimeBreakdown,
+  TrendWeightingMethod,
   TradePipelineHealthSnapshot,
   OpportunityFeed,
   TradingSession,
@@ -226,6 +231,19 @@ export const api = {
   getEvidenceConfluence: (symbol: string, timeframe = "1h", limit = 100) =>
     request<EvidenceConfluenceRead>(
       `/market/evidence-confluence?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&limit=${limit}`
+    ),
+  // CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+  // Engine." Read-only research evidence, computed fresh per request —
+  // see backend/app/trend_engine.py. Never a trading signal API.
+  getTrendEngineReading: (symbol: string, timeframe = "1h", limit = 200, method: TrendDefinitionMethod = "endpoint_slope", weighting: TrendWeightingMethod = "equal") =>
+    request<TrendEnsembleReading>(
+      `/market/trend-engine?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&limit=${limit}&method=${encodeURIComponent(method)}&weighting=${encodeURIComponent(weighting)}`
+    ),
+  getTrendEngineCrossSectional: (timeframe = "1h", limit = 200, method: TrendDefinitionMethod = "endpoint_slope") =>
+    request<SymbolTrendRanking[]>(`/market/trend-engine/cross-sectional?timeframe=${encodeURIComponent(timeframe)}&limit=${limit}&method=${encodeURIComponent(method)}`),
+  getTrendEngineRegimeBreakdown: (symbol: string, timeframe = "1h", method: TrendDefinitionMethod = "endpoint_slope", forwardBars = 10) =>
+    request<TrendRegimeBreakdown>(
+      `/market/trend-engine/regime-breakdown?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&method=${encodeURIComponent(method)}&forward_bars=${forwardBars}`
     ),
   spendEnergy: (action: string, researchId?: string) =>
     request<{ agentEnergy: AgentEnergy }>("/energy/spend", {

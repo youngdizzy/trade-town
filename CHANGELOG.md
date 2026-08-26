@@ -124,6 +124,64 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "AHL-Inspired Systematic Trend & Momentum Research Engine."** New
+  `app/trend_engine.py`: six independent, never-silently-merged real trend-measurement methodologies
+  (endpoint slope, real closed-form OLS regression slope of log-price, a normalized/t-like slope,
+  price-vs-moving-average distance, a Sharpe-like volatility-normalized return, and a breakout-channel
+  position read), a versioned multi-horizon composite scorer (`TREND_ENGINE_METHODOLOGY_VERSION =
+  "multi_horizon_v1"`, default horizons 5/10/20/40 trading-day bars matching the CEO's own 1wk/2wk/1mo/
+  2mo worked example, fully configurable), a Fast/Medium/Slow ensemble shown **decomposed** — never
+  collapsed into one score — with equal/horizon-weighted/volatility-weighted combination options, a
+  research-only AHL-inspired inverse-volatility exposure calculator (explicitly never wired into
+  `app/position_sizing.py`'s real, authoritative sizing — a hard volatility floor and exposure cap
+  prevent the classic "volatility near zero implies absurd leverage" failure mode), real cross-sectional
+  symbol ranking, and a regime-conditional forward-return breakdown reusing the existing
+  `regime_trend_at()` classifier (never a second regime engine). Labeled throughout as an "AHL-inspired
+  public-research hypothesis" — no claim that this reproduces Man AHL's actual proprietary methodology
+  or that any external firm's real historical results say anything about profitability on TradeTown's
+  own (mock) data.
+  - **Point-in-time correctness by construction**: every function treats the last candle in its own
+    input as the evaluation point and never reaches past it — proven, not just asserted, by an
+    adversarial regression test showing that appending future candles to an already-computed series
+    never changes an earlier index's own already-computed reading.
+  - **Wired into the existing Strategy Lab pipeline instead of a parallel one.** One new
+    `StrategyIndicatorName` (`multi_horizon_trend_score`), one new `app/strategy_compiler.py` pattern
+    ("the multi-horizon trend score is above/below N," the same real "above = long, below = short"
+    convention RSI/Stochastic already use), and `app/strategy_engine.py`'s `_resolve()`/
+    `_build_series_cache()` extended to compute the real series — so the existing
+    `app/research_experiment.py` → `app/walk_forward.py`/`app/cost_sensitivity.py`/
+    `app/parameter_sensitivity.py`/`app/leakage_audit.py`/`app/overfitting_diagnostics.py` validation
+    pipeline validates this new indicator automatically, with zero new validation code.
+  - **Real evidence generated, not fabricated.** A reference "Multi-Horizon Trend Research Model v1"
+    strategy (`Buy when the multi-horizon trend score is above 2, then enter when price closes above
+    the previous swing high. Place a Chandelier Stop and target 2R.`) was compiled and run through
+    `run_research_experiment()` across 9-14 symbols × 6,000 hourly (mock) candles at both threshold=2
+    and threshold=1. Honest result: **INSUFFICIENT EVIDENCE** — only 2 real closed trades at either
+    threshold (the "all horizons agree" + swing-high-breakout combination is genuinely rare in this
+    sample), so walk-forward/cost-sensitivity/parameter-sensitivity/overfitting-diagnosis all correctly
+    returned `insufficient_data` rather than a fabricated verdict. The one axis that DID reach a real
+    verdict — the look-ahead audit — came back **clean** ("All 2 real setup(s) found against the full
+    series were independently reproduced using only candles up to and including their own entry bar").
+    This is the system correctly declining to claim an edge it has no evidence for, exactly the
+    directive's own required behavior — not a bug, not something "fixed" by loosening the threshold
+    (tried at threshold=1 too; identical trade count, confirming the entry filter, not the trend
+    threshold, is the binding constraint).
+  - Three new read-only Research Desk endpoints (`GET /api/market/trend-engine`, `/trend-engine/
+    cross-sectional`, `/trend-engine/regime-breakdown`) — same CAGS convention as every other endpoint
+    in `app/routers/market.py` (computed fresh per request, never persisted, never a trading-decision
+    API), plus matching `frontend/src/types.ts` interfaces and `net/api.ts` client calls.
+  - 33 new backend tests (`test_trend_engine.py`): each of the six methodologies on clean up/down/flat
+    synthetic trends, insufficient/missing-data handling, horizon aggregation, ensemble decomposition
+    and weighting, the point-in-time-correctness adversarial test, volatility-scaled-exposure floor/cap
+    behavior (including a structural test that `app/position_sizing.py` has zero import of this
+    module), cross-sectional ranking, regime breakdown, and full Strategy Lab integration (compiler
+    recognition, generic-engine setup detection). Full backend suite green, mypy/ruff clean. Frontend
+    `tsc`/lint/build clean.
+  - **Not built this pass, documented rather than silently skipped** (per the user's own explicit
+    "Multi-Horizon Trend engine first" scoping choice over a Live Desk chart overlay, agent-debate
+    evidence payload wiring, and the volume/liquidity research module the original larger directive
+    also requested): those remain real, tractable future work, not attempted here.
+
 - **CEO directive "Professional Research → Certification → Paper → Capital Allocation Pipeline" —
   real Research Desk validation now gates strategy certification, and a real Monte Carlo
   reproducibility bug is fixed.** A 5-agent Phase 0 audit found the codebase's central, most

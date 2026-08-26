@@ -15143,6 +15143,138 @@ trade management on live positions.
 `panels/TradePipelineHealthCard.tsx`, new `panels/sandbox/
 StrategyCertificationChecklist.tsx`. Docs: `CHANGELOG.md`.
 
+## CEO directive "AHL-Inspired Systematic Trend & Momentum Research Engine"
+
+A 30-phase directive proposing a new research capability inspired by
+publicly described managed-futures/trend-following research (Man AHL's
+own public explainer pages on momentum and volatility scaling), with an
+explicit, repeated instruction: treat every idea as a RESEARCH
+HYPOTHESIS the system must be able to implement, backtest, cost-test,
+validate out-of-sample, and REJECT if it doesn't hold up — never a
+claim of proven profitability. Given the directive's own size, the user
+was asked how to sequence it and chose **"Multi-Horizon Trend engine
+first."**
+
+**Phase 1 — audit.** Three parallel research agents audited position-
+sizing/correlation/portfolio-risk, asset-universe/volume/liquidity, and
+strategy-engine/trend-measurement/regime-granularity territory (the
+Strategy Lab/backtesting/certification stack itself was already well
+understood from this session's two prior directives above). Headline
+findings:
+- Real ATR-based risk-budget position sizing and real pairwise Pearson
+  correlation already exist and are wired end-to-end, but true
+  inverse-volatility *portfolio* weighting across simultaneous
+  positions does not (today's ATR cap is single-position/risk-per-trade
+  only), and aggregate correlated/common-factor exposure scoring is
+  pairwise-display-only, never summed into portfolio heat or sizing.
+- The asset universe is equities + broad-market/commodity ETFs + one
+  crypto pair only — **no futures, Treasury/bond ETFs, or FX pairs
+  exist anywhere**, and the mock data generator produces the identical
+  equity-shaped random walk for every symbol regardless of asset class,
+  so adding e.g. `TLT` today would just be equity noise wearing a
+  bond's ticker. Real volume data exists and varies meaningfully per
+  bar, but only one narrow last-bar "absorption" volume/price-
+  divergence proxy exists — no general relative-volume/volume-MA
+  primitive.
+- **The most important finding**: a full hypothesis → backtest →
+  walk-forward → cost/parameter-sensitivity → look-ahead-audit →
+  overfitting-diagnosis → regime-stability pipeline already exists
+  (`app/research_experiment.py`, `app/strategy_tournament.py`) and
+  already gates real capital (see the Certification Pipeline directive
+  above) — exactly the machinery this new directive's own Phase 6/17/18
+  ask for, reusable rather than rebuildable.
+- `CompiledStrategyDefinition`'s indicator vocabulary
+  (`StrategyIndicatorName`) is a closed set of classic scalar
+  indicators with no multi-horizon/ensemble concept — a new composite
+  indicator was tractable to add (one new literal + one new compiler
+  pattern + one new `_resolve()` case), but a true "N-of-M horizons
+  agree" AND-condition or a "show Fast/Medium/Slow as three separate,
+  un-merged compiled conditions" is not expressible in today's
+  single-condition-per-step schema — addressed by keeping the
+  DECOMPOSED ensemble view in `app/trend_engine.py`'s own standalone
+  research functions/schemas, and giving the compiled-strategy engine
+  only the one composite score as a single scalar it already knows how
+  to compare against a threshold.
+
+**Two hard blockers, documented and deferred per the user's own
+explicit choice, not fabricated around**: (1) no bonds/FX/futures are
+buildable honestly without first building real asset-class-realistic
+data generation — untouched this pass; (2) no dollar-volume/average-
+daily-volume/spread data exists anywhere to build liquidity-aware
+execution sizing from — untouched this pass.
+
+**Implementation.** New `app/trend_engine.py` (see its own module
+docstring for the full "AHL-inspired, not AHL" disclosure and the
+point-in-time-correctness discipline every function observes):
+six independent trend-measurement methodologies, a versioned
+multi-horizon composite scorer, a Fast/Medium/Slow ensemble kept
+genuinely decomposed (never collapsed into one score, per the
+directive's own explicit "never silently merge" requirement), a
+research-only inverse-volatility exposure calculator with a hard
+volatility floor and exposure cap, cross-sectional symbol ranking, and
+a regime-conditional forward-return breakdown reusing the existing
+`regime_trend_at()` classifier. Wired into the Strategy Lab's real
+pipeline (one new `StrategyIndicatorName`, one new compiler pattern,
+`_resolve()`/`_build_series_cache()` extended) rather than a second
+validation path, so every existing walk-forward/cost/parameter-
+sensitivity/look-ahead module validates the new indicator automatically.
+Three new read-only research endpoints on `app/routers/market.py`
+(`GET /trend-engine`, `/trend-engine/cross-sectional`,
+`/trend-engine/regime-breakdown`) plus matching frontend types and API
+client calls — no UI panel or Live Desk chart overlay built this pass
+(see below).
+
+**Real evidence, not fabricated.** A reference "Multi-Horizon Trend
+Research Model v1" strategy (`Buy when the multi-horizon trend score is
+above 2, then enter when price closes above the previous swing high.
+Place a Chandelier Stop and target 2R.`) was compiled through the real
+`app/strategy_compiler.py` and run through the real
+`run_research_experiment()` across 9 and 14 symbols × 6,000 hourly
+(mock) candles, at both threshold=2 and threshold=1. Result: **only 2
+real closed trades at either threshold** — the "all horizons agree" (or
+even "one horizon agrees") composite condition combined with the
+swing-high-breakout entry filter is genuinely rare in this sample, so
+walk-forward/cost-sensitivity/parameter-sensitivity/overfitting-
+diagnosis all honestly returned `insufficient_data` rather than a
+fabricated pass/fail. The one axis that DID reach a real verdict — the
+look-ahead audit — came back clean, real evidence the point-in-time
+discipline holds inside the full validation pipeline, not just in this
+module's own unit tests. This is the system correctly declining to
+claim an edge it has no evidence for.
+
+**Verification.** 33 new backend tests, full backend suite green,
+mypy/ruff clean across the whole backend. Frontend `tsc`/lint/build
+clean. Three new live-smoke-tested endpoints (`FastAPI TestClient`
+against the real running app, real (mock) data, all 200 OK with
+sensible, non-degenerate output — e.g. AAPL's fast/medium/slow bands
+independently read +2.0/+2.0/0.0, a genuine decomposed mixed signal,
+never silently averaged away).
+
+**Not built this pass, documented rather than silently skipped** (per
+the user's own "Multi-Horizon Trend engine first" scoping choice):
+- A Live Desk chart overlay showing horizon lines/trend evidence
+  directly on the candlestick chart (Phase 12/13/22).
+- Agent-debate evidence-payload wiring — giving agents structured
+  `TREND_ENGINE` evidence in their own research/debate flow (Phase 11).
+- A dedicated Research UI panel with WHY/BACKTEST/WALK-FORWARD/COST-
+  TEST/REGIME-TEST drill-downs (Phase 14) — the three new endpoints
+  exist and are real, but nothing in the frontend calls them yet beyond
+  the typed API client.
+- The volume-confirmation engine, liquidity-sweep statistical research,
+  and FVG fill-tracking the original larger directive also requested
+  (explicitly deferred by the directive's own Phase 17: "do not fully
+  build the volume/liquidity engine in this pass").
+- True inverse-volatility *portfolio* weighting and aggregate
+  correlated-exposure risk scoring (Phases 4-5, 20) — the audit's other
+  genuine gap, not touched this pass.
+- The two hard data blockers above (bonds/FX/futures; dollar-volume/
+  spread data for execution sizing).
+
+**Files changed.** Backend: `app/schemas.py`, `app/trend_engine.py`
+(new), `app/strategy_engine.py`, `app/strategy_compiler.py`,
+`app/routers/market.py`, `tests/test_trend_engine.py` (new). Frontend:
+`types.ts`, `net/api.ts`. Docs: `CHANGELOG.md`.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

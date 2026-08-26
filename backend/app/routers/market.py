@@ -21,13 +21,20 @@ from app.schemas import (
     RegimeReconciliation,
     SessionRangeRead,
     SessionRegimeEvidenceSummary,
+    SymbolTrendRanking,
     TechnicalAnalysisRead,
     TradingSession,
+    TrendDefinitionMethod,
+    TrendEnsembleReading,
+    TrendRegimeBreakdown,
+    TrendWeightingMethod,
 )
 from app.session_evidence import compute_session_regime_evidence
 from app.state import game_state
 from app.technical_analysis import compute_technical_analysis
 from app.technical_patterns import compute_session_range
+from app.trend_engine import compute_trend_ensemble, compute_trend_regime_breakdown, rank_symbols_by_trend
+from app.watchlist import SYMBOL_CATEGORY
 
 router = APIRouter(prefix="/api/market", tags=["market"])
 
@@ -177,3 +184,69 @@ async def get_economic_intelligence_reports() -> list[EconomicIntelligenceReport
     first, capped at MAX_ECONOMIC_INTELLIGENCE_REPORTS."""
     state = await game_state.snapshot()
     return state.economic_intelligence_reports
+
+
+# CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+# Engine" — three new, real, read-only Research Desk endpoints over
+# app/trend_engine.py. Same CAGS convention as every other endpoint in
+# this file (computed fresh per request, never persisted, never wired
+# into any live trading decision) — these are research evidence reads,
+# not a trading signal API.
+@router.get("/trend-engine", response_model=TrendEnsembleReading)
+async def get_trend_engine_reading(
+    symbol: str = Query(..., min_length=1, max_length=16),
+    timeframe: str = Query("1h"),
+    limit: int = Query(200, ge=MIN_LIMIT, le=MAX_LIMIT),
+    method: TrendDefinitionMethod = Query("endpoint_slope"),
+    weighting: TrendWeightingMethod = Query("equal"),
+) -> TrendEnsembleReading:
+    """The Fast/Medium/Slow decomposed Multi-Horizon Trend Score for one
+    symbol — real, versioned, never collapsed into a single mysterious
+    number. See app/trend_engine.py's own module docstring for the full
+    "AHL-inspired, not AHL" disclosure and point-in-time-correctness
+    discipline."""
+    if timeframe not in TIMEFRAME_ORDER:
+        raise HTTPException(status_code=400, detail=f"Unsupported timeframe {timeframe!r}. Supported: {TIMEFRAME_ORDER}")
+    try:
+        candles = market_data_provider.get_candles(symbol.upper(), timeframe, limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return compute_trend_ensemble(candles, symbol.upper(), timeframe, method=method, weighting=weighting)
+
+
+@router.get("/trend-engine/cross-sectional", response_model=list[SymbolTrendRanking])
+async def get_trend_engine_cross_sectional(
+    timeframe: str = Query("1h"),
+    limit: int = Query(200, ge=MIN_LIMIT, le=MAX_LIMIT),
+    method: TrendDefinitionMethod = Query("endpoint_slope"),
+) -> list[SymbolTrendRanking]:
+    """Real cross-sectional research evidence: which currently-watched
+    symbols show the strongest, most persistent, best risk-adjusted
+    trend agreement — sorted by real composite score, descending. Never
+    an automatic trade selection; a Research Desk read only."""
+    if timeframe not in TIMEFRAME_ORDER:
+        raise HTTPException(status_code=400, detail=f"Unsupported timeframe {timeframe!r}. Supported: {TIMEFRAME_ORDER}")
+    state = await game_state.snapshot()
+    symbol_candles = {entry.symbol: market_data_provider.get_candles(entry.symbol, timeframe, limit) for entry in state.watchlist}
+    return rank_symbols_by_trend(symbol_candles, SYMBOL_CATEGORY, method=method, timeframe=timeframe)
+
+
+@router.get("/trend-engine/regime-breakdown", response_model=TrendRegimeBreakdown)
+async def get_trend_engine_regime_breakdown(
+    symbol: str = Query(..., min_length=1, max_length=16),
+    timeframe: str = Query("1h"),
+    limit: int = Query(MAX_LIMIT, ge=MIN_LIMIT, le=MAX_LIMIT),
+    method: TrendDefinitionMethod = Query("endpoint_slope"),
+    forward_bars: int = Query(10, ge=1, le=100),
+) -> TrendRegimeBreakdown:
+    """Real, historical regime-conditional forward-return evidence for
+    this symbol's own strong-signal bars (see app/trend_engine.py's own
+    point-in-time-correctness discipline — every bucket only ever used
+    data available at its own signal bar)."""
+    if timeframe not in TIMEFRAME_ORDER:
+        raise HTTPException(status_code=400, detail=f"Unsupported timeframe {timeframe!r}. Supported: {TIMEFRAME_ORDER}")
+    try:
+        candles = market_data_provider.get_candles(symbol.upper(), timeframe, limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return compute_trend_regime_breakdown(candles, symbol.upper(), timeframe, method=method, forward_bars=forward_bars)
