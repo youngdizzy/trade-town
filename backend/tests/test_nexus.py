@@ -259,3 +259,44 @@ class TestFlattenedTradesReachTheLearningLoop:
         assert flattened.decision_id == "decision-flatten-test"
         assert any(r.id == f"discipline-{flattened.id}" for r in result.discipline_reviews)
         assert any(v.trade_id == flattened.id for v in result.decision_vault)
+
+    def test_a_position_carrying_a_real_proposal_id_gets_a_deterministic_decision_id_not_a_symbol_guess(self) -> None:
+        # Professional Quant Live Trading Desk — a position opened with a
+        # real proposal_id (app/executive.py's resolve_proposal() now
+        # always sets one) must resolve its decision_id deterministically
+        # from that field, never from the old best-effort "most recent
+        # trade decision for this symbol" match — which would silently
+        # pick the wrong decision if two same-symbol trades are in
+        # flight. Two decisions on the same symbol here, only one of
+        # which matches this position's real proposal_id, proves the
+        # fix: the fuzzy match would have picked "decision-wrong" (the
+        # more recent one in the list), the real link must not.
+        state = default_state()
+        portfolio = open_position(
+            default_portfolio(),
+            position_id="pos-flatten-test-2",
+            symbol="AAPL",
+            price=100.0,
+            opened_by="scout",
+            confidence=90.0,
+            opened_sim_minutes=0,
+            side="buy",
+            trading_style="day",
+            proposal_id="proposal-real",
+        )
+        wrong_decision = TradeDecision(
+            id="decision-wrong", symbol="AAPL", outcome="trade", votes=[], researchSummary="x", technicalSummary="x", fundamentalSummary="x",
+            riskSummary="x", supportingAgents=["scout"], opposingAgents=[], confidence=90.0, finalReasoning="x", createdAt="2026-01-01T00:00:01+00:00",
+        )
+        real_decision = TradeDecision(
+            id="decision-proposal-real", symbol="AAPL", outcome="trade", votes=[], researchSummary="x", technicalSummary="x", fundamentalSummary="x",
+            riskSummary="x", supportingAgents=["scout"], opposingAgents=[], confidence=90.0, finalReasoning="x", createdAt="2026-01-01T00:00:00+00:00",
+        )
+        state = state.model_copy(update={"paper_portfolio": portfolio, "decisions": [real_decision, wrong_decision]})
+
+        result = nexus_tick(state, TimeState(day=2, hour=0, minute=0), 5)
+
+        flattened = next((t for t in result.paper_portfolio.trade_history if t.symbol == "AAPL" and "flattened" in t.reason.lower()), None)
+        assert flattened is not None
+        assert flattened.proposal_id == "proposal-real"
+        assert flattened.decision_id == "decision-proposal-real"

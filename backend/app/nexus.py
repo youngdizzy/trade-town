@@ -1092,17 +1092,25 @@ def _journal_closed_trades(portfolio: PaperPortfolio, trades: list[PaperTrade], 
     fields (app/journal.py) and writes the stamped version back into
     trade_history — close_position() (app/portfolio.py) already appended
     the unstamped trade there, so this replaces it in place rather than
-    appending a second copy. `decision_id` is attributed by best-effort
-    match: the most recent "trade" decision for the same symbol, since
-    neither PaperOrder nor PaperPosition carries a decision id through to
-    the eventual PaperTrade."""
+    appending a second copy. `decision_id` is derived deterministically
+    from the trade's own real `proposal_id` (`f"decision-{proposal_id}"`,
+    the same convention app/executive.py's resolve_proposal() uses to
+    mint a TradeDecision.id from a TradeProposal.id) when the trade
+    carries one. Falls back to the old best-effort match — the most
+    recent "trade" decision for the same symbol — only for a trade with
+    no `proposal_id` at all (opened through app/broker.py's manual-order
+    fill path, which has no originating proposal, or closed before this
+    field existed)."""
     if not trades:
         return portfolio, []
 
     stamped_by_id: dict[str, PaperTrade] = {}
     stamped: list[PaperTrade] = []
     for trade in trades:
-        decision_id = next((d.id for d in reversed(decisions) if d.symbol == trade.symbol and d.outcome == "trade"), None)
+        if trade.proposal_id is not None:
+            decision_id: str | None = f"decision-{trade.proposal_id}"
+        else:
+            decision_id = next((d.id for d in reversed(decisions) if d.symbol == trade.symbol and d.outcome == "trade"), None)
         journaled = stamp_journal_entry(trade, decision_id=decision_id)
         stamped_by_id[trade.id] = journaled
         stamped.append(journaled)

@@ -482,6 +482,25 @@ export interface PaperPosition {
    * own real extreme. */
   maePct: number;
   mfePct: number;
+  /** Design Bible Chapter 75 — the real "day"/"swing" tag assigned to the
+   * TradeProposal this position was opened from. Was already a real
+   * backend field with no frontend type declaration until the
+   * Professional Quant Live Trading Desk's Active Trades panel needed
+   * it — not a new backend field, just a previously-undeclared one. */
+  tradingStyle: TradingStyle | null;
+  /** CEO directive "Portfolio Construction, Capital Allocation & Execution
+   * Realism" — the real, CEO-explicit strategy selection, applied the
+   * instant this position opens. None whenever the CEO didn't select
+   * one (the honest majority). Same previously-undeclared-field note as
+   * tradingStyle above. */
+  strategyId: string | null;
+  /** Professional Quant Live Trading Desk — the real TradeProposal.id
+   * this position was opened from (set by app/portfolio.py's
+   * open_position()), the deterministic link to that proposal's own
+   * debate/WarRoomSession/decision. None for a position opened through
+   * the manual-order fill path (no proposal exists there) or one
+   * opened before this field existed. */
+  proposalId: string | null;
 }
 
 /** One closed paper position — the Learning System's "training data" record (v0.5 brief Feature 5). */
@@ -502,9 +521,17 @@ export interface PaperTrade {
   opposingAgents: AgentId[];
   coachReview: string | null;
   lessonsLearned: string | null;
-  /** Links back to the TradeDecision that approved the order behind this trade —
-   * best-effort attribution, not always resolvable (see backend/app/nexus.py). */
+  /** Links back to the TradeDecision that approved the order behind this
+   * trade. Derived deterministically from `proposalId` below when the
+   * trade carries one; falls back to a best-effort same-symbol match
+   * only for a trade with no `proposalId` at all (see
+   * backend/app/nexus.py's _journal_closed_trades()). */
   decisionId: string | null;
+  /** Professional Quant Live Trading Desk — carried over from the
+   * PaperPosition this trade closed (see PaperPosition.proposalId
+   * above for the full explanation). The real, deterministic link
+   * `decisionId` above is now derived from. */
+  proposalId: string | null;
   /** Always a fixed placeholder — TradeTown has no chart-rendering pipeline. */
   screenshot: string | null;
   openedAt: string;
@@ -512,6 +539,10 @@ export interface PaperTrade {
   /** Simulated-clock minutes-since-epoch (day*1440 + hour*60 + minute) — same convention as PaperPosition.openedSimMinutes. `closedSimMinutes` is always `openedSimMinutes + durationMinutes`. Added in v0.6.1 so monthly P&L can bucket by TradeTown's in-game calendar instead of real wall-clock time (openedAt/closedAt above remain real timestamps, kept only for audit/display). */
   openedSimMinutes: number;
   closedSimMinutes: number;
+  /** Design Bible Chapter 75 — carried over from the PaperPosition this
+   * trade closed. Was already a real backend field with no frontend
+   * type declaration until the Live Trading Desk needed it. */
+  tradingStyle: TradingStyle | null;
   /** Quantitative Research & Intelligence System, Piece 5 (Execution
    * Quant) — the real combined round-trip transaction cost (entry +
    * exit) already subtracted from `pnl` above; kept here purely for

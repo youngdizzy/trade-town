@@ -14737,6 +14737,155 @@ equal* to what shipped before, never smaller.
 OpportunitiesPanel.tsx` (rewritten), `ui/components/CommandCenter/
 panels/OverviewPanel.tsx`. Docs: `docs/API.md`, `CHANGELOG.md`.
 
+## CEO directive "Professional Quant Live Trading Desk"
+
+**Mandatory process followed as specified: Phase 0 (audit, no code) → Phase
+1 (why aren't agents trading, investigated not assumed) → implementation
+→ live verification → tests.**
+
+**Phase 0 — audit.** Five parallel research agents each audited one
+slice: charting/Market Observatory; active-trades UI; thesis/decision-
+log/debate UI; strategy annotations/technical analysis; trade lifecycle/
+persistence. Headline findings:
+
+- A real, working hand-rolled canvas candlestick chart
+  (`CandlestickChart.tsx`) already existed, shared (not duplicated)
+  between the Command Center's `MarketChartPanel.tsx` and the Market
+  Observatory room's HUD, with a real, generic overlay system
+  (`ChartOverlayLine`/`ChartOverlayZone`) already rendering real
+  support/resistance, Fibonacci, FVG, order-block, and chart-pattern
+  data from `technical_analysis.py`. Missing: zoom/pan/crosshair,
+  volume plotted on-chart, and two categories of real, already-computed
+  backend data never wired to any chart — liquidity zones
+  (`market_intelligence.py::compute_liquidity()`) and session range
+  (`GET /api/market/session-range`).
+- Rich per-position data existed (agent, confidence, MAE/MFE, strategy,
+  trading style, entry cost/slippage) with zero component displaying
+  the full open-position list — every consumer of
+  `paperPortfolio.positions` collapsed to a count or aggregate; the
+  closest view, `BrainRoomHud`, capped at 6 rows with minimal fields.
+  No stop-loss/take-profit field exists on `PaperPosition` at all
+  (confirmed: no real stop order concept exists anywhere in the live
+  risk engine, already disclosed to the CEO in `ExecutiveVoting.tsx`).
+  The backend genuinely supports multiple independent same-symbol
+  positions from different agents (never nets — `open_position()`
+  always appends), but every frontend symbol-keyed `.find()` lookup
+  silently dropped all but the first.
+- `ReplayPanel.tsx` already had a real, working 11-stage timeline
+  builder (`buildReplayTimeline`) joining decision, CEO decision,
+  debate, challenge report, discipline review, and case studies —
+  missing per-stage timestamps and a join to `DecisionVaultEntry`/
+  `WarRoomSession`, and disconnected (no cross-navigation) from the
+  Vault/WarRoom tabs.
+- A live trade candidate's stop/target is never resolved to a concrete
+  price — `CompiledStrategyDefinition` only carries method specs;
+  resolution to a real number happens only inside backtest replay
+  (`strategy_engine.py`), never for a live `TradeProposal`. An honest,
+  disclosed architectural gap, not fabricated.
+- No formal trade-lifecycle state machine exists; state is implicit
+  across four objects. The Proposal→Decision→Position id chain is
+  deterministic (`decision-{proposalId}`, `pos-{proposalId}`), but the
+  Decision↔closed-Trade link (`PaperTrade.decisionId`) was a documented
+  best-effort symbol-based fuzzy match — a real correlation risk with
+  multiple same-symbol trades in flight, compounded by
+  `DecisionDetail.tsx`'s own separate fuzzy symbol match for its
+  position lookup.
+
+**Phase 1 — why aren't agents trading much, re-verified not assumed.**
+Independently re-derived (not trusted from a prior directive's own
+docstring): `opportunity_gatekeeper.py`'s `min_trade_quality_score` gate
+(70.0, unchanged) and `operating_mode` defaulting to `"learning"`
+(requiring explicit CEO sign-off, unchanged) are both still exactly as
+designed. **Verdict: TRADING CORRECTLY BY DESIGN** — neither a bug nor
+"no qualifying setups," a deliberate selective gate plus a conservative
+default mode. New nuance found this pass:
+`executive.py::expire_stale_proposals()` auto-resolves an ignored
+proposal to `"wait"` (never `"trade"`) after 3 sim-days, unconditionally
+regardless of mode — part of the historical low trade count is
+auto-expired waits, not only manual CEO waits.
+
+**Implementation.**
+
+1. Real bug fix at the root: `PaperPosition`/`PaperTrade` gained a real
+   `proposal_id` field, set deterministically at `open_position()`/
+   `close_position()` time (`app/portfolio.py`), threaded from
+   `app/executive.py`'s `resolve_proposal()`. `app/nexus.py`'s
+   `_journal_closed_trades()` now derives `decision_id` deterministically
+   from this field (`f"decision-{proposal_id}"`, the same convention
+   `resolve_proposal()` itself mints a `TradeDecision.id` with) instead
+   of the old best-effort symbol match, falling back to that match only
+   when no `proposal_id` exists (a manually-placed order, or a pre-fix
+   position). `DecisionDetail.tsx`'s own position lookup gets the
+   matching fix. `PaperPosition`/`PaperTrade`'s TypeScript interfaces
+   also gained `strategyId`/`tradingStyle` — real backend fields that
+   had no frontend type declaration until this pass needed them.
+2. `MarketChartPanel.tsx` became an optionally-controlled component
+   (`symbol`/`onSymbolChange`/`timeframe`/`onTimeframeChange`,
+   defaulting to its own prior internal state for every existing
+   caller) so a new desk view can re-center the same real chart on a
+   clicked trade — no second chart implementation.
+3. Two new overlay categories wired into the existing overlay system,
+   zero new backend math: **LIQUIDITY** (real equal-high/equal-low
+   zones, already broadcast live in `MarketIntelligenceState.liquidity`)
+   and **SESSION** (real session high/low, `GET /api/market/
+   session-range`, previously computed and exposed but never consumed).
+4. New `ActiveTradesPanel.tsx` — every open position, all real fields,
+   filterable by agent/symbol/side, honestly labeled "No stop order
+   placed" per row rather than fabricating one.
+5. New `LiveDeskPanel.tsx` (Command Center → MARKETS → LIVEDESK, the
+   first tab in that area) composes the above three plus the existing
+   `DecisionDetail.tsx` (reused, not rebuilt, for the "why does the AI
+   want this trade" drill-down) — clicking an active trade re-centers
+   the chart and opens its decision detail when a matching
+   `TradeDecision` is still on record, honestly disclosing why not
+   (predates trade-lineage tracking, or the decision log has rotated
+   past it) rather than guessing.
+
+**Live verification.** Restarted the real dev backend against its own
+real save (Day 159, preserved across restart) and drove the real
+running app through Playwright: the LIVEDESK tab renders the chart,
+overlay toggles (including the two new ones), and an honestly-empty
+Active Trades panel (the real save currently has zero open positions)
+with zero console errors. Cross-checked the LIQUIDITY overlay against
+the live `/api/load` payload — AAPL/SPY/BTC-USD/DXY/AMZN/USO correctly
+show no liquidity lines (their real zone lists are empty right now)
+while MSFT/QQQ/GLD/XLF/GOOGL/TSLA/NVDA/SLV do, and switching the chart
+to MSFT visually confirmed the exact real EQH/EQL price levels the API
+reported. The SESSION overlay rendered a real "CLOSED RANGE" shaded
+zone. A live "Research Complete" toast during the run confirms the sim
+kept ticking normally throughout.
+
+**Tests.** 19 new backend tests (3 for `proposal_id` threading in
+`test_portfolio.py`; 1 integration test in `test_nexus.py` proving the
+old fuzzy decision-id match would have picked the wrong decision and the
+new deterministic link doesn't) — full suite green (2681 passed), mypy/
+ruff clean. Frontend `tsc --noEmit`/`eslint --max-warnings 0`/`vite
+build` all clean. Existing Playwright regression re-run against the
+live stack: `commandCenter.spec.ts`'s "renders all 40 tabs" and
+"renders a real candlestick chart on Overview" tests both pass
+unmodified (the former now also covers the new LIVEDESK tab, since it
+iterates the real `TABS` array rather than a hardcoded list);
+`marketIntel.spec.ts` and `marketObservatory.spec.ts` (6 tests) pass
+unmodified, confirming `MarketChartPanel`'s controlled-props refactor
+didn't disturb its existing uncontrolled usage in `OverviewPanel`/the
+Observatory HUD.
+
+**Honest scope boundary, not built this pass, documented rather than
+silently skipped**: live thesis-invalidation tracking (no backend logic
+exists to watch an open position's entry conditions over time — would
+need genuinely new work); a live strategy's resolved stop/target price
+(only ever resolved inside backtest replay); per-annotation trade/
+strategy provenance (today's overlays are pure functions of
+symbol+timeframe, never tied to why a specific trade happened); zoom/
+pan/crosshair on the chart; a formal trade-lifecycle state enum.
+
+**Files changed.** Backend: `app/schemas.py`, `app/portfolio.py`,
+`app/executive.py`, `app/nexus.py`, `tests/test_portfolio.py`,
+`tests/test_nexus.py`. Frontend: `types.ts`, `MarketChartPanel.tsx`,
+`DecisionDetail.tsx`, new `panels/ActiveTradesPanel.tsx`, new
+`panels/LiveDeskPanel.tsx`, `FullCommandCenter.tsx`, `lib/
+navigation.ts`, `tests/helpers.ts`. Docs: `CHANGELOG.md`.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

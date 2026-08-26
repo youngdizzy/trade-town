@@ -109,6 +109,7 @@ def open_position(
     quantity: float | None = None,
     trading_style: TradingStyle | None = None,
     entry_slippage_bps: float = 0.0,
+    proposal_id: str | None = None,
 ) -> PaperPortfolio:
     """Commits POSITION_SIZE_FRACTION of current cash to a new position at
     `price`, unless the caller already knows the exact size it wants (see
@@ -166,6 +167,7 @@ def open_position(
         entrySlippageBps=entry_slippage_bps,
         maePct=0.0,
         mfePct=0.0,
+        proposalId=proposal_id,
     )
     return portfolio.model_copy(
         update={
@@ -299,6 +301,7 @@ def close_position(
         mfePct=match.mfe_pct,
         entrySlippageBps=match.entry_slippage_bps,
         exitSlippageBps=exit_slippage_bps,
+        proposalId=match.proposal_id,
     )
     history = [*portfolio.trade_history, trade]
     if len(history) > MAX_TRADE_HISTORY:

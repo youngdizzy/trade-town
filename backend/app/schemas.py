@@ -685,6 +685,18 @@ class PaperPosition(CamelModel):
     # audit confirmed: "an open PaperPosition cannot be attributed to a
     # strategy at all today."
     strategy_id: str | None = Field(default=None, alias="strategyId")
+    # Professional Quant Live Trading Desk — the real TradeProposal.id this
+    # position was opened from, set directly by app/portfolio.py's
+    # open_position() at creation time (unlike strategy_id above, which
+    # depends on a separate, later CEO choice). This is the deterministic
+    # link the Live Trading Desk's Active Trades panel uses to jump from
+    # an open position to its originating proposal/debate/WarRoomSession
+    # — replacing the fragile symbol-based `.find()` matches the frontend
+    # previously had no reliable alternative to. None for a position
+    # opened through app/broker.py's manual-order fill path (no proposal
+    # exists there) or one opened before this field existed — never
+    # guessed or backfilled.
+    proposal_id: str | None = Field(default=None, alias="proposalId")
 
 
 class PaperTrade(CamelModel):
@@ -716,6 +728,17 @@ class PaperTrade(CamelModel):
     # always a fixed placeholder string, never a real captured image;
     # TradeTown has no chart-rendering pipeline to capture from.
     decision_id: str | None = Field(default=None, alias="decisionId")
+    # Professional Quant Live Trading Desk — carried straight over from
+    # the PaperPosition this trade closed (app/portfolio.py's
+    # close_position() copies it automatically, same convention as
+    # trading_style below). Unlike `decision_id` above (a best-effort
+    # symbol-based match — see app/nexus.py's _journal_closed_trades()),
+    # this is the real, deterministic proposal_id set at the position's
+    # own creation time — nexus.py now prefers deriving decision_id from
+    # this field when it's present, falling back to the fuzzy match only
+    # when it isn't (a manually-placed order, or a trade closed before
+    # this field existed).
+    proposal_id: str | None = Field(default=None, alias="proposalId")
     screenshot: str | None = None
     opened_at: str = Field(alias="openedAt")
     closed_at: str = Field(alias="closedAt")

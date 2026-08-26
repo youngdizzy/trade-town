@@ -42,6 +42,50 @@ def test_close_position_stamps_sim_minutes_from_open_plus_duration():
     assert updated.positions == []
 
 
+def test_open_position_carries_proposal_id_onto_the_position():
+    portfolio = open_position(
+        default_portfolio(),
+        position_id="pos-1",
+        symbol="AAPL",
+        price=100.0,
+        opened_by="scout",
+        confidence=90.0,
+        opened_sim_minutes=1000,
+        proposal_id="proposal-42",
+    )
+    assert portfolio.positions[0].proposal_id == "proposal-42"
+
+
+def test_open_position_defaults_proposal_id_to_none():
+    portfolio = _opened_portfolio()
+    assert portfolio.positions[0].proposal_id is None
+
+
+def test_close_position_carries_proposal_id_onto_the_closed_trade():
+    portfolio = open_position(
+        default_portfolio(),
+        position_id="pos-1",
+        symbol="AAPL",
+        price=100.0,
+        opened_by="scout",
+        confidence=90.0,
+        opened_sim_minutes=1000,
+        proposal_id="proposal-42",
+    )
+    _updated, trade = close_position(
+        portfolio,
+        position_id="pos-1",
+        exit_price=110.0,
+        duration_minutes=45,
+        reason="Target hit",
+        market_conditions="Trending up",
+        supporting_agents=["scout"],
+        opposing_agents=[],
+    )
+    assert trade is not None
+    assert trade.proposal_id == "proposal-42"
+
+
 def test_close_position_missing_id_is_a_noop():
     portfolio = _opened_portfolio()
     updated, trade = close_position(

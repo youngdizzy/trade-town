@@ -466,6 +466,7 @@ def resolve_proposal(
                     quantity=quantity,
                     trading_style=proposal.trading_style,
                     entry_slippage_bps=entry_slippage_bps,
+                    proposal_id=proposal.id,
                 )
                 order_id = position_id
             # else: the Gatekeeper vetoed it — ceo_choice is deliberately

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { api } from "@/net/api";
 import { useGameStore } from "@/ui/hooks/useGameStore";
-import type { TechnicalAnalysisRead } from "@/types";
+import type { SessionRangeRead, TechnicalAnalysisRead } from "@/types";
 import { CandlestickChart, type ChartOverlayLine, type ChartOverlayZone } from "./CandlestickChart";
 import { marketTickerStats } from "./lib/derive";
 import { useCandles } from "./lib/useCandles";
@@ -24,20 +24,54 @@ const FVG_BULLISH_COLOR = "#3ce28a";
 const FVG_BEARISH_COLOR = "#ff4d5e";
 const ORDER_BLOCK_COLOR = "#c084fc";
 const CHART_PATTERN_COLOR = "#60a5fa";
+const LIQUIDITY_COLOR = "#38bdf8";
+const SESSION_RANGE_COLOR = "#94a3b8";
 
-type OverlayCategory = "supportResistance" | "fibonacci" | "fairValueGaps" | "orderBlock" | "chartPatterns";
+type OverlayCategory = "supportResistance" | "fibonacci" | "fairValueGaps" | "orderBlock" | "chartPatterns" | "liquidity" | "sessionRange";
 const OVERLAY_LABELS: Record<OverlayCategory, string> = {
   supportResistance: "S/R",
   fibonacci: "FIB",
   fairValueGaps: "FVG",
   orderBlock: "OB",
   chartPatterns: "PATTERNS",
+  liquidity: "LIQUIDITY",
+  sessionRange: "SESSION",
 };
 
-function buildOverlays(ta: TechnicalAnalysisRead | null, active: Record<OverlayCategory, boolean>): { lines: ChartOverlayLine[]; zones: ChartOverlayZone[] } {
-  if (!ta) return { lines: [], zones: [] };
+function buildOverlays(
+  ta: TechnicalAnalysisRead | null,
+  active: Record<OverlayCategory, boolean>,
+  liquidityZones: { kind: "equal_highs" | "equal_lows"; price: number; touches: number }[],
+  sessionRange: SessionRangeRead | null,
+  firstCandleTimestamp: string | null
+): { lines: ChartOverlayLine[]; zones: ChartOverlayZone[] } {
   const lines: ChartOverlayLine[] = [];
   const zones: ChartOverlayZone[] = [];
+
+  // CEO directive "Professional Quant Live Trading Desk" — Phase 0 audit
+  // found both of these already real, already computed, and already
+  // broadcast/fetchable, with zero prior chart consumption anywhere.
+  // Pure wiring, no new backend math: real equal-high/equal-low price
+  // clusters (app/market_intelligence.py::compute_liquidity()) and a
+  // real session high/low (app/technical_patterns.py::
+  // compute_session_range(), GET /api/market/session-range).
+  if (active.liquidity) {
+    liquidityZones.forEach((z) => {
+      lines.push({ price: z.price, label: `${z.kind === "equal_highs" ? "EQH" : "EQL"} ${z.price.toFixed(2)} (${z.touches}x)`, color: LIQUIDITY_COLOR });
+    });
+  }
+  if (active.sessionRange && sessionRange && firstCandleTimestamp !== null && (sessionRange.rangeHigh > 0 || sessionRange.rangeLow > 0)) {
+    zones.push({
+      from: firstCandleTimestamp,
+      to: null,
+      priceLow: sessionRange.rangeLow,
+      priceHigh: sessionRange.rangeHigh,
+      label: `${sessionRange.session.toUpperCase().replace(/_/g, " ")} RANGE`,
+      color: SESSION_RANGE_COLOR,
+    });
+  }
+
+  if (!ta) return { lines, zones };
 
   if (active.supportResistance) {
     ta.supportResistance.levels.forEach((l) => {
@@ -89,19 +123,45 @@ function buildOverlays(ta: TechnicalAnalysisRead | null, active: Record<OverlayC
   return { lines, zones };
 }
 
-/** General-purpose chart browser — symbol + timeframe pickers over the watchlist, for looking at any tracked market without needing a specific decision to drill into. */
-export function MarketChartPanel() {
-  const { watchlist, marketEnvironment } = useGameStore();
-  const [symbol, setSymbol] = useState(watchlist[0]?.symbol ?? "AAPL");
-  const [timeframe, setTimeframe] = useState("1h");
+/**
+ * General-purpose chart browser — symbol + timeframe pickers over the
+ * watchlist, for looking at any tracked market without needing a
+ * specific decision to drill into. `symbol`/`onSymbolChange` (and the
+ * `timeframe` equivalents) are optional controlled-component props —
+ * Professional Quant Live Trading Desk's Active Trades panel uses them
+ * to re-center this same chart on a clicked trade's symbol/timeframe
+ * without a second chart implementation; every existing caller that
+ * doesn't pass them keeps its own original internal state, unchanged.
+ */
+export function MarketChartPanel({
+  symbol: controlledSymbol,
+  onSymbolChange,
+  timeframe: controlledTimeframe,
+  onTimeframeChange,
+}: {
+  symbol?: string;
+  onSymbolChange?: (symbol: string) => void;
+  timeframe?: string;
+  onTimeframeChange?: (timeframe: string) => void;
+} = {}) {
+  const { watchlist, marketEnvironment, marketIntelligence } = useGameStore();
+  const [internalSymbol, setInternalSymbol] = useState(watchlist[0]?.symbol ?? "AAPL");
+  const [internalTimeframe, setInternalTimeframe] = useState("1h");
+  const symbol = controlledSymbol ?? internalSymbol;
+  const timeframe = controlledTimeframe ?? internalTimeframe;
+  const setSymbol = onSymbolChange ?? setInternalSymbol;
+  const setTimeframe = onTimeframeChange ?? setInternalTimeframe;
   const [timeframes, setTimeframes] = useState<string[]>(FALLBACK_TIMEFRAMES);
   const [technicalAnalysis, setTechnicalAnalysis] = useState<TechnicalAnalysisRead | null>(null);
+  const [sessionRange, setSessionRange] = useState<SessionRangeRead | null>(null);
   const [activeOverlays, setActiveOverlays] = useState<Record<OverlayCategory, boolean>>({
     supportResistance: true,
     fibonacci: false,
     fairValueGaps: true,
     orderBlock: false,
     chartPatterns: false,
+    liquidity: false,
+    sessionRange: false,
   });
 
   useEffect(() => {
@@ -137,11 +197,38 @@ export function MarketChartPanel() {
     };
   }, [symbol, timeframe]);
 
+  // Professional Quant Live Trading Desk — the session-range overlay's
+  // real backend endpoint, keyed to the CURRENT live session
+  // (marketIntelligence.session.current) since that's the only session
+  // this codebase's own real candle history can meaningfully bound a
+  // range for right now.
+  const currentSession = marketIntelligence.session.current;
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .getSessionRange(symbol, currentSession, timeframe, 100)
+      .then((sr) => !cancelled && setSessionRange(sr))
+      .catch(() => !cancelled && setSessionRange(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [symbol, timeframe, currentSession]);
+
   const { candles, loading, error } = useCandles(symbol, timeframe, 100);
   const dataStatus = candles[0]?.dataStatus ?? null;
   const watchlistEntry = watchlist.find((w) => w.symbol === symbol);
   const ticker = marketTickerStats(candles, watchlistEntry);
-  const overlays = buildOverlays(technicalAnalysis?.symbol === symbol ? technicalAnalysis : null, activeOverlays);
+  // Professional Quant Live Trading Desk — the same real, already-
+  // broadcast MarketIntelligenceState.liquidity[] every other panel
+  // reads (e.g. MarketIntelPanel), scoped to this chart's own symbol.
+  const liquidityZones = marketIntelligence.liquidity.find((l) => l.symbol === symbol)?.zones ?? [];
+  const overlays = buildOverlays(
+    technicalAnalysis?.symbol === symbol ? technicalAnalysis : null,
+    activeOverlays,
+    liquidityZones,
+    sessionRange?.symbol === symbol ? sessionRange : null,
+    candles[0]?.timestamp ?? null
+  );
 
   return (
     <Glass className="p-3">

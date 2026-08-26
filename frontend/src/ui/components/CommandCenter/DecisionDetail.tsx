@@ -30,7 +30,16 @@ export function DecisionDetail({ decision, onClose }: { decision: TradeDecision;
   const bulls = bullCaseVotes(decision);
   const bears = bearCaseVotes(decision);
   const order = linkedOrderFor(decision, paperPortfolio.orders);
-  const position = paperPortfolio.positions.find((p) => p.symbol === decision.symbol) ?? null;
+  // Professional Quant Live Trading Desk — prefer the real, deterministic
+  // link (PaperPosition.proposalId, set at open_position() time; a
+  // TradeDecision.id is always `decision-{proposalId}`, the same
+  // convention app/executive.py's resolve_proposal() mints it with) over
+  // the old symbol-based guess, which silently picked the wrong position
+  // whenever two agents held simultaneous positions on the same symbol.
+  // Falls back to the symbol match only for a position opened before
+  // proposalId existed (never guessed further than that).
+  const proposalId = decision.id.replace(/^decision-/, "");
+  const position = paperPortfolio.positions.find((p) => p.proposalId === proposalId) ?? paperPortfolio.positions.find((p) => p.symbol === decision.symbol) ?? null;
   const exitOrders = position ? exitOrdersForPosition(position.id, paperPortfolio.orders) : [];
   const approved = decision.outcome === "trade" && decision.orderId !== null;
   const closedTrade = paperPortfolio.tradeHistory.find((t) => t.decisionId === decision.id) ?? null;

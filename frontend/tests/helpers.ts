@@ -281,6 +281,7 @@ export async function clickRobust(page: Page, locator: () => Locator, opts?: { a
  * the OVERVIEW area, which has no secondary tab bar at all).
  */
 const TAB_AREA: Record<string, string> = {
+  LIVEDESK: "MARKETS",
   MARKETCHART: "MARKETS",
   MARKETINTEL: "MARKETS",
   ECONINTEL: "MARKETS",
