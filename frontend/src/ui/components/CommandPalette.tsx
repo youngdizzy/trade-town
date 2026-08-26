@@ -61,6 +61,16 @@ export function CommandPalette() {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Bug found during a full-app QA pass: onMouseEnter alone lets a
+  // stationary cursor silently steal the keyboard-driven selection the
+  // instant a new result renders under it (a real browser fires
+  // mouseenter on the element that newly appears there, with no actual
+  // pointer motion) -- so typing a query and pressing Enter could
+  // execute whatever result happened to render under an already-parked
+  // cursor, not the one actually highlighted for the keyboard user.
+  // Gating hover-selection behind a real, observed mouse movement fixes
+  // it without giving up genuine hover-to-select for a mouse user.
+  const mouseHasMovedRef = useRef(false);
   const inGame = currentScene !== "MainMenuScene";
 
   const close = () => setOpen(false);
@@ -93,6 +103,7 @@ export function CommandPalette() {
     if (open) {
       setQuery("");
       setSelected(0);
+      mouseHasMovedRef.current = false;
       // Focus after the input actually mounts.
       setTimeout(() => inputRef.current?.focus(), 0);
     }
@@ -248,7 +259,7 @@ export function CommandPalette() {
           placeholder="Search or type a command…"
           className="border-b border-cmd-border bg-transparent px-3 py-2.5 text-cmd-text outline-none placeholder:text-cmd-textDim"
         />
-        <div className="overflow-y-auto">
+        <div className="overflow-y-auto" onMouseMove={() => { mouseHasMovedRef.current = true; }}>
           {visible.length === 0 ? (
             <div className="px-3 py-3 text-cmd-textDim">No matching command or result.</div>
           ) : (
@@ -257,7 +268,9 @@ export function CommandPalette() {
                 key={cmd.id}
                 type="button"
                 onClick={() => execute(cmd)}
-                onMouseEnter={() => setSelected(i)}
+                onMouseEnter={() => {
+                  if (mouseHasMovedRef.current) setSelected(i);
+                }}
                 className={`flex w-full items-center justify-between px-3 py-1.5 text-left ${i === selected ? "bg-cmd-cyan/10 text-cmd-cyan" : "text-cmd-text"}`}
               >
                 <span>{cmd.label}</span>
