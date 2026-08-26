@@ -70,6 +70,18 @@ export class AnimatedActor {
   }
 
   protected setVelocityForDirection(dx: number, dy: number): void {
+    // Live end-to-end QA pass (2026-08-26) found a real, reproducible
+    // crash: Phaser's own GameObject.destroy() sets a sprite's `body` to
+    // undefined (not null), so a call landing here on an already-
+    // destroyed actor (root-caused to GameManager.applyLoadedTransform's
+    // double scene-start race — see its own comment) threw
+    // "Cannot read properties of undefined (reading 'setVelocity')" and
+    // permanently wedged that scene's update() loop, since the throw
+    // pre-empted the code that would otherwise clean up the stale entry.
+    // This guard makes an already-destroyed actor's per-frame update a
+    // harmless no-op instead, independent of whatever upstream state
+    // led to it still being ticked.
+    if (!this.sprite.body) return;
     this.sprite.setVelocity(dx * SPEED, dy * SPEED);
   }
 

@@ -7,6 +7,29 @@ development milestones, not semver releases.
 
 ### Fixed
 
+- **A real, reproducible crash that permanently wedged a Room scene's interaction and movement:
+  double `scene.start()` race on the Continue flow.** A live Playwright regression run caught a
+  genuine browser console `TypeError: Cannot read properties of undefined (reading 'setVelocity')`,
+  correlated with three real test failures (`interaction.spec.ts` — "Press E to Talk" never
+  clearing/reopening correctly; `marketIntel.spec.ts` — the same console error). Root cause: on
+  Continue, `SaveManager.applyState()`/`load()` call `GameManager.applyLoadedTransform()`, which
+  immediately starts the target Room scene via the game-level `this.game.scene.start()` (which
+  doesn't stop whichever scene is currently active) — but `MainMenuScene`'s own
+  `applyStateAndTransition()`/`continueViaLegacySaveManager()` *also* start that same scene
+  ~250ms later, from within its own scene plugin, once its fade-out finishes. The target Room
+  scene briefly ran a real `create()`/`update()` cycle, then got torn down and recreated
+  underneath it — during that window, at least one `AgentNPC` could be destroyed (Phaser's
+  `GameObject.destroy()` sets a sprite's `body` to `undefined`) while still ticking, and its next
+  per-frame `update()` threw uncaught, permanently pre-empting the rest of that scene's `update()`
+  loop (including the code that clears the "Press E to Talk" prompt and cleans up the stale
+  entry) on every subsequent frame until the scene reloaded. Fixed at the actual race
+  (`GameManager.applyLoadedTransform()` now skips its own eager scene-start while `MainMenuScene`
+  is still active, since its caller already owns the real transition) plus a defensive guard
+  (`AnimatedActor.setVelocityForDirection()` now no-ops on an already-destroyed sprite instead of
+  throwing) so the same failure mode can't wedge a scene again regardless of what upstream state
+  produces it. Verified: the exact browser console error is gone, all 5 originally-failing/
+  correlated tests pass cleanly against a fresh dev server, `tsc`/`lint`/`build` clean.
+
 - **"Full Feature Integrity, Bug Hunt & End-to-End Verification Pass" — two real risk-control gaps
   and one dormant persistence bug, found by a live trace of the real trade-execution and
   save/migration pipelines against the running app (not test-only issues):

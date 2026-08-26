@@ -136,6 +136,24 @@ export class GameManager {
 
   applyLoadedTransform(transform: EntityTransform): void {
     this.playerTransform = transform;
+    // Live end-to-end QA pass (2026-08-26) — MainMenuScene's own Continue
+    // flow (applyStateAndTransition/continueViaLegacySaveManager) calls
+    // SaveManager.applyState()/load() (which lands here) and THEN starts
+    // the same target scene itself, ~250ms later, once its own fade-out
+    // finishes. Starting it here too raced two scene.start() calls on
+    // the same key: this one fires immediately via the game-level
+    // SceneManager (which doesn't stop the still-active MainMenuScene),
+    // the other fires from within MainMenuScene's own scene plugin
+    // (which does) — the target scene briefly ran a real create()/
+    // update() cycle, then got torn down and recreated again underneath
+    // it. Root-caused a real, reproducible crash (a stale AgentNPC's
+    // per-frame update throwing "Cannot read properties of undefined
+    // (reading 'setVelocity')", permanently wedging that scene). Skip
+    // the eager start while MainMenuScene is still active — its own
+    // transition already owns getting to the right scene correctly.
+    // CampusMap's fast-travel (the only other real caller) always runs
+    // well after MainMenuScene has stopped, so this guard never affects it.
+    if (this.game.scene.isActive("MainMenuScene")) return;
     const scene = this.game.scene.getScene(transform.scene as SceneId);
     if (scene) {
       EventBus.emit("scene:transition", { to: transform.scene });
