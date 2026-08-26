@@ -43,6 +43,19 @@ def _flat_candles() -> list[Candle]:
     return _candles([100.0 for _ in range(30)])
 
 
+class TestRunWhatifSimulationDeterminism:
+    """Professional Research → Certification → Paper → Capital
+    Allocation Pipeline — an audit found this module's Monte Carlo used
+    the bare, unseeded global `random` module, so identical what-if
+    questions could get different real answers on every re-run. This
+    confirms the fix."""
+
+    def test_identical_symbol_and_candles_produce_identical_results(self) -> None:
+        first = run_whatif_simulation("NEXA", _uptrend_candles())
+        second = run_whatif_simulation("NEXA", _uptrend_candles())
+        assert first == second
+
+
 class TestRunWhatifSimulation:
     def test_all_twelve_scenarios_present(self) -> None:
         sim = run_whatif_simulation("NEXA", _flat_candles())

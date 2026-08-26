@@ -77,6 +77,7 @@ not silently omitted.
 """
 from __future__ import annotations
 
+import hashlib
 import random
 from dataclasses import dataclass
 from datetime import datetime, timezone
@@ -162,8 +163,23 @@ class _PathOutcome:
     max_consecutive_losses: int
 
 
+def _seeded_rng(*parts: str) -> random.Random:
+    """A deterministic RNG, seeded from real, stable identifiers — the
+    same `hashlib.sha256(...)` -> `random.Random(int(...))` convention
+    `app/market_data.py`'s own candle-history generator already uses.
+    CEO directive "Professional Research → Certification → Paper →
+    Capital Allocation Pipeline" — an audit found this module used the
+    bare, unseeded global `random` module, so re-running the identical
+    evaluation-policy question against identical data could produce a
+    different probabilityOfPassingPct every time. Seeded, the same real
+    question always gets the same real answer."""
+    digest = hashlib.sha256(":".join(parts).encode()).hexdigest()
+    return random.Random(int(digest[:16], 16))
+
+
 def _simulate_one_path(
     *,
+    rng: random.Random,
     win_rate: float,
     scaled_win_pct: float,
     scaled_loss_pct: float,
@@ -178,7 +194,7 @@ def _simulate_one_path(
     max_consecutive_losses = 0
 
     for trade_idx in range(1, max_trades + 1):
-        is_win = random.random() < win_rate
+        is_win = rng.random() < win_rate
         # avg_loss_pct on a real SimulationResult is already a negative
         # number (see app/simulation.py's own loss_range, e.g. (-10.0,
         # -1.5)) — applied directly here, never negated, so a loss trade
@@ -212,6 +228,7 @@ def _percentile(sorted_values: list[float], p: float) -> float:
 
 def _run_paths(
     *,
+    rng: random.Random,
     win_rate: float,
     avg_win_pct: float,
     avg_loss_pct: float,
@@ -225,6 +242,7 @@ def _run_paths(
     scaled_loss_pct = _scale_return(avg_loss_pct, risk_per_trade_pct)
     return [
         _simulate_one_path(
+            rng=rng,
             win_rate=win_rate,
             scaled_win_pct=scaled_win_pct,
             scaled_loss_pct=scaled_loss_pct,
@@ -248,12 +266,18 @@ def simulate_evaluation_policy(
     max_trades: int,
     evaluation_cost: float | None,
     paths: int = EVALUATION_SIM_PATHS,
+    seed_key: str = "",
 ) -> EvaluationPolicySimulationResult:
     """A real Monte Carlo evaluation-level race simulation for one named
     risk policy — see module docstring for the full disclosure of every
     assumption this makes. `win_rate` is 0-1; every _pct parameter is a
-    real percentage."""
+    real percentage. `seed_key` (a real, stable identifier — e.g. the
+    calling strategy's own id — supplied by the caller) makes this
+    deterministic; empty (the default) only for a caller that doesn't
+    have one yet, matching this function's own pre-existing behavior."""
+    rng = _seeded_rng(seed_key, policy_id, f"{win_rate:.6f}", f"{avg_win_pct:.6f}", f"{avg_loss_pct:.6f}", f"{risk_per_trade_pct:.6f}")
     outcomes = _run_paths(
+        rng=rng,
         win_rate=win_rate,
         avg_win_pct=avg_win_pct,
         avg_loss_pct=avg_loss_pct,
@@ -286,6 +310,7 @@ def simulate_evaluation_policy(
     risk_adjusted_outcome = round(probability_of_passing_pct / max(median_max_drawdown_pct, 0.01), 2)
 
     lower_outcomes = _run_paths(
+        rng=_seeded_rng(seed_key, policy_id, "lower", f"{win_rate:.6f}"),
         win_rate=max(0.0, win_rate - STRATEGY_QUALITY_SENSITIVITY_DELTA_PP / 100),
         avg_win_pct=avg_win_pct,
         avg_loss_pct=avg_loss_pct,
@@ -296,6 +321,7 @@ def simulate_evaluation_policy(
         paths=paths,
     )
     higher_outcomes = _run_paths(
+        rng=_seeded_rng(seed_key, policy_id, "higher", f"{win_rate:.6f}"),
         win_rate=min(1.0, win_rate + STRATEGY_QUALITY_SENSITIVITY_DELTA_PP / 100),
         avg_win_pct=avg_win_pct,
         avg_loss_pct=avg_loss_pct,
@@ -391,6 +417,7 @@ def compare_evaluation_policies(
                 drawdown_limit_pct=drawdown_limit_pct,
                 max_trades=max_trades,
                 evaluation_cost=evaluation_cost,
+                seed_key=strategy.id,
             )
         )
 
@@ -413,6 +440,7 @@ def compare_evaluation_policies(
                 drawdown_limit_pct=drawdown_limit_pct,
                 max_trades=max_trades,
                 evaluation_cost=evaluation_cost,
+                seed_key=strategy.id,
             )
         )
     else:

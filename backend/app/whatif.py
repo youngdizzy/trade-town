@@ -33,6 +33,7 @@ for a read that's just as honest recomputed live.
 """
 from __future__ import annotations
 
+import hashlib
 import random
 import statistics
 
@@ -114,18 +115,34 @@ def _percentile(sorted_values: list[float], p: float) -> float:
     return sorted_values[idx]
 
 
-def _simulate(scenario: ScenarioType, label: str, returns: list[float], bias_per_bar: float, vol_mult: float, shock: float | None) -> ScenarioResult:
+def _seeded_rng(*parts: str) -> random.Random:
+    """A deterministic RNG, seeded from real, stable identifiers — the
+    same `hashlib.sha256(...)` -> `random.Random(int(...))` convention
+    `app/market_data.py`'s own candle-history generator already uses.
+    CEO directive "Professional Research → Certification → Paper →
+    Capital Allocation Pipeline" — an audit found this module used the
+    bare, unseeded global `random` module, so re-running the identical
+    what-if question against identical candle data could produce a
+    different scenario outcome every time. Seeded (including the real
+    latest candle timestamp, so a genuinely new candle honestly produces
+    a fresh answer), the same real question against the same real data
+    always gets the same real answer."""
+    digest = hashlib.sha256(":".join(parts).encode()).hexdigest()
+    return random.Random(int(digest[:16], 16))
+
+
+def _simulate(scenario: ScenarioType, label: str, returns: list[float], bias_per_bar: float, vol_mult: float, shock: float | None, rng: random.Random) -> ScenarioResult:
     finals: list[float] = []
     max_drawdowns: list[float] = []
     for _ in range(N_PATHS):
-        shock_bar = random.randrange(HOLD_BARS) if shock is not None else -1
+        shock_bar = rng.randrange(HOLD_BARS) if shock is not None else -1
         cumulative = 0.0
         peak = 0.0
         max_drawdown = 0.0
         for bar in range(HOLD_BARS):
-            r = random.choice(returns) * vol_mult + bias_per_bar
+            r = rng.choice(returns) * vol_mult + bias_per_bar
             if bar == shock_bar and shock is not None:
-                r += shock * random.choice((-1, 1)) if scenario == "news_shock" else shock
+                r += shock * rng.choice((-1, 1)) if scenario == "news_shock" else shock
             cumulative = (1 + cumulative) * (1 + r) - 1
             peak = max(peak, cumulative)
             max_drawdown = min(max_drawdown, cumulative - peak)
@@ -154,6 +171,7 @@ def run_whatif_simulation(symbol: str, candles: list[Candle]) -> WhatIfSimulatio
     trend_sign = 1.0 if trend >= 0 else -1.0
     real_drift_per_bar = (trend / 100) / max(len(candles) - 1, 1)
     vol_per_bar = volatility_pct(candles) / 100
+    latest_timestamp = candles[-1].timestamp if candles else ""
 
     scenarios: list[ScenarioResult] = []
     for scenario, (bias_units, vol_mult, shock_units) in _SCENARIO_PARAMS.items():
@@ -161,13 +179,15 @@ def run_whatif_simulation(symbol: str, candles: list[Candle]) -> WhatIfSimulatio
             bias_units = bias_units * trend_sign
         bias_per_bar = bias_units * vol_per_bar
         shock = shock_units * vol_per_bar if shock_units is not None else None
-        scenarios.append(_simulate(scenario, _SCENARIO_LABEL[scenario], returns, bias_per_bar, vol_mult, shock))
+        rng = _seeded_rng(symbol, latest_timestamp, scenario)
+        scenarios.append(_simulate(scenario, _SCENARIO_LABEL[scenario], returns, bias_per_bar, vol_mult, shock, rng))
 
     # The organic, unbiased case: the symbol's own real measured trend and
     # volatility, resampled with no scenario override at all — the honest
     # "most likely outcome" baseline (see the module docstring for why no
     # cross-scenario probability is invented instead).
-    baseline = _simulate("bullish_continuation", "Baseline (No Scenario Bias)", returns, real_drift_per_bar, 1.0, None)
+    baseline_rng = _seeded_rng(symbol, latest_timestamp, "baseline")
+    baseline = _simulate("bullish_continuation", "Baseline (No Scenario Bias)", returns, real_drift_per_bar, 1.0, None, baseline_rng)
 
     best_case = max(scenarios, key=lambda s: s.reward_range_high_pct)
     worst_case = min(scenarios, key=lambda s: s.reward_range_low_pct)

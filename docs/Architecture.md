@@ -14886,6 +14886,147 @@ pan/crosshair on the chart; a formal trade-lifecycle state enum.
 `panels/LiveDeskPanel.tsx`, `FullCommandCenter.tsx`, `lib/
 navigation.ts`, `tests/helpers.ts`. Docs: `CHANGELOG.md`.
 
+## CEO directive "Professional Research → Certification → Paper → Capital Allocation Pipeline"
+
+**Mandatory process followed as specified: Phase 0 (audit, no code) →
+prioritization → implementation → verification.**
+
+**Phase 0 — audit.** Five parallel research agents each audited one
+slice: strategy certification pipeline connection; paper-trading
+graduation/drift monitoring; capital-allocation decision/risk budget;
+research debate/agent learning for strategies; look-ahead audit/Monte
+Carlo depth. The single most important, most actionable finding:
+
+- **Certification was entirely disconnected from real validation.**
+  `compute_strategy_certification()` and the real enforced live-capital
+  gate, `evaluate_certification_readiness()`, read exclusively from
+  `strategy_lab.py`'s own placeholder-RNG-backed object graph
+  (`SimulationResult`, `StrategyMonteCarloResult`,
+  `StrategyRegimeTestReport`) — never from the genuinely rigorous "Research
+  Desk" (`walk_forward.py`, `cost_sensitivity.py`, `leakage_audit.py`,
+  `overfitting_diagnostics.py`), all real bar-by-bar backtest logic over
+  real (mock) candle history. A strategy could reach `certified: true`
+  and `stage: "approved"` having never once been walk-forward validated,
+  cost-tested, or look-ahead audited — those real modules were a
+  "dead-end demo surface": computed fresh per request via the Sandbox's
+  own on-demand endpoints, never persisted, never consulted by
+  certification. The audit also found the bridge already existed:
+  `Strategy.compiled_definition_id` (schemas.py:1825), added by a prior
+  directive specifically "to close a real identity split" between the
+  two systems — but never actually read by certification.
+- Paper-vs-backtest drift monitoring is real but narrow: win-rate-only
+  (a disclosed scope choice, not an oversight — expectancy comparison
+  was explicitly rejected due to a real unit mismatch, R-multiple vs.
+  percent), and stage-agnostic (compares backtest against ANY
+  CEO-tagged live trade, not specifically trades from a strategy that
+  formally completed a paper-trading trial).
+- Strategy decay monitoring (`compute_strategy_degradation()`) is real:
+  a genuine rolling 3-trade window vs. lifetime comparison,
+  multi-signal, sample-floored, thresholds disclosed as conservative-
+  but-arbitrary rather than a statistical significance test.
+- Capital allocation is binary, not graduated: only a one-time capital
+  grant (`begin-limited-live`, fires exactly once) and irreversible
+  terminal retirement exist — no WATCH/REDUCE/SUSPEND action in between,
+  and no per-strategy risk/capital budget (`RiskLimits` is entirely
+  portfolio/tier/category-wide).
+- Strategy review (`generate_strategy_review()`) is a real, 5-seat,
+  evidence-grounded system (quant/risk/technical/fundamental/devil's
+  advocate) — but every verdict is stateless, with no accuracy-weighted
+  learning analog to the real department-level multiplier that already
+  exists for trade votes (`weighted_decisions.py`).
+- The real look-ahead audit (`leakage_audit.py`) is genuinely rigorous —
+  dynamic truncate-and-re-detect against real candle history, not a
+  static/heuristic scan, proven against a deliberately-injected leak in
+  its own test suite — but was wired only into `research_experiment.py`,
+  never into certification.
+- Three Monte Carlo-shaped modules exist (`strategy_lab.py`'s own,
+  `evaluation_simulator.py`, `whatif.py`); the first two are a genuine,
+  disclosed mechanism-level duplicate (identical bootstrap/compounding/
+  drawdown primitive independently re-implemented); `whatif.py` is
+  legitimately distinct (resamples real bar returns, not a synthetic
+  win/loss aggregate). **None of the three seeded their RNG** — a real,
+  concrete bug: since `probability_of_ruin_pct` is a hard certification
+  gate, the identical certification question could pass on one run and
+  fail on the next purely from RNG variance.
+
+**Phase 1 — re-verified, not re-derived.** Independently re-checked
+whether the codebase's low trade frequency finding still holds:
+`opportunity_gatekeeper.py`'s quality gate and `operating_mode`
+defaulting to `"learning"` are both confirmed unchanged — still trading
+correctly by design, not a bug.
+
+**Implementation (scoped to the two highest-leverage, most tractable
+findings — full consolidation of every gap above is out of scope for
+one pass, documented rather than silently attempted):**
+
+1. `compute_strategy_certification()` and `evaluate_certification_
+   readiness()` (`strategy_lab.py`) gained three new optional
+   parameters/requirements — `look_ahead_clear`, `cost_sensitivity`,
+   `walk_forward_stable` — reading `leakage_audit.py`/
+   `cost_sensitivity.py`/`walk_forward.py`'s real output via the
+   strategy's own `compiled_definition_id`. A strategy with no compiled
+   rules, or one never checked, fails honestly (Rule: "if not, FAIL, do
+   not hide the failure") rather than silently passing — never a second
+   validation engine, purely a new consumer of the existing real one.
+2. Both call sites — `GET /api/sandbox/certification`
+   (`routers/sandbox.py`) and `begin_strategy_limited_live()`
+   (`state.py`, the real enforced gate) — now look up the strategy's
+   compiled definition (`state.compiled_strategy_versions`) and run all
+   three real System B checks before returning/granting capital.
+3. All three Monte Carlo modules (`strategy_lab.py`,
+   `evaluation_simulator.py`, `whatif.py`) now seed a local
+   `random.Random` instance from real, stable identifiers (strategy id,
+   the real aggregate stats driving the simulation, symbol, latest
+   candle timestamp) via the same `hashlib.sha256(...)` →
+   `random.Random(int(...))` convention `market_data.py`'s own candle
+   generator already uses — never a second seeding scheme.
+
+**Verification.** 7 new/updated backend tests: `test_strategy_lab.py`
+(certification now correctly fails without a compiled definition or
+with an injected look-ahead violation, and correctly passes with all
+three new checks satisfied); `test_evaluation_simulator.py`/
+`test_whatif.py` (determinism regression tests — identical inputs now
+produce byte-identical outputs). Full backend suite green (2685
+passed), mypy clean, ruff clean.
+
+**Honest scope boundary, not built this pass, documented rather than
+silently skipped**: a graduated strategy-level capital-allocation
+decision (WATCH/REDUCE/SUSPEND); a per-strategy risk/capital budget;
+accuracy-weighted learning for strategy reviewers; a dedicated regime/
+session "Market Specialist" reviewer seat (Phase 20's ask — today's
+5-seat review covers RESEARCHER/QUANT/RISK/COUNTER-THESIS/CEO cleanly
+but has no distinct market-specialist seat); consolidating
+`evaluation_simulator.py`/`strategy_lab.py`'s duplicate Monte Carlo
+primitive; a formal backtest-expected-performance snapshot captured at
+the moment a strategy enters paper trading (today's drift comparison
+re-derives "backtest recent" from whatever health assessment happens to
+be on file, decoupled from paper-trial timing).
+
+**Final answer to the directive's own required question: "Can
+TradeTown currently identify which strategies have genuinely earned the
+right to receive paper capital?"** — **PARTIALLY YES, up from NO before
+this pass.** Before this work, the honest answer was NO: certification
+was achievable using only placeholder-RNG simulations, with the genuinely
+rigorous Research Desk validation never consulted, and the one gate that
+was wired in (Monte Carlo's probability of ruin) wasn't even
+reproducible run-to-run. Now: a strategy reaching `certified: true` or
+clearing `evaluate_certification_readiness()` has genuinely been checked
+for look-ahead bias, cost/slippage resilience, and walk-forward
+stability, in addition to the pre-existing sample-size/expectancy/
+drawdown/regime/departmental-approval checks — and that verdict is
+reproducible. What's still missing before the answer is a full YES: a
+genuine out-of-sample/train-test split (walk-forward tests stability
+across windows of the SAME fixed definition, but doesn't yet withhold a
+true evaluation-only period the strategy was never tuned against); a
+graduated, evidence-driven capital decision beyond one-time-grant-or-
+retire; and per-strategy (not just whole-portfolio) risk budgeting.
+
+**Files changed.** Backend: `app/strategy_lab.py`, `app/routers/
+sandbox.py`, `app/state.py`, `app/evaluation_simulator.py`,
+`app/whatif.py`, `tests/test_strategy_lab.py`,
+`tests/test_evaluation_simulator.py`, `tests/test_whatif.py`. Docs:
+`CHANGELOG.md`.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

@@ -11,6 +11,8 @@ from app.market_intelligence import default_market_intelligence_state
 from app.sandbox import generate_strategy_review
 from app.schemas import (
     CoachReport,
+    CostSensitivityResult,
+    LookAheadAuditResult,
     ModelValidationCheck,
     ModelValidationReport,
     ResearchItem,
@@ -18,6 +20,7 @@ from app.schemas import (
     Strategy,
     StrategyMonteCarloResult,
     StrategyStageEvent,
+    WalkForwardValidationResult,
     WatchlistEntry,
 )
 from app.strategy_lab import (
@@ -52,7 +55,9 @@ def _now_iso() -> str:
     return "2026-01-01T00:00:00+00:00"
 
 
-def _strategy(*, allocated_capital: float = 0.0, stage: str = "market_simulation", stage_history: list[StrategyStageEvent] | None = None) -> Strategy:
+def _strategy(
+    *, allocated_capital: float = 0.0, stage: str = "market_simulation", stage_history: list[StrategyStageEvent] | None = None, compiled_definition_id: str | None = None
+) -> Strategy:
     return Strategy(
         id="strategy-1",
         name="Momentum Breakout",
@@ -63,6 +68,48 @@ def _strategy(*, allocated_capital: float = 0.0, stage: str = "market_simulation
         stage=stage,  # type: ignore[arg-type]
         stageHistory=stage_history or [],
         allocatedCapital=allocated_capital,
+        compiledDefinitionId=compiled_definition_id,
+    )
+
+
+# Professional Research → Certification → Paper → Capital Allocation
+# Pipeline — real, minimal, PASSING instances of the three Research Desk
+# result schemas compute_strategy_certification()/
+# evaluate_certification_readiness() now also check. These are fixture
+# instances of the real output shape those modules produce (see
+# app/leakage_audit.py, app/cost_sensitivity.py, app/walk_forward.py for
+# the real functions that build them from actual candle history) —
+# constructed directly here since these tests are exercising the
+# certification LOGIC, not re-testing those modules' own real detection
+# math (each has its own dedicated test file).
+def _clean_look_ahead_audit(definition_id: str = "def-1") -> LookAheadAuditResult:
+    return LookAheadAuditResult(id=f"leakage-audit-{definition_id}", definitionId=definition_id, definitionVersion=1, setupsChecked=5, violations=[], verdict="clean", detail="No real look-ahead violations found.", generatedAt=_now_iso())
+
+
+def _resilient_cost_sensitivity(definition_id: str = "def-1") -> CostSensitivityResult:
+    return CostSensitivityResult(
+        id=f"cost-sensitivity-{definition_id}",
+        definitionId=definition_id,
+        definitionVersion=1,
+        scenarios=[],
+        verdict="cost_resilient",
+        detail="Remains profitable across every real cost scenario.",
+        dataHonestyNote="Real trades, real cost constants.",
+        generatedAt=_now_iso(),
+    )
+
+
+def _stable_walk_forward(definition_id: str = "def-1") -> WalkForwardValidationResult:
+    return WalkForwardValidationResult(
+        id=f"walk-forward-{definition_id}-500",
+        definitionId=definition_id,
+        definitionVersion=1,
+        windowBars=500,
+        symbols=[],
+        verdict="stable",
+        detail="Edge holds up across every real chronological window.",
+        dataHonestyNote="Real chronological windows, no per-window reselection.",
+        generatedAt=_now_iso(),
     )
 
 
@@ -611,7 +658,7 @@ def _strong_results(*, count: int = 3, scenario: str = "bull") -> list[Simulatio
 
 class TestComputeStrategyCertification:
     def test_a_strategy_with_every_real_requirement_met_is_certified(self) -> None:
-        strategy = _strategy(stage="approved")
+        strategy = _strategy(stage="approved", compiled_definition_id="def-1")
         results = [*_strong_results(scenario="bull"), *_strong_results(scenario="bear")]
         review = generate_strategy_review(strategy, results, [_research_item()], 0, sim_day=10)
         review = review.model_copy(update={"ceo_decision": "approved"})
@@ -628,7 +675,9 @@ class TestComputeStrategyCertification:
         founder_approval = generate_strategy_founder_approval(strategy, exec_review, sim_day=10).model_copy(update={"verdict": "approved"})
         health = compute_strategy_health(strategy, results, sim_day=10)
 
-        certification = compute_strategy_certification(strategy, results, review, monte_carlo, regime_test, exec_review, founder_approval, health)
+        certification = compute_strategy_certification(
+            strategy, results, review, monte_carlo, regime_test, exec_review, founder_approval, health, _clean_look_ahead_audit(), _resilient_cost_sensitivity(), _stable_walk_forward()
+        )
         failing = [r for r in certification.requirements if not r.met]
         assert failing == [], f"unexpected failing requirements: {[(r.id, r.detail) for r in failing]}"
         assert certification.certified is True
@@ -636,11 +685,18 @@ class TestComputeStrategyCertification:
     def test_no_evidence_at_all_is_not_certified(self) -> None:
         certification = compute_strategy_certification(_strategy(stage="idea"), [], None, None, None, None, None, None)
         assert certification.certified is False
-        # The brief's own 14 named requirements, plus this module's own
-        # added Health Standing requirement (see this function's
-        # docstring for why that's the real, automatic "may be revoked"
-        # mechanism).
-        assert len(certification.requirements) == 15
+        # The brief's own 14 named requirements, this module's own added
+        # Health Standing requirement, plus the Professional Research →
+        # Certification → Paper → Capital Allocation Pipeline's three
+        # real Research Desk checks (look-ahead/cost-sensitivity/
+        # walk-forward) — see this function's own docstring.
+        assert len(certification.requirements) == 18
+        # A strategy with no compiled_definition_id has nothing for the
+        # three new checks to run against — a real, honest failure, not
+        # a silent pass.
+        new_reqs = {r.id: r for r in certification.requirements if r.id in ("look_ahead_clear", "cost_sensitivity", "walk_forward_stable")}
+        assert len(new_reqs) == 3
+        assert all(r.met is False for r in new_reqs.values())
 
     def test_a_real_health_decline_automatically_revokes_certification(self) -> None:
         from app.schemas import StrategyHealthAssessment
@@ -680,11 +736,13 @@ class TestComputeStrategyCertification:
 
 class TestEvaluateCertificationReadiness:
     def test_ready_when_the_pre_company_review_checks_all_pass(self) -> None:
-        strategy = _strategy(stage="paper_trading")
+        strategy = _strategy(stage="paper_trading", compiled_definition_id="def-1")
         results = [*_strong_results(scenario="bull"), *_strong_results(scenario="bear")]
         monte_carlo = run_strategy_monte_carlo(strategy, results, sim_day=10)
         regime_test = compute_strategy_regime_test(strategy, results, sim_day=10)
-        ready, detail = evaluate_certification_readiness(strategy, results, monte_carlo, regime_test)
+        ready, detail = evaluate_certification_readiness(
+            strategy, results, monte_carlo, regime_test, _clean_look_ahead_audit(), _resilient_cost_sensitivity(), _stable_walk_forward()
+        )
         assert ready is True
         assert "clears every real Certification readiness check" in detail
 
@@ -693,6 +751,42 @@ class TestEvaluateCertificationReadiness:
         ready, detail = evaluate_certification_readiness(strategy, [], None, None)
         assert ready is False
         assert "not yet Certification-ready" in detail
+
+    def test_not_ready_without_a_compiled_definition_even_with_strong_backtest_evidence(self) -> None:
+        # Professional Research → Certification → Paper → Capital
+        # Allocation Pipeline — a strategy with no compiled_definition_id
+        # has no real trading rules for the Research Desk to validate at
+        # all, so it must fail readiness even with otherwise-strong
+        # placeholder-simulation evidence — never a silent pass just
+        # because System B evidence wasn't asked for.
+        strategy = _strategy(stage="paper_trading")
+        results = [*_strong_results(scenario="bull"), *_strong_results(scenario="bear")]
+        monte_carlo = run_strategy_monte_carlo(strategy, results, sim_day=10)
+        regime_test = compute_strategy_regime_test(strategy, results, sim_day=10)
+        ready, detail = evaluate_certification_readiness(strategy, results, monte_carlo, regime_test)
+        assert ready is False
+        assert "no compiled trading rules exist yet" in detail
+
+    def test_not_ready_when_look_ahead_audit_finds_a_violation(self) -> None:
+        from app.schemas import LookAheadViolation
+
+        strategy = _strategy(stage="paper_trading", compiled_definition_id="def-1")
+        results = [*_strong_results(scenario="bull"), *_strong_results(scenario="bear")]
+        monte_carlo = run_strategy_monte_carlo(strategy, results, sim_day=10)
+        regime_test = compute_strategy_regime_test(strategy, results, sim_day=10)
+        leaky_audit = LookAheadAuditResult(
+            id="leakage-audit-def-1",
+            definitionId="def-1",
+            definitionVersion=1,
+            setupsChecked=5,
+            violations=[LookAheadViolation(entryIndex=3, entryTimestamp=_now_iso(), direction="long", detail="Setup vanished once truncated.")],
+            verdict="violations_found",
+            detail="1 real look-ahead violation found.",
+            generatedAt=_now_iso(),
+        )
+        ready, detail = evaluate_certification_readiness(strategy, results, monte_carlo, regime_test, leaky_audit, _resilient_cost_sensitivity(), _stable_walk_forward())
+        assert ready is False
+        assert "look-ahead audit verdict is violations found" in detail
 
     def test_not_ready_when_ruin_probability_is_too_high(self) -> None:
         from app.schemas import StrategyMonteCarloResult

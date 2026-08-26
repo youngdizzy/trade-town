@@ -189,6 +189,9 @@ from app.strategy_lab import (
     generate_strategy_founder_approval,
     generate_strategy_retirement_outcome,
 )
+from app.cost_sensitivity import run_cost_sensitivity
+from app.leakage_audit import audit_definition_for_look_ahead
+from app.walk_forward import run_walk_forward_validation
 from app.compliance_incidents import (
     add_evidence,
     begin_remediation,
@@ -1587,7 +1590,29 @@ class GameState:
                 return self.data, "No strategy found with that id."
             monte_carlo = next((r for r in reversed(self.data.strategy_monte_carlo_results) if r.strategy_id == strategy_id), None)
             regime_test = next((r for r in reversed(self.data.strategy_regime_tests) if r.strategy_id == strategy_id), None)
-            ready, readiness_detail = evaluate_certification_readiness(strategy, self.data.simulation_results, monte_carlo, regime_test)
+            # CEO directive "Professional Research → Certification → Paper
+            # → Capital Allocation Pipeline" — before granting real
+            # allocated capital, also require the same real Research Desk
+            # validation (look-ahead audit, cost-sensitivity, walk-forward)
+            # the Sandbox's own on-demand endpoints already compute —
+            # closes the gap where a strategy could reach live capital
+            # having never been checked for look-ahead bias or cost
+            # resilience. See evaluate_certification_readiness()'s own
+            # docstring for why a missing compiled_definition_id is an
+            # honest failure here, not a silent pass.
+            look_ahead_audit = None
+            cost_sensitivity_result = None
+            walk_forward_result = None
+            if strategy.compiled_definition_id is not None:
+                versions = self.data.compiled_strategy_versions.get(strategy.compiled_definition_id, [])
+                definition = versions[-1] if versions else None
+                if definition is not None:
+                    look_ahead_audit = audit_definition_for_look_ahead(definition)
+                    cost_sensitivity_result = run_cost_sensitivity(definition)
+                    walk_forward_result = run_walk_forward_validation(definition)
+            ready, readiness_detail = evaluate_certification_readiness(
+                strategy, self.data.simulation_results, monte_carlo, regime_test, look_ahead_audit, cost_sensitivity_result, walk_forward_result
+            )
             if not ready:
                 return self.data, readiness_detail
             updated, error = begin_limited_live(strategy, amount, self.data.time.day, max_capital=self.data.risk_limits.max_limited_live_capital)

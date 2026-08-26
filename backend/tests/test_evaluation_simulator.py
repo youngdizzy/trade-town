@@ -73,6 +73,33 @@ def _account(*, trailing_drawdown_limit_pct: float | None = None, challenge_prof
     )
 
 
+class TestSimulateEvaluationPolicyDeterminism:
+    """Professional Research → Certification → Paper → Capital
+    Allocation Pipeline — an audit found this module's Monte Carlo used
+    the bare, unseeded global `random` module, so identical certification
+    questions could get different real answers on every re-run. This
+    confirms the fix: the exact same inputs now always produce the exact
+    same real distribution."""
+
+    def test_identical_inputs_produce_identical_results(self) -> None:
+        kwargs = dict(
+            policy_id="moderate",
+            risk_per_trade_pct=2.0,
+            win_rate=0.55,
+            avg_win_pct=4.0,
+            avg_loss_pct=-2.5,
+            profit_target_pct=8.0,
+            drawdown_limit_pct=10.0,
+            max_trades=100,
+            evaluation_cost=None,
+            paths=100,
+            seed_key="strategy-determinism-test",
+        )
+        first = simulate_evaluation_policy(**kwargs)  # type: ignore[arg-type]
+        second = simulate_evaluation_policy(**kwargs)  # type: ignore[arg-type]
+        assert first == second
+
+
 class TestSimulateEvaluationPolicy:
     def test_a_guaranteed_winner_always_passes(self) -> None:
         result = simulate_evaluation_policy(

@@ -585,7 +585,28 @@ async def strategy_certification(strategy_id: str = Query(..., alias="strategyId
     executive_review = next((r for r in reversed(state.strategy_executive_reviews) if r.strategy_id == strategy_id), None)
     founder_approval = next((r for r in reversed(state.strategy_founder_approvals) if r.strategy_id == strategy_id), None)
     health = next((r for r in reversed(state.strategy_health_assessments) if r.strategy_id == strategy_id), None)
-    return compute_strategy_certification(strategy, state.simulation_results, review, monte_carlo, regime_test, executive_review, founder_approval, health)
+    # CEO directive "Professional Research → Certification → Paper →
+    # Capital Allocation Pipeline" — reuses the exact same real Research
+    # Desk modules the Sandbox's own on-demand endpoints below already
+    # call, so a strategy's certification finally reflects real
+    # look-ahead/cost-sensitivity/walk-forward validation instead of
+    # only this module's own placeholder-RNG simulations. None of the
+    # three when the strategy has no compiled_definition_id yet — see
+    # compute_strategy_certification()'s own docstring for why that's
+    # an honest failure, not a silent pass.
+    look_ahead_audit: LookAheadAuditResult | None = None
+    cost_sensitivity_result: CostSensitivityResult | None = None
+    walk_forward_result: WalkForwardValidationResult | None = None
+    if strategy.compiled_definition_id is not None:
+        versions = state.compiled_strategy_versions.get(strategy.compiled_definition_id, [])
+        definition = versions[-1] if versions else None
+        if definition is not None:
+            look_ahead_audit = audit_definition_for_look_ahead(definition)
+            cost_sensitivity_result = run_cost_sensitivity(definition)
+            walk_forward_result = run_walk_forward_validation(definition)
+    return compute_strategy_certification(
+        strategy, state.simulation_results, review, monte_carlo, regime_test, executive_review, founder_approval, health, look_ahead_audit, cost_sensitivity_result, walk_forward_result
+    )
 
 
 @router.get("/model-validation", response_model=ModelValidationReport | None)

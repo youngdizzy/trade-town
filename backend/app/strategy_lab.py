@@ -112,6 +112,7 @@ Explicitly NOT built here, and why:
 """
 from __future__ import annotations
 
+import hashlib
 import random
 from datetime import datetime, timezone
 
@@ -121,10 +122,12 @@ from app.sandbox import RISK_MAX_AVG_DRAWDOWN, STRATEGY_DEVILS_ADVOCATES, stage_
 from app.schemas import (
     AgentId,
     CoachReport,
+    CostSensitivityResult,
     ExecutiveDepartmentRole,
     ExecutiveStance,
     ExperimentTier,
     FailedStrategyArchiveEntry,
+    LookAheadAuditResult,
     MarketIntelligenceRegime,
     MarketIntelligenceState,
     ModelValidationReport,
@@ -152,6 +155,7 @@ from app.schemas import (
     StrategyReport,
     StrategyReview,
     TestScenario,
+    WalkForwardValidationResult,
     WatchlistEntry,
 )
 
@@ -279,13 +283,33 @@ def _tail_mean(sorted_values: list[float], p: float) -> float:
 # ---------------------------------------------------------------------
 
 
+def _seeded_rng(*parts: str) -> random.Random:
+    """A deterministic RNG, seeded from real, stable identifiers — the
+    same `hashlib.sha256(...)` -> `random.Random(int(...))` convention
+    `app/market_data.py`'s own candle-history generator already uses.
+    CEO directive "Professional Research → Certification → Paper →
+    Capital Allocation Pipeline" — an audit found this module's Monte
+    Carlo bootstrap used the bare, unseeded global `random` module, so
+    re-running the exact same certification question against identical
+    data could produce a different `probabilityOfRuinPct` — and
+    therefore a different CERTIFIED/not-certified verdict — every time,
+    since that figure is a hard pass/fail gate. Seeding it makes
+    "certified" a real, reproducible claim instead of one that could
+    flip on a coin toss."""
+    digest = hashlib.sha256(":".join(parts).encode()).hexdigest()
+    return random.Random(int(digest[:16], 16))
+
+
 def run_strategy_monte_carlo(strategy: Strategy, results: list[SimulationResult], *, sim_day: int) -> StrategyMonteCarloResult | None:
     """None when the strategy has no completed runs yet — nothing real
     to bootstrap from. Each simulated path draws `trade_count` win/loss
     outcomes using the strategy's own real, aggregated win rate as the
     probability, sized by its own real average win/loss percentages —
     every number driving the randomness is a real field already on
-    SimulationResult, never independently invented."""
+    SimulationResult, never independently invented. Seeded deterministically
+    (see `_seeded_rng()`) from the strategy's own id and the real results
+    on file, so the same real evidence always produces the same real
+    distribution."""
     strategy_results = [r for r in results if r.strategy_id == strategy.id]
     if not strategy_results:
         return None
@@ -294,6 +318,7 @@ def run_strategy_monte_carlo(strategy: Strategy, results: list[SimulationResult]
     avg_win_pct = sum(r.avg_win_pct for r in strategy_results) / len(strategy_results)
     avg_loss_pct = sum(r.avg_loss_pct for r in strategy_results) / len(strategy_results)
     trades_per_path = max(1, round(sum(r.trade_count for r in strategy_results) / len(strategy_results)))
+    rng = _seeded_rng(strategy.id, f"{win_rate:.6f}", f"{avg_win_pct:.6f}", f"{avg_loss_pct:.6f}", str(trades_per_path))
 
     finals: list[float] = []
     max_drawdowns: list[float] = []
@@ -303,7 +328,7 @@ def run_strategy_monte_carlo(strategy: Strategy, results: list[SimulationResult]
         peak = 0.0
         max_drawdown = 0.0
         for _trade in range(trades_per_path):
-            r = (avg_win_pct if random.random() < win_rate else -avg_loss_pct) / 100
+            r = (avg_win_pct if rng.random() < win_rate else -avg_loss_pct) / 100
             cumulative = (1 + cumulative) * (1 + r) - 1
             peak = max(peak, cumulative)
             max_drawdown = min(max_drawdown, cumulative - peak)
@@ -1169,6 +1194,9 @@ def compute_strategy_certification(
     executive_review: StrategyExecutiveReview | None,
     founder_approval: StrategyFounderApproval | None,
     health: StrategyHealthAssessment | None,
+    look_ahead_audit: LookAheadAuditResult | None = None,
+    cost_sensitivity: CostSensitivityResult | None = None,
+    walk_forward: WalkForwardValidationResult | None = None,
 ) -> StrategyCertification:
     """`certified` is recomputed fresh from the strategy's own real
     current state every call — so a real health decline after
@@ -1177,7 +1205,30 @@ def compute_strategy_certification(
     requirement the next time this runs. No separate persisted "revoked"
     flag or event log is needed for the brief's "may be revoked at any
     time" rule — see this function's own StrategyCertification docstring
-    in app/schemas.py."""
+    in app/schemas.py.
+
+    CEO directive "Professional Research → Certification → Paper →
+    Capital Allocation Pipeline" — a repo-wide audit found this
+    function's original 13 requirements read EXCLUSIVELY from this
+    module's own placeholder-RNG-backed simulation objects
+    (`SimulationResult`/`StrategyMonteCarloResult`/
+    `StrategyRegimeTestReport`), never from the genuinely rigorous,
+    real bar-by-bar "Research Desk" validation modules
+    (`app/leakage_audit.py`, `app/cost_sensitivity.py`,
+    `app/walk_forward.py`) — meaning a strategy could reach
+    `certified: true` having never once been checked for look-ahead
+    bias, cost/slippage resilience, or genuine out-of-sample stability.
+    `look_ahead_audit`/`cost_sensitivity`/`walk_forward` close that gap
+    by adding three new requirements that read those SAME real modules'
+    real output — never a second, parallel validation engine. All three
+    are optional (default `None`) so every existing caller keeps working
+    unchanged; a `None` value here means the check honestly wasn't run,
+    and — per this directive's own "if not, FAIL, do not hide the
+    failure" rule — that reads as `met=False`, never a silent pass.
+    `strategy.compiled_definition_id` being `None` (a Strategy with no
+    real compiled trading rules behind it yet — see that field's own
+    docstring) gets its own honest detail message distinguishing "never
+    checked" from "has nothing checkable yet." """
     strategy_results = [r for r in results if r.strategy_id == strategy.id]
     trade_count = sum(r.trade_count for r in strategy_results)
     expectancy = sum(r.expected_value_pct for r in strategy_results) / len(strategy_results) if strategy_results else 0.0
@@ -1268,6 +1319,36 @@ def compute_strategy_certification(
             met=health is None or health.status not in ("critical", "retire_candidate"),
             detail=(f"Real current Strategy Health: {health.status.replace('_', ' ')}." if health else "No real Strategy Health assessment on file yet — treated as a pass by default."),
         ),
+        StrategyCertificationRequirement(
+            id="look_ahead_clear",
+            label="No Look-Ahead / Data-Leakage Bias Detected",
+            met=look_ahead_audit is not None and look_ahead_audit.verdict == "clean",
+            detail=(
+                f"Real structural look-ahead audit: {look_ahead_audit.setups_checked} real setup(s) checked against real candle history, {len(look_ahead_audit.violations)} violation(s) found — verdict {look_ahead_audit.verdict.replace('_', ' ')}."
+                if look_ahead_audit is not None
+                else ("No compiled trading rules exist yet to audit." if strategy.compiled_definition_id is None else "No real look-ahead audit on file yet.")
+            ),
+        ),
+        StrategyCertificationRequirement(
+            id="cost_sensitivity",
+            label="Survives Realistic Transaction Costs",
+            met=cost_sensitivity is not None and cost_sensitivity.verdict == "cost_resilient",
+            detail=(
+                f"Real cost/slippage sensitivity sweep verdict: {cost_sensitivity.verdict.replace('_', ' ')}."
+                if cost_sensitivity is not None
+                else ("No compiled trading rules exist yet to cost-test." if strategy.compiled_definition_id is None else "No real cost-sensitivity run on file yet.")
+            ),
+        ),
+        StrategyCertificationRequirement(
+            id="walk_forward_stable",
+            label="Stable Across Genuine Walk-Forward Windows",
+            met=walk_forward is not None and walk_forward.verdict == "stable",
+            detail=(
+                f"Real walk-forward validation verdict: {walk_forward.verdict.replace('_', ' ')} across {len(walk_forward.symbols)} real symbol(s)' own chronological windows."
+                if walk_forward is not None
+                else ("No compiled trading rules exist yet to walk-forward validate." if strategy.compiled_definition_id is None else "No real walk-forward run on file yet.")
+            ),
+        ),
     ]
 
     return StrategyCertification(
@@ -1279,7 +1360,15 @@ def compute_strategy_certification(
     )
 
 
-def evaluate_certification_readiness(strategy: Strategy, results: list[SimulationResult], monte_carlo: StrategyMonteCarloResult | None, regime_test: StrategyRegimeTestReport | None) -> tuple[bool, str]:
+def evaluate_certification_readiness(
+    strategy: Strategy,
+    results: list[SimulationResult],
+    monte_carlo: StrategyMonteCarloResult | None,
+    regime_test: StrategyRegimeTestReport | None,
+    look_ahead_audit: LookAheadAuditResult | None = None,
+    cost_sensitivity: CostSensitivityResult | None = None,
+    walk_forward: WalkForwardValidationResult | None = None,
+) -> tuple[bool, str]:
     """The real, ENFORCED gate on begin_limited_live_capital — the brief's
     'no strategy may trade live capital without Certification', narrowed
     to exactly the checklist items that can honestly exist this early in
@@ -1287,7 +1376,18 @@ def evaluate_certification_readiness(strategy: Strategy, results: list[Simulatio
     happen later, at Company Review — see this module's own section
     docstring above). Reuses the exact same real thresholds as
     compute_strategy_certification() rather than a second set of
-    numbers."""
+    numbers.
+
+    CEO directive "Professional Research → Certification → Paper →
+    Capital Allocation Pipeline" — `look_ahead_audit`/`cost_sensitivity`/
+    `walk_forward` (optional, default `None`) close the same real gap
+    `compute_strategy_certification()`'s own docstring explains: before
+    this, a strategy could reach live capital never having been checked
+    for look-ahead bias, cost/slippage resilience, or genuine walk-
+    forward stability. A `None` value (the check wasn't run, or the
+    strategy has no `compiled_definition_id` yet) is a real failure
+    here, exactly like every other missing-evidence case this function
+    already treats as not-ready — never a silent pass."""
     strategy_results = [r for r in results if r.strategy_id == strategy.id]
     trade_count = sum(r.trade_count for r in strategy_results)
     expectancy = sum(r.expected_value_pct for r in strategy_results) / len(strategy_results) if strategy_results else 0.0
@@ -1312,6 +1412,21 @@ def evaluate_certification_readiness(strategy: Strategy, results: list[Simulatio
         failures.append("tested in fewer than 2 real Testing Environments yet")
     elif weak_buckets:
         failures.append(f"{len(weak_buckets)} real regime bucket(s) show weak performance")
+    if strategy.compiled_definition_id is None:
+        failures.append("no compiled trading rules exist yet to run a real look-ahead/cost/walk-forward validation against")
+    else:
+        if look_ahead_audit is None:
+            failures.append("no real look-ahead audit on file yet")
+        elif look_ahead_audit.verdict != "clean":
+            failures.append(f"look-ahead audit verdict is {look_ahead_audit.verdict.replace('_', ' ')}, not clean")
+        if cost_sensitivity is None:
+            failures.append("no real cost-sensitivity run on file yet")
+        elif cost_sensitivity.verdict != "cost_resilient":
+            failures.append(f"cost-sensitivity verdict is {cost_sensitivity.verdict.replace('_', ' ')}, not cost-resilient")
+        if walk_forward is None:
+            failures.append("no real walk-forward validation on file yet")
+        elif walk_forward.verdict != "stable":
+            failures.append(f"walk-forward verdict is {walk_forward.verdict.replace('_', ' ')}, not stable")
 
     if failures:
         return False, f'"{strategy.name}" is not yet Certification-ready for live capital: {"; ".join(failures)}.'

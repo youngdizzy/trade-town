@@ -124,6 +124,61 @@ development milestones, not semver releases.
 
 ### Added
 
+- **CEO directive "Professional Research → Certification → Paper → Capital Allocation Pipeline" —
+  real Research Desk validation now gates strategy certification, and a real Monte Carlo
+  reproducibility bug is fixed.** A 5-agent Phase 0 audit found the codebase's central, most
+  actionable gap: `app/strategy_lab.py`'s `compute_strategy_certification()` and the real enforced
+  gate on live capital, `evaluate_certification_readiness()`, read exclusively from this module's
+  own placeholder-RNG-backed simulation objects (`SimulationResult`, `StrategyMonteCarloResult`,
+  `StrategyRegimeTestReport`) — never from the genuinely rigorous, real bar-by-bar "Research Desk"
+  modules (`app/leakage_audit.py`, `app/cost_sensitivity.py`, `app/walk_forward.py`), meaning a
+  strategy could reach `certified: true` having never once been checked for look-ahead bias, cost/
+  slippage resilience, or genuine walk-forward stability — those real modules were a "dead-end demo
+  surface" with zero persistence and zero downstream consumer. The audit also found the bridge
+  needed to fix this already existed: `Strategy.compiled_definition_id`, added by a prior directive
+  specifically to close "a real identity split" between the two systems, but never actually used by
+  certification.
+  - Three new certification requirements — `look_ahead_clear`, `cost_sensitivity`,
+    `walk_forward_stable` — now read those same real modules' real output (never a second, parallel
+    validation engine) via the strategy's own `compiled_definition_id`. A strategy with no compiled
+    trading rules yet, or one that was never checked, fails these honestly (per the directive's own
+    "if not, FAIL, do not hide the failure" rule) rather than silently passing. Wired into both
+    `compute_strategy_certification()` (the informational `GET /api/sandbox/certification` read) and
+    `evaluate_certification_readiness()` (the real, enforced gate on `begin_strategy_limited_live()`
+    in `app/state.py`) — no strategy can commit real allocated capital without genuinely clearing
+    all three going forward.
+  - **Real, separate bug fix found by the same audit pass**: none of the three Monte Carlo modules
+    in this codebase (`strategy_lab.py`'s `run_strategy_monte_carlo()`, `evaluation_simulator.py`,
+    `whatif.py`) seeded their RNG — all used the bare, unseeded global `random` module. Since
+    `probability_of_ruin_pct` is a hard pass/fail certification gate (`CERTIFICATION_MAX_RUIN_PCT`),
+    a strategy sitting near that boundary could pass certification on one run and fail it on an
+    identical re-run purely from RNG variance — a real reproducibility gap undermining "certified"
+    as a trustworthy claim. Fixed in all three by seeding a local `random.Random` instance from real,
+    stable identifiers (strategy id, real aggregate stats, symbol, latest candle timestamp — the
+    same `hashlib.sha256(...)` → `random.Random(int(...))` convention `app/market_data.py`'s own
+    candle generator already uses) — the same real question against the same real data now always
+    gets the same real answer.
+  - Also confirmed the same audit's separate finding worth flagging for a future pass, not fixed
+    this pass: `evaluation_simulator.py` and `strategy_lab.py`'s own Monte Carlo independently
+    re-implement the identical bootstrap/compounding/drawdown primitive — a real, disclosed
+    mechanism-level duplication, not consolidated here to keep this change scoped to the
+    certification-connection fix and the determinism bug.
+  - 7 new/updated backend tests (`test_strategy_lab.py` — certification now correctly fails without
+    a compiled definition or with a look-ahead violation; `test_evaluation_simulator.py`/
+    `test_whatif.py` — determinism regression tests proving identical inputs now produce identical
+    outputs). Full backend suite green (2685 passed), mypy/ruff clean.
+  - **Honest scope boundary — re-verified, not re-derived, and still accurate**: the directive's own
+    required Phase 1 question ("why aren't agents trading much") was independently re-checked rather
+    than assumed unchanged — both `opportunity_gatekeeper.py`'s quality gate and `operating_mode`
+    defaulting to `"learning"` are confirmed unchanged, trading correctly by design. Not built this
+    pass, documented rather than silently skipped: a graduated strategy-level capital-allocation
+    decision (WATCH/REDUCE/SUSPEND — today only a one-time grant and irreversible retirement exist);
+    a per-strategy risk/capital budget (`RiskLimits` remains entirely portfolio-wide); accuracy-
+    weighted learning for strategy reviewers (every `StrategyReview` verdict is stateless, unlike the
+    real department-level accuracy multiplier that already exists for trade votes); a dedicated
+    regime/session "Market Specialist" reviewer seat; consolidating the two duplicate Monte Carlo
+    engines noted above.
+
 - **CEO directive "Professional Quant Live Trading Desk" — the unified Live Desk (main chart +
   every active trade + trade detail on one screen, Phase 26).** A 5-agent Phase 0 audit found the
   real building blocks already existed with no unifying UI: a working hand-rolled canvas
