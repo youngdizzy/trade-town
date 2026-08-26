@@ -25,14 +25,25 @@ test("the EVOLUTION tab opens from the Command Center and shows real CLSIS/Evolu
 
   await expect(page.getByText("No self-improvement proposals filed yet", { exact: false })).toBeVisible();
   await expect(page.getByText("Executive Learning Summary", { exact: false })).toBeVisible();
-  await expect(page.getByText("Company Evolution Score", { exact: false })).toBeVisible();
+  // Plain "Company Evolution Score" also appears inside every real,
+  // permanent Institutional Evolution Report's summary sentence ("...closed
+  // with a Company Evolution Score of NN/100.", backend/app/evolution.py),
+  // and this dev backend accumulates real reports across runs — so match
+  // the section label's own em-dash phrasing, which the report sentences
+  // never use, to avoid a strict-mode violation once reports pile up.
+  await expect(page.getByText("Company Evolution Score —", { exact: false })).toBeVisible();
   await expect(page.getByText("Institutional Evolution Reports", { exact: false })).toBeVisible();
   await expect(page.getByText("CEO Vision Board", { exact: false })).toBeVisible();
 
   // The Executive Learning Summary fetch resolves for the default agent.
   await expect(page.getByText("Knowledge Tier", { exact: false })).toBeVisible();
   // The Company Evolution Score fetch resolves with a real overall/100 pill.
-  await expect(page.getByText(/\/ 100/)).toBeVisible();
+  // Scoped to that card specifically: every past Institutional Evolution
+  // Report (real, permanent, accumulating across runs on this dev backend)
+  // renders its own "NN / 100" score pill too, so an unscoped match here
+  // hits the same real-data-growth strict-mode issue fixed above.
+  const evolutionScoreCard = page.locator(".p-3", { hasText: "Company Evolution Score —" });
+  await expect(evolutionScoreCard.getByText(/\/ 100/)).toBeVisible();
 
   expect(consoleErrors, `Console errors on the EVOLUTION tab: ${consoleErrors.join("\n")}`).toEqual([]);
 });
