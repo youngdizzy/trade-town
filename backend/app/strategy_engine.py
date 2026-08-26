@@ -64,14 +64,36 @@ from app.schemas import (
 )
 from app.strategy_lab import run_strategy_monte_carlo
 from app.technical_indicators import atr_series, ema_series, macd_series, rsi_series, sma_series, stochastic_series
+from app.trend_engine import DEFAULT_HORIZONS, multi_horizon_trend_score_series
 from app.watchlist import SEED_SYMBOLS
 
 # The only StrategyIndicatorName values app/strategy_compiler.py's
 # current vocabulary can ever produce — see that module's own
 # `STATUS_COVERAGE_NOTE`. Growing this set is real, tractable future
 # work paired with growing the compiler's own recognized phrasing.
+#
+# "multi_horizon_trend_score" (CEO directive "AHL-Inspired Systematic
+# Trend & Momentum Research Engine") is the one exception grown ahead of
+# the compiler gaining new phrasing for it — app/strategy_compiler.py's
+# own `_TREND_SCORE_THRESHOLD_PATTERN` recognizes "the multi-horizon
+# trend score is above/below N" and produces exactly this indicator, so
+# the vocabularies stay in lockstep.
 SUPPORTED_INDICATORS = frozenset(
-    {"price_close", "price_open", "price_high", "price_low", "ema", "sma", "rsi", "macd_line", "macd_signal", "macd_histogram", "stochastic_percent_k", "stochastic_percent_d"}
+    {
+        "price_close",
+        "price_open",
+        "price_high",
+        "price_low",
+        "ema",
+        "sma",
+        "rsi",
+        "macd_line",
+        "macd_signal",
+        "macd_histogram",
+        "stochastic_percent_k",
+        "stochastic_percent_d",
+        "multi_horizon_trend_score",
+    }
 )
 
 # CEO directive "...Quant Intelligence + Market Analysis Completion
@@ -131,14 +153,16 @@ class _SeriesCache:
     rsi: dict[int, list[float]]
     macd: list[tuple[float, float, float]]
     stochastic: dict[int, list[tuple[float, float]]]
+    multi_horizon_trend_score: list[float]
 
 
-def _build_series_cache(candles: list[Candle], definition: CompiledStrategyDefinition) -> _SeriesCache:
+def _build_series_cache(candles: list[Candle], definition: CompiledStrategyDefinition, symbol: str = "") -> _SeriesCache:
     ema_periods: set[int] = set()
     sma_periods: set[int] = set()
     rsi_periods: set[int] = set()
     stochastic_periods: set[int] = set()
     needs_macd = False
+    needs_trend_score = False
     for step in definition.sequence:
         if step.condition is None:
             continue
@@ -155,6 +179,8 @@ def _build_series_cache(candles: list[Candle], definition: CompiledStrategyDefin
                 needs_macd = True
             elif ref.indicator in ("stochastic_percent_k", "stochastic_percent_d"):
                 stochastic_periods.add(ref.period or _DEFAULT_STOCHASTIC_PERIOD)
+            elif ref.indicator == "multi_horizon_trend_score":
+                needs_trend_score = True
     # A chandelier stop's own ATR series is a real volatility read, not
     # an EMA/SMA period — computed separately in the caller, not cached
     # here.
@@ -164,6 +190,13 @@ def _build_series_cache(candles: list[Candle], definition: CompiledStrategyDefin
         rsi={p: rsi_series(candles, p) for p in rsi_periods},
         macd=macd_series(candles, fast=_MACD_FAST, slow=_MACD_SLOW, signal=_MACD_SIGNAL) if needs_macd else [],
         stochastic={p: stochastic_series(candles, period=p, smoothing=_STOCHASTIC_SMOOTHING) for p in stochastic_periods},
+        # Uses app/trend_engine.py's own default horizons/methodology
+        # (TREND_ENGINE_METHODOLOGY_VERSION) — the one specific,
+        # versioned configuration this engine's compiled-strategy
+        # vocabulary can reference today; the Research Desk's richer
+        # per-methodology/per-weighting comparison lives in that
+        # module's own standalone functions, not here.
+        multi_horizon_trend_score=multi_horizon_trend_score_series(candles, symbol, definition.timeframe, horizons=DEFAULT_HORIZONS, method="endpoint_slope") if needs_trend_score else [],
     )
 
 
@@ -215,6 +248,12 @@ def _resolve(ref: StrategyIndicatorRef, candles: list[Candle], series: _SeriesCa
         if pair is None:
             return None
         return pair[0] if ref.indicator == "stochastic_percent_k" else pair[1]
+    if ref.indicator == "multi_horizon_trend_score":
+        # multi_horizon_trend_score_series() is already index-aligned
+        # one-to-one with `candles` (a real value, possibly 0.0 for "not
+        # enough history yet," at every index) — no offset lookup needed,
+        # unlike ema/rsi/macd/stochastic's windowed-series alignment.
+        return series.multi_horizon_trend_score[index] if 0 <= index < len(series.multi_horizon_trend_score) else None
     return None
 
 
@@ -444,7 +483,7 @@ def backtest_symbol_over_candles(definition: CompiledStrategyDefinition, symbol:
     indicators and detect setups using bars 1000-1999, full stop."""
     if len(candles) < MIN_BARS_ON_SIDE_BEFORE_CROSS + MAX_HOLD_BARS + 60:
         return []
-    series = _build_series_cache(candles, definition)
+    series = _build_series_cache(candles, definition, symbol)
     setups = _detect_generic_setups(candles, definition, series)
 
     atr_series_values: list[float] = []

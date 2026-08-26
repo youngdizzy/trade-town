@@ -63,6 +63,14 @@ pattern's own comment for the exact phrasing it matches):
     correctly flagged status="ambiguous" for this real, disclosed
     reason, never silently miscompiled). Representing mean-reversion
     RSI/Stochastic strategies is real, tractable future work.
+  - (CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    Engine") a Multi-Horizon Trend Score threshold ("the multi-horizon
+    trend score is above 2," "...is below -2"), the same real "above =
+    long, below = short" convention as RSI/Stochastic above, resolving
+    to app/trend_engine.py's own default, versioned composite
+    methodology (see that module's `TREND_ENGINE_METHODOLOGY_VERSION`).
+    Lowest priority in the trigger match order — checked only after
+    EMA/SMA, RSI, Stochastic, and MACD all fail to match.
   - a REQUIREMENT: "at least N bullish/bearish candles" (a real
     consecutive-candle-direction count, English number words 1-20
     supported).
@@ -162,6 +170,14 @@ _RSI_THRESHOLD_PATTERN = re.compile(r"(?:the\s+)?(\d+)?[\s-]*(?:period\s+)?RSI\s
 _STOCHASTIC_THRESHOLD_PATTERN = re.compile(r"(?:the\s+)?(\d+)?[\s-]*(?:period\s+)?stochastic\s+(?:is\s+)?(above|below)\s+(\d+(?:\.\d+)?)", re.IGNORECASE)
 _MACD_CROSS_PATTERN = re.compile(r"MACD(?:\s+line)?\s+crosses\s+(above|below)\s+(?:the\s+)?signal(?:\s+line)?", re.IGNORECASE)
 
+# CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+# Engine" — the one new real phrasing this compiler recognizes for
+# app/trend_engine.py's real, versioned composite indicator (see
+# StrategyIndicatorName's own "multi_horizon_trend_score" docstring in
+# app/schemas.py). Real, standard threshold phrasing mirroring RSI/
+# Stochastic above: "the multi-horizon trend score is above/below N".
+_TREND_SCORE_THRESHOLD_PATTERN = re.compile(r"(?:the\s+)?multi[\s-]horizon\s+trend\s+score\s+(?:is\s+)?(above|below)\s+(-?\d+(?:\.\d+)?)", re.IGNORECASE)
+
 # Real requirement phrasing: "at least N bullish/bearish candles".
 _REQUIREMENT_PATTERN = re.compile(
     r"at\s+least\s+(\w+)\s+(bullish|bearish)\s+(?:opposite\s+)?candles?", re.IGNORECASE
@@ -255,6 +271,9 @@ def compile_strategy_text(
     rsi_match = _RSI_THRESHOLD_PATTERN.search(source_text) if not trigger_match else None
     stochastic_match = _STOCHASTIC_THRESHOLD_PATTERN.search(source_text) if not trigger_match and not rsi_match else None
     macd_match = _MACD_CROSS_PATTERN.search(source_text) if not trigger_match and not rsi_match and not stochastic_match else None
+    trend_score_match = (
+        _TREND_SCORE_THRESHOLD_PATTERN.search(source_text) if not trigger_match and not rsi_match and not stochastic_match and not macd_match else None
+    )
 
     if trigger_match:
         side, period_str, ma_kind = trigger_match.groups()
@@ -332,6 +351,25 @@ def compile_strategy_text(
                 stepType="trigger",
                 condition=condition,
                 detail=f"Trigger: real MACD line/signal-line cross-{'up' if direction == 'long' else 'down'}.",
+            )
+        )
+    elif trend_score_match:
+        side, threshold_str = trend_score_match.groups()
+        direction = "long" if side.lower() == "above" else "short"
+        operator = "gt" if direction == "long" else "lt"
+        condition = StrategyCondition(
+            id=f"{definition_id}-trigger-condition",
+            left=StrategyIndicatorRef(indicator="multi_horizon_trend_score"),
+            operator=operator,  # type: ignore[arg-type]
+            rightValue=float(threshold_str),
+            detail=f"Real Multi-Horizon Trend Score (app/trend_engine.py's own default, versioned methodology) {side.lower()} {threshold_str}.",
+        )
+        sequence.append(
+            StrategySequenceStep(
+                id=_next_step_id(),
+                stepType="trigger",
+                condition=condition,
+                detail=f"Trigger: real Multi-Horizon Trend Score {side.lower()} {threshold_str}.",
             )
         )
 

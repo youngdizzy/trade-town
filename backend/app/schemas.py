@@ -4191,7 +4191,30 @@ class EmaPullbackResearchResult(CamelModel):
 # app/strategy_engine.py for how a CompiledStrategyDefinition is
 # actually replayed against real candle history.
 StrategyIndicatorName = Literal[
-    "price_close", "price_open", "price_high", "price_low", "sma", "ema", "rsi", "macd_line", "macd_signal", "macd_histogram", "stochastic_percent_k", "stochastic_percent_d", "atr", "vwap"
+    "price_close",
+    "price_open",
+    "price_high",
+    "price_low",
+    "sma",
+    "ema",
+    "rsi",
+    "macd_line",
+    "macd_signal",
+    "macd_histogram",
+    "stochastic_percent_k",
+    "stochastic_percent_d",
+    "atr",
+    "vwap",
+    # CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    # Engine" — the one composite scalar app/trend_engine.py's multi-
+    # horizon scorer produces, using that module's own default, versioned
+    # methodology (see TREND_ENGINE_DEFAULT_METHODOLOGY_VERSION). A
+    # single indicator name, not four, because a StrategyCondition only
+    # ever compares ONE resolved value — the Research Desk's own richer,
+    # decomposed Fast/Medium/Slow breakdown (never silently collapsed)
+    # lives in app/trend_engine.py's own read-only research schemas
+    # below, not in a compiled strategy's trigger condition.
+    "multi_horizon_trend_score",
 ]
 
 
@@ -4335,6 +4358,139 @@ class TradeStrategyRuleSnapshot(CamelModel):
     strategy_id: str | None = Field(default=None, alias="strategyId")
     strategy_provenance_state: TradeStrategyProvenanceState = Field(alias="strategyProvenanceState")
     compiled_definition: CompiledStrategyDefinition | None = Field(default=None, alias="compiledDefinition")
+
+
+# CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+# Engine" — app/trend_engine.py's own schemas. Every reading here is a
+# real, deterministic function of the real (mock) candle history passed
+# in, evaluated ONLY up to a given index (never a later bar) — see that
+# module's own module docstring for the point-in-time-correctness
+# discipline every function observes. This is RESEARCH EVIDENCE, not a
+# trading decision: nothing here places an order, sizes a live position,
+# or overrides app/risk_engine.py / app/gatekeeper.py, which remain the
+# sole authority over whether a trade actually happens. Labeled
+# throughout as "AHL-inspired public-research hypothesis," never a claim
+# that this reproduces Man AHL's actual proprietary methodology or that
+# any external firm's real results apply to TradeTown's own (mock) data.
+TrendDefinitionMethod = Literal["endpoint_slope", "regression_slope", "normalized_slope", "price_vs_ma", "volatility_normalized", "breakout_channel"]
+TrendWeightingMethod = Literal["equal", "horizon_weighted", "volatility_weighted"]
+TrendDirection = Literal[1, 0, -1]
+
+
+class HorizonTrendReading(CamelModel):
+    """One horizon's own real, independently-computed directional read —
+    never silently merged with any other horizon or methodology before
+    this point. `raw_value`'s unit is method-specific (a %/bar slope for
+    endpoint_slope/regression_slope, a unitless z-like ratio for
+    normalized_slope/volatility_normalized, a % distance for
+    price_vs_ma, a 0-1 channel position for breakout_channel) — always
+    spelled out in `detail`, never left for the reader to infer."""
+
+    horizon_label: str = Field(alias="horizonLabel")
+    lookback_bars: int = Field(alias="lookbackBars")
+    method: TrendDefinitionMethod
+    raw_value: float = Field(alias="rawValue")
+    direction: TrendDirection
+    detail: str
+
+
+class MultiHorizonTrendScore(CamelModel):
+    """The real, versioned composite of N independently-scored horizons.
+    `composite_score` is the real signed sum of each horizon's
+    `direction` (so 4 horizons span -4..+4, matching the CEO's own
+    worked example) — one specific, disclosed aggregation choice among
+    others a researcher could test (equal-weight sum of discrete
+    direction states), never presented as the only valid methodology.
+    `methodology_version` names exactly which version of this
+    aggregation rule produced this reading, so a later change to the
+    formula can never be silently misattributed to an old reading."""
+
+    symbol: str
+    timeframe: str
+    evaluated_at_index: int = Field(alias="evaluatedAtIndex")
+    evaluated_at_timestamp: str = Field(alias="evaluatedAtTimestamp")
+    method: TrendDefinitionMethod
+    methodology_version: str = Field(alias="methodologyVersion")
+    horizons: list[HorizonTrendReading]
+    composite_score: float = Field(alias="compositeScore")
+    composite_score_normalized: float = Field(alias="compositeScoreNormalized")
+    aggregation_detail: str = Field(alias="aggregationDetail")
+
+
+class TrendEnsembleReading(CamelModel):
+    """Fast/Medium/Slow shown DECOMPOSED — the CEO directive's own
+    explicit "never collapse into one mysterious score" requirement.
+    `combined_score` is one additional, clearly-labeled weighted view on
+    top of the three real, independently-inspectable composites, never a
+    replacement for seeing all three."""
+
+    symbol: str
+    timeframe: str
+    evaluated_at_index: int = Field(alias="evaluatedAtIndex")
+    evaluated_at_timestamp: str = Field(alias="evaluatedAtTimestamp")
+    fast: MultiHorizonTrendScore
+    medium: MultiHorizonTrendScore
+    slow: MultiHorizonTrendScore
+    weighting_method: TrendWeightingMethod = Field(alias="weightingMethod")
+    combined_score: float = Field(alias="combinedScore")
+    combined_score_detail: str = Field(alias="combinedScoreDetail")
+
+
+class VolatilityScaledExposureResearch(CamelModel):
+    """A RESEARCH candidate exposure only — `app/position_sizing.py`'s
+    real, authoritative sizing pipeline is never overridden or bypassed
+    by this reading (see that module's own ATR-based risk-budget sizing,
+    which already governs every real position). This answers "what would
+    an AHL-inspired inverse-volatility sizing rule have suggested here,"
+    for research comparison, nothing else."""
+
+    symbol: str
+    signal_strength: float = Field(alias="signalStrength")
+    volatility_estimate_pct: float = Field(alias="volatilityEstimatePct")
+    volatility_lookback_bars: int = Field(alias="volatilityLookbackBars")
+    target_risk_pct: float = Field(alias="targetRiskPct")
+    annualization_factor: float = Field(alias="annualizationFactor")
+    raw_exposure_pct: float = Field(alias="rawExposurePct")
+    capped_exposure_pct: float = Field(alias="cappedExposurePct")
+    was_capped: bool = Field(alias="wasCapped")
+    detail: str
+
+
+class SymbolTrendRanking(CamelModel):
+    """One row of the Research Desk's real cross-sectional read — "which
+    symbols currently show the strongest trend agreement," evidence for
+    a researcher to inspect, never an automatic trade selection."""
+
+    symbol: str
+    category: ResearchCategory
+    composite_score: float = Field(alias="compositeScore")
+    trend_persistence_bars: int = Field(alias="trendPersistenceBars")
+    volatility_pct: float = Field(alias="volatilityPct")
+    risk_adjusted_score: float = Field(alias="riskAdjustedScore")
+
+
+class TrendRegimeBucket(CamelModel):
+    regime: str
+    bars_observed: int = Field(alias="barsObserved")
+    mean_forward_return_pct: float = Field(alias="meanForwardReturnPct")
+    hit_rate_pct: float = Field(alias="hitRatePct")
+    detail: str
+
+
+class TrendRegimeBreakdown(CamelModel):
+    """Real, historical: for every bar where the composite score crossed
+    into a strong state (>=+2 or <=-2), buckets the real forward return
+    N bars later by the real regime (`regime_trend_at()`,
+    app/backtest_primitives.py — the SAME classifier app/strategy_
+    engine.py already uses, not a second one) that was active AT signal
+    time — never a future regime label. Small `bars_observed` buckets are
+    shown honestly, not hidden or extrapolated."""
+
+    symbol: str
+    timeframe: str
+    forward_bars: int = Field(alias="forwardBars")
+    buckets: list[TrendRegimeBucket]
+    detail: str
 
 
 class CompileStrategyRequest(CamelModel):
