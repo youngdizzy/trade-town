@@ -14669,10 +14669,11 @@ almost entirely by surfacing already-computed evidence (Rules 10, 11,
 the `EXTRA_SYMBOL_POOL` research-rotation gap `watchlist.py` already
 disclosed. P2 (documented, not built this pass — genuine architectural
 lifts): multi-timeframe analysis (closed in a later follow-up — see
-below), a formal watchlist eligibility-tier system beyond the feed, a
-true Asset Discovery Engine/asset-class taxonomy, per-agent learning,
-Brier-score calibration, live recovery factor, strategy-compliance-at-
-execution wiring.
+below), a formal watchlist eligibility-tier system beyond the feed
+(also closed in a later follow-up — see below), a true Asset Discovery
+Engine/asset-class taxonomy, per-agent learning, Brier-score
+calibration, live recovery factor, strategy-compliance-at-execution
+wiring.
 
 **Phase C — implementation.**
 
@@ -14797,6 +14798,35 @@ count). Full backend suite green, mypy/ruff clean. Two other module
 docstrings (`app/gatekeeper.py`, `app/technical_indicators.py`) that
 named this same gap on their own disclosed-limitation lists updated to
 reflect it's now closed.
+
+**Follow-up — Watchlist Eligibility Tiers.** Closes the other P2 item
+named above. Distinct from `app/opportunity_feed.py`'s own per-
+CANDIDATE status (`eligible`/`insufficient_evidence`/`not_eligible`,
+true only at the instant a specific proposal/rejection/research-item
+exists): this is a standing, per-SYMBOL classification over the
+symbol's own whole real track record. New
+`app/watchlist_eligibility.py::compute_watchlist_eligibility()` reuses
+`app/performance_attribution.py::compute_symbol_performance()`'s own
+already-real per-symbol win-rate/expectancy/profit-factor (same real
+`MIN_SYMBOL_SAMPLE_FOR_VERDICT=3` evidence floor that module already
+established), extended to cover every symbol currently on the
+watchlist, not just symbols with existing trades. Four real tiers:
+`proven` (≥3 real trades, ≥55% win rate AND positive expectancy — the
+same 55%/40% bar `app/strategy_lab.py`'s own
+`HALL_OF_FAME_MIN_WIN_RATE`/`HEALTH_CRITICAL_WIN_RATE` already
+establish, reused not reinvented), `cautionary` (≥3 real trades, <40%
+win rate OR negative expectancy), `developing` (below the minimum
+sample, or a genuinely mixed record between the two bars), `unproven`
+(zero real closed trades yet). Real `OpportunityRejection` counts per
+symbol are informational context only, never alone enough to drive a
+symbol into "cautionary." New `GET /api/trades/watchlist-eligibility`
+endpoint, computed fresh (CAGS), no new `GameSaveState` field, no gate,
+no automatic action. Frontend: new `WatchlistEligibilitySection` in
+`OpportunitiesPanel.tsx`, directly below the Opportunity Feed —
+`tsc`/lint/build clean, live-smoke-tested with real seeded trade data
+(8 AAPL winners → `proven`, 6 MSFT losers → `cautionary`) via a
+temporary Playwright spec. 9 new tests, full backend suite green (2809
+passed), mypy/ruff clean.
 
 ## CEO directive "Professional Quant Live Trading Desk"
 

@@ -13,6 +13,7 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.data_quality_monitor import compute_data_quality_monitor
 from app.exit_efficiency import compute_exit_efficiency
 from app.opportunity_feed import compute_opportunity_feed
+from app.watchlist_eligibility import compute_watchlist_eligibility
 from app.performance_attribution import (
     compute_regime_performance,
     compute_session_performance,
@@ -45,6 +46,7 @@ from app.schemas import (
     TradePipelineHealthSnapshot,
     TradeStrategyRuleSnapshot,
     UnattributedTradeMonitor,
+    WatchlistEligibilitySummary,
 )
 from app.state import game_state
 from app.trade_attribution import compute_trade_attribution_history, compute_unattributed_trade_monitor, resolve_trade_strategy_rule_snapshot
@@ -315,3 +317,16 @@ async def get_opportunity_feed() -> OpportunityFeed:
     or scores anything."""
     state = await game_state.snapshot()
     return compute_opportunity_feed(state)
+
+
+@router.get("/watchlist-eligibility", response_model=WatchlistEligibilitySummary)
+async def get_watchlist_eligibility() -> WatchlistEligibilitySummary:
+    """CEO directive "Professional Quant Trading Core," Phase B P2 item
+    — a formal, standing per-symbol Watchlist Eligibility Tier, distinct
+    from the Opportunity Feed's own per-candidate status above. See
+    app/watchlist_eligibility.py's own module docstring for the real
+    tier logic (reuses app/performance_attribution.py's real per-symbol
+    win-rate/expectancy). Computed fresh per request; no new
+    GameSaveState field, nothing here gates or scores anything."""
+    state = await game_state.snapshot()
+    return compute_watchlist_eligibility(state.watchlist, state.paper_portfolio.trade_history, state.opportunity_rejections)

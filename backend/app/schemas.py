@@ -5782,6 +5782,37 @@ class OpportunityFeed(CamelModel):
     computed_at: str = Field(alias="computedAt")
 
 
+# CEO directive "Professional Quant Trading Core," Phase B P2 item — a
+# formal Watchlist Eligibility Tier system. Distinct from
+# OpportunityFeedEntry's own per-CANDIDATE status above (eligible/
+# insufficient_evidence/not_eligible, true only at the moment a specific
+# proposal/rejection/research-item exists): this is a standing, per-
+# SYMBOL classification over the symbol's own whole real track record —
+# see app/watchlist_eligibility.py's module docstring for the real
+# reuse (SymbolPerformanceRead) behind it.
+WatchlistTier = Literal["proven", "developing", "unproven", "cautionary"]
+
+
+class WatchlistEligibilityRead(CamelModel):
+    symbol: str
+    tier: WatchlistTier
+    trade_count: int = Field(alias="tradeCount")
+    win_rate_pct: float | None = Field(default=None, alias="winRatePct")
+    expectancy_pct: float | None = Field(default=None, alias="expectancyPct")
+    profit_factor: float | None = Field(default=None, alias="profitFactor")
+    # Real count of OpportunityRejection records naming this symbol —
+    # informational only (a rejection means "not this instance," not
+    # necessarily a bad symbol), never itself enough to drive the tier
+    # down to "cautionary" on its own.
+    rejection_count: int = Field(alias="rejectionCount")
+    detail: str
+
+
+class WatchlistEligibilitySummary(CamelModel):
+    reads: list[WatchlistEligibilityRead] = Field(default_factory=list)
+    updated_at: str = Field(alias="updatedAt")
+
+
 # v0.7 Feature 16 — What-If Simulation Lab. Computed on demand (never
 # persisted — see app/whatif.py's module docstring for why) from the
 # symbol's own real recent candles, so this is intentionally NOT part of

@@ -158,6 +158,34 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"Professional Quant Trading Core" follow-up: Watchlist Eligibility Tiers.** Closes another P2 item
+  from that directive's own deferred list — a formal, standing per-symbol classification, distinct
+  from the CEO Opportunity Feed's existing per-CANDIDATE status (`eligible`/`insufficient_evidence`/
+  `not_eligible`, true only at the moment a specific proposal/rejection/research-item exists). New
+  `app/watchlist_eligibility.py::compute_watchlist_eligibility()` reuses
+  `app/performance_attribution.py::compute_symbol_performance()`'s own already-real per-symbol
+  win-rate/expectancy/profit-factor (gated by that module's real `MIN_SYMBOL_SAMPLE_FOR_VERDICT=3`
+  evidence floor), extended to cover every symbol currently on the watchlist rather than just symbols
+  with existing trades. Four real tiers: `proven` (≥3 real trades, ≥55% win rate AND positive
+  expectancy — the same 55%/40% bar `app/strategy_lab.py`'s own `HALL_OF_FAME_MIN_WIN_RATE`/
+  `HEALTH_CRITICAL_WIN_RATE` already establish, reused not reinvented), `cautionary` (≥3 real trades,
+  <40% win rate OR negative expectancy), `developing` (some trades but below the minimum sample, or a
+  genuinely mixed record between the two bars), `unproven` (zero real closed trades yet — the honest
+  default for a newly-added symbol). Real `OpportunityRejection` counts per symbol are surfaced as
+  informational context only — never alone enough to drive a symbol into "cautionary."
+  - New `GET /api/trades/watchlist-eligibility` endpoint, computed fresh per request (CAGS
+    convention), no new `GameSaveState` field, no gate, no automatic action on any tier — purely a
+    read the CEO can review.
+  - Frontend: new `WatchlistEligibilitySection` in `OpportunitiesPanel.tsx`, directly below the
+    existing Opportunity Feed — a compact per-symbol grid with a tier pill and real detail sentence.
+    `tsc`/lint/build clean; live-smoke-tested against the real running dev stack with real seeded
+    trade data (8 AAPL winners → `proven`, 6 MSFT losers → `cautionary`, untraded symbols →
+    `unproven`) via a temporary Playwright spec (removed after verification) — confirmed correct
+    tiers/pills/details render with zero console errors.
+  - 9 new tests in `test_watchlist_eligibility.py` (each tier's real trigger condition, independent
+    per-symbol classification, full watchlist coverage including untraded symbols, rejection count
+    surfaced without driving the tier). Full backend suite green (2809 passed), mypy/ruff clean.
+
 - **"Professional Quant Trading Core" follow-up: Multi-Timeframe Confirmation.** Closes the one P2
   item that directive's own Phase B explicitly deferred as a "genuine architectural lift." Three
   independent module docstrings (`app/confidence.py`, `app/gatekeeper.py`, `app/technical_indicators.py`)

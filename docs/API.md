@@ -2306,6 +2306,27 @@ boundary: this is NOT a whole-universe proactive scanner — a symbol
 with no real candidate, rejection, or in-progress research record
 simply isn't listed, never fabricated as if it had been evaluated.
 
+### `GET /api/trades/watchlist-eligibility`
+
+CEO directive "Professional Quant Trading Core," Phase B P2 item — a
+formal, standing per-symbol Watchlist Eligibility Tier
+(`app/watchlist_eligibility.py`), computed fresh per request. Distinct
+from the Opportunity Feed above's per-candidate status: this is a real
+classification over a symbol's WHOLE trade history, reusing
+`app/performance_attribution.py`'s own real per-symbol win-rate/
+expectancy/profit-factor. Returns a `WatchlistEligibilitySummary`:
+`reads` (one `WatchlistEligibilityRead` per symbol currently on the
+watchlist — `symbol`, `tier` (`"proven"`/`"developing"`/`"unproven"`/
+`"cautionary"`), `tradeCount`, `winRatePct`/`expectancyPct`/
+`profitFactor` (all `null` for a symbol with zero real trades),
+`rejectionCount` (real `OpportunityRejection` count, informational
+only), `detail` (a real, disclosed sentence)) and `updatedAt`. `proven`
+requires ≥3 real trades, ≥55% win rate, and positive expectancy;
+`cautionary` requires the same ≥3-trade minimum with <40% win rate or
+negative expectancy; `unproven` is zero real trades; everything else is
+`developing`. No new `GameSaveState` field, no gate, no automatic
+action — purely a read.
+
 ### `GET /api/market/technical-analysis?symbol=...&timeframe=1h&limit=100`
 
 CEO directive "Professional Trading Firm — Market-Analysis Knowledge +
