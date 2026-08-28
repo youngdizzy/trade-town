@@ -653,6 +653,46 @@ class TestActivateAndResumeEmergencyStop:
         assert saved.emergency_stop.active is False
 
 
+class TestActivateAndLiftTradingRestriction:
+    """CEO directive "Layered Kill Switches" — the scoped granularity
+    layer below the firm-wide Emergency Stop above (see
+    app/trading_restrictions.py's module docstring)."""
+
+    def test_activate_creates_a_real_restriction_and_records_a_real_memory_entry(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.activate_trading_restriction(scope="symbol", target="NEXA", reason="Suspicious pattern."))
+        assert error is None
+        assert len(saved.trading_restrictions) == 1
+        assert saved.trading_restrictions[0].active is True
+        assert saved.trading_restrictions[0].target == "NEXA"
+        alert_memories = [m for m in saved.memory if m.title == "Trading Restriction activated"]
+        assert len(alert_memories) == 1
+
+    def test_activating_a_duplicate_is_rejected(self) -> None:
+        state = GameState()
+        asyncio.run(state.activate_trading_restriction(scope="symbol", target="NEXA", reason="first"))
+        saved, error = asyncio.run(state.activate_trading_restriction(scope="symbol", target="NEXA", reason="second"))
+        assert error is not None
+        assert len(saved.trading_restrictions) == 1
+
+    def test_lift_clears_active_and_records_a_real_memory_entry(self) -> None:
+        state = GameState()
+        activated, _ = asyncio.run(state.activate_trading_restriction(scope="category", target="bitcoin", reason="volatility spike"))
+        restriction_id = activated.trading_restrictions[0].id
+        saved, error = asyncio.run(state.lift_trading_restriction(restriction_id, reason="calmed down"))
+        assert error is None
+        assert saved.trading_restrictions[0].active is False
+        assert saved.trading_restrictions[0].lifted_reason == "calmed down"
+        lift_memories = [m for m in saved.memory if m.title == "Trading Restriction lifted"]
+        assert len(lift_memories) == 1
+
+    def test_lifting_an_unknown_id_is_rejected(self) -> None:
+        state = GameState()
+        saved, error = asyncio.run(state.lift_trading_restriction("no-such-id", reason=""))
+        assert error is not None
+        assert saved.trading_restrictions == []
+
+
 class TestSubmitCeoDecisionEmergencyStopGuard:
     """Design Bible Chapter 67 (TTOS) Part 3 — Emergency Stop blocks the
     CEO's own manual buy/sell call too, not just automation; declining a

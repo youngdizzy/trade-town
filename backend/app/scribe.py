@@ -171,6 +171,28 @@ def record_emergency_stop_event(memory: list[MemoryRecord], *, activated: bool, 
         record(memory, "emergency", "Trading resumed", "The CEO resumed trading after an Emergency Stop.", max_records=max_records)
 
 
+def record_trading_restriction_event(
+    memory: list[MemoryRecord],
+    *,
+    scope: str,
+    target: str,
+    reason: str,
+    lifted: bool,
+    max_records: int = MAX_MEMORY_RECORDS,
+) -> None:
+    """CEO directive "Layered Kill Switches" — see
+    app/trading_restrictions.py's module docstring. `category="alert"`
+    with this exact title prefix, matching every other CEO-mutated-state
+    event this codebase turns into a real AuditEntry (see app/audit_log.py's
+    "trading_restriction" branch) purely by real memory-record pattern
+    matching, never a second parallel log."""
+    label = "category" if scope == "category" else "symbol"
+    if lifted:
+        record(memory, "alert", "Trading Restriction lifted", f"CEO lifted the trading restriction on {label} {target}: {reason}", max_records=max_records)
+    else:
+        record(memory, "alert", "Trading Restriction activated", f"CEO restricted new trading on {label} {target}: {reason}", max_records=max_records)
+
+
 def record_proposal_hold(memory: list[MemoryRecord], proposal: TradeProposal, reason: HoldReason, max_records: int = MAX_MEMORY_RECORDS) -> None:
     """v0.7 Feature 40.5 — Request More Research / Delay Decision. Not a
     final call (see app/executive.py's hold_proposal()), but still a

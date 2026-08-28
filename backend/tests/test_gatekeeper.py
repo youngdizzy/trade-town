@@ -23,6 +23,7 @@ from app.gatekeeper import (
     _failure_boundary_check,
     _risk_manager_check,
     _risk_warning_check,
+    _trading_restriction_check,
     evaluate_gatekeeper,
     grade_gatekeeper_rejections,
 )
@@ -40,6 +41,7 @@ from app.schemas import (
     RiskLimits,
     RiskWarning,
     TradeProposal,
+    TradingRestriction,
     WatchlistEntry,
     WeightedExecutiveRecommendation,
 )
@@ -427,6 +429,65 @@ class TestAccountHaltCheck:
         assert any(c.id == "account_halt" and not c.passed for c in verdict.checks)
 
 
+def _restriction(*, scope: str = "symbol", target: str = "NEXA", active: bool = True) -> TradingRestriction:
+    return TradingRestriction(
+        id=f"restriction-{scope}-{target}",
+        scope=scope,  # type: ignore[arg-type]
+        target=target,
+        reason="test reason",
+        active=active,
+        activatedAt=_now_iso(),
+    )
+
+
+class TestTradingRestrictionCheck:
+    """CEO directive "Layered Kill Switches" — the Gatekeeper's own
+    defense-in-depth half of app/trading_restrictions.py's two real
+    enforcement points."""
+
+    def test_passes_with_no_restrictions(self) -> None:
+        proposal = _proposal(symbol="NEXA")
+        check = _trading_restriction_check(proposal, [])
+        assert check.passed is True
+
+    def test_fails_when_symbol_is_restricted(self) -> None:
+        proposal = _proposal(symbol="NEXA")
+        check = _trading_restriction_check(proposal, [_restriction(scope="symbol", target="NEXA")])
+        assert check.passed is False
+        assert "NEXA" in check.detail
+
+    def test_fails_when_category_is_restricted(self) -> None:
+        proposal = _proposal(symbol="NEXA")  # category="stock" by default
+        check = _trading_restriction_check(proposal, [_restriction(scope="category", target="stock")])
+        assert check.passed is False
+
+    def test_passes_for_an_unrelated_symbol_and_category(self) -> None:
+        proposal = _proposal(symbol="NEXA")  # category="stock"
+        check = _trading_restriction_check(proposal, [_restriction(scope="symbol", target="OTHER")])
+        assert check.passed is True
+
+    def test_a_lifted_restriction_no_longer_blocks(self) -> None:
+        proposal = _proposal(symbol="NEXA")
+        check = _trading_restriction_check(proposal, [_restriction(scope="symbol", target="NEXA", active=False)])
+        assert check.passed is True
+
+    def test_evaluate_gatekeeper_rejects_a_restricted_symbol(self) -> None:
+        proposal = _proposal(confidence_score=90.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}))
+        verdict = evaluate_gatekeeper(
+            proposal,
+            "buy",
+            _debate("buy"),
+            default_portfolio(),
+            RiskLimits(),
+            [],
+            default_market_intelligence_state(),
+            now_sim_minutes=0,
+            trading_restrictions=[_restriction(scope="symbol", target=proposal.symbol)],
+        )
+        assert verdict.approved is False
+        assert any(c.id == "trading_restriction" and not c.passed for c in verdict.checks)
+
+
 class TestEvaluateGatekeeper:
     def test_approves_when_every_check_passes(self) -> None:
         proposal = _proposal(confidence_score=90.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}))
@@ -445,7 +506,11 @@ class TestEvaluateGatekeeper:
         # 12th check: Account Risk Halt (live) — vacuously passing here
         # since no quantity/price/sim_day was supplied (see
         # TestAccountHaltCheck below for the real behavior).
-        assert len(verdict.checks) == 12
+        # 13th check: CEO directive "Layered Kill Switches" — Trading
+        # Restriction, vacuously passing here since no
+        # trading_restrictions were supplied (see
+        # TestTradingRestrictionCheck below for the real behavior).
+        assert len(verdict.checks) == 13
         assert all(c.passed for c in verdict.checks)
         assert "APPROVED" in verdict.summary
         # CEO directive "Professional Quant Firm Phase 41-45," Critical Task #0's No-Trade

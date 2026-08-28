@@ -2309,6 +2309,9 @@ NoTradeReasonCode = Literal[
     # proposal sits pending; this check re-runs evaluate_sentinel_risk()
     # fresh at resolution time instead of trusting that frozen read.
     "gatekeeper_account_halt",
+    # CEO directive "Layered Kill Switches" — app/gatekeeper.py's
+    # _trading_restriction_check(), app/trading_restrictions.py.
+    "gatekeeper_trading_restriction",
     # Risk engine: app/risk_engine.py's evaluate_sentinel_risk()/evaluate_guardian_exposure()
     "risk_equity_exhausted",
     "risk_daily_loss_limit",
@@ -2361,6 +2364,41 @@ class RiskWarning(CamelModel):
 class EmergencyStopState(CamelModel):
     active: bool = False
     activated_at: str | None = Field(default=None, alias="activatedAt")
+
+
+# CEO directive "Layered Kill Switches" — the real, scoped granularity
+# layer sitting BELOW EmergencyStopState above (which is deliberately
+# firm-wide-only). A TradingRestriction halts new position-opening
+# (buy AND sell — a real full halt on its target, not a partial one, the
+# same "no ambiguity" choice EmergencyStopState already makes) for
+# exactly one symbol or one whole ResearchCategory, without touching the
+# rest of the firm. See app/trading_restrictions.py's module docstring
+# for the two real enforcement points and for why strategy-level and
+# agent-level kill switches are NOT duplicated here (both already have a
+# real, different, existing mechanism — app/sandbox.py's
+# retire_strategy() and app/weighted_decisions.py's accuracy-based
+# department weighting respectively).
+RestrictionScope = Literal["symbol", "category"]
+
+
+class TradingRestriction(CamelModel):
+    """One CEO-activated, scoped trading pause. Permanent record, like
+    every other real event log in this codebase — lifting a restriction
+    sets `active=False` and records when/why rather than deleting the
+    row, so a past restriction is always reviewable."""
+
+    id: str
+    scope: RestrictionScope
+    # A real symbol string (scope == "symbol") or a real ResearchCategory
+    # value (scope == "category") — never validated against the live
+    # watchlist here, since a restriction on a symbol that later leaves
+    # the watchlist should still show its own honest history.
+    target: str
+    reason: str
+    active: bool = True
+    activated_at: str = Field(alias="activatedAt")
+    lifted_at: str | None = Field(default=None, alias="liftedAt")
+    lifted_reason: str | None = Field(default=None, alias="liftedReason")
 
 
 # v0.7 Feature 49 — Professional Day Trading Program's Daily Trading
@@ -7988,6 +8026,10 @@ AuditEventCategory = Literal[
     # app/trading_modes.py.
     "trading_mode_change",
     "circuit_breaker_tier",
+    # CEO directive "Layered Kill Switches" — a real TradingRestriction
+    # activation/lift (app/trading_restrictions.py), recorded the same
+    # memory-record-derived way every other real event above is.
+    "trading_restriction",
     # Design Bible Chapter 73.5 — a real Travel Mode activation/
     # deactivation, recorded by app/travel_mode.py the same way Chapter
     # 75 records its own mode/tier changes.
@@ -10283,6 +10325,13 @@ class GameSaveState(CamelModel):
     risk_warnings: list[RiskWarning] = Field(default_factory=list, alias="riskWarnings")
     # Design Bible Chapter 67 (TTOS) Part 3.
     emergency_stop: EmergencyStopState = Field(default_factory=EmergencyStopState, alias="emergencyStop")
+    # CEO directive "Layered Kill Switches" — see TradingRestriction's own
+    # docstring above. Permanent history, capped like every other
+    # unbounded event list in this codebase (app/trading_restrictions.py's
+    # MAX_TRADING_RESTRICTIONS).
+    trading_restrictions: list[TradingRestriction] = Field(
+        default_factory=list, alias="tradingRestrictions"
+    )
     scanner_alerts: list[ScannerAlert] = Field(
         default_factory=list, alias="scannerAlerts"
     )

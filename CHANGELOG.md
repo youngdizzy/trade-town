@@ -209,7 +209,8 @@ development milestones, not semver releases.
     a portfolio-level version was not attempted this pass); true inverse-volatility *portfolio*
     weighting across simultaneous positions (today's real ATR-based sizing remains single-position/
     risk-per-trade, not `1/σ`-normalized across the whole book). The Command Center RISK-tab UI
-    gap noted here originally was closed in a same-day follow-up (see below).
+    gap noted here originally was closed in a same-day follow-up (see below); the layered-kill-
+    switches gap was closed in a further follow-up (see below).
 
 - **Portfolio Risk Engine follow-up: Command Center RISK-tab UI.** New
   `PortfolioRiskSnapshotCard.tsx`, a self-polling (15s) card consuming the two new `GET
@@ -224,6 +225,50 @@ development milestones, not semver releases.
   against the real running dev stack (Playwright, temporary spec, removed after verification): the
   card renders with real data (`NORMAL`, $99,431.78 equity, 0.6%/20% drawdown) on the real RISK tab
   with zero console errors.
+
+- **Portfolio Risk Engine follow-up: Layered Kill Switches.** A repo audit before writing anything
+  found two of the three granularity layers the original directive's "not built this pass" note
+  named already real: STRATEGY already has a real, permanent per-strategy kill switch
+  (`app/sandbox.py::retire_strategy()`, moving a Strategy Lab strategy to the terminal `"retired"`
+  stage); AGENT was explicitly NOT built — `AnalystVote` structurally requires all six analyst roles'
+  real votes for the Discipline Chamber and AI Debate Room to function, so muting one agent's vote
+  would either fabricate a placeholder vote or break both features, and the one already-real
+  per-agent lever (`app/weighted_decisions.py`'s accuracy-based department weighting) already shrinks
+  a chronically-wrong department's real influence continuously from real evidence — a blunt on/off
+  mute would duplicate or bypass that more honest mechanism. That left SYMBOL and CATEGORY (using
+  this codebase's real `ResearchCategory` taxonomy — the only asset-class-like grouping that exists
+  anywhere here) as the one genuinely missing layer.
+  - New `app/trading_restrictions.py`: a `TradingRestriction` halts new position-opening (buy AND
+    sell — a real full halt, matching `EmergencyStopState`'s own "no partial halt" choice) for one
+    symbol or one whole category, without touching the rest of the firm. Permanent history, like
+    every other real event log in this codebase — lifting a restriction records when/why rather than
+    deleting the row.
+  - Two real enforcement points, the same pattern `app/emergency_stop.py` already established: (1)
+    `app/nexus.py::_generate_trade_proposals()` skips a research item whose symbol/category is
+    currently restricted — the CEO never sees a proposal for it; (2) the Trade Gatekeeper
+    (`app/gatekeeper.py`) gained a 13th check, `_trading_restriction_check`, in its existing pure-AND
+    checklist — defense in depth for a proposal already pending the instant a restriction activates.
+    `trading_restrictions` threaded through `evaluate_gatekeeper()` → `resolve_proposal()` → all
+    three real call sites (`nexus.py`'s auto-resolution loop, `state.py`'s CEO-click path); the
+    stale-proposal expiry path always resolves "wait" and never reaches the Gatekeeper, so it's
+    untouched. Two educational lesson strings in `app/foundational_mentors.py` that named the
+    Gatekeeper's exact check count (previously already stale at "ten"/"11" against the real 12) are
+    now corrected to the real 13.
+  - New `GET/POST /api/trading-restrictions`, `/activate`, `/{id}/lift` endpoints
+    (`app/routers/trading_restrictions.py`); new `trading_restrictions` field on `GameSaveState`,
+    registered in `save_modules.py`'s module map; a new `"trading_restriction"` `AuditEventCategory`
+    feeding the existing Compliance Incidents pipeline the same real memory-record-pattern-matching
+    way every other CEO-mutated-state event already does.
+  - 9 new tests in `test_trading_restrictions.py` (activate/lift lifecycle, duplicate refusal,
+    reactivation after lift, symbol-vs-category collision, blocking-restriction lookup priority),
+    6 new Gatekeeper check tests, 4 new proposal-generation filter tests, 4 new state-method tests.
+    Full backend suite green (2747 passed, one confirmed pre-existing flaky probabilistic test in
+    `test_foundational_mentors.py` unrelated to this change — passes in isolation), mypy/ruff clean.
+    New endpoints live-smoke-tested against the real running app via FastAPI TestClient (activate,
+    duplicate-rejection, lift, and the post-lift list all confirmed).
+  - **Not built this pass**: an agent-level kill switch and a real factor-model-based asset-class
+    taxonomy beyond `ResearchCategory` remain genuinely out of scope, per the reasoning above — not
+    silently dropped, not fabricated around.
 
 - **CEO directive "AHL-Inspired Systematic Trend & Momentum Research Engine."** New
   `app/trend_engine.py`: six independent, never-silently-merged real trend-measurement methodologies

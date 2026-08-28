@@ -71,6 +71,7 @@ from app.schemas import (
     ScannerAlert,
     TradeDecision,
     TradeProposal,
+    TradingRestriction,
     WeightedExecutiveRecommendation,
 )
 from app.voting import researcher_vote
@@ -363,6 +364,7 @@ def resolve_proposal(
     min_confidence_override: float | None = None,
     behavioral_cooldown_minutes: int | None = None,
     behavioral_size_increase_threshold_pct: float | None = None,
+    trading_restrictions: list[TradingRestriction] | None = None,
 ) -> tuple[PaperPortfolio, TradeDecision, CeoDecisionRecord]:
     """Applies the CEO's real decision: buy opens a real long, sell opens
     a real short, wait does nothing — subject to the Trade Gatekeeper's
@@ -394,7 +396,12 @@ def resolve_proposal(
     — the CEO's own real Behavioral Circuit Breaker thresholds
     (TradingModeState), passed straight through to evaluate_gatekeeper()'s
     tenth check. None (the default) falls back to that function's own
-    disclosed defaults, mirroring min_confidence_override's convention."""
+    disclosed defaults, mirroring min_confidence_override's convention.
+
+    `trading_restrictions` (CEO directive "Layered Kill Switches," see
+    app/trading_restrictions.py) — passed straight through to
+    evaluate_gatekeeper()'s Trading Restriction check. None/empty
+    behaves exactly as before this parameter existed."""
     decision_id = f"decision-{proposal.id}"
     order_id: str | None = None
     price = current_price if current_price and current_price > 0 else proposal.price
@@ -437,6 +444,7 @@ def resolve_proposal(
                 quantity=quantity,
                 price=price,
                 sim_day=now_sim_minutes // 1440,
+                trading_restrictions=trading_restrictions,
             )
             if gatekeeper_verdict.approved:
                 position_id = f"pos-{proposal.id}"

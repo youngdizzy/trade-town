@@ -2908,6 +2908,37 @@ module docstring for the exact enforcement boundary. Both calls write a
 real, permanent Company Memory entry (category `"emergency"`) — this is
 the feature's own "incident report," not a second parallel record.
 
+### `GET /api/trading-restrictions` / `POST /api/trading-restrictions/activate` / `POST /api/trading-restrictions/{id}/lift`
+
+CEO directive "Layered Kill Switches" — the scoped granularity layer
+below the firm-wide Emergency Stop above. See `app/trading_restrictions.py`'s
+module docstring for why symbol/category is the one real layer built
+here (strategy already has `app/sandbox.py::retire_strategy()`; agent
+was explicitly not built — see that docstring's reasoning). All three
+return `{ "tradingRestrictions": TradingRestriction[] }`, the full
+permanent history (past + currently active), each entry:
+`id`, `scope` (`"symbol" | "category"`), `target` (a symbol string or a
+`ResearchCategory` value), `reason`, `active: bool`, `activatedAt`,
+`liftedAt: string | null`, `liftedReason: string | null`.
+
+`GET` takes no body. `POST /activate` body: `{ "scope", "target",
+"reason" }` — errors 400 on a blank reason or a duplicate active
+restriction on the same `(scope, target)`. `POST /{id}/lift` body:
+`{ "reason": string }` (optional, defaults to `""`) — errors 400 on an
+unknown id or an already-lifted restriction.
+
+An active restriction halts new position-opening (buy AND sell) for its
+target — never a partial halt, matching Emergency Stop's own "no
+ambiguity" choice — via two real enforcement points: `app/nexus.py`'s
+`_generate_trade_proposals()` (the CEO never sees a new proposal for a
+restricted symbol/category) and the Trade Gatekeeper's 13th check,
+`_trading_restriction_check` (defense in depth for a proposal already
+pending when a restriction activates). Already-open positions are never
+force-closed. Both activate/lift write a real, permanent Company Memory
+entry (category `"alert"`, title `"Trading Restriction activated"` /
+`"lifted"`), which also feeds the Compliance Incidents pipeline via a
+new `"trading_restriction"` `AuditEventCategory`.
+
 CEO directive "Session Trading Education & Agent Training" extended the
 `market_intelligence` track's `FoundationalMentorState.mentors[].lessons`
 (carried on `GET /api/load`/the WS `"state"` message, not a dedicated

@@ -15359,7 +15359,8 @@ running app via FastAPI TestClient. Frontend `tsc`/lint/build clean.
 **Not built this pass, documented rather than silently skipped** (per
 the user's own "unify + fix the real gaps" scoping choice):
 - Layered kill switches below the existing firm-wide Emergency Stop
-  (Phase 25) — position/strategy/agent/asset-class granularity.
+  (Phase 25) — position/strategy/agent/asset-class granularity. Closed
+  in a further follow-up (symbol/category only — see below).
 - A real factor model (Phase 5) — this codebase has no GICS/factor
   taxonomy; the architecture is left open for one, per the directive's
   own "document the limitation, build the safest useful abstraction
@@ -15387,6 +15388,35 @@ display layer over the two endpoints above, no new computation. Frontend
 stack with a temporary Playwright spec (removed after verification) —
 confirmed the card renders real data (`NORMAL`, $99,431.78 equity, 0.6%/
 20% drawdown) with zero console errors.
+
+**Follow-up — Layered Kill Switches.** The other gap noted above was
+closed in a further follow-up, scoped to SYMBOL and CATEGORY only after
+a repo audit found the other two named layers already real: STRATEGY
+already has a real, permanent per-strategy kill switch
+(`app/sandbox.py::retire_strategy()`); AGENT was explicitly not built —
+`AnalystVote` structurally requires all six analyst roles' real votes
+for the Discipline Chamber and AI Debate Room to function, so muting one
+agent's vote would fabricate a placeholder vote or break both features,
+and the one already-real per-agent lever
+(`app/weighted_decisions.py`'s accuracy-based department weighting)
+already shrinks a chronically-wrong department's influence continuously
+from real evidence. New `app/trading_restrictions.py`: a
+`TradingRestriction` halts new position-opening (buy AND sell) for one
+symbol or one whole `ResearchCategory` — the only asset-class-like
+taxonomy that exists in this codebase — without touching the rest of
+the firm. Two real enforcement points, the same pattern
+`app/emergency_stop.py` established: proposal generation
+(`app/nexus.py::_generate_trade_proposals()`) and a new 13th Trade
+Gatekeeper check (`_trading_restriction_check`), threaded through
+`evaluate_gatekeeper()` → `resolve_proposal()` → all three real call
+sites. New `GET/POST /api/trading-restrictions`, `/activate`,
+`/{id}/lift` endpoints; new `trading_restrictions` field on
+`GameSaveState`, registered in `save_modules.py`. 23 new backend tests;
+full suite green (2747 passed, one confirmed pre-existing flaky
+probabilistic test unrelated to this change), mypy/ruff clean; new
+endpoints live-smoke-tested via FastAPI TestClient. Not built:
+agent-level restriction and a real factor-model taxonomy beyond
+`ResearchCategory` — the same reasoning as above, not silently dropped.
 
 **Files changed.** Backend: `app/schemas.py`, `app/portfolio_risk.py`
 (new), `app/analytics.py`, `app/risk_engine.py`, `app/portfolio_

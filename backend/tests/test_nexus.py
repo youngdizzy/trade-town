@@ -11,11 +11,12 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 from app.market_intelligence import default_market_intelligence_state
-from app.nexus import MAX_DECISIONS, _apply_operating_mode, _trim_decisions
+from app.nexus import MAX_DECISIONS, _apply_operating_mode, _generate_trade_proposals, _trim_decisions
 from app.nexus import tick as nexus_tick
 from app.portfolio import default_portfolio, open_position
-from app.schemas import AnalystVote, ConfidenceFactor, DecisionConfidence, RiskLimits, TimeState, TradeDecision, TradeProposal
+from app.schemas import AnalystVote, ConfidenceFactor, DecisionConfidence, ResearchItem, RiskLimits, TimeState, TradeDecision, TradeProposal
 from app.state import default_state
+from app.trading_restrictions import activate_trading_restriction
 
 
 def _decision(n: int) -> TradeDecision:
@@ -300,3 +301,60 @@ class TestFlattenedTradesReachTheLearningLoop:
         assert flattened is not None
         assert flattened.proposal_id == "proposal-real"
         assert flattened.decision_id == "decision-proposal-real"
+
+
+class TestGenerateTradeProposalsTradingRestrictions:
+    """CEO directive "Layered Kill Switches" — the first of
+    app/trading_restrictions.py's two real enforcement points: a
+    restricted symbol/category never even reaches the CEO as a
+    proposal."""
+
+    def _item(self, symbol: str = "NEXA", category: str = "stock") -> ResearchItem:
+        return ResearchItem(
+            id=f"research-{symbol}",
+            title=f"{symbol} breakout setup",
+            symbol=symbol,
+            category=category,  # type: ignore[arg-type]
+            priority="high",
+            status="completed",
+            assignedAgent="nova",
+            summary="Real breakout pattern.",
+            confidence=90.0,
+            createdAt=_now_iso(),
+            updatedAt=_now_iso(),
+        )
+
+    def _generate(self, items, trading_restrictions=None) -> list[TradeProposal]:
+        return _generate_trade_proposals(
+            [],
+            items,
+            {"NEXA": 100.0, "OTHER": 50.0},
+            RiskLimits(),
+            default_portfolio(),
+            [],
+            [],
+            0,
+            default_market_intelligence_state(),
+            trading_restrictions,
+        )
+
+    def test_generates_a_proposal_with_no_restrictions(self) -> None:
+        proposals = self._generate([self._item()])
+        assert len(proposals) == 1
+        assert proposals[0].symbol == "NEXA"
+
+    def test_skips_a_symbol_restricted_research_item(self) -> None:
+        restrictions, _, _ = activate_trading_restriction([], scope="symbol", target="NEXA", reason="halt", now_iso=_now_iso())
+        proposals = self._generate([self._item()], trading_restrictions=restrictions)
+        assert proposals == []
+
+    def test_skips_a_category_restricted_research_item(self) -> None:
+        restrictions, _, _ = activate_trading_restriction([], scope="category", target="stock", reason="halt category", now_iso=_now_iso())
+        proposals = self._generate([self._item()], trading_restrictions=restrictions)
+        assert proposals == []
+
+    def test_an_unrelated_restriction_does_not_block_a_different_symbol(self) -> None:
+        restrictions, _, _ = activate_trading_restriction([], scope="symbol", target="NEXA", reason="halt", now_iso=_now_iso())
+        proposals = self._generate([self._item(symbol="OTHER")], trading_restrictions=restrictions)
+        assert len(proposals) == 1
+        assert proposals[0].symbol == "OTHER"

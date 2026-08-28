@@ -94,6 +94,7 @@ from app.goals import generate_strategic_review, record_strategic_review, tick_g
 from app.foundational_mentors import tick_employee_progress
 from app.emergency_stop import activate_emergency_stop
 from app.gatekeeper import MIN_CONFIDENCE as GATEKEEPER_MIN_CONFIDENCE, grade_gatekeeper_rejections
+from app.trading_restrictions import find_blocking_restriction
 from app.hall_of_fame import evaluate_hall_of_fame
 from app.innovation import compute_innovation_state
 from app.journal import stamp_journal_entry
@@ -269,6 +270,7 @@ from app.schemas import (
     DailyCircuitBreakerRead,
     LosingStreakRead,
     TradingModeState,
+    TradingRestriction,
     TreasuryState,
     WarRoomSession,
     WeightProfile,
@@ -830,6 +832,7 @@ def _generate_trade_proposals(
     scanner_alerts: list[ScannerAlert],
     now_sim_minutes: int,
     market_intelligence: MarketIntelligenceState,
+    trading_restrictions: list[TradingRestriction] | None = None,
 ) -> list[TradeProposal]:
     """Feature 12 — the CEO Approval pipeline. Every research item that
     just crossed FUTURE_TRADE_CONFIDENCE_THRESHOLD becomes a TradeProposal
@@ -837,13 +840,22 @@ def _generate_trade_proposals(
     waits for the player's own buy/sell/wait call — it no longer
     auto-executes via a majority-vote decision. Skips a symbol that
     already has a pending proposal and stops once MAX_PENDING_PROPOSALS
-    is reached, so a slow CEO doesn't get spammed with duplicates."""
+    is reached, so a slow CEO doesn't get spammed with duplicates.
+
+    `trading_restrictions` (CEO directive "Layered Kill Switches," see
+    app/trading_restrictions.py) skips a research item whose symbol or
+    whole category is currently restricted — the CEO never sees a
+    proposal for it, the first of that module's two real enforcement
+    points. `None`/empty behaves exactly as before this parameter
+    existed."""
     pending_symbols = {p.symbol for p in trade_proposals}
     new_proposals: list[TradeProposal] = []
     for item in completed_research:
         if item.confidence < FUTURE_TRADE_CONFIDENCE_THRESHOLD or not item.symbol:
             continue
         if item.symbol in pending_symbols:
+            continue
+        if trading_restrictions and find_blocking_restriction(trading_restrictions, symbol=item.symbol, category=item.category):
             continue
         if len(trade_proposals) + len(new_proposals) >= MAX_PENDING_PROPOSALS:
             break
@@ -906,6 +918,7 @@ def _apply_operating_mode(
     min_confidence_override: float | None = None,
     behavioral_cooldown_minutes: int | None = None,
     behavioral_size_increase_threshold_pct: float | None = None,
+    trading_restrictions: list[TradingRestriction] | None = None,
 ) -> tuple[list[TradeProposal], PaperPortfolio, list[ExecutiveMeetingLogEntry]]:
     """v0.7 Feature 21 — Company Operating Modes. Learning Mode never
     calls this (every proposal stays pending, the pre-Feature-21
@@ -1036,6 +1049,7 @@ def _apply_operating_mode(
             min_confidence_override=min_confidence_override,
             behavioral_cooldown_minutes=behavioral_cooldown_minutes,
             behavioral_size_increase_threshold_pct=behavioral_size_increase_threshold_pct,
+            trading_restrictions=trading_restrictions,
         )
         record_ceo_decision(memory, decision, max_records=risk_limits.max_memory_records)
         decisions.append(decision)
@@ -1179,6 +1193,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # recomputed, same as trading_mode_state above.
     travel_mode = state.travel_mode
     emergency_stop = state.emergency_stop
+    trading_restrictions = state.trading_restrictions
     is_new_sim_day = new_time.day != state.time.day
     # v0.7 Feature 37 — the Work Mode System. "rest" pauses new employee-
     # initiated work (research progress, new meetings, Academy training)
@@ -1607,7 +1622,11 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # Defensive Mode, block new proposal generation the
     # same real way.
     candidate_proposals = (
-        [] if (emergency_stop.active or block_new_proposals) else _generate_trade_proposals(trade_proposals, completed, prices, effective_risk_limits, paper_portfolio, news, scanner_alerts, now_sim_minutes, market_intelligence)
+        []
+        if (emergency_stop.active or block_new_proposals)
+        else _generate_trade_proposals(
+            trade_proposals, completed, prices, effective_risk_limits, paper_portfolio, news, scanner_alerts, now_sim_minutes, market_intelligence, trading_restrictions
+        )
     )
     # v0.7 Design Bible Chapter 58 — the Institutional Trade Filter &
     # Opportunity Gatekeeper. Every candidate above is only a raw,
@@ -1794,6 +1813,7 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
         min_confidence_override=min_confidence_override,
         behavioral_cooldown_minutes=trading_mode_state.behavioral_cooldown_minutes,
         behavioral_size_increase_threshold_pct=trading_mode_state.behavioral_size_increase_threshold_pct,
+        trading_restrictions=trading_restrictions,
     )
 
     trade_proposals, expired_proposals = expire_stale_proposals(trade_proposals, now_sim_minutes)

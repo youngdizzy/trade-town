@@ -42,9 +42,11 @@ from app.schemas import (
     RiskLimits,
     RiskWarning,
     TradeProposal,
+    TradingRestriction,
     WatchlistEntry,
     WeightedExecutiveRecommendation,
 )
+from app.trading_restrictions import find_blocking_restriction
 from app.watchlist import SYMBOL_CATEGORY
 
 MIN_CONFIDENCE = 55.0
@@ -307,6 +309,22 @@ def _account_halt_check(
     return GatekeeperCheck(id="account_halt", label="Account Risk Halt (live)", passed=passed, detail=detail, code="gatekeeper_account_halt")
 
 
+def _trading_restriction_check(proposal: TradeProposal, trading_restrictions: list[TradingRestriction]) -> GatekeeperCheck:
+    """CEO directive "Layered Kill Switches" — the Trade Gatekeeper's own
+    defense-in-depth half of app/trading_restrictions.py's two real
+    enforcement points (the other is proposal generation itself, see
+    app/nexus.py's `_generate_trade_proposals`). Catches a proposal that
+    was already pending the instant a restriction activates."""
+    restriction = find_blocking_restriction(trading_restrictions, symbol=proposal.symbol, category=proposal.category)
+    passed = restriction is None
+    detail = (
+        f"Trading is restricted on {restriction.scope} {restriction.target}: {restriction.reason}"
+        if restriction is not None
+        else "No active trading restriction on this symbol or category."
+    )
+    return GatekeeperCheck(id="trading_restriction", label="Trading Restriction", passed=passed, detail=detail, code="gatekeeper_trading_restriction")
+
+
 def evaluate_gatekeeper(
     proposal: TradeProposal,
     ceo_choice: AnalystChoice,
@@ -323,6 +341,7 @@ def evaluate_gatekeeper(
     quantity: float | None = None,
     price: float | None = None,
     sim_day: int | None = None,
+    trading_restrictions: list[TradingRestriction] | None = None,
 ) -> "GatekeeperVerdict":
     """`min_confidence_override` (Design Bible Chapter 75) — the real,
     disclosed points app/trading_modes.py's Daily Circuit Breaker adds to
@@ -352,7 +371,12 @@ def evaluate_gatekeeper(
     by the caller, plus the sim day derived the same way every other
     real call site already does (`now_sim_minutes // 1440`). None
     vacuously passes that one check, matching this function's existing
-    convention for an unready caller."""
+    convention for an unready caller.
+
+    `trading_restrictions` (CEO directive "Layered Kill Switches," see
+    app/trading_restrictions.py) feeds the new Trading Restriction
+    check — None/empty behaves exactly as before this parameter existed
+    (nothing restricted)."""
     from app.schemas import GatekeeperVerdict  # local import avoids a schemas.py forward-reference cycle at module load
 
     checks = [
@@ -374,6 +398,7 @@ def evaluate_gatekeeper(
         ),
         _failure_boundary_check(portfolio, risk_limits),
         _account_halt_check(proposal, portfolio, risk_limits, quantity, price, sim_day),
+        _trading_restriction_check(proposal, trading_restrictions or []),
     ]
     approved = all(c.passed for c in checks)
     if approved:

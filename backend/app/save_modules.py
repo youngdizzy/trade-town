@@ -74,6 +74,7 @@ MODULE_FIELDS: dict[str, tuple[str, ...]] = {
         "risk_limits",
         "risk_warnings",
         "emergency_stop",
+        "trading_restrictions",
         "viewed_trade_notification_ids",
         "performance_snapshots",
         "coach_reports",

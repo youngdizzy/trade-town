@@ -56,6 +56,8 @@ from app.debate import generate_debate
 from app.devils_advocate import MAX_CHALLENGE_REPORTS, generate_challenge_report
 from app.emergency_stop import activate_emergency_stop as _activate_emergency_stop
 from app.emergency_stop import resume_trading as _resume_trading
+from app.trading_restrictions import activate_trading_restriction as _activate_trading_restriction
+from app.trading_restrictions import lift_trading_restriction as _lift_trading_restriction
 from app.executive import MAX_CEO_DECISIONS, MAX_PROPOSAL_HOLDS, AnalystChoice, hold_proposal, modify_proposal, resolve_proposal
 from app.prediction_tracking import MAX_PREDICTION_RECORDS, build_prediction_record
 from app.executive_intelligence import (
@@ -103,7 +105,7 @@ from app.research import RESEARCHER_IDS, default_research
 from app.risk_engine import compute_daily_objective_status, compute_risk_budget_status, default_risk_limits
 from app.sandbox import apply_review_decision, begin_company_review, begin_limited_live, begin_paper_trial, generate_strategy_review
 from app.sandbox import retire_strategy as retire_strategy_stage
-from app.scribe import record_ceo_decision, record_emergency_stop_event, record_proposal_hold, record_proposal_modify, record_rule_violation, record_strategy_failed_archive_entry, record_strategy_hall_of_fame_entry
+from app.scribe import record_ceo_decision, record_emergency_stop_event, record_proposal_hold, record_proposal_modify, record_rule_violation, record_strategy_failed_archive_entry, record_strategy_hall_of_fame_entry, record_trading_restriction_event
 from app.self_improvement import decide_self_improvement_proposal, mark_self_improvement_proposal_implemented, maybe_propose_retirement_cluster, record_self_improvement_proposal
 from app.vision_board import (
     add_vision_objective,
@@ -154,6 +156,7 @@ from app.schemas import (
     TimeAdvanceTarget,
     TimeState,
     TradingMode,
+    RestrictionScope,
 )
 from app.quant_research_lab import cap_quant_research_experiments, file_quant_research_experiment, find_similar_experiments
 from app.research_experiment import run_research_experiment
@@ -960,6 +963,40 @@ class GameState:
             memory = list(self.data.memory)
             record_emergency_stop_event(memory, activated=False, max_records=self.data.risk_limits.max_memory_records)
             self.data = self.data.model_copy(update={"emergency_stop": new_state, "memory": memory})
+            return self.data, None
+
+    async def activate_trading_restriction(
+        self, *, scope: RestrictionScope, target: str, reason: str
+    ) -> tuple[GameSaveState, str | None]:
+        """CEO directive "Layered Kill Switches" — see
+        app/trading_restrictions.py's module docstring for exactly what
+        this does and does not block, and why it's scoped to
+        symbol/category rather than duplicating the firm-wide Emergency
+        Stop above."""
+        async with self.lock:
+            new_restrictions, restriction, error = _activate_trading_restriction(
+                self.data.trading_restrictions, scope=scope, target=target, reason=reason, now_iso=_now_iso()
+            )
+            if error is not None or restriction is None:
+                return self.data, error
+            memory = list(self.data.memory)
+            record_trading_restriction_event(memory, scope=scope, target=target, reason=restriction.reason, lifted=False, max_records=self.data.risk_limits.max_memory_records)
+            self.data = self.data.model_copy(update={"trading_restrictions": new_restrictions, "memory": memory})
+            return self.data, None
+
+    async def lift_trading_restriction(self, restriction_id: str, *, reason: str = "") -> tuple[GameSaveState, str | None]:
+        """Only the CEO can lift a restriction; there is no automatic
+        timeout, the same real precedent app/emergency_stop.py's own
+        resume_trading() already established."""
+        async with self.lock:
+            new_restrictions, lifted, error = _lift_trading_restriction(
+                self.data.trading_restrictions, restriction_id, reason=reason, now_iso=_now_iso()
+            )
+            if error is not None or lifted is None:
+                return self.data, error
+            memory = list(self.data.memory)
+            record_trading_restriction_event(memory, scope=lifted.scope, target=lifted.target, reason=lifted.lifted_reason or "", lifted=True, max_records=self.data.risk_limits.max_memory_records)
+            self.data = self.data.model_copy(update={"trading_restrictions": new_restrictions, "memory": memory})
             return self.data, None
 
     async def set_trading_mode(self, *, mode: TradingMode, hybrid_day_allocation_pct: float | None) -> tuple[GameSaveState, str | None]:
@@ -2115,6 +2152,7 @@ class GameState:
                 min_confidence_override=min_confidence_override,
                 behavioral_cooldown_minutes=self.data.trading_modes.behavioral_cooldown_minutes,
                 behavioral_size_increase_threshold_pct=self.data.trading_modes.behavioral_size_increase_threshold_pct,
+                trading_restrictions=self.data.trading_restrictions,
             )
 
             if override_reason and not ceo_record.agreed_with_ai:

@@ -10,7 +10,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.config import settings
 from app.db import init_db
 from app.persistence import DEFAULT_SLOT, ensure_default_run_registered, get_active_run_id, load_state, persist_modules, register_run, set_active_slot
-from app.routers import accounts, agent_trading_status, audit, black_box, black_swan, board, calendar, calibration, constitution, decision_vault, education, emergency, energy, executive, failure_review, foundational_mentors, goals, health, institutional_memory, knowledge_graph, market, mentor, performance_review, player_vs_ai, prediction_tracking, quant_developer, risk, runs, sandbox, save, self_improvement, situation_room, skill_progression, talent, time, trades, trading_modes, travel_mode, treasury, vision_board, ws
+from app.routers import accounts, agent_trading_status, audit, black_box, black_swan, board, calendar, calibration, constitution, decision_vault, education, emergency, energy, executive, failure_review, foundational_mentors, goals, health, institutional_memory, knowledge_graph, market, mentor, performance_review, player_vs_ai, prediction_tracking, quant_developer, risk, runs, sandbox, save, self_improvement, situation_room, skill_progression, talent, time, trades, trading_modes, trading_restrictions, travel_mode, treasury, vision_board, ws
 from app.sim import run_sim_loop
 from app.state import game_state
 
@@ -100,6 +100,7 @@ app.include_router(emergency.router)
 app.include_router(black_swan.router)
 app.include_router(audit.router)
 app.include_router(trading_modes.router)
+app.include_router(trading_restrictions.router)
 app.include_router(situation_room.router)
 app.include_router(travel_mode.router)
 app.include_router(board.router)

@@ -265,6 +265,22 @@ def _entries_from_memory(memory: list[MemoryRecord], current_sim_day: int) -> li
                     relatedId=None,
                 )
             )
+        elif m.category == "alert" and m.title.startswith("Trading Restriction"):
+            # CEO directive "Layered Kill Switches" —
+            # app/trading_restrictions.py's activate/lift.
+            entries.append(
+                AuditEntry(
+                    id=f"audit-tradingrestriction-{m.id}",
+                    timestamp=m.timestamp,
+                    simDay=current_sim_day,
+                    category="trading_restriction",
+                    severity="warning" if m.title == "Trading Restriction activated" else "info",
+                    department="Risk Management",
+                    summary=m.title,
+                    detail=m.body,
+                    relatedId=None,
+                )
+            )
         elif m.category == "alert" and m.title.startswith("Daily Circuit Breaker"):
             # Design Bible Chapter 75 — app/trading_modes.py's build_circuit_breaker_tier_memory().
             entries.append(
