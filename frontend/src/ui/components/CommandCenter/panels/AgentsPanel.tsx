@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { AGENT_IDS } from "@/types";
-import type { AgentTradingStatus, AgentTradingStatusRead } from "@/types";
+import type { AgentTradingStatus, AgentTradingStatusRead, AgentVoteAccuracyScore } from "@/types";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { api } from "@/net/api";
 import { EmptyState, Glass, Meter, StatusPill } from "../ui";
@@ -14,10 +14,23 @@ const TRADING_STATUS_TONE: Record<AgentTradingStatus, "neutral" | "cyan" | "gree
   not_trading_role: "purple",
 };
 
+// CEO directive "Professional Quant Trading Core," Phase B's per-agent
+// learning follow-up — real vote-accuracy evidence exists for at most
+// the six agents who ever actually cast an AnalystVote (see
+// backend/app/executive.py's generate_analyst_votes). "pass"/"fail" use
+// the same green/red convention as TRADING_STATUS_TONE above.
+const ACCURACY_TONE: Record<AgentVoteAccuracyScore["evaluationState"], "green" | "amber" | "red" | "neutral"> = {
+  pass: "green",
+  inconclusive: "amber",
+  fail: "red",
+  not_enough_evidence: "neutral",
+};
+
 /** The nine-agent roster as a real status board — only fields TradeTown's backend actually tracks per agent (see AgentState in types.ts); no fabricated activity feed. */
 export function AgentsPanel() {
   const { agents, tasks, research } = useGameStore();
   const [tradingStatus, setTradingStatus] = useState<Record<string, AgentTradingStatusRead>>({});
+  const [voteAccuracy, setVoteAccuracy] = useState<Record<string, AgentVoteAccuracyScore>>({});
 
   // CEO directive "Command Center + Professional Quant Trading Firm
   // Upgrade," Phase 2 — real per-agent trading-status explainability
@@ -27,6 +40,16 @@ export function AgentsPanel() {
     api
       .getAgentTradingStatus()
       .then((reads) => setTradingStatus(Object.fromEntries(reads.map((r) => [r.agentId, r]))))
+      .catch(() => undefined);
+  }, []);
+
+  // CEO directive "Professional Quant Trading Core," Phase B's per-agent
+  // learning follow-up (backend/app/executive_intelligence.py's
+  // compute_agent_vote_accuracy()). On-demand, same convention as above.
+  useEffect(() => {
+    api
+      .getAgentVoteAccuracy()
+      .then((reads) => setVoteAccuracy(Object.fromEntries(reads.map((r) => [r.agentId, r]))))
       .catch(() => undefined);
   }, []);
 
@@ -41,6 +64,7 @@ export function AgentsPanel() {
         const activeResearch = research.find((r) => r.assignedAgent === id && r.status === "in_progress") ?? null;
         const idle = state.location === "lobby" || state.location === "break-room";
         const trading = tradingStatus[id];
+        const accuracy = voteAccuracy[id];
 
         return (
           <Glass key={id} className="p-3">
@@ -60,6 +84,15 @@ export function AgentsPanel() {
                 </div>
                 <div className="text-cmd-text">{trading.headline}</div>
                 <div className="mt-0.5 text-cmd-textDim">{trading.detail}</div>
+              </div>
+            )}
+
+            {accuracy && accuracy.decisionsTracked > 0 && (
+              <div className="mb-1.5 flex items-center justify-between gap-2 rounded-sm border border-cmd-border/50 bg-cmd-bg/40 p-1.5 text-[9px]">
+                <span className="text-cmd-textDim">
+                  Vote Accuracy ({accuracy.correctCount}/{accuracy.decisionsTracked})
+                </span>
+                <StatusPill tone={ACCURACY_TONE[accuracy.evaluationState]}>{accuracy.accuracyPct?.toFixed(0)}%</StatusPill>
               </div>
             )}
 

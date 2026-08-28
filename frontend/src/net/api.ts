@@ -4,6 +4,7 @@ import type {
   AgentEnergy,
   AgentId,
   AgentTradingStatusRead,
+  AgentVoteAccuracyScore,
   AlertSeverity,
   AnalystChoice,
   AuditEntry,
@@ -403,6 +404,9 @@ export const api = {
   getProcessAdherenceSummary: () => request<ProcessAdherenceSummaryRead>("/executive/process-adherence-summary"),
   // Design Bible Chapter 70 Part 2 — Executive Accuracy Score.
   getExecutiveAccuracy: () => request<ExecutiveAccuracyScore[]>("/executive/accuracy"),
+  // CEO directive "Professional Quant Trading Core," Phase B's per-agent
+  // learning follow-up — the same accuracy read per individual agent.
+  getAgentVoteAccuracy: () => request<AgentVoteAccuracyScore[]>("/executive/agent-accuracy"),
   // Design Bible Chapter 70 Part 3 — Weighted Executive Decision Engine.
   // `profile` optionally previews a profile without persisting it.
   getWeightedDecision: (proposalId: string, profile?: WeightProfile) =>

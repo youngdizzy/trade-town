@@ -3100,6 +3100,20 @@ export interface ExecutiveAccuracyScore {
   evaluationState: ExecutiveEvidenceState;
 }
 
+// CEO directive "Professional Quant Trading Core," Phase B's per-agent
+// learning follow-up — the exact same evidence shape as
+// ExecutiveAccuracyScore above, per individual named agent (AgentId)
+// instead of per department. Only the six agents who ever actually cast
+// a real AnalystVote (echo, scout, nova, sentinel, pulse, atlas) ever
+// carry real tracked evidence.
+export interface AgentVoteAccuracyScore {
+  agentId: AgentId;
+  decisionsTracked: number;
+  correctCount: number;
+  accuracyPct: number | null;
+  evaluationState: ExecutiveEvidenceState;
+}
+
 export const EXECUTIVE_DEPARTMENT_LABEL: Record<ExecutiveDepartmentRole, string> = {
   research: "Research",
   quant: "Quant",
