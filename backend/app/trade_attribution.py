@@ -44,6 +44,7 @@ identically, honestly, as "no decision on record" rather than guessing.
 from __future__ import annotations
 
 from datetime import datetime, timezone
+from typing import Literal
 
 from app.executive import ROLE_TO_AGENT
 from app.schemas import (
@@ -54,6 +55,7 @@ from app.schemas import (
     PaperTrade,
     TradeAttributionRecord,
     TradeAttributionSummary,
+    StrategyComplianceRead,
     TradeDecision,
     TradeStrategyProvenanceState,
     TradeStrategyRuleSnapshot,
@@ -294,6 +296,72 @@ def compute_unattributed_trade_monitor(
     )
 
 
+def evaluate_strategy_compliance(trade: PaperTrade, compiled_definition: CompiledStrategyDefinition) -> StrategyComplianceRead:
+    """CEO directive "Professional Quant Trading Core," Phase B P2 item.
+
+    Real, checkable ONLY for a `fixed_percent` stop — `trade.pnl_pct` is
+    already sign-normalized for direction by `app/portfolio.py`'s own
+    `close_position()` (positive = profit regardless of buy/sell side),
+    so a real loss worse than the stop's own stated `-percent` is a real,
+    disclosed violation: this paper broker never places a real stop-loss
+    order (see `app/gatekeeper.py`'s own module docstring), so this
+    answers "if the strategy's own stated stop had actually been an
+    enforced order, would this real loss have been avoided." `chandelier`/
+    `swing_level` stops are honestly `"not_checkable"` — both need
+    re-deriving the real historical price level that was active at open
+    time, which this codebase's mock candle provider (a stochastic walk,
+    not a fixed replayable history) cannot reliably reconstruct after
+    the fact.
+
+    The target check is purely informational (`target_check_detail`) —
+    reaching or not reaching a real target is never itself a compliance
+    violation, only the stop is. An `r_multiple` target's implied
+    percent is only computable when the stop is itself `fixed_percent`
+    (an R-multiple target has no real meaning without a real R to
+    multiply)."""
+    stop = compiled_definition.stop
+    target = compiled_definition.target
+
+    if stop is None or stop.method != "fixed_percent" or stop.percent is None:
+        stop_method_detail = "no stop defined" if stop is None else f"a {stop.method.replace('_', ' ')} stop"
+        return StrategyComplianceRead(
+            verdict="not_checkable",
+            stopCheckDetail=(
+                f"This strategy specifies {stop_method_detail} — only a fixed-percent stop can be honestly checked "
+                "after the fact; ATR/swing-level stops require re-deriving a historical price level this codebase's "
+                "mock candle data does not reliably preserve."
+            ),
+            targetCheckDetail="Not checkable — see the stop check above.",
+        )
+
+    max_allowed_loss_pct = -abs(stop.percent)
+    if trade.pnl_pct < max_allowed_loss_pct:
+        verdict: Literal["compliant", "stop_violated"] = "stop_violated"
+        stop_detail = (
+            f"Real result of {trade.pnl_pct:+.2f}% exceeded the strategy's own stated max loss of "
+            f"-{stop.percent:.2f}% — a real, enforced stop order at that level would have avoided this loss "
+            "(this paper broker never places one)."
+        )
+    else:
+        verdict = "compliant"
+        stop_detail = f"Real result of {trade.pnl_pct:+.2f}% stayed within the strategy's own stated max loss of -{stop.percent:.2f}%."
+
+    if target is None:
+        target_detail = "No real target specified for this strategy."
+    elif target.method == "fixed_percent":
+        reached = trade.pnl_pct >= target.value
+        target_detail = f"Real target was +{target.value:.2f}% — this trade's real result of {trade.pnl_pct:+.2f}% {'reached or exceeded it' if reached else 'did not reach it'}."
+    else:  # r_multiple, only meaningful against this same real fixed-percent stop
+        implied_target_pct = stop.percent * target.value
+        reached = trade.pnl_pct >= implied_target_pct
+        target_detail = (
+            f"Real target was {target.value:.1f}R (a real +{implied_target_pct:.2f}% against the {stop.percent:.2f}% stop) — "
+            f"this trade's real result of {trade.pnl_pct:+.2f}% {'reached or exceeded it' if reached else 'did not reach it'}."
+        )
+
+    return StrategyComplianceRead(verdict=verdict, stopCheckDetail=stop_detail, targetCheckDetail=target_detail)
+
+
 def resolve_trade_strategy_rule_snapshot(
     trade_id: str,
     trade_history: list[PaperTrade],
@@ -318,9 +386,11 @@ def resolve_trade_strategy_rule_snapshot(
             attribution.strategy_compiled_definition_id,
             attribution.strategy_compiled_definition_version,
         )
+    compliance = evaluate_strategy_compliance(trade, compiled_definition) if compiled_definition is not None else None
     return TradeStrategyRuleSnapshot(
         tradeId=trade_id,
         strategyId=attribution.strategy_id,
         strategyProvenanceState=attribution.strategy_provenance_state,
         compiledDefinition=compiled_definition,
+        compliance=compliance,
     )

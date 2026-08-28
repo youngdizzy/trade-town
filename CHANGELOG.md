@@ -158,6 +158,39 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"Professional Quant Trading Core" follow-up: Strategy-Compliance-at-Execution Wiring.** Closes
+  another P2 item from that directive's deferred list. `app/trade_attribution.py`'s existing
+  `TradeStrategyRuleSnapshot` already snapshotted a trade's real compiled strategy rules at decision
+  time (stop/target specs), but nothing checked whether the trade's own real execution actually
+  complied with them. New `evaluate_strategy_compliance()` closes that gap — honestly, only where it's
+  real: this paper broker never places a real stop-loss order (`app/gatekeeper.py`'s own module
+  docstring already discloses this), so the check answers "if the strategy's own stated stop had
+  actually been a real, enforced order, would this loss have been avoided" — a real `stop_violated`
+  verdict when `trade.pnl_pct` (already sign-normalized for direction by `portfolio.py`'s
+  `close_position()`) fell further than a `fixed_percent` stop's own `-percent`. `chandelier`/
+  `swing_level` stops are honestly `"not_checkable"`, never a fabricated verdict — both need
+  re-deriving a historical price level this codebase's mock candle provider (a stochastic walk, not a
+  replayable fixed history) cannot reliably reconstruct after the fact. The target check is purely
+  informational (an `r_multiple` target's implied percent is computed only when the stop is itself
+  `fixed_percent`, since an R-multiple has no real meaning without a real R) — reaching or not reaching
+  a target is never itself a compliance violation.
+  - New `StrategyComplianceRead` schema (`verdict`: `compliant`/`stop_violated`/`not_checkable`, plus
+    disclosed `stopCheckDetail`/`targetCheckDetail`), wired as a new `compliance` field directly onto
+    `TradeStrategyRuleSnapshot` — the already-existing `GET /api/trades/{trade_id}/strategy-rule-
+    snapshot` endpoint required zero router changes to start returning it.
+  - Frontend: `DecisionVaultPanel.tsx`'s existing "Compiled Rules at Decision Time" card gained a new
+    Strategy Compliance section (verdict pill + both disclosed detail sentences) right below the
+    existing stop/target display. `tsc`/lint/build clean; live-verified end-to-end against the real
+    running dev stack with a real seeded strategy/trade/decision chain (a real -5% loss against a real
+    2% fixed-percent stop and a 2R target → correctly returned `stop_violated` with the exact real
+    numbers in both detail sentences); a regression Playwright spec (removed after verification)
+    confirmed the Decision Vault panel still renders correctly with zero console errors.
+  - 13 new tests in `test_trade_attribution.py` (every stop method including the two honestly
+    not_checkable ones, the exact stop boundary, a real win always compliant, both target methods'
+    reached/not-reached cases, the real R-multiple-against-stop computation, and two tests confirming
+    the function is actually wired into `resolve_trade_strategy_rule_snapshot()`, not just unit-tested
+    in isolation). Full backend suite green (2842 passed), mypy/ruff clean.
+
 - **"Professional Quant Trading Core" follow-up: Live Recovery Factor.** Closes another P2 item from
   that directive's deferred list — a real, standard quant performance ratio (net profit divided by the
   account's own worst real peak-to-trough drawdown, in dollars), the same real family as the Calmar

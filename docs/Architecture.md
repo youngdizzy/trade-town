@@ -14674,7 +14674,8 @@ below), a formal watchlist eligibility-tier system beyond the feed
 Engine/asset-class taxonomy, per-agent learning, Brier-score
 calibration (also closed in a later follow-up — see below), live
 recovery factor (also closed in a later follow-up — see below),
-strategy-compliance-at-execution wiring.
+strategy-compliance-at-execution wiring (also closed in a later
+follow-up — see below).
 
 **Phase C — implementation.**
 
@@ -14875,6 +14876,40 @@ Carlo card — `tsc`/lint/build clean, live-smoke-tested with real seeded
 trade data (a $50k win then a $10k giveback → net profit $40k, worst
 drawdown $10k, recovery factor 4.00x) via a temporary Playwright spec.
 10 new tests, full backend suite green (2829 passed), mypy/ruff clean.
+
+**Follow-up — Strategy-Compliance-at-Execution Wiring.** Closes the
+final P2 item named above. `app/trade_attribution.py`'s existing
+`TradeStrategyRuleSnapshot` already snapshotted a trade's real compiled
+strategy rules at decision time, but nothing checked whether the
+trade's own real execution actually complied with them. New
+`evaluate_strategy_compliance()` closes that honestly: this paper
+broker never places a real stop-loss order (`app/gatekeeper.py`'s own
+docstring already discloses this), so the check answers "if the
+strategy's own stated stop had actually been enforced, would this loss
+have been avoided" — real `stop_violated` when `trade.pnl_pct` (already
+sign-normalized by `portfolio.py`'s `close_position()`) exceeded a
+`fixed_percent` stop's own `-percent`. `chandelier`/`swing_level` stops
+are honestly `"not_checkable"`, never a fabricated verdict — both need
+re-deriving a historical price level the mock candle provider's
+stochastic walk cannot reliably reconstruct after the fact. The target
+check is purely informational, never itself a violation. New
+`StrategyComplianceRead` schema wired as a new `compliance` field
+directly onto `TradeStrategyRuleSnapshot` — the existing `GET
+/api/trades/{trade_id}/strategy-rule-snapshot` endpoint required zero
+router changes. Frontend: `DecisionVaultPanel.tsx`'s existing "Compiled
+Rules at Decision Time" card gained a new compliance section (verdict
+pill + both detail sentences). `tsc`/lint/build clean; live-verified
+end-to-end against the real running dev stack with a real seeded
+strategy/trade/decision chain (a real -5% loss against a real 2%
+fixed-percent stop and a 2R target → correctly returned
+`stop_violated` with the exact real numbers). 13 new tests including
+two confirming the real wiring into `resolve_trade_strategy_rule_
+snapshot()`, full backend suite green (2842 passed), mypy/ruff clean.
+
+This closes every item on the "Professional Quant Trading Core"
+directive's own P2 deferred list except a true Asset Discovery
+Engine/asset-class taxonomy and per-agent learning — both genuinely
+larger architectural lifts, not yet attempted.
 
 ## CEO directive "Professional Quant Live Trading Desk"
 

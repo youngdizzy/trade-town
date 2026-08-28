@@ -13,6 +13,8 @@ from app.schemas import (
     GatekeeperCheck,
     GatekeeperVerdict,
     PaperTrade,
+    StrategyStopSpec,
+    StrategyTargetSpec,
     TradeDecision,
 )
 from app.trade_attribution import (
@@ -20,6 +22,7 @@ from app.trade_attribution import (
     compute_trade_attribution,
     compute_trade_attribution_history,
     compute_unattributed_trade_monitor,
+    evaluate_strategy_compliance,
     resolve_trade_strategy_rule_snapshot,
 )
 
@@ -574,3 +577,135 @@ class TestComputeUnattributedTradeMonitor:
         # trades list is [recent..., early...] -- deliberately reversed
         monitor = compute_unattributed_trade_monitor(trades, decisions, ceo_decisions)
         assert monitor.trend == "improving"
+
+
+class TestEvaluateStrategyCompliance:
+    """CEO directive "Professional Quant Trading Core," Phase B P2 item
+    — real, checkable ONLY against a fixed-percent stop; ATR/swing-level
+    stops are honestly not_checkable, never a fabricated verdict."""
+
+    def test_no_stop_defined_is_not_checkable(self) -> None:
+        trade = _trade(pnl_pct=-10.0)
+        definition = _compiled_definition()  # stop=None by default
+        result = evaluate_strategy_compliance(trade, definition)
+        assert result.verdict == "not_checkable"
+
+    def test_chandelier_stop_is_not_checkable(self) -> None:
+        trade = _trade(pnl_pct=-10.0)
+        definition = _compiled_definition().model_copy(update={"stop": StrategyStopSpec(method="chandelier", atrPeriod=14, atrMultiplier=3.0)})
+        result = evaluate_strategy_compliance(trade, definition)
+        assert result.verdict == "not_checkable"
+
+    def test_swing_level_stop_is_not_checkable(self) -> None:
+        trade = _trade(pnl_pct=-10.0)
+        definition = _compiled_definition().model_copy(update={"stop": StrategyStopSpec(method="swing_level")})
+        result = evaluate_strategy_compliance(trade, definition)
+        assert result.verdict == "not_checkable"
+
+    def test_a_loss_within_the_real_stop_is_compliant(self) -> None:
+        trade = _trade(pnl_pct=-1.5)
+        definition = _compiled_definition().model_copy(update={"stop": StrategyStopSpec(method="fixed_percent", percent=2.0)})
+        result = evaluate_strategy_compliance(trade, definition)
+        assert result.verdict == "compliant"
+
+    def test_a_loss_exceeding_the_real_stop_is_a_violation(self) -> None:
+        trade = _trade(pnl_pct=-5.0)
+        definition = _compiled_definition().model_copy(update={"stop": StrategyStopSpec(method="fixed_percent", percent=2.0)})
+        result = evaluate_strategy_compliance(trade, definition)
+        assert result.verdict == "stop_violated"
+        assert "-2.00%" in result.stop_check_detail
+
+    def test_a_real_win_is_always_compliant_regardless_of_stop(self) -> None:
+        trade = _trade(pnl_pct=8.0)
+        definition = _compiled_definition().model_copy(update={"stop": StrategyStopSpec(method="fixed_percent", percent=2.0)})
+        result = evaluate_strategy_compliance(trade, definition)
+        assert result.verdict == "compliant"
+
+    def test_exactly_at_the_stop_boundary_is_compliant_not_violated(self) -> None:
+        trade = _trade(pnl_pct=-2.0)
+        definition = _compiled_definition().model_copy(update={"stop": StrategyStopSpec(method="fixed_percent", percent=2.0)})
+        result = evaluate_strategy_compliance(trade, definition)
+        assert result.verdict == "compliant"
+
+    def test_fixed_percent_target_reached(self) -> None:
+        trade = _trade(pnl_pct=5.0)
+        definition = _compiled_definition().model_copy(
+            update={"stop": StrategyStopSpec(method="fixed_percent", percent=2.0), "target": StrategyTargetSpec(method="fixed_percent", value=4.0)}
+        )
+        result = evaluate_strategy_compliance(trade, definition)
+        assert "reached or exceeded" in result.target_check_detail
+
+    def test_fixed_percent_target_not_reached(self) -> None:
+        trade = _trade(pnl_pct=1.0)
+        definition = _compiled_definition().model_copy(
+            update={"stop": StrategyStopSpec(method="fixed_percent", percent=2.0), "target": StrategyTargetSpec(method="fixed_percent", value=4.0)}
+        )
+        result = evaluate_strategy_compliance(trade, definition)
+        assert "did not reach" in result.target_check_detail
+
+    def test_r_multiple_target_computed_against_the_real_stop_distance(self) -> None:
+        # A 2R target against a 2% stop implies a real +4% target level.
+        trade = _trade(pnl_pct=5.0)
+        definition = _compiled_definition().model_copy(
+            update={"stop": StrategyStopSpec(method="fixed_percent", percent=2.0), "target": StrategyTargetSpec(method="r_multiple", value=2.0)}
+        )
+        result = evaluate_strategy_compliance(trade, definition)
+        assert "+4.00%" in result.target_check_detail
+        assert "reached or exceeded" in result.target_check_detail
+
+    def test_no_target_defined_is_disclosed(self) -> None:
+        trade = _trade(pnl_pct=1.0)
+        definition = _compiled_definition().model_copy(update={"stop": StrategyStopSpec(method="fixed_percent", percent=2.0)})
+        result = evaluate_strategy_compliance(trade, definition)
+        assert "No real target" in result.target_check_detail
+
+
+class TestResolveTradeStrategyRuleSnapshotCompliance:
+    """Confirms evaluate_strategy_compliance() is actually wired into
+    resolve_trade_strategy_rule_snapshot(), not just unit-tested in
+    isolation."""
+
+    def test_compliance_is_none_when_no_compiled_definition_exists(self) -> None:
+        trade = _trade()
+        snapshot = resolve_trade_strategy_rule_snapshot(trade.id, [trade], [], [], {})
+        assert snapshot is not None
+        assert snapshot.compliance is None
+
+    def test_compliance_is_populated_when_a_real_compiled_definition_resolves(self) -> None:
+        trade = _trade(decision_id="decision-1", pnl_pct=-5.0)
+        definition = _compiled_definition().model_copy(update={"stop": StrategyStopSpec(method="fixed_percent", percent=2.0)})
+        decision = TradeDecision(
+            id="decision-1",
+            symbol="AAPL",
+            outcome="trade",
+            votes=[],
+            researchSummary="x",
+            technicalSummary="x",
+            fundamentalSummary="x",
+            riskSummary="x",
+            supportingAgents=["scout"],
+            opposingAgents=[],
+            confidence=90.0,
+            finalReasoning="x",
+            createdAt="2024-01-01T00:00:00+00:00",
+        )
+        ceo_decision = CeoDecisionRecord(
+            id="ceo-decision-1",
+            proposalId="proposal-1",
+            symbol="AAPL",
+            category="stock",  # type: ignore[arg-type]
+            aiRecommendation="buy",  # type: ignore[arg-type]
+            ceoDecision="buy",  # type: ignore[arg-type]
+            agreedWithAi=True,
+            decisionId="decision-1",
+            outcome="pending",
+            strategyId="strategy-1",
+            strategyCompiledDefinitionId=definition.id,
+            strategyCompiledDefinitionVersion=definition.version,
+            createdAt="2024-01-01T00:00:00+00:00",
+        )
+        registry = {definition.id: [definition]}
+        snapshot = resolve_trade_strategy_rule_snapshot(trade.id, [trade], [decision], [ceo_decision], registry)
+        assert snapshot is not None
+        assert snapshot.compliance is not None
+        assert snapshot.compliance.verdict == "stop_violated"

@@ -4450,6 +4450,28 @@ class CompiledStrategyDefinition(CamelModel):
     detail: str
 
 
+# CEO directive "Professional Quant Trading Core," Phase B P2 item —
+# strategy-compliance-at-execution wiring. Real, checkable ONLY for a
+# `fixed_percent` stop: the paper broker never places a real stop-loss
+# order (see app/gatekeeper.py's own docstring), so this answers "if the
+# strategy's own stated stop had actually been enforced as a real order,
+# would this trade's real loss have been avoided" — never a fabricated
+# verdict for a stop method (`chandelier`/`swing_level`) whose real
+# historical level this codebase cannot reliably reconstruct after the
+# fact (both need re-deriving past candle data the mock provider's
+# stochastic walk doesn't preserve). See
+# app/trade_attribution.py's evaluate_strategy_compliance().
+StrategyComplianceVerdict = Literal["compliant", "stop_violated", "not_checkable"]
+
+
+class StrategyComplianceRead(CamelModel):
+    verdict: StrategyComplianceVerdict
+    stop_check_detail: str = Field(alias="stopCheckDetail")
+    # Purely informational — reaching or not reaching a real target is
+    # never itself a compliance violation.
+    target_check_detail: str = Field(alias="targetCheckDetail")
+
+
 # CEO directive "Complete Trade Provenance," Part 2 — resolves a real
 # closed trade's strategy-rule snapshot (CeoDecisionRecord.
 # strategyCompiledDefinitionId/Version) back into the exact immutable
@@ -4460,12 +4482,16 @@ class TradeStrategyRuleSnapshot(CamelModel):
     != "known"`, the picked Strategy had no compiled rules yet at
     decision time, or (a defensive, should-not-happen case) the
     snapshot doesn't resolve against the real, append-only
-    compiled_strategy_versions history — never a fabricated rule set."""
+    compiled_strategy_versions history — never a fabricated rule set.
+    `compliance` is `None` under the exact same conditions
+    `compiledDefinition` is — there is no real rule set to check
+    compliance against."""
 
     trade_id: str = Field(alias="tradeId")
     strategy_id: str | None = Field(default=None, alias="strategyId")
     strategy_provenance_state: TradeStrategyProvenanceState = Field(alias="strategyProvenanceState")
     compiled_definition: CompiledStrategyDefinition | None = Field(default=None, alias="compiledDefinition")
+    compliance: StrategyComplianceRead | None = Field(default=None)
 
 
 # CEO directive "AHL-Inspired Systematic Trend & Momentum Research

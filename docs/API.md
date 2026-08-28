@@ -2152,6 +2152,20 @@ edit to the same strategy never changes what an already-decided trade's
 snapshot resolves to. Computed fresh per request; no new `GameSaveState`
 field.
 
+CEO directive "Professional Quant Trading Core," Phase B P2 item
+(strategy-compliance-at-execution wiring) added a `compliance` field —
+`null` under the exact same conditions `compiledDefinition` is `null`.
+When present, a `StrategyComplianceRead`: `verdict`
+(`"compliant"`/`"stop_violated"`/`"not_checkable"`), `stopCheckDetail`,
+`targetCheckDetail` (purely informational — reaching/not reaching a
+target is never itself a violation). Real and checkable ONLY when the
+strategy's stop is `fixed_percent` — `chandelier`/`swing_level` stops
+honestly return `"not_checkable"`, since this paper broker never places
+a real stop-loss order and this codebase's mock candle data cannot
+reliably reconstruct a past historical stop level after the fact. See
+`app/trade_attribution.py`'s `evaluate_strategy_compliance()` for the
+full real methodology.
+
 ### `GET /api/trades/performance-by-strategy-session`
 
 CEO directive "Live Trade → Strategy Provenance," Phase 6 — the one
