@@ -242,18 +242,24 @@ class TestVolatilityScaledExposureResearch:
         result = research_volatility_scaled_exposure(calm, "TEST", signal_strength=1.0, target_risk_pct=5.0, max_exposure_pct=10.0)
         assert result.capped_exposure_pct <= 10.0
 
-    def test_never_wires_into_position_sizing(self) -> None:
-        """Structural check: app/position_sizing.py — the real,
-        authoritative live sizing pipeline — must have zero import of
-        this research-only module, proving the volatility-scaled
-        exposure research above cannot silently influence a real
-        position size."""
-        import inspect
-
-        import app.position_sizing as position_sizing_module
-
-        source = inspect.getsource(position_sizing_module)
-        assert "trend_engine" not in source
+    # Historical note: this class previously carried a structural test
+    # (`test_never_wires_into_position_sizing`) asserting
+    # app/position_sizing.py had zero import of this module. That
+    # boundary was an intentional, disclosed scope cut at the time the
+    # Multi-Horizon Trend Engine directive first shipped this
+    # calculator as research-only. The "AHL-Inspired Systematic Trend &
+    # Momentum Research Engine" directive's own follow-up later
+    # promoted it into position_sizing.py's real narrowing-only
+    # `min(...)` cap chain (see `_inverse_vol_sizing()`'s own
+    # docstring for the exact, still-disclosed honesty boundary against
+    # true cross-portfolio weighting) — a deliberate architecture
+    # change, not a regression. The correct invariant now is dynamic,
+    # not structural: this cap can only ever narrow `final_quantity`,
+    # never widen it, exactly like every other real cap beside it. That
+    # invariant is covered by `tests/test_position_sizing.py`'s
+    # `TestBuildPositionSizingInverseVolCap` (each case asserts
+    # `final_quantity <= candidate_quantity` under varying real
+    # volatility/signal inputs), not repeated here.
 
 
 class TestCrossSectionalRanking:

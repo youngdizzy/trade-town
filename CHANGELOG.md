@@ -203,6 +203,15 @@ development milestones, not semver releases.
     in `test_position_sizing.py`; `TestCorrelatedClusterAgentLabeling` [4] in
     `test_portfolio_intelligence.py`), full backend suite, `mypy`/`ruff` clean. Frontend `tsc`/lint/build
     clean.
+  - **A full-suite re-run caught a real, honest regression this pass introduced**:
+    `test_trend_engine.py::TestVolatilityScaledExposureResearch::test_never_wires_into_position_sizing`
+    was a structural check, written when the Multi-Horizon Trend Engine directive first shipped
+    `research_volatility_scaled_exposure()` as research-only, asserting `app/position_sizing.py` had zero
+    import of `app/trend_engine.py`. This pass's own inverse-vol promotion deliberately breaks that old
+    boundary — a disclosed architecture change, not a bug — so the obsolete test was replaced with a
+    docstring explaining the change and pointing at the real invariant that now matters
+    (`TestBuildPositionSizingInverseVolCap`'s dynamic `final_quantity <= candidate_quantity` checks, which
+    already prove the new wiring only narrows, never widens). Full suite re-confirmed green after the fix.
 
 - **"AHL-Inspired Systematic Trend & Momentum Research Engine" follow-up: dedicated Research UI panel
   — closed by discovery, not construction.** The original directive's Phase 14 asked for "a dedicated

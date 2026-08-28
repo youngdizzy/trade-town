@@ -15826,10 +15826,25 @@ slice — the change is additive schema fields plus a rendering path that
 mirrors an already-verified pattern (`volatilitySizing`'s own
 AVAILABLE/UNAVAILABLE section), not new interaction surface.
 
+**Real regression caught by a full-suite re-run.**
+`test_trend_engine.py`'s `test_never_wires_into_position_sizing` was a
+structural check from the original Multi-Horizon Trend Engine pass,
+asserting `app/position_sizing.py` had zero import of
+`app/trend_engine.py` — true at the time, since
+`research_volatility_scaled_exposure()` was research-only. This pass's
+own inverse-vol promotion deliberately crosses that old boundary, which
+is the intended, disclosed change, not a bug — so the obsolete test was
+replaced with a docstring explaining why, pointing at the real
+invariant that now matters: `TestBuildPositionSizingInverseVolCap`'s
+dynamic `final_quantity <= candidate_quantity` assertions, which prove
+the new wiring only narrows, never widens. Full suite re-confirmed
+green after the fix.
+
 **Files changed.** Backend: `app/position_sizing.py`,
 `app/portfolio_intelligence.py`, `app/schemas.py`,
-`tests/test_position_sizing.py`, `tests/test_portfolio_intelligence.py`.
-Frontend: `types.ts`, `panels/WarRoomPanel.tsx`. Docs: `CHANGELOG.md`.
+`tests/test_position_sizing.py`, `tests/test_portfolio_intelligence.py`,
+`tests/test_trend_engine.py`. Frontend: `types.ts`,
+`panels/WarRoomPanel.tsx`. Docs: `CHANGELOG.md`.
 
 ## CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance"
 
