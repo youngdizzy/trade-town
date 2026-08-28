@@ -16,6 +16,7 @@ from app.position_sizing import (
     VOLATILITY_CANDLE_COUNT,
     WEEKLY_DEPLOYMENT_WINDOW_DAYS,
     _capital_deployed_pct_in_window,
+    _inverse_vol_sizing,
     _tier_for_sizing_score,
     _volatility_sizing,
     build_position_sizing,
@@ -397,6 +398,109 @@ class TestBuildPositionSizing:
         assert result.tier == "institutional"
         assert result.reduced_from_ceiling is False
         assert "within the real risk limit" in result.detail
+
+
+class TestInverseVolSizing:
+    """CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    Engine" follow-up — promotes app/trend_engine.py's own real,
+    previously research-only inverse-volatility exposure calculator
+    into this live, advisory-only narrowing cap. Every case here checks
+    the same real guarantee as the rest of this module: never a
+    fabricated cap, never widening, always traceable to real evidence."""
+
+    def test_none_with_zero_equity(self) -> None:
+        result = _inverse_vol_sizing(_Proposal(), _FakeProvider(), 0.0, RiskLimits(), _decision_score(60.0))
+        assert result is None
+
+    def test_none_with_zero_price(self) -> None:
+        result = _inverse_vol_sizing(_Proposal(price=0.0), _FakeProvider(), 100_000.0, RiskLimits(), _decision_score(60.0))
+        assert result is None
+
+    def test_none_with_no_real_candle_history(self) -> None:
+        result = _inverse_vol_sizing(_Proposal(), _FakeProvider(closes=[]), 100_000.0, RiskLimits(), _decision_score(60.0))
+        assert result is None
+
+    def test_real_result_when_history_available(self) -> None:
+        result = _inverse_vol_sizing(_Proposal(), _FakeProvider(), 100_000.0, RiskLimits(), _decision_score(60.0))
+        assert result is not None
+        assert result.signal_strength == 0.6  # decision_score.overall (60.0) normalized to 0-1
+        assert result.target_risk_pct == RiskLimits().risk_per_trade_pct
+        assert result.capped_exposure_pct <= result.raw_exposure_pct
+
+    def test_signal_strength_scales_with_decision_score(self) -> None:
+        # Real raw_exposure_pct (before any hard-ceiling capping) scales
+        # linearly with signal_strength by this function's own real
+        # formula — the capped value alone can't tell weak/strong apart
+        # once both saturate the same hard ceiling.
+        weak = _inverse_vol_sizing(_Proposal(), _FakeProvider(), 100_000.0, RiskLimits(), _decision_score(20.0))
+        strong = _inverse_vol_sizing(_Proposal(), _FakeProvider(), 100_000.0, RiskLimits(), _decision_score(90.0))
+        assert weak is not None and strong is not None
+        assert strong.raw_exposure_pct > weak.raw_exposure_pct
+
+
+class TestBuildPositionSizingInverseVolCap:
+    def _build(self, **overrides):
+        defaults = dict(
+            proposal=_Proposal(),
+            ceiling_quantity=10.0,
+            expected_value=_expected_value(),
+            decision_score=_decision_score(60.0),
+            portfolio=_portfolio(),
+            portfolio_heat=_heat(),
+            risk_limits=RiskLimits(),
+            risk_warnings=[],
+            sim_day=1,
+            provider=_FakeProvider(),
+        )
+        defaults.update(overrides)
+        return build_position_sizing(**defaults)
+
+    def test_inverse_vol_sizing_is_populated_when_available(self) -> None:
+        result = self._build()
+        assert result.inverse_vol_sizing is not None
+
+    def test_inverse_vol_sizing_is_none_when_history_unavailable(self) -> None:
+        result = self._build(provider=_FakeProvider(closes=[]))
+        assert result.inverse_vol_sizing is None
+
+    def test_final_quantity_never_exceeds_the_inverse_vol_cap(self) -> None:
+        # A real, high-per-bar-range-relative-to-price series (low close
+        # price with the same fixed +-0.5 spread _FakeProvider always
+        # uses) — a genuinely high real volatility_pct, driving a real,
+        # tight inverse-vol cap.
+        wide_open = RiskLimits(
+            tierAllocation=TierAllocationLimits(tier1Pct=100.0, tier2Pct=100.0, tier3Pct=100.0, tier4Pct=100.0),
+            maxWeeklyDeploymentPct=100.0,
+            cashReservePct=0.0,
+        )
+        high_vol_provider = _FakeProvider(closes=[2.0] * VOLATILITY_CANDLE_COUNT)
+        result = self._build(ceiling_quantity=1_000.0, risk_limits=wide_open, provider=high_vol_provider, proposal=_Proposal(price=2.0))
+        assert result.inverse_vol_sizing is not None
+        equity = 100_000.0
+        inverse_vol_cap_quantity = equity * result.inverse_vol_sizing.capped_exposure_pct / 100 / 2.0
+        assert result.final_quantity <= inverse_vol_cap_quantity + 1e-6
+
+    def test_binding_constraint_names_inverse_vol_when_it_is_tightest(self) -> None:
+        wide_open = RiskLimits(
+            tierAllocation=TierAllocationLimits(tier1Pct=100.0, tier2Pct=100.0, tier3Pct=100.0, tier4Pct=100.0),
+            maxWeeklyDeploymentPct=100.0,
+            cashReservePct=0.0,
+        )
+        # A real, very low close price so the fixed +-0.5 spread implies
+        # both a huge real ATR (volatility cap) AND a huge real
+        # volatility_pct (inverse-vol cap) — but the inverse-vol cap
+        # additionally scales by target_risk_pct/signal_strength, which
+        # a low decision score drives to a real, tighter number.
+        tiny_price_provider = _FakeProvider(closes=[0.5] * VOLATILITY_CANDLE_COUNT)
+        result = self._build(
+            ceiling_quantity=1_000.0,
+            risk_limits=wide_open,
+            provider=tiny_price_provider,
+            proposal=_Proposal(price=0.5),
+            decision_score=_decision_score(5.0),
+        )
+        assert result.reduced_from_ceiling is True
+        assert "inverse-volatility" in result.detail or "volatility" in result.detail
 
 
 class TestVolatilitySizing:

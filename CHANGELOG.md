@@ -158,6 +158,52 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"AHL-Inspired Systematic Trend & Momentum Research Engine" follow-up: inverse-volatility position
+  sizing + agent exposure labeling.** Closes the remaining two deferred pieces from this directive's own
+  Phase 0 audit — both real, both narrowing-only, both reuse an existing real calculator/field rather than
+  inventing a new one.
+  - **Inverse-volatility sizing cap.** `app/trend_engine.py::research_volatility_scaled_exposure()` was a
+    real, correctly-implemented calculator that had never been wired into the live sizing pipeline — it
+    only ran as a standalone research read. New `app/position_sizing.py::_inverse_vol_sizing()` calls it
+    with real inputs already computed elsewhere in the pipeline: `signal_strength` reuses this proposal's
+    own real Decision Score (`decision_score.overall / 100`, the same composite evidence every other
+    sizing tier already keys off — never a second invented confidence number), `target_risk_pct` reuses
+    `risk_limits.risk_per_trade_pct` (the identical real risk-per-trade figure the existing ATR-based
+    `_volatility_sizing()` cap already uses, so both caps are measured against the same real risk policy).
+    The result folds into `build_position_sizing()`'s existing narrowing-only `min(...)` cap chain as one
+    more cap (`inverse_vol_cap_quantity`) — it can only shrink `final_quantity`, never grow it, exactly
+    like every cap beside it — and the binding-constraint explanation logic now names it first when it's
+    the tightest real cap. `None` (never a fabricated cap) when there isn't yet enough real candle history,
+    the same honesty convention `_volatility_sizing()` already uses. New `inverseVolSizing` field on
+    `PositionSizingResult`, reusing the existing `VolatilityScaledExposureResearch` schema verbatim — zero
+    new fields invented.
+    - **Honest boundary, disclosed in the function's own docstring**: this scales ONE candidate's own
+      exposure inversely to its OWN volatility. It does NOT (yet) normalize risk contribution across every
+      simultaneously-open position (a true cross-portfolio `1/sigma` weighting, where a position's size
+      also depends on every OTHER open position's own volatility/correlation) — that fuller version is a
+      real, disclosed, separate, larger lift, not attempted here.
+  - **Agent exposure labeling on correlated clusters.** The CEO's own worked example in this directive
+    ("Scout long SPY, Quant long QQQ, Momentum long NVDA — three agents, one effective bet") named a real
+    gap: `app/portfolio_intelligence.py::_correlated_clusters()` already computed real connected-component
+    clusters over real correlation pairs but never surfaced WHO opened the correlated exposure. Now
+    aggregates each cluster's real `PaperPosition.opened_by` values into a sorted `contributing_agents`
+    list and `agent_count`, reusing the exact field every position already carries — no new attribution
+    mechanism. The cluster's own `detail` string gains an extra clause ("Opened by N different agents
+    (...) — the CEO's own 'three agents, one effective bet' concern, made real") only when `agent_count >
+    1`, so a single-agent cluster's detail is unchanged. **Explicitly NOT a P&L credit-splitting
+    mechanism** — a different, deliberately-not-invented question per `app/performance_attribution.py`'s
+    own module docstring; this only labels who opened the shared exposure, it never divides the PnL.
+  - New `contributingAgents`/`agentCount` fields on `CorrelatedExposureCluster`. The existing
+    `PortfolioRiskSnapshotCard.tsx` cluster display already renders each cluster's full `detail` string
+    verbatim, so the new agent note surfaces there with zero UI changes required — discovered, not built.
+    `WarRoomPanel.tsx` gained a new dedicated "Inverse-Volatility Sizing" section (mirroring the existing
+    "Volatility-Based Risk Sizing" section's AVAILABLE/UNAVAILABLE pattern) to surface the new
+    `inverseVolSizing` read, since that field previously had no rendering path anywhere.
+  - Verified: 13 new backend tests (`TestInverseVolSizing` [5], `TestBuildPositionSizingInverseVolCap` [4]
+    in `test_position_sizing.py`; `TestCorrelatedClusterAgentLabeling` [4] in
+    `test_portfolio_intelligence.py`), full backend suite, `mypy`/`ruff` clean. Frontend `tsc`/lint/build
+    clean.
+
 - **"AHL-Inspired Systematic Trend & Momentum Research Engine" follow-up: dedicated Research UI panel
   — closed by discovery, not construction.** The original directive's Phase 14 asked for "a dedicated
   Research UI panel with WHY/BACKTEST/WALK-FORWARD/COST-TEST/REGIME-TEST drill-downs." A repo audit

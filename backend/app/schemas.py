@@ -7646,6 +7646,18 @@ class PositionSizingResult(CamelModel):
     institutional_gates_passed: bool = Field(alias="institutionalGatesPassed")
     reduced_from_ceiling: bool = Field(alias="reducedFromCeiling")
     volatility_sizing: VolatilitySizingRead = Field(default_factory=VolatilitySizingRead, alias="volatilitySizing")
+    # CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    # Engine" follow-up — promotes app/trend_engine.py's own real,
+    # previously research-only inverse-volatility exposure calculator
+    # (research_volatility_scaled_exposure()) into this live, advisory-
+    # only narrowing cap, reusing its exact real schema (zero new
+    # fields invented). `None` when there isn't enough real candle
+    # history yet, same honesty convention as `volatility_sizing`
+    # above. This is a SINGLE-position inverse-vol scaler, not a true
+    # cross-portfolio simultaneous-normalization (a real, disclosed,
+    # larger, separate lift — see app/position_sizing.py's own
+    # docstring for the exact boundary).
+    inverse_vol_sizing: VolatilityScaledExposureResearch | None = Field(default=None, alias="inverseVolSizing")
     detail: str
 
 
@@ -7753,6 +7765,17 @@ class CorrelatedExposureCluster(CamelModel):
     total_exposure_usd: float = Field(alias="totalExposureUsd")
     total_exposure_pct: float = Field(alias="totalExposurePct")
     position_count: int = Field(alias="positionCount")
+    # CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    # Engine" follow-up — the CEO's own worked example (Scout long SPY,
+    # Quant long QQQ, Momentum long NVDA — three agents, one effective
+    # bet) named exactly this real gap: a cluster's own real
+    # PaperPosition.opened_by values, never aggregated anywhere before
+    # this. Reuses the same real field every position already carries —
+    # no new attribution mechanism, no P&L credit-splitting (a
+    # different, deliberately-not-invented question — see
+    # app/performance_attribution.py's own module docstring).
+    contributing_agents: list[AgentId] = Field(default_factory=list, alias="contributingAgents")
+    agent_count: int = Field(default=0, alias="agentCount")
     detail: str
 
 

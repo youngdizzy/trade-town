@@ -76,6 +76,7 @@ from app.analytics import max_drawdown_pct
 from app.market_data import MarketDataProvider
 from app.risk_engine import portfolio_equity
 from app.schemas import (
+    AgentId,
     CapitalEfficiency,
     CategoryExposure,
     CorrelatedExposureCluster,
@@ -208,9 +209,11 @@ def _correlated_clusters(portfolio: PaperPortfolio, pairs: list[CorrelationPair]
 
     value_by_symbol: dict[str, float] = {}
     count_by_symbol: dict[str, int] = {}
+    agents_by_symbol: dict[str, set[AgentId]] = {}
     for pos in portfolio.positions:
         value_by_symbol[pos.symbol] = value_by_symbol.get(pos.symbol, 0.0) + pos.quantity * pos.current_price
         count_by_symbol[pos.symbol] = count_by_symbol.get(pos.symbol, 0) + 1
+        agents_by_symbol.setdefault(pos.symbol, set()).add(pos.opened_by)
 
     clusters: list[CorrelatedExposureCluster] = []
     for members in groups.values():
@@ -220,13 +223,21 @@ def _correlated_clusters(portfolio: PaperPortfolio, pairs: list[CorrelationPair]
         total_value = sum(value_by_symbol.get(s, 0.0) for s in symbols)
         position_count = sum(count_by_symbol.get(s, 0) for s in symbols)
         pct = total_value / equity * 100
+        contributing_agents = sorted({agent for s in symbols for agent in agents_by_symbol.get(s, set())})
+        agent_note = (
+            f" Opened by {len(contributing_agents)} different agents ({', '.join(contributing_agents)}) — the CEO's own 'three agents, one effective bet' concern, made real."
+            if len(contributing_agents) > 1
+            else ""
+        )
         clusters.append(
             CorrelatedExposureCluster(
                 symbols=symbols,
                 totalExposureUsd=round(total_value, 2),
                 totalExposurePct=round(pct, 1),
                 positionCount=position_count,
-                detail=f"{', '.join(symbols)} are real correlated partners (|correlation| >= {CORRELATION_CLUSTER_THRESHOLD}) — ${total_value:,.0f} ({pct:.1f}% of equity) is effectively one shared bet, not {len(symbols)} independent ones.",
+                contributingAgents=contributing_agents,
+                agentCount=len(contributing_agents),
+                detail=f"{', '.join(symbols)} are real correlated partners (|correlation| >= {CORRELATION_CLUSTER_THRESHOLD}) — ${total_value:,.0f} ({pct:.1f}% of equity) is effectively one shared bet, not {len(symbols)} independent ones.{agent_note}",
             )
         )
     clusters.sort(key=lambda c: c.total_exposure_usd, reverse=True)

@@ -54,6 +54,7 @@ def _position(
     current_price: float = 100.0,
     side: str = "buy",
     strategy_id: str | None = None,
+    opened_by: str = "sentinel",
 ) -> PaperPosition:
     return PaperPosition(
         id=position_id,
@@ -64,7 +65,7 @@ def _position(
         currentPrice=current_price,
         unrealizedPnl=(current_price - 100.0) * quantity,
         unrealizedPnlPct=(current_price - 100.0) / 100.0 * 100,
-        openedBy="sentinel",  # type: ignore[arg-type]
+        openedBy=opened_by,  # type: ignore[arg-type]
         confidence=80.0,
         openedAt="2026-01-01T00:00:00Z",
         openedSimMinutes=0,
@@ -307,6 +308,83 @@ class TestCorrelatedClusters:
         clusters = _correlated_clusters(portfolio, pairs, equity=100_000.0)
         assert clusters[0].symbols == ["QQQ", "SPY"]
         assert clusters[0].total_exposure_usd > clusters[1].total_exposure_usd
+
+
+class TestCorrelatedClusterAgentLabeling:
+    """CEO's own 'three agents, one effective bet' concern (per the
+    module docstring) — reuses the real `PaperPosition.opened_by`
+    attribution already recorded on every position, not a new
+    mechanism. Explicitly NOT a P&L credit-splitting question (see
+    app/performance_attribution.py's own docstring) — this only labels
+    who opened the correlated exposure, it does not divide the PnL."""
+
+    def test_single_agent_cluster_reports_agent_count_one_and_no_note(self) -> None:
+        from app.schemas import CorrelationPair
+
+        portfolio = _portfolio(
+            positions=[
+                _position(position_id="p1", symbol="AAPL", quantity=10.0, current_price=100.0, opened_by="sentinel"),
+                _position(position_id="p2", symbol="MSFT", quantity=5.0, current_price=200.0, opened_by="sentinel"),
+            ]
+        )
+        pairs = [CorrelationPair(symbolA="AAPL", symbolB="MSFT", correlation=0.9, direction="positive")]
+        clusters = _correlated_clusters(portfolio, pairs, equity=100_000.0)
+        assert len(clusters) == 1
+        assert clusters[0].contributing_agents == ["sentinel"]
+        assert clusters[0].agent_count == 1
+        assert "different agents" not in clusters[0].detail
+
+    def test_multi_agent_cluster_reports_sorted_agents_and_count(self) -> None:
+        from app.schemas import CorrelationPair
+
+        portfolio = _portfolio(
+            positions=[
+                _position(position_id="p1", symbol="AAPL", quantity=10.0, current_price=100.0, opened_by="quant"),
+                _position(position_id="p2", symbol="MSFT", quantity=5.0, current_price=200.0, opened_by="sentinel"),
+            ]
+        )
+        pairs = [CorrelationPair(symbolA="AAPL", symbolB="MSFT", correlation=0.9, direction="positive")]
+        clusters = _correlated_clusters(portfolio, pairs, equity=100_000.0)
+        assert len(clusters) == 1
+        assert clusters[0].contributing_agents == ["quant", "sentinel"]
+        assert clusters[0].agent_count == 2
+        assert "Opened by 2 different agents (quant, sentinel)" in clusters[0].detail
+
+    def test_multiple_positions_by_same_agent_in_one_symbol_still_count_agent_once(self) -> None:
+        from app.schemas import CorrelationPair
+
+        portfolio = _portfolio(
+            positions=[
+                _position(position_id="p1", symbol="AAPL", quantity=5.0, current_price=100.0, opened_by="quant"),
+                _position(position_id="p2", symbol="AAPL", quantity=5.0, current_price=100.0, opened_by="quant"),
+                _position(position_id="p3", symbol="MSFT", quantity=5.0, current_price=200.0, opened_by="quant"),
+            ]
+        )
+        pairs = [CorrelationPair(symbolA="AAPL", symbolB="MSFT", correlation=0.9, direction="positive")]
+        clusters = _correlated_clusters(portfolio, pairs, equity=100_000.0)
+        assert len(clusters) == 1
+        assert clusters[0].contributing_agents == ["quant"]
+        assert clusters[0].agent_count == 1
+        assert clusters[0].position_count == 3
+
+    def test_transitive_chain_collects_agents_across_all_three_symbols(self) -> None:
+        from app.schemas import CorrelationPair
+
+        portfolio = _portfolio(
+            positions=[
+                _position(position_id="p1", symbol="SPY", quantity=10.0, current_price=400.0, opened_by="quant"),
+                _position(position_id="p2", symbol="QQQ", quantity=10.0, current_price=300.0, opened_by="sentinel"),
+                _position(position_id="p3", symbol="NVDA", quantity=10.0, current_price=500.0, opened_by="cio"),
+            ]
+        )
+        pairs = [
+            CorrelationPair(symbolA="SPY", symbolB="QQQ", correlation=0.85, direction="positive"),
+            CorrelationPair(symbolA="QQQ", symbolB="NVDA", correlation=0.7, direction="positive"),
+        ]
+        clusters = _correlated_clusters(portfolio, pairs, equity=100_000.0)
+        assert len(clusters) == 1
+        assert clusters[0].contributing_agents == ["cio", "quant", "sentinel"]
+        assert clusters[0].agent_count == 3
 
 
 class TestCountCorrelatedPositions:

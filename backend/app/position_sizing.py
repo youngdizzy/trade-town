@@ -76,8 +76,10 @@ from app.schemas import (
     RiskWarning,
     TradeProposal,
     VolatilitySizingRead,
+    VolatilityScaledExposureResearch,
 )
 from app.technical_indicators import atr
+from app.trend_engine import research_volatility_scaled_exposure
 
 WEEKLY_DEPLOYMENT_WINDOW_DAYS = 7
 
@@ -223,6 +225,46 @@ def _volatility_sizing(proposal: TradeProposal, provider: MarketDataProvider, eq
     )
 
 
+def _inverse_vol_sizing(proposal: TradeProposal, provider: MarketDataProvider, equity: float, risk_limits: RiskLimits, decision_score: DecisionScoreBreakdown) -> VolatilityScaledExposureResearch | None:
+    """CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    Engine" follow-up — promotes app/trend_engine.py's own real,
+    previously research-only `research_volatility_scaled_exposure()`
+    into this live, advisory-only narrowing cap: zero new math, the
+    exact same real formula and volatility floor/hard-cap that function
+    already discloses. `signal_strength` reuses this proposal's own
+    real Decision Score (`decision_score.overall`, 0-100) normalized to
+    0-1 — the same composite evidence read every other sizing tier
+    above already keys off, never a second invented confidence number.
+    `target_risk_pct` reuses `risk_limits.risk_per_trade_pct`, the
+    identical real risk-per-trade figure `_volatility_sizing()`'s own
+    ATR-stop-budget cap already uses, so both caps are measured against
+    the same real risk policy rather than two different implied
+    budgets. `None` (never a fabricated cap) below the same minimum
+    real candle history `_volatility_sizing()` requires.
+
+    HONEST BOUNDARY: this scales ONE candidate's own exposure inversely
+    to its OWN volatility — it does not (yet) normalize risk
+    CONTRIBUTION across every simultaneously-open position (a true
+    cross-portfolio `1/sigma` weighting, where a position's size also
+    depends on every OTHER open position's own volatility/correlation).
+    That fuller version is a real, disclosed, separate, larger lift —
+    not attempted here."""
+    if equity <= 0 or proposal.price <= 0:
+        return None
+    try:
+        candles = provider.get_candles(proposal.symbol, VOLATILITY_TIMEFRAME, VOLATILITY_CANDLE_COUNT)
+    except ValueError:
+        return None
+    if len(candles) < 2:
+        return None
+    return research_volatility_scaled_exposure(
+        candles,
+        proposal.symbol,
+        signal_strength=decision_score.overall / 100.0,
+        target_risk_pct=risk_limits.risk_per_trade_pct,
+    )
+
+
 def build_position_sizing(
     proposal: TradeProposal,
     *,
@@ -315,7 +357,15 @@ def build_position_sizing(
     # candle history — see _volatility_sizing()'s own docstring).
     volatility_cap_quantity = volatility_sizing.volatility_cap_quantity if volatility_sizing.available and volatility_sizing.volatility_cap_quantity is not None else candidate_quantity
 
-    final_quantity = max(0.0, min(candidate_quantity, weekly_cap_quantity, heat_cap_quantity, cash_cap_quantity, volatility_cap_quantity))
+    # CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    # Engine" follow-up — the real inverse-volatility exposure cap, also
+    # narrowing-only, only ever binding when real candle evidence exists
+    # (see _inverse_vol_sizing()'s own docstring for the exact honesty
+    # boundary against a true cross-portfolio 1/sigma weighting).
+    inverse_vol_sizing = _inverse_vol_sizing(proposal, provider, equity, risk_limits, decision_score)
+    inverse_vol_cap_quantity = (equity * inverse_vol_sizing.capped_exposure_pct / 100 / price) if inverse_vol_sizing is not None else candidate_quantity
+
+    final_quantity = max(0.0, min(candidate_quantity, weekly_cap_quantity, heat_cap_quantity, cash_cap_quantity, volatility_cap_quantity, inverse_vol_cap_quantity))
     final_quantity = round(final_quantity, 4)
     capital_deployed_pct = round(final_quantity * price / equity * 100, 2) if equity > 0 else 0.0
     reduced_from_ceiling = final_quantity < round(ceiling_quantity, 4)
@@ -324,7 +374,15 @@ def build_position_sizing(
         "the tier's own evidence-based fraction of the risk ceiling" if scaled_quantity <= tier_cap_quantity + 1e-9 else "the tier's absolute allocation cap"
     )
     if final_quantity < candidate_quantity - 1e-9:
-        if volatility_cap_quantity <= weekly_cap_quantity and volatility_cap_quantity <= heat_cap_quantity and volatility_cap_quantity <= cash_cap_quantity and volatility_cap_quantity < candidate_quantity - 1e-9:
+        if (
+            inverse_vol_cap_quantity <= weekly_cap_quantity
+            and inverse_vol_cap_quantity <= heat_cap_quantity
+            and inverse_vol_cap_quantity <= cash_cap_quantity
+            and inverse_vol_cap_quantity <= volatility_cap_quantity
+            and inverse_vol_cap_quantity < candidate_quantity - 1e-9
+        ):
+            binding_constraint = "the real inverse-volatility exposure budget (this symbol's own real volatility relative to its evidence-implied signal strength)"
+        elif volatility_cap_quantity <= weekly_cap_quantity and volatility_cap_quantity <= heat_cap_quantity and volatility_cap_quantity <= cash_cap_quantity and volatility_cap_quantity < candidate_quantity - 1e-9:
             binding_constraint = "the real ATR-based volatility risk budget (a wider stop distance than this tier's own quantity implies)"
         elif not weekly_ok and weekly_cap_quantity <= heat_cap_quantity and weekly_cap_quantity <= cash_cap_quantity:
             binding_constraint = "the weekly capital deployment budget"
@@ -347,6 +405,7 @@ def build_position_sizing(
         finalQuantity=final_quantity,
         capitalDeployedPct=capital_deployed_pct,
         volatilitySizing=volatility_sizing,
+        inverseVolSizing=inverse_vol_sizing,
         weeklyDeploymentPct=round(weekly_deployed_before_pct + capital_deployed_pct, 2),
         weeklyDeploymentCapPct=risk_limits.max_weekly_deployment_pct,
         cashReserveOk=cash_reserve_ok,
