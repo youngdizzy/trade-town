@@ -4803,6 +4803,24 @@ export interface PretradeRiskDecision {
   detail: string;
 }
 
+// CEO directive "Layered Kill Switches" — backend/app/trading_restrictions.py.
+// One layer below the firm-wide Emergency Stop: halts new position-opening
+// (buy AND sell) for one symbol or one whole ResearchCategory, without
+// touching the rest of the firm. Permanent history — lifting a restriction
+// records when/why rather than deleting the row.
+export type RestrictionScope = "symbol" | "category";
+
+export interface TradingRestriction {
+  id: string;
+  scope: RestrictionScope;
+  target: string;
+  reason: string;
+  active: boolean;
+  activatedAt: string;
+  liftedAt: string | null;
+  liftedReason: string | null;
+}
+
 // Design Bible Chapter 71 — Economic Intelligence Center
 // (backend/app/economic_intelligence.py). This codebase has no real
 // macroeconomic data source anywhere (no API keys, no live feed) — EIC

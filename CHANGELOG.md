@@ -269,6 +269,16 @@ development milestones, not semver releases.
   - **Not built this pass**: an agent-level kill switch and a real factor-model-based asset-class
     taxonomy beyond `ResearchCategory` remain genuinely out of scope, per the reasoning above — not
     silently dropped, not fabricated around.
+  - **Command Center UI, same day.** New `TradingRestrictionsCard.tsx`, wired into the RISK tab
+    directly below the Portfolio Risk Engine snapshot card (both are real kill-switch/danger surfaces,
+    ranked ahead of the softer Daily Objectives/Position Sizing cards below them). Lists every active
+    restriction with a one-click Lift button, a scope/target/reason form to activate a new one
+    (symbol as free text, category as a real `ResearchCategory` dropdown), and a permanent lifted
+    history section. Purely a display + real-write layer over the endpoints above — no client-side
+    enforcement logic duplicated. Frontend `tsc`/lint/build clean; live-smoke-tested against the real
+    running dev stack (Playwright, temporary spec, removed after verification): activated a real
+    symbol restriction, confirmed it rendered and blocked state, lifted it, confirmed the active list
+    cleared and the lifted entry appeared in history — zero console errors throughout.
 
 - **CEO directive "AHL-Inspired Systematic Trend & Momentum Research Engine."** New
   `app/trend_engine.py`: six independent, never-silently-merged real trend-measurement methodologies

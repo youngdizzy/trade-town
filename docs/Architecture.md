@@ -15418,6 +15418,18 @@ endpoints live-smoke-tested via FastAPI TestClient. Not built:
 agent-level restriction and a real factor-model taxonomy beyond
 `ResearchCategory` — the same reasoning as above, not silently dropped.
 
+Same-day UI follow-up: new
+`frontend/src/ui/components/CommandCenter/panels/TradingRestrictionsCard.tsx`,
+wired into the RISK tab directly below the Portfolio Risk Engine
+snapshot card. Lists active restrictions with a one-click Lift button, a
+scope/target/reason form to activate a new one, and a permanent lifted
+history section — a display + real-write layer over the endpoints
+above, no client-side enforcement duplicated. Frontend `tsc`/lint/build
+clean; live-smoke-tested with a temporary Playwright spec (removed
+after verification): activated a real symbol restriction, confirmed it
+rendered, lifted it, confirmed the active list cleared and history
+updated — zero console errors.
+
 **Files changed.** Backend: `app/schemas.py`, `app/portfolio_risk.py`
 (new), `app/analytics.py`, `app/risk_engine.py`, `app/portfolio_
 intelligence.py`, `app/black_swan.py`, `app/routers/risk.py`,

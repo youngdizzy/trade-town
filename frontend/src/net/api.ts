@@ -105,8 +105,10 @@ import type {
   SessionPerformanceSummary,
   SessionRangeRead,
   SessionRegimeEvidenceSummary,
+  RestrictionScope,
   RiskLimits,
   SimilarTradesSummary,
+  TradingRestriction,
   StrategyCapitalAllocationSummary,
   StrategyDegradationSummary,
   StrategyLiveVsBacktestSummary,
@@ -1001,6 +1003,19 @@ export const api = {
   getPortfolioRiskSnapshot: () => request<PortfolioRiskSnapshot>("/risk-limits/portfolio-snapshot"),
   getPretradeRiskDecision: (symbol: string, proposedValue: number) =>
     request<PretradeRiskDecision>(`/risk-limits/pretrade-decision?symbol=${encodeURIComponent(symbol)}&proposed_value=${encodeURIComponent(proposedValue)}`),
+  // CEO directive "Layered Kill Switches" — one layer below the
+  // firm-wide Emergency Stop. See backend/app/trading_restrictions.py.
+  getTradingRestrictions: () => request<{ tradingRestrictions: TradingRestriction[] }>("/trading-restrictions"),
+  activateTradingRestriction: (scope: RestrictionScope, target: string, reason: string) =>
+    request<{ tradingRestrictions: TradingRestriction[] }>("/trading-restrictions/activate", {
+      method: "POST",
+      body: JSON.stringify({ scope, target, reason }),
+    }),
+  liftTradingRestriction: (restrictionId: string, reason: string) =>
+    request<{ tradingRestrictions: TradingRestriction[] }>(`/trading-restrictions/${encodeURIComponent(restrictionId)}/lift`, {
+      method: "POST",
+      body: JSON.stringify({ reason }),
+    }),
   // Design Bible Chapter 64 — the CEO's Goal creation/cancellation write
   // path. Real progress is never sent by the client; it's recomputed
   // server-side every tick (see backend/app/goals.py's tick_goals()).
