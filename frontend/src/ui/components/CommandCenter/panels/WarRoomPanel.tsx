@@ -264,6 +264,33 @@ function SessionDetail({ session }: { session: WarRoomSession }) {
               <p className="text-[9px] text-cmd-textDim">{session.positionSizing.volatilitySizing.detail}</p>
             )}
           </div>
+
+          {/* AHL directive follow-up — promotes the real, previously
+              research-only inverse-volatility exposure calculator into
+              this live, advisory-only narrowing cap. A SINGLE-position
+              scaler, not true cross-portfolio simultaneous normalization
+              (a separate, disclosed, unattempted lift). */}
+          <div className="mt-2 border-t border-cmd-border/50 pt-2">
+            <div className="mb-1 flex items-center justify-between">
+              <TerminalLabel>Inverse-Volatility Sizing — AHL-inspired research cap</TerminalLabel>
+              <StatusPill tone={session.positionSizing.inverseVolSizing ? "cyan" : "neutral"}>
+                {session.positionSizing.inverseVolSizing ? "AVAILABLE" : "UNAVAILABLE"}
+              </StatusPill>
+            </div>
+            {session.positionSizing.inverseVolSizing ? (
+              <>
+                <div className="grid grid-cols-2 gap-x-4 sm:grid-cols-4">
+                  <DataRow label="Volatility Estimate" value={`${session.positionSizing.inverseVolSizing.volatilityEstimatePct.toFixed(2)}%`} />
+                  <DataRow label="Target Risk" value={`${session.positionSizing.inverseVolSizing.targetRiskPct.toFixed(2)}%`} />
+                  <DataRow label="Raw Exposure" value={`${session.positionSizing.inverseVolSizing.rawExposurePct.toFixed(2)}%`} />
+                  <DataRow label="Capped Exposure" value={`${session.positionSizing.inverseVolSizing.cappedExposurePct.toFixed(2)}%`} valueClassName={session.positionSizing.inverseVolSizing.wasCapped ? "text-cmd-amber" : undefined} />
+                </div>
+                <p className="mt-1 text-[9px] text-cmd-textDim">{session.positionSizing.inverseVolSizing.detail}</p>
+              </>
+            ) : (
+              <p className="text-[9px] text-cmd-textDim">Not enough real candle history yet for a volatility estimate.</p>
+            )}
+          </div>
         </Glass>
       )}
 

@@ -4737,6 +4737,14 @@ export interface PositionSizingResult {
   institutionalGatesPassed: boolean;
   reducedFromCeiling: boolean;
   volatilitySizing: VolatilitySizingRead;
+  /** CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+   * Engine" follow-up — promotes the real, previously research-only
+   * inverse-volatility exposure calculator into this live, advisory-
+   * only narrowing cap. A SINGLE-position scaler, not true
+   * cross-portfolio simultaneous normalization (a separate, disclosed,
+   * unattempted lift). Null when there isn't enough real candle
+   * history yet, same honesty convention as volatilitySizing. */
+  inverseVolSizing: VolatilityScaledExposureResearch | null;
   detail: string;
 }
 
@@ -4775,6 +4783,13 @@ export interface CorrelatedExposureCluster {
   totalExposureUsd: number;
   totalExposurePct: number;
   positionCount: number;
+  /** CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+   * Engine" follow-up — the CEO's own worked example (Scout long SPY,
+   * Quant long QQQ, Momentum long NVDA — three agents, one effective
+   * bet). Reuses each position's own real openedBy value, never a new
+   * attribution mechanism, and never a P&L credit-split. */
+  contributingAgents: AgentId[];
+  agentCount: number;
   detail: string;
 }
 
