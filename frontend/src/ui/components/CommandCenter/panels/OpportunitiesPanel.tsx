@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
-import type { OpportunityFeed, OpportunityFeedEntry, OpportunityFeedStatus, TradeDecision } from "@/types";
+import type { OpportunityFeed, OpportunityFeedEntry, OpportunityFeedStatus, TradeDecision, WatchlistEligibilitySummary, WatchlistTier } from "@/types";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { api } from "@/net/api";
 import { voteDirection } from "../lib/derive";
@@ -17,6 +17,19 @@ const STATUS_LABEL: Record<OpportunityFeedStatus, string> = {
   conditionally_eligible: "CONDITIONAL",
   not_eligible: "NOT ELIGIBLE",
   insufficient_evidence: "INSUFFICIENT EVIDENCE",
+};
+
+const TIER_TONE: Record<WatchlistTier, "green" | "cyan" | "red" | "neutral"> = {
+  proven: "green",
+  developing: "cyan",
+  unproven: "neutral",
+  cautionary: "red",
+};
+const TIER_LABEL: Record<WatchlistTier, string> = {
+  proven: "PROVEN",
+  developing: "DEVELOPING",
+  unproven: "UNPROVEN",
+  cautionary: "CAUTIONARY",
 };
 
 function OpportunityFeedRow({ entry }: { entry: OpportunityFeedEntry }) {
@@ -88,6 +101,39 @@ function OpportunityFeedSection() {
 }
 
 /**
+ * CEO directive "Professional Quant Trading Core," Phase B P2 item — a
+ * standing, per-symbol Watchlist Eligibility Tier, distinct from the
+ * feed above's per-candidate status: this is the symbol's own whole
+ * real track record (see backend/app/watchlist_eligibility.py's module
+ * docstring), never a fabricated score for a symbol with no real trades.
+ */
+function WatchlistEligibilitySection() {
+  const [summary, setSummary] = useState<WatchlistEligibilitySummary | null>(null);
+  useEffect(() => {
+    api.getWatchlistEligibility().then(setSummary).catch(() => undefined);
+  }, []);
+
+  if (!summary || summary.reads.length === 0) return null;
+
+  return (
+    <div className="space-y-2">
+      <TerminalLabel>Watchlist Eligibility — real per-symbol track record</TerminalLabel>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+        {summary.reads.map((r) => (
+          <Glass key={r.symbol} className="p-2">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <span className="font-cmdmono text-cmd-cyan">{r.symbol}</span>
+              <StatusPill tone={TIER_TONE[r.tier]}>{TIER_LABEL[r.tier]}</StatusPill>
+            </div>
+            <div className="text-[9px] text-cmd-textDim">{r.detail}</div>
+          </Glass>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/**
  * "Recent Decisions" (the original per-tab content) reuses the same
  * TradeDecision records the Decisions tab shows in full — TradeTown's
  * backend resolves a candidate the moment research crosses the
@@ -103,6 +149,8 @@ export function OpportunitiesPanel({ onInspect }: { onInspect: (d: TradeDecision
   return (
     <div className="space-y-4">
       <OpportunityFeedSection />
+
+      <WatchlistEligibilitySection />
 
       <div className="space-y-2">
         <TerminalLabel>Recent Decisions — resolved ({recent.length})</TerminalLabel>

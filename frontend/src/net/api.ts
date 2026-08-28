@@ -129,6 +129,7 @@ import type {
   TrendWeightingMethod,
   TradePipelineHealthSnapshot,
   OpportunityFeed,
+  WatchlistEligibilitySummary,
   TradingSession,
   Strategy,
   StrategyCertification,
@@ -302,6 +303,9 @@ export const api = {
   // CEO Opportunity Feed. Read-only, computed fresh per request; never
   // gates or scores anything.
   getOpportunityFeed: () => request<OpportunityFeed>("/trades/opportunity-feed"),
+  // CEO directive "Professional Quant Trading Core," Phase B P2 item —
+  // see backend/app/watchlist_eligibility.py's own module docstring.
+  getWatchlistEligibility: () => request<WatchlistEligibilitySummary>("/trades/watchlist-eligibility"),
   // CEO directive "Command Center + Professional Quant Trading Firm
   // Upgrade," Phase 2 — every real agent's current trading-relevant
   // state. Read-only, computed fresh per request; not WS-broadcast.

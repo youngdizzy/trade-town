@@ -2487,6 +2487,29 @@ export interface OpportunityFeed {
   computedAt: string;
 }
 
+// CEO directive "Professional Quant Trading Core," Phase B P2 item — a
+// standing, per-symbol classification over the symbol's own whole real
+// trade history, distinct from OpportunityFeedEntry's per-candidate
+// status above. See backend/app/watchlist_eligibility.py's own module
+// docstring for the real tier logic.
+export type WatchlistTier = "proven" | "developing" | "unproven" | "cautionary";
+
+export interface WatchlistEligibilityRead {
+  symbol: string;
+  tier: WatchlistTier;
+  tradeCount: number;
+  winRatePct: number | null;
+  expectancyPct: number | null;
+  profitFactor: number | null;
+  rejectionCount: number;
+  detail: string;
+}
+
+export interface WatchlistEligibilitySummary {
+  reads: WatchlistEligibilityRead[];
+  updatedAt: string;
+}
+
 export interface RiskWarning {
   id: string;
   symbol: string;
