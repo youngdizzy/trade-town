@@ -29,12 +29,14 @@ from app.schemas import (
     TrendEnsembleReading,
     TrendRegimeBreakdown,
     TrendWeightingMethod,
+    VolumeConfirmationRead,
 )
 from app.session_evidence import compute_session_regime_evidence
 from app.state import game_state
 from app.technical_analysis import compute_technical_analysis
 from app.technical_patterns import compute_session_range
 from app.trend_engine import compute_trend_ensemble, compute_trend_regime_breakdown, rank_symbols_by_trend
+from app.volume_analysis import DEFAULT_VOLUME_MA_PERIOD, compute_volume_confirmation
 from app.watchlist import SYMBOL_CATEGORY
 
 router = APIRouter(prefix="/api/market", tags=["market"])
@@ -84,6 +86,30 @@ async def get_technical_analysis(
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from None
     return compute_technical_analysis(symbol.upper(), candles, timeframe)
+
+
+@router.get("/volume-confirmation", response_model=VolumeConfirmationRead | None)
+async def get_volume_confirmation(
+    symbol: str = Query(..., min_length=1, max_length=16),
+    timeframe: str = Query("1h"),
+    limit: int = Query(100, ge=MIN_LIMIT, le=MAX_LIMIT),
+    period: int = Query(DEFAULT_VOLUME_MA_PERIOD, alias="period", ge=2, le=200),
+) -> VolumeConfirmationRead | None:
+    """CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    Engine," Phase 7 — the Volume Confirmation Engine (see
+    app/volume_analysis.py's own module docstring for the real
+    OBSERVATION/INTERPRETATION/TRADE SIGNAL boundary this stays inside).
+    Computed fresh per request over the same real (mock) candle series
+    GET /api/market/candles returns; `null` when there isn't enough real
+    history yet for either the relative-volume or ATR read, never a
+    fabricated partial answer."""
+    if timeframe not in TIMEFRAME_ORDER:
+        raise HTTPException(status_code=400, detail=f"Unsupported timeframe {timeframe!r}. Supported: {TIMEFRAME_ORDER}")
+    try:
+        candles = market_data_provider.get_candles(symbol.upper(), timeframe, limit)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from None
+    return compute_volume_confirmation(candles, symbol.upper(), period=period)
 
 
 @router.get("/session-range", response_model=SessionRangeRead)

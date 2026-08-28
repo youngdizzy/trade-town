@@ -2634,6 +2634,36 @@ always pulls the next entry from the fixed `EXTRA_SYMBOL_POOL` —
 extending that dispatcher to accept a chosen symbol is a real, separate
 follow-up, not part of what this endpoint closes.
 
+### `GET /api/market/volume-confirmation?symbol=AAPL&timeframe=1h&limit=100&period=20`
+
+CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+Engine," Phase 7 — the Volume Confirmation Engine
+(`app/volume_analysis.py`). Combines real relative volume (current
+bar's own volume vs. its trailing `period`-bar volume moving average)
+with the same bar's real ATR-normalized price move into one categorical
+`VolumeConfirmationRead`:
+
+```json
+{
+  "symbol": "AAPL",
+  "relativeVolume": 0.5,
+  "volumeState": "weak",
+  "priceMoveAtr": -0.43,
+  "confirmationState": "normal",
+  "detail": "Price moved -0.43 ATR on 0.50x average volume — nothing notable by this module's own disclosed thresholds."
+}
+```
+
+`confirmationState` is a plain LABEL of the two real numbers above it —
+`confirmed_move` (a real expansion-sized move with elevated/climax
+volume alongside it), `unconfirmed_move` (the same real move with only
+normal/weak volume — a real, checkable divergence, never itself a
+"manipulation" or reversal claim), `abnormal_volume_quiet_price`
+(climax volume, no real expansion move), or `normal`. Returns `null`
+below the minimum real candle history for either the relative-volume or
+ATR read, never a fabricated partial answer. Never wired into any live
+trading decision.
+
 ### `GET /api/black-swan/intelligence` / `GET /api/black-swan/reports`
 
 Design Bible Chapter 72 — the Black Swan Intelligence & Resilience

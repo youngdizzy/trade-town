@@ -15566,6 +15566,70 @@ the user's own "Multi-Horizon Trend engine first" scoping choice):
 `app/routers/market.py`, `tests/test_trend_engine.py` (new). Frontend:
 `types.ts`, `net/api.ts`. Docs: `CHANGELOG.md`.
 
+**Follow-up — Volume Confirmation Engine + Liquidity Sweep Research.**
+Two of this directive's own Phase 17 "not built this pass" items,
+closed in a later follow-up (the directive's user prompt was re-issued
+in full and the user chose to sequence "the Volume + Liquidity research
+suite, then Live Desk visualization, then portfolio risk" — see the
+next follow-up sections below for the other two).
+
+New `app/volume_analysis.py` closes the real gap a grep audit
+confirmed: no shared relative-volume/volume-moving-average primitive
+existed anywhere (two different inline, duplicated calculations lived
+in `app/market_intelligence.py`, neither reusable). `relative_volume()`/
+`volume_sma()` follow `app/technical_indicators.py`'s exact `sma`
+pattern; `compute_volume_confirmation()` combines real relative volume
+with a real ATR-normalized price move into a plain categorical
+OBSERVATION — never an INTERPRETATION or a TRADE SIGNAL, the
+directive's own explicit three-way boundary. Disclosed plainly:
+`MockMarketDataProvider`'s own generator makes a volume spike more
+likely (never guaranteed) on a big price move via two hardcoded
+probability multipliers, so this module's "volume confirms the move"
+evidence is real and non-circular but bounded by exactly those two
+constants. New `GET /api/market/volume-confirmation` endpoint.
+
+New `app/liquidity_sweep_research.py` turns the already-real sweep
+DETECTOR (`app/market_intelligence.py::compute_liquidity()`) into an
+actually-testable hypothesis — `liquidity_sweep_signal_series()` calls
+that same, unmodified detector over a bounded trailing window, zero new
+detection logic, and is registered as a new `StrategyIndicatorName`
+(`liquidity_sweep_signal`) exactly the same way `multi_horizon_
+trend_score` was: one new compiler pattern, one new `strategy_engine.py`
+series/resolve case, so the hypothesis compiles through the real
+`app/strategy_compiler.py` and validates through the real
+`run_research_experiment()` pipeline. A genuine mechanical subtlety
+surfaced and is disclosed in the module's own docstring: because the
+underlying detector's own "recent 5 candles" window means a single real
+sweep event can stay visible for several consecutive bars, the new
+compiler trigger deliberately uses `crosses_above`/`crosses_below`
+(never a bare `gt`/`lt`, which would have re-fired once per bar of that
+whole streak).
+
+**Real evidence, not fabricated.** A reference "Liquidity Sweep
+Reversal Research Model v1" strategy (the same swing-high-breakout
+entry filter, Chandelier Stop, and 2R target shape as the prior
+Multi-Horizon Trend reference strategy) was compiled through the real
+compiler and run through the real `run_research_experiment()` across
+all 14 watchlist-universe symbols × 6,000 hourly (mock) candles.
+Result: **zero real closed trades** — the compound "sweep AND THEN
+swing-high breakout" condition never fired once, an even rarer
+combination than the trend-engine reference strategy's own 2 trades.
+Every validation axis honestly returned `INSUFFICIENT EVIDENCE` — the
+system correctly declining to claim an edge (or a rejection) with no
+real evidence for either.
+
+**Verification.** 20 new tests (`test_volume_analysis.py`), 6 new
+tests (`test_liquidity_sweep_research.py`), 2 new tests
+(`test_strategy_compiler.py`'s new `TestLiquiditySweepTrigger`). Full
+backend suite green, mypy/ruff clean across the whole backend.
+
+**Files changed.** Backend: `app/schemas.py`, `app/volume_analysis.py`
+(new), `app/liquidity_sweep_research.py` (new), `app/strategy_engine.py`,
+`app/strategy_compiler.py`, `app/routers/market.py`,
+`tests/test_volume_analysis.py` (new),
+`tests/test_liquidity_sweep_research.py` (new),
+`tests/test_strategy_compiler.py`. Docs: `CHANGELOG.md`.
+
 ## CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance"
 
 A 37-phase directive asking for a canonical portfolio-wide risk layer

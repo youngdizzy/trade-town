@@ -214,3 +214,29 @@ class TestRsiStochasticMacdTriggers:
         assert triggers[0].condition.left.indicator == "price_close"
         assert triggers[0].condition.right_indicator is not None
         assert triggers[0].condition.right_indicator.indicator == "ema"
+
+
+class TestLiquiditySweepTrigger:
+    """CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    Engine," Phase 8 — the real liquidity_sweep_signal indicator's own
+    compiler pattern."""
+
+    def test_bullish_sweep_compiles_to_a_real_long_crossing_trigger(self) -> None:
+        text = "Buy when a bullish liquidity sweep occurs, then enter when price closes above the previous swing high. Place a 2% stop and 4% target."
+        result = compile_strategy_text(name="X", source_text=text)
+        assert result.status == "compiled"
+        trigger = next(s for s in result.sequence if s.step_type == "trigger")
+        assert trigger.condition is not None
+        assert trigger.condition.left.indicator == "liquidity_sweep_signal"
+        assert trigger.condition.operator == "crosses_above"
+        assert trigger.condition.right_value == 0.0
+
+    def test_bearish_sweep_compiles_to_a_real_short_crossing_trigger(self) -> None:
+        text = "Sell when a bearish liquidity sweep occurs, then enter when price closes below the previous swing low. Place a 2% stop and 4% target."
+        result = compile_strategy_text(name="X", source_text=text)
+        assert result.status == "compiled"
+        trigger = next(s for s in result.sequence if s.step_type == "trigger")
+        assert trigger.condition is not None
+        assert trigger.condition.left.indicator == "liquidity_sweep_signal"
+        assert trigger.condition.operator == "crosses_below"
+        assert trigger.condition.right_value == 0.0

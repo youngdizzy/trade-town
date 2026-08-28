@@ -178,6 +178,15 @@ _MACD_CROSS_PATTERN = re.compile(r"MACD(?:\s+line)?\s+crosses\s+(above|below)\s+
 # Stochastic above: "the multi-horizon trend score is above/below N".
 _TREND_SCORE_THRESHOLD_PATTERN = re.compile(r"(?:the\s+)?multi[\s-]horizon\s+trend\s+score\s+(?:is\s+)?(above|below)\s+(-?\d+(?:\.\d+)?)", re.IGNORECASE)
 
+# CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+# Engine," Phase 8 — the one new real phrasing this compiler recognizes
+# for app/liquidity_sweep_research.py's real event-pulse indicator (see
+# StrategyIndicatorName's own "liquidity_sweep_signal" docstring in
+# app/schemas.py). "A bullish/bearish liquidity sweep occurs" ->
+# signal above/below 0 (the same +1/-1/0 event-pulse convention that
+# module's own docstring discloses).
+_LIQUIDITY_SWEEP_PATTERN = re.compile(r"a\s+(bullish|bearish)\s+liquidity\s+sweep\s+occurs", re.IGNORECASE)
+
 # Real requirement phrasing: "at least N bullish/bearish candles".
 _REQUIREMENT_PATTERN = re.compile(
     r"at\s+least\s+(\w+)\s+(bullish|bearish)\s+(?:opposite\s+)?candles?", re.IGNORECASE
@@ -273,6 +282,11 @@ def compile_strategy_text(
     macd_match = _MACD_CROSS_PATTERN.search(source_text) if not trigger_match and not rsi_match and not stochastic_match else None
     trend_score_match = (
         _TREND_SCORE_THRESHOLD_PATTERN.search(source_text) if not trigger_match and not rsi_match and not stochastic_match and not macd_match else None
+    )
+    sweep_match = (
+        _LIQUIDITY_SWEEP_PATTERN.search(source_text)
+        if not trigger_match and not rsi_match and not stochastic_match and not macd_match and not trend_score_match
+        else None
     )
 
     if trigger_match:
@@ -370,6 +384,33 @@ def compile_strategy_text(
                 stepType="trigger",
                 condition=condition,
                 detail=f"Trigger: real Multi-Horizon Trend Score {side.lower()} {threshold_str}.",
+            )
+        )
+    elif sweep_match:
+        (side,) = sweep_match.groups()
+        direction = "long" if side.lower() == "bullish" else "short"
+        # crosses_above/crosses_below (never a bare gt/lt) — the real
+        # liquidity_sweep_signal can stay at its nonzero value for
+        # several consecutive bars while the sweep candle remains inside
+        # compute_liquidity()'s own bounded "recent" detection window
+        # (see app/liquidity_sweep_research.py's own module docstring);
+        # a bare threshold would re-trigger on every one of those bars.
+        # The one-shot crossing captures only the real bar the signal
+        # first turns on.
+        operator = "crosses_above" if direction == "long" else "crosses_below"
+        condition = StrategyCondition(
+            id=f"{definition_id}-trigger-condition",
+            left=StrategyIndicatorRef(indicator="liquidity_sweep_signal"),
+            operator=operator,  # type: ignore[arg-type]
+            rightValue=0.0,
+            detail=f"Real {side.lower()} liquidity sweep (app/market_intelligence.py's own equal-high/low sweep detector, wrapped by app/liquidity_sweep_research.py) just occurred.",
+        )
+        sequence.append(
+            StrategySequenceStep(
+                id=_next_step_id(),
+                stepType="trigger",
+                condition=condition,
+                detail=f"Trigger: real {side.lower()} liquidity sweep detected.",
             )
         )
 

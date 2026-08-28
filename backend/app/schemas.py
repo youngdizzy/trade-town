@@ -3423,6 +3423,42 @@ class MarketStructureRead(CamelModel):
     detail: str
 
 
+# CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+# Engine" — Phase 7's Volume Confirmation Engine, the first genuinely
+# unbuilt piece of that directive's own P2 "not built this pass" list
+# (see docs/Architecture.md). See app/volume_analysis.py's own module
+# docstring for the full research boundary: this is a categorical
+# OBSERVATION of relative volume vs. real price movement, never an
+# INTERPRETATION ("manipulation," "liquidity grab") and never a TRADE
+# SIGNAL — the directive's own explicit three-way distinction.
+VolumeState = Literal["climax", "elevated", "normal", "weak"]
+
+VolumeConfirmationState = Literal[
+    "confirmed_move",
+    "unconfirmed_move",
+    "abnormal_volume_quiet_price",
+    "normal",
+]
+
+
+class VolumeConfirmationRead(CamelModel):
+    """One real, per-symbol observation combining relative volume
+    (`app/volume_analysis.py::relative_volume()`) with the most recent
+    candle's own ATR-normalized price move — the directive's own worked
+    example: "Price fell 2.1 ATR while volume remained 0.96x its
+    20-period average." `detail` states the observation only; whether
+    this combination has any real predictive value is a separate,
+    explicitly-tested hypothesis (see the liquidity-sweep/structure
+    research this same directive also asks for), never assumed here."""
+
+    symbol: str
+    relative_volume: float = Field(alias="relativeVolume")
+    volume_state: VolumeState = Field(alias="volumeState")
+    price_move_atr: float = Field(alias="priceMoveAtr")
+    confirmation_state: VolumeConfirmationState = Field(alias="confirmationState")
+    detail: str
+
+
 # CEO directive "Professional Trading Firm — Market-Analysis Knowledge +
 # Session Intelligence Expansion," Phases 1-2 (app/technical_patterns.py).
 # All real, computed-fresh pattern reads over real (mock) candle data,
@@ -4350,6 +4386,16 @@ StrategyIndicatorName = Literal[
     # lives in app/trend_engine.py's own read-only research schemas
     # below, not in a compiled strategy's trigger condition.
     "multi_horizon_trend_score",
+    # CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    # Engine," Phase 8 — a real event-pulse series from
+    # app/liquidity_sweep_research.py's own liquidity_sweep_signal_series(),
+    # itself a thin, non-duplicating wrapper around the already-real
+    # app/market_intelligence.py::compute_liquidity() sweep detector.
+    # +1.0 at a real bullish (below_lows) sweep, -1.0 at a real bearish
+    # (above_highs) sweep, 0.0 otherwise — grown ahead of the compiler
+    # gaining new phrasing for it, same precedent as
+    # "multi_horizon_trend_score" above.
+    "liquidity_sweep_signal",
 ]
 
 

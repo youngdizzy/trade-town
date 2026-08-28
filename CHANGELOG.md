@@ -158,6 +158,49 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"AHL-Inspired Systematic Trend & Momentum Research Engine" follow-up: Volume Confirmation Engine +
+  Liquidity Sweep Research.** Closes two of that directive's own Phase 17 "not built this pass" items
+  (`docs/Architecture.md`'s own record: "do not fully build the volume/liquidity engine in this pass").
+  - **Volume Confirmation Engine** (new `app/volume_analysis.py`): a full grep audit found no shared
+    relative-volume/volume-moving-average primitive anywhere — `app/market_intelligence.py` computed
+    relative volume twice, inline, with two different window definitions, neither reusable. New
+    `volume_sma`/`volume_sma_series`/`relative_volume`/`relative_volume_series` follow
+    `app/technical_indicators.py`'s exact `sma`/`sma_series` pattern (same file style, same
+    `None`-below-minimum-history convention). `compute_volume_confirmation()` combines real relative
+    volume with the last candle's own ATR-normalized price move into one categorical OBSERVATION
+    (`confirmed_move`/`unconfirmed_move`/`abnormal_volume_quiet_price`/`normal`) — never an
+    INTERPRETATION ("manipulation," "liquidity grab") or a TRADE SIGNAL, the directive's own explicit
+    three-way distinction. Disclosed plainly: `MockMarketDataProvider`'s own volume generator makes a
+    spike more LIKELY (never guaranteed) on a big price move via two hardcoded multipliers, so this
+    module's "does volume confirm the move" evidence is real and non-circular but bounded by exactly
+    those two constants — never oversold as emergent market microstructure. New
+    `GET /api/market/volume-confirmation` endpoint (`null` below minimum history, never fabricated).
+    20 new tests in `test_volume_analysis.py`.
+  - **Liquidity Sweep Research** (new `app/liquidity_sweep_research.py`): the real sweep DETECTOR
+    already existed (`app/market_intelligence.py::compute_liquidity()`), but nothing had ever measured
+    whether it has real predictive value. `liquidity_sweep_signal_series()` calls that same, unmodified
+    detector repeatedly over a bounded trailing window (`LIQUIDITY_SWEEP_SCAN_WINDOW=60` bars) — zero
+    new sweep-detection logic — producing a real, point-in-time-correct +1/-1/0 event series. Registered
+    as a new `StrategyIndicatorName` (`liquidity_sweep_signal`), the same precedent
+    `multi_horizon_trend_score` set: one new compiler pattern (`app/strategy_compiler.py`, "a
+    bullish/bearish liquidity sweep occurs" → a real `crosses_above`/`crosses_below` 0 trigger — a bare
+    `gt`/`lt` would have re-fired on every bar of a real multi-bar detection streak, a genuine mechanical
+    subtlety this module's own docstring discloses), one new `_SeriesCache`/`_resolve()` case in
+    `app/strategy_engine.py` — so the hypothesis compiles through the real `app/strategy_compiler.py`
+    and validates through the real `run_research_experiment()` pipeline, never a second, bespoke
+    validation path.
+    - **Real evidence, not fabricated**: a reference "Liquidity Sweep Reversal Research Model v1"
+      strategy (`Buy when a bullish liquidity sweep occurs, then enter when price closes above the
+      previous swing high. Place a Chandelier Stop and target 2R.`) was compiled and run through the
+      real pipeline across all 14 watchlist-universe symbols × 6,000 hourly (mock) candles. Result:
+      **zero real closed trades** — the compound "sweep AND THEN swing-high breakout entry" condition
+      never fired once in this sample, an even rarer combination than the prior AHL pass's own
+      Multi-Horizon Trend reference strategy (2 trades). Every validation axis honestly returned
+      `INSUFFICIENT EVIDENCE` rather than a fabricated verdict — the system correctly declining to claim
+      an edge (or a rejection) it has no real evidence for.
+  - 6 new tests in `test_liquidity_sweep_research.py`, 2 new tests in `test_strategy_compiler.py`.
+    Full backend suite green, mypy/ruff clean across the whole backend.
+
 - **"Professional Quant Trading Core" follow-up: Asset Discovery Engine.** Closes the last item on
   that directive's original P2 deferred list — "no whole-universe opportunity scanner exists... the
   system is purely reactive." Researched first: re-architecting `app/research.py`'s reactive rotation
