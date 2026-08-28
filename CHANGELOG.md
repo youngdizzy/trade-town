@@ -158,6 +158,42 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"Professional Quant Trading Core" follow-up: Asset Discovery Engine.** Closes the last item on
+  that directive's original P2 deferred list — "no whole-universe opportunity scanner exists... the
+  system is purely reactive." Researched first: re-architecting `app/research.py`'s reactive rotation
+  into a proactive scanner is a genuinely separate, larger lift this pass does NOT attempt (that file
+  is untouched). What actually closes the gap is two already-real primitives reused, not duplicated:
+  `MockMarketDataProvider._seed_price()` derives a symbol's starting price from a hash of the symbol
+  string itself — it was never actually restricted to the 14 watchlist-eligible symbols; that
+  restriction lived entirely in `app/watchlist.py`'s pools, not the data layer — and
+  `app/trend_engine.py::rank_symbols_by_trend()`, which already computes a real cross-sectional
+  ranking (composite trend score, persistence, risk-adjusted score) but was only ever pointed at
+  `state.watchlist`. New `app/asset_discovery.py` points that same real function at a new
+  `DISCOVERY_SYMBOL_POOL` (13 more real, well-known tickers spanning every one of the 8 existing
+  `ResearchCategory` values — the real asset-class taxonomy extension, never a second competing
+  taxonomy) minus whatever's already on the watchlist, so nothing gets "discovered" twice.
+  - New `GET /api/market/asset-discovery` endpoint, reusing the existing `SymbolTrendRanking` response
+    schema exactly (zero new schema), capped to a real top-N shortlist (default 10).
+  - **Honest scope cut**: no one-click "add this discovered symbol to the watchlist" action this pass
+    — the existing `watch_symbol` Agent Energy action takes no symbol argument at all (it always pulls
+    the next entry from the fixed `EXTRA_SYMBOL_POOL`), and wiring a symbol-specific add action would
+    mean extending that dispatcher's own signature — a real, separate, discrete follow-up. This is a
+    Research-Desk-only read, exactly like the existing cross-sectional endpoint: never an automatic
+    trade selection.
+  - Frontend: `OpportunitiesPanel.tsx` gained a new "Asset Discovery" section below Watchlist
+    Eligibility — one card per real candidate (symbol, category, composite score, persistence,
+    risk-adjusted score) plus an explicit "evidence only" disclosure line. `tsc`/lint/build clean;
+    live-verified end-to-end against the real running dev stack (10 real ranked candidates spanning
+    ETF/Company/Stock/Index/Sector/Gold/Economy rendered correctly, sorted by real composite score)
+    via a temporary Playwright spec (removed after verification).
+  - 9 new tests in `test_asset_discovery.py` (real rankings sourced only from the discovery pool, a
+    watched symbol is never re-discovered, the discovery pool is provably disjoint from the existing
+    watchlist universe, the pool spans every `ResearchCategory`, `top_n` respected, sorted descending
+    by real composite score, empty when every discovery symbol is already watched, categories match
+    the real pool definition). Full backend suite green, mypy/ruff clean.
+  - **This closes every item on the "Professional Quant Trading Core" directive's original P2
+    deferred list.**
+
 - **"Professional Quant Trading Core" follow-up: Per-Agent Vote Accuracy & Learning.** Closes the
   last real gap that directive's own Phase A audit named besides the Asset Discovery Engine:
   "department-level (not per-agent) accuracy-weighted learning is real... a genuine feedback loop,

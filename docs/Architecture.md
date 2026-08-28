@@ -14967,10 +14967,66 @@ flat vote count it replaced — verified by a dedicated regression test.
 `TestAgentAccuracyWeightedAgreement`), full backend suite green,
 mypy/ruff clean.
 
+**Asset Discovery Engine** (closed in a later follow-up). Researched
+first: the audit's own finding — "no whole-universe opportunity scanner
+exists... purely reactive" — was real, and re-architecting
+`app/research.py`'s reactive rotation into a proactive scanner is a
+genuinely separate, larger lift this pass does NOT attempt (that file
+is untouched). What actually closes the named gap is two already-real,
+already-vetted primitives, reused rather than duplicated: (1)
+`MockMarketDataProvider._seed_price()` derives a symbol's starting
+price from a hash of the symbol STRING itself — it was never actually
+restricted to the 14 watchlist-eligible symbols; that restriction
+lived entirely in `app/watchlist.py`'s `SEED_SYMBOLS`/
+`EXTRA_SYMBOL_POOL` pools, not the data layer, so a genuinely wider
+discovery universe is real, not fabricated, in exactly the sense every
+existing symbol's price already is (this codebase's system-wide,
+disclosed "every candle stamped `data_status='simulated'`" convention).
+(2) `app/trend_engine.py::rank_symbols_by_trend()` already computes a
+real cross-sectional ranking (composite trend score, persistence,
+risk-adjusted score) over any symbol→candles mapping — already exposed
+at `GET /api/market/trend-engine/cross-sectional`, but only ever over
+`state.watchlist`. New `app/asset_discovery.py` points that exact same
+real function at a new `DISCOVERY_SYMBOL_POOL` — 13 more real,
+well-known tickers deliberately spanning every one of the 8 existing
+`ResearchCategory` values (the real asset-class taxonomy extension,
+never a second competing taxonomy) — minus whatever's already on the
+watchlist, so a symbol never gets "discovered" twice. Zero new scoring
+logic invented.
+- New `GET /api/market/asset-discovery` endpoint (mirrors the existing
+  cross-sectional endpoint's shape exactly — same `SymbolTrendRanking`
+  response schema, zero new schema needed), capped to a real top-N
+  shortlist (default 10).
+- **Honest scope cut, stated plainly**: no one-click "add this
+  discovered symbol to the watchlist" action this pass. The existing
+  `watch_symbol` Agent Energy action (`app/nexus.py::
+  apply_energy_action`) takes no symbol argument — it always pulls the
+  next available entry from the fixed `EXTRA_SYMBOL_POOL`. Wiring a
+  symbol-specific add action would mean extending that dispatcher's own
+  signature, a real, separate, discrete follow-up, not part of the
+  "no whole-universe scanner" gap this module closes. This is a
+  Research-Desk-only read — "never an automatic trade selection," the
+  exact same disclosed boundary the existing cross-sectional endpoint's
+  own docstring already carries.
+- Frontend: `OpportunitiesPanel.tsx`'s existing feed/eligibility layout
+  gained a new "Asset Discovery" section directly below Watchlist
+  Eligibility — one card per real candidate (symbol, category,
+  composite score, trend persistence, risk-adjusted score), with an
+  explicit disclosure line that this is evidence only. `tsc`/lint/build
+  clean; live-verified end-to-end against the real running dev stack —
+  10 real ranked candidates spanning ETF/Company/Stock/Index/Sector/
+  Gold/Economy categories rendered correctly, sorted by real composite
+  score, via a temporary Playwright spec (removed after verification).
+- 9 new tests in `test_asset_discovery.py` (real rankings sourced only
+  from the discovery pool, a watched symbol is never re-discovered, the
+  discovery pool is provably disjoint from the existing watchlist
+  universe, the pool spans every `ResearchCategory`, `top_n` is
+  respected, sorted descending by real composite score, empty when
+  every discovery symbol is already watched, categories match the real
+  pool definition). Full backend suite green, mypy/ruff clean.
+
 This closes every item on the "Professional Quant Trading Core"
-directive's own P2 deferred list except a true Asset Discovery
-Engine/asset-class taxonomy — the one remaining genuinely larger
-architectural lift, not yet attempted.
+directive's own original P2 deferred list.
 
 ## CEO directive "Professional Quant Live Trading Desk"
 

@@ -2609,6 +2609,31 @@ endpoint) — see `app/economic_intelligence.py`'s module docstring for the
 full honesty boundary: this is a synthesis of already-real trading
 signals, never a real macroeconomic data feed (this codebase has none).
 
+### `GET /api/market/asset-discovery?timeframe=1d&limit=200&method=endpoint_slope&topN=10`
+
+CEO directive "Professional Quant Trading Core," Phase B — the Asset
+Discovery Engine (`app/asset_discovery.py`), the last item on that
+directive's original P2 deferred list. Real cross-sectional trend
+evidence — the exact same `rank_symbols_by_trend()`
+(`app/trend_engine.py`) the existing `GET /api/market/trend-engine/
+cross-sectional` endpoint already uses, zero new scoring logic — over
+`DISCOVERY_SYMBOL_POOL` (13 real, well-known tickers spanning every one
+of the 8 `ResearchCategory` values, not currently in `app/watchlist.py`'s
+`SEED_SYMBOLS`/`EXTRA_SYMBOL_POOL`) minus whatever the CEO has already
+added to the watchlist, so a symbol is never "discovered" twice.
+Returns `list[SymbolTrendRanking]` — the identical schema the existing
+cross-sectional endpoint already returns — sorted by real composite
+score descending, capped to `topN` (default 10, max 50).
+
+**Never an automatic trade or an automatic add** — the same disclosed
+boundary the existing cross-sectional endpoint's own docstring already
+carries. There is no symbol-specific "add to watchlist" action wired to
+this read: the existing `watch_symbol` Agent Energy action
+(`app/nexus.py::apply_energy_action`) takes no symbol argument and
+always pulls the next entry from the fixed `EXTRA_SYMBOL_POOL` —
+extending that dispatcher to accept a chosen symbol is a real, separate
+follow-up, not part of what this endpoint closes.
+
 ### `GET /api/black-swan/intelligence` / `GET /api/black-swan/reports`
 
 Design Bible Chapter 72 — the Black Swan Intelligence & Resilience

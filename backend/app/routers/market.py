@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, HTTPException, Query
 
+from app.asset_discovery import DEFAULT_DISCOVERY_TOP_N, compute_asset_discovery_candidates
 from app.data_provenance import compute_data_provenance_report
 from app.evidence_confluence import assess_evidence_confluence
 from app.market_data import TIMEFRAME_ORDER, market_data_provider
@@ -229,6 +230,26 @@ async def get_trend_engine_cross_sectional(
     state = await game_state.snapshot()
     symbol_candles = {entry.symbol: market_data_provider.get_candles(entry.symbol, timeframe, limit) for entry in state.watchlist}
     return rank_symbols_by_trend(symbol_candles, SYMBOL_CATEGORY, method=method, timeframe=timeframe)
+
+
+@router.get("/asset-discovery", response_model=list[SymbolTrendRanking])
+async def get_asset_discovery_candidates(
+    timeframe: str = Query("1d"),
+    limit: int = Query(200, ge=MIN_LIMIT, le=MAX_LIMIT),
+    method: TrendDefinitionMethod = Query("endpoint_slope"),
+    top_n: int = Query(DEFAULT_DISCOVERY_TOP_N, alias="topN", ge=1, le=50),
+) -> list[SymbolTrendRanking]:
+    """CEO directive "Professional Quant Trading Core," Phase B's last
+    P2 item — a real whole-universe scanner (see app/asset_discovery.py's
+    own module docstring for exactly what's real here and what's
+    honestly not built). Real cross-sectional trend evidence over
+    symbols NOT currently on the CEO's own watchlist — never an
+    automatic trade selection, the same disclosed boundary
+    /trend-engine/cross-sectional above already carries."""
+    if timeframe not in TIMEFRAME_ORDER:
+        raise HTTPException(status_code=400, detail=f"Unsupported timeframe {timeframe!r}. Supported: {TIMEFRAME_ORDER}")
+    state = await game_state.snapshot()
+    return compute_asset_discovery_candidates(state.watchlist, market_data_provider, timeframe=timeframe, limit=limit, method=method, top_n=top_n)
 
 
 @router.get("/trend-engine/regime-breakdown", response_model=TrendRegimeBreakdown)
