@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
-import type { OpportunityFeed, OpportunityFeedEntry, OpportunityFeedStatus, TradeDecision, WatchlistEligibilitySummary, WatchlistTier } from "@/types";
+import type { OpportunityFeed, OpportunityFeedEntry, OpportunityFeedStatus, SymbolTrendRanking, TradeDecision, WatchlistEligibilitySummary, WatchlistTier } from "@/types";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { api } from "@/net/api";
 import { voteDirection } from "../lib/derive";
@@ -134,6 +134,46 @@ function WatchlistEligibilitySection() {
 }
 
 /**
+ * CEO directive "Professional Quant Trading Core," Phase B's last P2
+ * item — the Asset Discovery Engine (see backend/app/asset_discovery.py's
+ * own module docstring). Real cross-sectional trend evidence over
+ * symbols the CEO hasn't added to the watchlist yet — a Research Desk
+ * read only, never an automatic trade selection or an automatic add.
+ */
+function AssetDiscoverySection() {
+  const [rankings, setRankings] = useState<SymbolTrendRanking[] | null>(null);
+  useEffect(() => {
+    api.getAssetDiscovery().then(setRankings).catch(() => undefined);
+  }, []);
+
+  if (!rankings || rankings.length === 0) return null;
+
+  return (
+    <div className="space-y-2">
+      <TerminalLabel>Asset Discovery — real trend evidence beyond the current watchlist</TerminalLabel>
+      <div className="grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-4">
+        {rankings.map((r) => (
+          <Glass key={r.symbol} className="p-2">
+            <div className="mb-1 flex items-center justify-between gap-2">
+              <span className="font-cmdmono text-cmd-cyan">{r.symbol}</span>
+              <span className="text-[9px] uppercase tracking-wide text-cmd-textDim">{r.category}</span>
+            </div>
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[9px] text-cmd-textDim">
+              <span>Composite: <span className={r.compositeScore >= 0 ? "text-cmd-green" : "text-cmd-red"}>{r.compositeScore.toFixed(1)}</span></span>
+              <span>Persistence: <span className="text-cmd-text">{r.trendPersistenceBars}</span></span>
+              <span>Risk-Adj: <span className="text-cmd-text">{r.riskAdjustedScore.toFixed(2)}</span></span>
+            </div>
+          </Glass>
+        ))}
+      </div>
+      <p className="text-[8px] italic text-cmd-textDim">
+        Not on the watchlist — evidence only, never an automatic trade or an automatic add. Use a Watch This Symbol action to start tracking one.
+      </p>
+    </div>
+  );
+}
+
+/**
  * "Recent Decisions" (the original per-tab content) reuses the same
  * TradeDecision records the Decisions tab shows in full — TradeTown's
  * backend resolves a candidate the moment research crosses the
@@ -151,6 +191,8 @@ export function OpportunitiesPanel({ onInspect }: { onInspect: (d: TradeDecision
       <OpportunityFeedSection />
 
       <WatchlistEligibilitySection />
+
+      <AssetDiscoverySection />
 
       <div className="space-y-2">
         <TerminalLabel>Recent Decisions — resolved ({recent.length})</TerminalLabel>

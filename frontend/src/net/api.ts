@@ -254,6 +254,10 @@ export const api = {
     request<TrendRegimeBreakdown>(
       `/market/trend-engine/regime-breakdown?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&method=${encodeURIComponent(method)}&forward_bars=${forwardBars}`
     ),
+  // CEO directive "Professional Quant Trading Core," Phase B's last P2
+  // item — the Asset Discovery Engine (backend/app/asset_discovery.py).
+  getAssetDiscovery: (timeframe = "1d", limit = 200, method: TrendDefinitionMethod = "endpoint_slope", topN = 10) =>
+    request<SymbolTrendRanking[]>(`/market/asset-discovery?timeframe=${encodeURIComponent(timeframe)}&limit=${limit}&method=${encodeURIComponent(method)}&topN=${topN}`),
   spendEnergy: (action: string, researchId?: string) =>
     request<{ agentEnergy: AgentEnergy }>("/energy/spend", {
       method: "POST",
