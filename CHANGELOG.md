@@ -158,6 +158,30 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"Professional Quant Trading Core" follow-up: Live Recovery Factor.** Closes another P2 item from
+  that directive's deferred list — a real, standard quant performance ratio (net profit divided by the
+  account's own worst real peak-to-trough drawdown, in dollars), the same real family as the Calmar
+  ratio, never a fabricated composite. "Live" (per the directive's own naming) means both halves are
+  measured against today's real live equity (cash + mark-to-market of any still-open position), not
+  just realized closed-trade P&L. New `app/analytics.py::max_drawdown_usd()` — the same real
+  peak-to-trough walk `max_drawdown_pct()` already performs, extended to dollars — and
+  `compute_recovery_factor()`, which divides `current_equity - starting_balance` by that real dollar
+  drawdown. `recoveryFactor` is `None` (a real "undefined," never a fabricated infinity — the same
+  convention `SymbolPerformanceRead.profitFactor` already uses) when the account has never drawn down
+  at all.
+  - New `GET /api/risk-limits/recovery-factor` endpoint, computed fresh per request (CAGS), no new
+    `GameSaveState` field, no gate, no automatic action.
+  - Frontend: new `RecoveryFactorCard.tsx` in `RiskPanel.tsx`, directly below the Portfolio Monte
+    Carlo card — net profit, worst real drawdown, the recovery factor itself, and live equity.
+    `tsc`/lint/build clean; live-smoke-tested against the real running dev stack with real seeded
+    trade data (a $50k win then a $10k giveback → net profit $40k, worst drawdown $10k, recovery
+    factor 4.00x) via a temporary Playwright spec (removed after verification) — confirmed correct
+    rendering with zero console errors.
+  - 10 new tests in `test_analytics.py` (`TestMaxDrawdownUsd`/`TestComputeRecoveryFactor`: zero-
+    drawdown → undefined not fabricated, a real hand-computed ratio, live current-equity folding in
+    real unrealized P&L, a negative-net-profit real negative ratio, the worst historical drawdown
+    surviving a later recovery). Full backend suite green (2829 passed), mypy/ruff clean.
+
 - **"Professional Quant Trading Core" follow-up: Brier-Score Calibration.** Closes another P2 item
   from that directive's deferred list — a real, standard proper scoring rule over the already-real,
   already-persisted Prediction Records ledger (`app/prediction_tracking.py`, Feature 29). New

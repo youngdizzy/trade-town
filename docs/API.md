@@ -1840,12 +1840,12 @@ candidate (not just the fields a given call touches) to always stay
 strictly descending; `400` with `"Company Health tier thresholds must
 stay in strictly descending order..."` otherwise.
 
-### `GET /api/risk-limits/portfolio-snapshot` / `GET /api/risk-limits/pretrade-decision` / `GET /api/risk-limits/portfolio-monte-carlo`
+### `GET /api/risk-limits/portfolio-snapshot` / `GET /api/risk-limits/pretrade-decision` / `GET /api/risk-limits/portfolio-monte-carlo` / `GET /api/risk-limits/recovery-factor`
 
 CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance" and
-its follow-ups — three read-only, no-body composition reads over
+its follow-ups — four read-only, no-body composition reads over
 already-real state (`app/portfolio_risk.py`, `app/portfolio_monte_
-carlo.py`). None of the three mutate the save.
+carlo.py`, `app/analytics.py`). None of the four mutate the save.
 
 `portfolio-snapshot` returns one canonical, timestamped
 `PortfolioRiskSnapshot`: equity/cash/exposure/leverage, the real
@@ -1882,6 +1882,17 @@ exposes, off this bootstrap's own sorted final-return array. Computed
 fresh on every call (the same CAGS convention `PortfolioIntelligence`
 already uses) — no new `GameSaveState` field, deterministically seeded
 so identical real trade history always reproduces an identical result.
+
+`recovery-factor` (CEO directive "Professional Quant Trading Core,"
+Phase B P2 item) returns a `RecoveryFactorRead` — a real, standard quant
+performance ratio (the same real family as the Calmar ratio): real net
+profit divided by the account's own worst real peak-to-trough drawdown,
+in dollars, both measured against today's real live equity (see
+`app/analytics.py::compute_recovery_factor()`). Fields:
+`startingBalance`, `currentEquity`, `netProfitUsd`, `maxDrawdownUsd`,
+`maxDrawdownPct`, `recoveryFactor` (`null` — a real "undefined," never
+a fabricated infinity — when the account has never drawn down),
+`summary`, `computedAt`.
 
 ### `POST /api/goals/create` / `POST /api/goals/cancel`
 

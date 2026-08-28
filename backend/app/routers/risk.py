@@ -7,13 +7,14 @@ from __future__ import annotations
 from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.analytics import compute_recovery_factor
 from app.market_data import market_data_provider
 from app.persistence import persist_modules
 from app.portfolio_intelligence import compute_portfolio_intelligence
 from app.portfolio_monte_carlo import compute_portfolio_monte_carlo
 from app.portfolio_risk import compute_portfolio_risk_snapshot, evaluate_pretrade_risk_decision
-from app.risk_engine import daily_realized_pnl_pct, project_loss_after_n_losses
-from app.schemas import PortfolioMonteCarloResult, PortfolioRiskSnapshot, PretradeRiskDecision, ProjectedLossPath, RiskLimits, TierAllocationLimits
+from app.risk_engine import daily_realized_pnl_pct, portfolio_equity, project_loss_after_n_losses
+from app.schemas import PortfolioMonteCarloResult, PortfolioRiskSnapshot, PretradeRiskDecision, ProjectedLossPath, RecoveryFactorRead, RiskLimits, TierAllocationLimits
 from app.state import game_state
 
 router = APIRouter(prefix="/api/risk-limits", tags=["risk"])
@@ -161,3 +162,15 @@ async def pretrade_risk_decision(
 async def portfolio_monte_carlo() -> PortfolioMonteCarloResult | None:
     state = await game_state.snapshot()
     return compute_portfolio_monte_carlo(state.paper_portfolio, state.risk_limits, sim_day=state.time.day)
+
+
+# CEO directive "Professional Quant Trading Core," Phase B P2 item —
+# the Live Recovery Factor. See app/analytics.py's
+# compute_recovery_factor() for the real methodology (net profit over
+# the account's own real worst peak-to-trough drawdown, both measured
+# against today's real live equity). Computed fresh per request; no new
+# GameSaveState field.
+@router.get("/recovery-factor", response_model=RecoveryFactorRead)
+async def recovery_factor() -> RecoveryFactorRead:
+    state = await game_state.snapshot()
+    return compute_recovery_factor(state.paper_portfolio, current_equity=portfolio_equity(state.paper_portfolio))

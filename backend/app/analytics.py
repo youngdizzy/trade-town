@@ -50,7 +50,7 @@ from __future__ import annotations
 import math
 from datetime import datetime, timezone
 
-from app.schemas import PaperPortfolio, PaperTrade, PerformancePeriod, PerformanceSnapshot, ResearchItem, TimeState
+from app.schemas import PaperPortfolio, PaperTrade, PerformancePeriod, PerformanceSnapshot, RecoveryFactorRead, ResearchItem, TimeState
 
 MAX_PERFORMANCE_SNAPSHOTS = 60
 
@@ -165,6 +165,68 @@ def real_peak_equity(trades: list[PaperTrade], starting_equity: float, *, curren
     if current_equity is not None:
         peak = max(peak, current_equity)
     return peak
+
+
+def max_drawdown_usd(trades: list[PaperTrade], starting_equity: float, *, current_equity: float | None = None) -> float:
+    """The same real peak-to-trough walk `max_drawdown_pct()` above
+    performs, in dollars rather than a percentage — CEO directive
+    "Professional Quant Trading Core," Phase B (Live Recovery Factor),
+    which needs a real dollar drawdown to divide real dollar net profit
+    by. `current_equity` follows the identical convention as
+    `max_drawdown_pct()`'s own parameter of the same name."""
+    if starting_equity <= 0:
+        return 0.0
+    equity = starting_equity
+    peak = starting_equity
+    worst_usd = 0.0
+    for trade in trades:
+        equity += trade.pnl
+        peak = max(peak, equity)
+        worst_usd = max(worst_usd, peak - equity)
+    if current_equity is not None:
+        peak = max(peak, current_equity)
+        worst_usd = max(worst_usd, peak - current_equity)
+    return worst_usd
+
+
+def compute_recovery_factor(portfolio: PaperPortfolio, *, current_equity: float) -> RecoveryFactorRead:
+    """CEO directive "Professional Quant Trading Core," Phase B P2 item
+    — the Live Recovery Factor: real net profit divided by the
+    account's own real worst peak-to-trough drawdown, in dollars — the
+    same real ratio family as the standard Calmar ratio. "Live" means
+    `current_equity` (cash + mark-to-market of any still-open position,
+    e.g. app/risk_engine.py::portfolio_equity()) is folded into both the
+    profit and drawdown reads, not just realized closed-trade P&L —
+    the same `current_equity` convention `max_drawdown_pct()`/
+    `max_drawdown_usd()` already establish. `recovery_factor` is `None`
+    (a real "undefined," never a fabricated infinity) when the account
+    has never drawn down at all — dividing by a real zero would invent
+    a number, not report one."""
+    starting_balance = portfolio.starting_balance
+    net_profit_usd = current_equity - starting_balance
+    drawdown_usd = max_drawdown_usd(portfolio.trade_history, starting_balance, current_equity=current_equity)
+    drawdown_pct = max_drawdown_pct(portfolio.trade_history, starting_balance, current_equity=current_equity)
+    recovery_factor = round(net_profit_usd / drawdown_usd, 2) if drawdown_usd > 0 else None
+
+    if drawdown_usd <= 0:
+        summary = f"No real drawdown on file yet — net profit is ${net_profit_usd:,.2f} with a real peak-to-trough decline of $0.00."
+    elif recovery_factor is not None and recovery_factor >= 2.0:
+        summary = f"Recovery factor {recovery_factor:.2f} — real net profit is {recovery_factor:.1f}x the account's own worst real drawdown (${drawdown_usd:,.2f})."
+    elif recovery_factor is not None and recovery_factor >= 0:
+        summary = f"Recovery factor {recovery_factor:.2f} — real net profit has not yet caught up to a multiple of the account's own worst real drawdown (${drawdown_usd:,.2f})."
+    else:
+        summary = f"Recovery factor {recovery_factor:.2f} — the account is currently net negative against its own worst real drawdown (${drawdown_usd:,.2f})."
+
+    return RecoveryFactorRead(
+        startingBalance=starting_balance,
+        currentEquity=current_equity,
+        netProfitUsd=round(net_profit_usd, 2),
+        maxDrawdownUsd=round(drawdown_usd, 2),
+        maxDrawdownPct=round(drawdown_pct, 2),
+        recoveryFactor=recovery_factor,
+        summary=summary,
+        computedAt=_now_iso(),
+    )
 
 
 def win_rate(win_count: int, loss_count: int) -> float:

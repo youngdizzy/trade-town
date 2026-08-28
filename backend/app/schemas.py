@@ -4029,6 +4029,30 @@ class PortfolioMonteCarloResult(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
+# CEO directive "Professional Quant Trading Core," Phase B P2 item —
+# the Live Recovery Factor. A real, standard quant performance ratio
+# (net profit divided by the account's own worst real peak-to-trough
+# drawdown, in dollars) — the same real family as the Calmar ratio,
+# never a fabricated composite. "Live" (per the directive's own naming)
+# means this is measured against today's real live equity (cash +
+# mark-to-market of any still-open position), not just realized,
+# closed-trade P&L — see app/analytics.py's compute_recovery_factor()
+# for the full real peak-walk methodology (reusing max_drawdown_pct()'s
+# own convention, extended to dollars).
+class RecoveryFactorRead(CamelModel):
+    starting_balance: float = Field(alias="startingBalance")
+    current_equity: float = Field(alias="currentEquity")
+    net_profit_usd: float = Field(alias="netProfitUsd")
+    max_drawdown_usd: float = Field(alias="maxDrawdownUsd")
+    max_drawdown_pct: float = Field(alias="maxDrawdownPct")
+    # None when the account has never drawn down (max_drawdown_usd <=
+    # 0) — a real "undefined," never a fabricated infinity, the same
+    # convention SymbolPerformanceRead.profit_factor already uses.
+    recovery_factor: float | None = Field(default=None, alias="recoveryFactor")
+    summary: str
+    computed_at: str = Field(alias="computedAt")
+
+
 # Quantitative Research & Intelligence System, Piece 7 — Forge, the
 # Quant Developer. Distinct from Piece 4's ModelValidationReport
 # (Meridian reviews the EVIDENCE a strategy's Monte Carlo run produced)

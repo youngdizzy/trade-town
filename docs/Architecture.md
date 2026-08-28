@@ -14673,7 +14673,8 @@ below), a formal watchlist eligibility-tier system beyond the feed
 (also closed in a later follow-up — see below), a true Asset Discovery
 Engine/asset-class taxonomy, per-agent learning, Brier-score
 calibration (also closed in a later follow-up — see below), live
-recovery factor, strategy-compliance-at-execution wiring.
+recovery factor (also closed in a later follow-up — see below),
+strategy-compliance-at-execution wiring.
 
 **Phase C — implementation.**
 
@@ -14854,6 +14855,26 @@ seeded predictions (85% stated confidence, 66.7% real accuracy → Brier
 spec. 10 new tests including a hand-computed real-formula match and the
 textbook 0.25 coin-flip case, full backend suite green (2819 passed),
 mypy/ruff clean.
+
+**Follow-up — Live Recovery Factor.** Closes another P2 item named
+above. A real, standard quant performance ratio — net profit divided by
+the account's own worst real peak-to-trough drawdown, in dollars, the
+same real family as the Calmar ratio. "Live" means both halves are
+measured against today's real live equity (cash + mark-to-market of any
+still-open position), not just realized closed-trade P&L. New
+`app/analytics.py::max_drawdown_usd()` (the same real peak-to-trough
+walk `max_drawdown_pct()` already performs, extended to dollars) and
+`compute_recovery_factor()`, which divides `current_equity -
+starting_balance` by that real drawdown. `recoveryFactor` is `None` (a
+real "undefined," never a fabricated infinity, the same convention
+`SymbolPerformanceRead.profitFactor` already uses) when the account has
+never drawn down. New `GET /api/risk-limits/recovery-factor` endpoint,
+computed fresh (CAGS), no new `GameSaveState` field. Frontend: new
+`RecoveryFactorCard.tsx` in `RiskPanel.tsx`, below the Portfolio Monte
+Carlo card — `tsc`/lint/build clean, live-smoke-tested with real seeded
+trade data (a $50k win then a $10k giveback → net profit $40k, worst
+drawdown $10k, recovery factor 4.00x) via a temporary Playwright spec.
+10 new tests, full backend suite green (2829 passed), mypy/ruff clean.
 
 ## CEO directive "Professional Quant Live Trading Desk"
 

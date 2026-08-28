@@ -5,7 +5,7 @@ now genuinely excludes trades closed in a prior simulated month, and that
 "all_time" stays deliberately unfiltered."""
 from __future__ import annotations
 
-from app.analytics import compute_performance_snapshot, max_drawdown_pct, real_peak_equity
+from app.analytics import compute_performance_snapshot, compute_recovery_factor, max_drawdown_pct, max_drawdown_usd, real_peak_equity
 from app.schemas import PaperPortfolio, PaperTrade, TimeState
 
 
@@ -246,3 +246,88 @@ class TestRealSharpeSortinoNoLosses:
         # Sharpe is still real: identical returns (1.0, 2.0) have real,
         # nonzero variance, so this is not the "undefined stdev" case.
         assert snapshot.sharpe_ratio != 0.0
+
+
+class TestMaxDrawdownUsd:
+    """CEO directive "Professional Quant Trading Core," Phase B — the
+    dollar sibling of max_drawdown_pct(), needed for a real dollar
+    Recovery Factor."""
+
+    def test_zero_starting_equity_never_crashes(self) -> None:
+        assert max_drawdown_usd([], 0.0) == 0.0
+
+    def test_no_trades_no_drawdown(self) -> None:
+        assert max_drawdown_usd([], 100_000.0) == 0.0
+
+    def test_a_real_peak_then_partial_giveback(self) -> None:
+        trades = [
+            _trade(pnl=50_000.0, closed_sim_minutes=1440, pnl_pct=50.0),
+            _trade(pnl=-10_000.0, closed_sim_minutes=2 * 1440, pnl_pct=-10.0),
+        ]
+        assert max_drawdown_usd(trades, 100_000.0) == 10_000.0
+
+    def test_the_worst_historical_drawdown_survives_a_later_recovery(self) -> None:
+        trades = [
+            _trade(pnl=50_000.0, closed_sim_minutes=1440, pnl_pct=50.0),
+            _trade(pnl=-30_000.0, closed_sim_minutes=2 * 1440, pnl_pct=-30.0),  # -30k from the 150k peak
+            _trade(pnl=20_000.0, closed_sim_minutes=3 * 1440, pnl_pct=20.0),  # recovers, but doesn't erase the real worst drawdown
+        ]
+        assert max_drawdown_usd(trades, 100_000.0) == 30_000.0
+
+    def test_open_position_unrealized_loss_via_current_equity(self) -> None:
+        trades = [_trade(pnl=50_000.0, closed_sim_minutes=1440, pnl_pct=50.0)]
+        # Peak is 150k; a real unrealized loss drags live equity to 120k.
+        assert max_drawdown_usd(trades, 100_000.0, current_equity=120_000.0) == 30_000.0
+
+
+class TestComputeRecoveryFactor:
+    """CEO directive "Professional Quant Trading Core," Phase B P2 item
+    — net real profit divided by the account's own real worst
+    peak-to-trough drawdown, both measured against today's real live
+    equity."""
+
+    def test_no_drawdown_yet_is_undefined_not_fabricated(self) -> None:
+        portfolio = _portfolio([_trade(pnl=5_000.0, closed_sim_minutes=1440, pnl_pct=5.0)])
+        result = compute_recovery_factor(portfolio, current_equity=105_000.0)
+        assert result.max_drawdown_usd == 0.0
+        assert result.recovery_factor is None
+
+    def test_real_ratio_matches_hand_computation(self) -> None:
+        trades = [
+            _trade(pnl=50_000.0, closed_sim_minutes=1440, pnl_pct=50.0),
+            _trade(pnl=-10_000.0, closed_sim_minutes=2 * 1440, pnl_pct=-10.0),
+        ]
+        portfolio = _portfolio(trades)
+        # Net profit 40k, max drawdown 10k -> recovery factor 4.0.
+        result = compute_recovery_factor(portfolio, current_equity=140_000.0)
+        assert result.net_profit_usd == 40_000.0
+        assert result.max_drawdown_usd == 10_000.0
+        assert result.recovery_factor == 4.0
+
+    def test_live_current_equity_folds_in_unrealized_pnl(self) -> None:
+        trades = [_trade(pnl=50_000.0, closed_sim_minutes=1440, pnl_pct=50.0)]
+        portfolio = _portfolio(trades)
+        # A real open position drags live equity down from the 150k peak to 120k.
+        result = compute_recovery_factor(portfolio, current_equity=120_000.0)
+        assert result.net_profit_usd == 20_000.0
+        assert result.max_drawdown_usd == 30_000.0
+        assert result.recovery_factor == round(20_000.0 / 30_000.0, 2)
+
+    def test_negative_net_profit_produces_a_real_negative_ratio(self) -> None:
+        trades = [
+            _trade(pnl=10_000.0, closed_sim_minutes=1440, pnl_pct=10.0),
+            _trade(pnl=-30_000.0, closed_sim_minutes=2 * 1440, pnl_pct=-30.0),
+        ]
+        portfolio = _portfolio(trades)
+        result = compute_recovery_factor(portfolio, current_equity=80_000.0)
+        assert result.net_profit_usd == -20_000.0
+        assert result.recovery_factor is not None and result.recovery_factor < 0
+
+    def test_summary_discloses_the_real_numbers(self) -> None:
+        trades = [
+            _trade(pnl=50_000.0, closed_sim_minutes=1440, pnl_pct=50.0),
+            _trade(pnl=-10_000.0, closed_sim_minutes=2 * 1440, pnl_pct=-10.0),
+        ]
+        portfolio = _portfolio(trades)
+        result = compute_recovery_factor(portfolio, current_equity=140_000.0)
+        assert "4.0" in result.summary or "4.00" in result.summary
