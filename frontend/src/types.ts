@@ -3654,6 +3654,29 @@ export interface PredictionRecord {
   resolvedAt: string | null;
 }
 
+// CEO directive "Professional Quant Trading Core," Phase B P2 item — a
+// real Brier-score calibration read over the Prediction Records ledger
+// above. See backend/app/prediction_tracking.py's
+// compute_brier_calibration() for the full methodology.
+export interface ConfidenceBucketCalibration {
+  rangeLowPct: number;
+  rangeHighPct: number;
+  predictedCount: number;
+  realAccuracyPct: number | null;
+  avgStatedConfidencePct: number;
+}
+
+export type BrierEvidenceState = "sufficient_evidence" | "not_enough_data";
+
+export interface BrierCalibrationSummary {
+  resolvedPredictionCount: number;
+  brierScore: number | null;
+  evidenceState: BrierEvidenceState;
+  buckets: ConfidenceBucketCalibration[];
+  summary: string;
+  updatedAt: string;
+}
+
 // CEO directive "Features 26-30," Feature 30 — one real
 // FailureClassification per closed, losing trade (backend/app/
 // failure_review.py's classify_failure()).

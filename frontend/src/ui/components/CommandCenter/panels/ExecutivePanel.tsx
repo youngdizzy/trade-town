@@ -11,6 +11,7 @@ import {
   priorityScoreFor,
 } from "../lib/derive";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../ui";
+import { BrierCalibrationCard } from "./BrierCalibrationCard";
 
 const CHOICE_TONE: Record<string, "green" | "red" | "amber"> = { buy: "green", sell: "red", wait: "amber" };
 const OUTCOME_TONE: Record<string, "green" | "red" | "cyan" | "neutral"> = {
@@ -203,6 +204,8 @@ export function ExecutivePanel() {
             )}
           </div>
         </Glass>
+
+        <BrierCalibrationCard />
       </div>
 
       <div className="space-y-3 lg:col-span-2">
