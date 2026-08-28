@@ -70,6 +70,7 @@ def _proposal():  # type: ignore[no-untyped-def]
         portfolio=default_portfolio(),
         risk_limits=RiskLimits(),
         market_intelligence=default_market_intelligence_state(),
+        agent_vote_accuracy=[],
     )
 
 

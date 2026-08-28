@@ -935,6 +935,56 @@ for this feature. Reused unchanged by `GET /api/audit/overview`'s
 doesn't exist yet) and now also guards the nullable `accuracyPct`
 before dividing.
 
+### `GET /api/executive/agent-accuracy`
+
+CEO directive "Professional Quant Trading Core," Phase B's per-agent
+learning follow-up. `compute_agent_vote_accuracy()`
+(`app/executive_intelligence.py`), real and computed fresh every
+request off `state.decisions`/`state.ceo_decisions` — the exact same
+directional-accuracy methodology as `/accuracy` above, applied per
+individual named agent instead of per department. Returns one
+`AgentVoteAccuracyScore` for every `AgentId` (15 entries):
+
+```json
+{
+  "agentId": "echo",
+  "decisionsTracked": 0,
+  "correctCount": 0,
+  "accuracyPct": null,
+  "evaluationState": "not_enough_evidence"
+}
+```
+
+Reuses `TradeDecision.supportingAgents`/`opposingAgents` — the real,
+already-established per-agent split `resolve_proposal()` already
+computes (an agent supports a decision if their own `AnalystVote.choice`
+matched the CEO's actual choice, opposes otherwise) — never a
+fabricated P&L credit split across agents (see
+`app/performance_attribution.py`'s own module docstring for why that
+specific thing is never invented anywhere in this codebase). Only the
+six agents who ever actually cast a real `AnalystVote` (`echo`,
+`scout`, `nova`, `sentinel`, `pulse`, `atlas` —
+`generate_analyst_votes()`'s fixed role→agent map) ever carry real
+tracked evidence; the other nine `AgentId`s structurally never vote on
+a trade candidate and honestly read `NOT_ENOUGH_EVIDENCE` forever, not
+a fabricated score.
+
+**The live feedback loop** (the "learning" half, not just a report):
+`app/confidence.py`'s "Multi-Agent Agreement" `ConfidenceFactor` — one
+of the seven factors on every `TradeProposal`'s `confidenceEngine` —
+now weights each of the six analyst votes by that voting agent's own
+real trailing accuracy multiplier (`compute_agent_accuracy_multiplier()`,
+the identical 0.5-1.5 formula `app/weighted_decisions.py`'s
+department-level multiplier already uses) instead of counting every
+vote equally. `app/nexus.py`'s `tick()` computes this once per tick
+from every already-resolved decision so far — never this tick's own
+still-unresolved proposals, so a decision's own outcome can never leak
+into its own weight, the same causal ordering the department-level
+multiplier already relies on. With zero tracked history for every
+agent (a fresh game) every multiplier is the neutral `1.0` and the
+factor's score is numerically identical to a flat vote count — no
+behavior change until real evidence accumulates.
+
 ### `GET /api/board/roster`
 
 Design Bible Chapter 70 Part 1 — Executive Board & CEO Intelligence

@@ -335,6 +335,7 @@ class TestGenerateTradeProposalsTradingRestrictions:
             [],
             0,
             default_market_intelligence_state(),
+            [],
             trading_restrictions,
         )
 

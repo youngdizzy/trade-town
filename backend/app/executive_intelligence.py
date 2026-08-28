@@ -77,6 +77,8 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from app.schemas import (
+    AGENT_IDS,
+    AgentVoteAccuracyScore,
     AnalystChoice,
     CeoDecisionRecord,
     ChallengeReport,
@@ -695,3 +697,73 @@ def compute_executive_accuracy_scores(
             )
         )
     return scores
+
+
+def compute_agent_vote_accuracy(decisions: list[TradeDecision], ceo_decisions: list[CeoDecisionRecord]) -> list[AgentVoteAccuracyScore]:
+    """The exact same directional-accuracy methodology
+    compute_executive_accuracy_scores() already uses at department level,
+    applied per individual named agent — CEO directive "Professional
+    Quant Trading Core," Phase B's own disclosed gap ("department-level
+    (not per-agent) accuracy-weighted learning is real... a genuine
+    feedback loop, just department-scoped").
+
+    Reuses TradeDecision.supporting_agents/opposing_agents — the one
+    real, already-established per-agent split app/executive.py's
+    resolve_proposal() already computes (an agent supports if their own
+    AnalystVote.choice matched the CEO's actual choice, opposes
+    otherwise) — rather than inventing a second convention. Joined to
+    the real resolved outcome via the same `decision-{proposalId}` /
+    `ceo-{proposalId}` id convention resolve_proposal() is the sole
+    constructor of (verified: grep finds exactly one TradeDecision(...)
+    call site in this codebase).
+
+    No P&L credit-splitting happens anywhere here — see
+    app/performance_attribution.py's own module docstring for why that
+    specific thing is never invented in this codebase. This is a binary
+    "was this agent's own directional stance validated by the real
+    outcome" tally per agent, which needs no apportionment at all."""
+    resolved_by_proposal: dict[str, bool] = {
+        r.proposal_id: r.outcome == "correct" for r in ceo_decisions if r.outcome in ("correct", "incorrect")
+    }
+    scores: list[AgentVoteAccuracyScore] = []
+    for agent_id in AGENT_IDS:
+        tracked = 0
+        correct = 0
+        for decision in decisions:
+            proposal_id = decision.id.removeprefix("decision-")
+            was_profitable = resolved_by_proposal.get(proposal_id)
+            if was_profitable is None:
+                continue
+            if agent_id in decision.supporting_agents:
+                predicted_profitable = True
+            elif agent_id in decision.opposing_agents:
+                predicted_profitable = False
+            else:
+                continue
+            tracked += 1
+            if predicted_profitable == was_profitable:
+                correct += 1
+        accuracy = round(correct / tracked * 100.0, 1) if tracked else None
+        scores.append(
+            AgentVoteAccuracyScore(
+                agentId=agent_id,
+                decisionsTracked=tracked,
+                correctCount=correct,
+                accuracyPct=accuracy,
+                evaluationState=_evaluation_state(tracked, accuracy),
+            )
+        )
+    return scores
+
+
+# A department with no tracked decisions yet gets the neutral 1.0 —
+# never penalized for a track record that simply doesn't exist yet.
+# Intentionally the exact same formula/bounds as app/weighted_
+# decisions.py's compute_accuracy_multiplier() (a real, published
+# 0.5-1.5 range centered on 50% accuracy) — one house convention for
+# "how much does a real track record move a live weight," not a second,
+# independently-invented scale living here instead.
+def compute_agent_accuracy_multiplier(score: AgentVoteAccuracyScore) -> float:
+    if score.decisions_tracked == 0 or score.accuracy_pct is None:
+        return 1.0
+    return round(0.5 + (score.accuracy_pct / 100.0), 3)

@@ -3226,6 +3226,33 @@ class ExecutiveAccuracyScore(CamelModel):
     evaluation_state: ExecutiveEvidenceState = Field(default="not_enough_evidence", alias="evaluationState")
 
 
+class AgentVoteAccuracyScore(CamelModel):
+    """Per-agent directional voting accuracy — CEO directive "Professional
+    Quant Trading Core," Phase B's own disclosed gap: department-level
+    accuracy-weighted learning was already real (ExecutiveAccuracyScore
+    above), but nothing tracked it per individual named agent. This is
+    the exact same real methodology — did this agent's stance predict
+    whether the trade it was cast on eventually closed profitable —
+    applied to the one real, already-established per-agent split
+    TradeDecision.supporting_agents/opposing_agents already carries
+    (app/executive.py's resolve_proposal), never a fabricated P&L credit
+    split across agents (see app/performance_attribution.py's own
+    module docstring for why that specific thing is NOT invented here
+    or anywhere else in this codebase). Only the six agents who ever
+    actually cast an AnalystVote (echo, scout, nova, sentinel, pulse,
+    atlas — see app/executive.py's generate_analyst_votes) ever carry
+    real tracked evidence; the other nine AgentIds structurally never
+    vote on a trade candidate, so they always read
+    NOT_ENOUGH_EVIDENCE — an honest fact about the role, not a gap. See
+    app/executive_intelligence.py's compute_agent_vote_accuracy()."""
+
+    agent_id: AgentId = Field(alias="agentId")
+    decisions_tracked: int = Field(alias="decisionsTracked")
+    correct_count: int = Field(alias="correctCount")
+    accuracy_pct: float | None = Field(default=None, alias="accuracyPct")
+    evaluation_state: ExecutiveEvidenceState = Field(default="not_enough_evidence", alias="evaluationState")
+
+
 # Design Bible Chapter 70 Part 3 — Weighted Executive Decision Engine
 # (WEDE). Honest scope, stated here once rather than per-field below: of
 # the brief's eight named weighting inputs, only two have a real,

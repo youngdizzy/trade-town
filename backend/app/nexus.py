@@ -61,6 +61,7 @@ from app.executive import (
     resolve_proposal,
 )
 from app.executive_intelligence import (
+    compute_agent_vote_accuracy,
     compute_executive_accuracy_scores,
     compute_executive_recommendation,
     generate_department_opinions,
@@ -197,6 +198,7 @@ from app.schemas import (
     AcademyProject,
     AgentId,
     AgentKnowledgeState,
+    AgentVoteAccuracyScore,
     AgentOverride,
     AgentPerformanceReview,
     AgentSkillProfile,
@@ -832,6 +834,7 @@ def _generate_trade_proposals(
     scanner_alerts: list[ScannerAlert],
     now_sim_minutes: int,
     market_intelligence: MarketIntelligenceState,
+    agent_vote_accuracy: list[AgentVoteAccuracyScore],
     trading_restrictions: list[TradingRestriction] | None = None,
 ) -> list[TradeProposal]:
     """Feature 12 — the CEO Approval pipeline. Every research item that
@@ -841,6 +844,15 @@ def _generate_trade_proposals(
     auto-executes via a majority-vote decision. Skips a symbol that
     already has a pending proposal and stops once MAX_PENDING_PROPOSALS
     is reached, so a slow CEO doesn't get spammed with duplicates.
+
+    `agent_vote_accuracy` (CEO directive "Professional Quant Trading
+    Core," Phase B's per-agent learning follow-up) — the real, trailing
+    per-agent directional accuracy computed once per tick from every
+    already-resolved decision so far (app/executive_intelligence.py's
+    compute_agent_vote_accuracy()), threaded straight through to
+    generate_proposal() -> compute_confidence() so the Multi-Agent
+    Agreement factor can weight each analyst's vote by their own real
+    track record.
 
     `trading_restrictions` (CEO directive "Layered Kill Switches," see
     app/trading_restrictions.py) skips a research item whose symbol or
@@ -881,6 +893,7 @@ def _generate_trade_proposals(
             portfolio=portfolio,
             risk_limits=risk_limits,
             market_intelligence=market_intelligence,
+            agent_vote_accuracy=agent_vote_accuracy,
         )
         new_proposals.append(proposal)
         pending_symbols.add(item.symbol)
@@ -1621,11 +1634,29 @@ def tick(state: GameSaveState, new_time: TimeState, minutes: int) -> GameSaveSta
     # an active Losing Streak pause, and Chapter 72 — an active
     # Defensive Mode, block new proposal generation the
     # same real way.
+    # CEO directive "Professional Quant Trading Core," Phase B's per-agent
+    # learning follow-up — the real, trailing per-agent directional
+    # accuracy computed fresh each tick from every already-resolved
+    # decision so far (never this tick's own still-unresolved proposals,
+    # so a decision's own outcome can never leak into its own weight —
+    # the same causal ordering app/weighted_decisions.py's department-
+    # level accuracy multiplier already relies on).
+    agent_vote_accuracy = compute_agent_vote_accuracy(decisions, ceo_decisions)
     candidate_proposals = (
         []
         if (emergency_stop.active or block_new_proposals)
         else _generate_trade_proposals(
-            trade_proposals, completed, prices, effective_risk_limits, paper_portfolio, news, scanner_alerts, now_sim_minutes, market_intelligence, trading_restrictions
+            trade_proposals,
+            completed,
+            prices,
+            effective_risk_limits,
+            paper_portfolio,
+            news,
+            scanner_alerts,
+            now_sim_minutes,
+            market_intelligence,
+            agent_vote_accuracy,
+            trading_restrictions,
         )
     )
     # v0.7 Design Bible Chapter 58 — the Institutional Trade Filter &

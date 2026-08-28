@@ -10,12 +10,13 @@ from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
 from app.executive import PROPOSAL_CANDLE_COUNT, PROPOSAL_TIMEFRAME, AnalystChoice
-from app.executive_intelligence import compute_executive_accuracy_scores, compute_executive_recommendation, generate_department_opinions
+from app.executive_intelligence import compute_agent_vote_accuracy, compute_executive_accuracy_scores, compute_executive_recommendation, generate_department_opinions
 from app.market_data import market_data_provider
 from app.persistence import persist_modules
 from app.process_adherence import compute_process_adherence, compute_recent_process_adherence_summary
 from app.schemas import (
     AgentId,
+    AgentVoteAccuracyScore,
     CeoDecisionRecord,
     ChallengeReport,
     ConfluenceRead,
@@ -307,6 +308,20 @@ async def executive_accuracy() -> list[ExecutiveAccuracyScore]:
     outcome). No game-state lock needed — nothing here mutates the save."""
     state = await game_state.snapshot()
     return compute_executive_accuracy_scores(state.executive_meeting_log, state.ceo_decisions)
+
+
+@router.get("/agent-accuracy", response_model=list[AgentVoteAccuracyScore])
+async def agent_vote_accuracy() -> list[AgentVoteAccuracyScore]:
+    """CEO directive "Professional Quant Trading Core," Phase B's
+    per-agent learning follow-up — the same accuracy read as /accuracy
+    above, per individual named agent instead of per department (see
+    app/executive_intelligence.py's compute_agent_vote_accuracy for the
+    honesty boundary: only the six agents who ever cast a real
+    AnalystVote carry tracked evidence). Read-only, computed fresh from
+    the permanent Trade Decision + CEO Decision records; no game-state
+    lock needed."""
+    state = await game_state.snapshot()
+    return compute_agent_vote_accuracy(state.decisions, state.ceo_decisions)
 
 
 @router.get("/weighted-decision", response_model=WeightedExecutiveRecommendation)

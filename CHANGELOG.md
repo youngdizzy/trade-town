@@ -158,6 +158,54 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"Professional Quant Trading Core" follow-up: Per-Agent Vote Accuracy & Learning.** Closes the
+  last real gap that directive's own Phase A audit named besides the Asset Discovery Engine:
+  "department-level (not per-agent) accuracy-weighted learning is real... a genuine feedback loop,
+  just department-scoped." `app/weighted_decisions.py`'s Weighted Executive Decision Engine already
+  made a department's own trailing accuracy multiply its influence on future recommendations — but
+  that loop covered only the nine executive department seats, never the 15 individual named agents.
+  The audit's own separate, real blocker for a naive per-agent P&L attribution
+  (`app/performance_attribution.py`'s own module docstring: a trade's `supportingAgents`/
+  `opposingAgents` is a list, not a single owner, with no CEO-authorized rule for splitting dollar
+  credit across it) is still respected — this feature never splits P&L. Instead it reuses that exact
+  same real list for a binary, non-apportioned signal: did this agent's own presence in
+  `supporting_agents` (their vote matched the direction ultimately taken) or `opposing_agents` (it
+  didn't) match the real, later-resolved outcome.
+  - New `app/executive_intelligence.py::compute_agent_vote_accuracy()` — the identical directional-
+    accuracy methodology `compute_executive_accuracy_scores()` already uses at department level,
+    joined via the real, sole `decision-{proposalId}`/`ceo-{proposalId}` id convention
+    `resolve_proposal()` is the only constructor of (verified: exactly one `TradeDecision(...)` call
+    site in this codebase). New `compute_agent_accuracy_multiplier()` reuses the identical 0.5-1.5
+    formula `weighted_decisions.py`'s department-level multiplier already uses — one house convention,
+    not a second invented scale. Only the six agents who ever actually cast a real `AnalystVote`
+    (echo, scout, nova, sentinel, pulse, atlas — `generate_analyst_votes()`'s fixed role→agent map)
+    ever carry real tracked evidence; the other nine `AgentId`s structurally never vote on a trade
+    candidate and honestly read `NOT_ENOUGH_EVIDENCE` forever, not a fabricated score.
+  - **The live feedback loop, not just a report**: `app/confidence.py`'s existing "Multi-Agent
+    Agreement" `ConfidenceFactor` (one of the seven factors every `TradeProposal` already carries) now
+    weights each of the six analyst votes by that voting agent's own real trailing accuracy multiplier
+    instead of counting every vote equally — no new factor slot, no weight rebalancing, the same real
+    signal made honestly smarter as evidence accumulates. `app/nexus.py`'s `tick()` computes
+    `agent_vote_accuracy` once per tick from every already-resolved decision so far (never this tick's
+    own still-unresolved proposals, so a decision's own outcome can never leak into its own weight —
+    the same causal ordering the department-level multiplier already relies on), threaded through
+    `_generate_trade_proposals()` → `generate_proposal()` → `compute_confidence()`. With zero tracked
+    history for every agent (a fresh game) every multiplier is the neutral `1.0` and the factor's score
+    is numerically identical to the flat vote count it replaced — verified by a dedicated regression
+    test, so this is real behavior change only once real evidence exists.
+  - New `GET /api/executive/agent-accuracy` endpoint, mirroring the existing `/accuracy` department
+    endpoint, computed fresh from `state.decisions`/`state.ceo_decisions` every call (CAGS, no new
+    `GameSaveState` field). Frontend: `AgentsPanel.tsx`'s existing per-agent roster cards gained a new
+    "Vote Accuracy" pill (tracked/correct count plus the real percentage, tone-coded pass/fail/
+    inconclusive) — shown only once an agent has at least one real tracked decision, never a
+    perpetually-empty stat for the nine agents who structurally never vote. The live confidence-
+    weighting is the other, deeper player-visible effect (via the existing Multi-Agent Agreement
+    factor already shown on every proposal).
+  - 17 new tests (`TestComputeAgentVoteAccuracy`, `TestComputeAgentAccuracyMultiplier` in
+    `test_executive_intelligence.py`; `TestAgentAccuracyWeightedAgreement` in `test_confidence.py`,
+    including the exact zero-evidence-matches-old-behavior regression and both directions of a
+    tracked agent's accuracy actually moving the score). Full backend suite green, mypy/ruff clean.
+
 - **"Professional Quant Trading Core" follow-up: Strategy-Compliance-at-Execution Wiring.** Closes
   another P2 item from that directive's deferred list. `app/trade_attribution.py`'s existing
   `TradeStrategyRuleSnapshot` already snapshotted a trade's real compiled strategy rules at decision

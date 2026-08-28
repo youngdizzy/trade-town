@@ -12,6 +12,8 @@ from datetime import datetime, timezone
 
 from app.executive_intelligence import (
     MIN_ACCURACY_SAMPLE_FOR_VERDICT,
+    compute_agent_accuracy_multiplier,
+    compute_agent_vote_accuracy,
     compute_executive_accuracy_scores,
     compute_executive_recommendation,
     generate_department_opinions,
@@ -22,6 +24,7 @@ from app.executive_intelligence import (
 )
 from app.market_intelligence import default_market_intelligence_state
 from app.schemas import (
+    AgentVoteAccuracyScore,
     AnalystVote,
     CeoDecisionRecord,
     ChallengeReport,
@@ -540,3 +543,119 @@ class TestComputeAccuracyMultiplier:
             role="research", departmentLabel="Research", decisionsTracked=0, correctCount=0, accuracyPct=None, evaluationState="not_enough_evidence"
         )
         assert compute_accuracy_multiplier(score) == 1.0
+
+
+def _decision_with_stance(*, proposal_id: str, supporting_agents: list[str], opposing_agents: list[str]) -> TradeDecision:
+    return TradeDecision(
+        id=f"decision-{proposal_id}",
+        symbol="NEXA",
+        outcome="trade",
+        researchSummary="x",
+        technicalSummary="x",
+        fundamentalSummary="x",
+        riskSummary="x",
+        supportingAgents=supporting_agents,  # type: ignore[arg-type]
+        opposingAgents=opposing_agents,  # type: ignore[arg-type]
+        confidence=90.0,
+        finalReasoning="x",
+        createdAt=_now_iso(),
+    )
+
+
+class TestComputeAgentVoteAccuracy:
+    """CEO directive "Professional Quant Trading Core," Phase B's own
+    disclosed per-agent-learning gap — the same real methodology
+    TestComputeExecutiveAccuracyScores above already verifies at
+    department level, applied per individual named agent via the real
+    supporting_agents/opposing_agents split, never a fabricated P&L
+    credit split."""
+
+    def test_zero_tracked_is_none_not_a_fabricated_zero(self) -> None:
+        scores = compute_agent_vote_accuracy([], [])
+        echo = next(s for s in scores if s.agent_id == "echo")
+        assert echo.decisions_tracked == 0
+        assert echo.accuracy_pct is None
+        assert echo.evaluation_state == "not_enough_evidence"
+
+    def test_every_agent_id_is_represented_even_ones_that_never_vote(self) -> None:
+        from app.schemas import AGENT_IDS
+
+        scores = compute_agent_vote_accuracy([], [])
+        assert {s.agent_id for s in scores} == set(AGENT_IDS)
+
+    def test_supporting_agent_correct_when_outcome_profitable(self) -> None:
+        n = MIN_ACCURACY_SAMPLE_FOR_VERDICT
+        decisions = [_decision_with_stance(proposal_id=f"p{i}", supporting_agents=["echo"], opposing_agents=[]) for i in range(n)]
+        ceo_decisions = [_resolved_decision(proposal_id=f"p{i}", outcome="correct") for i in range(n)]
+        scores = compute_agent_vote_accuracy(decisions, ceo_decisions)
+        echo = next(s for s in scores if s.agent_id == "echo")
+        assert echo.decisions_tracked == n
+        assert echo.accuracy_pct == 100.0
+        assert echo.evaluation_state == "pass"
+
+    def test_supporting_agent_incorrect_when_outcome_unprofitable(self) -> None:
+        n = MIN_ACCURACY_SAMPLE_FOR_VERDICT
+        decisions = [_decision_with_stance(proposal_id=f"p{i}", supporting_agents=["echo"], opposing_agents=[]) for i in range(n)]
+        ceo_decisions = [_resolved_decision(proposal_id=f"p{i}", outcome="incorrect") for i in range(n)]
+        scores = compute_agent_vote_accuracy(decisions, ceo_decisions)
+        echo = next(s for s in scores if s.agent_id == "echo")
+        assert echo.accuracy_pct == 0.0
+        assert echo.evaluation_state == "fail"
+
+    def test_opposing_agent_correct_when_outcome_unprofitable(self) -> None:
+        n = MIN_ACCURACY_SAMPLE_FOR_VERDICT
+        decisions = [_decision_with_stance(proposal_id=f"p{i}", supporting_agents=[], opposing_agents=["sentinel"]) for i in range(n)]
+        ceo_decisions = [_resolved_decision(proposal_id=f"p{i}", outcome="incorrect") for i in range(n)]
+        scores = compute_agent_vote_accuracy(decisions, ceo_decisions)
+        sentinel = next(s for s in scores if s.agent_id == "sentinel")
+        assert sentinel.accuracy_pct == 100.0
+        assert sentinel.evaluation_state == "pass"
+
+    def test_opposing_agent_incorrect_when_outcome_profitable(self) -> None:
+        n = MIN_ACCURACY_SAMPLE_FOR_VERDICT
+        decisions = [_decision_with_stance(proposal_id=f"p{i}", supporting_agents=[], opposing_agents=["sentinel"]) for i in range(n)]
+        ceo_decisions = [_resolved_decision(proposal_id=f"p{i}", outcome="correct") for i in range(n)]
+        scores = compute_agent_vote_accuracy(decisions, ceo_decisions)
+        sentinel = next(s for s in scores if s.agent_id == "sentinel")
+        assert sentinel.accuracy_pct == 0.0
+        assert sentinel.evaluation_state == "fail"
+
+    def test_agent_absent_from_both_lists_is_not_tracked_on_that_decision(self) -> None:
+        n = MIN_ACCURACY_SAMPLE_FOR_VERDICT
+        decisions = [_decision_with_stance(proposal_id=f"p{i}", supporting_agents=["echo"], opposing_agents=[]) for i in range(n)]
+        ceo_decisions = [_resolved_decision(proposal_id=f"p{i}", outcome="correct") for i in range(n)]
+        scores = compute_agent_vote_accuracy(decisions, ceo_decisions)
+        guardian = next(s for s in scores if s.agent_id == "guardian")
+        assert guardian.decisions_tracked == 0
+        assert guardian.evaluation_state == "not_enough_evidence"
+
+    def test_unresolved_decision_is_never_counted(self) -> None:
+        n = MIN_ACCURACY_SAMPLE_FOR_VERDICT
+        decisions = [_decision_with_stance(proposal_id=f"p{i}", supporting_agents=["echo"], opposing_agents=[]) for i in range(n)]
+        ceo_decisions = [_resolved_decision(proposal_id=f"p{i}", outcome="pending") for i in range(n)]
+        scores = compute_agent_vote_accuracy(decisions, ceo_decisions)
+        echo = next(s for s in scores if s.agent_id == "echo")
+        assert echo.decisions_tracked == 0
+
+    def test_below_min_sample_stays_not_enough_evidence(self) -> None:
+        n = MIN_ACCURACY_SAMPLE_FOR_VERDICT - 1
+        decisions = [_decision_with_stance(proposal_id=f"p{i}", supporting_agents=["echo"], opposing_agents=[]) for i in range(n)]
+        ceo_decisions = [_resolved_decision(proposal_id=f"p{i}", outcome="correct") for i in range(n)]
+        scores = compute_agent_vote_accuracy(decisions, ceo_decisions)
+        echo = next(s for s in scores if s.agent_id == "echo")
+        assert echo.decisions_tracked == n
+        assert echo.evaluation_state == "not_enough_evidence"
+
+
+class TestComputeAgentAccuracyMultiplier:
+    def test_untracked_agent_gets_the_neutral_multiplier_not_a_penalty(self) -> None:
+        score = AgentVoteAccuracyScore(agentId="echo", decisionsTracked=0, correctCount=0, accuracyPct=None, evaluationState="not_enough_evidence")
+        assert compute_agent_accuracy_multiplier(score) == 1.0
+
+    def test_perfect_accuracy_gives_the_maximum_multiplier(self) -> None:
+        score = AgentVoteAccuracyScore(agentId="echo", decisionsTracked=5, correctCount=5, accuracyPct=100.0, evaluationState="pass")
+        assert compute_agent_accuracy_multiplier(score) == 1.5
+
+    def test_zero_accuracy_gives_the_minimum_multiplier(self) -> None:
+        score = AgentVoteAccuracyScore(agentId="echo", decisionsTracked=5, correctCount=0, accuracyPct=0.0, evaluationState="fail")
+        assert compute_agent_accuracy_multiplier(score) == 0.5

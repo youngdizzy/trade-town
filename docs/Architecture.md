@@ -14671,11 +14671,11 @@ disclosed. P2 (documented, not built this pass — genuine architectural
 lifts): multi-timeframe analysis (closed in a later follow-up — see
 below), a formal watchlist eligibility-tier system beyond the feed
 (also closed in a later follow-up — see below), a true Asset Discovery
-Engine/asset-class taxonomy, per-agent learning, Brier-score
-calibration (also closed in a later follow-up — see below), live
-recovery factor (also closed in a later follow-up — see below),
-strategy-compliance-at-execution wiring (also closed in a later
-follow-up — see below).
+Engine/asset-class taxonomy, per-agent learning (also closed in a
+later follow-up — see below), Brier-score calibration (also closed in
+a later follow-up — see below), live recovery factor (also closed in
+a later follow-up — see below), strategy-compliance-at-execution
+wiring (also closed in a later follow-up — see below).
 
 **Phase C — implementation.**
 
@@ -14906,10 +14906,71 @@ fixed-percent stop and a 2R target → correctly returned
 two confirming the real wiring into `resolve_trade_strategy_rule_
 snapshot()`, full backend suite green (2842 passed), mypy/ruff clean.
 
+**Per-Agent Vote Accuracy & Learning** (closed in a later follow-up).
+Researched first: `weighted_decisions.py`'s Weighted Executive Decision
+Engine already made department-level accuracy a real, live feedback
+loop (a department's own trailing accuracy multiplies its influence on
+every new recommendation) — but that loop was scoped to the nine
+executive department seats, never the 15 individual named agents. The
+audit's own blocker for a naive "per-agent P&L attribution" (a trade's
+`supportingAgents`/`opposingAgents` is a list, not a single owner, with
+no CEO-authorized rule for splitting dollar credit across it) is real
+and still respected — this feature never splits P&L. Instead it reuses
+that exact same real list for a binary, non-apportioned signal: did
+this agent's own presence in `supporting_agents` (their vote matched
+the direction ultimately taken) or `opposing_agents` (it didn't) match
+the real, later-resolved outcome. New `app/executive_intelligence.py`
+functions `compute_agent_vote_accuracy()` (the same directional-
+accuracy methodology `compute_executive_accuracy_scores()` already uses
+at department level, joined via the real, sole `decision-{proposalId}`/
+`ceo-{proposalId}` id convention `resolve_proposal()` is the only
+constructor of) and `compute_agent_accuracy_multiplier()` (the
+identical 0.5-1.5 formula `weighted_decisions.py`'s department-level
+multiplier already uses — one house convention, not a second invented
+scale). Only the six agents who ever actually cast a real `AnalystVote`
+(echo, scout, nova, sentinel, pulse, atlas — `generate_analyst_votes()`'s
+fixed role→agent map) ever carry real tracked evidence; the other nine
+`AgentId`s structurally never vote on a trade candidate and honestly
+read `NOT_ENOUGH_EVIDENCE` forever, not a fabricated score. New
+`GET /api/executive/agent-accuracy` endpoint mirrors the existing
+`/accuracy` department endpoint, computed fresh from `state.decisions`/
+`state.ceo_decisions` every call. Frontend: `AgentsPanel.tsx`'s
+existing per-agent roster cards gained a new "Vote Accuracy" pill
+(tracked/correct count plus the real percentage, tone-coded pass/fail/
+inconclusive) — shown only once an agent has at least one real tracked
+decision, never a perpetually-empty stat for the nine agents who
+structurally never vote. `tsc`/lint/build clean; live-verified
+end-to-end against the real running dev stack with real seeded
+decisions (echo supporting 4, 3 correct → 75% pass; sentinel opposing
+the same 4, 1 correct → 25% fail, both matching the exact hand-computed
+numbers) via a temporary Playwright spec (removed after verification).
+
+The "learning" half — a live wiring, not just a report — lives in
+`app/confidence.py`'s existing "Multi-Agent Agreement" factor (the
+`compute_confidence()` factor every `TradeProposal` already carries):
+each of the six analyst votes now contributes to that factor weighted
+by the voting agent's own real trailing accuracy multiplier instead of
+counting every vote equally. No new factor slot, no weight
+rebalancing — the same real signal, made honestly smarter as evidence
+accumulates. `app/nexus.py`'s `tick()` computes `agent_vote_accuracy`
+once per tick from every already-resolved decision so far (never this
+tick's own still-unresolved proposals), threaded through
+`_generate_trade_proposals()` → `generate_proposal()` →
+`compute_confidence()` — the same causal ordering (a decision's own
+outcome can never leak into its own weight) `weighted_decisions.py`'s
+department-level multiplier already relies on. With zero tracked
+history for every agent (a fresh game), every multiplier is the
+neutral 1.0 and the factor's score is numerically identical to the
+flat vote count it replaced — verified by a dedicated regression test.
+17 new tests (`TestComputeAgentVoteAccuracy`,
+`TestComputeAgentAccuracyMultiplier`,
+`TestAgentAccuracyWeightedAgreement`), full backend suite green,
+mypy/ruff clean.
+
 This closes every item on the "Professional Quant Trading Core"
 directive's own P2 deferred list except a true Asset Discovery
-Engine/asset-class taxonomy and per-agent learning — both genuinely
-larger architectural lifts, not yet attempted.
+Engine/asset-class taxonomy — the one remaining genuinely larger
+architectural lift, not yet attempted.
 
 ## CEO directive "Professional Quant Live Trading Desk"
 

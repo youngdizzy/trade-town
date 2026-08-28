@@ -53,6 +53,7 @@ from app.risk_engine import portfolio_equity, recommended_quantity
 from app.schemas import (
     AgentId,
     AgentVote,
+    AgentVoteAccuracyScore,
     AnalystChoice,
     AnalystRole,
     AnalystVote,
@@ -315,6 +316,7 @@ def generate_proposal(
     portfolio: PaperPortfolio,
     risk_limits: RiskLimits,
     market_intelligence: MarketIntelligenceState,
+    agent_vote_accuracy: list[AgentVoteAccuracyScore],
 ) -> TradeProposal:
     assert item.symbol is not None
     votes, overall = generate_analyst_votes(
@@ -324,7 +326,7 @@ def generate_proposal(
         sentinel_warning.message if sentinel_warning else guardian_warning.message if guardian_warning else f"{item.symbol} is within all configured risk limits."
     )
     multi_timeframe = compute_multi_timeframe_confirmation(provider, item.symbol, overall)
-    confidence_engine = compute_confidence(votes, overall, item.confidence, portfolio, risk_limits, multi_timeframe)
+    confidence_engine = compute_confidence(votes, overall, item.confidence, portfolio, risk_limits, multi_timeframe, agent_vote_accuracy)
     # v0.7 Feature 51 — a real one-line citation of the Market Intelligence
     # Department's current read, attached to every new proposal so it
     # literally carries real market context (see app/market_intelligence.py).

@@ -157,6 +157,7 @@ class TestGenerateProposal:
             portfolio=default_portfolio(),
             risk_limits=RiskLimits(),
             market_intelligence=default_market_intelligence_state(),
+            agent_vote_accuracy=[],
         )
         assert proposal.symbol == "NEXA"
         assert len(proposal.analyst_votes) == 6
@@ -183,6 +184,7 @@ class TestResolveProposal:
             portfolio=default_portfolio(),
             risk_limits=RiskLimits(),
             market_intelligence=default_market_intelligence_state(),
+            agent_vote_accuracy=[],
         )
 
     @staticmethod

@@ -22,10 +22,30 @@ fabrication this project avoids. "Multi-timeframe agreement" was on
 that same disclosed-gap list until Multi-Timeframe Confirmation closed
 it — see this factor's own weight-rebalancing note below. The seven
 factors below are the honest, real subset.
+
+Per-agent learning (CEO directive "Professional Quant Trading Core,"
+Phase B's other disclosed gap — "department-level, not per-agent,
+accuracy-weighted learning is real"): the "Multi-Agent Agreement" factor
+below now weights each analyst's own vote by that individual agent's
+real trailing directional accuracy (app/executive_intelligence.py's
+compute_agent_vote_accuracy()/compute_agent_accuracy_multiplier()) — an
+agent with a real, better-than-average track record earns proportionally
+more say in the agreement score; one with a worse one earns less. No
+new evidence source, no new factor slot, no weight rebalancing: this is
+the same real agreement signal, made honestly smarter as real evidence
+accumulates. With zero tracked history for every agent (a fresh game),
+every multiplier is the neutral 1.0 and the score is numerically
+identical to a flat vote count — the exact same behavior this factor
+had before this pass. Anti-leakage is automatic, not a new precaution:
+`agent_vote_accuracy` is computed once per tick from only already-
+resolved decisions before this proposal exists, the same causal
+ordering app/weighted_decisions.py's own department-level accuracy
+multiplier already relies on.
 """
 from __future__ import annotations
 
-from app.schemas import AnalystChoice, AnalystVote, ConfidenceFactor, DecisionConfidence, ConfidenceTier, MultiTimeframeConfirmation, PaperPortfolio, RiskLimits
+from app.executive_intelligence import compute_agent_accuracy_multiplier
+from app.schemas import AgentVoteAccuracyScore, AnalystChoice, AnalystVote, ConfidenceFactor, DecisionConfidence, ConfidenceTier, MultiTimeframeConfirmation, PaperPortfolio, RiskLimits
 
 # Must sum to 1.0 — see the module docstring for why each was chosen and
 # what was deliberately left out.
@@ -92,15 +112,26 @@ def compute_confidence(
     portfolio: PaperPortfolio,
     risk_limits: RiskLimits,
     multi_timeframe: MultiTimeframeConfirmation,
+    agent_vote_accuracy: list[AgentVoteAccuracyScore],
 ) -> DecisionConfidence:
-    """`multi_timeframe` is required, not optional-with-a-default: the
-    one real production caller (app/executive.py's generate_proposal())
-    always has real provider access to compute it, and a silent "not
-    evaluated yet" default would mean this factor quietly stops being
-    real evidence the moment a caller forgets to pass it. Test call
-    sites build one explicitly (see test_confidence.py)."""
+    """`multi_timeframe` and `agent_vote_accuracy` are required, not
+    optional-with-a-default: the one real production caller
+    (app/executive.py's generate_proposal()) always has both real
+    values available, and a silent default would mean either factor
+    quietly stops being real evidence the moment a caller forgets to
+    pass it. Test call sites build both explicitly (see
+    test_confidence.py)."""
+    accuracy_by_agent = {s.agent_id: s for s in agent_vote_accuracy}
     agreeing = sum(1 for v in votes if v.choice == overall)
-    agreement_score = (agreeing / len(votes)) * 100 if votes else 0.0
+    weight_total = 0.0
+    agreeing_weight = 0.0
+    for v in votes:
+        score = accuracy_by_agent.get(v.agent_id)
+        multiplier = compute_agent_accuracy_multiplier(score) if score is not None else 1.0
+        weight_total += multiplier
+        if v.choice == overall:
+            agreeing_weight += multiplier
+    agreement_score = (agreeing_weight / weight_total) * 100 if weight_total else 0.0
 
     technical_score = _match_score(_vote(votes, "technical"), overall)
     risk_score = _match_score(_vote(votes, "risk"), overall, oppose=35.0, wait=35.0, match=90.0)
@@ -132,7 +163,12 @@ def compute_confidence(
             name="Multi-Agent Agreement",
             score=round(agreement_score, 1),
             weight=_WEIGHTS["agreement"],
-            detail=f"{agreeing}/{len(votes)} analysts agree with {overall.upper()}.",
+            detail=(
+                f"{agreeing}/{len(votes)} analysts agree with {overall.upper()}, weighted by each agent's own "
+                "real trailing vote accuracy."
+                if any(accuracy_by_agent.get(v.agent_id) is not None and accuracy_by_agent[v.agent_id].decisions_tracked > 0 for v in votes)
+                else f"{agreeing}/{len(votes)} analysts agree with {overall.upper()}."
+            ),
         ),
         ConfidenceFactor(
             name="Technical Alignment",

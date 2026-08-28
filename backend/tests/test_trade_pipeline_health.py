@@ -105,6 +105,7 @@ class TestComputeTradePipelineHealth:
             portfolio=default_portfolio(),
             risk_limits=RiskLimits(),
             market_intelligence=default_market_intelligence_state(),
+            agent_vote_accuracy=[],
         )
         state = default_state().model_copy(update={"trade_proposals": [proposal]})
         snapshot = compute_trade_pipeline_health(state)
