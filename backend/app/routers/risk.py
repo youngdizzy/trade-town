@@ -10,9 +10,10 @@ from pydantic import BaseModel, ConfigDict, Field
 from app.market_data import market_data_provider
 from app.persistence import persist_modules
 from app.portfolio_intelligence import compute_portfolio_intelligence
+from app.portfolio_monte_carlo import compute_portfolio_monte_carlo
 from app.portfolio_risk import compute_portfolio_risk_snapshot, evaluate_pretrade_risk_decision
 from app.risk_engine import daily_realized_pnl_pct, project_loss_after_n_losses
-from app.schemas import PortfolioRiskSnapshot, PretradeRiskDecision, ProjectedLossPath, RiskLimits, TierAllocationLimits
+from app.schemas import PortfolioMonteCarloResult, PortfolioRiskSnapshot, PretradeRiskDecision, ProjectedLossPath, RiskLimits, TierAllocationLimits
 from app.state import game_state
 
 router = APIRouter(prefix="/api/risk-limits", tags=["risk"])
@@ -149,3 +150,14 @@ async def pretrade_risk_decision(
         sim_day=state.time.day,
         emergency_stop_active=state.emergency_stop.active,
     )
+
+
+# CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance,"
+# final follow-up — see app/portfolio_monte_carlo.py's module docstring
+# for the real historical-bootstrap methodology. Computed fresh (CAGS),
+# never persisted; None below MIN_TRADES_FOR_PORTFOLIO_MONTE_CARLO real
+# closed trades, never a bootstrap from too thin a real sample.
+@router.get("/portfolio-monte-carlo", response_model=PortfolioMonteCarloResult | None)
+async def portfolio_monte_carlo() -> PortfolioMonteCarloResult | None:
+    state = await game_state.snapshot()
+    return compute_portfolio_monte_carlo(state.paper_portfolio, state.risk_limits, sim_day=state.time.day)

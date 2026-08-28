@@ -15365,7 +15365,8 @@ the user's own "unify + fix the real gaps" scoping choice):
   taxonomy; the architecture is left open for one, per the directive's
   own "document the limitation, build the safest useful abstraction
   instead" instruction, but none is fabricated here.
-- A portfolio-level Monte Carlo/risk-of-ruin (Phases 12, 14).
+- A portfolio-level Monte Carlo/risk-of-ruin (Phases 12, 14). Closed in
+  a final follow-up — see below.
 - True inverse-volatility *portfolio* weighting across simultaneous
   positions (Phase 6) — today's real ATR-based sizing remains
   single-position/risk-per-trade, not `1/σ`-normalized across the book.
@@ -15429,6 +15430,36 @@ clean; live-smoke-tested with a temporary Playwright spec (removed
 after verification): activated a real symbol restriction, confirmed it
 rendered, lifted it, confirmed the active list cleared and history
 updated — zero console errors.
+
+**Follow-up — portfolio-level Monte Carlo / risk-of-ruin.** The last
+gap on the original "not built this pass" list, closed in a final
+follow-up. New `app/portfolio_monte_carlo.py` — deliberately a
+DIFFERENT methodology from `app/strategy_lab.py::
+run_strategy_monte_carlo()` (that one is a PARAMETRIC bootstrap over a
+strategy's own aggregated backtested win-rate/avg-win/avg-loss; a
+portfolio has no equivalent aggregated-stats source). This is instead a
+real HISTORICAL/empirical bootstrap: resamples, with replacement, the
+account's own real per-trade `pnl / equity-at-the-time` impacts from
+`PaperPortfolio.trade_history`, walked in real chronological order (the
+same equity-walk convention `app/analytics.py::real_peak_equity()`
+already established) — never `pnl_pct`, which is a position's own
+return, not its real portfolio impact. "Ruin" is defined against the
+CEO's own real, currently-configured `RiskLimits.max_drawdown_pct`
+(disclosed as `ruinThresholdPct` on every result), not a second
+fabricated bar. `compute_portfolio_monte_carlo()` returns `None` below
+`MIN_TRADES_FOR_PORTFOLIO_MONTE_CARLO` (10) real closed trades; reuses
+`strategy_lab.MONTE_CARLO_PATHS` (200 paths, the same cross-module
+import precedent `app/quant_developer.py` already established) and
+deterministically seeds from the real trade ids and starting balance on
+file. Computed fresh (CAGS) via new `GET /api/risk-limits/
+portfolio-monte-carlo`, never persisted, no new `GameSaveState` field.
+11 new tests; full suite green, mypy/ruff clean; live-smoke-tested via
+FastAPI TestClient (empty portfolio → `null`; 15 real injected trades →
+a full, sensible, deterministic result). Not built: this bootstrap can
+only resample outcomes that already happened (no worse-than-observed
+tail) and assumes trade-to-trade independence — the same simplification
+every other bootstrap in this codebase already makes, disclosed rather
+than hidden.
 
 **Files changed.** Backend: `app/schemas.py`, `app/portfolio_risk.py`
 (new), `app/analytics.py`, `app/risk_engine.py`, `app/portfolio_

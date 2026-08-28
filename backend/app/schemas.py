@@ -3983,6 +3983,52 @@ class StrategyMonteCarloResult(CamelModel):
     created_at: str = Field(alias="createdAt")
 
 
+# CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance,"
+# final follow-up — a portfolio-level Monte Carlo / risk-of-ruin. A
+# deliberately DIFFERENT methodology from StrategyMonteCarloResult
+# above, not a copy-paste: that one bootstraps synthetic win/loss draws
+# from a strategy's own aggregated win rate and average win/loss size
+# (SimulationResult, i.e. BACKTESTED data). This one has no equivalent
+# "aggregated stats" source to draw from at the portfolio level —
+# instead it resamples (with replacement) the REAL observed sequence of
+# per-trade percent-of-equity-at-the-time impacts computed from
+# PaperPortfolio.trade_history — the account's own actual live paper-
+# trading track record, never simulated data. A real historical/
+# empirical bootstrap, not a parametric one. See
+# app/portfolio_monte_carlo.py's module docstring for the full
+# methodology and its honest limitations.
+class PortfolioMonteCarloResult(CamelModel):
+    id: str
+    paths_simulated: int = Field(alias="pathsSimulated")
+    trades_per_path: int = Field(alias="tradesPerPath")
+    # How many real closed trades' percent-impacts the bootstrap actually
+    # draws from — the sample size behind every stat below.
+    source_trade_count: int = Field(alias="sourceTradeCount")
+    source_win_rate_pct: float = Field(alias="sourceWinRatePct")
+    starting_equity: float = Field(alias="startingEquity")
+    median_return_pct: float = Field(alias="medianReturnPct")
+    return_range_low_pct: float = Field(alias="returnRangeLowPct")
+    return_range_high_pct: float = Field(alias="returnRangeHighPct")
+    median_max_drawdown_pct: float = Field(alias="medianMaxDrawdownPct")
+    worst_case_drawdown_pct: float = Field(alias="worstCaseDrawdownPct")
+    probability_of_profit_pct: float = Field(alias="probabilityOfProfitPct")
+    # "Ruin" here means a simulated path's own max drawdown breaching the
+    # CEO's own real, currently-configured RiskLimits.max_drawdown_pct —
+    # never a fabricated fixed bar — so this answers a directly
+    # actionable question: "what's the real probability my own
+    # configured risk ceiling gets breached." Disclosed on the result
+    # itself (ruinThresholdPct) so it's never a hidden number.
+    ruin_threshold_pct: float = Field(alias="ruinThresholdPct")
+    probability_of_ruin_pct: float = Field(alias="probabilityOfRuinPct")
+    capital_survival_pct: float = Field(alias="capitalSurvivalPct")
+    value_at_risk_95_pct: float = Field(alias="valueAtRisk95Pct")
+    value_at_risk_99_pct: float = Field(alias="valueAtRisk99Pct")
+    conditional_value_at_risk_95_pct: float = Field(alias="conditionalValueAtRisk95Pct")
+    conditional_value_at_risk_99_pct: float = Field(alias="conditionalValueAtRisk99Pct")
+    sim_day: int = Field(alias="simDay")
+    created_at: str = Field(alias="createdAt")
+
+
 # Quantitative Research & Intelligence System, Piece 7 — Forge, the
 # Quant Developer. Distinct from Piece 4's ModelValidationReport
 # (Meridian reviews the EVIDENCE a strategy's Monte Carlo run produced)

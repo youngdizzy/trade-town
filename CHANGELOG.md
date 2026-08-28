@@ -280,6 +280,50 @@ development milestones, not semver releases.
     symbol restriction, confirmed it rendered and blocked state, lifted it, confirmed the active list
     cleared and the lifted entry appeared in history — zero console errors throughout.
 
+- **Portfolio Risk Engine final follow-up: portfolio-level Monte Carlo / risk-of-ruin.** Closes the
+  last item on the original directive's "Not built this pass" list. New
+  `app/portfolio_monte_carlo.py` — deliberately a DIFFERENT methodology from
+  `app/strategy_lab.py::run_strategy_monte_carlo()`, not a copy: the strategy-level bootstrap draws
+  synthetic win/loss outcomes from a strategy's own aggregated win rate/avg-win/avg-loss (backtested
+  `SimulationResult` data, a parametric bootstrap). A portfolio has no equivalent aggregated-stats
+  source, so this instead runs a real HISTORICAL/empirical bootstrap: it resamples, with replacement,
+  the account's own real observed sequence of per-trade `pnl / equity-at-the-time` impacts from
+  `PaperPortfolio.trade_history` — not `pnl_pct` (a position's own return, not its portfolio impact) —
+  walked in real chronological order, the same equity-walk convention `app/analytics.py::
+  real_peak_equity()` already established. "Ruin" is defined against the CEO's own real, currently-
+  configured `RiskLimits.max_drawdown_pct` (disclosed on every result as `ruinThresholdPct`), not a
+  second fabricated bar, so the result answers a directly actionable question: how often would a real
+  repeat of this account's own trading history have breached the risk ceiling the CEO actually set.
+  - `compute_portfolio_monte_carlo()` — `None` below `MIN_TRADES_FOR_PORTFOLIO_MONTE_CARLO` (10) real
+    closed trades, the same "not enough real evidence yet" discipline used throughout this session,
+    never a bootstrap from too thin a sample. Deterministically seeded from the real trade ids and
+    starting balance on file (same `hashlib.sha256(...)` → `random.Random(...)` convention
+    `strategy_lab.py`'s own `_seeded_rng()` uses), so identical real evidence always reproduces an
+    identical result. Reuses `strategy_lab.MONTE_CARLO_PATHS` (200 paths) rather than a second
+    constant — the same cross-module import `app/quant_developer.py` already established as
+    precedent; the three small pure helper functions (`_percentile`/`_tail_mean`/`_seeded_rng`) are
+    duplicated rather than cross-imported since the originals are module-private, following this
+    codebase's existing "small, stable helper duplicated across a module boundary" precedent
+    (`app/gatekeeper.py`'s `_WEDE_TRADING_ACTIONS`).
+  - New `GET /api/risk-limits/portfolio-monte-carlo` endpoint, returning `PortfolioMonteCarloResult |
+    None` — computed fresh every call (CAGS convention), never persisted, no new `GameSaveState`
+    field. Live-smoke-tested via FastAPI TestClient: an empty/fresh portfolio correctly returns `null`;
+    a portfolio with 15 real injected trades returns a full, sensible result (66.7% source win rate,
+    0.0% probability of ruin against the default 20% drawdown ceiling, deterministic across repeat
+    calls against identical data).
+  - 11 new tests in `test_portfolio_monte_carlo.py` (real per-trade impact computation including the
+    chronological-equity-growth case, below-minimum returns `None`, a consistently-winning history
+    produces 0% ruin probability, a consistently-losing history produces 100%, the ruin threshold
+    tracks the real configured `RiskLimits.maxDrawdownPct` rather than a fixed bar, determinism across
+    repeat calls on identical evidence, different real histories produce different results,
+    `trades_per_path` override honored while the real source sample size stays reported accurately).
+    Full backend suite green, mypy/ruff clean.
+  - **Not built**: this bootstrap only ever resamples outcomes that have already happened — it cannot
+    imagine a worse single trade than the worst one on real record, and assumes each trade's percent
+    impact is independent of the ones around it (no serial correlation/regime memory) — the same
+    simplification every other bootstrap in this codebase already makes, disclosed in the module's own
+    docstring rather than hidden.
+
 - **CEO directive "AHL-Inspired Systematic Trend & Momentum Research Engine."** New
   `app/trend_engine.py`: six independent, never-silently-merged real trend-measurement methodologies
   (endpoint slope, real closed-form OLS regression slope of log-price, a normalized/t-like slope,

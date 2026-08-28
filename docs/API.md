@@ -1840,6 +1840,49 @@ candidate (not just the fields a given call touches) to always stay
 strictly descending; `400` with `"Company Health tier thresholds must
 stay in strictly descending order..."` otherwise.
 
+### `GET /api/risk-limits/portfolio-snapshot` / `GET /api/risk-limits/pretrade-decision` / `GET /api/risk-limits/portfolio-monte-carlo`
+
+CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance" and
+its follow-ups — three read-only, no-body composition reads over
+already-real state (`app/portfolio_risk.py`, `app/portfolio_monte_
+carlo.py`). None of the three mutate the save.
+
+`portfolio-snapshot` returns one canonical, timestamped
+`PortfolioRiskSnapshot`: equity/cash/exposure/leverage, the real
+peak-to-trough drawdown, daily P&L, real correlated-exposure clusters,
+the real daily circuit breaker tier, the real Emergency Stop flag, and a
+derived `riskState` (`normal`/`warning`/`restricted`/`halted`) with
+real, inspectable `riskStateReasons` — never a bare number with no
+explanation.
+
+`pretrade-decision` (query params `symbol`, `proposedValue`, both
+required) returns one `PretradeRiskDecision`
+(`verdict`: `approved`/`approved_with_reduction`/`rejected`/`halted`)
+for a hypothetical candidate trade, composing every real Sentinel/
+Guardian violation into a real `reasons`/`reasonCodes` list. Advisory
+only — the real enforcement path (`app/gatekeeper.py`'s vote pipeline)
+is the sole authority over whether a trade actually happens.
+
+`portfolio-monte-carlo` returns `PortfolioMonteCarloResult | null` — a
+real historical bootstrap over the account's own `PaperPortfolio.
+trade_history` (see `app/portfolio_monte_carlo.py`'s module docstring
+for the full methodology and why it's a different bootstrap than the
+per-strategy one in `app/strategy_lab.py`). `null` when fewer than
+`MIN_TRADES_FOR_PORTFOLIO_MONTE_CARLO` (10) real closed trades exist —
+never a bootstrap from too thin a sample. The result's
+`probabilityOfRuinPct`/`capitalSurvivalPct` are measured against the
+CEO's own real, currently-configured `RiskLimits.maxDrawdownPct`
+(disclosed as `ruinThresholdPct` on the result, never a hidden or
+fabricated bar); `medianReturnPct`/`returnRangeLowPct`/
+`returnRangeHighPct`/`medianMaxDrawdownPct`/`worstCaseDrawdownPct`/
+`probabilityOfProfitPct`/`valueAtRisk95Pct`/`valueAtRisk99Pct`/
+`conditionalValueAtRisk95Pct`/`conditionalValueAtRisk99Pct` mirror the
+same real percentile/tail-mean reads `StrategyMonteCarloResult` already
+exposes, off this bootstrap's own sorted final-return array. Computed
+fresh on every call (the same CAGS convention `PortfolioIntelligence`
+already uses) — no new `GameSaveState` field, deterministically seeded
+so identical real trade history always reproduces an identical result.
+
 ### `POST /api/goals/create` / `POST /api/goals/cancel`
 
 Design Bible Chapter 64 — the CEO's Goal write path (`app/goals.py`).
