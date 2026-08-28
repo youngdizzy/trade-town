@@ -105,6 +105,7 @@ import type {
   SessionPerformanceSummary,
   SessionRangeRead,
   SessionRegimeEvidenceSummary,
+  PortfolioMonteCarloResult,
   RestrictionScope,
   RiskLimits,
   SimilarTradesSummary,
@@ -1016,6 +1017,11 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ reason }),
     }),
+  // CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance,"
+  // final follow-up. Read-only, computed fresh per request — see
+  // backend/app/portfolio_monte_carlo.py. null when there isn't enough
+  // real closed-trade history yet.
+  getPortfolioMonteCarlo: () => request<PortfolioMonteCarloResult | null>("/risk-limits/portfolio-monte-carlo"),
   // Design Bible Chapter 64 — the CEO's Goal creation/cancellation write
   // path. Real progress is never sent by the client; it's recomputed
   // server-side every tick (see backend/app/goals.py's tick_goals()).

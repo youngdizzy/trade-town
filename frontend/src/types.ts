@@ -4821,6 +4821,39 @@ export interface TradingRestriction {
   liftedReason: string | null;
 }
 
+// CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance,"
+// final follow-up — backend/app/portfolio_monte_carlo.py. A real
+// HISTORICAL bootstrap over the account's own real closed trade
+// history — deliberately a different methodology from
+// StrategyMonteCarloResult above (that one is a parametric bootstrap
+// over backtested aggregate stats). See that module's own docstring.
+export interface PortfolioMonteCarloResult {
+  id: string;
+  pathsSimulated: number;
+  tradesPerPath: number;
+  sourceTradeCount: number;
+  sourceWinRatePct: number;
+  startingEquity: number;
+  medianReturnPct: number;
+  returnRangeLowPct: number;
+  returnRangeHighPct: number;
+  medianMaxDrawdownPct: number;
+  worstCaseDrawdownPct: number;
+  probabilityOfProfitPct: number;
+  /** The CEO's own real, currently-configured RiskLimits.maxDrawdownPct
+   * — "ruin" here means a simulated path breaching THIS number, never a
+   * fabricated fixed bar. */
+  ruinThresholdPct: number;
+  probabilityOfRuinPct: number;
+  capitalSurvivalPct: number;
+  valueAtRisk95Pct: number;
+  valueAtRisk99Pct: number;
+  conditionalValueAtRisk95Pct: number;
+  conditionalValueAtRisk99Pct: number;
+  simDay: number;
+  createdAt: string;
+}
+
 // Design Bible Chapter 71 — Economic Intelligence Center
 // (backend/app/economic_intelligence.py). This codebase has no real
 // macroeconomic data source anywhere (no API keys, no live feed) — EIC
