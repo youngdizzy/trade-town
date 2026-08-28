@@ -3066,6 +3066,22 @@ export interface SymbolTrendRanking {
   riskAdjustedScore: number;
 }
 
+// CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+// Engine," Phase 7 — the Volume Confirmation Engine
+// (backend/app/volume_analysis.py). A plain categorical OBSERVATION,
+// never an interpretation ("manipulation") or a trade signal.
+export type VolumeState = "climax" | "elevated" | "normal" | "weak";
+export type VolumeConfirmationState = "confirmed_move" | "unconfirmed_move" | "abnormal_volume_quiet_price" | "normal";
+
+export interface VolumeConfirmationRead {
+  symbol: string;
+  relativeVolume: number;
+  volumeState: VolumeState;
+  priceMoveAtr: number;
+  confirmationState: VolumeConfirmationState;
+  detail: string;
+}
+
 export interface TrendRegimeBucket {
   regime: string;
   barsObserved: number;

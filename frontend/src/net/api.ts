@@ -120,6 +120,7 @@ import type {
   StrategyTradingDiagnosticSummary,
   SymbolPerformanceSummary,
   SymbolTrendRanking,
+  VolumeConfirmationRead,
   TechnicalAnalysisRead,
   ConfluenceRead,
   TradeAttributionSummary,
@@ -258,6 +259,10 @@ export const api = {
   // item — the Asset Discovery Engine (backend/app/asset_discovery.py).
   getAssetDiscovery: (timeframe = "1d", limit = 200, method: TrendDefinitionMethod = "endpoint_slope", topN = 10) =>
     request<SymbolTrendRanking[]>(`/market/asset-discovery?timeframe=${encodeURIComponent(timeframe)}&limit=${limit}&method=${encodeURIComponent(method)}&topN=${topN}`),
+  // CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+  // Engine," Phase 7 — the Volume Confirmation Engine.
+  getVolumeConfirmation: (symbol: string, timeframe = "1h", limit = 100, period = 20) =>
+    request<VolumeConfirmationRead | null>(`/market/volume-confirmation?symbol=${encodeURIComponent(symbol)}&timeframe=${encodeURIComponent(timeframe)}&limit=${limit}&period=${period}`),
   spendEnergy: (action: string, researchId?: string) =>
     request<{ agentEnergy: AgentEnergy }>("/energy/spend", {
       method: "POST",
