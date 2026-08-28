@@ -7,10 +7,14 @@ six analyst votes, the real Decision Confidence Engine score (Feature
 15), the real AI Debate outcome (Feature 17), the portfolio's real open
 positions, and Sentinel/Guardian's real standing risk watch — never a
 fabricated signal. The v0.7 brief's much longer checklist also names
-multi-timeframe confirmation (only one timeframe is ever fetched — see
-app/executive.py's PROPOSAL_TIMEFRAME), support/resistance quality,
-volume confirmation, liquidity, the *timing* of upcoming news (this
-codebase generates news reactively, never schedules it in advance),
+multi-timeframe confirmation — closed by CEO directive "Professional
+Quant Trading Core," Phase B (app/multi_timeframe.py, now a real Decision
+Confidence Engine factor; no dedicated Gatekeeper check was added for
+it, since a confidence-engine factor already contributes to the
+Gatekeeper's existing Decision Confidence check rather than needing a
+second, parallel gate on the same signal) — plus support/resistance
+quality, volume confirmation, liquidity, the *timing* of upcoming news
+(this codebase generates news reactively, never schedules it in advance),
 reward-to-risk ratio and stop-loss placement (the paper broker never
 places exit orders — see DecisionDetail's own "Trade Plan" section),
 strategy match, and historical performance of similar setups — none of

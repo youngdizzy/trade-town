@@ -11,26 +11,37 @@ was actually made under against its real later outcome.
 
 Every factor below is derived from data this codebase already computes
 for other real reasons — the six AnalystVotes (app/executive.py),
-the research item's own confidence, and real portfolio exposure. The
-v0.7 brief also names several factors with no real backing data in
-this codebase: support & resistance levels, multi-timeframe agreement
-(only one timeframe — PROPOSAL_TIMEFRAME — is ever fetched), liquidity
-quality, historical strategy performance, and similar-historical-setup
-matching. None of these are computed here; inventing numbers for them
-would be exactly the kind of fabrication this project avoids. The six
+the research item's own confidence, real portfolio exposure, and (CEO
+directive "Professional Quant Trading Core," Phase B) real higher-
+timeframe trend confirmation (app/multi_timeframe.py). The v0.7 brief
+also names several factors with no real backing data in this codebase:
+support & resistance levels, liquidity quality, historical strategy
+performance, and similar-historical-setup matching. None of these are
+computed here; inventing numbers for them would be exactly the kind of
+fabrication this project avoids. "Multi-timeframe agreement" was on
+that same disclosed-gap list until Multi-Timeframe Confirmation closed
+it — see this factor's own weight-rebalancing note below. The seven
 factors below are the honest, real subset.
 """
 from __future__ import annotations
 
-from app.schemas import AnalystChoice, AnalystVote, ConfidenceFactor, DecisionConfidence, ConfidenceTier, PaperPortfolio, RiskLimits
+from app.schemas import AnalystChoice, AnalystVote, ConfidenceFactor, DecisionConfidence, ConfidenceTier, MultiTimeframeConfirmation, PaperPortfolio, RiskLimits
 
 # Must sum to 1.0 — see the module docstring for why each was chosen and
 # what was deliberately left out.
+#
+# CEO directive "Professional Quant Trading Core," Phase B — adding
+# "multi_timeframe" required freeing 0.15 from the existing six. Trimmed
+# 0.05 each from "agreement" (.30->.25), "technical" (.20->.15), and
+# "research" (.15->.10) — an even, disclosed cut across the three
+# largest weights, not a targeted shrink of any one factor's real
+# importance. No other factor's weight changed.
 _WEIGHTS: dict[str, float] = {
-    "agreement": 0.30,
-    "technical": 0.20,
+    "agreement": 0.25,
+    "technical": 0.15,
+    "multi_timeframe": 0.15,
     "risk": 0.20,
-    "research": 0.15,
+    "research": 0.10,
     "sentiment": 0.10,
     "exposure": 0.05,
 }
@@ -80,7 +91,14 @@ def compute_confidence(
     research_confidence: float,
     portfolio: PaperPortfolio,
     risk_limits: RiskLimits,
+    multi_timeframe: MultiTimeframeConfirmation,
 ) -> DecisionConfidence:
+    """`multi_timeframe` is required, not optional-with-a-default: the
+    one real production caller (app/executive.py's generate_proposal())
+    always has real provider access to compute it, and a silent "not
+    evaluated yet" default would mean this factor quietly stops being
+    real evidence the moment a caller forgets to pass it. Test call
+    sites build one explicitly (see test_confidence.py)."""
     agreeing = sum(1 for v in votes if v.choice == overall)
     agreement_score = (agreeing / len(votes)) * 100 if votes else 0.0
 
@@ -100,6 +118,7 @@ def compute_confidence(
     raw_scores = {
         "agreement": agreement_score,
         "technical": technical_score,
+        "multi_timeframe": multi_timeframe.agreement_score,
         "risk": risk_score,
         "research": research_score,
         "sentiment": sentiment_score,
@@ -126,6 +145,12 @@ def compute_confidence(
             score=round(risk_score, 1),
             weight=_WEIGHTS["risk"],
             detail=(_vote(votes, "risk") or AnalystVote(role="risk", agentId="sentinel", choice="wait", reasoning="No risk read available.", evidence=[])).reasoning,
+        ),
+        ConfidenceFactor(
+            name="Multi-Timeframe Confirmation",
+            score=round(multi_timeframe.agreement_score, 1),
+            weight=_WEIGHTS["multi_timeframe"],
+            detail=multi_timeframe.summary,
         ),
         ConfidenceFactor(
             name="Research Confidence",

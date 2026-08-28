@@ -14668,10 +14668,11 @@ almost entirely by surfacing already-computed evidence (Rules 10, 11,
 25, 26). P1 (small, contained): the `max_drawdown_pct` fix, and closing
 the `EXTRA_SYMBOL_POOL` research-rotation gap `watchlist.py` already
 disclosed. P2 (documented, not built this pass — genuine architectural
-lifts): multi-timeframe analysis, a formal watchlist eligibility-tier
-system beyond the feed, a true Asset Discovery Engine/asset-class
-taxonomy, per-agent learning, Brier-score calibration, live recovery
-factor, strategy-compliance-at-execution wiring.
+lifts): multi-timeframe analysis (closed in a later follow-up — see
+below), a formal watchlist eligibility-tier system beyond the feed, a
+true Asset Discovery Engine/asset-class taxonomy, per-agent learning,
+Brier-score calibration, live recovery factor, strategy-compliance-at-
+execution wiring.
 
 **Phase C — implementation.**
 
@@ -14736,6 +14737,66 @@ equal* to what shipped before, never smaller.
 `types.ts`, `net/api.ts`, `ui/components/CommandCenter/panels/
 OpportunitiesPanel.tsx` (rewritten), `ui/components/CommandCenter/
 panels/OverviewPanel.tsx`. Docs: `docs/API.md`, `CHANGELOG.md`.
+
+**Follow-up — Multi-Timeframe Confirmation.** Closes the P2 "multi-
+timeframe analysis" gap this directive's own Phase B deferred.
+`app/executive.py`'s `PROPOSAL_TIMEFRAME` ("1h") was the only timeframe
+ever fetched anywhere in this codebase for a trading decision — three
+independent module docstrings (`app/confidence.py`, `app/gatekeeper.py`,
+`app/technical_indicators.py`) already disclosed this exact gap. New
+`app/multi_timeframe.py::compute_multi_timeframe_confirmation()` closes
+it by real reuse, not a new trend-detection method: `app/market_data.py`'s
+provider already synthesizes real candles at every timeframe in
+`TIMEFRAME_ORDER` (`1m`/`5m`/`15m`/`1h`/`4h`/`1d`) — it simply had never
+been called with anything but `"1h"`. The function fetches real `4h`
+and `1d` candles (the two timeframes above the existing `1h` execution
+read — deliberately excluding `1h` itself to avoid double-counting the
+same real signal the existing Technical Alignment factor already
+covers) and reuses `app/trend_engine.py`'s own real
+`compute_horizon_trend()` (endpoint-slope method — the same real,
+disclosed methodology `_technical_vote()`'s `trend_pct()` already uses,
+just generalized beyond 1h) to read each timeframe's own real trend
+direction. "Confirmation" measures the real share of evaluated higher
+timeframes whose direction agrees with the desk's own `overall`
+buy/sell call — the standard technical-analysis sense of
+higher-timeframe confirmation, not a symmetric consensus vote. Honest
+neutral (50.0, never fabricated agreement) for a `wait` call or when
+every timeframe has insufficient real history; a timeframe with
+insufficient history is excluded from the count, never counted as
+disagreeing.
+
+Wired into `app/confidence.py`'s Decision Confidence Engine as a new,
+required 7th factor ("Multi-Timeframe Confirmation," weight 0.15) —
+that module's own docstring had explicitly named this exact gap on its
+disclosed "no real data source" list. Adding the 7th factor required
+freeing 0.15 from the existing six: trimmed 0.05 each from Multi-Agent
+Agreement (.30→.25), Technical Alignment (.20→.15), and Research
+Confidence (.15→.10) — an even, disclosed cut across the three largest
+weights, every other factor's weight unchanged, still summing to 1.0.
+The new parameter is required (not optional-with-a-default) since the
+one real production caller (`generate_proposal()`) always has real
+market-data-provider access to compute it — a silent default would let
+this factor quietly stop being real evidence if a future caller forgot
+to pass it. Because `TradeProposal.confidenceEngine.factors` already
+renders generically in the Command Center
+(`ExecutiveVoting.tsx`'s `confidence.factors.map(...)`, no hardcoded
+factor count anywhere), the new factor surfaces automatically — **no
+frontend code changes were needed or made this pass**, confirmed by a
+live pipeline check (a real proposal generated through the actual
+running app correctly returned all 7 factors, including a live
+Multi-Timeframe Confirmation read of 100.0 for a real confirmed uptrend).
+
+20 new tests (9 in new `test_multi_timeframe.py` covering full/zero/
+partial confirmation, insufficient-history exclusion, and the honest
+wait-is-neutral case, via a deterministic fake provider since the real
+`MockMarketDataProvider` is a stochastic walk with no way to force a
+specific trend; 3 new in `test_confidence.py` for the new factor's
+pass-through/weight/detail; the existing `test_confidence.py` suite's 6
+call sites updated for the new required parameter and the 6→7 factor
+count). Full backend suite green, mypy/ruff clean. Two other module
+docstrings (`app/gatekeeper.py`, `app/technical_indicators.py`) that
+named this same gap on their own disclosed-limitation lists updated to
+reflect it's now closed.
 
 ## CEO directive "Professional Quant Live Trading Desk"
 

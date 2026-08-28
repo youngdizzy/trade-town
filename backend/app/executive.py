@@ -42,6 +42,7 @@ from datetime import datetime, timezone
 from typing import Literal
 
 from app.confidence import compute_confidence
+from app.multi_timeframe import compute_multi_timeframe_confirmation
 from app.execution_quality import apply_slippage
 from app.gatekeeper import MIN_CONFIDENCE, evaluate_gatekeeper
 from app.market_data import Candle as ProviderCandle
@@ -322,7 +323,8 @@ def generate_proposal(
     risk_summary = (
         sentinel_warning.message if sentinel_warning else guardian_warning.message if guardian_warning else f"{item.symbol} is within all configured risk limits."
     )
-    confidence_engine = compute_confidence(votes, overall, item.confidence, portfolio, risk_limits)
+    multi_timeframe = compute_multi_timeframe_confirmation(provider, item.symbol, overall)
+    confidence_engine = compute_confidence(votes, overall, item.confidence, portfolio, risk_limits, multi_timeframe)
     # v0.7 Feature 51 — a real one-line citation of the Market Intelligence
     # Department's current read, attached to every new proposal so it
     # literally carries real market context (see app/market_intelligence.py).

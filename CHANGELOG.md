@@ -158,6 +158,39 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"Professional Quant Trading Core" follow-up: Multi-Timeframe Confirmation.** Closes the one P2
+  item that directive's own Phase B explicitly deferred as a "genuine architectural lift." Three
+  independent module docstrings (`app/confidence.py`, `app/gatekeeper.py`, `app/technical_indicators.py`)
+  already disclosed the exact gap: `app/executive.py`'s `PROPOSAL_TIMEFRAME` ("1h") was the only
+  timeframe ever fetched anywhere in this codebase for a trading decision. New
+  `app/multi_timeframe.py::compute_multi_timeframe_confirmation()` closes it by real reuse, not a new
+  trend-detection method — `app/market_data.py`'s provider already synthesizes real candles at every
+  timeframe (`1m`/`5m`/`15m`/`1h`/`4h`/`1d`), it just had never been called with anything but `"1h"`.
+  Fetches real `4h`/`1d` candles and reuses `app/trend_engine.py`'s own real `compute_horizon_trend()`
+  (the same endpoint-slope methodology `_technical_vote()` already uses on 1h, generalized) to read
+  each higher timeframe's own real trend direction, then measures the real share that agrees with the
+  desk's own buy/sell call — the standard technical-analysis sense of higher-timeframe confirmation,
+  never a fabricated number. Honest neutral (50.0) for a `wait` call or when every timeframe has
+  insufficient real history; a too-thin timeframe is excluded from the count, never counted as
+  disagreeing.
+  - Wired into `app/confidence.py`'s Decision Confidence Engine as a new, required 7th factor
+    ("Multi-Timeframe Confirmation," weight 0.15) — freeing that weight by trimming 0.05 each from
+    Multi-Agent Agreement/Technical Alignment/Research Confidence (an even, disclosed cut across the
+    three largest weights), every other factor unchanged, still summing to 1.0. Required rather than
+    optional: the one real production caller always has real provider access, so a silent default
+    would let this factor quietly stop being real evidence if ever forgotten.
+  - **Zero frontend code changes** — `TradeProposal.confidenceEngine.factors` already renders
+    generically in the Command Center (`ExecutiveVoting.tsx`'s `confidence.factors.map(...)`, no
+    hardcoded factor count), so the new factor surfaces automatically. Confirmed via a live pipeline
+    check: a real proposal generated through the actual running app correctly returned all 7 factors,
+    including a live Multi-Timeframe Confirmation read of 100.0 for a real confirmed uptrend.
+  - 20 new tests (9 in new `test_multi_timeframe.py` via a deterministic fake provider — the real
+    `MockMarketDataProvider` is a stochastic walk with no way to force a specific trend — covering
+    full/zero/partial confirmation, insufficient-history exclusion, and the honest wait-is-neutral
+    case; 3 new for the factor's pass-through/weight/detail; 6 existing `test_confidence.py` call
+    sites updated for the new required parameter and 6→7 factor count). Full backend suite green,
+    mypy/ruff clean.
+
 - **CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance."** New `app/portfolio_risk.py`
   — a real COMPOSITION layer over risk state this codebase already computes honestly, not a second,
   parallel risk engine. A Phase 0 audit (the user chose "unify + fix the real gaps" over building new

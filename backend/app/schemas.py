@@ -4478,6 +4478,30 @@ class HorizonTrendReading(CamelModel):
     detail: str
 
 
+# CEO directive "Professional Quant Trading Core," Phase B P2 item —
+# Multi-Timeframe Confirmation. app/confidence.py's own module docstring
+# already disclosed this exact gap: "multi-timeframe agreement (only one
+# timeframe — PROPOSAL_TIMEFRAME — is ever fetched)." See
+# app/multi_timeframe.py's module docstring for the real methodology —
+# reuses compute_horizon_trend() above, never a second trend-detection
+# algorithm invented for this feature.
+class TimeframeTrendReading(CamelModel):
+    timeframe: str
+    direction: TrendDirection
+    detail: str
+
+
+class MultiTimeframeConfirmation(CamelModel):
+    readings: list[TimeframeTrendReading] = Field(default_factory=list)
+    # 0-100 — the real share of evaluated higher timeframes whose own
+    # trend direction matches the desk's overall buy/sell call. 50.0
+    # (neutral, never fabricated agreement) when the desk's call is
+    # "wait" (nothing real to confirm against) or when every timeframe
+    # had insufficient real candle history.
+    agreement_score: float = Field(alias="agreementScore")
+    summary: str
+
+
 class MultiHorizonTrendScore(CamelModel):
     """The real, versioned composite of N independently-scored horizons.
     `composite_score` is the real signed sum of each horizon's

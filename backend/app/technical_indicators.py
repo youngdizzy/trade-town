@@ -6,11 +6,13 @@ RESEARCH FIRST (per the directive's own mandatory rule): a full grep
 audit of this codebase found zero existing RSI/MACD/Stochastic/moving-
 average/VWAP/ATR computation anywhere — `app/confidence.py`'s own
 module docstring already discloses that "support & resistance levels,
-multi-timeframe agreement... liquidity quality" were deliberately left
-out of the Decision Confidence Engine as unbuildable without fabricating
-numbers; the same honesty boundary applies here. This module closes
-exactly the "no real technical-indicator library exists" gap — nothing
-more.
+liquidity quality" (and, at the time this module was written,
+multi-timeframe agreement — since closed, see CEO directive
+"Professional Quant Trading Core," Phase B and app/multi_timeframe.py)
+were deliberately left out of the Decision Confidence Engine as
+unbuildable without fabricating numbers; the same honesty boundary
+applies here. This module closes exactly the "no real technical-
+indicator library exists" gap — nothing more.
 
 WHAT'S REAL: every function below is a standard, textbook formula
 applied directly to real `app/market_data.py` `Candle` data (the same
