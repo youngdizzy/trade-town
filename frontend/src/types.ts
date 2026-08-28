@@ -4900,6 +4900,24 @@ export interface PortfolioMonteCarloResult {
   createdAt: string;
 }
 
+// CEO directive "Professional Quant Trading Core," Phase B P2 item —
+// the Live Recovery Factor: real net profit over the account's own
+// real worst peak-to-trough drawdown, both measured against today's
+// real live equity. See backend/app/analytics.py's
+// compute_recovery_factor() for the full methodology.
+export interface RecoveryFactorRead {
+  startingBalance: number;
+  currentEquity: number;
+  netProfitUsd: number;
+  maxDrawdownUsd: number;
+  maxDrawdownPct: number;
+  /** None (a real "undefined") when the account has never drawn down —
+   * never a fabricated infinity. */
+  recoveryFactor: number | null;
+  summary: string;
+  computedAt: string;
+}
+
 // Design Bible Chapter 71 — Economic Intelligence Center
 // (backend/app/economic_intelligence.py). This codebase has no real
 // macroeconomic data source anywhere (no API keys, no live feed) — EIC
