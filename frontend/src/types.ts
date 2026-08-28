@@ -889,11 +889,27 @@ export interface UnattributedTradeMonitor {
  * Strategy had no compiled rules yet at decision time, or (defensive)
  * the snapshot doesn't resolve against real history — never a
  * fabricated rule set. */
+// CEO directive "Professional Quant Trading Core," Phase B P2 item —
+// strategy-compliance-at-execution wiring. Real, checkable ONLY for a
+// fixed-percent stop — see backend/app/trade_attribution.py's
+// evaluate_strategy_compliance() for why ATR/swing-level stops are
+// honestly not_checkable rather than a fabricated verdict.
+export type StrategyComplianceVerdict = "compliant" | "stop_violated" | "not_checkable";
+
+export interface StrategyComplianceRead {
+  verdict: StrategyComplianceVerdict;
+  stopCheckDetail: string;
+  /** Purely informational — reaching or not reaching a real target is
+   * never itself a compliance violation. */
+  targetCheckDetail: string;
+}
+
 export interface TradeStrategyRuleSnapshot {
   tradeId: string;
   strategyId: string | null;
   strategyProvenanceState: TradeStrategyProvenanceState;
   compiledDefinition: CompiledStrategyDefinition | null;
+  compliance: StrategyComplianceRead | null;
 }
 
 // CEO directive "Live Trade → Strategy Provenance," Phase 9 — "why

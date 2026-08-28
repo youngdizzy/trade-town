@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { useGameStore } from "@/ui/hooks/useGameStore";
 import { api } from "@/net/api";
-import type { DecisionVaultEntry, KnowledgeQualityScore, SimilarTradesSummary, Strategy, TradeReportCard, TradeStrategyRuleSnapshot } from "@/types";
+import type { DecisionVaultEntry, KnowledgeQualityScore, SimilarTradesSummary, Strategy, StrategyComplianceVerdict, TradeReportCard, TradeStrategyRuleSnapshot } from "@/types";
 import { decisionGradeTone } from "../lib/derive";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../ui";
 
@@ -9,6 +9,17 @@ function strategyLabel(id: string | null, strategies: Strategy[]): string {
   if (id === null) return "No strategy attributed";
   return strategies.find((s) => s.id === id)?.name ?? id;
 }
+
+const COMPLIANCE_TONE: Record<StrategyComplianceVerdict, "green" | "red" | "neutral"> = {
+  compliant: "green",
+  stop_violated: "red",
+  not_checkable: "neutral",
+};
+const COMPLIANCE_LABEL: Record<StrategyComplianceVerdict, string> = {
+  compliant: "COMPLIANT",
+  stop_violated: "STOP VIOLATED",
+  not_checkable: "NOT CHECKABLE",
+};
 
 /**
  * v0.7 Feature 54 (the brief self-numbered it "Feature 53," already used
@@ -179,6 +190,16 @@ function VaultEntryDetail({ entry }: { entry: DecisionVaultEntry }) {
                 <div className="mt-1 rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-1.5 text-[9px]">
                   <span className="text-cmd-textDim">Target:</span>{" "}
                   {ruleSnapshot.compiledDefinition.target.method === "r_multiple" ? `${ruleSnapshot.compiledDefinition.target.value}R` : `${ruleSnapshot.compiledDefinition.target.value}%`}
+                </div>
+              )}
+              {ruleSnapshot.compliance && (
+                <div className="mt-1.5 rounded-sm border border-cmd-border/60 bg-cmd-bg/40 p-1.5 text-[9px]">
+                  <div className="mb-1 flex items-center justify-between">
+                    <span className="text-cmd-textDim">Strategy Compliance at Execution</span>
+                    <StatusPill tone={COMPLIANCE_TONE[ruleSnapshot.compliance.verdict]}>{COMPLIANCE_LABEL[ruleSnapshot.compliance.verdict]}</StatusPill>
+                  </div>
+                  <div className="text-cmd-textDim">{ruleSnapshot.compliance.stopCheckDetail}</div>
+                  <div className="mt-0.5 text-cmd-textDim">{ruleSnapshot.compliance.targetCheckDetail}</div>
                 </div>
               )}
             </>
