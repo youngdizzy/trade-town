@@ -36,6 +36,17 @@ export interface ChartOverlayZone {
   color: string;
 }
 
+/** CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+ * Engine" — a real, sloped line through two or more real (timestamp,
+ * price) points, e.g. a trend-engine horizon's own real start/end
+ * candle. Distinct from ChartOverlayLine (a single flat level) — this
+ * is this chart's first primitive that can actually slope. */
+export interface ChartOverlayPolyline {
+  points: { timestamp: string; price: number }[];
+  label: string;
+  color: string;
+}
+
 export interface ChartOverlays {
   /** The order's fill price, if a real order was placed for this symbol — never a fabricated stop/target. */
   entry?: number;
@@ -43,6 +54,7 @@ export interface ChartOverlays {
   currentPrice?: number;
   lines?: ChartOverlayLine[];
   zones?: ChartOverlayZone[];
+  polylines?: ChartOverlayPolyline[];
 }
 
 /**
@@ -105,6 +117,7 @@ export function CandlestickChart({
       if (overlays?.currentPrice !== undefined) values.push(overlays.currentPrice);
       overlays?.lines?.forEach((l) => values.push(l.price));
       overlays?.zones?.forEach((z) => values.push(z.priceLow, z.priceHigh));
+      overlays?.polylines?.forEach((p) => p.points.forEach((pt) => values.push(pt.price)));
       const min = Math.min(...values);
       const max = Math.max(...values);
       const span = max - min || 1;
@@ -187,6 +200,31 @@ export function CandlestickChart({
         const bodyTop = Math.min(yOpen, yClose);
         const bodyHeight = Math.max(1, Math.abs(yClose - yOpen));
         ctx.fillRect(cx - bodyWidth / 2, bodyTop, bodyWidth, bodyHeight);
+      });
+
+      // Real sloped lines (e.g. a trend-engine horizon's own real
+      // start/end candle) — drawn through actual (timestamp, price)
+      // points, never a single flat level like ChartOverlayLine below.
+      overlays?.polylines?.forEach((p) => {
+        if (p.points.length < 2) return;
+        ctx.strokeStyle = p.color;
+        ctx.globalAlpha = 0.85;
+        ctx.beginPath();
+        p.points.forEach((pt, i) => {
+          const x = xFor(pt.timestamp);
+          const y = yFor(pt.price);
+          if (i === 0) ctx.moveTo(x, y);
+          else ctx.lineTo(x, y);
+        });
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+        const last = p.points[p.points.length - 1];
+        if (last) {
+          ctx.fillStyle = p.color;
+          ctx.font = "8px monospace";
+          ctx.fillText(p.label, xFor(last.timestamp) + 3, yFor(last.price));
+          ctx.font = "9px monospace";
+        }
       });
 
       // Overlays — only ever real values (entry fill price / live mark price)

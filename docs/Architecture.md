@@ -15683,6 +15683,45 @@ new tests (`test_strategy_compiler.py`'s new
 `app/strategy_compiler.py`, `tests/test_structure_break_research.py`
 (new), `tests/test_strategy_compiler.py`. Docs: `CHANGELOG.md`.
 
+**Follow-up — Live Desk trend-evidence chart overlay.** Closes the
+first named item on the original directive's own "not built this pass"
+list (Phase 12/13/22) plus one adjacent real gap a Phase 0 audit of the
+Live Desk found: the selected trade's own real entry/mark price never
+reached the PRIMARY chart at all, only a secondary `DecisionDetail`
+popup chart drew them.
+
+`CandlestickChart.tsx` gained its first genuinely sloped line
+primitive — `ChartOverlayPolyline` (a real line through two or more
+real `(timestamp, price)` points). Every overlay before this was a
+flat horizontal level or a price×time box; neither can represent an
+actual trend slope. New `TREND` toggle in `MarketChartPanel.tsx`: one
+real, distinctly-colored polyline per Fast/Medium/Slow trend-engine
+bucket (never blended, the directive's own "never silently merge"
+rule), anchored to real candle closes already on the chart via the
+bucket's own real `lookbackBars`/`evaluatedAtIndex` — reproducible from
+visible data, never the abstract `rawValue` alone. `MarketChartPanel`
+gained an optional `selectedPosition` prop; `LiveDeskPanel.tsx` now
+passes its real selected `PaperPosition` through, so
+`overlays.entry`/`overlays.currentPrice` now actually render on the
+primary chart when the position's symbol matches what's shown.
+
+**Verification.** `tsc`/lint/build clean. Live-verified: the TREND
+toggle fetched real trend-engine data and drew real sloped lines
+tracking an actual price swing, via a temporary Playwright spec
+(removed after verification), zero console errors. The entry/mark-line
+fix reuses the identical `overlays.entry`/`overlays.currentPrice`
+mechanism `DecisionDetail.tsx`'s own chart already exercises correctly
+— a fresh live screenshot of a seeded open position wasn't captured
+this pass (the dev-DB seed didn't survive a save reload during this
+verification run), so this specific wiring is confirmed by
+type-safety plus reuse of an already-proven code path, disclosed
+honestly rather than claimed as independently screenshot-verified. No
+backend changes.
+
+**Files changed.** Frontend: `CandlestickChart.tsx`,
+`MarketChartPanel.tsx`, `panels/LiveDeskPanel.tsx`. Docs:
+`CHANGELOG.md`.
+
 ## CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance"
 
 A 37-phase directive asking for a canonical portfolio-wide risk layer

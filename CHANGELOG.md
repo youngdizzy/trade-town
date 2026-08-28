@@ -158,6 +158,38 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"AHL-Inspired Systematic Trend & Momentum Research Engine" follow-up: Live Desk trend-evidence
+  chart overlay.** Closes two more real gaps a Phase 0 audit of the Live Desk found: (1) the Multi-
+  Horizon Trend Engine's three real endpoints (`/trend-engine`, `/trend-engine/cross-sectional`,
+  `/trend-engine/regime-breakdown`) existed with zero chart consumption anywhere since the original
+  pass explicitly deferred it; (2) a selected trade's own real entry/mark price never reached the
+  primary Live Desk chart at all — only a secondary `DecisionDetail` popup chart drew them.
+  - `CandlestickChart.tsx` gained its first genuinely SLOPED line primitive, `ChartOverlayPolyline` (a
+    real line through two or more real `(timestamp, price)` points) — every existing overlay before this
+    was a single flat horizontal level (`ChartOverlayLine`) or a price×time box (`ChartOverlayZone`),
+    neither of which can represent an actual trend slope.
+  - New `TREND` overlay toggle in `MarketChartPanel.tsx`: one real, distinctly-colored polyline per
+    Fast/Medium/Slow trend-engine bucket (never blended into one line, the directive's own explicit
+    "never silently merge" requirement), each anchored to REAL candle closes already on the chart (the
+    bucket's own real `lookbackBars`/`evaluatedAtIndex` pick the real start/end candles from the exact
+    same series being rendered — reproducible from visible data, never the abstract `rawValue` alone).
+    Fetched only while the toggle is on, matching every other overlay's on-demand convention.
+  - `MarketChartPanel` gained a new optional `selectedPosition` prop; `LiveDeskPanel.tsx` now passes its
+    real selected `PaperPosition` through, so `overlays.entry`/`overlays.currentPrice` (the same real
+    ENTRY/MARK lines `DecisionDetail`'s own chart already drew) now actually render on the PRIMARY chart
+    too, only when the position's own symbol matches whatever the chart is currently showing.
+  - Verified: `tsc`/lint/build clean; live-verified end-to-end against the real running dev stack — the
+    TREND toggle fetched real trend-engine data and drew real sloped lines tracking an actual price
+    swing, confirmed via a temporary Playwright spec (removed after verification) with zero console
+    errors. The entry/mark-line fix is the same `overlays.entry`/`overlays.currentPrice` mechanism
+    `DecisionDetail.tsx`'s own chart already exercises correctly — a live screenshot of a seeded open
+    position wasn't captured this pass (the dev-DB seeding step didn't survive a save reload during this
+    verification run), so this specific wiring is confirmed by type-safety plus reuse of an
+    already-proven code path, not a fresh screenshot; disclosed honestly rather than claimed as
+    independently screenshot-verified.
+  - No backend changes — this is a pure frontend wiring pass over already-real, already-tested
+    endpoints and data.
+
 - **"AHL-Inspired Systematic Trend & Momentum Research Engine" follow-up: Structure Confirmation
   Research.** Closes the Break-of-Structure half of that directive's Phase 10, using the exact same
   real-detector-reuse pattern the Liquidity Sweep Research follow-up (below) established: new

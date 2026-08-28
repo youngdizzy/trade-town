@@ -51,7 +51,13 @@ export function LiveDeskPanel() {
 
   return (
     <div className="relative space-y-3">
-      <MarketChartPanel symbol={focusedSymbol ?? undefined} onSymbolChange={setFocusedSymbol} timeframe={focusedTimeframe} onTimeframeChange={setFocusedTimeframe} />
+      <MarketChartPanel
+        symbol={focusedSymbol ?? undefined}
+        onSymbolChange={setFocusedSymbol}
+        timeframe={focusedTimeframe}
+        onTimeframeChange={setFocusedTimeframe}
+        selectedPosition={selectedPosition}
+      />
 
       <PortfolioCommandCenterStrip />
 

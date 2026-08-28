@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
 import { api } from "@/net/api";
 import { useGameStore } from "@/ui/hooks/useGameStore";
-import type { SessionRangeRead, TechnicalAnalysisRead } from "@/types";
-import { CandlestickChart, type ChartOverlayLine, type ChartOverlayZone } from "./CandlestickChart";
+import type { Candle, MultiHorizonTrendScore, PaperPosition, SessionRangeRead, TechnicalAnalysisRead, TrendEnsembleReading } from "@/types";
+import { CandlestickChart, type ChartOverlayLine, type ChartOverlayPolyline, type ChartOverlayZone } from "./CandlestickChart";
 import { marketTickerStats } from "./lib/derive";
 import { useCandles } from "./lib/useCandles";
 import { Glass, TerminalLabel } from "./ui";
@@ -26,8 +26,15 @@ const ORDER_BLOCK_COLOR = "#c084fc";
 const CHART_PATTERN_COLOR = "#60a5fa";
 const LIQUIDITY_COLOR = "#38bdf8";
 const SESSION_RANGE_COLOR = "#94a3b8";
+// CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+// Engine" — real, distinct colors for the Fast/Medium/Slow trend-engine
+// horizons, kept visually decomposed (never blended into one line) per
+// that directive's own explicit "never silently merge" requirement.
+const TREND_FAST_COLOR = "#facc15";
+const TREND_MEDIUM_COLOR = "#fb923c";
+const TREND_SLOW_COLOR = "#f472b6";
 
-type OverlayCategory = "supportResistance" | "fibonacci" | "fairValueGaps" | "orderBlock" | "chartPatterns" | "liquidity" | "sessionRange";
+type OverlayCategory = "supportResistance" | "fibonacci" | "fairValueGaps" | "orderBlock" | "chartPatterns" | "liquidity" | "sessionRange" | "trendEngine";
 const OVERLAY_LABELS: Record<OverlayCategory, string> = {
   supportResistance: "S/R",
   fibonacci: "FIB",
@@ -36,17 +43,56 @@ const OVERLAY_LABELS: Record<OverlayCategory, string> = {
   chartPatterns: "PATTERNS",
   liquidity: "LIQUIDITY",
   sessionRange: "SESSION",
+  trendEngine: "TREND",
 };
+
+// CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+// Engine," Phase 12/13/22 (previously deferred — see docs/Architecture.md's
+// own "not built this pass" record for the Multi-Horizon Trend Engine
+// follow-up). One real, sloped polyline per Fast/Medium/Slow bucket,
+// anchored to REAL candle closes already on this chart (never the
+// abstract raw_value alone) — `bucket.horizons[0]`'s own real
+// `lookbackBars` picks the start candle, `evaluatedAtIndex` the end
+// one, both real indices into the exact same candle series this chart
+// is already rendering (same symbol/timeframe/limit as the fetch
+// below), so the line is always reproducible from visible data.
+function trendPolyline(bucket: MultiHorizonTrendScore, candles: Candle[], color: string, label: string): ChartOverlayPolyline | null {
+  const horizon = bucket.horizons[0];
+  if (!horizon) return null;
+  const endIndex = bucket.evaluatedAtIndex;
+  const startIndex = endIndex - horizon.lookbackBars;
+  const startCandle = candles[startIndex];
+  const endCandle = candles[endIndex];
+  if (!startCandle || !endCandle) return null;
+  return {
+    points: [
+      { timestamp: startCandle.timestamp, price: startCandle.close },
+      { timestamp: endCandle.timestamp, price: endCandle.close },
+    ],
+    label: `${label} ${horizon.direction > 0 ? "▲" : horizon.direction < 0 ? "▼" : "—"} ${bucket.compositeScore.toFixed(1)}`,
+    color,
+  };
+}
 
 function buildOverlays(
   ta: TechnicalAnalysisRead | null,
   active: Record<OverlayCategory, boolean>,
   liquidityZones: { kind: "equal_highs" | "equal_lows"; price: number; touches: number }[],
   sessionRange: SessionRangeRead | null,
-  firstCandleTimestamp: string | null
-): { lines: ChartOverlayLine[]; zones: ChartOverlayZone[] } {
+  firstCandleTimestamp: string | null,
+  trend: TrendEnsembleReading | null,
+  candles: Candle[]
+): { lines: ChartOverlayLine[]; zones: ChartOverlayZone[]; polylines: ChartOverlayPolyline[] } {
   const lines: ChartOverlayLine[] = [];
   const zones: ChartOverlayZone[] = [];
+  const polylines: ChartOverlayPolyline[] = [];
+
+  if (active.trendEngine && trend) {
+    const fast = trendPolyline(trend.fast, candles, TREND_FAST_COLOR, "FAST");
+    const medium = trendPolyline(trend.medium, candles, TREND_MEDIUM_COLOR, "MED");
+    const slow = trendPolyline(trend.slow, candles, TREND_SLOW_COLOR, "SLOW");
+    [fast, medium, slow].forEach((p) => p && polylines.push(p));
+  }
 
   // CEO directive "Professional Quant Live Trading Desk" — Phase 0 audit
   // found both of these already real, already computed, and already
@@ -71,7 +117,7 @@ function buildOverlays(
     });
   }
 
-  if (!ta) return { lines, zones };
+  if (!ta) return { lines, zones, polylines };
 
   if (active.supportResistance) {
     ta.supportResistance.levels.forEach((l) => {
@@ -120,7 +166,7 @@ function buildOverlays(
     });
   }
 
-  return { lines, zones };
+  return { lines, zones, polylines };
 }
 
 /**
@@ -138,11 +184,20 @@ export function MarketChartPanel({
   onSymbolChange,
   timeframe: controlledTimeframe,
   onTimeframeChange,
+  selectedPosition,
 }: {
   symbol?: string;
   onSymbolChange?: (symbol: string) => void;
   timeframe?: string;
   onTimeframeChange?: (timeframe: string) => void;
+  /** CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+   * Engine" follow-up — a Phase 0 audit of the Live Desk found the
+   * selected trade's own real entry/mark price never reached this
+   * chart (only a secondary popup chart drew them). When the position's
+   * own symbol matches whatever this chart is currently showing, its
+   * real entryPrice/currentPrice draw as the same ENTRY/MARK lines
+   * DecisionDetail's chart already uses. */
+  selectedPosition?: PaperPosition | null;
 } = {}) {
   const { watchlist, marketEnvironment, marketIntelligence } = useGameStore();
   const [internalSymbol, setInternalSymbol] = useState(watchlist[0]?.symbol ?? "AAPL");
@@ -154,6 +209,7 @@ export function MarketChartPanel({
   const [timeframes, setTimeframes] = useState<string[]>(FALLBACK_TIMEFRAMES);
   const [technicalAnalysis, setTechnicalAnalysis] = useState<TechnicalAnalysisRead | null>(null);
   const [sessionRange, setSessionRange] = useState<SessionRangeRead | null>(null);
+  const [trend, setTrend] = useState<TrendEnsembleReading | null>(null);
   const [activeOverlays, setActiveOverlays] = useState<Record<OverlayCategory, boolean>>({
     supportResistance: true,
     fibonacci: false,
@@ -162,6 +218,7 @@ export function MarketChartPanel({
     chartPatterns: false,
     liquidity: false,
     sessionRange: false,
+    trendEngine: false,
   });
 
   useEffect(() => {
@@ -214,6 +271,28 @@ export function MarketChartPanel({
     };
   }, [symbol, timeframe, currentSession]);
 
+  // CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+  // Engine" follow-up — the real /trend-engine endpoint already existed
+  // with zero chart consumption (see docs/Architecture.md's own record).
+  // Only fetched while the TREND overlay is actually toggled on, same
+  // on-demand convention as every other overlay category here; limit=100
+  // matches useCandles() below so evaluatedAtIndex lines up with the
+  // exact candles this chart renders.
+  useEffect(() => {
+    if (!activeOverlays.trendEngine) {
+      setTrend(null);
+      return;
+    }
+    let cancelled = false;
+    api
+      .getTrendEngineReading(symbol, timeframe, 100)
+      .then((t) => !cancelled && setTrend(t))
+      .catch(() => !cancelled && setTrend(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [symbol, timeframe, activeOverlays.trendEngine]);
+
   const { candles, loading, error } = useCandles(symbol, timeframe, 100);
   const dataStatus = candles[0]?.dataStatus ?? null;
   const watchlistEntry = watchlist.find((w) => w.symbol === symbol);
@@ -227,8 +306,19 @@ export function MarketChartPanel({
     activeOverlays,
     liquidityZones,
     sessionRange?.symbol === symbol ? sessionRange : null,
-    candles[0]?.timestamp ?? null
+    candles[0]?.timestamp ?? null,
+    trend?.symbol === symbol ? trend : null,
+    candles
   );
+  // CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+  // Engine" follow-up — the real fix for the Live Desk chart gap this
+  // directive's own Phase 0 audit found: a selected trade's own real
+  // entry/mark price now actually reaches this chart, not just the
+  // secondary DecisionDetail popup.
+  const tradeOverlays =
+    selectedPosition && selectedPosition.symbol === symbol
+      ? { ...overlays, entry: selectedPosition.entryPrice, currentPrice: selectedPosition.currentPrice }
+      : overlays;
 
   return (
     <Glass className="p-3">
@@ -296,7 +386,7 @@ export function MarketChartPanel({
           </button>
         ))}
       </div>
-      <CandlestickChart candles={candles} loading={loading} error={error} dataStatus={dataStatus} height={220} overlays={overlays} />
+      <CandlestickChart candles={candles} loading={loading} error={error} dataStatus={dataStatus} height={220} overlays={tradeOverlays} />
     </Glass>
   );
 }
