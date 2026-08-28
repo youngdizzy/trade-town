@@ -72,11 +72,13 @@ from __future__ import annotations
 import statistics
 from datetime import datetime, timezone
 
+from app.analytics import max_drawdown_pct
 from app.market_data import MarketDataProvider
 from app.risk_engine import portfolio_equity
 from app.schemas import (
     CapitalEfficiency,
     CategoryExposure,
+    CorrelatedExposureCluster,
     CorrelationPair,
     ExposureSummary,
     PaperPortfolio,
@@ -169,6 +171,68 @@ def _correlation_pairs(portfolio: PaperPortfolio, provider: MarketDataProvider) 
     return pairs
 
 
+def _correlated_clusters(portfolio: PaperPortfolio, pairs: list[CorrelationPair], equity: float) -> list[CorrelatedExposureCluster]:
+    """Real connected components over `pairs` (a real edge list — union-
+    find, standard graph algorithm, not a fabricated grouping): every
+    symbol chained to another by at least one real correlation pair
+    clearing CORRELATION_CLUSTER_THRESHOLD lands in the same cluster,
+    even if two symbols in that cluster never directly cleared the
+    threshold against EACH OTHER (the classic "A-B correlated, B-C
+    correlated, so A/B/C are one effective bet" case the CEO's own
+    brief describes). Only clusters of 2+ symbols are reported — a lone
+    symbol with no real correlated partner isn't a "cluster." Sorted by
+    real dollar exposure, largest first."""
+    if not pairs or equity <= 0:
+        return []
+    parent: dict[str, str] = {}
+
+    def find(x: str) -> str:
+        while parent.get(x, x) != x:
+            parent[x] = parent.get(parent[x], parent[x])
+            x = parent[x]
+        return x
+
+    def union(a: str, b: str) -> None:
+        ra, rb = find(a), find(b)
+        if ra != rb:
+            parent[ra] = rb
+
+    for pair in pairs:
+        parent.setdefault(pair.symbol_a, pair.symbol_a)
+        parent.setdefault(pair.symbol_b, pair.symbol_b)
+        union(pair.symbol_a, pair.symbol_b)
+
+    groups: dict[str, set[str]] = {}
+    for symbol in parent:
+        groups.setdefault(find(symbol), set()).add(symbol)
+
+    value_by_symbol: dict[str, float] = {}
+    count_by_symbol: dict[str, int] = {}
+    for pos in portfolio.positions:
+        value_by_symbol[pos.symbol] = value_by_symbol.get(pos.symbol, 0.0) + pos.quantity * pos.current_price
+        count_by_symbol[pos.symbol] = count_by_symbol.get(pos.symbol, 0) + 1
+
+    clusters: list[CorrelatedExposureCluster] = []
+    for members in groups.values():
+        if len(members) < 2:
+            continue
+        symbols = sorted(members)
+        total_value = sum(value_by_symbol.get(s, 0.0) for s in symbols)
+        position_count = sum(count_by_symbol.get(s, 0) for s in symbols)
+        pct = total_value / equity * 100
+        clusters.append(
+            CorrelatedExposureCluster(
+                symbols=symbols,
+                totalExposureUsd=round(total_value, 2),
+                totalExposurePct=round(pct, 1),
+                positionCount=position_count,
+                detail=f"{', '.join(symbols)} are real correlated partners (|correlation| >= {CORRELATION_CLUSTER_THRESHOLD}) — ${total_value:,.0f} ({pct:.1f}% of equity) is effectively one shared bet, not {len(symbols)} independent ones.",
+            )
+        )
+    clusters.sort(key=lambda c: c.total_exposure_usd, reverse=True)
+    return clusters
+
+
 def count_correlated_positions(symbol: str, portfolio: PaperPortfolio, provider: MarketDataProvider) -> int:
     """CEO directive "Portfolio Construction, Capital Allocation &
     Execution Realism," Phase 4 — real count of currently-held symbols
@@ -212,7 +276,18 @@ def _heat(portfolio: PaperPortfolio, equity: float, category_exposure: list[Cate
 
     total_at_risk = sum(pos.quantity * pos.current_price for pos in portfolio.positions) / equity * 100
     largest = max((pos.quantity * pos.current_price for pos in portfolio.positions), default=0.0) / equity * 100
-    unrealized_drawdown = abs(portfolio.total_pnl_pct) if portfolio.total_pnl_pct < 0 else 0.0
+    # CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance" —
+    # this field was named "unrealized" but was actually computed from
+    # `total_pnl_pct`, which is REALIZED-only cumulative P&L relative to
+    # the account's original starting balance — never moved by an open
+    # position's own real unrealized loss, and never measured against
+    # the account's own real peak equity. Fixed to the same real
+    # peak-to-trough read (app/analytics.py::max_drawdown_pct(),
+    # `current_equity=equity` folding in every open position's live
+    # mark-to-market value) app/risk_engine.py's own gates now use, so
+    # this card and the RISK tab's own drawdown gate never disagree
+    # about the same real state.
+    unrealized_drawdown = max_drawdown_pct(portfolio.trade_history, portfolio.starting_balance, current_equity=equity)
     hottest = category_exposure[0] if category_exposure else None
 
     tier = "cool"
@@ -335,6 +410,7 @@ def compute_portfolio_intelligence(portfolio: PaperPortfolio, provider: MarketDa
     equity = portfolio_equity(portfolio)
     category_exposure = _category_exposure(portfolio, equity)
     correlation_pairs = _correlation_pairs(portfolio, provider)
+    correlated_clusters = _correlated_clusters(portfolio, correlation_pairs, equity)
     heat = _heat(portfolio, equity, category_exposure)
     exposure = _exposure_summary(portfolio, equity)
     strategy_exposure = _strategy_exposure(portfolio, equity)
@@ -349,6 +425,7 @@ def compute_portfolio_intelligence(portfolio: PaperPortfolio, provider: MarketDa
         deployedPctOfEquity=deployed_pct,
         categoryExposure=category_exposure,
         correlationPairs=correlation_pairs,
+        correlatedClusters=correlated_clusters,
         heat=heat,
         exposure=exposure,
         strategyExposure=strategy_exposure,

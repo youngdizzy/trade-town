@@ -4,12 +4,15 @@ exactly how each configured limit is enforced.
 """
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from pydantic import BaseModel, ConfigDict, Field
 
+from app.market_data import market_data_provider
 from app.persistence import persist_modules
-from app.risk_engine import project_loss_after_n_losses
-from app.schemas import ProjectedLossPath, RiskLimits, TierAllocationLimits
+from app.portfolio_intelligence import compute_portfolio_intelligence
+from app.portfolio_risk import compute_portfolio_risk_snapshot, evaluate_pretrade_risk_decision
+from app.risk_engine import daily_realized_pnl_pct, project_loss_after_n_losses
+from app.schemas import PortfolioRiskSnapshot, PretradeRiskDecision, ProjectedLossPath, RiskLimits, TierAllocationLimits
 from app.state import game_state
 
 router = APIRouter(prefix="/api/risk-limits", tags=["risk"])
@@ -111,3 +114,38 @@ async def projected_loss(n: int) -> ProjectedLossPath:
         raise HTTPException(status_code=400, detail="n must be 0 or greater.")
     state = await game_state.snapshot()
     return project_loss_after_n_losses(state.risk_limits, state.paper_portfolio, n)
+
+
+# CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance" —
+# real, read-only composition reads (see app/portfolio_risk.py's own
+# module docstring). Never a game-state mutation, never a second risk
+# engine — both compose already-real state this codebase already
+# computes and already enforces.
+@router.get("/portfolio-snapshot", response_model=PortfolioRiskSnapshot)
+async def portfolio_risk_snapshot() -> PortfolioRiskSnapshot:
+    state = await game_state.snapshot()
+    intelligence = compute_portfolio_intelligence(state.paper_portfolio, market_data_provider, pending_proposal_count=len(state.trade_proposals))
+    return compute_portfolio_risk_snapshot(
+        state.paper_portfolio,
+        state.risk_limits,
+        intelligence,
+        daily_circuit_breaker_tier=state.daily_circuit_breaker.tier,
+        daily_pnl_pct=daily_realized_pnl_pct(state.paper_portfolio, state.time.day),
+        emergency_stop_active=state.emergency_stop.active,
+    )
+
+
+@router.get("/pretrade-decision", response_model=PretradeRiskDecision)
+async def pretrade_risk_decision(
+    symbol: str = Query(..., min_length=1, max_length=16),
+    proposed_value: float = Query(..., gt=0),
+) -> PretradeRiskDecision:
+    state = await game_state.snapshot()
+    return evaluate_pretrade_risk_decision(
+        state.risk_limits,
+        state.paper_portfolio,
+        symbol=symbol.upper(),
+        proposed_value=proposed_value,
+        sim_day=state.time.day,
+        emergency_stop_active=state.emergency_stop.active,
+    )

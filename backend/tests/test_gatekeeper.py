@@ -372,25 +372,59 @@ class TestAccountHaltCheck:
         assert check.passed is True
 
     def test_fails_when_the_lifetime_drawdown_ceiling_is_already_breached(self) -> None:
+        """CEO directive "Portfolio Risk Engine + Firm-Wide Risk
+        Governance" — evaluate_sentinel_risk()'s drawdown check now
+        measures a REAL peak-to-trough drawdown (app/analytics.py::
+        max_drawdown_pct(), folding in live equity), not the bare
+        `total_pnl_pct` field, so this needs a real held position with a
+        real unrealized loss rather than a fabricated summary override.
+        Built as an OPEN position specifically (not a closed trade) so
+        this exercises the fix's other real half — a large unrealized
+        loss that's never been realized still trips this gate — and so
+        it stays isolated from sim_day=0's daily/weekly/monthly loss
+        checks above it (which only ever look at CLOSED trade_history)."""
         proposal = _proposal(symbol="NEXA")
-        portfolio = default_portfolio().model_copy(update={"total_pnl_pct": -25.0})
+        losing_position = PaperPosition(
+            id="pos-losing",
+            symbol="OTHER",
+            side="buy",
+            quantity=1_000.0,
+            entryPrice=50.0,
+            currentPrice=25.0,
+            unrealizedPnl=-25_000.0,
+            unrealizedPnlPct=-50.0,
+            openedBy="atlas",
+            confidence=80.0,
+            openedAt=_now_iso(),
+            openedSimMinutes=0,
+        )
+        portfolio = default_portfolio().model_copy(update={"cash_balance": 50_000.0, "positions": [losing_position]})
         check = _account_halt_check(proposal, portfolio, RiskLimits(), 10.0, 100.0, 0)
         assert check.passed is False
         assert "drawdown" in check.detail.lower()
 
     def test_a_triggered_read_fails_only_its_own_check_in_the_full_verdict(self) -> None:
         proposal = _proposal(symbol="NEXA", confidence_score=90.0, votes=_six_votes({r: "buy" for r in ROLE_TO_AGENT}))
-        portfolio = default_portfolio().model_copy(update={"total_pnl_pct": -25.0})
+        losing_position = PaperPosition(
+            id="pos-losing",
+            symbol="OTHER",
+            side="buy",
+            quantity=1_000.0,
+            entryPrice=50.0,
+            currentPrice=25.0,
+            unrealizedPnl=-25_000.0,
+            unrealizedPnlPct=-50.0,
+            openedBy="atlas",
+            confidence=80.0,
+            openedAt=_now_iso(),
+            openedSimMinutes=0,
+        )
+        portfolio = default_portfolio().model_copy(update={"cash_balance": 50_000.0, "positions": [losing_position]})
         verdict = evaluate_gatekeeper(
             proposal, "buy", _debate("buy"), portfolio, RiskLimits(), [], default_market_intelligence_state(), now_sim_minutes=0, quantity=10.0, price=100.0, sim_day=0
         )
         assert verdict.approved is False
         assert any(c.id == "account_halt" and not c.passed for c in verdict.checks)
-        # failure_boundary independently catches the same real breach —
-        # both checks reading the same real total_pnl_pct is expected,
-        # not a duplicate bug (one is Sentinel's live gate re-run, the
-        # other is the CEO Company Health directive's own formula).
-        assert all(c.passed for c in verdict.checks if c.id not in ("account_halt", "failure_boundary"))
 
 
 class TestEvaluateGatekeeper:

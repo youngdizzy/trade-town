@@ -110,6 +110,7 @@ from __future__ import annotations
 import statistics
 from datetime import datetime, timezone
 
+from app.analytics import real_peak_equity
 from app.market_data import MarketDataProvider, volatility_pct
 from app.regime_reconciliation import compute_regime_reconciliation
 from app.risk_engine import SIM_MINUTES_PER_DAY, portfolio_equity
@@ -500,13 +501,21 @@ def run_portfolio_stress_test(
     liquidity_scores = [lr.liquidity_score for lr in liquidity_reads if lr.symbol in held_symbols]
     held_liquidity = round(statistics.mean(liquidity_scores), 1) if liquidity_scores else None
 
+    # CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance"
+    # — the real high-water mark this shock ladder measures resulting
+    # drawdown against, not `portfolio.starting_balance` (loss from the
+    # account's original balance, which understates real drawdown risk
+    # for any account that ran up a real gain before this shock). Same
+    # real peak app/risk_engine.py's own gates now measure against (see
+    # app/analytics.py::real_peak_equity()).
+    real_peak = real_peak_equity(portfolio.trade_history, portfolio.starting_balance, current_equity=starting_equity)
+
     levels: list[StressTestLevelResult] = []
     for shock_pct in STRESS_LEVELS:
         positions_value = sum(p.quantity * p.current_price * (1 + shock_pct / 100) for p in portfolio.positions)
         resulting_equity = portfolio.cash_balance + positions_value
-        resulting_pnl_pct = ((resulting_equity - portfolio.starting_balance) / portfolio.starting_balance * 100) if portfolio.starting_balance > 0 else 0.0
-        drawdown_pct = round(max(0.0, -resulting_pnl_pct), 2)
-        breaches = resulting_pnl_pct <= -limits.max_drawdown_pct
+        drawdown_pct = round(max(0.0, (real_peak - resulting_equity) / real_peak * 100), 2) if real_peak > 0 else 0.0
+        breaches = drawdown_pct >= limits.max_drawdown_pct
         survives = resulting_equity > 0
         loss_amount = max(0.0, starting_equity - resulting_equity)
         recovery_days, recovery_note = _recovery_estimate(loss_amount, portfolio, sim_day)
@@ -586,8 +595,11 @@ def run_portfolio_scenario(
     shocked_equity = portfolio.cash_balance + shocked_positions_value
     impact_amount = round(shocked_equity - starting_equity, 2)
     impact_pct = round((shocked_equity - starting_equity) / starting_equity * 100, 2) if starting_equity > 0 else 0.0
-    resulting_pnl_pct = ((shocked_equity - portfolio.starting_balance) / portfolio.starting_balance * 100) if portfolio.starting_balance > 0 else 0.0
-    breaches = resulting_pnl_pct <= -limits.max_drawdown_pct
+    # Same real-peak fix as compute_portfolio_stress_test() above — see
+    # that function's own comment.
+    real_peak = real_peak_equity(portfolio.trade_history, portfolio.starting_balance, current_equity=starting_equity)
+    resulting_drawdown_pct = max(0.0, (real_peak - shocked_equity) / real_peak * 100) if real_peak > 0 else 0.0
+    breaches = resulting_drawdown_pct >= limits.max_drawdown_pct
     survives = shocked_equity > 0
 
     return PortfolioScenarioResult(
@@ -882,12 +894,15 @@ def _stress_test_survival_score(portfolio: PaperPortfolio, limits: RiskLimits) -
     run_portfolio_stress_test() uses (no bootstrap resampling needed) —
     how many of the 5 levels the current book would survive: positive
     resulting equity and no RiskLimits.max_drawdown_pct breach."""
+    # Same real-peak fix as compute_portfolio_stress_test() — see that
+    # function's own comment.
+    real_peak = real_peak_equity(portfolio.trade_history, portfolio.starting_balance, current_equity=portfolio_equity(portfolio))
     survived = 0
     for shock_pct in STRESS_LEVELS:
         positions_value = sum(p.quantity * p.current_price * (1 + shock_pct / 100) for p in portfolio.positions)
         resulting_equity = portfolio.cash_balance + positions_value
-        resulting_pnl_pct = ((resulting_equity - portfolio.starting_balance) / portfolio.starting_balance * 100) if portfolio.starting_balance > 0 else 0.0
-        if resulting_equity > 0 and resulting_pnl_pct > -limits.max_drawdown_pct:
+        resulting_drawdown_pct = max(0.0, (real_peak - resulting_equity) / real_peak * 100) if real_peak > 0 else 0.0
+        if resulting_equity > 0 and resulting_drawdown_pct < limits.max_drawdown_pct:
             survived += 1
     return round(survived / len(STRESS_LEVELS) * 100, 1), survived
 
@@ -932,7 +947,14 @@ def compute_institutional_survival_score(
     liquidity_score = 100.0 - liquidity_factor_ew.score if liquidity_factor_ew else 70.0
     liquidity_factor = SurvivalScoreFactor(name="Liquidity", score=liquidity_score, weight=_SURVIVAL_WEIGHTS["liquidity"], detail=liquidity_factor_ew.detail if liquidity_factor_ew else "No LiquidityRead on file yet.")
 
-    current_drawdown_pct = abs(min(0.0, portfolio.total_pnl_pct))
+    # CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance" —
+    # reuses Portfolio Heat's own real peak-to-trough drawdown reading
+    # (app/portfolio_intelligence.py's `_heat()`, itself fixed this same
+    # pass to use app/analytics.py::max_drawdown_pct()) rather than the
+    # old `total_pnl_pct`-based proxy, so the Survival Score never
+    # disagrees with the Portfolio Heat card or app/risk_engine.py's own
+    # gates about the same real state.
+    current_drawdown_pct = heat.unrealized_drawdown_pct
     room_pct = max(0.0, limits.max_drawdown_pct - current_drawdown_pct)
     drawdown_score = round(min(100.0, room_pct / limits.max_drawdown_pct * 100), 1) if limits.max_drawdown_pct > 0 else 0.0
     drawdown_factor = SurvivalScoreFactor(

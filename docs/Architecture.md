@@ -15275,6 +15275,114 @@ the user's own "Multi-Horizon Trend engine first" scoping choice):
 `app/routers/market.py`, `tests/test_trend_engine.py` (new). Frontend:
 `types.ts`, `net/api.ts`. Docs: `CHANGELOG.md`.
 
+## CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance"
+
+A 37-phase directive asking for a canonical portfolio-wide risk layer
+sitting above individual strategy/agent signals, explicit that a strong
+trend signal never overrides risk. Given the size, the user was asked
+what to focus on and chose **"unify + fix the real gaps"** over building
+new standalone risk logic, new UI, or layered kill switches specifically.
+
+**Phase 0 — audit.** Reused extensive prior knowledge of `position_
+sizing.py`/`portfolio_intelligence.py`/`risk_engine.py`/`RiskLimits`
+from this session's two earlier directives (Certification Pipeline,
+Live Desk observability), supplemented by targeted direct-code
+investigation (no subagents — the session's usage limit was hit
+mid-audit and this pass continued once it cleared) of kill switches,
+drawdown tracking, stress testing, and the Command Center's RISK tab.
+Headline findings:
+
+- **`app/black_swan.py` (992 lines) already implements most of what the
+  directive describes as new**: a real Early Warning Score (8 factors,
+  each reused from an already-real department, never recomputed), a
+  named risk tier (green/yellow/orange/red/critical), a real -10/-20/
+  -35/-50/-70% portfolio stress-test ladder against the actual current
+  book, four real named scenario simulations (flash_crash/
+  severe_selloff/liquidity_freeze/correlation_breakdown), and a real,
+  CEO-controllable Defensive Mode that tightens `RiskLimits` and pauses
+  new AI-generated proposals (confirmed wired into `nexus.py`'s tick,
+  not UI-only). Its own module docstring is a model of the "honesty
+  boundary" documentation style: it explicitly refuses named historical
+  scenarios (2008/2020/1987/Dot-Com — no calibration data exists),
+  automatic position closing (binding codebase principle: "risk is
+  measured and displayed, never auto-hedged or auto-corrected without
+  the player"), and 8 named Playbooks (one real generic one ships).
+- `app/emergency_stop.py` is a real, working, firm-wide (only) kill
+  switch — genuinely blocks new proposal generation, auto-resolution,
+  and the CEO's own manual buy/sell decision; requires an explicit
+  `/resume` call, never silently resumes. Layered position/strategy/
+  agent/asset-class granularity below it (Phase 25) does not exist.
+- `app/trading_modes.py::compute_daily_circuit_breaker()` is a real,
+  already-escalating tier system (none/tier1-4) reading the same real
+  daily P&L% `risk_engine.py` already tracks.
+- **The one real, previously-undiscovered bug**: `evaluate_sentinel_
+  risk()`'s drawdown gate compared `portfolio.total_pnl_pct` (realized
+  P&L vs. the account's ORIGINAL starting balance) against `RiskLimits.
+  max_drawdown_pct` — not a real peak-to-trough drawdown. The exact same
+  flawed proxy was independently duplicated in four more places (see
+  CHANGELOG.md's Fixed entry for the full list and the fix, which reuses
+  `app/analytics.py`'s already-existing real peak-to-trough
+  `max_drawdown_pct()` convention rather than inventing a new one).
+- Real aggregate correlated-exposure was genuinely missing: pairwise
+  Pearson correlation existed but never answered "how much of the book
+  is effectively one bet" (the CEO's own Scout-long-SPY/Quant-long-QQQ/
+  Momentum-long-NVDA example) — fixed with real union-find clustering
+  over the existing pairwise edges (see CHANGELOG.md's Added entry).
+- Real sector/factor exposure data is genuinely limited: only one
+  sector-tagged symbol (`XLF`, financials) exists in the whole
+  watchlist — not enough for any real sector-concentration read beyond
+  what `ResearchCategory` already provides. Documented as a real data
+  limitation, not fabricated around.
+- Portfolio-level Monte Carlo/risk-of-ruin: real Monte Carlo already
+  exists at the per-strategy level (`strategy_lab.py`, made
+  reproducible by the Certification Pipeline directive above); a
+  portfolio-level version (all open positions combined) does not exist
+  and was not attempted this pass.
+
+**Implementation.** New `app/portfolio_risk.py` — a real COMPOSITION
+layer, not a second risk engine (see that module's own docstring):
+`compute_portfolio_risk_snapshot()` packages already-real state into one
+canonical `PortfolioRiskSnapshot` with a derived `riskState`
+(normal/warning/restricted/halted) and real, inspectable reasons;
+`evaluate_pretrade_risk_decision()` composes every real Sentinel/
+Guardian violation for a candidate trade (via the new, behavior-
+preserving `evaluate_all_sentinel_checks()` refactor of `risk_engine.py`)
+into one fully-explained decision — advisory/explanatory only, the real
+enforcement path (`gatekeeper.py`'s vote pipeline) is unchanged.
+
+**Verification.** Full backend suite green, mypy/ruff clean across the
+whole backend. 20 new backend tests (12 in `test_portfolio_risk.py`, 8
+covering the new correlated-clusters union-find) plus the drawdown-fix
+regression tests. Two new endpoints live-smoke-tested against the real
+running app via FastAPI TestClient. Frontend `tsc`/lint/build clean.
+
+**Not built this pass, documented rather than silently skipped** (per
+the user's own "unify + fix the real gaps" scoping choice):
+- A Live Desk chart/Command Center RISK-tab UI surfacing the two new
+  endpoints (Phases 19-20, 34) — the new API exists and is real, but no
+  new frontend panel consumes it yet beyond the typed API client.
+- Layered kill switches below the existing firm-wide Emergency Stop
+  (Phase 25) — position/strategy/agent/asset-class granularity.
+- A real factor model (Phase 5) — this codebase has no GICS/factor
+  taxonomy; the architecture is left open for one, per the directive's
+  own "document the limitation, build the safest useful abstraction
+  instead" instruction, but none is fabricated here.
+- A portfolio-level Monte Carlo/risk-of-ruin (Phases 12, 14).
+- True inverse-volatility *portfolio* weighting across simultaneous
+  positions (Phase 6) — today's real ATR-based sizing remains
+  single-position/risk-per-trade, not `1/σ`-normalized across the book.
+- Liquidity-aware execution sizing (Phase 15/16/21) — no real dollar-
+  volume/spread data exists anywhere in this codebase to build one from
+  (re-confirmed, same blocker the prior AHL-Inspired directive found).
+
+**Files changed.** Backend: `app/schemas.py`, `app/portfolio_risk.py`
+(new), `app/analytics.py`, `app/risk_engine.py`, `app/portfolio_
+intelligence.py`, `app/black_swan.py`, `app/routers/risk.py`,
+`tests/test_portfolio_risk.py` (new), `tests/test_analytics.py`,
+`tests/test_risk_engine.py`, `tests/test_portfolio_intelligence.py`.
+Frontend: `types.ts`, `net/api.ts`, `game/systems/NexusManager.ts`,
+`state/gameStore.ts`. Docs: `CHANGELOG.md`.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

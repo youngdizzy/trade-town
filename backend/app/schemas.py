@@ -7435,6 +7435,24 @@ class CorrelationPair(CamelModel):
     direction: Literal["positive", "negative"]
 
 
+# CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance" — a
+# Phase 0 audit found `correlation_pairs` above already real (Pearson,
+# computed from real candle returns), but pairwise-only: it never
+# answers "how much of the book is effectively ONE bet." This groups
+# `correlation_pairs` into real connected clusters (symbols chained
+# together by at least one real pair clearing the same threshold) and
+# sums each cluster's own real dollar exposure — the "Scout long SPY,
+# Quant long QQQ, Momentum long NVDA" example from the CEO's own brief,
+# recognized as one real ~$X shared-factor bet instead of three
+# independent-looking ones.
+class CorrelatedExposureCluster(CamelModel):
+    symbols: list[str]
+    total_exposure_usd: float = Field(alias="totalExposureUsd")
+    total_exposure_pct: float = Field(alias="totalExposurePct")
+    position_count: int = Field(alias="positionCount")
+    detail: str
+
+
 class PortfolioHeat(CamelModel):
     total_capital_at_risk_pct: float = Field(alias="totalCapitalAtRiskPct")
     unrealized_drawdown_pct: float = Field(alias="unrealizedDrawdownPct")
@@ -7503,6 +7521,9 @@ class PortfolioIntelligence(CamelModel):
     )
     correlation_pairs: list[CorrelationPair] = Field(
         default_factory=list, alias="correlationPairs"
+    )
+    correlated_clusters: list[CorrelatedExposureCluster] = Field(
+        default_factory=list, alias="correlatedClusters"
     )
     heat: PortfolioHeat
     exposure: ExposureSummary
@@ -8466,6 +8487,57 @@ class DailyCircuitBreakerRead(CamelModel):
     tier3_pct: float = Field(alias="tier3Pct")
     tier4_pct: float = Field(alias="tier4Pct")
     updated_at: str = Field(alias="updatedAt")
+
+
+# CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance" —
+# app/portfolio_risk.py's schemas. `PortfolioRiskSnapshot` is a real
+# COMPOSITION over already-computed real state (PortfolioIntelligence,
+# Sentinel's real drawdown/exposure reads, the real daily circuit
+# breaker above, the real Emergency Stop flag) — nothing here is a
+# second, independently-derived risk calculation. `PretradeRiskDecision`
+# composes every real Sentinel/Guardian check for one candidate trade
+# into a single, fully-explained decision — "Risk = 72" is explicitly
+# what this schema refuses to be: every reason is a real, inspectable
+# string tied to a real check.
+PortfolioRiskState = Literal["normal", "warning", "restricted", "halted"]
+
+
+class PortfolioRiskSnapshot(CamelModel):
+    computed_at: str = Field(alias="computedAt")
+    equity: float
+    cash_balance: float = Field(alias="cashBalance")
+    starting_balance: float = Field(alias="startingBalance")
+    gross_exposure_usd: float = Field(alias="grossExposureUsd")
+    net_exposure_usd: float = Field(alias="netExposureUsd")
+    gross_exposure_pct: float = Field(alias="grossExposurePct")
+    net_exposure_pct: float = Field(alias="netExposurePct")
+    leverage: float
+    open_positions_count: int = Field(alias="openPositionsCount")
+    max_open_positions: int = Field(alias="maxOpenPositions")
+    current_drawdown_pct: float = Field(alias="currentDrawdownPct")
+    max_drawdown_limit_pct: float = Field(alias="maxDrawdownLimitPct")
+    daily_pnl_pct: float = Field(alias="dailyPnlPct")
+    max_daily_loss_pct: float = Field(alias="maxDailyLossPct")
+    correlated_clusters: list[CorrelatedExposureCluster] = Field(
+        default_factory=list, alias="correlatedClusters"
+    )
+    largest_correlated_cluster_pct: float = Field(alias="largestCorrelatedClusterPct")
+    daily_circuit_breaker_tier: DailyCircuitBreakerTier = Field(alias="dailyCircuitBreakerTier")
+    emergency_stop_active: bool = Field(alias="emergencyStopActive")
+    risk_state: PortfolioRiskState = Field(alias="riskState")
+    risk_state_reasons: list[str] = Field(default_factory=list, alias="riskStateReasons")
+
+
+PretradeRiskVerdict = Literal["approved", "approved_with_reduction", "rejected", "halted"]
+
+
+class PretradeRiskDecision(CamelModel):
+    verdict: PretradeRiskVerdict
+    symbol: str
+    proposed_value: float = Field(alias="proposedValue")
+    reasons: list[str] = Field(default_factory=list)
+    reason_codes: list[str] = Field(default_factory=list, alias="reasonCodes")
+    detail: str
 
 
 class LosingStreakRead(CamelModel):

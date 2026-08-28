@@ -4672,6 +4672,20 @@ export interface CorrelationPair {
   direction: "positive" | "negative";
 }
 
+/** CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance" —
+ * real connected components over CorrelationPair's own edges (symbols
+ * chained together by at least one real correlated pair, even if two
+ * members never directly cleared the threshold against each other) —
+ * "the firm may effectively be making one large risk bet," not three
+ * independent-looking ones. */
+export interface CorrelatedExposureCluster {
+  symbols: string[];
+  totalExposureUsd: number;
+  totalExposurePct: number;
+  positionCount: number;
+  detail: string;
+}
+
 /** A real, visible READING across four tiers — never an automatic
  * corrective action (docs/ROADMAP.md's own v0.8 stop condition: "risk is
  * measured and displayed, never auto-hedged or auto-corrected without
@@ -4738,12 +4752,55 @@ export interface PortfolioIntelligence {
   deployedPctOfEquity: number;
   categoryExposure: CategoryExposure[];
   correlationPairs: CorrelationPair[];
+  correlatedClusters: CorrelatedExposureCluster[];
   heat: PortfolioHeat;
   exposure: ExposureSummary;
   strategyExposure: StrategyExposureRead[];
   capitalEfficiency: CapitalEfficiency;
   opportunityCost: string;
   updatedAt: string;
+}
+
+// CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance" —
+// backend/app/portfolio_risk.py's schemas. PortfolioRiskSnapshot is a
+// real COMPOSITION over already-real state, never a second risk engine;
+// PretradeRiskDecision explains a candidate trade with real reasons —
+// never a black-box score. See that module's own docstring.
+export type PortfolioRiskState = "normal" | "warning" | "restricted" | "halted";
+
+export interface PortfolioRiskSnapshot {
+  computedAt: string;
+  equity: number;
+  cashBalance: number;
+  startingBalance: number;
+  grossExposureUsd: number;
+  netExposureUsd: number;
+  grossExposurePct: number;
+  netExposurePct: number;
+  leverage: number;
+  openPositionsCount: number;
+  maxOpenPositions: number;
+  currentDrawdownPct: number;
+  maxDrawdownLimitPct: number;
+  dailyPnlPct: number;
+  maxDailyLossPct: number;
+  correlatedClusters: CorrelatedExposureCluster[];
+  largestCorrelatedClusterPct: number;
+  dailyCircuitBreakerTier: DailyCircuitBreakerTier;
+  emergencyStopActive: boolean;
+  riskState: PortfolioRiskState;
+  riskStateReasons: string[];
+}
+
+export type PretradeRiskVerdict = "approved" | "approved_with_reduction" | "rejected" | "halted";
+
+export interface PretradeRiskDecision {
+  verdict: PretradeRiskVerdict;
+  symbol: string;
+  proposedValue: number;
+  reasons: string[];
+  reasonCodes: string[];
+  detail: string;
 }
 
 // Design Bible Chapter 71 — Economic Intelligence Center

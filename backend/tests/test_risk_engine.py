@@ -9,6 +9,7 @@ from app.risk_engine import (
     compute_risk_budget_status,
     daily_realized_pnl_pct,
     distinct_trading_days,
+    evaluate_all_sentinel_checks,
     evaluate_guardian_exposure,
     evaluate_sentinel_risk,
     monthly_realized_pnl_pct,
@@ -346,12 +347,121 @@ class TestEvaluateSentinelRiskExisting:
         assert warning.severity == "critical"
 
     def test_lifetime_drawdown_blocks_trading(self) -> None:
-        limits = RiskLimits(maxDrawdownPct=20.0)
-        portfolio = _portfolio(total_pnl_pct=-25.0)
-        warning = evaluate_sentinel_risk(limits, portfolio, symbol="AAPL", proposed_value=100.0, sim_day=0)
+        """CEO directive "Portfolio Risk Engine + Firm-Wide Risk
+        Governance" — this now measures a REAL peak-to-trough drawdown
+        (app/analytics.py::max_drawdown_pct()), not the bare
+        `total_pnl_pct` field, so the portfolio needs a real closed loss
+        behind it, not just a fabricated summary number. Generous
+        weekly/monthly loss limits isolate the drawdown gate specifically
+        (a large-enough loss also breaches those, checked earlier); `cash`
+        is set to the real post-trade balance so the live-equity read
+        (`portfolio_equity()`) agrees with the trade history instead of
+        implying a second, fake loss on top of it."""
+        limits = RiskLimits(maxDrawdownPct=20.0, maxWeeklyLossPct=90.0, maxMonthlyLossPct=90.0)
+        portfolio = _portfolio(trades=[_trade(pnl=-25_000.0, opened_sim_minutes=0, closed_sim_minutes=30)], cash=75_000.0)
+        warning = evaluate_sentinel_risk(limits, portfolio, symbol="AAPL", proposed_value=100.0, sim_day=5)
         assert warning is not None
         assert "drawdown" in warning.message.lower()
         assert warning.code == "risk_lifetime_drawdown"
+
+    def test_lifetime_drawdown_uses_real_peak_not_starting_balance(self) -> None:
+        """The bug this fix closes: an account that ran up a real gain
+        before giving some back must still be measured from its own real
+        peak, not from where it started — `total_pnl_pct` alone would
+        have read "+15%" here and never tripped this gate even though
+        the account just lived through a real 23%-from-peak drawdown."""
+        limits = RiskLimits(maxDrawdownPct=20.0, maxWeeklyLossPct=90.0, maxMonthlyLossPct=90.0)
+        portfolio = _portfolio(
+            trades=[
+                _trade(pnl=50_000.0, opened_sim_minutes=0, closed_sim_minutes=30),
+                _trade(pnl=-35_000.0, opened_sim_minutes=1440, closed_sim_minutes=1470),
+            ],
+            cash=115_000.0,
+        )
+        warning = evaluate_sentinel_risk(limits, portfolio, symbol="AAPL", proposed_value=100.0, sim_day=5)
+        assert warning is not None
+        assert warning.code == "risk_lifetime_drawdown"
+
+    def test_lifetime_drawdown_ignores_stale_gain_when_still_within_limit(self) -> None:
+        limits = RiskLimits(maxDrawdownPct=20.0, maxWeeklyLossPct=90.0, maxMonthlyLossPct=90.0)
+        portfolio = _portfolio(
+            trades=[
+                _trade(pnl=50_000.0, opened_sim_minutes=0, closed_sim_minutes=30),
+                _trade(pnl=-10_000.0, opened_sim_minutes=1440, closed_sim_minutes=1470),
+            ],
+            cash=140_000.0,
+        )
+        warning = evaluate_sentinel_risk(limits, portfolio, symbol="AAPL", proposed_value=100.0, sim_day=5)
+        assert warning is None
+
+
+class TestEvaluateAllSentinelChecks:
+    """CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance"
+    — `evaluate_all_sentinel_checks()` must return every real violation,
+    not just the one `evaluate_sentinel_risk()` reports, and the two
+    must never disagree about the FIRST one (same underlying checks,
+    same order)."""
+
+    def test_no_violations_returns_empty_list(self) -> None:
+        limits = RiskLimits()
+        portfolio = _portfolio()
+        assert evaluate_all_sentinel_checks(limits, portfolio, symbol="AAPL", proposed_value=100.0, sim_day=0) == []
+
+    def test_multiple_real_violations_are_all_returned(self) -> None:
+        # Both the max-open-positions limit AND the position-size limit
+        # are real violations on this same candidate at once.
+        from app.schemas import PaperPosition
+
+        position = PaperPosition(
+            id="pos-1",
+            symbol="MSFT",
+            side="buy",  # type: ignore[arg-type]
+            quantity=10.0,
+            entryPrice=50.0,
+            currentPrice=50.0,
+            unrealizedPnl=0.0,
+            unrealizedPnlPct=0.0,
+            openedBy="sentinel",  # type: ignore[arg-type]
+            confidence=80.0,
+            openedAt="2024-01-01T00:00:00+00:00",
+        )
+        limits = RiskLimits(maxOpenPositions=1, maxPositionPct=1.0)
+        portfolio = _portfolio(positions=[position], cash=10_000.0, starting=10_000.0)
+        checks = evaluate_all_sentinel_checks(limits, portfolio, symbol="AAPL", proposed_value=5_000.0, sim_day=0)
+        codes = {c.code for c in checks}
+        assert "risk_max_open_positions" in codes
+        assert "risk_position_size_limit" in codes
+        assert len(checks) >= 2
+
+    def test_first_of_many_matches_evaluate_sentinel_risk(self) -> None:
+        from app.schemas import PaperPosition
+
+        position = PaperPosition(
+            id="pos-1",
+            symbol="MSFT",
+            side="buy",  # type: ignore[arg-type]
+            quantity=10.0,
+            entryPrice=50.0,
+            currentPrice=50.0,
+            unrealizedPnl=0.0,
+            unrealizedPnlPct=0.0,
+            openedBy="sentinel",  # type: ignore[arg-type]
+            confidence=80.0,
+            openedAt="2024-01-01T00:00:00+00:00",
+        )
+        limits = RiskLimits(maxOpenPositions=1, maxPositionPct=1.0)
+        portfolio = _portfolio(positions=[position], cash=10_000.0, starting=10_000.0)
+        checks = evaluate_all_sentinel_checks(limits, portfolio, symbol="AAPL", proposed_value=5_000.0, sim_day=0)
+        single = evaluate_sentinel_risk(limits, portfolio, symbol="AAPL", proposed_value=5_000.0, sim_day=0)
+        assert single is not None
+        assert checks[0].code == single.code
+
+    def test_equity_exhausted_stops_at_one_check_not_a_crash(self) -> None:
+        limits = RiskLimits()
+        portfolio = _portfolio(cash=0.0, starting=100_000.0)
+        checks = evaluate_all_sentinel_checks(limits, portfolio, symbol="AAPL", proposed_value=100.0, sim_day=0)
+        assert len(checks) == 1
+        assert checks[0].code == "risk_equity_exhausted"
 
     def test_position_too_large_is_rejected(self) -> None:
         limits = RiskLimits(maxPositionPct=10.0)

@@ -507,6 +507,7 @@ class GameStore {
       deployedPctOfEquity: 0,
       categoryExposure: [],
       correlationPairs: [],
+      correlatedClusters: [],
       heat: { totalCapitalAtRiskPct: 0, unrealizedDrawdownPct: 0, largestPositionPct: 0, hottestCategory: null, hottestCategoryPct: 0, tier: "cool" },
       exposure: { longValue: 0, shortValue: 0, netExposure: 0, grossExposure: 0, netExposurePct: 0, grossExposurePct: 0, longPositionCount: 0, shortPositionCount: 0 },
       strategyExposure: [],

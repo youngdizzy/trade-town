@@ -46,8 +46,10 @@ documents for "did it pass the Gatekeeper."
 """
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import datetime, timezone
 
+from app.analytics import max_drawdown_pct
 from app.schemas import DailyObjectiveStatus, PaperPortfolio, PaperTrade, ProjectedLossPath, RiskBudgetStatus, RiskLimits, RiskWarning
 
 # Position sizing floor/ceiling, mirroring app/portfolio.py's
@@ -148,25 +150,33 @@ def recommended_quantity(limits: RiskLimits, portfolio: PaperPortfolio, price: f
     return round(budget / price, 4)
 
 
-def evaluate_sentinel_risk(
+def _sentinel_checks(
     limits: RiskLimits,
     portfolio: PaperPortfolio,
     *,
     symbol: str,
     proposed_value: float,
     sim_day: int,
-) -> RiskWarning | None:
-    """Sentinel's trade-approval gate. Checked in order of severity —
-    the first violation found is the one reported, since a single clear
-    reason is more useful in a vote's "reason" field than a combined
-    list. v0.7 Feature 49 — Daily Trading Objectives are checked right
+) -> Iterator[RiskWarning]:
+    """Every one of Sentinel's real trade-approval checks, in the same
+    severity order `evaluate_sentinel_risk()` has always used — yields
+    EVERY violation found, not just the first. `evaluate_sentinel_risk()`
+    below takes only the first (its own long-standing "one clear reason"
+    contract, unchanged); CEO directive "Portfolio Risk Engine +
+    Firm-Wide Risk Governance" adds `evaluate_all_sentinel_checks()`,
+    which takes all of them, for a real, fully-explained pre-trade risk
+    decision — the exact same checks, never a second/parallel risk
+    engine. v0.7 Feature 49 — Daily Trading Objectives are checked right
     after account-level equity and before the lifetime drawdown check:
     a day-scoped halt is the more common real event in normal play, and
     checking it early keeps the message the CEO actually sees relevant
     to *today*, not the account's whole history."""
     equity = portfolio_equity(portfolio)
     if equity <= 0:
-        return RiskWarning(
+        # Genuinely irrecoverable for this evaluation — every check below
+        # divides by `equity`, so this one stops the generator instead of
+        # yielding alongside checks that can't be meaningfully evaluated.
+        yield RiskWarning(
             id=f"risk-{symbol}-{_now_iso()}",
             symbol=symbol,
             severity="critical",
@@ -174,10 +184,11 @@ def evaluate_sentinel_risk(
             createdAt=_now_iso(),
             code="risk_equity_exhausted",
         )
+        return
 
     daily_pnl_pct = daily_realized_pnl_pct(portfolio, sim_day)
     if daily_pnl_pct <= -limits.max_daily_loss_pct:
-        return RiskWarning(
+        yield RiskWarning(
             id=f"risk-{symbol}-{_now_iso()}",
             symbol=symbol,
             severity="critical",
@@ -187,7 +198,7 @@ def evaluate_sentinel_risk(
         )
 
     if daily_pnl_pct >= limits.daily_profit_target_pct:
-        return RiskWarning(
+        yield RiskWarning(
             id=f"risk-{symbol}-{_now_iso()}",
             symbol=symbol,
             severity="critical",
@@ -202,7 +213,7 @@ def evaluate_sentinel_risk(
     # real event than the lifetime drawdown check below it.
     weekly_pnl_pct = weekly_realized_pnl_pct(portfolio, sim_day)
     if weekly_pnl_pct <= -limits.max_weekly_loss_pct:
-        return RiskWarning(
+        yield RiskWarning(
             id=f"risk-{symbol}-{_now_iso()}",
             symbol=symbol,
             severity="critical",
@@ -213,7 +224,7 @@ def evaluate_sentinel_risk(
 
     monthly_pnl_pct = monthly_realized_pnl_pct(portfolio, sim_day)
     if monthly_pnl_pct <= -limits.max_monthly_loss_pct:
-        return RiskWarning(
+        yield RiskWarning(
             id=f"risk-{symbol}-{_now_iso()}",
             symbol=symbol,
             severity="critical",
@@ -224,7 +235,7 @@ def evaluate_sentinel_risk(
 
     trades_today_count = len(trades_opened_today(portfolio.trade_history, sim_day))
     if trades_today_count >= limits.max_trades_per_day:
-        return RiskWarning(
+        yield RiskWarning(
             id=f"risk-{symbol}-{_now_iso()}",
             symbol=symbol,
             severity="critical",
@@ -233,18 +244,35 @@ def evaluate_sentinel_risk(
             code="risk_max_trades_per_day",
         )
 
-    if portfolio.total_pnl_pct <= -limits.max_drawdown_pct:
-        return RiskWarning(
+    # CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance" —
+    # a Phase 0 audit found this check previously compared
+    # `portfolio.total_pnl_pct` (realized P&L relative to the account's
+    # ORIGINAL starting balance) against the limit, which is a real
+    # number but not a real drawdown: (a) it measures loss from the
+    # starting balance, not from the account's own real peak, so an
+    # account that ran up +50% before giving back 30% would still read
+    # "+20%" and never trip this gate even though it just lived through a
+    # real 30%-from-peak drawdown; (b) it only ever includes CLOSED
+    # trades, so a large unrealized loss sitting in still-open positions
+    # is invisible here until those positions actually close. Fixed by
+    # reusing app/analytics.py's own real peak-to-trough
+    # `max_drawdown_pct()` (unchanged for every other existing caller)
+    # with the current real live equity (`portfolio_equity()`, cash plus
+    # every open position's own current mark-to-market value) folded in
+    # as one more point after the last closed trade.
+    live_drawdown_pct = max_drawdown_pct(portfolio.trade_history, portfolio.starting_balance, current_equity=equity)
+    if live_drawdown_pct >= limits.max_drawdown_pct:
+        yield RiskWarning(
             id=f"risk-{symbol}-{_now_iso()}",
             symbol=symbol,
             severity="critical",
-            message=f"Portfolio drawdown ({portfolio.total_pnl_pct:.1f}%) has hit the {limits.max_drawdown_pct:.0f}% limit — new trades paused.",
+            message=f"Portfolio drawdown ({live_drawdown_pct:.1f}% from its own real peak equity) has hit the {limits.max_drawdown_pct:.0f}% limit — new trades paused.",
             createdAt=_now_iso(),
             code="risk_lifetime_drawdown",
         )
 
     if len(portfolio.positions) >= limits.max_open_positions:
-        return RiskWarning(
+        yield RiskWarning(
             id=f"risk-{symbol}-{_now_iso()}",
             symbol=symbol,
             severity="warning",
@@ -255,7 +283,7 @@ def evaluate_sentinel_risk(
 
     position_pct = proposed_value / equity * 100
     if position_pct > limits.max_position_pct:
-        return RiskWarning(
+        yield RiskWarning(
             id=f"risk-{symbol}-{_now_iso()}",
             symbol=symbol,
             severity="critical",
@@ -264,7 +292,39 @@ def evaluate_sentinel_risk(
             code="risk_position_size_limit",
         )
 
-    return None
+
+def evaluate_sentinel_risk(
+    limits: RiskLimits,
+    portfolio: PaperPortfolio,
+    *,
+    symbol: str,
+    proposed_value: float,
+    sim_day: int,
+) -> RiskWarning | None:
+    """Sentinel's trade-approval gate — unchanged contract: the first
+    real violation found, in the same severity order as always, since a
+    single clear reason is more useful in a vote's "reason" field than a
+    combined list. See `_sentinel_checks()` above for the real checks
+    themselves and `evaluate_all_sentinel_checks()` below for the full
+    list."""
+    return next(_sentinel_checks(limits, portfolio, symbol=symbol, proposed_value=proposed_value, sim_day=sim_day), None)
+
+
+def evaluate_all_sentinel_checks(
+    limits: RiskLimits,
+    portfolio: PaperPortfolio,
+    *,
+    symbol: str,
+    proposed_value: float,
+    sim_day: int,
+) -> list[RiskWarning]:
+    """CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance"
+    — every real Sentinel violation for this candidate trade, not just
+    the first (see `evaluate_sentinel_risk()`'s own docstring for why
+    that one stays single-reason). Feeds `evaluate_pretrade_risk_decision()`
+    (app/portfolio_risk.py) so a rejected/reduced trade can show its full
+    real reason list, never a black-box score."""
+    return list(_sentinel_checks(limits, portfolio, symbol=symbol, proposed_value=proposed_value, sim_day=sim_day))
 
 
 def evaluate_guardian_exposure(
@@ -310,13 +370,18 @@ def monitor_portfolio(limits: RiskLimits, portfolio: PaperPortfolio) -> list[Ris
     if equity <= 0:
         return warnings
 
-    if portfolio.total_pnl_pct <= -limits.max_drawdown_pct:
+    # Same real peak-to-trough fix as evaluate_sentinel_risk() above —
+    # kept consistent so Guardian's standing watch never disagrees with
+    # Sentinel's own hard gate about whether the portfolio is currently
+    # in a real drawdown.
+    live_drawdown_pct = max_drawdown_pct(portfolio.trade_history, portfolio.starting_balance, current_equity=equity)
+    if live_drawdown_pct >= limits.max_drawdown_pct:
         warnings.append(
             RiskWarning(
                 id=f"guardian-drawdown-{_now_iso()}",
                 symbol="PORTFOLIO",
                 severity="critical",
-                message=f"Portfolio drawdown ({portfolio.total_pnl_pct:.1f}%) has breached the {limits.max_drawdown_pct:.0f}% limit — Guardian recommends reducing risk across the board.",
+                message=f"Portfolio drawdown ({live_drawdown_pct:.1f}% from its own real peak equity) has breached the {limits.max_drawdown_pct:.0f}% limit — Guardian recommends reducing risk across the board.",
                 createdAt=_now_iso(),
                 code="risk_lifetime_drawdown",
             )
@@ -384,16 +449,18 @@ def compute_risk_budget_status(limits: RiskLimits, portfolio: PaperPortfolio, si
     understand the remaining permissible loss budget" before a trade is
     proposed, not just the raw current numbers a human would otherwise
     have to subtract by hand. Every input here is already real and
-    already used elsewhere: `portfolio.total_pnl_pct` is the exact same
-    lifetime-drawdown reading `evaluate_sentinel_risk` above already
-    gates on (line ~220); `daily_realized_pnl_pct` is the same function
-    `compute_daily_objective_status` above already calls. The only new
-    arithmetic is "limit minus current usage, floored at 0" for the two
-    *remaining* fields — packaging, not a new formula. Advisory only:
-    this function is never called from any gate, only from the read-only
-    status the CEO/agents see before deciding."""
+    already used elsewhere: `lifetime_drawdown_pct` is the exact same
+    real peak-to-trough reading `evaluate_sentinel_risk` above already
+    gates on (see app/analytics.py::max_drawdown_pct(), CEO directive
+    "Portfolio Risk Engine + Firm-Wide Risk Governance"); `daily_
+    realized_pnl_pct` is the same function `compute_daily_objective_
+    status` above already calls. The only new arithmetic is "limit minus
+    current usage, floored at 0" for the two *remaining* fields —
+    packaging, not a new formula. Advisory only: this function is never
+    called from any gate, only from the read-only status the CEO/agents
+    see before deciding."""
     equity = portfolio_equity(portfolio)
-    lifetime_drawdown_pct = max(0.0, -portfolio.total_pnl_pct)
+    lifetime_drawdown_pct = max_drawdown_pct(portfolio.trade_history, portfolio.starting_balance, current_equity=equity)
     remaining_drawdown_budget_pct = max(0.0, limits.max_drawdown_pct - lifetime_drawdown_pct)
 
     daily_pnl_pct = daily_realized_pnl_pct(portfolio, sim_day)

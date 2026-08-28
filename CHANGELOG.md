@@ -7,6 +7,40 @@ development milestones, not semver releases.
 
 ### Fixed
 
+- **"Portfolio Risk Engine + Firm-Wide Risk Governance" — the portfolio-wide "lifetime drawdown"
+  gate measured loss from the account's ORIGINAL starting balance, not from its own real peak, and
+  ignored unrealized loss on still-open positions.** A Phase 0 audit (reusing prior knowledge of
+  `position_sizing.py`/`portfolio_intelligence.py`/`risk_engine.py` from this session's earlier
+  directives, plus targeted direct-code investigation of kill switches/drawdown/stress-testing) found
+  `app/risk_engine.py::evaluate_sentinel_risk()`'s drawdown check compared `portfolio.total_pnl_pct`
+  (realized P&L relative to `starting_balance`) against `RiskLimits.max_drawdown_pct` — a real number,
+  but not a real drawdown: an account that ran up +50% before giving back 30% would still read "+20%"
+  and never trip the gate, and a large unrealized loss sitting in still-open positions was invisible
+  until those positions actually closed. The same flawed proxy was independently duplicated in four
+  more places: `evaluate_guardian_exposure()`'s soft warning, `compute_risk_budget_status()`'s advisory
+  read, `portfolio_intelligence.py`'s `PortfolioHeat.unrealizedDrawdownPct` (ironically named
+  "unrealized" while actually computed from the realized-only field), and three sites inside
+  `black_swan.py`'s stress-test ladder/scenario simulations/survival score.
+  - Fixed at the root: `app/analytics.py::max_drawdown_pct()` (already the real peak-to-trough
+    drawdown convention used elsewhere in this codebase) gained an optional `current_equity` parameter
+    that folds today's real live equity (cash + every open position's own mark-to-market value) into
+    the same peak/trough comparison as one more point after the last closed trade — omitted, behavior
+    is byte-for-byte unchanged for every existing caller. A new sibling, `real_peak_equity()`, exposes
+    the peak itself for callers (the stress-test ladder) that need the dollar value, not just a
+    percentage. All five call sites now reuse this one real fix rather than five independent formulas.
+  - 3 new regression tests proving the exact bug this closes (an account with a real gain-then-
+    partial-giveback now correctly trips the gate; a small giveback that never breached the real peak
+    correctly does not), plus dedicated `max_drawdown_pct`/`real_peak_equity` unit tests for the new
+    parameter, plus fixes to 4 pre-existing tests (2 in `test_risk_engine.py`/`test_portfolio_
+    intelligence.py`, 2 in `test_gatekeeper.py`'s `TestAccountHaltCheck`) that had been asserting the
+    old, incorrect behavior by fabricating a bare `total_pnl_pct` field disconnected from any real
+    trade history or open position — rebuilt with real trade/position fixtures instead.
+  - `app/risk_engine.py::evaluate_sentinel_risk()` was refactored (behavior-preserving — same 45
+    pre-existing tests pass unchanged) into a shared `_sentinel_checks()` generator plus a new
+    `evaluate_all_sentinel_checks()` that returns every real violation for a candidate trade, not just
+    the first — feeding the new Portfolio Risk Engine's fully-explained pre-trade decision (see Added,
+    below) without a second, parallel risk-checking implementation.
+
 - **"Professional Quant Trading Core" Phase A audit — two real gaps found via a 6-agent parallel
   research pass over strategy lifecycle/backtesting, session/regime/multi-timeframe, trade
   quality/expectancy/risk, multi-asset universe/market data, attribution/agent-learning, and CEO
@@ -123,6 +157,60 @@ development milestones, not semver releases.
   run. Fixed by passing an explicit, confirmed-closed timestamp.
 
 ### Added
+
+- **CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance."** New `app/portfolio_risk.py`
+  — a real COMPOSITION layer over risk state this codebase already computes honestly, not a second,
+  parallel risk engine. A Phase 0 audit (the user chose "unify + fix the real gaps" over building new
+  standalone risk logic) found most of the directive's ask already real and working: hard position/
+  drawdown/daily-weekly-monthly-loss/open-position/concentration gates (`risk_engine.py`), real
+  Pearson correlation and portfolio heat (`portfolio_intelligence.py`), a real -10/-20/-35/-50/-70%
+  portfolio stress-test ladder plus four named scenario simulations (`black_swan.py`), a real
+  firm-wide kill switch that genuinely blocks new proposals/CEO decisions and requires an explicit
+  `/resume` (`emergency_stop.py`), and a real escalating daily circuit breaker (`trading_modes.py`).
+  This pass unifies those into one canonical read and one fully-explained pre-trade decision, and
+  fixes the one real, disclosed bug the audit found (see Fixed, above — the drawdown-proxy bug).
+  - `compute_portfolio_risk_snapshot()` — one canonical, timestamped `PortfolioRiskSnapshot`:
+    equity/cash/exposure/leverage, the real fixed drawdown, daily P&L, the real correlated-exposure
+    clusters (new, see below), the real daily circuit breaker tier, the real Emergency Stop flag, and
+    a derived `riskState` (`normal`/`warning`/`restricted`/`halted`) with real, inspectable reasons —
+    never a bare number with no explanation.
+  - `evaluate_pretrade_risk_decision()` — one real, fully-explained `PretradeRiskDecision`
+    (`approved`/`approved_with_reduction`/`rejected`/`halted`) for a candidate trade, composing EVERY
+    real Sentinel/Guardian violation (via the new `evaluate_all_sentinel_checks()`, see Fixed above)
+    into a real reason list — "Risk = 72" is explicitly what this schema refuses to be. Advisory/
+    explanatory only: the real enforcement path (`gatekeeper.py`'s vote pipeline, unchanged) remains
+    the sole authority over whether a trade actually happens.
+  - **New real aggregate correlated-exposure metric** — the audit's other genuine gap: real pairwise
+    correlation already existed (`portfolio_intelligence.py::_correlation_pairs()`) but was
+    pairwise-display-only, never answering "how much of the book is effectively ONE bet." New
+    `_correlated_clusters()` runs real connected-components (union-find) over that same real edge
+    list — a chain of pairwise correlations (A-B, B-C) now reports one real 3-symbol cluster even
+    though A and C were never directly compared — and sums each cluster's real dollar exposure. New
+    `CorrelatedExposureCluster` schema, new `PortfolioIntelligence.correlatedClusters` field.
+  - Two new read-only endpoints, `GET /api/risk-limits/portfolio-snapshot` and `GET /api/risk-limits/
+    pretrade-decision`, live-smoke-tested against the real running app (zero-position portfolio reads
+    `riskState: "normal"`, `leverage: 0.0`; a real 25%-from-peak drawdown correctly reads `"halted"`).
+    Matching `frontend/src/types.ts` interfaces and `net/api.ts` client calls.
+  - Trend Engine (this session's prior directive) has no import into this module and no path into any
+    decision it makes — trend strength is evidence for a strategy/agent to weigh, never risk permission,
+    per the directive's own explicit requirement.
+  - 12 new tests in `test_portfolio_risk.py` (risk-state escalation for every real trigger: Emergency
+    Stop, circuit-breaker tier4/tier2/tier1, real drawdown at/above the limit, correlated-cluster
+    concentration; pre-trade decision composition: no violations, Emergency Stop short-circuit,
+    critical-violation rejection, warning-only reduction, multi-reason aggregation), 8 new tests for
+    the correlated-clusters union-find (transitive chains, independent clusters, sorting), plus the
+    drawdown-fix tests noted above. Full backend suite green, mypy/ruff clean. Frontend `tsc`/lint/
+    build clean.
+  - **Not built this pass, documented rather than silently skipped**: a Live Desk chart/Command Center
+    RISK-tab UI surfacing these two new endpoints (the user's own "unify + fix the real gaps" scoping
+    choice was backend composition and bug fixes, not new UI, this pass); layered kill switches below
+    the existing firm-wide Emergency Stop (position/strategy/agent/asset-class granularity); real
+    factor-model exposure (this codebase has no GICS/factor taxonomy — only one real sector-tagged
+    symbol, XLF, exists in the watchlist — documented as a genuine data limitation, not fabricated);
+    a portfolio-level Monte Carlo/risk-of-ruin (per-strategy Monte Carlo already exists and is real;
+    a portfolio-level version was not attempted this pass); true inverse-volatility *portfolio*
+    weighting across simultaneous positions (today's real ATR-based sizing remains single-position/
+    risk-per-trade, not `1/σ`-normalized across the whole book).
 
 - **CEO directive "AHL-Inspired Systematic Trend & Momentum Research Engine."** New
   `app/trend_engine.py`: six independent, never-silently-merged real trend-measurement methodologies

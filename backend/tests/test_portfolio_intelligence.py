@@ -11,6 +11,7 @@ from app.portfolio_intelligence import (
     CORRELATION_CLUSTER_THRESHOLD,
     _capital_efficiency,
     _category_exposure,
+    _correlated_clusters,
     _correlation_pairs,
     _exposure_summary,
     _heat,
@@ -214,6 +215,100 @@ class TestCorrelationPairs:
         assert _correlation_pairs(portfolio, provider) == []
 
 
+class TestCorrelatedClusters:
+    """CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance"
+    — real connected components over `_correlation_pairs()`'s own real
+    edge list, so a chain of pairwise correlations (A-B, B-C) reports
+    one real 3-symbol cluster even though A and C were never directly
+    compared against each other."""
+
+    def test_no_pairs_means_no_clusters(self) -> None:
+        assert _correlated_clusters(_portfolio(positions=[]), [], equity=100_000.0) == []
+
+    def test_zero_equity_returns_no_clusters_rather_than_dividing_by_zero(self) -> None:
+        from app.schemas import CorrelationPair
+
+        pairs = [CorrelationPair(symbolA="AAPL", symbolB="MSFT", correlation=0.9, direction="positive")]
+        assert _correlated_clusters(_portfolio(positions=[]), pairs, equity=0.0) == []
+
+    def test_direct_pair_forms_a_two_symbol_cluster_with_real_dollar_exposure(self) -> None:
+        from app.schemas import CorrelationPair
+
+        portfolio = _portfolio(
+            positions=[
+                _position(position_id="p1", symbol="AAPL", quantity=10.0, current_price=100.0),
+                _position(position_id="p2", symbol="MSFT", quantity=5.0, current_price=200.0),
+            ]
+        )
+        pairs = [CorrelationPair(symbolA="AAPL", symbolB="MSFT", correlation=0.9, direction="positive")]
+        clusters = _correlated_clusters(portfolio, pairs, equity=100_000.0)
+        assert len(clusters) == 1
+        assert clusters[0].symbols == ["AAPL", "MSFT"]
+        assert clusters[0].total_exposure_usd == 10 * 100.0 + 5 * 200.0
+        assert clusters[0].position_count == 2
+
+    def test_transitive_chain_merges_into_one_cluster(self) -> None:
+        """A-B correlated, B-C correlated -> one real {A, B, C} cluster,
+        even with no A-C pair on record at all."""
+        from app.schemas import CorrelationPair
+
+        portfolio = _portfolio(
+            positions=[
+                _position(position_id="p1", symbol="SPY", quantity=10.0, current_price=400.0),
+                _position(position_id="p2", symbol="QQQ", quantity=10.0, current_price=300.0),
+                _position(position_id="p3", symbol="NVDA", quantity=10.0, current_price=500.0),
+            ]
+        )
+        pairs = [
+            CorrelationPair(symbolA="SPY", symbolB="QQQ", correlation=0.85, direction="positive"),
+            CorrelationPair(symbolA="QQQ", symbolB="NVDA", correlation=0.7, direction="positive"),
+        ]
+        clusters = _correlated_clusters(portfolio, pairs, equity=100_000.0)
+        assert len(clusters) == 1
+        assert clusters[0].symbols == ["NVDA", "QQQ", "SPY"]
+        assert clusters[0].total_exposure_usd == 10 * 400.0 + 10 * 300.0 + 10 * 500.0
+
+    def test_two_independent_clusters_are_kept_separate(self) -> None:
+        from app.schemas import CorrelationPair
+
+        portfolio = _portfolio(
+            positions=[
+                _position(position_id="p1", symbol="SPY", quantity=10.0, current_price=400.0),
+                _position(position_id="p2", symbol="QQQ", quantity=10.0, current_price=300.0),
+                _position(position_id="p3", symbol="GLD", quantity=10.0, current_price=180.0),
+                _position(position_id="p4", symbol="SLV", quantity=10.0, current_price=25.0),
+            ]
+        )
+        pairs = [
+            CorrelationPair(symbolA="SPY", symbolB="QQQ", correlation=0.85, direction="positive"),
+            CorrelationPair(symbolA="GLD", symbolB="SLV", correlation=0.75, direction="positive"),
+        ]
+        clusters = _correlated_clusters(portfolio, pairs, equity=100_000.0)
+        assert len(clusters) == 2
+        cluster_symbol_sets = {tuple(c.symbols) for c in clusters}
+        assert ("QQQ", "SPY") in cluster_symbol_sets
+        assert ("GLD", "SLV") in cluster_symbol_sets
+
+    def test_clusters_sorted_largest_exposure_first(self) -> None:
+        from app.schemas import CorrelationPair
+
+        portfolio = _portfolio(
+            positions=[
+                _position(position_id="p1", symbol="SPY", quantity=100.0, current_price=400.0),
+                _position(position_id="p2", symbol="QQQ", quantity=100.0, current_price=300.0),
+                _position(position_id="p3", symbol="GLD", quantity=1.0, current_price=180.0),
+                _position(position_id="p4", symbol="SLV", quantity=1.0, current_price=25.0),
+            ]
+        )
+        pairs = [
+            CorrelationPair(symbolA="SPY", symbolB="QQQ", correlation=0.85, direction="positive"),
+            CorrelationPair(symbolA="GLD", symbolB="SLV", correlation=0.75, direction="positive"),
+        ]
+        clusters = _correlated_clusters(portfolio, pairs, equity=100_000.0)
+        assert clusters[0].symbols == ["QQQ", "SPY"]
+        assert clusters[0].total_exposure_usd > clusters[1].total_exposure_usd
+
+
 class TestCountCorrelatedPositions:
     """CEO directive "Portfolio Construction, Capital Allocation &
     Execution Realism," Phase 4 — the real, pre-proposal-stage
@@ -286,14 +381,20 @@ class TestHeat:
             assert heat.tier == expected_tier, f"{capital_at_risk_pct}% should be {expected_tier}, got {heat.tier}"
 
     def test_unrealized_drawdown_only_reports_when_portfolio_is_net_negative(self) -> None:
-        losing = _portfolio(positions=[_position(current_price=90.0)])
-        losing = losing.model_copy(update={"total_pnl_pct": -5.0})
-        heat = _heat(losing, equity=100000.0, category_exposure=[])
+        """CEO directive "Portfolio Risk Engine + Firm-Wide Risk
+        Governance" — this now measures a REAL peak-to-trough drawdown
+        (app/analytics.py::max_drawdown_pct(), `current_equity=equity`)
+        against the portfolio's own real starting balance/trade history,
+        not a manually-overridden `total_pnl_pct` field disconnected from
+        the `equity` this function is actually called with — so `equity`
+        itself must be the one that's genuinely below/above
+        `starting_balance` to exercise a real unrealized loss/gain."""
+        losing = _portfolio(positions=[_position(current_price=90.0)], starting_balance=100_000.0)
+        heat = _heat(losing, equity=95_000.0, category_exposure=[])
         assert heat.unrealized_drawdown_pct == 5.0
 
-        winning = _portfolio(positions=[_position(current_price=110.0)])
-        winning = winning.model_copy(update={"total_pnl_pct": 5.0})
-        heat = _heat(winning, equity=100000.0, category_exposure=[])
+        winning = _portfolio(positions=[_position(current_price=110.0)], starting_balance=100_000.0)
+        heat = _heat(winning, equity=105_000.0, category_exposure=[])
         assert heat.unrealized_drawdown_pct == 0.0
 
     def test_hottest_category_reads_the_top_exposure(self) -> None:

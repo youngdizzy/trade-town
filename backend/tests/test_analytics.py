@@ -5,7 +5,7 @@ now genuinely excludes trades closed in a prior simulated month, and that
 "all_time" stays deliberately unfiltered."""
 from __future__ import annotations
 
-from app.analytics import compute_performance_snapshot
+from app.analytics import compute_performance_snapshot, max_drawdown_pct, real_peak_equity
 from app.schemas import PaperPortfolio, PaperTrade, TimeState
 
 
@@ -162,6 +162,73 @@ class TestRealMaxDrawdown:
         now = TimeState(day=40, hour=20, minute=0)
         snapshot = compute_performance_snapshot("all_time", portfolio, [], now)
         assert snapshot.max_drawdown_pct == 0.0
+
+
+_TRADE_DEFAULTS = {
+    "id": "trade-x",
+    "symbol": "AAPL",
+    "side": "buy",
+    "quantity": 1.0,
+    "entryPrice": 100.0,
+    "exitPrice": 100.0,
+    "durationMinutes": 30,
+    "confidence": 80.0,
+    "reason": "test",
+    "marketConditions": "test",
+    "supportingAgents": ["scout"],
+    "opposingAgents": [],
+    "openedAt": "2024-01-01T00:00:00+00:00",
+    "closedAt": "2024-01-01T00:00:00+00:00",
+    "openedSimMinutes": 0,
+}
+
+
+class TestMaxDrawdownPctCurrentEquity:
+    """CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance"
+    — the new optional `current_equity` parameter, which folds today's
+    real live (realized + unrealized) equity into the same peak/trough
+    comparison as one more point after the last closed trade."""
+
+    def test_omitted_current_equity_is_byte_for_byte_unchanged(self) -> None:
+        trades = [PaperTrade.model_validate({**_TRADE_DEFAULTS, "pnl": -5_000.0, "pnlPct": -5.0, "closedSimMinutes": 1440})]
+        assert max_drawdown_pct(trades, 100_000.0) == max_drawdown_pct(trades, 100_000.0, current_equity=None)
+
+    def test_current_equity_below_realized_trough_deepens_the_reported_drawdown(self) -> None:
+        # No closed trades at all, but the account is currently sitting
+        # on a real 12% unrealized loss on an open position — the
+        # realized-only read would stay silent about this until the
+        # position closes.
+        assert max_drawdown_pct([], 100_000.0, current_equity=88_000.0) == 12.0
+
+    def test_current_equity_at_a_new_high_does_not_report_a_fake_drawdown(self) -> None:
+        assert max_drawdown_pct([], 100_000.0, current_equity=110_000.0) == 0.0
+
+    def test_current_equity_above_realized_trough_but_below_the_real_peak_still_reports_it(self) -> None:
+        # Realized peak reached 150k, then gave back to 140k (realized-
+        # only drawdown 6.67%); currently sitting at 145k live — still a
+        # real drawdown from the 150k peak (3.33%), just a smaller one
+        # than the realized-only trough would suggest on its own; the
+        # function reports the real WORST point seen across both.
+        trades = [
+            PaperTrade.model_validate({**_TRADE_DEFAULTS, "pnl": 50_000.0, "pnlPct": 50.0, "closedSimMinutes": 1440}),
+            PaperTrade.model_validate({**_TRADE_DEFAULTS, "pnl": -10_000.0, "pnlPct": -10.0, "closedSimMinutes": 2 * 1440}),
+        ]
+        result = max_drawdown_pct(trades, 100_000.0, current_equity=145_000.0)
+        assert round(result, 2) == round((150_000.0 - 140_000.0) / 150_000.0 * 100, 2)
+
+
+class TestRealPeakEquity:
+    def test_matches_the_peak_max_drawdown_pct_measures_against(self) -> None:
+        trades = [
+            PaperTrade.model_validate({**_TRADE_DEFAULTS, "pnl": 50_000.0, "pnlPct": 50.0, "closedSimMinutes": 1440}),
+            PaperTrade.model_validate({**_TRADE_DEFAULTS, "pnl": -10_000.0, "pnlPct": -10.0, "closedSimMinutes": 2 * 1440}),
+        ]
+        assert real_peak_equity(trades, 100_000.0) == 150_000.0
+        assert real_peak_equity(trades, 100_000.0, current_equity=200_000.0) == 200_000.0
+
+    def test_zero_starting_equity_falls_back_to_current_equity_never_crashes(self) -> None:
+        assert real_peak_equity([], 0.0, current_equity=5_000.0) == 5_000.0
+        assert real_peak_equity([], 0.0) == 0.0
 
 
 class TestRealSharpeSortinoNoLosses:

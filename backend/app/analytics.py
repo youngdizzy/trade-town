@@ -97,7 +97,7 @@ def research_accuracy(research: list[ResearchItem]) -> float:
     return accurate / len(completed) * 100
 
 
-def max_drawdown_pct(trades: list[PaperTrade], starting_equity: float) -> float:
+def max_drawdown_pct(trades: list[PaperTrade], starting_equity: float, *, current_equity: float | None = None) -> float:
     """Real peak-to-trough drawdown (%) over the closed-trade equity
     curve, in the same chronological order PaperPortfolio.trade_history
     is built in (append-only — see app/portfolio.py::close_position()).
@@ -114,8 +114,21 @@ def max_drawdown_pct(trades: list[PaperTrade], starting_equity: float) -> float:
     Replaces an earlier proxy that returned only the single worst
     losing trade's own pnl_pct — a real number, but one that understates
     true risk whenever several smaller consecutive losses compound into
-    a larger cumulative decline than any one trade shows alone."""
-    if not trades or starting_equity <= 0:
+    a larger cumulative decline than any one trade shows alone.
+
+    `current_equity` (CEO directive "Portfolio Risk Engine + Firm-Wide
+    Risk Governance") — optional, folds today's real live equity (cash +
+    mark-to-market of any still-open positions, e.g.
+    app/risk_engine.py::portfolio_equity()) into the same real peak/
+    trough comparison as one more point AFTER every closed trade, without
+    counting it as a trade itself. Omitted (`None`), behavior is
+    byte-for-byte identical to before this parameter existed — every
+    existing caller computing REALIZED-only drawdown over a historical
+    trade window is unaffected. Passed, this correctly catches an
+    open position's own real unrealized loss dragging the portfolio into
+    a fresh drawdown before that position ever closes — the realized-only
+    read would stay silent about that risk until close_position() runs."""
+    if starting_equity <= 0:
         return 0.0
     equity = starting_equity
     peak = starting_equity
@@ -125,7 +138,33 @@ def max_drawdown_pct(trades: list[PaperTrade], starting_equity: float) -> float:
         peak = max(peak, equity)
         if peak > 0:
             worst_pct = max(worst_pct, (peak - equity) / peak * 100)
+    if current_equity is not None:
+        peak = max(peak, current_equity)
+        if peak > 0:
+            worst_pct = max(worst_pct, (peak - current_equity) / peak * 100)
     return worst_pct
+
+
+def real_peak_equity(trades: list[PaperTrade], starting_equity: float, *, current_equity: float | None = None) -> float:
+    """The real high-water mark `max_drawdown_pct()` above measures
+    against, exposed separately (CEO directive "Portfolio Risk Engine +
+    Firm-Wide Risk Governance") for callers that need the peak dollar
+    value itself rather than a drawdown percentage from it — e.g. a
+    stress test asking "how far would a hypothetical shock push the
+    portfolio below its own real peak," not just today's already-
+    realized drawdown. Same real peak-tracking walk `max_drawdown_pct()`
+    uses internally, so the two can never disagree about what the real
+    peak is."""
+    if starting_equity <= 0:
+        return max(0.0, current_equity or 0.0)
+    equity = starting_equity
+    peak = starting_equity
+    for trade in trades:
+        equity += trade.pnl
+        peak = max(peak, equity)
+    if current_equity is not None:
+        peak = max(peak, current_equity)
+    return peak
 
 
 def win_rate(win_count: int, loss_count: int) -> float:

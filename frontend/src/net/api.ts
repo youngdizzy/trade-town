@@ -75,8 +75,10 @@ import type {
   PlayerEventCategory,
   PlayerVsAiPrompt,
   PlayerVsAiState,
+  PortfolioRiskSnapshot,
   PortfolioScenarioResult,
   PortfolioStressTestResult,
+  PretradeRiskDecision,
   ProjectedLossPath,
   PropFirmStatus,
   QuestionOfTheDay,
@@ -992,6 +994,13 @@ export const api = {
   // Prop-Firm Risk Intelligence Addendum, Piece 11a — a real,
   // deterministic forward projection, not a probability.
   getProjectedLoss: (n: number) => request<ProjectedLossPath>(`/risk-limits/projected-loss?n=${encodeURIComponent(n)}`),
+  // CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance."
+  // Read-only, computed fresh per request — see backend/app/
+  // portfolio_risk.py. Never a trading-decision API on its own; the
+  // real enforcement path is app/gatekeeper.py's existing vote pipeline.
+  getPortfolioRiskSnapshot: () => request<PortfolioRiskSnapshot>("/risk-limits/portfolio-snapshot"),
+  getPretradeRiskDecision: (symbol: string, proposedValue: number) =>
+    request<PretradeRiskDecision>(`/risk-limits/pretrade-decision?symbol=${encodeURIComponent(symbol)}&proposed_value=${encodeURIComponent(proposedValue)}`),
   // Design Bible Chapter 64 — the CEO's Goal creation/cancellation write
   // path. Real progress is never sent by the client; it's recomputed
   // server-side every tick (see backend/app/goals.py's tick_goals()).
