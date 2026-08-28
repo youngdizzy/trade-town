@@ -14672,8 +14672,8 @@ lifts): multi-timeframe analysis (closed in a later follow-up — see
 below), a formal watchlist eligibility-tier system beyond the feed
 (also closed in a later follow-up — see below), a true Asset Discovery
 Engine/asset-class taxonomy, per-agent learning, Brier-score
-calibration, live recovery factor, strategy-compliance-at-execution
-wiring.
+calibration (also closed in a later follow-up — see below), live
+recovery factor, strategy-compliance-at-execution wiring.
 
 **Phase C — implementation.**
 
@@ -14827,6 +14827,33 @@ no automatic action. Frontend: new `WatchlistEligibilitySection` in
 (8 AAPL winners → `proven`, 6 MSFT losers → `cautionary`) via a
 temporary Playwright spec. 9 new tests, full backend suite green (2809
 passed), mypy/ruff clean.
+
+**Follow-up — Brier-Score Calibration.** Closes another P2 item named
+above. A real, standard proper scoring rule over the already-real,
+already-persisted Prediction Records ledger (`app/prediction_tracking.py`,
+Feature 29): `mean((confidence_pct / 100 - is_correct) ** 2)` over every
+real resolved prediction, `is_correct` read from the same real
+`outcome == "correct"` field `grade_predictions()` already assigns from
+a trade's own real `pnl > 0`. 0.0 is perfect calibration, ~0.25 is a
+constantly-50%-confident forecaster against a 50/50 real base rate, 1.0
+is worst possible. Distinct from `app/analytics.py::confidence_accuracy()`
+— a cruder per-trade heuristic, not a real proper scoring rule over
+this ledger's specifically-tracked claims. `None` below
+`MIN_PREDICTIONS_FOR_BRIER_VERDICT` (10, reusing the same real-evidence-
+floor value this session's other `MIN_*_FOR_VERDICT` constants already
+use) real resolved predictions. A real reliability-diagram bucket
+breakdown (0-50/50-60/.../90-100% stated confidence) shows real
+observed accuracy next to average claimed confidence per bucket,
+withheld below `MIN_PREDICTIONS_FOR_BUCKET_VERDICT` (3) real
+observations. New `GET /api/predictions/calibration/brier` endpoint,
+computed fresh (CAGS), no new `GameSaveState` field. Frontend: new
+`BrierCalibrationCard.tsx` in `ExecutivePanel.tsx`, below the Prediction
+Ledger card — `tsc`/lint/build clean, live-smoke-tested with 12 real
+seeded predictions (85% stated confidence, 66.7% real accuracy → Brier
+0.256, correctly flagged "poorly calibrated") via a temporary Playwright
+spec. 10 new tests including a hand-computed real-formula match and the
+textbook 0.25 coin-flip case, full backend suite green (2819 passed),
+mypy/ruff clean.
 
 ## CEO directive "Professional Quant Live Trading Desk"
 

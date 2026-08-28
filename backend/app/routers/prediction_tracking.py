@@ -11,7 +11,8 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Path
 
-from app.schemas import AgentId, PredictionRecord
+from app.prediction_tracking import compute_brier_calibration
+from app.schemas import AgentId, BrierCalibrationSummary, PredictionRecord
 from app.state import game_state
 
 router = APIRouter(prefix="/api/predictions", tags=["predictions"])
@@ -24,3 +25,15 @@ async def predictions_for_agent(agent_id: AgentId = Path(...)) -> list[Predictio
     see the full track record, not just resolved ones."""
     state = await game_state.snapshot()
     return [p for p in state.prediction_records if agent_id in p.attributed_agents]
+
+
+@router.get("/calibration/brier", response_model=BrierCalibrationSummary)
+async def brier_calibration() -> BrierCalibrationSummary:
+    """CEO directive "Professional Quant Trading Core," Phase B P2 item
+    — a real Brier-score calibration read over the same Prediction
+    Records ledger above. See app/prediction_tracking.py's
+    compute_brier_calibration() for the full methodology. Computed
+    fresh per request; no new GameSaveState field, nothing here gates
+    or scores anything."""
+    state = await game_state.snapshot()
+    return compute_brier_calibration(state.prediction_records)

@@ -83,9 +83,28 @@ from __future__ import annotations
 
 from datetime import datetime, timezone
 
-from app.schemas import CeoDecisionRecord, FailureClassification, PaperTrade, PredictionRecord, TradeDecision
+from app.schemas import BrierCalibrationSummary, CeoDecisionRecord, ConfidenceBucketCalibration, FailureClassification, PaperTrade, PredictionRecord, TradeDecision
 
 MAX_PREDICTION_RECORDS = 150
+
+# CEO directive "Professional Quant Trading Core," Phase B P2 item —
+# Brier-score calibration. Same real-evidence-floor reasoning as this
+# codebase's other MIN_*_FOR_VERDICT constants (MIN_RETIREMENT_TRADE_
+# COUNT / MIN_TRADES_FOR_PORTFOLIO_MONTE_CARLO, both 10) — reused value,
+# not independently chosen.
+MIN_PREDICTIONS_FOR_BRIER_VERDICT = 10
+# Same reasoning, applied per-bucket: a bucket with 1-2 real resolved
+# predictions can't honestly report a real accuracy rate.
+MIN_PREDICTIONS_FOR_BUCKET_VERDICT = 3
+
+# Real trades only ever reach this ledger with confidence_pct at or
+# above the Gatekeeper's own MIN_CONFIDENCE (55.0 by default, CEO-
+# configurable) — see app/gatekeeper.py's `_confidence_check()` — so a
+# resolved prediction's real confidence never falls below roughly this
+# floor. Buckets still span the full 0-100 range so a lower CEO-
+# configured threshold, or a future claim type, is never silently
+# dropped.
+_CALIBRATION_BUCKET_EDGES: list[float] = [0.0, 50.0, 60.0, 70.0, 80.0, 90.0, 100.0]
 
 # A "notable" miscalibration worth promoting to Institutional Memory: a
 # real high-confidence claim that still resolved wrong — the same
@@ -182,3 +201,76 @@ def should_promote_prediction_outcome(record: PredictionRecord) -> bool:
     institutional knowledge — a routine correct call, or an incorrect
     call made with honestly low confidence, isn't a surprising lesson."""
     return record.outcome == "incorrect" and record.confidence_pct >= HIGH_CONFIDENCE_MISS_THRESHOLD
+
+
+def compute_brier_calibration(records: list[PredictionRecord]) -> BrierCalibrationSummary:
+    """CEO directive "Professional Quant Trading Core," Phase B P2 item.
+
+    The real Brier score — a standard proper scoring rule, not a new
+    invented metric — is the mean squared error between a stated
+    probability and its real binary outcome:
+    `mean((confidence_pct / 100 - is_correct) ** 2)` over every real
+    RESOLVED prediction in this ledger (`outcome != "pending"`). 0.0 is
+    perfect calibration; 1.0 is the worst possible (always confidently
+    wrong); ~0.25 is what a constantly-50%-confident forecaster scores
+    against a 50/50 real base rate. Lower is better. `is_correct` is
+    exactly `PredictionRecord.outcome == "correct"`, the same real
+    win/loss read `grade_predictions()` above already assigns from a
+    trade's own real `pnl > 0` — no second, independent grading.
+
+    Distinct from `app/analytics.py::confidence_accuracy()` — that
+    function is a cruder per-trade heuristic ("a confident winner or an
+    unconfident loser both score high") averaged directly, not a real
+    proper scoring rule, and runs over the whole trade history rather
+    than this ledger's specifically-tracked directional claims. Both are
+    real; neither replaces the other.
+
+    `buckets` is the standard reliability-diagram breakdown: real
+    resolved predictions grouped by their own stated confidence range,
+    each showing the real observed accuracy in that range next to the
+    average confidence actually claimed there — a well-calibrated desk's
+    real accuracy in each bucket should track its own stated confidence
+    closely; a systematically overconfident or underconfident desk shows
+    up as a real, visible gap between the two columns."""
+    resolved = [r for r in records if r.outcome != "pending"]
+    now_iso = _now_iso()
+
+    buckets: list[ConfidenceBucketCalibration] = []
+    for low, high in zip(_CALIBRATION_BUCKET_EDGES[:-1], _CALIBRATION_BUCKET_EDGES[1:]):
+        in_bucket = [r for r in resolved if low <= r.confidence_pct < high or (high == 100.0 and r.confidence_pct == 100.0)]
+        if not in_bucket:
+            continue
+        correct_count = sum(1 for r in in_bucket if r.outcome == "correct")
+        buckets.append(
+            ConfidenceBucketCalibration(
+                rangeLowPct=low,
+                rangeHighPct=high,
+                predictedCount=len(in_bucket),
+                realAccuracyPct=round(correct_count / len(in_bucket) * 100, 1) if len(in_bucket) >= MIN_PREDICTIONS_FOR_BUCKET_VERDICT else None,
+                avgStatedConfidencePct=round(sum(r.confidence_pct for r in in_bucket) / len(in_bucket), 1),
+            )
+        )
+
+    if len(resolved) < MIN_PREDICTIONS_FOR_BRIER_VERDICT:
+        return BrierCalibrationSummary(
+            resolvedPredictionCount=len(resolved),
+            brierScore=None,
+            evidenceState="not_enough_data",
+            buckets=buckets,
+            summary=f"Only {len(resolved)} real resolved prediction(s) so far — below the {MIN_PREDICTIONS_FOR_BRIER_VERDICT}-prediction minimum for a real Brier-score verdict.",
+            updatedAt=now_iso,
+        )
+
+    squared_errors = [((r.confidence_pct / 100.0) - (1.0 if r.outcome == "correct" else 0.0)) ** 2 for r in resolved]
+    brier_score = round(sum(squared_errors) / len(squared_errors), 4)
+    quality = "well-calibrated" if brier_score <= 0.15 else "moderately calibrated" if brier_score <= 0.25 else "poorly calibrated"
+    summary = f"Brier score {brier_score:.3f} over {len(resolved)} real resolved predictions — {quality} (0.0 = perfect, ~0.25 = a coin-flip forecaster, 1.0 = worst possible)."
+
+    return BrierCalibrationSummary(
+        resolvedPredictionCount=len(resolved),
+        brierScore=brier_score,
+        evidenceState="sufficient_evidence",
+        buckets=buckets,
+        summary=summary,
+        updatedAt=now_iso,
+    )

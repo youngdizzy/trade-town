@@ -6078,6 +6078,39 @@ class PredictionRecord(CamelModel):
     resolved_at: str | None = Field(default=None, alias="resolvedAt")
 
 
+# CEO directive "Professional Quant Trading Core," Phase B P2 item —
+# Brier-score calibration. A real, standard proper scoring rule (mean
+# squared error of a stated probability against its real 0/1 outcome),
+# computed fresh over the same real, already-persisted `PredictionRecord`
+# ledger above — see app/prediction_tracking.py's `compute_brier_
+# calibration()` for the full methodology and why this is NOT a
+# duplicate of app/analytics.py's `confidence_accuracy()` (a cruder
+# per-trade heuristic over ALL trades, not a real scoring rule over the
+# resolved prediction ledger specifically).
+class ConfidenceBucketCalibration(CamelModel):
+    range_low_pct: float = Field(alias="rangeLowPct")
+    range_high_pct: float = Field(alias="rangeHighPct")
+    predicted_count: int = Field(alias="predictedCount")
+    # None below a real minimum sample for this specific bucket — never
+    # a fabricated accuracy from 1-2 real observations.
+    real_accuracy_pct: float | None = Field(default=None, alias="realAccuracyPct")
+    avg_stated_confidence_pct: float = Field(alias="avgStatedConfidencePct")
+
+
+BrierEvidenceState = Literal["sufficient_evidence", "not_enough_data"]
+
+
+class BrierCalibrationSummary(CamelModel):
+    resolved_prediction_count: int = Field(alias="resolvedPredictionCount")
+    # 0 (perfect calibration) to 1 (worst possible) — None below
+    # MIN_PREDICTIONS_FOR_BRIER_VERDICT real resolved predictions.
+    brier_score: float | None = Field(default=None, alias="brierScore")
+    evidence_state: BrierEvidenceState = Field(alias="evidenceState")
+    buckets: list[ConfidenceBucketCalibration] = Field(default_factory=list)
+    summary: str
+    updated_at: str = Field(alias="updatedAt")
+
+
 # v0.7 Feature 22 — Market Environment Simulation. Every regime is
 # computed server-side from the same real trend/volatility signals
 # app/market_data.py already exposes (trend_pct/volatility_pct,

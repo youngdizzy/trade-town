@@ -2040,6 +2040,23 @@ deliberately returns this field empty (it's an archive module — see
 that endpoint's own docstring); use this endpoint, the WS broadcast, or
 `GET /api/load/archive/knowledge_archive` for real data.
 
+### `GET /api/predictions/calibration/brier`
+
+CEO directive "Professional Quant Trading Core," Phase B P2 item — a
+real Brier-score calibration read (`app/prediction_tracking.py::
+compute_brier_calibration()`) over the same Prediction Records ledger
+above, computed fresh per request. Returns a `BrierCalibrationSummary`:
+`resolvedPredictionCount`, `brierScore` (`null` below
+`MIN_PREDICTIONS_FOR_BRIER_VERDICT` (10) real resolved predictions —
+0.0 = perfect calibration, ~0.25 = a coin-flip forecaster, 1.0 = worst
+possible), `evidenceState` (`"sufficient_evidence"` /
+`"not_enough_data"`), `buckets` (a real reliability-diagram breakdown
+by stated-confidence range — `rangeLowPct`/`rangeHighPct`/
+`predictedCount`/`realAccuracyPct` (`null` below
+`MIN_PREDICTIONS_FOR_BUCKET_VERDICT` (3) real observations in that
+bucket)/`avgStatedConfidencePct`), a plain-language `summary`, and
+`updatedAt`. No new `GameSaveState` field, no gate, no automatic action.
+
 ### `GET /api/failures/{agent_id}`
 
 CEO directive "Features 26-30: Agent Intelligence, Learning &

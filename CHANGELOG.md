@@ -158,6 +158,35 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"Professional Quant Trading Core" follow-up: Brier-Score Calibration.** Closes another P2 item
+  from that directive's deferred list — a real, standard proper scoring rule over the already-real,
+  already-persisted Prediction Records ledger (`app/prediction_tracking.py`, Feature 29). New
+  `compute_brier_calibration()`: `mean((confidence_pct / 100 - is_correct) ** 2)` over every real
+  RESOLVED prediction, `is_correct` read straight from the same `outcome == "correct"` field
+  `grade_predictions()` already assigns from a trade's own real `pnl > 0` — no second, independent
+  grading. 0.0 is perfect calibration, ~0.25 is a constantly-50%-confident forecaster against a 50/50
+  real base rate, 1.0 is worst possible. Distinct from `app/analytics.py::confidence_accuracy()` — a
+  cruder per-trade heuristic over the whole trade history, not a real proper scoring rule over this
+  ledger's specifically-tracked directional claims; both stay real, neither replaces the other.
+  - `None` (`evidenceState: "not_enough_data"`) below `MIN_PREDICTIONS_FOR_BRIER_VERDICT` (10) real
+    resolved predictions — the same real-evidence-floor value already reused throughout this session
+    (`MIN_RETIREMENT_TRADE_COUNT`/`MIN_TRADES_FOR_PORTFOLIO_MONTE_CARLO`, both 10).
+  - A real reliability-diagram bucket breakdown (0-50/50-60/.../90-100% stated confidence), each
+    showing real observed accuracy next to the average confidence actually claimed in that range —
+    withheld (`null`) below `MIN_PREDICTIONS_FOR_BUCKET_VERDICT` (3) real observations per bucket.
+  - New `GET /api/predictions/calibration/brier` endpoint, computed fresh per request (CAGS), no new
+    `GameSaveState` field, no gate, no automatic action.
+  - Frontend: new `BrierCalibrationCard.tsx` in `ExecutivePanel.tsx`, directly below the existing
+    Prediction Ledger card — the real score, a meter, and the bucket breakdown. `tsc`/lint/build clean;
+    live-smoke-tested against the real running dev stack with 12 real seeded predictions (85% stated
+    confidence, 66.7% real accuracy → Brier 0.256, correctly labeled "poorly calibrated," surfacing a
+    real overconfidence gap) via a temporary Playwright spec (removed after verification) — confirmed
+    correct rendering with zero console errors.
+  - 10 new tests in `test_brier_calibration.py` (below-minimum → not enough data, pending predictions
+    excluded from the resolved count, perfect/worst-case scores, a hand-computed real formula match,
+    the textbook 0.25 coin-flip case, per-bucket minimum-sample withholding, correct bucket
+    assignment). Full backend suite green (2819 passed), mypy/ruff clean.
+
 - **"Professional Quant Trading Core" follow-up: Watchlist Eligibility Tiers.** Closes another P2 item
   from that directive's own deferred list — a formal, standing per-symbol classification, distinct
   from the CEO Opportunity Feed's existing per-CANDIDATE status (`eligible`/`insufficient_evidence`/
