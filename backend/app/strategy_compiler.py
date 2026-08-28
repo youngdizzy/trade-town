@@ -187,6 +187,15 @@ _TREND_SCORE_THRESHOLD_PATTERN = re.compile(r"(?:the\s+)?multi[\s-]horizon\s+tre
 # module's own docstring discloses).
 _LIQUIDITY_SWEEP_PATTERN = re.compile(r"a\s+(bullish|bearish)\s+liquidity\s+sweep\s+occurs", re.IGNORECASE)
 
+# CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+# Engine," Phase 10 — the one new real phrasing this compiler
+# recognizes for app/structure_break_research.py's real event-pulse
+# indicator (see StrategyIndicatorName's own "structure_break_signal"
+# docstring in app/schemas.py). "A bullish/bearish break of structure
+# occurs" -> signal crosses above/below 0, same convention as the
+# liquidity-sweep pattern above.
+_STRUCTURE_BREAK_PATTERN = re.compile(r"a\s+(bullish|bearish)\s+break\s+of\s+structure\s+occurs", re.IGNORECASE)
+
 # Real requirement phrasing: "at least N bullish/bearish candles".
 _REQUIREMENT_PATTERN = re.compile(
     r"at\s+least\s+(\w+)\s+(bullish|bearish)\s+(?:opposite\s+)?candles?", re.IGNORECASE
@@ -286,6 +295,11 @@ def compile_strategy_text(
     sweep_match = (
         _LIQUIDITY_SWEEP_PATTERN.search(source_text)
         if not trigger_match and not rsi_match and not stochastic_match and not macd_match and not trend_score_match
+        else None
+    )
+    structure_match = (
+        _STRUCTURE_BREAK_PATTERN.search(source_text)
+        if not trigger_match and not rsi_match and not stochastic_match and not macd_match and not trend_score_match and not sweep_match
         else None
     )
 
@@ -411,6 +425,28 @@ def compile_strategy_text(
                 stepType="trigger",
                 condition=condition,
                 detail=f"Trigger: real {side.lower()} liquidity sweep detected.",
+            )
+        )
+    elif structure_match:
+        (side,) = structure_match.groups()
+        direction = "long" if side.lower() == "bullish" else "short"
+        # crosses_above/crosses_below — same real reason as the
+        # liquidity-sweep pattern above: a real BOS state can persist
+        # unchanged across many bars.
+        operator = "crosses_above" if direction == "long" else "crosses_below"
+        condition = StrategyCondition(
+            id=f"{definition_id}-trigger-condition",
+            left=StrategyIndicatorRef(indicator="structure_break_signal"),
+            operator=operator,  # type: ignore[arg-type]
+            rightValue=0.0,
+            detail=f"Real {side.lower()} Break of Structure (app/market_intelligence.py's own swing-structure detector, wrapped by app/structure_break_research.py) just occurred.",
+        )
+        sequence.append(
+            StrategySequenceStep(
+                id=_next_step_id(),
+                stepType="trigger",
+                condition=condition,
+                detail=f"Trigger: real {side.lower()} Break of Structure detected.",
             )
         )
 

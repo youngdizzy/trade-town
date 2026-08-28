@@ -15630,6 +15630,59 @@ backend suite green, mypy/ruff clean across the whole backend.
 `tests/test_liquidity_sweep_research.py` (new),
 `tests/test_strategy_compiler.py`. Docs: `CHANGELOG.md`.
 
+**Follow-up — Structure Confirmation Research.** Closes the
+Break-of-Structure half of this directive's own Phase 10, using the
+exact same real-detector-reuse pattern as the liquidity-sweep follow-up
+above. New `app/structure_break_research.py::
+structure_break_signal_series()` calls the already-real
+`app/market_intelligence.py::compute_market_structure()` over a bounded
+trailing window, zero new detection logic; registered as a new
+`StrategyIndicatorName` (`structure_break_signal`), one new compiler
+pattern ("a bullish/bearish break of structure occurs" →
+`crosses_above`/`crosses_below` 0, same real multi-bar-plateau reasoning
+the sweep trigger already established), one new `strategy_engine.py`
+series/resolve case.
+
+**Real evidence, not fabricated — a genuinely interesting rejection
+this time.** A reference "Break of Structure Continuation Research
+Model v1" strategy produced 116 real closed trades across the same
+14-symbol × 6,000-hourly-candle sample — a real 52.6% win rate, +0.58R
+expectancy, 2.22 profit factor, superficially attractive. The real
+Model Validation pipeline rejected it anyway: the `symbol_robustness`
+check found real losses on AAPL/BTC-USD/GLD alongside real gains on
+AMZN/DXY/MSFT/SPY/XLF and others — the edge's sign disagrees across
+symbols, a real, disclosed non-generalizability finding, not a
+generalizable edge. Exactly the correct-rejection behavior this
+directive's own Phase 1/18/28 ask for.
+
+**Hard blocker, documented not fabricated.** Change of Character
+(CHoCH), also named in this directive's Phase 10, does not exist
+anywhere in this codebase (confirmed via repo-wide grep — only named
+once, in a comment, never computed) and has no single universally-agreed
+definition in real price-action practice either. Not built this pass.
+
+**Also documented, not attempted this pass — Phase 9 (sweep +
+displacement + FVG retracement combo) and Phase 11 (Fibonacci
+retracement-vs-breakout entry comparison).** Both need a genuinely new
+ENTRY mechanism — the compiler today supports exactly one entry
+condition ("closes above/below the previous swing high/low"), a
+materially larger, different-shaped change than adding a new TRIGGER
+indicator (the extension point every hypothesis above reused, three
+times now). FVG detection (`app/technical_patterns.py::
+detect_fair_value_gaps()`, real fill-tracking already) and Fibonacci
+levels (`compute_fibonacci_levels()`) are both already real and already
+drawn on the chart — the blocker is purely the compiler's entry
+vocabulary, not a missing detection primitive.
+
+**Verification.** 5 new tests (`test_structure_break_research.py`), 2
+new tests (`test_strategy_compiler.py`'s new
+`TestStructureBreakTrigger`). Full backend suite green, mypy/ruff clean.
+
+**Files changed.** Backend: `app/schemas.py`,
+`app/structure_break_research.py` (new), `app/strategy_engine.py`,
+`app/strategy_compiler.py`, `tests/test_structure_break_research.py`
+(new), `tests/test_strategy_compiler.py`. Docs: `CHANGELOG.md`.
+
 ## CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance"
 
 A 37-phase directive asking for a canonical portfolio-wide risk layer

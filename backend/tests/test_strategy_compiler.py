@@ -240,3 +240,29 @@ class TestLiquiditySweepTrigger:
         assert trigger.condition.left.indicator == "liquidity_sweep_signal"
         assert trigger.condition.operator == "crosses_below"
         assert trigger.condition.right_value == 0.0
+
+
+class TestStructureBreakTrigger:
+    """CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    Engine," Phase 10 — the real structure_break_signal indicator's own
+    compiler pattern."""
+
+    def test_bullish_break_compiles_to_a_real_long_crossing_trigger(self) -> None:
+        text = "Buy when a bullish break of structure occurs, then enter when price closes above the previous swing high. Place a 2% stop and 4% target."
+        result = compile_strategy_text(name="X", source_text=text)
+        assert result.status == "compiled"
+        trigger = next(s for s in result.sequence if s.step_type == "trigger")
+        assert trigger.condition is not None
+        assert trigger.condition.left.indicator == "structure_break_signal"
+        assert trigger.condition.operator == "crosses_above"
+        assert trigger.condition.right_value == 0.0
+
+    def test_bearish_break_compiles_to_a_real_short_crossing_trigger(self) -> None:
+        text = "Sell when a bearish break of structure occurs, then enter when price closes below the previous swing low. Place a 2% stop and 4% target."
+        result = compile_strategy_text(name="X", source_text=text)
+        assert result.status == "compiled"
+        trigger = next(s for s in result.sequence if s.step_type == "trigger")
+        assert trigger.condition is not None
+        assert trigger.condition.left.indicator == "structure_break_signal"
+        assert trigger.condition.operator == "crosses_below"
+        assert trigger.condition.right_value == 0.0

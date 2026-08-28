@@ -158,6 +158,46 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"AHL-Inspired Systematic Trend & Momentum Research Engine" follow-up: Structure Confirmation
+  Research.** Closes the Break-of-Structure half of that directive's Phase 10, using the exact same
+  real-detector-reuse pattern the Liquidity Sweep Research follow-up (below) established: new
+  `app/structure_break_research.py::structure_break_signal_series()` calls the already-real
+  `app/market_intelligence.py::compute_market_structure()` (its own real BOS read — the latest confirmed
+  swing high above the prior one is bullish, the mirror for lows is bearish) over a bounded trailing
+  window, zero new structure-detection logic. Registered as a new `StrategyIndicatorName`
+  (`structure_break_signal`), one new `app/strategy_compiler.py` pattern ("a bullish/bearish break of
+  structure occurs" → a real `crosses_above`/`crosses_below` 0 trigger, for the same real
+  multi-bar-plateau reason the sweep trigger already disclosed), one new `strategy_engine.py`
+  series/resolve case.
+  - **Real evidence, not fabricated — and a genuinely interesting rejection this time**: a reference
+    "Break of Structure Continuation Research Model v1" strategy (`Buy when a bullish break of structure
+    occurs, then enter when price closes above the previous swing high. Place a Chandelier Stop and
+    target 2R.`) produced **116 real closed trades** across the same 14-symbol × 6,000-hourly-candle
+    sample — a real 52.6% win rate, +0.58R expectancy, 2.22 profit factor. On the surface, attractive.
+    The real Model Validation pipeline **rejected it anyway**: the `symbol_robustness` check (real sign
+    agreement of each symbol's own aggregated return) found the edge does NOT generalize — real losses on
+    AAPL/BTC-USD/GLD, real gains on AMZN/DXY/MSFT/SPY/XLF/others. A strategy whose apparent edge only
+    holds on some instruments is a real, disclosed overfitting risk, not a generalizable one — exactly the
+    kind of correct rejection this directive's own Phase 1/18/28 ask for ("REJECT it if it does not
+    [hold up]... a strategy that only works on one exact parameter combination should be flagged").
+  - **Hard blocker, documented not fabricated**: the directive's own Phase 10 also asks for Change of
+    Character (CHoCH) as a distinct researchable event. Confirmed via repo-wide grep: CHoCH does not
+    exist anywhere in this codebase (only named once, in a comment, never computed) — no single
+    universally-agreed definition exists in real price-action practice either (whether it requires a
+    counter-trend swing break specifically, or the first break after a trend's most recent extreme), so
+    inventing one here would be exactly the fabricated-threshold risk this project's conventions forbid.
+    Not built this pass.
+  - 5 new tests in `test_structure_break_research.py`, 2 new tests in `test_strategy_compiler.py`. Full
+    backend suite green, mypy/ruff clean.
+  - **Also documented, not attempted this pass**: the directive's Phase 9 (sweep + displacement + FVG
+    retracement combo expectancy) and Phase 11 (Fibonacci retracement-vs-breakout entry comparison).
+    Both need a genuinely new ENTRY mechanism — the compiler currently supports exactly one entry
+    condition ("closes above/below the previous swing high/low"), a materially different, larger change
+    than adding a new TRIGGER indicator (the extension point every hypothesis above reused). FVG
+    detection (`app/technical_patterns.py::detect_fair_value_gaps()`, with real fill-tracking) and
+    Fibonacci levels (`compute_fibonacci_levels()`) are both already real and already drawn on the
+    chart — the blocker is purely the compiler's entry vocabulary, not missing detection primitives.
+
 - **"AHL-Inspired Systematic Trend & Momentum Research Engine" follow-up: Volume Confirmation Engine +
   Liquidity Sweep Research.** Closes two of that directive's own Phase 17 "not built this pass" items
   (`docs/Architecture.md`'s own record: "do not fully build the volume/liquidity engine in this pass").

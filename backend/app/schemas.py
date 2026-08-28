@@ -4396,6 +4396,14 @@ StrategyIndicatorName = Literal[
     # gaining new phrasing for it, same precedent as
     # "multi_horizon_trend_score" above.
     "liquidity_sweep_signal",
+    # CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+    # Engine," Phase 10 — the same real event-signal pattern as
+    # "liquidity_sweep_signal" above, wrapping
+    # app/market_intelligence.py::compute_market_structure()'s own real
+    # Break of Structure read via app/structure_break_research.py.
+    # +1.0 on a real bullish BOS, -1.0 on a real bearish BOS, 0.0
+    # otherwise.
+    "structure_break_signal",
 ]
 
 

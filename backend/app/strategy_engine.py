@@ -65,6 +65,7 @@ from app.schemas import (
 from app.strategy_lab import run_strategy_monte_carlo
 from app.technical_indicators import atr_series, ema_series, macd_series, rsi_series, sma_series, stochastic_series
 from app.liquidity_sweep_research import liquidity_sweep_signal_series
+from app.structure_break_research import structure_break_signal_series
 from app.trend_engine import DEFAULT_HORIZONS, multi_horizon_trend_score_series
 from app.watchlist import SEED_SYMBOLS
 
@@ -95,6 +96,7 @@ SUPPORTED_INDICATORS = frozenset(
         "stochastic_percent_d",
         "multi_horizon_trend_score",
         "liquidity_sweep_signal",
+        "structure_break_signal",
     }
 )
 
@@ -157,6 +159,7 @@ class _SeriesCache:
     stochastic: dict[int, list[tuple[float, float]]]
     multi_horizon_trend_score: list[float]
     liquidity_sweep_signal: list[float]
+    structure_break_signal: list[float]
 
 
 def _build_series_cache(candles: list[Candle], definition: CompiledStrategyDefinition, symbol: str = "") -> _SeriesCache:
@@ -167,6 +170,7 @@ def _build_series_cache(candles: list[Candle], definition: CompiledStrategyDefin
     needs_macd = False
     needs_trend_score = False
     needs_sweep_signal = False
+    needs_structure_signal = False
     for step in definition.sequence:
         if step.condition is None:
             continue
@@ -187,6 +191,8 @@ def _build_series_cache(candles: list[Candle], definition: CompiledStrategyDefin
                 needs_trend_score = True
             elif ref.indicator == "liquidity_sweep_signal":
                 needs_sweep_signal = True
+            elif ref.indicator == "structure_break_signal":
+                needs_structure_signal = True
     # A chandelier stop's own ATR series is a real volatility read, not
     # an EMA/SMA period — computed separately in the caller, not cached
     # here.
@@ -208,6 +214,12 @@ def _build_series_cache(candles: list[Candle], definition: CompiledStrategyDefin
         # already-real sweep detector — CEO directive "AHL-Inspired
         # Systematic Trend & Momentum Research Engine," Phase 8.
         liquidity_sweep_signal=liquidity_sweep_signal_series(candles, symbol) if needs_sweep_signal else [],
+        # app/structure_break_research.py's own real, non-duplicating
+        # wrapper around app/market_intelligence.py::
+        # compute_market_structure()'s already-real Break of Structure
+        # read — CEO directive "AHL-Inspired Systematic Trend & Momentum
+        # Research Engine," Phase 10.
+        structure_break_signal=structure_break_signal_series(candles, symbol) if needs_structure_signal else [],
     )
 
 
@@ -270,6 +282,8 @@ def _resolve(ref: StrategyIndicatorRef, candles: list[Candle], series: _SeriesCa
         # one-to-one with `candles`, same convention as
         # multi_horizon_trend_score above.
         return series.liquidity_sweep_signal[index] if 0 <= index < len(series.liquidity_sweep_signal) else None
+    if ref.indicator == "structure_break_signal":
+        return series.structure_break_signal[index] if 0 <= index < len(series.structure_break_signal) else None
     return None
 
 
