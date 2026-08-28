@@ -15358,9 +15358,6 @@ running app via FastAPI TestClient. Frontend `tsc`/lint/build clean.
 
 **Not built this pass, documented rather than silently skipped** (per
 the user's own "unify + fix the real gaps" scoping choice):
-- A Live Desk chart/Command Center RISK-tab UI surfacing the two new
-  endpoints (Phases 19-20, 34) — the new API exists and is real, but no
-  new frontend panel consumes it yet beyond the typed API client.
 - Layered kill switches below the existing firm-wide Emergency Stop
   (Phase 25) — position/strategy/agent/asset-class granularity.
 - A real factor model (Phase 5) — this codebase has no GICS/factor
@@ -15374,6 +15371,22 @@ the user's own "unify + fix the real gaps" scoping choice):
 - Liquidity-aware execution sizing (Phase 15/16/21) — no real dollar-
   volume/spread data exists anywhere in this codebase to build one from
   (re-confirmed, same blocker the prior AHL-Inspired directive found).
+
+**Follow-up — Command Center RISK-tab UI.** The one UI gap noted above
+(Phases 19-20, 34) was closed in a same-day follow-up: new
+`frontend/src/ui/components/CommandCenter/panels/PortfolioRiskSnapshotCard.tsx`,
+a self-polling (15s) card wired into `RiskPanel.tsx` first — ahead of
+every other RISK-tab card — matching the directive's own explicit
+priority order (danger, then exposure, then P&L, then available risk,
+then explanation). Renders the derived `riskState` pill and its real
+reasons, equity/gross-and-net exposure/leverage/open-position count/
+daily P&L/daily circuit-breaker tier/Emergency Stop flag, a real
+drawdown meter, and any real correlated-exposure clusters — purely a
+display layer over the two endpoints above, no new computation. Frontend
+`tsc`/lint/build clean; live-smoke-tested against the real running dev
+stack with a temporary Playwright spec (removed after verification) —
+confirmed the card renders real data (`NORMAL`, $99,431.78 equity, 0.6%/
+20% drawdown) with zero console errors.
 
 **Files changed.** Backend: `app/schemas.py`, `app/portfolio_risk.py`
 (new), `app/analytics.py`, `app/risk_engine.py`, `app/portfolio_

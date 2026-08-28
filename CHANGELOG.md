@@ -201,16 +201,29 @@ development milestones, not semver releases.
     the correlated-clusters union-find (transitive chains, independent clusters, sorting), plus the
     drawdown-fix tests noted above. Full backend suite green, mypy/ruff clean. Frontend `tsc`/lint/
     build clean.
-  - **Not built this pass, documented rather than silently skipped**: a Live Desk chart/Command Center
-    RISK-tab UI surfacing these two new endpoints (the user's own "unify + fix the real gaps" scoping
-    choice was backend composition and bug fixes, not new UI, this pass); layered kill switches below
+  - **Not built this pass, documented rather than silently skipped**: layered kill switches below
     the existing firm-wide Emergency Stop (position/strategy/agent/asset-class granularity); real
     factor-model exposure (this codebase has no GICS/factor taxonomy — only one real sector-tagged
     symbol, XLF, exists in the watchlist — documented as a genuine data limitation, not fabricated);
     a portfolio-level Monte Carlo/risk-of-ruin (per-strategy Monte Carlo already exists and is real;
     a portfolio-level version was not attempted this pass); true inverse-volatility *portfolio*
     weighting across simultaneous positions (today's real ATR-based sizing remains single-position/
-    risk-per-trade, not `1/σ`-normalized across the whole book).
+    risk-per-trade, not `1/σ`-normalized across the whole book). The Command Center RISK-tab UI
+    gap noted here originally was closed in a same-day follow-up (see below).
+
+- **Portfolio Risk Engine follow-up: Command Center RISK-tab UI.** New
+  `PortfolioRiskSnapshotCard.tsx`, a self-polling (15s) card consuming the two new `GET
+  /api/risk-limits/portfolio-snapshot` / `pretrade-decision` endpoints above — placed first in the
+  RISK tab, ahead of every other card, matching the directive's own explicit priority order (danger,
+  then exposure, then P&L, then available risk, then explanation). Shows the derived `riskState` pill
+  (normal/warning/restricted/halted) with its real reason list, equity/gross-and-net exposure/
+  leverage/open-position count/daily P&L/daily circuit-breaker tier/Emergency Stop flag, a real
+  drawdown meter (against the same fixed peak-to-trough measurement the backend now uses, not the old
+  proxy), and any real correlated-exposure clusters with their dollar concentration. Purely a display
+  layer — no new computation, no automatic action. Frontend `tsc`/lint/build clean; live-smoke-tested
+  against the real running dev stack (Playwright, temporary spec, removed after verification): the
+  card renders with real data (`NORMAL`, $99,431.78 equity, 0.6%/20% drawdown) on the real RISK tab
+  with zero console errors.
 
 - **CEO directive "AHL-Inspired Systematic Trend & Momentum Research Engine."** New
   `app/trend_engine.py`: six independent, never-silently-merged real trend-measurement methodologies

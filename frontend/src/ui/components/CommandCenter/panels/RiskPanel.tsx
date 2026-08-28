@@ -6,6 +6,7 @@ import { NexusManager } from "@/game/systems/NexusManager";
 import { EventBus } from "@/game/systems/EventBus";
 import { RISK_LEVEL_LABEL, formatPct, riskLevel, riskTextClass } from "../lib/derive";
 import { DataRow, EmptyState, Glass, RiskDot, StatusPill, TerminalLabel } from "../ui";
+import { PortfolioRiskSnapshotCard } from "./PortfolioRiskSnapshotCard";
 import { TradePipelineHealthCard } from "./TradePipelineHealthCard";
 
 const RISK_BANNER = {
@@ -198,6 +199,8 @@ export function RiskPanel({ onNeedHelp }: { onNeedHelp?: (lessonId: EducationTop
           {level === "green" && "No active risk warnings. Sentinel and Guardian have no open concerns."}
         </div>
       </Glass>
+
+      <PortfolioRiskSnapshotCard />
 
       <Glass className={`p-3 ${dailyObjectiveStatus.tradingHalted ? "border border-cmd-amber/50 bg-cmd-amber/5" : ""}`}>
         <div className="mb-1.5 flex items-center justify-between">
