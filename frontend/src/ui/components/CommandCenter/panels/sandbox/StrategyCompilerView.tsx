@@ -30,6 +30,38 @@ const OVERFITTING_TONE: Record<string, "green" | "amber" | "red" | "purple"> = {
 const CEO_EXAMPLE_TEXT =
   "Buy when price closes above the 50 EMA, then wait for at least two bearish candles, then enter when price closes above the previous swing high. Place the stop at the Chandelier Stop and target 2R.";
 
+// CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+// Engine" — this view already IS the directive's own Phase 14 "dedicated
+// Research UI panel with WHY/BACKTEST/WALK-FORWARD/COST-TEST/REGIME-TEST
+// drill-downs" ask (a Phase 0 audit confirmed nothing new needed
+// building here). The one real gap: the new liquidity_sweep_signal/
+// structure_break_signal/multi_horizon_trend_score indicators this
+// directive's own passes added were only discoverable by knowing their
+// exact compiler phrasing. These three presets are the EXACT reference
+// strategies already run through the real pipeline and documented in
+// CHANGELOG.md (real results: 0 trades for the sweep reference, 116
+// real trades REJECTED on symbol_robustness grounds for the structure
+// one) — so clicking one here reproduces the same real, already-
+// published finding, never a new untested example.
+const EXAMPLE_STRATEGIES: { label: string; name: string; text: string }[] = [
+  { label: "50 EMA Pullback (CEO example)", name: "50 EMA Pullback", text: CEO_EXAMPLE_TEXT },
+  {
+    label: "Multi-Horizon Trend",
+    name: "Multi-Horizon Trend Research Model v1",
+    text: "Buy when the multi-horizon trend score is above 2, then enter when price closes above the previous swing high. Place a Chandelier Stop and target 2R.",
+  },
+  {
+    label: "Liquidity Sweep Reversal",
+    name: "Liquidity Sweep Reversal Research Model v1",
+    text: "Buy when a bullish liquidity sweep occurs, then enter when price closes above the previous swing high. Place a Chandelier Stop and target 2R.",
+  },
+  {
+    label: "Break of Structure Continuation",
+    name: "Break of Structure Continuation Research Model v1",
+    text: "Buy when a bullish break of structure occurs, then enter when price closes above the previous swing high. Place a Chandelier Stop and target 2R.",
+  },
+];
+
 const STATUS_TONE: Record<string, "green" | "amber" | "red"> = {
   compiled: "green",
   ambiguous: "amber",
@@ -125,6 +157,27 @@ export function StrategyCompilerView({ seed }: { seed?: CompiledStrategyDefiniti
           A real, deterministic pattern-matcher over a disclosed, limited vocabulary — never an LLM guess. Vague phrases ("strong breakout," "significant volume") are
           refused as ambiguous, never silently converted into an invented threshold.
         </p>
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          {EXAMPLE_STRATEGIES.map((example) => (
+            <button
+              key={example.label}
+              type="button"
+              onClick={() => {
+                setName(example.name);
+                setSourceText(example.text);
+                setDefinition(null);
+                setBacktest(null);
+                setExperiment(null);
+                setCompileError(null);
+                setBacktestError(null);
+                setExperimentError(null);
+              }}
+              className="rounded-sm border border-cmd-border px-2 py-1 text-[8px] uppercase tracking-wide text-cmd-textDim transition-colors hover:border-cmd-cyan/50 hover:text-cmd-cyan"
+            >
+              {example.label}
+            </button>
+          ))}
+        </div>
         <div className="mt-2 space-y-1.5">
           <input
             type="text"

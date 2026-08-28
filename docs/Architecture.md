@@ -15722,6 +15722,38 @@ backend changes.
 `MarketChartPanel.tsx`, `panels/LiveDeskPanel.tsx`. Docs:
 `CHANGELOG.md`.
 
+**Follow-up — dedicated Research UI panel, closed by discovery, not
+construction.** The original directive's own Phase 14 asked for "a
+dedicated Research UI panel with WHY/BACKTEST/WALK-FORWARD/COST-TEST/
+REGIME-TEST drill-downs." A repo audit found this already fully real
+and already built: `sandbox/StrategyCompilerView.tsx` (Command Center
+→ SANDBOX → STRATEGY COMPILER) already lets a user type any strategy
+in plain English, compile it through the real deterministic compiler,
+backtest it, and "Run Full Research Experiment" — the real backtest +
+walk-forward + parameter sensitivity + cost sensitivity + look-ahead
+audit bundle, one disclosed conclusion rule. Building a second panel
+would have been exactly the duplicate-system anti-pattern this
+project's conventions forbid.
+
+The one real gap: this pass's own new `liquidity_sweep_signal`/
+`structure_break_signal`/`multi_horizon_trend_score` compiler
+phrasings were only discoverable by knowing their exact text. Added
+three one-click example-strategy presets — the exact reference-
+strategy text already run through the real pipeline and published in
+CHANGELOG.md, so clicking one reproduces the same real, already-
+documented finding, never a new untested example.
+
+**Verification.** `tsc`/lint/build clean. Live-verified end-to-end: the
+Liquidity Sweep Reversal preset was clicked, compiled, and run through
+the full real research experiment (a genuine ~90-second, 14-symbol ×
+6,000-candle backtest), landing on the exact same real
+`INSUFFICIENT EVIDENCE` conclusion the earlier standalone verification
+recorded — via a temporary Playwright spec (removed after
+verification), zero console errors. No backend changes.
+
+**Files changed.** Frontend:
+`sandbox/StrategyCompilerView.tsx`. Docs: `CHANGELOG.md`.
+
 ## CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance"
 
 A 37-phase directive asking for a canonical portfolio-wide risk layer

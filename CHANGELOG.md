@@ -158,6 +158,31 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"AHL-Inspired Systematic Trend & Momentum Research Engine" follow-up: dedicated Research UI panel
+  — closed by discovery, not construction.** The original directive's Phase 14 asked for "a dedicated
+  Research UI panel with WHY/BACKTEST/WALK-FORWARD/COST-TEST/REGIME-TEST drill-downs." A repo audit
+  found this already fully real and already built:
+  `sandbox/StrategyCompilerView.tsx` (reachable at Command Center → SANDBOX → STRATEGY COMPILER) already
+  lets a user type ANY strategy in plain English, compile it through the real deterministic compiler,
+  backtest it, and run "Run Full Research Experiment" — one call bundling the real backtest, walk-
+  forward stability test, parameter sensitivity sweep, cost/slippage sensitivity, and look-ahead audit,
+  with one disclosed conclusion-synthesis rule. Building a second panel here would have been exactly the
+  kind of duplicate system this project's own conventions forbid.
+  - The one real gap: the new `liquidity_sweep_signal`/`structure_break_signal`/
+    `multi_horizon_trend_score` compiler phrasings this directive's passes added were only discoverable
+    by knowing their exact text. Added three one-click example-strategy presets (Multi-Horizon Trend,
+    Liquidity Sweep Reversal, Break of Structure Continuation) alongside the existing CEO example — each
+    the EXACT reference-strategy text already run through the real pipeline and published in this
+    CHANGELOG, so clicking one reproduces the same real, already-documented finding, never a new
+    untested example.
+  - Verified: `tsc`/lint/build clean. Live-verified end-to-end against the real running dev stack — the
+    Liquidity Sweep Reversal preset was clicked, compiled (real trigger/entry/stop/target steps
+    rendered), and run through the full real research experiment (a genuine ~90-second, 14-symbol ×
+    6,000-candle backtest), landing on the exact same real `INSUFFICIENT EVIDENCE` conclusion the earlier
+    standalone verification run recorded — confirmed via a temporary Playwright spec (removed after
+    verification), zero console errors.
+  - No backend changes.
+
 - **"AHL-Inspired Systematic Trend & Momentum Research Engine" follow-up: Live Desk trend-evidence
   chart overlay.** Closes two more real gaps a Phase 0 audit of the Live Desk found: (1) the Multi-
   Horizon Trend Engine's three real endpoints (`/trend-engine`, `/trend-engine/cross-sectional`,
