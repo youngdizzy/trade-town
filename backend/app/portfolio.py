@@ -110,6 +110,8 @@ def open_position(
     trading_style: TradingStyle | None = None,
     entry_slippage_bps: float = 0.0,
     proposal_id: str | None = None,
+    stop_price: float | None = None,
+    target_price: float | None = None,
 ) -> PaperPortfolio:
     """Commits POSITION_SIZE_FRACTION of current cash to a new position at
     `price`, unless the caller already knows the exact size it wants (see
@@ -137,7 +139,17 @@ def open_position(
     value is recorded here purely so close_position() can carry it onto
     the closed PaperTrade for audit, the same pattern trading_style
     already uses. Defaults to 0.0 for any caller that hasn't been
-    threaded through yet."""
+    threaded through yet.
+
+    `stop_price`/`target_price` (CEO directive "Hard Risk Gates 2.0 —
+    Stop-Loss / Position-Risk Enforcement") — the real, already-computed
+    ATR-based prices the caller determined before calling in (see
+    app/executive.py's resolve_proposal()); this function stores them
+    verbatim, it computes nothing itself (mirrors trading_style/
+    entry_slippage_bps above — this module stays pure ledger data,
+    never decision logic). None for any caller that hasn't been
+    threaded through yet (app/broker.py's tick_broker() manual-order
+    path, or a test fixture) — never fabricated."""
     if quantity is None:
         budget = max(portfolio.cash_balance * POSITION_SIZE_FRACTION, 0.0)
         if budget < MIN_POSITION_SIZE or price <= 0:
@@ -168,6 +180,8 @@ def open_position(
         maePct=0.0,
         mfePct=0.0,
         proposalId=proposal_id,
+        stopPrice=stop_price,
+        targetPrice=target_price,
     )
     return portfolio.model_copy(
         update={
@@ -302,6 +316,8 @@ def close_position(
         entrySlippageBps=match.entry_slippage_bps,
         exitSlippageBps=exit_slippage_bps,
         proposalId=match.proposal_id,
+        stopPrice=match.stop_price,
+        targetPrice=match.target_price,
     )
     history = [*portfolio.trade_history, trade]
     if len(history) > MAX_TRADE_HISTORY:

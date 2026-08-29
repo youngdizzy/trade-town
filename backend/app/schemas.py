@@ -711,6 +711,26 @@ class PaperPosition(CamelModel):
     # exists there) or one opened before this field existed — never
     # guessed or backfilled.
     proposal_id: str | None = Field(default=None, alias="proposalId")
+    # CEO directive "Hard Risk Gates 2.0 — Stop-Loss / Position-Risk
+    # Enforcement" — a real, ATR-based stop/target PRICE (not just the
+    # distance app/position_sizing.py's compute_volatility_sizing() has
+    # always computed), set once at open_position() time and immutable
+    # for the life of the position (Phase 2's "risk metadata must be
+    # immutable once the trade executes"). A REAL linked "stop_loss"/
+    # "take_profit" PaperOrder (app/broker.py) is also placed at the
+    # same instant, using this exact price — this field is the
+    # planning-record copy for display/R-multiple, not a substitute for
+    # that live, tick-evaluated protective order (see PaperOrder's own
+    # docstring for how "is this position still protected" is actually
+    # answered). `None` when no real ATR evidence existed for this
+    # symbol at open time (an honest "no stop was possible" state, never
+    # fabricated) or for any position opened before this directive.
+    stop_price: float | None = Field(default=None, alias="stopPrice")
+    # Real, disclosed policy choice (app/executive.py's
+    # TARGET_REWARD_RISK_MULTIPLE): entry +/- a fixed multiple of the
+    # same real ATR distance the stop uses — never a backtested or
+    # fabricated target. `None` under the same condition as stop_price.
+    target_price: float | None = Field(default=None, alias="targetPrice")
 
 
 class PaperTrade(CamelModel):
@@ -816,6 +836,16 @@ class PaperTrade(CamelModel):
     # trade closed before this piece still validates during load.
     mae_pct: float = Field(default=0.0, alias="maePct")
     mfe_pct: float = Field(default=0.0, alias="mfePct")
+    # CEO directive "Hard Risk Gates 2.0 — Stop-Loss / Position-Risk
+    # Enforcement" — carried over from the PaperPosition this trade
+    # closed (app/portfolio.py's close_position() copies it
+    # automatically, same convention as mae_pct/mfe_pct above). This is
+    # what finally makes DecisionVaultEntry.r_multiple a real, non-
+    # fabricated computation for trades closed after this directive (see
+    # that field's own docstring). `None` under the same honest
+    # condition as PaperPosition.stop_price/target_price.
+    stop_price: float | None = Field(default=None, alias="stopPrice")
+    target_price: float | None = Field(default=None, alias="targetPrice")
 
 
 # CEO directive "Professional Trading Firm Transformation" — Post-Trade
@@ -2326,6 +2356,14 @@ NoTradeReasonCode = Literal[
     # CEO directive "Layered Kill Switches" — app/gatekeeper.py's
     # _trading_restriction_check(), app/trading_restrictions.py.
     "gatekeeper_trading_restriction",
+    # CEO directive "Hard Risk Gates 2.0 — Stop-Loss / Position-Risk
+    # Enforcement" — app/gatekeeper.py's _valid_stop_check(). A real,
+    # ATR-based stop distance (the same Chandelier Stop convention
+    # app/position_sizing.py's compute_volatility_sizing() already
+    # computes) could not be determined for this symbol yet — every
+    # real trade must have a measurable, enforceable stop before
+    # execution.
+    "gatekeeper_valid_stop",
     # Risk engine: app/risk_engine.py's evaluate_sentinel_risk()/evaluate_guardian_exposure()
     "risk_equity_exhausted",
     "risk_daily_loss_limit",
@@ -7453,10 +7491,16 @@ class DecisionVaultEntry(CamelModel):
     pnl: float
     pnl_pct: float = Field(alias="pnlPct")
     hold_duration_minutes: int = Field(alias="holdDurationMinutes")
-    # Always None — no stop-loss/initial-risk basis exists anywhere in
-    # this codebase's real risk engine (recommended_quantity() sizes
-    # directly off equity%, never a stop distance) to honestly compute
-    # an R-multiple from. Never backfilled with a fabricated value.
+    # CEO directive "Hard Risk Gates 2.0 — Stop-Loss / Position-Risk
+    # Enforcement" — real for any trade closed after this directive:
+    # every real buy/sell now gets a real, ATR-based stop price
+    # (PaperTrade.stop_price), so this is
+    # `(exit_price - entry_price) * direction / abs(entry_price - stop_price)`
+    # — a genuine risk-multiple, never a fabricated one. Still `None`
+    # for every trade closed BEFORE this directive (no stop_price exists
+    # on that record — never backfilled with a guessed value) and for
+    # the honest minority of real trades where no ATR evidence existed
+    # at open time either.
     r_multiple: float | None = Field(default=None, alias="rMultiple")
     # The real CaseStudy (mistake OR success) filed for this exact trade,
     # if any — mistakes.py/successes.py only ever file one per trade.
@@ -7730,9 +7774,12 @@ class InstitutionalMemoryEntry(CamelModel):
 # Decision Score, an Expected Value read over the real 12-scenario
 # simulation, and a real, signal-grounded Contingency Plan. See
 # app/war_room.py's module docstring for the full honesty boundary,
-# including why literal "R-Multiple" is deliberately not here (same gap
-# DecisionVaultEntry.rMultiple already documents — no stop-loss/initial-
-# risk concept exists anywhere in this codebase's real risk engine).
+# including why literal "R-Multiple" is deliberately not here — this is
+# a PRE-trade, probability-weighted read over WhatIfSimulation's own 12
+# bootstrap scenarios, not a real trade's actual entry-to-stop distance
+# (CEO directive "Hard Risk Gates 2.0 — Stop-Loss / Position-Risk
+# Enforcement" made THAT real — see DecisionVaultEntry.rMultiple, a
+# genuinely different, post-trade, single-realization metric).
 class ExpectedValueAnalysis(CamelModel):
     """A real, probability-weighted read over WhatIfSimulation's own 12
     real bootstrap scenarios — never a fabricated forecast. `edgePct` is
@@ -7740,9 +7787,13 @@ class ExpectedValueAnalysis(CamelModel):
     (the same "no scenario bias" resample WhatIfSimulation.baseline
     already is), so it isolates whatever real skew the scenario mix adds
     over doing nothing special. `riskToReward` is a real ratio of
-    reward-range to typical-drawdown magnitude — deliberately labeled
-    Risk-to-Reward, not "R-Multiple," since no stop-loss/initial-risk
-    unit exists anywhere in this codebase to measure R against."""
+    reward-range to typical-drawdown magnitude over the SIMULATED
+    scenario mix — deliberately still labeled Risk-to-Reward, not
+    "R-Multiple": DecisionVaultEntry.rMultiple (real since CEO directive
+    "Hard Risk Gates 2.0") measures one real trade's actual outcome
+    against its own real stop distance, a different, later, single-
+    realization question this pre-trade simulated ratio was never meant
+    to answer."""
 
     expected_value_pct: float = Field(alias="expectedValuePct")
     edge_pct: float = Field(alias="edgePct")

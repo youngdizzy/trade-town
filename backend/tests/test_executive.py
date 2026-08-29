@@ -529,6 +529,171 @@ class TestResolveProposal:
         assert overriding.agreed_with_ai is False
 
 
+class _NoCandleHistoryProvider(MockMarketDataProvider):
+    """Real MockMarketDataProvider for get_quote() (never called here),
+    but get_candles() always raises — the same "no real fixture data"
+    convention app/position_sizing.py's own test suite already
+    establishes, used here to force compute_volatility_sizing()'s
+    honest `available=False` state."""
+
+    def get_candles(self, symbol: str, timeframe: str, limit: int) -> list[Candle]:
+        raise ValueError(f"no real candle history for {symbol!r} in this test")
+
+
+class TestResolveProposalStopLossEnforcement:
+    """CEO directive "Hard Risk Gates 2.0 — Stop-Loss / Position-Risk
+    Enforcement" — every real trade now gets a real, ATR-based stop/
+    target price, and a real linked protective order in app/broker.py's
+    order book, not just a computed-but-unused distance."""
+
+    def _proposal(self) -> TradeProposal:
+        item = _research_item()
+        provider = MockMarketDataProvider()
+        return generate_proposal(
+            item,
+            quantity=10.0,
+            price=100.0,
+            news=[],
+            scanner_alerts=[],
+            sentinel_warning=None,
+            guardian_warning=None,
+            provider=provider,
+            now_sim_minutes=0,
+            portfolio=default_portfolio(),
+            risk_limits=RiskLimits(),
+            market_intelligence=default_market_intelligence_state(),
+            agent_vote_accuracy=[],
+        )
+
+    @staticmethod
+    def _stub_approved_verdict(*_args: object, **_kwargs: object) -> GatekeeperVerdict:
+        return GatekeeperVerdict(approved=True, checks=[], summary="APPROVED — stubbed for this test.", createdAt=_now_iso())
+
+    def test_stop_and_target_are_set_on_a_real_opened_long_position(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("app.executive.evaluate_gatekeeper", self._stub_approved_verdict)
+        proposal = self._proposal()
+        new_portfolio, _, _ = resolve_proposal(
+            proposal, "buy", portfolio=default_portfolio(), risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=100, market_intelligence=default_market_intelligence_state()
+        )
+        position = new_portfolio.positions[0]
+        assert position.stop_price is not None
+        assert position.target_price is not None
+        # A long's stop sits below entry, target above — the real ATR
+        # distance is always positive.
+        assert position.stop_price < position.entry_price
+        assert position.target_price > position.entry_price
+
+    def test_stop_and_target_are_set_on_a_real_opened_short_position(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        monkeypatch.setattr("app.executive.evaluate_gatekeeper", self._stub_approved_verdict)
+        proposal = self._proposal()
+        new_portfolio, _, _ = resolve_proposal(
+            proposal, "sell", portfolio=default_portfolio(), risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=100, market_intelligence=default_market_intelligence_state()
+        )
+        position = new_portfolio.positions[0]
+        assert position.stop_price is not None
+        assert position.target_price is not None
+        # A short's stop sits above entry, target below.
+        assert position.stop_price > position.entry_price
+        assert position.target_price < position.entry_price
+
+    def test_real_protective_stop_and_target_orders_are_placed_at_fill(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """CEO directive "Hard Risk Gates 2.0," Phase 5 — a stop-loss is
+        not merely UI metadata: app/broker.py's real (previously
+        never-called) stop_loss/take_profit order mechanism must
+        actually receive a real order."""
+        monkeypatch.setattr("app.executive.evaluate_gatekeeper", self._stub_approved_verdict)
+        proposal = self._proposal()
+        new_portfolio, _, _ = resolve_proposal(
+            proposal, "buy", portfolio=default_portfolio(), risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=100, market_intelligence=default_market_intelligence_state()
+        )
+        position = new_portfolio.positions[0]
+        open_orders = [o for o in new_portfolio.orders if o.status == "open"]
+        stop_order = next((o for o in open_orders if o.order_type == "stop_loss"), None)
+        target_order = next((o for o in open_orders if o.order_type == "take_profit"), None)
+        assert stop_order is not None
+        assert target_order is not None
+        assert stop_order.linked_position_id == position.id
+        assert target_order.linked_position_id == position.id
+        # A long is protected by a SELL exit order on each side, matching
+        # app/broker.py's own _fill_price() convention.
+        assert stop_order.side == "sell"
+        assert target_order.side == "sell"
+        assert stop_order.price == position.stop_price
+        assert target_order.price == position.target_price
+        assert stop_order.quantity == position.quantity
+
+    def test_evaluate_gatekeeper_receives_a_real_positive_stop_distance_when_atr_evidence_exists(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict[str, object] = {}
+
+        def _capture(*_args: object, **kwargs: object) -> GatekeeperVerdict:
+            captured.update(kwargs)
+            return GatekeeperVerdict(approved=True, checks=[], summary="APPROVED — stubbed for this test.", createdAt=_now_iso())
+
+        monkeypatch.setattr("app.executive.evaluate_gatekeeper", _capture)
+        proposal = self._proposal()
+        resolve_proposal(
+            proposal, "buy", portfolio=default_portfolio(), risk_limits=RiskLimits(), current_price=100.0, now_sim_minutes=100, market_intelligence=default_market_intelligence_state()
+        )
+        assert captured["stop_evaluated"] is True
+        assert isinstance(captured["stop_distance"], float)
+        assert captured["stop_distance"] > 0
+
+    def test_evaluate_gatekeeper_receives_none_stop_distance_with_no_real_candle_history(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        captured: dict[str, object] = {}
+
+        def _capture(*_args: object, **kwargs: object) -> GatekeeperVerdict:
+            captured.update(kwargs)
+            return GatekeeperVerdict(approved=True, checks=[], summary="APPROVED — stubbed for this test.", createdAt=_now_iso())
+
+        monkeypatch.setattr("app.executive.evaluate_gatekeeper", _capture)
+        proposal = self._proposal()
+        resolve_proposal(
+            proposal,
+            "buy",
+            portfolio=default_portfolio(),
+            risk_limits=RiskLimits(),
+            current_price=100.0,
+            now_sim_minutes=100,
+            market_intelligence=default_market_intelligence_state(),
+            provider=_NoCandleHistoryProvider(),
+        )
+        assert captured["stop_evaluated"] is True
+        assert captured["stop_distance"] is None
+
+    def test_a_real_gatekeeper_rejection_on_an_invalid_stop_opens_no_position_and_places_no_orders(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        """Integration proof that a real Valid Stop-Loss rejection (unit-
+        tested directly in test_gatekeeper.py's TestValidStopCheck)
+        actually stops resolve_proposal() from opening a position or
+        placing any protective order — the real end-to-end behavior a
+        CEO would see, not just the isolated check."""
+
+        def _reject_on_stop(*_args: object, **kwargs: object) -> GatekeeperVerdict:
+            from app.gatekeeper import _valid_stop_check
+
+            check = _valid_stop_check(kwargs.get("stop_distance"), kwargs.get("stop_evaluated", False))
+            return GatekeeperVerdict(
+                approved=check.passed, checks=[check], summary="REJECTED — failed: Valid Stop-Loss." if not check.passed else "APPROVED", createdAt=_now_iso()
+            )
+
+        monkeypatch.setattr("app.executive.evaluate_gatekeeper", _reject_on_stop)
+        proposal = self._proposal()
+        new_portfolio, decision, record = resolve_proposal(
+            proposal,
+            "buy",
+            portfolio=default_portfolio(),
+            risk_limits=RiskLimits(),
+            current_price=100.0,
+            now_sim_minutes=100,
+            market_intelligence=default_market_intelligence_state(),
+            provider=_NoCandleHistoryProvider(),
+        )
+        assert new_portfolio.positions == []
+        assert new_portfolio.orders == []
+        assert decision.outcome == "no_trade"
+        assert decision.order_id is None
+        assert record.ceo_decision == "buy"
+
+
 class TestGradeCeoDecisions:
     def _pending_record(self, decision_id: str) -> CeoDecisionRecord:
         return CeoDecisionRecord(

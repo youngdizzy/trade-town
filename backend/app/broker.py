@@ -194,8 +194,29 @@ def tick_broker(
 
     resolved: list[PaperOrder] = []
     newly_closed: list[PaperTrade] = []
+    # CEO directive "Hard Risk Gates 2.0 — Stop-Loss / Position-Risk
+    # Enforcement," Phase 6 — a real "stale/cancelled stop" case a real
+    # linked stop_loss/take_profit PAIR must handle: a one-cancels-other
+    # (OCO) relationship. Once either leg fills, the other has nothing
+    # left to protect. Tracked here (not just re-derived from
+    # portfolio.positions after the loop) so a sibling evaluated LATER
+    # in this same tick's iteration is cancelled immediately too, not
+    # left to coincidentally discover the closure whenever its own
+    # unrelated price condition happens to trigger.
+    closed_position_ids: set[str] = set()
 
     for order in open_orders:
+        if order.linked_position_id and (
+            order.linked_position_id in closed_position_ids or not any(p.id == order.linked_position_id for p in portfolio.positions)
+        ):
+            # The linked position already closed — some other way
+            # entirely (app/paper_trading.py's hold-duration close), or
+            # via its own real sibling exit order, possibly earlier this
+            # same tick. Cancelled before this order's own trigger is
+            # even evaluated, so it never lingers in the open book.
+            resolved.append(order.model_copy(update={"status": "cancelled"}))
+            continue
+
         price = prices.get(order.symbol)
         if price is None:
             continue
@@ -209,13 +230,7 @@ def tick_broker(
                     trigger_price, action_side=order.side, market_intelligence=market_intelligence, symbol=order.symbol
                 )
             if order.linked_position_id:
-                position = next((p for p in portfolio.positions if p.id == order.linked_position_id), None)
-                if position is None:
-                    # The linked position already closed some other way
-                    # (e.g. app/paper_trading.py's hold-duration close) —
-                    # this exit order has nothing left to act on.
-                    resolved.append(order.model_copy(update={"status": "cancelled"}))
-                    continue
+                position = next(p for p in portfolio.positions if p.id == order.linked_position_id)
                 held_for = now_minutes - position.opened_sim_minutes
                 reason = "Take-profit target reached" if order.order_type == "take_profit" else "Stop-loss triggered"
                 market_conditions = f"{order.symbol} hit the {order.order_type.replace('_', ' ')} at {fill_price:.2f}."
@@ -233,6 +248,7 @@ def tick_broker(
                 )
                 if trade:
                     newly_closed.append(trade)
+                    closed_position_ids.add(order.linked_position_id)
             else:
                 portfolio = open_position(
                     portfolio,
@@ -248,7 +264,26 @@ def tick_broker(
                 )
             resolved.append(order.model_copy(update={"status": "filled", "filled_price": fill_price, "filled_at": _now_iso()}))
 
-    still_open = [o for o in portfolio.orders if o.status == "open" and o.id not in {r.id for r in resolved}]
+    # CEO directive "Hard Risk Gates 2.0," Phase 6 — a second, order-
+    # independent OCO sweep. The per-order upfront check above only
+    # catches a sibling evaluated AFTER the leg that closed its position
+    # within this same iteration; an order placed (and so iterated)
+    # BEFORE its sibling fills — the common case, since a stop_loss is
+    # placed before its take_profit at open_position() time — would
+    # otherwise legitimately fail its own trigger check, get left
+    # untouched by the main loop, and only then discover the orphaning.
+    # This sweep catches that direction too, so cancellation is never
+    # sensitive to which order happened to be placed (and so iterated)
+    # first.
+    resolved_ids = {r.id for r in resolved}
+    for order in open_orders:
+        if order.id in resolved_ids or not order.linked_position_id:
+            continue
+        if order.linked_position_id in closed_position_ids or not any(p.id == order.linked_position_id for p in portfolio.positions):
+            resolved.append(order.model_copy(update={"status": "cancelled"}))
+            resolved_ids.add(order.id)
+
+    still_open = [o for o in portfolio.orders if o.status == "open" and o.id not in resolved_ids]
     order_log = [*resolved, *[o for o in portfolio.orders if o.status != "open"]]
     if len(order_log) > MAX_ORDER_LOG:
         del order_log[: len(order_log) - MAX_ORDER_LOG]

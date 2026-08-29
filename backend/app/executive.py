@@ -41,14 +41,16 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from typing import Literal
 
+from app.broker import place_order
 from app.confidence import compute_confidence
 from app.multi_timeframe import compute_multi_timeframe_confirmation
 from app.execution_quality import apply_slippage
 from app.gatekeeper import MIN_CONFIDENCE, evaluate_gatekeeper
 from app.market_data import Candle as ProviderCandle
-from app.market_data import MarketDataProvider
+from app.market_data import MarketDataProvider, market_data_provider
 from app.market_data import trend_pct, volatility_pct
 from app.portfolio import open_position
+from app.position_sizing import compute_volatility_sizing
 from app.risk_engine import portfolio_equity, recommended_quantity
 from app.trend_engine import compute_multi_horizon_trend_score
 from app.schemas import (
@@ -92,6 +94,18 @@ MAX_PENDING_PROPOSALS = 5
 MAX_CEO_DECISIONS = 200
 PROPOSAL_TIMEFRAME = "1h"
 PROPOSAL_CANDLE_COUNT = 30
+
+# CEO directive "Hard Risk Gates 2.0 — Stop-Loss / Position-Risk
+# Enforcement" — a real, disclosed policy choice, not a fabricated or
+# backtested number: the take-profit target sits this many multiples of
+# the same real ATR-based stop DISTANCE (app/position_sizing.py's
+# compute_volatility_sizing()) beyond entry, on the reward side. 2.0 is
+# a conventional, honestly-arbitrary reward:risk convention — a real,
+# disclosed choice, never the only valid one a researcher could pick
+# (mirrors this codebase's own "real, disclosed, simple formula" idiom
+# already established for _REGIME_SUITABILITY_HIT_RATE_FLOOR_PCT and
+# _SESSION_SUITABILITY_HIT_RATE_FLOOR_PCT in app/position_sizing.py).
+TARGET_REWARD_RISK_MULTIPLE = 2.0
 # CEO directive "AHL-Inspired Systematic Trend & Momentum Research
 # Engine" follow-up — a locally-scoped horizon set for the Technical
 # Analyst's multi-horizon evidence below. app/trend_engine.py's own
@@ -400,6 +414,7 @@ def resolve_proposal(
     behavioral_cooldown_minutes: int | None = None,
     behavioral_size_increase_threshold_pct: float | None = None,
     trading_restrictions: list[TradingRestriction] | None = None,
+    provider: MarketDataProvider = market_data_provider,
 ) -> tuple[PaperPortfolio, TradeDecision, CeoDecisionRecord]:
     """Applies the CEO's real decision: buy opens a real long, sell opens
     a real short, wait does nothing — subject to the Trade Gatekeeper's
@@ -436,7 +451,19 @@ def resolve_proposal(
     `trading_restrictions` (CEO directive "Layered Kill Switches," see
     app/trading_restrictions.py) — passed straight through to
     evaluate_gatekeeper()'s Trading Restriction check. None/empty
-    behaves exactly as before this parameter existed."""
+    behaves exactly as before this parameter existed.
+
+    `provider` (CEO directive "Hard Risk Gates 2.0 — Stop-Loss /
+    Position-Risk Enforcement") — feeds a fresh, real
+    compute_volatility_sizing() read (app/position_sizing.py) computed
+    HERE, not trusted from a possibly-stale WarRoomSession the CEO's own
+    decision may have sat pending against for a while (the same
+    "recompute fresh, never stale" guarantee this function already
+    makes for the position-sizing ceiling above). Defaults to the real
+    global market_data_provider singleton — the same default every
+    other real production call site already resolves to (app/nexus.py,
+    app/state.py) — so no existing caller needs to change unless it
+    wants to inject a fake provider for a test."""
     decision_id = f"decision-{proposal.id}"
     order_id: str | None = None
     price = current_price if current_price and current_price > 0 else proposal.price
@@ -463,6 +490,16 @@ def resolve_proposal(
             # size zero happened.
             ceo_choice = "wait"
         else:
+            # CEO directive "Hard Risk Gates 2.0 — Stop-Loss / Position-
+            # Risk Enforcement," Gate 3 — a real, ATR-based stop distance
+            # must exist BEFORE the Gatekeeper's final approval, not
+            # computed only after (a rejected trade must never have
+            # already opened a position). Reuses app/position_sizing.py's
+            # own real Chandelier-ATR distance verbatim — no second,
+            # independently-tuned computation.
+            equity = portfolio_equity(portfolio)
+            volatility_sizing = compute_volatility_sizing(proposal, provider, equity, risk_limits)
+            stop_distance = volatility_sizing.stop_distance if volatility_sizing.available else None
             gatekeeper_verdict = evaluate_gatekeeper(
                 proposal,
                 ceo_choice,
@@ -480,6 +517,8 @@ def resolve_proposal(
                 price=price,
                 sim_day=now_sim_minutes // 1440,
                 trading_restrictions=trading_restrictions,
+                stop_distance=stop_distance,
+                stop_evaluated=True,
             )
             if gatekeeper_verdict.approved:
                 position_id = f"pos-{proposal.id}"
@@ -497,6 +536,23 @@ def resolve_proposal(
                 fill_price, entry_slippage_bps = apply_slippage(
                     price, action_side=fill_side, market_intelligence=market_intelligence, symbol=proposal.symbol
                 )
+                # CEO directive "Hard Risk Gates 2.0" — the real stop/
+                # target PRICE, derived from the ACTUAL fill (never the
+                # pre-slippage signal price) so the stored risk boundary
+                # matches what the position actually paid. The Valid
+                # Stop-Loss gate above already guarantees stop_distance
+                # is a real, positive, finite number whenever this branch
+                # is reached (gatekeeper_verdict.approved could not be
+                # True otherwise).
+                stop_price: float | None = None
+                target_price: float | None = None
+                if stop_distance is not None:
+                    if fill_side == "buy":
+                        stop_price = round(fill_price - stop_distance, 4)
+                        target_price = round(fill_price + TARGET_REWARD_RISK_MULTIPLE * stop_distance, 4)
+                    else:
+                        stop_price = round(fill_price + stop_distance, 4)
+                        target_price = round(fill_price - TARGET_REWARD_RISK_MULTIPLE * stop_distance, 4)
                 portfolio = open_position(
                     portfolio,
                     position_id=position_id,
@@ -510,7 +566,49 @@ def resolve_proposal(
                     trading_style=proposal.trading_style,
                     entry_slippage_bps=entry_slippage_bps,
                     proposal_id=proposal.id,
+                    stop_price=stop_price,
+                    target_price=target_price,
                 )
+                # CEO directive "Hard Risk Gates 2.0," Phase 5 — a stop-
+                # loss is not merely UI metadata; the system must treat it
+                # as an actual risk boundary. app/broker.py's real
+                # stop_loss/take_profit order machinery (gap-through
+                # worse-of-trigger-price fill, real slippage on trigger,
+                # automatic cancellation if the position already closed
+                # some other way) already existed fully built but had no
+                # live caller — this is that caller. The exit order's own
+                # side is the OPPOSITE of the position's side (selling to
+                # exit a long, buying to cover a short), matching
+                # app/broker.py's own _fill_price() convention exactly.
+                if stop_price is not None:
+                    exit_side: OrderSide = "sell" if fill_side == "buy" else "buy"
+                    portfolio = place_order(
+                        portfolio,
+                        order_id=f"order-stop-{position_id}",
+                        symbol=proposal.symbol,
+                        side=exit_side,
+                        order_type="stop_loss",
+                        quantity=quantity,
+                        price=stop_price,
+                        placed_by="sentinel",
+                        reason=f"Protective stop for {position_id} — real ATR-based distance of {stop_distance:.4f}.",
+                        confidence=proposal.confidence,
+                        linked_position_id=position_id,
+                    )
+                    if target_price is not None:
+                        portfolio = place_order(
+                            portfolio,
+                            order_id=f"order-target-{position_id}",
+                            symbol=proposal.symbol,
+                            side=exit_side,
+                            order_type="take_profit",
+                            quantity=quantity,
+                            price=target_price,
+                            placed_by="sentinel",
+                            reason=f"Take-profit for {position_id} — {TARGET_REWARD_RISK_MULTIPLE:.1f}x the real ATR-based stop distance.",
+                            confidence=proposal.confidence,
+                            linked_position_id=position_id,
+                        )
                 order_id = position_id
             # else: the Gatekeeper vetoed it — ceo_choice is deliberately
             # NOT downgraded to "wait" here (unlike the zero-quantity

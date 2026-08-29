@@ -15,12 +15,16 @@ Gatekeeper's existing Decision Confidence check rather than needing a
 second, parallel gate on the same signal) — plus support/resistance
 quality, volume confirmation, liquidity, the *timing* of upcoming news
 (this codebase generates news reactively, never schedules it in advance),
-reward-to-risk ratio and stop-loss placement (the paper broker never
-places exit orders — see DecisionDetail's own "Trade Plan" section),
 strategy match, and historical performance of similar setups — none of
 these have a real data source in this codebase and none are invented
 here; see app/confidence.py's module docstring for the same honesty
-boundary already established for an overlapping list.
+boundary already established for an overlapping list. Stop-loss
+placement (formerly on this same "no real data source" list) is now
+real — CEO directive "Hard Risk Gates 2.0 — Stop-Loss / Position-Risk
+Enforcement" made it the thirteenth check (`_valid_stop_check`, below):
+the paper broker's real, previously-unused stop_loss/take_profit order
+mechanism (app/broker.py) is now actually placed at every real fill,
+using app/position_sizing.py's own real ATR-based stop distance.
 
 A trade the Gatekeeper blocks never executes — there is no P&L to grade.
 Instead its real *hypothetical* outcome is tracked (GatekeeperRejection)
@@ -30,6 +34,7 @@ has passed — see grade_gatekeeper_rejections.
 """
 from __future__ import annotations
 
+import math
 from datetime import datetime, timezone
 
 from app.behavioral_risk import compute_behavioral_check
@@ -329,6 +334,46 @@ def _trading_restriction_check(proposal: TradeProposal, trading_restrictions: li
     return GatekeeperCheck(id="trading_restriction", label="Trading Restriction", passed=passed, detail=detail, code="gatekeeper_trading_restriction")
 
 
+# CEO directive "Hard Risk Gates 2.0 — Stop-Loss / Position-Risk
+# Enforcement," Gate 3 (Valid Stop) — "Every trade must have a
+# measurable, enforceable risk definition BEFORE execution." Closes the
+# exact gap this module's own docstring above used to disclose (stop-
+# loss placement "has no real data source... none are invented here"):
+# app/position_sizing.py's compute_volatility_sizing() already computes
+# a real, ATR-based stop DISTANCE (the same Chandelier Stop convention
+# this codebase's backtest engines already use) for every real proposal;
+# app/executive.py's resolve_proposal() now evaluates it BEFORE calling
+# this function and passes the result straight through, never
+# recomputed here. `stop_evaluated=False` (the default) vacuously
+# passes, the same convention `_debate_check`/`_weighted_executive_check`/
+# `_account_halt_check` above already use for a caller that doesn't
+# thread this argument through yet (a direct unit test, or a legacy call
+# site) — `stop_distance` alone can't disambiguate "not evaluated" from
+# "evaluated, no real evidence exists" since both are legitimately
+# `None`. Every real production call (resolve_proposal) always sets
+# `stop_evaluated=True`, so a genuine missing/invalid stop for a real
+# trade is a real, enforced rejection, never silently waved through.
+def _valid_stop_check(stop_distance: float | None, stop_evaluated: bool) -> GatekeeperCheck:
+    if not stop_evaluated:
+        return GatekeeperCheck(
+            id="valid_stop",
+            label="Valid Stop-Loss",
+            passed=True,
+            detail="Not evaluated for this call — no stop-distance evidence in scope.",
+            code="gatekeeper_valid_stop",
+        )
+    passed = stop_distance is not None and math.isfinite(stop_distance) and stop_distance > 0
+    detail = (
+        f"Real ATR-based stop distance of {stop_distance:.4f} computed for this trade — a measurable risk boundary exists."
+        if passed and stop_distance is not None
+        else (
+            "No real ATR-based stop-loss distance could be computed for this symbol yet (insufficient real candle "
+            "history) — every trade must have a measurable, enforceable stop before execution."
+        )
+    )
+    return GatekeeperCheck(id="valid_stop", label="Valid Stop-Loss", passed=passed, detail=detail, code="gatekeeper_valid_stop")
+
+
 def evaluate_gatekeeper(
     proposal: TradeProposal,
     ceo_choice: AnalystChoice,
@@ -346,6 +391,8 @@ def evaluate_gatekeeper(
     price: float | None = None,
     sim_day: int | None = None,
     trading_restrictions: list[TradingRestriction] | None = None,
+    stop_distance: float | None = None,
+    stop_evaluated: bool = False,
 ) -> "GatekeeperVerdict":
     """`min_confidence_override` (Design Bible Chapter 75) — the real,
     disclosed points app/trading_modes.py's Daily Circuit Breaker adds to
@@ -380,7 +427,13 @@ def evaluate_gatekeeper(
     `trading_restrictions` (CEO directive "Layered Kill Switches," see
     app/trading_restrictions.py) feeds the new Trading Restriction
     check — None/empty behaves exactly as before this parameter existed
-    (nothing restricted)."""
+    (nothing restricted).
+
+    `stop_distance`/`stop_evaluated` (CEO directive "Hard Risk Gates 2.0
+    — Stop-Loss / Position-Risk Enforcement") feed the Valid Stop-Loss
+    check — see `_valid_stop_check()`'s own docstring for why this needs
+    two arguments (a bare `None` is a legitimate real "no ATR evidence"
+    read, not just "caller doesn't support this yet")."""
     from app.schemas import GatekeeperVerdict  # local import avoids a schemas.py forward-reference cycle at module load
 
     checks = [
@@ -403,6 +456,7 @@ def evaluate_gatekeeper(
         _failure_boundary_check(portfolio, risk_limits),
         _account_halt_check(proposal, portfolio, risk_limits, quantity, price, sim_day),
         _trading_restriction_check(proposal, trading_restrictions or []),
+        _valid_stop_check(stop_distance, stop_evaluated),
     ]
     approved = all(c.passed for c in checks)
     if approved:

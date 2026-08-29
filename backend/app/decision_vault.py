@@ -31,18 +31,16 @@ that JOINS all of the above into one addressable record per closed
 trade, and (2) a Similarity Engine that can honestly answer "have we
 seen this before."
 
+R-Multiple graduated from "deliberately not here" to real: CEO
+directive "Hard Risk Gates 2.0 — Stop-Loss / Position-Risk Enforcement"
+gave every real trade a real, ATR-based stop PRICE
+(PaperPosition.stopPrice/PaperTrade.stopPrice), so `rMultiple` is now a
+genuine `pnl_per_share / risk_per_share` computation (see `_r_multiple()`
+below) for any trade closed after that directive — still `None`, never
+backfilled or guessed, for every trade closed before it.
+
 WHAT'S DELIBERATELY NOT HERE, and why:
 
-  R-Multiple                  - no stop-loss/initial-risk basis exists
-                                 anywhere in this codebase's real risk
-                                 engine. app/risk_engine.py's
-                                 recommended_quantity() sizes a position
-                                 directly off equity% (risk_budget =
-                                 equity * risk_per_trade_pct / 100), never
-                                 off a stop distance — there is no "1R"
-                                 to divide anything by. DecisionVaultEntry.
-                                 rMultiple is always None, never
-                                 backfilled with a fabricated value.
   strategyId                  - CEO directive "Live Trade -> Strategy
                                  Provenance": real, but only ever set
                                  when the CEO explicitly selected a real
@@ -186,6 +184,25 @@ def _factor_score(factors: list, factor_id: str) -> float | None:  # noqa: ANN00
     return next((f.score for f in factors if f.id == factor_id), None)
 
 
+def _r_multiple(trade: PaperTrade) -> float | None:
+    """CEO directive "Hard Risk Gates 2.0 — Stop-Loss / Position-Risk
+    Enforcement" — real for the first time: PaperTrade.stop_price (set
+    once at open_position() time from app/position_sizing.py's own real
+    ATR-based stop distance) is this trade's actual planned risk-per-
+    share. `None` (never a fabricated value) whenever no real stop
+    existed for this trade — every trade closed before this directive,
+    and the honest minority of real trades where no ATR evidence
+    existed at open time either."""
+    if trade.stop_price is None or trade.entry_price <= 0:
+        return None
+    risk_per_share = abs(trade.entry_price - trade.stop_price)
+    if risk_per_share <= 0:
+        return None
+    direction = 1 if trade.side == "buy" else -1
+    pnl_per_share = (trade.exit_price - trade.entry_price) * direction
+    return round(pnl_per_share / risk_per_share, 4)
+
+
 def build_vault_entry(
     *,
     entry_id: str,
@@ -271,7 +288,7 @@ def build_vault_entry(
         pnl=trade.pnl,
         pnlPct=trade.pnl_pct,
         holdDurationMinutes=trade.duration_minutes,
-        rMultiple=None,
+        rMultiple=_r_multiple(trade),
         caseStudyId=case_study.id if case_study else None,
         caseStudyCategory=case_study.category if case_study else None,
         executiveNotes=meeting_log_entry.recommendation_reason if meeting_log_entry else None,

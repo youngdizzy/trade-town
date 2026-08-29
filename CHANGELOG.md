@@ -340,6 +340,88 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"TradeTown — Next Milestone: Hard Risk Gates 2.0 — Stop-Loss / Position-Risk Enforcement."**
+  A full Phase 1 audit of the real signal→strategy→sizing→risk→order→position→exit→P&L pipeline
+  (traced end to end: `app/executive.py`'s `generate_proposal()`/`resolve_proposal()`,
+  `app/position_sizing.py`'s `build_position_sizing()`, `app/gatekeeper.py`'s 13-check AND-gate,
+  `app/portfolio.py`'s `open_position()`/`close_position()`/`mark_to_market()`,
+  `app/broker.py`'s order book) confirmed the biggest real gap this codebase had: `PaperPosition`
+  had no `stopLoss`/`target` concept at all, `DecisionVaultEntry.rMultiple` was permanently `None`
+  ("no stop-loss/initial-risk basis exists"), and `app/broker.py`'s real `stop_loss`/`take_profit`
+  order machinery (gap-through worse-of-trigger-price fills, real slippage on trigger, automatic
+  cancellation when a linked position already closed another way) was fully built and tested in
+  isolation but had **zero live callers anywhere in the codebase** — a stop was computed as a
+  distance for sizing purposes and then discarded, never stored, never enforced.
+  - New `app/executive.py::resolve_proposal()` behavior: before the Gatekeeper's final approval, a
+    fresh `app/position_sizing.py::compute_volatility_sizing()` read (promoted from private
+    `_volatility_sizing()`, renamed since it's now a real cross-module utility, not a duplicate
+    computation) supplies a real ATR-based stop distance. The Gatekeeper gained a 14th hard check,
+    **Valid Stop-Loss** (`_valid_stop_check`) — a real buy/sell is rejected outright if no real,
+    positive, finite stop distance can be computed for that symbol yet (insufficient real candle
+    history), matching the directive's own Gate 3 ask verbatim. On approval, the real stop/target
+    PRICE (entry ± the real ATR distance; target uses a real, disclosed 2:1 reward:risk policy
+    constant, `TARGET_REWARD_RISK_MULTIPLE`) is stored on the new `PaperPosition` — new
+    `stopPrice`/`targetPrice` fields, immutable for the life of the position — and, for the first
+    time, a real linked `stop_loss` (and `take_profit`) order is placed via `app/broker.py`'s own
+    `place_order()`, activating its previously-dead trigger/fill/cancellation machinery for real.
+  - `DecisionVaultEntry.rMultiple` is now a genuine computation (`_r_multiple()` in
+    `app/decision_vault.py`) for any trade closed after this directive — `pnl_per_share /
+    risk_per_share` against the trade's own real stored stop — still honestly `None` for every
+    trade closed before it, never backfilled.
+  - New `PaperTrade.stopPrice`/`targetPrice` fields (carried over from the closed position).
+    `evaluate_gatekeeper()` gained `stop_distance`/`stop_evaluated` parameters with a real
+    "not evaluated" vacuous-pass convention (mirroring `_account_halt_check`'s own established
+    pattern) so a bare `None` can mean either "caller doesn't support this yet" or "evaluated, no
+    real evidence exists" without ambiguity.
+  - Frontend: `ActiveTradesPanel.tsx` now shows real Stop/Target/Current R for any position that has
+    them (a live-computed R-multiple from already-available fields, no new backend endpoint needed),
+    replacing the old unconditional "No stop order placed." `DecisionDetail.tsx`'s existing "Trade
+    Plan" section already looked up real linked exit orders from `paperPortfolio.orders` — it now
+    actually finds them, since real ones exist; only its empty-state message needed updating (was
+    claiming "TradeTown's auto-trader doesn't place exit orders yet," no longer true).
+  - New tests: `TestValidStopCheck` (7, `test_gatekeeper.py`), `TestResolveProposalStopLossEnforcement`
+    (7, `test_executive.py` — long/short stop/target direction, real protective-order placement,
+    the real gate wiring both when ATR evidence exists and when it doesn't, and a full real-rejection
+    integration proof), `TestRMultiple` + a `TestBuildVaultEntry` wiring case (8, `test_decision_vault.py`),
+    and a new `test_broker.py` case proving the real "stale stop" scenario (Phase 6) — a linked exit
+    order whose position already closed another way gets cancelled, not left dangling or erroring.
+    The pre-existing `test_broker.py` gap-through/slippage suite (`TestGapThroughFill`/`TestSlippage`)
+    already thoroughly covered the fill mechanics this pass activates — reused, not duplicated.
+  - **What's real and enforced already (confirmed by the audit, not rebuilt)**: daily/weekly/monthly
+    loss limits, drawdown, max open positions, position-size %, correlated exposure (both the crude
+    category-co-occurrence Gatekeeper check and the real pre-proposal Pearson-correlation gate),
+    behavioral circuit breaker, account-halt re-check at resolution time, trading restrictions —
+    all real, hard, already-enforced gates from earlier passes, none touched this pass.
+  - **Explicitly out of scope, disclosed not fabricated**: real broker protective orders at a live
+    venue (no brokerage SDK/credentials exist anywhere in this codebase — Design Bible Chapter 68's
+    Live Trading Gate stays permanently unmet); partial fills, duplicate-order dedup, order-ack
+    timeout, broker disconnect (no real order-acknowledgement infrastructure exists — every fill is
+    synchronous, next-tick-or-later, never partial); promoting `app/portfolio_risk.py`'s fuller
+    portfolio-intelligence read from advisory-narrowing to a hard pre-trade reject (a real, adjacent,
+    separately-scoped directive — see that module's own explicit "how much, never whether" boundary,
+    unchanged this pass).
+  - **A real bug live verification found and fixed**: `app/broker.py::tick_broker()` had no real
+    one-cancels-other (OCO) handling for a linked stop_loss/take_profit PAIR — once this pass
+    activated it as the first live caller, a real trade opened against the actual running dev server
+    hit its real take-profit, and the sibling stop-loss order was left permanently dangling "open" in
+    the order book instead of being cancelled (a genuine, previously-untested code path — nothing
+    ever placed a real OCO pair before this pass, so this gap was latent, not a regression). Fixed
+    with a real, order-iteration-independent two-part check in `tick_broker()`: an upfront per-order
+    guard (catches a sibling evaluated after the leg that closed its position, within the same tick)
+    plus a post-loop sweep (catches the more common real case — the untriggered sibling was iterated
+    *before* the leg that actually fired, so it can only discover the closure after the loop
+    finishes). Proven with two new symmetric tests (`test_a_take_profit_fill_cancels_its_sibling_
+    stop_loss_in_the_same_tick`, `test_a_stop_loss_fill_cancels_its_sibling_take_profit_in_the_same_
+    tick`) reproducing the exact real order the live server used (stop placed before target, matching
+    `resolve_proposal()`'s own real placement order) — this exact case would NOT have been caught by
+    unit tests alone without the live reproduction; the pre-existing `TestGapThroughFill`/`TestSlippage`
+    suites only ever exercised a single order at a time.
+  - Verified: full backend suite (3125 tests) green, `mypy`/`ruff` clean. Frontend `tsc`/lint/build
+    clean. Live-verified against the real running dev stack — a real proposal was resolved through the
+    actual `/api/executive/decide` endpoint, opening a real position with a real stop/target and real
+    linked orders, confirmed via screenshot in `WarRoomPanel`/`ActiveTradesPanel` and via the real
+    order book's own state before and after a real take-profit fill.
+
 - **"You are now entering the NEXT major TradeTown build phase," Phase 10 — session-suitability
   sizing: the CEO's own real SESSION x REGIME evidence stops being read-only analytics.** A
   background audit against the remaining scope of this 15-phase directive (Hard Risk Gates, Stress

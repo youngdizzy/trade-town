@@ -25,7 +25,7 @@ from app.position_sizing import (
     _regime_suitability_sizing,
     _session_suitability_sizing,
     _tier_for_sizing_score,
-    _volatility_sizing,
+    compute_volatility_sizing,
     build_position_sizing,
 )
 from app.risk_engine import SIM_MINUTES_PER_DAY, portfolio_equity
@@ -255,7 +255,7 @@ class TestVolatilitySizingBackwardCompat:
     met: an old save's PositionSizingResult dict with no `volatilitySizing`
     key at all must still validate."""
 
-    def test_position_sizing_result_validates_with_no_volatility_sizing_key_at_all(self) -> None:
+    def test_position_sizing_result_validates_with_nocompute_volatility_sizing_key_at_all(self) -> None:
         from app.schemas import PositionSizingResult
 
         old_save_shape = dict(
@@ -522,12 +522,12 @@ class TestBuildPositionSizingInverseVolCap:
 class TestVolatilitySizing:
     """CEO directive "Portfolio Construction, Capital Allocation &
     Execution Realism," Phase 3 — POSITION SIZE ~ RISK BUDGET / DISTANCE
-    TO STOP. Tests _volatility_sizing() directly against the directive's
+    TO STOP. Tests compute_volatility_sizing() directly against the directive's
     own explicit scenario list (low/high volatility, insufficient
     history) before testing the end-to-end narrowing effect below."""
 
     def test_insufficient_candle_history_reports_unavailable_not_fabricated(self) -> None:
-        read = _volatility_sizing(_Proposal(), _FakeProvider([], raise_for_missing=True), equity=100_000.0, risk_limits=RiskLimits())
+        read = compute_volatility_sizing(_Proposal(), _FakeProvider([], raise_for_missing=True), equity=100_000.0, risk_limits=RiskLimits())
         assert read.available is False
         assert read.stop_distance is None
         assert read.volatility_cap_quantity is None
@@ -536,13 +536,13 @@ class TestVolatilitySizing:
     def test_a_short_candle_history_below_the_atr_period_reports_unavailable(self) -> None:
         # Real candles exist, but too few for a real CHANDELIER_ATR_PERIOD-bar ATR window.
         short_history = [100.0 + (i % 2) for i in range(CHANDELIER_ATR_PERIOD - 1)]
-        read = _volatility_sizing(_Proposal(), _FakeProvider(short_history), equity=100_000.0, risk_limits=RiskLimits())
+        read = compute_volatility_sizing(_Proposal(), _FakeProvider(short_history), equity=100_000.0, risk_limits=RiskLimits())
         assert read.available is False
         assert read.volatility_cap_quantity is None
 
     def test_low_volatility_symbol_gets_a_real_available_read(self) -> None:
         calm = [100.0 + (i % 2) * 0.1 for i in range(VOLATILITY_CANDLE_COUNT)]
-        read = _volatility_sizing(_Proposal(price=100.0), _FakeProvider(calm), equity=100_000.0, risk_limits=RiskLimits())
+        read = compute_volatility_sizing(_Proposal(price=100.0), _FakeProvider(calm), equity=100_000.0, risk_limits=RiskLimits())
         assert read.available is True
         assert read.atr_value is not None and read.atr_value > 0
         assert read.stop_distance == round(CHANDELIER_ATR_MULTIPLIER * read.atr_value, 4)
@@ -550,8 +550,8 @@ class TestVolatilitySizing:
     def test_higher_volatility_produces_a_smaller_cap_at_the_same_dollar_risk(self) -> None:
         calm = [100.0 + (i % 2) * 0.5 for i in range(VOLATILITY_CANDLE_COUNT)]
         wild = [100.0 + (i % 2) * 5.0 for i in range(VOLATILITY_CANDLE_COUNT)]
-        calm_read = _volatility_sizing(_Proposal(price=100.0), _FakeProvider(calm), equity=100_000.0, risk_limits=RiskLimits())
-        wild_read = _volatility_sizing(_Proposal(price=100.0), _FakeProvider(wild), equity=100_000.0, risk_limits=RiskLimits())
+        calm_read = compute_volatility_sizing(_Proposal(price=100.0), _FakeProvider(calm), equity=100_000.0, risk_limits=RiskLimits())
+        wild_read = compute_volatility_sizing(_Proposal(price=100.0), _FakeProvider(wild), equity=100_000.0, risk_limits=RiskLimits())
         assert wild_read.atr_value is not None and calm_read.atr_value is not None
         assert wild_read.atr_value > calm_read.atr_value
         # The directive's own explicit rule: a more volatile symbol must
@@ -568,7 +568,7 @@ class TestVolatilitySizing:
 
     def test_risk_budget_reuses_risk_per_trade_pct_not_a_new_parameter(self) -> None:
         limits = RiskLimits(riskPerTradePct=3.5)
-        read = _volatility_sizing(_Proposal(), _FakeProvider(), equity=100_000.0, risk_limits=limits)
+        read = compute_volatility_sizing(_Proposal(), _FakeProvider(), equity=100_000.0, risk_limits=limits)
         assert read.risk_budget_usd == 100_000.0 * 3.5 / 100
 
     def test_a_tighter_atr_multiplier_stop_widens_the_cap_a_wider_stop_narrows_it(self) -> None:
@@ -576,7 +576,7 @@ class TestVolatilitySizing:
         # stop distance would imply — confirms the division direction is
         # correct (cap = budget / distance, not the reverse).
         moderate = [100.0 + (i % 2) * 2.0 for i in range(VOLATILITY_CANDLE_COUNT)]
-        read = _volatility_sizing(_Proposal(price=100.0), _FakeProvider(moderate), equity=100_000.0, risk_limits=RiskLimits())
+        read = compute_volatility_sizing(_Proposal(price=100.0), _FakeProvider(moderate), equity=100_000.0, risk_limits=RiskLimits())
         assert read.stop_distance is not None and read.risk_budget_usd is not None
         assert read.volatility_cap_quantity == round(read.risk_budget_usd / read.stop_distance, 4)
 

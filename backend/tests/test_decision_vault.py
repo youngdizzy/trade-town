@@ -13,6 +13,7 @@ from app.decision_vault import (
     MIN_SIMILAR_MATCHES,
     MISTAKE_WARNING_SHARE,
     PATTERN_FREQUENCY_CAP,
+    _r_multiple,
     build_vault_entry,
     compute_evidence_score,
     compute_knowledge_quality_score,
@@ -121,14 +122,18 @@ def _trade(
     pnl: float = 100.0,
     pnl_pct: float = 2.0,
     decision_id: str = "decision-proposal-1",
+    side: str = "buy",
+    entry_price: float = 100.0,
+    exit_price: float | None = None,
+    stop_price: float | None = None,
 ) -> PaperTrade:
     return PaperTrade(
         id=trade_id,
         symbol=symbol,
-        side="buy",  # type: ignore[arg-type]
+        side=side,  # type: ignore[arg-type]
         quantity=10.0,
-        entryPrice=100.0,
-        exitPrice=100.0 + pnl / 10.0,
+        entryPrice=entry_price,
+        exitPrice=exit_price if exit_price is not None else entry_price + pnl / 10.0,
         pnl=pnl,
         pnlPct=pnl_pct,
         durationMinutes=120,
@@ -141,6 +146,7 @@ def _trade(
         decisionId=decision_id,
         openedAt=_now_iso(),
         closedAt=_now_iso(),
+        stopPrice=stop_price,
     )
 
 
@@ -241,6 +247,44 @@ class TestComputeEvidenceScore:
         assert compute_evidence_score([]) == 0.0
 
 
+class TestRMultiple:
+    """CEO directive "Hard Risk Gates 2.0 — Stop-Loss / Position-Risk
+    Enforcement" — real for the first time: PaperTrade.stop_price makes
+    this a genuine pnl_per_share / risk_per_share computation."""
+
+    def test_none_when_no_stop_price_exists(self) -> None:
+        trade = _trade(stop_price=None)
+        assert _r_multiple(trade) is None
+
+    def test_none_when_entry_price_is_not_positive(self) -> None:
+        trade = _trade(entry_price=0.0, stop_price=95.0)
+        assert _r_multiple(trade) is None
+
+    def test_none_on_a_degenerate_zero_distance_stop(self) -> None:
+        trade = _trade(entry_price=100.0, stop_price=100.0)
+        assert _r_multiple(trade) is None
+
+    def test_a_long_that_hit_its_full_2r_target(self) -> None:
+        # Entry 100, stop 95 (5-point real risk), exit 110 — a real
+        # 2R winner.
+        trade = _trade(side="buy", entry_price=100.0, exit_price=110.0, stop_price=95.0)
+        assert _r_multiple(trade) == 2.0
+
+    def test_a_long_that_hit_its_stop_is_exactly_minus_1r(self) -> None:
+        trade = _trade(side="buy", entry_price=100.0, exit_price=95.0, stop_price=95.0)
+        assert _r_multiple(trade) == -1.0
+
+    def test_a_short_that_hit_its_full_2r_target(self) -> None:
+        # Entry 100, stop 105 (5-point real risk, above entry for a
+        # short), exit 90 — a real 2R winner.
+        trade = _trade(side="sell", entry_price=100.0, exit_price=90.0, stop_price=105.0)
+        assert _r_multiple(trade) == 2.0
+
+    def test_a_short_that_hit_its_stop_is_exactly_minus_1r(self) -> None:
+        trade = _trade(side="sell", entry_price=100.0, exit_price=105.0, stop_price=105.0)
+        assert _r_multiple(trade) == -1.0
+
+
 class TestBuildVaultEntry:
     def test_joins_the_real_artifacts_already_computed_for_the_trade(self) -> None:
         decision = _decision()
@@ -268,6 +312,29 @@ class TestBuildVaultEntry:
         assert entry.pnl == 100.0
         assert entry.strategy_id is None
         assert entry.r_multiple is None
+
+    def test_r_multiple_is_real_when_the_trade_carries_a_real_stop_price(self) -> None:
+        """CEO directive "Hard Risk Gates 2.0 — Stop-Loss / Position-Risk
+        Enforcement" — a real PaperTrade.stop_price makes rMultiple a
+        genuine computation, not fabricated or backfilled."""
+        decision = _decision()
+        trade = _trade(side="buy", entry_price=100.0, exit_price=110.0, stop_price=95.0)
+        review = _discipline_review()
+        entry = build_vault_entry(
+            entry_id="vault-trade-1",
+            trade=trade,
+            decision=decision,
+            discipline_review=review,
+            market_regime="strong_bull_trend",
+            market_regime_label="Strong Bull Trend",
+            provider=MockMarketDataProvider(),
+            case_study=None,
+            meeting_log_entry=None,
+            ceo_decision=None,
+            company_dna_change=None,
+            sim_day=5,
+        )
+        assert entry.r_multiple == 2.0
 
     def test_strategy_id_is_threaded_through_from_a_real_ceo_decision_record(self) -> None:
         """CEO directive "Live Trade -> Strategy Provenance" -- the CEO's

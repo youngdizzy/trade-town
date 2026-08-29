@@ -16896,6 +16896,150 @@ clean (a stale `.mypy_cache` briefly masked the missing-argument error
 at the new `nexus.py` call site — cleared and re-verified). Frontend
 `tsc`/lint/build clean.
 
+## Hard Risk Gates 2.0 — Stop-Loss / Position-Risk Enforcement
+
+CEO directive "Hard Risk Gates 2.0 — Stop-Loss / Position-Risk
+Enforcement." Phase 1 traced the full real
+signal→strategy→sizing→risk→order→position→exit→P&L pipeline before
+writing any code: `app/executive.py`'s `generate_proposal()` (signal
+creation, real per-tick watchlist price) /`resolve_proposal()` (the one
+real conversion point from `TradeProposal` to `PaperPosition`),
+`app/position_sizing.py`'s `build_position_sizing()` (the one real
+sizing entry point), `app/gatekeeper.py`'s AND-gate (13 real checks
+before this pass), `app/portfolio.py`'s `open_position()`/
+`close_position()`/`mark_to_market()` (the one real execution choke
+point every fill funnels through), and `app/broker.py`'s order book.
+
+**The confirmed gap**: `PaperPosition` had no `stopLoss`/`target`
+concept at all. `DecisionVaultEntry.rMultiple` was permanently `None`
+("no stop-loss/initial-risk basis exists"). Most strikingly,
+`app/broker.py`'s real `stop_loss`/`take_profit` order machinery —
+real gap-through worse-of-trigger-price fills, real slippage on
+trigger, automatic cancellation when a linked position already closed
+another way — was fully built and unit-tested in isolation
+(`TestGapThroughFill`/`TestSlippage` in `test_broker.py`) but had
+**zero live callers anywhere in the codebase**. A real ATR-based stop
+distance was already computed for sizing purposes
+(`app/position_sizing.py`'s `_volatility_sizing()`) and then simply
+discarded — never stored as a price, never enforced.
+
+**What was already real and enforced** (confirmed, not rebuilt): daily/
+weekly/monthly loss limits, drawdown, max open positions, position-size
+%, correlated exposure (both the Gatekeeper's own crude category-
+co-occurrence check and the real pre-proposal Pearson-correlation gate
+in `app/opportunity_gatekeeper.py`), the behavioral circuit breaker,
+the account-halt live re-check at resolution time, trading
+restrictions. All hard, all real, none touched this pass.
+
+**What was built**:
+
+`app/position_sizing.py::_volatility_sizing()` was promoted to a public
+`compute_volatility_sizing()` — no duplicate math, since it's now a
+real cross-module utility rather than a private implementation detail.
+
+`app/executive.py::resolve_proposal()` now computes a fresh real
+ATR-based stop distance (via `compute_volatility_sizing()`, using
+`market_data_provider` as its real default so no existing test needed
+updating just to keep compiling) BEFORE the Gatekeeper's final
+approval — never trusting a possibly-stale `PositionSizingResult` from
+proposal-creation time, matching the function's own "recompute fresh,
+never stale" convention already established for the position-sizing
+ceiling. `app/gatekeeper.py` gained a 14th hard check, **Valid
+Stop-Loss** (`_valid_stop_check`): a real buy/sell is rejected outright
+if no real, positive, finite stop distance exists for that symbol yet.
+Its `stop_distance`/`stop_evaluated` parameters use a real two-part
+"not evaluated" convention (mirroring `_account_halt_check`'s own
+established pattern) since a bare `None` is a legitimate real "no ATR
+evidence" answer here, not just "caller doesn't support this yet" — an
+important distinction `quantity`/`price`/`sim_day`'s simpler
+None-means-unready convention didn't need to make.
+
+On approval, the real stop/target PRICE (entry ± the real ATR
+distance; target uses a real, disclosed 2:1 reward:risk policy
+constant, `TARGET_REWARD_RISK_MULTIPLE`) is stored on the new
+`PaperPosition.stopPrice`/`targetPrice` fields (immutable for the life
+of the position), and — for the first time — a real linked
+`stop_loss`/`take_profit` order pair is placed via
+`app/broker.py::place_order()`, activating its previously-dead
+trigger/fill/cancellation machinery. `PaperTrade` carries the same
+fields through at close, which is what finally makes
+`DecisionVaultEntry.rMultiple` (`app/decision_vault.py::_r_multiple()`)
+a genuine `pnl_per_share / risk_per_share` computation for any trade
+closed after this directive — still honestly `None` for every earlier
+trade, never backfilled.
+
+### A real bug live verification found: no OCO handling
+
+Live-verifying against the actual running dev server (not just the
+test suite) opened a real position, watched its real take-profit order
+fire, and found the untriggered sibling stop-loss order left
+permanently "open" in the order book — `tick_broker()` had never
+needed one-cancels-other (OCO) semantics before, since nothing had ever
+placed a real linked exit-order PAIR. This was a latent gap in
+already-existing code, not a regression this pass introduced, but this
+pass is what exposed it by finally using the mechanism for real.
+
+Fixed with two complementary, order-iteration-independent checks in
+`tick_broker()`: an upfront per-order guard (catches a sibling
+evaluated *after* the leg that closed its position, within the same
+tick) and a post-loop sweep (catches the more common real case — the
+untriggered sibling was iterated *before* the leg that actually fired,
+so it can only discover the closure after the main loop finishes;
+`resolve_proposal()` always places the stop before the target, so this
+is the realistic ordering). Two new symmetric tests in `test_broker.py`
+reproduce the exact real placement order the live server used, proving
+both directions (`test_a_take_profit_fill_cancels_its_sibling_stop_
+loss_in_the_same_tick`, `test_a_stop_loss_fill_cancels_its_sibling_
+take_profit_in_the_same_tick`) — this specific ordering bug would not
+have been caught by unit tests exercising one order at a time, which is
+exactly what the pre-existing `TestGapThroughFill`/`TestSlippage`
+suites did.
+
+### Frontend
+
+`ActiveTradesPanel.tsx` shows real Stop/Target/Current R for any
+position that has them (Current R is a live client-side computation
+from already-available real fields — no new backend endpoint needed),
+replacing the old unconditional "No stop order placed." `DecisionDetail.
+tsx`'s existing "Trade Plan" section already looked up real linked exit
+orders from `paperPortfolio.orders` — it now actually finds them, since
+real ones exist; only its empty-state copy needed updating.
+
+### Explicitly out of scope, disclosed not fabricated
+
+Real broker protective orders at a live venue (no brokerage SDK/
+credentials exist anywhere in this codebase — Design Bible Chapter 68's
+Live Trading Gate stays permanently unmet). Partial fills, duplicate-
+order dedup, order-ack timeout, broker disconnect handling (no real
+order-acknowledgement infrastructure exists — every fill is
+synchronous, next-tick-or-later, never partial, so there is nothing
+real to build a partial-fill/dedup/timeout handler against). Promoting
+`app/portfolio_risk.py`'s fuller portfolio-intelligence read from
+advisory-narrowing to a hard pre-trade reject — a real, adjacent,
+separately-scoped directive (see that module's own explicit "how much,
+never whether" boundary), deliberately unchanged this pass to avoid
+silently expanding its documented authority.
+
+### Verification
+
+New tests: `TestValidStopCheck` (7, `test_gatekeeper.py`),
+`TestResolveProposalStopLossEnforcement` (7, `test_executive.py` —
+long/short stop/target direction, real protective-order placement, the
+gate wiring both when ATR evidence exists and when it doesn't, and a
+full real-rejection integration proof), `TestRMultiple` plus a
+`TestBuildVaultEntry` wiring case (8, `test_decision_vault.py`), and
+three new `test_broker.py` cases (the stale-order cancellation proof
+plus the two OCO cases above). Full backend suite green (3125 tests),
+`mypy`/`ruff` clean. Frontend `tsc`/lint/build clean.
+
+Live-verified against the real running dev stack: a real pending
+proposal was resolved through the actual `POST /api/executive/decide`
+endpoint, opening real positions with real stop/target prices and real
+linked orders (confirmed via the order book's own state), one of which
+hit its real take-profit and closed at exactly its target price. A
+still-open position's real Stop/Target/Current R rendered correctly in
+`ActiveTradesPanel` via a live browser screenshot.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

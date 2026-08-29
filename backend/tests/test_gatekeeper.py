@@ -24,6 +24,7 @@ from app.gatekeeper import (
     _risk_manager_check,
     _risk_warning_check,
     _trading_restriction_check,
+    _valid_stop_check,
     evaluate_gatekeeper,
     grade_gatekeeper_rejections,
 )
@@ -440,6 +441,47 @@ def _restriction(*, scope: str = "symbol", target: str = "NEXA", active: bool = 
     )
 
 
+class TestValidStopCheck:
+    """CEO directive "Hard Risk Gates 2.0 — Stop-Loss / Position-Risk
+    Enforcement," Gate 3 — every real trade must have a measurable,
+    enforceable stop distance BEFORE execution."""
+
+    def test_vacuously_passes_when_stop_evaluated_is_false(self) -> None:
+        check = _valid_stop_check(None, False)
+        assert check.passed is True
+
+    def test_vacuously_passes_even_with_a_real_distance_when_not_evaluated(self) -> None:
+        # stop_evaluated is the real signal, not the mere presence of a
+        # number — a caller that hasn't opted into this gate yet stays
+        # unaffected even if it happens to pass a real-looking value.
+        check = _valid_stop_check(2.5, False)
+        assert check.passed is True
+
+    def test_fails_when_no_real_stop_distance_could_be_computed(self) -> None:
+        check = _valid_stop_check(None, True)
+        assert check.passed is False
+        assert "no real" in check.detail.lower() or "insufficient" in check.detail.lower()
+
+    def test_fails_on_a_zero_distance_stop(self) -> None:
+        check = _valid_stop_check(0.0, True)
+        assert check.passed is False
+
+    def test_fails_on_a_negative_distance_stop(self) -> None:
+        check = _valid_stop_check(-1.5, True)
+        assert check.passed is False
+
+    def test_fails_on_a_non_finite_distance(self) -> None:
+        check = _valid_stop_check(float("nan"), True)
+        assert check.passed is False
+        check_inf = _valid_stop_check(float("inf"), True)
+        assert check_inf.passed is False
+
+    def test_passes_with_a_real_positive_finite_distance(self) -> None:
+        check = _valid_stop_check(3.25, True)
+        assert check.passed is True
+        assert "3.2500" in check.detail
+
+
 class TestTradingRestrictionCheck:
     """CEO directive "Layered Kill Switches" — the Gatekeeper's own
     defense-in-depth half of app/trading_restrictions.py's two real
@@ -510,7 +552,10 @@ class TestEvaluateGatekeeper:
         # Restriction, vacuously passing here since no
         # trading_restrictions were supplied (see
         # TestTradingRestrictionCheck below for the real behavior).
-        assert len(verdict.checks) == 13
+        # 14th check: CEO directive "Hard Risk Gates 2.0" — Valid
+        # Stop-Loss, vacuously passing here since stop_evaluated wasn't
+        # passed (see TestValidStopCheck below for the real behavior).
+        assert len(verdict.checks) == 14
         assert all(c.passed for c in verdict.checks)
         assert "APPROVED" in verdict.summary
         # CEO directive "Professional Quant Firm Phase 41-45," Critical Task #0's No-Trade

@@ -171,6 +171,118 @@ def test_tick_broker_threads_risk_limits_into_a_real_exit_fill():
     assert trades_without_limits[0].distance_to_drawdown_ceiling_before_pct is None
 
 
+def test_a_linked_exit_order_is_cancelled_when_its_position_already_closed_another_way():
+    """CEO directive "Hard Risk Gates 2.0 — Stop-Loss / Position-Risk
+    Enforcement," Phase 6 — a real "stale stop" case: the position this
+    order protects already closed some other way (e.g. app/paper_
+    trading.py's hold-duration close) before this order's own trigger
+    was ever reached. tick_broker() must not silently leave the order
+    open forever, and must not error trying to act on a position that no
+    longer exists — it cancels the order, a real, inspectable status."""
+    portfolio = open_position(
+        default_portfolio(),
+        position_id="pos-1",
+        symbol="AAPL",
+        price=100.0,
+        opened_by="scout",
+        confidence=90.0,
+        opened_sim_minutes=0,
+    )
+    portfolio = place_order(
+        portfolio,
+        order_id="order-sl",
+        symbol="AAPL",
+        side="sell",
+        order_type="stop_loss",
+        quantity=portfolio.positions[0].quantity,
+        price=95.0,
+        placed_by="sentinel",
+        reason="test",
+        confidence=90.0,
+        linked_position_id="pos-1",
+    )
+    # The position closed some other way (simulating paper_trading.py's
+    # own hold-duration close) — the linked exit order is now orphaned.
+    portfolio = portfolio.model_copy(update={"positions": []})
+
+    updated, trades = tick_broker(portfolio, {"AAPL": 90.0}, _time())
+    assert trades == []
+    resolved_order = next(o for o in updated.orders if o.id == "order-sl")
+    assert resolved_order.status == "cancelled"
+
+
+def test_a_take_profit_fill_cancels_its_sibling_stop_loss_in_the_same_tick():
+    """CEO directive "Hard Risk Gates 2.0 — Stop-Loss / Position-Risk
+    Enforcement," Phase 6 — the real one-cancels-other (OCO) case a live-
+    verification pass against the actual running app surfaced: a
+    stop_loss/take_profit PAIR linked to the same position. Once one leg
+    fills, the other must be cancelled immediately (same tick), not left
+    dangling in the open book waiting for its own unrelated price
+    condition to eventually, coincidentally trigger — proven here by
+    placing both legs, moving price to only the take_profit's trigger,
+    and checking the still-untouched stop_loss is cancelled in that same
+    tick_broker() call, not merely still "open"."""
+    portfolio = open_position(
+        default_portfolio(), position_id="pos-1", symbol="AAPL", price=100.0, opened_by="scout", confidence=90.0, opened_sim_minutes=0,
+    )
+    quantity = portfolio.positions[0].quantity
+    portfolio = place_order(
+        portfolio, order_id="order-sl", symbol="AAPL", side="sell", order_type="stop_loss",
+        quantity=quantity, price=95.0, placed_by="sentinel", reason="test", confidence=90.0, linked_position_id="pos-1",
+    )
+    portfolio = place_order(
+        portfolio, order_id="order-tp", symbol="AAPL", side="sell", order_type="take_profit",
+        quantity=quantity, price=110.0, placed_by="sentinel", reason="test", confidence=90.0, linked_position_id="pos-1",
+    )
+
+    # Price only reaches the take-profit trigger — the stop-loss's own
+    # price condition (<=95.0) is never met on its own.
+    updated, trades = tick_broker(portfolio, {"AAPL": 110.0}, _time())
+    assert len(trades) == 1
+    assert trades[0].reason == "Take-profit target reached"
+    assert updated.positions == []
+
+    tp_order = next(o for o in updated.orders if o.id == "order-tp")
+    sl_order = next(o for o in updated.orders if o.id == "order-sl")
+    assert tp_order.status == "filled"
+    # The real fix: the untriggered sibling is cancelled in this SAME
+    # tick, not left "open" forever.
+    assert sl_order.status == "cancelled"
+
+    # A second tick must not error or double-act on the already-resolved
+    # pair — both orders have already left the open book.
+    still_open_after = [o for o in updated.orders if o.status == "open"]
+    assert still_open_after == []
+
+
+def test_a_stop_loss_fill_cancels_its_sibling_take_profit_in_the_same_tick():
+    """The symmetric, more common real-world OCO case: a losing trade
+    hits its real stop first — the untriggered take-profit sibling must
+    be cancelled too, not left open forever."""
+    portfolio = open_position(
+        default_portfolio(), position_id="pos-1", symbol="AAPL", price=100.0, opened_by="scout", confidence=90.0, opened_sim_minutes=0,
+    )
+    quantity = portfolio.positions[0].quantity
+    portfolio = place_order(
+        portfolio, order_id="order-sl", symbol="AAPL", side="sell", order_type="stop_loss",
+        quantity=quantity, price=95.0, placed_by="sentinel", reason="test", confidence=90.0, linked_position_id="pos-1",
+    )
+    portfolio = place_order(
+        portfolio, order_id="order-tp", symbol="AAPL", side="sell", order_type="take_profit",
+        quantity=quantity, price=110.0, placed_by="sentinel", reason="test", confidence=90.0, linked_position_id="pos-1",
+    )
+
+    updated, trades = tick_broker(portfolio, {"AAPL": 90.0}, _time())
+    assert len(trades) == 1
+    assert trades[0].reason == "Stop-loss triggered"
+    assert updated.positions == []
+
+    sl_order = next(o for o in updated.orders if o.id == "order-sl")
+    tp_order = next(o for o in updated.orders if o.id == "order-tp")
+    assert sl_order.status == "filled"
+    assert tp_order.status == "cancelled"
+
+
 class TestSlippage:
     """CEO directive "Next Professional Trading Firm Phase," Priority 1
     (Execution Realism, app/execution_quality.py)."""

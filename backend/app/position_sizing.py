@@ -234,7 +234,7 @@ def _tier_allocation_pct(risk_limits: RiskLimits, tier: PositionTier) -> float:
     }[tier]
 
 
-def _volatility_sizing(proposal: TradeProposal, provider: MarketDataProvider, equity: float, risk_limits: RiskLimits) -> VolatilitySizingRead:
+def compute_volatility_sizing(proposal: TradeProposal, provider: MarketDataProvider, equity: float, risk_limits: RiskLimits) -> VolatilitySizingRead:
     """CEO directive "Portfolio Construction, Capital Allocation &
     Execution Realism," Phase 3 — POSITION SIZE ~ RISK BUDGET / DISTANCE
     TO STOP. `stop_distance` is a real ATR-based read (the same
@@ -291,11 +291,11 @@ def _inverse_vol_sizing(proposal: TradeProposal, provider: MarketDataProvider, e
     0-1 — the same composite evidence read every other sizing tier
     above already keys off, never a second invented confidence number.
     `target_risk_pct` reuses `risk_limits.risk_per_trade_pct`, the
-    identical real risk-per-trade figure `_volatility_sizing()`'s own
+    identical real risk-per-trade figure `compute_volatility_sizing()`'s own
     ATR-stop-budget cap already uses, so both caps are measured against
     the same real risk policy rather than two different implied
     budgets. `None` (never a fabricated cap) below the same minimum
-    real candle history `_volatility_sizing()` requires.
+    real candle history `compute_volatility_sizing()` requires.
 
     HONEST BOUNDARY: this scales ONE candidate's own exposure inversely
     to its OWN volatility — it does not (yet) normalize risk
@@ -550,13 +550,13 @@ def build_position_sizing(
     order to force a same-tick recompute. `provider` (CEO directive
     "Portfolio Construction, Capital Allocation & Execution Realism,"
     Phase 3) feeds the real ATR-based volatility cap — see
-    _volatility_sizing()'s own docstring. `session`/`regime`/
+    compute_volatility_sizing()'s own docstring. `session`/`regime`/
     `decision_vault` (CEO directive "You are now entering the NEXT major
     TradeTown build phase," Phase 10) feed the real session-suitability
     cap — see _session_suitability_sizing()'s own docstring."""
     equity = portfolio_equity(portfolio)
     price = proposal.price
-    volatility_sizing = _volatility_sizing(proposal, provider, equity, risk_limits)
+    volatility_sizing = compute_volatility_sizing(proposal, provider, equity, risk_limits)
     if equity <= 0 or price <= 0 or ceiling_quantity <= 0:
         return PositionSizingResult(
             tier="exploratory",
@@ -617,7 +617,7 @@ def build_position_sizing(
     # Execution Realism," Phase 3 — the real ATR-based volatility cap,
     # narrowing-only like every other cap here. Only ever binds when
     # real ATR evidence exists (never a fabricated cap from a missing
-    # candle history — see _volatility_sizing()'s own docstring).
+    # candle history — see compute_volatility_sizing()'s own docstring).
     volatility_cap_quantity = volatility_sizing.volatility_cap_quantity if volatility_sizing.available and volatility_sizing.volatility_cap_quantity is not None else candidate_quantity
 
     # CEO directive "AHL-Inspired Systematic Trend & Momentum Research
