@@ -6,6 +6,8 @@ docstring for the full honesty boundary).
 """
 from __future__ import annotations
 
+import pytest
+
 from app.market_data import Candle, MarketDataProvider, Quote
 from app.portfolio_intelligence import (
     CORRELATION_CLUSTER_THRESHOLD,
@@ -17,6 +19,7 @@ from app.portfolio_intelligence import (
     _exposure_summary,
     _heat,
     _opportunity_cost,
+    _per_position_capital_at_risk,
     _strategy_exposure,
     count_correlated_positions,
     pearson_correlation,
@@ -138,11 +141,11 @@ class TestReturns:
 
 class TestCategoryExposure:
     def test_empty_portfolio_returns_no_exposure(self) -> None:
-        assert _category_exposure(_portfolio(), equity=100000.0) == []
+        assert _category_exposure(_portfolio(), equity=100000.0, capital_at_risk_by_position={}) == []
 
     def test_groups_by_real_symbol_category_and_sums_value(self) -> None:
         portfolio = _portfolio(positions=[_position(position_id="p1", symbol="AAPL", quantity=10.0, current_price=100.0), _position(position_id="p2", symbol="MSFT", quantity=5.0, current_price=200.0)])
-        exposures = _category_exposure(portfolio, equity=100000.0)
+        exposures = _category_exposure(portfolio, equity=100000.0, capital_at_risk_by_position={})
         categories = {e.category: e for e in exposures}
         assert categories["company"].value == 1000.0
         assert categories["company"].position_count == 1
@@ -150,7 +153,7 @@ class TestCategoryExposure:
 
     def test_multiple_positions_in_the_same_category_are_combined(self) -> None:
         portfolio = _portfolio(positions=[_position(position_id="p1", symbol="SPY", quantity=10.0, current_price=100.0), _position(position_id="p2", symbol="QQQ", quantity=10.0, current_price=100.0)])
-        exposures = _category_exposure(portfolio, equity=100000.0)
+        exposures = _category_exposure(portfolio, equity=100000.0, capital_at_risk_by_position={})
         index_exposure = next(e for e in exposures if e.category == "index")
         etf_exposure = next(e for e in exposures if e.category == "etf")
         assert index_exposure.value == 1000.0
@@ -158,18 +161,50 @@ class TestCategoryExposure:
 
     def test_unknown_symbol_not_in_symbol_category_is_skipped(self) -> None:
         portfolio = _portfolio(positions=[_position(symbol="UNKNOWN-XYZ")])
-        assert _category_exposure(portfolio, equity=100000.0) == []
+        assert _category_exposure(portfolio, equity=100000.0, capital_at_risk_by_position={}) == []
 
     def test_sorted_by_pct_of_equity_descending(self) -> None:
         portfolio = _portfolio(positions=[_position(position_id="p1", symbol="AAPL", quantity=1.0, current_price=100.0), _position(position_id="p2", symbol="MSFT", quantity=50.0, current_price=100.0)])
-        exposures = _category_exposure(portfolio, equity=100000.0)
+        exposures = _category_exposure(portfolio, equity=100000.0, capital_at_risk_by_position={})
         assert exposures[0].category == "stock"
         assert exposures[0].pct_of_equity >= exposures[1].pct_of_equity
 
     def test_zero_equity_reports_zero_pct_rather_than_dividing_by_zero(self) -> None:
         portfolio = _portfolio(positions=[_position()])
-        exposures = _category_exposure(portfolio, equity=0.0)
+        exposures = _category_exposure(portfolio, equity=0.0, capital_at_risk_by_position={})
         assert exposures[0].pct_of_equity == 0.0
+
+    # CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance,
+    # 11/10 Professional Quant Implementation," Phase 8 — the real,
+    # stop-distance-based capital-at-risk reading grouped by asset
+    # class, completing the FIRM -> ASSET CLASS -> STRATEGY -> AGENT ->
+    # POSITION hierarchy at this level. `value`/`pctOfEquity` stay real
+    # notional exposure, unchanged.
+
+    def test_capital_at_risk_is_summed_within_a_category_by_real_position_id(self) -> None:
+        portfolio = _portfolio(positions=[
+            _position(position_id="p1", symbol="AAPL", quantity=10.0, current_price=100.0),
+            _position(position_id="p2", symbol="AMZN", quantity=5.0, current_price=100.0),
+        ])
+        # Both AAPL and AMZN are real "company" category (see
+        # SYMBOL_CATEGORY) — one shared group to sum across.
+        by_position = {"p1": 150.0, "p2": 75.0}
+        exposures = _category_exposure(portfolio, equity=100000.0, capital_at_risk_by_position=by_position)
+        company = next(e for e in exposures if e.category == "company")
+        assert company.capital_at_risk_usd == 225.0
+        assert company.capital_at_risk_pct_of_equity == 0.2
+
+    def test_a_position_excluded_from_the_shared_dict_contributes_zero_not_a_crash(self) -> None:
+        # A position absent from capital_at_risk_by_position (no real
+        # candle history — see _per_position_capital_at_risk()) must
+        # never crash the grouping, and must never be silently counted
+        # as some fabricated nonzero value.
+        portfolio = _portfolio(positions=[_position(position_id="p1", symbol="AAPL", quantity=10.0, current_price=100.0)])
+        exposures = _category_exposure(portfolio, equity=100000.0, capital_at_risk_by_position={})
+        company = next(e for e in exposures if e.category == "company")
+        assert company.capital_at_risk_usd == 0.0
+        # The real notional value is completely unaffected.
+        assert company.value == 1000.0
 
 
 class TestCorrelationPairs:
@@ -442,13 +477,13 @@ class TestCountCorrelatedPositions:
 
 class TestHeat:
     def test_empty_portfolio_is_cool_with_zero_readings(self) -> None:
-        heat = _heat(_portfolio(positions=[]), equity=100000.0, category_exposure=[], provider=_FakeProvider({}))
+        heat = _heat(_portfolio(positions=[]), equity=100000.0, category_exposure=[], capital_at_risk_by_position={}, capital_at_risk_excluded=[])
         assert heat.tier == "cool"
         assert heat.total_capital_at_risk_pct == 0.0
         assert heat.hottest_category is None
 
     def test_zero_equity_is_cool_rather_than_dividing_by_zero(self) -> None:
-        heat = _heat(_portfolio(positions=[_position()]), equity=0.0, category_exposure=[], provider=_FakeProvider({}))
+        heat = _heat(_portfolio(positions=[_position()]), equity=0.0, category_exposure=[], capital_at_risk_by_position={}, capital_at_risk_excluded=[])
         assert heat.tier == "cool"
 
     def test_tier_thresholds_from_cool_to_overheated(self) -> None:
@@ -456,7 +491,7 @@ class TestHeat:
             equity = 100000.0
             position_value = equity * capital_at_risk_pct / 100
             portfolio = _portfolio(positions=[_position(quantity=1.0, current_price=position_value)])
-            heat = _heat(portfolio, equity=equity, category_exposure=[], provider=_FakeProvider({}))
+            heat = _heat(portfolio, equity=equity, category_exposure=[], capital_at_risk_by_position={}, capital_at_risk_excluded=[])
             assert heat.tier == expected_tier, f"{capital_at_risk_pct}% should be {expected_tier}, got {heat.tier}"
 
     def test_unrealized_drawdown_only_reports_when_portfolio_is_net_negative(self) -> None:
@@ -469,17 +504,17 @@ class TestHeat:
         itself must be the one that's genuinely below/above
         `starting_balance` to exercise a real unrealized loss/gain."""
         losing = _portfolio(positions=[_position(current_price=90.0)], starting_balance=100_000.0)
-        heat = _heat(losing, equity=95_000.0, category_exposure=[], provider=_FakeProvider({}))
+        heat = _heat(losing, equity=95_000.0, category_exposure=[], capital_at_risk_by_position={}, capital_at_risk_excluded=[])
         assert heat.unrealized_drawdown_pct == 5.0
 
         winning = _portfolio(positions=[_position(current_price=110.0)], starting_balance=100_000.0)
-        heat = _heat(winning, equity=105_000.0, category_exposure=[], provider=_FakeProvider({}))
+        heat = _heat(winning, equity=105_000.0, category_exposure=[], capital_at_risk_by_position={}, capital_at_risk_excluded=[])
         assert heat.unrealized_drawdown_pct == 0.0
 
     def test_hottest_category_reads_the_top_exposure(self) -> None:
         portfolio = _portfolio(positions=[_position(symbol="AAPL", quantity=50.0, current_price=100.0)])
-        exposure = _category_exposure(portfolio, equity=100000.0)
-        heat = _heat(portfolio, equity=100000.0, category_exposure=exposure, provider=_FakeProvider({}))
+        exposure = _category_exposure(portfolio, equity=100000.0, capital_at_risk_by_position={})
+        heat = _heat(portfolio, equity=100000.0, category_exposure=exposure, capital_at_risk_by_position={}, capital_at_risk_excluded=[])
         assert heat.hottest_category == "company"
         assert heat.hottest_category_pct == exposure[0].pct_of_equity
 
@@ -491,7 +526,8 @@ class TestHeat:
 
     def test_no_candle_history_excludes_every_position_honestly(self) -> None:
         portfolio = _portfolio(positions=[_position(symbol="AAPL", quantity=10.0, current_price=100.0)])
-        heat = _heat(portfolio, equity=100000.0, category_exposure=[], provider=_FakeProvider({}))
+        by_position, excluded = _per_position_capital_at_risk(portfolio, _FakeProvider({}))
+        heat = _heat(portfolio, equity=100000.0, category_exposure=[], capital_at_risk_by_position=by_position, capital_at_risk_excluded=excluded)
         assert heat.estimated_capital_at_risk_pct == 0.0
         assert "AAPL" in heat.capital_at_risk_detail
         assert "not enough real candle history" in heat.capital_at_risk_detail.lower()
@@ -504,7 +540,8 @@ class TestHeat:
         closes = [100.0, 103.0, 99.0, 102.0, 98.0, 104.0, 97.0, 105.0, 96.0, 106.0] * 3
         provider = _FakeProvider({"AAPL": closes})
         portfolio = _portfolio(positions=[_position(symbol="AAPL", quantity=10.0, current_price=100.0)])
-        heat = _heat(portfolio, equity=100000.0, category_exposure=[], provider=provider)
+        by_position, excluded = _per_position_capital_at_risk(portfolio, provider)
+        heat = _heat(portfolio, equity=100000.0, category_exposure=[], capital_at_risk_by_position=by_position, capital_at_risk_excluded=excluded)
         assert heat.estimated_capital_at_risk_pct > 0.0
         assert "chandelier" in heat.capital_at_risk_detail.lower()
         assert "AAPL" not in heat.capital_at_risk_detail  # not excluded — real ATR was available
@@ -518,7 +555,8 @@ class TestHeat:
         closes = [100.0, 103.0, 99.0, 102.0, 98.0, 104.0, 97.0, 105.0, 96.0, 106.0] * 3
         provider = _FakeProvider({"AAPL": closes})
         portfolio = _portfolio(positions=[_position(symbol="AAPL", quantity=10.0, current_price=100.0)])
-        heat = _heat(portfolio, equity=100000.0, category_exposure=[], provider=provider)
+        by_position, excluded = _per_position_capital_at_risk(portfolio, provider)
+        heat = _heat(portfolio, equity=100000.0, category_exposure=[], capital_at_risk_by_position=by_position, capital_at_risk_excluded=excluded)
         assert heat.estimated_capital_at_risk_pct < heat.total_capital_at_risk_pct
 
     def test_a_position_excluded_from_capital_at_risk_does_not_affect_notional_exposure(self) -> None:
@@ -527,7 +565,7 @@ class TestHeat:
         # history) must never change the real, already-correct notional
         # exposure figure.
         portfolio = _portfolio(positions=[_position(symbol="AAPL", quantity=10.0, current_price=100.0)])
-        heat = _heat(portfolio, equity=100000.0, category_exposure=[], provider=_FakeProvider({}))
+        heat = _heat(portfolio, equity=100000.0, category_exposure=[], capital_at_risk_by_position={}, capital_at_risk_excluded=[])
         assert heat.total_capital_at_risk_pct == 1.0  # 10 * 100 / 100000 * 100
         assert heat.estimated_capital_at_risk_pct == 0.0
 
@@ -634,7 +672,7 @@ class TestStrategyExposure:
             _position(position_id="p3", symbol="GLD", quantity=1.0, current_price=100.0, strategy_id="strategy-value"),
         ]
         portfolio = _portfolio(positions=positions)
-        reads = _strategy_exposure(portfolio, equity=100000.0)
+        reads = _strategy_exposure(portfolio, equity=100000.0, capital_at_risk_by_position={})
         by_id = {r.strategy_id: r for r in reads}
         assert by_id["strategy-momentum"].position_count == 2
         assert by_id["strategy-momentum"].value == 1500.0
@@ -646,7 +684,7 @@ class TestStrategyExposure:
             _position(position_id="p2", symbol="MSFT", quantity=10.0, current_price=100.0, strategy_id=None),
         ]
         portfolio = _portfolio(positions=positions)
-        reads = _strategy_exposure(portfolio, equity=100000.0)
+        reads = _strategy_exposure(portfolio, equity=100000.0, capital_at_risk_by_position={})
         by_id = {r.strategy_id: r for r in reads}
         assert None in by_id
         assert by_id[None].position_count == 1
@@ -660,14 +698,27 @@ class TestStrategyExposure:
             _position(position_id="p2", symbol="MSFT", quantity=5.0, current_price=100.0, side="sell", strategy_id="strategy-momentum"),
         ]
         portfolio = _portfolio(positions=positions)
-        reads = _strategy_exposure(portfolio, equity=100000.0)
+        reads = _strategy_exposure(portfolio, equity=100000.0, capital_at_risk_by_position={})
         read = next(r for r in reads if r.strategy_id == "strategy-momentum")
         assert read.long_value == 1000.0
         assert read.short_value == 500.0
         assert read.value == 1500.0
 
     def test_empty_portfolio_produces_no_reads(self) -> None:
-        assert _strategy_exposure(_portfolio(positions=[]), equity=100000.0) == []
+        assert _strategy_exposure(_portfolio(positions=[]), equity=100000.0, capital_at_risk_by_position={}) == []
+
+    def test_capital_at_risk_is_summed_within_a_strategy_by_real_position_id(self) -> None:
+        positions = [
+            _position(position_id="p1", symbol="AAPL", quantity=10.0, current_price=100.0, strategy_id="strategy-momentum"),
+            _position(position_id="p2", symbol="MSFT", quantity=5.0, current_price=100.0, strategy_id="strategy-momentum"),
+            _position(position_id="p3", symbol="GLD", quantity=1.0, current_price=100.0, strategy_id="strategy-value"),
+        ]
+        portfolio = _portfolio(positions=positions)
+        by_position = {"p1": 150.0, "p2": 75.0, "p3": 20.0}
+        reads = _strategy_exposure(portfolio, equity=100000.0, capital_at_risk_by_position=by_position)
+        by_id = {r.strategy_id: r for r in reads}
+        assert by_id["strategy-momentum"].capital_at_risk_usd == 225.0
+        assert by_id["strategy-value"].capital_at_risk_usd == 20.0
 
 
 class TestAgentExposure:
@@ -683,7 +734,7 @@ class TestAgentExposure:
             _position(position_id="p3", symbol="GLD", quantity=1.0, current_price=100.0, opened_by="quant"),
         ]
         portfolio = _portfolio(positions=positions)
-        reads = _agent_exposure(portfolio, equity=100000.0)
+        reads = _agent_exposure(portfolio, equity=100000.0, capital_at_risk_by_position={})
         by_id = {r.agent_id: r for r in reads}
         assert by_id["scout"].position_count == 2
         assert by_id["scout"].value == 1500.0
@@ -695,7 +746,7 @@ class TestAgentExposure:
         # null/None bucket is possible or expected here.
         positions = [_position(position_id="p1", symbol="AAPL", quantity=10.0, current_price=100.0, opened_by="pulse")]
         portfolio = _portfolio(positions=positions)
-        reads = _agent_exposure(portfolio, equity=100000.0)
+        reads = _agent_exposure(portfolio, equity=100000.0, capital_at_risk_by_position={})
         assert all(r.agent_id is not None for r in reads)
 
     def test_long_and_short_value_are_tracked_separately_within_an_agent(self) -> None:
@@ -704,14 +755,14 @@ class TestAgentExposure:
             _position(position_id="p2", symbol="MSFT", quantity=5.0, current_price=100.0, side="sell", opened_by="scout"),
         ]
         portfolio = _portfolio(positions=positions)
-        reads = _agent_exposure(portfolio, equity=100000.0)
+        reads = _agent_exposure(portfolio, equity=100000.0, capital_at_risk_by_position={})
         read = next(r for r in reads if r.agent_id == "scout")
         assert read.long_value == 1000.0
         assert read.short_value == 500.0
         assert read.value == 1500.0
 
     def test_empty_portfolio_produces_no_reads(self) -> None:
-        assert _agent_exposure(_portfolio(positions=[]), equity=100000.0) == []
+        assert _agent_exposure(_portfolio(positions=[]), equity=100000.0, capital_at_risk_by_position={}) == []
 
     def test_multiple_agents_independently_entering_the_same_symbol_is_real_measured_concentration(self) -> None:
         # This directive's own Phase 21 example: Scout LONG SPY, Quant
@@ -726,11 +777,24 @@ class TestAgentExposure:
             _position(position_id="p3", symbol="NVDA", quantity=10.0, current_price=100.0, opened_by="pulse"),
         ]
         portfolio = _portfolio(positions=positions)
-        reads = _agent_exposure(portfolio, equity=100000.0)
+        reads = _agent_exposure(portfolio, equity=100000.0, capital_at_risk_by_position={})
         by_id = {r.agent_id: r for r in reads}
         assert by_id["scout"].value == 2000.0
         assert by_id["scout"].pct_of_equity == 2.0
         assert by_id["pulse"].value == 1000.0
+
+    def test_capital_at_risk_is_summed_within_an_agent_by_real_position_id(self) -> None:
+        positions = [
+            _position(position_id="p1", symbol="AAPL", quantity=10.0, current_price=100.0, opened_by="scout"),
+            _position(position_id="p2", symbol="MSFT", quantity=5.0, current_price=100.0, opened_by="scout"),
+            _position(position_id="p3", symbol="GLD", quantity=1.0, current_price=100.0, opened_by="quant"),
+        ]
+        portfolio = _portfolio(positions=positions)
+        by_position = {"p1": 150.0, "p2": 75.0, "p3": 20.0}
+        reads = _agent_exposure(portfolio, equity=100000.0, capital_at_risk_by_position=by_position)
+        by_id = {r.agent_id: r for r in reads}
+        assert by_id["scout"].capital_at_risk_usd == 225.0
+        assert by_id["quant"].capital_at_risk_usd == 20.0
 
     def test_reads_sorted_by_value_descending(self) -> None:
         positions = [
@@ -738,7 +802,7 @@ class TestAgentExposure:
             _position(position_id="p2", symbol="MSFT", quantity=10.0, current_price=100.0, strategy_id="strategy-big"),
         ]
         portfolio = _portfolio(positions=positions)
-        reads = _strategy_exposure(portfolio, equity=100000.0)
+        reads = _strategy_exposure(portfolio, equity=100000.0, capital_at_risk_by_position={})
         assert [r.strategy_id for r in reads] == ["strategy-big", "strategy-small"]
 
     def test_balanced_cash_has_no_immediate_concern(self) -> None:
@@ -768,3 +832,39 @@ class TestComputePortfolioIntelligence:
         assert result.correlation_pairs == []
         assert result.cash_pct_of_equity == 100.0
         assert result.deployed_pct_of_equity == 0.0
+
+    def test_capital_at_risk_is_consistent_across_every_level_of_the_hierarchy(self) -> None:
+        # CEO directive "Portfolio Risk Engine + Firm-Wide Risk
+        # Governance, 11/10 Professional Quant Implementation," Phase 8
+        # — "risk consumed at a lower level must be reflected at every
+        # higher level," proven end-to-end: the same real, single
+        # Chandelier-Stop computation (never recomputed per grouping)
+        # must sum identically whether read off the portfolio-wide
+        # PortfolioHeat total, the asset-class breakdown, the strategy
+        # breakdown, or the agent breakdown.
+        oscillating = [100.0, 103.0, 99.0, 102.0, 98.0, 104.0, 97.0, 105.0, 96.0, 106.0] * 3
+        positions = [
+            _position(position_id="p1", symbol="AAPL", quantity=10.0, current_price=100.0, strategy_id="strategy-momentum", opened_by="scout"),
+            _position(position_id="p2", symbol="AMZN", quantity=5.0, current_price=100.0, strategy_id="strategy-value", opened_by="quant"),
+        ]
+        portfolio = _portfolio(cash_balance=50000.0, positions=positions)
+        provider = _FakeProvider({"AAPL": oscillating, "AMZN": oscillating})
+
+        result = compute_portfolio_intelligence(portfolio, provider, pending_proposal_count=0)
+
+        assert result.heat.estimated_capital_at_risk_pct > 0.0
+        # Both positions share the real "company" category — one group
+        # whose total must equal the portfolio-wide heat total (same
+        # round-to-1-decimal-place convention PortfolioHeat itself uses,
+        # never reconstructed backward from an already-rounded percentage).
+        company = next(e for e in result.category_exposure if e.category == "company")
+        assert round(company.capital_at_risk_usd / result.equity * 100, 1) == result.heat.estimated_capital_at_risk_pct
+        # Split across two distinct strategies/agents — their real sum
+        # must also equal the same portfolio-wide total.
+        strategy_total = sum(s.capital_at_risk_usd for s in result.strategy_exposure)
+        agent_total = sum(a.capital_at_risk_usd for a in result.agent_exposure)
+        assert strategy_total == pytest.approx(company.capital_at_risk_usd, rel=1e-6)
+        assert agent_total == pytest.approx(company.capital_at_risk_usd, rel=1e-6)
+        # Real, distinct, individually-computed values, never a fabricated split.
+        assert len(result.strategy_exposure) == 2
+        assert len(result.agent_exposure) == 2

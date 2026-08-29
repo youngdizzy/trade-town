@@ -7934,6 +7934,20 @@ class CategoryExposure(CamelModel):
     position_count: int = Field(alias="positionCount")
     value: float
     pct_of_equity: float = Field(alias="pctOfEquity")
+    # CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance,
+    # 11/10 Professional Quant Implementation," Phase 8 — the same real,
+    # MODELED Chandelier-Stop capital-at-risk `PortfolioHeat.
+    # estimatedCapitalAtRiskPct` already computes portfolio-wide,
+    # grouped down to this asset class. `value`/`pctOfEquity` above stay
+    # NOTIONAL exposure, unchanged — this is the separate, real,
+    # stop-distance-based reading, completing the FIRM -> ASSET CLASS ->
+    # STRATEGY -> AGENT -> POSITION hierarchy this directive's own Phase
+    # 8 asks for ("risk consumed at a lower level must be reflected at
+    # every higher level"). A position lacking real candle history is
+    # simply absent from this sum (see PortfolioHeat.capitalAtRiskDetail
+    # for the portfolio-wide disclosure of which ones).
+    capital_at_risk_usd: float = Field(default=0.0, alias="capitalAtRiskUsd")
+    capital_at_risk_pct_of_equity: float = Field(default=0.0, alias="capitalAtRiskPctOfEquity")
 
 
 class CorrelationPair(CamelModel):
@@ -8069,6 +8083,12 @@ class StrategyExposureRead(CamelModel):
     pct_of_equity: float = Field(alias="pctOfEquity")
     long_value: float = Field(alias="longValue")
     short_value: float = Field(alias="shortValue")
+    # Same real, MODELED Chandelier-Stop capital-at-risk reading as
+    # CategoryExposure's own new fields above — see that field's own
+    # docstring for the full rationale. `value`/`pctOfEquity` above stay
+    # notional exposure, unchanged.
+    capital_at_risk_usd: float = Field(default=0.0, alias="capitalAtRiskUsd")
+    capital_at_risk_pct_of_equity: float = Field(default=0.0, alias="capitalAtRiskPctOfEquity")
 
 
 # CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance,
@@ -8091,6 +8111,12 @@ class AgentExposureRead(CamelModel):
     pct_of_equity: float = Field(alias="pctOfEquity")
     long_value: float = Field(alias="longValue")
     short_value: float = Field(alias="shortValue")
+    # Same real, MODELED Chandelier-Stop capital-at-risk reading as
+    # CategoryExposure's own new fields — see that field's own
+    # docstring for the full rationale. `value`/`pctOfEquity` above stay
+    # notional exposure, unchanged.
+    capital_at_risk_usd: float = Field(default=0.0, alias="capitalAtRiskUsd")
+    capital_at_risk_pct_of_equity: float = Field(default=0.0, alias="capitalAtRiskPctOfEquity")
 
 
 class PortfolioIntelligence(CamelModel):

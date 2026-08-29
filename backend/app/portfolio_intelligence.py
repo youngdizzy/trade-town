@@ -146,9 +146,10 @@ def returns(prices: list[float]) -> list[float]:
     return [(cur - prev) / prev for prev, cur in zip(prices, prices[1:]) if prev]
 
 
-def _category_exposure(portfolio: PaperPortfolio, equity: float) -> list[CategoryExposure]:
+def _category_exposure(portfolio: PaperPortfolio, equity: float, capital_at_risk_by_position: dict[str, float]) -> list[CategoryExposure]:
     totals: dict[ResearchCategory, list[float]] = {}
     counts: dict[ResearchCategory, int] = {}
+    capital_at_risk_totals: dict[ResearchCategory, float] = {}
     for pos in portfolio.positions:
         category = SYMBOL_CATEGORY.get(pos.symbol)
         if category is None:
@@ -156,8 +157,16 @@ def _category_exposure(portfolio: PaperPortfolio, equity: float) -> list[Categor
         value = pos.quantity * pos.current_price
         totals.setdefault(category, []).append(value)
         counts[category] = counts.get(category, 0) + 1
+        capital_at_risk_totals[category] = capital_at_risk_totals.get(category, 0.0) + capital_at_risk_by_position.get(pos.id, 0.0)
     exposures = [
-        CategoryExposure(category=category, positionCount=counts[category], value=round(sum(values), 2), pctOfEquity=round(sum(values) / equity * 100, 1) if equity > 0 else 0.0)
+        CategoryExposure(
+            category=category,
+            positionCount=counts[category],
+            value=round(sum(values), 2),
+            pctOfEquity=round(sum(values) / equity * 100, 1) if equity > 0 else 0.0,
+            capitalAtRiskUsd=round(capital_at_risk_totals.get(category, 0.0), 2),
+            capitalAtRiskPctOfEquity=round(capital_at_risk_totals.get(category, 0.0) / equity * 100, 1) if equity > 0 else 0.0,
+        )
         for category, values in totals.items()
     ]
     exposures.sort(key=lambda e: e.pct_of_equity, reverse=True)
@@ -297,21 +306,25 @@ def count_correlated_positions(symbol: str, portfolio: PaperPortfolio, provider:
     return count
 
 
-def _estimated_capital_at_risk(portfolio: PaperPortfolio, provider: MarketDataProvider) -> tuple[float, str]:
+def _per_position_capital_at_risk(portfolio: PaperPortfolio, provider: MarketDataProvider) -> tuple[dict[str, float], list[str]]:
     """CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance,
-    11/10 Professional Quant Implementation," Phase 2 — POSITION VALUE
-    vs. CAPITAL AT RISK. A real, MODELED estimate (see PortfolioHeat's
-    own docstring for the full honesty boundary: no real resting stop
-    order exists for any open position in this codebase). For every
-    position with enough real, live candle history, the real Chandelier
-    Stop distance (the exact same formula
-    app/position_sizing.py::_volatility_sizing() already uses at
-    sizing time) applied to TODAY's real ATR, times real quantity — a
-    real dollar figure, summed across every open position. Returns
-    (total_usd, detail) — `detail` names every position excluded for
-    lacking real candle history, never silently dropping it without
-    explanation."""
-    total_usd = 0.0
+    11/10 Professional Quant Implementation," Phase 2/8 — POSITION VALUE
+    vs. CAPITAL AT RISK, at real per-position granularity (the building
+    block both the portfolio-wide total below AND the per-category/
+    strategy/agent hierarchy reads need — real per-POSITION keying,
+    never per-symbol, since two open positions in the same symbol could
+    in principle be attributed to two different strategies/agents). A
+    real, MODELED estimate (see PortfolioHeat's own docstring for the
+    full honesty boundary: no real resting stop order exists for any
+    open position in this codebase). For every position with enough
+    real, live candle history, the real Chandelier Stop distance (the
+    exact same formula app/position_sizing.py::_volatility_sizing()
+    already uses at sizing time) applied to TODAY's real ATR, times
+    real quantity. Returns (by_position_id, excluded_symbols) — a
+    position lacking real candle history is simply absent from the
+    dict, never a fabricated 0.0; `excluded_symbols` names every one,
+    for the caller's own honest disclosure."""
+    by_position_id: dict[str, float] = {}
     excluded: list[str] = []
     for pos in portfolio.positions:
         try:
@@ -324,22 +337,30 @@ def _estimated_capital_at_risk(portfolio: PaperPortfolio, provider: MarketDataPr
             excluded.append(pos.symbol)
             continue
         stop_distance = CHANDELIER_ATR_MULTIPLIER * atr_value
-        total_usd += pos.quantity * stop_distance
+        by_position_id[pos.id] = pos.quantity * stop_distance
+    return by_position_id, excluded
 
+
+def _capital_at_risk_detail(excluded: list[str]) -> str:
     if excluded:
-        detail = f"Modeled via this account's own Chandelier-Stop convention (never a real resting stop order); {', '.join(sorted(set(excluded)))} excluded — not enough real candle history yet."
-    else:
-        detail = "Modeled via this account's own Chandelier-Stop convention — never a real resting stop order, since none exists for any open position in this codebase."
-    return total_usd, detail
+        return f"Modeled via this account's own Chandelier-Stop convention (never a real resting stop order); {', '.join(sorted(set(excluded)))} excluded — not enough real candle history yet."
+    return "Modeled via this account's own Chandelier-Stop convention — never a real resting stop order, since none exists for any open position in this codebase."
 
 
-def _heat(portfolio: PaperPortfolio, equity: float, category_exposure: list[CategoryExposure], provider: MarketDataProvider) -> PortfolioHeat:
+def _heat(
+    portfolio: PaperPortfolio,
+    equity: float,
+    category_exposure: list[CategoryExposure],
+    capital_at_risk_by_position: dict[str, float],
+    capital_at_risk_excluded: list[str],
+) -> PortfolioHeat:
     if equity <= 0 or not portfolio.positions:
         return PortfolioHeat(totalCapitalAtRiskPct=0.0, unrealizedDrawdownPct=0.0, largestPositionPct=0.0, hottestCategory=None, hottestCategoryPct=0.0, tier="cool")
 
     total_at_risk = sum(pos.quantity * pos.current_price for pos in portfolio.positions) / equity * 100
     largest = max((pos.quantity * pos.current_price for pos in portfolio.positions), default=0.0) / equity * 100
-    estimated_capital_at_risk_usd, capital_at_risk_detail = _estimated_capital_at_risk(portfolio, provider)
+    estimated_capital_at_risk_usd = sum(capital_at_risk_by_position.values())
+    capital_at_risk_detail = _capital_at_risk_detail(capital_at_risk_excluded)
     estimated_capital_at_risk_pct = estimated_capital_at_risk_usd / equity * 100
     # CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance" —
     # this field was named "unrealized" but was actually computed from
@@ -400,7 +421,7 @@ def _exposure_summary(portfolio: PaperPortfolio, equity: float) -> ExposureSumma
     )
 
 
-def _strategy_exposure(portfolio: PaperPortfolio, equity: float) -> list[StrategyExposureRead]:
+def _strategy_exposure(portfolio: PaperPortfolio, equity: float, capital_at_risk_by_position: dict[str, float]) -> list[StrategyExposureRead]:
     """CEO directive "Portfolio Construction, Capital Allocation &
     Execution Realism" — the live analogue of app/performance_
     attribution.py's compute_strategy_performance() (closed trades
@@ -409,10 +430,13 @@ def _strategy_exposure(portfolio: PaperPortfolio, equity: float) -> list[Strateg
     time (see that field's own schema docstring). `strategyId: null` is
     its own honest bucket for every open position with no real strategy
     attribution — never folded into an attributed strategy's numbers,
-    and never omitted."""
+    and never omitted. `capital_at_risk_by_position` — see
+    CategoryExposure's own new fields' docstring — this level of the
+    directive's Phase 8 hierarchy."""
     groups: dict[str | None, list[float]] = {}
     long_by_group: dict[str | None, float] = {}
     short_by_group: dict[str | None, float] = {}
+    capital_at_risk_by_group: dict[str | None, float] = {}
     for pos in portfolio.positions:
         value = pos.quantity * pos.current_price
         groups.setdefault(pos.strategy_id, []).append(value)
@@ -420,6 +444,7 @@ def _strategy_exposure(portfolio: PaperPortfolio, equity: float) -> list[Strateg
             long_by_group[pos.strategy_id] = long_by_group.get(pos.strategy_id, 0.0) + value
         else:
             short_by_group[pos.strategy_id] = short_by_group.get(pos.strategy_id, 0.0) + value
+        capital_at_risk_by_group[pos.strategy_id] = capital_at_risk_by_group.get(pos.strategy_id, 0.0) + capital_at_risk_by_position.get(pos.id, 0.0)
 
     reads = [
         StrategyExposureRead(
@@ -429,6 +454,8 @@ def _strategy_exposure(portfolio: PaperPortfolio, equity: float) -> list[Strateg
             pctOfEquity=round(sum(values) / equity * 100, 1) if equity > 0 else 0.0,
             longValue=round(long_by_group.get(strategy_id, 0.0), 2),
             shortValue=round(short_by_group.get(strategy_id, 0.0), 2),
+            capitalAtRiskUsd=round(capital_at_risk_by_group.get(strategy_id, 0.0), 2),
+            capitalAtRiskPctOfEquity=round(capital_at_risk_by_group.get(strategy_id, 0.0) / equity * 100, 1) if equity > 0 else 0.0,
         )
         for strategy_id, values in groups.items()
     ]
@@ -436,7 +463,7 @@ def _strategy_exposure(portfolio: PaperPortfolio, equity: float) -> list[Strateg
     return reads
 
 
-def _agent_exposure(portfolio: PaperPortfolio, equity: float) -> list[AgentExposureRead]:
+def _agent_exposure(portfolio: PaperPortfolio, equity: float, capital_at_risk_by_position: dict[str, float]) -> list[AgentExposureRead]:
     """CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance,
     11/10 Professional Quant Implementation," Phase 8/21 — the AGENT
     level of the FIRM -> ASSET CLASS -> STRATEGY -> AGENT -> POSITION
@@ -451,6 +478,7 @@ def _agent_exposure(portfolio: PaperPortfolio, equity: float) -> list[AgentExpos
     groups: dict[AgentId, list[float]] = {}
     long_by_group: dict[AgentId, float] = {}
     short_by_group: dict[AgentId, float] = {}
+    capital_at_risk_by_group: dict[AgentId, float] = {}
     for pos in portfolio.positions:
         value = pos.quantity * pos.current_price
         groups.setdefault(pos.opened_by, []).append(value)
@@ -458,6 +486,7 @@ def _agent_exposure(portfolio: PaperPortfolio, equity: float) -> list[AgentExpos
             long_by_group[pos.opened_by] = long_by_group.get(pos.opened_by, 0.0) + value
         else:
             short_by_group[pos.opened_by] = short_by_group.get(pos.opened_by, 0.0) + value
+        capital_at_risk_by_group[pos.opened_by] = capital_at_risk_by_group.get(pos.opened_by, 0.0) + capital_at_risk_by_position.get(pos.id, 0.0)
 
     reads = [
         AgentExposureRead(
@@ -467,6 +496,8 @@ def _agent_exposure(portfolio: PaperPortfolio, equity: float) -> list[AgentExpos
             pctOfEquity=round(sum(values) / equity * 100, 1) if equity > 0 else 0.0,
             longValue=round(long_by_group.get(agent_id, 0.0), 2),
             shortValue=round(short_by_group.get(agent_id, 0.0), 2),
+            capitalAtRiskUsd=round(capital_at_risk_by_group.get(agent_id, 0.0), 2),
+            capitalAtRiskPctOfEquity=round(capital_at_risk_by_group.get(agent_id, 0.0) / equity * 100, 1) if equity > 0 else 0.0,
         )
         for agent_id, values in groups.items()
     ]
@@ -513,13 +544,17 @@ def _opportunity_cost(cash_pct_of_equity: float, pending_proposal_count: int) ->
 
 def compute_portfolio_intelligence(portfolio: PaperPortfolio, provider: MarketDataProvider, *, pending_proposal_count: int) -> PortfolioIntelligence:
     equity = portfolio_equity(portfolio)
-    category_exposure = _category_exposure(portfolio, equity)
+    # Computed once, shared by every level of the FIRM -> ASSET CLASS ->
+    # STRATEGY -> AGENT -> POSITION capital-at-risk hierarchy below —
+    # never a duplicate candle fetch per grouping.
+    capital_at_risk_by_position, capital_at_risk_excluded = _per_position_capital_at_risk(portfolio, provider)
+    category_exposure = _category_exposure(portfolio, equity, capital_at_risk_by_position)
     correlation_pairs = _correlation_pairs(portfolio, provider)
     correlated_clusters = _correlated_clusters(portfolio, correlation_pairs, equity)
-    heat = _heat(portfolio, equity, category_exposure, provider)
+    heat = _heat(portfolio, equity, category_exposure, capital_at_risk_by_position, capital_at_risk_excluded)
     exposure = _exposure_summary(portfolio, equity)
-    strategy_exposure = _strategy_exposure(portfolio, equity)
-    agent_exposure = _agent_exposure(portfolio, equity)
+    strategy_exposure = _strategy_exposure(portfolio, equity, capital_at_risk_by_position)
+    agent_exposure = _agent_exposure(portfolio, equity, capital_at_risk_by_position)
     capital_efficiency = _capital_efficiency(portfolio)
     cash_pct = round(portfolio.cash_balance / equity * 100, 1) if equity > 0 else 0.0
     deployed_pct = round(100.0 - cash_pct, 1) if equity > 0 else 0.0

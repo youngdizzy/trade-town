@@ -16528,6 +16528,34 @@ is never null, since `openedBy` is required, unlike the optional
 `strategyId`). New "Agent Exposure" card in `PortfolioIntelPanel.tsx`
 beside the existing Strategy Exposure card.
 
+### Follow-up: real capital-at-risk at every hierarchy level
+
+Phase 8 requires that risk consumed at a lower level be reflected at
+every higher level. The prior two follow-ups gave the portfolio total
+(`PortfolioHeat`) a real, Chandelier-Stop-based capital-at-risk read
+alongside its gross-notional figure, and added the agent level of the
+exposure hierarchy — but `CategoryExposure`, `StrategyExposureRead`,
+and `AgentExposureRead` still only carried gross notional value, so
+the same notional-vs-real-risk confusion Phase 2 warns against was
+still live one level down.
+
+The portfolio-total-only capital-at-risk computation was refactored
+into a shared `_per_position_capital_at_risk(portfolio, provider) ->
+(by_position_id, excluded_symbols)`, computed exactly once per
+`compute_portfolio_intelligence()` call and threaded into
+`_category_exposure()`, `_strategy_exposure()`, `_agent_exposure()`,
+and `_heat()` — this avoids duplicate candle fetches per symbol across
+the four grouping functions, and guarantees the same real number is
+summed identically at every level (proven by
+`test_capital_at_risk_is_consistent_across_every_level_of_the_hierarchy`,
+not assumed). `CategoryExposure`, `StrategyExposureRead`, and
+`AgentExposureRead` each gained `capitalAtRiskUsd`/
+`capitalAtRiskPctOfEquity`, genuinely separate from and independently
+computed from the pre-existing notional `value`/`pctOfEquity` fields
+on the same models. `PortfolioIntelPanel.tsx`'s three exposure cards
+each gained a `· risk X%` figure alongside the existing position-count/
+notional-% summary line. 5 new tests in `test_portfolio_intelligence.py`.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

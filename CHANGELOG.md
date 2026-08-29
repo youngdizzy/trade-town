@@ -8,6 +8,37 @@ development milestones, not semver releases.
 ### Fixed
 
 - **"TradeTown — Next Major Build: Portfolio Risk Engine + Firm-Wide Risk Governance" follow-up:
+  real capital-at-risk at every level of the exposure hierarchy, not just the portfolio total.**
+  Phase 8 requires that "risk consumed at a lower level must be reflected at every higher level."
+  The prior pass added a real, Chandelier-Stop-based `estimatedCapitalAtRiskPct` at the portfolio
+  total (`PortfolioHeat`) — but `CategoryExposure`, `StrategyExposureRead`, and `AgentExposureRead`
+  still only carried gross notional value, so the same "notional vs. real risk" confusion the
+  directive's own Phase 2 warns against was still live one level down: a category, strategy, or agent
+  could show large notional exposure with a tight aggregate stop (low real risk), or the reverse, and
+  there was no way to tell from the grouped views.
+  - Refactored the portfolio-total-only capital-at-risk computation into a shared
+    `_per_position_capital_at_risk(portfolio, provider) -> (by_position_id, excluded_symbols)`,
+    computed exactly ONCE per `compute_portfolio_intelligence()` call and threaded into every grouping
+    function — avoids duplicate candle fetches per symbol across category/strategy/agent/heat, and
+    guarantees the same real number is summed identically at every level (proven by a new integration
+    test, not assumed).
+  - `CategoryExposure`, `StrategyExposureRead`, and `AgentExposureRead` each gained
+    `capitalAtRiskUsd`/`capitalAtRiskPctOfEquity`, computed by summing each grouping's real per-position
+    Chandelier-Stop risk — genuinely separate from, and independently computed from, the pre-existing
+    notional `value`/`pctOfEquity` fields on the same models.
+  - `PortfolioIntelPanel.tsx`'s Category/Strategy/Agent Exposure cards each gained a `· risk X%` figure
+    alongside the existing position-count/notional-% summary line.
+  - 5 new backend tests, including `test_capital_at_risk_is_consistent_across_every_level_of_the_hierarchy`
+    — the direct proof that category-level capital-at-risk, summed independently, matches the portfolio
+    total to the same rounding convention the production code itself uses.
+  - Verified: full backend suite (3038 tests), `mypy`/`ruff` clean. Frontend `tsc`/lint/build clean.
+    Live-verified in the browser against the real running dev stack: the portfolio-total "Gross Notional
+    Exposure"/"Est. Capital at Risk (modeled)" readings render correctly with no crash; the current dev
+    save has zero open positions, so the new per-card `· risk X%` line itself renders only its honest
+    empty state live — its populated-with-real-positions behavior is what the new integration test
+    proves.
+
+- **"TradeTown — Next Major Build: Portfolio Risk Engine + Firm-Wide Risk Governance" follow-up:
   Agent Exposure — the one genuinely missing level of the exposure hierarchy.** A repo audit for
   the FIRM → ASSET CLASS → STRATEGY → AGENT → POSITION hierarchy Phase 8/21 asks for found
   asset-class (`CategoryExposure`) and strategy (`StrategyExposureRead`) groupings already real and
