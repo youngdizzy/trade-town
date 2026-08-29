@@ -10174,6 +10174,42 @@ input, only that nothing crashes. Every other candle-consuming module
 is explicitly out of scope for this pass, not silently declared
 covered.
 
+**"TradeTown — 11/10 Next Engineering Pass" — relative-volume
+correctness + chaos-resilience hardening.** Closes the exact
+inconsistency the chaos-testing addendum above discovered and
+documented but did not fix: `relative_volume_series()`
+(`app/volume_analysis.py`) fell back to a fabricated `0.0` at any index
+whose trailing baseline was `0`, while its own single-value sibling
+`relative_volume()` correctly returned `None` for the identical
+undefined ratio — a real contract violation the module's own existing
+test suite (`series[-1] == relative_volume(...)`) had already implicitly
+promised could never happen. A full producer/consumer trace (see
+`CHANGELOG.md`'s own entry for this pass for every file:line and
+verification step) found `relative_volume_series()` has zero real
+consumers anywhere in this codebase today, so the bug was latent, not
+live — but a real, confirmed defect waiting for its first real
+consumer. Fixed at the contract level: return type widens to
+`list[float | None]`, matching the `list[float | None]`
+"undefined-at-this-index, never a placeholder" convention
+`app/fibonacci_research.py::fibonacci_618_level_series()` already
+established. New `_is_real_volume()` helper also closes a second,
+related gap found while auditing: neither function's `baseline == 0`
+guard ever caught a NaN baseline (`float('nan') == 0` is `False` in
+Python) — negative/NaN/infinite baseline OR current-bar volume now
+both return the same honest unavailable state in both functions.
+Point-in-time safety (no look-ahead) and research/live consistency
+(exactly one relative-volume implementation exists anywhere in the
+trading-adjacent pipeline today — relative volume isn't wired into
+`strategy_engine.py`, the backtest engine, or any research module)
+were both explicitly audited and confirmed already correct, no change
+needed. A second, related, higher-blast-radius instance of the same
+class of bug (`app/market_intelligence.py`'s two inline
+relative-volume-style calculations silently fall back to a fabricated
+`1.0` baseline rather than an honest unavailable state) was discovered
+during the audit and deliberately NOT fixed — outside this pass's
+explicit scope, disclosed rather than silently left alone or silently
+folded in.
+
 ### Phase E: symbol_robustness
 
 `_symbol_robustness_check()` (`app/model_validation.py`) groups a

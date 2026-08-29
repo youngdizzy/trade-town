@@ -53,6 +53,8 @@ as validated or optimal.
 """
 from __future__ import annotations
 
+import math
+
 from app.market_data import Candle
 from app.schemas import VolumeConfirmationRead, VolumeConfirmationState, VolumeState
 from app.technical_indicators import atr
@@ -71,6 +73,23 @@ VOLUME_WEAK_THRESHOLD = 0.5
 # ATR is the same real magnitude `app/position_sizing.py`'s own
 # chandelier-stop convention already treats as significant.
 DEFAULT_EXPANSION_ATR_THRESHOLD = 1.0
+
+
+def _is_real_volume(volume: float) -> bool:
+    """CEO directive "TradeTown — 11/10 Next Engineering Pass," Phase
+    3/4/7 — a real bar volume is a physical count of shares/contracts
+    traded: it can never be negative, and it can never be NaN/infinite
+    (this codebase's own mock provider never produces either — see
+    `app/market_data.py::MockMarketDataProvider`). Neither
+    `baseline == 0` (the pre-existing guard) nor Python's own `==`
+    operator ever catches a NaN (`float('nan') == 0` is `False`, so a
+    NaN baseline previously slipped through undetected and silently
+    propagated as a NaN "relative volume" — a real gap this closes).
+    Used to guard every real division `relative_volume()`/
+    `relative_volume_series()` perform, never a validation layer for
+    every function in this module (see their own docstrings for exactly
+    which ones call this and why)."""
+    return math.isfinite(volume) and volume >= 0
 
 
 def volume_sma(candles: list[Candle], period: int = DEFAULT_VOLUME_MA_PERIOD) -> float | None:
@@ -98,27 +117,61 @@ def relative_volume(candles: list[Candle], period: int = DEFAULT_VOLUME_MA_PERIO
     """The last candle's own real volume divided by the real volume-SMA
     of the `period` bars immediately BEFORE it (never including the bar
     itself in its own baseline — the standard RVOL convention). `None`
-    below `period + 1` real bars of history."""
+    below `period + 1` real bars of history, or whenever the baseline or
+    the current bar's own volume is zero, negative, or non-finite (a
+    real volume count can never legitimately be any of those three — see
+    `_is_real_volume()`'s own docstring for why plain `baseline == 0`
+    alone was never enough to catch a NaN baseline)."""
     if len(candles) < period + 1:
         return None
+    current = candles[-1].volume
     baseline = volume_sma(candles[:-1], period)
-    if baseline is None or baseline == 0:
+    if baseline is None or not _is_real_volume(baseline) or baseline == 0 or not _is_real_volume(current):
         return None
-    return round(candles[-1].volume / baseline, 4)
+    return round(current / baseline, 4)
 
 
-def relative_volume_series(candles: list[Candle], period: int = DEFAULT_VOLUME_MA_PERIOD) -> list[float]:
+def relative_volume_series(candles: list[Candle], period: int = DEFAULT_VOLUME_MA_PERIOD) -> list[float | None]:
     """The real, full relative-volume series — one value per candle from
     the point a real `period`-bar trailing baseline exists onward
     (index `period` of `candles`, since each value needs `period` PRIOR
-    bars plus itself)."""
+    bars plus itself).
+
+    CEO directive "TradeTown — 11/10 Next Engineering Pass" — this
+    function previously fell back to a fabricated `0.0` at any index
+    whose trailing baseline was `0` (an all-zero-volume window), while
+    the single-value `relative_volume()` above returns an honest `None`
+    for the identical undefined ratio. `0.0` there silently reads as a
+    real, meaningful "no relative volume" data point rather than "this
+    ratio is mathematically undefined" — a real correctness bug a
+    downstream consumer (a chaos/backtest bar with a data gap, a halted
+    session) could have silently misread as a genuine volume-weak
+    signal. Fixed at the contract level, not patched around: the return
+    type widens to `list[float | None]`, and every zero-baseline index
+    now returns `None`, exactly mirroring `relative_volume()`'s own
+    real contract — the same `list[float | None]` "undefined at this
+    index, never a placeholder" convention
+    `app/fibonacci_research.py::fibonacci_618_level_series()` already
+    established for the analogous case (a genuinely undefined price
+    level, never a fabricated `0.0`). `relative_volume_series(candles,
+    period)[-1]` is guaranteed to equal `relative_volume(candles,
+    period)` at every index, zero-baseline included — the same
+    single-canonical-contract invariant this module's own test suite
+    already asserted for the non-zero case. Also guards every index's
+    own baseline and current-bar volume for finiteness/non-negativity
+    (see `relative_volume()`'s own docstring and `_is_real_volume()` —
+    the plain `if baseline` truthiness check alone never caught a NaN
+    baseline, since `bool(float('nan'))` is `True` in Python)."""
     if len(candles) < period + 1:
         return []
     baselines = volume_sma_series(candles[:-1], period)
-    series: list[float] = []
+    series: list[float | None] = []
     for i, baseline in enumerate(baselines):
         current = candles[period + i].volume
-        series.append(round(current / baseline, 4) if baseline else 0.0)
+        if not _is_real_volume(baseline) or baseline == 0 or not _is_real_volume(current):
+            series.append(None)
+        else:
+            series.append(round(current / baseline, 4))
     return series
 
 

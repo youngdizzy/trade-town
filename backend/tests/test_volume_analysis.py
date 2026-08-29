@@ -91,6 +91,55 @@ class TestRelativeVolume:
     def test_default_period_is_20(self) -> None:
         assert DEFAULT_VOLUME_MA_PERIOD == 20
 
+    # CEO directive "TradeTown — 11/10 Next Engineering Pass" — the
+    # canonical zero/invalid-baseline contract, permanently regression-
+    # tested (Phase 10). A real relative-volume ratio is undefined
+    # whenever it would require dividing by an all-zero baseline, or
+    # whenever either side of the ratio is a value no real volume count
+    # can legitimately be (negative, NaN, infinite) — see
+    # app/volume_analysis.py's `_is_real_volume()` docstring for why.
+
+    def test_none_when_the_baseline_window_is_all_zero_volume(self) -> None:
+        candles = _candles([1.0] * 6, [0.0, 0.0, 0.0, 0.0, 0.0, 50.0])
+        assert relative_volume(candles, period=5) is None
+
+    def test_none_when_the_current_bar_volume_is_zero(self) -> None:
+        # A zero baseline is undefined for a different reason (can't
+        # divide by it) than a zero CURRENT bar (a perfectly real,
+        # meaningful 0.0 ratio) — but 0.0 as the numerator over a real
+        # positive baseline is a real, valid, well-defined ratio, not an
+        # error case. Documented here as the real, correct contrast to
+        # the zero-BASELINE case above, not asserted as a bug.
+        candles = _candles([1.0] * 6, [100.0, 100.0, 100.0, 100.0, 100.0, 0.0])
+        assert relative_volume(candles, period=5) == 0.0
+
+    def test_none_when_the_baseline_is_negative(self) -> None:
+        # Real volume can never be negative — a negative baseline could
+        # only occur from malformed upstream data. A real, disclosed
+        # invalid-input guard, not a market condition this module claims
+        # to interpret.
+        candles = _candles([1.0] * 6, [-100.0, -100.0, -100.0, -100.0, -100.0, 50.0])
+        assert relative_volume(candles, period=5) is None
+
+    def test_none_when_the_current_bar_volume_is_negative(self) -> None:
+        candles = _candles([1.0] * 6, [100.0, 100.0, 100.0, 100.0, 100.0, -50.0])
+        assert relative_volume(candles, period=5) is None
+
+    def test_none_when_the_baseline_is_nan(self) -> None:
+        # A NaN baseline is never caught by `baseline == 0` alone
+        # (`float('nan') == 0` is False in Python) — this is the real
+        # gap `_is_real_volume()` closes.
+        candles = _candles([1.0] * 6, [float("nan"), 100.0, 100.0, 100.0, 100.0, 50.0])
+        assert relative_volume(candles, period=5) is None
+
+    def test_none_when_the_current_bar_volume_is_nan(self) -> None:
+        candles = _candles([1.0] * 6, [100.0, 100.0, 100.0, 100.0, 100.0, float("nan")])
+        assert relative_volume(candles, period=5) is None
+
+    def test_none_when_the_current_bar_volume_is_infinite(self) -> None:
+        candles = _candles([1.0] * 6, [100.0, 100.0, 100.0, 100.0, 100.0, float("inf")])
+        assert relative_volume(candles, period=5) is None
+
 
 class TestRelativeVolumeSeries:
     def test_empty_with_insufficient_candles(self) -> None:
@@ -102,6 +151,59 @@ class TestRelativeVolumeSeries:
         # last value of the series must equal relative_volume() on the full candle list
         assert series[-1] == relative_volume(candles, period=3)
         assert len(series) == len(candles) - 3
+
+    # CEO directive "TradeTown — 11/10 Next Engineering Pass," Phase
+    # 2/10 — the exact regression this pass closes: relative_volume()
+    # and relative_volume_series() must share ONE canonical contract at
+    # every index, zero-baseline included, never a fabricated 0.0 where
+    # relative_volume() itself would return None.
+
+    def test_reports_none_not_a_fabricated_zero_for_an_all_zero_baseline_window(self) -> None:
+        candles = _candles([1.0] * 6, [0.0, 0.0, 0.0, 0.0, 0.0, 50.0])
+        series = relative_volume_series(candles, period=5)
+        assert series == [None]
+        assert series[-1] == relative_volume(candles, period=5)
+
+    def test_a_mid_series_zero_baseline_window_reports_none_at_exactly_that_index_only(self) -> None:
+        # A real "market halt" shape: five real nonzero baseline bars,
+        # a real 3.0x bar, five real ZERO-volume bars (the halt itself),
+        # the bar right after the halt (undefined baseline -> None), then
+        # five more real nonzero bars and a real 4.0x bar. Every other
+        # index in the same series must stay a real, defined number —
+        # the undefined ratio must never leak sideways into neighboring,
+        # well-defined indices.
+        volumes = [100.0] * 5 + [300.0] + [0.0] * 5 + [50.0] + [20.0] * 5 + [80.0]
+        candles = _candles([1.0] * len(volumes), volumes)
+        series = relative_volume_series(candles, period=5)
+        assert len(series) == len(candles) - 5
+        assert series[0] == 3.0  # candle index 5, baseline = mean(candles[0:5]) = 100
+        assert series[6] is None  # candle index 11, baseline = mean(candles[6:11]) = 0.0 (the halt)
+        assert series[12] == 4.0  # candle index 17, baseline = mean(candles[12:17]) = 20
+        assert all(v is not None for i, v in enumerate(series) if i != 6)
+
+    def test_canonical_contract_holds_at_every_index_of_a_series_containing_a_real_gap(self) -> None:
+        # The general, permanent invariant (not just the two hand-picked
+        # boundary cases above): relative_volume_series(candles,
+        # period)[i] must equal relative_volume(candles[: period + i +
+        # 1], period) at EVERY real index, whether that value is a real
+        # float or None.
+        volumes = [100.0] * 5 + [300.0] + [0.0] * 5 + [50.0] + [20.0] * 5 + [80.0]
+        candles = _candles([1.0] * len(volumes), volumes)
+        period = 5
+        series = relative_volume_series(candles, period=period)
+        for i, value in enumerate(series):
+            assert value == relative_volume(candles[: period + i + 1], period=period)
+
+    def test_reports_none_at_a_nan_volume_index_only(self) -> None:
+        volumes = [100.0] * 5 + [float("nan")] + [100.0] * 5 + [50.0]
+        candles = _candles([1.0] * len(volumes), volumes)
+        series = relative_volume_series(candles, period=5)
+        # index 0 (candle 5, the NaN bar itself as "current") -> None
+        assert series[0] is None
+        # index 6 (candle 11): baseline is mean(candles[6:11]), all real
+        # 100.0 bars (the NaN bar at index 5 is outside this window) ->
+        # a real, defined ratio, unaffected by the earlier NaN.
+        assert series[6] == 0.5
 
 
 class TestClassifyVolumeState:

@@ -7,6 +7,59 @@ development milestones, not semver releases.
 
 ### Fixed
 
+- **"TradeTown — 11/10 Next Engineering Pass" — `relative_volume_series()` fell back to a
+  fabricated `0.0` for a mathematically undefined (all-zero-baseline) relative-volume ratio, while
+  its own single-value sibling `relative_volume()` correctly returned an honest `None` for the
+  identical case.** A dedicated repo audit (every producer/consumer of both functions traced;
+  reproduced with a standalone script before touching any code) confirmed `relative_volume_series()`
+  has zero real consumers anywhere in this codebase today (no API endpoint, no `strategy_engine.py`
+  wiring, no backtest/research path) — but the two functions' own existing test suite already
+  asserted they must agree at every overlapping index (`series[-1] == relative_volume(...)`), so this
+  was a real, confirmed contract violation waiting to surface the moment either function gets a real
+  consumer (a future backtest bar with a data gap, a halted trading session).
+  - Fixed at the contract level, not patched around: `relative_volume_series()`'s return type widens
+    to `list[float | None]` (from `list[float]`), and every zero-baseline index now returns `None`
+    instead of `0.0` — the same `list[float | None]` "undefined at this index, never a placeholder"
+    convention `app/fibonacci_research.py::fibonacci_618_level_series()` already established for the
+    analogous case (a genuinely undefined price level). `relative_volume_series(...)[-1]` is now
+    guaranteed to equal `relative_volume(...)` at every index, zero-baseline included.
+  - While tracing every producer/consumer (per this pass's own Phase 1 audit requirement), a second,
+    related gap surfaced: neither function's zero-baseline guard (`baseline == 0`) ever caught a NaN
+    baseline, since `float('nan') == 0` is `False` in Python — a NaN baseline previously slipped
+    through undetected and silently propagated as a NaN "relative volume." New `_is_real_volume()`
+    helper (real volume is a physical share/contract count — never negative, never NaN/infinite) now
+    guards both the baseline AND the current bar's own volume in both functions; negative/NaN/infinite
+    input now returns the same honest `None`/`list[float | None]` unavailable state, never a fabricated
+    or nonsensical ratio.
+  - **Verified point-in-time/look-ahead safety while auditing**: both functions already correctly
+    excluded the current bar from its own baseline (`candles[:-1]`) — no look-ahead leakage found, no
+    change needed.
+  - **Verified research/live consistency while auditing**: there is exactly ONE relative-volume
+    implementation reachable by any trading-adjacent path today (`GET /market/volume-confirmation` →
+    `compute_volume_confirmation()` → `relative_volume()`) — relative volume is not wired into
+    `strategy_engine.py`, the backtest engine, or any `*_research.py` hypothesis module, so no
+    training-serving skew is even possible yet; a real, disclosed, separate scope boundary, not
+    silently declared "consistent by design."
+  - **Discovered, disclosed, and deliberately NOT fixed this pass** (out of this pass's explicit
+    scope — `relative_volume`/`relative_volume_series` only): `app/market_intelligence.py` has two
+    separate, pre-existing, already-disclosed-as-out-of-scope inline relative-volume-style
+    calculations (`_institutional_activity_read()`'s `volume_ratio`, the regime classifier's
+    `volume_trend`) that both silently fall back to a fabricated `1.0` baseline
+    (`mean(...) or 1.0`) rather than an honest unavailable state on an all-zero-volume window — the
+    same category of bug this pass fixed in `volume_analysis.py`, but in a different, much
+    higher-blast-radius module (feeds live regime classification) that this pass's own strict scope
+    control explicitly did not authorize touching. Flagged here for a future, dedicated pass.
+  - New/extended tests: 7 new tests in `TestRelativeVolume` (zero/negative/NaN baseline, zero/negative/
+    NaN/infinite current-bar volume, contrasted against the real, valid zero-CURRENT-volume case), 4
+    new tests in `TestRelativeVolumeSeries` (the exact zero-baseline regression, a mid-series
+    "market halt" shape proving the undefined ratio never leaks into neighboring well-defined indices,
+    a general canonical-contract invariant checked at every index of a series containing a real gap,
+    and a NaN-volume-index case) — `tests/test_volume_analysis.py`. Updated the pre-existing chaos test
+    that had documented the old buggy behavior to assert the fixed contract instead —
+    `tests/test_chaos_market_data.py`. Full backend suite (3022 tests), `mypy`, `ruff` clean. Zero
+    frontend files touched — `relative_volume_series()` has no API/schema/frontend exposure today, so
+    no frontend verification was needed or performed.
+
 - **"Portfolio Risk Engine + Firm-Wide Risk Governance" — the portfolio-wide "lifetime drawdown"
   gate measured loss from the account's ORIGINAL starting balance, not from its own real peak, and
   ignored unrealized loss on still-open positions.** A Phase 0 audit (reusing prior knowledge of

@@ -64,16 +64,17 @@ class TestZeroVolumeCandles:
         candles = [_candle(i, volume=0.0) for i in range(21)]
         assert relative_volume(candles, period=20) is None
 
-    def test_relative_volume_series_reports_zero_not_none_for_the_same_zero_baseline_case(self) -> None:
-        # Documents a real inconsistency between the two functions,
-        # never asserted as correct: relative_volume() above returns an
-        # honest None for an undefined ratio, but relative_volume_series()
-        # currently falls back to 0.0 for the identical undefined case
-        # (volume_analysis.py's own `round(..., 4) if baseline else 0.0`
-        # branch) — current, real, disclosed behavior.
+    def test_relative_volume_series_is_honestly_none_for_the_same_zero_baseline_case(self) -> None:
+        # CEO directive "TradeTown — 11/10 Next Engineering Pass," Phase
+        # 2/10 — regression test for the exact inconsistency this file
+        # originally documented: relative_volume_series() used to fall
+        # back to a fabricated 0.0 for an undefined zero-baseline ratio
+        # while relative_volume() honestly returned None for the
+        # identical case. Fixed at the contract level in
+        # app/volume_analysis.py — this must stay None permanently.
         candles = [_candle(i, volume=0.0) for i in range(21)]
         series = relative_volume_series(candles, period=20)
-        assert series == [0.0]
+        assert series == [None]
 
     def test_a_single_zero_volume_candle_among_real_volume_does_not_crash_relative_volume(self) -> None:
         candles = [_candle(i, volume=1000.0) for i in range(21)]
