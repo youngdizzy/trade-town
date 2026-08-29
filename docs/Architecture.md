@@ -15018,6 +15018,36 @@ spec. 10 new tests including a hand-computed real-formula match and the
 textbook 0.25 coin-flip case, full backend suite green (2819 passed),
 mypy/ruff clean.
 
+**Follow-up — Per-Agent Brier Calibration.** "Professional Quant
+Portfolio Intelligence + Alpha Research Engine," Phase 7 (Agent
+Calibration). The desk-wide Brier score above only ever ran over the
+whole Prediction Ledger; `PredictionRecord.attributed_agents` already
+carried the real per-agent split needed to break it out one level
+deeper, unused for that purpose until now. New
+`app/prediction_tracking.py::compute_agent_brier_calibration()` calls
+the exact same `compute_brier_calibration()` once per real `AGENT_IDS`
+entry, filtered to `agent_id in record.attributed_agents` — zero new
+math. A jointly-attributed prediction counts toward every agent who
+backed it (honest, matches how this desk's votes actually work — not a
+double-count bug); each agent still gets its own real
+`not_enough_data` floor independently. New `AgentBrierCalibration`
+schema, new `GET /api/predictions/calibration/brier/by-agent`
+endpoint. Frontend: `BrierCalibrationCard.tsx` gained a "Per-Agent
+Calibration" section, one row per agent with sufficient real evidence,
+sorted best-calibrated first, thin-evidence agents simply omitted. 4
+new tests (`TestComputeAgentBrierCalibration`) — one entry per real
+agent ID, an unattributed agent's honest `not_enough_data`, an
+overconfident agent (real Brier 0.81) isolated from a well-calibrated
+one (real Brier 0.0), and joint attribution splitting cleanly across
+both agents. Full backend suite green (3134 passed), mypy/ruff clean;
+frontend `tsc`/lint/build clean. Live-verified against the real
+running dev stack: the current dev save has only 5 real resolved
+predictions (below the real minimum of 10), so the desk-wide card's
+honest empty state was confirmed live against real (currently
+insufficient) data, and the populated per-agent section itself was
+verified with a Playwright spec mocking both endpoints' real response
+shape to confirm rendering, sort order, and the thin-evidence omission.
+
 **Follow-up — Live Recovery Factor.** Closes another P2 item named
 above. A real, standard quant performance ratio — net profit divided by
 the account's own worst real peak-to-trough drawdown, in dollars, the

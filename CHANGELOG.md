@@ -340,6 +340,42 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"TradeTown — Next Phase: Professional Quant Portfolio Intelligence + Alpha Research Engine,"
+  Phase 7 (Agent Calibration) — per-agent Brier-score calibration.** The directive's own example
+  ("if an agent repeatedly says 90% confidence and succeeds only 55% of the time, the system should
+  detect that") was already fully backed by real, existing infrastructure that had simply never been
+  combined: `app/prediction_tracking.py::compute_brier_calibration()` already computed a real,
+  textbook-correct Brier score (plus a reliability-diagram bucket breakdown) over the Prediction
+  Ledger, and every `PredictionRecord` already carried a real `attributedAgents: list[AgentId]` split
+  — but the calibration read only ever ran desk-wide, filtering on agent was never done. No new
+  statistics, no new scoring rule — the identical real methodology, called once per real named agent
+  over only the real predictions that agent is an actual attributed member of.
+  - New `app/prediction_tracking.py::compute_agent_brier_calibration()` — wraps the existing
+    `compute_brier_calibration()` once per `AGENT_IDS` entry, filtered to
+    `agent_id in record.attributed_agents`. A jointly-supported decision (multiple agents backing the
+    same real vote) honestly counts toward every real attributed agent's own read — that's how this
+    desk's own voting already works (`AnalystVote`s are per-role, not solo), not a double-count bug.
+    Every agent still gets a real, honest `not_enough_data` evidence state below
+    `MIN_PREDICTIONS_FOR_BRIER_VERDICT`, exactly like the desk-wide read — never a fabricated
+    per-agent verdict from a handful of shared predictions.
+  - New `AgentBrierCalibration` schema (`agentId` + the existing `BrierCalibrationSummary`) and new
+    `GET /api/predictions/calibration/brier/by-agent` endpoint, mirroring the existing desk-wide
+    endpoint's own convention (computed fresh per request, no new save-state field).
+  - Frontend: `BrierCalibrationCard.tsx` gained a "Per-Agent Calibration" section — one row per agent
+    with `evidenceState: "sufficient_evidence"`, sorted best-calibrated (lowest Brier score) first,
+    each with its own real Meter bar; agents still below the evidence minimum are simply omitted
+    (their real "not enough data" state, not a fabricated placeholder row).
+  - New tests: `TestComputeAgentBrierCalibration` (4, `test_brier_calibration.py`) — one entry per
+    real agent ID, an unattributed agent honestly reading `not_enough_data`, an overconfident agent's
+    real 0.81 Brier score isolated from a well-calibrated agent's real 0.0, and a jointly-attributed
+    prediction counting toward every real attributed agent without diluting either read.
+  - Verified: full backend suite (3134 tests) green, `mypy`/`ruff` clean. Frontend `tsc`/lint/build
+    clean. Live-verified against the real running dev stack: the current dev save only has 5 real
+    resolved predictions (below the real minimum of 10), so the populated per-agent section itself
+    was verified with a Playwright spec that mocks both endpoints' real response shape and confirms
+    the section renders, sorts correctly, and hides thin-evidence agents — the desk-wide card's own
+    honest empty state was confirmed live against the real (currently insufficient) dev-save data.
+
 - **"TradeTown — Next Milestone: Hard Risk Gates 2.0 — Stop-Loss / Position-Risk Enforcement."**
   A full Phase 1 audit of the real signal→strategy→sizing→risk→order→position→exit→P&L pipeline
   (traced end to end: `app/executive.py`'s `generate_proposal()`/`resolve_proposal()`,

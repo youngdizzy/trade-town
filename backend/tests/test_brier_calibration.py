@@ -5,15 +5,18 @@ Prediction Records ledger — this suite verifies the score matches its
 own textbook formula on hand-picked cases, never a fabricated number."""
 from __future__ import annotations
 
+import pytest
+
 from app.prediction_tracking import (
     MIN_PREDICTIONS_FOR_BRIER_VERDICT,
     MIN_PREDICTIONS_FOR_BUCKET_VERDICT,
+    compute_agent_brier_calibration,
     compute_brier_calibration,
 )
-from app.schemas import PredictionRecord
+from app.schemas import AGENT_IDS, AgentId, PredictionRecord
 
 
-def _prediction(n: int, *, confidence_pct: float, outcome: str = "pending") -> PredictionRecord:
+def _prediction(n: int, *, confidence_pct: float, outcome: str = "pending", attributed_agents: list[AgentId] | None = None) -> PredictionRecord:
     return PredictionRecord(
         id=f"prediction-{n}",
         decisionId=f"decision-{n}",
@@ -21,7 +24,7 @@ def _prediction(n: int, *, confidence_pct: float, outcome: str = "pending") -> P
         claimType="trade_direction",
         predictedDirection="buy",
         confidencePct=confidence_pct,
-        attributedAgents=["scout"],
+        attributedAgents=attributed_agents if attributed_agents is not None else ["scout"],
         outcome=outcome,  # type: ignore[arg-type]
         simDay=1,
         createdAt="2026-01-01T00:00:00+00:00",
@@ -104,3 +107,49 @@ class TestComputeBrierCalibration:
         result = compute_brier_calibration(predictions)
         assert str(MIN_PREDICTIONS_FOR_BRIER_VERDICT) in result.summary
         assert "0.000" in result.summary
+
+
+class TestComputeAgentBrierCalibration:
+    """CEO directive "Professional Quant Portfolio Intelligence + Alpha
+    Research Engine," Phase 7 — the exact same real Brier methodology,
+    broken out per real named agent via PredictionRecord.attributedAgents."""
+
+    def test_returns_one_entry_per_real_agent_id(self) -> None:
+        result = compute_agent_brier_calibration([])
+        assert {r.agent_id for r in result} == set(AGENT_IDS)
+
+    def test_an_agent_with_no_attributed_predictions_reads_not_enough_data(self) -> None:
+        predictions = [_prediction(i, confidence_pct=90.0, outcome="correct", attributed_agents=["scout"]) for i in range(MIN_PREDICTIONS_FOR_BRIER_VERDICT)]
+        result = compute_agent_brier_calibration(predictions)
+        atlas = next(r for r in result if r.agent_id == "atlas")
+        assert atlas.calibration.evidence_state == "not_enough_data"
+        assert atlas.calibration.resolved_prediction_count == 0
+
+    def test_an_overconfident_agent_is_isolated_from_a_well_calibrated_one(self) -> None:
+        # Scout: 100% confidence, always correct -> real Brier 0.0.
+        scout_predictions = [_prediction(i, confidence_pct=100.0, outcome="correct", attributed_agents=["scout"]) for i in range(MIN_PREDICTIONS_FOR_BRIER_VERDICT)]
+        # Atlas: 90% confidence, always wrong -> real Brier (0.9-0)^2 = 0.81, a genuinely
+        # overconfident real track record — exactly the case the directive names.
+        atlas_predictions = [
+            _prediction(100 + i, confidence_pct=90.0, outcome="incorrect", attributed_agents=["atlas"]) for i in range(MIN_PREDICTIONS_FOR_BRIER_VERDICT)
+        ]
+        result = compute_agent_brier_calibration(scout_predictions + atlas_predictions)
+        scout = next(r for r in result if r.agent_id == "scout")
+        atlas = next(r for r in result if r.agent_id == "atlas")
+        assert scout.calibration.brier_score == 0.0
+        assert atlas.calibration.brier_score == pytest.approx(0.81)
+        # Neither agent's real read was diluted by the other's real predictions.
+        assert scout.calibration.resolved_prediction_count == MIN_PREDICTIONS_FOR_BRIER_VERDICT
+        assert atlas.calibration.resolved_prediction_count == MIN_PREDICTIONS_FOR_BRIER_VERDICT
+
+    def test_a_jointly_attributed_prediction_counts_toward_every_real_attributed_agent(self) -> None:
+        # A real decision multiple agents jointly supported — each
+        # agent's own calibration read honestly includes it, no
+        # fabricated split.
+        joint = [_prediction(i, confidence_pct=80.0, outcome="correct", attributed_agents=["scout", "atlas"]) for i in range(MIN_PREDICTIONS_FOR_BRIER_VERDICT)]
+        result = compute_agent_brier_calibration(joint)
+        scout = next(r for r in result if r.agent_id == "scout")
+        atlas = next(r for r in result if r.agent_id == "atlas")
+        assert scout.calibration.resolved_prediction_count == MIN_PREDICTIONS_FOR_BRIER_VERDICT
+        assert atlas.calibration.resolved_prediction_count == MIN_PREDICTIONS_FOR_BRIER_VERDICT
+        assert scout.calibration.brier_score == atlas.calibration.brier_score

@@ -6524,6 +6524,21 @@ class BrierCalibrationSummary(CamelModel):
     updated_at: str = Field(alias="updatedAt")
 
 
+# CEO directive "Professional Quant Portfolio Intelligence + Alpha
+# Research Engine," Phase 7 (Agent Calibration) — "if an agent
+# repeatedly says 90% confidence and succeeds only 55% of the time, the
+# system should detect that." `compute_brier_calibration()` above
+# already computes the real Brier-score methodology this needs; the
+# only real gap was that it only ever ran desk-wide, never per agent,
+# even though `PredictionRecord.attributed_agents` already carries the
+# real per-agent attribution to filter on. This wraps that exact same
+# function, called once per agent over its own filtered records — zero
+# new statistics, zero new math, the identical real scoring rule.
+class AgentBrierCalibration(CamelModel):
+    agent_id: AgentId = Field(alias="agentId")
+    calibration: BrierCalibrationSummary
+
+
 # v0.7 Feature 22 — Market Environment Simulation. Every regime is
 # computed server-side from the same real trend/volatility signals
 # app/market_data.py already exposes (trend_pct/volatility_pct,

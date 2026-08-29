@@ -2118,6 +2118,20 @@ by stated-confidence range — `rangeLowPct`/`rangeHighPct`/
 bucket)/`avgStatedConfidencePct`), a plain-language `summary`, and
 `updatedAt`. No new `GameSaveState` field, no gate, no automatic action.
 
+### `GET /api/predictions/calibration/brier/by-agent`
+
+CEO directive "Professional Quant Portfolio Intelligence + Alpha
+Research Engine," Phase 7 (Agent Calibration) — the same real Brier
+calibration above (`app/prediction_tracking.py::
+compute_agent_brier_calibration()`), broken out per real named agent.
+Returns `list[AgentBrierCalibration]`, one entry per `AGENT_IDS` value:
+`agentId` plus a `calibration: BrierCalibrationSummary` computed only
+over the real predictions that agent is an actual `attributedAgents`
+member of (a jointly-attributed prediction counts toward every agent
+who backed it). Same `evidenceState`/`MIN_PREDICTIONS_FOR_BRIER_VERDICT`
+floor as the desk-wide endpoint, evaluated independently per agent.
+Computed fresh per request, no new `GameSaveState` field.
+
 ### `GET /api/failures/{agent_id}`
 
 CEO directive "Features 26-30: Agent Intelligence, Learning &
