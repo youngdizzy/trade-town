@@ -3697,6 +3697,16 @@ export interface CeoDecisionRecord {
   resolvedBy: "ceo" | "auto" | "delegated";
   createdAt: string;
   resolvedAt: string | null;
+  /** CEO directive "TradeTown — 11/10 Market Intelligence + Quant
+   * Research Engine" — a real, non-blocking regime-gated strategy
+   * warning. Set only when the CEO attributed a real strategy this
+   * company's own closed-trade evidence flags for today's regime (see
+   * backend/app/market_intelligence.py's compute_strategy_match()).
+   * Never blocks the trade, never overrides the CEO — purely disclosed
+   * on the permanent record. Null whenever no strategy was selected, the
+   * selected strategy has no such evidence, or the decision predates
+   * this field. */
+  regimeStrategyWarning: string | null;
 }
 
 // CEO directive "Features 26-30," Feature 29 — Prediction -> Outcome

@@ -14,6 +14,7 @@ import type {
   HoldReason,
   ScenarioResult,
   ScenarioType,
+  StrategyMatch,
   TradeProposal,
   WeightedExecutiveRecommendation,
   WeightProfile,
@@ -132,6 +133,15 @@ export function ExecutiveVoting() {
   // trade" (see TradeStrategyProvenanceState's known/unknown/unavailable
   // split).
   const [selectedStrategyId, setSelectedStrategyId] = useState("");
+  // CEO directive "TradeTown — 11/10 Market Intelligence + Quant
+  // Research Engine" — a real, non-blocking regime-gated strategy
+  // warning, shown live BEFORE the CEO submits (the permanent record's
+  // own copy is backend/app/schemas.py's
+  // CeoDecisionRecord.regimeStrategyWarning, set at decision time).
+  // Reuses the same live, on-demand StrategyMatch read
+  // LiveStrategyEligibilityCard.tsx already established — never a
+  // second, independently-computed regime-eligibility read.
+  const [liveStrategyMatch, setLiveStrategyMatch] = useState<StrategyMatch | null>(null);
   // Design Bible Chapter 70 Part 2 — Executive Accuracy Score, real and
   // company-wide (not proposal-scoped), fetched fresh on open.
   const [showAccuracy, setShowAccuracy] = useState(false);
@@ -190,6 +200,23 @@ export function ExecutiveVoting() {
     // the lab opens or the active proposal's symbol actually changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showWhatIf, proposal?.symbol]);
+
+  // CEO directive "TradeTown — 11/10 Market Intelligence + Quant
+  // Research Engine" — fetched once whenever the voting window is open
+  // and a real strategy roster exists, so the warning below can compare
+  // selectedStrategyId against today's real avoidedStrategyIds the
+  // instant the CEO picks one, without a fetch per keystroke.
+  useEffect(() => {
+    if (!executiveVotingOpen || strategies.length === 0) return;
+    let cancelled = false;
+    api
+      .getLiveStrategyEligibility()
+      .then((res) => !cancelled && setLiveStrategyMatch(res))
+      .catch(() => !cancelled && setLiveStrategyMatch(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [executiveVotingOpen, strategies.length]);
 
   // v0.7 Feature 50 (Part 1) — the Executive Intelligence Network's
   // recommendation is computed fresh (never persisted — see
@@ -1007,6 +1034,20 @@ export function ExecutiveVoting() {
               (Sandbox → Certification/Health), not duplicated here. */}
           {strategies.length > 0 && (
             <div className="text-[9px] text-cmd-textDim">Stage is shown for real context only — any strategy may be selected regardless of certification.</div>
+          )}
+
+          {/* CEO directive "TradeTown — 11/10 Market Intelligence + Quant
+              Research Engine" — a real, non-blocking regime-gated
+              warning: this company's OWN real closed-trade evidence
+              (compute_strategy_match()'s avoidedStrategyIds) says the
+              selected strategy lost money under today's specific regime
+              last time it was tested. Never disables Buy/Sell, never
+              changes the trade — the CEO can still proceed; this only
+              discloses the evidence honestly before they do. */}
+          {selectedStrategyId !== "" && liveStrategyMatch?.avoidedStrategyIds.includes(selectedStrategyId) && (
+            <div className="rounded-sm border border-cmd-amber/50 bg-cmd-amber/10 p-1.5 text-[9px] text-cmd-amber">
+              ⚠ Regime warning: {liveStrategyMatch.detail}
+            </div>
           )}
 
           {/* Design Bible Chapter 70 Part 2 — "Modify": resize the pending
