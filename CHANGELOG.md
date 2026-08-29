@@ -185,8 +185,13 @@ development milestones, not semver releases.
     (`app/portfolio_intelligence.py`'s own Pearson reads) is NOT incorporated — a genuinely
     correlation-adjusted risk-parity weighting would need to solve for weights against a real covariance
     matrix, a further, real, disclosed, still-larger lift, not attempted here either.
+  - New `crossPortfolioRiskSizing`/`CrossPortfolioRiskParityRead` types in `types.ts`; `WarRoomPanel.tsx`
+    gained a matching "Cross-Portfolio Risk Parity" section mirroring the existing "Inverse-Volatility
+    Sizing" section's AVAILABLE/UNAVAILABLE pattern, since this field previously had no rendering path.
   - Verified: 12 new backend tests (`TestCrossPortfolioInverseVolSizing` [8],
-    `TestBuildPositionSizingCrossPortfolioCap` [4]), full backend suite, `mypy`/`ruff` clean.
+    `TestBuildPositionSizingCrossPortfolioCap` [4]), full backend suite, `mypy`/`ruff` clean. Frontend
+    `tsc`/lint/build clean. No live Playwright pass this slice — mirrors the same already-verified
+    AVAILABLE/UNAVAILABLE rendering pattern the `inverseVolSizing` section already uses.
 
 - **"AHL-Inspired Systematic Trend & Momentum Research Engine" follow-up: real trend-engine evidence in
   the agents' own research/debate flow.** The directive's Phase 11 asked for structured TREND_ENGINE

@@ -268,8 +268,8 @@ function SessionDetail({ session }: { session: WarRoomSession }) {
           {/* AHL directive follow-up — promotes the real, previously
               research-only inverse-volatility exposure calculator into
               this live, advisory-only narrowing cap. A SINGLE-position
-              scaler, not true cross-portfolio simultaneous normalization
-              (a separate, disclosed, unattempted lift). */}
+              scaler — see the cross-portfolio section below for the
+              real, naive risk-parity read across every open position. */}
           <div className="mt-2 border-t border-cmd-border/50 pt-2">
             <div className="mb-1 flex items-center justify-between">
               <TerminalLabel>Inverse-Volatility Sizing — AHL-inspired research cap</TerminalLabel>
@@ -286,6 +286,39 @@ function SessionDetail({ session }: { session: WarRoomSession }) {
                   <DataRow label="Capped Exposure" value={`${session.positionSizing.inverseVolSizing.cappedExposurePct.toFixed(2)}%`} valueClassName={session.positionSizing.inverseVolSizing.wasCapped ? "text-cmd-amber" : undefined} />
                 </div>
                 <p className="mt-1 text-[9px] text-cmd-textDim">{session.positionSizing.inverseVolSizing.detail}</p>
+              </>
+            ) : (
+              <p className="text-[9px] text-cmd-textDim">Not enough real candle history yet for a volatility estimate.</p>
+            )}
+          </div>
+
+          {/* AHL directive follow-up — closes the honesty gap the
+              section above discloses: this candidate's own exposure now
+              also depends on every OTHER real currently-open position's
+              own real volatility, a naive (uncorrelated) risk-parity
+              read across the whole real portfolio. STILL NOT full
+              covariance-based Equal Risk Contribution — real
+              correlation between held symbols is not incorporated. */}
+          <div className="mt-2 border-t border-cmd-border/50 pt-2">
+            <div className="mb-1 flex items-center justify-between">
+              <TerminalLabel>Cross-Portfolio Risk Parity — naive inverse-vol across all open positions</TerminalLabel>
+              <StatusPill tone={session.positionSizing.crossPortfolioRiskSizing ? "cyan" : "neutral"}>
+                {session.positionSizing.crossPortfolioRiskSizing ? "AVAILABLE" : "UNAVAILABLE"}
+              </StatusPill>
+            </div>
+            {session.positionSizing.crossPortfolioRiskSizing ? (
+              <>
+                <div className="grid grid-cols-2 gap-x-4 sm:grid-cols-4">
+                  <DataRow label="Real Positions" value={`${session.positionSizing.crossPortfolioRiskSizing.positionCount}`} />
+                  <DataRow label="Fair Share" value={`${session.positionSizing.crossPortfolioRiskSizing.candidateWeightPct.toFixed(1)}%`} />
+                  <DataRow label="Fair-Share Risk" value={`${session.positionSizing.crossPortfolioRiskSizing.fairShareRiskPct.toFixed(3)}%`} />
+                  <DataRow
+                    label="Capped Exposure"
+                    value={`${session.positionSizing.crossPortfolioRiskSizing.finalExposure.cappedExposurePct.toFixed(2)}%`}
+                    valueClassName={session.positionSizing.crossPortfolioRiskSizing.finalExposure.wasCapped ? "text-cmd-amber" : undefined}
+                  />
+                </div>
+                <p className="mt-1 text-[9px] text-cmd-textDim">{session.positionSizing.crossPortfolioRiskSizing.detail}</p>
               </>
             ) : (
               <p className="text-[9px] text-cmd-textDim">Not enough real candle history yet for a volatility estimate.</p>

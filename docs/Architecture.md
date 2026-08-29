@@ -15931,14 +15931,23 @@ risk-parity weighting would need to solve for weights against a real
 covariance matrix, a further, real, disclosed, still-larger lift, not
 attempted here either.
 
+New `crossPortfolioRiskSizing`/`CrossPortfolioRiskParityRead` types in
+`types.ts`; `WarRoomPanel.tsx` gained a matching "Cross-Portfolio Risk
+Parity" section mirroring the existing "Inverse-Volatility Sizing"
+section's AVAILABLE/UNAVAILABLE pattern, since this field previously
+had no rendering path anywhere.
+
 **Verification.** 12 new backend tests
 (`TestCrossPortfolioInverseVolSizing` [8],
 `TestBuildPositionSizingCrossPortfolioCap` [4]) in
 `tests/test_position_sizing.py`, full backend suite, `mypy`/`ruff`
-clean. No frontend changes this slice.
+clean. Frontend `tsc`/lint/build clean. No live Playwright pass this
+slice — mirrors the same already-verified AVAILABLE/UNAVAILABLE
+rendering pattern the `inverseVolSizing` section already uses.
 
 **Files changed.** Backend: `app/position_sizing.py`, `app/schemas.py`,
-`tests/test_position_sizing.py`. Docs: `CHANGELOG.md`.
+`tests/test_position_sizing.py`. Frontend: `types.ts`,
+`panels/WarRoomPanel.tsx`. Docs: `CHANGELOG.md`.
 
 ## CEO directive "Portfolio Risk Engine + Firm-Wide Risk Governance"
 

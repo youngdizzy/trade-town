@@ -4722,6 +4722,31 @@ export interface VolatilitySizingRead {
   detail: string;
 }
 
+/** CEO directive "AHL-Inspired Systematic Trend & Momentum Research
+ * Engine" follow-up — closes the honesty gap inverseVolSizing above
+ * explicitly discloses: a real, naive (uncorrelated) cross-portfolio
+ * inverse-volatility risk-parity read across every currently-open real
+ * position plus this candidate, not a single-position-only scaler.
+ * candidateWeightPct is this candidate's own real share of the total
+ * 1/volatility weight across all positionCount real symbols;
+ * fairShareRiskPct applies that share to a real total risk budget
+ * (riskPerTradePct * positionCount, so this collapses to exactly
+ * today's single-position risk budget when positionCount == 1);
+ * finalExposure reuses VolatilityScaledExposureResearch verbatim for
+ * the actual capped position-size result. STILL NOT full
+ * covariance-based Equal Risk Contribution — real correlation between
+ * held symbols is not incorporated, a further, disclosed, larger lift. */
+export interface CrossPortfolioRiskParityRead {
+  symbol: string;
+  positionCount: number;
+  candidateVolatilityPct: number;
+  candidateWeightPct: number;
+  fairShareRiskPct: number;
+  totalRiskBudgetPct: number;
+  finalExposure: VolatilityScaledExposureResearch;
+  detail: string;
+}
+
 export interface PositionSizingResult {
   tier: PositionTier;
   tierLabel: string;
@@ -4741,10 +4766,15 @@ export interface PositionSizingResult {
    * Engine" follow-up — promotes the real, previously research-only
    * inverse-volatility exposure calculator into this live, advisory-
    * only narrowing cap. A SINGLE-position scaler, not true
-   * cross-portfolio simultaneous normalization (a separate, disclosed,
-   * unattempted lift). Null when there isn't enough real candle
-   * history yet, same honesty convention as volatilitySizing. */
+   * cross-portfolio simultaneous normalization — see
+   * crossPortfolioRiskSizing below for that. Null when there isn't
+   * enough real candle history yet, same honesty convention as
+   * volatilitySizing. */
   inverseVolSizing: VolatilityScaledExposureResearch | null;
+  /** The real cross-portfolio inverse-vol risk-parity read — see
+   * CrossPortfolioRiskParityRead's own doc comment. Null under the
+   * same honesty convention as the other volatility-based reads above. */
+  crossPortfolioRiskSizing: CrossPortfolioRiskParityRead | null;
   detail: string;
 }
 
