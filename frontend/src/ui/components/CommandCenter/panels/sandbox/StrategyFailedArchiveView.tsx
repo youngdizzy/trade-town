@@ -1,7 +1,16 @@
-import type { FailedStrategyArchiveEntry } from "@/types";
+import { useEffect, useState } from "react";
+import { api } from "@/net/api";
+import type { FailedStrategyArchiveEntry, FailureModeCount, FailureSeverity } from "@/types";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { STAGE_LABELS } from "../../lib/derive";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../../ui";
+
+const SEVERITY_TONE: Record<FailureSeverity, "red" | "amber" | "purple" | "neutral"> = {
+  critical: "red",
+  high: "red",
+  medium: "amber",
+  low: "neutral",
+};
 
 /**
  * v0.7 Feature 52 (Part 2) — the Failed Strategy Archive. Every real
@@ -11,8 +20,20 @@ import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../../ui"
  * verdicts and StrategyExecutiveReview concerns, never invented after
  * the fact — see backend/app/strategy_lab.py's
  * generate_strategy_retirement_outcome().
+ *
+ * CEO directive "TradeTown — Statistical Validation + Research Failure
+ * Taxonomy," Part 2 — `failureCodes` adds a real, structured,
+ * machine-readable taxonomy alongside that free text (see
+ * backend/app/failure_taxonomy.py), and "Top Repeated Failure Modes"
+ * surfaces a real, computed-fresh clustering across the whole archive.
  */
 export function StrategyFailedArchiveView({ entries }: { entries: FailedStrategyArchiveEntry[] }) {
+  const [topModes, setTopModes] = useState<FailureModeCount[] | null>(null);
+
+  useEffect(() => {
+    api.getTopFailureModes().then(setTopModes).catch(() => undefined);
+  }, [entries.length]);
+
   return (
     <div className="space-y-3">
       <Glass className="p-3">
@@ -22,6 +43,25 @@ export function StrategyFailedArchiveView({ entries }: { entries: FailedStrategy
           department concerns — never invented after the fact.
         </p>
       </Glass>
+
+      {topModes && topModes.length > 0 && (
+        <Glass className="p-3">
+          <TerminalLabel>Top Repeated Failure Modes — real research intelligence</TerminalLabel>
+          <div className="mt-1.5 space-y-1">
+            {topModes.slice(0, 8).map((m) => (
+              <div key={m.code} className="flex items-center justify-between gap-2 border-t border-cmd-border/40 pt-1 text-[9px]">
+                <span className="text-cmd-text">
+                  {m.code.replace(/_/g, " ")} <span className="text-cmd-textDim">({m.category.replace(/_/g, " ")})</span>
+                </span>
+                <div className="flex items-center gap-2">
+                  <span className="text-cmd-textDim">{m.occurrenceCount} strategies</span>
+                  <StatusPill tone={SEVERITY_TONE[m.severity]}>{m.severity}</StatusPill>
+                </div>
+              </div>
+            ))}
+          </div>
+        </Glass>
+      )}
 
       {entries.length === 0 ? (
         <Glass className="p-3">
@@ -56,6 +96,19 @@ export function StrategyFailedArchiveView({ entries }: { entries: FailedStrategy
                 ))}
               </div>
             </div>
+            {e.failureCodes.length > 0 && (
+              <div className="mt-1.5">
+                <div className="mb-1 text-[9px] uppercase tracking-wide text-cmd-textDim">Failure Codes</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {e.failureCodes.map((f, i) => (
+                    <div key={i} className="flex items-center gap-1 rounded-sm border border-cmd-border/60 bg-cmd-bg/40 px-1.5 py-0.5 text-[8px]" title={f.evidence}>
+                      <StatusPill tone={SEVERITY_TONE[f.severity]}>{f.severity}</StatusPill>
+                      <span className="text-cmd-text">{f.code.replace(/_/g, " ")}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
           </Glass>
         ))
       )}

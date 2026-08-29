@@ -100,6 +100,7 @@ import type {
   ConfidenceTier,
   ConstitutionState,
   FailedStrategyArchiveEntry,
+  FailureModeCount,
   KnowledgeQualityScore,
   MarketIntelligenceRegime,
   ModelValidationReport,
@@ -927,6 +928,10 @@ export const api = {
     }),
   getChampionChallengerFamily: (strategyFamily: string) =>
     request<ChampionChallengerFamilyRead>(`/sandbox/champion-challenger/${encodeURIComponent(strategyFamily)}`),
+  // CEO directive "TradeTown — Statistical Validation + Research
+  // Failure Taxonomy," Part 2 (Failure Clustering). See
+  // backend/app/failure_taxonomy.py's compute_top_failure_modes().
+  getTopFailureModes: () => request<FailureModeCount[]>("/sandbox/failure-modes"),
   // CEO directive "Strategy Intelligence + Live Strategy Attribution,"
   // Phase 1 — the real Strategy Lab <-> CompiledStrategyDefinition
   // identity bridge. See backend/app/strategy_registry.py's

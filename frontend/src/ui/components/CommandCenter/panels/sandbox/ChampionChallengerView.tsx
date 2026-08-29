@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { api } from "@/net/api";
 import { AGENT_IDS } from "@/types";
-import type { AgentId, ChallengerComparison, ChallengerVerdict, ChampionChallengerFamilyRead } from "@/types";
+import type { AgentId, ChallengerComparison, ChallengerVerdict, ChampionChallengerFamilyRead, StatisticalEconomicClassification } from "@/types";
 import { AGENT_PROFILES } from "@/game/systems/AgentProfiles";
 import { DataRow, EmptyState, Glass, StatusPill, TerminalLabel } from "../../ui";
 
@@ -9,6 +9,16 @@ const VERDICT_TONE: Record<ChallengerVerdict, "green" | "amber" | "red"> = {
   challenger_recommended: "green",
   champion_retained: "amber",
   insufficient_evidence: "red",
+};
+
+// CEO directive "TradeTown — Statistical Validation + Research Failure
+// Taxonomy," Part 1.
+const CLASSIFICATION_TONE: Record<StatisticalEconomicClassification, "green" | "amber" | "red" | "purple"> = {
+  both: "green",
+  statistically_supported_only: "amber",
+  economically_meaningful_only: "amber",
+  neither: "red",
+  insufficient_sample: "purple",
 };
 
 function MetricRow({ label, champion, challenger, suffix = "" }: { label: string; champion: number | null; challenger: number | null; suffix?: string }) {
@@ -218,6 +228,52 @@ export function ChampionChallengerView() {
             {comparison.verdict !== "challenger_recommended" && <span className="text-[8px] text-cmd-textDim">Only a "challenger recommended" verdict can be promoted.</span>}
           </div>
           {promoteError && <div className="mt-1.5 text-[9px] text-cmd-red">{promoteError}</div>}
+        </Glass>
+      )}
+
+      {comparison && (
+        <Glass className="p-3">
+          <div className="mb-1.5 flex items-center justify-between">
+            <TerminalLabel>Statistical Evidence — an additional layer, never a gate-bypass</TerminalLabel>
+            <StatusPill tone={CLASSIFICATION_TONE[comparison.classification]}>{comparison.classification.replace(/_/g, " ")}</StatusPill>
+          </div>
+          {comparison.statisticalComparison.evidenceState === "insufficient_evidence" ? (
+            <EmptyState>{comparison.statisticalComparison.limitationNote}</EmptyState>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 gap-x-3 sm:grid-cols-4">
+                <DataRow label="Mean difference" value={`${comparison.statisticalComparison.meanDifferenceEstimate}R`} />
+                <DataRow
+                  label={`${comparison.statisticalComparison.confidenceLevelPct}% CI`}
+                  value={`[${comparison.statisticalComparison.differenceCiLow}, ${comparison.statisticalComparison.differenceCiHigh}]`}
+                />
+                <DataRow label="P(challenger better)" value={`${comparison.statisticalComparison.probabilityChallengerBetterPct}%`} />
+                <DataRow label="Method" value={comparison.statisticalComparison.method} />
+              </div>
+              <div className="mt-1 text-[8px] text-cmd-textDim">
+                N = {comparison.statisticalComparison.championSampleSize} champion / {comparison.statisticalComparison.challengerSampleSize} challenger real closed trades,{" "}
+                {comparison.statisticalComparison.resamples} resamples.
+              </div>
+              <div className="mt-1 text-[8px] italic text-cmd-textDim">{comparison.statisticalComparison.limitationNote}</div>
+            </>
+          )}
+
+          {(comparison.multipleTestingRisk || comparison.highTuningExposure) && (
+            <div className="mt-2 space-y-1">
+              {comparison.multipleTestingRisk && (
+                <div className="rounded-sm border border-cmd-amber/40 bg-cmd-amber/5 p-1.5 text-[9px] text-cmd-text">
+                  MULTIPLE_TESTING_RISK — this challenger's own name has already been tested {comparison.researchFamilyExperimentCount} times in the Quant Research Lab
+                  archive. Repeated retesting raises the risk that any pass is a lucky search result.
+                </div>
+              )}
+              {comparison.highTuningExposure && (
+                <div className="rounded-sm border border-cmd-amber/40 bg-cmd-amber/5 p-1.5 text-[9px] text-cmd-text">
+                  HIGH_TUNING_EXPOSURE — this challenger is revision v{comparison.challengerTuningVersion} of the same strategy name. Stronger out-of-sample evidence should
+                  be required before promotion.
+                </div>
+              )}
+            </div>
+          )}
         </Glass>
       )}
 

@@ -1899,6 +1899,35 @@ export interface SubmitQuantResearchExperimentResult {
 // rule).
 export type ChallengerVerdict = "challenger_recommended" | "champion_retained" | "insufficient_evidence";
 
+// CEO directive "TradeTown — Statistical Validation + Research Failure
+// Taxonomy," Part 1 — a real IID percentile bootstrap comparison of the
+// difference in mean per-trade R-multiple between two real, closed
+// trade samples. See backend/app/statistical_comparison.py's own
+// module docstring for the exact real methodology and its disclosed
+// IID (not block-bootstrap) limitation. Never a claim of a classical
+// p-value.
+export type BootstrapEvidenceState = "sufficient_evidence" | "insufficient_evidence";
+
+export interface BootstrapComparisonResult {
+  championSampleSize: number;
+  challengerSampleSize: number;
+  championMeanR: number | null;
+  challengerMeanR: number | null;
+  meanDifferenceEstimate: number | null;
+  differenceCiLow: number | null;
+  differenceCiHigh: number | null;
+  confidenceLevelPct: number;
+  probabilityChallengerBetterPct: number | null;
+  method: string;
+  resamples: number;
+  evidenceState: BootstrapEvidenceState;
+  limitationNote: string;
+}
+
+// "The system should explicitly distinguish: STATISTICALLY SUPPORTED /
+// ECONOMICALLY MEANINGFUL / BOTH / NEITHER / INSUFFICIENT SAMPLE."
+export type StatisticalEconomicClassification = "both" | "statistically_supported_only" | "economically_meaningful_only" | "neither" | "insufficient_sample";
+
 export interface ChallengerComparison {
   id: string;
   strategyFamily: string;
@@ -1923,6 +1952,12 @@ export interface ChallengerComparison {
   challengerConclusion: string;
   verdict: ChallengerVerdict;
   reasoning: string;
+  statisticalComparison: BootstrapComparisonResult;
+  classification: StatisticalEconomicClassification;
+  researchFamilyExperimentCount: number | null;
+  multipleTestingRisk: boolean;
+  challengerTuningVersion: number;
+  highTuningExposure: boolean;
   generatedAt: string;
 }
 
@@ -2203,6 +2238,73 @@ export interface StrategyHallOfFameEntry {
 
 /** Every retirement that doesn't clear the Hall of Fame bar — never
  * deleted, always kept as a real, citable lesson. */
+// CEO directive "TradeTown — Statistical Validation + Research Failure
+// Taxonomy," Part 2 — the directive's own exact requested taxonomy.
+// See backend/app/failure_taxonomy.py's own module docstring for which
+// codes this codebase can honestly derive today vs. real vocabulary
+// awaiting a future real evidence source.
+export type FailureCategory = "data_failure" | "statistical_failure" | "risk_failure" | "performance_failure" | "robustness_failure" | "execution_failure" | "research_failure";
+
+export type FailureCode =
+  | "insufficient_data"
+  | "missing_data"
+  | "stale_data"
+  | "survivorship_risk"
+  | "lookahead_detected"
+  | "data_leakage"
+  | "insufficient_sample"
+  | "weak_expectancy"
+  | "unstable_distribution"
+  | "statistical_uncertainty"
+  | "multiple_testing_risk"
+  | "selection_bias"
+  | "excessive_drawdown"
+  | "unacceptable_risk_of_ruin"
+  | "excessive_volatility"
+  | "concentration_risk"
+  | "poor_recovery"
+  | "negative_net_return"
+  | "low_profit_factor"
+  | "negative_expectancy"
+  | "benchmark_underperformance"
+  | "inconsistent_returns"
+  | "walk_forward_failure"
+  | "out_of_sample_failure"
+  | "regime_failure"
+  | "parameter_sensitivity"
+  | "cost_sensitivity"
+  | "slippage_sensitivity"
+  | "fragile_edge"
+  | "excessive_turnover"
+  | "unrealistic_fill_assumption"
+  | "excessive_slippage"
+  | "poor_liquidity"
+  | "adverse_selection"
+  | "hypothesis_invalidated"
+  | "overfit"
+  | "excessive_tuning"
+  | "duplicate_strategy"
+  | "redundant_strategy"
+  | "failed_challenger"
+  | "champion_not_beaten";
+
+export type FailureSeverity = "critical" | "high" | "medium" | "low";
+
+export interface FailureCodeEntry {
+  code: FailureCode;
+  category: FailureCategory;
+  severity: FailureSeverity;
+  evidence: string;
+}
+
+export interface FailureModeCount {
+  code: FailureCode;
+  category: FailureCategory;
+  severity: FailureSeverity;
+  occurrenceCount: number;
+  exampleStrategyNames: string[];
+}
+
 export interface FailedStrategyArchiveEntry {
   id: string;
   strategyId: string;
@@ -2211,6 +2313,7 @@ export interface FailedStrategyArchiveEntry {
   failedAtStage: StrategyStage;
   whatFailed: string[];
   lessonsLearned: string[];
+  failureCodes: FailureCodeEntry[];
   retiredReason: string;
   simDay: number;
   createdAt: string;
