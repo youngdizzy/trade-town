@@ -10,6 +10,8 @@ roadmap entries are real, named, ordered, but intentionally empty until
 their own content is authored."""
 from __future__ import annotations
 
+import random
+
 from app.foundational_mentors import (
     COACH_ESCALATION_THRESHOLD,
     MAX_CUSTOM_MENTORS,
@@ -312,6 +314,20 @@ class TestTickEmployeeProgress:
             assert set(progress.completed_lesson_ids) == set(_tjr_lesson_ids(state))
 
     def test_low_aptitude_agent_racks_up_consecutive_failures_eventually(self):
+        # `tick_employee_progress()` draws from the real, unseeded global
+        # `random` module — without an explicit seed here, this test's
+        # outcome depends on whatever RNG state every OTHER test in the
+        # same pytest process happened to leave behind, which is real,
+        # confirmed, order-dependent flakiness (seed=3 in isolation
+        # reliably reproduces a spurious failure even though the
+        # underlying production probability model is correct — 400
+        # ticks is plenty in expectation, just not with probability 1).
+        # Seeding here follows this suite's own established convention
+        # for testing randomized production code (see
+        # test_company_priority.py/test_whatif.py's own `random.seed()`
+        # calls) — the production code still draws from the real
+        # unseeded `random` module in every other context.
+        random.seed(0)
         state = default_foundational_mentor_state()
         # A review with the minimum real score, guaranteeing the lowest
         # legal pass probability (MIN_QUIZ_PASS_PROBABILITY) for scout.

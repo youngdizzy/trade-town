@@ -7,6 +7,19 @@ development milestones, not semver releases.
 
 ### Fixed
 
+- **`test_foundational_mentors.py` — a real, confirmed, order-dependent flaky test.**
+  `test_low_aptitude_agent_racks_up_consecutive_failures_eventually` loops `tick_employee_progress()`
+  up to 400 times hoping to observe 3 consecutive quiz failures; that function draws from the real,
+  unseeded global `random` module, so the test's outcome silently depended on whatever RNG state every
+  OTHER test in the same pytest process happened to leave behind — a genuine, reproducible flake (a
+  full-suite run surfaced it once; isolating the failing RNG state to `random.seed(3)` reliably
+  reproduces the spurious failure even though the underlying probability model is correct — 400 ticks
+  is plenty in expectation, just not with probability 1). Fixed by seeding the RNG explicitly at the
+  top of the test (`random.seed(0)`), following this suite's own established convention for testing
+  randomized production code (`test_company_priority.py`/`test_whatif.py`'s own `random.seed()` calls)
+  — the production code itself is untouched and still draws from the real unseeded `random` module in
+  every other context. Verified stable across repeated isolated runs and the full backend suite.
+
 - **"TradeTown — Next Major Build: Portfolio Risk Engine + Firm-Wide Risk Governance" follow-up:
   real capital-at-risk at every level of the exposure hierarchy, not just the portfolio total.**
   Phase 8 requires that "risk consumed at a lower level must be reflected at every higher level."
