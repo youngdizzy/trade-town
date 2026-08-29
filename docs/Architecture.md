@@ -16788,6 +16788,60 @@ call per real sizing candidate. Disclosed per the directive's own Phase
 clean. Frontend `tsc`/lint/build clean. Live-verified against the real
 running dev stack.
 
+### Follow-up: Phase 2 — regime-aware capital allocation
+
+A repo audit against this directive's own Phase 2 ("a strategy should
+not receive capital simply because it passed a backtest... determine
+which strategies are historically appropriate for the CURRENT regime")
+found `app/trend_engine.py::compute_trend_regime_breakdown()` — real,
+historical, regime-conditional hit-rate evidence, already tested — had
+zero consumers anywhere in the codebase.
+
+New `app/position_sizing.py::_regime_suitability_sizing()` promotes
+that evidence into one more real, narrowing-only cap in
+`build_position_sizing()`'s own `min(...)` chain. Reads the real
+current regime (`regime_trend_at()`, the same classifier the breakdown
+buckets by) over 200 real hourly candles, looks up the matching
+historical bucket, and — only when that bucket has at least 5 real
+observations (`_MIN_BARS_FOR_REGIME_EVIDENCE`) — scales the candidate
+size down proportionally below a 50% real historical hit-rate floor
+(`suitabilityScale = hitRatePct / 50.0`, floored toward but never below
+0.0). At or above a 50% real hit rate, `suitabilityScale` is exactly
+1.0 — this cap only ever narrows, never rewards a strong regime fit
+with more than the ceiling already allows. Uses its own locally-scoped
+`REGIME_SUITABILITY_HORIZONS` hourly horizon set
+(`[("6h", 6), ("12h", 12), ("24h", 24)]`), the same convention
+`app/executive.py`'s own `PROPOSAL_TREND_HORIZONS` already establishes
+for hourly callers of a module whose default horizon labels assume a
+daily timeframe.
+
+New `RegimeSuitabilityRead` schema — `available: false` (an honest,
+non-fabricated "insufficient evidence" state, never a silent zero-effect
+default) whenever there isn't yet enough real historical evidence for
+the current regime specifically — and
+`PositionSizingResult.regimeSuitabilitySizing`, with the same real
+default-for-backward-compat convention every sibling `*SizingRead` field
+already follows (`war_room_sessions` persists this list; an old save
+must still validate on load).
+
+New "Regime Suitability" section in `WarRoomPanel.tsx`, mirroring
+`volatilitySizing`'s own `available`-flag AVAILABLE/UNAVAILABLE
+rendering pattern. Live-verified against the real running dev stack: a
+pre-existing persisted War Room session (predating this field)
+correctly rendered the honest "Not computed — this position sizing
+result predates real regime-suitability sizing" default, proving the
+backward-compat schema default works end to end, not just in a unit
+test.
+
+New `TestRegimeSuitabilitySizing` (direct unit coverage, including a
+deterministic low-hit-rate case built from a real whipsaw/oscillating
+candle series whose period sits close to the regime breakdown's own
+forward-return window — a real, disclosed adversarial case for
+trend-following signals) and `TestBuildPositionSizingRegimeSuitabilityCap`
+(wiring/binding-constraint-naming coverage) in `test_position_sizing.py`.
+Full backend suite green (3093 tests), `mypy`/`ruff` clean. Frontend
+`tsc`/lint/build clean.
+
 ## Save format compatibility
 
 The save schema's `version` field has changed with every code-bearing

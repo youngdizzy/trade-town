@@ -62,6 +62,7 @@ version):
 """
 from __future__ import annotations
 
+from app.backtest_primitives import regime_trend_at
 from app.ema_pullback_research import CHANDELIER_ATR_MULTIPLIER, CHANDELIER_ATR_PERIOD
 from app.market_data import MarketDataProvider
 from app.portfolio_risk import compute_correlation_concentration_cap
@@ -74,14 +75,15 @@ from app.schemas import (
     PositionSizingResult,
     PositionTier,
     PortfolioHeat,
+    RegimeSuitabilityRead,
     RiskLimits,
     RiskWarning,
     TradeProposal,
     VolatilitySizingRead,
     VolatilityScaledExposureResearch,
 )
-from app.technical_indicators import atr
-from app.trend_engine import research_volatility_scaled_exposure
+from app.technical_indicators import atr, ema_series
+from app.trend_engine import compute_trend_regime_breakdown, research_volatility_scaled_exposure
 
 WEEKLY_DEPLOYMENT_WINDOW_DAYS = 7
 
@@ -93,6 +95,40 @@ WEEKLY_DEPLOYMENT_WINDOW_DAYS = 7
 # (22) own real minimum window, reused rather than picking a new number.
 VOLATILITY_TIMEFRAME = "1h"
 VOLATILITY_CANDLE_COUNT = 30
+
+# CEO directive "Portfolio Risk Engine, 11/10 Professional Quant-Firm
+# Implementation," Phase 2 — a locally-labeled hourly horizon set for
+# this module's own real hourly candle cadence, the same real,
+# disclosed choice app/executive.py's own PROPOSAL_TREND_HORIZONS
+# already makes (app/trend_engine.py's own DEFAULT_HORIZONS labels
+# assume a DAILY-timeframe series). A real regime breakdown needs
+# meaningfully more history than the 30-bar window every other cap in
+# this module uses — 200 real hourly bars is enough for the regime
+# classifier's own 50-period EMA plus a real trailing sample of
+# "strong signal" bars to bucket by regime.
+REGIME_SUITABILITY_TIMEFRAME = "1h"
+REGIME_SUITABILITY_HORIZONS: list[tuple[str, int]] = [("6h", 6), ("12h", 12), ("24h", 24)]
+REGIME_SUITABILITY_CANDLE_COUNT = 200
+# Matches app/trend_engine.py::compute_trend_regime_breakdown()'s own
+# real default parameters exactly — kept as real, local values (not
+# imported, avoiding a new cross-module constant for three plain
+# numbers) so this function's own "what is the regime RIGHT NOW" read
+# uses the exact same real classifier the breakdown's own historical
+# buckets are grouped by.
+_REGIME_EMA_PERIOD = 50
+_REGIME_SLOPE_LOOKBACK = 20
+_REGIME_SLOPE_THRESHOLD_PCT = 0.5
+# Phase 2's own "small buckets shown honestly" — a regime bucket with
+# fewer real historical observations than this is treated as
+# insufficient evidence, never trusted for a real capital decision.
+_MIN_BARS_FOR_REGIME_EVIDENCE = 5
+# Below this real historical hit rate in the CURRENT regime, size
+# scales down linearly toward 0 at a real 0% hit rate — one real,
+# disclosed, simple formula, never the only valid one a researcher
+# could choose. At or above it, no reduction (this cap only ever
+# narrows, never rewards a strong regime fit with MORE than the
+# ceiling already allows).
+_REGIME_SUITABILITY_HIT_RATE_FLOOR_PCT = 50.0
 
 TIER_LABEL: dict[PositionTier, str] = {
     "exploratory": "Exploratory",
@@ -360,6 +396,58 @@ def _cross_portfolio_inverse_vol_sizing(
     )
 
 
+def _regime_suitability_sizing(proposal: TradeProposal, provider: MarketDataProvider, candidate_quantity: float) -> RegimeSuitabilityRead | None:
+    """Promotes app/trend_engine.py's own real, previously-unconsumed
+    regime-conditional hit-rate evidence (compute_trend_regime_
+    breakdown()) into a real, narrowing-only cap — CEO directive
+    "Portfolio Risk Engine, 11/10 Professional Quant-Firm Implementation,"
+    Phase 2's own literal ask ("a strategy should not receive capital
+    simply because it passed a backtest... determine which strategies
+    are historically appropriate for the CURRENT regime"). `None` (never
+    a fabricated read) when there isn't yet enough real candle history to
+    compute a meaningful regime breakdown at all."""
+    try:
+        candles = provider.get_candles(proposal.symbol, REGIME_SUITABILITY_TIMEFRAME, REGIME_SUITABILITY_CANDLE_COUNT)
+    except ValueError:
+        return None
+    if len(candles) < _REGIME_EMA_PERIOD + _REGIME_SLOPE_LOOKBACK:
+        return None
+    ema_values = ema_series(candles, _REGIME_EMA_PERIOD)
+    if not ema_values:
+        return None
+    current_regime = regime_trend_at(
+        ema_values, _REGIME_EMA_PERIOD, len(candles) - 1, slope_lookback=_REGIME_SLOPE_LOOKBACK, slope_threshold_pct=_REGIME_SLOPE_THRESHOLD_PCT
+    )
+    breakdown = compute_trend_regime_breakdown(candles, proposal.symbol, REGIME_SUITABILITY_TIMEFRAME, horizons=REGIME_SUITABILITY_HORIZONS)
+    bucket = next((b for b in breakdown.buckets if b.regime == current_regime), None)
+    if bucket is None or bucket.bars_observed < _MIN_BARS_FOR_REGIME_EVIDENCE:
+        return RegimeSuitabilityRead(
+            available=False,
+            currentRegime=current_regime,
+            barsObserved=bucket.bars_observed if bucket else 0,
+            detail=(
+                f"Insufficient real historical evidence for the '{current_regime}' regime specifically "
+                f"({bucket.bars_observed if bucket else 0} real bar(s) observed, need {_MIN_BARS_FOR_REGIME_EVIDENCE}+) — "
+                "no real regime-suitability reduction applied."
+            ),
+        )
+    scale = 1.0 if bucket.hit_rate_pct >= _REGIME_SUITABILITY_HIT_RATE_FLOOR_PCT else bucket.hit_rate_pct / _REGIME_SUITABILITY_HIT_RATE_FLOOR_PCT
+    return RegimeSuitabilityRead(
+        available=True,
+        currentRegime=current_regime,
+        barsObserved=bucket.bars_observed,
+        hitRatePct=bucket.hit_rate_pct,
+        meanForwardReturnPct=bucket.mean_forward_return_pct,
+        suitabilityScale=round(scale, 4),
+        regimeCapQuantity=round(candidate_quantity * scale, 6),
+        detail=(
+            f"{bucket.bars_observed} real historical bar(s) show this signal in the '{current_regime}' regime hit "
+            f"{bucket.hit_rate_pct:.1f}% of the time (mean forward return {bucket.mean_forward_return_pct:+.2f}%)."
+            + (f" Scaled to {scale * 100:.0f}% of the pre-regime candidate size." if scale < 1.0 else " At or above the 50% real floor — no reduction.")
+        ),
+    )
+
+
 def build_position_sizing(
     proposal: TradeProposal,
     *,
@@ -496,6 +584,19 @@ def build_position_sizing(
         candidate_quantity if marginal_risk_decision.decision == "data_blocked" or price <= 0 else marginal_risk_decision.allowed_value / price
     )
 
+    # CEO directive "Portfolio Risk Engine, 11/10 Professional Quant-Firm
+    # Implementation," Phase 2 — the real regime-suitability cap. See
+    # _regime_suitability_sizing()'s own docstring for the full
+    # provenance. Only ever narrows (never below `available=True` real
+    # evidence, and never a fabricated cap when there isn't yet enough
+    # real candle history for a meaningful regime breakdown).
+    regime_suitability_sizing = _regime_suitability_sizing(proposal, provider, candidate_quantity)
+    regime_suitability_cap_quantity = (
+        regime_suitability_sizing.regime_cap_quantity
+        if regime_suitability_sizing is not None and regime_suitability_sizing.available and regime_suitability_sizing.regime_cap_quantity is not None
+        else candidate_quantity
+    )
+
     final_quantity = max(
         0.0,
         min(
@@ -507,6 +608,7 @@ def build_position_sizing(
             inverse_vol_cap_quantity,
             cross_portfolio_cap_quantity,
             marginal_risk_cap_quantity,
+            regime_suitability_cap_quantity,
         ),
     )
     final_quantity = round(final_quantity, 4)
@@ -518,6 +620,21 @@ def build_position_sizing(
     )
     if final_quantity < candidate_quantity - 1e-9:
         if (
+            regime_suitability_cap_quantity <= weekly_cap_quantity
+            and regime_suitability_cap_quantity <= heat_cap_quantity
+            and regime_suitability_cap_quantity <= cash_cap_quantity
+            and regime_suitability_cap_quantity <= volatility_cap_quantity
+            and regime_suitability_cap_quantity <= inverse_vol_cap_quantity
+            and regime_suitability_cap_quantity <= cross_portfolio_cap_quantity
+            and regime_suitability_cap_quantity <= marginal_risk_cap_quantity
+            and regime_suitability_cap_quantity < candidate_quantity - 1e-9
+        ):
+            binding_constraint = (
+                regime_suitability_sizing.detail
+                if regime_suitability_sizing is not None
+                else "the real regime-suitability cap (this signal's own historical hit rate in the CURRENT regime)"
+            )
+        elif (
             marginal_risk_cap_quantity <= weekly_cap_quantity
             and marginal_risk_cap_quantity <= heat_cap_quantity
             and marginal_risk_cap_quantity <= cash_cap_quantity
@@ -574,6 +691,7 @@ def build_position_sizing(
         inverseVolSizing=inverse_vol_sizing,
         crossPortfolioRiskSizing=cross_portfolio_risk_sizing,
         marginalRiskDecision=marginal_risk_decision,
+        regimeSuitabilitySizing=regime_suitability_sizing or RegimeSuitabilityRead(),
         weeklyDeploymentPct=round(weekly_deployed_before_pct + capital_deployed_pct, 2),
         weeklyDeploymentCapPct=risk_limits.max_weekly_deployment_pct,
         cashReserveOk=cash_reserve_ok,

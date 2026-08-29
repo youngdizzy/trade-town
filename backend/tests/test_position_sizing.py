@@ -7,17 +7,22 @@ back to a real, named constraint — never a silent or fabricated cut.
 """
 from __future__ import annotations
 
+import math
+from datetime import datetime, timedelta
+
 import pytest
 
 from app.ema_pullback_research import CHANDELIER_ATR_MULTIPLIER, CHANDELIER_ATR_PERIOD
 from app.market_data import Candle, MarketDataProvider, Quote
 from app.position_sizing import (
+    REGIME_SUITABILITY_CANDLE_COUNT,
     TIER_FRACTION,
     VOLATILITY_CANDLE_COUNT,
     WEEKLY_DEPLOYMENT_WINDOW_DAYS,
     _capital_deployed_pct_in_window,
     _cross_portfolio_inverse_vol_sizing,
     _inverse_vol_sizing,
+    _regime_suitability_sizing,
     _tier_for_sizing_score,
     _volatility_sizing,
     build_position_sizing,
@@ -644,6 +649,70 @@ class _PerSymbolProvider(MarketDataProvider):
         ]
 
 
+class _FixedCandlesProvider(MarketDataProvider):
+    """Returns one pre-built, real candle series verbatim for every
+    symbol requested — used only by the regime-suitability tests below,
+    which (unlike every other cap in this module) actually run their
+    real candle sample through app/trend_engine.py's own
+    compute_trend_regime_breakdown(), and that function's own real data-
+    quality gate (_candle_data_invalid_reason) rejects non-increasing
+    real timestamps. _FakeProvider/_PerSymbolProvider above both stamp
+    an `i % 24` hour-of-day that WRAPS (and so goes backwards) past 24
+    candles — harmless for every OTHER cap in this module (none of them
+    read a candle's own timestamp), but it would make every regime-
+    breakdown read here silently invalid. This provider's own candles
+    already carry real, strictly increasing multi-day timestamps."""
+
+    def __init__(self, candles: list[Candle]) -> None:
+        self._candles = candles
+
+    def get_quote(self, symbol: str) -> Quote:
+        raise NotImplementedError
+
+    def get_candles(self, symbol: str, timeframe: str, limit: int) -> list[Candle]:
+        return self._candles
+
+
+def _trend_candles(n: int, *, start: float = 100.0, step_pct: float = 0.6) -> list[Candle]:
+    """A real, smooth, monotonic trend — real strictly increasing
+    hourly timestamps starting 2026-01-01T00:00:00Z."""
+    closes = [start]
+    for _ in range(n - 1):
+        closes.append(closes[-1] * (1 + step_pct / 100))
+    return _timestamped_candles(closes)
+
+
+def _whipsaw_candles(n: int, *, start: float = 100.0, amplitude: float = 6.0, period_bars: int = 24) -> list[Candle]:
+    """A real oscillating series whose period is deliberately close to
+    compute_trend_regime_breakdown()'s own default 10-bar forward_bars
+    window — a real, disclosed adversarial case for trend-following
+    signals (a "strong" directional read at any given bar is frequently
+    on the wrong side by the time the forward window resolves), used to
+    exercise a real, deterministic low-hit-rate regime bucket rather
+    than fabricating one."""
+    omega = 2 * math.pi / period_bars
+    closes = [start + amplitude * math.sin(omega * i) for i in range(n)]
+    return _timestamped_candles(closes)
+
+
+def _timestamped_candles(closes: list[float]) -> list[Candle]:
+    start = datetime(2026, 1, 1)
+    return [
+        Candle(
+            symbol="TEST",
+            timeframe="1h",
+            timestamp=(start + timedelta(hours=i)).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            open=c,
+            high=c + 0.3,
+            low=c - 0.3,
+            close=c,
+            volume=1000.0,
+            data_status="simulated",
+        )
+        for i, c in enumerate(closes)
+    ]
+
+
 class TestCrossPortfolioInverseVolSizing:
     """CEO directive "AHL-Inspired Systematic Trend & Momentum Research
     Engine" follow-up — closes the honesty gap _inverse_vol_sizing()
@@ -950,4 +1019,123 @@ class TestMarginalRiskCapNeverInheritsSentinelVeto:
         assert result.final_quantity > 0.0
         assert "weekly capital deployment budget" in result.detail
         assert result.marginal_risk_decision is not None
+
+
+class TestRegimeSuitabilitySizing:
+    """CEO directive "Portfolio Risk Engine, 11/10 Professional Quant-
+    Firm Implementation," Phase 2 — promotes app/trend_engine.py's own
+    real, previously-unconsumed regime-conditional hit-rate evidence
+    (compute_trend_regime_breakdown()) into a real, narrowing-only cap.
+    See _regime_suitability_sizing()'s own docstring."""
+
+    def test_none_with_too_little_real_candle_history(self) -> None:
+        provider = _FixedCandlesProvider(_trend_candles(50))
+        assert _regime_suitability_sizing(_Proposal(), provider, 10.0) is None
+
+    def test_none_when_no_real_candle_history_exists(self) -> None:
+        provider = _FixedCandlesProvider([])
+        assert _regime_suitability_sizing(_Proposal(), provider, 10.0) is None
+
+    def test_insufficient_evidence_is_reported_honestly_not_fabricated(self) -> None:
+        # Just above the real minimum window (70 bars) but nowhere near
+        # enough real strong-signal history to fill any regime bucket to
+        # the _MIN_BARS_FOR_REGIME_EVIDENCE floor.
+        provider = _FixedCandlesProvider(_trend_candles(75))
+        read = _regime_suitability_sizing(_Proposal(), provider, 10.0)
+        assert read is not None
+        assert read.available is False
+        assert read.regime_cap_quantity is None
+        assert "Insufficient" in read.detail
+
+    def test_strong_favorable_regime_evidence_does_not_reduce_below_the_ceiling(self) -> None:
+        # A real, smooth, sustained uptrend: every real strong-signal bar
+        # in the 'trending_up' regime is followed by a real continued
+        # real forward gain — a real 100% historical hit rate in the
+        # CURRENT regime specifically, at or above the 50% real floor.
+        provider = _FixedCandlesProvider(_trend_candles(REGIME_SUITABILITY_CANDLE_COUNT + 20))
+        read = _regime_suitability_sizing(_Proposal(), provider, 10.0)
+        assert read is not None
+        assert read.available is True
+        assert read.current_regime == "trending_up"
+        assert read.bars_observed >= 5
+        assert read.hit_rate_pct == 100.0
+        assert read.suitability_scale == 1.0
+        assert read.regime_cap_quantity == 10.0
+
+    def test_weak_historical_regime_evidence_reduces_the_cap(self) -> None:
+        # A real oscillating (whipsaw) series whose period is close to
+        # the regime breakdown's own forward-return window — a real,
+        # deterministic case where the CURRENT regime's own historical
+        # strong-signal bars were frequently on the wrong side of the
+        # real forward return, well under the 50% real floor.
+        provider = _FixedCandlesProvider(_whipsaw_candles(REGIME_SUITABILITY_CANDLE_COUNT + 20, period_bars=24))
+        read = _regime_suitability_sizing(_Proposal(), provider, 10.0)
+        assert read is not None
+        assert read.available is True
+        assert read.current_regime == "trending_down"
+        assert read.bars_observed >= 5
+        assert read.hit_rate_pct < 50.0
+        assert 0.0 < read.suitability_scale < 1.0
+        assert read.regime_cap_quantity is not None
+        assert read.regime_cap_quantity < 10.0
+        # scale = hit_rate / 50.0, cap = candidate_quantity * scale — the
+        # one real, disclosed formula, checked exactly (not just its
+        # direction), rounded exactly as the function itself rounds.
+        assert read.regime_cap_quantity == round(10.0 * read.suitability_scale, 6)
+
+
+class TestBuildPositionSizingRegimeSuitabilityCap:
+    """CEO directive "Portfolio Risk Engine, 11/10 Professional Quant-
+    Firm Implementation," Phase 2 — the regime-suitability cap wired
+    into build_position_sizing()'s own real min(...) cap chain, isolated
+    with this module's own established wide_open + maxed decision_score
+    convention (see TestBuildPositionSizingVolatility's own _build)."""
+
+    def _build(self, **overrides):
+        wide_open = RiskLimits(
+            tierAllocation=TierAllocationLimits(tier1Pct=100.0, tier2Pct=100.0, tier3Pct=100.0, tier4Pct=100.0),
+            maxWeeklyDeploymentPct=100.0,
+            cashReservePct=0.0,
+            maxPositionPct=100.0,
+            maxSectorConcentrationPct=100.0,
+        )
+        defaults = dict(
+            proposal=_Proposal(),
+            ceiling_quantity=10.0,
+            expected_value=_expected_value(),
+            decision_score=_decision_score(95.0, passed=True),
+            portfolio=_portfolio(),
+            portfolio_heat=_heat(),
+            risk_limits=wide_open,
+            risk_warnings=[],
+            sim_day=1,
+            provider=_FakeProvider(),
+        )
+        defaults.update(overrides)
+        return build_position_sizing(**defaults)
+
+    def test_default_fake_provider_has_too_little_history_and_never_narrows(self) -> None:
+        # This module's own default _FakeProvider (used pervasively
+        # across every OTHER test in this file) supplies well under the
+        # real 70-bar regime-evidence minimum — the regime-suitability
+        # cap must stay a real, honest no-op here, exactly like every
+        # pre-existing test in this file that never set it up.
+        result = self._build()
+        assert result.regime_suitability_sizing.available is False
+        assert result.final_quantity == 10.0
+
+    def test_weak_regime_evidence_narrows_final_quantity(self) -> None:
+        provider = _FixedCandlesProvider(_whipsaw_candles(REGIME_SUITABILITY_CANDLE_COUNT + 20, period_bars=24))
+        result = self._build(ceiling_quantity=10.0, provider=provider)
+        assert result.regime_suitability_sizing.available is True
+        assert result.regime_suitability_sizing.suitability_scale < 1.0
+        assert result.reduced_from_ceiling is True
+        assert result.final_quantity < 10.0
+        assert result.final_quantity == round(10.0 * result.regime_suitability_sizing.suitability_scale, 4)
+
+    def test_binding_constraint_names_the_regime_cap_when_it_is_tightest(self) -> None:
+        provider = _FixedCandlesProvider(_whipsaw_candles(REGIME_SUITABILITY_CANDLE_COUNT + 20, period_bars=24))
+        result = self._build(ceiling_quantity=10.0, provider=provider)
+        assert result.reduced_from_ceiling is True
+        assert "regime" in result.detail.lower()
         assert result.marginal_risk_decision.decision != "vetoed"

@@ -7823,6 +7823,35 @@ class ScenarioOutcomeComparison(CamelModel):
 PositionTier = Literal["exploratory", "standard", "high_conviction", "institutional"]
 
 
+# CEO directive "Portfolio Risk Engine, 11/10 Professional Quant-Firm
+# Implementation," Phase 2 — closes the literal gap that directive
+# names: app/trend_engine.py's own real, historical, regime-conditional
+# hit-rate evidence (compute_trend_regime_breakdown()) existed with
+# zero real consumers anywhere in this codebase — a strategy could
+# "receive capital simply because it passed a backtest," never because
+# THIS specific live regime has historically been favorable for its
+# own signal. `available=False` (the same honest default every sibling
+# *SizingRead in this WarRoomSession-persisted list already uses)
+# whenever there isn't yet enough real historical evidence for the
+# CURRENT live regime specifically — Phase 2's own explicit "if
+# insufficient evidence... say INSUFFICIENT EVIDENCE, never invent a
+# conclusion" instruction. Deliberately never a hard veto: `suitability_
+# scale` floors toward (never below) 0.0 as the real historical hit
+# rate in this regime approaches 0%, and is exactly 1.0 (no reduction)
+# at or above a 50% real hit rate — this cap only ever narrows, it
+# never rewards a strong regime fit with MORE than the ceiling already
+# allows.
+class RegimeSuitabilityRead(CamelModel):
+    available: bool = False
+    current_regime: str = Field(default="", alias="currentRegime")
+    bars_observed: int = Field(default=0, alias="barsObserved")
+    hit_rate_pct: float | None = Field(default=None, alias="hitRatePct")
+    mean_forward_return_pct: float | None = Field(default=None, alias="meanForwardReturnPct")
+    suitability_scale: float = Field(default=1.0, alias="suitabilityScale")
+    regime_cap_quantity: float | None = Field(default=None, alias="regimeCapQuantity")
+    detail: str = "Not computed — this position sizing result predates real regime-suitability sizing."
+
+
 # CEO directive "Portfolio Construction, Capital Allocation & Execution
 # Realism," Phase 3 — "POSITION SIZE ~ RISK BUDGET / DISTANCE TO STOP."
 # `available=False` (never a fabricated stop distance) when this symbol
@@ -7911,6 +7940,14 @@ class PositionSizingResult(CamelModel):
     # ceiling_quantity <= 0 — there is nothing real left to evaluate a
     # portfolio-level impact for).
     marginal_risk_decision: PortfolioMarginalRiskDecision | None = Field(default=None, alias="marginalRiskDecision")
+    # CEO directive "Portfolio Risk Engine, 11/10 Professional Quant-Firm
+    # Implementation," Phase 2 — see RegimeSuitabilityRead's own
+    # docstring. Non-optional with an `available` flag (matching
+    # `volatility_sizing` above), not `| None`, since `war_room_sessions`
+    # persists this list — every field needs a real default for an old
+    # save to still validate on load (see VolatilitySizingRead's own
+    # docstring for the fuller reasoning).
+    regime_suitability_sizing: RegimeSuitabilityRead = Field(default_factory=RegimeSuitabilityRead, alias="regimeSuitabilitySizing")
     detail: str
 
 

@@ -340,6 +340,42 @@ development milestones, not semver releases.
 
 ### Added
 
+- **"Portfolio Risk Engine, 11/10 Professional Quant-Firm Implementation," Phase 2 — regime-aware
+  capital allocation: a strategy no longer receives capital simply because it passed a backtest.**
+  A repo audit against this directive's own Phase 2 ("determine which strategies are historically
+  appropriate for the CURRENT regime... if insufficient evidence, say INSUFFICIENT EVIDENCE instead
+  of inventing a conclusion") found `app/trend_engine.py::compute_trend_regime_breakdown()` — real,
+  historical, regime-conditional hit-rate evidence, already tested — had zero consumers anywhere in
+  the codebase; a proposal's own real historical performance IN THE CURRENT REGIME specifically was
+  computed and then never used.
+  - New `app/position_sizing.py::_regime_suitability_sizing()`, promoting that existing evidence into
+    one more real, narrowing-only cap in `build_position_sizing()`'s own `min(...)` chain. Reads the
+    real current regime (`regime_trend_at()`, the same classifier `compute_trend_regime_breakdown()`
+    buckets by) over 200 real hourly candles, looks up the matching historical bucket, and — only when
+    that bucket has at least 5 real observations — scales the candidate size down proportionally below
+    a 50% real historical hit-rate floor (`suitabilityScale = hitRatePct / 50.0`, floored toward but
+    never below 0.0). At or above a 50% real hit rate, `suitabilityScale` is exactly 1.0: this cap only
+    ever narrows, it never rewards a strong regime fit with MORE than the ceiling already allows.
+  - New `RegimeSuitabilityRead` schema (`available: false` — an honest, non-fabricated "insufficient
+    evidence" state, not a silent zero — whenever there isn't yet enough real historical evidence for
+    the current regime specifically) and `PositionSizingResult.regimeSuitabilitySizing` field, with the
+    same real default-for-backward-compat convention every sibling `*SizingRead` field already follows
+    (`war_room_sessions` persists this list; an old save must still validate on load).
+  - New `TestRegimeSuitabilitySizing` (direct unit coverage, including a deterministic real
+    low-hit-rate case built from a real whipsaw/oscillating candle series whose period sits close to
+    the regime breakdown's own forward-return window — a real, disclosed adversarial case for
+    trend-following signals, not a fabricated hit rate) and
+    `TestBuildPositionSizingRegimeSuitabilityCap` (wiring/binding-constraint-naming coverage) in
+    `test_position_sizing.py`.
+  - New "Regime Suitability" section in `WarRoomPanel.tsx`, mirroring `volatilitySizing`'s own
+    `available`-flag AVAILABLE/UNAVAILABLE rendering pattern exactly. Live-verified against the real
+    running dev stack: a pre-existing persisted War Room session (predating this field) correctly
+    renders the honest "Not computed — this position sizing result predates real regime-suitability
+    sizing" default, proving the backward-compat schema default actually works end to end, not just in
+    a unit test.
+  - Verified: full backend suite (3093 tests) green, `mypy`/`ruff` clean. Frontend `tsc`/lint/build
+    clean.
+
 - **"Portfolio Risk Engine, 11/10 Professional Quant-Firm Implementation" — the real Marginal Risk
   Test now actually narrows what a trade executes at, not just what the CEO sees.** A repo audit
   against this directive's own Phase 9 ("a strong signal does NOT automatically get capital") found the
