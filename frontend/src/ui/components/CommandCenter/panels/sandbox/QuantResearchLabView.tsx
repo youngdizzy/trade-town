@@ -327,11 +327,9 @@ export function QuantResearchLabView() {
                   </div>
                   <div className="mt-1 text-[9px] text-cmd-text">{fileResult.experiment.outcomeReason}</div>
                   {fileResult.experiment.familyExperimentCount !== null && (
-                    <div
-                      className={`mt-1 text-[9px] ${fileResult.experiment.familyExperimentCount >= 5 ? "text-cmd-amber" : "text-cmd-textDim"}`}
-                    >
+                    <div className={`mt-1 text-[9px] ${fileResult.experiment.researchIntegrityFlag === "overtested" ? "text-cmd-amber" : "text-cmd-textDim"}`}>
                       Test #{fileResult.experiment.familyExperimentCount} on this strategy name.
-                      {fileResult.experiment.familyExperimentCount >= 5 &&
+                      {fileResult.experiment.researchIntegrityFlag === "overtested" &&
                         " Repeated retesting of the same idea raises the risk that any pass is a lucky search result, not a real edge — weigh that before promoting."}
                     </div>
                   )}
@@ -586,6 +584,11 @@ export function QuantResearchLabView() {
                   <DataRow label="Trades" value={exp.record.backtest.overall.tradeCount} />
                   {exp.familyExperimentCount !== null && <DataRow label="Family test #" value={exp.familyExperimentCount} />}
                 </div>
+                {exp.researchIntegrityFlag === "overtested" && (
+                  <div className="mt-1 text-cmd-amber">
+                    Repeated retesting of the same idea raises the risk that any pass is a lucky search result, not a real edge — weigh that before promoting.
+                  </div>
+                )}
                 {exp.record.buyAndHoldBaseline.length > 0 && (
                   <div className="mt-0.5 text-cmd-textDim">
                     Buy-and-hold context:{" "}

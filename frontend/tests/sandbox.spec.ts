@@ -183,7 +183,7 @@ test("CEO directive 'Professional Quant Firm Phase' — the QUANT RESEARCH LAB s
   await clickExpand(page);
   await clickTab(page, "SANDBOX");
   await clickRobust(page, () => page.getByRole("button", { name: "QUANT RESEARCH LAB", exact: true }), { label: "sub-tab QUANT RESEARCH LAB" });
-  await expect(page.getByText("Compile a Definition")).toBeVisible();
+  await expect(page.getByText("Compile a Definition", { exact: true })).toBeVisible();
 
   // A unique name per run: POST /register-strategy-version and
   // POST /quant-research-lab/experiments are real, persisted state

@@ -1863,8 +1863,16 @@ export interface QuantResearchExperiment {
    * filed. A real multiple-testing/research-selection-bias signal, never a p-value or corrected
    * significance level. `null` only for an experiment filed before this field existed. */
   familyExperimentCount: number | null;
+  /** CEO directive "TradeTown — 11/10 Strategy Factory + Ruthless Backtesting Engine," Section 12
+   * (Multiple-Testing Penalty) — a real, disclosed derivation of `familyExperimentCount` at one
+   * real, disclosed threshold (see backend/app/quant_research_lab.py's OVERTESTED_FAMILY_THRESHOLD).
+   * `null` whenever `familyExperimentCount` is itself `null`. Advisory only — not wired into
+   * `outcome`. */
+  researchIntegrityFlag: ResearchIntegrityFlag | null;
   createdAt: string;
 }
+
+export type ResearchIntegrityFlag = "normal" | "overtested";
 
 export interface QuantResearchExperimentSimilarity {
   experimentId: string;
